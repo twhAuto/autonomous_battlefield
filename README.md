@@ -6,6 +6,17 @@ Humans or AI agents control factions through an API. They do not modify the worl
 
 The goal is not to put every technology into version one. Start with a well-structured Go service and add infrastructure only when a game requirement gives it a clear purpose.
 
+## Using this project for revision
+
+The project turns abstract interview topics into experiments. Answer a questionnaire question from memory first, then compare it with the detailed `Improved answer` and implement or test the matching behavior here:
+
+- [Backend and Cloud questionnaire](../../revision/Backend-Cloud/QUESTIONNAIRE.md)
+- [Go questionnaire](../../revision/Golang/QUESTIONNAIRE.md)
+- [System Design questionnaire](../../revision/System%20Design/QUESTIONNAIRE.md)
+- [AI questionnaire](../../revision/AI/QUESTIONNAIRE.md)
+
+The Backend/Cloud and AI questionnaires contain reviewed answers. The blank Go and System Design answer fields remain recall exercises and should be completed before adding reference answers. Behavioral answers require genuine personal examples and should not be inferred from this project.
+
 ## Product concept
 
 A battlefield contains territory, buildings, units, resources, and factions. The simulation advances in discrete ticks. At each tick, the engine processes accepted commands and deterministic rules such as movement, production, construction, combat, and resource generation.
