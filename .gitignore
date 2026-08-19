@@ -1,0 +1,6 @@
+backend/__debug_bin*
+backend/cmd/server/__debug_bin*
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/*.tsbuildinfo
