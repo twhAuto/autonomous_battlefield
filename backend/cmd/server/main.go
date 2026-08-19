@@ -1,32 +1,67 @@
 package main
 
 import (
-	"fmt"
+	"context"
+	"errors"
+	"flag"
+	"log"
+	"net/http"
+	"os/signal"
+	"syscall"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/api"
-	"github.com/twh09/autonomous_battlefield/backend/internal/repository"
-	"github.com/twh09/autonomous_battlefield/backend/internal/service"
+	"github.com/twh09/autonomous_battlefield/backend/internal/app"
+	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 )
 
 func main() {
-	fmt.Println("Autonomous Battlefield is starting...")
+	configPath := flag.String("config", "config.yaml", "path to the YAML configuration file")
+	flag.Parse()
 
-	startServer()
-	//handlers := api.NewBattlefieldHandler()
+	configuration, err := config.Load(*configPath)
+	if err != nil {
+		log.Fatalf("load configuration: %v", err)
+	}
+
+	if err := startServer(configuration.HTTP); err != nil {
+		log.Fatal(err)
+	}
 }
 
-func startServer() {
-	// Initialize the repository
-	factionRepo := repository.NewFactionRepo()
+func startServer(httpConfig config.HTTPServer) error {
+	application := app.New()
 
-	// Initialize the service with the repository
-	factionService := service.NewFactionService(factionRepo)
+	server := &http.Server{
+		Addr:              httpConfig.Address,
+		Handler:           application.HTTPHandler(),
+		ReadHeaderTimeout: httpConfig.ReadHeaderTimeout,
+		ReadTimeout:       httpConfig.ReadTimeout,
+		WriteTimeout:      httpConfig.WriteTimeout,
+		IdleTimeout:       httpConfig.IdleTimeout,
+	}
 
-	// Initialize the handler with the service
-	factionHandler := api.NewFactionHandler(factionService)
+	shutdownSignal, stop := signal.NotifyContext(
+		context.Background(),
+		syscall.SIGINT,
+		syscall.SIGTERM,
+	)
+	defer stop()
 
-	// Start the server and pass the handler to handle requests
-	// For example, you can use an HTTP server or any other server framework to listen for incoming requests
-	// and route them to the appropriate handler methods.
-	// Example: http.ListenAndServe(":8080", factionHandler)
+	go func() {
+		<-shutdownSignal.Done()
+
+		shutdownContext, cancel := context.WithTimeout(context.Background(), httpConfig.ShutdownTimeout)
+		defer cancel()
+
+		if err := server.Shutdown(shutdownContext); err != nil {
+			log.Printf("HTTP server shutdown failed: %v", err)
+		}
+	}()
+
+	log.Printf("Autonomous Battlefield is listening on %s", server.Addr)
+
+	if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+
+	return nil
 }
