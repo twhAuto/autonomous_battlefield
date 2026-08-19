@@ -5,3 +5,9 @@ http:
   writeTimeout: 10s
   idleTimeout: 60s
   shutdownTimeout: 10s
+database:
+  urlEnvironmentVariable: DATABASE_URL
+  connectTimeout: 5s
+  maxConnections: 10
+  minConnections: 1
+  maxConnectionLifetime: 30m

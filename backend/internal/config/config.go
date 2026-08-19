@@ -11,7 +11,16 @@ import (
 )
 
 type Config struct {
-	HTTP HTTPServer
+	HTTP     HTTPServer
+	Database Database
+}
+
+type Database struct {
+	URL                   string
+	ConnectTimeout        time.Duration
+	MaxConnections        int32
+	MinConnections        int32
+	MaxConnectionLifetime time.Duration
 }
 
 type HTTPServer struct {
@@ -32,6 +41,13 @@ type fileConfig struct {
 		IdleTimeout       string `yaml:"idleTimeout"`
 		ShutdownTimeout   string `yaml:"shutdownTimeout"`
 	} `yaml:"http"`
+	Database struct {
+		URLEnvironmentVariable string `yaml:"urlEnvironmentVariable"`
+		ConnectTimeout         string `yaml:"connectTimeout"`
+		MaxConnections         int32  `yaml:"maxConnections"`
+		MinConnections         int32  `yaml:"minConnections"`
+		MaxConnectionLifetime  string `yaml:"maxConnectionLifetime"`
+	} `yaml:"database"`
 }
 
 func Load(path string) (Config, error) {
@@ -60,8 +76,50 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
 	}
+	databaseConfig, err := parseDatabaseConfig(raw)
+	if err != nil {
+		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
+	}
 
-	return Config{HTTP: httpConfig}, nil
+	return Config{HTTP: httpConfig, Database: databaseConfig}, nil
+}
+
+func parseDatabaseConfig(raw fileConfig) (Database, error) {
+	urlEnvironmentVariable := strings.TrimSpace(raw.Database.URLEnvironmentVariable)
+	if urlEnvironmentVariable == "" {
+		return Database{}, fmt.Errorf("database.urlEnvironmentVariable must not be empty")
+	}
+
+	url := strings.TrimSpace(os.Getenv(urlEnvironmentVariable))
+	if url == "" {
+		return Database{}, fmt.Errorf("database connection URL environment variable %q must not be empty", urlEnvironmentVariable)
+	}
+
+	connectTimeout, err := parseDuration("database.connectTimeout", raw.Database.ConnectTimeout)
+	if err != nil {
+		return Database{}, err
+	}
+	maxConnectionLifetime, err := parseDuration("database.maxConnectionLifetime", raw.Database.MaxConnectionLifetime)
+	if err != nil {
+		return Database{}, err
+	}
+	if raw.Database.MaxConnections <= 0 {
+		return Database{}, fmt.Errorf("database.maxConnections must be greater than zero")
+	}
+	if raw.Database.MinConnections < 0 {
+		return Database{}, fmt.Errorf("database.minConnections must not be negative")
+	}
+	if raw.Database.MinConnections > raw.Database.MaxConnections {
+		return Database{}, fmt.Errorf("database.minConnections must not exceed database.maxConnections")
+	}
+
+	return Database{
+		URL:                   url,
+		ConnectTimeout:        connectTimeout,
+		MaxConnections:        raw.Database.MaxConnections,
+		MinConnections:        raw.Database.MinConnections,
+		MaxConnectionLifetime: maxConnectionLifetime,
+	}, nil
 }
 
 func parseHTTPConfig(raw fileConfig) (HTTPServer, error) {

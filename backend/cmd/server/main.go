@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/app"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
+	"github.com/twh09/autonomous_battlefield/backend/internal/database"
 )
 
 func main() {
@@ -22,13 +24,29 @@ func main() {
 		log.Fatalf("load configuration: %v", err)
 	}
 
-	if err := startServer(configuration.HTTP); err != nil {
+	if err := startServer(configuration); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func startServer(httpConfig config.HTTPServer) error {
-	application := app.New()
+func startServer(configuration config.Config) error {
+	connectionContext, cancelConnection := context.WithTimeout(
+		context.Background(),
+		configuration.Database.ConnectTimeout,
+	)
+	db, err := database.NewPostgresDB(connectionContext, configuration.Database.URL, database.Options{
+		MaxConnections:        configuration.Database.MaxConnections,
+		MinConnections:        configuration.Database.MinConnections,
+		MaxConnectionLifetime: configuration.Database.MaxConnectionLifetime,
+	})
+	cancelConnection()
+	if err != nil {
+		return fmt.Errorf("connect to database: %w", err)
+	}
+	defer db.Close()
+
+	application := app.New(db)
+	httpConfig := configuration.HTTP
 
 	server := &http.Server{
 		Addr:              httpConfig.Address,

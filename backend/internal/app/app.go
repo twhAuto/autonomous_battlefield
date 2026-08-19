@@ -14,8 +14,8 @@ type App struct {
 	httpHandler http.Handler
 }
 
-func New() *App {
-	factionRepo := repository.NewFactionRepo()
+func New(db repository.DBTX) *App {
+	factionRepo := repository.NewFactionRepo(db)
 	factionService := service.NewFactionService(factionRepo)
 
 	factionHandler := api.NewFactionHandler(factionService)

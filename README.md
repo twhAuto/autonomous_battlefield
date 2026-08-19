@@ -2,6 +2,20 @@
 
 This project is a learning vehicle for backend, cloud, Go, system-design, AI-agent, AWS, and Kubernetes concepts. It is an auto-battler and expansion game in which several **factions** build, gather resources, expand territory, and fight on a continuously running battlefield.
 
+## Run the backend locally
+
+The backend requires PostgreSQL. Start the local database, apply the migrations, and run the server from the `backend` directory:
+
+```bash
+docker compose up -d postgres
+export DATABASE_URL='postgres://battlefield:battlefield@localhost:5432/battlefield?sslmode=disable'
+go install github.com/pressly/goose/v3/cmd/goose@v3.27.1
+goose -dir migrations postgres "$DATABASE_URL" up
+go run ./cmd/server
+```
+
+The committed credentials are only for the local Compose database. For deployed environments, supply `DATABASE_URL` through the platform's secret manager. Schema migrations are an explicit deployment step and are not run automatically by the application.
+
 Humans or AI agents control factions through an API. They do not modify the world directly: they submit commands, and an authoritative game engine validates and applies them. That boundary keeps the simulation deterministic, testable, secure, and suitable for replay.
 
 The goal is not to put every technology into version one. Start with a well-structured Go service and add infrastructure only when a game requirement gives it a clear purpose.

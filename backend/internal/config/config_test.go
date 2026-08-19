@@ -72,6 +72,15 @@ http:
 
 func writeConfigFile(t *testing.T, contents string) string {
 	t.Helper()
+	t.Setenv("TEST_DATABASE_URL", "postgres://battlefield:secret@localhost:5432/battlefield")
+	contents += `
+database:
+  urlEnvironmentVariable: TEST_DATABASE_URL
+  connectTimeout: 5s
+  maxConnections: 10
+  minConnections: 1
+  maxConnectionLifetime: 30m
+`
 
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
