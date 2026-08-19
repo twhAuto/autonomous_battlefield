@@ -3,11 +3,20 @@ package service
 import (
 	"context"
 	"errors"
+	"regexp"
+	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/repository"
+	"github.com/twh09/autonomous_battlefield/backend/internal/service/entity"
 )
 
-var ErrFactionNotFound = errors.New("faction not found")
+var (
+	ErrFactionNotFound      = errors.New("faction not found")
+	ErrFactionAlreadyExists = errors.New("faction already exists")
+	ErrInvalidFaction       = errors.New("invalid faction")
+)
+
+var uuidPattern = regexp.MustCompile(`^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$`)
 
 type factionService struct {
 	repo repository.FactionRepository
@@ -15,6 +24,7 @@ type factionService struct {
 
 type FactionService interface {
 	GetFactionName(ctx context.Context, id string) (string, error)
+	CreateFaction(ctx context.Context, faction *entity.FactionEntity) error
 }
 
 func (b *factionService) GetFactionName(ctx context.Context, id string) (string, error) {
@@ -26,6 +36,24 @@ func (b *factionService) GetFactionName(ctx context.Context, id string) (string,
 		return "", err
 	}
 	return faction.Name, nil
+}
+
+func (b *factionService) CreateFaction(ctx context.Context, faction *entity.FactionEntity) error {
+	if faction == nil || !uuidPattern.MatchString(faction.ID) || strings.TrimSpace(faction.Name) == "" {
+		return ErrInvalidFaction
+	}
+
+	storedFaction := &entity.FactionEntity{
+		ID:   faction.ID,
+		Name: strings.TrimSpace(faction.Name),
+	}
+	if err := b.repo.CreateFaction(ctx, storedFaction); errors.Is(err, repository.ErrFactionAlreadyExists) {
+		return ErrFactionAlreadyExists
+	} else if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func NewFactionService(repo repository.FactionRepository) FactionService {

@@ -50,9 +50,23 @@ func TestCreateFaction(t *testing.T) {
 	}
 }
 
+func TestCreateFactionReturnsAlreadyExists(t *testing.T) {
+	db := &fakeDB{execErr: &pgconn.PgError{Code: "23505"}}
+	repo := NewFactionRepo(db)
+
+	err := repo.CreateFaction(context.Background(), &entity.FactionEntity{
+		ID:   "7f22e693-bacd-46bb-b942-64fa613cd388",
+		Name: "Northwind",
+	})
+	if !errors.Is(err, ErrFactionAlreadyExists) {
+		t.Fatalf("CreateFaction() error = %v, want ErrFactionAlreadyExists", err)
+	}
+}
+
 type fakeDB struct {
 	row           pgx.Row
 	execArguments []any
+	execErr       error
 }
 
 func (db *fakeDB) QueryRow(context.Context, string, ...any) pgx.Row {
@@ -61,7 +75,7 @@ func (db *fakeDB) QueryRow(context.Context, string, ...any) pgx.Row {
 
 func (db *fakeDB) Exec(_ context.Context, _ string, arguments ...any) (pgconn.CommandTag, error) {
 	db.execArguments = arguments
-	return pgconn.NewCommandTag("INSERT 0 1"), nil
+	return pgconn.NewCommandTag("INSERT 0 1"), db.execErr
 }
 
 type fakeRow struct {

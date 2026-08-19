@@ -7,6 +7,7 @@ func NewRouter(factionHandler *FactionHandler) http.Handler {
 
 	mux.HandleFunc("GET /healthz", health)
 	mux.HandleFunc("GET /v1/factions/{id}/name", factionHandler.GetFactionName)
+	mux.HandleFunc("POST /v1/factions", factionHandler.CreateFaction)
 
 	return mux
 }

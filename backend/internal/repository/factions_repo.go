@@ -10,7 +10,10 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/service/entity"
 )
 
-var ErrFactionNotFound = errors.New("faction not found")
+var (
+	ErrFactionNotFound      = errors.New("faction not found")
+	ErrFactionAlreadyExists = errors.New("faction already exists")
+)
 
 type DBTX interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
@@ -49,6 +52,10 @@ func (r *factionRepo) CreateFaction(ctx context.Context, faction *entity.Faction
 		VALUES ($1, $2)
 	`, faction.ID, faction.Name)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return fmt.Errorf("%w: %q", ErrFactionAlreadyExists, faction.ID)
+		}
 		return fmt.Errorf("create faction %q: %w", faction.ID, err)
 	}
 
