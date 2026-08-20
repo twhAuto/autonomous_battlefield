@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/api"
+	"github.com/twh09/autonomous_battlefield/backend/internal/database"
 	"github.com/twh09/autonomous_battlefield/backend/internal/repository"
 	"github.com/twh09/autonomous_battlefield/backend/internal/service"
 )
@@ -14,7 +15,7 @@ type App struct {
 	httpHandler http.Handler
 }
 
-func New(db repository.DBTX) *App {
+func New(db database.DBTX) *App {
 	factionRepo := repository.NewFactionRepo(db)
 	factionService := service.NewFactionService(factionRepo)
 

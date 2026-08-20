@@ -67,13 +67,35 @@ func TestCreateFactionTranslatesAlreadyExists(t *testing.T) {
 	}
 }
 
+func TestListFactions(t *testing.T) {
+	want := []entity.FactionEntity{
+		{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind"},
+		{ID: "4db8d152-1e04-4d10-8824-859c6ed72878", Name: "Verdant Accord"},
+	}
+	repo := &fakeFactionRepository{factions: want}
+	service := NewFactionService(repo)
+
+	got, err := service.ListFactions(context.Background())
+	if err != nil {
+		t.Fatalf("ListFactions() returned an error: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ListFactions() = %#v, want %#v", got, want)
+	}
+}
+
 type fakeFactionRepository struct {
 	createdFaction *entity.FactionEntity
 	createErr      error
+	factions       []entity.FactionEntity
 }
 
 func (r *fakeFactionRepository) GetFaction(context.Context, string) (*entity.FactionEntity, error) {
 	return nil, repository.ErrFactionNotFound
+}
+
+func (r *fakeFactionRepository) ListFactions(context.Context) ([]entity.FactionEntity, error) {
+	return r.factions, nil
 }
 
 func (r *fakeFactionRepository) CreateFaction(_ context.Context, faction *entity.FactionEntity) error {

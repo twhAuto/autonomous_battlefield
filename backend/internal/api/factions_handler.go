@@ -12,6 +12,32 @@ type FactionHandler struct {
 	factionService service.FactionService
 }
 
+func (h *FactionHandler) ListFactions(w http.ResponseWriter, r *http.Request) {
+	factions, err := h.factionService.ListFactions(r.Context())
+	if err != nil {
+		http.Error(w, "could not list factions", http.StatusInternalServerError)
+		return
+	}
+
+	type factionResponse struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	response := struct {
+		Factions []factionResponse `json:"factions"`
+	}{Factions: make([]factionResponse, 0, len(factions))}
+	for _, faction := range factions {
+		response.Factions = append(response.Factions, factionResponse{
+			ID:   faction.ID,
+			Name: faction.Name,
+		})
+	}
+
+	if err := writeJSON(w, http.StatusOK, response); err != nil {
+		return
+	}
+}
+
 func (h *FactionHandler) GetFactionName(w http.ResponseWriter, r *http.Request) {
 	name, err := h.factionService.GetFactionName(r.Context(), r.PathValue("id"))
 	if errors.Is(err, service.ErrFactionNotFound) {

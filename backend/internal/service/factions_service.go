@@ -24,6 +24,7 @@ type factionService struct {
 
 type FactionService interface {
 	GetFactionName(ctx context.Context, id string) (string, error)
+	ListFactions(ctx context.Context) ([]entity.FactionEntity, error)
 	CreateFaction(ctx context.Context, faction *entity.FactionEntity) error
 }
 
@@ -36,6 +37,10 @@ func (b *factionService) GetFactionName(ctx context.Context, id string) (string,
 		return "", err
 	}
 	return faction.Name, nil
+}
+
+func (b *factionService) ListFactions(ctx context.Context) ([]entity.FactionEntity, error) {
+	return b.repo.ListFactions(ctx)
 }
 
 func (b *factionService) CreateFaction(ctx context.Context, faction *entity.FactionEntity) error {

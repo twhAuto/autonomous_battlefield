@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/twh09/autonomous_battlefield/backend/internal/database"
 	"github.com/twh09/autonomous_battlefield/backend/internal/service/entity"
 )
 
@@ -15,18 +16,14 @@ var (
 	ErrFactionAlreadyExists = errors.New("faction already exists")
 )
 
-type DBTX interface {
-	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
-	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
-}
-
 type FactionRepository interface {
 	GetFaction(ctx context.Context, id string) (*entity.FactionEntity, error)
+	ListFactions(ctx context.Context) ([]entity.FactionEntity, error)
 	CreateFaction(ctx context.Context, faction *entity.FactionEntity) error
 }
 
 type factionRepo struct {
-	db DBTX
+	db database.DBTX
 }
 
 func (r *factionRepo) GetFaction(ctx context.Context, id string) (*entity.FactionEntity, error) {
@@ -46,6 +43,32 @@ func (r *factionRepo) GetFaction(ctx context.Context, id string) (*entity.Factio
 	return &faction, nil
 }
 
+func (r *factionRepo) ListFactions(ctx context.Context) ([]entity.FactionEntity, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, name
+		FROM factions
+		ORDER BY created_at ASC, id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list factions: %w", err)
+	}
+	defer rows.Close()
+
+	factions := make([]entity.FactionEntity, 0)
+	for rows.Next() {
+		var faction entity.FactionEntity
+		if err := rows.Scan(&faction.ID, &faction.Name); err != nil {
+			return nil, fmt.Errorf("scan faction: %w", err)
+		}
+		factions = append(factions, faction)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate factions: %w", err)
+	}
+
+	return factions, nil
+}
+
 func (r *factionRepo) CreateFaction(ctx context.Context, faction *entity.FactionEntity) error {
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO factions (id, name)
@@ -62,6 +85,6 @@ func (r *factionRepo) CreateFaction(ctx context.Context, faction *entity.Faction
 	return nil
 }
 
-func NewFactionRepo(db DBTX) FactionRepository {
+func NewFactionRepo(db database.DBTX) FactionRepository {
 	return &factionRepo{db: db}
 }

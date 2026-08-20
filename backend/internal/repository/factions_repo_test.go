@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -32,6 +33,29 @@ func TestGetFactionReturnsNotFound(t *testing.T) {
 	_, err := repo.GetFaction(context.Background(), "7f22e693-bacd-46bb-b942-64fa613cd388")
 	if !errors.Is(err, ErrFactionNotFound) {
 		t.Fatalf("GetFaction() error = %v, want ErrFactionNotFound", err)
+	}
+}
+
+func TestListFactions(t *testing.T) {
+	db := &fakeDB{rows: &fakeRows{values: [][]any{
+		{"7f22e693-bacd-46bb-b942-64fa613cd388", "Northwind"},
+		{"4db8d152-1e04-4d10-8824-859c6ed72878", "Verdant Accord"},
+	}, index: -1}}
+	repo := NewFactionRepo(db)
+
+	factions, err := repo.ListFactions(context.Background())
+	if err != nil {
+		t.Fatalf("ListFactions() returned an error: %v", err)
+	}
+	want := []entity.FactionEntity{
+		{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind"},
+		{ID: "4db8d152-1e04-4d10-8824-859c6ed72878", Name: "Verdant Accord"},
+	}
+	if !reflect.DeepEqual(factions, want) {
+		t.Fatalf("ListFactions() = %#v, want %#v", factions, want)
+	}
+	if !strings.Contains(db.querySQL, "ORDER BY created_at ASC, id ASC") {
+		t.Fatalf("query = %q, want stable creation ordering", db.querySQL)
 	}
 }
 
@@ -65,12 +89,19 @@ func TestCreateFactionReturnsAlreadyExists(t *testing.T) {
 
 type fakeDB struct {
 	row           pgx.Row
+	rows          pgx.Rows
+	querySQL      string
 	execArguments []any
 	execErr       error
 }
 
 func (db *fakeDB) QueryRow(context.Context, string, ...any) pgx.Row {
 	return db.row
+}
+
+func (db *fakeDB) Query(_ context.Context, sql string, _ ...any) (pgx.Rows, error) {
+	db.querySQL = sql
+	return db.rows, nil
 }
 
 func (db *fakeDB) Exec(_ context.Context, _ string, arguments ...any) (pgconn.CommandTag, error) {
@@ -91,6 +122,36 @@ func (r fakeRow) Scan(destinations ...any) error {
 		pointer, ok := destinations[i].(*string)
 		if !ok {
 			return errors.New("fakeRow only supports string destinations")
+		}
+		*pointer = value.(string)
+	}
+	return nil
+}
+
+type fakeRows struct {
+	values [][]any
+	index  int
+	err    error
+}
+
+func (r *fakeRows) Close()                                       {}
+func (r *fakeRows) Err() error                                   { return r.err }
+func (r *fakeRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
+func (r *fakeRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
+func (r *fakeRows) Values() ([]any, error)                       { return r.values[r.index], nil }
+func (r *fakeRows) RawValues() [][]byte                          { return nil }
+func (r *fakeRows) Conn() *pgx.Conn                              { return nil }
+
+func (r *fakeRows) Next() bool {
+	r.index++
+	return r.index < len(r.values)
+}
+
+func (r *fakeRows) Scan(destinations ...any) error {
+	for i, value := range r.values[r.index] {
+		pointer, ok := destinations[i].(*string)
+		if !ok {
+			return errors.New("fakeRows only supports string destinations")
 		}
 		*pointer = value.(string)
 	}

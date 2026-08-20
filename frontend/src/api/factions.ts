@@ -3,6 +3,11 @@ export interface CreateFactionInput {
   name: string
 }
 
+export interface Faction {
+  id: string
+  name: string
+}
+
 export class FactionApiError extends Error {
   constructor(
     message: string,
@@ -14,6 +19,29 @@ export class FactionApiError extends Error {
 }
 
 const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
+
+export async function listFactions(signal?: AbortSignal): Promise<Faction[]> {
+  let response: Response
+
+  try {
+    response = await fetch(`${API_URL}/v1/factions`, { signal })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    throw new FactionApiError(
+      'The command post is unreachable. Check that the battlefield server is running.',
+    )
+  }
+
+  if (!response.ok) {
+    throw new FactionApiError(
+      'The faction registry could not be loaded. Please try again in a moment.',
+      response.status,
+    )
+  }
+
+  const body = (await response.json()) as { factions: Faction[] }
+  return body.factions
+}
 
 export async function createFaction(
   faction: CreateFactionInput,
@@ -53,4 +81,3 @@ export async function createFaction(
     response.status,
   )
 }
-

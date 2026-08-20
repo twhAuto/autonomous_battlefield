@@ -55,6 +55,46 @@ func TestCreateFactionRoute(t *testing.T) {
 	}
 }
 
+func TestListFactionsReturnsJSON(t *testing.T) {
+	factionService := &fakeFactionService{factions: []entity.FactionEntity{
+		{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind"},
+		{ID: "4db8d152-1e04-4d10-8824-859c6ed72878", Name: "Verdant Accord"},
+	}}
+	router := NewRouter(NewFactionHandler(factionService))
+	request := httptest.NewRequest(http.MethodGet, "/v1/factions", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var body struct {
+		Factions []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"factions"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	if len(body.Factions) != 2 || body.Factions[0].Name != "Northwind" {
+		t.Fatalf("factions = %#v, want two ordered factions", body.Factions)
+	}
+}
+
+func TestListFactionsReturnsEmptyArray(t *testing.T) {
+	router := NewRouter(NewFactionHandler(&fakeFactionService{}))
+	request := httptest.NewRequest(http.MethodGet, "/v1/factions", nil)
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if body := response.Body.String(); body != "{\"factions\":[]}" {
+		t.Fatalf("body = %q, want an empty JSON array", body)
+	}
+}
+
 func TestCreateFactionErrors(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -89,10 +129,15 @@ type fakeFactionService struct {
 	createdFaction *entity.FactionEntity
 	createErr      error
 	factionName    string
+	factions       []entity.FactionEntity
 }
 
 func (s *fakeFactionService) GetFactionName(context.Context, string) (string, error) {
 	return s.factionName, nil
+}
+
+func (s *fakeFactionService) ListFactions(context.Context) ([]entity.FactionEntity, error) {
+	return s.factions, nil
 }
 
 func (s *fakeFactionService) CreateFaction(_ context.Context, faction *entity.FactionEntity) error {
