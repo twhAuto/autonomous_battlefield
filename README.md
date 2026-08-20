@@ -10,7 +10,7 @@ The project is in an early stage. The current backend provides PostgreSQL-backed
 - Retrieve a faction's name by ID.
 - Store factions in PostgreSQL through `pgx`.
 - Configure HTTP and database connection settings from YAML and `DATABASE_URL`.
-- Apply schema changes explicitly with Goose migrations.
+- Apply pending schema changes through a migration-only server mode.
 - Shut down the HTTP server gracefully on `SIGINT` or `SIGTERM`.
 - Exercise the API, service, repository, configuration, and JSON helpers with unit tests.
 
@@ -18,7 +18,6 @@ The project is in an early stage. The current backend provides PostgreSQL-backed
 
 - Go 1.26.5 or a compatible newer version.
 - Docker with Docker Compose for the local PostgreSQL instance.
-- [Goose](https://github.com/pressly/goose) v3.27.1 for database migrations.
 
 ## Run locally
 
@@ -30,8 +29,7 @@ docker compose up -d postgres
 
 export DATABASE_URL='postgres://battlefield:battlefield@localhost:5432/battlefield?sslmode=disable'
 
-go install github.com/pressly/goose/v3/cmd/goose@v3.27.1
-goose -dir migrations postgres "$DATABASE_URL" up
+go run ./cmd/server -migrate
 
 go run ./cmd/server
 ```
@@ -44,7 +42,7 @@ curl http://localhost:8080/healthz
 
 The response is `ok` with HTTP status `200`.
 
-The credentials in `compose.yaml` and `.env.example` are for local development only. Use a secret manager to provide `DATABASE_URL` in deployed environments. The application does not run schema migrations automatically.
+The credentials in `compose.yaml` and `.env.example` are for local development only. Use a secret manager to provide `DATABASE_URL` in deployed environments. The application only runs schema migrations when explicitly started with `-migrate`.
 
 ### Use a different configuration file
 
@@ -55,6 +53,16 @@ go run ./cmd/server -config /path/to/config.yaml
 ```
 
 Unknown YAML fields, invalid durations, invalid connection-pool values, and a missing database URL cause startup to fail with an error.
+
+### Apply database migrations
+
+Apply all pending migrations and exit without starting the HTTP server:
+
+```bash
+go run ./cmd/server -migrate
+```
+
+Migration files are embedded in the executable, so a deployed binary does not need a separate `migrations` directory or Goose CLI. The command is safe to repeat; if the database is current, it reports that zero migrations were applied. Use `-config` alongside `-migrate` when needed.
 
 ## API
 
@@ -144,12 +152,13 @@ Run all tests from `backend`:
 go test ./...
 ```
 
-Apply or roll back migrations explicitly:
+Apply migrations explicitly:
 
 ```bash
-goose -dir migrations postgres "$DATABASE_URL" up
-goose -dir migrations postgres "$DATABASE_URL" down
+go run ./cmd/server -migrate
 ```
+
+Rollback remains an intentional operator action available through the standalone [Goose CLI](https://github.com/pressly/goose).
 
 Stop the local database without deleting its volume:
 
@@ -168,7 +177,7 @@ backend/
 ├── internal/database/     PostgreSQL pool construction
 ├── internal/repository/   PostgreSQL persistence
 ├── internal/service/      Business validation and use cases
-├── migrations/            Goose SQL migrations
+├── migrations/            Embedded Goose SQL migrations
 ├── compose.yaml           Local PostgreSQL service
 └── config.yaml            Default non-secret configuration
 ```

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 
@@ -16,17 +17,62 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "config.yaml", "path to the YAML configuration file")
-	flag.Parse()
+	options, err := parseOptions(os.Args[1:])
+	if errors.Is(err, flag.ErrHelp) {
+		return
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	configuration, err := config.Load(*configPath)
+	configuration, err := config.Load(options.configPath)
 	if err != nil {
 		log.Fatalf("load configuration: %v", err)
+	}
+
+	if options.migrate {
+		migrationContext, stop := signal.NotifyContext(
+			context.Background(),
+			syscall.SIGINT,
+			syscall.SIGTERM,
+		)
+		defer stop()
+
+		applied, err := database.Migrate(
+			migrationContext,
+			configuration.Database.URL,
+			configuration.Database.ConnectTimeout,
+		)
+		if err != nil {
+			log.Fatalf("migrate database: %v", err)
+		}
+		log.Printf("Database migrations complete (%d applied)", applied)
+		return
 	}
 
 	if err := startServer(configuration); err != nil {
 		log.Fatal(err)
 	}
+}
+
+type cliOptions struct {
+	configPath string
+	migrate    bool
+}
+
+func parseOptions(arguments []string) (cliOptions, error) {
+	flags := flag.NewFlagSet("server", flag.ContinueOnError)
+	configPath := flags.String("config", "config.yaml", "path to the YAML configuration file")
+	migrate := flags.Bool("migrate", false, "apply pending database migrations and exit")
+
+	if err := flags.Parse(arguments); err != nil {
+		return cliOptions{}, err
+	}
+	if flags.NArg() != 0 {
+		return cliOptions{}, fmt.Errorf("unexpected positional arguments: %v", flags.Args())
+	}
+
+	return cliOptions{configPath: *configPath, migrate: *migrate}, nil
 }
 
 func startServer(configuration config.Config) error {
