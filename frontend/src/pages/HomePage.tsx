@@ -7,8 +7,8 @@ export function HomePage() {
         <div className="hero__eyebrow"><span>01</span> COMMAND INTERFACE</div>
         <h1>Choose your path.<br /><em>Shape the frontier.</em></h1>
         <p className="hero__copy">
-          Establish a new faction or inspect every banner already deployed to
-          the Autonomous Battlefield.
+          Establish a faction, inspect every active banner, or deploy two forces
+          into a deterministic engagement.
         </p>
         <div className="hero__coordinates">47°12' N &nbsp; / &nbsp; SECTOR 09</div>
       </section>
@@ -35,9 +35,17 @@ export function HomePage() {
             </div>
             <span className="menu-card__arrow" aria-hidden="true">→</span>
           </Link>
+          <Link className="menu-card menu-card--battle" to="/battles/new">
+            <span className="menu-card__number">03</span>
+            <div>
+              <span className="menu-card__eyebrow">COMBAT OPERATIONS</span>
+              <h3>Stage a battle</h3>
+              <p>Select two factions, queue an engagement, and follow its live event stream.</p>
+            </div>
+            <span className="menu-card__arrow" aria-hidden="true">→</span>
+          </Link>
         </div>
       </section>
     </>
   )
 }
-

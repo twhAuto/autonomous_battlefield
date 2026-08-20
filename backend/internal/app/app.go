@@ -3,10 +3,15 @@ package app
 import (
 	"net/http"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/api"
-	"github.com/twh09/autonomous_battlefield/backend/internal/database"
-	"github.com/twh09/autonomous_battlefield/backend/internal/repository"
-	"github.com/twh09/autonomous_battlefield/backend/internal/service"
+	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
+	battleapi "github.com/twh09/autonomous_battlefield/backend/internal/battle/server/api"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/server/catalog"
+	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/server/service"
+	factionapi "github.com/twh09/autonomous_battlefield/backend/internal/faction/api"
+	factionrepo "github.com/twh09/autonomous_battlefield/backend/internal/faction/repo"
+	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
+	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
+	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
 // App is the application's composition root. It constructs and connects the
@@ -15,13 +20,14 @@ type App struct {
 	httpHandler http.Handler
 }
 
-func New(db database.DBTX) *App {
-	factionRepo := repository.NewFactionRepo(db)
-	factionService := service.NewFactionService(factionRepo)
+func NewAPI(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64) *App {
+	factionRepository := factionrepo.NewPostgres(db)
+	factionService := factionservice.NewService(factionRepository)
+	battleService := battleservice.NewService(battlerepo.NewPostgres(db), factionRepository, catalog, maxTicks)
 
-	factionHandler := api.NewFactionHandler(factionService)
-
-	return &App{httpHandler: api.NewRouter(factionHandler)}
+	factionHandler := factionapi.NewHandler(factionService)
+	battleHandler := battleapi.NewHandler(battleService)
+	return &App{httpHandler: httpapi.NewRouter(factionHandler, battleHandler)}
 }
 
 func (a *App) HTTPHandler() http.Handler {

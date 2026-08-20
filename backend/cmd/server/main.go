@@ -5,32 +5,39 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/app"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/server/catalog"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
-	"github.com/twh09/autonomous_battlefield/backend/internal/database"
+	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
+	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
 func main() {
+	logger := logging.New("api")
+	slog.SetDefault(logger)
 	options, err := parseOptions(os.Args[1:])
 	if errors.Is(err, flag.ErrHelp) {
 		return
 	}
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("command_line_invalid", "error", err)
+		os.Exit(1)
 	}
 
 	configuration, err := config.Load(options.configPath)
 	if err != nil {
-		log.Fatalf("load configuration: %v", err)
+		logger.Error("configuration_load_failed", "config_path", options.configPath, "error", err)
+		os.Exit(1)
 	}
 
 	if options.migrate {
+		logger.Info("database_migration_started")
 		migrationContext, stop := signal.NotifyContext(
 			context.Background(),
 			syscall.SIGINT,
@@ -38,20 +45,22 @@ func main() {
 		)
 		defer stop()
 
-		applied, err := database.Migrate(
+		applied, err := postgres.Migrate(
 			migrationContext,
 			configuration.Database.URL,
 			configuration.Database.ConnectTimeout,
 		)
 		if err != nil {
-			log.Fatalf("migrate database: %v", err)
+			logger.Error("database_migration_failed", "error", err)
+			os.Exit(1)
 		}
-		log.Printf("Database migrations complete (%d applied)", applied)
+		logger.Info("database_migration_completed", "applied", applied)
 		return
 	}
 
 	if err := startServer(configuration); err != nil {
-		log.Fatal(err)
+		logger.Error("api_process_stopped", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -80,7 +89,7 @@ func startServer(configuration config.Config) error {
 		context.Background(),
 		configuration.Database.ConnectTimeout,
 	)
-	db, err := database.NewPostgresDB(connectionContext, configuration.Database.URL, database.Options{
+	db, err := postgres.NewPostgresDB(connectionContext, configuration.Database.URL, postgres.Options{
 		MaxConnections:        configuration.Database.MaxConnections,
 		MinConnections:        configuration.Database.MinConnections,
 		MaxConnectionLifetime: configuration.Database.MaxConnectionLifetime,
@@ -90,8 +99,14 @@ func startServer(configuration config.Config) error {
 		return fmt.Errorf("connect to database: %w", err)
 	}
 	defer db.Close()
+	slog.Info("database_connected")
 
-	application := app.New(db)
+	catalog, err := catalog.LoadCatalog(configuration.API.ScenarioCatalogPath)
+	if err != nil {
+		return fmt.Errorf("load scenario catalog: %w", err)
+	}
+	slog.Info("scenario_catalog_loaded", "path", configuration.API.ScenarioCatalogPath, "scenario_count", len(catalog.IDs()))
+	application := app.NewAPI(db, catalog, configuration.API.MaxTicks)
 	httpConfig := configuration.HTTP
 
 	server := &http.Server{
@@ -101,6 +116,7 @@ func startServer(configuration config.Config) error {
 		ReadTimeout:       httpConfig.ReadTimeout,
 		WriteTimeout:      httpConfig.WriteTimeout,
 		IdleTimeout:       httpConfig.IdleTimeout,
+		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
 	}
 
 	shutdownSignal, stop := signal.NotifyContext(
@@ -112,16 +128,19 @@ func startServer(configuration config.Config) error {
 
 	go func() {
 		<-shutdownSignal.Done()
+		slog.Info("api_shutdown_started")
 
 		shutdownContext, cancel := context.WithTimeout(context.Background(), httpConfig.ShutdownTimeout)
 		defer cancel()
 
 		if err := server.Shutdown(shutdownContext); err != nil {
-			log.Printf("HTTP server shutdown failed: %v", err)
+			slog.Error("api_shutdown_failed", "error", err)
+			return
 		}
+		slog.Info("api_shutdown_completed")
 	}()
 
-	log.Printf("Autonomous Battlefield is listening on %s", server.Addr)
+	slog.Info("api_listening", "address", server.Addr)
 
 	if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err

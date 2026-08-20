@@ -1,0 +1,71 @@
+id: skirmish-v1
+rulesVersion: "1"
+tickDuration: 0s
+decisionIntervalTicks: 10
+decisionLeadTicks: 2
+rules:
+  minimumDamage: 1
+  defendAttackPercent: 50
+  defendDamageTakenPercent: 50
+traitDefinitions:
+  aggressive:
+    actionWeightModifiers:
+      attack: 350
+      defend: -150
+  defensive:
+    actionWeightModifiers:
+      attack: -100
+      defend: 350
+slots:
+  - units:
+      - id: vanguard
+        health: 42
+        attack: 12
+        defense: 4
+        speed: 8
+      - id: striker
+        health: 30
+        attack: 15
+        defense: 2
+        speed: 11
+    traits: [aggressive]
+    fallbackPlan:
+      name: balanced-opening
+      actionWeights:
+        attack: 1000
+        defend: 1000
+    scriptedPlans:
+      - name: establish-pressure
+        actionWeights:
+          attack: 1400
+          defend: 700
+      - name: finish-the-fight
+        actionWeights:
+          attack: 1700
+          defend: 500
+  - units:
+      - id: guardian
+        health: 48
+        attack: 10
+        defense: 6
+        speed: 6
+      - id: ranger
+        health: 32
+        attack: 13
+        defense: 3
+        speed: 9
+    traits: [defensive]
+    fallbackPlan:
+      name: hold-the-line
+      actionWeights:
+        attack: 850
+        defend: 1250
+    scriptedPlans:
+      - name: absorb-opening
+        actionWeights:
+          attack: 750
+          defend: 1450
+      - name: measured-counterattack
+        actionWeights:
+          attack: 1250
+          defend: 950

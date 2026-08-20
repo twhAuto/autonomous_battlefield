@@ -6,6 +6,7 @@ import App from './App'
 
 const firstId = '7f22e693-bacd-46bb-b942-64fa613cd388'
 const secondId = '4db8d152-1e04-4d10-8824-859c6ed72878'
+const battleId = '41ac3a2f-3371-4de1-b0f6-70600fcd9052'
 
 function renderApp(path = '/') {
   return render(
@@ -23,12 +24,13 @@ describe('App', () => {
       .mockReturnValue(secondId)
   })
 
-  it('offers both faction operations on the main menu', () => {
+  it('offers faction and battle operations on the main menu', () => {
     renderApp()
 	const menu = screen.getByRole('heading', { name: 'Main menu' }).closest('section')!
 
     expect(within(menu).getByRole('link', { name: /create faction/i })).toHaveAttribute('href', '/factions/new')
     expect(within(menu).getByRole('link', { name: /view all factions/i })).toHaveAttribute('href', '/factions')
+    expect(within(menu).getByRole('link', { name: /stage a battle/i })).toHaveAttribute('href', '/battles/new')
   })
 
   it('navigates from the main menu to faction creation', async () => {
@@ -91,5 +93,212 @@ describe('App', () => {
 
     expect(await screen.findByRole('heading', { name: 'Registry unavailable' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'RETRY CONNECTION' })).toBeInTheDocument()
+  })
+
+  it('configures a battle and lands on its live status page', async () => {
+    vi.mocked(crypto.randomUUID).mockReset().mockReturnValue(battleId)
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url === '/v1/factions') {
+        return new Response(JSON.stringify({ factions: [
+          { id: firstId, name: 'Northwind' },
+          { id: secondId, name: 'Verdant Accord' },
+        ] }), { status: 200 })
+      }
+      if (url === '/v1/scenarios') {
+        return new Response(JSON.stringify({ scenarios: [{
+          id: 'skirmish-v1', rulesVersion: '1', tickDuration: '0s', decisionIntervalTicks: 10, decisionLeadTicks: 2,
+        }] }), { status: 200 })
+      }
+      if (url === '/v1/battles' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ id: battleId, status: 'queued' }), { status: 202 })
+      }
+      if (url === `/v1/battles/${battleId}`) {
+        return new Response(JSON.stringify({
+          id: battleId,
+          scenarioId: 'skirmish-v1',
+          scenarioDigest: 'digest',
+          requestedTicks: 25,
+          currentTick: 0,
+          status: 'queued',
+          attempt: 0,
+          participants: [{ id: firstId, name: 'Northwind' }, { id: secondId, name: 'Verdant Accord' }],
+          result: null,
+        }), { status: 200 })
+      }
+      if (url.startsWith(`/v1/battles/${battleId}/events?`)) {
+        return new Response(JSON.stringify({ attempt: 0, events: [], nextCursor: null }), { status: 200 })
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+    const user = userEvent.setup()
+    renderApp('/battles/new')
+
+    expect(await screen.findByRole('heading', { name: 'Stage a battle' })).toBeInTheDocument()
+    await user.clear(screen.getByLabelText('Maximum ticks'))
+    await user.type(screen.getByLabelText('Maximum ticks'), '25')
+    await user.click(screen.getByRole('button', { name: 'DEPLOY COMBATANTS' }))
+
+    expect(fetch).toHaveBeenCalledWith('/v1/battles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: battleId,
+        scenarioId: 'skirmish-v1',
+        factionIds: [firstId, secondId],
+        tickCount: 25,
+      }),
+    })
+    expect(await screen.findByRole('heading', { name: 'Battle in progress' })).toBeInTheDocument()
+    expect(screen.getByText('Awaiting engine')).toBeInTheDocument()
+  })
+
+  it('shows battle tick validation before deployment', async () => {
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === '/v1/factions') {
+        return new Response(JSON.stringify({ factions: [
+          { id: firstId, name: 'Northwind' },
+          { id: secondId, name: 'Verdant Accord' },
+        ] }), { status: 200 })
+      }
+      if (url === '/v1/scenarios') {
+        return new Response(JSON.stringify({ scenarios: [{
+          id: 'skirmish-v1', rulesVersion: '1', tickDuration: '0s', decisionIntervalTicks: 10, decisionLeadTicks: 2,
+        }] }), { status: 200 })
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+    const user = userEvent.setup()
+    renderApp('/battles/new')
+
+    const ticks = await screen.findByLabelText('Maximum ticks')
+    await user.clear(ticks)
+    await user.type(ticks, '10001')
+
+    expect(screen.getByText('Enter a whole number from 1 to 10,000.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'DEPLOY COMBATANTS' })).toBeDisabled()
+  })
+
+  it('renders a completed battle result and its event stream', async () => {
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === `/v1/battles/${battleId}`) {
+        return new Response(JSON.stringify({
+          id: battleId,
+          scenarioId: 'skirmish-v1',
+          scenarioDigest: 'digest',
+          requestedTicks: 100,
+          currentTick: 18,
+          status: 'completed',
+          attempt: 1,
+          participants: [{ id: firstId, name: 'Northwind' }, { id: secondId, name: 'Verdant Accord' }],
+          result: {
+            winnerFactionId: firstId,
+            reason: 'elimination',
+            ticksRun: 18,
+            factions: [
+              { factionId: firstId, unitsStarted: 2, unitsRemaining: 1, damageDealt: 80, damageTaken: 42, attackTicks: 18, defendTicks: 0 },
+              { factionId: secondId, unitsStarted: 2, unitsRemaining: 0, damageDealt: 42, damageTaken: 80, attackTicks: 10, defendTicks: 8 },
+            ],
+          },
+        }), { status: 200 })
+      }
+      if (url.startsWith(`/v1/battles/${battleId}/events?`)) {
+        return new Response(JSON.stringify({
+          attempt: 1,
+          events: [{ attempt: 1, sequence: 1, tick: 1, type: 'battle_started', data: { scenarioId: 'skirmish-v1' }, createdAt: '2026-08-21T00:00:00Z' }],
+          nextCursor: 1,
+        }), { status: 200 })
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    renderApp(`/battles/${battleId}`)
+
+    expect(await screen.findByRole('heading', { name: 'Battle complete' })).toBeInTheDocument()
+    expect(screen.getByText('Northwind wins')).toBeInTheDocument()
+    expect(await screen.findByText('battle started')).toBeInTheDocument()
+    expect(screen.getAllByText('Damage dealt')).toHaveLength(2)
+  })
+
+  it('visibly reconnects after a transient battle status failure', async () => {
+    let statusRequests = 0
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === `/v1/battles/${battleId}`) {
+        statusRequests += 1
+        if (statusRequests === 1) return new Response(null, { status: 503 })
+        return new Response(JSON.stringify({
+          id: battleId,
+          scenarioId: 'skirmish-v1',
+          scenarioDigest: 'digest',
+          requestedTicks: 5,
+          currentTick: 5,
+          status: 'completed',
+          attempt: 1,
+          participants: [{ id: firstId, name: 'Northwind' }, { id: secondId, name: 'Verdant Accord' }],
+          result: { winnerFactionId: null, reason: 'tick_limit', ticksRun: 5, factions: [] },
+        }), { status: 200 })
+      }
+      if (url.startsWith(`/v1/battles/${battleId}/events?`)) {
+        return new Response(JSON.stringify({ attempt: 1, events: [], nextCursor: null }), { status: 200 })
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    renderApp(`/battles/${battleId}`)
+
+    expect(await screen.findByText(/Reconnecting 1\/5/)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Battle complete' }, { timeout: 2500 })).toBeInTheDocument()
+    expect(statusRequests).toBe(2)
+  })
+
+  it('continues the event stream from the returned sequence cursor', async () => {
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === `/v1/battles/${battleId}`) {
+        return new Response(JSON.stringify({
+          id: battleId,
+          scenarioId: 'skirmish-v1',
+          scenarioDigest: 'digest',
+          requestedTicks: 10,
+          currentTick: 10,
+          status: 'completed',
+          attempt: 1,
+          participants: [{ id: firstId, name: 'Northwind' }, { id: secondId, name: 'Verdant Accord' }],
+          result: { winnerFactionId: null, reason: 'tick_limit', ticksRun: 10, factions: [] },
+        }), { status: 200 })
+      }
+      if (url.includes('after=0')) {
+        return new Response(JSON.stringify({
+          attempt: 1,
+          events: Array.from({ length: 50 }, (_, index) => ({
+            attempt: 1,
+            sequence: index + 1,
+            tick: index + 1,
+            type: 'tick_completed',
+            data: {},
+            createdAt: '2026-08-21T00:00:00Z',
+          })),
+          nextCursor: 50,
+        }), { status: 200 })
+      }
+      if (url.includes('after=50')) {
+        return new Response(JSON.stringify({
+          attempt: 1,
+          events: [{ attempt: 1, sequence: 51, tick: 10, type: 'battle_completed', data: { reason: 'tick_limit' }, createdAt: '2026-08-21T00:00:01Z' }],
+          nextCursor: 51,
+        }), { status: 200 })
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+    const user = userEvent.setup()
+    renderApp(`/battles/${battleId}`)
+
+    await user.click(await screen.findByRole('button', { name: 'LOAD NEXT 50' }))
+
+    expect(await screen.findByText('battle completed')).toBeInTheDocument()
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes('attempt=1&after=50&limit=50'))).toBe(true)
   })
 })

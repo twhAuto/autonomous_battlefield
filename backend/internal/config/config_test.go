@@ -70,6 +70,36 @@ http:
 	}
 }
 
+func TestLoadEngineDoesNotRequireHTTPConfiguration(t *testing.T) {
+	path := writeEngineConfigFile(t, `
+engine:
+  healthAddress: ":9091"
+  pollInterval: 2s
+  leaseDuration: 45s
+  heartbeatInterval: 10s
+  shutdownTimeout: 8s
+  maxAttempts: 4
+`)
+	configuration, err := LoadEngine(path)
+	if err != nil {
+		t.Fatalf("LoadEngine() returned an error: %v", err)
+	}
+	if configuration.Engine.HealthAddress != ":9091" || configuration.Engine.MaxAttempts != 4 || configuration.Engine.PollInterval != 2*time.Second {
+		t.Fatalf("engine config = %#v", configuration.Engine)
+	}
+}
+
+func TestLoadEngineRejectsHeartbeatAtLeaseDuration(t *testing.T) {
+	path := writeEngineConfigFile(t, `
+engine:
+  leaseDuration: 10s
+  heartbeatInterval: 10s
+`)
+	if _, err := LoadEngine(path); err == nil {
+		t.Fatal("LoadEngine() returned no error")
+	}
+}
+
 func writeConfigFile(t *testing.T, contents string) string {
 	t.Helper()
 	t.Setenv("TEST_DATABASE_URL", "postgres://battlefield:secret@localhost:5432/battlefield")
@@ -85,6 +115,24 @@ database:
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatalf("write config file: %v", err)
+	}
+	return path
+}
+
+func writeEngineConfigFile(t *testing.T, contents string) string {
+	t.Helper()
+	t.Setenv("TEST_DATABASE_URL", "postgres://battlefield:secret@localhost:5432/battlefield")
+	contents += `
+database:
+  urlEnvironmentVariable: TEST_DATABASE_URL
+  connectTimeout: 5s
+  maxConnections: 10
+  minConnections: 1
+  maxConnectionLifetime: 30m
+`
+	path := filepath.Join(t.TempDir(), "engine.yaml")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write engine config: %v", err)
 	}
 	return path
 }
