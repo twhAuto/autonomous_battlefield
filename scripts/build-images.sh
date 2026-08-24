@@ -6,6 +6,9 @@ project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 backend_image="${BACKEND_IMAGE:-autonomous-battlefield-backend}"
 frontend_image="${FRONTEND_IMAGE:-autonomous-battlefield-frontend}"
 allow_dirty="${ALLOW_DIRTY:-0}"
+version_file="${VERSION_FILE:-${project_dir}/VERSION}"
+ci_build_number="${CI_BUILD_NUMBER:-${BUILD_NUMBER:-${GITHUB_RUN_NUMBER:-}}}"
+ci_build_attempt="${CI_BUILD_ATTEMPT:-${GITHUB_RUN_ATTEMPT:-}}"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -23,6 +26,41 @@ for image_name in "${backend_image}" "${frontend_image}"; do
     exit 1
   fi
 done
+
+if [[ ! -f "${version_file}" ]]; then
+  echo "Version file not found: ${version_file}" >&2
+  exit 1
+fi
+
+base_version="$(<"${version_file}")"
+if [[ ! "${base_version}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+  echo "VERSION must contain one semantic version such as 0.1.0." >&2
+  exit 1
+fi
+
+if [[ -n "${ci_build_number}" && ! "${ci_build_number}" =~ ^(0|[1-9][0-9]*)$ ]]; then
+  echo "CI build number must be a non-negative integer." >&2
+  exit 1
+fi
+
+if [[ -n "${ci_build_attempt}" && ! "${ci_build_attempt}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "CI build attempt must be a positive integer." >&2
+  exit 1
+fi
+
+if [[ -n "${ci_build_attempt}" && -z "${ci_build_number}" ]]; then
+  echo "A CI build attempt requires a CI build number." >&2
+  exit 1
+fi
+
+build_version="${base_version}"
+if [[ -n "${ci_build_number}" ]]; then
+  build_version="${base_version}-build.${ci_build_number}"
+
+  if [[ -n "${ci_build_attempt}" && "${ci_build_attempt}" != "1" ]]; then
+    build_version="${build_version}.attempt.${ci_build_attempt}"
+  fi
+fi
 
 image_tag="${IMAGE_TAG:-$(git -C "${project_dir}" rev-parse HEAD)}"
 head_sha="$(git -C "${project_dir}" rev-parse HEAD)"
@@ -52,29 +90,45 @@ source_url="$(git -C "${project_dir}" config --get remote.origin.url || true)"
 
 common_labels=(
   --label "org.opencontainers.image.revision=${image_tag}"
-  --label "org.opencontainers.image.version=${image_tag}"
+  --label "org.opencontainers.image.version=${build_version}"
 )
 
 if [[ -n "${source_url}" ]]; then
   common_labels+=(--label "org.opencontainers.image.source=${source_url}")
 fi
 
-echo "Building ${backend_image}:${image_tag}"
+backend_tags=(--tag "${backend_image}:${image_tag}")
+frontend_tags=(--tag "${frontend_image}:${image_tag}")
+
+if [[ -n "${ci_build_number}" ]]; then
+  backend_tags+=(--tag "${backend_image}:${build_version}")
+  frontend_tags+=(--tag "${frontend_image}:${build_version}")
+fi
+
+echo "Building ${backend_image}:${image_tag} (version ${build_version})"
 docker build \
   "${common_labels[@]}" \
-  --tag "${backend_image}:${image_tag}" \
+  "${backend_tags[@]}" \
   "${project_dir}/backend"
 
-echo "Building ${frontend_image}:${image_tag}"
+echo "Building ${frontend_image}:${image_tag} (version ${build_version})"
 docker build \
   "${common_labels[@]}" \
-  --tag "${frontend_image}:${image_tag}" \
+  "${frontend_tags[@]}" \
   "${project_dir}/frontend"
 
 echo
 echo "Built commit-addressed images:"
 echo "  ${backend_image}:${image_tag}"
 echo "  ${frontend_image}:${image_tag}"
+
+if [[ -n "${ci_build_number}" ]]; then
+  echo
+  echo "CI build aliases for the same images:"
+  echo "  ${backend_image}:${build_version}"
+  echo "  ${frontend_image}:${build_version}"
+fi
+
 echo
 echo "Deploy this revision to kind with:"
 echo "  ./scripts/deploy-kind.sh ${image_tag}"

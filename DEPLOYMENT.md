@@ -206,11 +206,31 @@ The normal Kubernetes workflow tags both application images with the full Git
 commit SHA. This makes the deployed revision unambiguous and gives Jenkins the
 same build entry point that will later push images to ECR.
 
+`VERSION` contains the release line in semantic `major.minor.patch` form. The
+initial version is `0.1.0`. When a CI build number is present, the build also
+adds a human-readable alias to the same image:
+
+```text
+autonomous-battlefield-backend:0.1.0-build.27
+autonomous-battlefield-frontend:0.1.0-build.27
+```
+
+Jenkins supplies `BUILD_NUMBER` automatically. GitHub Actions supplies
+`GITHUB_RUN_NUMBER` and `GITHUB_RUN_ATTEMPT`; the script recognizes both CI
+systems. `CI_BUILD_NUMBER` and `CI_BUILD_ATTEMPT` are provider-neutral explicit
+overrides.
+
 Commit the intended source first and confirm the worktree is clean:
 
 ```bash
 git status --short
 ./scripts/build-images.sh
+```
+
+To simulate CI build 27 locally after committing the changes:
+
+```bash
+CI_BUILD_NUMBER=27 ./scripts/build-images.sh
 ```
 
 The build refuses a dirty worktree by default because a Git SHA cannot identify
@@ -224,6 +244,23 @@ like:
 autonomous-battlefield-backend:<full-git-sha>
 autonomous-battlefield-frontend:<full-git-sha>
 ```
+
+Kubernetes always deploys the full-SHA tag. The build-number alias is for CI
+screens, logs, and human communication; it does not replace the immutable tag.
+
+### Release tags on GitHub
+
+Do not create a Git tag for every Jenkins or GitHub Actions build. Create an
+annotated Git tag only for an intentional release, using the value in `VERSION`:
+
+```bash
+git tag -a "v$(<VERSION)" -m "Autonomous Battlefield v$(<VERSION)"
+git push origin "v$(<VERSION)"
+```
+
+After it is pushed, the tag appears on GitHub and can be used to create a GitHub
+Release. Increment `VERSION` deliberately: patch for compatible fixes, minor for
+compatible features, and major for breaking releases.
 
 ### 3. Deploy that exact revision
 
@@ -319,6 +356,18 @@ kubectl delete namespace battlefield
 ```
 
 Deleting the entire `kind` cluster has the same data-loss consequence.
+
+## Jenkins deployment pipeline
+
+The repository includes a root `Jenkinsfile` for a GitHub-backed Multibranch
+Pipeline. It tests, builds commit-addressed images, scans them, runs the
+migration gate once, deploys `main`, verifies health, and rolls back application
+Deployments after a failed rollout or smoke test.
+
+See [JENKINS.md](JENKINS.md) for the agent prerequisites, required plugins,
+secret-file credential, GitHub branch discovery, local webhook limitation, and
+pipeline behavior. The local pipeline deploys to kind; ECR and EKS replace the
+image-loading and deployment targets later without changing the earlier gates.
 
 ## Repository-specific requirements
 

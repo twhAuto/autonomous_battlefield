@@ -12,7 +12,7 @@ ENV VITE_API_URL=${VITE_API_URL}
 
 RUN npm run build
 
-FROM nginxinc/nginx-unprivileged:1.29-alpine
+FROM ghcr.io/nginx/nginx-unprivileged:1.30.4-alpine3.24-slim@sha256:bcf91d2c73ab64fa1c4ac7fbac5ac523057c8af7d553ab9251c7aef38c260979
 
 ENV API_UPSTREAM=battlefield-api:8080
 

@@ -109,7 +109,14 @@ Follow the complete build, image-loading, deployment, verification, and cleanup
 commands in the [deployment learning guide](DEPLOYMENT.md#deploy-the-application-locally).
 The standard container workflow uses `./scripts/build-images.sh` and
 `./scripts/deploy-kind.sh` so every deployed application image is identified by
-the full source commit SHA.
+the full source commit SHA. The `VERSION` file supplies release metadata, while
+CI builds add a human-readable `major.minor.patch-build.N` alias to the same
+image.
+
+The root `Jenkinsfile` provides the GitHub-backed test, image build, vulnerability
+scan, migration, deployment, smoke-test, and rollback pipeline. See the
+[Jenkins setup guide](JENKINS.md) before configuring the Multibranch job or its
+local Kubernetes credential.
 
 ### Use a different configuration file
 
