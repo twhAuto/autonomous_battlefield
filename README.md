@@ -107,6 +107,9 @@ The repository includes a staged Kustomize deployment for `kind`:
 
 Follow the complete build, image-loading, deployment, verification, and cleanup
 commands in the [deployment learning guide](DEPLOYMENT.md#deploy-the-application-locally).
+The standard container workflow uses `./scripts/build-images.sh` and
+`./scripts/deploy-kind.sh` so every deployed application image is identified by
+the full source commit SHA.
 
 ### Use a different configuration file
 

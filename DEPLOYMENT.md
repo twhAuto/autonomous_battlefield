@@ -200,25 +200,58 @@ cp deploy/overlays/local/infrastructure/secret.env.example \
 
 Do not reuse these credentials outside the disposable local cluster.
 
-### 2. Build and load the images
+### 2. Build commit-addressed images
+
+The normal Kubernetes workflow tags both application images with the full Git
+commit SHA. This makes the deployed revision unambiguous and gives Jenkins the
+same build entry point that will later push images to ECR.
+
+Commit the intended source first and confirm the worktree is clean:
 
 ```bash
-docker build -t autonomous-battlefield-backend:dev backend
-docker build -t autonomous-battlefield-frontend:dev frontend
-
-kind load docker-image autonomous-battlefield-backend:dev --name battlefield
-kind load docker-image autonomous-battlefield-frontend:dev --name battlefield
+git status --short
+./scripts/build-images.sh
 ```
 
-Rebuild and reload an image whenever its source or Dockerfile changes. Because
-the local manifests use `imagePullPolicy: IfNotPresent`, Kubernetes uses the
-image stored in the `kind` node rather than an external registry.
+The build refuses a dirty worktree by default because a Git SHA cannot identify
+uncommitted source. For an intentional local experiment only, set
+`ALLOW_DIRTY=1`; do not publish an image produced that way.
 
-### 3. Deploy PostgreSQL and configuration
+The images include OCI revision, version, and source labels. Their names look
+like:
+
+```text
+autonomous-battlefield-backend:<full-git-sha>
+autonomous-battlefield-frontend:<full-git-sha>
+```
+
+### 3. Deploy that exact revision
+
+The deployment script defaults to the checked-out commit, loads both tagged
+images into `kind`, applies infrastructure, runs the migration gate, and waits
+for all three application rollouts:
 
 ```bash
-kubectl apply -k deploy/overlays/local/infrastructure
+./scripts/deploy-kind.sh
+```
 
+Pass a previous full SHA to deploy a locally built revision explicitly:
+
+```bash
+./scripts/deploy-kind.sh "$(git rev-parse HEAD)"
+```
+
+The script composes temporary Kustomize overlays with the requested tag, leaving
+the tracked portable manifests unchanged. Because the local Deployments use
+`imagePullPolicy: IfNotPresent`, Kubernetes uses the commit-addressed image
+loaded into the `kind` node rather than an external registry.
+
+The following sections show the individual Kubernetes stages executed by the
+script and are useful when diagnosing a failure.
+
+### 4. Inspect PostgreSQL and configuration
+
+```bash
 kubectl rollout status statefulset/battlefield-postgres \
   --namespace battlefield \
   --timeout=120s
@@ -227,18 +260,12 @@ kubectl rollout status statefulset/battlefield-postgres \
 The local PostgreSQL StatefulSet uses a 1 GiB persistent volume from `kind`'s
 default local-path provisioner. It is suitable for learning only.
 
-### 4. Run the migration gate
+### 5. Inspect the migration gate
 
-Delete the completed Job before intentionally rerunning migrations with a new
-image, then recreate it and wait for success:
+The deployment script deletes the previous completed Job, recreates it with the
+selected backend image, and waits for success. Inspect the result with:
 
 ```bash
-kubectl delete job battlefield-migrate \
-  --namespace battlefield \
-  --ignore-not-found
-
-kubectl apply -k deploy/overlays/local/migration
-
 kubectl wait --for=condition=complete \
   job/battlefield-migrate \
   --namespace battlefield \
@@ -249,11 +276,9 @@ kubectl logs job/battlefield-migrate --namespace battlefield
 
 Do not apply the application stage if the Job fails.
 
-### 5. Deploy and inspect the application
+### 6. Inspect the application
 
 ```bash
-kubectl apply -k deploy/overlays/local/application
-
 kubectl rollout status deployment/battlefield-api \
   --namespace battlefield \
   --timeout=120s
@@ -273,7 +298,7 @@ an ingress controller automatically. The API HPA is also present as a scaling
 exercise; its CPU target remains `<unknown>` until metrics-server is installed.
 Neither limitation prevents port-forwarded local use.
 
-### 6. Open the application
+### 7. Open the application
 
 ```bash
 kubectl port-forward \
@@ -285,7 +310,7 @@ kubectl port-forward \
 Open `http://localhost:5173`. The frontend Nginx process proxies `/v1` requests
 to the internal `battlefield-api` Service.
 
-### 7. Remove the local deployment
+### 8. Remove the local deployment
 
 Deleting the namespace also deletes the local PostgreSQL claim and its data:
 
