@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"net/http"
 
 	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
@@ -20,14 +21,20 @@ type App struct {
 	httpHandler http.Handler
 }
 
-func NewAPI(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64) *App {
+type Database interface {
+	postgres.DBTX
+	Ping(context.Context) error
+}
+
+func NewAPI(db Database, catalog *catalog.Catalog, maxTicks uint64) *App {
 	factionRepository := factionrepo.NewPostgres(db)
 	factionService := factionservice.NewService(factionRepository)
 	battleService := battleservice.NewService(battlerepo.NewPostgres(db), factionRepository, catalog, maxTicks)
 
 	factionHandler := factionapi.NewHandler(factionService)
 	battleHandler := battleapi.NewHandler(battleService)
-	return &App{httpHandler: httpapi.NewRouter(factionHandler, battleHandler)}
+	readinessRoutes := httpapi.NewReadinessRoutes(db)
+	return &App{httpHandler: httpapi.NewRouter(readinessRoutes, factionHandler, battleHandler)}
 }
 
 func (a *App) HTTPHandler() http.Handler {

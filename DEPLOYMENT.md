@@ -5,10 +5,9 @@ recommended path from local Kubernetes to AWS. The goal is to learn the native
 Kubernetes concepts first while keeping the application portable enough to run
 on Amazon EKS without rewriting it.
 
-The application is not Kubernetes-ready yet. It still needs production
-container images and Kubernetes manifests. The first local session below only
-creates and verifies a local cluster; the following milestone packages and
-deploys this application.
+The application has production-shaped container images and a staged local
+Kubernetes deployment. The remaining cloud work is to add an AWS overlay and
+provision ECR, EKS, RDS, ingress, and managed secrets.
 
 ## Deployment direction
 
@@ -54,21 +53,14 @@ Start with native YAML resources and organize them with Kustomize:
 ```text
 deploy/
 ├── base/
-│   ├── namespace.yaml
-│   ├── configmap.yaml
-│   ├── migration-job.yaml
-│   ├── api-deployment.yaml
-│   ├── api-service.yaml
-│   ├── engine-deployment.yaml
-│   ├── frontend-deployment.yaml
-│   ├── frontend-service.yaml
-│   └── kustomization.yaml
+│   ├── infrastructure/     Namespace and non-secret configuration
+│   ├── migration/          One-shot schema migration Job
+│   └── application/        Workloads, Services, Ingress, HPA, and PDBs
 └── overlays/
-    ├── local/
-    │   └── kustomization.yaml
-    └── aws/
-        ├── ingress.yaml
-        └── kustomization.yaml
+    └── local/
+        ├── infrastructure/ Disposable PostgreSQL and local Secret
+        ├── migration/      Local migration composition
+        └── application/    Local application composition
 ```
 
 The base should contain standard Kubernetes behavior. Provider-specific
@@ -85,12 +77,13 @@ overlay.
 | Public access | `kubectl port-forward` initially | ALB-backed Ingress |
 | Non-secret settings | `ConfigMap` | The same `ConfigMap`, with an overlay if needed |
 
-Kustomize is already included in `kubectl`. It can render or apply an overlay
-without introducing another package manager:
+Kustomize is already included in `kubectl`. Render each stage before applying
+it when reviewing a change:
 
 ```bash
-kubectl kustomize deploy/overlays/local
-kubectl apply -k deploy/overlays/local
+kubectl kustomize deploy/overlays/local/infrastructure
+kubectl kustomize deploy/overlays/local/migration
+kubectl kustomize deploy/overlays/local/application
 ```
 
 ## Why Helm comes later
@@ -193,37 +186,114 @@ kind delete cluster --name battlefield
 Recreating a local cluster is expected and provides useful practice proving
 that configuration is reproducible rather than dependent on manual changes.
 
-## Application Kubernetes milestone
+## Deploy the application locally
 
-After the cluster smoke test, package the application in this order:
+### 1. Create the local secret file
 
-1. Add a multi-stage backend image containing the API and engine binaries,
-   `config.yaml`, and `scenarios/`.
-2. Add a multi-stage frontend image that builds Vite assets and serves them
-   through a non-root web server or reverse proxy.
-3. Add the Kustomize base and local overlay.
-4. Add disposable local PostgreSQL for the learning environment. Do not treat
-   it as the production database design.
-5. Load locally built images into `kind`:
+The real local file is ignored by Git. Create it once from the development-only
+example:
 
-   ```bash
-   kind load docker-image autonomous-battlefield-backend:dev --name battlefield
-   kind load docker-image autonomous-battlefield-frontend:dev --name battlefield
-   ```
+```bash
+cp deploy/overlays/local/infrastructure/secret.env.example \
+  deploy/overlays/local/infrastructure/secret.env
+```
 
-6. Run the migration Job and require it to complete successfully before the API
-   and engine rollout.
-7. Apply the local overlay and inspect the result:
+Do not reuse these credentials outside the disposable local cluster.
 
-   ```bash
-   kubectl apply -k deploy/overlays/local
-   kubectl get pods,services,jobs -n battlefield
-   kubectl logs -n battlefield deployment/battlefield-api
-   kubectl logs -n battlefield deployment/battlefield-engine
-   ```
+### 2. Build and load the images
 
-8. Reach the frontend initially with `kubectl port-forward`. Add an ingress
-   controller only after the core workloads work.
+```bash
+docker build -t autonomous-battlefield-backend:dev backend
+docker build -t autonomous-battlefield-frontend:dev frontend
+
+kind load docker-image autonomous-battlefield-backend:dev --name battlefield
+kind load docker-image autonomous-battlefield-frontend:dev --name battlefield
+```
+
+Rebuild and reload an image whenever its source or Dockerfile changes. Because
+the local manifests use `imagePullPolicy: IfNotPresent`, Kubernetes uses the
+image stored in the `kind` node rather than an external registry.
+
+### 3. Deploy PostgreSQL and configuration
+
+```bash
+kubectl apply -k deploy/overlays/local/infrastructure
+
+kubectl rollout status statefulset/battlefield-postgres \
+  --namespace battlefield \
+  --timeout=120s
+```
+
+The local PostgreSQL StatefulSet uses a 1 GiB persistent volume from `kind`'s
+default local-path provisioner. It is suitable for learning only.
+
+### 4. Run the migration gate
+
+Delete the completed Job before intentionally rerunning migrations with a new
+image, then recreate it and wait for success:
+
+```bash
+kubectl delete job battlefield-migrate \
+  --namespace battlefield \
+  --ignore-not-found
+
+kubectl apply -k deploy/overlays/local/migration
+
+kubectl wait --for=condition=complete \
+  job/battlefield-migrate \
+  --namespace battlefield \
+  --timeout=120s
+
+kubectl logs job/battlefield-migrate --namespace battlefield
+```
+
+Do not apply the application stage if the Job fails.
+
+### 5. Deploy and inspect the application
+
+```bash
+kubectl apply -k deploy/overlays/local/application
+
+kubectl rollout status deployment/battlefield-api \
+  --namespace battlefield \
+  --timeout=120s
+kubectl rollout status deployment/battlefield-engine \
+  --namespace battlefield \
+  --timeout=120s
+kubectl rollout status deployment/battlefield-frontend \
+  --namespace battlefield \
+  --timeout=120s
+
+kubectl get pods,services,jobs,persistentvolumeclaims \
+  --namespace battlefield
+```
+
+The application stage defines a portable Ingress, but `kind` does not install
+an ingress controller automatically. The API HPA is also present as a scaling
+exercise; its CPU target remains `<unknown>` until metrics-server is installed.
+Neither limitation prevents port-forwarded local use.
+
+### 6. Open the application
+
+```bash
+kubectl port-forward \
+  --namespace battlefield \
+  service/battlefield-frontend \
+  5173:8080
+```
+
+Open `http://localhost:5173`. The frontend Nginx process proxies `/v1` requests
+to the internal `battlefield-api` Service.
+
+### 7. Remove the local deployment
+
+Deleting the namespace also deletes the local PostgreSQL claim and its data:
+
+```bash
+kubectl delete namespace battlefield
+```
+
+Deleting the entire `kind` cluster has the same data-loss consequence.
 
 ## Repository-specific requirements
 
@@ -237,8 +307,8 @@ After the cluster smoke test, package the application in this order:
   `/app/scenarios`.
 - Use `/livez` for engine liveness and `/readyz` for engine readiness on port
   8081.
-- Add a database-aware API `/readyz`; its current `/healthz` only proves that
-  the HTTP process is alive.
+- Use `/healthz` for API liveness and the database-aware `/readyz` for API
+  readiness.
 - Set `terminationGracePeriodSeconds` longer than the configured ten-second
   graceful-shutdown deadline.
 - The engine can have multiple replicas because work is claimed through durable
@@ -298,4 +368,3 @@ notifications rather than guaranteed hard spending limits.
 - [AWS Budgets](https://docs.aws.amazon.com/cost-management/latest/userguide/create-cost-budget.html)
 - [EKS Auto Mode](https://docs.aws.amazon.com/eks/latest/userguide/automode.html)
 - [Using Secrets Manager secrets with EKS pods](https://docs.aws.amazon.com/eks/latest/userguide/manage-secrets.html)
-

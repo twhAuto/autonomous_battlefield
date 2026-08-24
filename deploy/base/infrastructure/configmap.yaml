@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: battlefield-config
+data:
+  config.yaml: |
+    http:
+      address: ":8080"
+      readHeaderTimeout: 5s
+      readTimeout: 10s
+      writeTimeout: 10s
+      idleTimeout: 60s
+      shutdownTimeout: 10s
+    database:
+      urlEnvironmentVariable: DATABASE_URL
+      connectTimeout: 5s
+      maxConnections: 10
+      minConnections: 1
+      maxConnectionLifetime: 30m
+    api:
+      scenarioCatalogPath: /app/scenarios
+      maxTicks: 10000
+    engine:
+      healthAddress: ":8081"
+      pollInterval: 1s
+      leaseDuration: 30s
+      heartbeatInterval: 10s
+      shutdownTimeout: 10s
+      maxAttempts: 3
+      workerIdEnvironmentVariable: ENGINE_WORKER_ID

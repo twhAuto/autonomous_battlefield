@@ -16,6 +16,7 @@ FROM nginxinc/nginx-unprivileged:1.29-alpine
 
 ENV API_UPSTREAM=battlefield-api:8080
 
+COPY --chown=101:101 nginx-main.conf /etc/nginx/nginx.conf
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build --chown=101:101 /src/dist /usr/share/nginx/html
 

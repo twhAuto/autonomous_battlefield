@@ -61,13 +61,23 @@ go run ./cmd/server -migrate
 go run ./cmd/server
 ```
 
-The server listens on `http://localhost:8080` by default. Verify it in another terminal:
+The server listens on `http://localhost:8080` by default. Verify its liveness in
+another terminal:
 
 ```bash
 curl http://localhost:8080/healthz
 ```
 
 The response is `ok` with HTTP status `200`.
+
+Check whether the API is ready to receive database-backed traffic with:
+
+```bash
+curl http://localhost:8080/readyz
+```
+
+The readiness endpoint returns `200 OK` when PostgreSQL responds within one
+second and `503 Service Unavailable` otherwise.
 
 Start the separate battle worker in another terminal with the same database URL:
 
@@ -83,6 +93,20 @@ The engine does not expose gameplay routes. Its internal operational endpoint li
 Both processes write structured JSON operational logs to stdout for container log collection. API logs include request IDs, status codes, response sizes, and latency. Engine logs cover claims, reclaimed attempts, completion results, graceful requeues, lease loss, and failures. Individual combat ticks remain in the durable `battle_events` stream instead of being duplicated in normal process logs. Send `X-Request-ID` with an API request to preserve an upstream correlation ID; otherwise the server generates one and returns it in the response header.
 
 The credentials in `compose.yaml` and `.env.example` are for local development only. Use a secret manager to provide `DATABASE_URL` in deployed environments. The application only runs schema migrations when explicitly started with `-migrate`.
+
+## Run in local Kubernetes
+
+The repository includes a staged Kustomize deployment for `kind`:
+
+1. `deploy/overlays/local/infrastructure` creates the namespace, configuration,
+   local Secret, and development PostgreSQL StatefulSet.
+2. `deploy/overlays/local/migration` applies schema migrations through a
+   one-shot Job.
+3. `deploy/overlays/local/application` creates the API, engine, frontend,
+   Services, Ingress, HPA, and disruption budgets.
+
+Follow the complete build, image-loading, deployment, verification, and cleanup
+commands in the [deployment learning guide](DEPLOYMENT.md#deploy-the-application-locally).
 
 ### Use a different configuration file
 
@@ -112,7 +136,18 @@ Migration files are embedded in the executable, so a deployed binary does not ne
 GET /healthz
 ```
 
-Returns `200 OK` with a plain-text `ok` response. This confirms that the HTTP process is running; it does not currently check database readiness.
+Returns `200 OK` with a plain-text `ok` response. This confirms that the HTTP
+process is running and is suitable for a liveness probe.
+
+### Readiness check
+
+```http
+GET /readyz
+```
+
+Returns `200 OK` with a plain-text `ok` response when PostgreSQL responds within
+one second. It returns `503 Service Unavailable` when the database is not
+reachable and is suitable for a readiness probe.
 
 ### Create a faction
 
