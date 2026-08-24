@@ -21,6 +21,12 @@ pipeline {
 
     stages {
         stage('Checkout') {
+            when {
+                anyOf {
+                    changeRequest target: 'main'
+                    branch 'main'
+                }
+            }
             steps {
                 deleteDir()
                 checkout scm
@@ -34,7 +40,10 @@ pipeline {
             }
         }
 
-        stage('Test') {
+        stage('PR continuous integration') {
+            when {
+                changeRequest target: 'main'
+            }
             parallel {
                 stage('Backend tests') {
                     steps {
@@ -66,13 +75,25 @@ pipeline {
             }
         }
 
-        stage('Build images') {
+        stage('Build immutable images') {
+            when {
+                anyOf {
+                    changeRequest target: 'main'
+                    branch 'main'
+                }
+            }
             steps {
                 sh './scripts/build-images.sh'
             }
         }
 
-        stage('Scan images') {
+        stage('Scan immutable images') {
+            when {
+                anyOf {
+                    changeRequest target: 'main'
+                    branch 'main'
+                }
+            }
             steps {
                 sh './scripts/scan-images.sh "${IMAGE_TAG}"'
             }
@@ -138,7 +159,15 @@ pipeline {
 
     post {
         success {
-            echo "Verified ${env.IMAGE_TAG} in Jenkins build ${env.BUILD_NUMBER}."
+            script {
+                if (env.CHANGE_ID) {
+                    echo "CI verified pull request ${env.CHANGE_ID} at ${env.IMAGE_TAG}."
+                } else if (env.BRANCH_NAME == 'main') {
+                    echo "CD deployed and verified ${env.IMAGE_TAG} in Jenkins build ${env.BUILD_NUMBER}."
+                } else {
+                    echo "No CI/CD action is configured for a direct ${env.BRANCH_NAME} branch push."
+                }
+            }
         }
         failure {
             echo "Jenkins build ${env.BUILD_NUMBER} failed. Review the failed stage and rollback output."

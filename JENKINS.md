@@ -5,20 +5,24 @@ notifies Jenkins about branches and pull requests; Jenkins checks out the exact
 commit and executes the pipeline on an agent.
 
 ```text
-GitHub branch or pull request
+Pull request targeting main
           |
-          v
-Jenkins Multibranch Pipeline
+          `--> test, render, build immutable images, and scan
+
+Merge into main
           |
-          +--> test Go, frontend, and Kubernetes rendering
-          +--> build SHA and 0.1.0-build.N image tags
-          +--> scan images with pinned Trivy
-          |
-          `--> main only: migrate, deploy, smoke test, rollback on failure
+          `--> rebuild and scan the exact merge SHA, migrate, deploy,
+               smoke test, and rollback on failure
 ```
 
-Pull requests and non-`main` branches stop after the scan. Only `main` receives
-the local `kind` deployment credentials and can deploy.
+Direct pushes to non-`main` branches do not run CI or CD stages. This keeps
+`dev` available as a local work branch: use `run-dev.sh` while developing, then
+open a pull request when the change is ready for Jenkins CI. Only `main`
+receives the local `kind` deployment credential and can deploy.
+
+The `main` branch must require pull requests and disallow direct pushes. Jenkins
+sees a `main` update rather than a distinct "PR merged" pipeline condition, so
+the branch rule is what makes a `main` update equivalent to an approved merge.
 
 ## Jenkins agent requirements
 
@@ -75,8 +79,13 @@ not commit the real file or print it in the pipeline.
 3. Set the repository URL to
    `https://github.com/twh09/autonomous_battlefield.git`.
 4. Configure GitHub scan and checkout credentials if required.
-5. Keep the script path as `Jenkinsfile`.
-6. Save, then select **Scan Repository Now**.
+5. Under **Behaviors**, configure **Discover branches** to exclude branches
+   that are also filed as pull requests, and configure **Discover pull requests
+   from origin** to merge the pull request with the current target revision.
+6. Under **Scan Multibranch Pipeline Triggers**, enable **Periodically if not
+   otherwise run** while Jenkins is reachable only through `localhost`.
+7. Keep the script path as `Jenkinsfile`.
+8. Save, then select **Scan Repository Now**.
 
 Jenkins creates a job for each discovered branch containing a `Jenkinsfile`.
 For a private repository, prefer a narrowly scoped GitHub App or token managed
@@ -89,7 +98,7 @@ HTTPS-protected address reachable from GitHub.
 
 ## Pipeline behavior
 
-The committed pipeline performs these gates in order:
+For a pull request targeting `main`, the pipeline performs:
 
 1. Clean checkout of the exact GitHub commit.
 2. Parallel Go tests, frontend install/tests/build, and Kustomize rendering.
@@ -97,8 +106,14 @@ The committed pipeline performs these gates in order:
    produces the human-readable build alias; the full SHA remains immutable.
 4. Image scanning through `scripts/scan-images.sh`. Trivy v0.74.0 is pinned by
    image digest and rejects fixable HIGH or CRITICAL findings.
-5. On `main`, a one-shot migration Job followed by the application rollouts.
-6. Frontend liveness, API readiness, and frontend-to-API proxy smoke tests.
+
+After that pull request is merged, the `main` pipeline performs:
+
+1. Clean checkout of the exact merged commit.
+2. Rebuild and scan immutable images tagged with the merge SHA. A PR validation
+   SHA and the final merge SHA are not assumed to be interchangeable.
+3. A one-shot migration Job followed by the application rollouts.
+4. Frontend liveness, API readiness, and frontend-to-API proxy smoke tests.
 
 `scripts/deploy-kind.sh` can reapply a temporary Kustomize overlay containing
 the previous images if an application apply or rollout fails. Before deploying,

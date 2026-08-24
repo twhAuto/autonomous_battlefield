@@ -113,10 +113,11 @@ the full source commit SHA. The `VERSION` file supplies release metadata, while
 CI builds add a human-readable `major.minor.patch-build.N` alias to the same
 image.
 
-The root `Jenkinsfile` provides the GitHub-backed test, image build, vulnerability
-scan, migration, deployment, smoke-test, and rollback pipeline. See the
-[Jenkins setup guide](JENKINS.md) before configuring the Multibranch job or its
-local Kubernetes credential.
+The root `Jenkinsfile` provides pull-request CI and merged-`main` deployment:
+tests and vulnerability scans gate the PR, while the merge pipeline rebuilds the
+exact commit, migrates, deploys to local kind, smoke-tests, and supports rollback.
+See the [Jenkins setup guide](JENKINS.md) before configuring the Multibranch job
+or its local Kubernetes credential.
 
 ### Use a different configuration file
 
