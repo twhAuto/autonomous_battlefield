@@ -360,9 +360,12 @@ Deleting the entire `kind` cluster has the same data-loss consequence.
 ## Jenkins deployment pipeline
 
 The repository includes a root `Jenkinsfile` for a GitHub-backed Multibranch
-Pipeline. It tests, builds commit-addressed images, scans them, runs the
-migration gate once, deploys `main`, verifies health, and rolls back application
-Deployments after a failed rollout or smoke test.
+Pipeline. Pull requests targeting `main` run CI tests, image builds, and
+vulnerability scans. After the PR is merged, the `main` pipeline rebuilds and
+scans the exact merge revision, runs the migration gate once, deploys, verifies
+health, and rolls back application Deployments after a failed rollout or smoke
+test. Direct `dev` pushes are intentionally left to the local development
+workflow.
 
 See [JENKINS.md](JENKINS.md) for the agent prerequisites, required plugins,
 secret-file credential, GitHub branch discovery, local webhook limitation, and
