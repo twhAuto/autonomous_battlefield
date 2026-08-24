@@ -23,9 +23,32 @@ The project is in an early stage. The current backend provides PostgreSQL-backed
 - Go 1.26.5 or a compatible newer version.
 - Docker with Docker Compose for the local PostgreSQL instance.
 
+For the planned path from local Kubernetes to Amazon EKS, including the
+Kustomize-versus-Helm decision and the first local cluster exercise, see the
+[deployment learning guide](DEPLOYMENT.md).
+
 ## Run locally
 
-Run these commands from the project root:
+Start PostgreSQL, apply migrations, and run the API, battle engine, and frontend
+with one command from the project root:
+
+```bash
+./run-dev.sh
+```
+
+Open `http://localhost:5173`. Press Ctrl+C in the launcher terminal to stop the
+application processes. PostgreSQL remains running so its local data is
+preserved; stop it with `docker compose -f backend/compose.yaml stop postgres`.
+
+The script uses `DATABASE_URL` and `ENGINE_WORKER_ID` when they are already set.
+Set `START_POSTGRES=0` to use an existing PostgreSQL instance without starting
+the Compose service:
+
+```bash
+START_POSTGRES=0 DATABASE_URL='postgres://user:password@localhost:5432/battlefield?sslmode=disable' ./run-dev.sh
+```
+
+To start each component manually instead, run:
 
 ```bash
 cd backend

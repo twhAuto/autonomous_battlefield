@@ -4,7 +4,17 @@ React and TypeScript command interface for faction management and queued battles
 
 ## Run locally
 
-Start PostgreSQL, apply migrations, and run both backend processes:
+From the project root, the development launcher starts PostgreSQL, applies
+migrations, and runs the API, battle engine, and frontend together:
+
+```bash
+./run-dev.sh
+```
+
+Open `http://localhost:5173` and press Ctrl+C to stop the application processes.
+
+To run the components separately, start PostgreSQL, apply migrations, and run
+both backend processes:
 
 ```bash
 cd ../backend
