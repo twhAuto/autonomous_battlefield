@@ -1,0 +1,6 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: battlefield-local
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller

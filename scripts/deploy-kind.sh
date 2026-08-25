@@ -142,8 +142,22 @@ fi
 
 if ! kind get clusters | grep -Fxq "${cluster_name}"; then
   echo "kind cluster not found: ${cluster_name}" >&2
+  echo "Create it with ./scripts/create-kind-cluster.sh" >&2
   exit 1
 fi
+
+if ! kube get customresourcedefinition/gateways.gateway.networking.k8s.io \
+  >/dev/null 2>&1 \
+  || ! kube get customresourcedefinition/envoyproxies.gateway.envoyproxy.io \
+    >/dev/null 2>&1; then
+  echo "Envoy Gateway and the Gateway API are not installed in ${cluster_name}." >&2
+  echo "Install them with ./scripts/create-kind-cluster.sh" >&2
+  exit 1
+fi
+
+kube rollout status deployment/envoy-gateway \
+  --namespace envoy-gateway-system \
+  --timeout="${rollout_timeout}"
 
 for image in \
   "${backend_image}:${image_tag}" \
@@ -174,6 +188,7 @@ cp -R \
   "${runtime_dir}/deploy/base/"
 cp -R \
   "${project_dir}/deploy/overlays/local/application" \
+  "${project_dir}/deploy/overlays/local/gateway" \
   "${project_dir}/deploy/overlays/local/infrastructure" \
   "${project_dir}/deploy/overlays/local/migration" \
   "${project_dir}/deploy/overlays/local/observability" \
@@ -302,6 +317,13 @@ for deployment in battlefield-prometheus battlefield-grafana; do
     --timeout="${rollout_timeout}"
 done
 
+echo "Deploying local HTTP gateway routes..."
+kube apply -k "${runtime_dir}/deploy/overlays/local/gateway"
+kube wait --for=condition=Programmed \
+  gateway/battlefield-local \
+  --namespace "${namespace}" \
+  --timeout="${rollout_timeout}"
+
 echo
 echo "Deployed ${image_tag} to kind cluster ${cluster_name}."
 kube get deployments \
@@ -310,3 +332,6 @@ kube get deployments \
 kube get job battlefield-migrate \
   --namespace "${namespace}" \
   -o custom-columns='NAME:.metadata.name,SUCCEEDED:.status.succeeded,IMAGE:.spec.template.spec.containers[0].image'
+echo
+echo "Frontend: http://battlefield.localhost:8888"
+echo "Grafana:  http://grafana.localhost:8888"

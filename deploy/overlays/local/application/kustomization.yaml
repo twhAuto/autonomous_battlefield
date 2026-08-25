@@ -5,3 +5,6 @@ namespace: battlefield
 
 resources:
   - ../../../base/application
+
+patches:
+  - path: delete-ingress.yaml

@@ -117,17 +117,22 @@ The repository includes a staged Kustomize deployment for `kind`:
 2. `deploy/overlays/local/migration` applies schema migrations through a
    one-shot Job.
 3. `deploy/overlays/local/application` creates the API, engine, frontend,
-   Services, Ingress, HPA, and disruption budgets.
+   Services, HPA, and disruption budgets. The portable base Ingress is removed
+   locally in favor of Gateway API routes.
 4. `deploy/overlays/local/observability` creates namespace-scoped Prometheus,
    a provisioned Grafana dashboard, and SLO recording and alert rules.
+5. `deploy/overlays/local/gateway` creates Envoy Gateway routes for the
+   frontend and Grafana on localhost without persistent port-forward commands.
 
 Follow the complete build, image-loading, deployment, verification, and cleanup
 commands in the [deployment learning guide](DEPLOYMENT.md#deploy-the-application-locally).
-The standard container workflow uses `./scripts/build-images.sh` and
-`./scripts/deploy-kind.sh` so every deployed application image is identified by
-the full source commit SHA. The `VERSION` file supplies release metadata, while
-CI builds add a human-readable `major.minor.patch-build.N` alias to the same
-image.
+The standard container workflow uses `./scripts/create-kind-cluster.sh`,
+`./scripts/build-images.sh`, and `./scripts/deploy-kind.sh` so every deployed
+application image is identified by the full source commit SHA. After deployment,
+open `http://battlefield.localhost:8888` for the application and
+`http://grafana.localhost:8888` for Grafana. The `VERSION` file supplies release
+metadata, while CI builds add a human-readable `major.minor.patch-build.N` alias
+to the same image.
 
 The root `Jenkinsfile` provides pull-request CI and merged-`main` deployment:
 lint, coverage, tests, and vulnerability scans gate the PR, while the merge
