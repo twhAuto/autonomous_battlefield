@@ -12,6 +12,9 @@ for command in go gofmt; do
   fi
 done
 
+go_version="$(go env GOVERSION)"
+lint_cache="${GOCACHE:-${TMPDIR:-/tmp}/autonomous-battlefield-go-cache-${go_version}}"
+
 mapfile -d '' go_files < <(find "${backend_dir}" -type f -name '*.go' -print0)
 if ((${#go_files[@]} == 0)); then
   echo "No Go files found under ${backend_dir}." >&2
@@ -28,6 +31,6 @@ fi
 echo "Go formatting: OK"
 (
   cd "${backend_dir}"
-  go vet ./...
+  GOCACHE="${lint_cache}" go vet ./...
 )
 echo "Go vet: OK"

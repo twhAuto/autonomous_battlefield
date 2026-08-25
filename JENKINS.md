@@ -30,7 +30,7 @@ the branch rule is what makes a `main` update equivalent to an approved merge.
 Use a dedicated Linux or WSL Jenkins agent with:
 
 - Git.
-- A complete Go 1.26.5 or newer installation, including the `covdata` tool.
+- Go 1.26.5 or newer.
 - Node.js 24 and npm.
 - Docker, with permission to use the Docker daemon.
 - `kubectl`, `kind`, and `curl`.
@@ -56,11 +56,13 @@ Verify the Go installation under the same account that runs the agent:
 
 ```bash
 go version
-test -x "$(go env GOTOOLDIR)/covdata"
+GOCACHE="/tmp/autonomous-battlefield-go-check-$(go env GOVERSION)" go list sync/atomic
 ```
 
-If the second command fails, reinstall the complete Go distribution. Normal
-`go test` can still pass with this file missing, but coverage generation cannot.
+The second command must print `sync/atomic`. A stale build cache from a replaced
+Go installation can otherwise make standard-library packages appear missing.
+Jenkins uses a build-specific cache, and the local coverage script defaults to
+a version-specific cache under `/tmp`.
 
 ## Configure local SonarQube
 
