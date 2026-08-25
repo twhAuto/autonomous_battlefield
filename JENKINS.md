@@ -1,8 +1,9 @@
 # Jenkins and GitHub deployment pipeline
 
-The repository owns its pipeline in `Jenkinsfile`. GitHub stores the source and
-notifies Jenkins about branches and pull requests; Jenkins checks out the exact
-commit and executes the pipeline on an agent.
+The repository owns its pipeline in `Jenkinsfile`. GitHub stores the source;
+the local Jenkins Multibranch job discovers branches and pull requests through
+periodic scans, checks out the exact commit, and executes the pipeline on an
+agent. A public Jenkins installation can use a GitHub webhook instead.
 
 ```text
 Pull request targeting main
@@ -25,6 +26,54 @@ receives the local `kind` deployment credential and can deploy.
 The `main` branch must require pull requests and disallow direct pushes. Jenkins
 sees a `main` update rather than a distinct "PR merged" pipeline condition, so
 the branch rule is what makes a `main` update equivalent to an approved merge.
+
+## Install the Jenkins controller on Ubuntu or WSL
+
+This project currently uses the Jenkins LTS Debian package as a system service
+on port 8080. Install Java before Jenkins, then use the official LTS package
+repository:
+
+```bash
+sudo apt update
+sudo apt install -y fontconfig openjdk-21-jre
+
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo wget -O /etc/apt/keyrings/jenkins-keyring.asc \
+  https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
+echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc]" \
+  https://pkg.jenkins.io/debian-stable binary/ | \
+  sudo tee /etc/apt/sources.list.d/jenkins.list >/dev/null
+
+sudo apt update
+sudo apt install -y jenkins
+sudo systemctl enable --now jenkins
+sudo systemctl status jenkins
+```
+
+If the signing-key filename has changed, use the current commands from the
+[official Jenkins Linux installation guide](https://www.jenkins.io/doc/book/installing/linux/)
+rather than guessing a replacement. Open `http://localhost:8080`, retrieve the
+one-time unlock password locally, install the suggested plugins, and create the
+administrator account:
+
+```bash
+sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+```
+
+The Debian package persists controller state under `/var/lib/jenkins` and
+enables `jenkins.service` at boot. Restarting the computer does not require
+recreating credentials, tools, nodes, or Multibranch jobs. Useful controller
+commands are:
+
+```bash
+sudo systemctl status jenkins
+sudo systemctl restart jenkins
+sudo journalctl -u jenkins --since today
+```
+
+Restart Jenkins after installing a plugin when the plugin manager requests it.
+Installing a plugin alone does not create its global tool configuration; for
+example, `SonarScanner` must still be added under **Manage Jenkins > Tools**.
 
 ## Jenkins agent requirements
 
@@ -65,6 +114,73 @@ The second command must print `sync/atomic`. A stale build cache from a replaced
 Go installation can otherwise make standard-library packages appear missing.
 Jenkins uses a build-specific cache, and the local coverage script defaults to
 a version-specific cache under `/tmp`.
+
+## Create the persistent `battlefield-local` agent
+
+Use a separate agent so builds do not execute on the Jenkins controller:
+
+1. Open **Manage Jenkins > Nodes > New Node**.
+2. Name it `battlefield-local`, choose **Permanent Agent**, and use one executor.
+3. Set the remote root directory to `/home/efilorez/jenkins-agent`.
+4. Choose **Launch agent by connecting it to the controller** and enable the
+   WebSocket launch option.
+5. Save the node, create its work directory, and download the current agent JAR:
+
+   ```bash
+   install -d -m 700 /home/efilorez/jenkins-agent
+   curl --fail --location \
+     --output /home/efilorez/jenkins-agent/agent.jar \
+     http://localhost:8080/jnlpJars/agent.jar
+   ```
+
+6. Copy the node's connection secret into a private local environment file. Do
+   not commit, paste into documentation, or share this value:
+
+   ```bash
+   install -d -m 700 "$HOME/.config/jenkins-agent"
+   umask 077
+   ${EDITOR:-nano} "$HOME/.config/jenkins-agent/agent.env"
+   ```
+
+   The file contains one line:
+
+   ```text
+   JENKINS_AGENT_SECRET=replace-with-the-node-secret
+   ```
+
+7. Create `~/.config/systemd/user/jenkins-agent.service`:
+
+   ```ini
+   [Unit]
+   Description=Jenkins battlefield-local agent
+   Wants=network-online.target
+   After=network-online.target
+
+   [Service]
+   Type=simple
+   EnvironmentFile=%h/.config/jenkins-agent/agent.env
+   ExecStart=/usr/bin/java -jar %h/jenkins-agent/agent.jar -url http://localhost:8080/ -secret ${JENKINS_AGENT_SECRET} -name battlefield-local -webSocket -workDir %h/jenkins-agent
+   Restart=on-failure
+   RestartSec=5
+
+   [Install]
+   WantedBy=default.target
+   ```
+
+8. Load and start the user service:
+
+   ```bash
+   systemctl --user daemon-reload
+   systemctl --user enable --now jenkins-agent
+   systemctl --user status jenkins-agent
+   ```
+
+Once these commands succeed, both `jenkins.service` and
+`jenkins-agent.service` are enabled. Recreate the node only if its Jenkins
+configuration or local service files are lost. If the connection secret is ever
+exposed, create a replacement inbound node credential, update `agent.env` and
+the service's node name if required, verify the replacement agent, and remove
+the old node.
 
 ## Configure local SonarQube
 
@@ -111,6 +227,12 @@ docker compose -f quality/sonarqube/compose.yaml stop
 
 Do not use `docker compose down -v` unless you intentionally want to erase the
 SonarQube database and configuration.
+
+SonarQube displays coverage but does not run the tests that generate it. Go
+writes `backend/coverage.out`, Vitest writes `frontend/coverage/lcov.info`, and
+SonarScanner imports both files together with static reliability, security,
+maintainability, complexity, and duplication findings. The quality gate turns
+the configured rules into a pass/fail deployment decision.
 
 ## Publish pull-request coverage to GitHub
 
@@ -203,6 +325,123 @@ A GitHub webhook cannot reach Jenkins through `localhost`. While Jenkins runs
 only inside local WSL, trigger **Scan Repository Now** or configure periodic
 repository scans. Add a webhook only after Jenkins has an authenticated,
 HTTPS-protected address reachable from GitHub.
+
+The scan interval can be changed later without recreating the Multibranch job:
+open `autonomous-battlefield`, select **Configure**, change **Scan Multibranch
+Pipeline Triggers**, and save. A shorter interval discovers pull requests more
+quickly but makes more GitHub API calls.
+
+## Configure GitHub `main` protection
+
+In the repository, open **Settings > Rules > Rulesets** and create or update a
+ruleset targeting `main`:
+
+1. Require a pull request before merging and block direct pushes.
+2. Require the Jenkins PR result
+   `continuous-integration/jenkins/pr-merge`.
+3. After one successful publication, also require the separate `Coverage`
+   check if coverage reporting should block merges.
+4. Require the branch to be current before merging when that fits the selected
+   merge strategy.
+
+Do not require the merged-`main` CD result as a pre-merge check: that job exists
+only after GitHub creates the final `main` commit. Direct pushes to `dev` remain
+available for local iteration, but Jenkins CI begins when a pull request targets
+`main`.
+
+After merging a pull request, synchronize the long-lived local branches before
+starting the next change:
+
+```bash
+git switch main
+git pull --ff-only origin main
+git switch dev
+git merge main
+git push origin dev
+```
+
+This keeps the next `dev`-to-`main` pull request focused on new work. Use a
+short-lived feature branch instead when several changes need independent
+review; the pipeline behavior is the same for any pull request targeting
+`main`.
+
+## Retain pull-request build history
+
+Each Multibranch child job has independent numbering. `PR-3` therefore begins
+at build `#1` even if `PR-2` had several builds. The `Jenkinsfile` keeps the last
+20 builds for each active branch or pull-request job:
+
+```groovy
+buildDiscarder(logRotator(numToKeepStr: '20'))
+```
+
+Closed pull requests become orphaned child jobs. To keep their history, open
+the Multibranch project configuration and set **Orphaned Item Strategy** to a
+bounded retention such as 30 days and 20 items. Without orphan retention,
+Jenkins may remove the entire `PR-N` job at a later repository scan. GitHub
+keeps the original check result, but its Jenkins details link will no longer
+work after the underlying job is deleted.
+
+## Daily startup after a reboot
+
+The Jenkins configuration is persistent; the normal daily sequence is to start
+the existing services, not repeat the one-time setup:
+
+```bash
+# Start Docker Desktop first and wait until this succeeds.
+docker info >/dev/null
+
+sudo systemctl start jenkins
+systemctl --user start jenkins-agent
+
+docker compose -f quality/sonarqube/compose.yaml up -d
+until curl --silent --fail http://localhost:9000/api/system/status | \
+  grep --quiet '"status":"UP"'; do sleep 2; done
+
+kind get clusters
+kubectl cluster-info --context kind-battlefield
+kubectl get pods --namespace battlefield
+./scripts/smoke-test-kind.sh
+```
+
+If `kind get clusters` does not include `battlefield`, recreate it and redeploy
+the committed revision:
+
+```bash
+kind create cluster --name battlefield
+./scripts/build-images.sh
+./scripts/deploy-kind.sh
+./scripts/smoke-test-kind.sh
+```
+
+The build and deployment commands require a clean Git worktree. The local
+secret file or Jenkins `battlefield-local-secret-env` credential must still
+exist. Starting SonarQube with `docker compose up -d` reuses its named volumes;
+do not add `-v` when stopping it unless the data is intentionally disposable.
+
+After the checks pass, open `http://localhost:8080` for Jenkins and
+`http://localhost:9000` for SonarQube. The deployed application still needs a
+temporary frontend port-forward unless an ingress controller has been added:
+
+```bash
+kubectl port-forward --namespace battlefield \
+  service/battlefield-frontend 5173:8080
+```
+
+Stopping that command or closing its terminal closes the forwarded port; it
+does not stop the Kubernetes workloads.
+
+## Troubleshooting setup and pipeline waits
+
+| Symptom | Meaning and check |
+| --- | --- |
+| `No tool named SonarScanner found` | Install **SonarQube Scanner for Jenkins**, restart Jenkins if requested, then add a tool named exactly `SonarScanner` under **Manage Jenkins > Tools**. |
+| Quality gate remains `IN_PROGRESS` | The scan upload succeeded, but Jenkins has not received the SonarQube webhook. Check **Administration > Configuration > Webhooks** in SonarQube, retain the trailing slash in `/sonarqube-webhook/`, and inspect the latest delivery for an HTTP 2xx response. |
+| `battlefield-local` is offline | Run `systemctl --user status jenkins-agent`, confirm the controller is active, and restart the user service after correcting the reported error. |
+| A new PR shows only build `#1` | Build numbering is local to that `PR-N` child job; this is not evidence that active history was deleted. Check the Orphaned Item Strategy for closed PR retention. |
+| A direct `dev` push has no stages | This is intentional. Run locally and open a pull request into `main` to trigger CI. |
+| Frontend proxy returns `502` | Confirm `API_UPSTREAM` renders as `battlefield-api.battlefield.svc.cluster.local:8080`, then inspect frontend logs and the `battlefield-api` Service endpoints. |
+| `kind load docker-image` says the image is not present and is loading | This is normal informational output: kind is copying a host Docker image into the cluster node. |
 
 ## Pipeline behavior
 

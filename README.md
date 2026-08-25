@@ -27,6 +27,19 @@ For the planned path from local Kubernetes to Amazon EKS, including the
 Kustomize-versus-Helm decision and the first local cluster exercise, see the
 [deployment learning guide](DEPLOYMENT.md).
 
+## Setup paths
+
+Choose the guide that matches the task:
+
+| Goal | Entry point |
+| --- | --- |
+| Run the application while coding | `./run-dev.sh` and [Run locally](#run-locally) |
+| Build and deploy to local Kubernetes | [DEPLOYMENT.md](DEPLOYMENT.md#deploy-the-application-locally) |
+| Resume kind after restarting the computer | [DEPLOYMENT.md](DEPLOYMENT.md#resume-the-cluster-after-restarting-the-computer) |
+| Install and configure Jenkins, GitHub, and SonarQube | [JENKINS.md](JENKINS.md) |
+| Start the existing CI/CD services after reboot | [JENKINS.md](JENKINS.md#daily-startup-after-a-reboot) |
+| Understand the planned architecture and milestones | [REVISION.md](REVISION.md) |
+
 ## Run locally
 
 Start PostgreSQL, apply migrations, and run the API, battle engine, and frontend
@@ -147,13 +160,16 @@ Run the same Go lint and coverage work used by Jenkins:
 ```bash
 ./scripts/lint-go.sh
 ./scripts/test-go-coverage.sh
-(cd frontend && npm ci && npm test -- --coverage)
+(cd frontend && npm ci && npm test -- --coverage && npm run build)
 ```
 
 Go coverage is written to `backend/coverage.out`; frontend LCOV coverage is
 written to `frontend/coverage/lcov.info`. Both are ignored by Git and imported
 by SonarQube. See [JENKINS.md](JENKINS.md#configure-local-sonarqube) for the
-local server and Jenkins quality-gate setup.
+local server and Jenkins quality-gate setup. SonarQube displays and evaluates
+these externally generated reports alongside static reliability, security,
+maintainability, complexity, and duplication findings; it does not run the
+tests that produce coverage.
 
 ## API
 

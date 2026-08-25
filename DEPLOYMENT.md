@@ -186,6 +186,31 @@ kind delete cluster --name battlefield
 Recreating a local cluster is expected and provides useful practice proving
 that configuration is reproducible rather than dependent on manual changes.
 
+### Resume the cluster after restarting the computer
+
+Start Docker Desktop and open the WSL distribution before checking the cluster:
+
+```bash
+docker info >/dev/null
+kind get clusters
+kubectl cluster-info --context kind-battlefield
+kubectl get nodes
+```
+
+The existing `battlefield` cluster is a Docker container and normally resumes
+with Docker. If the cluster exists but its node is stopped, inspect it before
+starting it again:
+
+```bash
+docker ps --all --filter name=battlefield-control-plane
+docker start battlefield-control-plane
+kubectl get pods --all-namespaces
+```
+
+If the cluster no longer exists, create it again and follow the deployment
+steps below. Deleting and recreating kind also deletes the PostgreSQL data that
+was stored inside that cluster.
+
 ## Deploy the application locally
 
 ### 1. Create the local secret file
@@ -345,7 +370,48 @@ kubectl port-forward \
 ```
 
 Open `http://localhost:5173`. The frontend Nginx process proxies `/v1` requests
-to the internal `battlefield-api` Service.
+to the internal API using the fully qualified Kubernetes Service name
+`battlefield-api.battlefield.svc.cluster.local`. Nginx performs runtime DNS
+resolution so API pod replacements do not require a frontend restart. The
+namespace is part of that name; an overlay that changes the namespace must also
+change `API_UPSTREAM`.
+
+`kubectl port-forward` is intentionally temporary. It runs until Ctrl+C or the
+terminal closes, so start it again whenever local browser access is needed. The
+pods and Services continue running after the port-forward stops. A later local
+ingress-controller exercise or the AWS ALB removes this manual access step.
+
+Run the same non-interactive verification used by Jenkins at any time:
+
+```bash
+./scripts/smoke-test-kind.sh
+```
+
+It creates temporary frontend and API port-forwards, checks frontend liveness,
+API readiness, and the frontend-to-API `/v1/scenarios` proxy, then removes both
+forwards automatically.
+
+### Diagnose a local deployment
+
+Start with workload state, recent events, and the application logs:
+
+```bash
+kubectl get deployments,pods,services,endpointslices \
+  --namespace battlefield \
+  --output wide
+kubectl get events --namespace battlefield \
+  --sort-by='.metadata.creationTimestamp'
+kubectl logs deployment/battlefield-api \
+  --namespace battlefield --tail=100
+kubectl logs deployment/battlefield-engine \
+  --namespace battlefield --tail=100
+kubectl logs deployment/battlefield-frontend \
+  --namespace battlefield --tail=100
+```
+
+Use `kubectl describe pod <pod-name> --namespace battlefield` for probe,
+scheduling, image, or volume failures. A completed migration pod is expected;
+inspect `job/battlefield-migrate` only when its Job did not reach `Complete`.
 
 ### 8. Remove the local deployment
 
@@ -424,6 +490,17 @@ Once one replica works, exercise these behaviors deliberately:
 
 The AWS step should reuse the tested images and base resources:
 
+An AWS account is required before this stage, including billing verification.
+Secure the root user with MFA, avoid using it for daily administration, and use
+temporary role-based credentials for normal human and workload access. Create a
+cost budget and alerts before provisioning. Free Tier eligibility does not make
+an EKS environment free: the cluster control plane and its compute, database,
+load balancer, networking, and storage resources are independently billable.
+
+No AWS infrastructure is created by the current repository. The checked-in
+manifests and scripts deploy only to local kind; an infrastructure-as-code AWS
+stack and overlay are still future work.
+
 1. Create the AWS account, cost budget, and billing alerts.
 2. Provision ECR, networking, EKS, RDS, and Secrets Manager through
    infrastructure as code.
@@ -450,5 +527,6 @@ notifications rather than guaranteed hard spending limits.
 - [Amazon EKS pricing](https://aws.amazon.com/eks/pricing/)
 - [AWS Free Tier plans](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/free-tier-plans.html)
 - [AWS Budgets](https://docs.aws.amazon.com/cost-management/latest/userguide/create-cost-budget.html)
+- [AWS root-user security practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/root-user-best-practices.html)
 - [EKS Auto Mode](https://docs.aws.amazon.com/eks/latest/userguide/automode.html)
 - [Using Secrets Manager secrets with EKS pods](https://docs.aws.amazon.com/eks/latest/userguide/manage-secrets.html)
