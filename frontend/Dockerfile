@@ -15,6 +15,7 @@ RUN npm run build
 FROM ghcr.io/nginx/nginx-unprivileged:1.30.4-alpine3.24-slim@sha256:bcf91d2c73ab64fa1c4ac7fbac5ac523057c8af7d553ab9251c7aef38c260979
 
 ENV API_UPSTREAM=battlefield-api:8080
+ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 
 COPY --chown=101:101 nginx-main.conf /etc/nginx/nginx.conf
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template

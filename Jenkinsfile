@@ -45,19 +45,23 @@ pipeline {
                 changeRequest target: 'main'
             }
             parallel {
-                stage('Backend tests') {
+                stage('Go lint') {
                     steps {
-                        dir('backend') {
-                            sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" go test ./...'
-                        }
+                        sh './scripts/lint-go.sh'
                     }
                 }
 
-                stage('Frontend tests') {
+                stage('Backend tests and coverage') {
+                    steps {
+                        sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" ./scripts/test-go-coverage.sh'
+                    }
+                }
+
+                stage('Frontend tests and coverage') {
                     steps {
                         dir('frontend') {
                             sh 'npm ci'
-                            sh 'npm test'
+                            sh 'npm test -- --coverage'
                             sh 'npm run build'
                         }
                     }
@@ -71,6 +75,86 @@ pipeline {
                             kubectl kustomize deploy/overlays/local/application >/dev/null
                         '''
                     }
+                }
+            }
+            post {
+                always {
+                    script {
+                        def summaryFile = '.jenkins-coverage-check.md'
+                        def summaryStatus = sh(
+                            script: "./scripts/coverage-check-summary.sh > ${summaryFile}",
+                            returnStatus: true
+                        )
+                        def summary = fileExists(summaryFile)
+                            ? readFile(summaryFile).trim()
+                            : 'Coverage reports could not be summarized. Open the Jenkins build for details.'
+                        def conclusion = summaryStatus == 0 ? 'SUCCESS' : 'FAILURE'
+
+                        publishChecks(
+                            name: 'Coverage',
+                            title: summaryStatus == 0
+                                ? 'Backend and frontend coverage generated'
+                                : 'One or more coverage reports are unavailable',
+                            summary: summary,
+                            detailsURL: "${env.BUILD_URL}console",
+                            status: 'COMPLETED',
+                            conclusion: conclusion
+                        )
+                    }
+                }
+            }
+        }
+
+        stage('Main quality reports') {
+            when {
+                branch 'main'
+            }
+            parallel {
+                stage('Main Go lint') {
+                    steps {
+                        sh './scripts/lint-go.sh'
+                    }
+                }
+
+                stage('Main backend coverage') {
+                    steps {
+                        sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" ./scripts/test-go-coverage.sh'
+                    }
+                }
+
+                stage('Main frontend coverage') {
+                    steps {
+                        dir('frontend') {
+                            sh 'npm ci'
+                            sh 'npm test -- --coverage'
+                            sh 'npm run build'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('SonarQube analysis') {
+            when {
+                branch 'main'
+            }
+            steps {
+                script {
+                    def scannerHome = tool 'SonarScanner'
+                    withSonarQubeEnv('battlefield-sonarqube') {
+                        sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectVersion=${env.IMAGE_TAG}"
+                    }
+                }
+            }
+        }
+
+        stage('SonarQube quality gate') {
+            when {
+                branch 'main'
+            }
+            steps {
+                timeout(time: 10, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }

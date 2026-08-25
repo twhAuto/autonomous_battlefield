@@ -52,7 +52,7 @@ spec:
               protocol: TCP
           startupProbe:
             httpGet:
-              path: /livez
+              path: /startupz
               port: operations
             periodSeconds: 2
             failureThreshold: 15
