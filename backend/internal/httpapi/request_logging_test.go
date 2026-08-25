@@ -6,7 +6,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 func TestRequestLoggingRecordsResponseAndCorrelationID(t *testing.T) {
@@ -47,5 +50,27 @@ func TestRequestLoggingGeneratesRequestID(t *testing.T) {
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/factions", nil))
 	if response.Header().Get("X-Request-ID") == "" {
 		t.Fatal("response request ID is empty")
+	}
+}
+
+func TestRequestMetricsUseNormalizedRoutePattern(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/battles/{id}", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := requestLogging(mux, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)))
+	handler.ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodGet, "/v1/battles/battle-specific-id", nil),
+	)
+
+	response := httptest.NewRecorder()
+	telemetry.MetricsHandler().ServeHTTP(
+		response,
+		httptest.NewRequest(http.MethodGet, "/metrics", nil),
+	)
+	metric := `battlefield_http_server_requests_total{code="200",method="GET",route="GET /v1/battles/{id}"}`
+	if !strings.Contains(response.Body.String(), metric) {
+		t.Fatalf("metrics do not contain normalized route %q", metric)
 	}
 }

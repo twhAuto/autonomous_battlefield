@@ -462,8 +462,10 @@ After that pull request is merged, the `main` pipeline performs:
 2. Regenerate coverage and wait for the SonarQube quality gate.
 3. Rebuild and scan immutable images tagged with the merge SHA. A PR validation
    SHA and the final merge SHA are not assumed to be interchangeable.
-4. A one-shot migration Job followed by the application rollouts.
-5. Frontend liveness, API readiness, and frontend-to-API proxy smoke tests.
+4. A one-shot migration Job followed by the application and observability
+   rollouts.
+5. Frontend liveness, API readiness, frontend-to-API proxy, API metrics,
+   Prometheus target discovery, and Grafana dashboard provisioning smoke tests.
 
 `scripts/deploy-kind.sh` can reapply a temporary Kustomize overlay containing
 the previous images if an application apply or rollout fails. Before deploying,

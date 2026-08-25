@@ -1,0 +1,80 @@
+groups:
+  - name: battlefield-sli-recording
+    interval: 30s
+    rules:
+      - record: battlefield:api_availability:ratio_rate5m
+        expr: |
+          1 - (
+            sum(rate(battlefield_http_server_requests_total{component="api",code=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(battlefield_http_server_requests_total{component="api"}[5m])), 0.000001)
+          )
+      - record: battlefield:api_latency_under_500ms:ratio_rate5m
+        expr: |
+          1 - (
+            (
+              sum(rate(battlefield_http_server_request_duration_seconds_count{component="api"}[5m]))
+              - sum(rate(battlefield_http_server_request_duration_seconds_bucket{component="api",le="0.5"}[5m]))
+            )
+            /
+            clamp_min(sum(rate(battlefield_http_server_request_duration_seconds_count{component="api"}[5m])), 0.000001)
+          )
+
+  - name: battlefield-alerts
+    rules:
+      - alert: BattlefieldMetricsTargetDown
+        expr: up{job="battlefield-pods"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Battlefield metrics target is down
+          description: "Prometheus has been unable to scrape {{ $labels.component }} pod {{ $labels.pod }} for five minutes."
+
+      - alert: BattlefieldAPIAvailabilityBudgetBurnFast
+        expr: |
+          (
+            sum(rate(battlefield_http_server_requests_total{component="api",code=~"5.."}[5m]))
+            / clamp_min(sum(rate(battlefield_http_server_requests_total{component="api"}[5m])), 0.000001)
+          ) > (14.4 * 0.001)
+          and
+          (
+            sum(rate(battlefield_http_server_requests_total{component="api",code=~"5.."}[1h]))
+            / clamp_min(sum(rate(battlefield_http_server_requests_total{component="api"}[1h])), 0.000001)
+          ) > (14.4 * 0.001)
+        for: 2m
+        labels:
+          severity: critical
+          slo: api-availability
+        annotations:
+          summary: API availability error budget is burning quickly
+          description: The 99.9% availability SLO is burning at more than 14.4 times its sustainable rate.
+
+      - alert: BattlefieldAPIAvailabilityBudgetBurnSlow
+        expr: |
+          (
+            sum(rate(battlefield_http_server_requests_total{component="api",code=~"5.."}[30m]))
+            / clamp_min(sum(rate(battlefield_http_server_requests_total{component="api"}[30m])), 0.000001)
+          ) > (6 * 0.001)
+          and
+          (
+            sum(rate(battlefield_http_server_requests_total{component="api",code=~"5.."}[6h]))
+            / clamp_min(sum(rate(battlefield_http_server_requests_total{component="api"}[6h])), 0.000001)
+          ) > (6 * 0.001)
+        for: 15m
+        labels:
+          severity: warning
+          slo: api-availability
+        annotations:
+          summary: API availability error budget is burning persistently
+          description: The 99.9% availability SLO is burning at more than six times its sustainable rate.
+
+      - alert: BattlefieldEngineProcessingFailure
+        expr: |
+          sum(increase(battlefield_engine_battles_processed_total{component="engine",outcome=~"failed|error|lease_lost"}[15m])) > 0
+        labels:
+          severity: warning
+          slo: battle-processing-success
+        annotations:
+          summary: Engine failed to process a battle
+          description: At least one battle ended in a failed, error, or lease-lost outcome in the last 15 minutes.

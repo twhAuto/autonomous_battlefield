@@ -60,7 +60,8 @@ deploy/
     └── local/
         ├── infrastructure/ Disposable PostgreSQL and local Secret
         ├── migration/      Local migration composition
-        └── application/    Local application composition
+        ├── application/    Local application composition
+        └── observability/  Prometheus, Grafana, dashboard, and alert rules
 ```
 
 The base should contain standard Kubernetes behavior. Provider-specific
@@ -84,6 +85,7 @@ it when reviewing a change:
 kubectl kustomize deploy/overlays/local/infrastructure
 kubectl kustomize deploy/overlays/local/migration
 kubectl kustomize deploy/overlays/local/application
+kubectl kustomize deploy/overlays/local/observability
 ```
 
 ## Why Helm comes later
@@ -290,8 +292,8 @@ compatible features, and major for breaking releases.
 ### 3. Deploy that exact revision
 
 The deployment script defaults to the checked-out commit, loads both tagged
-images into `kind`, applies infrastructure, runs the migration gate, and waits
-for all three application rollouts:
+images into `kind`, applies infrastructure, runs the migration gate, waits for
+all three application rollouts, and then deploys Prometheus and Grafana:
 
 ```bash
 ./scripts/deploy-kind.sh
@@ -360,6 +362,28 @@ an ingress controller automatically. The API HPA is also present as a scaling
 exercise; its CPU target remains `<unknown>` until metrics-server is installed.
 Neither limitation prevents port-forwarded local use.
 
+### Inspect local observability
+
+The local-only observability overlay deploys Prometheus with namespace-scoped
+pod discovery and Grafana with a provisioned dashboard. The deployment script
+waits for both rollouts, and the smoke test verifies the application metrics
+endpoint, Prometheus pod discovery, and Grafana dashboard provisioning.
+
+```bash
+kubectl rollout status deployment/battlefield-prometheus \
+  --namespace battlefield --timeout=120s
+kubectl rollout status deployment/battlefield-grafana \
+  --namespace battlefield --timeout=120s
+
+kubectl port-forward --namespace battlefield \
+  service/battlefield-grafana 3000:3000
+```
+
+Open `http://localhost:3000` for the Autonomous Battlefield dashboard. See
+[OBSERVABILITY.md](OBSERVABILITY.md) for direct Prometheus access, metric
+definitions, SLI formulas, proposed SLOs, alert behavior, and production
+boundaries.
+
 ### 7. Open the application
 
 ```bash
@@ -387,9 +411,9 @@ Run the same non-interactive verification used by Jenkins at any time:
 ./scripts/smoke-test-kind.sh
 ```
 
-It creates temporary frontend and API port-forwards, checks frontend liveness,
-API readiness, and the frontend-to-API `/v1/scenarios` proxy, then removes both
-forwards automatically.
+It creates temporary frontend, API, Prometheus, and Grafana port-forwards;
+checks application health, proxying, metric exposition, and observability
+health; then removes all forwards automatically.
 
 ### Diagnose a local deployment
 

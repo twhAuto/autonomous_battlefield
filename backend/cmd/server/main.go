@@ -18,6 +18,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 func main() {
@@ -96,7 +97,7 @@ func startServer(configuration config.Config) error {
 	processContext, cancelProcess := context.WithCancel(shutdownSignal)
 	defer cancelProcess()
 
-	lifecycle := httpapi.NewLifecycleHandler()
+	lifecycle := httpapi.NewLifecycleHandler(telemetry.MetricsHandler())
 	httpConfig := configuration.HTTP
 	server := &http.Server{
 		Addr:              httpConfig.Address,

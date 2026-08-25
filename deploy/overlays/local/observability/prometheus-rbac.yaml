@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: battlefield-prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: autonomous-battlefield
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: battlefield-prometheus-discovery
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: autonomous-battlefield
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: battlefield-prometheus-discovery
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: autonomous-battlefield
+subjects:
+  - kind: ServiceAccount
+    name: battlefield-prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: battlefield-prometheus-discovery

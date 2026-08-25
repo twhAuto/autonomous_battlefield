@@ -10,6 +10,7 @@ import (
 	"time"
 
 	battle "github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation"
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 type Config struct {
@@ -47,6 +48,7 @@ func (w *Worker) Ready() bool { return w.ready.Load() && !w.shuttingDown.Load() 
 
 func (w *Worker) Run(ctx context.Context) error {
 	w.ready.Store(true)
+	telemetry.SetEngineReady(true)
 	w.logger.InfoContext(ctx, "battle_worker_ready",
 		"poll_interval", w.config.PollInterval,
 		"lease_duration", w.config.LeaseDuration,
@@ -54,6 +56,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	)
 	defer func() {
 		w.ready.Store(false)
+		telemetry.SetEngineReady(false)
 		w.logger.Info("battle_worker_stopped")
 	}()
 	for {
@@ -72,6 +75,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("claim battle: %w", err)
 		}
+		telemetry.ObserveEngineClaim(job.Lease.Attempt > 1)
 		w.logger.InfoContext(ctx, "battle_claimed",
 			"battle_id", job.Lease.BattleID,
 			"attempt", job.Lease.Attempt,
@@ -93,7 +97,16 @@ func (w *Worker) Run(ctx context.Context) error {
 	}
 }
 
-func (w *Worker) process(ctx context.Context, job *BattleJob) error {
+func (w *Worker) process(ctx context.Context, job *BattleJob) (resultErr error) {
+	started := time.Now()
+	outcome := "error"
+	defer func() {
+		if errors.Is(resultErr, ErrBattleLeaseLost) {
+			outcome = "lease_lost"
+		}
+		telemetry.ObserveEngineBattle(outcome, time.Since(started))
+	}()
+
 	battle, err := battle.NewBattle(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
 	if err != nil {
 		w.logger.ErrorContext(ctx, "battle_scenario_invalid",
@@ -111,22 +124,29 @@ func (w *Worker) process(ctx context.Context, job *BattleJob) error {
 			"attempt", job.Lease.Attempt,
 			"error_code", "invalid_scenario",
 		)
+		outcome = "failed"
 		return nil
 	}
 
 	for {
 		if ctx.Err() != nil {
-			return w.requeueAfterCancellation(ctx, job.Lease)
+			resultErr = w.requeueAfterCancellation(ctx, job.Lease)
+			if errors.Is(resultErr, context.Canceled) {
+				outcome = "requeued"
+			}
+			return resultErr
 		}
 		tickStarted := time.Now()
 		transition, err := battle.Advance()
 		if err != nil {
 			return err
 		}
+		telemetry.ObserveEngineTick()
 		if transition.Finished {
 			completeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.config.ShutdownTimeout)
 			err := w.repository.CompleteBattle(completeCtx, job.Lease, transition)
 			if err == nil {
+				outcome = "completed"
 				var winner any
 				if transition.Result.WinnerFactionID != nil {
 					winner = *transition.Result.WinnerFactionID
@@ -143,13 +163,21 @@ func (w *Worker) process(ctx context.Context, job *BattleJob) error {
 			return err
 		}
 		if ctx.Err() != nil {
-			return w.persistTickAndRequeue(ctx, job.Lease, transition)
+			resultErr = w.persistTickAndRequeue(ctx, job.Lease, transition)
+			if errors.Is(resultErr, context.Canceled) {
+				outcome = "requeued"
+			}
+			return resultErr
 		}
 		if err := w.repository.SaveTick(ctx, job.Lease, transition, w.config.LeaseDuration); err != nil {
 			return err
 		}
 		if ctx.Err() != nil {
-			return w.requeueAfterCancellation(ctx, job.Lease)
+			resultErr = w.requeueAfterCancellation(ctx, job.Lease)
+			if errors.Is(resultErr, context.Canceled) {
+				outcome = "requeued"
+			}
+			return resultErr
 		}
 		if duration := battle.TickDuration(); duration > 0 {
 			if err := w.waitUntilNextTick(ctx, job.Lease, tickStarted.Add(duration)); err != nil {

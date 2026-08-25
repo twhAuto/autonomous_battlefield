@@ -35,6 +35,7 @@ Choose the guide that matches the task:
 | --- | --- |
 | Run the application while coding | `./run-dev.sh` and [Run locally](#run-locally) |
 | Build and deploy to local Kubernetes | [DEPLOYMENT.md](DEPLOYMENT.md#deploy-the-application-locally) |
+| Inspect metrics, Grafana, and reliability objectives | [OBSERVABILITY.md](OBSERVABILITY.md) |
 | Resume kind after restarting the computer | [DEPLOYMENT.md](DEPLOYMENT.md#resume-the-cluster-after-restarting-the-computer) |
 | Install and configure Jenkins, GitHub, and SonarQube | [JENKINS.md](JENKINS.md) |
 | Start the existing CI/CD services after reboot | [JENKINS.md](JENKINS.md#daily-startup-after-a-reboot) |
@@ -103,7 +104,7 @@ go run ./cmd/engine
 
 The engine does not expose gameplay routes. Its internal operational endpoint listens on `http://localhost:8081`; `/startupz` reports initialization, `/livez` checks the process, and `/readyz` checks worker readiness plus database connectivity. The API exposes the same three lifecycle endpoints on port 8080. Both processes retry transient PostgreSQL connection failures during startup and become unready before graceful shutdown.
 
-Both processes write structured JSON operational logs to stdout for container log collection. API logs include request IDs, status codes, response sizes, and latency. Engine logs cover claims, reclaimed attempts, completion results, graceful requeues, lease loss, and failures. Individual combat ticks remain in the durable `battle_events` stream instead of being duplicated in normal process logs. Send `X-Request-ID` with an API request to preserve an upstream correlation ID; otherwise the server generates one and returns it in the response header.
+Both processes write structured JSON operational logs to stdout for container log collection. API logs include request IDs, status codes, response sizes, and latency. Engine logs cover claims, reclaimed attempts, completion results, graceful requeues, lease loss, and failures. Individual combat ticks remain in the durable `battle_events` stream instead of being duplicated in normal process logs. Send `X-Request-ID` with an API request to preserve an upstream correlation ID; otherwise the server generates one and returns it in the response header. Both processes also expose Prometheus metrics at `/metrics`; see the [observability and reliability guide](OBSERVABILITY.md) for the metric catalog and proposed SLIs/SLOs.
 
 The credentials in `compose.yaml` and `.env.example` are for local development only. Use a secret manager to provide `DATABASE_URL` in deployed environments. The application only runs schema migrations when explicitly started with `-migrate`.
 
@@ -117,6 +118,8 @@ The repository includes a staged Kustomize deployment for `kind`:
    one-shot Job.
 3. `deploy/overlays/local/application` creates the API, engine, frontend,
    Services, Ingress, HPA, and disruption budgets.
+4. `deploy/overlays/local/observability` creates namespace-scoped Prometheus,
+   a provisioned Grafana dashboard, and SLO recording and alert rules.
 
 Follow the complete build, image-loading, deployment, verification, and cleanup
 commands in the [deployment learning guide](DEPLOYMENT.md#deploy-the-application-locally).
