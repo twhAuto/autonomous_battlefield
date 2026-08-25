@@ -19,6 +19,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 func main() {
@@ -66,7 +67,7 @@ func startEngine(configuration config.Config) error {
 	defer cancelRun()
 
 	engineConfig := configuration.Engine
-	lifecycle := httpapi.NewLifecycleHandler()
+	lifecycle := httpapi.NewLifecycleHandler(telemetry.MetricsHandler())
 	healthServer := &http.Server{
 		Addr: engineConfig.HealthAddress, Handler: lifecycle,
 		ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 2 * time.Second,

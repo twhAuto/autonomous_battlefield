@@ -17,13 +17,18 @@ type LifecycleHandler struct {
 	handler   http.Handler
 	pinger    Pinger
 	ready     func() bool
+	metrics   http.Handler
 	started   atomic.Bool
 	accepting atomic.Bool
 	timeout   time.Duration
 }
 
-func NewLifecycleHandler() *LifecycleHandler {
-	return &LifecycleHandler{timeout: readinessTimeout}
+func NewLifecycleHandler(metrics ...http.Handler) *LifecycleHandler {
+	handler := &LifecycleHandler{timeout: readinessTimeout}
+	if len(metrics) > 0 {
+		handler.metrics = metrics[0]
+	}
+	return handler
 }
 
 // Activate marks startup complete and enables application traffic. The ready
@@ -56,6 +61,12 @@ func (h *LifecycleHandler) ServeHTTP(w http.ResponseWriter, request *http.Reques
 		writeOK(w)
 	case "/readyz":
 		h.serveReadiness(w, request)
+	case "/metrics":
+		if h.metrics == nil {
+			http.NotFound(w, request)
+			return
+		}
+		h.metrics.ServeHTTP(w, request)
 	default:
 		h.serveApplication(w, request)
 	}

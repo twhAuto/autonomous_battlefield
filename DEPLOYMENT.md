@@ -60,7 +60,8 @@ deploy/
     └── local/
         ├── infrastructure/ Disposable PostgreSQL and local Secret
         ├── migration/      Local migration composition
-        └── application/    Local application composition
+        ├── application/    Local application composition
+        └── observability/  Prometheus, Grafana, dashboard, and alert rules
 ```
 
 The base should contain standard Kubernetes behavior. Provider-specific
@@ -84,6 +85,7 @@ it when reviewing a change:
 kubectl kustomize deploy/overlays/local/infrastructure
 kubectl kustomize deploy/overlays/local/migration
 kubectl kustomize deploy/overlays/local/application
+kubectl kustomize deploy/overlays/local/observability
 ```
 
 ## Why Helm comes later
@@ -186,6 +188,31 @@ kind delete cluster --name battlefield
 Recreating a local cluster is expected and provides useful practice proving
 that configuration is reproducible rather than dependent on manual changes.
 
+### Resume the cluster after restarting the computer
+
+Start Docker Desktop and open the WSL distribution before checking the cluster:
+
+```bash
+docker info >/dev/null
+kind get clusters
+kubectl cluster-info --context kind-battlefield
+kubectl get nodes
+```
+
+The existing `battlefield` cluster is a Docker container and normally resumes
+with Docker. If the cluster exists but its node is stopped, inspect it before
+starting it again:
+
+```bash
+docker ps --all --filter name=battlefield-control-plane
+docker start battlefield-control-plane
+kubectl get pods --all-namespaces
+```
+
+If the cluster no longer exists, create it again and follow the deployment
+steps below. Deleting and recreating kind also deletes the PostgreSQL data that
+was stored inside that cluster.
+
 ## Deploy the application locally
 
 ### 1. Create the local secret file
@@ -265,8 +292,8 @@ compatible features, and major for breaking releases.
 ### 3. Deploy that exact revision
 
 The deployment script defaults to the checked-out commit, loads both tagged
-images into `kind`, applies infrastructure, runs the migration gate, and waits
-for all three application rollouts:
+images into `kind`, applies infrastructure, runs the migration gate, waits for
+all three application rollouts, and then deploys Prometheus and Grafana:
 
 ```bash
 ./scripts/deploy-kind.sh
@@ -335,6 +362,28 @@ an ingress controller automatically. The API HPA is also present as a scaling
 exercise; its CPU target remains `<unknown>` until metrics-server is installed.
 Neither limitation prevents port-forwarded local use.
 
+### Inspect local observability
+
+The local-only observability overlay deploys Prometheus with namespace-scoped
+pod discovery and Grafana with a provisioned dashboard. The deployment script
+waits for both rollouts, and the smoke test verifies the application metrics
+endpoint, Prometheus pod discovery, and Grafana dashboard provisioning.
+
+```bash
+kubectl rollout status deployment/battlefield-prometheus \
+  --namespace battlefield --timeout=120s
+kubectl rollout status deployment/battlefield-grafana \
+  --namespace battlefield --timeout=120s
+
+kubectl port-forward --namespace battlefield \
+  service/battlefield-grafana 3000:3000
+```
+
+Open `http://localhost:3000` for the Autonomous Battlefield dashboard. See
+[OBSERVABILITY.md](OBSERVABILITY.md) for direct Prometheus access, metric
+definitions, SLI formulas, proposed SLOs, alert behavior, and production
+boundaries.
+
 ### 7. Open the application
 
 ```bash
@@ -345,7 +394,48 @@ kubectl port-forward \
 ```
 
 Open `http://localhost:5173`. The frontend Nginx process proxies `/v1` requests
-to the internal `battlefield-api` Service.
+to the internal API using the fully qualified Kubernetes Service name
+`battlefield-api.battlefield.svc.cluster.local`. Nginx performs runtime DNS
+resolution so API pod replacements do not require a frontend restart. The
+namespace is part of that name; an overlay that changes the namespace must also
+change `API_UPSTREAM`.
+
+`kubectl port-forward` is intentionally temporary. It runs until Ctrl+C or the
+terminal closes, so start it again whenever local browser access is needed. The
+pods and Services continue running after the port-forward stops. A later local
+ingress-controller exercise or the AWS ALB removes this manual access step.
+
+Run the same non-interactive verification used by Jenkins at any time:
+
+```bash
+./scripts/smoke-test-kind.sh
+```
+
+It creates temporary frontend, API, Prometheus, and Grafana port-forwards;
+checks application health, proxying, metric exposition, and observability
+health; then removes all forwards automatically.
+
+### Diagnose a local deployment
+
+Start with workload state, recent events, and the application logs:
+
+```bash
+kubectl get deployments,pods,services,endpointslices \
+  --namespace battlefield \
+  --output wide
+kubectl get events --namespace battlefield \
+  --sort-by='.metadata.creationTimestamp'
+kubectl logs deployment/battlefield-api \
+  --namespace battlefield --tail=100
+kubectl logs deployment/battlefield-engine \
+  --namespace battlefield --tail=100
+kubectl logs deployment/battlefield-frontend \
+  --namespace battlefield --tail=100
+```
+
+Use `kubectl describe pod <pod-name> --namespace battlefield` for probe,
+scheduling, image, or volume failures. A completed migration pod is expected;
+inspect `job/battlefield-migrate` only when its Job did not reach `Complete`.
 
 ### 8. Remove the local deployment
 
@@ -424,6 +514,17 @@ Once one replica works, exercise these behaviors deliberately:
 
 The AWS step should reuse the tested images and base resources:
 
+An AWS account is required before this stage, including billing verification.
+Secure the root user with MFA, avoid using it for daily administration, and use
+temporary role-based credentials for normal human and workload access. Create a
+cost budget and alerts before provisioning. Free Tier eligibility does not make
+an EKS environment free: the cluster control plane and its compute, database,
+load balancer, networking, and storage resources are independently billable.
+
+No AWS infrastructure is created by the current repository. The checked-in
+manifests and scripts deploy only to local kind; an infrastructure-as-code AWS
+stack and overlay are still future work.
+
 1. Create the AWS account, cost budget, and billing alerts.
 2. Provision ECR, networking, EKS, RDS, and Secrets Manager through
    infrastructure as code.
@@ -450,5 +551,6 @@ notifications rather than guaranteed hard spending limits.
 - [Amazon EKS pricing](https://aws.amazon.com/eks/pricing/)
 - [AWS Free Tier plans](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/free-tier-plans.html)
 - [AWS Budgets](https://docs.aws.amazon.com/cost-management/latest/userguide/create-cost-budget.html)
+- [AWS root-user security practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/root-user-best-practices.html)
 - [EKS Auto Mode](https://docs.aws.amazon.com/eks/latest/userguide/automode.html)
 - [Using Secrets Manager secrets with EKS pods](https://docs.aws.amazon.com/eks/latest/userguide/manage-secrets.html)

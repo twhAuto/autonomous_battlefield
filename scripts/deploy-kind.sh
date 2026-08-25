@@ -176,6 +176,7 @@ cp -R \
   "${project_dir}/deploy/overlays/local/application" \
   "${project_dir}/deploy/overlays/local/infrastructure" \
   "${project_dir}/deploy/overlays/local/migration" \
+  "${project_dir}/deploy/overlays/local/observability" \
   "${runtime_dir}/deploy/overlays/local/"
 cp -R \
   "${project_dir}/deploy/overlays/local/application" \
@@ -292,6 +293,14 @@ for deployment in battlefield-api battlefield-engine battlefield-frontend; do
     --timeout="${rollout_timeout}"
 done
 application_update_started=0
+
+echo "Deploying local observability stack..."
+kube apply -k "${runtime_dir}/deploy/overlays/local/observability"
+for deployment in battlefield-prometheus battlefield-grafana; do
+  kube rollout status "deployment/${deployment}" \
+    --namespace "${namespace}" \
+    --timeout="${rollout_timeout}"
+done
 
 echo
 echo "Deployed ${image_tag} to kind cluster ${cluster_name}."

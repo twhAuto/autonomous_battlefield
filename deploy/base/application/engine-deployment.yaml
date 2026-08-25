@@ -18,6 +18,9 @@ spec:
       labels:
         app.kubernetes.io/name: autonomous-battlefield
         app.kubernetes.io/component: engine
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
     spec:
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 30

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 type requestIDContextKey struct{}
@@ -26,6 +28,8 @@ func requestLogging(next http.Handler, logger *slog.Logger) http.Handler {
 		r = r.WithContext(context.WithValue(r.Context(), requestIDContextKey{}, requestID))
 		response := &loggingResponseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(response, r)
+		duration := time.Since(started)
+		telemetry.ObserveHTTPRequest(r.Method, r.Pattern, response.status, duration)
 
 		level := slog.LevelInfo
 		if response.status >= http.StatusInternalServerError {
@@ -41,7 +45,7 @@ func requestLogging(next http.Handler, logger *slog.Logger) http.Handler {
 			"path", r.URL.Path,
 			"status", response.status,
 			"response_bytes", response.bytes,
-			"duration", time.Since(started),
+			"duration", duration,
 		)
 	})
 }

@@ -49,6 +49,18 @@ func TestLifecycleReadinessChecksWorkerAndDatabase(t *testing.T) {
 	assertStatus(t, lifecycle, "/readyz", http.StatusServiceUnavailable)
 }
 
+func TestLifecycleMetricsRemainAvailableOutsideApplicationLifecycle(t *testing.T) {
+	metrics := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("test_metric 1\n"))
+	})
+	lifecycle := NewLifecycleHandler(metrics)
+
+	assertStatus(t, lifecycle, "/metrics", http.StatusOK)
+	lifecycle.BeginShutdown()
+	assertStatus(t, lifecycle, "/metrics", http.StatusOK)
+}
+
 func assertStatus(t *testing.T, handler http.Handler, path string, expected int) {
 	t.Helper()
 	response := httptest.NewRecorder()

@@ -28,7 +28,7 @@ Run `go run ./cmd/engine` in another backend terminal with the same
 `DATABASE_URL`. Then start the frontend:
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -47,7 +47,25 @@ must exist before a battle can be staged.
 npm run dev       # start the development server
 npm run build     # type-check and create a production build
 npm test          # run the component tests once
+npm test -- --coverage  # generate text, JSON-summary, and LCOV coverage
 ```
 
-For a deployed frontend, set `VITE_API_URL` at build time to the API's public
-origin, or route `/v1` to the API through the same reverse proxy as the frontend.
+## Container and Kubernetes behavior
+
+The production image serves the compiled frontend through unprivileged Nginx
+on port 8080. `/startupz`, `/livez`, and `/readyz` report the Nginx process
+health; the deployment smoke test separately calls `/v1/scenarios` to prove the
+reverse proxy can reach the API.
+
+For a deployed frontend, either set `VITE_API_URL` at build time to the API's
+public origin or route `/v1` through the same reverse proxy. The Kubernetes
+manifest uses the latter and sets:
+
+```text
+API_UPSTREAM=battlefield-api.battlefield.svc.cluster.local:8080
+```
+
+The full Service DNS name is required because Nginx's runtime resolver does not
+apply the pod's DNS search suffixes in the same way as normal application name
+resolution. If an overlay changes the namespace from `battlefield`, it must
+also update `API_UPSTREAM`.
