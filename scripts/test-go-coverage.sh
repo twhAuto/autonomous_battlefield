@@ -5,6 +5,7 @@ set -Eeuo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 backend_dir="${project_dir}/backend"
 coverage_file="${GO_COVERAGE_FILE:-${backend_dir}/coverage.out}"
+coverage_summary_file="${GO_COVERAGE_SUMMARY_FILE:-${backend_dir}/coverage-total.txt}"
 minimum_coverage="${GO_COVERAGE_MIN:-}"
 
 if ! command -v go >/dev/null 2>&1; then
@@ -20,7 +21,9 @@ if [[ -n "${minimum_coverage}" && ! "${minimum_coverage}" =~ ^([0-9]+)(\.[0-9]+)
   exit 1
 fi
 
-mkdir -p "$(dirname -- "${coverage_file}")"
+mkdir -p \
+  "$(dirname -- "${coverage_file}")" \
+  "$(dirname -- "${coverage_summary_file}")"
 (
   cd "${backend_dir}"
   GOCACHE="${coverage_cache}" go test -covermode=atomic -coverprofile="${coverage_file}" ./...
@@ -33,6 +36,7 @@ if [[ -z "${coverage_percent}" ]]; then
 fi
 
 echo "Go total coverage: ${coverage_percent}%"
+printf '%s\n' "${coverage_percent}" >"${coverage_summary_file}"
 if [[ -n "${minimum_coverage}" ]] && ! awk -v actual="${coverage_percent}" -v minimum="${minimum_coverage}" 'BEGIN { exit !(actual + 0 >= minimum + 0) }'; then
   echo "Go coverage ${coverage_percent}% is below the required ${minimum_coverage}%." >&2
   exit 1

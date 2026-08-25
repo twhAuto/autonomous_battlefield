@@ -77,6 +77,32 @@ pipeline {
                     }
                 }
             }
+            post {
+                always {
+                    script {
+                        def summaryFile = '.jenkins-coverage-check.md'
+                        def summaryStatus = sh(
+                            script: "./scripts/coverage-check-summary.sh > ${summaryFile}",
+                            returnStatus: true
+                        )
+                        def summary = fileExists(summaryFile)
+                            ? readFile(summaryFile).trim()
+                            : 'Coverage reports could not be summarized. Open the Jenkins build for details.'
+                        def conclusion = summaryStatus == 0 ? 'SUCCESS' : 'FAILURE'
+
+                        publishChecks(
+                            name: 'Coverage',
+                            title: summaryStatus == 0
+                                ? 'Backend and frontend coverage generated'
+                                : 'One or more coverage reports are unavailable',
+                            summary: summary,
+                            detailsURL: "${env.BUILD_URL}console",
+                            status: 'COMPLETED',
+                            conclusion: conclusion
+                        )
+                    }
+                }
+            }
         }
 
         stage('Main quality reports') {
