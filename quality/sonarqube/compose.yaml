@@ -1,0 +1,39 @@
+services:
+  sonarqube:
+    image: sonarqube:26.8.0.126808-community
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://database:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: ${SONAR_DB_PASSWORD:-sonar-local-only}
+    ports:
+      - "127.0.0.1:9000:9000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    stop_grace_period: 1h
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: sonar
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: ${SONAR_DB_PASSWORD:-sonar-local-only}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonar -d sonar"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - sonarqube_database:/var/lib/postgresql/data
+
+volumes:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+  sonarqube_database:

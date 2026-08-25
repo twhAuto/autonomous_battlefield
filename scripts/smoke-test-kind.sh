@@ -86,7 +86,7 @@ wait_for_url() {
   return 1
 }
 
-wait_for_url "Frontend liveness" "http://127.0.0.1:${frontend_port}/healthz"
+wait_for_url "Frontend liveness" "http://127.0.0.1:${frontend_port}/livez"
 wait_for_url "API readiness" "http://127.0.0.1:${api_port}/readyz"
 wait_for_url "Frontend-to-API proxy" "http://127.0.0.1:${frontend_port}/v1/scenarios"
 

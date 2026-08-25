@@ -65,7 +65,7 @@ The server listens on `http://localhost:8080` by default. Verify its liveness in
 another terminal:
 
 ```bash
-curl http://localhost:8080/healthz
+curl http://localhost:8080/livez
 ```
 
 The response is `ok` with HTTP status `200`.
@@ -88,7 +88,7 @@ export ENGINE_WORKER_ID='engine-local-1'
 go run ./cmd/engine
 ```
 
-The engine does not expose gameplay routes. Its internal operational endpoint listens on `http://localhost:8081`; `/livez` checks the process and `/readyz` checks worker readiness plus database connectivity.
+The engine does not expose gameplay routes. Its internal operational endpoint listens on `http://localhost:8081`; `/startupz` reports initialization, `/livez` checks the process, and `/readyz` checks worker readiness plus database connectivity. The API exposes the same three lifecycle endpoints on port 8080. Both processes retry transient PostgreSQL connection failures during startup and become unready before graceful shutdown.
 
 Both processes write structured JSON operational logs to stdout for container log collection. API logs include request IDs, status codes, response sizes, and latency. Engine logs cover claims, reclaimed attempts, completion results, graceful requeues, lease loss, and failures. Individual combat ticks remain in the durable `battle_events` stream instead of being duplicated in normal process logs. Send `X-Request-ID` with an API request to preserve an upstream correlation ID; otherwise the server generates one and returns it in the response header.
 
@@ -114,8 +114,9 @@ CI builds add a human-readable `major.minor.patch-build.N` alias to the same
 image.
 
 The root `Jenkinsfile` provides pull-request CI and merged-`main` deployment:
-tests and vulnerability scans gate the PR, while the merge pipeline rebuilds the
-exact commit, migrates, deploys to local kind, smoke-tests, and supports rollback.
+lint, coverage, tests, and vulnerability scans gate the PR, while the merge
+pipeline also waits for SonarQube before it rebuilds the exact commit, migrates,
+deploys to local kind, smoke-tests, and supports rollback.
 See the [Jenkins setup guide](JENKINS.md) before configuring the Multibranch job
 or its local Kubernetes credential.
 
@@ -139,16 +140,41 @@ go run ./cmd/server -migrate
 
 Migration files are embedded in the executable, so a deployed binary does not need a separate `migrations` directory or Goose CLI. The command is safe to repeat; if the database is current, it reports that zero migrations were applied. Use `-config` alongside `-migrate` when needed.
 
+## Local quality checks
+
+Run the same Go lint and coverage work used by Jenkins:
+
+```bash
+./scripts/lint-go.sh
+./scripts/test-go-coverage.sh
+(cd frontend && npm ci && npm test -- --coverage)
+```
+
+Go coverage is written to `backend/coverage.out`; frontend LCOV coverage is
+written to `frontend/coverage/lcov.info`. Both are ignored by Git and imported
+by SonarQube. See [JENKINS.md](JENKINS.md#configure-local-sonarqube) for the
+local server and Jenkins quality-gate setup.
+
 ## API
 
-### Health check
+### Startup check
 
 ```http
-GET /healthz
+GET /startupz
+```
+
+Returns `503 Service Unavailable` while dependencies and application state are
+initializing, then `200 OK`. Kubernetes uses this for its startup probe.
+
+### Liveness check
+
+```http
+GET /livez
 ```
 
 Returns `200 OK` with a plain-text `ok` response. This confirms that the HTTP
-process is running and is suitable for a liveness probe.
+process is running and is suitable for a liveness probe. `/healthz` remains as
+a compatibility alias.
 
 ### Readiness check
 

@@ -45,19 +45,23 @@ pipeline {
                 changeRequest target: 'main'
             }
             parallel {
-                stage('Backend tests') {
+                stage('Go lint') {
                     steps {
-                        dir('backend') {
-                            sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" go test ./...'
-                        }
+                        sh './scripts/lint-go.sh'
                     }
                 }
 
-                stage('Frontend tests') {
+                stage('Backend tests and coverage') {
+                    steps {
+                        sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" ./scripts/test-go-coverage.sh'
+                    }
+                }
+
+                stage('Frontend tests and coverage') {
                     steps {
                         dir('frontend') {
                             sh 'npm ci'
-                            sh 'npm test'
+                            sh 'npm test -- --coverage'
                             sh 'npm run build'
                         }
                     }
@@ -71,6 +75,60 @@ pipeline {
                             kubectl kustomize deploy/overlays/local/application >/dev/null
                         '''
                     }
+                }
+            }
+        }
+
+        stage('Main quality reports') {
+            when {
+                branch 'main'
+            }
+            parallel {
+                stage('Main Go lint') {
+                    steps {
+                        sh './scripts/lint-go.sh'
+                    }
+                }
+
+                stage('Main backend coverage') {
+                    steps {
+                        sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" ./scripts/test-go-coverage.sh'
+                    }
+                }
+
+                stage('Main frontend coverage') {
+                    steps {
+                        dir('frontend') {
+                            sh 'npm ci'
+                            sh 'npm test -- --coverage'
+                            sh 'npm run build'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('SonarQube analysis') {
+            when {
+                branch 'main'
+            }
+            steps {
+                script {
+                    def scannerHome = tool 'SonarScanner'
+                    withSonarQubeEnv('battlefield-sonarqube') {
+                        sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectVersion=${env.IMAGE_TAG}"
+                    }
+                }
+            }
+        }
+
+        stage('SonarQube quality gate') {
+            when {
+                branch 'main'
+            }
+            steps {
+                timeout(time: 10, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }

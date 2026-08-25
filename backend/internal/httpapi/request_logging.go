@@ -32,7 +32,7 @@ func requestLogging(next http.Handler, logger *slog.Logger) http.Handler {
 			level = slog.LevelError
 		} else if response.status >= http.StatusBadRequest {
 			level = slog.LevelWarn
-		} else if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
+		} else if r.URL.Path == "/healthz" || r.URL.Path == "/livez" || r.URL.Path == "/readyz" || r.URL.Path == "/startupz" {
 			level = slog.LevelDebug
 		}
 		logger.Log(r.Context(), level, "http_request_completed",

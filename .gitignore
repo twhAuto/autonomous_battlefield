@@ -1,7 +1,10 @@
 backend/__debug_bin*
 backend/cmd/server/__debug_bin*
+backend/coverage.out
 frontend/node_modules/
 frontend/dist/
+frontend/coverage/
 frontend/.env.local
 frontend/*.tsbuildinfo
+.scannerwork/
 deploy/overlays/local/infrastructure/secret.env

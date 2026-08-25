@@ -13,6 +13,8 @@ func NewRouter(registrars ...RouteRegistrar) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", health)
+	mux.HandleFunc("GET /livez", health)
+	mux.HandleFunc("GET /startupz", health)
 	for _, registrar := range registrars {
 		registrar.RegisterRoutes(mux)
 	}
@@ -21,6 +23,5 @@ func NewRouter(registrars ...RouteRegistrar) http.Handler {
 }
 
 func health(w http.ResponseWriter, _ *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ok\n"))
+	writeOK(w)
 }

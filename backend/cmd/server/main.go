@@ -10,10 +10,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/app"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/server/catalog"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
+	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
@@ -85,66 +87,101 @@ func parseOptions(arguments []string) (cliOptions, error) {
 }
 
 func startServer(configuration config.Config) error {
-	connectionContext, cancelConnection := context.WithTimeout(
-		context.Background(),
-		configuration.Database.ConnectTimeout,
-	)
-	db, err := postgres.NewPostgresDB(connectionContext, configuration.Database.URL, postgres.Options{
-		MaxConnections:        configuration.Database.MaxConnections,
-		MinConnections:        configuration.Database.MinConnections,
-		MaxConnectionLifetime: configuration.Database.MaxConnectionLifetime,
-	})
-	cancelConnection()
-	if err != nil {
-		return fmt.Errorf("connect to database: %w", err)
-	}
-	defer db.Close()
-	slog.Info("database_connected")
-
-	catalog, err := catalog.LoadCatalog(configuration.API.ScenarioCatalogPath)
-	if err != nil {
-		return fmt.Errorf("load scenario catalog: %w", err)
-	}
-	slog.Info("scenario_catalog_loaded", "path", configuration.API.ScenarioCatalogPath, "scenario_count", len(catalog.IDs()))
-	application := app.NewAPI(db, catalog, configuration.API.MaxTicks)
-	httpConfig := configuration.HTTP
-
-	server := &http.Server{
-		Addr:              httpConfig.Address,
-		Handler:           application.HTTPHandler(),
-		ReadHeaderTimeout: httpConfig.ReadHeaderTimeout,
-		ReadTimeout:       httpConfig.ReadTimeout,
-		WriteTimeout:      httpConfig.WriteTimeout,
-		IdleTimeout:       httpConfig.IdleTimeout,
-		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
-	}
-
 	shutdownSignal, stop := signal.NotifyContext(
 		context.Background(),
 		syscall.SIGINT,
 		syscall.SIGTERM,
 	)
 	defer stop()
+	processContext, cancelProcess := context.WithCancel(shutdownSignal)
+	defer cancelProcess()
 
+	lifecycle := httpapi.NewLifecycleHandler()
+	httpConfig := configuration.HTTP
+	server := &http.Server{
+		Addr:              httpConfig.Address,
+		Handler:           lifecycle,
+		ReadHeaderTimeout: httpConfig.ReadHeaderTimeout,
+		ReadTimeout:       httpConfig.ReadTimeout,
+		WriteTimeout:      httpConfig.WriteTimeout,
+		IdleTimeout:       httpConfig.IdleTimeout,
+		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
+	}
+	serverErrors := make(chan error, 1)
 	go func() {
-		<-shutdownSignal.Done()
-		slog.Info("api_shutdown_started")
-
-		shutdownContext, cancel := context.WithTimeout(context.Background(), httpConfig.ShutdownTimeout)
-		defer cancel()
-
-		if err := server.Shutdown(shutdownContext); err != nil {
-			slog.Error("api_shutdown_failed", "error", err)
-			return
+		slog.Info("api_health_listening", "address", server.Addr)
+		err := server.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
 		}
-		slog.Info("api_shutdown_completed")
+		serverErrors <- err
+		cancelProcess()
 	}()
 
-	slog.Info("api_listening", "address", server.Addr)
+	db, err := postgres.NewPostgresDBWithRetry(processContext, configuration.Database.URL, postgres.Options{
+		MaxConnections:        configuration.Database.MaxConnections,
+		MinConnections:        configuration.Database.MinConnections,
+		MaxConnectionLifetime: configuration.Database.MaxConnectionLifetime,
+	}, configuration.Database.ConnectTimeout, time.Second, func(attempt int, err error) {
+		slog.Warn("database_connect_retry", "attempt", attempt, "retry_in", time.Second, "error", err)
+	})
+	if err != nil {
+		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
+	}
+	defer db.Close()
+	slog.Info("database_connected")
 
-	if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-		return err
+	catalog, err := catalog.LoadCatalog(configuration.API.ScenarioCatalogPath)
+	if err != nil {
+		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, fmt.Errorf("load scenario catalog: %w", err))
+	}
+	slog.Info("scenario_catalog_loaded", "path", configuration.API.ScenarioCatalogPath, "scenario_count", len(catalog.IDs()))
+	application := app.NewAPI(db, catalog, configuration.API.MaxTicks)
+	lifecycle.Activate(application.HTTPHandler(), db, nil)
+	slog.Info("api_ready", "address", server.Addr)
+
+	select {
+	case err := <-serverErrors:
+		if err != nil {
+			return fmt.Errorf("serve API: %w", err)
+		}
+		return nil
+	case <-shutdownSignal.Done():
 	}
 
+	lifecycle.BeginShutdown()
+	slog.Info("api_shutdown_started")
+	shutdownContext, cancelShutdown := context.WithTimeout(context.Background(), httpConfig.ShutdownTimeout)
+	defer cancelShutdown()
+	if err := server.Shutdown(shutdownContext); err != nil {
+		return fmt.Errorf("shutdown API: %w", err)
+	}
+	if err := <-serverErrors; err != nil {
+		return fmt.Errorf("serve API: %w", err)
+	}
+	slog.Info("api_shutdown_completed")
 	return nil
+}
+
+func stopAPIInitialization(
+	server *http.Server,
+	lifecycle *httpapi.LifecycleHandler,
+	serverErrors <-chan error,
+	shutdownSignal context.Context,
+	shutdownTimeout time.Duration,
+	initializationError error,
+) error {
+	lifecycle.BeginShutdown()
+	shutdownContext, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := server.Shutdown(shutdownContext); err != nil {
+		return fmt.Errorf("shutdown API after initialization failure: %w", err)
+	}
+	if err := <-serverErrors; err != nil {
+		return fmt.Errorf("serve API: %w", err)
+	}
+	if shutdownSignal.Err() != nil {
+		return nil
+	}
+	return fmt.Errorf("initialize API: %w", initializationError)
 }

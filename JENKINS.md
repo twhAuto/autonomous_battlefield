@@ -7,11 +7,12 @@ commit and executes the pipeline on an agent.
 ```text
 Pull request targeting main
           |
-          `--> test, render, build immutable images, and scan
+          `--> lint, test with coverage, render, build immutable images, and scan
 
 Merge into main
           |
-          `--> rebuild and scan the exact merge SHA, migrate, deploy,
+          `--> regenerate coverage, pass the SonarQube quality gate,
+               rebuild and scan the exact merge SHA, migrate, deploy,
                smoke test, and rollback on failure
 ```
 
@@ -29,7 +30,7 @@ the branch rule is what makes a `main` update equivalent to an approved merge.
 Use a dedicated Linux or WSL Jenkins agent with:
 
 - Git.
-- Go 1.26.5 or newer.
+- A complete Go 1.26.5 or newer installation, including the `covdata` tool.
 - Node.js 24 and npm.
 - Docker, with permission to use the Docker daemon.
 - `kubectl`, `kind`, and `curl`.
@@ -46,9 +47,66 @@ as the long-term build agent.
 - Git.
 - GitHub Branch Source.
 - Credentials Binding.
+- SonarQube Scanner for Jenkins.
 
 Keep Jenkins core and plugins patched. The pipeline invokes command-line tools
 that are installed on the agent rather than downloading toolchains dynamically.
+
+Verify the Go installation under the same account that runs the agent:
+
+```bash
+go version
+test -x "$(go env GOTOOLDIR)/covdata"
+```
+
+If the second command fails, reinstall the complete Go distribution. Normal
+`go test` can still pass with this file missing, but coverage generation cannot.
+
+## Configure local SonarQube
+
+The repository includes a persistent local SonarQube Community Build and
+PostgreSQL Compose stack. It is separate from the application database:
+
+```bash
+docker compose -f quality/sonarqube/compose.yaml up -d
+curl --fail http://localhost:9000/api/system/status
+```
+
+The first startup can take several minutes. Open `http://localhost:9000`, sign
+in with the initial `admin` / `admin` credentials, change the password, and
+create an analysis token under the account security settings.
+
+Configure Jenkins as follows:
+
+1. Add the token as a **Secret text** credential.
+2. In **Manage Jenkins > System > SonarQube servers**, add a server named
+   `battlefield-sonarqube`, URL `http://localhost:9000`, using that credential.
+3. In **Manage Jenkins > Tools > SonarQube Scanner installations**, add an
+   installation named `SonarScanner` and enable automatic installation.
+4. In SonarQube, add a webhook pointing to
+   `http://host.docker.internal:8080/sonarqube-webhook/`. Change port `8080` if
+   Jenkins uses a different one. The trailing slash is required.
+
+The webhook lets `waitForQualityGate` resume the Jenkins pipeline without
+polling. The Compose service includes the Docker host mapping needed to reach a
+Jenkins service running on the WSL host.
+
+SonarQube imports `backend/coverage.out` and `frontend/coverage/lcov.info` using
+`sonar-project.properties`. It does not generate those reports itself. The
+Community Build is analyzed only for merged `main`; PR CI still runs Go lint and
+prints both backend and frontend coverage before merge. This avoids unsupported
+Community Build pull-request analysis while keeping the deployment behind the
+quality gate.
+
+The SonarQube data is stored in named Docker volumes and survives restarts. Stop
+it without deleting its data with:
+
+```bash
+docker compose -f quality/sonarqube/compose.yaml stop
+```
+
+Do not use `docker compose down -v` unless you intentionally want to erase the
+SonarQube database and configuration.
 
 ## Add the local database credential
 
@@ -101,7 +159,8 @@ HTTPS-protected address reachable from GitHub.
 For a pull request targeting `main`, the pipeline performs:
 
 1. Clean checkout of the exact GitHub commit.
-2. Parallel Go tests, frontend install/tests/build, and Kustomize rendering.
+2. Parallel Go formatting/vet, Go tests with a coverage profile, frontend tests
+   with LCOV coverage, frontend build, and Kustomize rendering.
 3. Image build through `scripts/build-images.sh`. Jenkins `BUILD_NUMBER`
    produces the human-readable build alias; the full SHA remains immutable.
 4. Image scanning through `scripts/scan-images.sh`. Trivy v0.74.0 is pinned by
@@ -110,10 +169,11 @@ For a pull request targeting `main`, the pipeline performs:
 After that pull request is merged, the `main` pipeline performs:
 
 1. Clean checkout of the exact merged commit.
-2. Rebuild and scan immutable images tagged with the merge SHA. A PR validation
+2. Regenerate coverage and wait for the SonarQube quality gate.
+3. Rebuild and scan immutable images tagged with the merge SHA. A PR validation
    SHA and the final merge SHA are not assumed to be interchangeable.
-3. A one-shot migration Job followed by the application rollouts.
-4. Frontend liveness, API readiness, and frontend-to-API proxy smoke tests.
+4. A one-shot migration Job followed by the application rollouts.
+5. Frontend liveness, API readiness, and frontend-to-API proxy smoke tests.
 
 `scripts/deploy-kind.sh` can reapply a temporary Kustomize overlay containing
 the previous images if an application apply or rollout fails. Before deploying,
@@ -132,6 +192,9 @@ test, scan, migration, verification, and rollback gates.
 After committing the intended source so the worktree is clean:
 
 ```bash
+./scripts/lint-go.sh
+./scripts/test-go-coverage.sh
+(cd frontend && npm ci && npm test -- --coverage && npm run build)
 BUILD_NUMBER=1 ./scripts/build-images.sh
 ./scripts/scan-images.sh "$(git rev-parse HEAD)"
 ROLLBACK_ON_FAILURE=1 ./scripts/deploy-kind.sh "$(git rev-parse HEAD)"

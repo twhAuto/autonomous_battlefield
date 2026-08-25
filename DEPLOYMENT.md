@@ -360,9 +360,10 @@ Deleting the entire `kind` cluster has the same data-loss consequence.
 ## Jenkins deployment pipeline
 
 The repository includes a root `Jenkinsfile` for a GitHub-backed Multibranch
-Pipeline. Pull requests targeting `main` run CI tests, image builds, and
-vulnerability scans. After the PR is merged, the `main` pipeline rebuilds and
-scans the exact merge revision, runs the migration gate once, deploys, verifies
+Pipeline. Pull requests targeting `main` run lint, tests with coverage, image
+builds, and vulnerability scans. After the PR is merged, the `main` pipeline
+regenerates coverage, waits for the SonarQube quality gate, rebuilds and scans
+the exact merge revision, runs the migration gate once, deploys, verifies
 health, and rolls back application Deployments after a failed rollout or smoke
 test. Direct `dev` pushes are intentionally left to the local development
 workflow.
@@ -382,10 +383,16 @@ image-loading and deployment targets later without changing the earlier gates.
   ConfigMap is mounted under `/etc/battlefield`, set
   `api.scenarioCatalogPath` to an absolute image path such as
   `/app/scenarios`.
-- Use `/livez` for engine liveness and `/readyz` for engine readiness on port
-  8081.
-- Use `/healthz` for API liveness and the database-aware `/readyz` for API
-  readiness.
+- Use `/startupz`, `/livez`, and `/readyz` for startup, liveness, and readiness
+  respectively. The API serves them on port 8080 and the engine on port 8081.
+- Startup remains unavailable until PostgreSQL and application initialization
+  complete. Liveness is process-only. Readiness checks PostgreSQL and becomes
+  unavailable before graceful shutdown; engine readiness also checks its worker.
+- The API and engine expose lifecycle endpoints before connecting and retry
+  transient PostgreSQL startup failures. Invalid configuration still fails
+  immediately.
+- Frontend Nginx resolves the API Service at request time, so temporary absence
+  of the API DNS record no longer prevents the frontend container from starting.
 - Set `terminationGracePeriodSeconds` longer than the configured ten-second
   graceful-shutdown deadline.
 - The engine can have multiple replicas because work is claimed through durable
