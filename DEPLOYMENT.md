@@ -61,7 +61,8 @@ deploy/
         ├── infrastructure/ Disposable PostgreSQL and local Secret
         ├── migration/      Local migration composition
         ├── application/    Local application composition
-        └── observability/  Prometheus, Grafana, dashboard, and alert rules
+        ├── observability/  Prometheus, Grafana, dashboard, and alert rules
+        └── gateway/        Local Gateway API routes through Envoy Gateway
 ```
 
 The base should contain standard Kubernetes behavior. Provider-specific
@@ -75,7 +76,7 @@ overlay.
 | Internal networking | `Service` DNS | The same `Service` DNS on EKS |
 | Database | Disposable development PostgreSQL | RDS PostgreSQL |
 | Database credential | Uncommitted local Secret | Secrets Manager integration |
-| Public access | `kubectl port-forward` initially | ALB-backed Ingress |
+| Public access | Loopback-only Envoy Gateway | ALB-backed Ingress |
 | Non-secret settings | `ConfigMap` | The same `ConfigMap`, with an overlay if needed |
 
 Kustomize is already included in `kubectl`. Render each stage before applying
@@ -86,6 +87,7 @@ kubectl kustomize deploy/overlays/local/infrastructure
 kubectl kustomize deploy/overlays/local/migration
 kubectl kustomize deploy/overlays/local/application
 kubectl kustomize deploy/overlays/local/observability
+kubectl kustomize deploy/overlays/local/gateway
 ```
 
 ## Why Helm comes later
@@ -142,11 +144,26 @@ the pinned version.
 ### 3. Create and inspect the cluster
 
 ```bash
-kind create cluster --name battlefield
+./scripts/create-kind-cluster.sh
 kubectl cluster-info --context kind-battlefield
 kubectl get nodes
 kubectl get pods --all-namespaces
 ```
+
+The cluster script publishes node port `30080` as `127.0.0.1:8888` and installs
+the pinned Envoy Gateway release plus its Gateway API definitions. Binding the
+listener to loopback keeps the application and anonymous local Grafana viewer
+unavailable to other machines.
+
+An older `battlefield` cluster created without this mapping cannot be modified
+in place. Recreate that disposable local cluster explicitly:
+
+```bash
+./scripts/create-kind-cluster.sh --recreate
+```
+
+`--recreate` deletes the existing cluster, including its local PostgreSQL
+volume, before creating the replacement.
 
 `kind` writes the cluster connection to the normal kubeconfig and selects the
 new context. Confirm it before applying resources:
@@ -293,7 +310,8 @@ compatible features, and major for breaking releases.
 
 The deployment script defaults to the checked-out commit, loads both tagged
 images into `kind`, applies infrastructure, runs the migration gate, waits for
-all three application rollouts, and then deploys Prometheus and Grafana:
+all three application rollouts, deploys Prometheus and Grafana, and programs
+the local Gateway API routes:
 
 ```bash
 ./scripts/deploy-kind.sh
@@ -357,10 +375,10 @@ kubectl get pods,services,jobs,persistentvolumeclaims \
   --namespace battlefield
 ```
 
-The application stage defines a portable Ingress, but `kind` does not install
-an ingress controller automatically. The API HPA is also present as a scaling
-exercise; its CPU target remains `<unknown>` until metrics-server is installed.
-Neither limitation prevents port-forwarded local use.
+The base application retains a portable Ingress for later cloud overlays. The
+local overlay removes that unhandled resource and uses Gateway API routes
+managed by Envoy Gateway instead. The API HPA remains a scaling exercise; its
+CPU target is `<unknown>` until metrics-server is installed.
 
 ### Inspect local observability
 
@@ -374,36 +392,21 @@ kubectl rollout status deployment/battlefield-prometheus \
   --namespace battlefield --timeout=120s
 kubectl rollout status deployment/battlefield-grafana \
   --namespace battlefield --timeout=120s
-
-kubectl port-forward --namespace battlefield \
-  service/battlefield-grafana 3000:3000
 ```
 
-Open `http://localhost:3000` for the Autonomous Battlefield dashboard. See
+Open `http://grafana.localhost:8888` for the Autonomous Battlefield dashboard.
+No port-forward process is required. See
 [OBSERVABILITY.md](OBSERVABILITY.md) for direct Prometheus access, metric
 definitions, SLI formulas, proposed SLOs, alert behavior, and production
 boundaries.
 
 ### 7. Open the application
 
-```bash
-kubectl port-forward \
-  --namespace battlefield \
-  service/battlefield-frontend \
-  5173:8080
-```
-
-Open `http://localhost:5173`. The frontend Nginx process proxies `/v1` requests
-to the internal API using the fully qualified Kubernetes Service name
-`battlefield-api.battlefield.svc.cluster.local`. Nginx performs runtime DNS
-resolution so API pod replacements do not require a frontend restart. The
-namespace is part of that name; an overlay that changes the namespace must also
-change `API_UPSTREAM`.
-
-`kubectl port-forward` is intentionally temporary. It runs until Ctrl+C or the
-terminal closes, so start it again whenever local browser access is needed. The
-pods and Services continue running after the port-forward stops. A later local
-ingress-controller exercise or the AWS ALB removes this manual access step.
+Open `http://battlefield.localhost:8888`. The Gateway API routes `/v1` directly
+to the API and all other paths to the frontend. The `.localhost` domain resolves
+to loopback without an `/etc/hosts` entry. The frontend Nginx process retains
+its internal `/v1` proxy so direct Service access and cloud deployment overlays
+continue to work.
 
 Run the same non-interactive verification used by Jenkins at any time:
 
@@ -411,9 +414,9 @@ Run the same non-interactive verification used by Jenkins at any time:
 ./scripts/smoke-test-kind.sh
 ```
 
-It creates temporary frontend, API, Prometheus, and Grafana port-forwards;
-checks application health, proxying, metric exposition, and observability
-health; then removes all forwards automatically.
+It verifies the browser-facing frontend and Grafana routes through the local
+gateway. Temporary API and Prometheus port-forwards are still used only for
+their internal diagnostic checks and are removed automatically.
 
 ### Diagnose a local deployment
 

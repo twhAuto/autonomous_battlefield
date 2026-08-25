@@ -5,10 +5,11 @@ set -Eeuo pipefail
 cluster_name="${KIND_CLUSTER_NAME:-battlefield}"
 namespace="${KUBERNETES_NAMESPACE:-battlefield}"
 kube_context="${KUBERNETES_CONTEXT:-kind-${cluster_name}}"
-frontend_port="${SMOKE_TEST_FRONTEND_PORT:-18080}"
 api_port="${SMOKE_TEST_API_PORT:-18081}"
 prometheus_port="${SMOKE_TEST_PROMETHEUS_PORT:-18082}"
-grafana_port="${SMOKE_TEST_GRAFANA_PORT:-18083}"
+gateway_port="${SMOKE_TEST_GATEWAY_PORT:-8888}"
+frontend_host="${SMOKE_TEST_FRONTEND_HOST:-battlefield.localhost}"
+grafana_host="${SMOKE_TEST_GRAFANA_HOST:-grafana.localhost}"
 runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/autonomous-battlefield-smoke.XXXXXX")"
 pids=()
 
@@ -34,7 +35,7 @@ for command in curl kubectl node; do
   fi
 done
 
-ports=("${frontend_port}" "${api_port}" "${prometheus_port}" "${grafana_port}")
+ports=("${api_port}" "${prometheus_port}" "${gateway_port}")
 for port in "${ports[@]}"; do
   if [[ ! "${port}" =~ ^[0-9]+$ ]] || ((port < 1024 || port > 65535)); then
     echo "Smoke-test ports must be integers between 1024 and 65535." >&2
@@ -57,23 +58,9 @@ kube() {
 
 kube port-forward \
   --namespace "${namespace}" \
-  service/battlefield-frontend \
-  "${frontend_port}:8080" \
-  >"${runtime_dir}/frontend-port-forward.log" 2>&1 &
-pids+=("$!")
-
-kube port-forward \
-  --namespace "${namespace}" \
   service/battlefield-prometheus \
   "${prometheus_port}:9090" \
   >"${runtime_dir}/prometheus-port-forward.log" 2>&1 &
-pids+=("$!")
-
-kube port-forward \
-  --namespace "${namespace}" \
-  service/battlefield-grafana \
-  "${grafana_port}:3000" \
-  >"${runtime_dir}/grafana-port-forward.log" 2>&1 &
 pids+=("$!")
 
 kube port-forward \
@@ -86,9 +73,15 @@ pids+=("$!")
 wait_for_url() {
   local name="$1"
   local url="$2"
+  local resolve="${3:-}"
+  local curl_args=(--fail --silent --max-time 2 --noproxy '*')
+
+  if [[ -n "${resolve}" ]]; then
+    curl_args+=(--resolve "${resolve}")
+  fi
 
   for _ in {1..30}; do
-    if curl --fail --silent --max-time 2 "${url}" >/dev/null; then
+    if curl "${curl_args[@]}" "${url}" >/dev/null; then
       echo "${name}: OK"
       return 0
     fi
@@ -110,12 +103,24 @@ wait_for_url() {
   return 1
 }
 
-wait_for_url "Frontend liveness" "http://127.0.0.1:${frontend_port}/livez"
+wait_for_url \
+  "Frontend liveness through Gateway API" \
+  "http://${frontend_host}:${gateway_port}/livez" \
+  "${frontend_host}:${gateway_port}:127.0.0.1"
 wait_for_url "API readiness" "http://127.0.0.1:${api_port}/readyz"
-wait_for_url "Frontend-to-API proxy" "http://127.0.0.1:${frontend_port}/v1/scenarios"
+wait_for_url \
+  "Gateway API application route" \
+  "http://${frontend_host}:${gateway_port}/v1/scenarios" \
+  "${frontend_host}:${gateway_port}:127.0.0.1"
+wait_for_url \
+  "API request for local metrics sample" \
+  "http://127.0.0.1:${api_port}/v1/scenarios"
 wait_for_url "API metrics" "http://127.0.0.1:${api_port}/metrics"
 wait_for_url "Prometheus readiness" "http://127.0.0.1:${prometheus_port}/-/ready"
-wait_for_url "Grafana health" "http://127.0.0.1:${grafana_port}/api/health"
+wait_for_url \
+  "Grafana health through Gateway API" \
+  "http://${grafana_host}:${gateway_port}/api/health" \
+  "${grafana_host}:${gateway_port}:127.0.0.1"
 
 wait_for_prometheus_query() {
   local name="$1"
@@ -165,10 +170,12 @@ if ! grep -q '^battlefield_http_server_requests_total' \
 fi
 
 curl --fail --silent --max-time 2 \
+  --noproxy '*' \
+  --resolve "${grafana_host}:${gateway_port}:127.0.0.1" \
   --get \
   --data-urlencode 'query=Autonomous Battlefield Overview' \
   --output "${runtime_dir}/grafana-search.json" \
-  "http://127.0.0.1:${grafana_port}/api/search"
+  "http://${grafana_host}:${gateway_port}/api/search"
 if ! grep -q '"uid":"battlefield-overview"' \
   "${runtime_dir}/grafana-search.json"; then
   echo "Grafana did not provision the Autonomous Battlefield dashboard." >&2

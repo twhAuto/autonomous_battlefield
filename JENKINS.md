@@ -408,28 +408,26 @@ If `kind get clusters` does not include `battlefield`, recreate it and redeploy
 the committed revision:
 
 ```bash
-kind create cluster --name battlefield
+./scripts/create-kind-cluster.sh
 ./scripts/build-images.sh
 ./scripts/deploy-kind.sh
 ./scripts/smoke-test-kind.sh
 ```
+
+If the cluster predates local Gateway API access, recreate it with
+`./scripts/create-kind-cluster.sh --recreate`. This explicitly deletes the
+cluster and its local PostgreSQL data before publishing the required node port.
 
 The build and deployment commands require a clean Git worktree. The local
 secret file or Jenkins `battlefield-local-secret-env` credential must still
 exist. Starting SonarQube with `docker compose up -d` reuses its named volumes;
 do not add `-v` when stopping it unless the data is intentionally disposable.
 
-After the checks pass, open `http://localhost:8080` for Jenkins and
-`http://localhost:9000` for SonarQube. The deployed application still needs a
-temporary frontend port-forward unless an ingress controller has been added:
-
-```bash
-kubectl port-forward --namespace battlefield \
-  service/battlefield-frontend 5173:8080
-```
-
-Stopping that command or closing its terminal closes the forwarded port; it
-does not stop the Kubernetes workloads.
+After the checks pass, open `http://localhost:8080` for Jenkins,
+`http://localhost:9000` for SonarQube,
+`http://battlefield.localhost:8888` for the deployed application, and
+`http://grafana.localhost:8888` for Grafana. The two `.localhost` routes use the
+Kind node port and do not require a persistent `kubectl port-forward` process.
 
 ## Troubleshooting setup and pipeline waits
 
@@ -462,10 +460,10 @@ After that pull request is merged, the `main` pipeline performs:
 2. Regenerate coverage and wait for the SonarQube quality gate.
 3. Rebuild and scan immutable images tagged with the merge SHA. A PR validation
    SHA and the final merge SHA are not assumed to be interchangeable.
-4. A one-shot migration Job followed by the application and observability
-   rollouts.
-5. Frontend liveness, API readiness, frontend-to-API proxy, API metrics,
-   Prometheus target discovery, and Grafana dashboard provisioning smoke tests.
+4. A one-shot migration Job followed by the application, observability, and
+   local Gateway API rollouts.
+5. Frontend and Grafana gateway access, API readiness, API metrics, Prometheus
+   target discovery, and Grafana dashboard provisioning smoke tests.
 
 `scripts/deploy-kind.sh` can reapply a temporary Kustomize overlay containing
 the previous images if an application apply or rollout fails. Before deploying,

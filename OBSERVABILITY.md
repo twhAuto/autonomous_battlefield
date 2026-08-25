@@ -88,21 +88,23 @@ The normal deployment command renders and applies observability after the
 application rollouts:
 
 ```bash
+./scripts/create-kind-cluster.sh
 ./scripts/deploy-kind.sh
 ./scripts/smoke-test-kind.sh
 ```
 
-Open the provisioned dashboard:
+Visit `http://grafana.localhost:8888` and open **Autonomous Battlefield /
+Autonomous Battlefield Overview**. Local Grafana allows anonymous Viewer access
+and disables basic login. Envoy Gateway exposes it only through a Kind node port
+bound to `127.0.0.1`, so it is reachable from the local machine but not the
+network.
+
+As a troubleshooting fallback, bypass the gateway with a temporary forward:
 
 ```bash
 kubectl port-forward --namespace battlefield \
   service/battlefield-grafana 3000:3000
 ```
-
-Then visit `http://localhost:3000` and open **Autonomous Battlefield / Autonomous
-Battlefield Overview**. Local Grafana allows anonymous Viewer access, disables
-basic login, and is reachable only through an explicit port-forward unless the
-operator exposes it separately.
 
 Inspect Prometheus targets, rules, and queries:
 
