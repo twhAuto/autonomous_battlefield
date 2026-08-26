@@ -387,7 +387,7 @@ describe('App', () => {
             sequence: 1,
             tick: 3,
             type: 'battle_failed',
-            data: { detail: null, context: { phase: 'advance' } },
+            data: { detail: null, context: { phase: 'advance' }, retryable: false, attempts: 3 },
             createdAt: '2026-08-21T00:00:00Z',
           }],
           nextCursor: 1,
@@ -402,5 +402,7 @@ describe('App', () => {
     expect(screen.getByText('engine_error')).toBeInTheDocument()
     expect(await screen.findByText('{"phase":"advance"}')).toBeInTheDocument()
     expect(screen.getByText('—')).toBeInTheDocument()
+    expect(screen.getByText('false')).toBeInTheDocument()
+    expect(screen.getByText('3', { selector: 'dd' })).toBeInTheDocument()
   })
 })

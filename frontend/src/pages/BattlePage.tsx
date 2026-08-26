@@ -4,6 +4,7 @@ import {
   BattleApiError,
   BattleEvent,
   BattleRun,
+  JsonValue,
   getBattle,
   listBattleEvents,
 } from '../api/battles'
@@ -379,8 +380,10 @@ function EventRow({ event }: Readonly<{ event: BattleEvent }>) {
   )
 }
 
-function formatEventValue(value: unknown) {
+function formatEventValue(value: JsonValue) {
   if (value === null) return '—'
-  if (typeof value === 'object') return JSON.stringify(value) ?? '—'
-  return value === undefined ? 'undefined' : value.toString()
+  if (typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  if (typeof value === 'number') return value.toString()
+  return value
 }
