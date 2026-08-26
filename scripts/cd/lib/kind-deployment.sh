@@ -1,0 +1,416 @@
+#!/usr/bin/env bash
+
+# Internal deployment functions. Configuration and runtime state are owned by
+# scripts/cd/deploy-kind.sh, which is the supported entry point.
+
+kind_deploy_kube() {
+  kubectl --context "${kube_context}" "$@"
+}
+
+kind_deploy_require_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Required command not found: $1" >&2
+    return 1
+  fi
+}
+
+kind_deploy_validate_inputs() {
+  if [[ "$#" -gt 1 ]]; then
+    echo "Usage: ${deploy_command} [full-git-sha]" >&2
+    return 1
+  fi
+
+  for command in docker git grep kind kubectl; do
+    kind_deploy_require_command "${command}"
+  done
+
+  if [[ "${rollback_on_failure}" != "0" && "${rollback_on_failure}" != "1" ]]; then
+    echo "ROLLBACK_ON_FAILURE must be either 0 or 1." >&2
+    return 1
+  fi
+
+  if [[ ! "${rollout_timeout}" =~ ^[1-9][0-9]*s$ ]]; then
+    echo "ROLLOUT_TIMEOUT must be a positive number of seconds such as 120s." >&2
+    return 1
+  fi
+
+  for image_name in "${backend_image}" "${frontend_image}"; do
+    if [[ ! "${image_name}" =~ ^[a-z0-9][a-z0-9._:/-]*$ ]]; then
+      echo "Invalid container image name: ${image_name}" >&2
+      return 1
+    fi
+  done
+
+  if [[ ! "${image_tag}" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "The image tag must be a full 40-character lowercase Git commit SHA." >&2
+    return 1
+  fi
+
+  if ! git -C "${project_dir}" cat-file -e "${image_tag}^{commit}" 2>/dev/null; then
+    echo "The commit ${image_tag} is not available in this Git repository." >&2
+    return 1
+  fi
+
+  if deployment_component_selected backend; then
+    if [[ ! "${backend_image_tag}" =~ ^[0-9a-f]{40}$ ]] \
+      || ! git -C "${project_dir}" cat-file -e "${backend_image_tag}^{commit}" 2>/dev/null; then
+      echo "BACKEND_IMAGE_TAG must be an available full Git commit SHA." >&2
+      return 1
+    fi
+  fi
+
+  if deployment_component_selected frontend; then
+    if [[ ! "${frontend_image_tag}" =~ ^[0-9a-f]{40}$ ]] \
+      || ! git -C "${project_dir}" cat-file -e "${frontend_image_tag}^{commit}" 2>/dev/null; then
+      echo "FRONTEND_IMAGE_TAG must be an available full Git commit SHA." >&2
+      return 1
+    fi
+  fi
+}
+
+kind_deploy_validate_cluster() {
+  if ! kind get clusters | grep -Fxq "${cluster_name}"; then
+    echo "kind cluster not found: ${cluster_name}" >&2
+    echo "Create it with ./scripts/cd/create-kind-cluster.sh" >&2
+    return 1
+  fi
+
+  if ! kind_deploy_kube get customresourcedefinition/gateways.gateway.networking.k8s.io \
+    >/dev/null 2>&1 \
+    || ! kind_deploy_kube get customresourcedefinition/envoyproxies.gateway.envoyproxy.io \
+      >/dev/null 2>&1; then
+    echo "Envoy Gateway and the Gateway API are not installed in ${cluster_name}." >&2
+    echo "Install them with ./scripts/cd/create-kind-cluster.sh" >&2
+    return 1
+  fi
+
+  kind_deploy_kube rollout status deployment/envoy-gateway \
+    --namespace envoy-gateway-system \
+    --timeout="${rollout_timeout}"
+}
+
+kind_deploy_capture_current_images() {
+  current_backend_image="$(
+    kind_deploy_kube get deployment/battlefield-api \
+      --namespace "${namespace}" \
+      -o jsonpath='{.spec.template.spec.containers[?(@.name=="api")].image}' \
+      2>/dev/null || true
+  )"
+  current_engine_image="$(
+    kind_deploy_kube get deployment/battlefield-engine \
+      --namespace "${namespace}" \
+      -o jsonpath='{.spec.template.spec.containers[?(@.name=="engine")].image}' \
+      2>/dev/null || true
+  )"
+  current_frontend_image="$(
+    kind_deploy_kube get deployment/battlefield-frontend \
+      --namespace "${namespace}" \
+      -o jsonpath='{.spec.template.spec.containers[?(@.name=="frontend")].image}' \
+      2>/dev/null || true
+  )"
+}
+
+kind_deploy_resolve_images() {
+  effective_backend_image="${backend_image}"
+  effective_backend_tag="${backend_image_tag}"
+  effective_frontend_image="${frontend_image}"
+  effective_frontend_tag="${frontend_image_tag}"
+
+  if ! deployment_component_selected backend \
+    && { deployment_component_selected application || deployment_component_selected migration; }; then
+    if [[ -z "${current_backend_image}" \
+      || "${current_backend_image}" != "${current_engine_image}" \
+      || "${current_backend_image}" == *@sha256:* \
+      || "${current_backend_image}" != *:* ]]; then
+      echo "Cannot preserve the current backend image; include backend in DEPLOY_COMPONENTS." >&2
+      return 1
+    fi
+    effective_backend_image="${current_backend_image%:*}"
+    effective_backend_tag="${current_backend_image##*:}"
+  fi
+
+  if ! deployment_component_selected frontend && deployment_component_selected application; then
+    if [[ -z "${current_frontend_image}" \
+      || "${current_frontend_image}" == *@sha256:* \
+      || "${current_frontend_image}" != *:* ]]; then
+      echo "Cannot preserve the current frontend image; include frontend in DEPLOY_COMPONENTS." >&2
+      return 1
+    fi
+    effective_frontend_image="${current_frontend_image%:*}"
+    effective_frontend_tag="${current_frontend_image##*:}"
+  fi
+}
+
+kind_deploy_validate_artifacts() {
+  if deployment_component_selected backend \
+    && ! docker image inspect "${backend_image}:${backend_image_tag}" >/dev/null 2>&1; then
+    echo "Local image not found: ${backend_image}:${backend_image_tag}" >&2
+    echo "Build the backend revision first with BUILD_COMPONENTS=backend ./scripts/ci/build-images.sh" >&2
+    return 1
+  fi
+
+  if deployment_component_selected frontend \
+    && ! docker image inspect "${frontend_image}:${frontend_image_tag}" >/dev/null 2>&1; then
+    echo "Local image not found: ${frontend_image}:${frontend_image_tag}" >&2
+    echo "Build the frontend revision first with BUILD_COMPONENTS=frontend ./scripts/ci/build-images.sh" >&2
+    return 1
+  fi
+
+  if deployment_component_selected infrastructure && [[ ! -f "${secret_file}" ]]; then
+    echo "Local Kubernetes secret file not found: ${secret_file}" >&2
+    echo "Copy secret.env.example to secret.env before deploying." >&2
+    return 1
+  fi
+}
+
+kind_deploy_prepare_overlays() {
+  runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/autonomous-battlefield-kustomize.XXXXXX")"
+  mkdir -p \
+    "${runtime_dir}/deploy/base" \
+    "${runtime_dir}/deploy/overlays/local"
+
+  cp -R \
+    "${project_dir}/deploy/base/application" \
+    "${project_dir}/deploy/base/infrastructure" \
+    "${project_dir}/deploy/base/migration" \
+    "${runtime_dir}/deploy/base/"
+  cp -R \
+    "${project_dir}/deploy/overlays/local/application" \
+    "${project_dir}/deploy/overlays/local/gateway" \
+    "${project_dir}/deploy/overlays/local/infrastructure" \
+    "${project_dir}/deploy/overlays/local/migration" \
+    "${project_dir}/deploy/overlays/local/observability" \
+    "${runtime_dir}/deploy/overlays/local/"
+  cp -R \
+    "${project_dir}/deploy/overlays/local/application" \
+    "${runtime_dir}/deploy/overlays/local/rollback-application"
+
+  if deployment_component_selected infrastructure; then
+    cp "${secret_file}" "${runtime_dir}/deploy/overlays/local/infrastructure/secret.env"
+    chmod 600 "${runtime_dir}/deploy/overlays/local/infrastructure/secret.env"
+  fi
+
+  rollback_overlay="${runtime_dir}/deploy/overlays/local/rollback-application"
+
+  if deployment_component_selected application; then
+    cat >>"${runtime_dir}/deploy/overlays/local/application/kustomization.yaml" <<EOF
+
+images:
+  - name: autonomous-battlefield-backend
+    newName: "${effective_backend_image}"
+    newTag: "${effective_backend_tag}"
+  - name: autonomous-battlefield-frontend
+    newName: "${effective_frontend_image}"
+    newTag: "${effective_frontend_tag}"
+EOF
+  fi
+
+  if deployment_component_selected migration; then
+    cat >>"${runtime_dir}/deploy/overlays/local/migration/kustomization.yaml" <<EOF
+
+images:
+  - name: autonomous-battlefield-backend
+    newName: "${effective_backend_image}"
+    newTag: "${effective_backend_tag}"
+EOF
+  fi
+}
+
+kind_deploy_load_images() {
+  if deployment_component_selected backend || deployment_component_selected frontend; then
+    echo "Loading changed commit-addressed images into kind cluster ${cluster_name}..."
+  fi
+  if deployment_component_selected backend; then
+    kind load docker-image "${backend_image}:${backend_image_tag}" --name "${cluster_name}"
+  fi
+  if deployment_component_selected frontend; then
+    kind load docker-image "${frontend_image}:${frontend_image_tag}" --name "${cluster_name}"
+  fi
+}
+
+kind_deploy_infrastructure() {
+  echo "Applying local infrastructure..."
+  kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/infrastructure"
+  kind_deploy_kube rollout status statefulset/battlefield-postgres \
+    --namespace "${namespace}" \
+    --timeout="${rollout_timeout}"
+}
+
+kind_deploy_migration() {
+  echo "Running the database migration gate..."
+  kind_deploy_kube delete job battlefield-migrate \
+    --namespace "${namespace}" \
+    --ignore-not-found
+  kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/migration"
+
+  if ! kind_deploy_kube wait --for=condition=complete \
+    job/battlefield-migrate \
+    --namespace "${namespace}" \
+    --timeout="${rollout_timeout}"; then
+    kind_deploy_kube logs job/battlefield-migrate --namespace "${namespace}" || true
+    return 1
+  fi
+
+  kind_deploy_kube logs job/battlefield-migrate --namespace "${namespace}"
+}
+
+kind_deploy_application() {
+  local deployment
+
+  echo "Deploying selected application components for revision ${image_tag}..."
+
+  if [[ -n "${current_backend_image}" \
+    && "${current_backend_image}" == "${current_engine_image}" \
+    && -n "${current_frontend_image}" \
+    && "${current_backend_image}" != *@sha256:* \
+    && "${current_frontend_image}" != *@sha256:* \
+    && "${current_backend_image}" == *:* \
+    && "${current_frontend_image}" == *:* ]]; then
+    previous_backend_name="${current_backend_image%:*}"
+    previous_backend_tag="${current_backend_image##*:}"
+    previous_frontend_name="${current_frontend_image%:*}"
+    previous_frontend_tag="${current_frontend_image##*:}"
+
+    cat >>"${rollback_overlay}/kustomization.yaml" <<EOF
+
+images:
+  - name: autonomous-battlefield-backend
+    newName: "${previous_backend_name}"
+    newTag: "${previous_backend_tag}"
+  - name: autonomous-battlefield-frontend
+    newName: "${previous_frontend_name}"
+    newTag: "${previous_frontend_tag}"
+EOF
+    rollback_overlay_ready=1
+  fi
+
+  for deployment in battlefield-api battlefield-engine battlefield-frontend; do
+    previous_revisions["${deployment}"]="$(
+      kind_deploy_kube get "deployment/${deployment}" \
+        --namespace "${namespace}" \
+        -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}' \
+        2>/dev/null || true
+    )"
+  done
+
+  application_update_started=1
+  kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/application"
+
+  for deployment in battlefield-api battlefield-engine battlefield-frontend; do
+    kind_deploy_kube rollout status "deployment/${deployment}" \
+      --namespace "${namespace}" \
+      --timeout="${rollout_timeout}"
+  done
+  application_update_started=0
+}
+
+kind_deploy_observability() {
+  local deployment
+
+  echo "Deploying local observability stack..."
+  kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/observability"
+  for deployment in battlefield-prometheus battlefield-grafana; do
+    kind_deploy_kube rollout status "deployment/${deployment}" \
+      --namespace "${namespace}" \
+      --timeout="${rollout_timeout}"
+  done
+}
+
+kind_deploy_gateway() {
+  echo "Deploying local HTTP gateway routes..."
+  kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/gateway"
+  kind_deploy_kube wait --for=condition=Programmed \
+    gateway/battlefield-local \
+    --namespace "${namespace}" \
+    --timeout="${rollout_timeout}"
+}
+
+kind_deploy_rollback_application() {
+  local rollback_failed=0
+  local rollback_started=0
+  local deployment
+
+  echo "Deployment failed; restoring the previous application revisions..." >&2
+
+  if [[ "${rollback_overlay_ready}" == "1" ]]; then
+    if ! kind_deploy_kube apply -k "${rollback_overlay}"; then
+      return 1
+    fi
+
+    for deployment in battlefield-api battlefield-engine battlefield-frontend; do
+      if ! kind_deploy_kube rollout status "deployment/${deployment}" \
+        --namespace "${namespace}" \
+        --timeout="${rollout_timeout}"; then
+        rollback_failed=1
+      fi
+    done
+
+    return "${rollback_failed}"
+  fi
+
+  for deployment in battlefield-api battlefield-engine battlefield-frontend; do
+    local previous_revision="${previous_revisions[${deployment}]:-}"
+    local current_revision
+    current_revision="$(
+      kind_deploy_kube get "deployment/${deployment}" \
+        --namespace "${namespace}" \
+        -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}' \
+        2>/dev/null || true
+    )"
+
+    if [[ -n "${previous_revision}" && "${current_revision}" != "${previous_revision}" ]]; then
+      rollback_started=1
+      if ! kind_deploy_kube rollout undo "deployment/${deployment}" \
+        --namespace "${namespace}" \
+        --to-revision "${previous_revision}"; then
+        rollback_failed=1
+      fi
+    fi
+  done
+
+  if [[ "${rollback_started}" == "1" ]]; then
+    for deployment in battlefield-api battlefield-engine battlefield-frontend; do
+      if ! kind_deploy_kube rollout status "deployment/${deployment}" \
+        --namespace "${namespace}" \
+        --timeout="${rollout_timeout}"; then
+        rollback_failed=1
+      fi
+    done
+  fi
+
+  return "${rollback_failed}"
+}
+
+kind_deploy_cleanup() {
+  local exit_code=$?
+  trap - EXIT INT TERM
+
+  if [[ "${exit_code}" != "0" \
+    && "${rollback_on_failure}" == "1" \
+    && "${application_update_started}" == "1" ]]; then
+    if ! kind_deploy_rollback_application; then
+      echo "Automatic application rollback did not complete successfully." >&2
+    fi
+  fi
+
+  if [[ -n "${runtime_dir}" && -d "${runtime_dir}" ]]; then
+    rm -rf -- "${runtime_dir}"
+  fi
+
+  exit "${exit_code}"
+}
+
+kind_deploy_print_summary() {
+  echo
+  echo "Applied components (${deploy_components}) for ${image_tag} to kind cluster ${cluster_name}."
+  kind_deploy_kube get deployments \
+    --namespace "${namespace}" \
+    -o custom-columns='NAME:.metadata.name,READY:.status.readyReplicas,DESIRED:.spec.replicas,IMAGE:.spec.template.spec.containers[0].image'
+  kind_deploy_kube get job battlefield-migrate \
+    --namespace "${namespace}" \
+    -o custom-columns='NAME:.metadata.name,SUCCEEDED:.status.succeeded,IMAGE:.spec.template.spec.containers[0].image' \
+    2>/dev/null || true
+  echo
+  echo "Frontend: http://battlefield.localhost:8888"
+  echo "Grafana:  http://grafana.localhost:8888"
+}

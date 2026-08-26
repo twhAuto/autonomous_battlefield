@@ -16,7 +16,9 @@ pipeline {
         KIND_CLUSTER_NAME = 'battlefield'
         KUBERNETES_NAMESPACE = 'battlefield'
         KUBERNETES_CONTEXT = 'kind-battlefield'
-        PREVIOUS_IMAGE_TAG = ''
+        DEPLOY_COMPONENTS = 'all'
+        PREVIOUS_BACKEND_IMAGE_TAG = ''
+        PREVIOUS_FRONTEND_IMAGE_TAG = ''
         TRIVY_IMAGE = 'ghcr.io/aquasecurity/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969'
     }
 
@@ -48,13 +50,13 @@ pipeline {
             parallel {
                 stage('Go lint') {
                     steps {
-                        sh './scripts/lint-go.sh'
+                        sh './scripts/ci/lint-go.sh'
                     }
                 }
 
                 stage('Backend tests and coverage') {
                     steps {
-                        sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" ./scripts/test-go-coverage.sh'
+                        sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" ./scripts/ci/test-go-coverage.sh'
                     }
                 }
 
@@ -76,6 +78,7 @@ pipeline {
                             kubectl kustomize deploy/overlays/local/application >/dev/null
                             kubectl kustomize deploy/overlays/local/observability >/dev/null
                             kubectl kustomize deploy/overlays/local/gateway >/dev/null
+                            ./scripts/ci/test-deployment-components.sh
                         '''
                     }
                 }
@@ -85,7 +88,7 @@ pipeline {
                     script {
                         def summaryFile = '.jenkins-coverage-check.md'
                         def summaryStatus = sh(
-                            script: "./scripts/coverage-check-summary.sh > ${summaryFile}",
+                            script: "./scripts/ci/coverage-check-summary.sh > ${summaryFile}",
                             returnStatus: true
                         )
                         def summary = fileExists(summaryFile)
@@ -115,13 +118,13 @@ pipeline {
             parallel {
                 stage('Main Go lint') {
                     steps {
-                        sh './scripts/lint-go.sh'
+                        sh './scripts/ci/lint-go.sh'
                     }
                 }
 
                 stage('Main backend coverage') {
                     steps {
-                        sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" ./scripts/test-go-coverage.sh'
+                        sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" ./scripts/ci/test-go-coverage.sh'
                     }
                 }
 
@@ -156,15 +159,46 @@ pipeline {
             }
         }
 
+        stage('Determine deployment scope') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh './scripts/ci/test-deployment-components.sh'
+                script {
+                    def previousSuccessfulCommit = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: ''
+                    withEnv(["DEPLOY_BASE_REVISION=${previousSuccessfulCommit}"]) {
+                        env.DEPLOY_COMPONENTS = sh(
+                            script: '''
+                                ./scripts/cd/detect-deployment-components.sh \
+                                    "${DEPLOY_BASE_REVISION}" \
+                                    "${IMAGE_TAG}"
+                            ''',
+                            returnStdout: true
+                        ).trim()
+                    }
+                    echo "Deployment components: ${env.DEPLOY_COMPONENTS}"
+                }
+            }
+        }
+
         stage('Build immutable images') {
             when {
                 anyOf {
                     changeRequest target: 'main'
-                    branch 'main'
+                    allOf {
+                        branch 'main'
+                        expression {
+                            def components = (env.DEPLOY_COMPONENTS ?: 'all').tokenize(',')
+                            components.contains('all') ||
+                                components.contains('backend') ||
+                                components.contains('frontend')
+                        }
+                    }
                 }
             }
             steps {
-                sh './scripts/build-images.sh'
+                sh './scripts/ci/build-images.sh'
             }
         }
 
@@ -172,21 +206,34 @@ pipeline {
             when {
                 anyOf {
                     changeRequest target: 'main'
-                    branch 'main'
+                    allOf {
+                        branch 'main'
+                        expression {
+                            def components = (env.DEPLOY_COMPONENTS ?: 'all').tokenize(',')
+                            components.contains('all') ||
+                                components.contains('backend') ||
+                                components.contains('frontend')
+                        }
+                    }
                 }
             }
             steps {
-                sh './scripts/scan-images.sh "${IMAGE_TAG}"'
+                sh './scripts/ci/scan-images.sh "${IMAGE_TAG}"'
             }
         }
 
         stage('Deploy local kind') {
             when {
-                branch 'main'
+                allOf {
+                    branch 'main'
+                    expression {
+                        (env.DEPLOY_COMPONENTS ?: 'all') != 'none'
+                    }
+                }
             }
             steps {
                 script {
-                    def previousImage = sh(
+                    def previousBackendImage = sh(
                         script: '''
                             kubectl --context "${KUBERNETES_CONTEXT}" \
                                 get deployment/battlefield-api \
@@ -196,8 +243,24 @@ pipeline {
                         ''',
                         returnStdout: true
                     ).trim()
-                    env.PREVIOUS_IMAGE_TAG = previousImage.contains(':') ? previousImage.substring(previousImage.lastIndexOf(':') + 1) : ''
-                    echo "Previous deployment SHA: ${env.PREVIOUS_IMAGE_TAG ?: 'none'}"
+                    def previousFrontendImage = sh(
+                        script: '''
+                            kubectl --context "${KUBERNETES_CONTEXT}" \
+                                get deployment/battlefield-frontend \
+                                --namespace "${KUBERNETES_NAMESPACE}" \
+                                -o jsonpath='{.spec.template.spec.containers[?(@.name=="frontend")].image}' \
+                                2>/dev/null || true
+                        ''',
+                        returnStdout: true
+                    ).trim()
+                    env.PREVIOUS_BACKEND_IMAGE_TAG = previousBackendImage.contains(':')
+                        ? previousBackendImage.substring(previousBackendImage.lastIndexOf(':') + 1)
+                        : ''
+                    env.PREVIOUS_FRONTEND_IMAGE_TAG = previousFrontendImage.contains(':')
+                        ? previousFrontendImage.substring(previousFrontendImage.lastIndexOf(':') + 1)
+                        : ''
+                    echo "Previous backend SHA: ${env.PREVIOUS_BACKEND_IMAGE_TAG ?: 'none'}"
+                    echo "Previous frontend SHA: ${env.PREVIOUS_FRONTEND_IMAGE_TAG ?: 'none'}"
                 }
                 withCredentials([
                     file(
@@ -205,32 +268,43 @@ pipeline {
                         variable: 'BATTLEFIELD_SECRET_FILE'
                     )
                 ]) {
-                    sh 'ROLLBACK_ON_FAILURE=1 ./scripts/deploy-kind.sh "${IMAGE_TAG}"'
+                    sh 'ROLLBACK_ON_FAILURE=1 ./scripts/cd/deploy-kind.sh "${IMAGE_TAG}"'
                 }
             }
         }
 
         stage('Verify deployment') {
             when {
-                branch 'main'
+                allOf {
+                    branch 'main'
+                    expression {
+                        (env.DEPLOY_COMPONENTS ?: 'all') != 'none'
+                    }
+                }
             }
             steps {
-                sh './scripts/smoke-test-kind.sh'
+                sh './scripts/cd/smoke-test-kind.sh'
             }
             post {
                 failure {
                     script {
-                        if (env.PREVIOUS_IMAGE_TAG ==~ /[0-9a-f]{40}/) {
-                            withCredentials([
-                                file(
-                                    credentialsId: 'battlefield-local-secret-env',
-                                    variable: 'BATTLEFIELD_SECRET_FILE'
-                                )
-                            ]) {
-                                sh './scripts/rollback-kind.sh "${PREVIOUS_IMAGE_TAG}"'
-                            }
+                        def components = (env.DEPLOY_COMPONENTS ?: 'all').tokenize(',')
+                        def applicationChanged = components.contains('all') ||
+                            components.contains('backend') ||
+                            components.contains('frontend') ||
+                            components.contains('application')
+
+                        if (!applicationChanged) {
+                            echo 'The targeted deployment did not change application images; skipping image rollback.'
+                        } else if (env.PREVIOUS_BACKEND_IMAGE_TAG ==~ /[0-9a-f]{40}/ &&
+                            env.PREVIOUS_FRONTEND_IMAGE_TAG ==~ /[0-9a-f]{40}/) {
+                            sh '''
+                                ./scripts/cd/rollback-kind.sh \
+                                    "${PREVIOUS_BACKEND_IMAGE_TAG}" \
+                                    "${PREVIOUS_FRONTEND_IMAGE_TAG}"
+                            '''
                         } else {
-                            echo 'No previous immutable SHA is available for automatic rollback.'
+                            echo 'Previous backend and frontend SHAs are not both available for automatic rollback.'
                         }
                     }
                 }
@@ -244,7 +318,11 @@ pipeline {
                 if (env.CHANGE_ID) {
                     echo "CI verified pull request ${env.CHANGE_ID} at ${env.IMAGE_TAG}."
                 } else if (env.BRANCH_NAME == 'main') {
-                    echo "CD deployed and verified ${env.IMAGE_TAG} in Jenkins build ${env.BUILD_NUMBER}."
+                    if (env.DEPLOY_COMPONENTS == 'none') {
+                        echo "CI verified ${env.IMAGE_TAG}; no deployable components changed."
+                    } else {
+                        echo "CD deployed ${env.DEPLOY_COMPONENTS} and verified ${env.IMAGE_TAG} in Jenkins build ${env.BUILD_NUMBER}."
+                    }
                 } else {
                     echo "No CI/CD action is configured for a direct ${env.BRANCH_NAME} branch push."
                 }

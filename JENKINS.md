@@ -414,7 +414,7 @@ until curl --silent --fail http://localhost:9000/api/system/status | \
 kind get clusters
 kubectl cluster-info --context kind-battlefield
 kubectl get pods --namespace battlefield
-./scripts/smoke-test-kind.sh
+./scripts/cd/smoke-test-kind.sh
 ```
 
 If a service was stopped intentionally, start it again with
@@ -425,14 +425,14 @@ If `kind get clusters` does not include `battlefield`, recreate it and redeploy
 the committed revision:
 
 ```bash
-./scripts/create-kind-cluster.sh
-./scripts/build-images.sh
-./scripts/deploy-kind.sh
-./scripts/smoke-test-kind.sh
+./scripts/cd/create-kind-cluster.sh
+./scripts/ci/build-images.sh
+./scripts/cd/deploy-kind.sh
+./scripts/cd/smoke-test-kind.sh
 ```
 
 If the cluster predates local Gateway API access, recreate it with
-`./scripts/create-kind-cluster.sh --recreate`. This explicitly deletes the
+`./scripts/cd/create-kind-cluster.sh --recreate`. This explicitly deletes the
 cluster and its local PostgreSQL data before publishing the required node port.
 
 The build and deployment commands require a clean Git worktree. The local
@@ -466,47 +466,60 @@ For a pull request targeting `main`, the pipeline performs:
 2. Parallel Go formatting/vet, Go tests with a coverage profile, frontend tests
    with LCOV and JSON-summary coverage, frontend build, and Kustomize rendering.
 3. A dedicated GitHub `Coverage` check containing both coverage summaries.
-4. Image build through `scripts/build-images.sh`. Jenkins `BUILD_NUMBER`
+4. Image build through `scripts/ci/build-images.sh`. Jenkins `BUILD_NUMBER`
    produces the human-readable build alias; the full SHA remains immutable.
-5. Image scanning through `scripts/scan-images.sh`. Trivy v0.74.0 is pinned by
+5. Image scanning through `scripts/ci/scan-images.sh`. Trivy v0.74.0 is pinned by
    image digest and rejects fixable HIGH or CRITICAL findings.
 
 After that pull request is merged, the `main` pipeline performs:
 
 1. Clean checkout of the exact merged commit.
 2. Regenerate coverage and wait for the SonarQube quality gate.
-3. Rebuild and scan immutable images tagged with the merge SHA. A PR validation
-   SHA and the final merge SHA are not assumed to be interchangeable.
-4. A one-shot migration Job followed by the application, observability, and
-   local Gateway API rollouts.
-5. Frontend and Grafana gateway access, API readiness, API metrics, Prometheus
-   target discovery, and Grafana dashboard provisioning smoke tests.
+3. Compare the merge SHA with `GIT_PREVIOUS_SUCCESSFUL_COMMIT` and classify
+   changed deployment components. If the baseline is unavailable, deploy all
+   components conservatively. Unclassified paths also deploy all components and
+   emit a warning until an explicit classifier rule is added.
+4. Build and scan only changed backend and frontend images. A PR validation SHA
+   and the final merge SHA are not assumed to be interchangeable.
+5. Apply only the selected infrastructure, migration, application,
+   observability, and Gateway API stages. Documentation-only changes deploy
+   nothing.
+6. After a deployment, verify frontend and Grafana gateway access, API
+   readiness and metrics, Prometheus target discovery, and Grafana dashboard
+   provisioning.
 
-`scripts/deploy-kind.sh` can reapply a temporary Kustomize overlay containing
+`scripts/cd/deploy-kind.sh` can reapply a temporary Kustomize overlay containing
 the previous images if an application apply or rollout fails. Before deploying,
-Jenkins records the currently deployed full SHA. If post-deployment smoke
-testing fails, `scripts/rollback-kind.sh` redeploys that exact immutable
-revision. Database migrations are deliberately not reversed automatically, so
-migrations must remain backward-compatible with the previous application
-revision.
+Jenkins records the independently deployed backend and frontend SHAs. If an
+application-related deployment later fails smoke testing,
+`scripts/cd/rollback-kind.sh` restores those two exact immutable revisions without
+re-running migrations or changing observability. Image rollback is skipped for
+infrastructure-, migration-, observability-, or gateway-only changes. Database
+migrations are deliberately not reversed automatically, so migrations must
+remain backward-compatible with the previous application revision.
 
-The local pipeline loads images directly into kind. The later AWS version will
-push both tags to ECR and deploy the SHA tag to EKS while preserving the same
-test, scan, migration, verification, and rollback gates.
+The local pipeline loads changed images directly into kind. The later AWS
+version will push changed tags to ECR and deploy their SHA tags to EKS while
+preserving the same test, scan, migration, verification, and rollback gates.
 
 ## Run the pipeline commands without Jenkins
 
 After committing the intended source so the worktree is clean:
 
 ```bash
-./scripts/lint-go.sh
-./scripts/test-go-coverage.sh
+./scripts/ci/lint-go.sh
+./scripts/ci/test-go-coverage.sh
 (cd frontend && npm ci && npm test -- --coverage && npm run build)
-BUILD_NUMBER=1 ./scripts/build-images.sh
-./scripts/scan-images.sh "$(git rev-parse HEAD)"
-ROLLBACK_ON_FAILURE=1 ./scripts/deploy-kind.sh "$(git rev-parse HEAD)"
-./scripts/smoke-test-kind.sh
+BUILD_NUMBER=1 ./scripts/ci/build-images.sh
+./scripts/ci/scan-images.sh "$(git rev-parse HEAD)"
+ROLLBACK_ON_FAILURE=1 ./scripts/cd/deploy-kind.sh "$(git rev-parse HEAD)"
+./scripts/cd/smoke-test-kind.sh
 ```
+
+Set `DEPLOY_COMPONENTS=frontend`, `backend`, `observability`, or another
+supported comma-separated selection on the build, scan, and deploy commands to
+exercise an incremental path. Run
+`./scripts/ci/test-deployment-components.sh` to verify the path classifier.
 
 These commands exercise the same local path, but they do not validate Jenkins
 Declarative Pipeline syntax. Use the configured Jenkins Multibranch job for the

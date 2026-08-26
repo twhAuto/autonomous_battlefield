@@ -2,7 +2,7 @@
 
 set -Eeuo pipefail
 
-project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 backend_dir="${project_dir}/backend"
 coverage_file="${GO_COVERAGE_FILE:-${backend_dir}/coverage.out}"
 coverage_summary_file="${GO_COVERAGE_SUMMARY_FILE:-${backend_dir}/coverage-total.txt}"

@@ -2,13 +2,27 @@
 
 set -Eeuo pipefail
 
-project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=scripts/lib/deployment-components.sh
+source "${project_dir}/scripts/lib/deployment-components.sh"
+
 backend_image="${BACKEND_IMAGE:-autonomous-battlefield-backend}"
 frontend_image="${FRONTEND_IMAGE:-autonomous-battlefield-frontend}"
 allow_dirty="${ALLOW_DIRTY:-0}"
 version_file="${VERSION_FILE:-${project_dir}/VERSION}"
 ci_build_number="${CI_BUILD_NUMBER:-${BUILD_NUMBER:-${GITHUB_RUN_NUMBER:-}}}"
 ci_build_attempt="${CI_BUILD_ATTEMPT:-${GITHUB_RUN_ATTEMPT:-}}"
+build_components="${BUILD_COMPONENTS:-${DEPLOY_COMPONENTS:-all}}"
+deployment_components_select "${build_components}" build
+build_backend=0
+build_frontend=0
+deployment_component_selected backend && build_backend=1
+deployment_component_selected frontend && build_frontend=1
+
+if [[ "${build_backend}" == "0" && "${build_frontend}" == "0" ]]; then
+  echo "No application image changes detected; skipping image build."
+  exit 0
+fi
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -105,30 +119,42 @@ if [[ -n "${ci_build_number}" ]]; then
   frontend_tags+=(--tag "${frontend_image}:${build_version}")
 fi
 
-echo "Building ${backend_image}:${image_tag} (version ${build_version})"
-docker build \
-  "${common_labels[@]}" \
-  "${backend_tags[@]}" \
-  "${project_dir}/backend"
+if [[ "${build_backend}" == "1" ]]; then
+  echo "Building ${backend_image}:${image_tag} (version ${build_version})"
+  docker build \
+    "${common_labels[@]}" \
+    "${backend_tags[@]}" \
+    "${project_dir}/backend"
+fi
 
-echo "Building ${frontend_image}:${image_tag} (version ${build_version})"
-docker build \
-  "${common_labels[@]}" \
-  "${frontend_tags[@]}" \
-  "${project_dir}/frontend"
+if [[ "${build_frontend}" == "1" ]]; then
+  echo "Building ${frontend_image}:${image_tag} (version ${build_version})"
+  docker build \
+    "${common_labels[@]}" \
+    "${frontend_tags[@]}" \
+    "${project_dir}/frontend"
+fi
 
 echo
 echo "Built commit-addressed images:"
-echo "  ${backend_image}:${image_tag}"
-echo "  ${frontend_image}:${image_tag}"
+if [[ "${build_backend}" == "1" ]]; then
+  echo "  ${backend_image}:${image_tag}"
+fi
+if [[ "${build_frontend}" == "1" ]]; then
+  echo "  ${frontend_image}:${image_tag}"
+fi
 
 if [[ -n "${ci_build_number}" ]]; then
   echo
   echo "CI build aliases for the same images:"
-  echo "  ${backend_image}:${build_version}"
-  echo "  ${frontend_image}:${build_version}"
+  if [[ "${build_backend}" == "1" ]]; then
+    echo "  ${backend_image}:${build_version}"
+  fi
+  if [[ "${build_frontend}" == "1" ]]; then
+    echo "  ${frontend_image}:${build_version}"
+  fi
 fi
 
 echo
 echo "Deploy this revision to kind with:"
-echo "  ./scripts/deploy-kind.sh ${image_tag}"
+echo "  ./scripts/cd/deploy-kind.sh ${image_tag}"

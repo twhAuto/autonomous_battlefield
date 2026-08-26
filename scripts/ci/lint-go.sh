@@ -2,7 +2,7 @@
 
 set -Eeuo pipefail
 
-project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 backend_dir="${project_dir}/backend"
 
 for command in go gofmt; do

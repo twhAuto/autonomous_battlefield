@@ -2,7 +2,7 @@
 
 set -uo pipefail
 
-project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 go_summary_file="${GO_COVERAGE_SUMMARY_FILE:-${project_dir}/backend/coverage-total.txt}"
 frontend_summary_file="${FRONTEND_COVERAGE_SUMMARY_FILE:-${project_dir}/frontend/coverage/coverage-summary.json}"
 go_minimum="${GO_COVERAGE_MIN:-80}"
