@@ -53,12 +53,14 @@ export interface BattleRun {
   errorMessage?: string
 }
 
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
+
 export interface BattleEvent {
   attempt: number
   sequence: number
   tick: number
   type: string
-  data: Record<string, unknown>
+  data: Record<string, JsonValue>
   createdAt: string
 }
 
