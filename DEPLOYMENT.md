@@ -63,6 +63,7 @@ deploy/
         ├── application/    Local application composition
         ├── observability/  Composed metrics and logging backends
         │   ├── prometheus/ Metrics collection and alert rules
+        │   ├── kube-state-metrics/  Namespaced Kubernetes object state
         │   ├── grafana/    Metrics UI and dashboard provisioning
         │   ├── elasticsearch/  Disposable local log storage
         │   ├── kibana/     Logging UI and data-view provisioning
@@ -398,7 +399,7 @@ The selected components have these deployment effects:
 | `backend` | Load the backend image into kind; automatically includes `migration` and `application`. |
 | `frontend` | Load the frontend image into kind; automatically includes `application`. |
 | `application` | Apply API, engine, frontend, Services, autoscaling, and disruption-budget resources; wait for application rollouts. |
-| `observability` | Apply Prometheus, Grafana, Fluent Bit, Elasticsearch, Kibana, dashboards, data views, recording rules, and alerts; wait for readiness. |
+| `observability` | Apply Prometheus, kube-state-metrics, Grafana, Fluent Bit, Elasticsearch, Kibana, dashboards, data views, recording rules, and alerts; wait for readiness. |
 | `gateway` | Apply Envoy Gateway routes and wait for the local Gateway to become programmed. |
 | `all` | Execute every action above. |
 | `none` | Build, scan, and deployment commands exit without changing Kubernetes. |
@@ -478,13 +479,18 @@ CPU target is `<unknown>` until metrics-server is installed.
 ### Inspect local observability
 
 The local-only observability overlay deploys Prometheus with namespace-scoped
-pod discovery, Grafana with a provisioned dashboard, and a centralized logging
-path from Fluent Bit through Elasticsearch to Kibana. The deployment script
-waits for every workload and provisions the Kibana data view. The smoke test
-verifies metrics discovery, the Grafana dashboard, Kibana, and indexed logs.
+pod discovery plus authenticated kubelet cAdvisor scraping, kube-state-metrics
+with namespace-scoped workload access, Grafana with provisioned application and
+Kubernetes dashboards, and a centralized logging path from Fluent Bit through
+Elasticsearch to Kibana. The deployment script waits for every workload and
+provisions the Kibana data view. The smoke test verifies application, workload,
+and container resource metrics, both Grafana dashboards, Kibana, and indexed
+logs.
 
 ```bash
 kubectl rollout status deployment/battlefield-prometheus \
+  --namespace battlefield --timeout=120s
+kubectl rollout status deployment/battlefield-kube-state-metrics \
   --namespace battlefield --timeout=120s
 kubectl rollout status deployment/battlefield-grafana \
   --namespace battlefield --timeout=120s
@@ -497,13 +503,16 @@ kubectl rollout status daemonset/battlefield-fluent-bit \
 ```
 
 The application namespace continues to enforce the Pod Security `baseline`
-profile. Fluent Bit is isolated in `battlefield-logging`, whose `privileged`
-enforcement level is required for read-only node log mounts. Its service
-account receives only `get`, `list`, and `watch` access to pods in the
-`battlefield` namespace; the application workloads do not inherit that
-exception.
+profile. kube-state-metrics is non-privileged and can read only selected
+workload objects in `battlefield`. Prometheus has a separate ClusterRole limited
+to node discovery and kubelet metrics-proxy reads. Fluent Bit is isolated in
+`battlefield-logging`, whose `privileged` enforcement level is required for
+read-only node log mounts. Its service account receives only `get`, `list`, and
+`watch` access to pods in the `battlefield` namespace; the application
+workloads do not inherit that exception.
 
-Open `http://grafana.localhost:8888` for the Autonomous Battlefield dashboard.
+Open `http://grafana.localhost:8888` for the Autonomous Battlefield application
+and Kubernetes Workloads dashboards.
 Open `http://kibana.localhost:8888` and select the **Autonomous Battlefield
 Logs** data view in Discover. No port-forward process is required. See
 [OBSERVABILITY.md](OBSERVABILITY.md) for metrics, log queries, direct backend
@@ -552,9 +561,13 @@ inspect `job/battlefield-migrate` only when its Job did not reach `Complete`.
 ### 8. Remove the local deployment
 
 Deleting both local namespaces also deletes the PostgreSQL claim, observability
-data, and logging collector:
+data, and logging collector. Remove Prometheus's cluster-scoped kubelet access
+at the same time:
 
 ```bash
+kubectl delete clusterrole/battlefield-prometheus-kubelet \
+  clusterrolebinding/battlefield-prometheus-kubelet \
+  --ignore-not-found
 kubectl delete namespace battlefield battlefield-logging
 ```
 

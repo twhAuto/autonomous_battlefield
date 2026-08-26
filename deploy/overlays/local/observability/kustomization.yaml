@@ -5,6 +5,7 @@ namespace: battlefield
 
 resources:
   - prometheus
+  - kube-state-metrics
   - grafana
   - elasticsearch
   - kibana

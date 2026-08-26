@@ -13,3 +13,4 @@ configMapGenerator:
   - name: battlefield-grafana-dashboards
     files:
       - battlefield-overview.json
+      - kubernetes-workloads.json

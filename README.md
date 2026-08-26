@@ -119,8 +119,9 @@ The repository includes a staged Kustomize deployment for `kind`:
 3. `deploy/overlays/local/application` creates the API, engine, frontend,
    Services, HPA, and disruption budgets. The portable base Ingress is removed
    locally in favor of Gateway API routes.
-4. `deploy/overlays/local/observability` creates namespace-scoped Prometheus,
-   a provisioned Grafana dashboard, SLO rules, Elasticsearch, and Kibana;
+4. `deploy/overlays/local/observability` creates Prometheus, namespace-scoped
+   kube-state-metrics, provisioned application and Kubernetes Grafana
+   dashboards, SLO rules, Elasticsearch, and Kibana;
    `deploy/overlays/local/logging-collector` isolates the Fluent Bit node log
    collector in its own namespace.
 5. `deploy/overlays/local/gateway` creates Envoy Gateway routes for the

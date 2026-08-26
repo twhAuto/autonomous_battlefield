@@ -486,8 +486,9 @@ After that pull request is merged, the `main` pipeline performs:
    observability, and Gateway API stages. Documentation-only changes deploy
    nothing.
 6. After a deployment, verify frontend, Grafana, and Kibana gateway access, API
-   readiness and metrics, Prometheus target discovery, Grafana dashboard
-   provisioning, the Kibana data view, and Elasticsearch log ingestion.
+   readiness and metrics, Prometheus application, kube-state-metrics, and
+   cAdvisor target discovery, both Grafana dashboards, the Kibana data view,
+   and Elasticsearch log ingestion.
 
 `scripts/cd/deploy-kind.sh` can reapply a temporary Kustomize overlay containing
 the previous images if an application apply or rollout fails. Before deploying,

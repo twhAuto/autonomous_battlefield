@@ -40,3 +40,45 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: battlefield-prometheus-discovery
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: battlefield-prometheus-kubelet
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: autonomous-battlefield
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - nodes/metrics
+      - nodes/proxy
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: battlefield-prometheus-kubelet
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: autonomous-battlefield
+subjects:
+  - kind: ServiceAccount
+    name: battlefield-prometheus
+    namespace: battlefield
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: battlefield-prometheus-kubelet
