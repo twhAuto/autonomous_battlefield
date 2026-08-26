@@ -77,6 +77,7 @@ pipeline {
                             kubectl kustomize deploy/overlays/local/migration >/dev/null
                             kubectl kustomize deploy/overlays/local/application >/dev/null
                             kubectl kustomize deploy/overlays/local/observability >/dev/null
+                            kubectl kustomize deploy/overlays/local/logging-collector >/dev/null
                             kubectl kustomize deploy/overlays/local/gateway >/dev/null
                             ./scripts/ci/test-deployment-components.sh
                         '''

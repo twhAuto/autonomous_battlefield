@@ -9,9 +9,11 @@ namespace="${KUBERNETES_NAMESPACE:-battlefield}"
 kube_context="${KUBERNETES_CONTEXT:-kind-${cluster_name}}"
 api_port="${SMOKE_TEST_API_PORT:-18081}"
 prometheus_port="${SMOKE_TEST_PROMETHEUS_PORT:-18082}"
+elasticsearch_port="${SMOKE_TEST_ELASTICSEARCH_PORT:-18083}"
 gateway_port="${SMOKE_TEST_GATEWAY_PORT:-8888}"
 frontend_host="${SMOKE_TEST_FRONTEND_HOST:-battlefield.localhost}"
 grafana_host="${SMOKE_TEST_GRAFANA_HOST:-grafana.localhost}"
+kibana_host="${SMOKE_TEST_KIBANA_HOST:-kibana.localhost}"
 runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/autonomous-battlefield-smoke.XXXXXX")"
 pids=()
 
@@ -37,7 +39,7 @@ for command in curl kubectl node; do
   fi
 done
 
-ports=("${api_port}" "${prometheus_port}" "${gateway_port}")
+ports=("${api_port}" "${prometheus_port}" "${elasticsearch_port}" "${gateway_port}")
 for port in "${ports[@]}"; do
   if [[ ! "${port}" =~ ^[0-9]+$ ]] || ((port < 1024 || port > 65535)); then
     echo "Smoke-test ports must be integers between 1024 and 65535." >&2
@@ -70,6 +72,13 @@ kube port-forward \
   service/battlefield-api \
   "${api_port}:8080" \
   >"${runtime_dir}/api-port-forward.log" 2>&1 &
+pids+=("$!")
+
+kube port-forward \
+  --namespace "${namespace}" \
+  service/battlefield-elasticsearch \
+  "${elasticsearch_port}:9200" \
+  >"${runtime_dir}/elasticsearch-port-forward.log" 2>&1 &
 pids+=("$!")
 
 wait_for_url() {
@@ -123,6 +132,13 @@ wait_for_url \
   "Grafana health through Gateway API" \
   "http://${grafana_host}:${gateway_port}/api/health" \
   "${grafana_host}:${gateway_port}:127.0.0.1"
+wait_for_url \
+  "Kibana health through Gateway API" \
+  "http://${kibana_host}:${gateway_port}/api/status" \
+  "${kibana_host}:${gateway_port}:127.0.0.1"
+wait_for_url \
+  "Elasticsearch readiness" \
+  "http://127.0.0.1:${elasticsearch_port}/_cluster/health"
 
 wait_for_prometheus_query() {
   local name="$1"
@@ -183,5 +199,37 @@ if ! grep -q '"uid":"battlefield-overview"' \
   echo "Grafana did not provision the Autonomous Battlefield dashboard." >&2
   exit 1
 fi
+
+curl --fail --silent --max-time 2 \
+  --noproxy '*' \
+  --resolve "${kibana_host}:${gateway_port}:127.0.0.1" \
+  --output "${runtime_dir}/kibana-data-views.json" \
+  "http://${kibana_host}:${gateway_port}/api/data_views"
+if ! grep -Eq '"id"[[:space:]]*:[[:space:]]*"battlefield-logs"' \
+  "${runtime_dir}/kibana-data-views.json"; then
+  echo "Kibana did not provision the Autonomous Battlefield Logs data view." >&2
+  exit 1
+fi
+
+wait_for_elasticsearch_logs() {
+  local output_file="${runtime_dir}/elasticsearch-application-log-count.json"
+
+  for _ in {1..30}; do
+    if curl --fail --silent --max-time 2 \
+      --output "${output_file}" \
+      "http://127.0.0.1:${elasticsearch_port}/battlefield-app-*/_count?q=service:api" \
+      && grep -Eq '"count"[[:space:]]*:[[:space:]]*[1-9][0-9]*' "${output_file}"; then
+      echo "Elasticsearch structured application logs: OK"
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "Elasticsearch did not receive a structured API log." >&2
+  sed -n '1,120p' "${output_file}" >&2
+  return 1
+}
+
+wait_for_elasticsearch_logs
 
 echo "Local kind application and observability smoke test completed successfully."

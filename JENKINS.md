@@ -443,7 +443,8 @@ do not add `-v` when stopping it unless the data is intentionally disposable.
 After the checks pass, open `http://localhost:8080` for Jenkins,
 `http://localhost:9000` for SonarQube,
 `http://battlefield.localhost:8888` for the deployed application, and
-`http://grafana.localhost:8888` for Grafana. The two `.localhost` routes use the
+`http://grafana.localhost:8888` for Grafana, or
+`http://kibana.localhost:8888` for Kibana. The three `.localhost` routes use the
 Kind node port and do not require a persistent `kubectl port-forward` process.
 
 ## Troubleshooting setup and pipeline waits
@@ -484,9 +485,9 @@ After that pull request is merged, the `main` pipeline performs:
 5. Apply only the selected infrastructure, migration, application,
    observability, and Gateway API stages. Documentation-only changes deploy
    nothing.
-6. After a deployment, verify frontend and Grafana gateway access, API
-   readiness and metrics, Prometheus target discovery, and Grafana dashboard
-   provisioning.
+6. After a deployment, verify frontend, Grafana, and Kibana gateway access, API
+   readiness and metrics, Prometheus target discovery, Grafana dashboard
+   provisioning, the Kibana data view, and Elasticsearch log ingestion.
 
 `scripts/cd/deploy-kind.sh` can reapply a temporary Kustomize overlay containing
 the previous images if an application apply or rollout fails. Before deploying,

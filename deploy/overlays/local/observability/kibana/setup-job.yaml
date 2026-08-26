@@ -1,0 +1,63 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: battlefield-kibana-setup
+  labels:
+    app.kubernetes.io/name: kibana-setup
+    app.kubernetes.io/component: logging
+    app.kubernetes.io/part-of: autonomous-battlefield
+spec:
+  backoffLimit: 4
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kibana-setup
+        app.kubernetes.io/component: logging
+        app.kubernetes.io/part-of: autonomous-battlefield
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: create-data-view
+          image: curlimages/curl:8.16.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              until curl --fail --silent http://battlefield-kibana:5601/api/status >/dev/null; do
+                sleep 2
+              done
+              curl --fail --silent --show-error \
+                --request POST \
+                --header 'Content-Type: application/json' \
+                --header 'kbn-xsrf: battlefield-kibana-setup' \
+                --data '{"data_view":{"id":"battlefield-logs","name":"Autonomous Battlefield Logs","title":"battlefield-app-*","timeFieldName":"@timestamp","allowNoIndex":true},"override":true}' \
+                http://battlefield-kibana:5601/api/data_views/data_view
+              curl --fail --silent --show-error \
+                --request POST \
+                --header 'Content-Type: application/json' \
+                --header 'kbn-xsrf: battlefield-kibana-setup' \
+                --data '{"data_view_id":"battlefield-logs","force":true}' \
+                http://battlefield-kibana:5601/api/data_views/default
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
