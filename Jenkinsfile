@@ -137,7 +137,7 @@ pipeline {
             }
         }
 
-        stage('SonarQube analysis') {
+        stage('SonarQube analysis and quality gate') {
             when {
                 branch 'main'
             }
@@ -145,19 +145,13 @@ pipeline {
                 script {
                     def scannerHome = tool 'SonarScanner'
                     withSonarQubeEnv('battlefield-sonarqube') {
-                        sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectVersion=${env.IMAGE_TAG}"
+                        sh """
+                            "${scannerHome}/bin/sonar-scanner" \
+                                -Dsonar.projectVersion="${env.IMAGE_TAG}" \
+                                -Dsonar.qualitygate.wait=true \
+                                -Dsonar.qualitygate.timeout=300
+                        """
                     }
-                }
-            }
-        }
-
-        stage('SonarQube quality gate') {
-            when {
-                branch 'main'
-            }
-            steps {
-                timeout(time: 10, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
                 }
             }
         }

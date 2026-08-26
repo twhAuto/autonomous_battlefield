@@ -210,13 +210,11 @@ Configure Jenkins as follows:
    `battlefield-sonarqube`, URL `http://localhost:9000`, using that credential.
 3. In **Manage Jenkins > Tools > SonarQube Scanner installations**, add an
    installation named `SonarScanner` and enable automatic installation.
-4. In SonarQube, add a webhook pointing to
-   `http://host.docker.internal:8080/sonarqube-webhook/`. Change port `8080` if
-   Jenkins uses a different one. The trailing slash is required.
 
-The webhook lets `waitForQualityGate` resume the Jenkins pipeline without
-polling. The Compose service includes the Docker host mapping needed to reach a
-Jenkins service running on the WSL host.
+The scanner polls SonarQube for the quality-gate result for up to five minutes
+and fails the build when the gate fails. No SonarQube webhook is required. This
+avoids requiring the SonarQube Docker container to connect back to the Jenkins
+controller running in WSL.
 
 SonarQube imports `backend/coverage.out` and `frontend/coverage/lcov.info` using
 `sonar-project.properties`. It does not generate those reports itself. The
@@ -453,7 +451,7 @@ Kind node port and do not require a persistent `kubectl port-forward` process.
 | Symptom | Meaning and check |
 | --- | --- |
 | `No tool named SonarScanner found` | Install **SonarQube Scanner for Jenkins**, restart Jenkins if requested, then add a tool named exactly `SonarScanner` under **Manage Jenkins > Tools**. |
-| Quality gate remains `IN_PROGRESS` | The scan upload succeeded, but Jenkins has not received the SonarQube webhook. Check **Administration > Configuration > Webhooks** in SonarQube, retain the trailing slash in `/sonarqube-webhook/`, and inspect the latest delivery for an HTTP 2xx response. |
+| SonarQube analysis times out waiting for the quality gate | Confirm SonarQube is healthy with `curl --fail http://localhost:9000/api/system/status`, then inspect **Administration > Projects > Background Tasks** in SonarQube. The scanner polls the server for up to five minutes and does not require a webhook. |
 | `battlefield-local` is offline | Run `systemctl --user status jenkins-agent`, confirm the controller is active, and restart the user service after correcting the reported error. |
 | A new PR shows only build `#1` | Build numbering is local to that `PR-N` child job; this is not evidence that active history was deleted. Check the Orphaned Item Strategy for closed PR retention. |
 | A direct `dev` push has no stages | This is intentional. Run locally and open a pull request into `main` to trigger CI. |
