@@ -223,21 +223,41 @@ func (c *UtilityController) pruneExpired(tick Tick) {
 }
 
 func validateConfig(config Config) (map[string]struct{}, error) {
+	if err := validateDecisionSchedule(config); err != nil {
+		return nil, err
+	}
+	actionKinds, err := validateActionKinds(config.ActionKinds)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateProposal(config.FallbackPlan, actionKinds); err != nil {
+		return nil, fmt.Errorf("%w: fallback plan: %v", ErrInvalidConfig, err)
+	}
+	if err := validateTraits(config.Traits, actionKinds); err != nil {
+		return nil, err
+	}
+	return actionKinds, nil
+}
+
+func validateDecisionSchedule(config Config) error {
 	if config.DecisionIntervalTicks == 0 {
-		return nil, fmt.Errorf("%w: decision interval must be positive", ErrInvalidConfig)
+		return fmt.Errorf("%w: decision interval must be positive", ErrInvalidConfig)
 	}
 	if config.DecisionLeadTicks == 0 {
-		return nil, fmt.Errorf("%w: decision lead must be positive", ErrInvalidConfig)
+		return fmt.Errorf("%w: decision lead must be positive", ErrInvalidConfig)
 	}
 	if config.DecisionLeadTicks >= config.DecisionIntervalTicks {
-		return nil, fmt.Errorf("%w: decision lead must be less than the interval", ErrInvalidConfig)
+		return fmt.Errorf("%w: decision lead must be less than the interval", ErrInvalidConfig)
 	}
 	if config.DefaultActionWeight <= 0 || config.DefaultActionWeight > maxWeight {
-		return nil, fmt.Errorf("%w: default action weight must be in [1, %d]", ErrInvalidConfig, maxWeight)
+		return fmt.Errorf("%w: default action weight must be in [1, %d]", ErrInvalidConfig, maxWeight)
 	}
+	return nil
+}
 
-	actionKinds := make(map[string]struct{}, len(config.ActionKinds))
-	for _, kind := range config.ActionKinds {
+func validateActionKinds(kinds []string) (map[string]struct{}, error) {
+	actionKinds := make(map[string]struct{}, len(kinds))
+	for _, kind := range kinds {
 		if strings.TrimSpace(kind) == "" {
 			return nil, fmt.Errorf("%w: action kinds cannot be empty", ErrInvalidConfig)
 		}
@@ -249,28 +269,29 @@ func validateConfig(config Config) (map[string]struct{}, error) {
 	if len(actionKinds) == 0 {
 		return nil, fmt.Errorf("%w: at least one action kind is required", ErrInvalidConfig)
 	}
-	if err := validateProposal(config.FallbackPlan, actionKinds); err != nil {
-		return nil, fmt.Errorf("%w: fallback plan: %v", ErrInvalidConfig, err)
-	}
-	traitIDs := make(map[string]struct{}, len(config.Traits))
-	for _, trait := range config.Traits {
+	return actionKinds, nil
+}
+
+func validateTraits(traits []Trait, actionKinds map[string]struct{}) error {
+	traitIDs := make(map[string]struct{}, len(traits))
+	for _, trait := range traits {
 		if strings.TrimSpace(trait.ID) == "" {
-			return nil, fmt.Errorf("%w: trait ID is required", ErrInvalidConfig)
+			return fmt.Errorf("%w: trait ID is required", ErrInvalidConfig)
 		}
 		if _, duplicate := traitIDs[trait.ID]; duplicate {
-			return nil, fmt.Errorf("%w: duplicate trait ID %q", ErrInvalidConfig, trait.ID)
+			return fmt.Errorf("%w: duplicate trait ID %q", ErrInvalidConfig, trait.ID)
 		}
 		traitIDs[trait.ID] = struct{}{}
 		for kind, modifier := range trait.ActionWeightModifiers {
 			if _, ok := actionKinds[kind]; !ok {
-				return nil, fmt.Errorf("%w: trait %q refers to unsupported action kind %q", ErrInvalidConfig, trait.ID, kind)
+				return fmt.Errorf("%w: trait %q refers to unsupported action kind %q", ErrInvalidConfig, trait.ID, kind)
 			}
 			if modifier < -maxWeight || modifier > maxWeight {
-				return nil, fmt.Errorf("%w: trait modifier for %q is outside [%d, %d]", ErrInvalidConfig, kind, -maxWeight, maxWeight)
+				return fmt.Errorf("%w: trait modifier for %q is outside [%d, %d]", ErrInvalidConfig, kind, -maxWeight, maxWeight)
 			}
 		}
 	}
-	return actionKinds, nil
+	return nil
 }
 
 func validateProposal(proposal PlanProposal, actionKinds map[string]struct{}) error {

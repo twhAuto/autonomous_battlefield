@@ -22,14 +22,7 @@ func TestBattleRepositoryLifecycleAgainstPostgres(t *testing.T) {
 	battleID := randomUUID(t)
 	t.Cleanup(func() { _, _ = db.Exec(context.Background(), `DELETE FROM battle_runs WHERE id = $1`, battleID) })
 	repo := NewPostgres(db)
-	scenario := repositoryTestScenario()
-	if err := repo.CreateBattle(ctx, battleservice.CreateBattleParams{ID: battleID, ScenarioID: scenario.ID, ScenarioDigest: "digest", ScenarioSnapshot: scenario, RequestedTicks: 2}); err != nil {
-		t.Fatalf("CreateBattle() returned an error: %v", err)
-	}
-	job, err := repo.ClaimBattle(ctx, "worker-1", 30*time.Second, 3)
-	if err != nil {
-		t.Fatalf("ClaimBattle() returned an error: %v", err)
-	}
+	job := createAndClaimBattle(t, ctx, repo, battleID)
 	if job.Lease.BattleID != battleID || job.Lease.Attempt != 1 {
 		t.Fatalf("claimed job = %#v", job)
 	}
@@ -71,6 +64,19 @@ func TestBattleRepositoryLifecycleAgainstPostgres(t *testing.T) {
 	if err := repo.RequeueBattle(ctx, job.Lease); err != worker.ErrBattleLeaseLost {
 		t.Fatalf("stale RequeueBattle() error = %v, want ErrBattleLeaseLost", err)
 	}
+}
+
+func createAndClaimBattle(t *testing.T, ctx context.Context, repo *Postgres, battleID string) *worker.BattleJob {
+	t.Helper()
+	scenario := repositoryTestScenario()
+	if err := repo.CreateBattle(ctx, battleservice.CreateBattleParams{ID: battleID, ScenarioID: scenario.ID, ScenarioDigest: "digest", ScenarioSnapshot: scenario, RequestedTicks: 2}); err != nil {
+		t.Fatalf("CreateBattle() returned an error: %v", err)
+	}
+	job, err := repo.ClaimBattle(ctx, "worker-1", 30*time.Second, 3)
+	if err != nil {
+		t.Fatalf("ClaimBattle() returned an error: %v", err)
+	}
+	return job
 }
 
 func TestBattleRepositoryReclaimsExpiredLeaseAndRejectsStaleWorker(t *testing.T) {

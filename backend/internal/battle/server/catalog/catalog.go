@@ -153,6 +153,26 @@ func loadTemplate(path string) (template, error) {
 }
 
 func validateTemplate(tmpl template) error {
+	if err := validateTemplateMetadata(tmpl); err != nil {
+		return err
+	}
+	if err := validateTraitDefinitions(tmpl); err != nil {
+		return err
+	}
+	if err := validateSlots(tmpl); err != nil {
+		return err
+	}
+	resolved, err := resolveTemplate(tmpl, [2]battleservice.FactionIdentity{{ID: "validation-a", Name: "Validation A"}, {ID: "validation-b", Name: "Validation B"}})
+	if err != nil {
+		return err
+	}
+	if _, err := battle.NewBattle("scenario-validation", resolved, 1); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateTemplateMetadata(tmpl template) error {
 	if strings.TrimSpace(tmpl.ID) == "" || strings.TrimSpace(tmpl.RulesVersion) == "" {
 		return errors.New("ID and rules version are required")
 	}
@@ -169,6 +189,10 @@ func validateTemplate(tmpl template) error {
 	if len(tmpl.Slots) != 2 {
 		return errors.New("exactly two slots are required")
 	}
+	return nil
+}
+
+func validateTraitDefinitions(tmpl template) error {
 	for traitID, definition := range tmpl.TraitDefinitions {
 		if strings.TrimSpace(traitID) == "" {
 			return errors.New("trait IDs must not be empty")
@@ -189,6 +213,10 @@ func validateTemplate(tmpl template) error {
 			return fmt.Errorf("trait %q: %v", traitID, err)
 		}
 	}
+	return nil
+}
+
+func validateSlots(tmpl template) error {
 	for slotIndex, slot := range tmpl.Slots {
 		if len(slot.Units) == 0 || len(slot.ScriptedPlans) == 0 || strings.TrimSpace(slot.FallbackPlan.Name) == "" {
 			return fmt.Errorf("slot %d requires units, a fallback plan, and scripted plans", slotIndex)
@@ -198,13 +226,6 @@ func validateTemplate(tmpl template) error {
 				return fmt.Errorf("slot %d refers to undefined trait %q", slotIndex, traitID)
 			}
 		}
-	}
-	resolved, err := resolveTemplate(tmpl, [2]battleservice.FactionIdentity{{ID: "validation-a", Name: "Validation A"}, {ID: "validation-b", Name: "Validation B"}})
-	if err != nil {
-		return err
-	}
-	if _, err := battle.NewBattle("scenario-validation", resolved, 1); err != nil {
-		return err
 	}
 	return nil
 }

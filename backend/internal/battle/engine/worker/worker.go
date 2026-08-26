@@ -107,87 +107,108 @@ func (w *Worker) process(ctx context.Context, job *BattleJob) (resultErr error) 
 		telemetry.ObserveEngineBattle(outcome, time.Since(started))
 	}()
 
-	battle, err := battle.NewBattle(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
+	simulation, err := battle.NewBattle(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
 	if err != nil {
-		w.logger.ErrorContext(ctx, "battle_scenario_invalid",
-			"battle_id", job.Lease.BattleID,
-			"attempt", job.Lease.Attempt,
-			"error", err,
-		)
-		failureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.config.ShutdownTimeout)
-		defer cancel()
-		if failErr := w.repository.FailBattle(failureCtx, job.Lease, "invalid_scenario", err.Error()); failErr != nil {
-			return failErr
+		resultErr = w.failInvalidScenario(ctx, job.Lease, err)
+		if resultErr == nil {
+			outcome = "failed"
 		}
-		w.logger.InfoContext(failureCtx, "battle_failed",
-			"battle_id", job.Lease.BattleID,
-			"attempt", job.Lease.Attempt,
-			"error_code", "invalid_scenario",
-		)
-		outcome = "failed"
-		return nil
+		return resultErr
 	}
+	outcome, resultErr = w.runBattle(ctx, job, simulation)
+	return resultErr
+}
 
+func (w *Worker) runBattle(ctx context.Context, job *BattleJob, simulation *battle.Battle) (string, error) {
 	for {
-		if ctx.Err() != nil {
-			resultErr = w.requeueAfterCancellation(ctx, job.Lease)
-			if errors.Is(resultErr, context.Canceled) {
-				outcome = "requeued"
-			}
-			return resultErr
-		}
-		tickStarted := time.Now()
-		transition, err := battle.Advance()
-		if err != nil {
-			return err
-		}
-		telemetry.ObserveEngineTick()
-		if transition.Finished {
-			completeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.config.ShutdownTimeout)
-			err := w.repository.CompleteBattle(completeCtx, job.Lease, transition)
-			if err == nil {
-				outcome = "completed"
-				var winner any
-				if transition.Result.WinnerFactionID != nil {
-					winner = *transition.Result.WinnerFactionID
-				}
-				w.logger.InfoContext(completeCtx, "battle_completed",
-					"battle_id", job.Lease.BattleID,
-					"attempt", job.Lease.Attempt,
-					"ticks_run", transition.Tick,
-					"winner_faction_id", winner,
-					"reason", transition.Result.Reason,
-				)
-			}
-			cancel()
-			return err
-		}
-		if ctx.Err() != nil {
-			resultErr = w.persistTickAndRequeue(ctx, job.Lease, transition)
-			if errors.Is(resultErr, context.Canceled) {
-				outcome = "requeued"
-			}
-			return resultErr
-		}
-		if err := w.repository.SaveTick(ctx, job.Lease, transition, w.config.LeaseDuration); err != nil {
-			return err
-		}
-		if ctx.Err() != nil {
-			resultErr = w.requeueAfterCancellation(ctx, job.Lease)
-			if errors.Is(resultErr, context.Canceled) {
-				outcome = "requeued"
-			}
-			return resultErr
-		}
-		if duration := battle.TickDuration(); duration > 0 {
-			if err := w.waitUntilNextTick(ctx, job.Lease, tickStarted.Add(duration)); err != nil {
-				if errors.Is(err, context.Canceled) {
-					continue
-				}
-				return err
-			}
+		outcome, finished, err := w.runTick(ctx, job.Lease, simulation)
+		if finished {
+			return outcome, err
 		}
 	}
+}
+
+func (w *Worker) runTick(ctx context.Context, lease BattleLease, simulation *battle.Battle) (string, bool, error) {
+	if ctx.Err() != nil {
+		outcome, err := requeueOutcome(w.requeueAfterCancellation(ctx, lease))
+		return outcome, true, err
+	}
+	tickStarted := time.Now()
+	transition, err := simulation.Advance()
+	if err != nil {
+		return "error", true, err
+	}
+	telemetry.ObserveEngineTick()
+	if transition.Finished {
+		outcome, err := w.completeBattle(ctx, lease, transition)
+		return outcome, true, err
+	}
+	if ctx.Err() != nil {
+		outcome, err := requeueOutcome(w.persistTickAndRequeue(ctx, lease, transition))
+		return outcome, true, err
+	}
+	if err := w.repository.SaveTick(ctx, lease, transition, w.config.LeaseDuration); err != nil {
+		return "error", true, err
+	}
+	if ctx.Err() != nil {
+		outcome, err := requeueOutcome(w.requeueAfterCancellation(ctx, lease))
+		return outcome, true, err
+	}
+	if duration := simulation.TickDuration(); duration > 0 {
+		if err := w.waitUntilNextTick(ctx, lease, tickStarted.Add(duration)); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return "", false, nil
+			}
+			return "error", true, err
+		}
+	}
+	return "", false, nil
+}
+
+func (w *Worker) failInvalidScenario(ctx context.Context, lease BattleLease, scenarioErr error) error {
+	w.logger.ErrorContext(ctx, "battle_scenario_invalid",
+		"battle_id", lease.BattleID,
+		"attempt", lease.Attempt,
+		"error", scenarioErr,
+	)
+	failureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.config.ShutdownTimeout)
+	defer cancel()
+	if err := w.repository.FailBattle(failureCtx, lease, "invalid_scenario", scenarioErr.Error()); err != nil {
+		return err
+	}
+	w.logger.InfoContext(failureCtx, "battle_failed",
+		"battle_id", lease.BattleID,
+		"attempt", lease.Attempt,
+		"error_code", "invalid_scenario",
+	)
+	return nil
+}
+
+func (w *Worker) completeBattle(ctx context.Context, lease BattleLease, transition battle.Transition) (string, error) {
+	completeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.config.ShutdownTimeout)
+	defer cancel()
+	if err := w.repository.CompleteBattle(completeCtx, lease, transition); err != nil {
+		return "error", err
+	}
+	var winner any
+	if transition.Result.WinnerFactionID != nil {
+		winner = *transition.Result.WinnerFactionID
+	}
+	w.logger.InfoContext(completeCtx, "battle_completed",
+		"battle_id", lease.BattleID,
+		"attempt", lease.Attempt,
+		"ticks_run", transition.Tick,
+		"winner_faction_id", winner,
+		"reason", transition.Result.Reason,
+	)
+	return "completed", nil
+}
+
+func requeueOutcome(err error) (string, error) {
+	if errors.Is(err, context.Canceled) {
+		return "requeued", err
+	}
+	return "error", err
 }
 
 func (w *Worker) persistTickAndRequeue(ctx context.Context, lease BattleLease, transition battle.Transition) error {

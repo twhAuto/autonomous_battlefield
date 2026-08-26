@@ -31,7 +31,7 @@ function AppLayout() {
         </nav>
         <div className="topbar__status">
           <span className="status-dot" />
-          FRONTIER ONLINE
+          <span>FRONTIER ONLINE</span>
           <span className="topbar__divider" />
           {currentDate.toUpperCase()}
         </div>

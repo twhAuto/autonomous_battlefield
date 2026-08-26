@@ -109,23 +109,45 @@ func (b *Battle) Advance() (Transition, error) {
 	}
 
 	b.state.Tick++
-	events := make([]Event, 0)
-	if !b.started {
-		b.started = true
-		events = append(events, b.event("battle_started", map[string]any{
-			"battleId":     b.id,
-			"scenarioId":   b.scenario.ID,
-			"rulesVersion": b.scenario.RulesVersion,
-			"maximumTicks": b.maxTicks,
-		}))
+	events := b.startEvents()
+	tactics, tacticEvents, err := b.selectTactics()
+	if err != nil {
+		return Transition{}, err
 	}
+	events = append(events, tacticEvents...)
+	events = append(events, b.resolveAttacks(tactics)...)
+	events = append(events, b.event("tick_completed", map[string]any{"tick": b.state.Tick}))
+	events = append(events, b.completionEvents()...)
 
+	transition := Transition{Tick: b.state.Tick, Events: events, Finished: b.finished}
+	if b.result != nil {
+		result := cloneResult(*b.result)
+		transition.Result = &result
+	}
+	return transition, nil
+}
+
+func (b *Battle) startEvents() []Event {
+	if b.started {
+		return nil
+	}
+	b.started = true
+	return []Event{b.event("battle_started", map[string]any{
+		"battleId":     b.id,
+		"scenarioId":   b.scenario.ID,
+		"rulesVersion": b.scenario.RulesVersion,
+		"maximumTicks": b.maxTicks,
+	})}
+}
+
+func (b *Battle) selectTactics() (map[string]string, []Event, error) {
 	tactics := make(map[string]string, len(b.factions))
+	events := make([]Event, 0, len(b.factions)*3)
 	for _, faction := range b.sortedFactions() {
 		observation := b.observation(faction.setup.ID)
 		decision, err := faction.controller.Tick(observation)
 		if err != nil {
-			return Transition{}, fmt.Errorf("controller tick for faction %q: %w", faction.setup.ID, err)
+			return nil, nil, fmt.Errorf("controller tick for faction %q: %w", faction.setup.ID, err)
 		}
 		if request := decision.DecisionRequest; request != nil {
 			events = append(events, b.event("decision_requested", map[string]any{
@@ -136,7 +158,7 @@ func (b *Battle) Advance() (Transition, error) {
 			proposal := faction.scriptedPlan()
 			plan, err := faction.controller.SubmitPlan(request.ID, proposal)
 			if err != nil {
-				return Transition{}, fmt.Errorf("submit scripted plan for faction %q: %w", faction.setup.ID, err)
+				return nil, nil, fmt.Errorf("submit scripted plan for faction %q: %w", faction.setup.ID, err)
 			}
 			events = append(events, b.event("plan_accepted", map[string]any{
 				"factionId":      faction.setup.ID,
@@ -163,7 +185,11 @@ func (b *Battle) Advance() (Transition, error) {
 			"fallback":  decision.UsedFallback,
 		}))
 	}
+	return tactics, events, nil
+}
 
+func (b *Battle) resolveAttacks(tactics map[string]string) []Event {
+	events := make([]Event, 0, len(b.state.Units)*2)
 	initiative := make([]*Unit, 0, len(b.state.Units))
 	for index := range b.state.Units {
 		initiative = append(initiative, &b.state.Units[index])
@@ -200,30 +226,26 @@ func (b *Battle) Advance() (Transition, error) {
 			}))
 		}
 	}
+	return events
+}
 
-	events = append(events, b.event("tick_completed", map[string]any{"tick": b.state.Tick}))
+func (b *Battle) completionEvents() []Event {
 	winner := b.winner()
-	if winner != nil || b.state.Tick >= b.maxTicks {
-		b.finished = true
-		reason := "tick_limit"
-		if winner != nil {
-			reason = "elimination"
-		}
-		result := b.buildResult(winner, reason)
-		b.result = &result
-		events = append(events, b.event("battle_completed", map[string]any{
-			"winnerFactionId": winner,
-			"reason":          reason,
-			"ticksRun":        b.state.Tick,
-		}))
+	if winner == nil && b.state.Tick < b.maxTicks {
+		return nil
 	}
-
-	transition := Transition{Tick: b.state.Tick, Events: events, Finished: b.finished}
-	if b.result != nil {
-		result := cloneResult(*b.result)
-		transition.Result = &result
+	b.finished = true
+	reason := "tick_limit"
+	if winner != nil {
+		reason = "elimination"
 	}
-	return transition, nil
+	result := b.buildResult(winner, reason)
+	b.result = &result
+	return []Event{b.event("battle_completed", map[string]any{
+		"winnerFactionId": winner,
+		"reason":          reason,
+		"ticksRun":        b.state.Tick,
+	})}
 }
 
 func (f *factionRuntime) scriptedPlan() controller.PlanProposal {
@@ -362,6 +384,16 @@ func (b *Battle) event(eventType string, data map[string]any) Event {
 }
 
 func validateBattle(id string, scenario Scenario, maxTicks uint64) error {
+	if err := validateBattleMetadata(id, scenario, maxTicks); err != nil {
+		return err
+	}
+	if err := validateCombatRules(scenario); err != nil {
+		return err
+	}
+	return validateFactions(scenario.Factions)
+}
+
+func validateBattleMetadata(id string, scenario Scenario, maxTicks uint64) error {
 	if strings.TrimSpace(id) == "" || strings.TrimSpace(scenario.ID) == "" || strings.TrimSpace(scenario.RulesVersion) == "" {
 		return fmt.Errorf("%w: battle, scenario, and rules version IDs are required", ErrInvalidBattle)
 	}
@@ -374,31 +406,50 @@ func validateBattle(id string, scenario Scenario, maxTicks uint64) error {
 	if scenario.DecisionIntervalTicks == 0 || scenario.DecisionLeadTicks == 0 || scenario.DecisionLeadTicks >= scenario.DecisionIntervalTicks {
 		return fmt.Errorf("%w: invalid decision interval or lead", ErrInvalidBattle)
 	}
+	return nil
+}
+
+func validateCombatRules(scenario Scenario) error {
 	if scenario.Rules.MinimumDamage <= 0 || scenario.Rules.MinimumDamage > maxUnitStat || scenario.Rules.DefendAttackPercent < 0 || scenario.Rules.DefendAttackPercent > 100 || scenario.Rules.DefendDamageTakenPercent < 0 || scenario.Rules.DefendDamageTakenPercent > 100 {
 		return fmt.Errorf("%w: invalid combat rules", ErrInvalidBattle)
 	}
-	if len(scenario.Factions) != 2 || scenario.Factions[0].ID == scenario.Factions[1].ID {
+	return nil
+}
+
+func validateFactions(factions []FactionSetup) error {
+	if len(factions) != 2 || factions[0].ID == factions[1].ID {
 		return fmt.Errorf("%w: exactly two distinct factions are required", ErrInvalidBattle)
 	}
 	unitIDs := make(map[string]struct{})
-	for _, faction := range scenario.Factions {
-		if strings.TrimSpace(faction.ID) == "" || strings.TrimSpace(faction.Name) == "" || len(faction.Units) == 0 || len(faction.ScriptedPlans) == 0 {
-			return fmt.Errorf("%w: faction identity, units, and scripted plans are required", ErrInvalidBattle)
-		}
-		for _, unit := range faction.Units {
-			if strings.TrimSpace(unit.ID) == "" || unit.Health <= 0 || unit.Health > maxUnitStat ||
-				unit.Attack < 0 || unit.Attack > maxUnitStat || unit.Defense < 0 || unit.Defense > maxUnitStat ||
-				unit.Speed < 0 || unit.Speed > maxUnitStat {
-				return fmt.Errorf("%w: invalid unit in faction %q", ErrInvalidBattle, faction.ID)
-			}
-			resolvedID := faction.ID + ":" + unit.ID
-			if _, duplicate := unitIDs[resolvedID]; duplicate {
-				return fmt.Errorf("%w: duplicate resolved unit ID %q", ErrInvalidBattle, resolvedID)
-			}
-			unitIDs[resolvedID] = struct{}{}
+	for _, faction := range factions {
+		if err := validateFaction(faction, unitIDs); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func validateFaction(faction FactionSetup, unitIDs map[string]struct{}) error {
+	if strings.TrimSpace(faction.ID) == "" || strings.TrimSpace(faction.Name) == "" || len(faction.Units) == 0 || len(faction.ScriptedPlans) == 0 {
+		return fmt.Errorf("%w: faction identity, units, and scripted plans are required", ErrInvalidBattle)
+	}
+	for _, unit := range faction.Units {
+		if !validUnit(unit) {
+			return fmt.Errorf("%w: invalid unit in faction %q", ErrInvalidBattle, faction.ID)
+		}
+		resolvedID := faction.ID + ":" + unit.ID
+		if _, duplicate := unitIDs[resolvedID]; duplicate {
+			return fmt.Errorf("%w: duplicate resolved unit ID %q", ErrInvalidBattle, resolvedID)
+		}
+		unitIDs[resolvedID] = struct{}{}
+	}
+	return nil
+}
+
+func validUnit(unit UnitTemplate) bool {
+	return strings.TrimSpace(unit.ID) != "" && unit.Health > 0 && unit.Health <= maxUnitStat &&
+		unit.Attack >= 0 && unit.Attack <= maxUnitStat && unit.Defense >= 0 && unit.Defense <= maxUnitStat &&
+		unit.Speed >= 0 && unit.Speed <= maxUnitStat
 }
 
 func cloneScenario(scenario Scenario) Scenario {

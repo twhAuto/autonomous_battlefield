@@ -34,7 +34,7 @@ export interface FactionStatistics {
 
 export interface BattleResult {
   winnerFactionId: string | null
-  reason: 'elimination' | 'tick_limit' | string
+  reason: string
   ticksRun: number
   factions: FactionStatistics[]
 }

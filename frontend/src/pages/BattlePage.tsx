@@ -10,20 +10,192 @@ import {
 import { Emblem } from '../components/Emblem'
 
 const eventPageSize = 50
+type ConnectionState = 'connecting' | 'live' | 'reconnecting' | 'settled' | 'error'
+type EventState = 'idle' | 'loading' | 'error'
 
 export function BattlePage() {
   const { id = '' } = useParams()
+  const { battle, connection, connectionMessage, retryConnection } = useBattleStatus(id)
+  const {
+    selectedAttempt,
+    setSelectedAttempt,
+    events,
+    eventCursor,
+    eventHasMore,
+    eventState,
+    eventMessage,
+    loadEventPage,
+  } = useBattleEventStream(id, battle?.attempt, battle?.status)
+
+  const progress = battle ? Math.min(100, Math.round((battle.currentTick / battle.requestedTicks) * 100)) : 0
+  const participantNames = useMemo(
+    () => new Map(battle?.participants.map((participant) => [participant.id, participant.name]) ?? []),
+    [battle?.participants],
+  )
+
+  if (!battle && connection === 'connecting') {
+    return <BattleState code="ESTABLISHING LINK" title="Locating battle" message="Connecting to the battle engine state…" loading />
+  }
+  if (!battle && (connection === 'reconnecting' || connection === 'error')) {
+    return (
+      <BattleState code="BATTLE LINK INTERRUPTED" title="Battle unavailable" message={connectionMessage}>
+        {connection === 'error' && <button className="compact-action" type="button" onClick={retryConnection}>RETRY CONNECTION</button>}
+      </BattleState>
+    )
+  }
+  if (!battle) return null
+
+  const winnerName = battle.result?.winnerFactionId
+    ? participantNames.get(battle.result.winnerFactionId) ?? battle.result.winnerFactionId
+    : null
+  const battleTitle = battleTitleFor(battle.status)
+
+  return (
+    <>
+      <BattleHeader battle={battle} battleTitle={battleTitle} connection={connection} connectionMessage={connectionMessage} retryConnection={retryConnection} />
+
+      <section className="battle-overview">
+        <div className="battle-progress-panel">
+          <div className="section-label"><span>COMBAT PROGRESS</span><span>{progress}%</span></div>
+          <div className="battle-progress__numbers"><strong>{battle.currentTick}</strong><span>/ {battle.requestedTicks} TICKS</span></div>
+          <progress className="battle-progress" aria-label="Battle progress" max={battle.requestedTicks} value={battle.currentTick}>{progress}%</progress>
+          <div className="participant-strip">
+            {battle.participants.map((participant) => (
+              <div key={participant.id}>
+                <Emblem seed={participant.name} size="small" />
+                <span>{participant.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <aside className={`outcome-panel outcome-panel--${battle.status}`}>
+          <span className="outcome-panel__label">ENGAGEMENT OUTCOME</span>
+          <Outcome battle={battle} winnerName={winnerName} />
+        </aside>
+      </section>
+
+      <BattleStatistics battle={battle} participantNames={participantNames} />
+      <EventConsole
+        battleAttempt={battle.attempt}
+        selectedAttempt={selectedAttempt}
+        setSelectedAttempt={setSelectedAttempt}
+        events={events}
+        eventCursor={eventCursor}
+        eventHasMore={eventHasMore}
+        eventState={eventState}
+        eventMessage={eventMessage}
+        loadEventPage={loadEventPage}
+      />
+    </>
+  )
+}
+
+function BattleHeader({ battle, battleTitle, connection, connectionMessage, retryConnection }: Readonly<{
+  battle: BattleRun
+  battleTitle: string
+  connection: ConnectionState
+  connectionMessage: string
+  retryConnection: () => void
+}>) {
+  return (
+    <section className="page-header battle-status-header">
+      <Link className="back-link" to="/battles/new">← NEW BATTLE</Link>
+      <div className="battle-status-heading">
+        <div>
+          <div className="hero__eyebrow"><span>04</span> LIVE ENGAGEMENT</div>
+          <h1>{battleTitle}</h1>
+        </div>
+        <ConnectionBadge state={connection} />
+      </div>
+      {connectionMessage && (
+        <output className="connection-message">
+          <span>{connectionMessage}</span>
+          {connection === 'error' && <button className="text-button" type="button" onClick={retryConnection}>RETRY CONNECTION</button>}
+        </output>
+      )}
+      <div className="battle-meta-row">
+        <span>SCENARIO <strong>{battle.scenarioId}</strong></span>
+        <span>ATTEMPT <strong>{battle.attempt}</strong></span>
+        <span>STATUS <strong>{battle.status}</strong></span>
+        <code title={battle.id}>{battle.id}</code>
+      </div>
+    </section>
+  )
+}
+
+function BattleStatistics({ battle, participantNames }: Readonly<{ battle: BattleRun; participantNames: Map<string, string> }>) {
+  if (!battle.result) return null
+  return (
+    <section className="battle-statistics">
+      <div className="section-label"><span>AFTER-ACTION STATISTICS</span><span>{battle.result.ticksRun} TICKS</span></div>
+      <div className="statistics-grid">
+        {battle.result.factions.map((stats) => (
+          <article key={stats.factionId} className="statistics-card">
+            <h2>{participantNames.get(stats.factionId) ?? stats.factionId}</h2>
+            <dl>
+              <Stat label="Units" value={`${stats.unitsRemaining} / ${stats.unitsStarted}`} />
+              <Stat label="Damage dealt" value={stats.damageDealt} />
+              <Stat label="Damage taken" value={stats.damageTaken} />
+              <Stat label="Attack ticks" value={stats.attackTicks} />
+              <Stat label="Defend ticks" value={stats.defendTicks} />
+            </dl>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function EventConsole({ battleAttempt, selectedAttempt, setSelectedAttempt, events, eventCursor, eventHasMore, eventState, eventMessage, loadEventPage }: Readonly<{
+  battleAttempt: number
+  selectedAttempt: number | null
+  setSelectedAttempt: (attempt: number) => void
+  events: BattleEvent[]
+  eventCursor: number
+  eventHasMore: boolean
+  eventState: EventState
+  eventMessage: string
+  loadEventPage: (after: number, reset: boolean, signal?: AbortSignal) => Promise<void>
+}>) {
+  return (
+    <section className="event-console" aria-live="polite">
+      <div className="event-console__header">
+        <div>
+          <span>BATTLE EVENT STREAM</span>
+          <h2>Attempt history</h2>
+        </div>
+        <label htmlFor="attempt-select"><span>Attempt</span>
+          <select id="attempt-select" value={selectedAttempt ?? 0} onChange={(event) => setSelectedAttempt(Number(event.target.value))}>
+            {battleAttempt === 0 && <option value={0}>Queued</option>}
+            {Array.from({ length: battleAttempt }, (_, index) => index + 1).map((attempt) => <option key={attempt} value={attempt}>Attempt {attempt}</option>)}
+          </select>
+        </label>
+      </div>
+
+      {eventState === 'error' && <div className="event-console__error" role="alert">{eventMessage} <button type="button" onClick={() => void loadEventPage(eventCursor, false)}>Retry</button></div>}
+      {events.length === 0 && eventState !== 'error' && (
+        <div className="event-console__empty">{eventState === 'loading' ? 'Loading event stream…' : 'No events recorded for this attempt yet.'}</div>
+      )}
+      {events.length > 0 && (
+        <ol className="event-list">
+          {events.map((event) => <EventRow key={event.sequence} event={event} />)}
+        </ol>
+      )}
+      <div className="event-console__actions">
+        {eventHasMore && <button className="compact-action" type="button" disabled={eventState === 'loading'} onClick={() => void loadEventPage(eventCursor, false)}>LOAD NEXT {eventPageSize}</button>}
+        {!eventHasMore && events.length > 0 && <button className="text-button" type="button" disabled={eventState === 'loading'} onClick={() => void loadEventPage(eventCursor, false)}>REFRESH EVENTS</button>}
+        <span>SHOWING THE LATEST {events.length} EVENTS</span>
+      </div>
+    </section>
+  )
+}
+
+function useBattleStatus(id: string) {
   const [battle, setBattle] = useState<BattleRun | null>(null)
-  const [connection, setConnection] = useState<'connecting' | 'live' | 'reconnecting' | 'settled' | 'error'>('connecting')
+  const [connection, setConnection] = useState<ConnectionState>('connecting')
   const [connectionMessage, setConnectionMessage] = useState('')
   const [retryVersion, setRetryVersion] = useState(0)
-  const [selectedAttempt, setSelectedAttempt] = useState<number | null>(null)
-  const [events, setEvents] = useState<BattleEvent[]>([])
-  const [eventCursor, setEventCursor] = useState(0)
-  const [eventHasMore, setEventHasMore] = useState(false)
-  const [eventState, setEventState] = useState<'idle' | 'loading' | 'error'>('idle')
-  const [eventMessage, setEventMessage] = useState('')
-  const [eventPollVersion, setEventPollVersion] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -69,10 +241,23 @@ export function BattlePage() {
     }
   }, [id, retryVersion])
 
+  const retryConnection = useCallback(() => setRetryVersion((value) => value + 1), [])
+  return { battle, connection, connectionMessage, retryConnection }
+}
+
+function useBattleEventStream(id: string, battleAttempt?: number, battleStatus?: BattleRun['status']) {
+  const [selectedAttempt, setSelectedAttempt] = useState<number | null>(null)
+  const [events, setEvents] = useState<BattleEvent[]>([])
+  const [eventCursor, setEventCursor] = useState(0)
+  const [eventHasMore, setEventHasMore] = useState(false)
+  const [eventState, setEventState] = useState<EventState>('idle')
+  const [eventMessage, setEventMessage] = useState('')
+  const [eventPollVersion, setEventPollVersion] = useState(0)
+
   useEffect(() => {
-    if (!battle) return
-    setSelectedAttempt(battle.attempt)
-  }, [battle?.attempt])
+    if (battleAttempt === undefined) return
+    setSelectedAttempt(battleAttempt)
+  }, [battleAttempt])
 
   const loadEventPage = useCallback(async (after: number, reset: boolean, signal?: AbortSignal) => {
     if (selectedAttempt === null) return
@@ -80,12 +265,7 @@ export function BattlePage() {
     setEventMessage('')
     try {
       const page = await listBattleEvents(id, { attempt: selectedAttempt, after, limit: eventPageSize }, signal)
-      setEvents((current) => {
-        const combined = reset ? page.events : [...current, ...page.events]
-        return [...new Map(combined.map((event) => [event.sequence, event])).values()]
-          .sort((left, right) => left.sequence - right.sequence)
-          .slice(-500)
-      })
+      setEvents((current) => mergeEvents(current, page.events, reset))
       const nextCursor = page.events.at(-1)?.sequence ?? after
       setEventCursor((current) => Math.max(current, nextCursor))
       setEventHasMore(page.events.length === eventPageSize)
@@ -109,8 +289,8 @@ export function BattlePage() {
   }, [loadEventPage, selectedAttempt])
 
   useEffect(() => {
-    const isCurrentAttempt = battle && selectedAttempt === battle.attempt
-    const isActive = battle?.status === 'queued' || battle?.status === 'running'
+    const isCurrentAttempt = selectedAttempt === battleAttempt
+    const isActive = battleStatus === 'queued' || battleStatus === 'running'
     if (!isCurrentAttempt || !isActive || eventHasMore) return
     const controller = new AbortController()
     const timer = setTimeout(() => void loadEventPage(eventCursor, false, controller.signal), 2000)
@@ -118,145 +298,56 @@ export function BattlePage() {
       controller.abort()
       clearTimeout(timer)
     }
-  }, [battle?.attempt, battle?.status, eventCursor, eventHasMore, eventPollVersion, loadEventPage, selectedAttempt])
+  }, [battleAttempt, battleStatus, eventCursor, eventHasMore, eventPollVersion, loadEventPage, selectedAttempt])
 
-  const progress = battle ? Math.min(100, Math.round((battle.currentTick / battle.requestedTicks) * 100)) : 0
-  const participantNames = useMemo(
-    () => new Map(battle?.participants.map((participant) => [participant.id, participant.name]) ?? []),
-    [battle?.participants],
-  )
-
-  if (!battle && connection === 'connecting') {
-    return <BattleState code="ESTABLISHING LINK" title="Locating battle" message="Connecting to the battle engine state…" loading />
+  return {
+    selectedAttempt,
+    setSelectedAttempt,
+    events,
+    eventCursor,
+    eventHasMore,
+    eventState,
+    eventMessage,
+    loadEventPage,
   }
-  if (!battle && (connection === 'reconnecting' || connection === 'error')) {
-    return (
-      <BattleState code="BATTLE LINK INTERRUPTED" title="Battle unavailable" message={connectionMessage}>
-        {connection === 'error' && <button className="compact-action" type="button" onClick={() => setRetryVersion((value) => value + 1)}>RETRY CONNECTION</button>}
-      </BattleState>
-    )
-  }
-  if (!battle) return null
-
-  const winnerName = battle.result?.winnerFactionId
-    ? participantNames.get(battle.result.winnerFactionId) ?? battle.result.winnerFactionId
-    : null
-
-  return (
-    <>
-      <section className="page-header battle-status-header">
-        <Link className="back-link" to="/battles/new">← NEW BATTLE</Link>
-        <div className="battle-status-heading">
-          <div>
-            <div className="hero__eyebrow"><span>04</span> LIVE ENGAGEMENT</div>
-            <h1>{battle.status === 'completed' ? 'Battle complete' : battle.status === 'failed' ? 'Battle failed' : 'Battle in progress'}</h1>
-          </div>
-          <ConnectionBadge state={connection} />
-        </div>
-        {connectionMessage && (
-          <div className="connection-message" role="status">
-            <span>{connectionMessage}</span>
-            {connection === 'error' && <button className="text-button" type="button" onClick={() => setRetryVersion((value) => value + 1)}>RETRY CONNECTION</button>}
-          </div>
-        )}
-        <div className="battle-meta-row">
-          <span>SCENARIO <strong>{battle.scenarioId}</strong></span>
-          <span>ATTEMPT <strong>{battle.attempt}</strong></span>
-          <span>STATUS <strong>{battle.status}</strong></span>
-          <code title={battle.id}>{battle.id}</code>
-        </div>
-      </section>
-
-      <section className="battle-overview">
-        <div className="battle-progress-panel">
-          <div className="section-label"><span>COMBAT PROGRESS</span><span>{progress}%</span></div>
-          <div className="battle-progress__numbers"><strong>{battle.currentTick}</strong><span>/ {battle.requestedTicks} TICKS</span></div>
-          <div className="battle-progress" role="progressbar" aria-label="Battle progress" aria-valuemin={0} aria-valuemax={battle.requestedTicks} aria-valuenow={battle.currentTick}>
-            <span style={{ width: `${progress}%` }} />
-          </div>
-          <div className="participant-strip">
-            {battle.participants.map((participant) => (
-              <div key={participant.id}>
-                <Emblem seed={participant.name} size="small" />
-                <span>{participant.name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <aside className={`outcome-panel outcome-panel--${battle.status}`}>
-          <span className="outcome-panel__label">ENGAGEMENT OUTCOME</span>
-          {battle.status === 'completed' && battle.result ? (
-            <>
-              <strong>{winnerName ? `${winnerName} wins` : 'Draw'}</strong>
-              <p>{battle.result.reason === 'elimination' ? 'Opposing forces eliminated.' : 'Maximum tick limit reached.'}</p>
-            </>
-          ) : battle.status === 'failed' ? (
-            <><strong>Engine halted</strong><p>{battle.errorMessage ?? battle.errorCode ?? 'The battle could not be completed.'}</p></>
-          ) : (
-            <><strong>{battle.status === 'queued' ? 'Awaiting engine' : 'Forces engaged'}</strong><p>{battle.status === 'queued' ? 'A worker will claim this battle shortly.' : 'Status refreshes automatically every second.'}</p></>
-          )}
-        </aside>
-      </section>
-
-      {battle.result && (
-        <section className="battle-statistics">
-          <div className="section-label"><span>AFTER-ACTION STATISTICS</span><span>{battle.result.ticksRun} TICKS</span></div>
-          <div className="statistics-grid">
-            {battle.result.factions.map((stats) => (
-              <article key={stats.factionId} className="statistics-card">
-                <h2>{participantNames.get(stats.factionId) ?? stats.factionId}</h2>
-                <dl>
-                  <Stat label="Units" value={`${stats.unitsRemaining} / ${stats.unitsStarted}`} />
-                  <Stat label="Damage dealt" value={stats.damageDealt} />
-                  <Stat label="Damage taken" value={stats.damageTaken} />
-                  <Stat label="Attack ticks" value={stats.attackTicks} />
-                  <Stat label="Defend ticks" value={stats.defendTicks} />
-                </dl>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section className="event-console" aria-live="polite">
-        <div className="event-console__header">
-          <div>
-            <span>BATTLE EVENT STREAM</span>
-            <h2>Attempt history</h2>
-          </div>
-          <label htmlFor="attempt-select">Attempt
-            <select id="attempt-select" value={selectedAttempt ?? 0} onChange={(event) => setSelectedAttempt(Number(event.target.value))}>
-              {battle.attempt === 0 && <option value={0}>Queued</option>}
-              {Array.from({ length: battle.attempt }, (_, index) => index + 1).map((attempt) => <option key={attempt} value={attempt}>Attempt {attempt}</option>)}
-            </select>
-          </label>
-        </div>
-
-        {eventState === 'error' && <div className="event-console__error" role="alert">{eventMessage} <button type="button" onClick={() => void loadEventPage(eventCursor, false)}>Retry</button></div>}
-        {events.length === 0 && eventState !== 'error' && (
-          <div className="event-console__empty">{eventState === 'loading' ? 'Loading event stream…' : 'No events recorded for this attempt yet.'}</div>
-        )}
-        {events.length > 0 && (
-          <ol className="event-list">
-            {events.map((event) => <EventRow key={event.sequence} event={event} />)}
-          </ol>
-        )}
-        <div className="event-console__actions">
-          {eventHasMore && <button className="compact-action" type="button" disabled={eventState === 'loading'} onClick={() => void loadEventPage(eventCursor, false)}>LOAD NEXT {eventPageSize}</button>}
-          {!eventHasMore && events.length > 0 && <button className="text-button" type="button" disabled={eventState === 'loading'} onClick={() => void loadEventPage(eventCursor, false)}>REFRESH EVENTS</button>}
-          <span>SHOWING THE LATEST {events.length} EVENTS</span>
-        </div>
-      </section>
-    </>
-  )
 }
 
-function ConnectionBadge({ state }: { state: string }) {
+function mergeEvents(current: BattleEvent[], incoming: BattleEvent[], reset: boolean) {
+  const combined = reset ? incoming : [...current, ...incoming]
+  return [...new Map(combined.map((event) => [event.sequence, event])).values()]
+    .sort((left, right) => left.sequence - right.sequence)
+    .slice(-500)
+}
+
+function battleTitleFor(status: BattleRun['status']) {
+  if (status === 'completed') return 'Battle complete'
+  if (status === 'failed') return 'Battle failed'
+  return 'Battle in progress'
+}
+
+function Outcome({ battle, winnerName }: Readonly<{ battle: BattleRun; winnerName: string | null }>) {
+  if (battle.status === 'completed' && battle.result) {
+    return (
+      <>
+        <strong>{winnerName ? `${winnerName} wins` : 'Draw'}</strong>
+        <p>{battle.result.reason === 'elimination' ? 'Opposing forces eliminated.' : 'Maximum tick limit reached.'}</p>
+      </>
+    )
+  }
+  if (battle.status === 'failed') {
+    return <><strong>Engine halted</strong><p>{battle.errorMessage ?? battle.errorCode ?? 'The battle could not be completed.'}</p></>
+  }
+  if (battle.status === 'queued') {
+    return <><strong>Awaiting engine</strong><p>A worker will claim this battle shortly.</p></>
+  }
+  return <><strong>Forces engaged</strong><p>Status refreshes automatically every second.</p></>
+}
+
+function ConnectionBadge({ state }: Readonly<{ state: string }>) {
   return <div className={`connection-badge connection-badge--${state}`}><span className="status-dot" />{state.toUpperCase()}</div>
 }
 
-function BattleState({ code, title, message, loading, children }: { code: string; title: string; message: string; loading?: boolean; children?: ReactNode }) {
+function BattleState({ code, title, message, loading, children }: Readonly<{ code: string; title: string; message: string; loading?: boolean; children?: ReactNode }>) {
   return (
     <section className="directory-state directory-state--battle" role={loading ? undefined : 'alert'}>
       {loading && <span className="loader" aria-hidden="true" />}
@@ -268,11 +359,11 @@ function BattleState({ code, title, message, loading, children }: { code: string
   )
 }
 
-function Stat({ label, value }: { label: string; value: string | number }) {
+function Stat({ label, value }: Readonly<{ label: string; value: string | number }>) {
   return <div><dt>{label}</dt><dd>{value}</dd></div>
 }
 
-function EventRow({ event }: { event: BattleEvent }) {
+function EventRow({ event }: Readonly<{ event: BattleEvent }>) {
   return (
     <li>
       <div className="event-list__index">#{event.sequence.toString().padStart(4, '0')}</div>
@@ -290,6 +381,6 @@ function EventRow({ event }: { event: BattleEvent }) {
 
 function formatEventValue(value: unknown) {
   if (value === null) return '—'
-  if (typeof value === 'object') return JSON.stringify(value)
-  return String(value)
+  if (typeof value === 'object') return JSON.stringify(value) ?? '—'
+  return value === undefined ? 'undefined' : value.toString()
 }

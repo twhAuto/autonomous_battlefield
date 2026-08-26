@@ -20,7 +20,8 @@ RUN CGO_ENABLED=0 go build \
 
 FROM alpine:3.23
 
-RUN apk add --no-cache ca-certificates \
+RUN apk upgrade --no-cache \
+    && apk add --no-cache ca-certificates \
     && addgroup -S -g 10001 battlefield \
     && adduser -S -D -H -u 10001 -G battlefield battlefield
 
