@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -50,6 +51,36 @@ func TestRequestLoggingGeneratesRequestID(t *testing.T) {
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/factions", nil))
 	if response.Header().Get("X-Request-ID") == "" {
 		t.Fatal("response request ID is empty")
+	}
+}
+
+func TestRequestLoggingHandlesNilLoggerAndStatusLevels(t *testing.T) {
+	for _, status := range []int{http.StatusBadRequest, http.StatusInternalServerError, http.StatusOK} {
+		handler := requestLogging(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(status)
+			w.WriteHeader(http.StatusTeapot)
+		}), nil)
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	}
+}
+
+func TestLoggingResponseWriterAndRequestIDHelpers(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writer := &loggingResponseWriter{ResponseWriter: recorder, status: http.StatusOK}
+	if writer.Unwrap() != recorder {
+		t.Fatal("Unwrap() did not return the underlying writer")
+	}
+	if _, err := writer.Write([]byte("ok")); err != nil || writer.status != http.StatusOK || writer.bytes != 2 {
+		t.Fatalf("writer = %#v, error = %v", writer, err)
+	}
+	if acceptedRequestID(strings.Repeat("x", 129)) == strings.Repeat("x", 129) {
+		t.Fatal("acceptedRequestID() accepted an oversized ID")
+	}
+	if stringID(0) != "0" || stringID(12345) != "12345" {
+		t.Fatalf("stringID() results = %q, %q", stringID(0), stringID(12345))
+	}
+	if RequestID(context.Background()) != "" {
+		t.Fatal("RequestID() returned a value for an empty context")
 	}
 }
 

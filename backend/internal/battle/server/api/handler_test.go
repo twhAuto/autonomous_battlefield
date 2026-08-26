@@ -131,6 +131,15 @@ func TestBattleHandlerMapsErrors(t *testing.T) {
 	}
 }
 
+func TestCreateBattleRejectsMalformedBody(t *testing.T) {
+	handler := NewHandler(&fakeBattleService{})
+	response := httptest.NewRecorder()
+	handler.CreateBattle(response, httptest.NewRequest(http.MethodPost, "/v1/battles", bytes.NewBufferString("{")))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+}
+
 func TestGetBattleMapsMalformedID(t *testing.T) {
 	handler := NewHandler(&fakeBattleService{err: battleservice.ErrInvalidBattle})
 	request := httptest.NewRequest(http.MethodGet, "/v1/battles/not-a-uuid", nil)
@@ -139,6 +148,70 @@ func TestGetBattleMapsMalformedID(t *testing.T) {
 	handler.GetBattle(response, request)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+}
+
+func TestGetBattleMapsReadErrors(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{name: "missing", err: battleservice.ErrBattleNotFound, status: http.StatusNotFound},
+		{name: "internal", err: errors.New("database unavailable"), status: http.StatusInternalServerError},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler := NewHandler(&fakeBattleService{err: test.err})
+			request := httptest.NewRequest(http.MethodGet, "/v1/battles/id", nil)
+			request.SetPathValue("id", "id")
+			response := httptest.NewRecorder()
+			handler.GetBattle(response, request)
+			if response.Code != test.status {
+				t.Fatalf("status = %d, want %d", response.Code, test.status)
+			}
+		})
+	}
+}
+
+func TestListEventsRejectsInvalidQueryParameters(t *testing.T) {
+	for _, query := range []string{"limit=many", "after=-1", "attempt=many"} {
+		t.Run(query, func(t *testing.T) {
+			handler := NewHandler(&fakeBattleService{})
+			request := httptest.NewRequest(http.MethodGet, "/v1/battles/id/events?"+query, nil)
+			request.SetPathValue("id", "id")
+			response := httptest.NewRecorder()
+			handler.ListEvents(response, request)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+			}
+		})
+	}
+}
+
+func TestListEventsMapsServiceErrorsAndDefaults(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{name: "invalid", err: battleservice.ErrInvalidBattle, status: http.StatusBadRequest},
+		{name: "missing", err: battleservice.ErrBattleNotFound, status: http.StatusNotFound},
+		{name: "internal", err: errors.New("database unavailable"), status: http.StatusInternalServerError},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service := &fakeBattleService{err: test.err}
+			handler := NewHandler(service)
+			request := httptest.NewRequest(http.MethodGet, "/v1/battles/id/events", nil)
+			request.SetPathValue("id", "id")
+			response := httptest.NewRecorder()
+			handler.ListEvents(response, request)
+			if response.Code != test.status {
+				t.Fatalf("status = %d, want %d", response.Code, test.status)
+			}
+			if service.eventsLimit != 100 || service.eventsAfter != 0 || service.eventsAttempt != nil {
+				t.Fatalf("defaults = attempt %v, after %d, limit %d", service.eventsAttempt, service.eventsAfter, service.eventsLimit)
+			}
+		})
 	}
 }
 

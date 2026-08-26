@@ -12,6 +12,7 @@ pipeline {
     environment {
         BACKEND_IMAGE = 'autonomous-battlefield-backend'
         FRONTEND_IMAGE = 'autonomous-battlefield-frontend'
+        GO_COVERAGE_MIN = '80'
         KIND_CLUSTER_NAME = 'battlefield'
         KUBERNETES_NAMESPACE = 'battlefield'
         KUBERNETES_CONTEXT = 'kind-battlefield'
@@ -95,8 +96,8 @@ pipeline {
                         publishChecks(
                             name: 'Coverage',
                             title: summaryStatus == 0
-                                ? 'Backend and frontend coverage generated'
-                                : 'One or more coverage reports are unavailable',
+                                ? 'Backend and frontend coverage requirements met'
+                                : 'Coverage requirements not met or reports unavailable',
                             summary: summary,
                             detailsURL: "${env.BUILD_URL}console",
                             status: 'COMPLETED',

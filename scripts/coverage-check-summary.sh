@@ -5,7 +5,17 @@ set -uo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 go_summary_file="${GO_COVERAGE_SUMMARY_FILE:-${project_dir}/backend/coverage-total.txt}"
 frontend_summary_file="${FRONTEND_COVERAGE_SUMMARY_FILE:-${project_dir}/frontend/coverage/coverage-summary.json}"
+go_minimum="${GO_COVERAGE_MIN:-80}"
+frontend_minimum=80
 summary_complete=1
+
+meets_minimum() {
+  local actual="$1"
+  local minimum="$2"
+
+  awk -v actual="${actual}" -v minimum="${minimum}" \
+    'BEGIN { exit !(actual + 0 >= minimum + 0) }'
+}
 
 go_coverage="Unavailable"
 if [[ -f "${go_summary_file}" ]]; then
@@ -46,6 +56,27 @@ else
   summary_complete=0
 fi
 
+coverage_requirements_met=1
+if [[ "${go_coverage}" != "Unavailable" ]]; then
+  go_actual="${go_coverage%\%}"
+  if ! meets_minimum "${go_actual}" "${go_minimum}"; then
+    coverage_requirements_met=0
+  fi
+fi
+
+for frontend_coverage in \
+  "${frontend_statements}" \
+  "${frontend_branches}" \
+  "${frontend_functions}" \
+  "${frontend_lines}"; do
+  if [[ "${frontend_coverage}" != "Unavailable" ]]; then
+    frontend_actual="${frontend_coverage%\%}"
+    if ! meets_minimum "${frontend_actual}" "${frontend_minimum}"; then
+      coverage_requirements_met=0
+    fi
+  fi
+done
+
 printf '%s\n' \
   'Coverage reports from this pull request build:' \
   '' \
@@ -54,8 +85,10 @@ printf '%s\n' \
   "| Backend (Go) | ${go_coverage} | — | — | — |" \
   "| Frontend | ${frontend_statements} | ${frontend_branches} | ${frontend_functions} | ${frontend_lines} |" \
   '' \
+  "Required minimum: ${go_minimum}% for backend statements and ${frontend_minimum}% for every frontend metric." \
+  '' \
   'Go reports statement coverage. The full test output is available from the Jenkins details link.'
 
-if ((summary_complete == 0)); then
+if ((summary_complete == 0 || coverage_requirements_met == 0)); then
   exit 1
 fi

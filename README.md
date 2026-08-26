@@ -173,11 +173,13 @@ Run the same Go lint and coverage work used by Jenkins:
 
 Go coverage is written to `backend/coverage.out`; frontend LCOV coverage is
 written to `frontend/coverage/lcov.info`. Both are ignored by Git and imported
-by SonarQube. See [JENKINS.md](JENKINS.md#configure-local-sonarqube) for the
-local server and Jenkins quality-gate setup. SonarQube displays and evaluates
-these externally generated reports alongside static reliability, security,
-maintainability, complexity, and duplication findings; it does not run the
-tests that produce coverage.
+by SonarQube. The test commands require at least 80% Go statement coverage and
+80% frontend statement, branch, function, and line coverage. See
+[JENKINS.md](JENKINS.md#configure-local-sonarqube) for the local server and
+Jenkins quality-gate setup. SonarQube displays and evaluates these externally
+generated reports alongside static reliability, security, maintainability,
+complexity, and duplication findings; it does not run the tests that produce
+coverage.
 
 ## API
 

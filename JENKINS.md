@@ -196,6 +196,13 @@ The first startup can take several minutes. Open `http://localhost:9000`, sign
 in with the initial `admin` / `admin` credentials, change the password, and
 create an analysis token under the account security settings.
 
+Both containers use Docker's `unless-stopped` restart policy. After the Docker
+engine starts following a reboot, PostgreSQL and SonarQube start automatically.
+When using Docker Desktop, enable its login startup setting so that the Docker
+engine itself starts automatically. If the stack was stopped intentionally
+with `docker compose stop`, start it once with the `up -d` command above; it will
+then resume automatic startup after later Docker engine restarts.
+
 Configure Jenkins as follows:
 
 1. Add the token as a **Secret text** credential.
@@ -215,8 +222,10 @@ SonarQube imports `backend/coverage.out` and `frontend/coverage/lcov.info` using
 `sonar-project.properties`. It does not generate those reports itself. The
 Community Build is analyzed only for merged `main`; PR CI still runs Go lint and
 publishes both backend and frontend coverage in a GitHub `Coverage` check before
-merge. This avoids unsupported Community Build pull-request analysis while
-keeping the deployment behind the quality gate.
+merge. Jenkins requires at least 80% Go statement coverage and 80% for each
+frontend metric: statements, branches, functions, and lines. This avoids
+unsupported Community Build pull-request analysis while keeping the deployment
+behind the quality gate.
 
 The SonarQube data is stored in named Docker volumes and survives restarts. Stop
 it without deleting its data with:
@@ -238,8 +247,9 @@ the configured rules into a pass/fail deployment decision.
 
 The PR pipeline uses Jenkins `publishChecks` to add a separate `Coverage` check
 to the pull request. Its summary contains the Go statement percentage and the
-frontend statement, branch, function, and line percentages. **Details** opens
-the Jenkins console for the complete test output. SonarQube remains the richer
+frontend statement, branch, function, and line percentages. The check fails if
+Go statement coverage or any frontend metric is below 80%. **Details** opens the
+Jenkins console for the complete test output. SonarQube remains the richer
 report for merged `main` because Community Build does not analyze pull requests.
 
 GitHub permits only GitHub Apps, not personal access tokens, to create Check
@@ -333,6 +343,11 @@ quickly but makes more GitHub API calls.
 
 ## Configure GitHub `main` protection
 
+GitHub Free does not enforce rulesets or protected branches on a private
+organization repository. The Jenkins checks still report failures, but blocking
+the merge requires GitHub Team, a public repository, or another plan that
+supports protection for private repositories.
+
 In the repository, open **Settings > Rules > Rulesets** and create or update a
 ruleset targeting `main`:
 
@@ -384,17 +399,17 @@ work after the underlying job is deleted.
 
 ## Daily startup after a reboot
 
-The Jenkins configuration is persistent; the normal daily sequence is to start
-the existing services, not repeat the one-time setup:
+The Jenkins configuration is persistent, and SonarQube uses Docker restart
+policies. The normal daily sequence is therefore to verify the existing
+services, not repeat the one-time setup:
 
 ```bash
-# Start Docker Desktop first and wait until this succeeds.
+# Configure Docker Desktop to start at login and wait until this succeeds.
 docker info >/dev/null
 
-sudo systemctl start jenkins
-systemctl --user start jenkins-agent
+systemctl is-active --quiet jenkins
+systemctl --user is-active --quiet jenkins-agent
 
-docker compose -f quality/sonarqube/compose.yaml up -d
 until curl --silent --fail http://localhost:9000/api/system/status | \
   grep --quiet '"status":"UP"'; do sleep 2; done
 
@@ -403,6 +418,10 @@ kubectl cluster-info --context kind-battlefield
 kubectl get pods --namespace battlefield
 ./scripts/smoke-test-kind.sh
 ```
+
+If a service was stopped intentionally, start it again with
+`sudo systemctl start jenkins`, `systemctl --user start jenkins-agent`, or
+`docker compose -f quality/sonarqube/compose.yaml up -d` as appropriate.
 
 If `kind get clusters` does not include `battlefield`, recreate it and redeploy
 the committed revision:

@@ -100,6 +100,75 @@ func TestGetBattleRejectsMalformedID(t *testing.T) {
 	}
 }
 
+func TestBattleServiceDelegatesCatalogAndRepositoryReads(t *testing.T) {
+	validID := "7f22e693-bacd-46bb-b942-64fa613cd388"
+	catalog := &fakeScenarioCatalog{summaries: []ScenarioSummary{{ID: "skirmish-v1"}}}
+	repository := &fakeBattleRepo{run: &BattleRun{ID: validID}}
+	service := NewService(repository, &battleFactionRepo{}, catalog, 10_000)
+	if summaries := service.ListScenarios(); len(summaries) != 1 || summaries[0].ID != "skirmish-v1" {
+		t.Fatalf("ListScenarios() = %#v", summaries)
+	}
+	run, err := service.GetBattle(context.Background(), validID)
+	if err != nil || run.ID != validID {
+		t.Fatalf("GetBattle() = %#v, %v", run, err)
+	}
+
+	repository.getErr = errors.New("database unavailable")
+	if _, err := service.GetBattle(context.Background(), validID); err == nil {
+		t.Fatal("GetBattle() returned no repository error")
+	}
+}
+
+func TestCreateBattlePropagatesDependencyAndPersistenceErrors(t *testing.T) {
+	valid := CreateBattleInput{
+		ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1",
+		FactionIDs: []string{"4db8d152-1e04-4d10-8824-859c6ed72878", "41ac3a2f-3371-4de1-b0f6-70600fcd9052"}, TickCount: 100,
+	}
+	factions := map[string]*faction.Faction{
+		valid.FactionIDs[0]: {ID: valid.FactionIDs[0], Name: "A"},
+		valid.FactionIDs[1]: {ID: valid.FactionIDs[1], Name: "B"},
+	}
+
+	dependencyErr := errors.New("faction database unavailable")
+	service := NewService(&fakeBattleRepo{}, &battleFactionRepo{err: dependencyErr}, &fakeScenarioCatalog{}, 10_000)
+	if _, err := service.CreateBattle(context.Background(), valid); !errors.Is(err, dependencyErr) {
+		t.Fatalf("CreateBattle() error = %v, want dependency error", err)
+	}
+
+	for _, persistenceErr := range []error{ErrBattleAlreadyExists, errors.New("battle database unavailable")} {
+		repository := &fakeBattleRepo{createErr: persistenceErr}
+		service := NewService(repository, &battleFactionRepo{factions: factions}, &fakeScenarioCatalog{resolved: battle.Scenario{ID: "skirmish-v1"}}, 10_000)
+		if _, err := service.CreateBattle(context.Background(), valid); !errors.Is(err, persistenceErr) {
+			t.Fatalf("CreateBattle() error = %v, want %v", err, persistenceErr)
+		}
+	}
+}
+
+func TestListBattleEventsValidatesAndPropagatesErrors(t *testing.T) {
+	validID := "7f22e693-bacd-46bb-b942-64fa613cd388"
+	for _, limit := range []int{0, 501} {
+		service := NewService(&fakeBattleRepo{}, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
+		if _, err := service.ListBattleEvents(context.Background(), validID, nil, 0, limit); !errors.Is(err, ErrInvalidBattle) {
+			t.Fatalf("limit %d error = %v, want ErrInvalidBattle", limit, err)
+		}
+	}
+
+	for _, attempt := range []int{-1, 3} {
+		repository := &fakeBattleRepo{run: &BattleRun{ID: validID, Attempt: 2}}
+		service := NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
+		if _, err := service.ListBattleEvents(context.Background(), validID, &attempt, 0, 50); !errors.Is(err, ErrInvalidBattle) {
+			t.Fatalf("attempt %d error = %v, want ErrInvalidBattle", attempt, err)
+		}
+	}
+
+	repositoryErr := errors.New("events unavailable")
+	repository := &fakeBattleRepo{run: &BattleRun{ID: validID, Attempt: 1}, listErr: repositoryErr}
+	service := NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
+	if _, err := service.ListBattleEvents(context.Background(), validID, nil, 0, 50); !errors.Is(err, repositoryErr) {
+		t.Fatalf("ListBattleEvents() error = %v, want repository error", err)
+	}
+}
+
 type fakeScenarioCatalog struct {
 	resolved   battle.Scenario
 	digest     string
@@ -117,9 +186,13 @@ func (c *fakeScenarioCatalog) Summaries() []ScenarioSummary { return c.summaries
 
 type battleFactionRepo struct {
 	factions map[string]*faction.Faction
+	err      error
 }
 
 func (r *battleFactionRepo) GetFaction(_ context.Context, id string) (*faction.Faction, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
 	stored := r.factions[id]
 	if stored == nil {
 		return nil, factionservice.ErrFactionNotFound
@@ -134,6 +207,8 @@ type fakeBattleRepo struct {
 	run         *BattleRun
 	events      []StoredBattleEvent
 	listAttempt int
+	getErr      error
+	listErr     error
 }
 
 func (r *fakeBattleRepo) CreateBattle(_ context.Context, params CreateBattleParams) error {
@@ -141,6 +216,9 @@ func (r *fakeBattleRepo) CreateBattle(_ context.Context, params CreateBattlePara
 	return r.createErr
 }
 func (r *fakeBattleRepo) GetBattle(context.Context, string) (*BattleRun, error) {
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
 	if r.run == nil {
 		return nil, ErrBattleNotFound
 	}
@@ -148,5 +226,5 @@ func (r *fakeBattleRepo) GetBattle(context.Context, string) (*BattleRun, error) 
 }
 func (r *fakeBattleRepo) ListBattleEvents(_ context.Context, _ string, attempt int, _ uint64, _ int) ([]StoredBattleEvent, error) {
 	r.listAttempt = attempt
-	return r.events, nil
+	return r.events, r.listErr
 }
