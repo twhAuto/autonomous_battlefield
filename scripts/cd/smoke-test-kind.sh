@@ -177,6 +177,26 @@ wait_for_prometheus_query \
   "Prometheus engine discovery" \
   'sum(up{job="battlefield-pods",component="engine"})' \
   1
+wait_for_prometheus_query \
+  "Prometheus kube-state-metrics discovery" \
+  'sum(up{job="battlefield-pods",scrape_pod=~"battlefield-kube-state-metrics-.+"})' \
+  1
+wait_for_prometheus_query \
+  "Kubernetes workload state metrics" \
+  'sum(kube_pod_info{namespace="battlefield"})' \
+  1
+wait_for_prometheus_query \
+  "Kubernetes container readiness metrics" \
+  'sum(kube_pod_container_status_ready{namespace="battlefield"})' \
+  1
+wait_for_prometheus_query \
+  "Prometheus kubelet cAdvisor discovery" \
+  'sum(up{job="kubernetes-cadvisor"})' \
+  1
+wait_for_prometheus_query \
+  "Kubernetes pod resource metrics" \
+  'count(container_memory_working_set_bytes{namespace="battlefield",pod!=""})' \
+  1
 
 curl --fail --silent --max-time 2 \
   --output "${runtime_dir}/api-metrics.txt" \
@@ -197,6 +217,19 @@ curl --fail --silent --max-time 2 \
 if ! grep -q '"uid":"battlefield-overview"' \
   "${runtime_dir}/grafana-search.json"; then
   echo "Grafana did not provision the Autonomous Battlefield dashboard." >&2
+  exit 1
+fi
+
+curl --fail --silent --max-time 2 \
+  --noproxy '*' \
+  --resolve "${grafana_host}:${gateway_port}:127.0.0.1" \
+  --get \
+  --data-urlencode 'query=Kubernetes Workloads' \
+  --output "${runtime_dir}/grafana-kubernetes-search.json" \
+  "http://${grafana_host}:${gateway_port}/api/search"
+if ! grep -q '"uid":"battlefield-kubernetes"' \
+  "${runtime_dir}/grafana-kubernetes-search.json"; then
+  echo "Grafana did not provision the Kubernetes Workloads dashboard." >&2
   exit 1
 fi
 

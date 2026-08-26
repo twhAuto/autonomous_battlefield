@@ -9,17 +9,20 @@ operating targets. They are not a customer-facing service-level agreement.
 ## Signal path
 
 ```text
-API pods :8080/metrics ----+
-                            +--> Prometheus --> Grafana dashboard
-Engine pods :8081/metrics -+          |
-                                      +--> recording and alert rules
+API pods :8080/metrics --------+
+Engine pods :8081/metrics -----+
+kube-state-metrics :8080 ------+--> Prometheus --> Grafana dashboards
+kubelet /metrics/cadvisor -----+          |
+                                          +--> recording and alert rules
 
 application container stdout --> Fluent Bit --> Elasticsearch --> Kibana
 ```
 
-Prometheus discovers only annotated pods in the `battlefield` namespace. Its
-Role can list and watch pods in that namespace only. Grafana receives no
-Kubernetes credentials and uses the internal Prometheus Service as its sole
+Prometheus discovers annotated pods in the `battlefield` namespace and uses
+Kubernetes node discovery for one cAdvisor target per kubelet. Its namespaced
+Role can list and watch application pods. A separate ClusterRole permits only
+node discovery and `GET` access to the kubelet metrics proxy. Grafana receives
+no Kubernetes credentials and uses the internal Prometheus Service as its sole
 data source.
 
 The local stack deliberately does not include Alertmanager. Prometheus evaluates
@@ -59,7 +62,30 @@ The Prometheus Go client also publishes standard `go_*`, `process_*`, and
 `GET /v1/battles/{id}` rather than raw paths. Battle IDs, faction IDs, request
 IDs, pod names, and worker IDs are intentionally absent from application metric
 labels to avoid unbounded time-series cardinality. Pod identity is added only
-as a scrape target label by Prometheus.
+as the `scrape_pod` target label by Prometheus. That name deliberately avoids
+colliding with kube-state-metrics' `pod` label, which identifies the workload
+being described rather than the exporter pod.
+
+## Kubernetes workload metrics
+
+The Kubernetes dashboard combines two complementary metric sources:
+
+| Source | Answers | Example metrics |
+| --- | --- | --- |
+| `kube-state-metrics` | What Kubernetes says should exist and whether workload objects are healthy | `kube_pod_status_phase`, `kube_pod_container_status_ready`, `kube_pod_container_status_restarts_total`, `kube_deployment_status_replicas_available` |
+| kubelet cAdvisor endpoint | What CPU, memory, and network resources containers are actually consuming | `container_cpu_usage_seconds_total`, `container_memory_working_set_bytes`, `container_network_receive_bytes_total`, `container_network_transmit_bytes_total` |
+
+The local kube-state-metrics deployment watches only the `battlefield`
+namespace and only the workload resource types listed in its manifest. It does
+not read Secrets or cluster-wide application objects. Prometheus scrapes
+cAdvisor through the authenticated Kubernetes API proxy, so no privileged
+cAdvisor DaemonSet or host mounts are required.
+
+Open **Autonomous Battlefield / Kubernetes Workloads** in Grafana to see pod
+phases, readiness, restarts, deployment availability, and per-pod CPU, memory,
+and network usage. This is operational telemetry rather than a service SLI:
+pod health can explain an SLO failure, but it does not directly measure whether
+a user request succeeded.
 
 ## Proposed SLIs and SLOs
 
@@ -109,7 +135,8 @@ application rollouts:
 ```
 
 Visit `http://grafana.localhost:8888` and open **Autonomous Battlefield /
-Autonomous Battlefield Overview** for metrics. Visit
+Autonomous Battlefield Overview** for application SLIs or **Autonomous
+Battlefield / Kubernetes Workloads** for pod state and resource usage. Visit
 `http://kibana.localhost:8888`, open **Discover**, and select **Autonomous
 Battlefield Logs** for logs. The deployment job creates that data view before
 the observability stage is considered complete.
@@ -148,6 +175,22 @@ histogram_quantile(
 
 sum by (outcome) (
   increase(battlefield_engine_battles_processed_total{component="engine"}[1h])
+)
+
+sum by (phase) (
+  kube_pod_status_phase{namespace="battlefield"} == 1
+)
+
+sum by (pod) (
+  rate(container_cpu_usage_seconds_total{
+    namespace="battlefield", container!="", container!="POD"
+  }[5m])
+)
+
+sum by (pod) (
+  container_memory_working_set_bytes{
+    namespace="battlefield", container!="", container!="POD"
+  }
 )
 ```
 
@@ -189,7 +232,8 @@ source.
 For AWS, keep the application metric contract but replace the local stack with
 a durable managed or self-hosted metrics and logging backend. Add ingress or
 load-balancer metrics so the availability SLI covers failures that never reach
-the API, use durable retention and lifecycle policies, encrypt log transport
+the API, retain Kubernetes workload and container metrics with an EKS-compatible
+collector, use durable retention and lifecycle policies, encrypt log transport
 and storage, configure authenticated least-privilege Grafana and Kibana access,
 and route alerts to an owned notification channel. The unauthenticated local
 Elastic configuration must not be reused in a shared or production cluster.

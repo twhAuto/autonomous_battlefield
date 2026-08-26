@@ -316,6 +316,7 @@ kind_deploy_observability() {
   kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/logging-collector"
   for deployment in \
     battlefield-prometheus \
+    battlefield-kube-state-metrics \
     battlefield-grafana \
     battlefield-elasticsearch \
     battlefield-kibana; do
