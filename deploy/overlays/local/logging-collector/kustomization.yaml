@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: battlefield-logging
+
+resources:
+  - namespace.yaml
+  - service-account.yaml
+  - fluent-bit-daemonset.yaml
+
+configMapGenerator:
+  - name: battlefield-fluent-bit-config
+    files:
+      - fluent-bit.conf

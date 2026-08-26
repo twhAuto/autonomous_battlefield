@@ -178,6 +178,7 @@ kind_deploy_prepare_overlays() {
     "${project_dir}/deploy/overlays/local/application" \
     "${project_dir}/deploy/overlays/local/gateway" \
     "${project_dir}/deploy/overlays/local/infrastructure" \
+    "${project_dir}/deploy/overlays/local/logging-collector" \
     "${project_dir}/deploy/overlays/local/migration" \
     "${project_dir}/deploy/overlays/local/observability" \
     "${runtime_dir}/deploy/overlays/local/"
@@ -308,12 +309,31 @@ kind_deploy_observability() {
   local deployment
 
   echo "Deploying local observability stack..."
+  kind_deploy_kube delete job battlefield-kibana-setup \
+    --namespace "${namespace}" \
+    --ignore-not-found
   kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/observability"
-  for deployment in battlefield-prometheus battlefield-grafana; do
+  kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/logging-collector"
+  for deployment in \
+    battlefield-prometheus \
+    battlefield-grafana \
+    battlefield-elasticsearch \
+    battlefield-kibana; do
     kind_deploy_kube rollout status "deployment/${deployment}" \
       --namespace "${namespace}" \
       --timeout="${rollout_timeout}"
   done
+  kind_deploy_kube rollout status daemonset/battlefield-fluent-bit \
+    --namespace "${logging_namespace}" \
+    --timeout="${rollout_timeout}"
+
+  if ! kind_deploy_kube wait --for=condition=complete \
+    job/battlefield-kibana-setup \
+    --namespace "${namespace}" \
+    --timeout="${rollout_timeout}"; then
+    kind_deploy_kube logs job/battlefield-kibana-setup --namespace "${namespace}" || true
+    return 1
+  fi
 }
 
 kind_deploy_gateway() {
@@ -413,4 +433,5 @@ kind_deploy_print_summary() {
   echo
   echo "Frontend: http://battlefield.localhost:8888"
   echo "Grafana:  http://grafana.localhost:8888"
+  echo "Kibana:   http://kibana.localhost:8888"
 }

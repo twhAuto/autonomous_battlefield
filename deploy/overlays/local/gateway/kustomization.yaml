@@ -7,3 +7,4 @@ resources:
   - gateway.yaml
   - application-route.yaml
   - grafana-route.yaml
+  - kibana-route.yaml

@@ -1,9 +1,10 @@
 # Observability and reliability objectives
 
 Autonomous Battlefield exposes Prometheus metrics from both Go processes and
-ships a local Prometheus and Grafana stack for the `kind` deployment. The
-dashboard and objectives in this guide are internal operating targets. They are
-not a customer-facing service-level agreement.
+ships local metrics and logging stacks for the `kind` deployment. Prometheus
+and Grafana provide metrics; Fluent Bit, Elasticsearch, and Kibana provide
+centralized logs. The dashboard and objectives in this guide are internal
+operating targets. They are not a customer-facing service-level agreement.
 
 ## Signal path
 
@@ -12,6 +13,8 @@ API pods :8080/metrics ----+
                             +--> Prometheus --> Grafana dashboard
 Engine pods :8081/metrics -+          |
                                       +--> recording and alert rules
+
+application container stdout --> Fluent Bit --> Elasticsearch --> Kibana
 ```
 
 Prometheus discovers only annotated pods in the `battlefield` namespace. Its
@@ -22,6 +25,18 @@ data source.
 The local stack deliberately does not include Alertmanager. Prometheus evaluates
 the checked-in alert rules and shows their state, but notifications require an
 Alertmanager or another production alert-delivery integration.
+
+Fluent Bit runs once per node and tails API, engine, frontend, and migration
+container logs from the `battlefield` namespace. It enriches each record with
+pod, container, and label metadata and sends daily
+`battlefield-app-YYYY.MM.DD` indices to Elasticsearch. JSON application logs
+are merged into searchable fields; plain-text frontend logs retain their `log`
+field. Keeping infrastructure logs out of the application index also prevents
+field-mapping collisions with their different schemas. The collector runs in
+the dedicated `battlefield-logging` namespace so its required read-only node
+log mounts do not weaken the application namespace's Pod Security policy. Its
+Role can read pods in the `battlefield` namespace only, and its own logs are
+outside the configured input path.
 
 ## Application metrics
 
@@ -94,10 +109,15 @@ application rollouts:
 ```
 
 Visit `http://grafana.localhost:8888` and open **Autonomous Battlefield /
-Autonomous Battlefield Overview**. Local Grafana allows anonymous Viewer access
-and disables basic login. Envoy Gateway exposes it only through a Kind node port
-bound to `127.0.0.1`, so it is reachable from the local machine but not the
-network.
+Autonomous Battlefield Overview** for metrics. Visit
+`http://kibana.localhost:8888`, open **Discover**, and select **Autonomous
+Battlefield Logs** for logs. The deployment job creates that data view before
+the observability stage is considered complete.
+
+Local Grafana allows anonymous Viewer access and disables basic login. The
+local Elasticsearch and Kibana deployment also disables authentication. Envoy
+Gateway exposes the web interfaces only through a Kind node port bound to
+`127.0.0.1`, so they are reachable from the local machine but not the network.
 
 As a troubleshooting fallback, bypass the gateway with a temporary forward:
 
@@ -131,6 +151,23 @@ sum by (outcome) (
 )
 ```
 
+Useful Kibana Query Language filters in Discover include:
+
+```text
+service: api
+service: engine and level: ERROR
+kubernetes.container_name: frontend
+request_id: "<request-id>"
+```
+
+To inspect Elasticsearch directly:
+
+```bash
+kubectl port-forward --namespace battlefield \
+  service/battlefield-elasticsearch 9200:9200
+curl --fail 'http://localhost:9200/_cat/indices/battlefield-app-*?v'
+```
+
 For a direct endpoint check:
 
 ```bash
@@ -141,13 +178,18 @@ curl --fail http://localhost:8080/metrics
 
 ## Local versus production
 
-The local Prometheus TSDB and Grafana database use `emptyDir`; their data is
-lost when the corresponding pod is replaced. Prometheus retains up to 30 days
-only while that pod remains intact. This is appropriate for a disposable kind
-cluster, not for an SLA evidence source.
+The local Prometheus TSDB, Grafana database, and Elasticsearch data use
+`emptyDir`; their data is lost when the corresponding pod is replaced. Kibana
+saved objects live in the same disposable Elasticsearch store. Prometheus
+retains up to 30 days only while its pod remains intact. The Kibana setup Job
+recreates the checked-in data view, but it does not restore logs. This is
+appropriate for a disposable kind cluster, not for an SLA evidence or audit
+source.
 
 For AWS, keep the application metric contract but replace the local stack with
-a durable managed or self-hosted metrics backend. Add ingress or load-balancer
-metrics so the availability SLI covers failures that never reach the API, use
-durable retention longer than the objective window, configure authenticated
-Grafana access, and route alerts to an owned notification channel.
+a durable managed or self-hosted metrics and logging backend. Add ingress or
+load-balancer metrics so the availability SLI covers failures that never reach
+the API, use durable retention and lifecycle policies, encrypt log transport
+and storage, configure authenticated least-privilege Grafana and Kibana access,
+and route alerts to an owned notification channel. The unauthenticated local
+Elastic configuration must not be reused in a shared or production cluster.

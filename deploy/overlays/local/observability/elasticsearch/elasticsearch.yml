@@ -1,0 +1,7 @@
+cluster.name: battlefield-local
+discovery.type: single-node
+network.host: 0.0.0.0
+xpack.security.enabled: false
+xpack.security.autoconfiguration.enabled: false
+ingest.geoip.downloader.enabled: false
+node.store.allow_mmap: false

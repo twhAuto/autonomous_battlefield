@@ -17,6 +17,7 @@ git -C "${runtime_dir}" config user.name "Deployment component test"
 mkdir -p \
   "${runtime_dir}/backend" \
   "${runtime_dir}/frontend" \
+  "${runtime_dir}/deploy/overlays/local/logging-collector" \
   "${runtime_dir}/deploy/overlays/local/observability" \
   "${runtime_dir}/legacy" \
   "${runtime_dir}/scripts/cd"
@@ -127,7 +128,8 @@ assert_rename() {
 
 assert_detection "frontend,application" "frontend/src/App.tsx"
 assert_detection "migration,backend,application" "backend/internal/app/app.go"
-assert_detection "observability" "deploy/overlays/local/observability/prometheus.yml"
+assert_detection "observability" "deploy/overlays/local/observability/prometheus/prometheus.yml"
+assert_detection "observability" "deploy/overlays/local/logging-collector/fluent-bit.conf"
 assert_detection "none" "README.md"
 assert_detection "none" "docs/architecture.md"
 assert_detection "none" "quality/sonarqube/rules.properties"

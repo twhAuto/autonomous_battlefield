@@ -35,7 +35,7 @@ Choose the guide that matches the task:
 | --- | --- |
 | Run the application while coding | `./run-dev.sh` and [Run locally](#run-locally) |
 | Build and deploy to local Kubernetes | [DEPLOYMENT.md](DEPLOYMENT.md#deploy-the-application-locally) |
-| Inspect metrics, Grafana, and reliability objectives | [OBSERVABILITY.md](OBSERVABILITY.md) |
+| Inspect metrics, logs, Grafana, Kibana, and reliability objectives | [OBSERVABILITY.md](OBSERVABILITY.md) |
 | Resume kind after restarting the computer | [DEPLOYMENT.md](DEPLOYMENT.md#resume-the-cluster-after-restarting-the-computer) |
 | Install and configure Jenkins, GitHub, and SonarQube | [JENKINS.md](JENKINS.md) |
 | Start the existing CI/CD services after reboot | [JENKINS.md](JENKINS.md#daily-startup-after-a-reboot) |
@@ -120,9 +120,11 @@ The repository includes a staged Kustomize deployment for `kind`:
    Services, HPA, and disruption budgets. The portable base Ingress is removed
    locally in favor of Gateway API routes.
 4. `deploy/overlays/local/observability` creates namespace-scoped Prometheus,
-   a provisioned Grafana dashboard, and SLO recording and alert rules.
+   a provisioned Grafana dashboard, SLO rules, Elasticsearch, and Kibana;
+   `deploy/overlays/local/logging-collector` isolates the Fluent Bit node log
+   collector in its own namespace.
 5. `deploy/overlays/local/gateway` creates Envoy Gateway routes for the
-   frontend and Grafana on localhost without persistent port-forward commands.
+   frontend, Grafana, and Kibana without persistent port-forward commands.
 
 Follow the complete build, image-loading, deployment, verification, and cleanup
 commands in the [deployment learning guide](DEPLOYMENT.md#deploy-the-application-locally).
@@ -130,7 +132,8 @@ The standard container workflow uses `./scripts/cd/create-kind-cluster.sh`,
 `./scripts/ci/build-images.sh`, and `./scripts/cd/deploy-kind.sh` so every deployed
 application image is identified by the full source commit SHA. After deployment,
 open `http://battlefield.localhost:8888` for the application and
-`http://grafana.localhost:8888` for Grafana. The `VERSION` file supplies release
+`http://grafana.localhost:8888` for Grafana, or
+`http://kibana.localhost:8888` for logs. The `VERSION` file supplies release
 metadata, while CI builds add a human-readable `major.minor.patch-build.N` alias
 to the same image. Merged-main deployments compare against the previous
 successful build and only build, scan, migrate, or apply components affected by

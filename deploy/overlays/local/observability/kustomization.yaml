@@ -4,21 +4,8 @@ kind: Kustomization
 namespace: battlefield
 
 resources:
-  - prometheus-rbac.yaml
-  - prometheus-deployment.yaml
-  - prometheus-service.yaml
-  - grafana-deployment.yaml
-  - grafana-service.yaml
-
-configMapGenerator:
-  - name: battlefield-prometheus-config
-    files:
-      - prometheus.yml
-      - alerts.yml
-  - name: battlefield-grafana-provisioning
-    files:
-      - datasources.yaml
-      - dashboards.yaml
-  - name: battlefield-grafana-dashboards
-    files:
-      - battlefield-overview.json
+  - prometheus
+  - grafana
+  - elasticsearch
+  - kibana
+  - collector-rbac

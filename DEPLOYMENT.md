@@ -61,7 +61,13 @@ deploy/
         ├── infrastructure/ Disposable PostgreSQL and local Secret
         ├── migration/      Local migration composition
         ├── application/    Local application composition
-        ├── observability/  Prometheus, Grafana, dashboard, and alert rules
+        ├── observability/  Composed metrics and logging backends
+        │   ├── prometheus/ Metrics collection and alert rules
+        │   ├── grafana/    Metrics UI and dashboard provisioning
+        │   ├── elasticsearch/  Disposable local log storage
+        │   ├── kibana/     Logging UI and data-view provisioning
+        │   └── collector-rbac/  Collector access to application pod metadata
+        ├── logging-collector/  Node log collector and isolated namespace
         └── gateway/        Local Gateway API routes through Envoy Gateway
 ```
 
@@ -87,6 +93,7 @@ kubectl kustomize deploy/overlays/local/infrastructure
 kubectl kustomize deploy/overlays/local/migration
 kubectl kustomize deploy/overlays/local/application
 kubectl kustomize deploy/overlays/local/observability
+kubectl kustomize deploy/overlays/local/logging-collector
 kubectl kustomize deploy/overlays/local/gateway
 ```
 
@@ -152,8 +159,8 @@ kubectl get pods --all-namespaces
 
 The cluster script publishes node port `30080` as `127.0.0.1:8888` and installs
 the pinned Envoy Gateway release plus its Gateway API definitions. Binding the
-listener to loopback keeps the application and anonymous local Grafana viewer
-unavailable to other machines.
+listener to loopback keeps the application and unauthenticated local Grafana
+and Kibana viewers unavailable to other machines.
 
 An older `battlefield` cluster created without this mapping cannot be modified
 in place. Recreate that disposable local cluster explicitly:
@@ -310,12 +317,17 @@ compatible features, and major for breaking releases.
 
 The deployment script defaults to a full deployment of the checked-out commit:
 it loads both tagged images into `kind`, applies infrastructure, runs the
-migration gate, waits for the application rollouts, deploys Prometheus and
-Grafana, and programs the local Gateway API routes:
+migration gate, waits for the application rollouts, deploys Prometheus,
+Grafana, Fluent Bit, Elasticsearch, and Kibana, and programs the local Gateway
+API routes:
 
 ```bash
 ./scripts/cd/deploy-kind.sh
 ```
+
+The default rollout timeout is five minutes because the first local deployment
+must pull the comparatively large Elastic images. Override it with a positive
+seconds value such as `ROLLOUT_TIMEOUT=600s` on a slower connection.
 
 Pass a previous full SHA to deploy a locally built revision explicitly:
 
@@ -368,7 +380,7 @@ folder rule. Multiple changed paths contribute the union of their components;
 | `deploy/base/infrastructure/**` or `deploy/overlays/local/infrastructure/**` | `infrastructure` | None |
 | `deploy/base/migration/**` or `deploy/overlays/local/migration/**` | `migration` | None; uses the deployed backend image |
 | `deploy/base/application/**` or `deploy/overlays/local/application/**` | `application` | None; preserves deployed image tags |
-| `deploy/overlays/local/observability/**` | `observability` | None |
+| `deploy/overlays/local/observability/**` or `deploy/overlays/local/logging-collector/**` | `observability` | None |
 | `deploy/overlays/local/gateway/**` | `gateway` | None |
 | `VERSION` | `migration,backend,frontend,application` | Both application images |
 | CI image build or scan scripts | `all` | Both application images |
@@ -386,7 +398,7 @@ The selected components have these deployment effects:
 | `backend` | Load the backend image into kind; automatically includes `migration` and `application`. |
 | `frontend` | Load the frontend image into kind; automatically includes `application`. |
 | `application` | Apply API, engine, frontend, Services, autoscaling, and disruption-budget resources; wait for application rollouts. |
-| `observability` | Apply Prometheus, Grafana, dashboards, recording rules, and alerts; wait for both rollouts. |
+| `observability` | Apply Prometheus, Grafana, Fluent Bit, Elasticsearch, Kibana, dashboards, data views, recording rules, and alerts; wait for readiness. |
 | `gateway` | Apply Envoy Gateway routes and wait for the local Gateway to become programmed. |
 | `all` | Execute every action above. |
 | `none` | Build, scan, and deployment commands exit without changing Kubernetes. |
@@ -466,22 +478,36 @@ CPU target is `<unknown>` until metrics-server is installed.
 ### Inspect local observability
 
 The local-only observability overlay deploys Prometheus with namespace-scoped
-pod discovery and Grafana with a provisioned dashboard. The deployment script
-waits for both rollouts, and the smoke test verifies the application metrics
-endpoint, Prometheus pod discovery, and Grafana dashboard provisioning.
+pod discovery, Grafana with a provisioned dashboard, and a centralized logging
+path from Fluent Bit through Elasticsearch to Kibana. The deployment script
+waits for every workload and provisions the Kibana data view. The smoke test
+verifies metrics discovery, the Grafana dashboard, Kibana, and indexed logs.
 
 ```bash
 kubectl rollout status deployment/battlefield-prometheus \
   --namespace battlefield --timeout=120s
 kubectl rollout status deployment/battlefield-grafana \
   --namespace battlefield --timeout=120s
+kubectl rollout status deployment/battlefield-elasticsearch \
+  --namespace battlefield --timeout=120s
+kubectl rollout status deployment/battlefield-kibana \
+  --namespace battlefield --timeout=120s
+kubectl rollout status daemonset/battlefield-fluent-bit \
+  --namespace battlefield-logging --timeout=120s
 ```
 
+The application namespace continues to enforce the Pod Security `baseline`
+profile. Fluent Bit is isolated in `battlefield-logging`, whose `privileged`
+enforcement level is required for read-only node log mounts. Its service
+account receives only `get`, `list`, and `watch` access to pods in the
+`battlefield` namespace; the application workloads do not inherit that
+exception.
+
 Open `http://grafana.localhost:8888` for the Autonomous Battlefield dashboard.
-No port-forward process is required. See
-[OBSERVABILITY.md](OBSERVABILITY.md) for direct Prometheus access, metric
-definitions, SLI formulas, proposed SLOs, alert behavior, and production
-boundaries.
+Open `http://kibana.localhost:8888` and select the **Autonomous Battlefield
+Logs** data view in Discover. No port-forward process is required. See
+[OBSERVABILITY.md](OBSERVABILITY.md) for metrics, log queries, direct backend
+access, SLI formulas, alert behavior, and production boundaries.
 
 ### 7. Open the application
 
@@ -497,9 +523,9 @@ Run the same non-interactive verification used by Jenkins at any time:
 ./scripts/cd/smoke-test-kind.sh
 ```
 
-It verifies the browser-facing frontend and Grafana routes through the local
-gateway. Temporary API and Prometheus port-forwards are still used only for
-their internal diagnostic checks and are removed automatically.
+It verifies the browser-facing frontend, Grafana, and Kibana routes through the
+local gateway. Temporary API, Prometheus, and Elasticsearch port-forwards are
+used only for internal diagnostic checks and are removed automatically.
 
 ### Diagnose a local deployment
 
@@ -525,10 +551,11 @@ inspect `job/battlefield-migrate` only when its Job did not reach `Complete`.
 
 ### 8. Remove the local deployment
 
-Deleting the namespace also deletes the local PostgreSQL claim and its data:
+Deleting both local namespaces also deletes the PostgreSQL claim, observability
+data, and logging collector:
 
 ```bash
-kubectl delete namespace battlefield
+kubectl delete namespace battlefield battlefield-logging
 ```
 
 Deleting the entire `kind` cluster has the same data-loss consequence.
