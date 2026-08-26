@@ -96,6 +96,39 @@ func TestListFactionsReturnsEmptyArray(t *testing.T) {
 	}
 }
 
+func TestFactionReadsMapServiceErrors(t *testing.T) {
+	t.Run("list", func(t *testing.T) {
+		response := httptest.NewRecorder()
+		NewHandler(&fakeFactionService{listErr: errors.New("database unavailable")}).ListFactions(
+			response,
+			httptest.NewRequest(http.MethodGet, "/v1/factions", nil),
+		)
+		if response.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+		}
+	})
+
+	for _, test := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{name: "missing", err: factionservice.ErrFactionNotFound, status: http.StatusNotFound},
+		{name: "internal", err: errors.New("database unavailable"), status: http.StatusInternalServerError},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			NewHandler(&fakeFactionService{getErr: test.err}).GetFactionName(
+				response,
+				httptest.NewRequest(http.MethodGet, "/v1/factions/id/name", nil),
+			)
+			if response.Code != test.status {
+				t.Fatalf("status = %d, want %d", response.Code, test.status)
+			}
+		})
+	}
+}
+
 func TestCreateFactionErrors(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -131,6 +164,8 @@ type fakeFactionService struct {
 	createErr      error
 	factionName    string
 	factions       []faction.Faction
+	getErr         error
+	listErr        error
 }
 
 func newFactionTestRouter(factions factionservice.Service) http.Handler {
@@ -138,11 +173,11 @@ func newFactionTestRouter(factions factionservice.Service) http.Handler {
 }
 
 func (s *fakeFactionService) GetFactionName(context.Context, string) (string, error) {
-	return s.factionName, nil
+	return s.factionName, s.getErr
 }
 
 func (s *fakeFactionService) ListFactions(context.Context) ([]faction.Faction, error) {
-	return s.factions, nil
+	return s.factions, s.listErr
 }
 
 func (s *fakeFactionService) CreateFaction(_ context.Context, input factionservice.CreateInput) error {

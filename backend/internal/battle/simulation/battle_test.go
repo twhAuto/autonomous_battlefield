@@ -3,6 +3,7 @@ package simulation
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation/controller"
 )
@@ -155,9 +156,14 @@ func TestBattleIsDeterministic(t *testing.T) {
 }
 
 func TestBattleSummaryStatistics(t *testing.T) {
-	battle, err := NewBattle("battle-1", testScenario(), 1)
+	scenario := testScenario()
+	scenario.TickDuration = 250 * time.Millisecond
+	battle, err := NewBattle("battle-1", scenario, 1)
 	if err != nil {
 		t.Fatalf("NewBattle() returned an error: %v", err)
+	}
+	if battle.TickDuration() != scenario.TickDuration {
+		t.Fatalf("TickDuration() = %v, want %v", battle.TickDuration(), scenario.TickDuration)
 	}
 	transition, err := battle.Advance()
 	if err != nil {

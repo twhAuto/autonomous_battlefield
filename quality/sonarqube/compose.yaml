@@ -1,6 +1,7 @@
 services:
   sonarqube:
     image: sonarqube:26.8.0.126808-community
+    restart: unless-stopped
     depends_on:
       database:
         condition: service_healthy
@@ -20,6 +21,7 @@ services:
 
   database:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: sonar
       POSTGRES_USER: sonar

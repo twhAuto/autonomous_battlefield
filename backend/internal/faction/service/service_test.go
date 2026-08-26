@@ -83,14 +83,30 @@ func TestListFactions(t *testing.T) {
 	}
 }
 
+func TestGetFactionName(t *testing.T) {
+	repo := &fakeFactionRepository{storedFaction: &faction.Faction{Name: "Northwind"}}
+	service := NewService(repo)
+	name, err := service.GetFactionName(context.Background(), "id")
+	if err != nil || name != "Northwind" {
+		t.Fatalf("GetFactionName() = %q, %v", name, err)
+	}
+
+	repo.getErr = ErrFactionNotFound
+	if _, err := service.GetFactionName(context.Background(), "missing"); !errors.Is(err, ErrFactionNotFound) {
+		t.Fatalf("GetFactionName() error = %v, want ErrFactionNotFound", err)
+	}
+}
+
 type fakeFactionRepository struct {
 	createdFaction *faction.Faction
+	storedFaction  *faction.Faction
 	createErr      error
+	getErr         error
 	factions       []faction.Faction
 }
 
 func (r *fakeFactionRepository) GetFaction(context.Context, string) (*faction.Faction, error) {
-	return nil, ErrFactionNotFound
+	return r.storedFaction, r.getErr
 }
 
 func (r *fakeFactionRepository) ListFactions(context.Context) ([]faction.Faction, error) {

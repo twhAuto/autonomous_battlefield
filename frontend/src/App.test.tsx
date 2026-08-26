@@ -61,6 +61,17 @@ describe('App', () => {
     expect(screen.getByRole('link', { name: /view faction registry/i })).toHaveAttribute('href', '/factions')
   })
 
+  it('regenerates a faction identifier', async () => {
+    const user = userEvent.setup()
+    renderApp('/factions/new')
+
+    expect(screen.getByTitle(firstId)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Generate a new faction identifier' }))
+
+    expect(screen.getByTitle(secondId)).toBeInTheDocument()
+    expect(screen.queryByTitle(firstId)).not.toBeInTheDocument()
+  })
+
   it('renders every faction returned by the registry', async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ factions: [
       { id: firstId, name: 'Northwind' },
@@ -300,5 +311,96 @@ describe('App', () => {
 
     expect(await screen.findByText('battle completed')).toBeInTheDocument()
     expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes('attempt=1&after=50&limit=50'))).toBe(true)
+  })
+
+  it('renders the not-found route', () => {
+    renderApp('/outside-the-frontier')
+    expect(screen.getByRole('heading', { name: 'This route is outside the mapped frontier.' })).toBeInTheDocument()
+  })
+
+  it('retries the faction registry after an error', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ factions: [{ id: firstId, name: 'Northwind' }] }), { status: 200 }))
+    const user = userEvent.setup()
+    renderApp('/factions')
+
+    await user.click(await screen.findByRole('button', { name: 'RETRY CONNECTION' }))
+
+    expect(await screen.findByRole('heading', { name: 'Northwind' })).toBeInTheDocument()
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('explains when too few factions are available for a battle', async () => {
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      if (String(input) === '/v1/factions') {
+        return new Response(JSON.stringify({ factions: [{ id: firstId, name: 'Northwind' }] }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ scenarios: [{ id: 'skirmish-v1' }] }), { status: 200 })
+    })
+
+    renderApp('/battles/new')
+
+    expect(await screen.findByRole('heading', { name: 'Two factions are required' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /create a faction/i })).toHaveAttribute('href', '/factions/new')
+  })
+
+  it('explains when no battle scenarios are available', async () => {
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      if (String(input) === '/v1/factions') {
+        return new Response(JSON.stringify({ factions: [
+          { id: firstId, name: 'Northwind' },
+          { id: secondId, name: 'Verdant Accord' },
+        ] }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ scenarios: [] }), { status: 200 })
+    })
+
+    renderApp('/battles/new')
+
+    expect(await screen.findByRole('heading', { name: 'No scenarios are available' })).toBeInTheDocument()
+    expect(screen.getByText(/Add a valid scenario to the server catalog/)).toBeInTheDocument()
+  })
+
+  it('renders a failed battle and complex event values', async () => {
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === `/v1/battles/${battleId}`) {
+        return new Response(JSON.stringify({
+          id: battleId,
+          scenarioId: 'skirmish-v1',
+          scenarioDigest: 'digest',
+          requestedTicks: 10,
+          currentTick: 3,
+          status: 'failed',
+          attempt: 1,
+          participants: [{ id: firstId, name: 'Northwind' }, { id: secondId, name: 'Verdant Accord' }],
+          result: null,
+          errorCode: 'engine_error',
+        }), { status: 200 })
+      }
+      if (url.startsWith(`/v1/battles/${battleId}/events?`)) {
+        return new Response(JSON.stringify({
+          attempt: 1,
+          events: [{
+            attempt: 1,
+            sequence: 1,
+            tick: 3,
+            type: 'battle_failed',
+            data: { detail: null, context: { phase: 'advance' } },
+            createdAt: '2026-08-21T00:00:00Z',
+          }],
+          nextCursor: 1,
+        }), { status: 200 })
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    renderApp(`/battles/${battleId}`)
+
+    expect(await screen.findByRole('heading', { name: 'Battle failed' })).toBeInTheDocument()
+    expect(screen.getByText('engine_error')).toBeInTheDocument()
+    expect(await screen.findByText('{"phase":"advance"}')).toBeInTheDocument()
+    expect(screen.getByText('—')).toBeInTheDocument()
   })
 })

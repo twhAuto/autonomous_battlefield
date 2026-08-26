@@ -1,6 +1,8 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
+const coverageMinimum = 80
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -19,6 +21,12 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov', 'json-summary'],
       reportsDirectory: './coverage',
+      thresholds: {
+        statements: coverageMinimum,
+        branches: coverageMinimum,
+        functions: coverageMinimum,
+        lines: coverageMinimum,
+      },
     },
   },
 })

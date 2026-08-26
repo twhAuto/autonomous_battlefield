@@ -100,6 +100,87 @@ engine:
 	}
 }
 
+func TestParseDatabaseConfigValidation(t *testing.T) {
+	valid := func() fileConfig {
+		var raw fileConfig
+		raw.Database.URLEnvironmentVariable = "TEST_DATABASE_URL"
+		raw.Database.ConnectTimeout = "1s"
+		raw.Database.MaxConnections = 2
+		raw.Database.MinConnections = 1
+		raw.Database.MaxConnectionLifetime = "1m"
+		return raw
+	}
+	t.Setenv("TEST_DATABASE_URL", "postgres://localhost/database")
+
+	tests := []struct {
+		name   string
+		mutate func(*fileConfig)
+	}{
+		{name: "environment variable name", mutate: func(raw *fileConfig) { raw.Database.URLEnvironmentVariable = "" }},
+		{name: "connect timeout", mutate: func(raw *fileConfig) { raw.Database.ConnectTimeout = "" }},
+		{name: "connection lifetime", mutate: func(raw *fileConfig) { raw.Database.MaxConnectionLifetime = "bad" }},
+		{name: "max connections", mutate: func(raw *fileConfig) { raw.Database.MaxConnections = 0 }},
+		{name: "negative min connections", mutate: func(raw *fileConfig) { raw.Database.MinConnections = -1 }},
+		{name: "min above max", mutate: func(raw *fileConfig) { raw.Database.MinConnections = 3 }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			raw := valid()
+			test.mutate(&raw)
+			if _, err := parseDatabaseConfig(raw); err == nil {
+				t.Fatal("parseDatabaseConfig() returned no error")
+			}
+		})
+	}
+
+	t.Setenv("TEST_DATABASE_URL", "")
+	if _, err := parseDatabaseConfig(valid()); err == nil {
+		t.Fatal("parseDatabaseConfig() accepted an empty database URL")
+	}
+}
+
+func TestParseEngineConfigValidationAndDefaults(t *testing.T) {
+	configuration, err := parseEngineConfig(fileConfig{})
+	if err != nil {
+		t.Fatalf("parseEngineConfig() returned an error: %v", err)
+	}
+	if configuration.HealthAddress != ":8081" || configuration.MaxAttempts != 3 || configuration.WorkerIDEnvironmentVariable != "ENGINE_WORKER_ID" {
+		t.Fatalf("default engine config = %#v", configuration)
+	}
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*fileConfig)
+	}{
+		{name: "poll interval", mutate: func(raw *fileConfig) { raw.Engine.PollInterval = "bad" }},
+		{name: "lease duration", mutate: func(raw *fileConfig) { raw.Engine.LeaseDuration = "0s" }},
+		{name: "heartbeat interval", mutate: func(raw *fileConfig) { raw.Engine.HeartbeatInterval = "-1s" }},
+		{name: "shutdown timeout", mutate: func(raw *fileConfig) { raw.Engine.ShutdownTimeout = "bad" }},
+		{name: "max attempts", mutate: func(raw *fileConfig) { raw.Engine.MaxAttempts = -1 }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var raw fileConfig
+			test.mutate(&raw)
+			if _, err := parseEngineConfig(raw); err == nil {
+				t.Fatal("parseEngineConfig() returned no error")
+			}
+		})
+	}
+}
+
+func TestDecodeRejectsMultipleDocumentsAndMissingFile(t *testing.T) {
+	if _, err := decode(filepath.Join(t.TempDir(), "missing.yaml")); err == nil {
+		t.Fatal("decode() returned no error for a missing file")
+	}
+	path := filepath.Join(t.TempDir(), "multiple.yaml")
+	if err := os.WriteFile(path, []byte("http: {}\n---\ndatabase: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decode(path); err == nil {
+		t.Fatal("decode() accepted multiple YAML documents")
+	}
+}
+
 func writeConfigFile(t *testing.T, contents string) string {
 	t.Helper()
 	t.Setenv("TEST_DATABASE_URL", "postgres://battlefield:secret@localhost:5432/battlefield")
