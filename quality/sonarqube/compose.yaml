@@ -11,8 +11,6 @@ services:
       SONAR_JDBC_PASSWORD: ${SONAR_DB_PASSWORD:-sonar-local-only}
     ports:
       - "127.0.0.1:9000:9000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     stop_grace_period: 1h
     volumes:
       - sonarqube_data:/opt/sonarqube/data
