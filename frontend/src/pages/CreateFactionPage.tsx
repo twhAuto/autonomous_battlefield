@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react'
+import { type SubmitEvent, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { createFaction, FactionApiError } from '../api/factions'
 import { Emblem } from '../components/Emblem'
@@ -17,7 +17,7 @@ export function CreateFactionPage() {
   const previewName = trimmedName || 'Your faction'
   const canSubmit = trimmedName.length > 0 && status !== 'submitting'
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!trimmedName) {
       setStatus('error')
@@ -127,4 +127,3 @@ export function CreateFactionPage() {
     </>
   )
 }
-

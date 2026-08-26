@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { type SubmitEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   BattleApiError,
@@ -74,7 +74,7 @@ export function CreateBattlePage() {
     && validTicks
     && submitState !== 'submitting'
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!canSubmit) {
       setSubmitState('error')
@@ -206,7 +206,7 @@ export function CreateBattlePage() {
   )
 }
 
-function Combatant({ faction, slot }: { faction?: Faction; slot: string }) {
+function Combatant({ faction, slot }: Readonly<{ faction?: Faction; slot: string }>) {
   return (
     <div className="battle-preview__faction">
       {faction && <Emblem seed={faction.name} />}
