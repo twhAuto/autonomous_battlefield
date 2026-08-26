@@ -34,6 +34,7 @@ Choose the guide that matches the task:
 | Goal | Entry point |
 | --- | --- |
 | Run the application while coding | `./run-dev.sh` and [Run locally](#run-locally) |
+| Quickly redeploy the backend and frontend to an existing local cluster | `./deploy-local.sh` |
 | Build and deploy to local Kubernetes | [DEPLOYMENT.md](DEPLOYMENT.md#deploy-the-application-locally) |
 | Inspect metrics, logs, Grafana, Kibana, and reliability objectives | [OBSERVABILITY.md](OBSERVABILITY.md) |
 | Resume kind after restarting the computer | [DEPLOYMENT.md](DEPLOYMENT.md#resume-the-cluster-after-restarting-the-computer) |
@@ -147,6 +148,19 @@ pipeline also waits for SonarQube before it rebuilds the exact commit, migrates,
 deploys to local kind, smoke-tests, and supports rollback.
 See the [Jenkins setup guide](JENKINS.md) before configuring the Multibranch job
 or its local Kubernetes credential.
+
+For fast iteration after the local cluster, infrastructure, and gateway have
+already been deployed, rebuild and redeploy only the backend and frontend with:
+
+```bash
+./deploy-local.sh
+```
+
+This convenience command accepts uncommitted local changes, runs the backend
+migration gate, and updates the API, engine, and frontend workloads. When the
+working tree is dirty, it also restarts those workloads so images rebuilt under
+the current commit tag are picked up immediately. It does not deploy or update
+PostgreSQL, observability, logging, or gateway resources.
 
 ### Use a different configuration file
 

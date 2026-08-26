@@ -1,6 +1,6 @@
 id: skirmish-v1
 rulesVersion: "1"
-tickDuration: 0s
+tickDuration: 1s
 decisionIntervalTicks: 10
 decisionLeadTicks: 2
 rules:
