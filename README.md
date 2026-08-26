@@ -126,13 +126,16 @@ The repository includes a staged Kustomize deployment for `kind`:
 
 Follow the complete build, image-loading, deployment, verification, and cleanup
 commands in the [deployment learning guide](DEPLOYMENT.md#deploy-the-application-locally).
-The standard container workflow uses `./scripts/create-kind-cluster.sh`,
-`./scripts/build-images.sh`, and `./scripts/deploy-kind.sh` so every deployed
+The standard container workflow uses `./scripts/cd/create-kind-cluster.sh`,
+`./scripts/ci/build-images.sh`, and `./scripts/cd/deploy-kind.sh` so every deployed
 application image is identified by the full source commit SHA. After deployment,
 open `http://battlefield.localhost:8888` for the application and
 `http://grafana.localhost:8888` for Grafana. The `VERSION` file supplies release
 metadata, while CI builds add a human-readable `major.minor.patch-build.N` alias
-to the same image.
+to the same image. Merged-main deployments compare against the previous
+successful build and only build, scan, migrate, or apply components affected by
+that change; an unavailable comparison or unclassified path safely falls back
+to a full deployment.
 
 The root `Jenkinsfile` provides pull-request CI and merged-`main` deployment:
 lint, coverage, tests, and vulnerability scans gate the PR, while the merge
@@ -166,8 +169,8 @@ Migration files are embedded in the executable, so a deployed binary does not ne
 Run the same Go lint and coverage work used by Jenkins:
 
 ```bash
-./scripts/lint-go.sh
-./scripts/test-go-coverage.sh
+./scripts/ci/lint-go.sh
+./scripts/ci/test-go-coverage.sh
 (cd frontend && npm ci && npm test -- --coverage && npm run build)
 ```
 

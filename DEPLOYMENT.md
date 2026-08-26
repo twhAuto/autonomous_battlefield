@@ -144,7 +144,7 @@ the pinned version.
 ### 3. Create and inspect the cluster
 
 ```bash
-./scripts/create-kind-cluster.sh
+./scripts/cd/create-kind-cluster.sh
 kubectl cluster-info --context kind-battlefield
 kubectl get nodes
 kubectl get pods --all-namespaces
@@ -159,7 +159,7 @@ An older `battlefield` cluster created without this mapping cannot be modified
 in place. Recreate that disposable local cluster explicitly:
 
 ```bash
-./scripts/create-kind-cluster.sh --recreate
+./scripts/cd/create-kind-cluster.sh --recreate
 ```
 
 `--recreate` deletes the existing cluster, including its local PostgreSQL
@@ -246,9 +246,9 @@ Do not reuse these credentials outside the disposable local cluster.
 
 ### 2. Build commit-addressed images
 
-The normal Kubernetes workflow tags both application images with the full Git
-commit SHA. This makes the deployed revision unambiguous and gives Jenkins the
-same build entry point that will later push images to ECR.
+The normal Kubernetes workflow tags each changed application image with the
+full Git commit SHA. This makes deployed revisions unambiguous and gives Jenkins
+the same build entry point that will later push images to ECR.
 
 `VERSION` contains the release line in semantic `major.minor.patch` form. The
 initial version is `0.1.0`. When a CI build number is present, the build also
@@ -268,13 +268,13 @@ Commit the intended source first and confirm the worktree is clean:
 
 ```bash
 git status --short
-./scripts/build-images.sh
+./scripts/ci/build-images.sh
 ```
 
 To simulate CI build 27 locally after committing the changes:
 
 ```bash
-CI_BUILD_NUMBER=27 ./scripts/build-images.sh
+CI_BUILD_NUMBER=27 ./scripts/ci/build-images.sh
 ```
 
 The build refuses a dirty worktree by default because a Git SHA cannot identify
@@ -308,25 +308,108 @@ compatible features, and major for breaking releases.
 
 ### 3. Deploy that exact revision
 
-The deployment script defaults to the checked-out commit, loads both tagged
-images into `kind`, applies infrastructure, runs the migration gate, waits for
-all three application rollouts, deploys Prometheus and Grafana, and programs
-the local Gateway API routes:
+The deployment script defaults to a full deployment of the checked-out commit:
+it loads both tagged images into `kind`, applies infrastructure, runs the
+migration gate, waits for the application rollouts, deploys Prometheus and
+Grafana, and programs the local Gateway API routes:
 
 ```bash
-./scripts/deploy-kind.sh
+./scripts/cd/deploy-kind.sh
 ```
 
 Pass a previous full SHA to deploy a locally built revision explicitly:
 
 ```bash
-./scripts/deploy-kind.sh "$(git rev-parse HEAD)"
+./scripts/cd/deploy-kind.sh "$(git rev-parse HEAD)"
 ```
 
-The script composes temporary Kustomize overlays with the requested tag, leaving
-the tracked portable manifests unchanged. Because the local Deployments use
-`imagePullPolicy: IfNotPresent`, Kubernetes uses the commit-addressed image
-loaded into the `kind` node rather than an external registry.
+For an incremental manual deployment, set `DEPLOY_COMPONENTS`. The image build
+and scan scripts consume the same value and ignore non-image components:
+
+```bash
+# Frontend source changed: build, scan, and roll only the frontend.
+DEPLOY_COMPONENTS=frontend ./scripts/ci/build-images.sh
+DEPLOY_COMPONENTS=frontend ./scripts/ci/scan-images.sh "$(git rev-parse HEAD)"
+DEPLOY_COMPONENTS=frontend ./scripts/cd/deploy-kind.sh "$(git rev-parse HEAD)"
+
+# Only dashboards, alert rules, or observability manifests changed.
+DEPLOY_COMPONENTS=observability ./scripts/cd/deploy-kind.sh "$(git rev-parse HEAD)"
+```
+
+Supported components are `infrastructure`, `migration`, `backend`, `frontend`,
+`application`, `observability`, and `gateway`. Selecting `backend` also runs the
+migration gate and applies the application overlay; selecting `frontend` also
+applies the application overlay. `all` preserves the original full-deployment
+behavior and `none` exits without changing the cluster.
+
+Jenkins calculates this value with
+`scripts/cd/detect-deployment-components.sh`, comparing the current revision with
+the previous successful build. An unavailable baseline intentionally selects
+`all`; documentation-only changes select `none`. Any path not covered by an
+explicit classifier rule also selects `all` and writes a warning to the build
+log. This fail-safe means a newly added directory cannot silently skip a needed
+deployment; add a targeted or known-non-deploying rule once its ownership is
+understood.
+
+#### Change-to-deployment mapping
+
+The path classifier evaluates the following rules from top to bottom for each
+path, so an earlier documentation rule takes precedence over a broader source
+folder rule. Multiple changed paths contribute the union of their components;
+`all` takes precedence over every targeted selection.
+
+| Changed path | Selected components | Image build and scan |
+| --- | --- | --- |
+| Any `*.md`, `LICENSE`, `LICENSE.*`, or root `.gitignore` | `none` | None |
+| `quality/**` or `sonar-project.properties` | `none` | None |
+| CI lint, coverage, summary, or classifier-test scripts | `none` | None |
+| `backend/**` | `migration,backend,application` | Backend image |
+| `frontend/**` | `frontend,application` | Frontend image |
+| `deploy/base/infrastructure/**` or `deploy/overlays/local/infrastructure/**` | `infrastructure` | None |
+| `deploy/base/migration/**` or `deploy/overlays/local/migration/**` | `migration` | None; uses the deployed backend image |
+| `deploy/base/application/**` or `deploy/overlays/local/application/**` | `application` | None; preserves deployed image tags |
+| `deploy/overlays/local/observability/**` | `observability` | None |
+| `deploy/overlays/local/gateway/**` | `gateway` | None |
+| `VERSION` | `migration,backend,frontend,application` | Both application images |
+| CI image build or scan scripts | `all` | Both application images |
+| Anything under `scripts/cd/**` or `scripts/lib/**` | `all` | Both application images |
+| `deploy/kind.yaml` | `all` | Both application images |
+| Any other or newly introduced path | `all`, with a warning | Both application images |
+| Missing or invalid previous-successful revision | `all` | Both application images |
+
+The selected components have these deployment effects:
+
+| Component | Kubernetes action |
+| --- | --- |
+| `infrastructure` | Apply namespace configuration, Secret, and PostgreSQL; wait for PostgreSQL rollout. |
+| `migration` | Recreate the migration Job with the selected or currently deployed backend image and wait for completion. |
+| `backend` | Load the backend image into kind; automatically includes `migration` and `application`. |
+| `frontend` | Load the frontend image into kind; automatically includes `application`. |
+| `application` | Apply API, engine, frontend, Services, autoscaling, and disruption-budget resources; wait for application rollouts. |
+| `observability` | Apply Prometheus, Grafana, dashboards, recording rules, and alerts; wait for both rollouts. |
+| `gateway` | Apply Envoy Gateway routes and wait for the local Gateway to become programmed. |
+| `all` | Execute every action above. |
+| `none` | Build, scan, and deployment commands exit without changing Kubernetes. |
+
+Renames are evaluated as one deletion plus one addition, so both the old and new
+locations influence the result. When adding or repurposing a folder, update the
+classifier, its tests, and this table together. Until then, the unknown-path
+fallback safely selects `all`.
+
+The script composes temporary Kustomize overlays with the selected backend and
+frontend tags, leaving the tracked portable manifests unchanged. An unchanged
+component retains its currently deployed tag. Because the local Deployments use
+`imagePullPolicy: IfNotPresent`, Kubernetes uses commit-addressed images loaded
+into the `kind` node rather than an external registry.
+
+Automation is grouped by pipeline responsibility: `scripts/ci` contains lint,
+coverage, image build and scan, and classifier tests; `scripts/cd` contains
+cluster setup, deployment-scope detection, deploy, rollback, and smoke-test
+commands. `scripts/cd/deploy-kind.sh` is the public deployment orchestrator. Its
+internal functions live in `scripts/cd/lib/kind-deployment.sh`, while
+`scripts/lib/deployment-components.sh` provides the component-selection rules
+shared by CI and CD. Files under either `lib` directory are sourced libraries
+and are not intended to be run directly.
 
 The following sections show the individual Kubernetes stages executed by the
 script and are useful when diagnosing a failure.
@@ -411,7 +494,7 @@ continue to work.
 Run the same non-interactive verification used by Jenkins at any time:
 
 ```bash
-./scripts/smoke-test-kind.sh
+./scripts/cd/smoke-test-kind.sh
 ```
 
 It verifies the browser-facing frontend and Grafana routes through the local

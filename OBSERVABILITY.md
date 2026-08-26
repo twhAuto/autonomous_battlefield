@@ -88,9 +88,9 @@ The normal deployment command renders and applies observability after the
 application rollouts:
 
 ```bash
-./scripts/create-kind-cluster.sh
-./scripts/deploy-kind.sh
-./scripts/smoke-test-kind.sh
+./scripts/cd/create-kind-cluster.sh
+./scripts/cd/deploy-kind.sh
+./scripts/cd/smoke-test-kind.sh
 ```
 
 Visit `http://grafana.localhost:8888` and open **Autonomous Battlefield /

@@ -18,3 +18,26 @@ When the user asks to plan, select, or implement tracked project work:
 5. Record newly discovered project work in the Notion backlog when the user asks to track it.
 
 If Notion MCP is unavailable, continue with safe repository work when possible and tell the user that task statuses could not be synchronized.
+
+## Test coverage quality gate
+
+Implementation work must preserve the repository's merge-blocking coverage
+requirements:
+
+- Backend Go statement coverage must be at least 80% across all packages.
+- Frontend statements, branches, functions, and lines must each be at least 80%.
+- Add or update meaningful tests for changed behavior. Do not lower thresholds,
+  exclude production code from coverage, or add tests that only inflate coverage
+  without checking behavior unless the user explicitly approves the tradeoff.
+
+Before declaring relevant implementation work complete, run:
+
+```bash
+./scripts/ci/test-go-coverage.sh
+(cd frontend && npm test -- --coverage)
+```
+
+Run the applicable command when a change affects only one side of the
+application. For documentation- or infrastructure-only changes, use the checks
+appropriate to those files instead. If a required coverage command cannot run,
+report that limitation and do not claim the coverage gate passed.

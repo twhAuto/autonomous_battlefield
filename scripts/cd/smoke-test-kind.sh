@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+# Verifies the workloads and observability endpoints deployed to local kind.
+
 cluster_name="${KIND_CLUSTER_NAME:-battlefield}"
 namespace="${KUBERNETES_NAMESPACE:-battlefield}"
 kube_context="${KUBERNETES_CONTEXT:-kind-${cluster_name}}"

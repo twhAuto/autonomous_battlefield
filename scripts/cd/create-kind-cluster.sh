@@ -2,7 +2,7 @@
 
 set -Eeuo pipefail
 
-project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 cluster_name="${KIND_CLUSTER_NAME:-battlefield}"
 kube_context="${KUBERNETES_CONTEXT:-kind-${cluster_name}}"
 envoy_gateway_version="${ENVOY_GATEWAY_VERSION:-v1.9.0}"
@@ -72,6 +72,6 @@ kubectl --context "${kube_context}" wait \
 
 echo
 echo "kind cluster ${cluster_name} is ready for application deployment."
-echo "After ./scripts/deploy-kind.sh, open:"
+echo "After ./scripts/cd/deploy-kind.sh, open:"
 echo "  http://battlefield.localhost:${gateway_host_port}"
 echo "  http://grafana.localhost:${gateway_host_port}"
