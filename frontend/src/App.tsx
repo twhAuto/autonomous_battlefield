@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Link, NavLink, Outlet, Route, Routes } from 'react-router-dom'
+import { Link, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { CreateFactionPage } from './pages/CreateFactionPage'
 import { CreateBattlePage } from './pages/CreateBattlePage'
 import { BattlePage } from './pages/BattlePage'
@@ -8,6 +8,8 @@ import { HomePage } from './pages/HomePage'
 import './styles.css'
 
 function AppLayout() {
+  const location = useLocation()
+  const isBattleDetail = /^\/battles\/[^/]+$/.test(location.pathname)
   const currentDate = useMemo(
     () => new Intl.DateTimeFormat('en', {
       month: 'short',
@@ -37,7 +39,7 @@ function AppLayout() {
         </div>
       </header>
 
-      <main id="main-content"><Outlet /></main>
+      <main id="main-content" className={isBattleDetail ? 'main-content--battle' : undefined}><Outlet /></main>
 
       <footer>
         <span>AUTONOMOUS BATTLEFIELD / COMMAND INTERFACE</span>

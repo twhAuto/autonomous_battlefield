@@ -13,6 +13,7 @@ database:
   maxConnectionLifetime: 30m
 api:
   scenarioCatalogPath: scenarios
+  rulesetCatalogPath: rulesets
   maxTicks: 10000
 engine:
   healthAddress: ":8081"

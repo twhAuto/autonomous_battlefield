@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/server/service"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 )
 
@@ -22,7 +23,31 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/scenarios", h.ListScenarios)
 	mux.HandleFunc("POST /v1/battles", h.CreateBattle)
 	mux.HandleFunc("GET /v1/battles/{id}", h.GetBattle)
+	mux.HandleFunc("GET /v1/battles/{id}/factions/{factionId}/view", h.GetFactionView)
 	mux.HandleFunc("GET /v1/battles/{id}/events", h.ListEvents)
+}
+
+func (h *Handler) GetFactionView(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.battles.(battleservice.PerspectiveService)
+	if !ok {
+		http.Error(w, "perspective views unavailable", http.StatusNotImplemented)
+		return
+	}
+	view, err := service.GetFactionView(r.Context(), r.PathValue("id"), r.PathValue("factionId"))
+	if errors.Is(err, battleservice.ErrInvalidBattle) || errors.Is(err, battleservice.ErrInvalidPerspective) {
+		http.Error(w, "invalid battle perspective", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, battleservice.ErrBattleNotFound) {
+		http.Error(w, "battle not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		slog.ErrorContext(r.Context(), "battle_view_failed", "request_id", httpapi.RequestID(r.Context()), "battle_id", r.PathValue("id"), "faction_id", r.PathValue("factionId"), "error", err)
+		http.Error(w, "could not get battle view", http.StatusInternalServerError)
+		return
+	}
+	_ = httpapi.WriteJSON(w, http.StatusOK, view)
 }
 
 func (h *Handler) ListScenarios(w http.ResponseWriter, _ *http.Request) {
@@ -49,6 +74,10 @@ func (h *Handler) CreateBattle(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, battleservice.ErrBattleFactionMissing) || errors.Is(err, battleservice.ErrScenarioNotFound) {
 		http.Error(w, "battle dependency not found", http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, battleservice.ErrIncompatibleFaction) || errors.Is(err, game.ErrInvalidBlueprint) {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 	if errors.Is(err, battleservice.ErrBattleAlreadyExists) {
@@ -118,8 +147,17 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		attempt = &parsed
 	}
+	latest := false
+	if raw := query.Get("latest"); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			http.Error(w, "invalid latest-events flag", http.StatusBadRequest)
+			return
+		}
+		latest = parsed
+	}
 
-	page, err := h.battles.ListBattleEvents(r.Context(), r.PathValue("id"), attempt, after, limit)
+	page, err := h.battles.ListBattleEvents(r.Context(), r.PathValue("id"), attempt, after, limit, latest)
 	if errors.Is(err, battleservice.ErrInvalidBattle) {
 		http.Error(w, "invalid event query", http.StatusBadRequest)
 		return
@@ -151,12 +189,15 @@ func battleResponse(run *battleservice.BattleRun) any {
 		Attempt        int     `json:"attempt"`
 		Participants   any     `json:"participants"`
 		Result         any     `json:"result"`
+		Map            any     `json:"map"`
+		State          any     `json:"state"`
 		ErrorCode      *string `json:"errorCode,omitempty"`
 		ErrorMessage   *string `json:"errorMessage,omitempty"`
 	}{
 		ID: run.ID, ScenarioID: run.ScenarioID, ScenarioDigest: run.ScenarioDigest,
 		RequestedTicks: run.RequestedTicks, CurrentTick: run.CurrentTick, Status: run.Status,
 		Attempt: run.Attempt, Participants: participants, Result: run.Result,
+		Map: run.ScenarioSnapshot.Map, State: run.CurrentState,
 		ErrorCode: run.ErrorCode, ErrorMessage: run.ErrorMessage,
 	}
 }

@@ -26,7 +26,7 @@ export function CreateBattlePage() {
   const [scenarioID, setScenarioID] = useState('')
   const [firstFactionID, setFirstFactionID] = useState('')
   const [secondFactionID, setSecondFactionID] = useState('')
-  const [tickCount, setTickCount] = useState<number | ''>(100)
+  const [tickCount, setTickCount] = useState<number | ''>(500)
   const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'error'>('idle')
   const [submitMessage, setSubmitMessage] = useState('')
 
@@ -63,9 +63,11 @@ export function CreateBattlePage() {
     () => scenarios.find((scenario) => scenario.id === scenarioID),
     [scenarioID, scenarios],
   )
-  const firstFaction = factions.find((faction) => faction.id === firstFactionID)
-  const secondFaction = factions.find((faction) => faction.id === secondFactionID)
-  const validTicks = typeof tickCount === 'number' && Number.isInteger(tickCount) && tickCount >= 1 && tickCount <= 10_000
+  const compatibleFactions = useMemo(() => factions.filter((faction) => !selectedScenario?.rulesetId || faction.rulesetId === selectedScenario.rulesetId), [factions, selectedScenario])
+  const firstFaction = compatibleFactions.find((faction) => faction.id === firstFactionID)
+  const secondFaction = compatibleFactions.find((faction) => faction.id === secondFactionID)
+  const maximumTicks = selectedScenario?.maximumTicks ?? 500
+  const validTicks = typeof tickCount === 'number' && Number.isInteger(tickCount) && tickCount >= 1 && tickCount <= maximumTicks
   const canSubmit = loadState === 'ready'
     && firstFactionID !== ''
     && secondFactionID !== ''
@@ -74,11 +76,20 @@ export function CreateBattlePage() {
     && validTicks
     && submitState !== 'submitting'
 
+  useEffect(() => {
+    if (!selectedScenario) return
+    const compatible = factions.filter((faction) => faction.rulesetId === selectedScenario.rulesetId)
+    setFirstFactionID(compatible[0]?.id ?? '')
+    setSecondFactionID(compatible[1]?.id ?? '')
+    const scenarioMaximum = selectedScenario.maximumTicks ?? 500
+    setTickCount((current) => current === '' ? current : Math.min(current, scenarioMaximum))
+  }, [factions, selectedScenario])
+
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!canSubmit) {
       setSubmitState('error')
-      setSubmitMessage('Select two different factions and a tick limit between 1 and 10,000.')
+      setSubmitMessage(`Select two different factions and a tick limit between 1 and ${maximumTicks}.`)
       return
     }
     setSubmitState('submitting')
@@ -142,7 +153,7 @@ export function CreateBattlePage() {
               <div className="battle-form__field">
                 <label htmlFor="scenario">Combat scenario</label>
                 <select id="scenario" value={scenarioID} onChange={(event) => setScenarioID(event.target.value)}>
-                  {scenarios.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.id}</option>)}
+                  {scenarios.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.id} · {scenario.mapWidth}×{scenario.mapHeight}</option>)}
                 </select>
                 {selectedScenario && (
                   <p className="field-hint">Rules v{selectedScenario.rulesVersion} / decisions every {selectedScenario.decisionIntervalTicks} ticks / {selectedScenario.tickDuration} tick pace</p>
@@ -153,24 +164,25 @@ export function CreateBattlePage() {
                 <div className="battle-form__field">
                   <label htmlFor="first-faction">Slot one</label>
                   <select id="first-faction" value={firstFactionID} onChange={(event) => setFirstFactionID(event.target.value)}>
-                    {factions.map((faction) => <option key={faction.id} value={faction.id} disabled={faction.id === secondFactionID}>{faction.name}</option>)}
+                    {compatibleFactions.map((faction) => <option key={faction.id} value={faction.id} disabled={faction.id === secondFactionID}>{faction.name}</option>)}
                   </select>
                 </div>
                 <span className="versus-mark" aria-hidden="true">VS</span>
                 <div className="battle-form__field">
                   <label htmlFor="second-faction">Slot two</label>
                   <select id="second-faction" value={secondFactionID} onChange={(event) => setSecondFactionID(event.target.value)}>
-                    {factions.map((faction) => <option key={faction.id} value={faction.id} disabled={faction.id === firstFactionID}>{faction.name}</option>)}
+                    {compatibleFactions.map((faction) => <option key={faction.id} value={faction.id} disabled={faction.id === firstFactionID}>{faction.name}</option>)}
                   </select>
                 </div>
               </div>
               {firstFactionID === secondFactionID && <p className="field-error" role="alert">Choose two different factions.</p>}
+              {compatibleFactions.length < 2 && <p className="field-error" role="alert">This scenario requires {selectedScenario?.rulesetId}. Create two compatible factions before deployment.</p>}
 
               <div className="battle-form__field">
                 <label htmlFor="tick-count">Maximum ticks</label>
-                <input id="tick-count" type="number" min="1" max="10000" value={tickCount} onChange={(event) => setTickCount(event.currentTarget.value === '' ? '' : event.currentTarget.valueAsNumber)} aria-invalid={!validTicks} />
+                <input id="tick-count" type="number" min="1" max={maximumTicks} value={tickCount} onChange={(event) => setTickCount(event.currentTarget.value === '' ? '' : event.currentTarget.valueAsNumber)} aria-invalid={!validTicks} />
                 <p className="field-hint">The battle ends earlier if one faction is eliminated.</p>
-                {!validTicks && <p className="field-error" role="alert">Enter a whole number from 1 to 10,000.</p>}
+                {!validTicks && <p className="field-error" role="alert">Enter a whole number from 1 to {maximumTicks}.</p>}
               </div>
 
               <div className="identity-block">

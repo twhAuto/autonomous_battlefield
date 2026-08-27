@@ -20,6 +20,7 @@ type Config struct {
 
 type API struct {
 	ScenarioCatalogPath string
+	RulesetCatalogPath  string
 	MaxTicks            uint64
 }
 
@@ -68,6 +69,7 @@ type fileConfig struct {
 	} `yaml:"database"`
 	API struct {
 		ScenarioCatalogPath string `yaml:"scenarioCatalogPath"`
+		RulesetCatalogPath  string `yaml:"rulesetCatalogPath"`
 		MaxTicks            uint64 `yaml:"maxTicks"`
 	} `yaml:"api"`
 	Engine struct {
@@ -154,6 +156,13 @@ func parseAPIConfig(raw fileConfig, path string) (API, error) {
 	if !filepath.IsAbs(catalogPath) {
 		catalogPath = filepath.Join(filepath.Dir(path), catalogPath)
 	}
+	rulesetPath := strings.TrimSpace(raw.API.RulesetCatalogPath)
+	if rulesetPath == "" {
+		rulesetPath = "rulesets"
+	}
+	if !filepath.IsAbs(rulesetPath) {
+		rulesetPath = filepath.Join(filepath.Dir(path), rulesetPath)
+	}
 	maxTicks := raw.API.MaxTicks
 	if maxTicks == 0 {
 		maxTicks = 10_000
@@ -161,7 +170,7 @@ func parseAPIConfig(raw fileConfig, path string) (API, error) {
 	if maxTicks > 10_000 {
 		return API{}, fmt.Errorf("api.maxTicks must not exceed 10000")
 	}
-	return API{ScenarioCatalogPath: catalogPath, MaxTicks: maxTicks}, nil
+	return API{ScenarioCatalogPath: catalogPath, RulesetCatalogPath: rulesetPath, MaxTicks: maxTicks}, nil
 }
 
 func parseEngineConfig(raw fileConfig) (Engine, error) {

@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	battle "github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
@@ -107,7 +107,7 @@ func (w *Worker) process(ctx context.Context, job *BattleJob) (resultErr error) 
 		telemetry.ObserveEngineBattle(outcome, time.Since(started))
 	}()
 
-	simulation, err := battle.NewBattle(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
+	simulation, err := game.NewMatch(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
 	if err != nil {
 		resultErr = w.failInvalidScenario(ctx, job.Lease, err)
 		if resultErr == nil {
@@ -119,7 +119,7 @@ func (w *Worker) process(ctx context.Context, job *BattleJob) (resultErr error) 
 	return resultErr
 }
 
-func (w *Worker) runBattle(ctx context.Context, job *BattleJob, simulation *battle.Battle) (string, error) {
+func (w *Worker) runBattle(ctx context.Context, job *BattleJob, simulation *game.Match) (string, error) {
 	for {
 		outcome, finished, err := w.runTick(ctx, job.Lease, simulation)
 		if finished {
@@ -128,7 +128,7 @@ func (w *Worker) runBattle(ctx context.Context, job *BattleJob, simulation *batt
 	}
 }
 
-func (w *Worker) runTick(ctx context.Context, lease BattleLease, simulation *battle.Battle) (string, bool, error) {
+func (w *Worker) runTick(ctx context.Context, lease BattleLease, simulation *game.Match) (string, bool, error) {
 	if ctx.Err() != nil {
 		outcome, err := requeueOutcome(w.requeueAfterCancellation(ctx, lease))
 		return outcome, true, err
@@ -184,7 +184,7 @@ func (w *Worker) failInvalidScenario(ctx context.Context, lease BattleLease, sce
 	return nil
 }
 
-func (w *Worker) completeBattle(ctx context.Context, lease BattleLease, transition battle.Transition) (string, error) {
+func (w *Worker) completeBattle(ctx context.Context, lease BattleLease, transition game.Transition) (string, error) {
 	completeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.config.ShutdownTimeout)
 	defer cancel()
 	if err := w.repository.CompleteBattle(completeCtx, lease, transition); err != nil {
@@ -211,7 +211,7 @@ func requeueOutcome(err error) (string, error) {
 	return "error", err
 }
 
-func (w *Worker) persistTickAndRequeue(ctx context.Context, lease BattleLease, transition battle.Transition) error {
+func (w *Worker) persistTickAndRequeue(ctx context.Context, lease BattleLease, transition game.Transition) error {
 	w.shuttingDown.Store(true)
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.config.ShutdownTimeout)
 	defer cancel()

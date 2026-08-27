@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	battle "github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation/controller"
+	battle "github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 func TestWorkerCompletesClaimedBattle(t *testing.T) {
@@ -349,12 +349,14 @@ func testWorkerConfig() Config {
 
 func testJob(maxTicks uint64) *BattleJob {
 	plan := controller.PlanProposal{Name: "attack", ActionWeights: map[string]int64{battle.ActionAttack: 1500, battle.ActionDefend: 500}}
+	blueprint := battle.Blueprint{Units: []battle.UnitSelection{{Type: "vanguard", Count: 1}}, RecruitmentPriority: []string{"vanguard"}}
+	ruleset := battle.Ruleset{ID: "castle-siege-v1", Version: "1", DesignBudget: 120, StartingGold: 60, Units: []battle.UnitType{{ID: "vanguard", Cost: 35, Health: 20, Attack: 10, Defense: 1, Speed: 2, Movement: 2, Range: 1, Vision: 2}}, Upgrades: []battle.Upgrade{{ID: "arsenal", Cost: 20, AttackBonus: 2}}, Buildings: battle.BuildingRules{CastleHealth: 20, CastleDefense: 1, CastleVision: 4, CastleIncome: 10, EconomyCost: 50, EconomyHealth: 60, EconomyDefense: 2, EconomyVision: 2, EconomyIncome: 10, MaximumEconomyCount: 2}, Combat: battle.CombatRules{MinimumDamage: 1, DefendAttackPercent: 50, DefendDamageTakenPercent: 50, LootPercent: 50}}
+	gameMap := battle.Map{Kind: "authored", Width: 15, Height: 11, Rows: []string{"...............", ".......#.......", "..b....#....b..", "...............", ".......#.......", "...............", ".......#.......", "...............", "..b....#....b..", ".......#.......", "..............."}, CastleSpawns: [2]battle.Position{{X: 1, Y: 5}, {X: 13, Y: 5}}, EconomySites: [2][]battle.Position{{{X: 2, Y: 2}, {X: 2, Y: 8}}, {{X: 12, Y: 2}, {X: 12, Y: 8}}}}
 	scenario := battle.Scenario{
-		ID: "test", RulesVersion: "1", DecisionIntervalTicks: 10, DecisionLeadTicks: 2,
-		Rules: battle.CombatRules{MinimumDamage: 1, DefendAttackPercent: 50, DefendDamageTakenPercent: 50},
+		ID: "test", RulesVersion: "1", RulesetID: ruleset.ID, DecisionIntervalTicks: 10, DecisionLeadTicks: 2, Map: gameMap, Ruleset: ruleset,
 		Factions: []battle.FactionSetup{
-			{ID: "faction-a", Name: "A", Units: []battle.UnitTemplate{{ID: "a", Health: 20, Attack: 10, Speed: 2}}, FallbackPlan: plan, ScriptedPlans: []controller.PlanProposal{plan}},
-			{ID: "faction-b", Name: "B", Units: []battle.UnitTemplate{{ID: "b", Health: 20, Attack: 10, Speed: 1}}, FallbackPlan: plan, ScriptedPlans: []controller.PlanProposal{plan}},
+			{ID: "faction-a", Name: "A", Blueprint: blueprint, FallbackPlan: plan, ScriptedPlans: []controller.PlanProposal{plan}},
+			{ID: "faction-b", Name: "B", Blueprint: blueprint, FallbackPlan: plan, ScriptedPlans: []controller.PlanProposal{plan}},
 		},
 	}
 	return &BattleJob{Lease: BattleLease{BattleID: "battle-1", Attempt: 1, Owner: "worker-1"}, Scenario: scenario, RequestedTicks: maxTicks}

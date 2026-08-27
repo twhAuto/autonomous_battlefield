@@ -1,4 +1,4 @@
-// Package catalog loads and resolves versioned battle scenario templates.
+// Package catalog loads immutable castle-siege rulesets and scenarios.
 package catalog
 
 import (
@@ -15,8 +15,8 @@ import (
 	"time"
 
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/server/service"
-	battle "github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation/controller"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -24,59 +24,57 @@ var ErrInvalidScenario = errors.New("invalid scenario")
 
 type Catalog struct {
 	templates map[string]template
+	rulesets  map[string]game.Ruleset
 }
 
 type template struct {
-	ID                    string                     `yaml:"id"`
-	RulesVersion          string                     `yaml:"rulesVersion"`
-	TickDuration          string                     `yaml:"tickDuration"`
-	DecisionIntervalTicks controller.Tick            `yaml:"decisionIntervalTicks"`
-	DecisionLeadTicks     controller.Tick            `yaml:"decisionLeadTicks"`
-	Rules                 battle.CombatRules         `yaml:"rules"`
-	TraitDefinitions      map[string]traitDefinition `yaml:"traitDefinitions"`
-	Slots                 []slot                     `yaml:"slots"`
+	ID                    string                    `yaml:"id"`
+	RulesVersion          string                    `yaml:"rulesVersion"`
+	RulesetID             string                    `yaml:"rulesetId"`
+	MaximumTicks          uint64                    `yaml:"maximumTicks"`
+	TickDuration          string                    `yaml:"tickDuration"`
+	DecisionIntervalTicks controller.Tick           `yaml:"decisionIntervalTicks"`
+	DecisionLeadTicks     controller.Tick           `yaml:"decisionLeadTicks"`
+	Map                   game.Map                  `yaml:"map"`
+	FallbackPlan          controller.PlanProposal   `yaml:"fallbackPlan"`
+	ScriptedPlans         []controller.PlanProposal `yaml:"scriptedPlans"`
 }
 
-type traitDefinition struct {
-	ActionWeightModifiers map[string]int64 `yaml:"actionWeightModifiers"`
-}
-
-type slot struct {
-	Units         []battle.UnitTemplate     `yaml:"units"`
-	Traits        []string                  `yaml:"traits"`
-	FallbackPlan  controller.PlanProposal   `yaml:"fallbackPlan"`
-	ScriptedPlans []controller.PlanProposal `yaml:"scriptedPlans"`
-}
-
-func LoadCatalog(directory string) (*Catalog, error) {
-	entries, err := os.ReadDir(directory)
-	if err != nil {
-		return nil, fmt.Errorf("read scenario directory %q: %w", directory, err)
+// LoadCatalog loads scenarios and rulesets. Without the optional path, the
+// rulesets directory beside the scenario directory is used.
+func LoadCatalog(scenarioDirectory string, rulesetDirectory ...string) (*Catalog, error) {
+	rulesPath := filepath.Join(filepath.Dir(scenarioDirectory), "rulesets")
+	if len(rulesetDirectory) > 0 {
+		rulesPath = rulesetDirectory[0]
 	}
-
-	catalog := &Catalog{templates: make(map[string]template)}
-	loaded := 0
+	rulesets, err := loadRulesets(rulesPath)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(scenarioDirectory)
+	if err != nil {
+		return nil, fmt.Errorf("read scenario directory %q: %w", scenarioDirectory, err)
+	}
+	catalog := &Catalog{templates: make(map[string]template), rulesets: rulesets}
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if entry.IsDir() || !isYAML(entry.Name()) {
 			continue
 		}
-		extension := strings.ToLower(filepath.Ext(entry.Name()))
-		if extension != ".yaml" && extension != ".yml" {
-			continue
-		}
-		path := filepath.Join(directory, entry.Name())
-		tmpl, err := loadTemplate(path)
-		if err != nil {
+		path := filepath.Join(scenarioDirectory, entry.Name())
+		var value template
+		if err := decodeOne(path, &value); err != nil {
 			return nil, err
 		}
-		if _, duplicate := catalog.templates[tmpl.ID]; duplicate {
-			return nil, fmt.Errorf("%w: duplicate scenario ID %q", ErrInvalidScenario, tmpl.ID)
+		if err := validateTemplate(value, rulesets); err != nil {
+			return nil, fmt.Errorf("%w: scenario %q: %v", ErrInvalidScenario, path, err)
 		}
-		catalog.templates[tmpl.ID] = tmpl
-		loaded++
+		if _, exists := catalog.templates[value.ID]; exists {
+			return nil, fmt.Errorf("%w: duplicate scenario ID %q", ErrInvalidScenario, value.ID)
+		}
+		catalog.templates[value.ID] = value
 	}
-	if loaded == 0 {
-		return nil, fmt.Errorf("%w: directory %q contains no YAML scenarios", ErrInvalidScenario, directory)
+	if len(catalog.templates) == 0 {
+		return nil, fmt.Errorf("%w: directory %q contains no YAML scenarios", ErrInvalidScenario, scenarioDirectory)
 	}
 	return catalog, nil
 }
@@ -91,196 +89,168 @@ func (c *Catalog) IDs() []string {
 }
 
 func (c *Catalog) Summaries() []battleservice.ScenarioSummary {
-	ids := c.IDs()
-	summaries := make([]battleservice.ScenarioSummary, 0, len(ids))
-	for _, id := range ids {
-		tmpl := c.templates[id]
-		summaries = append(summaries, battleservice.ScenarioSummary{
-			ID:                    tmpl.ID,
-			RulesVersion:          tmpl.RulesVersion,
-			TickDuration:          tmpl.TickDuration,
-			DecisionIntervalTicks: tmpl.DecisionIntervalTicks,
-			DecisionLeadTicks:     tmpl.DecisionLeadTicks,
-		})
+	result := make([]battleservice.ScenarioSummary, 0, len(c.templates))
+	for _, id := range c.IDs() {
+		value := c.templates[id]
+		result = append(result, battleservice.ScenarioSummary{ID: value.ID, RulesVersion: value.RulesVersion, RulesetID: value.RulesetID, MaximumTicks: value.MaximumTicks, TickDuration: value.TickDuration, DecisionIntervalTicks: value.DecisionIntervalTicks, DecisionLeadTicks: value.DecisionLeadTicks, MapWidth: value.Map.Width, MapHeight: value.Map.Height})
 	}
-	return summaries
+	return result
 }
 
-func (c *Catalog) Resolve(id string, identities [2]battleservice.FactionIdentity) (battle.Scenario, string, error) {
+func (c *Catalog) Rulesets() []game.Ruleset {
+	ids := make([]string, 0, len(c.rulesets))
+	for id := range c.rulesets {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	result := make([]game.Ruleset, 0, len(ids))
+	for _, id := range ids {
+		result = append(result, cloneRuleset(c.rulesets[id]))
+	}
+	return result
+}
+
+func (c *Catalog) Ruleset(id string) (game.Ruleset, bool) {
+	value, ok := c.rulesets[id]
+	return cloneRuleset(value), ok
+}
+
+func (c *Catalog) Resolve(id string, identities [2]battleservice.FactionIdentity) (game.Scenario, string, error) {
 	tmpl, ok := c.templates[id]
 	if !ok {
-		return battle.Scenario{}, "", fmt.Errorf("%w: %q", battleservice.ErrScenarioNotFound, id)
+		return game.Scenario{}, "", fmt.Errorf("%w: %q", battleservice.ErrScenarioNotFound, id)
 	}
-	resolved, err := resolveTemplate(tmpl, identities)
-	if err != nil {
-		return battle.Scenario{}, "", fmt.Errorf("%w: scenario %q: %v", ErrInvalidScenario, id, err)
+	ruleset := c.rulesets[tmpl.RulesetID]
+	factions := make([]game.FactionSetup, 2)
+	for index, identity := range identities {
+		if identity.RulesetID != tmpl.RulesetID {
+			return game.Scenario{}, "", fmt.Errorf("%w: faction %q uses ruleset %q, scenario requires %q", battleservice.ErrIncompatibleFaction, identity.ID, identity.RulesetID, tmpl.RulesetID)
+		}
+		if _, err := game.ValidateBlueprint(ruleset, identity.Blueprint); err != nil {
+			return game.Scenario{}, "", err
+		}
+		factions[index] = game.FactionSetup{ID: identity.ID, Name: identity.Name, Blueprint: game.CloneBlueprint(identity.Blueprint), FallbackPlan: clonePlan(tmpl.FallbackPlan), ScriptedPlans: clonePlans(tmpl.ScriptedPlans)}
 	}
-	if _, err := battle.NewBattle("scenario-validation", resolved, 1); err != nil {
-		return battle.Scenario{}, "", fmt.Errorf("%w: scenario %q: %v", ErrInvalidScenario, id, err)
+	duration, _ := time.ParseDuration(tmpl.TickDuration)
+	resolved := game.Scenario{ID: tmpl.ID, RulesVersion: tmpl.RulesVersion, RulesetID: tmpl.RulesetID, MaximumTicks: tmpl.MaximumTicks, TickDuration: duration, DecisionIntervalTicks: tmpl.DecisionIntervalTicks, DecisionLeadTicks: tmpl.DecisionLeadTicks, Map: game.CloneMap(tmpl.Map), Ruleset: cloneRuleset(ruleset), Factions: factions}
+	if _, err := game.NewMatch("scenario-validation", resolved, 1); err != nil {
+		return game.Scenario{}, "", fmt.Errorf("%w: scenario %q: %v", ErrInvalidScenario, id, err)
 	}
 	payload, err := json.Marshal(resolved)
 	if err != nil {
-		return battle.Scenario{}, "", fmt.Errorf("marshal resolved scenario %q: %w", id, err)
+		return game.Scenario{}, "", fmt.Errorf("marshal resolved scenario %q: %w", id, err)
 	}
 	digest := sha256.Sum256(payload)
 	return resolved, hex.EncodeToString(digest[:]), nil
 }
 
-func loadTemplate(path string) (template, error) {
+func loadRulesets(directory string) (map[string]game.Ruleset, error) {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return nil, fmt.Errorf("read ruleset directory %q: %w", directory, err)
+	}
+	result := make(map[string]game.Ruleset)
+	for _, entry := range entries {
+		if entry.IsDir() || !isYAML(entry.Name()) {
+			continue
+		}
+		path := filepath.Join(directory, entry.Name())
+		var value game.Ruleset
+		if err := decodeOne(path, &value); err != nil {
+			return nil, err
+		}
+		if err := game.ValidateRuleset(value); err != nil {
+			return nil, fmt.Errorf("ruleset %q: %w", path, err)
+		}
+		if _, exists := result[value.ID]; exists {
+			return nil, fmt.Errorf("duplicate ruleset ID %q", value.ID)
+		}
+		result[value.ID] = value
+	}
+	if len(result) == 0 {
+		return nil, fmt.Errorf("directory %q contains no YAML rulesets", directory)
+	}
+	return result, nil
+}
+
+func validateTemplate(value template, rulesets map[string]game.Ruleset) error {
+	if strings.TrimSpace(value.ID) == "" || strings.TrimSpace(value.RulesVersion) == "" || strings.TrimSpace(value.RulesetID) == "" {
+		return errors.New("ID, rules version, and ruleset ID are required")
+	}
+	if _, ok := rulesets[value.RulesetID]; !ok {
+		return fmt.Errorf("unknown ruleset %q", value.RulesetID)
+	}
+	if value.MaximumTicks == 0 || value.MaximumTicks > 10_000 {
+		return errors.New("maximum ticks must be between 1 and 10000")
+	}
+	duration, err := time.ParseDuration(value.TickDuration)
+	if err != nil || duration < 0 || duration > 10*time.Second {
+		return errors.New("tick duration must be between 0 and 10s")
+	}
+	if value.DecisionIntervalTicks == 0 || value.DecisionLeadTicks == 0 || value.DecisionLeadTicks >= value.DecisionIntervalTicks {
+		return errors.New("decision lead must be positive and less than interval")
+	}
+	if err := game.ValidateMap(value.Map); err != nil {
+		return err
+	}
+	if strings.TrimSpace(value.FallbackPlan.Name) == "" || len(value.ScriptedPlans) == 0 {
+		return errors.New("fallback and scripted plans are required")
+	}
+	for _, plan := range append([]controller.PlanProposal{value.FallbackPlan}, value.ScriptedPlans...) {
+		if err := controller.ValidatePlanProposal(plan, []string{game.ActionAttack, game.ActionDefend}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func decodeOne(path string, destination any) error {
 	file, err := os.Open(path)
 	if err != nil {
-		return template{}, fmt.Errorf("open scenario %q: %w", path, err)
+		return fmt.Errorf("open catalog file %q: %w", path, err)
 	}
 	defer file.Close()
-
-	var tmpl template
 	decoder := yaml.NewDecoder(file)
 	decoder.KnownFields(true)
-	if err := decoder.Decode(&tmpl); err != nil {
-		return template{}, fmt.Errorf("decode scenario %q: %w", path, err)
+	if err := decoder.Decode(destination); err != nil {
+		return fmt.Errorf("decode catalog file %q: %w", path, err)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return template{}, fmt.Errorf("%w: scenario %q must contain one YAML document", ErrInvalidScenario, path)
+			return fmt.Errorf("catalog file %q must contain one YAML document", path)
 		}
-		return template{}, fmt.Errorf("decode trailing scenario content %q: %w", path, err)
-	}
-	if err := validateTemplate(tmpl); err != nil {
-		return template{}, fmt.Errorf("%w: scenario %q: %v", ErrInvalidScenario, path, err)
-	}
-	return tmpl, nil
-}
-
-func validateTemplate(tmpl template) error {
-	if err := validateTemplateMetadata(tmpl); err != nil {
-		return err
-	}
-	if err := validateTraitDefinitions(tmpl); err != nil {
-		return err
-	}
-	if err := validateSlots(tmpl); err != nil {
-		return err
-	}
-	resolved, err := resolveTemplate(tmpl, [2]battleservice.FactionIdentity{{ID: "validation-a", Name: "Validation A"}, {ID: "validation-b", Name: "Validation B"}})
-	if err != nil {
-		return err
-	}
-	if _, err := battle.NewBattle("scenario-validation", resolved, 1); err != nil {
-		return err
+		return fmt.Errorf("decode trailing catalog content %q: %w", path, err)
 	}
 	return nil
 }
 
-func validateTemplateMetadata(tmpl template) error {
-	if strings.TrimSpace(tmpl.ID) == "" || strings.TrimSpace(tmpl.RulesVersion) == "" {
-		return errors.New("ID and rules version are required")
-	}
-	duration, err := time.ParseDuration(tmpl.TickDuration)
-	if err != nil || duration < 0 || duration > 10*time.Second {
-		return errors.New("tick duration must be between 0 and 10s")
-	}
-	if tmpl.DecisionIntervalTicks == 0 || tmpl.DecisionLeadTicks == 0 || tmpl.DecisionLeadTicks >= tmpl.DecisionIntervalTicks {
-		return errors.New("decision lead must be positive and less than the interval")
-	}
-	if tmpl.Rules.MinimumDamage <= 0 || tmpl.Rules.DefendAttackPercent < 0 || tmpl.Rules.DefendAttackPercent > 100 || tmpl.Rules.DefendDamageTakenPercent < 0 || tmpl.Rules.DefendDamageTakenPercent > 100 {
-		return errors.New("combat percentages must be in [0, 100] and minimum damage must be positive")
-	}
-	if len(tmpl.Slots) != 2 {
-		return errors.New("exactly two slots are required")
-	}
-	return nil
+func isYAML(name string) bool {
+	extension := strings.ToLower(filepath.Ext(name))
+	return extension == ".yaml" || extension == ".yml"
 }
 
-func validateTraitDefinitions(tmpl template) error {
-	for traitID, definition := range tmpl.TraitDefinitions {
-		if strings.TrimSpace(traitID) == "" {
-			return errors.New("trait IDs must not be empty")
-		}
-		_, err := controller.NewUtilityController(controller.Config{
-			DecisionIntervalTicks: tmpl.DecisionIntervalTicks,
-			DecisionLeadTicks:     tmpl.DecisionLeadTicks,
-			FirstDecisionTick:     1,
-			DefaultActionWeight:   1000,
-			ActionKinds:           []string{battle.ActionAttack, battle.ActionDefend},
-			FallbackPlan:          controller.PlanProposal{Name: "validation"},
-			Traits: []controller.Trait{{
-				ID:                    traitID,
-				ActionWeightModifiers: cloneMap(definition.ActionWeightModifiers),
-			}},
-		})
-		if err != nil {
-			return fmt.Errorf("trait %q: %v", traitID, err)
-		}
-	}
-	return nil
+func cloneRuleset(value game.Ruleset) game.Ruleset {
+	value.Units = append([]game.UnitType(nil), value.Units...)
+	value.Upgrades = append([]game.Upgrade(nil), value.Upgrades...)
+	return value
 }
 
-func validateSlots(tmpl template) error {
-	for slotIndex, slot := range tmpl.Slots {
-		if len(slot.Units) == 0 || len(slot.ScriptedPlans) == 0 || strings.TrimSpace(slot.FallbackPlan.Name) == "" {
-			return fmt.Errorf("slot %d requires units, a fallback plan, and scripted plans", slotIndex)
-		}
-		for _, traitID := range slot.Traits {
-			if _, exists := tmpl.TraitDefinitions[traitID]; !exists {
-				return fmt.Errorf("slot %d refers to undefined trait %q", slotIndex, traitID)
-			}
-		}
+func clonePlan(value controller.PlanProposal) controller.PlanProposal {
+	result := controller.PlanProposal{Name: value.Name, ActionWeights: make(map[string]int64, len(value.ActionWeights)), TargetBonuses: make(map[string]int64, len(value.TargetBonuses))}
+	for key, weight := range value.ActionWeights {
+		result.ActionWeights[key] = weight
 	}
-	return nil
+	for key, bonus := range value.TargetBonuses {
+		result.TargetBonuses[key] = bonus
+	}
+	return result
 }
 
-func resolveTemplate(tmpl template, identities [2]battleservice.FactionIdentity) (battle.Scenario, error) {
-	duration, err := time.ParseDuration(tmpl.TickDuration)
-	if err != nil {
-		return battle.Scenario{}, fmt.Errorf("tick duration: %v", err)
+func clonePlans(values []controller.PlanProposal) []controller.PlanProposal {
+	result := make([]controller.PlanProposal, len(values))
+	for index := range values {
+		result[index] = clonePlan(values[index])
 	}
-	resolved := battle.Scenario{
-		ID:                    tmpl.ID,
-		RulesVersion:          tmpl.RulesVersion,
-		TickDuration:          duration,
-		DecisionIntervalTicks: tmpl.DecisionIntervalTicks,
-		DecisionLeadTicks:     tmpl.DecisionLeadTicks,
-		Rules:                 tmpl.Rules,
-		Factions:              make([]battle.FactionSetup, 2),
-	}
-	for index, identity := range identities {
-		selectedTraits := make([]controller.Trait, 0, len(tmpl.Slots[index].Traits))
-		for _, traitID := range tmpl.Slots[index].Traits {
-			definition := tmpl.TraitDefinitions[traitID]
-			selectedTraits = append(selectedTraits, controller.Trait{
-				ID:                    traitID,
-				ActionWeightModifiers: cloneMap(definition.ActionWeightModifiers),
-			})
-		}
-		resolved.Factions[index] = battle.FactionSetup{
-			ID:            identity.ID,
-			Name:          identity.Name,
-			Units:         append([]battle.UnitTemplate(nil), tmpl.Slots[index].Units...),
-			Traits:        selectedTraits,
-			FallbackPlan:  clonePlan(tmpl.Slots[index].FallbackPlan),
-			ScriptedPlans: clonePlans(tmpl.Slots[index].ScriptedPlans),
-		}
-	}
-	return resolved, nil
-}
-
-func cloneMap(values map[string]int64) map[string]int64 {
-	copy := make(map[string]int64, len(values))
-	for key, value := range values {
-		copy[key] = value
-	}
-	return copy
-}
-
-func clonePlan(plan controller.PlanProposal) controller.PlanProposal {
-	return controller.PlanProposal{Name: plan.Name, ActionWeights: cloneMap(plan.ActionWeights), TargetBonuses: cloneMap(plan.TargetBonuses)}
-}
-
-func clonePlans(plans []controller.PlanProposal) []controller.PlanProposal {
-	copy := make([]controller.PlanProposal, len(plans))
-	for index, plan := range plans {
-		copy[index] = clonePlan(plan)
-	}
-	return copy
+	return result
 }

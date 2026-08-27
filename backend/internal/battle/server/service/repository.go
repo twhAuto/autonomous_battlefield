@@ -10,7 +10,7 @@ import (
 type Repository interface {
 	CreateBattle(context.Context, CreateBattleParams) error
 	GetBattle(context.Context, string) (*BattleRun, error)
-	ListBattleEvents(context.Context, string, int, uint64, int) ([]StoredBattleEvent, error)
+	ListBattleEvents(context.Context, string, int, uint64, int, bool) ([]StoredBattleEvent, error)
 }
 
 // factionRepository is the narrower faction view required to create a battle.

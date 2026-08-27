@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -69,7 +70,8 @@ func TestCreateFaction(t *testing.T) {
 		t.Fatalf("CreateFaction() returned an error: %v", err)
 	}
 
-	wantArguments := []any{stored.ID, stored.Name}
+	blueprint, _ := json.Marshal(stored.Blueprint)
+	wantArguments := []any{stored.ID, stored.Name, stored.RulesetID, blueprint}
 	if !reflect.DeepEqual(db.execArguments, wantArguments) {
 		t.Fatalf("Exec arguments = %#v, want %#v", db.execArguments, wantArguments)
 	}

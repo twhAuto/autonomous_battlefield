@@ -31,6 +31,7 @@ COPY --from=build --chown=battlefield:battlefield /out/server /app/server
 COPY --from=build --chown=battlefield:battlefield /out/engine /app/engine
 COPY --chown=battlefield:battlefield config.yaml /app/config.yaml
 COPY --chown=battlefield:battlefield scenarios /app/scenarios
+COPY --chown=battlefield:battlefield rulesets /app/rulesets
 
 USER battlefield
 

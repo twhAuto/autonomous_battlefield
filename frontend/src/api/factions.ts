@@ -1,11 +1,43 @@
 export interface CreateFactionInput {
   id: string
   name: string
+  rulesetId: string
+  blueprint: FactionBlueprint
+}
+
+export interface UnitSelection { type: string; count: number }
+export interface FactionBlueprint {
+  units: UnitSelection[]
+  upgradeIds: string[]
+  recruitmentPriority: string[]
+}
+
+export interface UnitRule {
+  id: string; cost: number; health: number; attack: number; defense: number
+  speed: number; movement: number; range: number; vision: number
+}
+export interface UpgradeRule {
+  id: string; cost: number; attackBonus: number; defenseBonus: number; economyIncomeBonus: number
+}
+export interface FactionRuleset {
+  id: string; version: string; designBudget: number; startingGold: number
+  units: UnitRule[]; upgrades: UpgradeRule[]
 }
 
 export interface Faction {
   id: string
   name: string
+  rulesetId: string
+  blueprint: FactionBlueprint
+  spentPoints: number
+  remainingPoints: number
+}
+
+export async function listFactionRulesets(signal?: AbortSignal): Promise<FactionRuleset[]> {
+  const response = await fetch(`${API_URL}/v1/faction-rulesets`, { signal })
+  if (!response.ok) throw new FactionApiError('Faction design rules could not be loaded.', response.status)
+  const body = (await response.json()) as { rulesets: FactionRuleset[] }
+  return body.rulesets
 }
 
 export class FactionApiError extends Error {
@@ -72,6 +104,14 @@ export async function createFaction(
   if (response.status === 400) {
     throw new FactionApiError(
       'The server rejected these faction details. Review the name and try again.',
+      response.status,
+    )
+  }
+
+  if (response.status === 422) {
+    const detail = (await response.text()).trim()
+    throw new FactionApiError(
+      detail || 'This blueprint is illegal or exceeds its design budget.',
       response.status,
     )
   }

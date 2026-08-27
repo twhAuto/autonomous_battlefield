@@ -11,7 +11,7 @@ import (
 	"time"
 
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/server/service"
-	battle "github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 )
 
@@ -64,7 +64,7 @@ func TestListScenariosReturnsCatalog(t *testing.T) {
 func TestGetBattleReturnsStatusAndParticipants(t *testing.T) {
 	battles := &fakeBattleService{run: &battleservice.BattleRun{
 		ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1", Status: "running", Attempt: 1,
-		ScenarioSnapshot: battle.Scenario{Factions: []battle.FactionSetup{{ID: "faction-a", Name: "A"}, {ID: "faction-b", Name: "B"}}},
+		ScenarioSnapshot: game.Scenario{Factions: []game.FactionSetup{{ID: "faction-a", Name: "A"}, {ID: "faction-b", Name: "B"}}},
 	}}
 	handler := NewHandler(battles)
 	request := httptest.NewRequest(http.MethodGet, "/v1/battles/7f22e693-bacd-46bb-b942-64fa613cd388", nil)
@@ -94,7 +94,7 @@ func TestListBattleEventsParsesCursor(t *testing.T) {
 		Events: []battleservice.StoredBattleEvent{{Attempt: 2, Sequence: 9, Tick: 3, Type: "tick_completed", CreatedAt: time.Now()}},
 	}}
 	handler := NewHandler(battles)
-	request := httptest.NewRequest(http.MethodGet, "/v1/battles/id/events?attempt=2&after=4&limit=25", nil)
+	request := httptest.NewRequest(http.MethodGet, "/v1/battles/id/events?attempt=2&limit=25&latest=true", nil)
 	request.SetPathValue("id", "7f22e693-bacd-46bb-b942-64fa613cd388")
 	response := httptest.NewRecorder()
 	handler.ListEvents(response, request)
@@ -102,8 +102,8 @@ func TestListBattleEventsParsesCursor(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
-	if battles.eventsAttempt == nil || *battles.eventsAttempt != 2 || battles.eventsAfter != 4 || battles.eventsLimit != 25 {
-		t.Fatalf("event arguments = attempt %v, after %d, limit %d", battles.eventsAttempt, battles.eventsAfter, battles.eventsLimit)
+	if battles.eventsAttempt == nil || *battles.eventsAttempt != 2 || battles.eventsAfter != 0 || battles.eventsLimit != 25 || !battles.eventsLatest {
+		t.Fatalf("event arguments = attempt %v, after %d, limit %d, latest %t", battles.eventsAttempt, battles.eventsAfter, battles.eventsLimit, battles.eventsLatest)
 	}
 }
 
@@ -115,6 +115,7 @@ func TestBattleHandlerMapsErrors(t *testing.T) {
 	}{
 		{name: "invalid", err: battleservice.ErrInvalidBattle, status: http.StatusBadRequest},
 		{name: "missing", err: battleservice.ErrBattleFactionMissing, status: http.StatusNotFound},
+		{name: "incompatible", err: battleservice.ErrIncompatibleFaction, status: http.StatusUnprocessableEntity},
 		{name: "duplicate", err: battleservice.ErrBattleAlreadyExists, status: http.StatusConflict},
 		{name: "internal", err: errors.New("database unavailable"), status: http.StatusInternalServerError},
 	}
@@ -174,7 +175,7 @@ func TestGetBattleMapsReadErrors(t *testing.T) {
 }
 
 func TestListEventsRejectsInvalidQueryParameters(t *testing.T) {
-	for _, query := range []string{"limit=many", "after=-1", "attempt=many"} {
+	for _, query := range []string{"limit=many", "after=-1", "attempt=many", "latest=sometimes"} {
 		t.Run(query, func(t *testing.T) {
 			handler := NewHandler(&fakeBattleService{})
 			request := httptest.NewRequest(http.MethodGet, "/v1/battles/id/events?"+query, nil)
@@ -223,6 +224,7 @@ type fakeBattleService struct {
 	eventsAttempt *int
 	eventsAfter   uint64
 	eventsLimit   int
+	eventsLatest  bool
 	scenarios     []battleservice.ScenarioSummary
 }
 
@@ -237,9 +239,10 @@ func (s *fakeBattleService) GetBattle(context.Context, string) (*battleservice.B
 	return s.run, s.err
 }
 
-func (s *fakeBattleService) ListBattleEvents(_ context.Context, _ string, attempt *int, after uint64, limit int) (battleservice.BattleEventPage, error) {
+func (s *fakeBattleService) ListBattleEvents(_ context.Context, _ string, attempt *int, after uint64, limit int, latest bool) (battleservice.BattleEventPage, error) {
 	s.eventsAttempt = attempt
 	s.eventsAfter = after
 	s.eventsLimit = limit
+	s.eventsLatest = latest
 	return s.page, s.err
 }

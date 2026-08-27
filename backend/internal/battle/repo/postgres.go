@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/engine/worker"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/server/service"
-	battle "github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
@@ -28,10 +28,14 @@ func (r *Postgres) CreateBattle(ctx context.Context, params battleservice.Create
 	if err != nil {
 		return fmt.Errorf("marshal battle scenario: %w", err)
 	}
+	initialState, err := json.Marshal(params.InitialState)
+	if err != nil {
+		return fmt.Errorf("marshal battle initial state: %w", err)
+	}
 	_, err = r.db.Exec(ctx, `
-		INSERT INTO battle_runs (id, scenario_id, scenario_digest, scenario_snapshot, requested_ticks)
-		VALUES ($1, $2, $3, $4, $5)
-	`, params.ID, params.ScenarioID, params.ScenarioDigest, snapshot, params.RequestedTicks)
+		INSERT INTO battle_runs (id, scenario_id, scenario_digest, scenario_snapshot, requested_ticks, initial_state, current_state)
+		VALUES ($1, $2, $3, $4, $5, $6, $6)
+	`, params.ID, params.ScenarioID, params.ScenarioDigest, snapshot, params.RequestedTicks, initialState)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -45,15 +49,16 @@ func (r *Postgres) CreateBattle(ctx context.Context, params battleservice.Create
 func (r *Postgres) GetBattle(ctx context.Context, id string) (*battleservice.BattleRun, error) {
 	var run battleservice.BattleRun
 	var snapshot []byte
+	var initialState, currentState []byte
 	var result []byte
 	err := r.db.QueryRow(ctx, `
 		SELECT id, scenario_id, scenario_digest, scenario_snapshot, requested_ticks,
-		       current_tick, status, attempt, result, error_code, error_message,
+		       initial_state, current_state, current_tick, status, attempt, result, error_code, error_message,
 		       created_at, started_at, completed_at
 		FROM battle_runs
 		WHERE id = $1
 	`, id).Scan(
-		&run.ID, &run.ScenarioID, &run.ScenarioDigest, &snapshot, &run.RequestedTicks,
+		&run.ID, &run.ScenarioID, &run.ScenarioDigest, &snapshot, &run.RequestedTicks, &initialState, &currentState,
 		&run.CurrentTick, &run.Status, &run.Attempt, &result, &run.ErrorCode, &run.ErrorMessage,
 		&run.CreatedAt, &run.StartedAt, &run.CompletedAt,
 	)
@@ -66,8 +71,14 @@ func (r *Postgres) GetBattle(ctx context.Context, id string) (*battleservice.Bat
 	if err := json.Unmarshal(snapshot, &run.ScenarioSnapshot); err != nil {
 		return nil, fmt.Errorf("decode battle %q scenario: %w", id, err)
 	}
+	if err := json.Unmarshal(initialState, &run.InitialState); err != nil {
+		return nil, fmt.Errorf("decode battle %q initial state: %w", id, err)
+	}
+	if err := json.Unmarshal(currentState, &run.CurrentState); err != nil {
+		return nil, fmt.Errorf("decode battle %q current state: %w", id, err)
+	}
 	if len(result) > 0 && string(result) != "null" {
-		var decoded battle.Result
+		var decoded game.Result
 		if err := json.Unmarshal(result, &decoded); err != nil {
 			return nil, fmt.Errorf("decode battle %q result: %w", id, err)
 		}
@@ -76,14 +87,30 @@ func (r *Postgres) GetBattle(ctx context.Context, id string) (*battleservice.Bat
 	return &run, nil
 }
 
-func (r *Postgres) ListBattleEvents(ctx context.Context, battleID string, attempt int, after uint64, limit int) ([]battleservice.StoredBattleEvent, error) {
-	rows, err := r.db.Query(ctx, `
+func (r *Postgres) ListBattleEvents(ctx context.Context, battleID string, attempt int, after uint64, limit int, latest bool) ([]battleservice.StoredBattleEvent, error) {
+	query := `
 		SELECT attempt, sequence, tick, type, payload, created_at
 		FROM battle_events
 		WHERE battle_id = $1 AND attempt = $2 AND sequence > $3
 		ORDER BY sequence ASC
 		LIMIT $4
-	`, battleID, attempt, after, limit)
+	`
+	arguments := []any{battleID, attempt, after, limit}
+	if latest {
+		query = `
+			SELECT attempt, sequence, tick, type, payload, created_at
+			FROM (
+				SELECT attempt, sequence, tick, type, payload, created_at
+				FROM battle_events
+				WHERE battle_id = $1 AND attempt = $2
+				ORDER BY sequence DESC
+				LIMIT $3
+			) AS latest_events
+			ORDER BY sequence ASC
+		`
+		arguments = []any{battleID, attempt, limit}
+	}
+	rows, err := r.db.Query(ctx, query, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("list battle %q events: %w", battleID, err)
 	}
@@ -134,7 +161,7 @@ func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDurati
 			LIMIT 1
 		)
 		UPDATE battle_runs AS battle
-		SET status = 'running', attempt = attempt + 1, current_tick = 0,
+		SET status = 'running', attempt = attempt + 1, current_tick = 0, current_state = initial_state,
 		    lease_owner = $1, lease_expires_at = now() + $2::interval,
 		    started_at = COALESCE(started_at, now()), completed_at = NULL,
 		    result = NULL, error_code = NULL, error_message = NULL, updated_at = now()
@@ -172,27 +199,31 @@ func (r *Postgres) HeartbeatBattle(ctx context.Context, lease worker.BattleLease
 	return nil
 }
 
-func (r *Postgres) SaveTick(ctx context.Context, lease worker.BattleLease, transition battle.Transition, leaseDuration time.Duration) error {
+func (r *Postgres) SaveTick(ctx context.Context, lease worker.BattleLease, transition game.Transition, leaseDuration time.Duration) error {
 	events, err := json.Marshal(transition.Events)
 	if err != nil {
 		return fmt.Errorf("marshal tick events: %w", err)
+	}
+	state, err := json.Marshal(transition.State)
+	if err != nil {
+		return fmt.Errorf("marshal tick state: %w", err)
 	}
 	var owned bool
 	err = r.db.QueryRow(ctx, `
 		WITH owned AS (
 			UPDATE battle_runs
-			SET current_tick = $4, lease_expires_at = now() + $5::interval, updated_at = now()
+			SET current_tick = $4, current_state = $5, lease_expires_at = now() + $6::interval, updated_at = now()
 			WHERE id = $1 AND status = 'running' AND attempt = $2 AND lease_owner = $3
 			RETURNING id
 		), inserted AS (
 			INSERT INTO battle_events (battle_id, attempt, sequence, tick, type, payload)
 			SELECT $1, $2, event.sequence, event.tick, event.type, event.data
-			FROM owned, jsonb_to_recordset($6::jsonb)
+			FROM owned, jsonb_to_recordset($7::jsonb)
 			     AS event(sequence bigint, tick bigint, type text, data jsonb)
 			ON CONFLICT (battle_id, attempt, sequence) DO NOTHING
 		)
 		SELECT EXISTS (SELECT 1 FROM owned)
-	`, lease.BattleID, lease.Attempt, lease.Owner, transition.Tick, leaseDuration.String(), events).Scan(&owned)
+	`, lease.BattleID, lease.Attempt, lease.Owner, transition.Tick, state, leaseDuration.String(), events).Scan(&owned)
 	if err != nil {
 		return fmt.Errorf("save battle %q tick %d: %w", lease.BattleID, transition.Tick, err)
 	}
@@ -202,7 +233,7 @@ func (r *Postgres) SaveTick(ctx context.Context, lease worker.BattleLease, trans
 	return nil
 }
 
-func (r *Postgres) CompleteBattle(ctx context.Context, lease worker.BattleLease, transition battle.Transition) error {
+func (r *Postgres) CompleteBattle(ctx context.Context, lease worker.BattleLease, transition game.Transition) error {
 	if !transition.Finished || transition.Result == nil {
 		return errors.New("cannot complete battle without a finished transition")
 	}
@@ -214,11 +245,15 @@ func (r *Postgres) CompleteBattle(ctx context.Context, lease worker.BattleLease,
 	if err != nil {
 		return fmt.Errorf("marshal battle result: %w", err)
 	}
+	state, err := json.Marshal(transition.State)
+	if err != nil {
+		return fmt.Errorf("marshal final state: %w", err)
+	}
 	var owned bool
 	err = r.db.QueryRow(ctx, `
 		WITH owned AS (
 			UPDATE battle_runs
-			SET status = 'completed', current_tick = $4, result = $5,
+			SET status = 'completed', current_tick = $4, result = $5, current_state = $6,
 			    lease_owner = NULL, lease_expires_at = NULL,
 			    completed_at = now(), updated_at = now()
 			WHERE id = $1 AND status = 'running' AND attempt = $2 AND lease_owner = $3
@@ -226,12 +261,12 @@ func (r *Postgres) CompleteBattle(ctx context.Context, lease worker.BattleLease,
 		), inserted AS (
 			INSERT INTO battle_events (battle_id, attempt, sequence, tick, type, payload)
 			SELECT $1, $2, event.sequence, event.tick, event.type, event.data
-			FROM owned, jsonb_to_recordset($6::jsonb)
+			FROM owned, jsonb_to_recordset($7::jsonb)
 			     AS event(sequence bigint, tick bigint, type text, data jsonb)
 			ON CONFLICT (battle_id, attempt, sequence) DO NOTHING
 		)
 		SELECT EXISTS (SELECT 1 FROM owned)
-	`, lease.BattleID, lease.Attempt, lease.Owner, transition.Tick, result, events).Scan(&owned)
+	`, lease.BattleID, lease.Attempt, lease.Owner, transition.Tick, result, state, events).Scan(&owned)
 	if err != nil {
 		return fmt.Errorf("complete battle %q: %w", lease.BattleID, err)
 	}
@@ -261,7 +296,7 @@ func (r *Postgres) FailBattle(ctx context.Context, lease worker.BattleLease, cod
 func (r *Postgres) RequeueBattle(ctx context.Context, lease worker.BattleLease) error {
 	tag, err := r.db.Exec(ctx, `
 		UPDATE battle_runs
-		SET status = 'queued', current_tick = 0,
+		SET status = 'queued', current_tick = 0, current_state = initial_state,
 		    lease_owner = NULL, lease_expires_at = NULL, updated_at = now()
 		WHERE id = $1 AND status = 'running' AND attempt = $2 AND lease_owner = $3
 	`, lease.BattleID, lease.Attempt, lease.Owner)

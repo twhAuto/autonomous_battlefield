@@ -6,6 +6,10 @@ export interface ScenarioSummary {
   tickDuration: string
   decisionIntervalTicks: number
   decisionLeadTicks: number
+  rulesetId: string
+  maximumTicks: number
+  mapWidth: number
+  mapHeight: number
 }
 
 export interface CreateBattleInput {
@@ -24,13 +28,48 @@ export interface BattleParticipant {
 
 export interface FactionStatistics {
   factionId: string
+  castleHealth: number
   unitsStarted: number
+  unitsRecruited: number
+  unitsLost: number
   unitsRemaining: number
   damageDealt: number
   damageTaken: number
   attackTicks: number
   defendTicks: number
+  goldEarned: number
+  goldSpent: number
+  goldLooted: number
+  buildingsConstructed: number
+  buildingsDestroyed: number
 }
+
+export interface HexPosition { x: number; y: number }
+export interface BattleMap {
+  kind: 'authored'; width: number; height: number; rows: string[]
+  castleSpawns: [HexPosition, HexPosition]
+  economySites: [HexPosition[], HexPosition[]]
+}
+export interface BattleUnit {
+  id: string; factionId: string; type: string; position: HexPosition
+  health: number; maxHealth: number; attack: number; defense: number
+  speed: number; movement: number; range: number; vision: number; readyAtTick: number
+  movedFrom?: HexPosition
+  attackTargetId?: string
+  attackTargetPosition?: HexPosition
+}
+export interface BattleBuilding {
+  id: string; factionId: string; type: 'castle' | 'economy'; position: HexPosition
+  health: number; maxHealth: number; defense: number; vision: number; income: number
+}
+export interface BattleFactionState {
+  factionId: string; gold: number; goldEarned: number; goldSpent: number; goldLooted: number
+}
+export interface BattleState {
+  battleId: string; tick: number; factions: BattleFactionState[]
+  units: BattleUnit[]; buildings: BattleBuilding[]
+}
+export interface BattleView { map: BattleMap; state: BattleState; visiblePositions: HexPosition[] }
 
 export interface BattleResult {
   winnerFactionId: string | null
@@ -49,8 +88,18 @@ export interface BattleRun {
   attempt: number
   participants: BattleParticipant[]
   result: BattleResult | null
+  map: BattleMap
+  state: BattleState
   errorCode?: string
   errorMessage?: string
+}
+
+export async function getBattleView(id: string, factionId: string, signal?: AbortSignal): Promise<BattleView> {
+  const response = await battlefieldFetch(`/v1/battles/${encodeURIComponent(id)}/factions/${encodeURIComponent(factionId)}/view`, { signal })
+  if (response.ok) return (await response.json()) as BattleView
+  if (response.status === 400) throw new BattleApiError('That faction perspective is invalid.', 400)
+  if (response.status === 404) throw new BattleApiError('This battle could not be found.', 404)
+  throw new BattleApiError('Battle perspective could not be loaded.', response.status)
 }
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
@@ -118,6 +167,9 @@ export async function createBattle(input: CreateBattleInput): Promise<{ id: stri
   if (response.status === 400) {
     throw new BattleApiError('The battle configuration was rejected. Review the factions and tick limit.', 400)
   }
+  if (response.status === 422) {
+    throw new BattleApiError('Both factions must use the scenario ruleset.', 422)
+  }
   throw new BattleApiError('The battle could not be queued. Please try again.', response.status)
 }
 
@@ -132,7 +184,7 @@ export async function getBattle(id: string, signal?: AbortSignal): Promise<Battl
 
 export async function listBattleEvents(
   id: string,
-  options: { attempt: number; after?: number; limit?: number },
+  options: { attempt: number; after?: number; limit?: number; latest?: boolean },
   signal?: AbortSignal,
 ): Promise<BattleEventPage> {
   const query = new URLSearchParams({
@@ -140,6 +192,7 @@ export async function listBattleEvents(
     after: String(options.after ?? 0),
     limit: String(options.limit ?? 50),
   })
+  if (options.latest) query.set('latest', 'true')
   const response = await battlefieldFetch(
     `/v1/battles/${encodeURIComponent(id)}/events?${query.toString()}`,
     { signal },

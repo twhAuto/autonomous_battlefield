@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/engine/worker"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/server/service"
-	battle "github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation"
+	battle "github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 var errDatabase = errors.New("database unavailable")
@@ -29,7 +29,7 @@ func TestCreateBattlePersistsSnapshotAndMapsErrors(t *testing.T) {
 		if err := NewPostgres(db).CreateBattle(context.Background(), params); err != nil {
 			t.Fatalf("CreateBattle() returned an error: %v", err)
 		}
-		if len(db.execArgs) != 5 || db.execArgs[0] != params.ID || db.execArgs[4] != params.RequestedTicks {
+		if len(db.execArgs) != 6 || db.execArgs[0] != params.ID || db.execArgs[4] != params.RequestedTicks {
 			t.Fatalf("Exec arguments = %#v", db.execArgs)
 		}
 		var stored battle.Scenario
@@ -66,9 +66,10 @@ func TestGetBattleDecodesStoredRun(t *testing.T) {
 	result := battle.Result{WinnerFactionID: &winner, Reason: "elimination", TicksRun: 4}
 	scenarioJSON, _ := json.Marshal(scenario)
 	resultJSON, _ := json.Marshal(result)
+	stateJSON, _ := json.Marshal(battle.State{BattleID: "battle-1", Tick: 4})
 	db := &battleDB{row: battleRow(func(destinations ...any) error {
 		values := []any{
-			"battle-1", "scenario-1", "digest", scenarioJSON, uint64(10), uint64(4),
+			"battle-1", "scenario-1", "digest", scenarioJSON, uint64(10), stateJSON, stateJSON, uint64(4),
 			"completed", 2, resultJSON, &errorCode, &errorMessage, now, &started, &completed,
 		}
 		return assignBattleValues(destinations, values)
@@ -115,7 +116,7 @@ func TestListBattleEventsDecodesRowsAndMapsErrors(t *testing.T) {
 			return assignBattleValues(destinations, []any{2, uint64(3), uint64(4), "tick_completed", []byte(`{"damage":7}`), now})
 		},
 	}}
-	events, err := NewPostgres(&battleDB{rows: rows}).ListBattleEvents(context.Background(), "battle-1", 2, 1, 50)
+	events, err := NewPostgres(&battleDB{rows: rows}).ListBattleEvents(context.Background(), "battle-1", 2, 1, 50, false)
 	if err != nil {
 		t.Fatalf("ListBattleEvents() returned an error: %v", err)
 	}
@@ -137,7 +138,7 @@ func TestListBattleEventsDecodesRowsAndMapsErrors(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := NewPostgres(test.db).ListBattleEvents(context.Background(), "battle-1", 1, 0, 50); err == nil {
+			if _, err := NewPostgres(test.db).ListBattleEvents(context.Background(), "battle-1", 1, 0, 50, true); err == nil {
 				t.Fatal("ListBattleEvents() returned no error")
 			}
 		})
@@ -318,8 +319,9 @@ func booleanBattleRow(value bool) battleRow {
 
 func storedBattleRow(snapshot, result []byte) battleRow {
 	return func(destinations ...any) error {
+		state, _ := json.Marshal(battle.State{BattleID: "battle-1"})
 		return assignBattleValues(destinations, []any{
-			"battle-1", "scenario-1", "digest", snapshot, uint64(10), uint64(0),
+			"battle-1", "scenario-1", "digest", snapshot, uint64(10), state, state, uint64(0),
 			"queued", 1, result, (*string)(nil), (*string)(nil), time.Now(), (*time.Time)(nil), (*time.Time)(nil),
 		})
 	}

@@ -30,6 +30,9 @@ http:
 	if configuration.HTTP.ReadTimeout != 3*time.Second {
 		t.Fatalf("ReadTimeout = %v, want %v", configuration.HTTP.ReadTimeout, 3*time.Second)
 	}
+	if filepath.Base(configuration.API.RulesetCatalogPath) != "rulesets" || filepath.Base(configuration.API.ScenarioCatalogPath) != "scenarios" {
+		t.Fatalf("catalog paths = %#v", configuration.API)
+	}
 }
 
 func TestLoadRejectsInvalidDuration(t *testing.T) {

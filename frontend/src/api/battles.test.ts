@@ -3,6 +3,7 @@ import {
   BattleApiError,
   createBattle,
   getBattle,
+  getBattleView,
   listBattleEvents,
   listScenarios,
   type BattleRun,
@@ -60,6 +61,7 @@ describe('battle API', () => {
     [409, 'That battle identifier already exists'],
     [404, 'A selected faction or scenario no longer exists'],
     [400, 'The battle configuration was rejected'],
+    [422, 'Both factions must use the scenario ruleset'],
     [500, 'The battle could not be queued'],
   ])('maps create status %d', async (status, message) => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status }))
@@ -82,6 +84,22 @@ describe('battle API', () => {
     await expect(getBattle(battleId)).rejects.toEqual(new BattleApiError(message, status))
   })
 
+  it('gets faction-filtered battle views', async () => {
+    const view = { map: { width: 15 }, state: { tick: 3 }, visiblePositions: [] }
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(view))
+    await expect(getBattleView('battle/id', 'faction/id')).resolves.toEqual(view)
+    expect(fetch).toHaveBeenCalledWith('/v1/battles/battle%2Fid/factions/faction%2Fid/view', { signal: undefined })
+  })
+
+  it.each([
+    [400, 'That faction perspective is invalid.'],
+    [404, 'This battle could not be found.'],
+    [503, 'Battle perspective could not be loaded.'],
+  ])('maps perspective status %d', async (status, message) => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status }))
+    await expect(getBattleView(battleId, 'faction')).rejects.toEqual(new BattleApiError(message, status))
+  })
+
   it('lists events with default pagination', async () => {
     const page = { attempt: 2, events: [], nextCursor: null }
     vi.mocked(fetch).mockResolvedValue(jsonResponse(page))
@@ -92,6 +110,17 @@ describe('battle API', () => {
       { signal: undefined },
     )
   })
+
+	it('requests the newest event page', async () => {
+		const page = { attempt: 2, events: [], nextCursor: null }
+		vi.mocked(fetch).mockResolvedValue(jsonResponse(page))
+
+		await expect(listBattleEvents('battle/id', { attempt: 2, latest: true })).resolves.toEqual(page)
+		expect(fetch).toHaveBeenCalledWith(
+			'/v1/battles/battle%2Fid/events?attempt=2&after=0&limit=50&latest=true',
+			{ signal: undefined },
+		)
+	})
 
   it.each([
     [404, 'This battle could not be found.'],

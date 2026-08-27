@@ -5,9 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	battle "github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation/controller"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 func TestCreateBattleResolvesFactionsAndPersistsSnapshot(t *testing.T) {
@@ -16,7 +17,7 @@ func TestCreateBattleResolvesFactionsAndPersistsSnapshot(t *testing.T) {
 		"4db8d152-1e04-4d10-8824-859c6ed72878": {ID: "4db8d152-1e04-4d10-8824-859c6ed72878", Name: "Northwind"},
 		"41ac3a2f-3371-4de1-b0f6-70600fcd9052": {ID: "41ac3a2f-3371-4de1-b0f6-70600fcd9052", Name: "Verdant"},
 	}}
-	catalog := &fakeScenarioCatalog{resolved: battle.Scenario{ID: "skirmish-v1"}, digest: "digest"}
+	catalog := &fakeScenarioCatalog{resolved: game.Scenario{ID: "castle-siege-v1"}, digest: "digest"}
 	service := NewService(battleRepo, factions, catalog, 10_000)
 
 	run, err := service.CreateBattle(context.Background(), CreateBattleInput{
@@ -61,6 +62,19 @@ func TestCreateBattleValidationAndDependencies(t *testing.T) {
 			})
 		}
 	})
+	t.Run("scenario tick limit", func(t *testing.T) {
+		factions := &battleFactionRepo{factions: map[string]*faction.Faction{
+			valid.FactionIDs[0]: {ID: valid.FactionIDs[0], Name: "A"},
+			valid.FactionIDs[1]: {ID: valid.FactionIDs[1], Name: "B"},
+		}}
+		catalog := &fakeScenarioCatalog{resolved: serviceTestScenario([2]FactionIdentity{{ID: valid.FactionIDs[0], Name: "A"}, {ID: valid.FactionIDs[1], Name: "B"}})}
+		service := NewService(&fakeBattleRepo{}, factions, catalog, 10_000)
+		input := valid
+		input.TickCount = 501
+		if _, err := service.CreateBattle(context.Background(), input); !errors.Is(err, ErrInvalidBattle) {
+			t.Fatalf("error = %v, want ErrInvalidBattle", err)
+		}
+	})
 	t.Run("missing faction", func(t *testing.T) {
 		service := NewService(&fakeBattleRepo{}, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
 		if _, err := service.CreateBattle(context.Background(), valid); !errors.Is(err, ErrBattleFactionMissing) {
@@ -84,11 +98,11 @@ func TestListBattleEventsDefaultsToCurrentAttempt(t *testing.T) {
 		events: []StoredBattleEvent{{Attempt: 2, Sequence: 5}},
 	}
 	service := NewService(repo, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
-	page, err := service.ListBattleEvents(context.Background(), repo.run.ID, nil, 0, 100)
+	page, err := service.ListBattleEvents(context.Background(), repo.run.ID, nil, 0, 100, true)
 	if err != nil {
 		t.Fatalf("ListBattleEvents() returned an error: %v", err)
 	}
-	if page.Attempt != 2 || page.NextCursor == nil || *page.NextCursor != 5 || repo.listAttempt != 2 {
+	if page.Attempt != 2 || page.NextCursor == nil || *page.NextCursor != 5 || repo.listAttempt != 2 || !repo.listLatest {
 		t.Fatalf("page = %#v, queried attempt = %d", page, repo.listAttempt)
 	}
 }
@@ -119,6 +133,23 @@ func TestBattleServiceDelegatesCatalogAndRepositoryReads(t *testing.T) {
 	}
 }
 
+func TestFactionViewFiltersPersistedState(t *testing.T) {
+	validID := "7f22e693-bacd-46bb-b942-64fa613cd388"
+	state := game.State{Factions: []game.FactionState{{FactionID: "a"}, {FactionID: "b"}}, Units: []game.Unit{{ID: "a-unit", FactionID: "a", Position: game.Position{X: 1, Y: 1}, Health: 10, Vision: 1}, {ID: "b-unit", FactionID: "b", Position: game.Position{X: 12, Y: 9}, Health: 10}}, Buildings: []game.Building{{ID: "b-castle", FactionID: "b", Type: game.BuildingCastle, Position: game.Position{X: 13, Y: 5}, Health: 300}}}
+	repository := &fakeBattleRepo{run: &BattleRun{ID: validID, ScenarioSnapshot: game.Scenario{Map: serviceTestScenario([2]FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}}).Map}, CurrentState: state}}
+	service := NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000).(*battleService)
+	view, err := service.GetFactionView(context.Background(), validID, "a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(view.State.Units) != 1 || len(view.State.Buildings) != 1 {
+		t.Fatalf("view = %#v", view)
+	}
+	if _, err := service.GetFactionView(context.Background(), validID, "outsider"); !errors.Is(err, ErrInvalidPerspective) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestCreateBattlePropagatesDependencyAndPersistenceErrors(t *testing.T) {
 	valid := CreateBattleInput{
 		ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1",
@@ -137,7 +168,7 @@ func TestCreateBattlePropagatesDependencyAndPersistenceErrors(t *testing.T) {
 
 	for _, persistenceErr := range []error{ErrBattleAlreadyExists, errors.New("battle database unavailable")} {
 		repository := &fakeBattleRepo{createErr: persistenceErr}
-		service := NewService(repository, &battleFactionRepo{factions: factions}, &fakeScenarioCatalog{resolved: battle.Scenario{ID: "skirmish-v1"}}, 10_000)
+		service := NewService(repository, &battleFactionRepo{factions: factions}, &fakeScenarioCatalog{resolved: game.Scenario{ID: "castle-siege-v1"}}, 10_000)
 		if _, err := service.CreateBattle(context.Background(), valid); !errors.Is(err, persistenceErr) {
 			t.Fatalf("CreateBattle() error = %v, want %v", err, persistenceErr)
 		}
@@ -148,37 +179,44 @@ func TestListBattleEventsValidatesAndPropagatesErrors(t *testing.T) {
 	validID := "7f22e693-bacd-46bb-b942-64fa613cd388"
 	for _, limit := range []int{0, 501} {
 		service := NewService(&fakeBattleRepo{}, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
-		if _, err := service.ListBattleEvents(context.Background(), validID, nil, 0, limit); !errors.Is(err, ErrInvalidBattle) {
+		if _, err := service.ListBattleEvents(context.Background(), validID, nil, 0, limit, false); !errors.Is(err, ErrInvalidBattle) {
 			t.Fatalf("limit %d error = %v, want ErrInvalidBattle", limit, err)
 		}
+	}
+	service := NewService(&fakeBattleRepo{}, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
+	if _, err := service.ListBattleEvents(context.Background(), validID, nil, 1, 50, true); !errors.Is(err, ErrInvalidBattle) {
+		t.Fatalf("latest query with cursor error = %v, want ErrInvalidBattle", err)
 	}
 
 	for _, attempt := range []int{-1, 3} {
 		repository := &fakeBattleRepo{run: &BattleRun{ID: validID, Attempt: 2}}
 		service := NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
-		if _, err := service.ListBattleEvents(context.Background(), validID, &attempt, 0, 50); !errors.Is(err, ErrInvalidBattle) {
+		if _, err := service.ListBattleEvents(context.Background(), validID, &attempt, 0, 50, false); !errors.Is(err, ErrInvalidBattle) {
 			t.Fatalf("attempt %d error = %v, want ErrInvalidBattle", attempt, err)
 		}
 	}
 
 	repositoryErr := errors.New("events unavailable")
 	repository := &fakeBattleRepo{run: &BattleRun{ID: validID, Attempt: 1}, listErr: repositoryErr}
-	service := NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
-	if _, err := service.ListBattleEvents(context.Background(), validID, nil, 0, 50); !errors.Is(err, repositoryErr) {
+	service = NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
+	if _, err := service.ListBattleEvents(context.Background(), validID, nil, 0, 50, false); !errors.Is(err, repositoryErr) {
 		t.Fatalf("ListBattleEvents() error = %v, want repository error", err)
 	}
 }
 
 type fakeScenarioCatalog struct {
-	resolved   battle.Scenario
+	resolved   game.Scenario
 	digest     string
 	err        error
 	identities [2]FactionIdentity
 	summaries  []ScenarioSummary
 }
 
-func (c *fakeScenarioCatalog) Resolve(_ string, identities [2]FactionIdentity) (battle.Scenario, string, error) {
+func (c *fakeScenarioCatalog) Resolve(_ string, identities [2]FactionIdentity) (game.Scenario, string, error) {
 	c.identities = identities
+	if c.err == nil && c.resolved.ID != "" && c.resolved.Map.Width == 0 {
+		c.resolved = serviceTestScenario(identities)
+	}
 	return c.resolved, c.digest, c.err
 }
 
@@ -207,6 +245,7 @@ type fakeBattleRepo struct {
 	run         *BattleRun
 	events      []StoredBattleEvent
 	listAttempt int
+	listLatest  bool
 	getErr      error
 	listErr     error
 }
@@ -224,7 +263,20 @@ func (r *fakeBattleRepo) GetBattle(context.Context, string) (*BattleRun, error) 
 	}
 	return r.run, nil
 }
-func (r *fakeBattleRepo) ListBattleEvents(_ context.Context, _ string, attempt int, _ uint64, _ int) ([]StoredBattleEvent, error) {
+func (r *fakeBattleRepo) ListBattleEvents(_ context.Context, _ string, attempt int, _ uint64, _ int, latest bool) ([]StoredBattleEvent, error) {
 	r.listAttempt = attempt
+	r.listLatest = latest
 	return r.events, r.listErr
+}
+
+func serviceTestScenario(identities [2]FactionIdentity) game.Scenario {
+	plan := controller.PlanProposal{Name: "attack", ActionWeights: map[string]int64{game.ActionAttack: 1000}}
+	blueprint := game.Blueprint{Units: []game.UnitSelection{{Type: "vanguard", Count: 1}}, RecruitmentPriority: []string{"vanguard"}}
+	ruleset := game.Ruleset{ID: "castle-siege-v1", Version: "1", DesignBudget: 120, StartingGold: 60, Units: []game.UnitType{{ID: "vanguard", Cost: 35, Health: 70, Attack: 9, Defense: 7, Speed: 4, Movement: 1, Range: 1, Vision: 2}}, Upgrades: []game.Upgrade{{ID: "arsenal", Cost: 20, AttackBonus: 2}}, Buildings: game.BuildingRules{CastleHealth: 300, CastleDefense: 8, CastleVision: 4, CastleIncome: 10, EconomyCost: 50, EconomyHealth: 60, EconomyDefense: 2, EconomyVision: 2, EconomyIncome: 10, MaximumEconomyCount: 2}, Combat: game.CombatRules{MinimumDamage: 1, DefendAttackPercent: 80, DefendDamageTakenPercent: 70, LootPercent: 50}}
+	gameMap := game.Map{Kind: "authored", Width: 15, Height: 11, Rows: []string{"...............", ".......#.......", "..b....#....b..", "...............", ".......#.......", "...............", ".......#.......", "...............", "..b....#....b..", ".......#.......", "..............."}, CastleSpawns: [2]game.Position{{X: 1, Y: 5}, {X: 13, Y: 5}}, EconomySites: [2][]game.Position{{{X: 2, Y: 2}, {X: 2, Y: 8}}, {{X: 12, Y: 2}, {X: 12, Y: 8}}}}
+	factions := make([]game.FactionSetup, 2)
+	for index, identity := range identities {
+		factions[index] = game.FactionSetup{ID: identity.ID, Name: identity.Name, Blueprint: blueprint, FallbackPlan: plan, ScriptedPlans: []controller.PlanProposal{plan}}
+	}
+	return game.Scenario{ID: "castle-siege-v1", RulesVersion: "1", RulesetID: ruleset.ID, MaximumTicks: 500, DecisionIntervalTicks: 10, DecisionLeadTicks: 2, Map: gameMap, Ruleset: ruleset, Factions: factions}
 }

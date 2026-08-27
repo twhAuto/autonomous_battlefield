@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -18,11 +19,12 @@ type Postgres struct {
 
 func (r *Postgres) GetFaction(ctx context.Context, id string) (*faction.Faction, error) {
 	var stored faction.Faction
+	var blueprint []byte
 	err := r.db.QueryRow(ctx, `
-		SELECT id, name
+		SELECT id, name, ruleset_id, blueprint
 		FROM factions
 		WHERE id = $1
-	`, id).Scan(&stored.ID, &stored.Name)
+	`, id).Scan(&stored.ID, &stored.Name, &stored.RulesetID, &blueprint)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, factionservice.ErrFactionNotFound
 	}
@@ -30,12 +32,17 @@ func (r *Postgres) GetFaction(ctx context.Context, id string) (*faction.Faction,
 		return nil, fmt.Errorf("get faction %q: %w", id, err)
 	}
 
+	if len(blueprint) > 0 {
+		if err := json.Unmarshal(blueprint, &stored.Blueprint); err != nil {
+			return nil, fmt.Errorf("decode faction %q blueprint: %w", id, err)
+		}
+	}
 	return &stored, nil
 }
 
 func (r *Postgres) ListFactions(ctx context.Context) ([]faction.Faction, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, name
+		SELECT id, name, ruleset_id, blueprint
 		FROM factions
 		ORDER BY created_at ASC, id ASC
 	`)
@@ -47,8 +54,14 @@ func (r *Postgres) ListFactions(ctx context.Context) ([]faction.Faction, error) 
 	factions := make([]faction.Faction, 0)
 	for rows.Next() {
 		var stored faction.Faction
-		if err := rows.Scan(&stored.ID, &stored.Name); err != nil {
+		var blueprint []byte
+		if err := rows.Scan(&stored.ID, &stored.Name, &stored.RulesetID, &blueprint); err != nil {
 			return nil, fmt.Errorf("scan faction: %w", err)
+		}
+		if len(blueprint) > 0 {
+			if err := json.Unmarshal(blueprint, &stored.Blueprint); err != nil {
+				return nil, fmt.Errorf("decode faction %q blueprint: %w", stored.ID, err)
+			}
 		}
 		factions = append(factions, stored)
 	}
@@ -60,10 +73,14 @@ func (r *Postgres) ListFactions(ctx context.Context) ([]faction.Faction, error) 
 }
 
 func (r *Postgres) CreateFaction(ctx context.Context, stored faction.Faction) error {
-	_, err := r.db.Exec(ctx, `
-		INSERT INTO factions (id, name)
-		VALUES ($1, $2)
-	`, stored.ID, stored.Name)
+	blueprint, err := json.Marshal(stored.Blueprint)
+	if err != nil {
+		return fmt.Errorf("marshal faction %q blueprint: %w", stored.ID, err)
+	}
+	_, err = r.db.Exec(ctx, `
+		INSERT INTO factions (id, name, ruleset_id, blueprint)
+		VALUES ($1, $2, $3, $4)
+	`, stored.ID, stored.Name, stored.RulesetID, blueprint)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	battle "github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation"
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 var (
@@ -18,6 +18,8 @@ var (
 	ErrInvalidBattle        = errors.New("invalid battle")
 	ErrBattleFactionMissing = errors.New("battle faction not found")
 	ErrScenarioNotFound     = errors.New("scenario not found")
+	ErrIncompatibleFaction  = errors.New("faction is incompatible with scenario")
+	ErrInvalidPerspective   = errors.New("invalid faction perspective")
 )
 
 var battleUUIDPattern = regexp.MustCompile(`^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$`)
@@ -33,25 +35,28 @@ type CreateBattleParams struct {
 	ID               string
 	ScenarioID       string
 	ScenarioDigest   string
-	ScenarioSnapshot battle.Scenario
+	ScenarioSnapshot game.Scenario
+	InitialState     game.State
 	RequestedTicks   uint64
 }
 
 type BattleRun struct {
-	ID               string          `json:"id"`
-	ScenarioID       string          `json:"scenarioId"`
-	ScenarioDigest   string          `json:"scenarioDigest"`
-	ScenarioSnapshot battle.Scenario `json:"scenario"`
-	RequestedTicks   uint64          `json:"requestedTicks"`
-	CurrentTick      uint64          `json:"currentTick"`
-	Status           string          `json:"status"`
-	Attempt          int             `json:"attempt"`
-	Result           *battle.Result  `json:"result,omitempty"`
-	ErrorCode        *string         `json:"errorCode,omitempty"`
-	ErrorMessage     *string         `json:"errorMessage,omitempty"`
-	CreatedAt        time.Time       `json:"createdAt"`
-	StartedAt        *time.Time      `json:"startedAt,omitempty"`
-	CompletedAt      *time.Time      `json:"completedAt,omitempty"`
+	ID               string        `json:"id"`
+	ScenarioID       string        `json:"scenarioId"`
+	ScenarioDigest   string        `json:"scenarioDigest"`
+	ScenarioSnapshot game.Scenario `json:"scenario"`
+	InitialState     game.State    `json:"initialState"`
+	CurrentState     game.State    `json:"currentState"`
+	RequestedTicks   uint64        `json:"requestedTicks"`
+	CurrentTick      uint64        `json:"currentTick"`
+	Status           string        `json:"status"`
+	Attempt          int           `json:"attempt"`
+	Result           *game.Result  `json:"result,omitempty"`
+	ErrorCode        *string       `json:"errorCode,omitempty"`
+	ErrorMessage     *string       `json:"errorMessage,omitempty"`
+	CreatedAt        time.Time     `json:"createdAt"`
+	StartedAt        *time.Time    `json:"startedAt,omitempty"`
+	CompletedAt      *time.Time    `json:"completedAt,omitempty"`
 }
 
 type StoredBattleEvent struct {
@@ -73,7 +78,11 @@ type Service interface {
 	ListScenarios() []ScenarioSummary
 	CreateBattle(context.Context, CreateBattleInput) (*BattleRun, error)
 	GetBattle(context.Context, string) (*BattleRun, error)
-	ListBattleEvents(context.Context, string, *int, uint64, int) (BattleEventPage, error)
+	ListBattleEvents(context.Context, string, *int, uint64, int, bool) (BattleEventPage, error)
+}
+
+type PerspectiveService interface {
+	GetFactionView(context.Context, string, string) (game.View, error)
 }
 
 func (s *battleService) ListScenarios() []ScenarioSummary {
@@ -108,18 +117,27 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		if err != nil {
 			return nil, err
 		}
-		identities[index] = FactionIdentity{ID: storedFaction.ID, Name: storedFaction.Name}
+		identities[index] = FactionIdentity{ID: storedFaction.ID, Name: storedFaction.Name, RulesetID: storedFaction.RulesetID, Blueprint: game.CloneBlueprint(storedFaction.Blueprint)}
 	}
 
 	resolved, digest, err := s.catalog.Resolve(input.ScenarioID, identities)
 	if err != nil {
 		return nil, err
 	}
+	if resolved.MaximumTicks > 0 && input.TickCount > resolved.MaximumTicks {
+		return nil, ErrInvalidBattle
+	}
+	match, err := game.NewMatch(input.ID, resolved, input.TickCount)
+	if err != nil {
+		return nil, fmt.Errorf("build initial battle state: %w", err)
+	}
+	initialState := match.State()
 	err = s.battles.CreateBattle(ctx, CreateBattleParams{
 		ID:               input.ID,
 		ScenarioID:       resolved.ID,
 		ScenarioDigest:   digest,
 		ScenarioSnapshot: resolved,
+		InitialState:     initialState,
 		RequestedTicks:   input.TickCount,
 	})
 	if errors.Is(err, ErrBattleAlreadyExists) {
@@ -133,9 +151,22 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		ScenarioID:       resolved.ID,
 		ScenarioDigest:   digest,
 		ScenarioSnapshot: resolved,
-		RequestedTicks:   input.TickCount,
-		Status:           "queued",
+		InitialState:     initialState, CurrentState: initialState,
+		RequestedTicks: input.TickCount,
+		Status:         "queued",
 	}, nil
+}
+
+func (s *battleService) GetFactionView(ctx context.Context, battleID, factionID string) (game.View, error) {
+	run, err := s.GetBattle(ctx, battleID)
+	if err != nil {
+		return game.View{}, err
+	}
+	view, err := game.ProjectView(run.ScenarioSnapshot.Map, run.CurrentState, factionID)
+	if err != nil {
+		return game.View{}, fmt.Errorf("%w: %v", ErrInvalidPerspective, err)
+	}
+	return view, nil
 }
 
 func (s *battleService) GetBattle(ctx context.Context, id string) (*BattleRun, error) {
@@ -146,8 +177,8 @@ func (s *battleService) GetBattle(ctx context.Context, id string) (*BattleRun, e
 	return run, err
 }
 
-func (s *battleService) ListBattleEvents(ctx context.Context, id string, requestedAttempt *int, after uint64, limit int) (BattleEventPage, error) {
-	if limit < 1 || limit > 500 {
+func (s *battleService) ListBattleEvents(ctx context.Context, id string, requestedAttempt *int, after uint64, limit int, latest bool) (BattleEventPage, error) {
+	if limit < 1 || limit > 500 || (latest && after != 0) {
 		return BattleEventPage{}, ErrInvalidBattle
 	}
 	run, err := s.GetBattle(ctx, id)
@@ -161,7 +192,7 @@ func (s *battleService) ListBattleEvents(ctx context.Context, id string, request
 		}
 		attempt = *requestedAttempt
 	}
-	events, err := s.battles.ListBattleEvents(ctx, id, attempt, after, limit)
+	events, err := s.battles.ListBattleEvents(ctx, id, attempt, after, limit, latest)
 	if err != nil {
 		return BattleEventPage{}, err
 	}
