@@ -1,0 +1,28 @@
+id: castle-siege-v1
+version: "1"
+designBudget: 120
+startingGold: 60
+units:
+  - {id: vanguard, cost: 35, health: 70, attack: 9, defense: 7, speed: 4, movement: 1, range: 1, vision: 2}
+  - {id: striker, cost: 25, health: 42, attack: 14, defense: 3, speed: 8, movement: 2, range: 1, vision: 3}
+  - {id: ranger, cost: 30, health: 30, attack: 11, defense: 2, speed: 6, movement: 1, range: 3, vision: 4}
+upgrades:
+  - {id: arsenal, cost: 20, attackBonus: 2}
+  - {id: plating, cost: 20, defenseBonus: 2}
+  - {id: industry, cost: 20, economyIncomeBonus: 2}
+buildings:
+  castleHealth: 300
+  castleDefense: 8
+  castleVision: 4
+  castleIncome: 10
+  economyCost: 50
+  economyHealth: 60
+  economyDefense: 2
+  economyVision: 2
+  economyIncome: 10
+  maximumEconomyCount: 2
+combat:
+  minimumDamage: 1
+  defendAttackPercent: 80
+  defendDamageTakenPercent: 70
+  lootPercent: 50

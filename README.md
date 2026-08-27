@@ -2,11 +2,11 @@
 
 Autonomous Battlefield is a Go backend for an auto-battler and expansion game. The long-term product will let human players and AI agents control factions that gather resources, expand territory, and fight on a continuously running battlefield.
 
-The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic unit combat, configurable scripted strategy decisions, validated configuration, health endpoints, and graceful shutdown. Maps, economies, player commands, authentication, and LLM agents described in the [revision guide](REVISION.md) remain planned work.
+The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, point-buy faction blueprints, autonomous economies, fog-of-war views, configurable scripted strategy decisions, validated configuration, health endpoints, and graceful shutdown. Player commands, authentication, seeded map generation, and LLM agents described in the [revision guide](REVISION.md) remain planned work.
 
 ## Current capabilities
 
-- Create a faction with a caller-supplied UUID and non-empty name.
+- Create reusable faction blueprints under a versioned point-buy ruleset.
 - Retrieve a faction's name by ID.
 - Store factions in PostgreSQL through `pgx`.
 - Configure HTTP and database connection settings from YAML and `DATABASE_URL`.
@@ -15,7 +15,7 @@ The project is in an early stage. The current backend provides PostgreSQL-backed
 - Rank valid faction actions with an in-memory deterministic utility controller.
 - Schedule configurable strategy-decision windows and use a safe fallback plan between them.
 - Queue finite battles durably in PostgreSQL and claim them safely across engine workers.
-- Run deterministic initiative combat and persist status, statistics, and paginated events.
+- Run deterministic hex movement, economy, recruitment, castle combat, and persist replay state, statistics, and paginated events.
 - Exercise HTTP delivery, faction and battle use cases, PostgreSQL adapters, deterministic combat, workers, scenarios, configuration, and JSON helpers with tests.
 
 ## Requirements
@@ -241,7 +241,17 @@ Content-Type: application/json
 
 {
   "id": "4db8d152-1e04-4d10-8824-859c6ed72878",
-  "name": "Northern Alliance"
+  "name": "Northern Alliance",
+  "rulesetId": "castle-siege-v1",
+  "blueprint": {
+    "units": [
+      {"type":"vanguard","count":1},
+      {"type":"striker","count":1},
+      {"type":"ranger","count":1}
+    ],
+    "upgradeIds": ["arsenal"],
+    "recruitmentPriority": ["vanguard","striker","ranger"]
+  }
 }
 ```
 
@@ -250,7 +260,7 @@ Example:
 ```bash
 curl -i \
   -H 'Content-Type: application/json' \
-  -d '{"id":"4db8d152-1e04-4d10-8824-859c6ed72878","name":"Northern Alliance"}' \
+  -d '{"id":"4db8d152-1e04-4d10-8824-859c6ed72878","name":"Northern Alliance","rulesetId":"castle-siege-v1","blueprint":{"units":[{"type":"vanguard","count":1},{"type":"striker","count":1},{"type":"ranger","count":1}],"upgradeIds":["arsenal"],"recruitmentPriority":["vanguard","striker","ranger"]}}' \
   http://localhost:8080/v1/factions
 ```
 
@@ -260,10 +270,13 @@ Responses:
 | --- | --- |
 | `201 Created` | The faction was created. The response has no body. |
 | `400 Bad Request` | The JSON is invalid, the ID is not UUID-shaped, or the trimmed name is empty. |
+| `422 Unprocessable Entity` | The blueprint is illegal, unknown, or over budget. |
 | `409 Conflict` | A faction with the same ID already exists. |
 | `500 Internal Server Error` | The faction could not be persisted. |
 
 Request bodies are limited to 64 KiB and must contain exactly one JSON value. Names are trimmed before storage.
+
+`GET /v1/faction-rulesets` returns the available budgets, unit statistics, upgrades, and costs used by the faction builder.
 
 ### Get a faction name
 
@@ -287,9 +300,9 @@ The endpoint returns `404 Not Found` when the faction does not exist and `500 In
 
 ### Queue a battle
 
-Both factions must already exist. The scenario ID refers to a strict YAML template in `backend/scenarios`; the API resolves the selected faction identities into its two loadout slots and freezes that snapshot for replay.
+Both factions must already exist and use the scenario's ruleset. The scenario ID refers to a strict YAML template in `backend/scenarios`; the API resolves both persisted blueprints, the map, ruleset, and controller plans into a deterministic snapshot for replay.
 
-The frontend discovers available templates through `GET /v1/scenarios`, which returns scenario IDs, rules versions, tick pacing, and decision timing.
+The frontend discovers available templates through `GET /v1/scenarios`, which returns scenario IDs, rules versions, scenario-specific maximum ticks, tick pacing, and decision timing. `castle-siege-v1` allows at most 500 ticks.
 
 ```http
 POST /v1/battles
@@ -297,7 +310,7 @@ Content-Type: application/json
 
 {
   "id": "7f22e693-bacd-46bb-b942-64fa613cd388",
-  "scenarioId": "skirmish-v1",
+  "scenarioId": "castle-siege-v1",
   "factionIds": [
     "4db8d152-1e04-4d10-8824-859c6ed72878",
     "41ac3a2f-3371-4de1-b0f6-70600fcd9052"
@@ -306,7 +319,7 @@ Content-Type: application/json
 }
 ```
 
-A valid request returns `202 Accepted`, a queued status, and `Location: /v1/battles/{id}`. Invalid input returns `400`, a missing scenario or faction returns `404`, and a duplicate battle ID returns `409`.
+A valid request returns `202 Accepted`, a queued status, and `Location: /v1/battles/{id}`. Invalid input returns `400`, a missing scenario or faction returns `404`, incompatible faction rulesets return `422`, and a duplicate battle ID returns `409`.
 
 ### Get battle status and results
 
@@ -314,7 +327,9 @@ A valid request returns `202 Accepted`, a queued status, and `Location: /v1/batt
 GET /v1/battles/{id}
 ```
 
-The response reports `queued`, `running`, `completed`, or `failed`, along with the current tick and attempt. Completed battles include the winner or draw reason and per-faction unit, damage, attack, and defense statistics.
+The response reports `queued`, `running`, `completed`, or `failed`, along with the authored map and current units, buildings, treasuries, tick, and attempt. Completed battles include castle health plus unit, economy, loot, damage, and posture statistics.
+
+`GET /v1/battles/{battleId}/factions/{factionId}/view` returns the same terrain with faction fog-of-war applied. Owned entities and both castles are always present; other hostile entities appear only inside current friendly vision.
 
 ### Page through battle events
 
@@ -342,6 +357,7 @@ Non-secret settings live in `backend/config.yaml`:
 | `database.minConnections` | `1` | Minimum pool size. |
 | `database.maxConnectionLifetime` | `30m` | Maximum lifetime of a pooled connection. |
 | `api.scenarioCatalogPath` | `scenarios` | Directory containing strict YAML scenario templates. |
+| `api.rulesetCatalogPath` | `rulesets` | Directory containing strict faction-design rulesets. |
 | `api.maxTicks` | `10000` | Maximum requested ticks for one battle. |
 | `engine.healthAddress` | `:8081` | Internal liveness/readiness listen address. |
 | `engine.pollInterval` | `1s` | Delay between empty queue polls. |
@@ -387,8 +403,8 @@ backend/
 │   │   ├── api/           Battle and scenario HTTP handlers
 │   │   ├── catalog/       Strict YAML loading and snapshot resolution
 │   │   └── service/       Battle validation and API-facing use cases
-│   └── simulation/        Shared deterministic combat state and rules
-│       └── controller/    Tactical policies and strategy windows
+│   └── simulation/controller/ Tactical policies and strategy windows
+├── internal/game/         Pure hex-map, economy, combat, state, and visibility domain
 ├── internal/config/       YAML and environment configuration
 ├── internal/faction/      Faction model and feature boundary
 │   ├── api/               Faction HTTP handlers
@@ -398,7 +414,8 @@ backend/
 ├── internal/logging/      Structured logger construction
 ├── internal/postgres/     Shared PostgreSQL pool and migration infrastructure
 ├── migrations/            Embedded Goose SQL migrations
-├── scenarios/             Versioned battle loadout and strategy templates
+├── rulesets/              Versioned point-buy unit and upgrade catalogs
+├── scenarios/             Versioned authored maps and strategy templates
 ├── compose.yaml           Local PostgreSQL service
 └── config.yaml            Default non-secret configuration
 ```

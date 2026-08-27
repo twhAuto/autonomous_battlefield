@@ -4,119 +4,75 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/server/service"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
-func TestCatalogLoadsAndResolvesScenario(t *testing.T) {
-	catalog, err := LoadCatalog(filepath.Join("..", "..", "..", "..", "scenarios"))
+func TestCatalogLoadsRulesetAndResolvesBlueprints(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "..")
+	catalog, err := LoadCatalog(filepath.Join(root, "scenarios"), filepath.Join(root, "rulesets"))
 	if err != nil {
-		t.Fatalf("LoadCatalog() returned an error: %v", err)
+		t.Fatal(err)
 	}
-	identities := [2]battleservice.FactionIdentity{{ID: "faction-a", Name: "A"}, {ID: "faction-b", Name: "B"}}
-	first, firstDigest, err := catalog.Resolve("skirmish-v1", identities)
+	blueprint := game.Blueprint{Units: []game.UnitSelection{{Type: "vanguard", Count: 1}, {Type: "striker", Count: 1}, {Type: "ranger", Count: 1}}, UpgradeIDs: []string{"arsenal"}, RecruitmentPriority: []string{"vanguard", "striker", "ranger"}}
+	identities := [2]battleservice.FactionIdentity{{ID: "faction-a", Name: "A", RulesetID: "castle-siege-v1", Blueprint: blueprint}, {ID: "faction-b", Name: "B", RulesetID: "castle-siege-v1", Blueprint: blueprint}}
+	first, digest, err := catalog.Resolve("castle-siege-v1", identities)
 	if err != nil {
-		t.Fatalf("Resolve() returned an error: %v", err)
+		t.Fatal(err)
 	}
-	second, secondDigest, err := catalog.Resolve("skirmish-v1", identities)
+	second, nextDigest, err := catalog.Resolve("castle-siege-v1", identities)
 	if err != nil {
-		t.Fatalf("second Resolve() returned an error: %v", err)
+		t.Fatal(err)
 	}
-	if firstDigest == "" || firstDigest != secondDigest || first.Factions[0].ID != "faction-a" || second.Factions[1].Name != "B" {
-		t.Fatalf("resolved scenarios/digests differ: %q and %q", firstDigest, secondDigest)
+	if digest == "" || digest != nextDigest || first.Map.Width != 15 || second.Map.Height != 11 {
+		t.Fatalf("unexpected resolutions: %#v", first)
 	}
-	if first.Factions[0].Traits[0].ID != "aggressive" {
-		t.Fatalf("first trait = %#v, want aggressive", first.Factions[0].Traits)
-	}
-	summaries := catalog.Summaries()
-	if len(summaries) != 1 || summaries[0].ID != "skirmish-v1" || summaries[0].DecisionIntervalTicks != 10 {
+	if summaries := catalog.Summaries(); len(summaries) != 1 || summaries[0].RulesetID != "castle-siege-v1" || summaries[0].MapWidth != 15 || summaries[0].MaximumTicks != 500 {
 		t.Fatalf("summaries = %#v", summaries)
+	}
+	if rulesets := catalog.Rulesets(); len(rulesets) != 1 || rulesets[0].DesignBudget != 120 {
+		t.Fatalf("rulesets = %#v", rulesets)
 	}
 }
 
-func TestCatalogRejectsUnknownFields(t *testing.T) {
-	directory := t.TempDir()
-	contents := `
-id: bad
-rulesVersion: "1"
-tickDuration: 0s
-decisionIntervalTicks: 10
-decisionLeadTicks: 2
-unknown: true
-`
-	if err := os.WriteFile(filepath.Join(directory, "bad.yaml"), []byte(contents), 0o600); err != nil {
-		t.Fatalf("write scenario: %v", err)
+func TestCatalogRejectsUnknownScenarioField(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "..")
+	scenarios := t.TempDir()
+	contents, err := os.ReadFile(filepath.Join(root, "scenarios", "castle-siege-v1.yaml"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := LoadCatalog(directory); err == nil {
-		t.Fatal("LoadCatalog() returned no error")
+	contents = append(contents, []byte("\nunknown: true\n")...)
+	if err := os.WriteFile(filepath.Join(scenarios, "bad.yaml"), contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(scenarios, filepath.Join(root, "rulesets")); err == nil {
+		t.Fatal("unknown scenario field accepted")
+	}
+}
+
+func TestCatalogRejectsIncompatibleFaction(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "..")
+	catalog, err := LoadCatalog(filepath.Join(root, "scenarios"), filepath.Join(root, "rulesets"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = catalog.Resolve("castle-siege-v1", [2]battleservice.FactionIdentity{{RulesetID: "other"}, {RulesetID: "other"}})
+	if !errors.Is(err, battleservice.ErrIncompatibleFaction) {
+		t.Fatalf("error = %v", err)
 	}
 }
 
 func TestCatalogReturnsNotFound(t *testing.T) {
-	catalog, err := LoadCatalog(filepath.Join("..", "..", "..", "..", "scenarios"))
+	root := filepath.Join("..", "..", "..", "..")
+	catalog, err := LoadCatalog(filepath.Join(root, "scenarios"), filepath.Join(root, "rulesets"))
 	if err != nil {
-		t.Fatalf("LoadCatalog() returned an error: %v", err)
+		t.Fatal(err)
 	}
 	_, _, err = catalog.Resolve("missing", [2]battleservice.FactionIdentity{})
 	if !errors.Is(err, battleservice.ErrScenarioNotFound) {
-		t.Fatalf("Resolve() error = %v, want ErrScenarioNotFound", err)
+		t.Fatalf("error = %v", err)
 	}
-}
-
-func TestCatalogRejectsInvalidStatsAndPlansAtStartup(t *testing.T) {
-	fixture, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "scenarios", "skirmish-v1.yaml"))
-	if err != nil {
-		t.Fatalf("read fixture: %v", err)
-	}
-	tests := []struct {
-		name    string
-		oldText string
-		newText string
-	}{
-		{name: "oversized unit stat", oldText: "health: 42", newText: "health: 1000000001"},
-		{name: "unknown plan action", oldText: "attack: 1400", newText: "retreat: 1400"},
-		{name: "invalid unused trait", oldText: "defend: 350", newText: "retreat: 350"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			directory := t.TempDir()
-			contents := strings.Replace(string(fixture), tt.oldText, tt.newText, 1)
-			if err := os.WriteFile(filepath.Join(directory, "invalid.yaml"), []byte(contents), 0o600); err != nil {
-				t.Fatalf("write scenario: %v", err)
-			}
-			if _, err := LoadCatalog(directory); !errors.Is(err, ErrInvalidScenario) {
-				t.Fatalf("LoadCatalog() error = %v, want ErrInvalidScenario", err)
-			}
-		})
-	}
-}
-
-func TestCatalogRejectsDuplicateScenarioAndUnitIDs(t *testing.T) {
-	fixture, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "scenarios", "skirmish-v1.yaml"))
-	if err != nil {
-		t.Fatalf("read fixture: %v", err)
-	}
-	t.Run("scenario ID", func(t *testing.T) {
-		directory := t.TempDir()
-		for _, name := range []string{"one.yaml", "two.yaml"} {
-			if err := os.WriteFile(filepath.Join(directory, name), fixture, 0o600); err != nil {
-				t.Fatalf("write scenario: %v", err)
-			}
-		}
-		if _, err := LoadCatalog(directory); !errors.Is(err, ErrInvalidScenario) {
-			t.Fatalf("LoadCatalog() error = %v, want ErrInvalidScenario", err)
-		}
-	})
-	t.Run("resolved unit ID", func(t *testing.T) {
-		directory := t.TempDir()
-		contents := strings.Replace(string(fixture), "id: striker", "id: vanguard", 1)
-		if err := os.WriteFile(filepath.Join(directory, "duplicate.yaml"), []byte(contents), 0o600); err != nil {
-			t.Fatalf("write scenario: %v", err)
-		}
-		if _, err := LoadCatalog(directory); !errors.Is(err, ErrInvalidScenario) {
-			t.Fatalf("LoadCatalog() error = %v, want ErrInvalidScenario", err)
-		}
-	})
 }

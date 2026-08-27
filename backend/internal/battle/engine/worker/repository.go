@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	battle "github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 var (
@@ -21,16 +21,16 @@ type BattleLease struct {
 
 type BattleJob struct {
 	Lease          BattleLease
-	Scenario       battle.Scenario
+	Scenario       game.Scenario
 	RequestedTicks uint64
 }
 
 // Repository describes the durable queue operations required by the worker.
 type Repository interface {
 	ClaimBattle(context.Context, string, time.Duration, int) (*BattleJob, error)
-	SaveTick(context.Context, BattleLease, battle.Transition, time.Duration) error
+	SaveTick(context.Context, BattleLease, game.Transition, time.Duration) error
 	HeartbeatBattle(context.Context, BattleLease, time.Duration) error
-	CompleteBattle(context.Context, BattleLease, battle.Transition) error
+	CompleteBattle(context.Context, BattleLease, game.Transition) error
 	FailBattle(context.Context, BattleLease, string, string) error
 	RequeueBattle(context.Context, BattleLease) error
 }

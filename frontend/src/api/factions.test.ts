@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createFaction, FactionApiError, listFactions } from './factions'
+import { createFaction, FactionApiError, listFactionRulesets, listFactions } from './factions'
 
-const faction = { id: '7f22e693-bacd-46bb-b942-64fa613cd388', name: 'Northwind' }
+const faction = {
+  id: '7f22e693-bacd-46bb-b942-64fa613cd388', name: 'Northwind', rulesetId: 'castle-siege-v1',
+  blueprint: { units: [{ type: 'vanguard', count: 1 }], upgradeIds: [], recruitmentPriority: ['vanguard'] },
+}
 
 describe('faction API', () => {
   beforeEach(() => {
@@ -13,6 +16,13 @@ describe('faction API', () => {
 
     await expect(listFactions()).resolves.toEqual([faction])
     expect(fetch).toHaveBeenCalledWith('/v1/factions', { signal: undefined })
+  })
+
+  it('discovers faction rulesets', async () => {
+    const ruleset = { id: 'castle-siege-v1', version: '1', designBudget: 120, units: [], upgrades: [] }
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ rulesets: [ruleset] }))
+    await expect(listFactionRulesets()).resolves.toEqual([ruleset])
+    expect(fetch).toHaveBeenCalledWith('/v1/faction-rulesets', { signal: undefined })
   })
 
   it('maps list HTTP and network failures', async () => {
@@ -45,6 +55,7 @@ describe('faction API', () => {
   it.each([
     [409, 'identifier is already in use'],
     [400, 'server rejected these faction details'],
+    [422, 'blueprint is illegal'],
     [500, 'faction could not be created'],
   ])('maps create status %d', async (status, message) => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status }))
@@ -52,6 +63,18 @@ describe('faction API', () => {
       name: 'FactionApiError',
       status,
       message: expect.stringContaining(message),
+    })
+  })
+
+  it('returns the blueprint validation detail supplied by the server', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(
+      'invalid faction blueprint: unknown ruleset ""\n',
+      { status: 422 },
+    ))
+
+    await expect(createFaction(faction)).rejects.toMatchObject({
+      status: 422,
+      message: 'invalid faction blueprint: unknown ruleset ""',
     })
   })
 

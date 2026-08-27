@@ -28,7 +28,7 @@ type Database interface {
 
 func NewAPI(db Database, catalog *catalog.Catalog, maxTicks uint64) *App {
 	factionRepository := factionrepo.NewPostgres(db)
-	factionService := factionservice.NewService(factionRepository)
+	factionService := factionservice.NewService(factionRepository, catalog)
 	battleService := battleservice.NewService(battlerepo.NewPostgres(db), factionRepository, catalog, maxTicks)
 
 	factionHandler := factionapi.NewHandler(factionService)

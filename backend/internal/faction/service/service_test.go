@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 func TestCreateFaction(t *testing.T) {
@@ -66,6 +67,23 @@ func TestCreateFactionReturnsAlreadyExists(t *testing.T) {
 	}
 }
 
+func TestCreateFactionValidatesAndPricesBlueprint(t *testing.T) {
+	ruleset := game.Ruleset{ID: "castle-siege-v1", Version: "1", DesignBudget: 120, StartingGold: 60, Units: []game.UnitType{{ID: "vanguard", Cost: 35, Health: 70, Attack: 9, Defense: 7, Speed: 4, Movement: 1, Range: 1, Vision: 2}}, Upgrades: []game.Upgrade{{ID: "arsenal", Cost: 20, AttackBonus: 2}}, Buildings: game.BuildingRules{CastleHealth: 300, CastleDefense: 8, CastleVision: 4, CastleIncome: 10, EconomyCost: 50, EconomyHealth: 60, EconomyDefense: 2, EconomyVision: 2, EconomyIncome: 10, MaximumEconomyCount: 2}, Combat: game.CombatRules{MinimumDamage: 1, DefendAttackPercent: 80, DefendDamageTakenPercent: 70, LootPercent: 50}}
+	catalog := fakeRulesets{ruleset: ruleset}
+	repo := &fakeFactionRepository{}
+	service := NewService(repo, catalog)
+	blueprint := game.Blueprint{Units: []game.UnitSelection{{Type: "vanguard", Count: 1}}, UpgradeIDs: []string{"arsenal"}, RecruitmentPriority: []string{"vanguard"}}
+	err := service.CreateFaction(context.Background(), CreateInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", RulesetID: ruleset.ID, Blueprint: blueprint})
+	if err != nil || repo.createdFaction.RulesetID != ruleset.ID {
+		t.Fatalf("created = %#v, err = %v", repo.createdFaction, err)
+	}
+	invalid := blueprint
+	invalid.Units[0].Count = 4
+	if err := service.CreateFaction(context.Background(), CreateInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", RulesetID: ruleset.ID, Blueprint: invalid}); !errors.Is(err, ErrInvalidBlueprint) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestListFactions(t *testing.T) {
 	want := []faction.Faction{
 		{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind"},
@@ -104,6 +122,11 @@ type fakeFactionRepository struct {
 	getErr         error
 	factions       []faction.Faction
 }
+
+type fakeRulesets struct{ ruleset game.Ruleset }
+
+func (f fakeRulesets) Ruleset(id string) (game.Ruleset, bool) { return f.ruleset, id == f.ruleset.ID }
+func (f fakeRulesets) Rulesets() []game.Ruleset               { return []game.Ruleset{f.ruleset} }
 
 func (r *fakeFactionRepository) GetFaction(context.Context, string) (*faction.Faction, error) {
 	return r.storedFaction, r.getErr

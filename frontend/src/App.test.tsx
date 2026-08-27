@@ -7,6 +7,15 @@ import App from './App'
 const firstId = '7f22e693-bacd-46bb-b942-64fa613cd388'
 const secondId = '4db8d152-1e04-4d10-8824-859c6ed72878'
 const battleId = '41ac3a2f-3371-4de1-b0f6-70600fcd9052'
+const ruleset = {
+  id: 'castle-siege-v1', version: '1', designBudget: 120, startingGold: 60,
+  units: [
+    { id: 'vanguard', cost: 35, health: 70, attack: 9, defense: 7, speed: 4, movement: 1, range: 1, vision: 2 },
+    { id: 'striker', cost: 25, health: 42, attack: 14, defense: 3, speed: 8, movement: 2, range: 1, vision: 3 },
+    { id: 'ranger', cost: 30, health: 30, attack: 11, defense: 2, speed: 6, movement: 1, range: 3, vision: 4 },
+  ],
+  upgrades: [{ id: 'arsenal', cost: 20, attackBonus: 2, defenseBonus: 0, economyIncomeBonus: 0 }],
+}
 
 function renderApp(path = '/') {
   return render(
@@ -14,6 +23,21 @@ function renderApp(path = '/') {
       <App />
     </MemoryRouter>,
   )
+}
+
+function eventPageResponse(firstSequence: number, lastSequence: number, tick: number) {
+  return new Response(JSON.stringify({
+    attempt: 1,
+    events: Array.from({ length: lastSequence - firstSequence + 1 }, (_, index) => ({
+      attempt: 1,
+      sequence: firstSequence + index,
+      tick,
+      type: 'tick_completed',
+      data: {},
+      createdAt: '2026-08-21T00:00:00Z',
+    })),
+    nextCursor: lastSequence,
+  }), { status: 200 })
 }
 
 describe('App', () => {
@@ -45,31 +69,69 @@ describe('App', () => {
   })
 
   it('creates a faction from its dedicated route', async () => {
-    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 201 }))
+	vi.mocked(fetch).mockImplementation(async (input) => String(input) === '/v1/faction-rulesets'
+	  ? new Response(JSON.stringify({ rulesets: [ruleset] }), { status: 200 })
+	  : new Response(null, { status: 201 }))
     const user = userEvent.setup()
     renderApp('/factions/new')
 
-    await user.type(screen.getByLabelText('Faction name'), '  The Verdant Accord  ')
-    await user.click(screen.getByRole('button', { name: 'CREATE FACTION' }))
+	await user.type(await screen.findByLabelText('Faction name'), '  The Verdant Accord  ')
+	await user.click(screen.getByRole('button', { name: /CREATE FACTION/i }))
 
     expect(fetch).toHaveBeenCalledWith('/v1/factions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: firstId, name: 'The Verdant Accord' }),
+	  body: JSON.stringify({
+	    id: firstId, name: 'The Verdant Accord', rulesetId: 'castle-siege-v1',
+	    blueprint: {
+	      units: [{ type: 'vanguard', count: 1 }, { type: 'striker', count: 1 }, { type: 'ranger', count: 1 }],
+	      upgradeIds: ['arsenal'], recruitmentPriority: ['vanguard', 'striker', 'ranger'],
+	    },
+	  }),
     })
     expect(await screen.findByText('The Verdant Accord has entered the battlefield.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /view faction registry/i })).toHaveAttribute('href', '/factions')
   })
 
-  it('regenerates a faction identifier', async () => {
+  it('shows the faction blueprint validation detail returned by the server', async () => {
+	vi.mocked(fetch).mockImplementation(async (input) => String(input) === '/v1/faction-rulesets'
+	  ? new Response(JSON.stringify({ rulesets: [ruleset] }), { status: 200 })
+	  : new Response('invalid faction blueprint: recruitment priority is incomplete\n', { status: 422 }))
     const user = userEvent.setup()
     renderApp('/factions/new')
 
-    expect(screen.getByTitle(firstId)).toBeInTheDocument()
+	await user.type(await screen.findByLabelText('Faction name'), 'Northwind')
+	await user.click(screen.getByRole('button', { name: /CREATE FACTION/i }))
+
+	expect(await screen.findByText('invalid faction blueprint: recruitment priority is incomplete')).toBeInTheDocument()
+  })
+
+  it('regenerates a faction identifier', async () => {
+	vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ rulesets: [ruleset] }), { status: 200 }))
+    const user = userEvent.setup()
+    renderApp('/factions/new')
+
+	expect(await screen.findByTitle(firstId)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Generate a new faction identifier' }))
 
-    expect(screen.getByTitle(secondId)).toBeInTheDocument()
+	expect(await screen.findByTitle(secondId)).toBeInTheDocument()
     expect(screen.queryByTitle(firstId)).not.toBeInTheDocument()
+  })
+
+  it('updates blueprint budget, upgrades, quantities, and recruitment order', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ rulesets: [ruleset] }), { status: 200 }))
+    const user = userEvent.setup()
+    renderApp('/factions/new')
+    await screen.findByLabelText('Faction name')
+    await user.click(screen.getByRole('button', { name: 'Add vanguard' }))
+    expect(screen.getByText('25 over budget')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Remove vanguard' }))
+    await user.click(screen.getByRole('button', { name: 'Remove vanguard' }))
+    expect(screen.getByLabelText('vanguard quantity')).toHaveTextContent('0')
+    await user.click(screen.getByRole('checkbox', { name: /arsenal/i }))
+    expect(screen.getByText('65 unspent')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Move ranger up' }))
+    expect(screen.getByText('1. ranger')).toBeInTheDocument()
   })
 
   it('renders every faction returned by the registry', async () => {
@@ -112,13 +174,13 @@ describe('App', () => {
       const url = String(input)
       if (url === '/v1/factions') {
         return new Response(JSON.stringify({ factions: [
-          { id: firstId, name: 'Northwind' },
-          { id: secondId, name: 'Verdant Accord' },
+          { id: firstId, name: 'Northwind', rulesetId: 'castle-siege-v1' },
+          { id: secondId, name: 'Verdant Accord', rulesetId: 'castle-siege-v1' },
         ] }), { status: 200 })
       }
       if (url === '/v1/scenarios') {
         return new Response(JSON.stringify({ scenarios: [{
-          id: 'skirmish-v1', rulesVersion: '1', tickDuration: '0s', decisionIntervalTicks: 10, decisionLeadTicks: 2,
+          id: 'skirmish-v1', rulesetId: 'castle-siege-v1', rulesVersion: '1', maximumTicks: 500, mapWidth: 15, mapHeight: 11, tickDuration: '0s', decisionIntervalTicks: 10, decisionLeadTicks: 2,
         }] }), { status: 200 })
       }
       if (url === '/v1/battles' && init?.method === 'POST') {
@@ -148,7 +210,12 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Stage a battle' })).toBeInTheDocument()
     await user.clear(screen.getByLabelText('Maximum ticks'))
     await user.type(screen.getByLabelText('Maximum ticks'), '25')
-    await user.click(screen.getByRole('button', { name: 'DEPLOY COMBATANTS' }))
+    expect(screen.getByLabelText('Maximum ticks')).toHaveValue(25)
+    expect(screen.getByLabelText('Slot one')).toHaveValue(firstId)
+    expect(screen.getByLabelText('Slot two')).toHaveValue(secondId)
+    const deployButton = screen.getByRole('button', { name: 'DEPLOY COMBATANTS' })
+    expect(deployButton).toBeEnabled()
+    await user.click(deployButton)
 
     expect(fetch).toHaveBeenCalledWith('/v1/battles', {
       method: 'POST',
@@ -169,13 +236,13 @@ describe('App', () => {
       const url = String(input)
       if (url === '/v1/factions') {
         return new Response(JSON.stringify({ factions: [
-          { id: firstId, name: 'Northwind' },
-          { id: secondId, name: 'Verdant Accord' },
+          { id: firstId, name: 'Northwind', rulesetId: 'castle-siege-v1' },
+          { id: secondId, name: 'Verdant Accord', rulesetId: 'castle-siege-v1' },
         ] }), { status: 200 })
       }
       if (url === '/v1/scenarios') {
         return new Response(JSON.stringify({ scenarios: [{
-          id: 'skirmish-v1', rulesVersion: '1', tickDuration: '0s', decisionIntervalTicks: 10, decisionLeadTicks: 2,
+          id: 'skirmish-v1', rulesetId: 'castle-siege-v1', rulesVersion: '1', maximumTicks: 500, mapWidth: 15, mapHeight: 11, tickDuration: '0s', decisionIntervalTicks: 10, decisionLeadTicks: 2,
         }] }), { status: 200 })
       }
       throw new Error(`Unexpected fetch: ${url}`)
@@ -185,9 +252,9 @@ describe('App', () => {
 
     const ticks = await screen.findByLabelText('Maximum ticks')
     await user.clear(ticks)
-    await user.type(ticks, '10001')
+    await user.type(ticks, '501')
 
-    expect(screen.getByText('Enter a whole number from 1 to 10,000.')).toBeInTheDocument()
+    expect(screen.getByText('Enter a whole number from 1 to 500.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'DEPLOY COMBATANTS' })).toBeDisabled()
   })
 
@@ -218,8 +285,11 @@ describe('App', () => {
       if (url.startsWith(`/v1/battles/${battleId}/events?`)) {
         return new Response(JSON.stringify({
           attempt: 1,
-          events: [{ attempt: 1, sequence: 1, tick: 1, type: 'battle_started', data: { scenarioId: 'skirmish-v1' }, createdAt: '2026-08-21T00:00:00Z' }],
-          nextCursor: 1,
+          events: [
+            { attempt: 1, sequence: 1, tick: 1, type: 'battle_started', data: { scenarioId: 'skirmish-v1' }, createdAt: '2026-08-21T00:00:00Z' },
+            { attempt: 1, sequence: 2, tick: 18, type: 'battle_completed', data: { reason: 'castle_destroyed' }, createdAt: '2026-08-21T00:00:01Z' },
+          ],
+          nextCursor: 2,
         }), { status: 200 })
       }
       throw new Error(`Unexpected fetch: ${url}`)
@@ -230,6 +300,8 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Battle complete' })).toBeInTheDocument()
     expect(screen.getByText('Northwind wins')).toBeInTheDocument()
     expect(await screen.findByText('battle started')).toBeInTheDocument()
+    expect((await screen.findAllByRole('listitem'))[0]).toHaveTextContent('battle completed')
+    expect(screen.getByRole('heading', { name: 'Latest events' })).toBeInTheDocument()
     expect(screen.getAllByText('Damage dealt')).toHaveLength(2)
   })
 
@@ -265,7 +337,7 @@ describe('App', () => {
     expect(statusRequests).toBe(2)
   })
 
-  it('continues the event stream from the returned sequence cursor', async () => {
+  it('starts the event stream from the newest page', async () => {
     vi.mocked(fetch).mockImplementation(async (input) => {
       const url = String(input)
       if (url === `/v1/battles/${battleId}`) {
@@ -281,36 +353,58 @@ describe('App', () => {
           result: { winnerFactionId: null, reason: 'tick_limit', ticksRun: 10, factions: [] },
         }), { status: 200 })
       }
-      if (url.includes('after=0')) {
+      if (url.includes('after=0') && url.includes('latest=true')) {
         return new Response(JSON.stringify({
           attempt: 1,
-          events: Array.from({ length: 50 }, (_, index) => ({
-            attempt: 1,
-            sequence: index + 1,
-            tick: index + 1,
-            type: 'tick_completed',
-            data: {},
-            createdAt: '2026-08-21T00:00:00Z',
-          })),
-          nextCursor: 50,
-        }), { status: 200 })
-      }
-      if (url.includes('after=50')) {
-        return new Response(JSON.stringify({
-          attempt: 1,
-          events: [{ attempt: 1, sequence: 51, tick: 10, type: 'battle_completed', data: { reason: 'tick_limit' }, createdAt: '2026-08-21T00:00:01Z' }],
+          events: [
+            { attempt: 1, sequence: 50, tick: 9, type: 'tick_completed', data: {}, createdAt: '2026-08-21T00:00:00Z' },
+            { attempt: 1, sequence: 51, tick: 10, type: 'battle_completed', data: { reason: 'tick_limit' }, createdAt: '2026-08-21T00:00:01Z' },
+          ],
           nextCursor: 51,
         }), { status: 200 })
       }
       throw new Error(`Unexpected fetch: ${url}`)
     })
-    const user = userEvent.setup()
     renderApp(`/battles/${battleId}`)
 
-    await user.click(await screen.findByRole('button', { name: 'LOAD NEXT 50' }))
+    expect(await screen.findByText('#0051')).toBeInTheDocument()
+    expect(screen.getByText(/LATEST TICK 10/)).toBeInTheDocument()
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes('attempt=1&after=0&limit=50&latest=true'))).toBe(true)
+  })
 
-    expect(await screen.findByText('battle completed')).toBeInTheDocument()
-    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes('attempt=1&after=50&limit=50'))).toBe(true)
+  it('automatically drains full event pages while a battle is running', async () => {
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === `/v1/battles/${battleId}`) {
+        return new Response(JSON.stringify({
+          id: battleId,
+          scenarioId: 'castle-siege-v1',
+          scenarioDigest: 'digest',
+          requestedTicks: 500,
+          currentTick: 38,
+          status: 'running',
+          attempt: 1,
+          participants: [{ id: firstId, name: 'Northwind' }, { id: secondId, name: 'Verdant Accord' }],
+          result: null,
+        }), { status: 200 })
+      }
+      if (url.includes('after=0') && url.includes('latest=true')) {
+        return eventPageResponse(1, 50, 36)
+      }
+      if (url.includes('after=50')) {
+        return eventPageResponse(51, 100, 37)
+      }
+      if (url.includes('after=100')) {
+        return eventPageResponse(101, 101, 38)
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    renderApp(`/battles/${battleId}`)
+
+    expect(await screen.findByText('#0101', {}, { timeout: 2500 })).toBeInTheDocument()
+    expect(screen.getByText(/LATEST TICK 38/)).toBeInTheDocument()
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes('after=100'))).toBe(true)
   })
 
   it('renders the not-found route', () => {

@@ -5,12 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 )
 
@@ -84,6 +87,16 @@ func TestListFactionsReturnsJSON(t *testing.T) {
 	}
 }
 
+func TestListRulesetsReturnsDesignCatalog(t *testing.T) {
+	service := &fakeRulesetService{fakeFactionService: &fakeFactionService{}, rulesets: []game.Ruleset{{ID: "castle-siege-v1", DesignBudget: 120}}}
+	router := httpapi.NewRouter(NewHandler(service))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/faction-rulesets", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"designBudget":120`) {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestListFactionsReturnsEmptyArray(t *testing.T) {
 	router := newFactionTestRouter(&fakeFactionService{})
 	request := httptest.NewRequest(http.MethodGet, "/v1/factions", nil)
@@ -139,6 +152,7 @@ func TestCreateFactionErrors(t *testing.T) {
 		{name: "malformed body", body: `{`, wantStatus: http.StatusBadRequest},
 		{name: "trailing JSON", body: `{}` + `{}`, wantStatus: http.StatusBadRequest},
 		{name: "invalid faction", body: `{}`, serviceErr: factionservice.ErrInvalidFaction, wantStatus: http.StatusBadRequest},
+		{name: "invalid blueprint", body: `{}`, serviceErr: fmt.Errorf("%w: unknown ruleset", factionservice.ErrInvalidBlueprint), wantStatus: http.StatusUnprocessableEntity},
 		{name: "duplicate faction", body: `{}`, serviceErr: factionservice.ErrFactionAlreadyExists, wantStatus: http.StatusConflict},
 		{name: "repository failure", body: `{}`, serviceErr: errors.New("database unavailable"), wantStatus: http.StatusInternalServerError},
 	}
@@ -167,6 +181,13 @@ type fakeFactionService struct {
 	getErr         error
 	listErr        error
 }
+
+type fakeRulesetService struct {
+	*fakeFactionService
+	rulesets []game.Ruleset
+}
+
+func (s *fakeRulesetService) ListRulesets() []game.Ruleset { return s.rulesets }
 
 func newFactionTestRouter(factions factionservice.Service) http.Handler {
 	return httpapi.NewRouter(NewHandler(factions))

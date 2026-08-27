@@ -6,6 +6,8 @@ project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cluster_name="${KIND_CLUSTER_NAME:-battlefield}"
 namespace="${KUBERNETES_NAMESPACE:-battlefield}"
 kube_context="${KUBERNETES_CONTEXT:-kind-${cluster_name}}"
+backend_image="${BACKEND_IMAGE:-autonomous-battlefield-backend}"
+frontend_image="${FRONTEND_IMAGE:-autonomous-battlefield-frontend}"
 image_tag="$(git -C "${project_dir}" rev-parse HEAD)"
 dirty_worktree=0
 
@@ -18,9 +20,18 @@ ALLOW_DIRTY=1 \
   DEPLOY_COMPONENTS=backend,frontend \
   "${project_dir}/scripts/ci/build-images.sh"
 
+if [[ "${dirty_worktree}" == "1" ]]; then
+  echo
+  echo "Removing stale commit-tagged images from kind before loading dirty-worktree builds..."
+  while IFS= read -r node; do
+    docker exec "${node}" crictl rmi "${backend_image}:${image_tag}" >/dev/null 2>&1 || true
+    docker exec "${node}" crictl rmi "${frontend_image}:${image_tag}" >/dev/null 2>&1 || true
+  done < <(kind get nodes --name "${cluster_name}")
+fi
+
 echo
-echo "Deploying the backend and frontend to kind cluster ${cluster_name}..."
-DEPLOY_COMPONENTS=backend,frontend \
+echo "Deploying local configuration, backend, and frontend to kind cluster ${cluster_name}..."
+DEPLOY_COMPONENTS=infrastructure,backend,frontend \
   "${project_dir}/scripts/cd/deploy-kind.sh" "${image_tag}"
 
 if [[ "${dirty_worktree}" == "1" ]]; then

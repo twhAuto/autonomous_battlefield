@@ -132,7 +132,7 @@ func startServer(configuration config.Config) error {
 	defer db.Close()
 	slog.Info("database_connected")
 
-	catalog, err := catalog.LoadCatalog(configuration.API.ScenarioCatalogPath)
+	catalog, err := catalog.LoadCatalog(configuration.API.ScenarioCatalogPath, configuration.API.RulesetCatalogPath)
 	if err != nil {
 		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, fmt.Errorf("load scenario catalog: %w", err))
 	}

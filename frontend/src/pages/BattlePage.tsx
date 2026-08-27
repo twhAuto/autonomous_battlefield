@@ -4,13 +4,17 @@ import {
   BattleApiError,
   BattleEvent,
   BattleRun,
+  BattleView,
   JsonValue,
   getBattle,
+  getBattleView,
   listBattleEvents,
 } from '../api/battles'
 import { Emblem } from '../components/Emblem'
+import { HexBattleMap } from '../components/HexBattleMap'
 
 const eventPageSize = 50
+const eventPollIntervalMs = 1000
 type ConnectionState = 'connecting' | 'live' | 'reconnecting' | 'settled' | 'error'
 type EventState = 'idle' | 'loading' | 'error'
 
@@ -27,6 +31,8 @@ export function BattlePage() {
     eventMessage,
     loadEventPage,
   } = useBattleEventStream(id, battle?.attempt, battle?.status)
+  const [perspective, setPerspective] = useState('spectator')
+  const factionView = useFactionPerspective(id, battle, perspective)
 
   const progress = battle ? Math.min(100, Math.round((battle.currentTick / battle.requestedTicks) * 100)) : 0
   const participantNames = useMemo(
@@ -50,12 +56,17 @@ export function BattlePage() {
     ? participantNames.get(battle.result.winnerFactionId) ?? battle.result.winnerFactionId
     : null
   const battleTitle = battleTitleFor(battle.status)
+  const mapView = factionView ?? (battle.map && battle.state ? {
+    map: battle.map,
+    state: battle.state,
+    visiblePositions: battle.map.rows.flatMap((row, y) => [...row].map((_, x) => ({ x, y }))),
+  } : null)
 
   return (
     <>
       <BattleHeader battle={battle} battleTitle={battleTitle} connection={connection} connectionMessage={connectionMessage} retryConnection={retryConnection} />
 
-      <section className="battle-overview">
+      <section className="battle-overview battle-overview--compact">
         <div className="battle-progress-panel">
           <div className="section-label"><span>COMBAT PROGRESS</span><span>{progress}%</span></div>
           <div className="battle-progress__numbers"><strong>{battle.currentTick}</strong><span>/ {battle.requestedTicks} TICKS</span></div>
@@ -76,18 +87,32 @@ export function BattlePage() {
         </aside>
       </section>
 
+      <section className={`battle-live-layout ${mapView ? '' : 'battle-live-layout--events-only'}`}>
+        <div className="battle-map-column">
+          {mapView && <>
+            <HexBattleMap
+              map={mapView.map}
+              state={mapView.state}
+              visiblePositions={mapView.visiblePositions}
+              factionNames={participantNames}
+              toolbarControls={<div className="map-perspective-control"><label htmlFor="perspective">Perspective</label><select id="perspective" value={perspective} onChange={(event) => setPerspective(event.target.value)}><option value="spectator">Spectator · full map</option>{battle.participants.map((participant) => <option key={participant.id} value={participant.id}>{participant.name}</option>)}</select></div>}
+            />
+          </>}
+        </div>
+        <EventConsole
+          battleAttempt={battle.attempt}
+          selectedAttempt={selectedAttempt}
+          setSelectedAttempt={setSelectedAttempt}
+          events={events}
+          eventCursor={eventCursor}
+          eventHasMore={eventHasMore}
+          eventState={eventState}
+          eventMessage={eventMessage}
+          loadEventPage={loadEventPage}
+        />
+      </section>
+
       <BattleStatistics battle={battle} participantNames={participantNames} />
-      <EventConsole
-        battleAttempt={battle.attempt}
-        selectedAttempt={selectedAttempt}
-        setSelectedAttempt={setSelectedAttempt}
-        events={events}
-        eventCursor={eventCursor}
-        eventHasMore={eventHasMore}
-        eventState={eventState}
-        eventMessage={eventMessage}
-        loadEventPage={loadEventPage}
-      />
     </>
   )
 }
@@ -136,16 +161,32 @@ function BattleStatistics({ battle, participantNames }: Readonly<{ battle: Battl
             <h2>{participantNames.get(stats.factionId) ?? stats.factionId}</h2>
             <dl>
               <Stat label="Units" value={`${stats.unitsRemaining} / ${stats.unitsStarted}`} />
+              <Stat label="Castle health" value={stats.castleHealth ?? 0} />
+              <Stat label="Recruited / lost" value={`${stats.unitsRecruited ?? 0} / ${stats.unitsLost ?? 0}`} />
               <Stat label="Damage dealt" value={stats.damageDealt} />
               <Stat label="Damage taken" value={stats.damageTaken} />
               <Stat label="Attack ticks" value={stats.attackTicks} />
               <Stat label="Defend ticks" value={stats.defendTicks} />
+              <Stat label="Gold earned / spent" value={`${stats.goldEarned ?? 0} / ${stats.goldSpent ?? 0}`} />
+              <Stat label="Loot collected" value={stats.goldLooted ?? 0} />
+              <Stat label="Buildings built / destroyed" value={`${stats.buildingsConstructed ?? 0} / ${stats.buildingsDestroyed ?? 0}`} />
             </dl>
           </article>
         ))}
       </div>
     </section>
   )
+}
+
+function useFactionPerspective(id: string, battle: BattleRun | null, perspective: string) {
+  const [view, setView] = useState<BattleView | null>(null)
+  useEffect(() => {
+    if (!battle || perspective === 'spectator') { setView(null); return }
+    const controller = new AbortController()
+    getBattleView(id, perspective, controller.signal).then(setView).catch(() => setView(null))
+    return () => controller.abort()
+  }, [battle?.currentTick, id, perspective])
+  return view
 }
 
 function EventConsole({ battleAttempt, selectedAttempt, setSelectedAttempt, events, eventCursor, eventHasMore, eventState, eventMessage, loadEventPage }: Readonly<{
@@ -159,12 +200,13 @@ function EventConsole({ battleAttempt, selectedAttempt, setSelectedAttempt, even
   eventMessage: string
   loadEventPage: (after: number, reset: boolean, signal?: AbortSignal) => Promise<void>
 }>) {
+  const latestTick = events.reduce((latest, event) => Math.max(latest, event.tick), 0)
   return (
     <section className="event-console" aria-live="polite">
       <div className="event-console__header">
         <div>
-          <span>BATTLE EVENT STREAM</span>
-          <h2>Attempt history</h2>
+          <span>BATTLE EVENT STREAM{latestTick > 0 ? ` · LATEST TICK ${latestTick}` : ''}</span>
+          <h2>Latest events</h2>
         </div>
         <label htmlFor="attempt-select"><span>Attempt</span>
           <select id="attempt-select" value={selectedAttempt ?? 0} onChange={(event) => setSelectedAttempt(Number(event.target.value))}>
@@ -180,7 +222,7 @@ function EventConsole({ battleAttempt, selectedAttempt, setSelectedAttempt, even
       )}
       {events.length > 0 && (
         <ol className="event-list">
-          {events.map((event) => <EventRow key={event.sequence} event={event} />)}
+          {[...events].reverse().map((event) => <EventRow key={event.sequence} event={event} />)}
         </ol>
       )}
       <div className="event-console__actions">
@@ -260,16 +302,16 @@ function useBattleEventStream(id: string, battleAttempt?: number, battleStatus?:
     setSelectedAttempt(battleAttempt)
   }, [battleAttempt])
 
-  const loadEventPage = useCallback(async (after: number, reset: boolean, signal?: AbortSignal) => {
+  const loadEventPage = useCallback(async (after: number, reset: boolean, signal?: AbortSignal, latest = false) => {
     if (selectedAttempt === null) return
     setEventState('loading')
     setEventMessage('')
     try {
-      const page = await listBattleEvents(id, { attempt: selectedAttempt, after, limit: eventPageSize }, signal)
+      const page = await listBattleEvents(id, { attempt: selectedAttempt, after, limit: eventPageSize, latest }, signal)
       setEvents((current) => mergeEvents(current, page.events, reset))
       const nextCursor = page.events.at(-1)?.sequence ?? after
       setEventCursor((current) => Math.max(current, nextCursor))
-      setEventHasMore(page.events.length === eventPageSize)
+      setEventHasMore(!latest && page.events.length === eventPageSize)
       setEventState('idle')
       setEventPollVersion((current) => current + 1)
     } catch (error) {
@@ -285,16 +327,19 @@ function useBattleEventStream(id: string, battleAttempt?: number, battleStatus?:
     setEvents([])
     setEventCursor(0)
     setEventHasMore(false)
-    void loadEventPage(0, true, controller.signal)
+    void loadEventPage(0, true, controller.signal, true)
     return () => controller.abort()
   }, [loadEventPage, selectedAttempt])
 
   useEffect(() => {
     const isCurrentAttempt = selectedAttempt === battleAttempt
     const isActive = battleStatus === 'queued' || battleStatus === 'running'
-    if (!isCurrentAttempt || !isActive || eventHasMore) return
+    if (!isCurrentAttempt || !isActive) return
     const controller = new AbortController()
-    const timer = setTimeout(() => void loadEventPage(eventCursor, false, controller.signal), 2000)
+    // A busy tick can produce more than one page of events. Drain full pages
+    // immediately, then return to the normal polling cadence once caught up.
+    const delay = eventHasMore ? 0 : eventPollIntervalMs
+    const timer = setTimeout(() => void loadEventPage(eventCursor, false, controller.signal), delay)
     return () => {
       controller.abort()
       clearTimeout(timer)
@@ -331,7 +376,7 @@ function Outcome({ battle, winnerName }: Readonly<{ battle: BattleRun; winnerNam
     return (
       <>
         <strong>{winnerName ? `${winnerName} wins` : 'Draw'}</strong>
-        <p>{battle.result.reason === 'elimination' ? 'Opposing forces eliminated.' : 'Maximum tick limit reached.'}</p>
+        <p>{battle.result.reason === 'castle_destroyed' ? 'The enemy castle was destroyed.' : 'Maximum tick limit reached.'}</p>
       </>
     )
   }
