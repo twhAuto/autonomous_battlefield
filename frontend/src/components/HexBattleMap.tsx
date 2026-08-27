@@ -42,14 +42,13 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
       </div>
       <div className="map-viewport">
         <svg
-          role="img"
-          aria-label={`${map.width} by ${map.height} pointy-top hex battlefield`}
           viewBox={`0 0 ${width} ${height}`}
           onPointerDown={(event) => { event.currentTarget.setPointerCapture?.(event.pointerId); setDrag({ x: event.clientX, y: event.clientY }) }}
           onPointerMove={pointerMove}
           onPointerUp={() => setDrag(null)}
           onPointerCancel={() => setDrag(null)}
         >
+          <title>{map.width} by {map.height} pointy-top hex battlefield</title>
           <defs>
             <marker id="movement-arrowhead" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" /></marker>
             <marker id="attack-arrowhead" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" /></marker>
@@ -59,7 +58,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
               const position = { x, y }
               const center = centerOf(position)
               const isVisible = visible.has(key(position))
-              return <polygon key={`${x}:${y}`} points={hexPoints(center.x, center.y)} className={`hex-tile hex-tile--${symbol === '#' ? 'rock' : symbol === 'b' ? 'site' : 'ground'} ${isVisible ? '' : 'hex-tile--fog'}`} />
+              return <polygon key={`${x}:${y}`} points={hexPoints(center.x, center.y)} className={`hex-tile hex-tile--${terrainClass(symbol)} ${isVisible ? '' : 'hex-tile--fog'}`} />
             }))}
             {liveUnits.filter((unit) => unit.movedFrom).map((unit) => {
               const line = directionalLine(unit.movedFrom!, unit.position, 2, 14)
@@ -108,3 +107,8 @@ function hexPoints(x: number, y: number) {
   }).join(' ')
 }
 function key(position: HexPosition) { return `${position.x}:${position.y}` }
+function terrainClass(symbol: string) {
+  if (symbol === '#') return 'rock'
+  if (symbol === 'b') return 'site'
+  return 'ground'
+}

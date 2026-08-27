@@ -7,7 +7,7 @@ import (
 )
 
 func ValidateRuleset(ruleset Ruleset) error {
-	if strings.TrimSpace(ruleset.ID) == "" || strings.TrimSpace(ruleset.Version) == "" || ruleset.DesignBudget <= 0 || ruleset.StartingGold < 0 {
+	if !validRulesetMetadata(ruleset) {
 		return fmt.Errorf("%w: ID, version, budget, and starting gold are invalid", ErrInvalidRuleset)
 	}
 	if len(ruleset.Units) == 0 || len(ruleset.Upgrades) == 0 {
@@ -15,52 +15,94 @@ func ValidateRuleset(ruleset Ruleset) error {
 	}
 	unitIDs := make(map[string]bool, len(ruleset.Units))
 	for _, unit := range ruleset.Units {
-		if strings.TrimSpace(unit.ID) == "" || unitIDs[unit.ID] || unit.Cost <= 0 || unit.Health <= 0 || unit.Attack < 0 || unit.Defense < 0 || unit.Speed < 0 || unit.Movement <= 0 || unit.Range <= 0 || unit.Vision <= 0 {
+		if !validUnitType(unit) || unitIDs[unit.ID] {
 			return fmt.Errorf("%w: invalid or duplicate unit %q", ErrInvalidRuleset, unit.ID)
 		}
 		unitIDs[unit.ID] = true
 	}
 	upgradeIDs := make(map[string]bool, len(ruleset.Upgrades))
 	for _, upgrade := range ruleset.Upgrades {
-		if strings.TrimSpace(upgrade.ID) == "" || upgradeIDs[upgrade.ID] || upgrade.Cost <= 0 || upgrade.AttackBonus < 0 || upgrade.DefenseBonus < 0 || upgrade.EconomyIncomeBonus < 0 {
+		if !validUpgrade(upgrade) || upgradeIDs[upgrade.ID] {
 			return fmt.Errorf("%w: invalid or duplicate upgrade %q", ErrInvalidRuleset, upgrade.ID)
 		}
 		upgradeIDs[upgrade.ID] = true
 	}
-	b := ruleset.Buildings
-	if b.CastleHealth <= 0 || b.CastleDefense < 0 || b.CastleVision <= 0 || b.CastleIncome < 0 || b.EconomyCost <= 0 || b.EconomyHealth <= 0 || b.EconomyDefense < 0 || b.EconomyVision <= 0 || b.EconomyIncome < 0 || b.MaximumEconomyCount != 2 {
+	if !validBuildingRules(ruleset.Buildings) {
 		return fmt.Errorf("%w: invalid building rules", ErrInvalidRuleset)
 	}
-	c := ruleset.Combat
-	if c.MinimumDamage <= 0 || c.DefendAttackPercent < 0 || c.DefendAttackPercent > 100 || c.DefendDamageTakenPercent < 0 || c.DefendDamageTakenPercent > 100 || c.LootPercent < 0 || c.LootPercent > 100 {
+	if !validCombatRules(ruleset.Combat) {
 		return fmt.Errorf("%w: invalid combat rules", ErrInvalidRuleset)
 	}
 	return nil
 }
 
+func validRulesetMetadata(ruleset Ruleset) bool {
+	return strings.TrimSpace(ruleset.ID) != "" && strings.TrimSpace(ruleset.Version) != "" && ruleset.DesignBudget > 0 && ruleset.StartingGold >= 0
+}
+
+func validUnitType(unit UnitType) bool {
+	return strings.TrimSpace(unit.ID) != "" && unit.Cost > 0 && unit.Health > 0 && unit.Attack >= 0 && unit.Defense >= 0 && unit.Speed >= 0 && unit.Movement > 0 && unit.Range > 0 && unit.Vision > 0
+}
+
+func validUpgrade(upgrade Upgrade) bool {
+	return strings.TrimSpace(upgrade.ID) != "" && upgrade.Cost > 0 && upgrade.AttackBonus >= 0 && upgrade.DefenseBonus >= 0 && upgrade.EconomyIncomeBonus >= 0
+}
+
+func validBuildingRules(rules BuildingRules) bool {
+	return rules.CastleHealth > 0 && rules.CastleDefense >= 0 && rules.CastleVision > 0 && rules.CastleIncome >= 0 && rules.EconomyCost > 0 && rules.EconomyHealth > 0 && rules.EconomyDefense >= 0 && rules.EconomyVision > 0 && rules.EconomyIncome >= 0 && rules.MaximumEconomyCount == 2
+}
+
+func validCombatRules(rules CombatRules) bool {
+	return rules.MinimumDamage > 0 && percentage(rules.DefendAttackPercent) && percentage(rules.DefendDamageTakenPercent) && percentage(rules.LootPercent)
+}
+
+func percentage(value int64) bool { return value >= 0 && value <= 100 }
+
 func ValidateBlueprint(ruleset Ruleset, blueprint Blueprint) (int64, error) {
 	if err := ValidateRuleset(ruleset); err != nil {
 		return 0, err
 	}
-	unitTypes := UnitTypesByID(ruleset)
-	upgradeTypes := UpgradesByID(ruleset)
+	selected, totalUnits, unitCost, err := validateUnitSelections(UnitTypesByID(ruleset), blueprint.Units)
+	if err != nil {
+		return 0, err
+	}
+	if totalUnits == 0 || totalUnits > 6 {
+		return 0, fmt.Errorf("%w: blueprint requires between one and six units", ErrInvalidBlueprint)
+	}
+	upgradeCost, err := validateUpgradeSelections(UpgradesByID(ruleset), blueprint.UpgradeIDs)
+	if err != nil {
+		return 0, err
+	}
+	cost := unitCost + upgradeCost
+	if cost > ruleset.DesignBudget {
+		return 0, fmt.Errorf("%w: design cost %d exceeds budget %d", ErrInvalidBlueprint, cost, ruleset.DesignBudget)
+	}
+	if err := validateRecruitmentPriority(selected, blueprint.RecruitmentPriority); err != nil {
+		return 0, err
+	}
+	return cost, nil
+}
+
+func validateUnitSelections(unitTypes map[string]UnitType, selections []UnitSelection) (map[string]bool, int, int64, error) {
 	selected := make(map[string]bool)
 	totalUnits := 0
 	cost := int64(0)
-	for _, selection := range blueprint.Units {
+	for _, selection := range selections {
 		definition, ok := unitTypes[selection.Type]
 		if !ok || selected[selection.Type] || selection.Count <= 0 {
-			return 0, fmt.Errorf("%w: invalid or duplicate unit selection %q", ErrInvalidBlueprint, selection.Type)
+			return nil, 0, 0, fmt.Errorf("%w: invalid or duplicate unit selection %q", ErrInvalidBlueprint, selection.Type)
 		}
 		selected[selection.Type] = true
 		totalUnits += selection.Count
 		cost += definition.Cost * int64(selection.Count)
 	}
-	if totalUnits == 0 || totalUnits > 6 {
-		return 0, fmt.Errorf("%w: blueprint requires between one and six units", ErrInvalidBlueprint)
-	}
+	return selected, totalUnits, cost, nil
+}
+
+func validateUpgradeSelections(upgradeTypes map[string]Upgrade, ids []string) (int64, error) {
 	upgrades := make(map[string]bool)
-	for _, id := range blueprint.UpgradeIDs {
+	cost := int64(0)
+	for _, id := range ids {
 		definition, ok := upgradeTypes[id]
 		if !ok || upgrades[id] {
 			return 0, fmt.Errorf("%w: invalid or duplicate upgrade %q", ErrInvalidBlueprint, id)
@@ -68,20 +110,21 @@ func ValidateBlueprint(ruleset Ruleset, blueprint Blueprint) (int64, error) {
 		upgrades[id] = true
 		cost += definition.Cost
 	}
-	if cost > ruleset.DesignBudget {
-		return 0, fmt.Errorf("%w: design cost %d exceeds budget %d", ErrInvalidBlueprint, cost, ruleset.DesignBudget)
-	}
-	if len(blueprint.RecruitmentPriority) != len(selected) {
-		return 0, fmt.Errorf("%w: recruitment priority must contain each selected unit type once", ErrInvalidBlueprint)
+	return cost, nil
+}
+
+func validateRecruitmentPriority(selected map[string]bool, recruitmentPriority []string) error {
+	if len(recruitmentPriority) != len(selected) {
+		return fmt.Errorf("%w: recruitment priority must contain each selected unit type once", ErrInvalidBlueprint)
 	}
 	priority := make(map[string]bool)
-	for _, id := range blueprint.RecruitmentPriority {
+	for _, id := range recruitmentPriority {
 		if !selected[id] || priority[id] {
-			return 0, fmt.Errorf("%w: invalid recruitment priority %q", ErrInvalidBlueprint, id)
+			return fmt.Errorf("%w: invalid recruitment priority %q", ErrInvalidBlueprint, id)
 		}
 		priority[id] = true
 	}
-	return cost, nil
+	return nil
 }
 
 func UnitTypesByID(ruleset Ruleset) map[string]UnitType {

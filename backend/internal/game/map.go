@@ -54,28 +54,46 @@ func offsetToAxial(position Position) (int, int) {
 }
 
 func ValidateMap(value Map) error {
+	buildSites, err := validateMapTerrain(value)
+	if err != nil {
+		return err
+	}
+	seen := make(map[Position]string)
+	if err := validateCastleSpawns(value, seen); err != nil {
+		return err
+	}
+	if err := validateEconomySites(value, buildSites, seen); err != nil {
+		return err
+	}
+	return validateMapSymmetryAndReachability(value)
+}
+
+func validateMapTerrain(value Map) (map[Position]bool, error) {
 	if value.Kind != "authored" {
-		return fmt.Errorf("%w: map kind must be authored", ErrInvalidScenario)
+		return nil, fmt.Errorf("%w: map kind must be authored", ErrInvalidScenario)
 	}
 	if value.Width != 15 || value.Height != 11 || len(value.Rows) != value.Height {
-		return fmt.Errorf("%w: authored map must be 15x11", ErrInvalidScenario)
+		return nil, fmt.Errorf("%w: authored map must be 15x11", ErrInvalidScenario)
 	}
 	buildSites := make(map[Position]bool)
 	for y, row := range value.Rows {
 		if len(row) != value.Width {
-			return fmt.Errorf("%w: map row %d has width %d", ErrInvalidScenario, y, len(row))
+			return nil, fmt.Errorf("%w: map row %d has width %d", ErrInvalidScenario, y, len(row))
 		}
 		for x := range row {
 			terrain := value.TerrainAt(Position{X: x, Y: y})
 			if terrain == "" {
-				return fmt.Errorf("%w: unsupported terrain at (%d,%d)", ErrInvalidScenario, x, y)
+				return nil, fmt.Errorf("%w: unsupported terrain at (%d,%d)", ErrInvalidScenario, x, y)
 			}
 			if terrain == TerrainBuildSite {
 				buildSites[Position{X: x, Y: y}] = true
 			}
 		}
 	}
-	seen := make(map[Position]string)
+	return buildSites, nil
+}
+
+func validateCastleSpawns(value Map, seen map[Position]string) error {
 	for slot, spawn := range value.CastleSpawns {
 		if !value.Traversable(spawn) {
 			return fmt.Errorf("%w: castle spawn %d is not traversable", ErrInvalidScenario, slot)
@@ -94,6 +112,10 @@ func ValidateMap(value Map) error {
 			return fmt.Errorf("%w: castle spawn %d needs four adjacent ground tiles", ErrInvalidScenario, slot)
 		}
 	}
+	return nil
+}
+
+func validateEconomySites(value Map, buildSites map[Position]bool, seen map[Position]string) error {
 	for slot, sites := range value.EconomySites {
 		if len(sites) != 2 {
 			return fmt.Errorf("%w: slot %d requires two economy sites", ErrInvalidScenario, slot)
@@ -108,6 +130,10 @@ func ValidateMap(value Map) error {
 			seen[site] = "economy site"
 		}
 	}
+	return nil
+}
+
+func validateMapSymmetryAndReachability(value Map) error {
 	for y, row := range value.Rows {
 		for x := range row {
 			mirror := value.Width - 1 - x
@@ -161,6 +187,12 @@ type pathNode struct {
 
 type pathQueue []*pathNode
 
+type pathProgress struct {
+	cameFrom map[Position]Position
+	best     map[Position]int
+	open     *pathQueue
+}
+
 func (q pathQueue) Len() int { return len(q) }
 func (q pathQueue) Less(i, j int) bool {
 	if q[i].f != q[j].f {
@@ -189,8 +221,7 @@ func shortestPath(m Map, start Position, goals map[Position]bool, occupied map[P
 	open := &pathQueue{}
 	heap.Init(open)
 	heap.Push(open, &pathNode{position: start, f: nearestDistance(start, goals)})
-	cameFrom := make(map[Position]Position)
-	best := map[Position]int{start: 0}
+	progress := &pathProgress{cameFrom: make(map[Position]Position), best: map[Position]int{start: 0}, open: open}
 	closed := make(map[Position]bool)
 	for open.Len() > 0 {
 		current := heap.Pop(open).(*pathNode)
@@ -199,29 +230,41 @@ func shortestPath(m Map, start Position, goals map[Position]bool, occupied map[P
 		}
 		closed[current.position] = true
 		if goals[current.position] {
-			path := []Position{current.position}
-			for path[len(path)-1] != start {
-				path = append(path, cameFrom[path[len(path)-1]])
-			}
-			for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
-				path[i], path[j] = path[j], path[i]
-			}
-			return path[1:]
+			return reconstructPath(start, current.position, progress.cameFrom)
 		}
-		for _, next := range Neighbors(current.position) {
-			if !m.InBounds(next) || !m.Traversable(next) || occupied[next] || closed[next] {
-				continue
-			}
-			candidate := current.g + 1
-			if previous, ok := best[next]; ok && candidate >= previous {
-				continue
-			}
-			best[next] = candidate
-			cameFrom[next] = current.position
-			heap.Push(open, &pathNode{position: next, g: candidate, f: candidate + nearestDistance(next, goals)})
-		}
+		expandPathFrontier(m, current, goals, occupied, closed, progress)
 	}
 	return nil
+}
+
+func reconstructPath(start, destination Position, cameFrom map[Position]Position) []Position {
+	path := []Position{destination}
+	for path[len(path)-1] != start {
+		path = append(path, cameFrom[path[len(path)-1]])
+	}
+	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
+		path[i], path[j] = path[j], path[i]
+	}
+	return path[1:]
+}
+
+func expandPathFrontier(m Map, current *pathNode, goals, occupied, closed map[Position]bool, progress *pathProgress) {
+	for _, next := range Neighbors(current.position) {
+		if !pathStepAvailable(m, next, occupied, closed) {
+			continue
+		}
+		candidate := current.g + 1
+		if previous, ok := progress.best[next]; ok && candidate >= previous {
+			continue
+		}
+		progress.best[next] = candidate
+		progress.cameFrom[next] = current.position
+		heap.Push(progress.open, &pathNode{position: next, g: candidate, f: candidate + nearestDistance(next, goals)})
+	}
+}
+
+func pathStepAvailable(m Map, position Position, occupied, closed map[Position]bool) bool {
+	return m.InBounds(position) && m.Traversable(position) && !occupied[position] && !closed[position]
 }
 
 func nearestDistance(position Position, goals map[Position]bool) int {

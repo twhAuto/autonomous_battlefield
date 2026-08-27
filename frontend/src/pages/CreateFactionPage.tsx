@@ -61,9 +61,7 @@ export function CreateFactionPage() {
   function changeCount(unitId: string, delta: number) {
     setCounts((current) => {
       const next = Math.max(0, Math.min(6, (current[unitId] ?? 0) + delta))
-      setPriority((order) => next > 0
-        ? (order.includes(unitId) ? order : [...order, unitId])
-        : order.filter((id) => id !== unitId))
+      setPriority((order) => updatePriority(order, unitId, next))
       return { ...current, [unitId]: next }
     })
     setStatus('idle')
@@ -155,7 +153,7 @@ export function CreateFactionPage() {
                   {ruleset.upgrades.map((upgrade) => (
                     <label className="upgrade-toggle" key={upgrade.id}>
                       <input type="checkbox" checked={upgradeIds.includes(upgrade.id)} onChange={() => setUpgradeIds((current) => current.includes(upgrade.id) ? current.filter((id) => id !== upgrade.id) : [...current, upgrade.id])} />
-                      <span><strong>{upgrade.id}</strong><small>{upgrade.cost} points</small></span>
+                      <span><strong>Upgrade {upgrade.id}</strong><small>{upgrade.cost} points</small></span>
                     </label>
                   ))}
                 </fieldset>
@@ -183,4 +181,10 @@ export function CreateFactionPage() {
       </section>
     </>
   )
+}
+
+function updatePriority(order: string[], unitId: string, count: number) {
+  if (count <= 0) return order.filter((id) => id !== unitId)
+  if (order.includes(unitId)) return order
+  return [...order, unitId]
 }

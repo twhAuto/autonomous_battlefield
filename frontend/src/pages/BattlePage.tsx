@@ -89,7 +89,7 @@ export function BattlePage() {
 
       <section className={`battle-live-layout ${mapView ? '' : 'battle-live-layout--events-only'}`}>
         <div className="battle-map-column">
-          {mapView && <>
+          {mapView &&
             <HexBattleMap
               map={mapView.map}
               state={mapView.state}
@@ -97,7 +97,7 @@ export function BattlePage() {
               factionNames={participantNames}
               toolbarControls={<div className="map-perspective-control"><label htmlFor="perspective">Perspective</label><select id="perspective" value={perspective} onChange={(event) => setPerspective(event.target.value)}><option value="spectator">Spectator · full map</option>{battle.participants.map((participant) => <option key={participant.id} value={participant.id}>{participant.name}</option>)}</select></div>}
             />
-          </>}
+          }
         </div>
         <EventConsole
           battleAttempt={battle.attempt}

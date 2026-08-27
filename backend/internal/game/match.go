@@ -36,22 +36,9 @@ type Match struct {
 }
 
 func NewMatch(id string, scenario Scenario, maxTicks uint64) (*Match, error) {
-	if strings.TrimSpace(id) == "" || maxTicks == 0 || len(scenario.Factions) != 2 || scenario.Factions[0].ID == scenario.Factions[1].ID {
-		return nil, fmt.Errorf("%w: battle ID, ticks, and two unique factions are required", ErrInvalidScenario)
-	}
-	if scenario.RulesetID != scenario.Ruleset.ID || strings.TrimSpace(scenario.ID) == "" || strings.TrimSpace(scenario.RulesVersion) == "" || scenario.TickDuration < 0 {
-		return nil, fmt.Errorf("%w: scenario metadata is invalid", ErrInvalidScenario)
-	}
-	if err := ValidateMap(scenario.Map); err != nil {
+	if err := validateMatchScenario(id, scenario, maxTicks); err != nil {
 		return nil, err
 	}
-	if err := ValidateRuleset(scenario.Ruleset); err != nil {
-		return nil, err
-	}
-	if scenario.DecisionIntervalTicks == 0 || scenario.DecisionLeadTicks == 0 || scenario.DecisionLeadTicks >= scenario.DecisionIntervalTicks {
-		return nil, fmt.Errorf("%w: decision timing is invalid", ErrInvalidScenario)
-	}
-
 	match := &Match{
 		id: id, scenario: CloneScenario(scenario), maxTicks: maxTicks,
 		state:    State{BattleID: id, Factions: make([]FactionState, 0, 2), Units: make([]Unit, 0), Buildings: make([]Building, 0, 6)},
@@ -59,63 +46,110 @@ func NewMatch(id string, scenario Scenario, maxTicks uint64) (*Match, error) {
 	}
 	occupied := make(map[Position]bool)
 	for slot, setup := range scenario.Factions {
-		if strings.TrimSpace(setup.ID) == "" || strings.TrimSpace(setup.Name) == "" {
-			return nil, fmt.Errorf("%w: faction identity is invalid", ErrInvalidScenario)
-		}
-		if _, err := ValidateBlueprint(scenario.Ruleset, setup.Blueprint); err != nil {
+		if err := match.addFaction(slot, setup, occupied); err != nil {
 			return nil, err
 		}
-		if len(setup.ScriptedPlans) == 0 || strings.TrimSpace(setup.FallbackPlan.Name) == "" {
-			return nil, fmt.Errorf("%w: faction %q requires controller plans", ErrInvalidScenario, setup.ID)
-		}
-		for _, plan := range setup.ScriptedPlans {
-			if err := controller.ValidatePlanProposal(plan, []string{ActionAttack, ActionDefend}); err != nil {
-				return nil, err
-			}
-		}
-		policy, err := controller.NewUtilityController(controller.Config{
-			DecisionIntervalTicks: scenario.DecisionIntervalTicks, DecisionLeadTicks: scenario.DecisionLeadTicks,
-			FirstDecisionTick: 1, DefaultActionWeight: 1000,
-			ActionKinds: []string{ActionAttack, ActionDefend}, FallbackPlan: setup.FallbackPlan,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("%w: faction %q controller: %v", ErrInvalidScenario, setup.ID, err)
-		}
-		attack, defense, economy := upgradeBonuses(scenario.Ruleset, setup.Blueprint)
-		runtime := &factionRuntime{setup: setup, controller: policy, attackBonus: attack, defenseBonus: defense, economyBonus: economy}
-		match.factions[setup.ID] = runtime
-		match.state.Factions = append(match.state.Factions, FactionState{FactionID: setup.ID, Gold: scenario.Ruleset.StartingGold})
-
-		castle := Building{ID: setup.ID + ":castle", FactionID: setup.ID, Type: BuildingCastle, Position: scenario.Map.CastleSpawns[slot], Health: scenario.Ruleset.Buildings.CastleHealth, MaxHealth: scenario.Ruleset.Buildings.CastleHealth, Defense: scenario.Ruleset.Buildings.CastleDefense, Vision: scenario.Ruleset.Buildings.CastleVision, Income: scenario.Ruleset.Buildings.CastleIncome}
-		match.state.Buildings = append(match.state.Buildings, castle)
-		occupied[castle.Position] = true
-
-		spawns := make([]Position, 0, 6)
-		for _, candidate := range Neighbors(castle.Position) {
-			if scenario.Map.InBounds(candidate) && scenario.Map.Traversable(candidate) && !occupied[candidate] {
-				spawns = append(spawns, candidate)
-			}
-		}
-		sortPositions(spawns)
-		spawnIndex := 0
-		definitions := UnitTypesByID(scenario.Ruleset)
-		for _, selection := range normalizedSelections(setup.Blueprint) {
-			for count := 0; count < selection.Count; count++ {
-				if spawnIndex >= len(spawns) {
-					return nil, fmt.Errorf("%w: faction %q has no free spawn", ErrInvalidScenario, setup.ID)
-				}
-				runtime.unitSequence++
-				unit := runtime.newUnit(definitions[selection.Type], spawns[spawnIndex], 0)
-				match.state.Units = append(match.state.Units, unit)
-				occupied[unit.Position] = true
-				spawnIndex++
-			}
-		}
-		state := match.factionState(setup.ID)
-		state.UnitsStarted = runtime.unitSequence
 	}
 	match.sortState()
 	return match, nil
+}
+
+func validateMatchScenario(id string, scenario Scenario, maxTicks uint64) error {
+	if strings.TrimSpace(id) == "" || maxTicks == 0 || len(scenario.Factions) != 2 || scenario.Factions[0].ID == scenario.Factions[1].ID {
+		return fmt.Errorf("%w: battle ID, ticks, and two unique factions are required", ErrInvalidScenario)
+	}
+	if scenario.RulesetID != scenario.Ruleset.ID || strings.TrimSpace(scenario.ID) == "" || strings.TrimSpace(scenario.RulesVersion) == "" || scenario.TickDuration < 0 {
+		return fmt.Errorf("%w: scenario metadata is invalid", ErrInvalidScenario)
+	}
+	if err := ValidateMap(scenario.Map); err != nil {
+		return err
+	}
+	if err := ValidateRuleset(scenario.Ruleset); err != nil {
+		return err
+	}
+	if scenario.DecisionIntervalTicks == 0 || scenario.DecisionLeadTicks == 0 || scenario.DecisionLeadTicks >= scenario.DecisionIntervalTicks {
+		return fmt.Errorf("%w: decision timing is invalid", ErrInvalidScenario)
+	}
+	return nil
+}
+
+func (m *Match) addFaction(slot int, setup FactionSetup, occupied map[Position]bool) error {
+	runtime, err := newFactionRuntime(m.scenario, setup)
+	if err != nil {
+		return err
+	}
+	m.factions[setup.ID] = runtime
+	m.state.Factions = append(m.state.Factions, FactionState{FactionID: setup.ID, Gold: m.scenario.Ruleset.StartingGold})
+	castle := m.addCastle(slot, setup.ID, occupied)
+	if err := m.addStartingUnits(setup, runtime, availableSpawns(m.scenario.Map, castle.Position, occupied), occupied); err != nil {
+		return err
+	}
+	m.factionState(setup.ID).UnitsStarted = runtime.unitSequence
+	return nil
+}
+
+func newFactionRuntime(scenario Scenario, setup FactionSetup) (*factionRuntime, error) {
+	if strings.TrimSpace(setup.ID) == "" || strings.TrimSpace(setup.Name) == "" {
+		return nil, fmt.Errorf("%w: faction identity is invalid", ErrInvalidScenario)
+	}
+	if _, err := ValidateBlueprint(scenario.Ruleset, setup.Blueprint); err != nil {
+		return nil, err
+	}
+	if len(setup.ScriptedPlans) == 0 || strings.TrimSpace(setup.FallbackPlan.Name) == "" {
+		return nil, fmt.Errorf("%w: faction %q requires controller plans", ErrInvalidScenario, setup.ID)
+	}
+	for _, plan := range setup.ScriptedPlans {
+		if err := controller.ValidatePlanProposal(plan, []string{ActionAttack, ActionDefend}); err != nil {
+			return nil, err
+		}
+	}
+	policy, err := controller.NewUtilityController(controller.Config{
+		DecisionIntervalTicks: scenario.DecisionIntervalTicks, DecisionLeadTicks: scenario.DecisionLeadTicks,
+		FirstDecisionTick: 1, DefaultActionWeight: 1000,
+		ActionKinds: []string{ActionAttack, ActionDefend}, FallbackPlan: setup.FallbackPlan,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: faction %q controller: %v", ErrInvalidScenario, setup.ID, err)
+	}
+	attack, defense, economy := upgradeBonuses(scenario.Ruleset, setup.Blueprint)
+	return &factionRuntime{setup: setup, controller: policy, attackBonus: attack, defenseBonus: defense, economyBonus: economy}, nil
+}
+
+func (m *Match) addCastle(slot int, factionID string, occupied map[Position]bool) Building {
+	rules := m.scenario.Ruleset.Buildings
+	castle := Building{ID: factionID + ":castle", FactionID: factionID, Type: BuildingCastle, Position: m.scenario.Map.CastleSpawns[slot], Health: rules.CastleHealth, MaxHealth: rules.CastleHealth, Defense: rules.CastleDefense, Vision: rules.CastleVision, Income: rules.CastleIncome}
+	m.state.Buildings = append(m.state.Buildings, castle)
+	occupied[castle.Position] = true
+	return castle
+}
+
+func availableSpawns(gameMap Map, castle Position, occupied map[Position]bool) []Position {
+	spawns := make([]Position, 0, 6)
+	for _, candidate := range Neighbors(castle) {
+		if gameMap.InBounds(candidate) && gameMap.Traversable(candidate) && !occupied[candidate] {
+			spawns = append(spawns, candidate)
+		}
+	}
+	sortPositions(spawns)
+	return spawns
+}
+
+func (m *Match) addStartingUnits(setup FactionSetup, runtime *factionRuntime, spawns []Position, occupied map[Position]bool) error {
+	spawnIndex := 0
+	definitions := UnitTypesByID(m.scenario.Ruleset)
+	for _, selection := range normalizedSelections(setup.Blueprint) {
+		for count := 0; count < selection.Count; count++ {
+			if spawnIndex >= len(spawns) {
+				return fmt.Errorf("%w: faction %q has no free spawn", ErrInvalidScenario, setup.ID)
+			}
+			runtime.unitSequence++
+			unit := runtime.newUnit(definitions[selection.Type], spawns[spawnIndex], 0)
+			m.state.Units = append(m.state.Units, unit)
+			occupied[unit.Position] = true
+			spawnIndex++
+		}
+	}
+	return nil
 }
 
 func (m *Match) TickDuration() time.Duration { return m.scenario.TickDuration }
@@ -202,42 +236,56 @@ func (m *Match) selectTactics() (map[string]string, []Event, error) {
 func (m *Match) runEconomy() []Event {
 	events := make([]Event, 0, 8)
 	for slot, setup := range m.scenario.Factions {
-		factionID := setup.ID
-		state := m.factionState(factionID)
-		runtime := m.factions[factionID]
-		castle := m.castle(factionID)
-		if castle == nil || castle.Health <= 0 {
-			continue
-		}
-		income := castle.Income
-		for index := range m.state.Buildings {
-			building := &m.state.Buildings[index]
-			if building.FactionID == factionID && building.Type == BuildingEconomy && building.Health > 0 {
-				income += building.Income
-			}
-		}
-		state.Gold += income
-		state.GoldEarned += income
-		events = append(events, m.event("income_collected", map[string]any{"factionId": factionID, "amount": income, "balance": state.Gold}))
-
-		if m.economyCount(factionID) < m.scenario.Ruleset.Buildings.MaximumEconomyCount && state.Gold >= m.scenario.Ruleset.Buildings.EconomyCost {
-			for _, site := range m.scenario.Map.EconomySites[slot] {
-				if m.buildingAt(site) != nil {
-					continue
-				}
-				state.Gold -= m.scenario.Ruleset.Buildings.EconomyCost
-				state.GoldSpent += m.scenario.Ruleset.Buildings.EconomyCost
-				state.BuildingsBuilt++
-				sequence := state.BuildingsBuilt
-				building := Building{ID: fmt.Sprintf("%s:economy:%03d", factionID, sequence), FactionID: factionID, Type: BuildingEconomy, Position: site, Health: m.scenario.Ruleset.Buildings.EconomyHealth, MaxHealth: m.scenario.Ruleset.Buildings.EconomyHealth, Defense: m.scenario.Ruleset.Buildings.EconomyDefense, Vision: m.scenario.Ruleset.Buildings.EconomyVision, Cost: m.scenario.Ruleset.Buildings.EconomyCost, Income: m.scenario.Ruleset.Buildings.EconomyIncome + runtime.economyBonus}
-				m.state.Buildings = append(m.state.Buildings, building)
-				events = append(events, m.event("building_constructed", map[string]any{"factionId": factionID, "buildingId": building.ID, "buildingType": building.Type, "position": site, "cost": building.Cost}))
-				break
-			}
-		}
-		events = append(events, m.recruit(factionID)...)
+		events = append(events, m.runFactionEconomy(slot, setup.ID)...)
 	}
 	return events
+}
+
+func (m *Match) runFactionEconomy(slot int, factionID string) []Event {
+	castle := m.castle(factionID)
+	if castle == nil || castle.Health <= 0 {
+		return nil
+	}
+	state := m.factionState(factionID)
+	income := m.incomeFor(factionID, castle.Income)
+	state.Gold += income
+	state.GoldEarned += income
+	events := []Event{m.event("income_collected", map[string]any{"factionId": factionID, "amount": income, "balance": state.Gold})}
+	if building, built := m.buildEconomyBuilding(slot, factionID); built {
+		events = append(events, m.event("building_constructed", map[string]any{"factionId": factionID, "buildingId": building.ID, "buildingType": building.Type, "position": building.Position, "cost": building.Cost}))
+	}
+	return append(events, m.recruit(factionID)...)
+}
+
+func (m *Match) incomeFor(factionID string, castleIncome int64) int64 {
+	income := castleIncome
+	for index := range m.state.Buildings {
+		building := &m.state.Buildings[index]
+		if building.FactionID == factionID && building.Type == BuildingEconomy && building.Health > 0 {
+			income += building.Income
+		}
+	}
+	return income
+}
+
+func (m *Match) buildEconomyBuilding(slot int, factionID string) (Building, bool) {
+	rules := m.scenario.Ruleset.Buildings
+	state := m.factionState(factionID)
+	if m.economyCount(factionID) >= rules.MaximumEconomyCount || state.Gold < rules.EconomyCost {
+		return Building{}, false
+	}
+	for _, site := range m.scenario.Map.EconomySites[slot] {
+		if m.buildingAt(site) != nil {
+			continue
+		}
+		state.Gold -= rules.EconomyCost
+		state.GoldSpent += rules.EconomyCost
+		state.BuildingsBuilt++
+		building := Building{ID: fmt.Sprintf("%s:economy:%03d", factionID, state.BuildingsBuilt), FactionID: factionID, Type: BuildingEconomy, Position: site, Health: rules.EconomyHealth, MaxHealth: rules.EconomyHealth, Defense: rules.EconomyDefense, Vision: rules.EconomyVision, Cost: rules.EconomyCost, Income: rules.EconomyIncome + m.factions[factionID].economyBonus}
+		m.state.Buildings = append(m.state.Buildings, building)
+		return building, true
+	}
+	return Building{}, false
 }
 
 func (m *Match) recruit(factionID string) []Event {
@@ -280,6 +328,23 @@ func (m *Match) recruit(factionID string) []Event {
 
 func (m *Match) runUnits(tactics map[string]string) ([]Event, *string) {
 	defer m.removeDestroyedUnits()
+	indices := m.unitTurnOrder()
+	events := make([]Event, 0, len(indices)*2)
+	for _, index := range indices {
+		unit := &m.state.Units[index]
+		if unit.Health <= 0 || unit.ReadyAtTick > m.state.Tick {
+			continue
+		}
+		unitEvents, winner := m.runUnit(unit, tactics)
+		events = append(events, unitEvents...)
+		if winner != nil {
+			return events, winner
+		}
+	}
+	return events, nil
+}
+
+func (m *Match) unitTurnOrder() []int {
 	indices := make([]int, 0, len(m.state.Units))
 	for index := range m.state.Units {
 		indices = append(indices, index)
@@ -291,59 +356,71 @@ func (m *Match) runUnits(tactics map[string]string) ([]Event, *string) {
 		}
 		return left.ID < right.ID
 	})
-	events := make([]Event, 0, len(indices)*2)
-	for _, index := range indices {
-		unit := &m.state.Units[index]
-		if unit.Health <= 0 || unit.ReadyAtTick > m.state.Tick {
-			continue
-		}
-		target := m.targetInRange(*unit)
-		if target == nil {
-			from := unit.Position
-			m.moveTowardCastle(unit)
-			if unit.Position != from {
-				unit.MovedFrom = &from
-				events = append(events, m.event("unit_moved", map[string]any{"factionId": unit.FactionID, "unitId": unit.ID, "from": from, "to": unit.Position}))
-			}
-			continue
-		}
-		if target == nil {
-			continue
-		}
-		damage := m.damage(*unit, target.defense, tactics[unit.FactionID], tactics[target.factionID])
-		targetPosition := target.position
-		unit.AttackTargetID = target.id
-		unit.AttackTargetPosition = &targetPosition
-		actual := min(damage, target.health())
-		target.applyDamage(actual)
-		m.factions[unit.FactionID].damageDealt += actual
-		m.factions[target.factionID].damageTaken += actual
-		events = append(events, m.event("unit_attacked", map[string]any{"attackerId": unit.ID, "targetId": target.id, "targetType": target.kind, "damage": actual, "remainingHealth": target.health()}))
-		if target.health() > 0 {
-			continue
-		}
-		if target.kind == BuildingCastle {
-			events = append(events, m.event("castle_destroyed", map[string]any{"castleId": target.id, "factionId": target.factionID, "destroyedByFactionId": unit.FactionID}))
-			winner := unit.FactionID
-			return events, &winner
-		}
-		if target.kind == "unit" {
-			m.factionState(target.factionID).UnitsLost++
-			events = append(events, m.event("unit_destroyed", map[string]any{"unitId": target.id, "factionId": target.factionID}))
-		} else {
-			m.factionState(unit.FactionID).BuildingsDestroyed++
-			events = append(events, m.event("building_destroyed", map[string]any{"buildingId": target.id, "factionId": target.factionID, "buildingType": target.kind}))
-		}
-		loot := target.cost * m.scenario.Ruleset.Combat.LootPercent / 100
-		if loot > 0 {
-			owner := m.factionState(unit.FactionID)
-			owner.Gold += loot
-			owner.GoldEarned += loot
-			owner.GoldLooted += loot
-			events = append(events, m.event("loot_collected", map[string]any{"factionId": unit.FactionID, "sourceId": target.id, "amount": loot, "balance": owner.Gold}))
-		}
+	return indices
+}
+
+func (m *Match) runUnit(unit *Unit, tactics map[string]string) ([]Event, *string) {
+	target := m.targetInRange(*unit)
+	if target == nil {
+		return m.moveUnit(unit), nil
+	}
+	return m.attackTarget(unit, target, tactics)
+}
+
+func (m *Match) moveUnit(unit *Unit) []Event {
+	from := unit.Position
+	m.moveTowardCastle(unit)
+	if unit.Position == from {
+		return nil
+	}
+	unit.MovedFrom = &from
+	return []Event{m.event("unit_moved", map[string]any{"factionId": unit.FactionID, "unitId": unit.ID, "from": from, "to": unit.Position})}
+}
+
+func (m *Match) attackTarget(unit *Unit, target *attackTarget, tactics map[string]string) ([]Event, *string) {
+	damage := m.damage(*unit, target.defense, tactics[unit.FactionID], tactics[target.factionID])
+	targetPosition := target.position
+	unit.AttackTargetID = target.id
+	unit.AttackTargetPosition = &targetPosition
+	actual := min(damage, target.health())
+	target.applyDamage(actual)
+	m.factions[unit.FactionID].damageDealt += actual
+	m.factions[target.factionID].damageTaken += actual
+	events := []Event{m.event("unit_attacked", map[string]any{"attackerId": unit.ID, "targetId": target.id, "targetType": target.kind, "damage": actual, "remainingHealth": target.health()})}
+	if target.health() > 0 {
+		return events, nil
+	}
+	if target.kind == BuildingCastle {
+		events = append(events, m.event("castle_destroyed", map[string]any{"castleId": target.id, "factionId": target.factionID, "destroyedByFactionId": unit.FactionID}))
+		winner := unit.FactionID
+		return events, &winner
+	}
+	events = append(events, m.destroyTargetEvent(unit.FactionID, target))
+	if lootEvent, ok := m.collectLoot(unit.FactionID, target); ok {
+		events = append(events, lootEvent)
 	}
 	return events, nil
+}
+
+func (m *Match) destroyTargetEvent(attackerFactionID string, target *attackTarget) Event {
+	if target.kind == "unit" {
+		m.factionState(target.factionID).UnitsLost++
+		return m.event("unit_destroyed", map[string]any{"unitId": target.id, "factionId": target.factionID})
+	}
+	m.factionState(attackerFactionID).BuildingsDestroyed++
+	return m.event("building_destroyed", map[string]any{"buildingId": target.id, "factionId": target.factionID, "buildingType": target.kind})
+}
+
+func (m *Match) collectLoot(factionID string, target *attackTarget) (Event, bool) {
+	loot := target.cost * m.scenario.Ruleset.Combat.LootPercent / 100
+	if loot <= 0 {
+		return Event{}, false
+	}
+	owner := m.factionState(factionID)
+	owner.Gold += loot
+	owner.GoldEarned += loot
+	owner.GoldLooted += loot
+	return m.event("loot_collected", map[string]any{"factionId": factionID, "sourceId": target.id, "amount": loot, "balance": owner.Gold}), true
 }
 
 func (m *Match) clearUnitActions() {
@@ -403,29 +480,34 @@ func (m *Match) targetInRange(attacker Unit) *attackTarget {
 	if len(candidates) == 0 {
 		return nil
 	}
-	priority := func(kind string) int {
-		if kind == "unit" {
-			return 0
-		}
-		if kind == BuildingEconomy {
-			return 1
-		}
-		return 2
-	}
 	sort.Slice(candidates, func(i, j int) bool {
-		if priority(candidates[i].kind) != priority(candidates[j].kind) {
-			return priority(candidates[i].kind) < priority(candidates[j].kind)
-		}
-		di, dj := HexDistance(attacker.Position, candidates[i].position), HexDistance(attacker.Position, candidates[j].position)
-		if di != dj {
-			return di < dj
-		}
-		if candidates[i].health() != candidates[j].health() {
-			return candidates[i].health() < candidates[j].health()
-		}
-		return candidates[i].id < candidates[j].id
+		return attackTargetLess(attacker, candidates[i], candidates[j])
 	})
 	return candidates[0]
+}
+
+func attackTargetLess(attacker Unit, left, right *attackTarget) bool {
+	if attackTargetPriority(left.kind) != attackTargetPriority(right.kind) {
+		return attackTargetPriority(left.kind) < attackTargetPriority(right.kind)
+	}
+	leftDistance, rightDistance := HexDistance(attacker.Position, left.position), HexDistance(attacker.Position, right.position)
+	if leftDistance != rightDistance {
+		return leftDistance < rightDistance
+	}
+	if left.health() != right.health() {
+		return left.health() < right.health()
+	}
+	return left.id < right.id
+}
+
+func attackTargetPriority(kind string) int {
+	if kind == "unit" {
+		return 0
+	}
+	if kind == BuildingEconomy {
+		return 1
+	}
+	return 2
 }
 
 func (m *Match) moveTowardCastle(unit *Unit) {
@@ -495,24 +577,39 @@ func ProjectView(gameMap Map, source State, factionID string) (View, error) {
 		positions := allPositions(gameMap)
 		return View{Map: CloneMap(gameMap), State: CloneState(source), VisiblePositions: positions}, nil
 	}
-	participates := false
-	for _, faction := range source.Factions {
-		participates = participates || faction.FactionID == factionID
-	}
-	if !participates {
+	if !factionParticipates(source, factionID) {
 		return View{}, fmt.Errorf("faction %q does not participate", factionID)
 	}
+	visible := visiblePositionsForFaction(gameMap, source, factionID)
+	state := visibleState(source, factionID, visible)
+	return View{Map: CloneMap(gameMap), State: state, VisiblePositions: sortedPositions(visible)}, nil
+}
+
+func factionParticipates(state State, factionID string) bool {
+	for _, faction := range state.Factions {
+		if faction.FactionID == factionID {
+			return true
+		}
+	}
+	return false
+}
+
+func visiblePositionsForFaction(gameMap Map, state State, factionID string) map[Position]bool {
 	visible := make(map[Position]bool)
-	for _, unit := range source.Units {
+	for _, unit := range state.Units {
 		if unit.FactionID == factionID && unit.Health > 0 {
 			addVision(visible, gameMap, unit.Position, unit.Vision)
 		}
 	}
-	for _, building := range source.Buildings {
+	for _, building := range state.Buildings {
 		if building.FactionID == factionID && building.Health > 0 {
 			addVision(visible, gameMap, building.Position, building.Vision)
 		}
 	}
+	return visible
+}
+
+func visibleState(source State, factionID string, visible map[Position]bool) State {
 	state := CloneState(source)
 	state.Units = state.Units[:0]
 	for _, unit := range source.Units {
@@ -526,12 +623,16 @@ func ProjectView(gameMap Map, source State, factionID string) (View, error) {
 			state.Buildings = append(state.Buildings, building)
 		}
 	}
-	positions := make([]Position, 0, len(visible))
-	for position := range visible {
+	return state
+}
+
+func sortedPositions(values map[Position]bool) []Position {
+	positions := make([]Position, 0, len(values))
+	for position := range values {
 		positions = append(positions, position)
 	}
 	sortPositions(positions)
-	return View{Map: CloneMap(gameMap), State: state, VisiblePositions: positions}, nil
+	return positions
 }
 
 func (m *Match) event(kind string, data map[string]any) Event {

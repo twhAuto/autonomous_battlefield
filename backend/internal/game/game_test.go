@@ -77,26 +77,41 @@ func TestMatchIsDeterministicAndPreservesInvariants(t *testing.T) {
 	sawMovementDirection := false
 	sawAttackTarget := false
 	for !first.Finished() {
-		left, err := first.Advance()
-		if err != nil {
-			t.Fatal(err)
-		}
-		right, err := second.Advance()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(left, right) {
-			t.Fatalf("transitions differ at tick %d", left.Tick)
-		}
+		left := advanceMatchingBattles(t, first, second)
 		assertStateInvariants(t, left.State)
-		for _, unit := range left.State.Units {
-			sawMovementDirection = sawMovementDirection || unit.MovedFrom != nil
-			sawAttackTarget = sawAttackTarget || (unit.AttackTargetID != "" && unit.AttackTargetPosition != nil)
-		}
+		moved, attacked := stateHasActionMetadata(left.State)
+		sawMovementDirection = sawMovementDirection || moved
+		sawAttackTarget = sawAttackTarget || attacked
 	}
 	if !sawMovementDirection || !sawAttackTarget {
 		t.Fatalf("action metadata movement=%v attack=%v", sawMovementDirection, sawAttackTarget)
 	}
+}
+
+func advanceMatchingBattles(t *testing.T, first, second *Match) Transition {
+	t.Helper()
+	left, err := first.Advance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := second.Advance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(left, right) {
+		t.Fatalf("transitions differ at tick %d", left.Tick)
+	}
+	return left
+}
+
+func stateHasActionMetadata(state State) (bool, bool) {
+	moved := false
+	attacked := false
+	for _, unit := range state.Units {
+		moved = moved || unit.MovedFrom != nil
+		attacked = attacked || (unit.AttackTargetID != "" && unit.AttackTargetPosition != nil)
+	}
+	return moved, attacked
 }
 
 func TestEconomyActivationAndDraw(t *testing.T) {

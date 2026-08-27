@@ -11,6 +11,8 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 )
 
+const battleNotFoundMessage = "battle not found"
+
 type Handler struct {
 	battles battleservice.Service
 }
@@ -39,7 +41,7 @@ func (h *Handler) GetFactionView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, battleservice.ErrBattleNotFound) {
-		http.Error(w, "battle not found", http.StatusNotFound)
+		http.Error(w, battleNotFoundMessage, http.StatusNotFound)
 		return
 	}
 	if err != nil {
@@ -107,7 +109,7 @@ func (h *Handler) GetBattle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, battleservice.ErrBattleNotFound) {
-		http.Error(w, "battle not found", http.StatusNotFound)
+		http.Error(w, battleNotFoundMessage, http.StatusNotFound)
 		return
 	}
 	if err != nil {
@@ -163,7 +165,7 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, battleservice.ErrBattleNotFound) {
-		http.Error(w, "battle not found", http.StatusNotFound)
+		http.Error(w, battleNotFoundMessage, http.StatusNotFound)
 		return
 	}
 	if err != nil {

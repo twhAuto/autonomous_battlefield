@@ -23,7 +23,8 @@ describe('HexBattleMap', () => {
   it('renders terrain, accessible entities, selection, and map controls', async () => {
     const user = userEvent.setup()
     const { container } = render(<HexBattleMap map={map} state={state} visiblePositions={[{ x: 0, y: 0 }, { x: 0, y: 1 }]} factionNames={new Map([['a', 'Northwind']])} toolbarControls={<label htmlFor="test-perspective">Perspective<select id="test-perspective"><option>Spectator</option></select></label>} />)
-    expect(screen.getByRole('img', { name: /2 by 2 pointy-top hex battlefield/i })).toBeInTheDocument()
+    const battlefield = container.querySelector('svg')!
+    expect(battlefield).toHaveAccessibleName(/2 by 2 pointy-top hex battlefield/i)
     expect(container.querySelectorAll('.hex-tile')).toHaveLength(4)
     expect(container.querySelectorAll('.hex-tile--fog')).toHaveLength(2)
     expect(container.querySelectorAll('.unit-direction--movement')).toHaveLength(1)
@@ -37,7 +38,6 @@ describe('HexBattleMap', () => {
     await user.click(screen.getByRole('button', { name: 'Zoom in' }))
     await user.click(screen.getByRole('button', { name: 'Zoom out' }))
     await user.click(screen.getByRole('button', { name: 'RESET' }))
-    const battlefield = screen.getByRole('img')
     const layer = container.querySelector('.map-layer')!
     const transformBeforeScroll = layer.getAttribute('transform')
     fireEvent.wheel(battlefield, { deltaY: -1 })
