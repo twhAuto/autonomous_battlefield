@@ -220,6 +220,7 @@ The CLI runner starts Codex or Gemini CLI in a new temporary directory with:
 - only the two battlefield tools enabled;
 - shell, file, browser, app, image, plugin, skill, and multi-agent capabilities disabled where supported;
 - no approval prompts;
+- the allowlisted profile model passed explicitly with `--model`;
 - a pre-validated CLI version family.
 
 Codex uses the existing host login without copying it. Gemini copies its OAuth credential into the temporary isolated home with mode `0600`. Subscription credentials are not placed in Kubernetes.
@@ -360,7 +361,8 @@ A model profile specifies:
 - stable ID and display name;
 - provider and API/CLI runtime;
 - cluster or local scope;
-- credential, model, and availability environment variables;
+- API credential/model environment variables or a pinned CLI model identifier;
+- optional external-agent availability environment variable;
 - token and step limits;
 - enabled state and supported CLI version prefix.
 

@@ -242,7 +242,7 @@ The default runner factory is the only place that chooses concrete provider impl
 
 The API loop discovers exactly two MCP tools and accepts only those names. It appends tool calls and results to the neutral message transcript and accumulates usage over turns.
 
-The CLI runner creates a temporary directory and constructs provider-specific command-line restrictions. Tests use the `CommandExecutor` interface to inspect execution without starting a real CLI.
+The CLI runner creates a temporary directory, passes the profile's allowlisted model explicitly with `--model`, and constructs provider-specific command-line restrictions. Tests use the `CommandExecutor` interface to inspect the selected model and execution restrictions without starting a real CLI.
 
 ### `internal/ai/providers`: external API adapters
 

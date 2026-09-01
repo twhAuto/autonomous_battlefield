@@ -60,14 +60,16 @@ ai:
       displayName: Codex / ChatGPT subscription
       provider: codex-cli
       runtime: cli
+      model: gpt-5.6-luna
       scope: local
-      supportedVersionPrefix: codex-cli 0.151.
+      supportedVersionPrefix: codex-cli 0.152.
       maxSteps: 3
       enabled: true
     - id: gemini-subscription-local
       displayName: Gemini CLI / Google subscription
       provider: gemini-cli
       runtime: cli
+      model: flash
       scope: local
       supportedVersionPrefix: 0.39.
       maxSteps: 3

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
 )
 
 type fakeRunner struct {
@@ -92,6 +93,11 @@ func TestWorkerValidationAndDefaultProvider(t *testing.T) {
 		if decisionRunner, err := defaultRunner(profile); err != nil || decisionRunner == nil {
 			t.Fatalf("profile=%#v err=%v", profile, err)
 		}
+	}
+	decisionRunner, err := defaultRunner(ai.ModelProfile{Runtime: "cli", Provider: "codex-cli", Model: "gpt-5.6-luna"})
+	cliRunner, ok := decisionRunner.(runner.CLIRunner)
+	if err != nil || !ok || cliRunner.Model != "gpt-5.6-luna" {
+		t.Fatalf("CLI runner=%#v err=%v", decisionRunner, err)
 	}
 }
 

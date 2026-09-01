@@ -238,6 +238,9 @@ func parseAIConfig(raw fileConfig) (AI, error) {
 		if profile.Runtime == "cli" && strings.TrimSpace(profile.SupportedVersionPrefix) == "" {
 			return AI{}, fmt.Errorf("ai profile %q supportedVersionPrefix is required", profile.ID)
 		}
+		if profile.Runtime == "cli" && strings.TrimSpace(profile.Model) == "" {
+			return AI{}, fmt.Errorf("ai profile %q model is required", profile.ID)
+		}
 	}
 	return AI{Environment: environment, AgentHealthAddress: health, MCPAddress: mcpAddress, MCPURL: mcpURL,
 		DecisionTimeout: timeout, CapabilitySecret: secret, CapabilitySecretEnv: secretEnv,

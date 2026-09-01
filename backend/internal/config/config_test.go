@@ -191,6 +191,10 @@ func TestParseAIConfigDefaultsProfilesAndValidation(t *testing.T) {
 	for _, mutate := range []func(*fileConfig){func(raw *fileConfig) { raw.AI.Environment = "remote" }, func(raw *fileConfig) { raw.AI.DecisionTimeout = "bad" }, func(raw *fileConfig) { raw.AI.Profiles[0].MaxSteps = 0 }, func(raw *fileConfig) { raw.AI.Profiles[0].MaxOutputTokens = 0 }, func(raw *fileConfig) { raw.AI.Profiles = append(raw.AI.Profiles, raw.AI.Profiles[0]) }, func(raw *fileConfig) {
 		raw.AI.Profiles[0].Runtime = "cli"
 		raw.AI.Profiles[0].SupportedVersionPrefix = ""
+	}, func(raw *fileConfig) {
+		raw.AI.Profiles[0].Runtime = "cli"
+		raw.AI.Profiles[0].SupportedVersionPrefix = "codex-cli 0.152."
+		raw.AI.Profiles[0].Model = ""
 	}} {
 		raw := valid()
 		mutate(&raw)

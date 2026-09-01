@@ -218,7 +218,7 @@ func runnerOutcome(ctx context.Context, err error, accepted bool) string {
 
 func defaultRunner(profile ai.ModelProfile) (ai.DecisionRunner, error) {
 	if profile.Runtime == "cli" {
-		return runner.CLIRunner{Provider: profile.Provider}, nil
+		return runner.CLIRunner{Provider: profile.Provider, Model: profile.Model}, nil
 	}
 	var provider ai.TurnProvider
 	switch profile.Provider {

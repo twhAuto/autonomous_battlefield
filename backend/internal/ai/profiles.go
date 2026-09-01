@@ -80,6 +80,10 @@ func (r *ProfileRegistry) AvailableIDs() []string {
 
 func evaluateProfile(environment string, profile ModelProfile, purpose profileRegistryPurpose) ModelProfile {
 	profile.ID = strings.TrimSpace(profile.ID)
+	profile.Model = strings.TrimSpace(profile.Model)
+	if profile.Runtime == "cli" {
+		profile.ModelLabel = profile.Model
+	}
 	profile.ToolCapability = true
 	if !profile.Enabled {
 		profile.UnavailableReason = "disabled by configuration"
@@ -98,7 +102,9 @@ func evaluateProfile(environment string, profile ModelProfile, purpose profileRe
 			profile.UnavailableReason = "invalid external CLI profile configuration"
 			return profile
 		}
-		profile.ModelLabel = strings.TrimSuffix(profile.Provider, "-cli") + " subscription (host)"
+		if profile.ModelLabel == "" {
+			profile.ModelLabel = strings.TrimSuffix(profile.Provider, "-cli") + " subscription (host)"
+		}
 		profile.Available = true
 		return profile
 	}
@@ -142,7 +148,9 @@ func evaluateProfile(environment string, profile ModelProfile, purpose profileRe
 			profile.UnavailableReason = binary + " CLI is not authenticated"
 			return profile
 		}
-		profile.ModelLabel = binary + " subscription"
+		if profile.ModelLabel == "" {
+			profile.ModelLabel = binary + " subscription"
+		}
 	}
 	profile.Available = true
 	return profile

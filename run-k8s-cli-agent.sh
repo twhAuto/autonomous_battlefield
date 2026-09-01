@@ -64,7 +64,7 @@ require_command() {
 
 codex_available() {
   command -v codex >/dev/null 2>&1 \
-    && [[ "$(codex --version 2>/dev/null || true)" == codex-cli\ 0.151.* ]] \
+    && [[ "$(codex --version 2>/dev/null || true)" == codex-cli\ 0.152.* ]] \
     && [[ -s "${HOME}/.codex/auth.json" ]]
 }
 
@@ -82,7 +82,7 @@ select_profiles() {
       ;;
     codex)
       if ! codex_available; then
-        echo "Codex CLI 0.151.x with an existing 'codex login' is required." >&2
+        echo "Codex CLI 0.152.x with an existing 'codex login' is required." >&2
         exit 1
       fi
       use_codex=1
@@ -128,8 +128,9 @@ write_agent_config() {
       printf '      displayName: Codex / ChatGPT subscription\n'
       printf '      provider: codex-cli\n'
       printf '      runtime: cli\n'
+      printf '      model: gpt-5.6-luna\n'
       printf '      scope: local\n'
-      printf '      supportedVersionPrefix: codex-cli 0.151.\n'
+      printf '      supportedVersionPrefix: codex-cli 0.152.\n'
       printf '      maxSteps: 3\n'
       printf '      enabled: true\n'
     fi
@@ -138,6 +139,7 @@ write_agent_config() {
       printf '      displayName: Gemini CLI / Google subscription\n'
       printf '      provider: gemini-cli\n'
       printf '      runtime: cli\n'
+      printf '      model: flash\n'
       printf '      scope: local\n'
       printf '      supportedVersionPrefix: 0.39.\n'
       printf '      maxSteps: 3\n'

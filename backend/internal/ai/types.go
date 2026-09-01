@@ -165,6 +165,7 @@ type ModelProfile struct {
 	DisplayName                     string `json:"displayName" yaml:"displayName"`
 	Provider                        string `json:"provider" yaml:"provider"`
 	Runtime                         string `json:"runtime" yaml:"runtime"`
+	Model                           string `json:"-" yaml:"model,omitempty"`
 	ModelEnvironmentVariable        string `json:"-" yaml:"modelEnvironmentVariable"`
 	CredentialEnvironmentVariable   string `json:"-" yaml:"credentialEnvironmentVariable"`
 	AvailabilityEnvironmentVariable string `json:"-" yaml:"availabilityEnvironmentVariable"`
