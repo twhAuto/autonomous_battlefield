@@ -25,6 +25,7 @@ func (OSCommandExecutor) Run(ctx context.Context, name string, args, environment
 
 type CLIRunner struct {
 	Provider string
+	Model    string
 	Executor CommandExecutor
 }
 
@@ -54,6 +55,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 			"-c", `mcp_servers.battlefield.env_http_headers={Authorization="BATTLEFIELD_MCP_AUTHORIZATION"}`,
 			"-c", `mcp_servers.battlefield.enabled_tools=["get_decision_context","submit_strategy_plan"]`,
 			"-c", `mcp_servers.battlefield.default_tools_approval_mode="approve"`, prompt}
+		args = withModel(args, r.Model)
 		environment = replaceEnvironment(os.Environ(), "CODEX_WORKSPACE", workspace)
 		environment = replaceEnvironment(environment, "BATTLEFIELD_MCP_AUTHORIZATION", "Bearer "+session.CapabilityToken)
 	case "gemini-cli":
@@ -70,6 +72,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 			return ai.DecisionResult{ErrorCategory: "cli_auth"}, err
 		}
 		args = []string{"--prompt", prompt, "--output-format", "json", "--approval-mode", "default", "--allowed-mcp-server-names", "battlefield", "--allowed-tools", "mcp_battlefield_get_decision_context,mcp_battlefield_submit_strategy_plan"}
+		args = withModel(args, r.Model)
 		environment = replaceEnvironment(os.Environ(), "HOME", temporary)
 		environment = replaceEnvironment(environment, "BATTLEFIELD_MCP_AUTHORIZATION", "Bearer "+session.CapabilityToken)
 	default:
@@ -80,6 +83,14 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 		return ai.DecisionResult{ErrorCategory: "cli", ProviderData: map[string]any{"exitOutput": boundedOutput(output)}}, err
 	}
 	return ai.DecisionResult{Accepted: true, Usage: ai.Usage{Requests: 1}}, nil
+}
+
+func withModel(arguments []string, model string) []string {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return arguments
+	}
+	return append([]string{"--model", model}, arguments...)
 }
 
 func copyAuthentication(source, destination string) error {

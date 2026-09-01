@@ -60,9 +60,9 @@ func TestClusterAPIProfileUsesSafeAvailabilityFlag(t *testing.T) {
 
 func TestClusterCatalogCanAdvertiseExternalCLIWithoutMakingItExecutable(t *testing.T) {
 	t.Setenv("TEST_CODEX_HOST_AVAILABLE", "true")
-	base := ModelProfile{ID: "codex-host", DisplayName: "Codex host", Provider: "codex-cli", Runtime: "cli", Scope: "local", AvailabilityEnvironmentVariable: "TEST_CODEX_HOST_AVAILABLE", SupportedVersionPrefix: "codex-cli 0.151.", Enabled: true, MaxSteps: 3}
+	base := ModelProfile{ID: "codex-host", DisplayName: "Codex host", Provider: "codex-cli", Runtime: "cli", Model: "gpt-5.6-luna", Scope: "local", AvailabilityEnvironmentVariable: "TEST_CODEX_HOST_AVAILABLE", SupportedVersionPrefix: "codex-cli 0.151.", Enabled: true, MaxSteps: 3}
 	catalogProfile, err := NewProfileCatalog("cluster", []ModelProfile{base}).Require(base.ID)
-	if err != nil || catalogProfile.ModelLabel != "codex subscription (host)" {
+	if err != nil || catalogProfile.ModelLabel != "gpt-5.6-luna" {
 		t.Fatalf("catalog profile=%#v err=%v", catalogProfile, err)
 	}
 	executorProfile, _ := NewProfileRegistry("cluster", []ModelProfile{base}).Get(base.ID)
@@ -71,7 +71,7 @@ func TestClusterCatalogCanAdvertiseExternalCLIWithoutMakingItExecutable(t *testi
 	}
 	t.Setenv("TEST_CODEX_HOST_AVAILABLE", "false")
 	catalogProfile, _ = NewProfileCatalog("cluster", []ModelProfile{base}).Get(base.ID)
-	if catalogProfile.Available {
+	if catalogProfile.Available || catalogProfile.ModelLabel != "gpt-5.6-luna" {
 		t.Fatalf("disabled external profile=%#v", catalogProfile)
 	}
 }
@@ -90,9 +90,9 @@ func TestLocalCLIProfileRequiresPinnedVersionAndAuthentication(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".codex", "auth.json"), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	base := ModelProfile{ID: "codex", DisplayName: "Codex", Provider: "codex-cli", Runtime: "cli", Scope: "local", SupportedVersionPrefix: "codex-cli 0.151.", Enabled: true, MaxSteps: 3}
+	base := ModelProfile{ID: "codex", DisplayName: "Codex", Provider: "codex-cli", Runtime: "cli", Model: "gpt-5.6-luna", Scope: "local", SupportedVersionPrefix: "codex-cli 0.151.", Enabled: true, MaxSteps: 3}
 	profile, err := NewProfileRegistry("local", []ModelProfile{base}).Require(base.ID)
-	if err != nil || profile.ModelLabel != "codex subscription" {
+	if err != nil || profile.ModelLabel != "gpt-5.6-luna" {
 		t.Fatalf("profile=%#v err=%v", profile, err)
 	}
 	base.SupportedVersionPrefix = "codex-cli 0.150."

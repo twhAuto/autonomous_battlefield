@@ -220,9 +220,9 @@ func (e *fakeExecutor) Run(_ context.Context, name string, args, environment []s
 
 func TestCLIRunnerBuildsRestrictedCodexInvocation(t *testing.T) {
 	executor := &fakeExecutor{}
-	result, err := (CLIRunner{Provider: "codex-cli", Executor: executor}).Run(context.Background(), ai.DecisionSession{RequestID: "request", MCPURL: "http://mcp/mcp", CapabilityToken: "token"})
+	result, err := (CLIRunner{Provider: "codex-cli", Model: "gpt-5.6-luna", Executor: executor}).Run(context.Background(), ai.DecisionSession{RequestID: "request", MCPURL: "http://mcp/mcp", CapabilityToken: "token"})
 	joined := strings.Join(executor.args, " ")
-	if err != nil || !result.Accepted || executor.name != "codex" || !strings.Contains(joined, "--disable shell_tool") || !strings.Contains(joined, "mcp_servers.battlefield") || strings.Contains(joined, "Bearer token") || !strings.Contains(strings.Join(executor.environment, " "), "BATTLEFIELD_MCP_AUTHORIZATION=Bearer token") {
+	if err != nil || !result.Accepted || executor.name != "codex" || !strings.Contains(joined, "--model gpt-5.6-luna") || !strings.Contains(joined, "--disable shell_tool") || !strings.Contains(joined, "mcp_servers.battlefield") || strings.Contains(joined, "Bearer token") || !strings.Contains(strings.Join(executor.environment, " "), "BATTLEFIELD_MCP_AUTHORIZATION=Bearer token") {
 		t.Fatalf("result=%#v err=%v command=%s %s", result, err, executor.name, joined)
 	}
 	if _, err := (CLIRunner{Provider: "unknown", Executor: executor}).Run(context.Background(), ai.DecisionSession{}); err == nil {
@@ -241,8 +241,8 @@ func TestGeminiRunnerUsesIsolatedAuthentication(t *testing.T) {
 		t.Fatal(err)
 	}
 	executor := &fakeExecutor{}
-	result, err := (CLIRunner{Provider: "gemini-cli", Executor: executor}).Run(context.Background(), ai.DecisionSession{RequestID: "request", MCPURL: "http://mcp/mcp", CapabilityToken: "token"})
-	if err != nil || !result.Accepted || executor.name != "gemini" {
+	result, err := (CLIRunner{Provider: "gemini-cli", Model: "flash", Executor: executor}).Run(context.Background(), ai.DecisionSession{RequestID: "request", MCPURL: "http://mcp/mcp", CapabilityToken: "token"})
+	if err != nil || !result.Accepted || executor.name != "gemini" || !strings.Contains(strings.Join(executor.args, " "), "--model flash") {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 	executor.err = errors.New("exit")

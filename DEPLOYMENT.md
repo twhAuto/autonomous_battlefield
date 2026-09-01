@@ -279,7 +279,9 @@ tested CLI version and existing host login, forwards only the internal MCP
 service to loopback, runs the decision agent on the host, and temporarily makes
 the connected profiles selectable through the API. No CLI authentication
 directory or provider credential is mounted into the cluster. Keep the helper
-running for the duration of the battle and press Ctrl+C afterward.
+running for the duration of the battle and press Ctrl+C afterward. The generated
+host-agent profile passes `--model gpt-5.6-luna` to Codex or `--model flash` to
+Gemini, matching the allowlisted profile metadata deployed to the API.
 
 Do not reuse these credentials outside the disposable local cluster.
 

@@ -64,8 +64,9 @@ data:
           displayName: Codex / ChatGPT subscription
           provider: codex-cli
           runtime: cli
+          model: gpt-5.6-luna
           availabilityEnvironmentVariable: CODEX_CLI_PROFILE_AVAILABLE
-          supportedVersionPrefix: codex-cli 0.151.
+          supportedVersionPrefix: codex-cli 0.152.
           scope: local
           maxSteps: 3
           enabled: true
@@ -73,6 +74,7 @@ data:
           displayName: Gemini CLI / Google subscription
           provider: gemini-cli
           runtime: cli
+          model: flash
           availabilityEnvironmentVariable: GEMINI_CLI_PROFILE_AVAILABLE
           supportedVersionPrefix: 0.39.
           scope: local

@@ -80,6 +80,9 @@ runners use an empty temporary workspace and an isolated MCP-only
 configuration; subscription authentication directories are never mounted in
 Kubernetes. `supportedVersionPrefix` pins the tested CLI release family; an
 unmatched installation is reported as unavailable instead of being invoked.
+Each CLI profile also pins its model and passes it explicitly with `--model`.
+The supplied profiles use `gpt-5.6-luna` for Codex and the Gemini CLI `flash`
+alias. Their safe model labels appear in the profile catalog and battle history.
 
 To use a subscription CLI in a battle running on the local Kubernetes cluster,
 deploy the application and start the host bridge in a second terminal:
