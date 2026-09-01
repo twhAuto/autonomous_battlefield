@@ -22,6 +22,7 @@ autonomous_battlefield/
 │   ├── internal/
 │   │   ├── ai/           # Decision contracts, validation, profiles, and runners
 │   │   ├── app/          # API composition root
+│   │   ├── authn/        # Administrator login, signed sessions, and trusted actor context
 │   │   ├── battle/       # Battle delivery, use cases, persistence, and worker
 │   │   ├── faction/      # Faction domain, delivery, use cases, and persistence
 │   │   ├── game/         # Deterministic simulation domain
@@ -290,6 +291,7 @@ Deleting a faction removes it from the active registry but does not affect the c
 
 ### Shared infrastructure packages
 
+- [`internal/authn`](../../backend/internal/authn) provides the replaceable request authenticator, environment-configured administrator verification, signed HttpOnly sessions, login/session/logout routes, and `/v1` protection middleware.
 - [`internal/config/config.go`](../../backend/internal/config/config.go) strictly decodes one YAML document, rejects unknown fields, resolves environment variables, and provides process-specific loaders.
 - [`internal/postgres`](../../backend/internal/postgres) manages the `pgx` pool, embedded Goose migrations, startup retries, and `LISTEN/NOTIFY`.
 - [`internal/httpapi`](../../backend/internal/httpapi) provides bounded strict JSON, lifecycle/readiness routes, request IDs, routing, and access logging.
@@ -339,12 +341,15 @@ The frontend is a React/Vite single-page application.
 | Area | Responsibility |
 | --- | --- |
 | [`App.tsx`](../../frontend/src/App.tsx) | Shared layout and route table |
+| [`api/auth.ts`](../../frontend/src/api/auth.ts) | Session discovery, login, and logout client |
+| [`api/request.ts`](../../frontend/src/api/request.ts) | Shared request wrapper that announces expired or invalid sessions |
 | [`api/factions.ts`](../../frontend/src/api/factions.ts) | Typed faction and ruleset requests |
 | [`api/battles.ts`](../../frontend/src/api/battles.ts) | Typed scenario, profile, battle, event, view, control, and decision requests |
 | [`pages/CreateFactionPage.tsx`](../../frontend/src/pages/CreateFactionPage.tsx) | Point-buy faction builder |
 | [`pages/FactionsPage.tsx`](../../frontend/src/pages/FactionsPage.tsx) | Faction registry and deletion |
 | [`pages/CreateBattlePage.tsx`](../../frontend/src/pages/CreateBattlePage.tsx) | Scenario, participants, controllers, and tick-limit selection |
 | [`pages/BattlePage.tsx`](../../frontend/src/pages/BattlePage.tsx) | Polling, map, perspective, controls, events, AI decisions, and statistics |
+| [`pages/LoginPage.tsx`](../../frontend/src/pages/LoginPage.tsx) | Single-administrator credential form and error state |
 | [`components/HexBattleMap.tsx`](../../frontend/src/components/HexBattleMap.tsx) | Hex-map visualization |
 | [`components/Emblem.tsx`](../../frontend/src/components/Emblem.tsx) | Deterministic faction emblem |
 
@@ -357,11 +362,12 @@ The browser's API boundary lives in `src/api`. Page components should consume ty
 | Path | Purpose |
 | --- | --- |
 | [`backend/config.yaml`](../../backend/config.yaml) | Local process configuration and model-profile definitions |
-| [`backend/.env.example`](../../backend/.env.example) | Local environment variable template |
+| [`backend/.env.example`](../../backend/.env.example) | Local environment variable template, including the required development PostgreSQL password |
 | [`backend/rulesets`](../../backend/rulesets) | Versioned unit, building, economy, and combat values |
 | [`backend/scenarios`](../../backend/scenarios) | Map layout, timing, scripted plans, and fallbacks |
 | [`deploy/base/infrastructure/configmap.yaml`](../../deploy/base/infrastructure/configmap.yaml) | Cluster configuration equivalent |
 | [`deploy/overlays/local/infrastructure/ai-secret.env.example`](../../deploy/overlays/local/infrastructure/ai-secret.env.example) | Local Kubernetes AI secret template |
+| [`deploy/overlays/local/infrastructure/auth-secret.env.example`](../../deploy/overlays/local/infrastructure/auth-secret.env.example) | Optional local Kubernetes administrator-session secret template |
 
 Configuration is decoded with `yaml.KnownFields(true)`. Update the file-facing struct, parsed runtime struct, validation, examples, deployment ConfigMap, and tests together.
 
@@ -378,7 +384,7 @@ The key application manifests are:
 - frontend deployment and service;
 - migration overlay job.
 
-[`run-dev.sh`](../../run-dev.sh) is the local multi-process launcher. [`run-k8s-cli-agent.sh`](../../run-k8s-cli-agent.sh) bridges authenticated host subscription CLIs to a Kubernetes MCP service. CI/CD helpers under `scripts` classify affected components, build images, apply migrations, deploy, smoke-test, and roll back.
+[`run-dev.sh`](../../run-dev.sh) is the local multi-process launcher. It obtains the Compose PostgreSQL password from the shell or the Git-ignored `backend/.env`; `backend/compose.yaml` has no committed database credential. [`run-k8s-cli-agent.sh`](../../run-k8s-cli-agent.sh) bridges authenticated host subscription CLIs to a Kubernetes MCP service. CI/CD helpers under `scripts` classify affected components, build images, apply migrations, deploy, smoke-test, and roll back.
 
 ## 10. Testing layout and expectations
 

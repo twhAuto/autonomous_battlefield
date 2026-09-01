@@ -19,6 +19,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const bearerPrefix = "Bearer "
+
 type Worker struct {
 	MCPURL, Secret, WorkerID                 string
 	Profiles                                 *ai.ProfileRegistry
@@ -108,6 +110,13 @@ type job struct {
 	ProfileID string `json:"profileId"`
 }
 
+type jobRun struct {
+	logger    *slog.Logger
+	started   time.Time
+	requestID string
+	profile   ai.ModelProfile
+}
+
 func (w *Worker) claim(ctx context.Context, profileIDs []string) (job, bool, error) {
 	payload, _ := json.Marshal(map[string]any{
 		"workerId": w.WorkerID, "leaseSeconds": int(w.DecisionTimeout.Seconds()) + 5,
@@ -117,7 +126,7 @@ func (w *Worker) claim(ctx context.Context, profileIDs []string) (job, bool, err
 	if err != nil {
 		return job{}, false, err
 	}
-	request.Header.Set("Authorization", "Bearer "+w.Secret)
+	request.Header.Set("Authorization", bearerPrefix+w.Secret)
 	response, err := w.Client.Do(request)
 	if err != nil {
 		return job{}, false, err
@@ -141,10 +150,7 @@ func (w *Worker) runJob(parent context.Context, job job) {
 	logger := w.logger().With("worker_id", w.WorkerID, "request_id", job.RequestID, "profile_id", job.ProfileID)
 	profile, err := w.Profiles.Require(job.ProfileID)
 	if err != nil {
-		logger.WarnContext(parent, "decision_runner_failed", "error_category", "profile_unavailable", "runner_outcome", "profile_unavailable", "duration_ms", time.Since(started).Milliseconds())
-		if reportErr := w.fail(parent, job.RequestID, "profile_unavailable", ai.DecisionResult{}); reportErr != nil {
-			logger.ErrorContext(parent, "decision_failure_report_failed", "error", reportErr)
-		}
+		w.reportJobFailure(parent, logger, started, job.RequestID, "profile_unavailable", "profile_unavailable", ai.DecisionResult{})
 		return
 	}
 	logger.InfoContext(parent, "decision_runner_started", "provider", profile.Provider, "runtime", profile.Runtime)
@@ -152,10 +158,7 @@ func (w *Worker) runJob(parent context.Context, job job) {
 	defer cancel()
 	token, err := ai.MintCapability(w.Secret, job.RequestID, time.Now().Add(w.DecisionTimeout))
 	if err != nil {
-		logger.WarnContext(parent, "decision_runner_failed", "error_category", "capability", "runner_outcome", "capability_error", "duration_ms", time.Since(started).Milliseconds())
-		if reportErr := w.fail(parent, job.RequestID, "capability", ai.DecisionResult{}); reportErr != nil {
-			logger.ErrorContext(parent, "decision_failure_report_failed", "error", reportErr)
-		}
+		w.reportJobFailure(parent, logger, started, job.RequestID, "capability", "capability_error", ai.DecisionResult{})
 		return
 	}
 	factory := w.RunnerFactory
@@ -164,32 +167,40 @@ func (w *Worker) runJob(parent context.Context, job job) {
 	}
 	decisionRunner, err := factory(profile)
 	if err != nil {
-		logger.WarnContext(parent, "decision_runner_failed", "error_category", "provider_unavailable", "runner_outcome", "provider_unavailable", "duration_ms", time.Since(started).Milliseconds())
-		if reportErr := w.fail(parent, job.RequestID, "provider_unavailable", ai.DecisionResult{}); reportErr != nil {
-			logger.ErrorContext(parent, "decision_failure_report_failed", "error", reportErr)
-		}
+		w.reportJobFailure(parent, logger, started, job.RequestID, "provider_unavailable", "provider_unavailable", ai.DecisionResult{})
 		return
 	}
 	result, err := decisionRunner.Run(ctx, ai.DecisionSession{RequestID: job.RequestID, CapabilityToken: token, MCPURL: w.MCPURL, Profile: profile})
-	if err != nil || !result.Accepted {
+	w.finishJob(parent, ctx, jobRun{logger: logger, started: started, requestID: job.RequestID, profile: profile}, result, err)
+}
+
+func (w *Worker) finishJob(parent, runContext context.Context, run jobRun, result ai.DecisionResult, runErr error) {
+	if runErr != nil || !result.Accepted {
 		category := result.ErrorCategory
 		if category == "" {
 			category = "runner"
 		}
-		outcome := runnerOutcome(ctx, err, result.Accepted)
+		outcome := runnerOutcome(runContext, runErr, result.Accepted)
 		if result.ProviderData == nil {
 			result.ProviderData = map[string]any{}
 		}
 		result.ProviderData["runnerOutcome"] = outcome
-		logger.WarnContext(parent, "decision_runner_failed", "provider", profile.Provider, "runtime", profile.Runtime, "error_category", category, "runner_outcome", outcome, "duration_ms", time.Since(started).Milliseconds())
-		if reportErr := w.fail(parent, job.RequestID, category, result); reportErr != nil {
-			logger.ErrorContext(parent, "decision_failure_report_failed", "error", reportErr)
+		run.logger.WarnContext(parent, "decision_runner_failed", "provider", run.profile.Provider, "runtime", run.profile.Runtime, "error_category", category, "runner_outcome", outcome, "duration_ms", time.Since(run.started).Milliseconds())
+		if reportErr := w.fail(parent, run.requestID, category, result); reportErr != nil {
+			run.logger.ErrorContext(parent, "decision_failure_report_failed", "error", reportErr)
 		}
 	} else {
-		logger.InfoContext(parent, "decision_runner_completed", "provider", profile.Provider, "runtime", profile.Runtime, "duration_ms", time.Since(started).Milliseconds(), "input_tokens", result.Usage.InputTokens, "output_tokens", result.Usage.OutputTokens, "provider_requests", result.Usage.Requests)
-		if reportErr := w.reportUsage(parent, job.RequestID, result); reportErr != nil {
-			logger.ErrorContext(parent, "decision_usage_report_failed", "error", reportErr)
+		run.logger.InfoContext(parent, "decision_runner_completed", "provider", run.profile.Provider, "runtime", run.profile.Runtime, "duration_ms", time.Since(run.started).Milliseconds(), "input_tokens", result.Usage.InputTokens, "output_tokens", result.Usage.OutputTokens, "provider_requests", result.Usage.Requests)
+		if reportErr := w.reportUsage(parent, run.requestID, result); reportErr != nil {
+			run.logger.ErrorContext(parent, "decision_usage_report_failed", "error", reportErr)
 		}
+	}
+}
+
+func (w *Worker) reportJobFailure(ctx context.Context, logger *slog.Logger, started time.Time, requestID, category, outcome string, result ai.DecisionResult) {
+	logger.WarnContext(ctx, "decision_runner_failed", "error_category", category, "runner_outcome", outcome, "duration_ms", time.Since(started).Milliseconds())
+	if err := w.fail(ctx, requestID, category, result); err != nil {
+		logger.ErrorContext(ctx, "decision_failure_report_failed", "error", err)
 	}
 }
 
@@ -238,7 +249,7 @@ func (w *Worker) reportUsage(ctx context.Context, requestID string, result ai.De
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Authorization", "Bearer "+w.Secret)
+	request.Header.Set("Authorization", bearerPrefix+w.Secret)
 	response, err := w.Client.Do(request)
 	if err != nil {
 		return err
@@ -256,7 +267,7 @@ func (w *Worker) fail(ctx context.Context, requestID, category string, result ai
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Authorization", "Bearer "+w.Secret)
+	request.Header.Set("Authorization", bearerPrefix+w.Secret)
 	response, err := w.Client.Do(request)
 	if err != nil {
 		return err

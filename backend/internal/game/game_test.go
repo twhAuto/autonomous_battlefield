@@ -147,20 +147,7 @@ func TestProductionOccursOnlyAtDecisionWindows(t *testing.T) {
 	if match.TickDuration() != testScenario().TickDuration || match.State().Tick != 0 || match.Scenario().ID != testScenario().ID || len(match.FactionIDs()) != 2 {
 		t.Fatal("match metadata accessors returned unexpected values")
 	}
-	for tick := 1; tick < 10; tick++ {
-		if match.DecisionWindowDue() {
-			t.Fatalf("decision due before tick 10 at %d", tick)
-		}
-		transition, err := match.Advance()
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, faction := range transition.State.Factions {
-			if faction.BuildingsBuilt != 0 || faction.UnitsRecruited != 0 {
-				t.Fatalf("production at tick %d: %#v", tick, faction)
-			}
-		}
-	}
+	advanceBeforeProductionWindow(t, match, 10)
 	if !match.DecisionWindowDue() || match.DecisionTargetTick() != 10 {
 		t.Fatal("tick 10 decision was not due")
 	}
@@ -175,6 +162,29 @@ func TestProductionOccursOnlyAtDecisionWindows(t *testing.T) {
 	for _, faction := range transition.State.Factions {
 		if faction.BuildingsBuilt != 2 || faction.UnitsRecruited < 1 {
 			t.Fatalf("window production=%#v", faction)
+		}
+	}
+}
+
+func advanceBeforeProductionWindow(t *testing.T, match *Match, targetTick int) {
+	t.Helper()
+	for tick := 1; tick < targetTick; tick++ {
+		if match.DecisionWindowDue() {
+			t.Fatalf("decision due before tick %d at %d", targetTick, tick)
+		}
+		transition, err := match.Advance()
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertNoProduction(t, tick, transition.State.Factions)
+	}
+}
+
+func assertNoProduction(t *testing.T, tick int, factions []FactionState) {
+	t.Helper()
+	for _, faction := range factions {
+		if faction.BuildingsBuilt != 0 || faction.UnitsRecruited != 0 {
+			t.Fatalf("production at tick %d: %#v", tick, faction)
 		}
 	}
 }

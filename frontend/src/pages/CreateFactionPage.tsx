@@ -151,7 +151,7 @@ export function CreateFactionPage() {
                 <fieldset className="blueprint-fieldset">
                   <legend>Upgrades</legend>
                   {ruleset.upgrades.map((upgrade) => (
-                    <label className="upgrade-toggle" key={upgrade.id}>
+                    <label className="upgrade-toggle" key={upgrade.id} aria-label={`Enable upgrade ${upgrade.id}`}>
                       <input type="checkbox" checked={upgradeIds.includes(upgrade.id)} onChange={() => setUpgradeIds((current) => current.includes(upgrade.id) ? current.filter((id) => id !== upgrade.id) : [...current, upgrade.id])} />
                       <span><strong>Upgrade {upgrade.id}</strong><small>{upgrade.cost} points</small></span>
                     </label>

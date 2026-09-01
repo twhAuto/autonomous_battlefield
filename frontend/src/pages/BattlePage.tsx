@@ -23,6 +23,19 @@ const eventPollIntervalMs = 1000
 type ConnectionState = 'connecting' | 'live' | 'reconnecting' | 'settled' | 'error'
 type EventState = 'idle' | 'loading' | 'error'
 type BattleControlState = 'idle' | 'pausing' | 'resuming' | 'stopping' | 'error'
+type BattleControlAction = 'pause' | 'resume' | 'stop'
+
+const battleControlStates: Record<BattleControlAction, BattleControlState> = {
+  pause: 'pausing',
+  resume: 'resuming',
+  stop: 'stopping',
+}
+
+const battleControlRequests = {
+  pause: pauseBattle,
+  resume: resumeBattle,
+  stop: stopBattle,
+}
 
 export function BattlePage() {
   const { id = '' } = useParams()
@@ -51,11 +64,11 @@ export function BattlePage() {
   )
   const hasModelController = battle?.participants.some((participant) => participant.controller?.type === 'model') ?? false
 
-  const runBattleControl = useCallback(async (action: 'pause' | 'resume' | 'stop') => {
-    setControlState(action === 'pause' ? 'pausing' : action === 'resume' ? 'resuming' : 'stopping')
+  const runBattleControl = useCallback(async (action: BattleControlAction) => {
+    setControlState(battleControlStates[action])
     setControlMessage('')
     try {
-      const updated = action === 'pause' ? await pauseBattle(id) : action === 'resume' ? await resumeBattle(id) : await stopBattle(id)
+      const updated = await battleControlRequests[action](id)
       applyBattle(updated)
       setControlState('idle')
     } catch (error) {
@@ -178,7 +191,7 @@ function useDecisionHistory(id: string, battle: BattleRun | null) {
 }
 
 function latestDecision(decisions: DecisionHistory[], factionId: string) {
-  return decisions.filter((decision) => decision.factionId === factionId).at(-1)
+  return decisions.findLast((decision) => decision.factionId === factionId)
 }
 
 function controllerLabel(controller?: BattleRun['participants'][number]['controller']) {
@@ -191,9 +204,13 @@ function decisionLabel(decision?: DecisionHistory) {
   if (!decision) return 'awaiting window'
   if (decision.status === 'pending') return 'analyzing'
   if (decision.status === 'running') return 'MCP connected'
-  if (decision.status === 'accepted') return `plan accepted${decision.resolvedPlan?.name ? `: ${decision.resolvedPlan.name}` : ''}`
+  if (decision.status === 'accepted') {
+    const planName = decision.resolvedPlan?.name ? `: ${decision.resolvedPlan.name}` : ''
+    return `plan accepted${planName}`
+  }
   if (decision.status === 'fallback') return decision.fallbackSource === 'previous_plan' ? 'previous-plan fallback' : 'scripted fallback'
-  return `decision failed${decision.errorCategory ? `: ${decision.errorCategory}` : ''}`
+  const errorCategory = decision.errorCategory ? `: ${decision.errorCategory}` : ''
+  return `decision failed${errorCategory}`
 }
 
 function AIDecisionPanel({ decisions, participantNames, message, hasModelController }: Readonly<{ decisions: DecisionHistory[]; participantNames: Map<string, string>; message: string; hasModelController: boolean }>) {
@@ -539,17 +556,17 @@ function BattleControls({ battle, state, message, onControl }: Readonly<{
   battle: BattleRun
   state: BattleControlState
   message: string
-  onControl: (action: 'pause' | 'resume' | 'stop') => Promise<void>
+  onControl: (action: BattleControlAction) => Promise<void>
 }>) {
   const active = battle.status === 'queued' || battle.status === 'running'
   const busy = state === 'pausing' || state === 'resuming' || state === 'stopping'
   return (
     <div className="battle-controls">
-      <div role="group" aria-label="Battle controls">
+      <fieldset aria-label="Battle controls">
         <button type="button" aria-pressed={active && !battle.paused} disabled={!active || !battle.paused || busy} onClick={() => void onControl('resume')}>{state === 'resuming' ? 'RESUMING…' : 'PLAY'}</button>
         <button type="button" aria-pressed={active && battle.paused} disabled={!active || battle.paused || busy} onClick={() => void onControl('pause')}>{state === 'pausing' ? 'PAUSING…' : 'PAUSE'}</button>
         <button className="battle-control--stop" type="button" disabled={!active || busy} onClick={() => void onControl('stop')}>{state === 'stopping' ? 'STOPPING…' : 'STOP'}</button>
-      </div>
+      </fieldset>
       {message && <output role="alert">{message}</output>}
     </div>
   )

@@ -17,13 +17,9 @@ type OpenAI struct {
 }
 
 func (p *OpenAI) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.ModelTurnResult, error) {
-	tools := make([]map[string]any, 0, len(turn.Tools))
-	for _, tool := range turn.Tools {
-		var schema any
-		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
-			return ai.ModelTurnResult{}, err
-		}
-		tools = append(tools, map[string]any{"type": "function", "name": tool.Name, "description": tool.Description, "parameters": schema, "strict": true})
+	tools, err := openAITools(turn.Tools)
+	if err != nil {
+		return ai.ModelTurnResult{}, err
 	}
 	transcript := turn.SystemPrompt + "\n"
 	for _, message := range turn.Messages {
@@ -73,8 +69,32 @@ func (p *OpenAI) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	if err := json.NewDecoder(response.Body).Decode(&decoded); err != nil {
 		return ai.ModelTurnResult{}, err
 	}
-	result := ai.ModelTurnResult{Usage: ai.Usage{InputTokens: decoded.Usage.Input, OutputTokens: decoded.Usage.Output, Requests: 1}}
-	for _, item := range decoded.Output {
+	return openAIResult(decoded.Output, decoded.Usage.Input, decoded.Usage.Output)
+}
+
+func openAITools(definitions []ai.ToolDefinition) ([]map[string]any, error) {
+	tools := make([]map[string]any, 0, len(definitions))
+	for _, tool := range definitions {
+		var schema any
+		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
+			return nil, err
+		}
+		tools = append(tools, map[string]any{"type": "function", "name": tool.Name, "description": tool.Description, "parameters": schema, "strict": true})
+	}
+	return tools, nil
+}
+
+func openAIResult(output []struct {
+	Type      string `json:"type"`
+	CallID    string `json:"call_id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+	Content   []struct {
+		Type string `json:"type"`
+	} `json:"content"`
+}, inputTokens, outputTokens int64) (ai.ModelTurnResult, error) {
+	result := ai.ModelTurnResult{Usage: ai.Usage{InputTokens: inputTokens, OutputTokens: outputTokens, Requests: 1}}
+	for _, item := range output {
 		for _, content := range item.Content {
 			if content.Type == "refusal" {
 				return ai.ModelTurnResult{}, ErrRefusal

@@ -172,43 +172,13 @@ func (s *battleService) ListDecisionHistory(ctx context.Context, battleID string
 }
 
 func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInput) (*BattleRun, error) {
-	participants := input.Participants
-	if !battleUUIDPattern.MatchString(input.ID) || strings.TrimSpace(input.ScenarioID) == "" ||
-		len(participants) != 2 || participants[0].FactionID == participants[1].FactionID ||
-		!battleUUIDPattern.MatchString(participants[0].FactionID) || !battleUUIDPattern.MatchString(participants[1].FactionID) ||
-		input.TickCount == 0 || input.TickCount > s.maxTicks {
+	if !validCreateBattleInput(input, s.maxTicks) {
 		return nil, ErrInvalidBattle
 	}
 
-	var identities [2]FactionIdentity
-	controllers := make([]game.ControllerConfig, 2)
-	for index, participant := range participants {
-		factionID := participant.FactionID
-		selected := participant.Controller
-		switch selected.Type {
-		case ai.ControllerScripted:
-			if selected.ProfileID != "" {
-				return nil, ErrInvalidBattle
-			}
-			selected = game.ControllerConfig{Type: ai.ControllerScripted}
-		case ai.ControllerModel:
-			profile, err := s.profiles.Require(selected.ProfileID)
-			if err != nil {
-				return nil, fmt.Errorf("%w: %q", ErrModelProfileUnavailable, selected.ProfileID)
-			}
-			selected = game.ControllerConfig{Type: ai.ControllerModel, ProfileID: profile.ID, Provider: profile.Provider, Runtime: profile.Runtime, ModelIdentifier: profile.ModelLabel}
-		default:
-			return nil, ErrInvalidBattle
-		}
-		controllers[index] = selected
-		storedFaction, err := s.factions.GetFaction(ctx, factionID)
-		if errors.Is(err, factionservice.ErrFactionNotFound) {
-			return nil, fmt.Errorf("%w: %q", ErrBattleFactionMissing, factionID)
-		}
-		if err != nil {
-			return nil, err
-		}
-		identities[index] = FactionIdentity{ID: storedFaction.ID, Name: storedFaction.Name, RulesetID: storedFaction.RulesetID, Blueprint: game.CloneBlueprint(storedFaction.Blueprint)}
+	identities, controllers, err := s.resolveParticipants(ctx, input.Participants)
+	if err != nil {
+		return nil, err
 	}
 
 	resolved, digest, err := s.catalog.Resolve(input.ScenarioID, identities)
@@ -255,6 +225,53 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		RequestedTicks: input.TickCount,
 		Status:         "queued",
 	}, nil
+}
+
+func validCreateBattleInput(input CreateBattleInput, maxTicks uint64) bool {
+	participants := input.Participants
+	return battleUUIDPattern.MatchString(input.ID) && strings.TrimSpace(input.ScenarioID) != "" &&
+		len(participants) == 2 && participants[0].FactionID != participants[1].FactionID &&
+		battleUUIDPattern.MatchString(participants[0].FactionID) && battleUUIDPattern.MatchString(participants[1].FactionID) &&
+		input.TickCount > 0 && input.TickCount <= maxTicks
+}
+
+func (s *battleService) resolveParticipants(ctx context.Context, participants []ParticipantInput) ([2]FactionIdentity, [2]game.ControllerConfig, error) {
+	var identities [2]FactionIdentity
+	var controllers [2]game.ControllerConfig
+	for index, participant := range participants {
+		controller, err := s.resolveController(participant.Controller)
+		if err != nil {
+			return identities, controllers, err
+		}
+		storedFaction, err := s.factions.GetFaction(ctx, participant.FactionID)
+		if errors.Is(err, factionservice.ErrFactionNotFound) {
+			return identities, controllers, fmt.Errorf("%w: %q", ErrBattleFactionMissing, participant.FactionID)
+		}
+		if err != nil {
+			return identities, controllers, err
+		}
+		controllers[index] = controller
+		identities[index] = FactionIdentity{ID: storedFaction.ID, Name: storedFaction.Name, RulesetID: storedFaction.RulesetID, Blueprint: game.CloneBlueprint(storedFaction.Blueprint)}
+	}
+	return identities, controllers, nil
+}
+
+func (s *battleService) resolveController(selected game.ControllerConfig) (game.ControllerConfig, error) {
+	switch selected.Type {
+	case ai.ControllerScripted:
+		if selected.ProfileID != "" {
+			return game.ControllerConfig{}, ErrInvalidBattle
+		}
+		return game.ControllerConfig{Type: ai.ControllerScripted}, nil
+	case ai.ControllerModel:
+		profile, err := s.profiles.Require(selected.ProfileID)
+		if err != nil {
+			return game.ControllerConfig{}, fmt.Errorf("%w: %q", ErrModelProfileUnavailable, selected.ProfileID)
+		}
+		return game.ControllerConfig{Type: ai.ControllerModel, ProfileID: profile.ID, Provider: profile.Provider, Runtime: profile.Runtime, ModelIdentifier: profile.ModelLabel}, nil
+	default:
+		return game.ControllerConfig{}, ErrInvalidBattle
+	}
 }
 
 func (s *battleService) GetFactionView(ctx context.Context, battleID, factionID string) (game.View, error) {

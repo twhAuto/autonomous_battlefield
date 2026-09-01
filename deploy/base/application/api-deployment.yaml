@@ -40,6 +40,10 @@ spec:
           args:
             - -config
             - /etc/battlefield/config.yaml
+          envFrom:
+            - secretRef:
+                name: battlefield-auth
+                optional: true
           env:
             - name: DATABASE_URL
               valueFrom:

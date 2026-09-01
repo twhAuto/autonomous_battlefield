@@ -21,6 +21,13 @@ data:
       scenarioCatalogPath: /app/scenarios
       rulesetCatalogPath: /app/rulesets
       maxTicks: 10000
+    auth:
+      enabledEnvironmentVariable: BATTLEFIELD_AUTH_ENABLED
+      usernameEnvironmentVariable: BATTLEFIELD_ADMIN_USERNAME
+      passwordEnvironmentVariable: BATTLEFIELD_ADMIN_PASSWORD
+      sessionSecretEnvironmentVariable: BATTLEFIELD_SESSION_SECRET
+      cookieSecureEnvironmentVariable: BATTLEFIELD_AUTH_COOKIE_SECURE
+      sessionTTL: 12h
     engine:
       healthAddress: ":8081"
       pollInterval: 1s

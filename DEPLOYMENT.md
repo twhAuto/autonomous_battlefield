@@ -250,6 +250,26 @@ cp deploy/overlays/local/infrastructure/secret.env.example \
   deploy/overlays/local/infrastructure/secret.env
 ```
 
+The administrator login is optional. To enable it for the local cluster, copy
+the ignored authentication template, replace its password and signing-secret
+placeholders, and create the optional Secret before deploying the application:
+
+```bash
+cp deploy/overlays/local/infrastructure/auth-secret.env.example \
+  deploy/overlays/local/infrastructure/auth-secret.env
+kubectl --context kind-battlefield -n battlefield create secret generic battlefield-auth \
+  --from-env-file=deploy/overlays/local/infrastructure/auth-secret.env \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Set `BATTLEFIELD_AUTH_COOKIE_SECURE=false` for the checked-in loopback HTTP
+gateway and `true` before publishing the application through an HTTPS tunnel.
+The API deployment treats `battlefield-auth` as optional, so its absence keeps
+the existing unauthenticated local workflow. Production must enable the login,
+store credentials in a managed secret system, and share one signing secret
+across every API replica. The single-admin login does not replace Cloudflare
+Access or future player-level authorization.
+
 `ai-secret.env` is optional for local deployments. When it is absent, the
 deployment helper generates or reuses an internal MCP capability secret and
 sets both API model profiles unavailable, so scripted battles can be tested
@@ -662,6 +682,10 @@ image-loading and deployment targets later without changing the earlier gates.
   engine pod.
 - Keep `DATABASE_URL` out of Git, image layers, ConfigMaps, logs, and command
   examples containing real credentials.
+- Keep the administrator password and session-signing secret out of Git,
+  images, ConfigMaps, and command examples. Public HTTPS deployments must set
+  `BATTLEFIELD_AUTH_COOKIE_SECURE=true`; all API replicas must share the same
+  signing secret for stateless session validation.
 
 ## Scaling and reliability exercises
 

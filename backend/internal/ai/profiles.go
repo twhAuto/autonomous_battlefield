@@ -20,6 +20,8 @@ type profileRegistryPurpose uint8
 const (
 	profileExecutor profileRegistryPurpose = iota
 	profileCatalog
+	codexCLIProvider  = "codex-cli"
+	geminiCLIProvider = "gemini-cli"
 )
 
 func NewProfileRegistry(environment string, configured []ModelProfile) *ProfileRegistry {
@@ -94,63 +96,76 @@ func evaluateProfile(environment string, profile ModelProfile, purpose profileRe
 		return profile
 	}
 	if environment == "cluster" && profile.Scope == "local" {
-		if purpose != profileCatalog || !strings.EqualFold(strings.TrimSpace(os.Getenv(profile.AvailabilityEnvironmentVariable)), "true") {
-			profile.UnavailableReason = "host CLI agent is not connected"
-			return profile
-		}
-		if profile.Runtime != "cli" || (profile.Provider != "codex-cli" && profile.Provider != "gemini-cli") || strings.TrimSpace(profile.SupportedVersionPrefix) == "" {
-			profile.UnavailableReason = "invalid external CLI profile configuration"
-			return profile
-		}
-		if profile.ModelLabel == "" {
-			profile.ModelLabel = strings.TrimSuffix(profile.Provider, "-cli") + " subscription (host)"
-		}
-		profile.Available = true
-		return profile
+		return evaluateExternalCLIProfile(profile, purpose)
 	}
 	if profile.Runtime == "api" {
-		if profile.Provider != "openai" && profile.Provider != "gemini" {
-			profile.UnavailableReason = "unsupported API provider"
-			return profile
-		}
-		credential := strings.TrimSpace(os.Getenv(profile.CredentialEnvironmentVariable))
-		model := strings.TrimSpace(os.Getenv(profile.ModelEnvironmentVariable))
-		profile.ModelLabel = model
-		if environment == "cluster" && profile.AvailabilityEnvironmentVariable != "" && !strings.EqualFold(strings.TrimSpace(os.Getenv(profile.AvailabilityEnvironmentVariable)), "true") {
-			profile.UnavailableReason = "provider credentials are not configured"
-			return profile
-		}
-		if environment != "cluster" && (credential == "" || model == "") {
-			profile.UnavailableReason = "provider credentials or model are not configured"
-			return profile
-		}
-		if environment == "cluster" && profile.ModelLabel == "" {
-			profile.ModelLabel = "operator configured"
-		}
-	} else {
-		binary := map[string]string{"codex-cli": "codex", "gemini-cli": "gemini"}[profile.Provider]
-		if binary == "" {
-			profile.UnavailableReason = "unsupported CLI provider"
-			return profile
-		}
-		if _, err := exec.LookPath(binary); err != nil {
-			profile.UnavailableReason = binary + " CLI is not installed"
-			return profile
-		}
-		version, err := exec.Command(binary, "--version").Output()
-		if err != nil || profile.SupportedVersionPrefix == "" || !strings.HasPrefix(strings.TrimSpace(string(version)), profile.SupportedVersionPrefix) {
-			profile.UnavailableReason = binary + " CLI version is not supported"
-			return profile
-		}
-		home, _ := os.UserHomeDir()
-		authPath := map[string]string{"codex-cli": filepath.Join(home, ".codex", "auth.json"), "gemini-cli": filepath.Join(home, ".gemini", "oauth_creds.json")}[profile.Provider]
-		if _, err := os.Stat(authPath); err != nil {
-			profile.UnavailableReason = binary + " CLI is not authenticated"
-			return profile
-		}
-		if profile.ModelLabel == "" {
-			profile.ModelLabel = binary + " subscription"
-		}
+		return evaluateAPIProfile(environment, profile)
+	}
+	return evaluateLocalCLIProfile(profile)
+}
+
+func evaluateExternalCLIProfile(profile ModelProfile, purpose profileRegistryPurpose) ModelProfile {
+	if purpose != profileCatalog || !strings.EqualFold(strings.TrimSpace(os.Getenv(profile.AvailabilityEnvironmentVariable)), "true") {
+		profile.UnavailableReason = "host CLI agent is not connected"
+		return profile
+	}
+	if profile.Runtime != "cli" || (profile.Provider != codexCLIProvider && profile.Provider != geminiCLIProvider) || strings.TrimSpace(profile.SupportedVersionPrefix) == "" {
+		profile.UnavailableReason = "invalid external CLI profile configuration"
+		return profile
+	}
+	if profile.ModelLabel == "" {
+		profile.ModelLabel = strings.TrimSuffix(profile.Provider, "-cli") + " subscription (host)"
+	}
+	profile.Available = true
+	return profile
+}
+
+func evaluateAPIProfile(environment string, profile ModelProfile) ModelProfile {
+	if profile.Provider != "openai" && profile.Provider != "gemini" {
+		profile.UnavailableReason = "unsupported API provider"
+		return profile
+	}
+	credential := strings.TrimSpace(os.Getenv(profile.CredentialEnvironmentVariable))
+	model := strings.TrimSpace(os.Getenv(profile.ModelEnvironmentVariable))
+	profile.ModelLabel = model
+	if environment == "cluster" && profile.AvailabilityEnvironmentVariable != "" && !strings.EqualFold(strings.TrimSpace(os.Getenv(profile.AvailabilityEnvironmentVariable)), "true") {
+		profile.UnavailableReason = "provider credentials are not configured"
+		return profile
+	}
+	if environment != "cluster" && (credential == "" || model == "") {
+		profile.UnavailableReason = "provider credentials or model are not configured"
+		return profile
+	}
+	if environment == "cluster" && profile.ModelLabel == "" {
+		profile.ModelLabel = "operator configured"
+	}
+	profile.Available = true
+	return profile
+}
+
+func evaluateLocalCLIProfile(profile ModelProfile) ModelProfile {
+	binary := map[string]string{codexCLIProvider: "codex", geminiCLIProvider: "gemini"}[profile.Provider]
+	if binary == "" {
+		profile.UnavailableReason = "unsupported CLI provider"
+		return profile
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		profile.UnavailableReason = binary + " CLI is not installed"
+		return profile
+	}
+	version, err := exec.Command(binary, "--version").Output()
+	if err != nil || profile.SupportedVersionPrefix == "" || !strings.HasPrefix(strings.TrimSpace(string(version)), profile.SupportedVersionPrefix) {
+		profile.UnavailableReason = binary + " CLI version is not supported"
+		return profile
+	}
+	home, _ := os.UserHomeDir()
+	authPath := map[string]string{codexCLIProvider: filepath.Join(home, ".codex", "auth.json"), geminiCLIProvider: filepath.Join(home, ".gemini", "oauth_creds.json")}[profile.Provider]
+	if _, err := os.Stat(authPath); err != nil {
+		profile.UnavailableReason = binary + " CLI is not authenticated"
+		return profile
+	}
+	if profile.ModelLabel == "" {
+		profile.ModelLabel = binary + " subscription"
 	}
 	profile.Available = true
 	return profile

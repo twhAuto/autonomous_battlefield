@@ -2,6 +2,7 @@ backend/__debug_bin*
 backend/cmd/server/__debug_bin*
 backend/coverage.out
 backend/coverage-total.txt
+backend/.env
 frontend/node_modules/
 frontend/dist/
 frontend/coverage/
@@ -11,3 +12,4 @@ frontend/*.tsbuildinfo
 .jenkins-coverage-check.md
 deploy/overlays/local/infrastructure/secret.env
 deploy/overlays/local/infrastructure/ai-secret.env
+deploy/overlays/local/infrastructure/auth-secret.env

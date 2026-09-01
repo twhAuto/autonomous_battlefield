@@ -476,44 +476,54 @@ func (r *decisionBattleRepository) RecordDecisionUsage(context.Context, string, 
 func TestDecisionWindowResolvesScriptedAndModelFallback(t *testing.T) {
 	for _, model := range []bool{false, true} {
 		t.Run(map[bool]string{false: "scripted", true: "model"}[model], func(t *testing.T) {
-			job := testJob(20)
-			job.Scenario.Ruleset.Buildings.CastleHealth = 100000
-			for index := range job.Scenario.Factions {
-				job.Scenario.Factions[index].Controller = battle.ControllerConfig{Type: ai.ControllerScripted}
-				if model && index == 0 {
-					job.Scenario.Factions[index].Controller = battle.ControllerConfig{Type: ai.ControllerModel, ProfileID: "profile", Provider: "openai", Runtime: "api"}
-				}
-			}
-			simulation, err := battle.NewMatch(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for range 9 {
-				if _, err := simulation.Advance(); err != nil {
-					t.Fatal(err)
-				}
-			}
-			repository := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}, failModels: model}
-			var logs bytes.Buffer
-			worker, _ := NewWithLogger(repository, testWorkerConfig(), slog.New(slog.NewJSONHandler(&logs, nil)))
-			plans, err := worker.resolveDecisionWindow(context.Background(), job.Lease, simulation)
-			if err != nil || len(plans) != 2 {
-				t.Fatalf("plans=%#v err=%v", plans, err)
-			}
-			if _, err := simulation.AdvanceWithPlans(plans); err != nil {
-				t.Fatal(err)
-			}
-			if simulation.State().Tick != 10 {
-				t.Fatal(simulation.State().Tick)
-			}
-			for _, expected := range []string{`"msg":"decision_window_started"`, `"msg":"decision_prepared"`, `"msg":"decision_resolved"`, `"msg":"decision_window_completed"`} {
-				if !strings.Contains(logs.String(), expected) {
-					t.Fatalf("logs do not contain %s: %s", expected, logs.String())
-				}
-			}
-			if model && (!strings.Contains(logs.String(), `"decision_status":"fallback"`) || !strings.Contains(logs.String(), `"error_category":"timeout"`)) {
-				t.Fatalf("fallback fields missing: %s", logs.String())
-			}
+			runDecisionWindowFallbackCase(t, model)
 		})
+	}
+}
+
+func runDecisionWindowFallbackCase(t *testing.T, model bool) {
+	t.Helper()
+	job := testJob(20)
+	job.Scenario.Ruleset.Buildings.CastleHealth = 100000
+	for index := range job.Scenario.Factions {
+		job.Scenario.Factions[index].Controller = battle.ControllerConfig{Type: ai.ControllerScripted}
+		if model && index == 0 {
+			job.Scenario.Factions[index].Controller = battle.ControllerConfig{Type: ai.ControllerModel, ProfileID: "profile", Provider: "openai", Runtime: "api"}
+		}
+	}
+	simulation, err := battle.NewMatch(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 9 {
+		if _, err := simulation.Advance(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repository := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}, failModels: model}
+	var logs bytes.Buffer
+	worker, _ := NewWithLogger(repository, testWorkerConfig(), slog.New(slog.NewJSONHandler(&logs, nil)))
+	plans, err := worker.resolveDecisionWindow(context.Background(), job.Lease, simulation)
+	if err != nil || len(plans) != 2 {
+		t.Fatalf("plans=%#v err=%v", plans, err)
+	}
+	if _, err := simulation.AdvanceWithPlans(plans); err != nil {
+		t.Fatal(err)
+	}
+	if simulation.State().Tick != 10 {
+		t.Fatal(simulation.State().Tick)
+	}
+	assertDecisionLogs(t, logs.String(), model)
+}
+
+func assertDecisionLogs(t *testing.T, logs string, model bool) {
+	t.Helper()
+	for _, expected := range []string{`"msg":"decision_window_started"`, `"msg":"decision_prepared"`, `"msg":"decision_resolved"`, `"msg":"decision_window_completed"`} {
+		if !strings.Contains(logs, expected) {
+			t.Fatalf("logs do not contain %s: %s", expected, logs)
+		}
+	}
+	if model && (!strings.Contains(logs, `"decision_status":"fallback"`) || !strings.Contains(logs, `"error_category":"timeout"`)) {
+		t.Fatalf("fallback fields missing: %s", logs)
 	}
 }
