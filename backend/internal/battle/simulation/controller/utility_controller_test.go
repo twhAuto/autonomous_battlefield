@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -374,5 +375,53 @@ func TestCloneObservation(t *testing.T) {
 	copy.Candidates[0].ID = "changed"
 	if reflect.DeepEqual(original, copy) {
 		t.Fatal("cloneObservation() shares candidate storage with its input")
+	}
+}
+
+func TestValidatePlanProposalProductionFields(t *testing.T) {
+	valid := PlanProposal{
+		Name:                   "balanced",
+		ActionWeights:          map[string]int64{"attack": 1200},
+		ReserveGold:            25,
+		SpendOrder:             []string{"construction", "recruitment"},
+		ConstructionPriorities: []Coordinate{{X: 1, Y: 2}},
+		RecruitmentPriorities:  []string{"vanguard", "ranger"},
+	}
+	if err := ValidatePlanProposal(valid, []string{"attack", "defend"}); err != nil {
+		t.Fatalf("valid production plan rejected: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		proposal    PlanProposal
+		actionKinds []string
+	}{
+		{name: "no action kinds", proposal: valid},
+		{name: "empty action kind", proposal: valid, actionKinds: []string{""}},
+		{name: "duplicate action kind", proposal: valid, actionKinds: []string{"attack", "attack"}},
+		{name: "negative reserve", proposal: PlanProposal{Name: "bad", ReserveGold: -1}, actionKinds: []string{"attack"}},
+		{name: "unknown spend kind", proposal: PlanProposal{Name: "bad", SpendOrder: []string{"trade"}}, actionKinds: []string{"attack"}},
+		{name: "duplicate spend kind", proposal: PlanProposal{Name: "bad", SpendOrder: []string{"construction", "construction"}}, actionKinds: []string{"attack"}},
+		{name: "empty recruitment priority", proposal: PlanProposal{Name: "bad", RecruitmentPriorities: []string{""}}, actionKinds: []string{"attack"}},
+		{name: "duplicate recruitment priority", proposal: PlanProposal{Name: "bad", RecruitmentPriorities: []string{"ranger", "ranger"}}, actionKinds: []string{"attack"}},
+		{name: "duplicate construction priority", proposal: PlanProposal{Name: "bad", ConstructionPriorities: []Coordinate{{X: 1, Y: 2}, {X: 1, Y: 2}}}, actionKinds: []string{"attack"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ValidatePlanProposal(tt.proposal, tt.actionKinds); !errors.Is(err, ErrInvalidPlan) {
+				t.Fatalf("error = %v, want ErrInvalidPlan", err)
+			}
+		})
+	}
+}
+
+func TestValidatePlanProposalBoundsObservableRationale(t *testing.T) {
+	valid := PlanProposal{Name: "hold", Rationale: "Enemy pressure is high, so preserve gold for reinforcements."}
+	if err := ValidatePlanProposal(valid, []string{"attack"}); err != nil {
+		t.Fatalf("valid rationale rejected: %v", err)
+	}
+	invalid := PlanProposal{Name: "hold", Rationale: strings.Repeat("x", maxRationaleCharacters+1)}
+	if err := ValidatePlanProposal(invalid, []string{"attack"}); !errors.Is(err, ErrInvalidPlan) {
+		t.Fatalf("oversized rationale error = %v", err)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 // UtilityController ranks engine-provided candidates using a current strategy
@@ -107,11 +108,15 @@ func (c *UtilityController) SubmitPlan(requestID string, proposal PlanProposal) 
 	plan := StrategyPlan{
 		ID:             request.ID,
 		Name:           strings.TrimSpace(proposal.Name),
+		Rationale:      strings.TrimSpace(proposal.Rationale),
 		ObservedTick:   request.Observation.Tick,
 		ValidFromTick:  request.ApplyAtTick,
 		ValidUntilTick: request.PlanValidUntilTick,
 		ActionWeights:  cloneMap(proposal.ActionWeights),
 		TargetBonuses:  cloneMap(proposal.TargetBonuses),
+		ReserveGold:    proposal.ReserveGold, SpendOrder: append([]string(nil), proposal.SpendOrder...),
+		ConstructionPriorities: append([]Coordinate(nil), proposal.ConstructionPriorities...),
+		RecruitmentPriorities:  append([]string(nil), proposal.RecruitmentPriorities...),
 	}
 	c.plans = append(c.plans, plan)
 	sort.Slice(c.plans, func(i, j int) bool {
@@ -146,9 +151,11 @@ func (c *UtilityController) planForTick(tick Tick) (PlanProposal, string, bool) 
 		plan := c.plans[i]
 		if plan.ValidFromTick <= tick && tick < plan.ValidUntilTick {
 			return PlanProposal{
-				Name:          plan.Name,
-				ActionWeights: plan.ActionWeights,
-				TargetBonuses: plan.TargetBonuses,
+				Name: plan.Name, Rationale: plan.Rationale,
+				ActionWeights: plan.ActionWeights, TargetBonuses: plan.TargetBonuses,
+				ReserveGold: plan.ReserveGold, SpendOrder: append([]string(nil), plan.SpendOrder...),
+				ConstructionPriorities: append([]Coordinate(nil), plan.ConstructionPriorities...),
+				RecruitmentPriorities:  append([]string(nil), plan.RecruitmentPriorities...),
 			}, plan.ID, false
 		}
 	}
@@ -298,6 +305,9 @@ func validateProposal(proposal PlanProposal, actionKinds map[string]struct{}) er
 	if strings.TrimSpace(proposal.Name) == "" {
 		return fmt.Errorf("%w: name is required", ErrInvalidPlan)
 	}
+	if utf8.RuneCountInString(strings.TrimSpace(proposal.Rationale)) > maxRationaleCharacters {
+		return fmt.Errorf("%w: rationale exceeds %d characters", ErrInvalidPlan, maxRationaleCharacters)
+	}
 	for kind, weight := range proposal.ActionWeights {
 		if _, ok := actionKinds[kind]; !ok {
 			return fmt.Errorf("%w: unsupported action kind %q", ErrInvalidPlan, kind)
@@ -313,6 +323,33 @@ func validateProposal(proposal PlanProposal, actionKinds map[string]struct{}) er
 		if bonus < -maxTargetBonus || bonus > maxTargetBonus {
 			return fmt.Errorf("%w: target bonus for %q is outside [%d, %d]", ErrInvalidPlan, target, -maxTargetBonus, maxTargetBonus)
 		}
+	}
+	if proposal.ReserveGold < 0 {
+		return fmt.Errorf("%w: reserve gold cannot be negative", ErrInvalidPlan)
+	}
+	seenSpend := make(map[string]bool, len(proposal.SpendOrder))
+	for _, kind := range proposal.SpendOrder {
+		if kind != "construction" && kind != "recruitment" {
+			return fmt.Errorf("%w: unsupported spend kind %q", ErrInvalidPlan, kind)
+		}
+		if seenSpend[kind] {
+			return fmt.Errorf("%w: duplicate spend kind %q", ErrInvalidPlan, kind)
+		}
+		seenSpend[kind] = true
+	}
+	seenRecruitment := make(map[string]bool, len(proposal.RecruitmentPriorities))
+	for _, unitType := range proposal.RecruitmentPriorities {
+		if strings.TrimSpace(unitType) == "" || seenRecruitment[unitType] {
+			return fmt.Errorf("%w: recruitment priorities must be unique and non-empty", ErrInvalidPlan)
+		}
+		seenRecruitment[unitType] = true
+	}
+	seenSites := make(map[Coordinate]bool, len(proposal.ConstructionPriorities))
+	for _, site := range proposal.ConstructionPriorities {
+		if seenSites[site] {
+			return fmt.Errorf("%w: construction priorities must be unique", ErrInvalidPlan)
+		}
+		seenSites[site] = true
 	}
 	return nil
 }
@@ -350,15 +387,19 @@ func cloneConfig(config Config) Config {
 
 func cloneProposal(proposal PlanProposal) PlanProposal {
 	return PlanProposal{
-		Name:          proposal.Name,
-		ActionWeights: cloneMap(proposal.ActionWeights),
-		TargetBonuses: cloneMap(proposal.TargetBonuses),
+		Name: proposal.Name, Rationale: proposal.Rationale, ActionWeights: cloneMap(proposal.ActionWeights), TargetBonuses: cloneMap(proposal.TargetBonuses),
+		ReserveGold: proposal.ReserveGold, SpendOrder: append([]string(nil), proposal.SpendOrder...),
+		ConstructionPriorities: append([]Coordinate(nil), proposal.ConstructionPriorities...),
+		RecruitmentPriorities:  append([]string(nil), proposal.RecruitmentPriorities...),
 	}
 }
 
 func clonePlan(plan StrategyPlan) StrategyPlan {
 	plan.ActionWeights = cloneMap(plan.ActionWeights)
 	plan.TargetBonuses = cloneMap(plan.TargetBonuses)
+	plan.SpendOrder = append([]string(nil), plan.SpendOrder...)
+	plan.ConstructionPriorities = append([]Coordinate(nil), plan.ConstructionPriorities...)
+	plan.RecruitmentPriorities = append([]string(nil), plan.RecruitmentPriorities...)
 	return plan
 }
 

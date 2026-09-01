@@ -29,6 +29,11 @@ kind_deploy_validate_inputs() {
     return 1
   fi
 
+  if [[ "${force_restart}" != "0" && "${force_restart}" != "1" ]]; then
+    echo "FORCE_RESTART must be either 0 or 1." >&2
+    return 1
+  fi
+
   if [[ ! "${rollout_timeout}" =~ ^[1-9][0-9]*s$ ]]; then
     echo "ROLLOUT_TIMEOUT must be a positive number of seconds such as 120s." >&2
     return 1
@@ -102,6 +107,18 @@ kind_deploy_capture_current_images() {
       -o jsonpath='{.spec.template.spec.containers[?(@.name=="engine")].image}' \
       2>/dev/null || true
   )"
+  current_agent_image="$(
+    kind_deploy_kube get deployment/battlefield-agent \
+      --namespace "${namespace}" \
+      -o jsonpath='{.spec.template.spec.containers[?(@.name=="agent")].image}' \
+      2>/dev/null || true
+  )"
+  current_mcp_image="$(
+    kind_deploy_kube get deployment/battlefield-mcp \
+      --namespace "${namespace}" \
+      -o jsonpath='{.spec.template.spec.containers[?(@.name=="mcp")].image}' \
+      2>/dev/null || true
+  )"
   current_frontend_image="$(
     kind_deploy_kube get deployment/battlefield-frontend \
       --namespace "${namespace}" \
@@ -120,6 +137,8 @@ kind_deploy_resolve_images() {
     && { deployment_component_selected application || deployment_component_selected migration; }; then
     if [[ -z "${current_backend_image}" \
       || "${current_backend_image}" != "${current_engine_image}" \
+      || "${current_backend_image}" != "${current_agent_image}" \
+      || "${current_backend_image}" != "${current_mcp_image}" \
       || "${current_backend_image}" == *@sha256:* \
       || "${current_backend_image}" != *:* ]]; then
       echo "Cannot preserve the current backend image; include backend in DEPLOY_COMPONENTS." >&2
@@ -161,6 +180,67 @@ kind_deploy_validate_artifacts() {
     echo "Copy secret.env.example to secret.env before deploying." >&2
     return 1
   fi
+  if deployment_component_selected infrastructure && [[ ! -f "${ai_secret_file}" ]]; then
+    for command in base64 od tr; do
+      kind_deploy_require_command "${command}"
+    done
+  fi
+}
+
+kind_deploy_prepare_database_secret() {
+  local target_file="$1"
+  local database_url=""
+  local mcp_database_url=""
+  local line
+
+  cp "${secret_file}" "${target_file}"
+  while IFS= read -r line; do
+    case "${line}" in
+      DATABASE_URL=*) database_url="${line#DATABASE_URL=}" ;;
+      MCP_DATABASE_URL=*) mcp_database_url="${line#MCP_DATABASE_URL=}" ;;
+    esac
+  done <"${target_file}"
+
+  if [[ -z "${mcp_database_url}" ]]; then
+    if [[ -z "${database_url}" ]]; then
+      echo "DATABASE_URL must be set in ${secret_file}." >&2
+      return 1
+    fi
+    printf '\nMCP_DATABASE_URL=%s\n' "${database_url}" >>"${target_file}"
+    echo "No MCP_DATABASE_URL supplied; reusing DATABASE_URL for this local deployment."
+  fi
+  chmod 600 "${target_file}"
+}
+
+kind_deploy_prepare_ai_secret() {
+  local target_file="$1"
+  local capability_secret=""
+  local encoded_secret=""
+
+  if [[ -f "${ai_secret_file}" ]]; then
+    cp "${ai_secret_file}" "${target_file}"
+    chmod 600 "${target_file}"
+    return
+  fi
+
+  encoded_secret="$(kind_deploy_kube get secret battlefield-ai \
+    --namespace "${namespace}" \
+    -o 'jsonpath={.data.BATTLEFIELD_MCP_CAPABILITY_SECRET}' 2>/dev/null || true)"
+  if [[ -n "${encoded_secret}" ]]; then
+    capability_secret="$(printf '%s' "${encoded_secret}" | base64 --decode)"
+  fi
+  if [[ -z "${capability_secret}" ]]; then
+    capability_secret="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+  fi
+
+  {
+    printf 'BATTLEFIELD_MCP_CAPABILITY_SECRET=%s\n' "${capability_secret}"
+    printf 'OPENAI_API_KEY=\nOPENAI_MODEL=\nOPENAI_PROFILE_AVAILABLE=false\n'
+    printf 'GEMINI_API_KEY=\nGEMINI_MODEL=\nGEMINI_PROFILE_AVAILABLE=false\n'
+    printf 'CODEX_CLI_PROFILE_AVAILABLE=false\nGEMINI_CLI_PROFILE_AVAILABLE=false\n'
+  } >"${target_file}"
+  chmod 600 "${target_file}"
+  echo "No AI secret file supplied; using keyless scripted-only mode."
 }
 
 kind_deploy_prepare_overlays() {
@@ -187,8 +267,10 @@ kind_deploy_prepare_overlays() {
     "${runtime_dir}/deploy/overlays/local/rollback-application"
 
   if deployment_component_selected infrastructure; then
-    cp "${secret_file}" "${runtime_dir}/deploy/overlays/local/infrastructure/secret.env"
-    chmod 600 "${runtime_dir}/deploy/overlays/local/infrastructure/secret.env"
+    kind_deploy_prepare_database_secret \
+      "${runtime_dir}/deploy/overlays/local/infrastructure/secret.env"
+    kind_deploy_prepare_ai_secret \
+      "${runtime_dir}/deploy/overlays/local/infrastructure/ai-secret.env"
   fi
 
   rollback_overlay="${runtime_dir}/deploy/overlays/local/rollback-application"
@@ -262,6 +344,8 @@ kind_deploy_application() {
 
   if [[ -n "${current_backend_image}" \
     && "${current_backend_image}" == "${current_engine_image}" \
+    && "${current_backend_image}" == "${current_agent_image}" \
+    && "${current_backend_image}" == "${current_mcp_image}" \
     && -n "${current_frontend_image}" \
     && "${current_backend_image}" != *@sha256:* \
     && "${current_frontend_image}" != *@sha256:* \
@@ -285,7 +369,7 @@ EOF
     rollback_overlay_ready=1
   fi
 
-  for deployment in battlefield-api battlefield-engine battlefield-frontend; do
+  for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-mcp battlefield-frontend; do
     previous_revisions["${deployment}"]="$(
       kind_deploy_kube get "deployment/${deployment}" \
         --namespace "${namespace}" \
@@ -297,7 +381,17 @@ EOF
   application_update_started=1
   kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/application"
 
-  for deployment in battlefield-api battlefield-engine battlefield-frontend; do
+  if [[ "${force_restart}" == "1" ]]; then
+    kind_deploy_kube rollout restart \
+      deployment/battlefield-api \
+      deployment/battlefield-engine \
+      deployment/battlefield-agent \
+      deployment/battlefield-mcp \
+      deployment/battlefield-frontend \
+      --namespace "${namespace}"
+  fi
+
+  for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-mcp battlefield-frontend; do
     kind_deploy_kube rollout status "deployment/${deployment}" \
       --namespace "${namespace}" \
       --timeout="${rollout_timeout}"
@@ -358,7 +452,7 @@ kind_deploy_rollback_application() {
       return 1
     fi
 
-    for deployment in battlefield-api battlefield-engine battlefield-frontend; do
+    for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-mcp battlefield-frontend; do
       if ! kind_deploy_kube rollout status "deployment/${deployment}" \
         --namespace "${namespace}" \
         --timeout="${rollout_timeout}"; then
@@ -369,7 +463,7 @@ kind_deploy_rollback_application() {
     return "${rollback_failed}"
   fi
 
-  for deployment in battlefield-api battlefield-engine battlefield-frontend; do
+  for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-mcp battlefield-frontend; do
     local previous_revision="${previous_revisions[${deployment}]:-}"
     local current_revision
     current_revision="$(
@@ -390,7 +484,7 @@ kind_deploy_rollback_application() {
   done
 
   if [[ "${rollback_started}" == "1" ]]; then
-    for deployment in battlefield-api battlefield-engine battlefield-frontend; do
+    for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-mcp battlefield-frontend; do
       if ! kind_deploy_kube rollout status "deployment/${deployment}" \
         --namespace "${namespace}" \
         --timeout="${rollout_timeout}"; then

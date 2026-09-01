@@ -121,3 +121,22 @@ export async function createFaction(
     response.status,
   )
 }
+
+export async function deleteFaction(id: string): Promise<void> {
+	let response: Response
+	try {
+		response = await fetch(`${API_URL}/v1/factions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+	} catch {
+		throw new FactionApiError(
+			'The command post is unreachable. Check that the battlefield server is running.',
+		)
+	}
+	if (response.ok) return
+	if (response.status === 404) {
+		throw new FactionApiError('That faction no longer exists.', response.status)
+	}
+	if (response.status === 400) {
+		throw new FactionApiError('The faction identifier is invalid.', response.status)
+	}
+	throw new FactionApiError('The faction could not be deleted. Please try again.', response.status)
+}

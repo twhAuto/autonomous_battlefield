@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation/controller"
 	battle "github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
@@ -85,6 +86,21 @@ func TestNewWorkerRejectsInvalidConfiguration(t *testing.T) {
 
 	if _, err := NewWithLogger(&fakeBattleRepository{}, valid, nil); err != nil {
 		t.Fatalf("NewWithLogger() rejected a nil logger: %v", err)
+	}
+}
+
+func TestWorkerWaitsWhilePausedAndHeartbeatsLease(t *testing.T) {
+	repository := &fakeBattleRepository{pausedChecks: 2}
+	config := testWorkerConfig()
+	config.HeartbeatInterval = time.Millisecond
+	config.LeaseDuration = 10 * time.Millisecond
+	worker, err := New(repository, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pausedFor, err := worker.waitWhilePaused(context.Background(), BattleLease{BattleID: "battle-1", Attempt: 1, Owner: "worker-1"})
+	if err != nil || pausedFor <= 0 || repository.heartbeats == 0 {
+		t.Fatalf("pausedFor=%v heartbeats=%d err=%v", pausedFor, repository.heartbeats, err)
 	}
 }
 
@@ -287,6 +303,7 @@ type fakeBattleRepository struct {
 	failErr      error
 	failedCode   string
 	heartbeats   int
+	pausedChecks int
 }
 
 var errWorkerRepository = errors.New("repository failure")
@@ -330,6 +347,14 @@ func (r *fakeBattleRepository) HeartbeatBattle(context.Context, BattleLease, tim
 	return r.heartbeatErr
 }
 
+func (r *fakeBattleRepository) BattlePaused(context.Context, BattleLease) (bool, error) {
+	if r.pausedChecks > 0 {
+		r.pausedChecks--
+		return true, nil
+	}
+	return false, nil
+}
+
 func (r *fakeBattleRepository) RequeueBattle(context.Context, BattleLease) error {
 	if r.requeueErr != nil {
 		return r.requeueErr
@@ -360,4 +385,135 @@ func testJob(maxTicks uint64) *BattleJob {
 		},
 	}
 	return &BattleJob{Lease: BattleLease{BattleID: "battle-1", Attempt: 1, Owner: "worker-1"}, Scenario: scenario, RequestedTicks: maxTicks}
+}
+
+type decisionBattleRepository struct {
+	*fakeBattleRepository
+	records            map[string]ai.DecisionRecord
+	failModels         bool
+	modelErrorCategory string
+}
+
+func (r *decisionBattleRepository) CreateOrReuseDecision(_ context.Context, p ai.CreateDecisionParams) (ai.DecisionRecord, error) {
+	record := ai.DecisionRecord{ID: p.ID, BattleID: p.BattleID, Attempt: p.Attempt, FactionID: p.FactionID, TargetTick: p.TargetTick, Version: 1, Status: "pending", ControllerType: p.ControllerType, ProfileID: p.ProfileID, Provider: p.Provider, Runtime: p.Runtime, Observation: p.Observation, CreatedAt: time.Now()}
+	if p.ControllerType == ai.ControllerModel && r.failModels {
+		record.Status = "failed"
+		record.ErrorCategory = r.modelErrorCategory
+	}
+	r.records[record.ID] = record
+	return record, nil
+}
+
+func TestDecisionWindowStopsWhenBattleWasStopped(t *testing.T) {
+	job := testJob(20)
+	for index := range job.Scenario.Factions {
+		job.Scenario.Factions[index].Controller = battle.ControllerConfig{Type: ai.ControllerScripted}
+	}
+	job.Scenario.Factions[0].Controller = battle.ControllerConfig{Type: ai.ControllerModel, ProfileID: "profile", Provider: "codex-cli", Runtime: "cli"}
+	simulation, err := battle.NewMatch(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 9 {
+		if _, err := simulation.Advance(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repository := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}, failModels: true, modelErrorCategory: "battle_stopped"}
+	worker, _ := New(repository, testWorkerConfig())
+	if _, err := worker.resolveDecisionWindow(context.Background(), job.Lease, simulation); !errors.Is(err, ErrBattleLeaseLost) {
+		t.Fatalf("error = %v, want ErrBattleLeaseLost", err)
+	}
+	for _, record := range repository.records {
+		if record.ControllerType == ai.ControllerModel && record.Status != "failed" {
+			t.Fatalf("stopped decision was changed: %#v", record)
+		}
+	}
+}
+func (r *decisionBattleRepository) GetDecision(_ context.Context, id string) (ai.DecisionRecord, error) {
+	return r.records[id], nil
+}
+func (r *decisionBattleRepository) ListWindowDecisions(_ context.Context, _ string, _ int, target uint64) ([]ai.DecisionRecord, error) {
+	values := []ai.DecisionRecord{}
+	for _, record := range r.records {
+		if record.TargetTick == target {
+			values = append(values, record)
+		}
+	}
+	return values, nil
+}
+func (r *decisionBattleRepository) SubmitDecisionPlan(_ context.Context, s ai.PlanSubmission) (ai.SubmissionResult, error) {
+	record := r.records[s.RequestID]
+	record.Status = "accepted"
+	record.Version++
+	record.ResolvedPlan = &s.Plan
+	resolved := time.Now()
+	record.ResolvedAt = &resolved
+	r.records[s.RequestID] = record
+	return ai.SubmissionResult{Accepted: true, Status: "accepted"}, nil
+}
+func (r *decisionBattleRepository) ResolveDecisionFallback(_ context.Context, id string, _ int64, plan controller.PlanProposal, source, category string) (bool, error) {
+	record := r.records[id]
+	record.Status = "fallback"
+	record.ResolvedPlan = &plan
+	record.FallbackSource = source
+	record.ErrorCategory = category
+	resolved := time.Now()
+	record.ResolvedAt = &resolved
+	r.records[id] = record
+	return true, nil
+}
+func (r *decisionBattleRepository) ClaimModelDecision(context.Context, string, []string, time.Duration) (ai.DecisionRecord, error) {
+	return ai.DecisionRecord{}, ai.ErrNoDecision
+}
+func (r *decisionBattleRepository) FinishDecisionFailure(context.Context, string, string, ai.Usage, map[string]any) error {
+	return nil
+}
+func (r *decisionBattleRepository) RecordDecisionUsage(context.Context, string, ai.Usage, map[string]any) error {
+	return nil
+}
+
+func TestDecisionWindowResolvesScriptedAndModelFallback(t *testing.T) {
+	for _, model := range []bool{false, true} {
+		t.Run(map[bool]string{false: "scripted", true: "model"}[model], func(t *testing.T) {
+			job := testJob(20)
+			job.Scenario.Ruleset.Buildings.CastleHealth = 100000
+			for index := range job.Scenario.Factions {
+				job.Scenario.Factions[index].Controller = battle.ControllerConfig{Type: ai.ControllerScripted}
+				if model && index == 0 {
+					job.Scenario.Factions[index].Controller = battle.ControllerConfig{Type: ai.ControllerModel, ProfileID: "profile", Provider: "openai", Runtime: "api"}
+				}
+			}
+			simulation, err := battle.NewMatch(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for range 9 {
+				if _, err := simulation.Advance(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			repository := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}, failModels: model}
+			var logs bytes.Buffer
+			worker, _ := NewWithLogger(repository, testWorkerConfig(), slog.New(slog.NewJSONHandler(&logs, nil)))
+			plans, err := worker.resolveDecisionWindow(context.Background(), job.Lease, simulation)
+			if err != nil || len(plans) != 2 {
+				t.Fatalf("plans=%#v err=%v", plans, err)
+			}
+			if _, err := simulation.AdvanceWithPlans(plans); err != nil {
+				t.Fatal(err)
+			}
+			if simulation.State().Tick != 10 {
+				t.Fatal(simulation.State().Tick)
+			}
+			for _, expected := range []string{`"msg":"decision_window_started"`, `"msg":"decision_prepared"`, `"msg":"decision_resolved"`, `"msg":"decision_window_completed"`} {
+				if !strings.Contains(logs.String(), expected) {
+					t.Fatalf("logs do not contain %s: %s", expected, logs.String())
+				}
+			}
+			if model && (!strings.Contains(logs.String(), `"decision_status":"fallback"`) || !strings.Contains(logs.String(), `"error_category":"timeout"`)) {
+				t.Fatalf("fallback fields missing: %s", logs.String())
+			}
+		})
+	}
 }

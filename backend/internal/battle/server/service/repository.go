@@ -10,6 +10,8 @@ import (
 type Repository interface {
 	CreateBattle(context.Context, CreateBattleParams) error
 	GetBattle(context.Context, string) (*BattleRun, error)
+	StopBattle(context.Context, string) error
+	SetBattlePaused(context.Context, string, bool) error
 	ListBattleEvents(context.Context, string, int, uint64, int, bool) ([]StoredBattleEvent, error)
 }
 

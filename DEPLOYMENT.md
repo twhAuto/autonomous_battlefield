@@ -242,13 +242,44 @@ was stored inside that cluster.
 
 ### 1. Create the local secret file
 
-The real local file is ignored by Git. Create it once from the development-only
-example:
+The database secret is ignored by Git. Create it once from the
+development-only example:
 
 ```bash
 cp deploy/overlays/local/infrastructure/secret.env.example \
   deploy/overlays/local/infrastructure/secret.env
 ```
+
+`ai-secret.env` is optional for local deployments. When it is absent, the
+deployment helper generates or reuses an internal MCP capability secret and
+sets both API model profiles unavailable, so scripted battles can be tested
+without provider credentials. It also reuses `DATABASE_URL` for MCP when the
+local database file does not contain `MCP_DATABASE_URL`.
+
+To enable an API provider, copy `ai-secret.env.example` to `ai-secret.env`, set
+a strong capability secret, add the provider key and model, and change that
+provider's `*_PROFILE_AVAILABLE` value to `true`. Production should always
+supply explicit secrets and point `MCP_DATABASE_URL` at a login granted only
+the `battlefield_mcp` role created by the decision migration.
+The production migration principal therefore needs `CREATEROLE` for the first
+application of migration `00004`; the MCP workload login itself must not have
+that privilege.
+
+The `CODEX_CLI_PROFILE_AVAILABLE` and `GEMINI_CLI_PROFILE_AVAILABLE` values
+should normally remain `false` in the secret file. For a local kind battle,
+`run-k8s-cli-agent.sh` manages these flags while an authenticated host worker is
+connected:
+
+```bash
+./run-k8s-cli-agent.sh codex
+```
+
+The helper supports `auto`, `codex`, `gemini`, and `both`. It verifies the
+tested CLI version and existing host login, forwards only the internal MCP
+service to loopback, runs the decision agent on the host, and temporarily makes
+the connected profiles selectable through the API. No CLI authentication
+directory or provider credential is mounted into the cluster. Keep the helper
+running for the duration of the battle and press Ctrl+C afterward.
 
 Do not reuse these credentials outside the disposable local cluster.
 
@@ -398,7 +429,7 @@ The selected components have these deployment effects:
 | `migration` | Recreate the migration Job with the selected or currently deployed backend image and wait for completion. |
 | `backend` | Load the backend image into kind; automatically includes `migration` and `application`. |
 | `frontend` | Load the frontend image into kind; automatically includes `application`. |
-| `application` | Apply API, engine, frontend, Services, autoscaling, and disruption-budget resources; wait for application rollouts. |
+| `application` | Apply API, engine, agent, internal MCP, frontend, Services, network policy, autoscaling, and disruption-budget resources; wait for application rollouts. |
 | `observability` | Apply Prometheus, kube-state-metrics, Grafana, Fluent Bit, Elasticsearch, Kibana, dashboards, data views, recording rules, and alerts; wait for readiness. |
 | `gateway` | Apply Envoy Gateway routes and wait for the local Gateway to become programmed. |
 | `all` | Execute every action above. |
@@ -461,6 +492,12 @@ kubectl rollout status deployment/battlefield-api \
   --namespace battlefield \
   --timeout=120s
 kubectl rollout status deployment/battlefield-engine \
+  --namespace battlefield \
+  --timeout=120s
+kubectl rollout status deployment/battlefield-agent \
+  --namespace battlefield \
+  --timeout=120s
+kubectl rollout status deployment/battlefield-mcp \
   --namespace battlefield \
   --timeout=120s
 kubectl rollout status deployment/battlefield-frontend \
@@ -549,6 +586,10 @@ kubectl get events --namespace battlefield \
 kubectl logs deployment/battlefield-api \
   --namespace battlefield --tail=100
 kubectl logs deployment/battlefield-engine \
+  --namespace battlefield --tail=100
+kubectl logs deployment/battlefield-agent \
+  --namespace battlefield --tail=100
+kubectl logs deployment/battlefield-mcp \
   --namespace battlefield --tail=100
 kubectl logs deployment/battlefield-frontend \
   --namespace battlefield --tail=100

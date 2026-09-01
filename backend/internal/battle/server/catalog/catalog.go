@@ -34,7 +34,6 @@ type template struct {
 	MaximumTicks          uint64                    `yaml:"maximumTicks"`
 	TickDuration          string                    `yaml:"tickDuration"`
 	DecisionIntervalTicks controller.Tick           `yaml:"decisionIntervalTicks"`
-	DecisionLeadTicks     controller.Tick           `yaml:"decisionLeadTicks"`
 	Map                   game.Map                  `yaml:"map"`
 	FallbackPlan          controller.PlanProposal   `yaml:"fallbackPlan"`
 	ScriptedPlans         []controller.PlanProposal `yaml:"scriptedPlans"`
@@ -92,7 +91,7 @@ func (c *Catalog) Summaries() []battleservice.ScenarioSummary {
 	result := make([]battleservice.ScenarioSummary, 0, len(c.templates))
 	for _, id := range c.IDs() {
 		value := c.templates[id]
-		result = append(result, battleservice.ScenarioSummary{ID: value.ID, RulesVersion: value.RulesVersion, RulesetID: value.RulesetID, MaximumTicks: value.MaximumTicks, TickDuration: value.TickDuration, DecisionIntervalTicks: value.DecisionIntervalTicks, DecisionLeadTicks: value.DecisionLeadTicks, MapWidth: value.Map.Width, MapHeight: value.Map.Height})
+		result = append(result, battleservice.ScenarioSummary{ID: value.ID, RulesVersion: value.RulesVersion, RulesetID: value.RulesetID, MaximumTicks: value.MaximumTicks, TickDuration: value.TickDuration, DecisionIntervalTicks: value.DecisionIntervalTicks, MapWidth: value.Map.Width, MapHeight: value.Map.Height})
 	}
 	return result
 }
@@ -132,7 +131,7 @@ func (c *Catalog) Resolve(id string, identities [2]battleservice.FactionIdentity
 		factions[index] = game.FactionSetup{ID: identity.ID, Name: identity.Name, Blueprint: game.CloneBlueprint(identity.Blueprint), FallbackPlan: clonePlan(tmpl.FallbackPlan), ScriptedPlans: clonePlans(tmpl.ScriptedPlans)}
 	}
 	duration, _ := time.ParseDuration(tmpl.TickDuration)
-	resolved := game.Scenario{ID: tmpl.ID, RulesVersion: tmpl.RulesVersion, RulesetID: tmpl.RulesetID, MaximumTicks: tmpl.MaximumTicks, TickDuration: duration, DecisionIntervalTicks: tmpl.DecisionIntervalTicks, DecisionLeadTicks: tmpl.DecisionLeadTicks, Map: game.CloneMap(tmpl.Map), Ruleset: cloneRuleset(ruleset), Factions: factions}
+	resolved := game.Scenario{ID: tmpl.ID, RulesVersion: tmpl.RulesVersion, RulesetID: tmpl.RulesetID, MaximumTicks: tmpl.MaximumTicks, TickDuration: duration, DecisionIntervalTicks: tmpl.DecisionIntervalTicks, Map: game.CloneMap(tmpl.Map), Ruleset: cloneRuleset(ruleset), Factions: factions}
 	if _, err := game.NewMatch("scenario-validation", resolved, 1); err != nil {
 		return game.Scenario{}, "", fmt.Errorf("%w: scenario %q: %v", ErrInvalidScenario, id, err)
 	}
@@ -187,8 +186,8 @@ func validateTemplate(value template, rulesets map[string]game.Ruleset) error {
 	if err != nil || duration < 0 || duration > 10*time.Second {
 		return errors.New("tick duration must be between 0 and 10s")
 	}
-	if value.DecisionIntervalTicks == 0 || value.DecisionLeadTicks == 0 || value.DecisionLeadTicks >= value.DecisionIntervalTicks {
-		return errors.New("decision lead must be positive and less than interval")
+	if value.DecisionIntervalTicks == 0 {
+		return errors.New("decision interval must be positive")
 	}
 	if err := game.ValidateMap(value.Map); err != nil {
 		return err
@@ -237,7 +236,8 @@ func cloneRuleset(value game.Ruleset) game.Ruleset {
 }
 
 func clonePlan(value controller.PlanProposal) controller.PlanProposal {
-	result := controller.PlanProposal{Name: value.Name, ActionWeights: make(map[string]int64, len(value.ActionWeights)), TargetBonuses: make(map[string]int64, len(value.TargetBonuses))}
+	result := controller.PlanProposal{Name: value.Name, Rationale: value.Rationale, ActionWeights: make(map[string]int64, len(value.ActionWeights)), TargetBonuses: make(map[string]int64, len(value.TargetBonuses)), ReserveGold: value.ReserveGold,
+		SpendOrder: append([]string(nil), value.SpendOrder...), ConstructionPriorities: append([]controller.Coordinate(nil), value.ConstructionPriorities...), RecruitmentPriorities: append([]string(nil), value.RecruitmentPriorities...)}
 	for key, weight := range value.ActionWeights {
 		result.ActionWeights[key] = weight
 	}

@@ -31,6 +31,7 @@ type Service interface {
 	GetFactionName(ctx context.Context, id string) (string, error)
 	ListFactions(ctx context.Context) ([]faction.Faction, error)
 	CreateFaction(ctx context.Context, input CreateInput) error
+	DeleteFaction(ctx context.Context, id string) error
 }
 
 type RulesetCatalog interface {
@@ -96,6 +97,13 @@ func (s *service) CreateFaction(ctx context.Context, input CreateInput) error {
 	}
 
 	return nil
+}
+
+func (s *service) DeleteFaction(ctx context.Context, id string) error {
+	if !uuidPattern.MatchString(id) {
+		return ErrInvalidFaction
+	}
+	return s.repository.DeleteFaction(ctx, id)
 }
 
 func (s *service) decorate(value *faction.Faction) {

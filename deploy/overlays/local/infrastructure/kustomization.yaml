@@ -12,6 +12,9 @@ secretGenerator:
   - name: battlefield-database
     envs:
       - secret.env
+  - name: battlefield-ai
+    envs:
+      - ai-secret.env
 
 generatorOptions:
   disableNameSuffixHash: true

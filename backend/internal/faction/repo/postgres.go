@@ -92,6 +92,17 @@ func (r *Postgres) CreateFaction(ctx context.Context, stored faction.Faction) er
 	return nil
 }
 
+func (r *Postgres) DeleteFaction(ctx context.Context, id string) error {
+	tag, err := r.db.Exec(ctx, `DELETE FROM factions WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("delete faction %q: %w", id, err)
+	}
+	if tag.RowsAffected() == 0 {
+		return factionservice.ErrFactionNotFound
+	}
+	return nil
+}
+
 func NewPostgres(db postgres.DBTX) *Postgres {
 	return &Postgres{db: db}
 }

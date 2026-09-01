@@ -53,13 +53,13 @@ func (r *Postgres) GetBattle(ctx context.Context, id string) (*battleservice.Bat
 	var result []byte
 	err := r.db.QueryRow(ctx, `
 		SELECT id, scenario_id, scenario_digest, scenario_snapshot, requested_ticks,
-		       initial_state, current_state, current_tick, status, attempt, result, error_code, error_message,
+		       initial_state, current_state, current_tick, status, paused, attempt, result, error_code, error_message,
 		       created_at, started_at, completed_at
 		FROM battle_runs
 		WHERE id = $1
 	`, id).Scan(
 		&run.ID, &run.ScenarioID, &run.ScenarioDigest, &snapshot, &run.RequestedTicks, &initialState, &currentState,
-		&run.CurrentTick, &run.Status, &run.Attempt, &result, &run.ErrorCode, &run.ErrorMessage,
+		&run.CurrentTick, &run.Status, &run.Paused, &run.Attempt, &result, &run.ErrorCode, &run.ErrorMessage,
 		&run.CreatedAt, &run.StartedAt, &run.CompletedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -85,6 +85,67 @@ func (r *Postgres) GetBattle(ctx context.Context, id string) (*battleservice.Bat
 		run.Result = &decoded
 	}
 	return &run, nil
+}
+
+func (r *Postgres) StopBattle(ctx context.Context, id string) error {
+	var stoppedStatus, previousStatus string
+	var stoppedDecisions int
+	err := r.db.QueryRow(ctx, `
+		WITH target AS MATERIALIZED (
+			SELECT status FROM battle_runs WHERE id = $1
+		), stopped AS (
+			UPDATE battle_runs
+			SET status = 'stopped', paused = false, lease_owner = NULL, lease_expires_at = NULL,
+			    completed_at = now(), updated_at = now()
+			WHERE id = $1 AND status IN ('queued', 'running')
+			RETURNING id, status
+		), stopped_decisions AS (
+			UPDATE battle_decisions AS decision
+			SET status = 'failed', error_category = 'battle_stopped',
+			    lease_owner = NULL, lease_expires_at = NULL, resolved_at = now()
+			FROM stopped
+			WHERE decision.battle_id = stopped.id AND decision.status IN ('pending', 'running')
+			RETURNING decision.id
+		)
+		SELECT COALESCE((SELECT status FROM stopped), ''),
+		       COALESCE((SELECT status FROM target), ''),
+		       (SELECT count(*) FROM stopped_decisions)
+	`, id).Scan(&stoppedStatus, &previousStatus, &stoppedDecisions)
+	if err != nil {
+		return fmt.Errorf("stop battle %q: %w", id, err)
+	}
+	if previousStatus == "" {
+		return battleservice.ErrBattleNotFound
+	}
+	if stoppedStatus == "" {
+		return fmt.Errorf("%w: battle %q is %s", battleservice.ErrBattleNotActive, id, previousStatus)
+	}
+	return nil
+}
+
+func (r *Postgres) SetBattlePaused(ctx context.Context, id string, paused bool) error {
+	var previousStatus string
+	err := r.db.QueryRow(ctx, `
+		WITH target AS MATERIALIZED (
+			SELECT status FROM battle_runs WHERE id = $1
+		), changed AS (
+			UPDATE battle_runs
+			SET paused = $2, updated_at = now()
+			WHERE id = $1 AND status IN ('queued', 'running')
+			RETURNING id
+		)
+		SELECT COALESCE((SELECT status FROM target), '')
+	`, id, paused).Scan(&previousStatus)
+	if err != nil {
+		return fmt.Errorf("set battle %q paused=%t: %w", id, paused, err)
+	}
+	if previousStatus == "" {
+		return battleservice.ErrBattleNotFound
+	}
+	if previousStatus != "queued" && previousStatus != "running" {
+		return fmt.Errorf("%w: battle %q is %s", battleservice.ErrBattleNotActive, id, previousStatus)
+	}
+	return nil
 }
 
 func (r *Postgres) ListBattleEvents(ctx context.Context, battleID string, attempt int, after uint64, limit int, latest bool) ([]battleservice.StoredBattleEvent, error) {
@@ -142,6 +203,7 @@ func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDurati
 		    lease_owner = NULL, lease_expires_at = NULL,
 		    completed_at = now(), updated_at = now()
 		WHERE ((status = 'queued') OR (status = 'running' AND lease_expires_at <= now()))
+		  AND NOT paused
 		  AND attempt >= $1
 	`, maxAttempts)
 	if err != nil {
@@ -154,8 +216,9 @@ func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDurati
 		WITH candidate AS (
 			SELECT id
 			FROM battle_runs
-			WHERE (status = 'queued' AND attempt < $3)
-			   OR (status = 'running' AND lease_expires_at <= now() AND attempt < $3)
+			WHERE NOT paused
+			  AND ((status = 'queued' AND attempt < $3)
+			   OR (status = 'running' AND lease_expires_at <= now() AND attempt < $3))
 			ORDER BY created_at ASC, id ASC
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1
@@ -197,6 +260,25 @@ func (r *Postgres) HeartbeatBattle(ctx context.Context, lease worker.BattleLease
 		return worker.ErrBattleLeaseLost
 	}
 	return nil
+}
+
+// BattlePaused reports operator control state only while the caller still owns
+// the active lease. This prevents a stale worker from waiting on a battle that
+// has been stopped or reclaimed.
+func (r *Postgres) BattlePaused(ctx context.Context, lease worker.BattleLease) (bool, error) {
+	var paused bool
+	err := r.db.QueryRow(ctx, `
+		SELECT paused
+		FROM battle_runs
+		WHERE id = $1 AND status = 'running' AND attempt = $2 AND lease_owner = $3
+	`, lease.BattleID, lease.Attempt, lease.Owner).Scan(&paused)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, worker.ErrBattleLeaseLost
+	}
+	if err != nil {
+		return false, fmt.Errorf("read battle %q pause state: %w", lease.BattleID, err)
+	}
+	return paused, nil
 }
 
 func (r *Postgres) SaveTick(ctx context.Context, lease worker.BattleLease, transition game.Transition, leaseDuration time.Duration) error {
@@ -253,7 +335,7 @@ func (r *Postgres) CompleteBattle(ctx context.Context, lease worker.BattleLease,
 	err = r.db.QueryRow(ctx, `
 		WITH owned AS (
 			UPDATE battle_runs
-			SET status = 'completed', current_tick = $4, result = $5, current_state = $6,
+			SET status = 'completed', paused = false, current_tick = $4, result = $5, current_state = $6,
 			    lease_owner = NULL, lease_expires_at = NULL,
 			    completed_at = now(), updated_at = now()
 			WHERE id = $1 AND status = 'running' AND attempt = $2 AND lease_owner = $3
@@ -279,7 +361,7 @@ func (r *Postgres) CompleteBattle(ctx context.Context, lease worker.BattleLease,
 func (r *Postgres) FailBattle(ctx context.Context, lease worker.BattleLease, code, message string) error {
 	tag, err := r.db.Exec(ctx, `
 		UPDATE battle_runs
-		SET status = 'failed', error_code = $4, error_message = $5,
+		SET status = 'failed', paused = false, error_code = $4, error_message = $5,
 		    lease_owner = NULL, lease_expires_at = NULL,
 		    completed_at = now(), updated_at = now()
 		WHERE id = $1 AND status = 'running' AND attempt = $2 AND lease_owner = $3

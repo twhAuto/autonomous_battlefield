@@ -11,4 +11,5 @@ type Repository interface {
 	GetFaction(context.Context, string) (*faction.Faction, error)
 	ListFactions(context.Context) ([]faction.Faction, error)
 	CreateFaction(context.Context, faction.Faction) error
+	DeleteFaction(context.Context, string) error
 }

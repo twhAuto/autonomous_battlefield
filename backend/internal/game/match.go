@@ -11,7 +11,8 @@ import (
 
 type factionRuntime struct {
 	setup        FactionSetup
-	controller   controller.Controller
+	activePlan   controller.PlanProposal
+	activeSource string
 	planIndex    int
 	unitSequence int
 	attackBonus  int64
@@ -67,7 +68,7 @@ func validateMatchScenario(id string, scenario Scenario, maxTicks uint64) error 
 	if err := ValidateRuleset(scenario.Ruleset); err != nil {
 		return err
 	}
-	if scenario.DecisionIntervalTicks == 0 || scenario.DecisionLeadTicks == 0 || scenario.DecisionLeadTicks >= scenario.DecisionIntervalTicks {
+	if scenario.DecisionIntervalTicks == 0 {
 		return fmt.Errorf("%w: decision timing is invalid", ErrInvalidScenario)
 	}
 	return nil
@@ -98,21 +99,25 @@ func newFactionRuntime(scenario Scenario, setup FactionSetup) (*factionRuntime, 
 	if len(setup.ScriptedPlans) == 0 || strings.TrimSpace(setup.FallbackPlan.Name) == "" {
 		return nil, fmt.Errorf("%w: faction %q requires controller plans", ErrInvalidScenario, setup.ID)
 	}
+	if setup.Controller.Type == "" {
+		setup.Controller.Type = "scripted"
+	}
+	if setup.Controller.Type != "scripted" && setup.Controller.Type != "model" {
+		return nil, fmt.Errorf("%w: faction %q has invalid controller type", ErrInvalidScenario, setup.ID)
+	}
+	if setup.Controller.Type == "model" && strings.TrimSpace(setup.Controller.ProfileID) == "" {
+		return nil, fmt.Errorf("%w: faction %q model controller requires a profile", ErrInvalidScenario, setup.ID)
+	}
 	for _, plan := range setup.ScriptedPlans {
 		if err := controller.ValidatePlanProposal(plan, []string{ActionAttack, ActionDefend}); err != nil {
 			return nil, err
 		}
-	}
-	policy, err := controller.NewUtilityController(controller.Config{
-		DecisionIntervalTicks: scenario.DecisionIntervalTicks, DecisionLeadTicks: scenario.DecisionLeadTicks,
-		FirstDecisionTick: 1, DefaultActionWeight: 1000,
-		ActionKinds: []string{ActionAttack, ActionDefend}, FallbackPlan: setup.FallbackPlan,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("%w: faction %q controller: %v", ErrInvalidScenario, setup.ID, err)
+		if err := validateProductionPlan(scenario, setup, normalizedPlan(plan, setup)); err != nil {
+			return nil, err
+		}
 	}
 	attack, defense, economy := upgradeBonuses(scenario.Ruleset, setup.Blueprint)
-	return &factionRuntime{setup: setup, controller: policy, attackBonus: attack, defenseBonus: defense, economyBonus: economy}, nil
+	return &factionRuntime{setup: setup, activePlan: normalizedPlan(setup.FallbackPlan, setup), activeSource: "scripted_fallback", attackBonus: attack, defenseBonus: defense, economyBonus: economy}, nil
 }
 
 func (m *Match) addCastle(slot int, factionID string, occupied map[Position]bool) Building {
@@ -157,19 +162,106 @@ func (m *Match) State() State                { return CloneState(m.state) }
 func (m *Match) Scenario() Scenario          { return CloneScenario(m.scenario) }
 func (m *Match) Finished() bool              { return m.finished }
 
+// DecisionWindowDue reports whether the next transition is a production and
+// strategy boundary. The observation is taken from the current frozen state.
+func (m *Match) DecisionWindowDue() bool {
+	return !m.finished && m.scenario.DecisionIntervalTicks > 0 && (m.state.Tick+1)%uint64(m.scenario.DecisionIntervalTicks) == 0
+}
+
+func (m *Match) DecisionTargetTick() uint64 { return m.state.Tick + 1 }
+
+func (m *Match) DecisionSnapshot(factionID string) (DecisionSnapshot, error) {
+	runtime := m.factions[factionID]
+	if runtime == nil {
+		return DecisionSnapshot{}, fmt.Errorf("unknown faction %q", factionID)
+	}
+	view, err := m.View(factionID)
+	if err != nil {
+		return DecisionSnapshot{}, err
+	}
+	castle := m.castle(factionID)
+	projectedIncome := int64(0)
+	if castle != nil {
+		projectedIncome = m.incomeFor(factionID, castle.Income)
+	}
+	legalSites := make([]controller.Coordinate, 0, 2)
+	for slot, setup := range m.scenario.Factions {
+		if setup.ID == factionID {
+			for _, site := range m.scenario.Map.EconomySites[slot] {
+				legalSites = append(legalSites, controller.Coordinate{X: site.X, Y: site.Y})
+			}
+		}
+	}
+	return DecisionSnapshot{BattleID: m.id, FactionID: factionID, TargetTick: m.DecisionTargetTick(), Version: m.state.Tick,
+		View: view, Gold: m.factionState(factionID).Gold, ProjectedIncome: projectedIncome,
+		EconomyCost: m.scenario.Ruleset.Buildings.EconomyCost, EconomyIncome: m.scenario.Ruleset.Buildings.EconomyIncome + runtime.economyBonus,
+		EconomyCount: m.economyCount(factionID), MaximumEconomy: m.scenario.Ruleset.Buildings.MaximumEconomyCount,
+		LegalUnits: append([]UnitType(nil), m.scenario.Ruleset.Units...), LegalSites: legalSites,
+		ActivePlan: clonePlan(runtime.activePlan)}, nil
+}
+
+func (m *Match) FactionIDs() []string { return m.sortedFactionIDs() }
+
+// ScriptedPlans resolves deterministic plans without exposing authoritative
+// state mutation to the scripted controller path.
+func (m *Match) ScriptedPlans() map[string]controller.PlanProposal {
+	plans := make(map[string]controller.PlanProposal, len(m.factions))
+	for _, factionID := range m.sortedFactionIDs() {
+		plans[factionID] = m.normalizedFactionPlan(factionID, m.factions[factionID].scriptedPlan())
+	}
+	return plans
+}
+
 func (m *Match) Advance() (Transition, error) {
+	var plans map[string]controller.PlanProposal
+	if m.DecisionWindowDue() {
+		plans = m.ScriptedPlans()
+	}
+	return m.AdvanceWithPlans(plans)
+}
+
+// AdvanceWithPlans applies plans only at production windows. Callers may omit
+// a faction; its previous accepted plan (or first-window fallback) is reused.
+func (m *Match) AdvanceWithPlans(plans map[string]controller.PlanProposal) (Transition, error) {
 	if m.finished {
 		return Transition{}, ErrMatchFinished
+	}
+	decisionWindow := m.DecisionWindowDue()
+	if !decisionWindow && len(plans) > 0 {
+		return Transition{}, fmt.Errorf("plans may only be applied at a decision window")
+	}
+	if decisionWindow {
+		for factionID, runtime := range m.factions {
+			runtime.activePlan = m.normalizedFactionPlan(factionID, runtime.activePlan)
+		}
+		for factionID, proposal := range plans {
+			runtime := m.factions[factionID]
+			if runtime == nil {
+				return Transition{}, fmt.Errorf("unknown faction plan %q", factionID)
+			}
+			proposal = m.normalizedFactionPlan(factionID, proposal)
+			if err := validateProductionPlan(m.scenario, runtime.setup, proposal); err != nil {
+				return Transition{}, err
+			}
+			runtime.activePlan = clonePlan(proposal)
+			runtime.activeSource = "accepted"
+		}
 	}
 	m.state.Tick++
 	m.clearUnitActions()
 	events := m.startEvents()
+	if decisionWindow {
+		for _, factionID := range m.sortedFactionIDs() {
+			runtime := m.factions[factionID]
+			events = append(events, m.event("plan_applied", map[string]any{"factionId": factionID, "name": runtime.activePlan.Name, "source": runtime.activeSource, "targetTick": m.state.Tick}))
+		}
+	}
+	events = append(events, m.runEconomy(decisionWindow)...)
 	tactics, tacticEvents, err := m.selectTactics()
 	if err != nil {
 		return Transition{}, err
 	}
 	events = append(events, tacticEvents...)
-	events = append(events, m.runEconomy()...)
 	combatEvents, winner := m.runUnits(tactics)
 	events = append(events, combatEvents...)
 	events = append(events, m.event("tick_completed", map[string]any{"tick": m.state.Tick}))
@@ -201,26 +293,23 @@ func (m *Match) startEvents() []Event {
 
 func (m *Match) selectTactics() (map[string]string, []Event, error) {
 	tactics := make(map[string]string, 2)
-	events := make([]Event, 0, 6)
+	events := make([]Event, 0, 2)
 	for _, factionID := range m.sortedFactionIDs() {
 		runtime := m.factions[factionID]
-		observation := controller.Observation{BattlefieldID: m.id, FactionID: factionID, Tick: controller.Tick(m.state.Tick), Version: m.state.Tick, Candidates: []controller.Candidate{{ID: ActionAttack, Kind: ActionAttack, TargetID: m.opponentID(factionID), BaseUtility: m.projectedPower(factionID)}, {ID: ActionDefend, Kind: ActionDefend, TargetID: factionID, BaseUtility: m.projectedPower(m.opponentID(factionID))}}}
-		decision, err := runtime.controller.Tick(observation)
-		if err != nil {
-			return nil, nil, fmt.Errorf("controller tick for faction %q: %w", factionID, err)
+		plan := runtime.activePlan
+		attackWeight := plan.ActionWeights[ActionAttack]
+		if attackWeight == 0 {
+			attackWeight = 1000
 		}
-		if request := decision.DecisionRequest; request != nil {
-			events = append(events, m.event("decision_requested", map[string]any{"factionId": factionID, "requestId": request.ID, "applyAtTick": uint64(request.ApplyAtTick)}))
-			proposal := runtime.scriptedPlan()
-			plan, err := runtime.controller.SubmitPlan(request.ID, proposal)
-			if err != nil {
-				return nil, nil, err
-			}
-			events = append(events, m.event("plan_accepted", map[string]any{"factionId": factionID, "planId": plan.ID, "name": plan.Name, "validFromTick": uint64(plan.ValidFromTick), "validUntilTick": uint64(plan.ValidUntilTick)}))
+		defendWeight := plan.ActionWeights[ActionDefend]
+		if defendWeight == 0 {
+			defendWeight = 1000
 		}
+		attackScore := m.projectedPower(factionID)*attackWeight + plan.TargetBonuses[m.opponentID(factionID)]
+		defendScore := m.projectedPower(m.opponentID(factionID))*defendWeight + plan.TargetBonuses[factionID]
 		tactic := ActionAttack
-		if decision.Selection != nil {
-			tactic = decision.Selection.CandidateID
+		if defendScore > attackScore {
+			tactic = ActionDefend
 		}
 		tactics[factionID] = tactic
 		if tactic == ActionDefend {
@@ -228,20 +317,20 @@ func (m *Match) selectTactics() (map[string]string, []Event, error) {
 		} else {
 			runtime.attackTicks++
 		}
-		events = append(events, m.event("tactic_selected", map[string]any{"factionId": factionID, "tactic": tactic, "planId": decision.PlanID, "fallback": decision.UsedFallback}))
+		events = append(events, m.event("tactic_selected", map[string]any{"factionId": factionID, "tactic": tactic, "planName": plan.Name, "source": runtime.activeSource}))
 	}
 	return tactics, events, nil
 }
 
-func (m *Match) runEconomy() []Event {
+func (m *Match) runEconomy(productionWindow bool) []Event {
 	events := make([]Event, 0, 8)
 	for slot, setup := range m.scenario.Factions {
-		events = append(events, m.runFactionEconomy(slot, setup.ID)...)
+		events = append(events, m.runFactionEconomy(slot, setup.ID, productionWindow)...)
 	}
 	return events
 }
 
-func (m *Match) runFactionEconomy(slot int, factionID string) []Event {
+func (m *Match) runFactionEconomy(slot int, factionID string, productionWindow bool) []Event {
 	castle := m.castle(factionID)
 	if castle == nil || castle.Health <= 0 {
 		return nil
@@ -251,10 +340,19 @@ func (m *Match) runFactionEconomy(slot int, factionID string) []Event {
 	state.Gold += income
 	state.GoldEarned += income
 	events := []Event{m.event("income_collected", map[string]any{"factionId": factionID, "amount": income, "balance": state.Gold})}
-	if building, built := m.buildEconomyBuilding(slot, factionID); built {
-		events = append(events, m.event("building_constructed", map[string]any{"factionId": factionID, "buildingId": building.ID, "buildingType": building.Type, "position": building.Position, "cost": building.Cost}))
+	if !productionWindow {
+		return events
 	}
-	return append(events, m.recruit(factionID)...)
+	plan := m.factions[factionID].activePlan
+	for _, kind := range plan.SpendOrder {
+		switch kind {
+		case "construction":
+			events = append(events, m.runConstruction(slot, factionID, plan)...)
+		case "recruitment":
+			events = append(events, m.runRecruitment(factionID, plan)...)
+		}
+	}
+	return events
 }
 
 func (m *Match) incomeFor(factionID string, castleIncome int64) int64 {
@@ -268,62 +366,83 @@ func (m *Match) incomeFor(factionID string, castleIncome int64) int64 {
 	return income
 }
 
-func (m *Match) buildEconomyBuilding(slot int, factionID string) (Building, bool) {
-	rules := m.scenario.Ruleset.Buildings
-	state := m.factionState(factionID)
-	if m.economyCount(factionID) >= rules.MaximumEconomyCount || state.Gold < rules.EconomyCost {
-		return Building{}, false
-	}
-	for _, site := range m.scenario.Map.EconomySites[slot] {
-		if m.buildingAt(site) != nil {
+func (m *Match) runConstruction(_ int, factionID string, plan controller.PlanProposal) []Event {
+	events := make([]Event, 0, len(plan.ConstructionPriorities))
+	for _, coordinate := range plan.ConstructionPriorities {
+		site := Position{X: coordinate.X, Y: coordinate.Y}
+		building, reason := m.buildEconomyBuildingAt(factionID, site, plan.ReserveGold)
+		if reason != "" {
+			events = append(events, m.event("production_skipped", map[string]any{"factionId": factionID, "kind": "construction", "position": site, "reason": reason}))
 			continue
 		}
-		state.Gold -= rules.EconomyCost
-		state.GoldSpent += rules.EconomyCost
-		state.BuildingsBuilt++
-		building := Building{ID: fmt.Sprintf("%s:economy:%03d", factionID, state.BuildingsBuilt), FactionID: factionID, Type: BuildingEconomy, Position: site, Health: rules.EconomyHealth, MaxHealth: rules.EconomyHealth, Defense: rules.EconomyDefense, Vision: rules.EconomyVision, Cost: rules.EconomyCost, Income: rules.EconomyIncome + m.factions[factionID].economyBonus}
-		m.state.Buildings = append(m.state.Buildings, building)
-		return building, true
+		events = append(events, m.event("building_constructed", map[string]any{"factionId": factionID, "buildingId": building.ID, "buildingType": building.Type, "position": building.Position, "cost": building.Cost}))
 	}
-	return Building{}, false
+	return events
 }
 
-func (m *Match) recruit(factionID string) []Event {
+func (m *Match) buildEconomyBuildingAt(factionID string, site Position, reserve int64) (Building, string) {
+	rules := m.scenario.Ruleset.Buildings
+	state := m.factionState(factionID)
+	if m.economyCount(factionID) >= rules.MaximumEconomyCount {
+		return Building{}, "maximum_reached"
+	}
+	if m.buildingAt(site) != nil {
+		return Building{}, "site_occupied"
+	}
+	if state.Gold-rules.EconomyCost < reserve {
+		return Building{}, "reserve_required"
+	}
+	state.Gold -= rules.EconomyCost
+	state.GoldSpent += rules.EconomyCost
+	state.BuildingsBuilt++
+	building := Building{ID: fmt.Sprintf("%s:economy:%03d", factionID, state.BuildingsBuilt), FactionID: factionID, Type: BuildingEconomy, Position: site, Health: rules.EconomyHealth, MaxHealth: rules.EconomyHealth, Defense: rules.EconomyDefense, Vision: rules.EconomyVision, Cost: rules.EconomyCost, Income: rules.EconomyIncome + m.factions[factionID].economyBonus}
+	m.state.Buildings = append(m.state.Buildings, building)
+	return building, ""
+}
+
+func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) []Event {
 	runtime := m.factions[factionID]
 	state := m.factionState(factionID)
-	priority := runtime.setup.Blueprint.RecruitmentPriority
 	castle := m.castle(factionID)
-	if castle == nil || len(priority) == 0 {
-		return nil
-	}
-	occupied := m.occupied()
-	spawn := Position{X: -1, Y: -1}
-	for _, candidate := range Neighbors(castle.Position) {
-		if m.scenario.Map.InBounds(candidate) && m.scenario.Map.Traversable(candidate) && !occupied[candidate] {
-			spawn = candidate
-			break
-		}
-	}
-	if spawn.X < 0 {
+	if castle == nil {
 		return nil
 	}
 	definitions := UnitTypesByID(m.scenario.Ruleset)
-	for offset := 0; offset < len(priority); offset++ {
-		index := (state.RecruitmentCursor + offset) % len(priority)
-		definition := definitions[priority[index]]
-		if state.Gold < definition.Cost {
-			continue
+	events := make([]Event, 0, 6)
+	for {
+		occupied := m.occupied()
+		spawn := Position{X: -1, Y: -1}
+		for _, candidate := range Neighbors(castle.Position) {
+			if m.scenario.Map.InBounds(candidate) && m.scenario.Map.Traversable(candidate) && !occupied[candidate] {
+				spawn = candidate
+				break
+			}
 		}
-		state.Gold -= definition.Cost
-		state.GoldSpent += definition.Cost
+		if spawn.X < 0 {
+			events = append(events, m.event("production_skipped", map[string]any{"factionId": factionID, "kind": "recruitment", "reason": "no_spawn"}))
+			break
+		}
+		selected := UnitType{}
+		for _, unitType := range plan.RecruitmentPriorities {
+			definition := definitions[unitType]
+			if state.Gold-definition.Cost >= plan.ReserveGold {
+				selected = definition
+				break
+			}
+		}
+		if selected.ID == "" {
+			events = append(events, m.event("production_skipped", map[string]any{"factionId": factionID, "kind": "recruitment", "reason": "reserve_required"}))
+			break
+		}
+		state.Gold -= selected.Cost
+		state.GoldSpent += selected.Cost
 		state.UnitsRecruited++
-		state.RecruitmentCursor = (index + 1) % len(priority)
 		runtime.unitSequence++
-		unit := runtime.newUnit(definition, spawn, m.state.Tick+1)
+		unit := runtime.newUnit(selected, spawn, m.state.Tick+1)
 		m.state.Units = append(m.state.Units, unit)
-		return []Event{m.event("unit_recruited", map[string]any{"factionId": factionID, "unitId": unit.ID, "unitType": unit.Type, "position": spawn, "readyAtTick": unit.ReadyAtTick, "cost": unit.Cost})}
+		events = append(events, m.event("unit_recruited", map[string]any{"factionId": factionID, "unitId": unit.ID, "unitType": unit.Type, "position": spawn, "readyAtTick": unit.ReadyAtTick, "cost": unit.Cost}))
 	}
-	return nil
+	return events
 }
 
 func (m *Match) runUnits(tactics map[string]string) ([]Event, *string) {
@@ -729,6 +848,64 @@ func (f *factionRuntime) scriptedPlan() controller.PlanProposal {
 	return clonePlan(f.setup.ScriptedPlans[index])
 }
 
+func normalizedPlan(value controller.PlanProposal, setup FactionSetup) controller.PlanProposal {
+	result := clonePlan(value)
+	if len(result.SpendOrder) == 0 {
+		result.SpendOrder = []string{"construction", "recruitment"}
+	}
+	if len(result.RecruitmentPriorities) == 0 {
+		result.RecruitmentPriorities = append([]string(nil), setup.Blueprint.RecruitmentPriority...)
+	}
+	if len(result.ConstructionPriorities) == 0 {
+		// The owning slot is resolved by matching the faction when the plan is
+		// applied; scenario defaults are added in Match.normalizedFactionPlan.
+		result.ConstructionPriorities = nil
+	}
+	return result
+}
+
+func (m *Match) normalizedFactionPlan(factionID string, value controller.PlanProposal) controller.PlanProposal {
+	runtime := m.factions[factionID]
+	result := normalizedPlan(value, runtime.setup)
+	if len(result.ConstructionPriorities) == 0 {
+		for slot, setup := range m.scenario.Factions {
+			if setup.ID != factionID {
+				continue
+			}
+			for _, site := range m.scenario.Map.EconomySites[slot] {
+				result.ConstructionPriorities = append(result.ConstructionPriorities, controller.Coordinate{X: site.X, Y: site.Y})
+			}
+		}
+	}
+	return result
+}
+
+func validateProductionPlan(scenario Scenario, setup FactionSetup, plan controller.PlanProposal) error {
+	if err := controller.ValidatePlanProposal(plan, []string{ActionAttack, ActionDefend}); err != nil {
+		return err
+	}
+	units := UnitTypesByID(scenario.Ruleset)
+	for _, unitType := range plan.RecruitmentPriorities {
+		if _, ok := units[unitType]; !ok {
+			return fmt.Errorf("%w: unsupported recruitment unit %q", controller.ErrInvalidPlan, unitType)
+		}
+	}
+	allowedSites := make(map[Position]bool)
+	for slot, faction := range scenario.Factions {
+		if faction.ID == setup.ID {
+			for _, site := range scenario.Map.EconomySites[slot] {
+				allowedSites[site] = true
+			}
+		}
+	}
+	for _, coordinate := range plan.ConstructionPriorities {
+		if !allowedSites[Position{X: coordinate.X, Y: coordinate.Y}] {
+			return fmt.Errorf("%w: construction site (%d,%d) is not legal", controller.ErrInvalidPlan, coordinate.X, coordinate.Y)
+		}
+	}
+	return nil
+}
+
 func addVision(visible map[Position]bool, m Map, origin Position, radius int) {
 	for y := 0; y < m.Height; y++ {
 		for x := 0; x < m.Width; x++ {
@@ -795,7 +972,8 @@ func CloneScenario(value Scenario) Scenario {
 	return value
 }
 func clonePlan(value controller.PlanProposal) controller.PlanProposal {
-	result := controller.PlanProposal{Name: value.Name, ActionWeights: make(map[string]int64, len(value.ActionWeights)), TargetBonuses: make(map[string]int64, len(value.TargetBonuses))}
+	result := controller.PlanProposal{Name: value.Name, Rationale: value.Rationale, ActionWeights: make(map[string]int64, len(value.ActionWeights)), TargetBonuses: make(map[string]int64, len(value.TargetBonuses)), ReserveGold: value.ReserveGold,
+		SpendOrder: append([]string(nil), value.SpendOrder...), ConstructionPriorities: append([]controller.Coordinate(nil), value.ConstructionPriorities...), RecruitmentPriorities: append([]string(nil), value.RecruitmentPriorities...)}
 	for k, v := range value.ActionWeights {
 		result.ActionWeights[k] = v
 	}

@@ -8,6 +8,7 @@ frontend_dir="${project_dir}/frontend"
 database_url="${DATABASE_URL:-postgres://battlefield:battlefield@localhost:5432/battlefield?sslmode=disable}"
 engine_worker_id="${ENGINE_WORKER_ID:-engine-local-1}"
 start_postgres="${START_POSTGRES:-1}"
+start_agent="${START_AGENT:-0}"
 runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/autonomous-battlefield.XXXXXX")"
 pids=()
 
@@ -71,6 +72,10 @@ echo "Building backend processes..."
   cd "${backend_dir}"
   go build -o "${runtime_dir}/api" ./cmd/server
   go build -o "${runtime_dir}/engine" ./cmd/engine
+  if [[ "${start_agent}" == "1" ]]; then
+    go build -o "${runtime_dir}/agent" ./cmd/agent
+    go build -o "${runtime_dir}/mcp" ./cmd/mcp
+  fi
 )
 
 if [[ ! -d "${frontend_dir}/node_modules" ]]; then
@@ -81,6 +86,15 @@ fi
 echo "Starting API at http://localhost:8080"
 (cd "${backend_dir}" && exec "${runtime_dir}/api") &
 pids+=("$!")
+
+if [[ "${start_agent}" == "1" ]]; then
+  echo "Starting MCP decision service at http://localhost:8084/mcp"
+  (cd "${backend_dir}" && exec "${runtime_dir}/mcp") &
+  pids+=("$!")
+  echo "Starting provider-neutral agent health endpoint at http://localhost:8083"
+  (cd "${backend_dir}" && exec "${runtime_dir}/agent") &
+  pids+=("$!")
+fi
 
 echo "Starting battle engine health endpoint at http://localhost:8081"
 (cd "${backend_dir}" && exec "${runtime_dir}/engine") &

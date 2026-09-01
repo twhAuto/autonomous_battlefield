@@ -5,10 +5,15 @@ import {
   BattleEvent,
   BattleRun,
   BattleView,
+  DecisionHistory,
   JsonValue,
   getBattle,
   getBattleView,
   listBattleEvents,
+  listDecisionHistory,
+  pauseBattle,
+  resumeBattle,
+  stopBattle,
 } from '../api/battles'
 import { Emblem } from '../components/Emblem'
 import { HexBattleMap } from '../components/HexBattleMap'
@@ -17,10 +22,11 @@ const eventPageSize = 50
 const eventPollIntervalMs = 1000
 type ConnectionState = 'connecting' | 'live' | 'reconnecting' | 'settled' | 'error'
 type EventState = 'idle' | 'loading' | 'error'
+type BattleControlState = 'idle' | 'pausing' | 'resuming' | 'stopping' | 'error'
 
 export function BattlePage() {
   const { id = '' } = useParams()
-  const { battle, connection, connectionMessage, retryConnection } = useBattleStatus(id)
+  const { battle, connection, connectionMessage, retryConnection, applyBattle } = useBattleStatus(id)
   const {
     selectedAttempt,
     setSelectedAttempt,
@@ -33,12 +39,30 @@ export function BattlePage() {
   } = useBattleEventStream(id, battle?.attempt, battle?.status)
   const [perspective, setPerspective] = useState('spectator')
   const factionView = useFactionPerspective(id, battle, perspective)
+  const { decisions, decisionMessage } = useDecisionHistory(id, battle)
+  const [sidePanel, setSidePanel] = useState<'events' | 'decisions'>('events')
+  const [controlState, setControlState] = useState<BattleControlState>('idle')
+  const [controlMessage, setControlMessage] = useState('')
 
   const progress = battle ? Math.min(100, Math.round((battle.currentTick / battle.requestedTicks) * 100)) : 0
   const participantNames = useMemo(
     () => new Map(battle?.participants.map((participant) => [participant.id, participant.name]) ?? []),
     [battle?.participants],
   )
+  const hasModelController = battle?.participants.some((participant) => participant.controller?.type === 'model') ?? false
+
+  const runBattleControl = useCallback(async (action: 'pause' | 'resume' | 'stop') => {
+    setControlState(action === 'pause' ? 'pausing' : action === 'resume' ? 'resuming' : 'stopping')
+    setControlMessage('')
+    try {
+      const updated = action === 'pause' ? await pauseBattle(id) : action === 'resume' ? await resumeBattle(id) : await stopBattle(id)
+      applyBattle(updated)
+      setControlState('idle')
+    } catch (error) {
+      setControlState('error')
+      setControlMessage(error instanceof BattleApiError ? error.message : 'The battle control could not be applied.')
+    }
+  }, [applyBattle, id])
 
   if (!battle && connection === 'connecting') {
     return <BattleState code="ESTABLISHING LINK" title="Locating battle" message="Connecting to the battle engine state…" loading />
@@ -55,7 +79,7 @@ export function BattlePage() {
   const winnerName = battle.result?.winnerFactionId
     ? participantNames.get(battle.result.winnerFactionId) ?? battle.result.winnerFactionId
     : null
-  const battleTitle = battleTitleFor(battle.status)
+  const battleTitle = battleTitleFor(battle)
   const mapView = factionView ?? (battle.map && battle.state ? {
     map: battle.map,
     state: battle.state,
@@ -75,15 +99,16 @@ export function BattlePage() {
             {battle.participants.map((participant) => (
               <div key={participant.id}>
                 <Emblem seed={participant.name} size="small" />
-                <span>{participant.name}</span>
+                <span>{participant.name}<small>{controllerLabel(participant.controller)} · {decisionLabel(latestDecision(decisions, participant.id))}</small></span>
               </div>
             ))}
           </div>
         </div>
 
-        <aside className={`outcome-panel outcome-panel--${battle.status}`}>
-          <span className="outcome-panel__label">ENGAGEMENT OUTCOME</span>
+        <aside className={`outcome-panel outcome-panel--${battle.paused ? 'paused' : battle.status}`}>
+          <span className="outcome-panel__label">BATTLE CONTROL</span>
           <Outcome battle={battle} winnerName={winnerName} />
+          <BattleControls battle={battle} state={controlState} message={controlMessage} onControl={runBattleControl} />
         </aside>
       </section>
 
@@ -99,22 +124,129 @@ export function BattlePage() {
             />
           }
         </div>
-        <EventConsole
-          battleAttempt={battle.attempt}
-          selectedAttempt={selectedAttempt}
-          setSelectedAttempt={setSelectedAttempt}
-          events={events}
-          eventCursor={eventCursor}
-          eventHasMore={eventHasMore}
-          eventState={eventState}
-          eventMessage={eventMessage}
-          loadEventPage={loadEventPage}
-        />
+        <aside className="battle-side-panels">
+          <div className="battle-side-panel-tabs" role="tablist" aria-label="Battle information">
+            <button id="events-tab" role="tab" type="button" aria-selected={sidePanel === 'events'} aria-controls="events-panel" onClick={() => setSidePanel('events')}>EVENTS</button>
+            <button id="decisions-tab" role="tab" type="button" aria-selected={sidePanel === 'decisions'} aria-controls="decisions-panel" onClick={() => setSidePanel('decisions')}>AI DECISIONS <span>{decisions.filter((decision) => decision.controllerType === 'model' || Boolean(decision.profileId)).length}</span></button>
+          </div>
+          <div className="battle-side-panel__content" id={sidePanel === 'events' ? 'events-panel' : 'decisions-panel'} role="tabpanel" aria-labelledby={sidePanel === 'events' ? 'events-tab' : 'decisions-tab'}>
+            {sidePanel === 'events'
+              ? <EventConsole
+                  battleAttempt={battle.attempt}
+                  selectedAttempt={selectedAttempt}
+                  setSelectedAttempt={setSelectedAttempt}
+                  events={events}
+                  eventCursor={eventCursor}
+                  eventHasMore={eventHasMore}
+                  eventState={eventState}
+                  eventMessage={eventMessage}
+                  loadEventPage={loadEventPage}
+                />
+              : <AIDecisionPanel decisions={decisions} participantNames={participantNames} message={decisionMessage} hasModelController={hasModelController} />}
+          </div>
+        </aside>
       </section>
 
       <BattleStatistics battle={battle} participantNames={participantNames} />
     </>
   )
+}
+
+function useDecisionHistory(id: string, battle: BattleRun | null) {
+  const [decisions, setDecisions] = useState<DecisionHistory[]>([])
+  const [message, setMessage] = useState('')
+  useEffect(() => {
+    if (!battle || battle.attempt < 1) { setDecisions([]); setMessage(''); return }
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const active = battle.status === 'queued' || battle.status === 'running'
+    const attempt = battle.attempt
+    async function poll() {
+      try {
+        setDecisions(await listDecisionHistory(id, attempt, controller.signal))
+        setMessage('')
+      } catch (error) {
+        if (controller.signal.aborted) return
+        setMessage(error instanceof BattleApiError ? error.message : 'AI decisions could not be loaded.')
+      }
+      if (active && !controller.signal.aborted) timer = setTimeout(poll, eventPollIntervalMs)
+    }
+    void poll()
+    return () => { controller.abort(); if (timer) clearTimeout(timer) }
+  }, [battle?.attempt, battle?.status, id])
+  return { decisions, decisionMessage: message }
+}
+
+function latestDecision(decisions: DecisionHistory[], factionId: string) {
+  return decisions.filter((decision) => decision.factionId === factionId).at(-1)
+}
+
+function controllerLabel(controller?: BattleRun['participants'][number]['controller']) {
+  if (!controller) return 'Scripted'
+  if (controller.type === 'scripted') return 'Scripted'
+  return controller.modelIdentifier || controller.profileId || controller.provider || 'Model'
+}
+
+function decisionLabel(decision?: DecisionHistory) {
+  if (!decision) return 'awaiting window'
+  if (decision.status === 'pending') return 'analyzing'
+  if (decision.status === 'running') return 'MCP connected'
+  if (decision.status === 'accepted') return `plan accepted${decision.resolvedPlan?.name ? `: ${decision.resolvedPlan.name}` : ''}`
+  if (decision.status === 'fallback') return decision.fallbackSource === 'previous_plan' ? 'previous-plan fallback' : 'scripted fallback'
+  return `decision failed${decision.errorCategory ? `: ${decision.errorCategory}` : ''}`
+}
+
+function AIDecisionPanel({ decisions, participantNames, message, hasModelController }: Readonly<{ decisions: DecisionHistory[]; participantNames: Map<string, string>; message: string; hasModelController: boolean }>) {
+  const modelDecisions = decisions.filter((decision) => decision.controllerType === 'model' || Boolean(decision.profileId))
+  return (
+    <section className="ai-decision-panel" aria-label="AI decisions" aria-live="polite">
+      <div className="ai-decision-panel__header">
+        <div><span>AI DECISION STREAM</span><h2>Strategy plans</h2></div>
+        <strong>{modelDecisions.length}</strong>
+      </div>
+      {message && <div className="ai-decision-panel__state ai-decision-panel__state--error" role="alert">{message}</div>}
+      {!message && modelDecisions.length === 0 && <div className="ai-decision-panel__state">{hasModelController ? 'Waiting for the first production window.' : 'This battle uses scripted controllers, so no model decisions will be created.'}</div>}
+      {modelDecisions.length > 0 && (
+        <ol className="ai-decision-list">
+          {[...modelDecisions].reverse().map((decision) => (
+            <li key={decision.requestId}>
+              <div className="ai-decision-list__heading">
+                <div><strong>{participantNames.get(decision.factionId) ?? decision.factionId}</strong><span>TICK {decision.targetTick}</span></div>
+                <span className={`decision-state decision-state--${decision.status}`}>{decisionLabel(decision)}</span>
+              </div>
+              <dl>
+                <DecisionDetail label="Plan" value={decision.resolvedPlan?.name ?? (decision.status === 'running' || decision.status === 'pending' ? 'Analyzing…' : 'No plan submitted')} />
+                <DecisionDetail label="Rationale" value={decision.resolvedPlan?.rationale ?? '—'} />
+                <DecisionDetail label="Tactics" value={formatWeights(decision.resolvedPlan?.actionWeights)} />
+                <DecisionDetail label="Reserve" value={decision.resolvedPlan ? `${decision.resolvedPlan.reserveGold ?? 0} gold` : '—'} />
+                <DecisionDetail label="Spend order" value={formatList(decision.resolvedPlan?.spendOrder)} />
+                <DecisionDetail label="Recruit" value={formatList(decision.resolvedPlan?.recruitmentPriorities)} />
+                <DecisionDetail label="Build sites" value={formatCoordinates(decision.resolvedPlan?.constructionPriorities)} />
+                <DecisionDetail label="Model" value={decision.modelIdentifier || decision.profileId || '—'} />
+              </dl>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  )
+}
+
+function DecisionDetail({ label, value }: Readonly<{ label: string; value: string }>) {
+  return <div><dt>{label}</dt><dd>{value}</dd></div>
+}
+
+function formatWeights(weights?: Record<string, number>) {
+  if (!weights || Object.keys(weights).length === 0) return '—'
+  return Object.entries(weights).map(([name, weight]) => `${name} ${weight}`).join(' · ')
+}
+
+function formatList(values?: string[]) {
+  return values?.length ? values.join(' → ') : '—'
+}
+
+function formatCoordinates(values?: { x: number; y: number }[]) {
+  return values?.length ? values.map(({ x, y }) => `(${x},${y})`).join(' → ') : '—'
 }
 
 function BattleHeader({ battle, battleTitle, connection, connectionMessage, retryConnection }: Readonly<{
@@ -285,7 +417,12 @@ function useBattleStatus(id: string) {
   }, [id, retryVersion])
 
   const retryConnection = useCallback(() => setRetryVersion((value) => value + 1), [])
-  return { battle, connection, connectionMessage, retryConnection }
+  const applyBattle = useCallback((current: BattleRun) => {
+    setBattle(current)
+    setConnection(current.status === 'queued' || current.status === 'running' ? 'live' : 'settled')
+    setConnectionMessage('')
+  }, [])
+  return { battle, connection, connectionMessage, retryConnection, applyBattle }
 }
 
 function useBattleEventStream(id: string, battleAttempt?: number, battleStatus?: BattleRun['status']) {
@@ -365,9 +502,11 @@ function mergeEvents(current: BattleEvent[], incoming: BattleEvent[], reset: boo
     .slice(-500)
 }
 
-function battleTitleFor(status: BattleRun['status']) {
-  if (status === 'completed') return 'Battle complete'
-  if (status === 'failed') return 'Battle failed'
+function battleTitleFor(battle: BattleRun) {
+  if (battle.status === 'completed') return 'Battle complete'
+  if (battle.status === 'failed') return 'Battle failed'
+  if (battle.status === 'stopped') return 'Battle stopped'
+  if (battle.paused) return 'Battle paused'
   return 'Battle in progress'
 }
 
@@ -383,10 +522,37 @@ function Outcome({ battle, winnerName }: Readonly<{ battle: BattleRun; winnerNam
   if (battle.status === 'failed') {
     return <><strong>Engine halted</strong><p>{battle.errorMessage ?? battle.errorCode ?? 'The battle could not be completed.'}</p></>
   }
+  if (battle.status === 'stopped') {
+    return <><strong>Stopped by operator</strong><p>The engine and unresolved AI decisions have been halted.</p></>
+  }
   if (battle.status === 'queued') {
+    if (battle.paused) return <><strong>Deployment paused</strong><p>Press Play when the engine may claim this battle.</p></>
     return <><strong>Awaiting engine</strong><p>A worker will claim this battle shortly.</p></>
   }
+  if (battle.paused) {
+    return <><strong>Battle paused</strong><p>The engine is holding its lease and will continue from this tick.</p></>
+  }
   return <><strong>Forces engaged</strong><p>Status refreshes automatically every second.</p></>
+}
+
+function BattleControls({ battle, state, message, onControl }: Readonly<{
+  battle: BattleRun
+  state: BattleControlState
+  message: string
+  onControl: (action: 'pause' | 'resume' | 'stop') => Promise<void>
+}>) {
+  const active = battle.status === 'queued' || battle.status === 'running'
+  const busy = state === 'pausing' || state === 'resuming' || state === 'stopping'
+  return (
+    <div className="battle-controls">
+      <div role="group" aria-label="Battle controls">
+        <button type="button" aria-pressed={active && !battle.paused} disabled={!active || !battle.paused || busy} onClick={() => void onControl('resume')}>{state === 'resuming' ? 'RESUMING…' : 'PLAY'}</button>
+        <button type="button" aria-pressed={active && battle.paused} disabled={!active || battle.paused || busy} onClick={() => void onControl('pause')}>{state === 'pausing' ? 'PAUSING…' : 'PAUSE'}</button>
+        <button className="battle-control--stop" type="button" disabled={!active || busy} onClick={() => void onControl('stop')}>{state === 'stopping' ? 'STOPPING…' : 'STOP'}</button>
+      </div>
+      {message && <output role="alert">{message}</output>}
+    </div>
+  )
 }
 
 function ConnectionBadge({ state }: Readonly<{ state: string }>) {

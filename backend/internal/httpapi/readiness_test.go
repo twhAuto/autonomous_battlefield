@@ -57,6 +57,18 @@ func TestReadinessBoundsDatabasePing(t *testing.T) {
 	}
 }
 
+func TestHealthEndpoints(t *testing.T) {
+	router := NewRouter()
+	for _, path := range []string{"/healthz", "/livez", "/startupz"} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s status = %d", path, response.Code)
+		}
+	}
+}
+
 type pingerFunc func(context.Context) error
 
 func (f pingerFunc) Ping(ctx context.Context) error {

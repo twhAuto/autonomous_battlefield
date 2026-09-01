@@ -5,11 +5,24 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation/controller"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
+
+var serviceParticipantIDs = [2]string{
+	"4db8d152-1e04-4d10-8824-859c6ed72878",
+	"41ac3a2f-3371-4de1-b0f6-70600fcd9052",
+}
+
+func scriptedParticipants() []ParticipantInput {
+	return []ParticipantInput{
+		{FactionID: serviceParticipantIDs[0], Controller: game.ControllerConfig{Type: ai.ControllerScripted}},
+		{FactionID: serviceParticipantIDs[1], Controller: game.ControllerConfig{Type: ai.ControllerScripted}},
+	}
+}
 
 func TestCreateBattleResolvesFactionsAndPersistsSnapshot(t *testing.T) {
 	battleRepo := &fakeBattleRepo{}
@@ -22,12 +35,12 @@ func TestCreateBattleResolvesFactionsAndPersistsSnapshot(t *testing.T) {
 
 	run, err := service.CreateBattle(context.Background(), CreateBattleInput{
 		ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1",
-		FactionIDs: []string{"4db8d152-1e04-4d10-8824-859c6ed72878", "41ac3a2f-3371-4de1-b0f6-70600fcd9052"}, TickCount: 100,
+		Participants: scriptedParticipants(), TickCount: 100,
 	})
 	if err != nil {
 		t.Fatalf("CreateBattle() returned an error: %v", err)
 	}
-	if run.Status != "queued" || battleRepo.created.ScenarioDigest != "digest" || battleRepo.created.RequestedTicks != 100 {
+	if run.Status != "queued" || battleRepo.created.ScenarioDigest == "" || battleRepo.created.RequestedTicks != 100 || battleRepo.created.ScenarioSnapshot.Factions[0].Controller.Type != "scripted" {
 		t.Fatalf("run/created = %#v / %#v", run, battleRepo.created)
 	}
 	if catalog.identities[0].Name != "Northwind" || catalog.identities[1].Name != "Verdant" {
@@ -38,7 +51,7 @@ func TestCreateBattleResolvesFactionsAndPersistsSnapshot(t *testing.T) {
 func TestCreateBattleValidationAndDependencies(t *testing.T) {
 	valid := CreateBattleInput{
 		ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1",
-		FactionIDs: []string{"4db8d152-1e04-4d10-8824-859c6ed72878", "41ac3a2f-3371-4de1-b0f6-70600fcd9052"}, TickCount: 100,
+		Participants: scriptedParticipants(), TickCount: 100,
 	}
 	t.Run("invalid", func(t *testing.T) {
 		tests := []struct {
@@ -47,14 +60,15 @@ func TestCreateBattleValidationAndDependencies(t *testing.T) {
 		}{
 			{name: "zero ticks", mutate: func(input *CreateBattleInput) { input.TickCount = 0 }},
 			{name: "too many ticks", mutate: func(input *CreateBattleInput) { input.TickCount = 10_001 }},
-			{name: "duplicate factions", mutate: func(input *CreateBattleInput) { input.FactionIDs[1] = input.FactionIDs[0] }},
+			{name: "duplicate factions", mutate: func(input *CreateBattleInput) { input.Participants[1].FactionID = input.Participants[0].FactionID }},
+			{name: "missing controller type", mutate: func(input *CreateBattleInput) { input.Participants[0].Controller.Type = "" }},
 			{name: "malformed ID", mutate: func(input *CreateBattleInput) { input.ID = "bad" }},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				service := NewService(&fakeBattleRepo{}, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
 				input := valid
-				input.FactionIDs = append([]string(nil), valid.FactionIDs...)
+				input.Participants = append([]ParticipantInput(nil), valid.Participants...)
 				tt.mutate(&input)
 				if _, err := service.CreateBattle(context.Background(), input); !errors.Is(err, ErrInvalidBattle) {
 					t.Fatalf("error = %v, want ErrInvalidBattle", err)
@@ -64,10 +78,10 @@ func TestCreateBattleValidationAndDependencies(t *testing.T) {
 	})
 	t.Run("scenario tick limit", func(t *testing.T) {
 		factions := &battleFactionRepo{factions: map[string]*faction.Faction{
-			valid.FactionIDs[0]: {ID: valid.FactionIDs[0], Name: "A"},
-			valid.FactionIDs[1]: {ID: valid.FactionIDs[1], Name: "B"},
+			valid.Participants[0].FactionID: {ID: valid.Participants[0].FactionID, Name: "A"},
+			valid.Participants[1].FactionID: {ID: valid.Participants[1].FactionID, Name: "B"},
 		}}
-		catalog := &fakeScenarioCatalog{resolved: serviceTestScenario([2]FactionIdentity{{ID: valid.FactionIDs[0], Name: "A"}, {ID: valid.FactionIDs[1], Name: "B"}})}
+		catalog := &fakeScenarioCatalog{resolved: serviceTestScenario([2]FactionIdentity{{ID: valid.Participants[0].FactionID, Name: "A"}, {ID: valid.Participants[1].FactionID, Name: "B"}})}
 		service := NewService(&fakeBattleRepo{}, factions, catalog, 10_000)
 		input := valid
 		input.TickCount = 501
@@ -83,13 +97,37 @@ func TestCreateBattleValidationAndDependencies(t *testing.T) {
 	})
 	t.Run("missing scenario", func(t *testing.T) {
 		factions := &battleFactionRepo{factions: map[string]*faction.Faction{
-			valid.FactionIDs[0]: {ID: valid.FactionIDs[0], Name: "A"}, valid.FactionIDs[1]: {ID: valid.FactionIDs[1], Name: "B"},
+			valid.Participants[0].FactionID: {ID: valid.Participants[0].FactionID, Name: "A"}, valid.Participants[1].FactionID: {ID: valid.Participants[1].FactionID, Name: "B"},
 		}}
 		service := NewService(&fakeBattleRepo{}, factions, &fakeScenarioCatalog{err: ErrScenarioNotFound}, 10_000)
 		if _, err := service.CreateBattle(context.Background(), valid); !errors.Is(err, ErrScenarioNotFound) {
 			t.Fatalf("error = %v, want ErrScenarioNotFound", err)
 		}
 	})
+}
+
+func TestCreateBattlePersistsAllowedModelProfile(t *testing.T) {
+	ids := [2]string{"4db8d152-1e04-4d10-8824-859c6ed72878", "41ac3a2f-3371-4de1-b0f6-70600fcd9052"}
+	identities := [2]FactionIdentity{{ID: ids[0], Name: "A"}, {ID: ids[1], Name: "B"}}
+	factions := &battleFactionRepo{factions: map[string]*faction.Faction{ids[0]: {ID: ids[0], Name: "A"}, ids[1]: {ID: ids[1], Name: "B"}}}
+	registry := ai.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "gemini", DisplayName: "Gemini", Provider: "gemini", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 3, MaxOutputTokens: 100}})
+	repository := &fakeBattleRepo{}
+	service := NewService(repository, factions, &fakeScenarioCatalog{resolved: serviceTestScenario(identities)}, 10_000, registry)
+	_, err := service.CreateBattle(context.Background(), CreateBattleInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "castle-siege-v1", TickCount: 10, Participants: []ParticipantInput{{FactionID: ids[0], Controller: game.ControllerConfig{Type: "model", ProfileID: "gemini"}}, {FactionID: ids[1], Controller: game.ControllerConfig{Type: "scripted"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := repository.created.ScenarioSnapshot.Factions[0].Controller
+	if selected.ProfileID != "gemini" || selected.Provider != "gemini" || selected.Runtime != "api" {
+		t.Fatalf("controller=%#v", selected)
+	}
+	if len(service.(ModelProfileService).ListModelProfiles()) != 1 {
+		t.Fatal("profile list missing")
+	}
+	bad := CreateBattleInput{ID: "8f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "castle-siege-v1", TickCount: 10, Participants: []ParticipantInput{{FactionID: ids[0], Controller: game.ControllerConfig{Type: "model", ProfileID: "unknown"}}, {FactionID: ids[1], Controller: game.ControllerConfig{Type: "scripted"}}}}
+	if _, err := service.CreateBattle(context.Background(), bad); !errors.Is(err, ErrModelProfileUnavailable) {
+		t.Fatal(err)
+	}
 }
 
 func TestListBattleEventsDefaultsToCurrentAttempt(t *testing.T) {
@@ -133,6 +171,69 @@ func TestBattleServiceDelegatesCatalogAndRepositoryReads(t *testing.T) {
 	}
 }
 
+func TestStopBattleValidatesAndReturnsStoppedRun(t *testing.T) {
+	validID := "7f22e693-bacd-46bb-b942-64fa613cd388"
+	repository := &fakeBattleRepo{run: &BattleRun{ID: validID, Status: "stopped"}}
+	service := NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
+	run, err := service.StopBattle(context.Background(), validID)
+	if err != nil || run.Status != "stopped" || repository.stoppedID != validID {
+		t.Fatalf("run=%#v stoppedID=%q err=%v", run, repository.stoppedID, err)
+	}
+	if _, err := service.StopBattle(context.Background(), "bad"); !errors.Is(err, ErrInvalidBattle) {
+		t.Fatalf("malformed ID error = %v", err)
+	}
+	repository.stopErr = ErrBattleNotActive
+	if _, err := service.StopBattle(context.Background(), validID); !errors.Is(err, ErrBattleNotActive) {
+		t.Fatalf("inactive error = %v", err)
+	}
+}
+
+func TestPauseAndResumeBattleValidateAndReturnRun(t *testing.T) {
+	validID := "7f22e693-bacd-46bb-b942-64fa613cd388"
+	repository := &fakeBattleRepo{run: &BattleRun{ID: validID, Status: "running"}}
+	service := NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
+
+	repository.run.Paused = true
+	paused, err := service.PauseBattle(context.Background(), validID)
+	if err != nil || !paused.Paused || repository.pausedID != validID || !repository.pausedValue {
+		t.Fatalf("paused=%#v repository=%#v err=%v", paused, repository, err)
+	}
+	repository.run.Paused = false
+	resumed, err := service.ResumeBattle(context.Background(), validID)
+	if err != nil || resumed.Paused || repository.pausedValue {
+		t.Fatalf("resumed=%#v repository=%#v err=%v", resumed, repository, err)
+	}
+	if _, err := service.PauseBattle(context.Background(), "bad"); !errors.Is(err, ErrInvalidBattle) {
+		t.Fatalf("malformed ID error = %v", err)
+	}
+}
+
+type historyBattleRepo struct {
+	*fakeBattleRepo
+	records    []ai.DecisionRecord
+	historyErr error
+}
+
+func (r *historyBattleRepo) ListBattleDecisions(context.Context, string, int) ([]ai.DecisionRecord, error) {
+	return r.records, r.historyErr
+}
+
+func TestDecisionHistoryIsSafeAndValidated(t *testing.T) {
+	repository := &historyBattleRepo{fakeBattleRepo: &fakeBattleRepo{}, records: []ai.DecisionRecord{{ID: "request", FactionID: "faction", TargetTick: 10, Status: "accepted", ProfileID: "profile", Provider: "openai", Runtime: "api", ModelIdentifier: "model", Usage: ai.Usage{Requests: 1}}}}
+	service := NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000).(DecisionHistoryService)
+	history, err := service.ListDecisionHistory(context.Background(), "7f22e693-bacd-46bb-b942-64fa613cd388", 1)
+	if err != nil || len(history) != 1 || history[0].ProfileID != "profile" || history[0].Usage.Requests != 1 {
+		t.Fatalf("history=%#v err=%v", history, err)
+	}
+	if _, err := service.ListDecisionHistory(context.Background(), "bad", 0); !errors.Is(err, ErrInvalidBattle) {
+		t.Fatal(err)
+	}
+	repository.historyErr = errors.New("database")
+	if _, err := service.ListDecisionHistory(context.Background(), "7f22e693-bacd-46bb-b942-64fa613cd388", 1); err == nil {
+		t.Fatal("history error ignored")
+	}
+}
+
 func TestFactionViewFiltersPersistedState(t *testing.T) {
 	validID := "7f22e693-bacd-46bb-b942-64fa613cd388"
 	state := game.State{Factions: []game.FactionState{{FactionID: "a"}, {FactionID: "b"}}, Units: []game.Unit{{ID: "a-unit", FactionID: "a", Position: game.Position{X: 1, Y: 1}, Health: 10, Vision: 1}, {ID: "b-unit", FactionID: "b", Position: game.Position{X: 12, Y: 9}, Health: 10}}, Buildings: []game.Building{{ID: "b-castle", FactionID: "b", Type: game.BuildingCastle, Position: game.Position{X: 13, Y: 5}, Health: 300}}}
@@ -153,11 +254,11 @@ func TestFactionViewFiltersPersistedState(t *testing.T) {
 func TestCreateBattlePropagatesDependencyAndPersistenceErrors(t *testing.T) {
 	valid := CreateBattleInput{
 		ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1",
-		FactionIDs: []string{"4db8d152-1e04-4d10-8824-859c6ed72878", "41ac3a2f-3371-4de1-b0f6-70600fcd9052"}, TickCount: 100,
+		Participants: scriptedParticipants(), TickCount: 100,
 	}
 	factions := map[string]*faction.Faction{
-		valid.FactionIDs[0]: {ID: valid.FactionIDs[0], Name: "A"},
-		valid.FactionIDs[1]: {ID: valid.FactionIDs[1], Name: "B"},
+		valid.Participants[0].FactionID: {ID: valid.Participants[0].FactionID, Name: "A"},
+		valid.Participants[1].FactionID: {ID: valid.Participants[1].FactionID, Name: "B"},
 	}
 
 	dependencyErr := errors.New("faction database unavailable")
@@ -248,6 +349,11 @@ type fakeBattleRepo struct {
 	listLatest  bool
 	getErr      error
 	listErr     error
+	stopErr     error
+	stoppedID   string
+	pauseErr    error
+	pausedID    string
+	pausedValue bool
 }
 
 func (r *fakeBattleRepo) CreateBattle(_ context.Context, params CreateBattleParams) error {
@@ -262,6 +368,15 @@ func (r *fakeBattleRepo) GetBattle(context.Context, string) (*BattleRun, error) 
 		return nil, ErrBattleNotFound
 	}
 	return r.run, nil
+}
+func (r *fakeBattleRepo) StopBattle(_ context.Context, id string) error {
+	r.stoppedID = id
+	return r.stopErr
+}
+func (r *fakeBattleRepo) SetBattlePaused(_ context.Context, id string, paused bool) error {
+	r.pausedID = id
+	r.pausedValue = paused
+	return r.pauseErr
 }
 func (r *fakeBattleRepo) ListBattleEvents(_ context.Context, _ string, attempt int, _ uint64, _ int, latest bool) ([]StoredBattleEvent, error) {
 	r.listAttempt = attempt

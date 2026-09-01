@@ -35,6 +35,12 @@ func TestCatalogLoadsRulesetAndResolvesBlueprints(t *testing.T) {
 	if rulesets := catalog.Rulesets(); len(rulesets) != 1 || rulesets[0].DesignBudget != 120 {
 		t.Fatalf("rulesets = %#v", rulesets)
 	}
+	if ruleset, ok := catalog.Ruleset("castle-siege-v1"); !ok || ruleset.ID != "castle-siege-v1" {
+		t.Fatalf("Ruleset() = %#v, %v", ruleset, ok)
+	}
+	if _, ok := catalog.Ruleset("missing"); ok {
+		t.Fatal("missing ruleset was reported present")
+	}
 }
 
 func TestCatalogRejectsUnknownScenarioField(t *testing.T) {

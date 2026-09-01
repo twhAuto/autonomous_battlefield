@@ -244,6 +244,17 @@ if ! grep -Eq '"id"[[:space:]]*:[[:space:]]*"battlefield-logs"' \
   exit 1
 fi
 
+curl --fail --silent --max-time 2 \
+  --noproxy '*' \
+  --resolve "${kibana_host}:${gateway_port}:127.0.0.1" \
+  --output "${runtime_dir}/kibana-ai-decisions-search.json" \
+  "http://${kibana_host}:${gateway_port}/api/saved_objects/search/battlefield-ai-decisions"
+if ! grep -Eq '"title"[[:space:]]*:[[:space:]]*"Battlefield AI Decisions"' \
+  "${runtime_dir}/kibana-ai-decisions-search.json"; then
+  echo "Kibana did not provision the Battlefield AI Decisions saved search." >&2
+  exit 1
+fi
+
 wait_for_elasticsearch_logs() {
   local output_file="${runtime_dir}/elasticsearch-application-log-count.json"
 

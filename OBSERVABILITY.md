@@ -141,6 +141,35 @@ Battlefield / Kubernetes Workloads** for pod state and resource usage. Visit
 Battlefield Logs** for logs. The deployment job creates that data view before
 the observability stage is considered complete.
 
+For model-controller troubleshooting, open the provisioned **Battlefield AI
+Decisions** saved search in Discover. It filters to decision lifecycle events
+and shows the correlation fields needed to follow one decision across the
+engine, MCP service, and in-cluster agent: `battle_id`, `request_id`,
+`faction_id`, `target_tick`, `profile_id`, `decision_status`,
+`error_category`, `fallback_source`, and `duration_ms`. The collector includes
+the API, engine, agent, MCP, frontend, and migration workloads. A subscription
+CLI agent runs on the host, so its process-local messages remain in the bridge
+terminal; its MCP claims, tool calls, submissions, failures, and final engine
+resolution are recorded by Kubernetes services and therefore appear in
+Kibana.
+
+Useful KQL filters include:
+
+```text
+msg: decision_*
+decision_status: fallback
+error_category: timeout
+battle_id: "<battle UUID>"
+request_id: "<decision UUID>"
+```
+
+`decision_window_started` records the configured timeout,
+`decision_context_served` confirms observation retrieval,
+`decision_plan_submitted` records validation and acceptance, and
+`decision_resolved` is the authoritative final outcome selected by the engine.
+Operational logs intentionally exclude capability tokens, credentials, full
+observations, prompts, and CLI output.
+
 Local Grafana allows anonymous Viewer access and disables basic login. The
 local Elasticsearch and Kibana deployment also disables authentication. Envoy
 Gateway exposes the web interfaces only through a Kind node port bound to

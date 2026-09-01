@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -16,6 +17,7 @@ type Config struct {
 	Database Database
 	API      API
 	Engine   Engine
+	AI       AI
 }
 
 type API struct {
@@ -32,6 +34,18 @@ type Engine struct {
 	ShutdownTimeout             time.Duration
 	MaxAttempts                 int
 	WorkerIDEnvironmentVariable string
+}
+
+type AI struct {
+	Environment         string
+	AgentHealthAddress  string
+	MCPAddress          string
+	MCPURL              string
+	DecisionTimeout     time.Duration
+	CapabilitySecret    string
+	CapabilitySecretEnv string
+	AllowedOrigins      []string
+	Profiles            []ai.ModelProfile
 }
 
 type Database struct {
@@ -81,6 +95,16 @@ type fileConfig struct {
 		MaxAttempts                 int    `yaml:"maxAttempts"`
 		WorkerIDEnvironmentVariable string `yaml:"workerIdEnvironmentVariable"`
 	} `yaml:"engine"`
+	AI struct {
+		Environment                         string            `yaml:"environment"`
+		AgentHealthAddress                  string            `yaml:"agentHealthAddress"`
+		MCPAddress                          string            `yaml:"mcpAddress"`
+		MCPURL                              string            `yaml:"mcpUrl"`
+		DecisionTimeout                     string            `yaml:"decisionTimeout"`
+		CapabilitySecretEnvironmentVariable string            `yaml:"capabilitySecretEnvironmentVariable"`
+		AllowedOrigins                      []string          `yaml:"allowedOrigins"`
+		Profiles                            []ai.ModelProfile `yaml:"profiles"`
+	} `yaml:"ai"`
 }
 
 func Load(path string) (Config, error) {
@@ -105,7 +129,11 @@ func LoadAPI(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
 	}
-	return Config{HTTP: httpConfig, Database: databaseConfig, API: apiConfig}, nil
+	aiConfig, err := parseAIConfig(raw)
+	if err != nil {
+		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
+	}
+	return Config{HTTP: httpConfig, Database: databaseConfig, API: apiConfig, AI: aiConfig}, nil
 }
 
 func LoadEngine(path string) (Config, error) {
@@ -121,7 +149,99 @@ func LoadEngine(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
 	}
-	return Config{Database: databaseConfig, Engine: engineConfig}, nil
+	aiConfig, err := parseAIConfig(raw)
+	if err != nil {
+		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
+	}
+	return Config{Database: databaseConfig, Engine: engineConfig, AI: aiConfig}, nil
+}
+
+func LoadAgent(path string) (Config, error) {
+	raw, err := decode(path)
+	if err != nil {
+		return Config{}, err
+	}
+	aiConfig, err := parseAIConfig(raw)
+	if err != nil {
+		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
+	}
+	if aiConfig.CapabilitySecret == "" {
+		return Config{}, fmt.Errorf("capability secret environment variable %q must not be empty", aiConfig.CapabilitySecretEnv)
+	}
+	return Config{AI: aiConfig}, nil
+}
+
+func LoadMCP(path string) (Config, error) {
+	raw, err := decode(path)
+	if err != nil {
+		return Config{}, err
+	}
+	databaseConfig, err := parseDatabaseConfig(raw)
+	if err != nil {
+		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
+	}
+	aiConfig, err := parseAIConfig(raw)
+	if err != nil {
+		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
+	}
+	if aiConfig.CapabilitySecret == "" {
+		return Config{}, fmt.Errorf("capability secret environment variable %q must not be empty", aiConfig.CapabilitySecretEnv)
+	}
+	return Config{Database: databaseConfig, AI: aiConfig}, nil
+}
+
+func parseAIConfig(raw fileConfig) (AI, error) {
+	environment := strings.TrimSpace(raw.AI.Environment)
+	if environment == "" {
+		environment = "local"
+	}
+	if environment != "local" && environment != "cluster" {
+		return AI{}, fmt.Errorf("ai.environment must be local or cluster")
+	}
+	health := strings.TrimSpace(raw.AI.AgentHealthAddress)
+	if health == "" {
+		health = ":8083"
+	}
+	mcpAddress := strings.TrimSpace(raw.AI.MCPAddress)
+	if mcpAddress == "" {
+		mcpAddress = ":8084"
+	}
+	mcpURL := strings.TrimSpace(raw.AI.MCPURL)
+	if mcpURL == "" {
+		mcpURL = "http://127.0.0.1:8084/mcp"
+	}
+	timeout, err := parseOptionalDuration("ai.decisionTimeout", raw.AI.DecisionTimeout, 2*time.Minute, false)
+	if err != nil {
+		return AI{}, err
+	}
+	secretEnv := strings.TrimSpace(raw.AI.CapabilitySecretEnvironmentVariable)
+	if secretEnv == "" {
+		secretEnv = "BATTLEFIELD_MCP_CAPABILITY_SECRET"
+	}
+	secret := strings.TrimSpace(os.Getenv(secretEnv))
+	if secret == "" && environment == "local" {
+		secret = "local-development-capability-secret-change-me"
+	}
+	seen := make(map[string]bool, len(raw.AI.Profiles))
+	for _, profile := range raw.AI.Profiles {
+		id := strings.TrimSpace(profile.ID)
+		if id == "" || seen[id] {
+			return AI{}, fmt.Errorf("ai profile IDs must be unique and non-empty")
+		}
+		seen[id] = true
+		if profile.MaxSteps < 1 || profile.MaxSteps > 10 {
+			return AI{}, fmt.Errorf("ai profile %q maxSteps must be between 1 and 10", profile.ID)
+		}
+		if profile.Runtime == "api" && profile.MaxOutputTokens < 1 {
+			return AI{}, fmt.Errorf("ai profile %q maxOutputTokens must be positive", profile.ID)
+		}
+		if profile.Runtime == "cli" && strings.TrimSpace(profile.SupportedVersionPrefix) == "" {
+			return AI{}, fmt.Errorf("ai profile %q supportedVersionPrefix is required", profile.ID)
+		}
+	}
+	return AI{Environment: environment, AgentHealthAddress: health, MCPAddress: mcpAddress, MCPURL: mcpURL,
+		DecisionTimeout: timeout, CapabilitySecret: secret, CapabilitySecretEnv: secretEnv,
+		AllowedOrigins: append([]string(nil), raw.AI.AllowedOrigins...), Profiles: append([]ai.ModelProfile(nil), raw.AI.Profiles...)}, nil
 }
 
 func decode(path string) (fileConfig, error) {

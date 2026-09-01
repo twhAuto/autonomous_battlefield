@@ -70,7 +70,7 @@ func TestGetBattleDecodesStoredRun(t *testing.T) {
 	db := &battleDB{row: battleRow(func(destinations ...any) error {
 		values := []any{
 			"battle-1", "scenario-1", "digest", scenarioJSON, uint64(10), stateJSON, stateJSON, uint64(4),
-			"completed", 2, resultJSON, &errorCode, &errorMessage, now, &started, &completed,
+			"completed", false, 2, resultJSON, &errorCode, &errorMessage, now, &started, &completed,
 		}
 		return assignBattleValues(destinations, values)
 	})}
@@ -106,6 +106,81 @@ func TestGetBattleMapsReadAndDecodeErrors(t *testing.T) {
 				t.Fatalf("GetBattle() error = %v, want text %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestStopBattleMapsStateAndDatabaseResults(t *testing.T) {
+	stopRow := func(stopped, previous string, decisions int) pgx.Row {
+		return battleRow(func(destinations ...any) error {
+			return assignBattleValues(destinations, []any{stopped, previous, decisions})
+		})
+	}
+	for _, test := range []struct {
+		name string
+		row  pgx.Row
+		want error
+	}{
+		{name: "running", row: stopRow("stopped", "running", 1)},
+		{name: "queued", row: stopRow("stopped", "queued", 0)},
+		{name: "missing", row: stopRow("", "", 0), want: battleservice.ErrBattleNotFound},
+		{name: "settled", row: stopRow("", "completed", 0), want: battleservice.ErrBattleNotActive},
+		{name: "database", row: battleRow(func(...any) error { return errDatabase }), want: errDatabase},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := &battleDB{row: test.row}
+			err := NewPostgres(db).StopBattle(context.Background(), "battle-1")
+			if test.want == nil && err != nil {
+				t.Fatal(err)
+			}
+			if test.want != nil && !errors.Is(err, test.want) {
+				t.Fatalf("error = %v, want %v", err, test.want)
+			}
+			if test.name == "running" && (!strings.Contains(db.queryRowSQL, "status = 'stopped'") || !strings.Contains(db.queryRowSQL, "battle_stopped")) {
+				t.Fatalf("stop SQL does not settle the run and decisions: %s", db.queryRowSQL)
+			}
+		})
+	}
+}
+
+func TestSetBattlePausedMapsStateAndDatabaseResults(t *testing.T) {
+	statusRow := func(status string) pgx.Row {
+		return battleRow(func(destinations ...any) error { return assignBattleValues(destinations, []any{status}) })
+	}
+	for _, test := range []struct {
+		name string
+		row  pgx.Row
+		want error
+	}{
+		{name: "running", row: statusRow("running")},
+		{name: "queued", row: statusRow("queued")},
+		{name: "missing", row: statusRow(""), want: battleservice.ErrBattleNotFound},
+		{name: "settled", row: statusRow("completed"), want: battleservice.ErrBattleNotActive},
+		{name: "database", row: battleRow(func(...any) error { return errDatabase }), want: errDatabase},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := &battleDB{row: test.row}
+			err := NewPostgres(db).SetBattlePaused(context.Background(), "battle-1", true)
+			if test.want == nil && err != nil {
+				t.Fatal(err)
+			}
+			if test.want != nil && !errors.Is(err, test.want) {
+				t.Fatalf("error = %v, want %v", err, test.want)
+			}
+			if test.name == "running" && !strings.Contains(db.queryRowSQL, "SET paused = $2") {
+				t.Fatalf("pause SQL = %s", db.queryRowSQL)
+			}
+		})
+	}
+}
+
+func TestBattlePausedRequiresOwnedLease(t *testing.T) {
+	lease := worker.BattleLease{BattleID: "battle-1", Attempt: 2, Owner: "worker-1"}
+	paused, err := NewPostgres(&battleDB{row: booleanBattleRow(true)}).BattlePaused(context.Background(), lease)
+	if err != nil || !paused {
+		t.Fatalf("BattlePaused() = %t, %v", paused, err)
+	}
+	if _, err := NewPostgres(&battleDB{row: battleRow(func(...any) error { return pgx.ErrNoRows })}).BattlePaused(context.Background(), lease); !errors.Is(err, worker.ErrBattleLeaseLost) {
+		t.Fatalf("missing lease error = %v", err)
 	}
 }
 
@@ -282,12 +357,14 @@ func assertLeaseError(t *testing.T, err, want error) {
 }
 
 type battleDB struct {
-	row      pgx.Row
-	rows     pgx.Rows
-	queryErr error
-	execTag  pgconn.CommandTag
-	execErr  error
-	execArgs []any
+	row         pgx.Row
+	rowQueue    []pgx.Row
+	rows        pgx.Rows
+	queryErr    error
+	execTag     pgconn.CommandTag
+	execErr     error
+	execArgs    []any
+	queryRowSQL string
 }
 
 func (db *battleDB) Exec(_ context.Context, _ string, arguments ...any) (pgconn.CommandTag, error) {
@@ -299,7 +376,13 @@ func (db *battleDB) Query(context.Context, string, ...any) (pgx.Rows, error) {
 	return db.rows, db.queryErr
 }
 
-func (db *battleDB) QueryRow(context.Context, string, ...any) pgx.Row {
+func (db *battleDB) QueryRow(_ context.Context, sql string, _ ...any) pgx.Row {
+	db.queryRowSQL = sql
+	if len(db.rowQueue) > 0 {
+		row := db.rowQueue[0]
+		db.rowQueue = db.rowQueue[1:]
+		return row
+	}
 	if db.row == nil {
 		return battleRow(func(...any) error { return pgx.ErrNoRows })
 	}
@@ -322,7 +405,7 @@ func storedBattleRow(snapshot, result []byte) battleRow {
 		state, _ := json.Marshal(battle.State{BattleID: "battle-1"})
 		return assignBattleValues(destinations, []any{
 			"battle-1", "scenario-1", "digest", snapshot, uint64(10), state, state, uint64(0),
-			"queued", 1, result, (*string)(nil), (*string)(nil), time.Now(), (*time.Time)(nil), (*time.Time)(nil),
+			"queued", false, 1, result, (*string)(nil), (*string)(nil), time.Now(), (*time.Time)(nil), (*time.Time)(nil),
 		})
 	}
 }

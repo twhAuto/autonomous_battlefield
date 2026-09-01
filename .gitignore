@@ -10,3 +10,4 @@ frontend/*.tsbuildinfo
 .scannerwork/
 .jenkins-coverage-check.md
 deploy/overlays/local/infrastructure/secret.env
+deploy/overlays/local/infrastructure/ai-secret.env

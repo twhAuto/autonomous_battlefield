@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 )
 
 func TestLoadReadsConfigFile(t *testing.T) {
@@ -168,6 +170,54 @@ func TestParseEngineConfigValidationAndDefaults(t *testing.T) {
 				t.Fatal("parseEngineConfig() returned no error")
 			}
 		})
+	}
+}
+
+func TestParseAIConfigDefaultsProfilesAndValidation(t *testing.T) {
+	configuration, err := parseAIConfig(fileConfig{})
+	if err != nil || configuration.AgentHealthAddress != ":8083" || configuration.MCPAddress != ":8084" || configuration.DecisionTimeout != 2*time.Minute || configuration.CapabilitySecret == "" {
+		t.Fatalf("AI=%#v err=%v", configuration, err)
+	}
+	valid := func() fileConfig {
+		var raw fileConfig
+		raw.AI.Environment = "cluster"
+		raw.AI.DecisionTimeout = "2s"
+		raw.AI.Profiles = []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", MaxSteps: 3, MaxOutputTokens: 100}}
+		return raw
+	}
+	if parsed, err := parseAIConfig(valid()); err != nil || len(parsed.Profiles) != 1 {
+		t.Fatal(err)
+	}
+	for _, mutate := range []func(*fileConfig){func(raw *fileConfig) { raw.AI.Environment = "remote" }, func(raw *fileConfig) { raw.AI.DecisionTimeout = "bad" }, func(raw *fileConfig) { raw.AI.Profiles[0].MaxSteps = 0 }, func(raw *fileConfig) { raw.AI.Profiles[0].MaxOutputTokens = 0 }, func(raw *fileConfig) { raw.AI.Profiles = append(raw.AI.Profiles, raw.AI.Profiles[0]) }, func(raw *fileConfig) {
+		raw.AI.Profiles[0].Runtime = "cli"
+		raw.AI.Profiles[0].SupportedVersionPrefix = ""
+	}} {
+		raw := valid()
+		mutate(&raw)
+		if _, err := parseAIConfig(raw); err == nil {
+			t.Fatal("invalid AI config accepted")
+		}
+	}
+}
+
+func TestLoadAgentAndMCPRequireClusterCapability(t *testing.T) {
+	path := writeEngineConfigFile(t, `ai:
+  environment: cluster
+  capabilitySecretEnvironmentVariable: TEST_CAPABILITY_SECRET
+`)
+	t.Setenv("TEST_CAPABILITY_SECRET", "")
+	if _, err := LoadAgent(path); err == nil {
+		t.Fatal("agent accepted missing secret")
+	}
+	if _, err := LoadMCP(path); err == nil {
+		t.Fatal("MCP accepted missing secret")
+	}
+	t.Setenv("TEST_CAPABILITY_SECRET", "secret")
+	if _, err := LoadAgent(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadMCP(path); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -101,6 +101,18 @@ func TestListFactions(t *testing.T) {
 	}
 }
 
+func TestListRulesets(t *testing.T) {
+	withoutCatalog := NewService(&fakeFactionRepository{})
+	if got := withoutCatalog.(RulesetLister).ListRulesets(); len(got) != 0 {
+		t.Fatalf("rulesets without catalog = %#v", got)
+	}
+	ruleset := game.Ruleset{ID: "castle-siege-v1"}
+	withCatalog := NewService(&fakeFactionRepository{}, fakeRulesets{ruleset: ruleset})
+	if got := withCatalog.(RulesetLister).ListRulesets(); len(got) != 1 || got[0].ID != ruleset.ID {
+		t.Fatalf("rulesets = %#v", got)
+	}
+}
+
 func TestGetFactionName(t *testing.T) {
 	repo := &fakeFactionRepository{storedFaction: &faction.Faction{Name: "Northwind"}}
 	service := NewService(repo)
@@ -115,12 +127,30 @@ func TestGetFactionName(t *testing.T) {
 	}
 }
 
+func TestDeleteFaction(t *testing.T) {
+	id := "7f22e693-bacd-46bb-b942-64fa613cd388"
+	repo := &fakeFactionRepository{}
+	service := NewService(repo)
+	if err := service.DeleteFaction(context.Background(), id); err != nil || repo.deletedID != id {
+		t.Fatalf("deleted=%q err=%v", repo.deletedID, err)
+	}
+	if err := service.DeleteFaction(context.Background(), "not-a-uuid"); !errors.Is(err, ErrInvalidFaction) {
+		t.Fatalf("invalid ID error=%v", err)
+	}
+	repo.deleteErr = ErrFactionNotFound
+	if err := service.DeleteFaction(context.Background(), id); !errors.Is(err, ErrFactionNotFound) {
+		t.Fatalf("not found error=%v", err)
+	}
+}
+
 type fakeFactionRepository struct {
 	createdFaction *faction.Faction
 	storedFaction  *faction.Faction
 	createErr      error
 	getErr         error
 	factions       []faction.Faction
+	deletedID      string
+	deleteErr      error
 }
 
 type fakeRulesets struct{ ruleset game.Ruleset }
@@ -139,4 +169,9 @@ func (r *fakeFactionRepository) ListFactions(context.Context) ([]faction.Faction
 func (r *fakeFactionRepository) CreateFaction(_ context.Context, stored faction.Faction) error {
 	r.createdFaction = &stored
 	return r.createErr
+}
+
+func (r *fakeFactionRepository) DeleteFaction(_ context.Context, id string) error {
+	r.deletedID = id
+	return r.deleteErr
 }

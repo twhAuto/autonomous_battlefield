@@ -46,6 +46,38 @@ spec:
                 secretKeyRef:
                   name: battlefield-database
                   key: DATABASE_URL
+            - name: OPENAI_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: battlefield-ai
+                  key: OPENAI_MODEL
+            - name: OPENAI_PROFILE_AVAILABLE
+              valueFrom:
+                secretKeyRef:
+                  name: battlefield-ai
+                  key: OPENAI_PROFILE_AVAILABLE
+            - name: GEMINI_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: battlefield-ai
+                  key: GEMINI_MODEL
+            - name: GEMINI_PROFILE_AVAILABLE
+              valueFrom:
+                secretKeyRef:
+                  name: battlefield-ai
+                  key: GEMINI_PROFILE_AVAILABLE
+            - name: CODEX_CLI_PROFILE_AVAILABLE
+              valueFrom:
+                secretKeyRef:
+                  name: battlefield-ai
+                  key: CODEX_CLI_PROFILE_AVAILABLE
+                  optional: true
+            - name: GEMINI_CLI_PROFILE_AVAILABLE
+              valueFrom:
+                secretKeyRef:
+                  name: battlefield-ai
+                  key: GEMINI_CLI_PROFILE_AVAILABLE
+                  optional: true
           ports:
             - name: http
               containerPort: 8080

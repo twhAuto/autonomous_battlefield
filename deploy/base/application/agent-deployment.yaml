@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: battlefield-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: autonomous-battlefield, app.kubernetes.io/component: agent}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: autonomous-battlefield, app.kubernetes.io/component: agent}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: agent
+          image: autonomous-battlefield-backend:dev
+          command: [/app/agent]
+          args: [-config, /etc/battlefield/config.yaml]
+          env:
+            - {name: BATTLEFIELD_MCP_CAPABILITY_SECRET, valueFrom: {secretKeyRef: {name: battlefield-ai, key: BATTLEFIELD_MCP_CAPABILITY_SECRET}}}
+            - {name: OPENAI_API_KEY, valueFrom: {secretKeyRef: {name: battlefield-ai, key: OPENAI_API_KEY}}}
+            - {name: OPENAI_MODEL, valueFrom: {secretKeyRef: {name: battlefield-ai, key: OPENAI_MODEL}}}
+            - {name: OPENAI_PROFILE_AVAILABLE, valueFrom: {secretKeyRef: {name: battlefield-ai, key: OPENAI_PROFILE_AVAILABLE}}}
+            - {name: GEMINI_API_KEY, valueFrom: {secretKeyRef: {name: battlefield-ai, key: GEMINI_API_KEY}}}
+            - {name: GEMINI_MODEL, valueFrom: {secretKeyRef: {name: battlefield-ai, key: GEMINI_MODEL}}}
+            - {name: GEMINI_PROFILE_AVAILABLE, valueFrom: {secretKeyRef: {name: battlefield-ai, key: GEMINI_PROFILE_AVAILABLE}}}
+          ports: [{name: health, containerPort: 8083}]
+          readinessProbe: {httpGet: {path: /healthz, port: health}, periodSeconds: 5}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: config, mountPath: /etc/battlefield/config.yaml, subPath: config.yaml, readOnly: true}, {name: tmp, mountPath: /tmp}]
+      volumes: [{name: config, configMap: {name: battlefield-config}}, {name: tmp, emptyDir: {}}]

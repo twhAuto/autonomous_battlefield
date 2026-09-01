@@ -2,9 +2,8 @@ id: castle-siege-v1
 rulesVersion: "1"
 rulesetId: castle-siege-v1
 maximumTicks: 500
-tickDuration: 500ms
+tickDuration: 1s
 decisionIntervalTicks: 10
-decisionLeadTicks: 2
 map:
   kind: authored
   width: 15

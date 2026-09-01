@@ -19,6 +19,27 @@ When the user asks to plan, select, or implement tracked project work:
 
 If Notion MCP is unavailable, continue with safe repository work when possible and tell the user that task statuses could not be synchronized.
 
+## Documentation maintenance
+
+Keep repository documentation synchronized with every implementation change.
+
+- When a change affects runtime components, boundaries, data flows, persistence,
+  security, configuration, deployment, or operational behavior, update
+  `docs/design/system-architecture.md` and any affected operational guide in the
+  same change.
+- When a change adds, removes, renames, moves, or materially changes packages,
+  entry points, important types, routes, migrations, frontend areas, tests, or
+  common development workflows, update `docs/design/codebase-guide.md` in the
+  same change.
+- Update `README.md` when setup steps, capabilities, commands, ports, or
+  documentation entry points change.
+- Do not make mechanical documentation edits for an internal change that does
+  not alter documented behavior or structure. Instead, verify that the current
+  documentation remains accurate.
+- Before completing a change, check links, diagrams, examples, file paths, and
+  commands in every affected document against the current working tree,
+  including uncommitted changes.
+
 ## Test coverage quality gate
 
 Implementation work must preserve the repository's merge-blocking coverage

@@ -2,7 +2,7 @@
 
 Autonomous Battlefield is a Go backend for an auto-battler and expansion game. The long-term product will let human players and AI agents control factions that gather resources, expand territory, and fight on a continuously running battlefield.
 
-The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, point-buy faction blueprints, autonomous economies, fog-of-war views, configurable scripted strategy decisions, validated configuration, health endpoints, and graceful shutdown. Player commands, authentication, seeded map generation, and LLM agents described in the [revision guide](REVISION.md) remain planned work.
+The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, point-buy faction blueprints, autonomous economies, fog-of-war views, production-window decisions, provider-neutral model controllers over MCP, validated configuration, health endpoints, and graceful shutdown. Player commands, authentication, and seeded map generation described in the [revision guide](REVISION.md) remain planned work.
 
 ## Current capabilities
 
@@ -14,6 +14,7 @@ The project is in an early stage. The current backend provides PostgreSQL-backed
 - Shut down the HTTP server gracefully on `SIGINT` or `SIGTERM`.
 - Rank valid faction actions with an in-memory deterministic utility controller.
 - Schedule configurable strategy-decision windows and use a safe fallback plan between them.
+- Run OpenAI or Gemini API profiles through a shared MCP tool loop, with optional local Codex and Gemini CLI subscription profiles.
 - Queue finite battles durably in PostgreSQL and claim them safely across engine workers.
 - Run deterministic hex movement, economy, recruitment, castle combat, and persist replay state, statistics, and paginated events.
 - Exercise HTTP delivery, faction and battle use cases, PostgreSQL adapters, deterministic combat, workers, scenarios, configuration, and JSON helpers with tests.
@@ -37,6 +38,8 @@ Choose the guide that matches the task:
 | Quickly redeploy the backend and frontend to an existing local cluster | `./deploy-local.sh` |
 | Build and deploy to local Kubernetes | [DEPLOYMENT.md](DEPLOYMENT.md#deploy-the-application-locally) |
 | Inspect metrics, logs, Grafana, Kibana, and reliability objectives | [OBSERVABILITY.md](OBSERVABILITY.md) |
+| Understand runtime components and AI decision flow | [System architecture](docs/design/system-architecture.md) |
+| Navigate packages, files, and common code changes | [Codebase guide](docs/design/codebase-guide.md) |
 | Resume kind after restarting the computer | [DEPLOYMENT.md](DEPLOYMENT.md#resume-the-cluster-after-restarting-the-computer) |
 | Install and configure Jenkins, GitHub, and SonarQube | [JENKINS.md](JENKINS.md) |
 | Start the existing CI/CD services after reboot | [JENKINS.md](JENKINS.md#daily-startup-after-a-reboot) |
@@ -62,6 +65,38 @@ the Compose service:
 ```bash
 START_POSTGRES=0 DATABASE_URL='postgres://user:password@localhost:5432/battlefield?sslmode=disable' ./run-dev.sh
 ```
+
+Set `START_AGENT=1` to also start the provider-neutral agent on port `8083`
+and the internal MCP decision service at `http://localhost:8084/mcp`:
+
+```bash
+START_AGENT=1 OPENAI_API_KEY='...' OPENAI_MODEL='gpt-5-mini' ./run-dev.sh
+```
+
+API profiles are available only when both configured credential and model
+variables are present. Local `codex-cli` and `gemini-cli` profiles instead
+require the corresponding binary and an existing interactive login. The CLI
+runners use an empty temporary workspace and an isolated MCP-only
+configuration; subscription authentication directories are never mounted in
+Kubernetes. `supportedVersionPrefix` pins the tested CLI release family; an
+unmatched installation is reported as unavailable instead of being invoked.
+
+To use a subscription CLI in a battle running on the local Kubernetes cluster,
+deploy the application and start the host bridge in a second terminal:
+
+```bash
+./deploy-local.sh
+./run-k8s-cli-agent.sh codex
+```
+
+Use `gemini`, `both`, or `auto` instead of `codex` when appropriate. Keep the
+bridge terminal open, browse to `http://battlefield.localhost:8888`, and select
+the enabled subscription profile as a faction controller. The host agent
+long-polls the internal MCP service through a loopback-only port-forward and
+handles decisions at ticks `10, 20, 30, ...`. It never copies the CLI login or
+its authentication files into Kubernetes. Press Ctrl+C after the battle; the
+helper then disconnects the agent and removes the CLI profiles from the battle
+form.
 
 To start each component manually instead, run:
 
@@ -105,7 +140,25 @@ go run ./cmd/engine
 
 The engine does not expose gameplay routes. Its internal operational endpoint listens on `http://localhost:8081`; `/startupz` reports initialization, `/livez` checks the process, and `/readyz` checks worker readiness plus database connectivity. The API exposes the same three lifecycle endpoints on port 8080. Both processes retry transient PostgreSQL connection failures during startup and become unready before graceful shutdown.
 
-Both processes write structured JSON operational logs to stdout for container log collection. API logs include request IDs, status codes, response sizes, and latency. Engine logs cover claims, reclaimed attempts, completion results, graceful requeues, lease loss, and failures. Individual combat ticks remain in the durable `battle_events` stream instead of being duplicated in normal process logs. Send `X-Request-ID` with an API request to preserve an upstream correlation ID; otherwise the server generates one and returns it in the response header. Both processes also expose Prometheus metrics at `/metrics`; see the [observability and reliability guide](OBSERVABILITY.md) for the metric catalog and proposed SLIs/SLOs.
+### Inspect the local database with DBHub
+
+DBHub is available as an opt-in development tool. Start it and its PostgreSQL
+dependency from the project root with:
+
+```bash
+docker compose -f backend/compose.yaml --profile tools up -d dbhub
+```
+
+Open `http://localhost:8082`. DBHub connects to the Compose PostgreSQL service
+with the repository's local-only `battlefield` credentials. It is bound to the
+host loopback interface because its HTTP endpoint does not provide application
+authentication. Stop it with:
+
+```bash
+docker compose -f backend/compose.yaml stop dbhub
+```
+
+Application processes write structured JSON operational logs to stdout for container log collection. API logs include request IDs, status codes, response sizes, and latency. Engine logs cover claims, reclaimed attempts, completion results, graceful requeues, lease loss, and failures. Individual combat ticks remain in the durable `battle_events` stream instead of being duplicated in normal process logs. Send `X-Request-ID` with an API request to preserve an upstream correlation ID; otherwise the server generates one and returns it in the response header. The API and engine expose Prometheus metrics at `/metrics`; see the [observability and reliability guide](OBSERVABILITY.md) for the metric catalog and proposed SLIs/SLOs.
 
 The credentials in `compose.yaml` and `.env.example` are for local development only. Use a secret manager to provide `DATABASE_URL` in deployed environments. The application only runs schema migrations when explicitly started with `-migrate`.
 
@@ -117,7 +170,8 @@ The repository includes a staged Kustomize deployment for `kind`:
    local Secret, and development PostgreSQL StatefulSet.
 2. `deploy/overlays/local/migration` applies schema migrations through a
    one-shot Job.
-3. `deploy/overlays/local/application` creates the API, engine, frontend,
+3. `deploy/overlays/local/application` creates the API, engine, agent, internal
+   MCP service, frontend,
    Services, HPA, and disruption budgets. The portable base Ingress is removed
    locally in favor of Gateway API routes.
 4. `deploy/overlays/local/observability` creates Prometheus, namespace-scoped
@@ -135,9 +189,11 @@ The standard container workflow uses `./scripts/cd/create-kind-cluster.sh`,
 application image is identified by the full source commit SHA. After deployment,
 open `http://battlefield.localhost:8888` for the application and
 `http://grafana.localhost:8888` for Grafana, or
-`http://kibana.localhost:8888` for logs. The `VERSION` file supplies release
-metadata, while CI builds add a human-readable `major.minor.patch-build.N` alias
-to the same image. Merged-main deployments compare against the previous
+`http://kibana.localhost:8888` for logs. In Kibana Discover, use the
+provisioned **Battlefield AI Decisions** saved search to correlate model claims,
+MCP calls, accepted plans, timeouts, and engine fallbacks. The `VERSION` file
+supplies release metadata, while CI builds add a human-readable
+`major.minor.patch-build.N` alias to the same image. Merged-main deployments compare against the previous
 successful build and only build, scan, migrate, or apply components affected by
 that change; an unavailable comparison or unclassified path safely falls back
 to a full deployment.
@@ -157,7 +213,7 @@ already been deployed, rebuild and redeploy only the backend and frontend with:
 ```
 
 This convenience command accepts uncommitted local changes, runs the backend
-migration gate, and updates the API, engine, and frontend workloads. When the
+migration gate, and updates the API, engine, agent, MCP, and frontend workloads. When the
 working tree is dirty, it also restarts those workloads so images rebuilt under
 the current commit tag are picked up immediately. It does not deploy or update
 PostgreSQL, observability, logging, or gateway resources.
@@ -278,6 +334,17 @@ Request bodies are limited to 64 KiB and must contain exactly one JSON value. Na
 
 `GET /v1/faction-rulesets` returns the available budgets, unit statistics, upgrades, and costs used by the faction builder.
 
+### Delete a faction
+
+```http
+DELETE /v1/factions/{id}
+```
+
+A successful deletion returns `204 No Content`; malformed IDs return `400` and
+missing factions return `404`. Deletion removes the faction from the active
+registry. Existing battle history remains readable because each battle stores
+an immutable scenario and participant snapshot.
+
 ### Get a faction name
 
 ```http
@@ -311,9 +378,15 @@ Content-Type: application/json
 {
   "id": "7f22e693-bacd-46bb-b942-64fa613cd388",
   "scenarioId": "castle-siege-v1",
-  "factionIds": [
-    "4db8d152-1e04-4d10-8824-859c6ed72878",
-    "41ac3a2f-3371-4de1-b0f6-70600fcd9052"
+  "participants": [
+    {
+      "factionId": "4db8d152-1e04-4d10-8824-859c6ed72878",
+      "controller": {"type": "model", "profileId": "gemini-api-balanced"}
+    },
+    {
+      "factionId": "41ac3a2f-3371-4de1-b0f6-70600fcd9052",
+      "controller": {"type": "scripted"}
+    }
   ],
   "tickCount": 100
 }
@@ -321,13 +394,32 @@ Content-Type: application/json
 
 A valid request returns `202 Accepted`, a queued status, and `Location: /v1/battles/{id}`. Invalid input returns `400`, a missing scenario or faction returns `404`, incompatible faction rulesets return `422`, and a duplicate battle ID returns `409`.
 
+`GET /v1/model-profiles` returns the operator allowlist with safe availability,
+provider, runtime, scope, model-label, and tool-capability fields. It never
+returns credential values or credential environment-variable names.
+
+At ticks 10, 20, 30, and so on, the engine freezes the prior state, creates one
+fog-of-war-bounded decision per faction, waits up to two minutes for model plans,
+then applies income, reserve-aware priority production, tactics, and combat.
+Late plans cannot overwrite the fallback selected by the engine. Completed
+decision metadata is available from
+`GET /v1/battles/{id}/decisions?attempt={attempt}`.
+
+For offline comparisons, query `battle_controller_evaluation`. It groups
+scripted and model profiles by controller/provider/runtime and reports win,
+invalid-plan, fallback, latency, normalized usage, and plan-diversity metrics.
+
 ### Get battle status and results
 
 ```http
 GET /v1/battles/{id}
 ```
 
-The response reports `queued`, `running`, `completed`, or `failed`, along with the authored map and current units, buildings, treasuries, tick, and attempt. Completed battles include castle health plus unit, economy, loot, damage, and posture statistics.
+The response reports `queued`, `running`, `completed`, `failed`, or `stopped`, along with the authored map and current units, buildings, treasuries, tick, and attempt. Completed battles include castle health plus unit, economy, loot, damage, and posture statistics.
+
+Stop a queued or running battle with `POST /v1/battles/{id}/stop`. The operation
+releases the engine lease and marks unresolved model decisions as failed so a
+host subscription agent cannot continue the stopped run.
 
 `GET /v1/battles/{battleId}/factions/{factionId}/view` returns the same terrain with faction fog-of-war applied. Owned entities and both castles are always present; other hostile entities appear only inside current friendly vision.
 
@@ -365,6 +457,11 @@ Non-secret settings live in `backend/config.yaml`:
 | `engine.heartbeatInterval` | `10s` | Lease-renewal interval during paced waits. |
 | `engine.shutdownTimeout` | `10s` | Deadline for health shutdown and battle requeue. |
 | `engine.maxAttempts` | `3` | Processing attempts before a battle fails. |
+| `ai.environment` | `local` | Profile compatibility scope (`local` or `cluster`). |
+| `ai.agentHealthAddress` | `:8083` | Provider-runner health address. |
+| `ai.mcpAddress` | `:8084` | Internal Streamable HTTP MCP listen address. |
+| `ai.mcpUrl` | `http://127.0.0.1:8084/mcp` | MCP endpoint used by the agent. |
+| `ai.decisionTimeout` | `2m` | Maximum unresolved model-decision wait. |
 
 ## Development
 
@@ -392,9 +489,12 @@ docker compose stop postgres
 
 ```text
 backend/
+├── cmd/agent/             Provider-neutral API and local CLI decision runner
 ├── cmd/engine/            Queued battle worker and operational health server
+├── cmd/mcp/               Authenticated internal MCP decision service
 ├── cmd/server/            Application entry point and shutdown lifecycle
 ├── internal/app/          Dependency composition
+├── internal/ai/           Profiles, decision contract, MCP, providers, and runners
 ├── internal/battle/       Battle feature boundary
 │   ├── engine/
 │   │   └── worker/        Queue claims, tick pacing, leases, and shutdown
@@ -425,7 +525,8 @@ The process paths are currently:
 ```text
 HTTP handler -> faction use case -> PostgreSQL adapter
 HTTP handler -> battle use case -> scenario snapshot -> PostgreSQL queue
-battle worker -> PostgreSQL claim -> deterministic battle -> PostgreSQL events/result
+battle worker -> decision records -> scripted resolver or agent -> MCP decision service
+battle worker -> validated plans -> deterministic battle -> PostgreSQL events/result
 ```
 
 ## Project direction

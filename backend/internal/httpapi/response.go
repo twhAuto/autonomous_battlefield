@@ -11,6 +11,7 @@ const maxJSONRequestBodyBytes = 64 << 10
 
 func ReadJSON(w http.ResponseWriter, r *http.Request, destination any) error {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONRequestBodyBytes))
+	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(destination); err != nil {
 		return err
 	}

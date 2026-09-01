@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: battlefield-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: autonomous-battlefield, app.kubernetes.io/component: mcp}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: autonomous-battlefield, app.kubernetes.io/component: mcp}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: mcp
+          image: autonomous-battlefield-backend:dev
+          command: [/app/mcp]
+          args: [-config, /etc/battlefield/config.yaml]
+          env:
+            - {name: DATABASE_URL, valueFrom: {secretKeyRef: {name: battlefield-database, key: MCP_DATABASE_URL}}}
+            - {name: BATTLEFIELD_MCP_CAPABILITY_SECRET, valueFrom: {secretKeyRef: {name: battlefield-ai, key: BATTLEFIELD_MCP_CAPABILITY_SECRET}}}
+          ports: [{name: http, containerPort: 8084}]
+          readinessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 5}
+          resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 500m, memory: 256Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: config, mountPath: /etc/battlefield/config.yaml, subPath: config.yaml, readOnly: true}]
+      volumes: [{name: config, configMap: {name: battlefield-config}}]

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Faction, FactionApiError, listFactions } from '../api/factions'
+import { deleteFaction, Faction, FactionApiError, listFactions } from '../api/factions'
 import { Emblem } from '../components/Emblem'
 
 export function FactionsPage() {
@@ -8,6 +8,8 @@ export function FactionsPage() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [message, setMessage] = useState('')
   const [requestVersion, setRequestVersion] = useState(0)
+  const [deletingId, setDeletingId] = useState('')
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     const controller = new AbortController()
@@ -28,6 +30,20 @@ export function FactionsPage() {
     return () => controller.abort()
   }, [requestVersion])
 
+  async function removeFaction(faction: Faction) {
+    if (!window.confirm(`Delete ${faction.name}? This removes it from the active faction registry.`)) return
+    setDeletingId(faction.id)
+    setDeleteError('')
+    try {
+      await deleteFaction(faction.id)
+      setFactions((current) => current.filter((item) => item.id !== faction.id))
+    } catch (error) {
+      setDeleteError(error instanceof FactionApiError ? error.message : 'The faction could not be deleted.')
+    } finally {
+      setDeletingId('')
+    }
+  }
+
   return (
     <>
       <section className="page-header page-header--directory">
@@ -47,6 +63,8 @@ export function FactionsPage() {
           <span>FACTION DIRECTORY</span>
           <span>{status === 'success' ? factions.length.toString().padStart(2, '0') : '--'}</span>
         </div>
+
+        {deleteError && <p className="directory-inline-error" role="alert">{deleteError}</p>}
 
         {status === 'loading' && (
           <div className="directory-state">
@@ -89,6 +107,14 @@ export function FactionsPage() {
                   <p>{faction.blueprint?.upgradeIds?.join(' · ') || 'No upgrades'} · {faction.spentPoints ?? 0} points</p>
                 </div>
                 <div className="registry-card__status"><span className="status-dot" /> ACTIVE</div>
+                <button
+                  className="registry-card__delete"
+                  type="button"
+                  disabled={deletingId === faction.id}
+                  onClick={() => void removeFaction(faction)}
+                >
+                  {deletingId === faction.id ? 'DELETING…' : `DELETE ${faction.name}`}
+                </button>
               </article>
             ))}
           </div>

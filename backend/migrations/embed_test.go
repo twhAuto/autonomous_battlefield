@@ -22,6 +22,12 @@ func TestFilesIncludesSQLMigrations(t *testing.T) {
 	if !slices.Contains(files, "00003_castle_siege_state.sql") {
 		t.Fatalf("embedded migrations = %v, want 00003_castle_siege_state.sql", files)
 	}
+	if !slices.Contains(files, "00005_stop_battles.sql") {
+		t.Fatalf("embedded migrations = %v, want 00005_stop_battles.sql", files)
+	}
+	if !slices.Contains(files, "00006_pause_battles.sql") {
+		t.Fatalf("embedded migrations = %v, want 00006_pause_battles.sql", files)
+	}
 }
 
 func TestCastleSiegeProceduralBlockIsKeptAsOneGooseStatement(t *testing.T) {

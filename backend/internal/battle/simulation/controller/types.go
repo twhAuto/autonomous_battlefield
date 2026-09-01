@@ -7,9 +7,10 @@ package controller
 import "errors"
 
 const (
-	maxBaseUtility = int64(1_000_000)
-	maxWeight      = int64(10_000)
-	maxTargetBonus = int64(1_000_000_000)
+	maxBaseUtility         = int64(1_000_000)
+	maxWeight              = int64(10_000)
+	maxTargetBonus         = int64(1_000_000_000)
+	maxRationaleCharacters = 600
 )
 
 var (
@@ -46,21 +47,38 @@ type Observation struct {
 // later an LLM. Weights are fixed-point multipliers where 1,000 means 1x.
 // Missing action kinds use Config.DefaultActionWeight.
 type PlanProposal struct {
-	Name          string           `json:"name" yaml:"name"`
-	ActionWeights map[string]int64 `json:"actionWeights,omitempty" yaml:"actionWeights,omitempty"`
-	TargetBonuses map[string]int64 `json:"targetBonuses,omitempty" yaml:"targetBonuses,omitempty"`
+	Name                   string           `json:"name" yaml:"name"`
+	Rationale              string           `json:"rationale,omitempty" yaml:"rationale,omitempty"`
+	ActionWeights          map[string]int64 `json:"actionWeights,omitempty" yaml:"actionWeights,omitempty"`
+	TargetBonuses          map[string]int64 `json:"targetBonuses,omitempty" yaml:"targetBonuses,omitempty"`
+	ReserveGold            int64            `json:"reserveGold,omitempty" yaml:"reserveGold,omitempty"`
+	SpendOrder             []string         `json:"spendOrder,omitempty" yaml:"spendOrder,omitempty"`
+	ConstructionPriorities []Coordinate     `json:"constructionPriorities,omitempty" yaml:"constructionPriorities,omitempty"`
+	RecruitmentPriorities  []string         `json:"recruitmentPriorities,omitempty" yaml:"recruitmentPriorities,omitempty"`
+}
+
+// Coordinate is independent of the game package so controller plans remain
+// reusable without creating a package import cycle.
+type Coordinate struct {
+	X int `json:"x" yaml:"x"`
+	Y int `json:"y" yaml:"y"`
 }
 
 // StrategyPlan is an accepted, immutable plan with a deterministic lifetime.
 // ValidUntilTick is exclusive.
 type StrategyPlan struct {
-	ID             string
-	Name           string
-	ObservedTick   Tick
-	ValidFromTick  Tick
-	ValidUntilTick Tick
-	ActionWeights  map[string]int64
-	TargetBonuses  map[string]int64
+	ID                     string
+	Name                   string
+	Rationale              string
+	ObservedTick           Tick
+	ValidFromTick          Tick
+	ValidUntilTick         Tick
+	ActionWeights          map[string]int64
+	TargetBonuses          map[string]int64
+	ReserveGold            int64
+	SpendOrder             []string
+	ConstructionPriorities []Coordinate
+	RecruitmentPriorities  []string
 }
 
 // Trait changes tactical preferences without requiring a named branch in the
