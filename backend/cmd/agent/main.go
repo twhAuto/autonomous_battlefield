@@ -37,7 +37,7 @@ func main() {
 func run(configuration config.Config) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	worker := &agent.Worker{MCPURL: configuration.AI.MCPURL, Secret: configuration.AI.CapabilitySecret, WorkerID: hostname(), Profiles: ai.NewProfileRegistry(configuration.AI.Environment, configuration.AI.Profiles), PollInterval: time.Second, ClaimWait: 5 * time.Second, DecisionTimeout: configuration.AI.DecisionTimeout, Concurrency: 2}
+	worker := &agent.Worker{MCPURL: configuration.AI.MCPURL, Secret: configuration.AI.CapabilitySecret, WorkerID: hostname(), Profiles: ai.NewProfileRegistry(configuration.AI.Environment, configuration.AI.Profiles), PollInterval: time.Second, DecisionTimeout: configuration.AI.DecisionTimeout, Concurrency: 2}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		if !worker.Ready() {
