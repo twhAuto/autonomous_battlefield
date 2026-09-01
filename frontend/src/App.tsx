@@ -1,13 +1,16 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { CreateFactionPage } from './pages/CreateFactionPage'
 import { CreateBattlePage } from './pages/CreateBattlePage'
 import { BattlePage } from './pages/BattlePage'
 import { FactionsPage } from './pages/FactionsPage'
 import { HomePage } from './pages/HomePage'
+import { LoginPage } from './pages/LoginPage'
+import { authenticationClient, type AuthenticationClient, type AuthSession } from './api/auth'
+import { authenticationRequiredEvent } from './api/request'
 import './styles.css'
 
-function AppLayout() {
+function AppLayout({ actorID, onLogout }: { actorID: string; onLogout(): void }) {
   const location = useLocation()
   const isBattleDetail = /^\/battles\/[^/]+$/.test(location.pathname)
   const currentDate = useMemo(
@@ -36,6 +39,7 @@ function AppLayout() {
           <span>FRONTIER ONLINE</span>
           <span className="topbar__divider" />
           {currentDate.toUpperCase()}
+          <button className="logout-button" type="button" onClick={onLogout} aria-label={`Log out ${actorID}`}>LOG OUT</button>
         </div>
       </header>
 
@@ -59,10 +63,65 @@ function NotFoundPage() {
   )
 }
 
-export default function App() {
+interface AppProps {
+  authentication?: AuthenticationClient
+  initialSession?: AuthSession
+}
+
+export default function App({ authentication = authenticationClient, initialSession }: AppProps) {
+  const [session, setSession] = useState<AuthSession | null>(initialSession ?? null)
+  const [sessionError, setSessionError] = useState('')
+  const [sessionAttempt, setSessionAttempt] = useState(0)
+
+  useEffect(() => {
+    if (initialSession) return
+    let active = true
+    authentication.session().then((nextSession) => {
+      if (active) setSession(nextSession)
+    }).catch((error: unknown) => {
+      if (active) setSessionError(error instanceof Error ? error.message : 'Authentication status could not be checked.')
+    })
+    return () => { active = false }
+  }, [authentication, initialSession, sessionAttempt])
+
+  useEffect(() => {
+    const requireAuthentication = () => setSession({ enabled: true, authenticated: false })
+    window.addEventListener(authenticationRequiredEvent, requireAuthentication)
+    return () => window.removeEventListener(authenticationRequiredEvent, requireAuthentication)
+  }, [])
+
+  async function logout() {
+    try {
+      await authentication.logout()
+    } finally {
+      setSession({ enabled: true, authenticated: false })
+    }
+  }
+
+  if (sessionError) {
+    return (
+      <main className="login-page">
+        <section className="login-card" aria-labelledby="session-error-title">
+          <span className="login-card__eyebrow">CONNECTION FAILURE</span>
+          <h1 id="session-error-title">Command post unavailable.</h1>
+          <p role="alert">{sessionError}</p>
+          <button className="submit-button" type="button" onClick={() => { setSessionError(''); setSessionAttempt((attempt) => attempt + 1) }}>
+            <span>RETRY CONNECTION</span><span>→</span>
+          </button>
+        </section>
+      </main>
+    )
+  }
+  if (!session) {
+    return <main className="login-page"><div className="loader" aria-label="Checking authentication" /></main>
+  }
+  if (!session.authenticated) {
+    return <LoginPage authentication={authentication} onAuthenticated={setSession} />
+  }
+
   return (
     <Routes>
-      <Route element={<AppLayout />}>
+      <Route element={<AppLayout actorID={session.actor?.id ?? 'local-development'} onLogout={logout} />}>
         <Route index element={<HomePage />} />
         <Route path="factions/new" element={<CreateFactionPage />} />
         <Route path="factions" element={<FactionsPage />} />

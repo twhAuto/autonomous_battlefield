@@ -49,8 +49,8 @@ PostgreSQL is the durable coordination point. The API and engine do not call eac
 
 | Component | Responsibility | Direct dependencies |
 | --- | --- | --- |
-| React frontend | Faction creation, battle staging, map display, controls, event stream, and AI decision history | Public API |
-| Public API | HTTP validation, scenario resolution, faction and battle persistence, and selectable model-profile catalog | PostgreSQL, scenario/ruleset YAML |
+| React frontend | Administrator login, faction creation, battle staging, map display, controls, event stream, and AI decision history | Public API |
+| Public API | Administrator sessions, HTTP validation, scenario resolution, faction and battle persistence, and selectable model-profile catalog | PostgreSQL, scenario/ruleset YAML |
 | Battle engine | Battle queue claims, deterministic ticks, strategy windows, state/event persistence | PostgreSQL |
 | MCP decision service | Two request-scoped model tools and an internal agent control plane | PostgreSQL |
 | Decision agent | Model-decision claims and API or CLI model execution | MCP service, model provider |
@@ -75,7 +75,7 @@ The engine owns orchestration around this pure domain: leases, retries, pauses, 
 
 ### Public application boundary
 
-The API validates public requests and snapshots mutable catalog/faction inputs before queuing a battle. The browser reads progress only through the API; it never connects to the engine or PostgreSQL.
+The API optionally authenticates one configured administrator with a signed HttpOnly cookie before accepting application requests. Login and session discovery remain public; other `/v1` routes receive a trusted actor through a replaceable authenticator. The browser reads progress only through the API; it never connects to the engine or PostgreSQL.
 
 ### Model boundary
 
@@ -331,6 +331,22 @@ A reclaimed battle starts a new deterministic attempt from `initial_state`; even
 
 ## 9. Security and trust boundaries
 
+### Administrator session
+
+The starter application login is explicitly enabled through environment
+configuration. Credentials and HMAC session-signing material never belong in
+YAML, images, or Git. Password comparisons use fixed-size constant-time hashes;
+successful login issues an HttpOnly, SameSite=Strict cookie with a configured
+expiry. Every protected `/v1` request validates the signature and expiry before
+placing the actor in request context. Logout is itself authenticated.
+
+Authentication-disabled local development remains backward compatible. Public
+HTTPS deployments must enable the Secure cookie flag and use the same signing
+secret across API replicas. This single administrator is a temporary perimeter
+inside the application; it does not implement player identity, ownership, or
+authorization, and Cloudflare Access remains an appropriate outer control for
+a developer-hosted public tunnel.
+
 ### Model-facing capability
 
 Each model session receives an HMAC-signed token containing one request ID and expiry. MCP verifies the signature, expiry, and equality between the authorized and supplied request IDs.
@@ -348,13 +364,14 @@ Migration `00004_battle_decisions.sql` creates a `battlefield_mcp` group role wi
 ### Deployment responsibilities
 
 - Replace the development capability secret with high-entropy secret-manager material.
+- Keep administrator credentials and session-signing material in a secret manager, enable Secure cookies for HTTPS, and rotate both independently.
 - Keep provider keys only in the agent workload.
 - Treat model rationale as untrusted display text even though its length is bounded.
 - Keep CLI versions pinned because isolation flags and behavior are version-sensitive.
 
 ## 10. Configuration and profile availability
 
-The common YAML configuration defines HTTP, database, API, engine, and AI settings. Each process loads only the sections it needs.
+The common YAML configuration defines HTTP, database, API, authentication, engine, and AI settings. Each process loads only the sections it needs. Authentication names the environment variables holding its enable flag, credentials, signing secret, and Secure-cookie flag; the API fails startup when enabled secrets are missing or too short.
 
 A model profile specifies:
 
@@ -385,7 +402,7 @@ The API catalog advertises profiles users may select. In cluster mode, an operat
 
 ### Kubernetes
 
-Kustomize deploys separate API, engine, agent, MCP, frontend, and migration workloads. The API and agent read profile availability from `battlefield-ai`; MCP receives a distinct `MCP_DATABASE_URL`; and the processes mount a common non-secret ConfigMap.
+Kustomize deploys separate API, engine, agent, MCP, frontend, and migration workloads. The API optionally imports `battlefield-auth`, the API and agent read profile availability from `battlefield-ai`, MCP receives a distinct `MCP_DATABASE_URL`, and the processes mount a common non-secret ConfigMap.
 
 The in-cluster agent is intended for API providers. `run-k8s-cli-agent.sh` bridges host subscription CLIs by validating the local binary and login, forwarding MCP to loopback, running a local agent, advertising availability to the API, and removing that availability on exit.
 
@@ -423,7 +440,7 @@ The UI polls the API, the engine polls battle rows, and agents long-poll MCP. Po
 
 ## 14. Current limitations and follow-up questions
 
-- There is no end-user authentication or authorization.
+- Authentication is limited to one configured administrator; player accounts, credential recovery, per-faction ownership, authorization, and shared brute-force protection remain future work.
 - Public battle updates use polling rather than push delivery.
 - Load and failover behavior needs testing before increasing engine, MCP, or agent replicas.
 - Agent concurrency is fixed at two rather than configured in YAML.

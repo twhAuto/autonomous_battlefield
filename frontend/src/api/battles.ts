@@ -158,7 +158,7 @@ export class BattleApiError extends Error {
 
 async function battlefieldFetch(path: string, init?: RequestInit): Promise<Response> {
   try {
-    return await fetch(`${API_URL}${path}`, init)
+    return await apiFetch(`${API_URL}${path}`, init)
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
     throw new BattleApiError(
@@ -269,3 +269,4 @@ export async function listDecisionHistory(id: string, attempt: number, signal?: 
   if (!response.ok) throw new BattleApiError('Decision history could not be loaded.', response.status)
   return ((await response.json()) as { decisions: DecisionHistory[] }).decisions
 }
+import { apiFetch } from './request'

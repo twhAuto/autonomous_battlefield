@@ -75,6 +75,83 @@ http:
 	}
 }
 
+func TestLoadAuthenticationConfiguration(t *testing.T) {
+	path := writeConfigFile(t, `
+http:
+  address: ":8080"
+  readHeaderTimeout: 5s
+  readTimeout: 10s
+  writeTimeout: 10s
+  idleTimeout: 60s
+  shutdownTimeout: 10s
+auth:
+  enabledEnvironmentVariable: TEST_AUTH_ENABLED
+  usernameEnvironmentVariable: TEST_AUTH_USERNAME
+  passwordEnvironmentVariable: TEST_AUTH_PASSWORD
+  sessionSecretEnvironmentVariable: TEST_AUTH_SECRET
+  cookieSecureEnvironmentVariable: TEST_AUTH_SECURE
+  sessionTTL: 4h
+`)
+	t.Setenv("TEST_AUTH_ENABLED", "true")
+	t.Setenv("TEST_AUTH_USERNAME", "admin")
+	t.Setenv("TEST_AUTH_PASSWORD", "a-long-test-password")
+	t.Setenv("TEST_AUTH_SECRET", "a-test-session-secret-with-32-characters")
+	t.Setenv("TEST_AUTH_SECURE", "true")
+
+	configuration, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() returned an error: %v", err)
+	}
+	if !configuration.Auth.Enabled || configuration.Auth.Username != "admin" || configuration.Auth.SessionTTL != 4*time.Hour || !configuration.Auth.CookieSecure {
+		t.Fatalf("Auth = %#v", configuration.Auth)
+	}
+}
+
+func TestAuthenticationConfigurationValidation(t *testing.T) {
+	valid := func() fileConfig {
+		var raw fileConfig
+		raw.Auth.EnabledEnvironmentVariable = "TEST_AUTH_ENABLED"
+		raw.Auth.UsernameEnvironmentVariable = "TEST_AUTH_USERNAME"
+		raw.Auth.PasswordEnvironmentVariable = "TEST_AUTH_PASSWORD"
+		raw.Auth.SessionSecretEnvironmentVariable = "TEST_AUTH_SECRET"
+		raw.Auth.CookieSecureEnvironmentVariable = "TEST_AUTH_SECURE"
+		return raw
+	}
+	t.Setenv("TEST_AUTH_ENABLED", "true")
+	t.Setenv("TEST_AUTH_USERNAME", "admin")
+	t.Setenv("TEST_AUTH_PASSWORD", "a-long-test-password")
+	t.Setenv("TEST_AUTH_SECRET", "a-test-session-secret-with-32-characters")
+	t.Setenv("TEST_AUTH_SECURE", "true")
+	if _, err := parseAuthConfig(valid()); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		name  string
+		env   string
+		value string
+	}{
+		{name: "enabled flag", env: "TEST_AUTH_ENABLED", value: "sometimes"},
+		{name: "username", env: "TEST_AUTH_USERNAME", value: ""},
+		{name: "password", env: "TEST_AUTH_PASSWORD", value: "short"},
+		{name: "session secret", env: "TEST_AUTH_SECRET", value: "short"},
+		{name: "secure flag", env: "TEST_AUTH_SECURE", value: "sometimes"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv(test.env, test.value)
+			if _, err := parseAuthConfig(valid()); err == nil {
+				t.Fatal("invalid authentication configuration accepted")
+			}
+		})
+	}
+
+	t.Setenv("TEST_AUTH_ENABLED", "false")
+	disabled, err := parseAuthConfig(valid())
+	if err != nil || disabled.Enabled {
+		t.Fatalf("disabled auth=%#v err=%v", disabled, err)
+	}
+}
+
 func TestLoadEngineDoesNotRequireHTTPConfiguration(t *testing.T) {
 	path := writeEngineConfigFile(t, `
 engine:

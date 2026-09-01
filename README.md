@@ -2,7 +2,7 @@
 
 Autonomous Battlefield is a Go backend for an auto-battler and expansion game. The long-term product will let human players and AI agents control factions that gather resources, expand territory, and fight on a continuously running battlefield.
 
-The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, point-buy faction blueprints, autonomous economies, fog-of-war views, production-window decisions, provider-neutral model controllers over MCP, validated configuration, health endpoints, and graceful shutdown. Player commands, authentication, and seeded map generation described in the [revision guide](REVISION.md) remain planned work.
+The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, point-buy faction blueprints, autonomous economies, fog-of-war views, production-window decisions, provider-neutral model controllers over MCP, an optional single-admin login, validated configuration, health endpoints, and graceful shutdown. Player commands, multi-user authorization, and seeded map generation described in the [revision guide](REVISION.md) remain planned work.
 
 ## Current capabilities
 
@@ -17,6 +17,7 @@ The project is in an early stage. The current backend provides PostgreSQL-backed
 - Run OpenAI or Gemini API profiles through a shared MCP tool loop, with optional local Codex and Gemini CLI subscription profiles.
 - Queue finite battles durably in PostgreSQL and claim them safely across engine workers.
 - Run deterministic hex movement, economy, recruitment, castle combat, and persist replay state, statistics, and paginated events.
+- Protect `/v1` application routes with an explicitly enabled, environment-backed administrator login and signed HttpOnly session cookie.
 - Exercise HTTP delivery, faction and battle use cases, PostgreSQL adapters, deterministic combat, workers, scenarios, configuration, and JSON helpers with tests.
 
 ## Requirements
@@ -57,6 +58,25 @@ with one command from the project root:
 Open `http://localhost:5173`. Press Ctrl+C in the launcher terminal to stop the
 application processes. PostgreSQL remains running so its local data is
 preserved; stop it with `docker compose -f backend/compose.yaml stop postgres`.
+
+Authentication is disabled unless `BATTLEFIELD_AUTH_ENABLED=true`. To test the
+starter login locally without writing its secrets to Git, export them in the
+terminal that starts the application:
+
+```bash
+export BATTLEFIELD_AUTH_ENABLED=true
+export BATTLEFIELD_ADMIN_USERNAME=admin
+read -rsp 'Battlefield admin password: ' BATTLEFIELD_ADMIN_PASSWORD && echo
+export BATTLEFIELD_ADMIN_PASSWORD
+export BATTLEFIELD_SESSION_SECRET="$(openssl rand -hex 32)"
+export BATTLEFIELD_AUTH_COOKIE_SECURE=false
+./run-dev.sh
+```
+
+Use `BATTLEFIELD_AUTH_COOKIE_SECURE=true` for an HTTPS tunnel or deployment.
+The signing secret must be shared by every API replica and remain stable while
+sessions should remain valid. This single-admin control is suitable for a
+temporary private demo; it is not player identity or faction authorization.
 
 The script uses `DATABASE_URL` and `ENGINE_WORKER_ID` when they are already set.
 Set `START_POSTGRES=0` to use an existing PostgreSQL instance without starting
@@ -263,6 +283,24 @@ coverage.
 
 ## API
 
+When authentication is enabled, all `/v1` routes except login and session
+discovery require the signed session cookie. Lifecycle and metrics endpoints
+remain public for infrastructure probes.
+
+### Administrator session
+
+```http
+POST /v1/auth/login
+Content-Type: application/json
+
+{"username":"admin","password":"..."}
+```
+
+Successful login returns `204 No Content` and an HttpOnly, SameSite=Strict
+session cookie. `GET /v1/auth/session` reports the current actor and
+`POST /v1/auth/logout` expires the cookie. Invalid or expired sessions receive
+`401 Unauthorized`.
+
 ### Startup check
 
 ```http
@@ -454,6 +492,12 @@ Non-secret settings live in `backend/config.yaml`:
 | `api.scenarioCatalogPath` | `scenarios` | Directory containing strict YAML scenario templates. |
 | `api.rulesetCatalogPath` | `rulesets` | Directory containing strict faction-design rulesets. |
 | `api.maxTicks` | `10000` | Maximum requested ticks for one battle. |
+| `auth.enabledEnvironmentVariable` | `BATTLEFIELD_AUTH_ENABLED` | Boolean environment switch for the single-admin login. |
+| `auth.usernameEnvironmentVariable` | `BATTLEFIELD_ADMIN_USERNAME` | Environment variable containing the administrator name. |
+| `auth.passwordEnvironmentVariable` | `BATTLEFIELD_ADMIN_PASSWORD` | Environment variable containing a password of at least 12 characters. |
+| `auth.sessionSecretEnvironmentVariable` | `BATTLEFIELD_SESSION_SECRET` | Environment variable containing at least 32 characters of session-signing material. |
+| `auth.cookieSecureEnvironmentVariable` | `BATTLEFIELD_AUTH_COOKIE_SECURE` | Boolean environment switch for HTTPS-only cookies. |
+| `auth.sessionTTL` | `12h` | Signed administrator-session lifetime. |
 | `engine.healthAddress` | `:8081` | Internal liveness/readiness listen address. |
 | `engine.pollInterval` | `1s` | Delay between empty queue polls. |
 | `engine.leaseDuration` | `30s` | Exclusive battle ownership lease. |
@@ -498,6 +542,7 @@ backend/
 ├── cmd/server/            Application entry point and shutdown lifecycle
 ├── internal/app/          Dependency composition
 ├── internal/ai/           Profiles, decision contract, MCP, providers, and runners
+├── internal/authn/        Administrator credentials, signed sessions, identity context, and API middleware
 ├── internal/battle/       Battle feature boundary
 │   ├── engine/
 │   │   └── worker/        Queue claims, tick pacing, leases, and shutdown

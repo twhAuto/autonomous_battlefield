@@ -34,7 +34,7 @@ export interface Faction {
 }
 
 export async function listFactionRulesets(signal?: AbortSignal): Promise<FactionRuleset[]> {
-  const response = await fetch(`${API_URL}/v1/faction-rulesets`, { signal })
+  const response = await apiFetch(`${API_URL}/v1/faction-rulesets`, { signal })
   if (!response.ok) throw new FactionApiError('Faction design rules could not be loaded.', response.status)
   const body = (await response.json()) as { rulesets: FactionRuleset[] }
   return body.rulesets
@@ -56,7 +56,7 @@ export async function listFactions(signal?: AbortSignal): Promise<Faction[]> {
   let response: Response
 
   try {
-    response = await fetch(`${API_URL}/v1/factions`, { signal })
+    response = await apiFetch(`${API_URL}/v1/factions`, { signal })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
     throw new FactionApiError(
@@ -81,7 +81,7 @@ export async function createFaction(
   let response: Response
 
   try {
-    response = await fetch(`${API_URL}/v1/factions`, {
+    response = await apiFetch(`${API_URL}/v1/factions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(faction),
@@ -125,7 +125,7 @@ export async function createFaction(
 export async function deleteFaction(id: string): Promise<void> {
 	let response: Response
 	try {
-		response = await fetch(`${API_URL}/v1/factions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+		response = await apiFetch(`${API_URL}/v1/factions/${encodeURIComponent(id)}`, { method: 'DELETE' })
 	} catch {
 		throw new FactionApiError(
 			'The command post is unreachable. Check that the battlefield server is running.',
@@ -140,3 +140,4 @@ export async function deleteFaction(id: string): Promise<void> {
 	}
 	throw new FactionApiError('The faction could not be deleted. Please try again.', response.status)
 }
+import { apiFetch } from './request'

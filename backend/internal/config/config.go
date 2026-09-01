@@ -5,10 +5,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -16,6 +18,7 @@ type Config struct {
 	HTTP     HTTPServer
 	Database Database
 	API      API
+	Auth     authn.Config
 	Engine   Engine
 	AI       AI
 }
@@ -86,6 +89,14 @@ type fileConfig struct {
 		RulesetCatalogPath  string `yaml:"rulesetCatalogPath"`
 		MaxTicks            uint64 `yaml:"maxTicks"`
 	} `yaml:"api"`
+	Auth struct {
+		EnabledEnvironmentVariable       string `yaml:"enabledEnvironmentVariable"`
+		UsernameEnvironmentVariable      string `yaml:"usernameEnvironmentVariable"`
+		PasswordEnvironmentVariable      string `yaml:"passwordEnvironmentVariable"`
+		SessionSecretEnvironmentVariable string `yaml:"sessionSecretEnvironmentVariable"`
+		CookieSecureEnvironmentVariable  string `yaml:"cookieSecureEnvironmentVariable"`
+		SessionTTL                       string `yaml:"sessionTTL"`
+	} `yaml:"auth"`
 	Engine struct {
 		HealthAddress               string `yaml:"healthAddress"`
 		PollInterval                string `yaml:"pollInterval"`
@@ -129,11 +140,81 @@ func LoadAPI(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
 	}
+	authConfig, err := parseAuthConfig(raw)
+	if err != nil {
+		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
+	}
 	aiConfig, err := parseAIConfig(raw)
 	if err != nil {
 		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
 	}
-	return Config{HTTP: httpConfig, Database: databaseConfig, API: apiConfig, AI: aiConfig}, nil
+	return Config{HTTP: httpConfig, Database: databaseConfig, API: apiConfig, Auth: authConfig, AI: aiConfig}, nil
+}
+
+func parseAuthConfig(raw fileConfig) (authn.Config, error) {
+	enabledEnv := strings.TrimSpace(raw.Auth.EnabledEnvironmentVariable)
+	if enabledEnv == "" {
+		enabledEnv = "BATTLEFIELD_AUTH_ENABLED"
+	}
+	enabled, err := parseBooleanEnvironmentVariable(enabledEnv, false)
+	if err != nil {
+		return authn.Config{}, err
+	}
+	ttl, err := parseOptionalDuration("auth.sessionTTL", raw.Auth.SessionTTL, 12*time.Hour, false)
+	if err != nil {
+		return authn.Config{}, err
+	}
+	secureEnv := strings.TrimSpace(raw.Auth.CookieSecureEnvironmentVariable)
+	if secureEnv == "" {
+		secureEnv = "BATTLEFIELD_AUTH_COOKIE_SECURE"
+	}
+	cookieSecure, err := parseBooleanEnvironmentVariable(secureEnv, false)
+	if err != nil {
+		return authn.Config{}, err
+	}
+	if !enabled {
+		return authn.Config{SessionTTL: ttl, CookieSecure: cookieSecure}, nil
+	}
+	usernameEnv := strings.TrimSpace(raw.Auth.UsernameEnvironmentVariable)
+	if usernameEnv == "" {
+		usernameEnv = "BATTLEFIELD_ADMIN_USERNAME"
+	}
+	passwordEnv := strings.TrimSpace(raw.Auth.PasswordEnvironmentVariable)
+	if passwordEnv == "" {
+		passwordEnv = "BATTLEFIELD_ADMIN_PASSWORD"
+	}
+	secretEnv := strings.TrimSpace(raw.Auth.SessionSecretEnvironmentVariable)
+	if secretEnv == "" {
+		secretEnv = "BATTLEFIELD_SESSION_SECRET"
+	}
+	username := strings.TrimSpace(os.Getenv(usernameEnv))
+	password := os.Getenv(passwordEnv)
+	secret := os.Getenv(secretEnv)
+	if username == "" {
+		return authn.Config{}, fmt.Errorf("authentication username environment variable %q must not be empty", usernameEnv)
+	}
+	if len(password) < 12 {
+		return authn.Config{}, fmt.Errorf("authentication password environment variable %q must contain at least 12 characters", passwordEnv)
+	}
+	if len(secret) < 32 {
+		return authn.Config{}, fmt.Errorf("authentication session secret environment variable %q must contain at least 32 characters", secretEnv)
+	}
+	return authn.Config{
+		Enabled: true, Username: username, Password: password, SessionSecret: secret,
+		SessionTTL: ttl, CookieSecure: cookieSecure,
+	}, nil
+}
+
+func parseBooleanEnvironmentVariable(name string, defaultValue bool) (bool, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return defaultValue, nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("environment variable %q must be true or false", name)
+	}
+	return parsed, nil
 }
 
 func LoadEngine(path string) (Config, error) {

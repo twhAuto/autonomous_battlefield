@@ -69,6 +69,22 @@ func TestHealthEndpoints(t *testing.T) {
 	}
 }
 
+func TestRouterAppliesMiddlewareInsideRequestLogging(t *testing.T) {
+	called := false
+	middleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			called = true
+			next.ServeHTTP(response, request)
+		})
+	}
+	router := NewRouterWithMiddleware([]Middleware{middleware})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if !called || response.Header().Get("X-Request-ID") == "" {
+		t.Fatalf("middleware called=%t request ID=%q", called, response.Header().Get("X-Request-ID"))
+	}
+}
+
 type pingerFunc func(context.Context) error
 
 func (f pingerFunc) Ping(ctx context.Context) error {

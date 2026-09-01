@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import type { AuthenticationClient, AuthSession } from './api/auth'
 
 const firstId = '7f22e693-bacd-46bb-b942-64fa613cd388'
 const secondId = '4db8d152-1e04-4d10-8824-859c6ed72878'
@@ -17,10 +18,12 @@ const ruleset = {
   upgrades: [{ id: 'arsenal', cost: 20, attackBonus: 2, defenseBonus: 0, economyIncomeBonus: 0 }],
 }
 
-function renderApp(path = '/') {
+const authenticatedSession: AuthSession = { enabled: true, authenticated: true, actor: { id: 'test-admin' } }
+
+function renderApp(path = '/', authentication?: AuthenticationClient) {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <App />
+      <App authentication={authentication} initialSession={authenticatedSession} />
     </MemoryRouter>,
   )
 }
@@ -43,9 +46,60 @@ function eventPageResponse(firstSequence: number, lastSequence: number, tick: nu
 describe('App', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
-    vi.spyOn(crypto, 'randomUUID')
+    vi.spyOn(crypto, 'randomUUID').mockReset()
       .mockReturnValueOnce(firstId)
       .mockReturnValue(secondId)
+  })
+
+  it('requires a successful login before rendering application routes', async () => {
+    const authentication: AuthenticationClient = {
+      session: vi.fn().mockResolvedValue({ enabled: true, authenticated: false }),
+      login: vi.fn().mockResolvedValue(authenticatedSession),
+      logout: vi.fn().mockResolvedValue(undefined),
+    }
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <App authentication={authentication} />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('heading', { name: 'Identify commander.' })).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Username'), 'admin')
+    await user.type(screen.getByLabelText('Password'), 'test-password')
+    await user.click(screen.getByRole('button', { name: /ENTER COMMAND POST/i }))
+
+    expect(authentication.login).toHaveBeenCalledWith('admin', 'test-password')
+    expect(await screen.findByRole('heading', { name: 'Main menu' })).toBeInTheDocument()
+  })
+
+  it('shows a generic login failure and can log out an authenticated session', async () => {
+    const authentication: AuthenticationClient = {
+      session: vi.fn().mockResolvedValue({ enabled: true, authenticated: false }),
+      login: vi.fn().mockRejectedValue(new Error('The username or password is incorrect.')),
+      logout: vi.fn().mockResolvedValue(undefined),
+    }
+    const user = userEvent.setup()
+    const view = render(
+      <MemoryRouter>
+        <App authentication={authentication} />
+      </MemoryRouter>,
+    )
+
+    await user.type(await screen.findByLabelText('Username'), 'admin')
+    await user.type(screen.getByLabelText('Password'), 'wrong-password')
+    await user.click(screen.getByRole('button', { name: /ENTER COMMAND POST/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('The username or password is incorrect.')
+
+    view.unmount()
+    render(
+      <MemoryRouter>
+        <App authentication={authentication} initialSession={authenticatedSession} />
+      </MemoryRouter>,
+    )
+    await user.click(screen.getByRole('button', { name: 'Log out test-admin' }))
+    expect(authentication.logout).toHaveBeenCalled()
+    expect(await screen.findByRole('heading', { name: 'Identify commander.' })).toBeInTheDocument()
   })
 
   it('offers faction and battle operations on the main menu', () => {

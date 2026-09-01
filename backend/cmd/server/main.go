@@ -139,7 +139,7 @@ func startServer(configuration config.Config) error {
 	}
 	slog.Info("scenario_catalog_loaded", "path", configuration.API.ScenarioCatalogPath, "scenario_count", len(catalog.IDs()))
 	profiles := ai.NewProfileCatalog(configuration.AI.Environment, configuration.AI.Profiles)
-	application := app.NewAPI(db, catalog, configuration.API.MaxTicks, profiles)
+	application := app.NewAPIWithAuthentication(db, catalog, configuration.API.MaxTicks, configuration.Auth, profiles)
 	lifecycle.Activate(application.HTTPHandler(), db, nil)
 	slog.Info("api_ready", "address", server.Addr)
 
