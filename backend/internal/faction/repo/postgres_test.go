@@ -90,11 +90,32 @@ func TestCreateFactionReturnsAlreadyExists(t *testing.T) {
 	}
 }
 
+func TestDeleteFaction(t *testing.T) {
+	id := "7f22e693-bacd-46bb-b942-64fa613cd388"
+	db := &fakeDB{execTag: pgconn.NewCommandTag("DELETE 1")}
+	if err := NewPostgres(db).DeleteFaction(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(db.execArguments, []any{id}) {
+		t.Fatalf("arguments = %#v", db.execArguments)
+	}
+
+	db.execTag = pgconn.NewCommandTag("DELETE 0")
+	if err := NewPostgres(db).DeleteFaction(context.Background(), id); !errors.Is(err, factionservice.ErrFactionNotFound) {
+		t.Fatalf("error = %v, want ErrFactionNotFound", err)
+	}
+	db.execErr = errors.New("database unavailable")
+	if err := NewPostgres(db).DeleteFaction(context.Background(), id); err == nil {
+		t.Fatal("repository error was ignored")
+	}
+}
+
 type fakeDB struct {
 	row           pgx.Row
 	rows          pgx.Rows
 	querySQL      string
 	execArguments []any
+	execTag       pgconn.CommandTag
 	execErr       error
 }
 
@@ -109,7 +130,10 @@ func (db *fakeDB) Query(_ context.Context, sql string, _ ...any) (pgx.Rows, erro
 
 func (db *fakeDB) Exec(_ context.Context, _ string, arguments ...any) (pgconn.CommandTag, error) {
 	db.execArguments = arguments
-	return pgconn.NewCommandTag("INSERT 0 1"), db.execErr
+	if db.execTag.String() == "" {
+		db.execTag = pgconn.NewCommandTag("INSERT 0 1")
+	}
+	return db.execTag, db.execErr
 }
 
 type fakeRow struct {

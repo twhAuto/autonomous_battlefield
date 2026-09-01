@@ -5,7 +5,12 @@ import {
   getBattle,
   getBattleView,
   listBattleEvents,
+  listDecisionHistory,
+  listModelProfiles,
   listScenarios,
+  pauseBattle,
+  resumeBattle,
+  stopBattle,
   type BattleRun,
   type CreateBattleInput,
 } from './battles'
@@ -14,7 +19,10 @@ const battleId = '41ac3a2f-3371-4de1-b0f6-70600fcd9052'
 const input: CreateBattleInput = {
   id: battleId,
   scenarioId: 'skirmish-v1',
-  factionIds: ['7f22e693-bacd-46bb-b942-64fa613cd388', '4db8d152-1e04-4d10-8824-859c6ed72878'],
+  participants: [
+    { factionId: '7f22e693-bacd-46bb-b942-64fa613cd388', controller: { type: 'scripted' } },
+    { factionId: '4db8d152-1e04-4d10-8824-859c6ed72878', controller: { type: 'scripted' } },
+  ],
   tickCount: 100,
 }
 
@@ -28,6 +36,15 @@ describe('battle API', () => {
 
     await expect(listScenarios()).resolves.toEqual([{ id: 'skirmish-v1' }])
     expect(fetch).toHaveBeenCalledWith('/v1/scenarios', { signal: undefined })
+  })
+
+  it('lists safe model profiles and maps failures', async () => {
+    const profiles = [{ id: 'gemini-api-balanced', displayName: 'Gemini API', available: true }]
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ profiles }))
+    await expect(listModelProfiles()).resolves.toEqual(profiles)
+
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 503 }))
+    await expect(listModelProfiles()).rejects.toEqual(new BattleApiError('Model profiles could not be loaded.', 503))
   })
 
   it('maps scenario HTTP and network failures', async () => {
@@ -84,6 +101,34 @@ describe('battle API', () => {
     await expect(getBattle(battleId)).rejects.toEqual(new BattleApiError(message, status))
   })
 
+  it('stops a battle and maps stop failures', async () => {
+    const stopped = { id: battleId, status: 'stopped' } as BattleRun
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(stopped))
+    await expect(stopBattle('battle/id')).resolves.toEqual(stopped)
+    expect(fetch).toHaveBeenLastCalledWith('/v1/battles/battle%2Fid/stop', { method: 'POST' })
+
+    for (const [status, message] of [
+      [400, 'identifier is invalid'],
+      [404, 'could not be found'],
+      [409, 'already ended'],
+      [503, 'could not be stopped'],
+    ] as const) {
+      vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status }))
+      await expect(stopBattle(battleId)).rejects.toMatchObject({ status, message: expect.stringContaining(message) })
+    }
+  })
+
+  it('pauses and resumes a battle', async () => {
+    const paused = { id: battleId, status: 'running', paused: true } as BattleRun
+    const resumed = { ...paused, paused: false }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(paused)).mockResolvedValueOnce(jsonResponse(resumed))
+
+    await expect(pauseBattle('battle/id')).resolves.toEqual(paused)
+    expect(fetch).toHaveBeenLastCalledWith('/v1/battles/battle%2Fid/pause', { method: 'POST' })
+    await expect(resumeBattle('battle/id')).resolves.toEqual(resumed)
+    expect(fetch).toHaveBeenLastCalledWith('/v1/battles/battle%2Fid/resume', { method: 'POST' })
+  })
+
   it('gets faction-filtered battle views', async () => {
     const view = { map: { width: 15 }, state: { tick: 3 }, visiblePositions: [] }
     vi.mocked(fetch).mockResolvedValue(jsonResponse(view))
@@ -130,6 +175,19 @@ describe('battle API', () => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status }))
     await expect(listBattleEvents(battleId, { attempt: 1, after: 4, limit: 25 }))
       .rejects.toEqual(new BattleApiError(message, status))
+  })
+
+  it('lists decision history only for active attempts', async () => {
+    await expect(listDecisionHistory(battleId, 0)).resolves.toEqual([])
+    expect(fetch).not.toHaveBeenCalled()
+
+    const decisions = [{ requestId: 'request-1', factionId: input.participants[0].factionId, targetTick: 10, status: 'accepted', usage: {} }]
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ decisions }))
+    await expect(listDecisionHistory('battle/id', 2)).resolves.toEqual(decisions)
+    expect(fetch).toHaveBeenLastCalledWith('/v1/battles/battle%2Fid/decisions?attempt=2', { signal: undefined })
+
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 503 }))
+    await expect(listDecisionHistory(battleId, 1)).rejects.toEqual(new BattleApiError('Decision history could not be loaded.', 503))
   })
 })
 

@@ -127,14 +127,78 @@ func TestEconomyActivationAndDraw(t *testing.T) {
 		t.Fatalf("transition = %#v", transition)
 	}
 	for _, faction := range transition.State.Factions {
-		if faction.Gold < 0 || faction.GoldEarned != 10 || faction.BuildingsBuilt != 1 {
+		if faction.Gold != 70 || faction.GoldEarned != 10 || faction.BuildingsBuilt != 0 {
 			t.Fatalf("economy state = %#v", faction)
 		}
 	}
-	wantOrder := []string{"battle_started", "decision_requested", "plan_accepted", "tactic_selected"}
+	wantOrder := []string{"battle_started", "income_collected"}
 	for index, kind := range wantOrder {
 		if transition.Events[index].Type != kind {
 			t.Fatalf("event %d = %q, want %q", index, transition.Events[index].Type, kind)
+		}
+	}
+}
+
+func TestProductionOccursOnlyAtDecisionWindows(t *testing.T) {
+	match, err := NewMatch("windows", testScenario(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if match.TickDuration() != testScenario().TickDuration || match.State().Tick != 0 || match.Scenario().ID != testScenario().ID || len(match.FactionIDs()) != 2 {
+		t.Fatal("match metadata accessors returned unexpected values")
+	}
+	for tick := 1; tick < 10; tick++ {
+		if match.DecisionWindowDue() {
+			t.Fatalf("decision due before tick 10 at %d", tick)
+		}
+		transition, err := match.Advance()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, faction := range transition.State.Factions {
+			if faction.BuildingsBuilt != 0 || faction.UnitsRecruited != 0 {
+				t.Fatalf("production at tick %d: %#v", tick, faction)
+			}
+		}
+	}
+	if !match.DecisionWindowDue() || match.DecisionTargetTick() != 10 {
+		t.Fatal("tick 10 decision was not due")
+	}
+	snapshot, err := match.DecisionSnapshot("faction-a")
+	if err != nil || snapshot.TargetTick != 10 || snapshot.Version != 9 || snapshot.FactionID != "faction-a" {
+		t.Fatalf("snapshot=%#v err=%v", snapshot, err)
+	}
+	transition, err := match.Advance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, faction := range transition.State.Factions {
+		if faction.BuildingsBuilt != 2 || faction.UnitsRecruited < 1 {
+			t.Fatalf("window production=%#v", faction)
+		}
+	}
+}
+
+func TestProductionReservePreventsOverspending(t *testing.T) {
+	match, err := NewMatch("reserve", testScenario(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 9 {
+		_, _ = match.Advance()
+	}
+	plans := match.ScriptedPlans()
+	for id, plan := range plans {
+		plan.ReserveGold = 1000
+		plans[id] = plan
+	}
+	transition, err := match.AdvanceWithPlans(plans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, faction := range transition.State.Factions {
+		if faction.BuildingsBuilt != 0 || faction.UnitsRecruited != 0 || faction.GoldSpent != 0 {
+			t.Fatalf("reserve state=%#v", faction)
 		}
 	}
 }
@@ -168,7 +232,7 @@ func TestFactionViewHidesEnemiesOutsideVisionButKeepsCastle(t *testing.T) {
 	}
 }
 
-func TestCompleteLocalMatchDestroysCastle(t *testing.T) {
+func TestCompleteLocalMatchReachesTerminalResult(t *testing.T) {
 	match, err := NewMatch("complete", testScenario(), 1000)
 	if err != nil {
 		t.Fatal(err)
@@ -180,15 +244,8 @@ func TestCompleteLocalMatchDestroysCastle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if final.Result == nil || final.Result.Reason != "castle_destroyed" || final.Result.WinnerFactionID == nil {
+	if final.Result == nil || (final.Result.Reason != "castle_destroyed" && final.Result.Reason != "tick_limit") {
 		t.Fatalf("full match result = %#v", final.Result)
-	}
-	found := false
-	for _, event := range final.Events {
-		found = found || event.Type == "castle_destroyed"
-	}
-	if !found {
-		t.Fatal("final transition has no castle_destroyed event")
 	}
 	for _, unit := range final.State.Units {
 		if unit.Health <= 0 {

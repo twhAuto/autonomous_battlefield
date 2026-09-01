@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/app"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/server/catalog"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
@@ -137,7 +138,8 @@ func startServer(configuration config.Config) error {
 		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, fmt.Errorf("load scenario catalog: %w", err))
 	}
 	slog.Info("scenario_catalog_loaded", "path", configuration.API.ScenarioCatalogPath, "scenario_count", len(catalog.IDs()))
-	application := app.NewAPI(db, catalog, configuration.API.MaxTicks)
+	profiles := ai.NewProfileCatalog(configuration.AI.Environment, configuration.AI.Profiles)
+	application := app.NewAPI(db, catalog, configuration.API.MaxTicks, profiles)
 	lifecycle.Activate(application.HTTPHandler(), db, nil)
 	slog.Info("api_ready", "address", server.Addr)
 

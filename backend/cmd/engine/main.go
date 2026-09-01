@@ -101,7 +101,8 @@ func startEngine(configuration config.Config) error {
 	engineWorker, err := worker.New(battlerepo.NewPostgres(db), worker.Config{
 		WorkerID: engineWorkerID, PollInterval: engineConfig.PollInterval,
 		LeaseDuration: engineConfig.LeaseDuration, HeartbeatInterval: engineConfig.HeartbeatInterval, ShutdownTimeout: engineConfig.ShutdownTimeout,
-		MaxAttempts: engineConfig.MaxAttempts,
+		MaxAttempts:     engineConfig.MaxAttempts,
+		DecisionTimeout: configuration.AI.DecisionTimeout, CapabilitySecret: configuration.AI.CapabilitySecret,
 	})
 	if err != nil {
 		return stopEngineInitialization(healthServer, lifecycle, healthErrors, signalContext, engineConfig.ShutdownTimeout, err)

@@ -16,7 +16,9 @@ RUN CGO_ENABLED=0 go build \
       -trimpath \
       -ldflags="-s -w" \
       -o /out/engine \
-      ./cmd/engine
+      ./cmd/engine \
+    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/agent ./cmd/agent \
+    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/mcp ./cmd/mcp
 
 FROM alpine:3.23
 
@@ -29,13 +31,15 @@ WORKDIR /app
 
 COPY --from=build --chown=battlefield:battlefield /out/server /app/server
 COPY --from=build --chown=battlefield:battlefield /out/engine /app/engine
+COPY --from=build --chown=battlefield:battlefield /out/agent /app/agent
+COPY --from=build --chown=battlefield:battlefield /out/mcp /app/mcp
 COPY --chown=battlefield:battlefield config.yaml /app/config.yaml
 COPY --chown=battlefield:battlefield scenarios /app/scenarios
 COPY --chown=battlefield:battlefield rulesets /app/rulesets
 
 USER battlefield
 
-EXPOSE 8080 8081
+EXPOSE 8080 8081 8083 8084
 
 ENTRYPOINT ["/app/server"]
 CMD ["-config", "/app/config.yaml"]

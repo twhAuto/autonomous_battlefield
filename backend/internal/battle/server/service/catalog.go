@@ -17,7 +17,6 @@ type ScenarioSummary struct {
 	RulesVersion          string          `json:"rulesVersion"`
 	TickDuration          string          `json:"tickDuration"`
 	DecisionIntervalTicks controller.Tick `json:"decisionIntervalTicks"`
-	DecisionLeadTicks     controller.Tick `json:"decisionLeadTicks"`
 	RulesetID             string          `json:"rulesetId"`
 	MaximumTicks          uint64          `json:"maximumTicks"`
 	MapWidth              int             `json:"mapWidth"`

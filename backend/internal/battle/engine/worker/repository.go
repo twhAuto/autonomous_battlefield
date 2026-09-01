@@ -34,3 +34,10 @@ type Repository interface {
 	FailBattle(context.Context, BattleLease, string, string) error
 	RequeueBattle(context.Context, BattleLease) error
 }
+
+// pauseRepository is optional so in-memory repositories and existing adapters
+// remain valid. Durable production repositories implement it to support the
+// operator pause control without surrendering the battle lease.
+type pauseRepository interface {
+	BattlePaused(context.Context, BattleLease) (bool, error)
+}

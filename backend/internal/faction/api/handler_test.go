@@ -173,6 +173,30 @@ func TestCreateFactionErrors(t *testing.T) {
 	}
 }
 
+func TestDeleteFactionRouteAndErrors(t *testing.T) {
+	id := "7f22e693-bacd-46bb-b942-64fa613cd388"
+	service := &fakeFactionService{}
+	response := httptest.NewRecorder()
+	newFactionTestRouter(service).ServeHTTP(response, httptest.NewRequest(http.MethodDelete, "/v1/factions/"+id, nil))
+	if response.Code != http.StatusNoContent || service.deletedID != id {
+		t.Fatalf("status=%d deleted=%q", response.Code, service.deletedID)
+	}
+
+	for _, test := range []struct {
+		err    error
+		status int
+	}{{factionservice.ErrInvalidFaction, http.StatusBadRequest}, {factionservice.ErrFactionNotFound, http.StatusNotFound}, {errors.New("database unavailable"), http.StatusInternalServerError}} {
+		service := &fakeFactionService{deleteErr: test.err}
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodDelete, "/v1/factions/"+id, nil)
+		request.SetPathValue("id", id)
+		NewHandler(service).DeleteFaction(response, request)
+		if response.Code != test.status {
+			t.Fatalf("error=%v status=%d want=%d", test.err, response.Code, test.status)
+		}
+	}
+}
+
 type fakeFactionService struct {
 	createdFaction *factionservice.CreateInput
 	createErr      error
@@ -180,6 +204,8 @@ type fakeFactionService struct {
 	factions       []faction.Faction
 	getErr         error
 	listErr        error
+	deletedID      string
+	deleteErr      error
 }
 
 type fakeRulesetService struct {
@@ -204,4 +230,9 @@ func (s *fakeFactionService) ListFactions(context.Context) ([]faction.Faction, e
 func (s *fakeFactionService) CreateFaction(_ context.Context, input factionservice.CreateInput) error {
 	s.createdFaction = &input
 	return s.createErr
+}
+
+func (s *fakeFactionService) DeleteFaction(_ context.Context, id string) error {
+	s.deletedID = id
+	return s.deleteErr
 }

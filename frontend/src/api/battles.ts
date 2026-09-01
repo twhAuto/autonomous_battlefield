@@ -5,7 +5,6 @@ export interface ScenarioSummary {
   rulesVersion: string
   tickDuration: string
   decisionIntervalTicks: number
-  decisionLeadTicks: number
   rulesetId: string
   maximumTicks: number
   mapWidth: number
@@ -15,15 +14,23 @@ export interface ScenarioSummary {
 export interface CreateBattleInput {
   id: string
   scenarioId: string
-  factionIds: [string, string]
+  participants: [BattleParticipantInput, BattleParticipantInput]
   tickCount: number
 }
 
-export type BattleStatus = 'queued' | 'running' | 'completed' | 'failed'
+export interface BattleController { type: 'scripted' | 'model'; profileId?: string; provider?: string; runtime?: string; modelIdentifier?: string }
+export interface BattleParticipantInput { factionId: string; controller: { type: 'scripted' } | { type: 'model'; profileId: string } }
+export interface ModelProfile {
+  id: string; displayName: string; provider: string; runtime: 'api' | 'cli'; scope: 'local' | 'cluster'
+  modelLabel: string; available: boolean; toolCapability: boolean; unavailableReason?: string
+}
+
+export type BattleStatus = 'queued' | 'running' | 'completed' | 'failed' | 'stopped'
 
 export interface BattleParticipant {
   id: string
   name: string
+  controller?: BattleController
 }
 
 export interface FactionStatistics {
@@ -85,6 +92,7 @@ export interface BattleRun {
   requestedTicks: number
   currentTick: number
   status: BattleStatus
+  paused: boolean
   attempt: number
   participants: BattleParticipant[]
   result: BattleResult | null
@@ -119,6 +127,25 @@ export interface BattleEventPage {
   nextCursor: number | null
 }
 
+export interface DecisionHistory {
+  requestId: string; factionId: string; targetTick: number; status: 'pending' | 'running' | 'accepted' | 'fallback' | 'failed'
+  controllerType: 'scripted' | 'model'
+  profileId?: string; provider?: string; runtime?: string; modelIdentifier?: string
+  fallbackSource?: string; errorCategory?: string
+  resolvedPlan?: {
+    name?: string
+    rationale?: string
+    actionWeights?: Record<string, number>
+    targetBonuses?: Record<string, number>
+    reserveGold?: number
+    spendOrder?: string[]
+    constructionPriorities?: HexPosition[]
+    recruitmentPriorities?: string[]
+  }
+  usage: { inputTokens?: number; outputTokens?: number; requests?: number }
+  createdAt: string; resolvedAt?: string
+}
+
 export class BattleApiError extends Error {
   constructor(
     message: string,
@@ -147,6 +174,13 @@ export async function listScenarios(signal?: AbortSignal): Promise<ScenarioSumma
   }
   const body = (await response.json()) as { scenarios: ScenarioSummary[] }
   return body.scenarios
+}
+
+export async function listModelProfiles(signal?: AbortSignal): Promise<ModelProfile[]> {
+  const response = await battlefieldFetch('/v1/model-profiles', { signal })
+  if (!response.ok) throw new BattleApiError('Model profiles could not be loaded.', response.status)
+  const body = (await response.json()) as { profiles: ModelProfile[] }
+  return body.profiles
 }
 
 export async function createBattle(input: CreateBattleInput): Promise<{ id: string; status: BattleStatus }> {
@@ -182,6 +216,32 @@ export async function getBattle(id: string, signal?: AbortSignal): Promise<Battl
   throw new BattleApiError('Battle status could not be loaded.', response.status)
 }
 
+export async function stopBattle(id: string): Promise<BattleRun> {
+  const response = await battlefieldFetch(`/v1/battles/${encodeURIComponent(id)}/stop`, { method: 'POST' })
+  if (response.ok) return (await response.json()) as BattleRun
+  if (response.status === 404) throw new BattleApiError('This battle could not be found.', 404)
+  if (response.status === 409) throw new BattleApiError('This battle has already ended.', 409)
+  if (response.status === 400) throw new BattleApiError('That battle identifier is invalid.', 400)
+  throw new BattleApiError('The battle could not be stopped.', response.status)
+}
+
+async function setBattlePaused(id: string, action: 'pause' | 'resume'): Promise<BattleRun> {
+  const response = await battlefieldFetch(`/v1/battles/${encodeURIComponent(id)}/${action}`, { method: 'POST' })
+  if (response.ok) return (await response.json()) as BattleRun
+  if (response.status === 404) throw new BattleApiError('This battle could not be found.', 404)
+  if (response.status === 409) throw new BattleApiError('This battle has already ended.', 409)
+  if (response.status === 400) throw new BattleApiError('That battle identifier is invalid.', 400)
+  throw new BattleApiError(`The battle could not be ${action === 'pause' ? 'paused' : 'resumed'}.`, response.status)
+}
+
+export function pauseBattle(id: string): Promise<BattleRun> {
+  return setBattlePaused(id, 'pause')
+}
+
+export function resumeBattle(id: string): Promise<BattleRun> {
+  return setBattlePaused(id, 'resume')
+}
+
 export async function listBattleEvents(
   id: string,
   options: { attempt: number; after?: number; limit?: number; latest?: boolean },
@@ -201,4 +261,11 @@ export async function listBattleEvents(
   if (response.status === 404) throw new BattleApiError('This battle could not be found.', 404)
   if (response.status === 400) throw new BattleApiError('That battle attempt or event cursor is invalid.', 400)
   throw new BattleApiError('Battle events could not be loaded.', response.status)
+}
+
+export async function listDecisionHistory(id: string, attempt: number, signal?: AbortSignal): Promise<DecisionHistory[]> {
+  if (attempt < 1) return []
+  const response = await battlefieldFetch(`/v1/battles/${encodeURIComponent(id)}/decisions?attempt=${attempt}`, { signal })
+  if (!response.ok) throw new BattleApiError('Decision history could not be loaded.', response.status)
+  return ((await response.json()) as { decisions: DecisionHistory[] }).decisions
 }

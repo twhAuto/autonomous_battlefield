@@ -4,6 +4,8 @@ import {
   BattleApiError,
   createBattle,
   listScenarios,
+  listModelProfiles,
+  ModelProfile,
   ScenarioSummary,
 } from '../api/battles'
 import { Faction, FactionApiError, listFactions } from '../api/factions'
@@ -19,6 +21,7 @@ export function CreateBattlePage() {
   const navigate = useNavigate()
   const [factions, setFactions] = useState<Faction[]>([])
   const [scenarios, setScenarios] = useState<ScenarioSummary[]>([])
+  const [profiles, setProfiles] = useState<ModelProfile[]>([])
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [loadMessage, setLoadMessage] = useState('')
   const [loadVersion, setLoadVersion] = useState(0)
@@ -26,6 +29,8 @@ export function CreateBattlePage() {
   const [scenarioID, setScenarioID] = useState('')
   const [firstFactionID, setFirstFactionID] = useState('')
   const [secondFactionID, setSecondFactionID] = useState('')
+  const [firstController, setFirstController] = useState('scripted')
+  const [secondController, setSecondController] = useState('scripted')
   const [tickCount, setTickCount] = useState<number | ''>(500)
   const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'error'>('idle')
   const [submitMessage, setSubmitMessage] = useState('')
@@ -34,10 +39,11 @@ export function CreateBattlePage() {
     const controller = new AbortController()
     setLoadState('loading')
     setLoadMessage('')
-    Promise.all([listFactions(controller.signal), listScenarios(controller.signal)])
-      .then(([loadedFactions, loadedScenarios]) => {
+    Promise.all([listFactions(controller.signal), listScenarios(controller.signal), listModelProfiles(controller.signal).catch(() => [])])
+      .then(([loadedFactions, loadedScenarios, loadedProfiles]) => {
         setFactions(loadedFactions)
         setScenarios(loadedScenarios)
+        setProfiles(loadedProfiles)
         if (loadedFactions.length < 2 || loadedScenarios.length === 0) {
           setLoadState('empty')
           return
@@ -98,7 +104,10 @@ export function CreateBattlePage() {
       const battle = await createBattle({
         id: battleID,
         scenarioId: scenarioID,
-        factionIds: [firstFactionID, secondFactionID],
+        participants: [
+          { factionId: firstFactionID, controller: controllerInput(firstController) },
+          { factionId: secondFactionID, controller: controllerInput(secondController) },
+        ],
         tickCount: Number(tickCount),
       })
       navigate(`/battles/${battle.id}`)
@@ -166,6 +175,8 @@ export function CreateBattlePage() {
                   <select id="first-faction" value={firstFactionID} onChange={(event) => setFirstFactionID(event.target.value)}>
                     {compatibleFactions.map((faction) => <option key={faction.id} value={faction.id} disabled={faction.id === secondFactionID}>{faction.name}</option>)}
                   </select>
+                  <label htmlFor="first-controller">Controller</label>
+                  <ControllerSelect id="first-controller" value={firstController} onChange={setFirstController} profiles={profiles} />
                 </div>
                 <span className="versus-mark" aria-hidden="true">VS</span>
                 <div className="battle-form__field">
@@ -173,6 +184,8 @@ export function CreateBattlePage() {
                   <select id="second-faction" value={secondFactionID} onChange={(event) => setSecondFactionID(event.target.value)}>
                     {compatibleFactions.map((faction) => <option key={faction.id} value={faction.id} disabled={faction.id === firstFactionID}>{faction.name}</option>)}
                   </select>
+                  <label htmlFor="second-controller">Controller</label>
+                  <ControllerSelect id="second-controller" value={secondController} onChange={setSecondController} profiles={profiles} />
                 </div>
               </div>
               {firstFactionID === secondFactionID && <p className="field-error" role="alert">Choose two different factions.</p>}
@@ -215,6 +228,23 @@ export function CreateBattlePage() {
         </section>
       )}
     </>
+  )
+}
+
+function controllerInput(value: string): { type: 'scripted' } | { type: 'model'; profileId: string } {
+  return value === 'scripted' ? { type: 'scripted' } : { type: 'model', profileId: value }
+}
+
+function ControllerSelect({ id, value, onChange, profiles }: Readonly<{ id: string; value: string; onChange: (value: string) => void; profiles: ModelProfile[] }>) {
+  return (
+    <select id={id} value={value} onChange={(event) => onChange(event.target.value)}>
+      <option value="scripted">Scripted · deterministic</option>
+      {profiles.map((profile) => (
+        <option key={profile.id} value={profile.id} disabled={!profile.available}>
+          {profile.displayName} · {profile.provider} · {profile.modelLabel || 'default model'} · {profile.scope}{profile.available ? '' : ' · unavailable'}
+        </option>
+      ))}
+    </select>
   )
 }
 

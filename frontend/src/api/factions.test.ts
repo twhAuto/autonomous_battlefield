@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createFaction, FactionApiError, listFactionRulesets, listFactions } from './factions'
+import { createFaction, deleteFaction, FactionApiError, listFactionRulesets, listFactions } from './factions'
 
 const faction = {
   id: '7f22e693-bacd-46bb-b942-64fa613cd388', name: 'Northwind', rulesetId: 'castle-siege-v1',
@@ -83,6 +83,24 @@ describe('faction API', () => {
     await expect(createFaction(faction)).rejects.toEqual(new FactionApiError(
       'The command post is unreachable. Check that the battlefield server is running.',
     ))
+  })
+
+  it('deletes a faction', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 204 }))
+    await expect(deleteFaction(faction.id)).resolves.toBeUndefined()
+    expect(fetch).toHaveBeenCalledWith(`/v1/factions/${faction.id}`, { method: 'DELETE' })
+  })
+
+  it.each([[404, 'no longer exists'], [400, 'identifier is invalid'], [500, 'could not be deleted']])(
+    'maps delete status %d', async (status, message) => {
+      vi.mocked(fetch).mockResolvedValue(new Response(null, { status }))
+      await expect(deleteFaction(faction.id)).rejects.toMatchObject({ status, message: expect.stringContaining(message) })
+    },
+  )
+
+  it('maps delete network failures', async () => {
+    vi.mocked(fetch).mockRejectedValue(new TypeError('offline'))
+    await expect(deleteFaction(faction.id)).rejects.toThrow('command post is unreachable')
   })
 })
 

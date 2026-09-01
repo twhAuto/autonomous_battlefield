@@ -23,3 +23,52 @@ engine:
   shutdownTimeout: 10s
   maxAttempts: 3
   workerIdEnvironmentVariable: ENGINE_WORKER_ID
+ai:
+  environment: local
+  agentHealthAddress: ":8083"
+  mcpAddress: ":8084"
+  mcpUrl: http://127.0.0.1:8084/mcp
+  decisionTimeout: 2m
+  capabilitySecretEnvironmentVariable: BATTLEFIELD_MCP_CAPABILITY_SECRET
+  allowedOrigins:
+    - http://127.0.0.1:8083
+    - http://localhost:8083
+  profiles:
+    - id: openai-api-balanced
+      displayName: OpenAI API
+      provider: openai
+      runtime: api
+      modelEnvironmentVariable: OPENAI_MODEL
+      credentialEnvironmentVariable: OPENAI_API_KEY
+      availabilityEnvironmentVariable: OPENAI_PROFILE_AVAILABLE
+      scope: cluster
+      maxOutputTokens: 1200
+      maxSteps: 3
+      enabled: true
+    - id: gemini-api-balanced
+      displayName: Gemini API
+      provider: gemini
+      runtime: api
+      modelEnvironmentVariable: GEMINI_MODEL
+      credentialEnvironmentVariable: GEMINI_API_KEY
+      availabilityEnvironmentVariable: GEMINI_PROFILE_AVAILABLE
+      scope: cluster
+      maxOutputTokens: 1200
+      maxSteps: 3
+      enabled: true
+    - id: codex-subscription-local
+      displayName: Codex / ChatGPT subscription
+      provider: codex-cli
+      runtime: cli
+      scope: local
+      supportedVersionPrefix: codex-cli 0.151.
+      maxSteps: 3
+      enabled: true
+    - id: gemini-subscription-local
+      displayName: Gemini CLI / Google subscription
+      provider: gemini-cli
+      runtime: cli
+      scope: local
+      supportedVersionPrefix: 0.39.
+      maxSteps: 3
+      enabled: true

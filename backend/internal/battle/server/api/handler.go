@@ -23,10 +23,111 @@ func NewHandler(battles battleservice.Service) *Handler {
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/scenarios", h.ListScenarios)
+	mux.HandleFunc("GET /v1/model-profiles", h.ListModelProfiles)
 	mux.HandleFunc("POST /v1/battles", h.CreateBattle)
 	mux.HandleFunc("GET /v1/battles/{id}", h.GetBattle)
+	mux.HandleFunc("POST /v1/battles/{id}/stop", h.StopBattle)
+	mux.HandleFunc("POST /v1/battles/{id}/pause", h.PauseBattle)
+	mux.HandleFunc("POST /v1/battles/{id}/resume", h.ResumeBattle)
 	mux.HandleFunc("GET /v1/battles/{id}/factions/{factionId}/view", h.GetFactionView)
 	mux.HandleFunc("GET /v1/battles/{id}/events", h.ListEvents)
+	mux.HandleFunc("GET /v1/battles/{id}/decisions", h.ListDecisions)
+}
+
+func (h *Handler) PauseBattle(w http.ResponseWriter, r *http.Request) {
+	h.setBattlePaused(w, r, true)
+}
+
+func (h *Handler) ResumeBattle(w http.ResponseWriter, r *http.Request) {
+	h.setBattlePaused(w, r, false)
+}
+
+func (h *Handler) setBattlePaused(w http.ResponseWriter, r *http.Request, paused bool) {
+	var run *battleservice.BattleRun
+	var err error
+	if paused {
+		run, err = h.battles.PauseBattle(r.Context(), r.PathValue("id"))
+	} else {
+		run, err = h.battles.ResumeBattle(r.Context(), r.PathValue("id"))
+	}
+	if errors.Is(err, battleservice.ErrInvalidBattle) {
+		http.Error(w, "invalid battle ID", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, battleservice.ErrBattleNotFound) {
+		http.Error(w, battleNotFoundMessage, http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, battleservice.ErrBattleNotActive) {
+		http.Error(w, "battle is not active", http.StatusConflict)
+		return
+	}
+	if err != nil {
+		slog.ErrorContext(r.Context(), "battle_control_failed", "request_id", httpapi.RequestID(r.Context()), "battle_id", r.PathValue("id"), "paused", paused, "error", err)
+		http.Error(w, "could not update battle control", http.StatusInternalServerError)
+		return
+	}
+	event := "battle_resumed"
+	if paused {
+		event = "battle_paused"
+	}
+	slog.InfoContext(r.Context(), event, "request_id", httpapi.RequestID(r.Context()), "battle_id", run.ID, "attempt", run.Attempt, "current_tick", run.CurrentTick)
+	_ = httpapi.WriteJSON(w, http.StatusOK, battleResponse(run))
+}
+
+func (h *Handler) StopBattle(w http.ResponseWriter, r *http.Request) {
+	run, err := h.battles.StopBattle(r.Context(), r.PathValue("id"))
+	if errors.Is(err, battleservice.ErrInvalidBattle) {
+		http.Error(w, "invalid battle ID", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, battleservice.ErrBattleNotFound) {
+		http.Error(w, battleNotFoundMessage, http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, battleservice.ErrBattleNotActive) {
+		http.Error(w, "battle is not active", http.StatusConflict)
+		return
+	}
+	if err != nil {
+		slog.ErrorContext(r.Context(), "battle_stop_failed", "request_id", httpapi.RequestID(r.Context()), "battle_id", r.PathValue("id"), "error", err)
+		http.Error(w, "could not stop battle", http.StatusInternalServerError)
+		return
+	}
+	slog.InfoContext(r.Context(), "battle_stopped", "request_id", httpapi.RequestID(r.Context()), "battle_id", run.ID, "attempt", run.Attempt, "current_tick", run.CurrentTick)
+	_ = httpapi.WriteJSON(w, http.StatusOK, battleResponse(run))
+}
+
+func (h *Handler) ListDecisions(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.battles.(battleservice.DecisionHistoryService)
+	if !ok {
+		_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"decisions": []any{}})
+		return
+	}
+	attempt, err := strconv.Atoi(r.URL.Query().Get("attempt"))
+	if err != nil {
+		http.Error(w, "invalid battle attempt", http.StatusBadRequest)
+		return
+	}
+	decisions, err := service.ListDecisionHistory(r.Context(), r.PathValue("id"), attempt)
+	if errors.Is(err, battleservice.ErrInvalidBattle) {
+		http.Error(w, "invalid decision query", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		http.Error(w, "could not list decisions", http.StatusInternalServerError)
+		return
+	}
+	_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"decisions": decisions})
+}
+
+func (h *Handler) ListModelProfiles(w http.ResponseWriter, _ *http.Request) {
+	service, ok := h.battles.(battleservice.ModelProfileService)
+	if !ok {
+		_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"profiles": []any{}})
+		return
+	}
+	_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"profiles": service.ListModelProfiles()})
 }
 
 func (h *Handler) GetFactionView(w http.ResponseWriter, r *http.Request) {
@@ -58,18 +159,26 @@ func (h *Handler) ListScenarios(w http.ResponseWriter, _ *http.Request) {
 
 func (h *Handler) CreateBattle(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		ID         string   `json:"id"`
-		ScenarioID string   `json:"scenarioId"`
-		FactionIDs []string `json:"factionIds"`
-		TickCount  uint64   `json:"tickCount"`
+		ID           string `json:"id"`
+		ScenarioID   string `json:"scenarioId"`
+		Participants []struct {
+			FactionID  string `json:"factionId"`
+			Controller struct {
+				Type      string `json:"type"`
+				ProfileID string `json:"profileId,omitempty"`
+			} `json:"controller"`
+		} `json:"participants"`
+		TickCount uint64 `json:"tickCount"`
 	}
 	if err := httpapi.ReadJSON(w, r, &request); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	run, err := h.battles.CreateBattle(r.Context(), battleservice.CreateBattleInput{
-		ID: request.ID, ScenarioID: request.ScenarioID, FactionIDs: request.FactionIDs, TickCount: request.TickCount,
-	})
+	participants := make([]battleservice.ParticipantInput, len(request.Participants))
+	for index, participant := range request.Participants {
+		participants[index] = battleservice.ParticipantInput{FactionID: participant.FactionID, Controller: game.ControllerConfig{Type: participant.Controller.Type, ProfileID: participant.Controller.ProfileID}}
+	}
+	run, err := h.battles.CreateBattle(r.Context(), battleservice.CreateBattleInput{ID: request.ID, ScenarioID: request.ScenarioID, Participants: participants, TickCount: request.TickCount})
 	if errors.Is(err, battleservice.ErrInvalidBattle) {
 		http.Error(w, "invalid battle", http.StatusBadRequest)
 		return
@@ -82,6 +191,10 @@ func (h *Handler) CreateBattle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
+	if errors.Is(err, battleservice.ErrModelProfileUnavailable) {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
 	if errors.Is(err, battleservice.ErrBattleAlreadyExists) {
 		http.Error(w, "battle already exists", http.StatusConflict)
 		return
@@ -91,13 +204,18 @@ func (h *Handler) CreateBattle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not create battle", http.StatusInternalServerError)
 		return
 	}
+	if run == nil {
+		slog.ErrorContext(r.Context(), "battle_enqueue_failed", "request_id", httpapi.RequestID(r.Context()), "battle_id", request.ID, "error", "battle service returned no run")
+		http.Error(w, "could not create battle", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Location", "/v1/battles/"+run.ID)
 	slog.InfoContext(r.Context(), "battle_enqueued",
 		"request_id", httpapi.RequestID(r.Context()),
 		"battle_id", run.ID,
 		"scenario_id", request.ScenarioID,
 		"requested_ticks", request.TickCount,
-		"faction_ids", request.FactionIDs,
+		"participant_count", len(request.Participants),
 	)
 	_ = httpapi.WriteJSON(w, http.StatusAccepted, map[string]any{"id": run.ID, "status": run.Status})
 }
@@ -177,9 +295,9 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func battleResponse(run *battleservice.BattleRun) any {
-	participants := make([]map[string]string, 0, len(run.ScenarioSnapshot.Factions))
+	participants := make([]map[string]any, 0, len(run.ScenarioSnapshot.Factions))
 	for _, faction := range run.ScenarioSnapshot.Factions {
-		participants = append(participants, map[string]string{"id": faction.ID, "name": faction.Name})
+		participants = append(participants, map[string]any{"id": faction.ID, "name": faction.Name, "controller": faction.Controller})
 	}
 	return struct {
 		ID             string  `json:"id"`
@@ -188,6 +306,7 @@ func battleResponse(run *battleservice.BattleRun) any {
 		RequestedTicks uint64  `json:"requestedTicks"`
 		CurrentTick    uint64  `json:"currentTick"`
 		Status         string  `json:"status"`
+		Paused         bool    `json:"paused"`
 		Attempt        int     `json:"attempt"`
 		Participants   any     `json:"participants"`
 		Result         any     `json:"result"`
@@ -197,7 +316,7 @@ func battleResponse(run *battleservice.BattleRun) any {
 		ErrorMessage   *string `json:"errorMessage,omitempty"`
 	}{
 		ID: run.ID, ScenarioID: run.ScenarioID, ScenarioDigest: run.ScenarioDigest,
-		RequestedTicks: run.RequestedTicks, CurrentTick: run.CurrentTick, Status: run.Status,
+		RequestedTicks: run.RequestedTicks, CurrentTick: run.CurrentTick, Status: run.Status, Paused: run.Paused,
 		Attempt: run.Attempt, Participants: participants, Result: run.Result,
 		Map: run.ScenarioSnapshot.Map, State: run.CurrentState,
 		ErrorCode: run.ErrorCode, ErrorMessage: run.ErrorMessage,

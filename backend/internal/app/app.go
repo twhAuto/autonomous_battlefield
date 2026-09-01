@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
 	battleapi "github.com/twh09/autonomous_battlefield/backend/internal/battle/server/api"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/server/catalog"
@@ -26,10 +27,10 @@ type Database interface {
 	Ping(context.Context) error
 }
 
-func NewAPI(db Database, catalog *catalog.Catalog, maxTicks uint64) *App {
+func NewAPI(db Database, catalog *catalog.Catalog, maxTicks uint64, registries ...*ai.ProfileRegistry) *App {
 	factionRepository := factionrepo.NewPostgres(db)
 	factionService := factionservice.NewService(factionRepository, catalog)
-	battleService := battleservice.NewService(battlerepo.NewPostgres(db), factionRepository, catalog, maxTicks)
+	battleService := battleservice.NewService(battlerepo.NewPostgres(db), factionRepository, catalog, maxTicks, registries...)
 
 	factionHandler := factionapi.NewHandler(factionService)
 	battleHandler := battleapi.NewHandler(battleService)

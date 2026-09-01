@@ -20,6 +20,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/faction-rulesets", h.ListRulesets)
 	mux.HandleFunc("GET /v1/factions/{id}/name", h.GetFactionName)
 	mux.HandleFunc("POST /v1/factions", h.CreateFaction)
+	mux.HandleFunc("DELETE /v1/factions/{id}", h.DeleteFaction)
 }
 
 func (h *Handler) ListFactions(w http.ResponseWriter, r *http.Request) {
@@ -109,6 +110,26 @@ func (h *Handler) CreateFaction(w http.ResponseWriter, r *http.Request) {
 
 	slog.InfoContext(r.Context(), "faction_created", "request_id", httpapi.RequestID(r.Context()), "faction_id", request.ID)
 	w.WriteHeader(http.StatusCreated)
+}
+
+func (h *Handler) DeleteFaction(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	err := h.factionService.DeleteFaction(r.Context(), id)
+	if errors.Is(err, factionservice.ErrInvalidFaction) {
+		http.Error(w, "invalid faction ID", http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, factionservice.ErrFactionNotFound) {
+		http.Error(w, "faction not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		slog.ErrorContext(r.Context(), "faction_delete_failed", "request_id", httpapi.RequestID(r.Context()), "faction_id", id, "error", err)
+		http.Error(w, "could not delete faction", http.StatusInternalServerError)
+		return
+	}
+	slog.InfoContext(r.Context(), "faction_deleted", "request_id", httpapi.RequestID(r.Context()), "faction_id", id)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func NewHandler(factionService factionservice.Service) *Handler {

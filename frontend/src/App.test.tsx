@@ -151,6 +151,28 @@ describe('App', () => {
     expect(fetch).toHaveBeenCalledWith('/v1/factions', expect.objectContaining({ signal: expect.any(AbortSignal) }))
   })
 
+  it('deletes a faction from the registry after confirmation', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/v1/factions' && !init?.method) {
+        return new Response(JSON.stringify({ factions: [{ id: firstId, name: 'Northwind' }] }), { status: 200 })
+      }
+      if (String(input) === `/v1/factions/${firstId}` && init?.method === 'DELETE') {
+        return new Response(null, { status: 204 })
+      }
+      throw new Error(`Unexpected fetch: ${String(input)}`)
+    })
+    const user = userEvent.setup()
+    renderApp('/factions')
+
+    await user.click(await screen.findByRole('button', { name: 'DELETE Northwind' }))
+
+    expect(confirm).toHaveBeenCalledWith('Delete Northwind? This removes it from the active faction registry.')
+    expect(fetch).toHaveBeenCalledWith(`/v1/factions/${firstId}`, { method: 'DELETE' })
+    expect(await screen.findByRole('heading', { name: 'The frontier is unclaimed' })).toBeInTheDocument()
+    confirm.mockRestore()
+  })
+
   it('shows an empty registry with a create action', async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ factions: [] }), {
       status: 200,
@@ -184,7 +206,7 @@ describe('App', () => {
       }
       if (url === '/v1/scenarios') {
         return new Response(JSON.stringify({ scenarios: [{
-          id: 'skirmish-v1', rulesetId: 'castle-siege-v1', rulesVersion: '1', maximumTicks: 500, mapWidth: 15, mapHeight: 11, tickDuration: '0s', decisionIntervalTicks: 10, decisionLeadTicks: 2,
+          id: 'skirmish-v1', rulesetId: 'castle-siege-v1', rulesVersion: '1', maximumTicks: 500, mapWidth: 15, mapHeight: 11, tickDuration: '0s', decisionIntervalTicks: 10,
         }] }), { status: 200 })
       }
       if (url === '/v1/battles' && init?.method === 'POST') {
@@ -227,12 +249,19 @@ describe('App', () => {
       body: JSON.stringify({
         id: battleId,
         scenarioId: 'skirmish-v1',
-        factionIds: [firstId, secondId],
+        participants: [
+          { factionId: firstId, controller: { type: 'scripted' } },
+          { factionId: secondId, controller: { type: 'scripted' } },
+        ],
         tickCount: 25,
       }),
     })
     expect(await screen.findByRole('heading', { name: 'Battle in progress' })).toBeInTheDocument()
     expect(screen.getByText('Awaiting engine')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'EVENTS' })).toHaveAttribute('aria-selected', 'true')
+    await user.click(screen.getByRole('tab', { name: /AI DECISIONS/ }))
+    expect(screen.getByRole('tab', { name: /AI DECISIONS/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('This battle uses scripted controllers, so no model decisions will be created.')).toBeInTheDocument()
   })
 
   it('shows battle tick validation before deployment', async () => {
@@ -246,7 +275,7 @@ describe('App', () => {
       }
       if (url === '/v1/scenarios') {
         return new Response(JSON.stringify({ scenarios: [{
-          id: 'skirmish-v1', rulesetId: 'castle-siege-v1', rulesVersion: '1', maximumTicks: 500, mapWidth: 15, mapHeight: 11, tickDuration: '0s', decisionIntervalTicks: 10, decisionLeadTicks: 2,
+          id: 'skirmish-v1', rulesetId: 'castle-siege-v1', rulesVersion: '1', maximumTicks: 500, mapWidth: 15, mapHeight: 11, tickDuration: '0s', decisionIntervalTicks: 10,
         }] }), { status: 200 })
       }
       throw new Error(`Unexpected fetch: ${url}`)
@@ -262,7 +291,50 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'DEPLOY COMBATANTS' })).toBeDisabled()
   })
 
+  it('submits an available model profile as a model controller', async () => {
+    vi.mocked(crypto.randomUUID).mockReset().mockReturnValue(battleId)
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url === '/v1/factions') {
+        return new Response(JSON.stringify({ factions: [
+          { id: firstId, name: 'Northwind', rulesetId: 'castle-siege-v1' },
+          { id: secondId, name: 'Verdant Accord', rulesetId: 'castle-siege-v1' },
+        ] }), { status: 200 })
+      }
+      if (url === '/v1/scenarios') {
+        return new Response(JSON.stringify({ scenarios: [{
+          id: 'castle-siege-v1', rulesetId: 'castle-siege-v1', rulesVersion: '1', maximumTicks: 500,
+          mapWidth: 15, mapHeight: 11, tickDuration: '1s', decisionIntervalTicks: 10,
+        }] }), { status: 200 })
+      }
+      if (url === '/v1/model-profiles') {
+        return new Response(JSON.stringify({ profiles: [
+          { id: 'gemini-api-balanced', displayName: 'Gemini API', provider: 'gemini', runtime: 'api', scope: 'cluster', modelLabel: 'gemini-2.5-flash', available: true, toolCapability: true },
+          { id: 'codex-local', displayName: 'Codex local', provider: 'codex-cli', runtime: 'cli', scope: 'local', modelLabel: '', available: false, toolCapability: true },
+        ] }), { status: 200 })
+      }
+      if (url === '/v1/battles' && init?.method === 'POST') {
+        return new Response('provider unavailable', { status: 503 })
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+    const user = userEvent.setup()
+    renderApp('/battles/new')
+
+    const controllers = await screen.findAllByLabelText('Controller')
+    await user.selectOptions(controllers[0], 'gemini-api-balanced')
+    expect(screen.getAllByRole('option', { name: /Codex local.*unavailable/i })).toHaveLength(2)
+    await user.click(screen.getByRole('button', { name: 'DEPLOY COMBATANTS' }))
+
+    expect(fetch).toHaveBeenCalledWith('/v1/battles', expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('"profileId":"gemini-api-balanced"'),
+    }))
+    expect(await screen.findByText('The battle could not be queued. Please try again.')).toBeInTheDocument()
+  })
+
   it('renders a completed battle result and its event stream', async () => {
+    const user = userEvent.setup()
     vi.mocked(fetch).mockImplementation(async (input) => {
       const url = String(input)
       if (url === `/v1/battles/${battleId}`) {
@@ -274,7 +346,10 @@ describe('App', () => {
           currentTick: 18,
           status: 'completed',
           attempt: 1,
-          participants: [{ id: firstId, name: 'Northwind' }, { id: secondId, name: 'Verdant Accord' }],
+          participants: [
+            { id: firstId, name: 'Northwind', controller: { type: 'model', profileId: 'gemini-api-balanced', modelIdentifier: 'gemini-2.5-flash' } },
+            { id: secondId, name: 'Verdant Accord', controller: { type: 'scripted' } },
+          ],
           result: {
             winnerFactionId: firstId,
             reason: 'elimination',
@@ -285,6 +360,19 @@ describe('App', () => {
             ],
           },
         }), { status: 200 })
+      }
+      if (url === `/v1/battles/${battleId}/decisions?attempt=1`) {
+        return new Response(JSON.stringify({ decisions: [{
+          requestId: 'decision-1', factionId: firstId, targetTick: 10, status: 'accepted', controllerType: 'model',
+          profileId: 'gemini-api-balanced', provider: 'gemini', runtime: 'api',
+          modelIdentifier: 'gemini-2.5-flash', resolvedPlan: {
+            name: 'pressure', rationale: 'The visible lane is open, so ranger pressure can cover the advance.', actionWeights: { attack: 1400, defend: 800 }, reserveGold: 30,
+            spendOrder: ['economy', 'units'], recruitmentPriorities: ['ranger', 'vanguard'],
+            constructionPriorities: [{ x: 2, y: 2 }],
+          },
+          usage: { inputTokens: 100, outputTokens: 20, requests: 2 }, createdAt: '2026-08-21T00:00:00Z',
+          resolvedAt: '2026-08-21T00:00:01Z',
+        }] }), { status: 200 })
       }
       if (url.startsWith(`/v1/battles/${battleId}/events?`)) {
         return new Response(JSON.stringify({
@@ -307,6 +395,75 @@ describe('App', () => {
     expect((await screen.findAllByRole('listitem'))[0]).toHaveTextContent('battle completed')
     expect(screen.getByRole('heading', { name: 'Latest events' })).toBeInTheDocument()
     expect(screen.getAllByText('Damage dealt')).toHaveLength(2)
+    await user.click(screen.getByRole('tab', { name: /AI DECISIONS/ }))
+    expect(await screen.findByRole('region', { name: 'AI decisions' })).toHaveTextContent('pressure')
+    expect(screen.getByRole('region', { name: 'AI decisions' })).toHaveTextContent('attack 1400 · defend 800')
+    expect(screen.getByRole('region', { name: 'AI decisions' })).toHaveTextContent('The visible lane is open')
+    expect(screen.getByRole('region', { name: 'AI decisions' })).toHaveTextContent('ranger → vanguard')
+    expect(screen.getByText('gemini-2.5-flash')).toBeInTheDocument()
+  })
+
+  it('stops an active battle from the battle control panel', async () => {
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url === `/v1/battles/${battleId}/stop` && init?.method === 'POST') {
+        return new Response(JSON.stringify({
+          id: battleId, scenarioId: 'castle-siege-v1', scenarioDigest: 'digest', requestedTicks: 100,
+          currentTick: 9, status: 'stopped', attempt: 1,
+          participants: [{ id: firstId, name: 'Northwind', controller: { type: 'model', profileId: 'codex-subscription-local' } }, { id: secondId, name: 'Verdant', controller: { type: 'scripted' } }],
+          result: null,
+        }), { status: 200 })
+      }
+      if (url === `/v1/battles/${battleId}`) {
+        return new Response(JSON.stringify({
+          id: battleId, scenarioId: 'castle-siege-v1', scenarioDigest: 'digest', requestedTicks: 100,
+          currentTick: 9, status: 'running', attempt: 1,
+          participants: [{ id: firstId, name: 'Northwind', controller: { type: 'model', profileId: 'codex-subscription-local' } }, { id: secondId, name: 'Verdant', controller: { type: 'scripted' } }],
+          result: null,
+        }), { status: 200 })
+      }
+      if (url === `/v1/battles/${battleId}/decisions?attempt=1`) {
+        return new Response(JSON.stringify({ decisions: [] }), { status: 200 })
+      }
+      if (url.startsWith(`/v1/battles/${battleId}/events?`)) {
+        return new Response(JSON.stringify({ attempt: 1, events: [], nextCursor: null }), { status: 200 })
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+    const user = userEvent.setup()
+    renderApp(`/battles/${battleId}`)
+
+    await user.click(await screen.findByRole('button', { name: 'STOP' }))
+
+    expect(fetch).toHaveBeenCalledWith(`/v1/battles/${battleId}/stop`, { method: 'POST' })
+    expect(await screen.findByRole('heading', { name: 'Battle stopped' })).toBeInTheDocument()
+    expect(screen.getByText('Stopped by operator')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'STOP' })).toBeDisabled()
+  })
+
+  it('pauses and resumes an active battle from the battle control panel', async () => {
+    let paused = false
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url === `/v1/battles/${battleId}/pause` && init?.method === 'POST') paused = true
+      else if (url === `/v1/battles/${battleId}/resume` && init?.method === 'POST') paused = false
+      else if (url === `/v1/battles/${battleId}/decisions?attempt=1`) return new Response(JSON.stringify({ decisions: [] }), { status: 200 })
+      else if (url.startsWith(`/v1/battles/${battleId}/events?`)) return new Response(JSON.stringify({ attempt: 1, events: [], nextCursor: null }), { status: 200 })
+      else if (url !== `/v1/battles/${battleId}`) throw new Error(`Unexpected fetch: ${url}`)
+      return new Response(JSON.stringify({
+        id: battleId, scenarioId: 'castle-siege-v1', scenarioDigest: 'digest', requestedTicks: 100,
+        currentTick: 12, status: 'running', paused, attempt: 1,
+        participants: [{ id: firstId, name: 'Northwind' }, { id: secondId, name: 'Verdant' }], result: null,
+      }), { status: 200 })
+    })
+    const user = userEvent.setup()
+    renderApp(`/battles/${battleId}`)
+
+    await user.click(await screen.findByRole('button', { name: 'PAUSE' }))
+    expect(await screen.findByRole('heading', { name: 'Battle paused' })).toBeInTheDocument()
+    expect(screen.getByText('Battle paused', { selector: 'strong' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'PLAY' }))
+    expect(await screen.findByRole('heading', { name: 'Battle in progress' })).toBeInTheDocument()
   })
 
   it('visibly reconnects after a transient battle status failure', async () => {

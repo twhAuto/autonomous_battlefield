@@ -15,5 +15,23 @@ services:
     volumes:
       - battlefield-postgres:/var/lib/postgresql/data
 
+  dbhub:
+    image: bytebase/dbhub:latest
+    profiles:
+      - tools
+    init: true
+    ports:
+      - "127.0.0.1:8082:8080"
+    command:
+      - --transport
+      - http
+      - --port
+      - "8080"
+      - --dsn
+      - postgres://battlefield:battlefield@postgres:5432/battlefield?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   battlefield-postgres:

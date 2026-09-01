@@ -110,6 +110,15 @@ type FactionSetup struct {
 	Blueprint     Blueprint                 `json:"blueprint" yaml:"blueprint"`
 	FallbackPlan  controller.PlanProposal   `json:"fallbackPlan" yaml:"fallbackPlan"`
 	ScriptedPlans []controller.PlanProposal `json:"scriptedPlans" yaml:"scriptedPlans"`
+	Controller    ControllerConfig          `json:"controller" yaml:"controller"`
+}
+
+type ControllerConfig struct {
+	Type            string `json:"type" yaml:"type"`
+	ProfileID       string `json:"profileId,omitempty" yaml:"profileId,omitempty"`
+	Provider        string `json:"provider,omitempty" yaml:"provider,omitempty"`
+	Runtime         string `json:"runtime,omitempty" yaml:"runtime,omitempty"`
+	ModelIdentifier string `json:"modelIdentifier,omitempty" yaml:"modelIdentifier,omitempty"`
 }
 
 type Scenario struct {
@@ -119,7 +128,7 @@ type Scenario struct {
 	MaximumTicks          uint64          `json:"maximumTicks"`
 	TickDuration          time.Duration   `json:"tickDuration"`
 	DecisionIntervalTicks controller.Tick `json:"decisionIntervalTicks"`
-	DecisionLeadTicks     controller.Tick `json:"decisionLeadTicks"`
+	DecisionLeadTicks     controller.Tick `json:"-"` // Deprecated compatibility field; production decisions have no lead phase.
 	Map                   Map             `json:"map"`
 	Ruleset               Ruleset         `json:"ruleset"`
 	Factions              []FactionSetup  `json:"factions"`
@@ -218,6 +227,25 @@ type Transition struct {
 	State    State   `json:"state"`
 	Finished bool    `json:"finished"`
 	Result   *Result `json:"result,omitempty"`
+}
+
+// DecisionSnapshot is the bounded, faction-visible state frozen immediately
+// before a production window. It contains no mutation capability.
+type DecisionSnapshot struct {
+	BattleID        string                  `json:"battleId"`
+	FactionID       string                  `json:"factionId"`
+	TargetTick      uint64                  `json:"targetTick"`
+	Version         uint64                  `json:"version"`
+	View            View                    `json:"view"`
+	Gold            int64                   `json:"gold"`
+	ProjectedIncome int64                   `json:"projectedIncome"`
+	EconomyCost     int64                   `json:"economyCost"`
+	EconomyIncome   int64                   `json:"economyIncome"`
+	EconomyCount    int                     `json:"economyCount"`
+	MaximumEconomy  int                     `json:"maximumEconomy"`
+	LegalUnits      []UnitType              `json:"legalUnits"`
+	LegalSites      []controller.Coordinate `json:"legalSites"`
+	ActivePlan      controller.PlanProposal `json:"activePlan"`
 }
 
 type View struct {
