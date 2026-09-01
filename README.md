@@ -49,11 +49,18 @@ Choose the guide that matches the task:
 ## Run locally
 
 Start PostgreSQL, apply migrations, and run the API, battle engine, and frontend
-with one command from the project root:
+with one command from the project root. Create a persistent, Git-ignored local
+database password once before the first start:
 
 ```bash
+umask 077
+printf 'BATTLEFIELD_POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 24)" > backend/.env
 ./run-dev.sh
 ```
+
+PostgreSQL keeps the password that initialized an existing Compose volume.
+When upgrading an older checkout, put that volume's current password in
+`backend/.env` first; changing the file alone does not rotate the database role.
 
 Open `http://localhost:5173`. Press Ctrl+C in the launcher terminal to stop the
 application processes. PostgreSQL remains running so its local data is
@@ -127,7 +134,10 @@ To start each component manually instead, run:
 cd backend
 docker compose up -d postgres
 
-export DATABASE_URL='postgres://battlefield:battlefield@localhost:5432/battlefield?sslmode=disable'
+set -a
+source .env
+set +a
+export DATABASE_URL="postgres://battlefield:${BATTLEFIELD_POSTGRES_PASSWORD}@localhost:5432/battlefield?sslmode=disable"
 
 go run ./cmd/server -migrate
 
@@ -156,7 +166,10 @@ Start the separate battle worker in another terminal with the same database URL:
 
 ```bash
 cd backend
-export DATABASE_URL='postgres://battlefield:battlefield@localhost:5432/battlefield?sslmode=disable'
+set -a
+source .env
+set +a
+export DATABASE_URL="postgres://battlefield:${BATTLEFIELD_POSTGRES_PASSWORD}@localhost:5432/battlefield?sslmode=disable"
 export ENGINE_WORKER_ID='engine-local-1'
 go run ./cmd/engine
 ```
@@ -173,7 +186,7 @@ docker compose -f backend/compose.yaml --profile tools up -d dbhub
 ```
 
 Open `http://localhost:8082`. DBHub connects to the Compose PostgreSQL service
-with the repository's local-only `battlefield` credentials. It is bound to the
+with the Git-ignored password from `backend/.env`. It is bound to the
 host loopback interface because its HTTP endpoint does not provide application
 authentication. Stop it with:
 

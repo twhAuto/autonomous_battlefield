@@ -10,7 +10,7 @@ import { authenticationClient, type AuthenticationClient, type AuthSession } fro
 import { authenticationRequiredEvent } from './api/request'
 import './styles.css'
 
-function AppLayout({ actorID, onLogout }: { actorID: string; onLogout(): void }) {
+function AppLayout({ actorID, onLogout }: Readonly<{ actorID: string; onLogout(): void }>) {
   const location = useLocation()
   const isBattleDetail = /^\/battles\/[^/]+$/.test(location.pathname)
   const currentDate = useMemo(
@@ -64,11 +64,11 @@ function NotFoundPage() {
 }
 
 interface AppProps {
-  authentication?: AuthenticationClient
-  initialSession?: AuthSession
+  readonly authentication?: AuthenticationClient
+  readonly initialSession?: AuthSession
 }
 
-export default function App({ authentication = authenticationClient, initialSession }: AppProps) {
+export default function App({ authentication = authenticationClient, initialSession }: Readonly<AppProps>) {
   const [session, setSession] = useState<AuthSession | null>(initialSession ?? null)
   const [sessionError, setSessionError] = useState('')
   const [sessionAttempt, setSessionAttempt] = useState(0)

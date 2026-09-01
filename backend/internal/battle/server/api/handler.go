@@ -11,7 +11,10 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 )
 
-const battleNotFoundMessage = "battle not found"
+const (
+	battleNotFoundMessage  = "battle not found"
+	invalidBattleIDMessage = "invalid battle ID"
+)
 
 type Handler struct {
 	battles battleservice.Service
@@ -51,7 +54,7 @@ func (h *Handler) setBattlePaused(w http.ResponseWriter, r *http.Request, paused
 		run, err = h.battles.ResumeBattle(r.Context(), r.PathValue("id"))
 	}
 	if errors.Is(err, battleservice.ErrInvalidBattle) {
-		http.Error(w, "invalid battle ID", http.StatusBadRequest)
+		http.Error(w, invalidBattleIDMessage, http.StatusBadRequest)
 		return
 	}
 	if errors.Is(err, battleservice.ErrBattleNotFound) {
@@ -78,7 +81,7 @@ func (h *Handler) setBattlePaused(w http.ResponseWriter, r *http.Request, paused
 func (h *Handler) StopBattle(w http.ResponseWriter, r *http.Request) {
 	run, err := h.battles.StopBattle(r.Context(), r.PathValue("id"))
 	if errors.Is(err, battleservice.ErrInvalidBattle) {
-		http.Error(w, "invalid battle ID", http.StatusBadRequest)
+		http.Error(w, invalidBattleIDMessage, http.StatusBadRequest)
 		return
 	}
 	if errors.Is(err, battleservice.ErrBattleNotFound) {

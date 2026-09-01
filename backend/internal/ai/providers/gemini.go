@@ -17,13 +17,9 @@ type Gemini struct {
 }
 
 func (p *Gemini) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.ModelTurnResult, error) {
-	declarations := make([]map[string]any, 0, len(turn.Tools))
-	for _, tool := range turn.Tools {
-		var schema any
-		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
-			return ai.ModelTurnResult{}, err
-		}
-		declarations = append(declarations, map[string]any{"name": tool.Name, "description": tool.Description, "parameters": schema})
+	declarations, err := geminiToolDeclarations(turn.Tools)
+	if err != nil {
+		return ai.ModelTurnResult{}, err
 	}
 	transcript := turn.SystemPrompt + "\n"
 	for _, message := range turn.Messages {
@@ -76,8 +72,35 @@ func (p *Gemini) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	if err := json.NewDecoder(response.Body).Decode(&decoded); err != nil {
 		return ai.ModelTurnResult{}, err
 	}
-	result := ai.ModelTurnResult{Usage: ai.Usage{InputTokens: decoded.Usage.Prompt, OutputTokens: decoded.Usage.Candidates, Requests: 1}}
-	for _, candidate := range decoded.Candidates {
+	return geminiResult(decoded.Candidates, decoded.Usage.Prompt, decoded.Usage.Candidates)
+}
+
+func geminiToolDeclarations(tools []ai.ToolDefinition) ([]map[string]any, error) {
+	declarations := make([]map[string]any, 0, len(tools))
+	for _, tool := range tools {
+		var schema any
+		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
+			return nil, err
+		}
+		declarations = append(declarations, map[string]any{"name": tool.Name, "description": tool.Description, "parameters": schema})
+	}
+	return declarations, nil
+}
+
+func geminiResult(candidates []struct {
+	FinishReason string `json:"finishReason"`
+	Content      struct {
+		Parts []struct {
+			Text         string `json:"text"`
+			FunctionCall *struct {
+				Name string         `json:"name"`
+				Args map[string]any `json:"args"`
+			} `json:"functionCall"`
+		} `json:"parts"`
+	} `json:"content"`
+}, inputTokens, outputTokens int64) (ai.ModelTurnResult, error) {
+	result := ai.ModelTurnResult{Usage: ai.Usage{InputTokens: inputTokens, OutputTokens: outputTokens, Requests: 1}}
+	for _, candidate := range candidates {
 		if candidate.FinishReason == "SAFETY" || candidate.FinishReason == "BLOCKLIST" || candidate.FinishReason == "PROHIBITED_CONTENT" {
 			return ai.ModelTurnResult{}, ErrRefusal
 		}

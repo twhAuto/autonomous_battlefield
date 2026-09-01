@@ -231,20 +231,8 @@ func (m *Match) AdvanceWithPlans(plans map[string]controller.PlanProposal) (Tran
 		return Transition{}, fmt.Errorf("plans may only be applied at a decision window")
 	}
 	if decisionWindow {
-		for factionID, runtime := range m.factions {
-			runtime.activePlan = m.normalizedFactionPlan(factionID, runtime.activePlan)
-		}
-		for factionID, proposal := range plans {
-			runtime := m.factions[factionID]
-			if runtime == nil {
-				return Transition{}, fmt.Errorf("unknown faction plan %q", factionID)
-			}
-			proposal = m.normalizedFactionPlan(factionID, proposal)
-			if err := validateProductionPlan(m.scenario, runtime.setup, proposal); err != nil {
-				return Transition{}, err
-			}
-			runtime.activePlan = clonePlan(proposal)
-			runtime.activeSource = "accepted"
+		if err := m.applyPlans(plans); err != nil {
+			return Transition{}, err
 		}
 	}
 	m.state.Tick++
@@ -265,22 +253,51 @@ func (m *Match) AdvanceWithPlans(plans map[string]controller.PlanProposal) (Tran
 	combatEvents, winner := m.runUnits(tactics)
 	events = append(events, combatEvents...)
 	events = append(events, m.event("tick_completed", map[string]any{"tick": m.state.Tick}))
+	events = append(events, m.completionEvents(winner)...)
+	m.sortState()
+	return m.transition(events), nil
+}
+
+func (m *Match) applyPlans(plans map[string]controller.PlanProposal) error {
+	for factionID, runtime := range m.factions {
+		runtime.activePlan = m.normalizedFactionPlan(factionID, runtime.activePlan)
+	}
+	for factionID, proposal := range plans {
+		runtime := m.factions[factionID]
+		if runtime == nil {
+			return fmt.Errorf("unknown faction plan %q", factionID)
+		}
+		proposal = m.normalizedFactionPlan(factionID, proposal)
+		if err := validateProductionPlan(m.scenario, runtime.setup, proposal); err != nil {
+			return err
+		}
+		runtime.activePlan = clonePlan(proposal)
+		runtime.activeSource = "accepted"
+	}
+	return nil
+}
+
+func (m *Match) completionEvents(winner *string) []Event {
 	if winner != nil {
 		m.finished = true
 		m.result = m.buildResult(winner, "castle_destroyed")
-		events = append(events, m.event("battle_completed", map[string]any{"winnerFactionId": *winner, "reason": "castle_destroyed", "ticksRun": m.state.Tick}))
-	} else if m.state.Tick >= m.maxTicks {
-		m.finished = true
-		m.result = m.buildResult(nil, "tick_limit")
-		events = append(events, m.event("battle_completed", map[string]any{"winnerFactionId": nil, "reason": "tick_limit", "ticksRun": m.state.Tick}))
+		return []Event{m.event("battle_completed", map[string]any{"winnerFactionId": *winner, "reason": "castle_destroyed", "ticksRun": m.state.Tick})}
 	}
-	m.sortState()
+	if m.state.Tick < m.maxTicks {
+		return nil
+	}
+	m.finished = true
+	m.result = m.buildResult(nil, "tick_limit")
+	return []Event{m.event("battle_completed", map[string]any{"winnerFactionId": nil, "reason": "tick_limit", "ticksRun": m.state.Tick})}
+}
+
+func (m *Match) transition(events []Event) Transition {
 	transition := Transition{Tick: m.state.Tick, Events: events, State: CloneState(m.state), Finished: m.finished}
 	if m.result != nil {
 		result := CloneResult(*m.result)
 		transition.Result = &result
 	}
-	return transition, nil
+	return transition
 }
 
 func (m *Match) startEvents() []Event {
@@ -410,26 +427,12 @@ func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) [
 	definitions := UnitTypesByID(m.scenario.Ruleset)
 	events := make([]Event, 0, 6)
 	for {
-		occupied := m.occupied()
-		spawn := Position{X: -1, Y: -1}
-		for _, candidate := range Neighbors(castle.Position) {
-			if m.scenario.Map.InBounds(candidate) && m.scenario.Map.Traversable(candidate) && !occupied[candidate] {
-				spawn = candidate
-				break
-			}
-		}
-		if spawn.X < 0 {
+		spawn, available := m.recruitmentSpawn(castle.Position)
+		if !available {
 			events = append(events, m.event("production_skipped", map[string]any{"factionId": factionID, "kind": "recruitment", "reason": "no_spawn"}))
 			break
 		}
-		selected := UnitType{}
-		for _, unitType := range plan.RecruitmentPriorities {
-			definition := definitions[unitType]
-			if state.Gold-definition.Cost >= plan.ReserveGold {
-				selected = definition
-				break
-			}
-		}
+		selected := affordableUnit(definitions, plan.RecruitmentPriorities, state.Gold, plan.ReserveGold)
 		if selected.ID == "" {
 			events = append(events, m.event("production_skipped", map[string]any{"factionId": factionID, "kind": "recruitment", "reason": "reserve_required"}))
 			break
@@ -443,6 +446,26 @@ func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) [
 		events = append(events, m.event("unit_recruited", map[string]any{"factionId": factionID, "unitId": unit.ID, "unitType": unit.Type, "position": spawn, "readyAtTick": unit.ReadyAtTick, "cost": unit.Cost}))
 	}
 	return events
+}
+
+func (m *Match) recruitmentSpawn(castle Position) (Position, bool) {
+	occupied := m.occupied()
+	for _, candidate := range Neighbors(castle) {
+		if m.scenario.Map.InBounds(candidate) && m.scenario.Map.Traversable(candidate) && !occupied[candidate] {
+			return candidate, true
+		}
+	}
+	return Position{}, false
+}
+
+func affordableUnit(definitions map[string]UnitType, priorities []string, gold, reserve int64) UnitType {
+	for _, unitType := range priorities {
+		definition := definitions[unitType]
+		if gold-definition.Cost >= reserve {
+			return definition
+		}
+	}
+	return UnitType{}
 }
 
 func (m *Match) runUnits(tactics map[string]string) ([]Event, *string) {

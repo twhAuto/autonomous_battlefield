@@ -62,3 +62,35 @@ Run the applicable command when a change affects only one side of the
 application. For documentation- or infrastructure-only changes, use the checks
 appropriate to those files instead. If a required coverage command cannot run,
 report that limitation and do not claim the coverage gate passed.
+
+## SonarQube issue workflow
+
+The local SonarQube project key is `autonomous-battlefield`, and its default
+server is `http://localhost:9000`. When asked to inspect or fix SonarQube
+findings:
+
+1. Confirm the server is healthy with
+   `curl --fail http://localhost:9000/api/system/status`.
+2. Use a user token supplied through `SONAR_TOKEN` or the Git-external file
+   `/tmp/autonomous-battlefield-sonar-token`. Never print the token, place it in
+   the repository, add it to a command-line property, or copy it into an
+   application secret file.
+3. Query unresolved findings through
+   `/api/issues/search?componentKeys=autonomous-battlefield&resolved=false&ps=500`.
+   Authenticate with `curl --user "${SONAR_TOKEN}:"`. Triage every returned
+   issue by rule, file, line, severity, and type before editing.
+4. Fix the underlying behavior or structure. Do not suppress rules, add broad
+   exclusions, weaken the quality profile, or mark issues resolved manually
+   unless the user explicitly requests and justifies that tradeoff.
+5. Run the repository checks required by the changed files, including the
+   coverage commands above. Generate both coverage reports before a full scan.
+6. Run SonarScanner from the repository root with `SONAR_TOKEN` in the
+   environment and `-Dsonar.host.url=http://localhost:9000`; wait for the
+   quality gate. Do not pass the token through `-Dsonar.token`, because command
+   arguments may be visible to other local processes.
+7. Query unresolved issues again after the analysis completes and compare the
+   result with the original issue set. Report any remaining issue or inability
+   to run the scanner instead of claiming SonarQube is clean.
+
+Remove the temporary token file after the task when the user does not need it
+for further local work.

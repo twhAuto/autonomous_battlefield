@@ -11,6 +11,8 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 )
 
+const disableFlag = "--disable"
+
 type CommandExecutor interface {
 	Run(context.Context, string, []string, []string, string) ([]byte, error)
 }
@@ -50,7 +52,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 	case "codex-cli":
 		name = "codex"
 		args = []string{"exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "--ignore-user-config", "-C", workspace,
-			"--disable", "shell_tool", "--disable", "browser_use", "--disable", "in_app_browser", "--disable", "computer_use", "--disable", "apps", "--disable", "image_generation", "--disable", "multi_agent", "--disable", "skill_search", "--disable", "skill_mcp_dependency_install", "--disable", "plugins", "--disable", "hooks", "--disable", "goals", "--disable", "standalone_web_search",
+			disableFlag, "shell_tool", disableFlag, "browser_use", disableFlag, "in_app_browser", disableFlag, "computer_use", disableFlag, "apps", disableFlag, "image_generation", disableFlag, "multi_agent", disableFlag, "skill_search", disableFlag, "skill_mcp_dependency_install", disableFlag, "plugins", disableFlag, "hooks", disableFlag, "goals", disableFlag, "standalone_web_search",
 			"-c", `approval_policy="never"`, "-c", `mcp_servers.battlefield.url="` + session.MCPURL + `"`,
 			"-c", `mcp_servers.battlefield.env_http_headers={Authorization="BATTLEFIELD_MCP_AUTHORIZATION"}`,
 			"-c", `mcp_servers.battlefield.enabled_tools=["get_decision_context","submit_strategy_plan"]`,

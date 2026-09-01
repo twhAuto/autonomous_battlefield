@@ -152,10 +152,7 @@ func LoadAPI(path string) (Config, error) {
 }
 
 func parseAuthConfig(raw fileConfig) (authn.Config, error) {
-	enabledEnv := strings.TrimSpace(raw.Auth.EnabledEnvironmentVariable)
-	if enabledEnv == "" {
-		enabledEnv = "BATTLEFIELD_AUTH_ENABLED"
-	}
+	enabledEnv := environmentVariableName(raw.Auth.EnabledEnvironmentVariable, "BATTLEFIELD_AUTH_ENABLED")
 	enabled, err := parseBooleanEnvironmentVariable(enabledEnv, false)
 	if err != nil {
 		return authn.Config{}, err
@@ -164,10 +161,7 @@ func parseAuthConfig(raw fileConfig) (authn.Config, error) {
 	if err != nil {
 		return authn.Config{}, err
 	}
-	secureEnv := strings.TrimSpace(raw.Auth.CookieSecureEnvironmentVariable)
-	if secureEnv == "" {
-		secureEnv = "BATTLEFIELD_AUTH_COOKIE_SECURE"
-	}
+	secureEnv := environmentVariableName(raw.Auth.CookieSecureEnvironmentVariable, "BATTLEFIELD_AUTH_COOKIE_SECURE")
 	cookieSecure, err := parseBooleanEnvironmentVariable(secureEnv, false)
 	if err != nil {
 		return authn.Config{}, err
@@ -175,18 +169,20 @@ func parseAuthConfig(raw fileConfig) (authn.Config, error) {
 	if !enabled {
 		return authn.Config{SessionTTL: ttl, CookieSecure: cookieSecure}, nil
 	}
-	usernameEnv := strings.TrimSpace(raw.Auth.UsernameEnvironmentVariable)
-	if usernameEnv == "" {
-		usernameEnv = "BATTLEFIELD_ADMIN_USERNAME"
+	usernameEnv := environmentVariableName(raw.Auth.UsernameEnvironmentVariable, "BATTLEFIELD_ADMIN_USERNAME")
+	passwordEnv := environmentVariableName(raw.Auth.PasswordEnvironmentVariable, "BATTLEFIELD_ADMIN_PASSWORD")
+	secretEnv := environmentVariableName(raw.Auth.SessionSecretEnvironmentVariable, "BATTLEFIELD_SESSION_SECRET")
+	return loadAuthenticationSecrets(usernameEnv, passwordEnv, secretEnv, ttl, cookieSecure)
+}
+
+func environmentVariableName(configured, fallback string) string {
+	if name := strings.TrimSpace(configured); name != "" {
+		return name
 	}
-	passwordEnv := strings.TrimSpace(raw.Auth.PasswordEnvironmentVariable)
-	if passwordEnv == "" {
-		passwordEnv = "BATTLEFIELD_ADMIN_PASSWORD"
-	}
-	secretEnv := strings.TrimSpace(raw.Auth.SessionSecretEnvironmentVariable)
-	if secretEnv == "" {
-		secretEnv = "BATTLEFIELD_SESSION_SECRET"
-	}
+	return fallback
+}
+
+func loadAuthenticationSecrets(usernameEnv, passwordEnv, secretEnv string, ttl time.Duration, cookieSecure bool) (authn.Config, error) {
 	username := strings.TrimSpace(os.Getenv(usernameEnv))
 	password := os.Getenv(passwordEnv)
 	secret := os.Getenv(secretEnv)
@@ -272,60 +268,79 @@ func LoadMCP(path string) (Config, error) {
 }
 
 func parseAIConfig(raw fileConfig) (AI, error) {
-	environment := strings.TrimSpace(raw.AI.Environment)
-	if environment == "" {
-		environment = "local"
+	environment, err := parseAIEnvironment(raw.AI.Environment)
+	if err != nil {
+		return AI{}, err
 	}
-	if environment != "local" && environment != "cluster" {
-		return AI{}, fmt.Errorf("ai.environment must be local or cluster")
-	}
-	health := strings.TrimSpace(raw.AI.AgentHealthAddress)
-	if health == "" {
-		health = ":8083"
-	}
-	mcpAddress := strings.TrimSpace(raw.AI.MCPAddress)
-	if mcpAddress == "" {
-		mcpAddress = ":8084"
-	}
-	mcpURL := strings.TrimSpace(raw.AI.MCPURL)
-	if mcpURL == "" {
-		mcpURL = "http://127.0.0.1:8084/mcp"
-	}
+	health := stringOrDefault(raw.AI.AgentHealthAddress, ":8083")
+	mcpAddress := stringOrDefault(raw.AI.MCPAddress, ":8084")
+	mcpURL := stringOrDefault(raw.AI.MCPURL, "http://127.0.0.1:8084/mcp")
 	timeout, err := parseOptionalDuration("ai.decisionTimeout", raw.AI.DecisionTimeout, 2*time.Minute, false)
 	if err != nil {
 		return AI{}, err
 	}
-	secretEnv := strings.TrimSpace(raw.AI.CapabilitySecretEnvironmentVariable)
-	if secretEnv == "" {
-		secretEnv = "BATTLEFIELD_MCP_CAPABILITY_SECRET"
-	}
-	secret := strings.TrimSpace(os.Getenv(secretEnv))
-	if secret == "" && environment == "local" {
-		secret = "local-development-capability-secret-change-me"
-	}
-	seen := make(map[string]bool, len(raw.AI.Profiles))
-	for _, profile := range raw.AI.Profiles {
-		id := strings.TrimSpace(profile.ID)
-		if id == "" || seen[id] {
-			return AI{}, fmt.Errorf("ai profile IDs must be unique and non-empty")
-		}
-		seen[id] = true
-		if profile.MaxSteps < 1 || profile.MaxSteps > 10 {
-			return AI{}, fmt.Errorf("ai profile %q maxSteps must be between 1 and 10", profile.ID)
-		}
-		if profile.Runtime == "api" && profile.MaxOutputTokens < 1 {
-			return AI{}, fmt.Errorf("ai profile %q maxOutputTokens must be positive", profile.ID)
-		}
-		if profile.Runtime == "cli" && strings.TrimSpace(profile.SupportedVersionPrefix) == "" {
-			return AI{}, fmt.Errorf("ai profile %q supportedVersionPrefix is required", profile.ID)
-		}
-		if profile.Runtime == "cli" && strings.TrimSpace(profile.Model) == "" {
-			return AI{}, fmt.Errorf("ai profile %q model is required", profile.ID)
-		}
+	secret, secretEnv := aiCapabilitySecret(raw.AI.CapabilitySecretEnvironmentVariable, environment)
+	if err := validateAIProfiles(raw.AI.Profiles); err != nil {
+		return AI{}, err
 	}
 	return AI{Environment: environment, AgentHealthAddress: health, MCPAddress: mcpAddress, MCPURL: mcpURL,
 		DecisionTimeout: timeout, CapabilitySecret: secret, CapabilitySecretEnv: secretEnv,
 		AllowedOrigins: append([]string(nil), raw.AI.AllowedOrigins...), Profiles: append([]ai.ModelProfile(nil), raw.AI.Profiles...)}, nil
+}
+
+func parseAIEnvironment(value string) (string, error) {
+	environment := stringOrDefault(value, "local")
+	if environment != "local" && environment != "cluster" {
+		return "", fmt.Errorf("ai.environment must be local or cluster")
+	}
+	return environment, nil
+}
+
+func stringOrDefault(value, fallback string) string {
+	if trimmed := strings.TrimSpace(value); trimmed != "" {
+		return trimmed
+	}
+	return fallback
+}
+
+func aiCapabilitySecret(configuredEnvironmentVariable, environment string) (string, string) {
+	secretEnv := stringOrDefault(configuredEnvironmentVariable, "BATTLEFIELD_MCP_CAPABILITY_SECRET")
+	secret := strings.TrimSpace(os.Getenv(secretEnv))
+	if secret == "" && environment == "local" {
+		secret = "local-development-capability-secret-change-me"
+	}
+	return secret, secretEnv
+}
+
+func validateAIProfiles(profiles []ai.ModelProfile) error {
+	seen := make(map[string]bool, len(profiles))
+	for _, profile := range profiles {
+		id := strings.TrimSpace(profile.ID)
+		if id == "" || seen[id] {
+			return fmt.Errorf("ai profile IDs must be unique and non-empty")
+		}
+		seen[id] = true
+		if err := validateAIProfile(profile); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateAIProfile(profile ai.ModelProfile) error {
+	if profile.MaxSteps < 1 || profile.MaxSteps > 10 {
+		return fmt.Errorf("ai profile %q maxSteps must be between 1 and 10", profile.ID)
+	}
+	if profile.Runtime == "api" && profile.MaxOutputTokens < 1 {
+		return fmt.Errorf("ai profile %q maxOutputTokens must be positive", profile.ID)
+	}
+	if profile.Runtime == "cli" && strings.TrimSpace(profile.SupportedVersionPrefix) == "" {
+		return fmt.Errorf("ai profile %q supportedVersionPrefix is required", profile.ID)
+	}
+	if profile.Runtime == "cli" && strings.TrimSpace(profile.Model) == "" {
+		return fmt.Errorf("ai profile %q model is required", profile.ID)
+	}
+	return nil
 }
 
 func decode(path string) (fileConfig, error) {

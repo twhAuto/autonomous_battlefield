@@ -1,18 +1,18 @@
-import { FormEvent, useState } from 'react'
+import { type SubmitEvent, useState } from 'react'
 import type { AuthenticationClient, AuthSession } from '../api/auth'
 
 interface LoginPageProps {
-  authentication: AuthenticationClient
-  onAuthenticated(session: AuthSession): void
+  readonly authentication: AuthenticationClient
+  readonly onAuthenticated: (session: AuthSession) => void
 }
 
-export function LoginPage({ authentication, onAuthenticated }: LoginPageProps) {
+export function LoginPage({ authentication, onAuthenticated }: Readonly<LoginPageProps>) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmitting(true)
     setError('')

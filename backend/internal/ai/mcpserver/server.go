@@ -19,6 +19,31 @@ import (
 
 type requestIDKey struct{}
 
+const (
+	invalidRequestMessage = "invalid request"
+	bearerPrefix          = "Bearer "
+)
+
+type agentClaimRequest struct {
+	WorkerID     string   `json:"workerId"`
+	LeaseSeconds int      `json:"leaseSeconds"`
+	WaitSeconds  int      `json:"waitSeconds"`
+	ProfileIDs   []string `json:"profileIds"`
+}
+
+type agentFailureRequest struct {
+	RequestID string
+	Category  string
+	Usage     ai.Usage
+	Metadata  map[string]any
+}
+
+type agentUsageRequest struct {
+	RequestID string
+	Usage     ai.Usage
+	Metadata  map[string]any
+}
+
 type Server struct {
 	decisions      *ai.DecisionService
 	secret         string
@@ -57,81 +82,92 @@ func (s *Server) NotifyDecisionAvailable() { s.wakeups.notify() }
 // report runner failures. It does not expose decision context or game state.
 func (s *Server) AgentHandler(repository ai.DecisionRepository) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /claim", func(w http.ResponseWriter, r *http.Request) {
-		if !s.agentAuthorized(r) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+	mux.HandleFunc("POST /claim", s.handleAgentClaim(repository))
+	mux.HandleFunc("POST /fail", s.handleAgentFailure(repository))
+	mux.HandleFunc("POST /usage", s.handleAgentUsage(repository))
+	return mux
+}
+
+func (s *Server) handleAgentClaim(repository ai.DecisionRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.requireAgentAuthorization(w, r) {
 			return
 		}
-		var request struct {
-			WorkerID     string   `json:"workerId"`
-			LeaseSeconds int      `json:"leaseSeconds"`
-			WaitSeconds  int      `json:"waitSeconds"`
-			ProfileIDs   []string `json:"profileIds"`
-		}
-		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&request) != nil ||
-			request.WorkerID == "" || len(request.ProfileIDs) == 0 || len(request.ProfileIDs) > 32 ||
-			request.WaitSeconds < 0 || request.WaitSeconds > 20 {
-			http.Error(w, "invalid request", http.StatusBadRequest)
+		request, ok := decodeAgentClaimRequest(w, r)
+		if !ok {
 			return
 		}
-		request.ProfileIDs = normalizedProfileIDs(request.ProfileIDs)
-		if len(request.ProfileIDs) == 0 {
-			http.Error(w, "invalid request", http.StatusBadRequest)
+		record, found, err := s.waitForDecisionClaim(r.Context(), repository, request)
+		if err != nil {
+			s.logger.ErrorContext(r.Context(), "decision_claim_failed", "worker_id", request.WorkerID, "error", err)
+			http.Error(w, "claim failed", http.StatusInternalServerError)
 			return
 		}
-		deadline := time.NewTimer(time.Duration(request.WaitSeconds) * time.Second)
-		defer deadline.Stop()
-		for {
-			// Subscribe before querying so a notification racing with the query
-			// closes this exact channel and cannot be missed.
-			wakeup := s.wakeups.wait()
-			record, err := repository.ClaimModelDecision(r.Context(), request.WorkerID, request.ProfileIDs, time.Duration(max(1, request.LeaseSeconds))*time.Second)
-			if err == nil {
-				s.logger.InfoContext(r.Context(), "decision_claimed",
-					"worker_id", request.WorkerID,
-					"request_id", record.ID,
-					"battle_id", record.BattleID,
-					"attempt", record.Attempt,
-					"faction_id", record.FactionID,
-					"target_tick", record.TargetTick,
-					"profile_id", record.ProfileID,
-					"provider", record.Provider,
-					"runtime", record.Runtime,
-				)
-				_ = json.NewEncoder(w).Encode(map[string]any{"requestId": record.ID, "profileId": record.ProfileID})
-				return
-			}
-			if !errors.Is(err, ai.ErrNoDecision) {
-				s.logger.ErrorContext(r.Context(), "decision_claim_failed", "worker_id", request.WorkerID, "error", err)
-				http.Error(w, "claim failed", http.StatusInternalServerError)
-				return
-			}
-			if request.WaitSeconds == 0 {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-			select {
-			case <-r.Context().Done():
-				return
-			case <-deadline.C:
-				w.WriteHeader(http.StatusNoContent)
-				return
-			case <-wakeup:
-			}
-		}
-	})
-	mux.HandleFunc("POST /fail", func(w http.ResponseWriter, r *http.Request) {
-		if !s.agentAuthorized(r) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+		if !found {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		var request struct {
-			RequestID, Category string
-			Usage               ai.Usage
-			Metadata            map[string]any
+		s.logDecisionClaim(r.Context(), request.WorkerID, record)
+		_ = json.NewEncoder(w).Encode(map[string]any{"requestId": record.ID, "profileId": record.ProfileID})
+	}
+}
+
+func decodeAgentClaimRequest(w http.ResponseWriter, r *http.Request) (agentClaimRequest, bool) {
+	var request agentClaimRequest
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&request) != nil ||
+		request.WorkerID == "" || len(request.ProfileIDs) == 0 || len(request.ProfileIDs) > 32 ||
+		request.WaitSeconds < 0 || request.WaitSeconds > 20 {
+		http.Error(w, invalidRequestMessage, http.StatusBadRequest)
+		return request, false
+	}
+	request.ProfileIDs = normalizedProfileIDs(request.ProfileIDs)
+	if len(request.ProfileIDs) == 0 {
+		http.Error(w, invalidRequestMessage, http.StatusBadRequest)
+		return request, false
+	}
+	return request, true
+}
+
+func (s *Server) waitForDecisionClaim(ctx context.Context, repository ai.DecisionRepository, request agentClaimRequest) (ai.DecisionRecord, bool, error) {
+	deadline := time.NewTimer(time.Duration(request.WaitSeconds) * time.Second)
+	defer deadline.Stop()
+	for {
+		// Subscribe before querying so a racing notification cannot be missed.
+		wakeup := s.wakeups.wait()
+		record, err := repository.ClaimModelDecision(ctx, request.WorkerID, request.ProfileIDs, time.Duration(max(1, request.LeaseSeconds))*time.Second)
+		if err == nil {
+			return record, true, nil
 		}
+		if !errors.Is(err, ai.ErrNoDecision) {
+			return ai.DecisionRecord{}, false, err
+		}
+		if request.WaitSeconds == 0 {
+			return ai.DecisionRecord{}, false, nil
+		}
+		select {
+		case <-ctx.Done():
+			return ai.DecisionRecord{}, false, nil
+		case <-deadline.C:
+			return ai.DecisionRecord{}, false, nil
+		case <-wakeup:
+		}
+	}
+}
+
+func (s *Server) logDecisionClaim(ctx context.Context, workerID string, record ai.DecisionRecord) {
+	s.logger.InfoContext(ctx, "decision_claimed", "worker_id", workerID, "request_id", record.ID, "battle_id", record.BattleID,
+		"attempt", record.Attempt, "faction_id", record.FactionID, "target_tick", record.TargetTick,
+		"profile_id", record.ProfileID, "provider", record.Provider, "runtime", record.Runtime)
+}
+
+func (s *Server) handleAgentFailure(repository ai.DecisionRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.requireAgentAuthorization(w, r) {
+			return
+		}
+		var request agentFailureRequest
 		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&request) != nil || request.RequestID == "" {
-			http.Error(w, "invalid request", http.StatusBadRequest)
+			http.Error(w, invalidRequestMessage, http.StatusBadRequest)
 			return
 		}
 		if err := repository.FinishDecisionFailure(r.Context(), request.RequestID, request.Category, request.Usage, request.Metadata); err != nil {
@@ -139,28 +175,21 @@ func (s *Server) AgentHandler(repository ai.DecisionRepository) http.Handler {
 			http.Error(w, "failure update failed", http.StatusInternalServerError)
 			return
 		}
-		s.logger.WarnContext(r.Context(), "decision_runner_failed",
-			"request_id", request.RequestID,
-			"error_category", request.Category,
-			"runner_outcome", safeMetadataString(request.Metadata, "runnerOutcome"),
-			"input_tokens", request.Usage.InputTokens,
-			"output_tokens", request.Usage.OutputTokens,
-			"provider_requests", request.Usage.Requests,
-		)
+		s.logger.WarnContext(r.Context(), "decision_runner_failed", "request_id", request.RequestID, "error_category", request.Category,
+			"runner_outcome", safeMetadataString(request.Metadata, "runnerOutcome"), "input_tokens", request.Usage.InputTokens,
+			"output_tokens", request.Usage.OutputTokens, "provider_requests", request.Usage.Requests)
 		w.WriteHeader(http.StatusNoContent)
-	})
-	mux.HandleFunc("POST /usage", func(w http.ResponseWriter, r *http.Request) {
-		if !s.agentAuthorized(r) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+	}
+}
+
+func (s *Server) handleAgentUsage(repository ai.DecisionRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.requireAgentAuthorization(w, r) {
 			return
 		}
-		var request struct {
-			RequestID string
-			Usage     ai.Usage
-			Metadata  map[string]any
-		}
+		var request agentUsageRequest
 		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&request) != nil || request.RequestID == "" {
-			http.Error(w, "invalid request", http.StatusBadRequest)
+			http.Error(w, invalidRequestMessage, http.StatusBadRequest)
 			return
 		}
 		if err := repository.RecordDecisionUsage(r.Context(), request.RequestID, request.Usage, request.Metadata); err != nil {
@@ -168,20 +197,23 @@ func (s *Server) AgentHandler(repository ai.DecisionRepository) http.Handler {
 			http.Error(w, "usage update failed", http.StatusInternalServerError)
 			return
 		}
-		s.logger.InfoContext(r.Context(), "decision_usage_recorded",
-			"request_id", request.RequestID,
-			"input_tokens", request.Usage.InputTokens,
-			"output_tokens", request.Usage.OutputTokens,
-			"provider_requests", request.Usage.Requests,
-		)
+		s.logger.InfoContext(r.Context(), "decision_usage_recorded", "request_id", request.RequestID,
+			"input_tokens", request.Usage.InputTokens, "output_tokens", request.Usage.OutputTokens, "provider_requests", request.Usage.Requests)
 		w.WriteHeader(http.StatusNoContent)
-	})
-	return mux
+	}
+}
+
+func (s *Server) requireAgentAuthorization(w http.ResponseWriter, r *http.Request) bool {
+	if s.agentAuthorized(r) {
+		return true
+	}
+	http.Error(w, "unauthorized", http.StatusUnauthorized)
+	return false
 }
 
 func (s *Server) agentAuthorized(request *http.Request) bool {
 	provided := []byte(strings.TrimSpace(request.Header.Get("Authorization")))
-	expected := []byte("Bearer " + s.secret)
+	expected := []byte(bearerPrefix + s.secret)
 	return subtle.ConstantTimeCompare(provided, expected) == 1
 }
 
@@ -230,11 +262,11 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		authorization := strings.TrimSpace(r.Header.Get("Authorization"))
-		if !strings.HasPrefix(authorization, "Bearer ") {
+		if !strings.HasPrefix(authorization, bearerPrefix) {
 			http.Error(w, "missing capability", http.StatusUnauthorized)
 			return
 		}
-		requestID, err := ai.VerifyCapability(s.secret, strings.TrimSpace(strings.TrimPrefix(authorization, "Bearer ")), time.Now())
+		requestID, err := ai.VerifyCapability(s.secret, strings.TrimSpace(strings.TrimPrefix(authorization, bearerPrefix)), time.Now())
 		if err != nil {
 			http.Error(w, "invalid capability", http.StatusUnauthorized)
 			return

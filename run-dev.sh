@@ -5,7 +5,6 @@ set -Eeuo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 backend_dir="${project_dir}/backend"
 frontend_dir="${project_dir}/frontend"
-database_url="${DATABASE_URL:-postgres://battlefield:battlefield@localhost:5432/battlefield?sslmode=disable}"
 engine_worker_id="${ENGINE_WORKER_ID:-engine-local-1}"
 start_postgres="${START_POSTGRES:-1}"
 start_agent="${START_AGENT:-0}"
@@ -38,7 +37,19 @@ require_command go
 require_command npm
 
 if [[ "${start_postgres}" == "1" ]]; then
-  require_command docker
+	if [[ -z "${BATTLEFIELD_POSTGRES_PASSWORD:-}" && -f "${backend_dir}/.env" ]]; then
+		while IFS='=' read -r key value; do
+			if [[ "${key}" == "BATTLEFIELD_POSTGRES_PASSWORD" ]]; then
+				export BATTLEFIELD_POSTGRES_PASSWORD="${value%$'\r'}"
+				break
+			fi
+		done < "${backend_dir}/.env"
+	fi
+	if [[ -z "${BATTLEFIELD_POSTGRES_PASSWORD:-}" ]]; then
+		echo "Set BATTLEFIELD_POSTGRES_PASSWORD in backend/.env or the shell before starting local PostgreSQL." >&2
+		exit 1
+	fi
+	require_command docker
   docker compose -f "${backend_dir}/compose.yaml" up -d postgres
 
   echo "Waiting for PostgreSQL..."
@@ -58,6 +69,7 @@ if [[ "${start_postgres}" == "1" ]]; then
   fi
 fi
 
+database_url="${DATABASE_URL:-postgres://battlefield:${BATTLEFIELD_POSTGRES_PASSWORD:-}@localhost:5432/battlefield?sslmode=disable}"
 export DATABASE_URL="${database_url}"
 export ENGINE_WORKER_ID="${engine_worker_id}"
 

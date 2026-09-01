@@ -141,6 +141,11 @@ type Routes struct {
 	manager *Manager
 }
 
+const (
+	cacheControlHeader = "Cache-Control"
+	noStoreDirective   = "no-store"
+)
+
 func NewRoutes(manager *Manager) *Routes {
 	return &Routes{manager: manager}
 }
@@ -168,7 +173,7 @@ func (r *Routes) login(response http.ResponseWriter, request *http.Request) {
 		return
 	}
 	if !r.manager.credentialsMatch(credentials.Username, credentials.Password) {
-		response.Header().Set("Cache-Control", "no-store")
+		response.Header().Set(cacheControlHeader, noStoreDirective)
 		http.Error(response, "invalid username or password", http.StatusUnauthorized)
 		return
 	}
@@ -177,13 +182,13 @@ func (r *Routes) login(response http.ResponseWriter, request *http.Request) {
 		actor.ID = "local-development"
 	}
 	r.manager.setSessionCookie(response, actor)
-	response.Header().Set("Cache-Control", "no-store")
+	response.Header().Set(cacheControlHeader, noStoreDirective)
 	response.WriteHeader(http.StatusNoContent)
 }
 
 func (r *Routes) session(response http.ResponseWriter, request *http.Request) {
 	actor, ok := r.manager.Authenticate(request)
-	response.Header().Set("Cache-Control", "no-store")
+	response.Header().Set(cacheControlHeader, noStoreDirective)
 	response.Header().Set("Content-Type", "application/json")
 	if !ok {
 		response.WriteHeader(http.StatusUnauthorized)
@@ -199,7 +204,7 @@ func (r *Routes) session(response http.ResponseWriter, request *http.Request) {
 
 func (r *Routes) logout(response http.ResponseWriter, _ *http.Request) {
 	r.manager.clearSessionCookie(response)
-	response.Header().Set("Cache-Control", "no-store")
+	response.Header().Set(cacheControlHeader, noStoreDirective)
 	response.WriteHeader(http.StatusNoContent)
 }
 
@@ -214,7 +219,7 @@ func RequireAuthentication(enabled bool, authenticator Authenticator, next http.
 		}
 		actor, ok := authenticator.Authenticate(request)
 		if !ok {
-			response.Header().Set("Cache-Control", "no-store")
+			response.Header().Set(cacheControlHeader, noStoreDirective)
 			http.Error(response, "authentication required", http.StatusUnauthorized)
 			return
 		}

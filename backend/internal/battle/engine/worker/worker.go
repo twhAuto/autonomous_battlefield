@@ -150,32 +150,16 @@ func (w *Worker) runTick(ctx context.Context, lease BattleLease, simulation *gam
 		return outcome, true, err
 	}
 	if _, err := w.waitWhilePaused(ctx, lease); err != nil {
-		if errors.Is(err, context.Canceled) {
-			return "", false, nil
-		}
-		return "error", true, err
+		return pausedTickResult(err)
 	}
 	tickStarted := time.Now()
-	var transition game.Transition
-	var err error
-	if simulation.DecisionWindowDue() && w.decisions != nil {
-		plans, resolveErr := w.resolveDecisionWindow(ctx, lease, simulation)
-		if resolveErr != nil {
-			return "error", true, resolveErr
-		}
-		transition, err = simulation.AdvanceWithPlans(plans)
-	} else {
-		transition, err = simulation.Advance()
-	}
+	transition, err := w.advanceSimulation(ctx, lease, simulation)
 	if err != nil {
 		return "error", true, err
 	}
 	pausedFor, err := w.waitWhilePaused(ctx, lease)
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			return "", false, nil
-		}
-		return "error", true, err
+		return pausedTickResult(err)
 	}
 	tickStarted = tickStarted.Add(pausedFor)
 	telemetry.ObserveEngineTick()
@@ -183,6 +167,28 @@ func (w *Worker) runTick(ctx context.Context, lease BattleLease, simulation *gam
 		outcome, err := w.completeBattle(ctx, lease, transition)
 		return outcome, true, err
 	}
+	return w.persistRunningTick(ctx, lease, simulation, transition, tickStarted)
+}
+
+func pausedTickResult(err error) (string, bool, error) {
+	if errors.Is(err, context.Canceled) {
+		return "", false, nil
+	}
+	return "error", true, err
+}
+
+func (w *Worker) advanceSimulation(ctx context.Context, lease BattleLease, simulation *game.Match) (game.Transition, error) {
+	if !simulation.DecisionWindowDue() || w.decisions == nil {
+		return simulation.Advance()
+	}
+	plans, err := w.resolveDecisionWindow(ctx, lease, simulation)
+	if err != nil {
+		return game.Transition{}, err
+	}
+	return simulation.AdvanceWithPlans(plans)
+}
+
+func (w *Worker) persistRunningTick(ctx context.Context, lease BattleLease, simulation *game.Match, transition game.Transition, tickStarted time.Time) (string, bool, error) {
 	if ctx.Err() != nil {
 		outcome, err := requeueOutcome(w.persistTickAndRequeue(ctx, lease, transition))
 		return outcome, true, err
@@ -216,149 +222,21 @@ func (w *Worker) resolveDecisionWindow(ctx context.Context, lease BattleLease, s
 		"participant_count", len(simulation.FactionIDs()),
 		"decision_timeout_ms", w.config.DecisionTimeout.Milliseconds(),
 	)
-	for _, factionID := range simulation.FactionIDs() {
-		snapshot, err := simulation.DecisionSnapshot(factionID)
-		if err != nil {
-			return nil, err
-		}
-		setup := factionSetup(simulation.Scenario(), factionID)
-		decisionContext := ai.DecisionContext{SchemaVersion: ai.ContextSchema, RequestID: decisionID(lease.BattleID, lease.Attempt, factionID, targetTick), BattleID: lease.BattleID,
-			FactionID: factionID, TargetTick: targetTick, ExpectedVersion: 1, ObservationVersion: snapshot.Version,
-			View: snapshot.View, Economy: ai.EconomyContext{Gold: snapshot.Gold, ProjectedIncome: snapshot.ProjectedIncome,
-				EconomyBuildingCost: snapshot.EconomyCost, EconomyBuildingIncome: snapshot.EconomyIncome,
-				CurrentEconomyBuildings: snapshot.EconomyCount, MaximumEconomyBuildings: snapshot.MaximumEconomy},
-			Legal: ai.LegalChoices{ActionKinds: []string{game.ActionAttack, game.ActionDefend}, Units: snapshot.LegalUnits, EconomySites: snapshot.LegalSites}, ActivePlan: snapshot.ActivePlan}
-		hash, err := ai.ObservationHash(decisionContext)
-		if err != nil {
-			return nil, err
-		}
-		decisionContext.ObservationHash = hash
-		record, err := w.decisions.CreateOrReuseDecision(ctx, ai.CreateDecisionParams{ID: decisionContext.RequestID, BattleID: lease.BattleID, Attempt: lease.Attempt,
-			FactionID: factionID, TargetTick: targetTick, ControllerType: setup.Controller.Type, ProfileID: setup.Controller.ProfileID,
-			Provider: setup.Controller.Provider, Runtime: setup.Controller.Runtime, ModelIdentifier: setup.Controller.ModelIdentifier,
-			PromptVersion: "battlefield-agent-v2", ToolSchemaVersion: ai.ToolSchema, Observation: decisionContext, ObservationHash: hash})
-		if err != nil {
-			return nil, err
-		}
-		w.logger.InfoContext(ctx, "decision_prepared",
-			"battle_id", lease.BattleID,
-			"attempt", lease.Attempt,
-			"request_id", record.ID,
-			"faction_id", factionID,
-			"target_tick", targetTick,
-			"controller_type", setup.Controller.Type,
-			"profile_id", setup.Controller.ProfileID,
-			"provider", setup.Controller.Provider,
-			"runtime", setup.Controller.Runtime,
-			"decision_status", record.Status,
-		)
-		if setup.Controller.Type == ai.ControllerScripted && record.ResolvedPlan == nil {
-			result, err := service.SubmitPlan(ctx, ai.PlanSubmission{RequestID: record.ID, IdempotencyKey: record.ID + ":scripted", ExpectedVersion: record.Version, TargetTick: targetTick, Plan: baselines[factionID]})
-			if err != nil || !result.Accepted {
-				if err != nil {
-					return nil, err
-				}
-				return nil, fmt.Errorf("scripted plan rejected: %v", result.Errors)
-			}
-		}
+	if err := w.prepareDecisionWindow(ctx, lease, simulation, targetTick, baselines, service); err != nil {
+		return nil, err
 	}
 
-	deadline := time.Now().Add(w.config.DecisionTimeout)
-	nextHeartbeat := time.Now().Add(w.config.HeartbeatInterval)
-	for {
-		pausedFor, err := w.waitWhilePaused(ctx, lease)
-		if err != nil {
-			return nil, err
-		}
-		deadline = deadline.Add(pausedFor)
-		nextHeartbeat = time.Now().Add(w.config.HeartbeatInterval)
-		records, err := w.decisions.ListWindowDecisions(ctx, lease.BattleID, lease.Attempt, targetTick)
-		if err != nil {
-			return nil, err
-		}
-		pending := false
-		for _, record := range records {
-			pending = pending || (record.Status == "pending" || record.Status == "running")
-		}
-		if !pending || !time.Now().Before(deadline) {
-			break
-		}
-		waitFor := min(100*time.Millisecond, time.Until(deadline), time.Until(nextHeartbeat))
-		if !wait(ctx, waitFor) {
-			return nil, context.Canceled
-		}
-		if !time.Now().Before(nextHeartbeat) {
-			if err := w.repository.HeartbeatBattle(ctx, lease, w.config.LeaseDuration); err != nil {
-				return nil, err
-			}
-			nextHeartbeat = time.Now().Add(w.config.HeartbeatInterval)
-		}
+	if err := w.waitForWindowDecisions(ctx, lease, targetTick); err != nil {
+		return nil, err
 	}
 
 	records, err := w.decisions.ListWindowDecisions(ctx, lease.BattleID, lease.Attempt, targetTick)
 	if err != nil {
 		return nil, err
 	}
-	plans := make(map[string]controller.PlanProposal, len(records))
-	acceptedCount := 0
-	fallbackCount := 0
-	for _, record := range records {
-		if record.Status == "failed" && record.ErrorCategory == "battle_stopped" {
-			return nil, ErrBattleLeaseLost
-		}
-		if record.ResolvedPlan == nil {
-			source := "previous_plan"
-			fallback := record.Observation.ActivePlan
-			if targetTick == uint64(simulation.Scenario().DecisionIntervalTicks) {
-				source, fallback = "scripted_fallback", baselines[record.FactionID]
-			}
-			accepted, err := w.decisions.ResolveDecisionFallback(ctx, record.ID, record.Version, fallback, source, "timeout")
-			if err != nil {
-				return nil, err
-			}
-			if accepted {
-				resolvedAt := time.Now()
-				record.Status = "fallback"
-				record.ResolvedPlan = &fallback
-				record.FallbackSource = source
-				record.ErrorCategory = "timeout"
-				record.ResolvedAt = &resolvedAt
-			} else {
-				refreshed, err := w.decisions.GetDecision(ctx, record.ID)
-				if err != nil {
-					return nil, err
-				}
-				record = refreshed
-			}
-		}
-		if record.ResolvedPlan == nil {
-			return nil, fmt.Errorf("decision %s has no resolved plan", record.ID)
-		}
-		if record.Status == "fallback" {
-			fallbackCount++
-		} else {
-			acceptedCount++
-		}
-		level := slog.LevelInfo
-		if record.Status == "fallback" || record.Status == "failed" {
-			level = slog.LevelWarn
-		}
-		w.logger.LogAttrs(ctx, level, "decision_resolved",
-			slog.String("battle_id", lease.BattleID),
-			slog.Int("attempt", lease.Attempt),
-			slog.String("request_id", record.ID),
-			slog.String("faction_id", record.FactionID),
-			slog.Uint64("target_tick", record.TargetTick),
-			slog.String("controller_type", record.ControllerType),
-			slog.String("profile_id", record.ProfileID),
-			slog.String("provider", record.Provider),
-			slog.String("runtime", record.Runtime),
-			slog.String("decision_status", record.Status),
-			slog.String("fallback_source", record.FallbackSource),
-			slog.String("error_category", record.ErrorCategory),
-			slog.Int64("duration_ms", decisionDurationMilliseconds(record)),
-		)
-		plans[record.FactionID] = *record.ResolvedPlan
+	plans, acceptedCount, fallbackCount, err := w.resolveDecisionPlans(ctx, lease, simulation, targetTick, baselines, records)
+	if err != nil {
+		return nil, err
 	}
 	w.logger.InfoContext(ctx, "decision_window_completed",
 		"battle_id", lease.BattleID,
@@ -368,6 +246,170 @@ func (w *Worker) resolveDecisionWindow(ctx context.Context, lease BattleLease, s
 		"fallback_count", fallbackCount,
 	)
 	return plans, nil
+}
+
+func (w *Worker) prepareDecisionWindow(ctx context.Context, lease BattleLease, simulation *game.Match, targetTick uint64, baselines map[string]controller.PlanProposal, service *ai.DecisionService) error {
+	for _, factionID := range simulation.FactionIDs() {
+		if err := w.prepareDecision(ctx, lease, simulation, factionID, targetTick, baselines, service); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (w *Worker) prepareDecision(ctx context.Context, lease BattleLease, simulation *game.Match, factionID string, targetTick uint64, baselines map[string]controller.PlanProposal, service *ai.DecisionService) error {
+	snapshot, err := simulation.DecisionSnapshot(factionID)
+	if err != nil {
+		return err
+	}
+	setup := factionSetup(simulation.Scenario(), factionID)
+	decisionContext := newDecisionContext(lease, factionID, targetTick, snapshot)
+	hash, err := ai.ObservationHash(decisionContext)
+	if err != nil {
+		return err
+	}
+	decisionContext.ObservationHash = hash
+	record, err := w.decisions.CreateOrReuseDecision(ctx, ai.CreateDecisionParams{ID: decisionContext.RequestID, BattleID: lease.BattleID, Attempt: lease.Attempt,
+		FactionID: factionID, TargetTick: targetTick, ControllerType: setup.Controller.Type, ProfileID: setup.Controller.ProfileID,
+		Provider: setup.Controller.Provider, Runtime: setup.Controller.Runtime, ModelIdentifier: setup.Controller.ModelIdentifier,
+		PromptVersion: "battlefield-agent-v2", ToolSchemaVersion: ai.ToolSchema, Observation: decisionContext, ObservationHash: hash})
+	if err != nil {
+		return err
+	}
+	w.logPreparedDecision(ctx, lease, targetTick, factionID, setup, record)
+	if setup.Controller.Type == ai.ControllerScripted && record.ResolvedPlan == nil {
+		return submitScriptedPlan(ctx, service, record, targetTick, baselines[factionID])
+	}
+	return nil
+}
+
+func newDecisionContext(lease BattleLease, factionID string, targetTick uint64, snapshot game.DecisionSnapshot) ai.DecisionContext {
+	return ai.DecisionContext{SchemaVersion: ai.ContextSchema, RequestID: decisionID(lease.BattleID, lease.Attempt, factionID, targetTick), BattleID: lease.BattleID,
+		FactionID: factionID, TargetTick: targetTick, ExpectedVersion: 1, ObservationVersion: snapshot.Version,
+		View: snapshot.View, Economy: ai.EconomyContext{Gold: snapshot.Gold, ProjectedIncome: snapshot.ProjectedIncome,
+			EconomyBuildingCost: snapshot.EconomyCost, EconomyBuildingIncome: snapshot.EconomyIncome,
+			CurrentEconomyBuildings: snapshot.EconomyCount, MaximumEconomyBuildings: snapshot.MaximumEconomy},
+		Legal: ai.LegalChoices{ActionKinds: []string{game.ActionAttack, game.ActionDefend}, Units: snapshot.LegalUnits, EconomySites: snapshot.LegalSites}, ActivePlan: snapshot.ActivePlan}
+}
+
+func (w *Worker) logPreparedDecision(ctx context.Context, lease BattleLease, targetTick uint64, factionID string, setup game.FactionSetup, record ai.DecisionRecord) {
+	w.logger.InfoContext(ctx, "decision_prepared", "battle_id", lease.BattleID, "attempt", lease.Attempt,
+		"request_id", record.ID, "faction_id", factionID, "target_tick", targetTick, "controller_type", setup.Controller.Type,
+		"profile_id", setup.Controller.ProfileID, "provider", setup.Controller.Provider, "runtime", setup.Controller.Runtime, "decision_status", record.Status)
+}
+
+func submitScriptedPlan(ctx context.Context, service *ai.DecisionService, record ai.DecisionRecord, targetTick uint64, plan controller.PlanProposal) error {
+	result, err := service.SubmitPlan(ctx, ai.PlanSubmission{RequestID: record.ID, IdempotencyKey: record.ID + ":scripted", ExpectedVersion: record.Version, TargetTick: targetTick, Plan: plan})
+	if err != nil {
+		return err
+	}
+	if !result.Accepted {
+		return fmt.Errorf("scripted plan rejected: %v", result.Errors)
+	}
+	return nil
+}
+
+func (w *Worker) waitForWindowDecisions(ctx context.Context, lease BattleLease, targetTick uint64) error {
+	deadline := time.Now().Add(w.config.DecisionTimeout)
+	nextHeartbeat := time.Now().Add(w.config.HeartbeatInterval)
+	for {
+		pausedFor, err := w.waitWhilePaused(ctx, lease)
+		if err != nil {
+			return err
+		}
+		deadline = deadline.Add(pausedFor)
+		nextHeartbeat = time.Now().Add(w.config.HeartbeatInterval)
+		records, err := w.decisions.ListWindowDecisions(ctx, lease.BattleID, lease.Attempt, targetTick)
+		if err != nil {
+			return err
+		}
+		if !decisionsPending(records) || !time.Now().Before(deadline) {
+			return nil
+		}
+		if !wait(ctx, min(100*time.Millisecond, time.Until(deadline), time.Until(nextHeartbeat))) {
+			return context.Canceled
+		}
+		if !time.Now().Before(nextHeartbeat) {
+			if err := w.repository.HeartbeatBattle(ctx, lease, w.config.LeaseDuration); err != nil {
+				return err
+			}
+			nextHeartbeat = time.Now().Add(w.config.HeartbeatInterval)
+		}
+	}
+}
+
+func decisionsPending(records []ai.DecisionRecord) bool {
+	for _, record := range records {
+		if record.Status == "pending" || record.Status == "running" {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *Worker) resolveDecisionPlans(ctx context.Context, lease BattleLease, simulation *game.Match, targetTick uint64, baselines map[string]controller.PlanProposal, records []ai.DecisionRecord) (map[string]controller.PlanProposal, int, int, error) {
+	plans := make(map[string]controller.PlanProposal, len(records))
+	acceptedCount, fallbackCount := 0, 0
+	for _, record := range records {
+		resolved, err := w.resolveDecisionRecord(ctx, simulation, targetTick, baselines, record)
+		if err != nil {
+			return nil, 0, 0, err
+		}
+		if resolved.Status == "fallback" {
+			fallbackCount++
+		} else {
+			acceptedCount++
+		}
+		w.logResolvedDecision(ctx, lease, resolved)
+		plans[resolved.FactionID] = *resolved.ResolvedPlan
+	}
+	return plans, acceptedCount, fallbackCount, nil
+}
+
+func (w *Worker) resolveDecisionRecord(ctx context.Context, simulation *game.Match, targetTick uint64, baselines map[string]controller.PlanProposal, record ai.DecisionRecord) (ai.DecisionRecord, error) {
+	if record.Status == "failed" && record.ErrorCategory == "battle_stopped" {
+		return record, ErrBattleLeaseLost
+	}
+	if record.ResolvedPlan == nil {
+		fallback, source := fallbackPlan(simulation, targetTick, baselines, record)
+		accepted, err := w.decisions.ResolveDecisionFallback(ctx, record.ID, record.Version, fallback, source, "timeout")
+		if err != nil {
+			return record, err
+		}
+		if accepted {
+			resolvedAt := time.Now()
+			record.Status, record.ResolvedPlan, record.FallbackSource = "fallback", &fallback, source
+			record.ErrorCategory, record.ResolvedAt = "timeout", &resolvedAt
+		} else {
+			record, err = w.decisions.GetDecision(ctx, record.ID)
+			if err != nil {
+				return record, err
+			}
+		}
+	}
+	if record.ResolvedPlan == nil {
+		return record, fmt.Errorf("decision %s has no resolved plan", record.ID)
+	}
+	return record, nil
+}
+
+func fallbackPlan(simulation *game.Match, targetTick uint64, baselines map[string]controller.PlanProposal, record ai.DecisionRecord) (controller.PlanProposal, string) {
+	if targetTick == uint64(simulation.Scenario().DecisionIntervalTicks) {
+		return baselines[record.FactionID], "scripted_fallback"
+	}
+	return record.Observation.ActivePlan, "previous_plan"
+}
+
+func (w *Worker) logResolvedDecision(ctx context.Context, lease BattleLease, record ai.DecisionRecord) {
+	level := slog.LevelInfo
+	if record.Status == "fallback" || record.Status == "failed" {
+		level = slog.LevelWarn
+	}
+	w.logger.LogAttrs(ctx, level, "decision_resolved", slog.String("battle_id", lease.BattleID), slog.Int("attempt", lease.Attempt),
+		slog.String("request_id", record.ID), slog.String("faction_id", record.FactionID), slog.Uint64("target_tick", record.TargetTick),
+		slog.String("controller_type", record.ControllerType), slog.String("profile_id", record.ProfileID), slog.String("provider", record.Provider),
+		slog.String("runtime", record.Runtime), slog.String("decision_status", record.Status), slog.String("fallback_source", record.FallbackSource),
+		slog.String("error_category", record.ErrorCategory), slog.Int64("duration_ms", decisionDurationMilliseconds(record)))
 }
 
 func decisionDurationMilliseconds(record ai.DecisionRecord) int64 {

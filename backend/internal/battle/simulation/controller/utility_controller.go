@@ -308,7 +308,26 @@ func validateProposal(proposal PlanProposal, actionKinds map[string]struct{}) er
 	if utf8.RuneCountInString(strings.TrimSpace(proposal.Rationale)) > maxRationaleCharacters {
 		return fmt.Errorf("%w: rationale exceeds %d characters", ErrInvalidPlan, maxRationaleCharacters)
 	}
-	for kind, weight := range proposal.ActionWeights {
+	if proposal.ReserveGold < 0 {
+		return fmt.Errorf("%w: reserve gold cannot be negative", ErrInvalidPlan)
+	}
+	if err := validateActionWeights(proposal.ActionWeights, actionKinds); err != nil {
+		return err
+	}
+	if err := validateTargetBonuses(proposal.TargetBonuses); err != nil {
+		return err
+	}
+	if err := validateSpendOrder(proposal.SpendOrder); err != nil {
+		return err
+	}
+	if err := validateRecruitmentPriorities(proposal.RecruitmentPriorities); err != nil {
+		return err
+	}
+	return validateConstructionPriorities(proposal.ConstructionPriorities)
+}
+
+func validateActionWeights(weights map[string]int64, actionKinds map[string]struct{}) error {
+	for kind, weight := range weights {
 		if _, ok := actionKinds[kind]; !ok {
 			return fmt.Errorf("%w: unsupported action kind %q", ErrInvalidPlan, kind)
 		}
@@ -316,7 +335,11 @@ func validateProposal(proposal PlanProposal, actionKinds map[string]struct{}) er
 			return fmt.Errorf("%w: action weight for %q is outside [0, %d]", ErrInvalidPlan, kind, maxWeight)
 		}
 	}
-	for target, bonus := range proposal.TargetBonuses {
+	return nil
+}
+
+func validateTargetBonuses(bonuses map[string]int64) error {
+	for target, bonus := range bonuses {
 		if strings.TrimSpace(target) == "" {
 			return fmt.Errorf("%w: target bonus key is required", ErrInvalidPlan)
 		}
@@ -324,11 +347,12 @@ func validateProposal(proposal PlanProposal, actionKinds map[string]struct{}) er
 			return fmt.Errorf("%w: target bonus for %q is outside [%d, %d]", ErrInvalidPlan, target, -maxTargetBonus, maxTargetBonus)
 		}
 	}
-	if proposal.ReserveGold < 0 {
-		return fmt.Errorf("%w: reserve gold cannot be negative", ErrInvalidPlan)
-	}
-	seenSpend := make(map[string]bool, len(proposal.SpendOrder))
-	for _, kind := range proposal.SpendOrder {
+	return nil
+}
+
+func validateSpendOrder(spendOrder []string) error {
+	seenSpend := make(map[string]bool, len(spendOrder))
+	for _, kind := range spendOrder {
 		if kind != "construction" && kind != "recruitment" {
 			return fmt.Errorf("%w: unsupported spend kind %q", ErrInvalidPlan, kind)
 		}
@@ -337,15 +361,23 @@ func validateProposal(proposal PlanProposal, actionKinds map[string]struct{}) er
 		}
 		seenSpend[kind] = true
 	}
-	seenRecruitment := make(map[string]bool, len(proposal.RecruitmentPriorities))
-	for _, unitType := range proposal.RecruitmentPriorities {
+	return nil
+}
+
+func validateRecruitmentPriorities(priorities []string) error {
+	seenRecruitment := make(map[string]bool, len(priorities))
+	for _, unitType := range priorities {
 		if strings.TrimSpace(unitType) == "" || seenRecruitment[unitType] {
 			return fmt.Errorf("%w: recruitment priorities must be unique and non-empty", ErrInvalidPlan)
 		}
 		seenRecruitment[unitType] = true
 	}
-	seenSites := make(map[Coordinate]bool, len(proposal.ConstructionPriorities))
-	for _, site := range proposal.ConstructionPriorities {
+	return nil
+}
+
+func validateConstructionPriorities(priorities []Coordinate) error {
+	seenSites := make(map[Coordinate]bool, len(priorities))
+	for _, site := range priorities {
 		if seenSites[site] {
 			return fmt.Errorf("%w: construction priorities must be unique", ErrInvalidPlan)
 		}

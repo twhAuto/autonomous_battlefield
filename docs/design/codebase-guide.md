@@ -362,7 +362,7 @@ The browser's API boundary lives in `src/api`. Page components should consume ty
 | Path | Purpose |
 | --- | --- |
 | [`backend/config.yaml`](../../backend/config.yaml) | Local process configuration and model-profile definitions |
-| [`backend/.env.example`](../../backend/.env.example) | Local environment variable template |
+| [`backend/.env.example`](../../backend/.env.example) | Local environment variable template, including the required development PostgreSQL password |
 | [`backend/rulesets`](../../backend/rulesets) | Versioned unit, building, economy, and combat values |
 | [`backend/scenarios`](../../backend/scenarios) | Map layout, timing, scripted plans, and fallbacks |
 | [`deploy/base/infrastructure/configmap.yaml`](../../deploy/base/infrastructure/configmap.yaml) | Cluster configuration equivalent |
@@ -384,7 +384,7 @@ The key application manifests are:
 - frontend deployment and service;
 - migration overlay job.
 
-[`run-dev.sh`](../../run-dev.sh) is the local multi-process launcher. [`run-k8s-cli-agent.sh`](../../run-k8s-cli-agent.sh) bridges authenticated host subscription CLIs to a Kubernetes MCP service. CI/CD helpers under `scripts` classify affected components, build images, apply migrations, deploy, smoke-test, and roll back.
+[`run-dev.sh`](../../run-dev.sh) is the local multi-process launcher. It obtains the Compose PostgreSQL password from the shell or the Git-ignored `backend/.env`; `backend/compose.yaml` has no committed database credential. [`run-k8s-cli-agent.sh`](../../run-k8s-cli-agent.sh) bridges authenticated host subscription CLIs to a Kubernetes MCP service. CI/CD helpers under `scripts` classify affected components, build images, apply migrations, deploy, smoke-test, and roll back.
 
 ## 10. Testing layout and expectations
 

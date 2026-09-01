@@ -245,8 +245,8 @@ form label { display: block; margin-bottom: 10px; color: #cbd0c5; font: 500 11px
 .outcome-panel--stopped strong { color: #ffb46d; }
 .outcome-panel--paused strong { color: #ffcf70; }
 .battle-controls { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
-.battle-controls > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
-.battle-controls button { min-height: 36px; padding: 0 8px; color: #aab2a4; background: #10150f; border: 1px solid #41483e; font: 500 8px 'DM Mono', monospace; letter-spacing: .1em; transition: color .2s, border-color .2s, background .2s, opacity .2s; }
+.battle-controls > fieldset { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 0; padding: 0; border: 0; }
+.battle-controls button { min-height: 36px; padding: 0 8px; color: #d8ded2; background: #10150f; border: 1px solid #41483e; font: 500 8px 'DM Mono', monospace; letter-spacing: .1em; transition: color .2s, border-color .2s, background .2s, opacity .2s; }
 .battle-controls button:hover:not(:disabled), .battle-controls button[aria-pressed='true'] { color: #151a14; background: var(--lime); border-color: var(--lime); }
 .battle-controls .battle-control--stop { color: #ff9e85; border-color: rgba(255,158,133,.45); }
 .battle-controls .battle-control--stop:hover:not(:disabled) { color: #151a14; background: #ff9e85; border-color: #ff9e85; }
@@ -270,9 +270,9 @@ form label { display: block; margin-bottom: 10px; color: #cbd0c5; font: 500 11px
 .event-console { margin: 26px 0 96px; }
 .battle-side-panels { position: sticky; top: 18px; display: flex; height: min(82vh, 760px); min-height: 0; flex-direction: column; margin-bottom: 28px; }
 .battle-side-panel-tabs { display: grid; flex: 0 0 auto; grid-template-columns: 1fr 1fr; background: #10150f; border: 1px solid var(--line); border-bottom: 0; }
-.battle-side-panel-tabs button { display: flex; min-height: 48px; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; color: #687064; background: transparent; border: 0; border-right: 1px solid var(--line); font: 500 9px 'DM Mono', monospace; letter-spacing: .12em; transition: color .2s, background .2s; }
+.battle-side-panel-tabs button { display: flex; min-height: 48px; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; color: #aab2a4; background: transparent; border: 0; border-right: 1px solid var(--line); font: 500 9px 'DM Mono', monospace; letter-spacing: .12em; transition: color .2s, background .2s; }
 .battle-side-panel-tabs button:last-child { border-right: 0; }
-.battle-side-panel-tabs button:hover { color: #d8ded2; background: rgba(216,255,104,.04); }
+.battle-side-panel-tabs button:hover { color: #f4f7f1; background: #1c241a; }
 .battle-side-panel-tabs button[aria-selected='true'] { color: var(--lime); background: #151a14; box-shadow: inset 0 -2px var(--lime); }
 .battle-side-panel-tabs button span { display: grid; min-width: 20px; height: 20px; padding: 0 5px; place-items: center; color: inherit; border: 1px solid currentColor; font-size: 8px; }
 .battle-side-panel__content { display: flex; flex: 1; min-height: 0; }

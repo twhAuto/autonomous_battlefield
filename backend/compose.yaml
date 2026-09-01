@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: battlefield
       POSTGRES_USER: battlefield
-      POSTGRES_PASSWORD: battlefield
+      POSTGRES_PASSWORD: ${BATTLEFIELD_POSTGRES_PASSWORD:?Set BATTLEFIELD_POSTGRES_PASSWORD in backend/.env or the shell}
     ports:
       - "5432:5432"
     healthcheck:
@@ -28,7 +28,7 @@ services:
       - --port
       - "8080"
       - --dsn
-      - postgres://battlefield:battlefield@postgres:5432/battlefield?sslmode=disable
+      - postgres://battlefield:${BATTLEFIELD_POSTGRES_PASSWORD:?Set BATTLEFIELD_POSTGRES_PASSWORD in backend/.env or the shell}@postgres:5432/battlefield?sslmode=disable
     depends_on:
       postgres:
         condition: service_healthy

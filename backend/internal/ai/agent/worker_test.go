@@ -33,6 +33,45 @@ type agentRoundTrip func(*http.Request) (*http.Response, error)
 
 func (f agentRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+type usageReportingTransport struct {
+	cancel context.CancelFunc
+	claims *atomic.Int32
+	usage  *atomic.Int32
+}
+
+func (transport usageReportingTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request.Header.Get("Authorization") != "Bearer secret" {
+		return agentResponse(http.StatusUnauthorized, ""), nil
+	}
+	switch request.URL.Path {
+	case "/internal/agent/claim":
+		return transport.claimResponse(request), nil
+	case "/internal/agent/usage":
+		transport.usage.Add(1)
+		transport.cancel()
+	}
+	return agentResponse(http.StatusNoContent, ""), nil
+}
+
+func (transport usageReportingTransport) claimResponse(request *http.Request) *http.Response {
+	var claimRequest struct {
+		ProfileIDs  []string `json:"profileIds"`
+		WaitSeconds int      `json:"waitSeconds"`
+	}
+	if json.NewDecoder(request.Body).Decode(&claimRequest) != nil || len(claimRequest.ProfileIDs) != 1 || claimRequest.ProfileIDs[0] != "profile" || claimRequest.WaitSeconds < 1 {
+		return agentResponse(http.StatusBadRequest, "")
+	}
+	if transport.claims.Add(1) != 1 {
+		return agentResponse(http.StatusNoContent, "")
+	}
+	encoded, _ := json.Marshal(job{RequestID: "request", ProfileID: "profile"})
+	return agentResponse(http.StatusOK, string(encoded))
+}
+
+func agentResponse(status int, body string) *http.Response {
+	return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}
+}
+
 func (r fakeRunner) Run(context.Context, ai.DecisionSession) (ai.DecisionResult, error) {
 	return r.result, r.err
 }
@@ -42,33 +81,7 @@ func TestWorkerClaimsRunsAndReportsUsage(t *testing.T) {
 	defer cancel()
 	var claims atomic.Int32
 	var usage atomic.Int32
-	client := &http.Client{Transport: agentRoundTrip(func(request *http.Request) (*http.Response, error) {
-		status, body := http.StatusNoContent, ""
-		if request.Header.Get("Authorization") != "Bearer secret" {
-			status = http.StatusUnauthorized
-		} else {
-			switch request.URL.Path {
-			case "/internal/agent/claim":
-				var claimRequest struct {
-					ProfileIDs  []string `json:"profileIds"`
-					WaitSeconds int      `json:"waitSeconds"`
-				}
-				if json.NewDecoder(request.Body).Decode(&claimRequest) != nil || len(claimRequest.ProfileIDs) != 1 || claimRequest.ProfileIDs[0] != "profile" || claimRequest.WaitSeconds < 1 {
-					status = http.StatusBadRequest
-					break
-				}
-				if claims.Add(1) == 1 {
-					status = http.StatusOK
-					encoded, _ := json.Marshal(job{RequestID: "request", ProfileID: "profile"})
-					body = string(encoded)
-				}
-			case "/internal/agent/usage":
-				usage.Add(1)
-				cancel()
-			}
-		}
-		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
-	})}
+	client := &http.Client{Transport: usageReportingTransport{cancel: cancel, claims: &claims, usage: &usage}}
 	profiles := ai.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
 	worker := &Worker{MCPURL: "http://mcp/mcp", Secret: "secret", WorkerID: "agent", Profiles: profiles, PollInterval: time.Millisecond, DecisionTimeout: time.Second, Concurrency: 2, Client: client, RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
 		return fakeRunner{result: ai.DecisionResult{Accepted: true, Usage: ai.Usage{Requests: 1}}}, nil
