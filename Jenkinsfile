@@ -80,6 +80,7 @@ pipeline {
                             kubectl kustomize deploy/overlays/local/logging-collector >/dev/null
                             kubectl kustomize deploy/overlays/local/gateway >/dev/null
                             ./scripts/ci/test-deployment-components.sh
+                            ./scripts/ci/test-kind-deployment.sh
                         '''
                     }
                 }
@@ -165,7 +166,10 @@ pipeline {
                 branch 'main'
             }
             steps {
-                sh './scripts/ci/test-deployment-components.sh'
+                sh '''
+                    ./scripts/ci/test-deployment-components.sh
+                    ./scripts/ci/test-kind-deployment.sh
+                '''
                 script {
                     def previousSuccessfulCommit = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: ''
                     withEnv(["DEPLOY_BASE_REVISION=${previousSuccessfulCommit}"]) {

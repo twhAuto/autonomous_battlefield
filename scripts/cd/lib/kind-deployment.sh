@@ -194,6 +194,10 @@ kind_deploy_prepare_database_secret() {
   local line
 
   cp "${secret_file}" "${target_file}"
+  # Jenkins file credentials are intentionally read-only. The staged copy is
+  # private to this deployment, so make it owner-writable before adding the
+  # derived MCP connection string.
+  chmod 600 "${target_file}"
   while IFS= read -r line; do
     case "${line}" in
       DATABASE_URL=*) database_url="${line#DATABASE_URL=}" ;;
@@ -209,7 +213,6 @@ kind_deploy_prepare_database_secret() {
     printf '\nMCP_DATABASE_URL=%s\n' "${database_url}" >>"${target_file}"
     echo "No MCP_DATABASE_URL supplied; reusing DATABASE_URL for this local deployment."
   fi
-  chmod 600 "${target_file}"
 }
 
 kind_deploy_prepare_ai_secret() {
