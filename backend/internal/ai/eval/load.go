@@ -21,23 +21,9 @@ func LoadCases(root string) ([]Case, error) {
 		if entry.IsDir() || (filepath.Ext(path) != ".yaml" && filepath.Ext(path) != ".yml") {
 			return nil
 		}
-		file, err := os.Open(path)
+		value, err := loadCase(path)
 		if err != nil {
 			return err
-		}
-		defer file.Close()
-		decoder := yaml.NewDecoder(file)
-		decoder.KnownFields(true)
-		var value Case
-		if err := decoder.Decode(&value); err != nil {
-			return fmt.Errorf("decode %s: %w", path, err)
-		}
-		var trailing any
-		if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-			return fmt.Errorf("%s must contain exactly one YAML document", path)
-		}
-		if err := validateCase(value); err != nil {
-			return fmt.Errorf("validate %s: %w", path, err)
 		}
 		cases = append(cases, value)
 		return nil
@@ -55,6 +41,28 @@ func LoadCases(root string) ([]Case, error) {
 		}
 	}
 	return cases, nil
+}
+
+func loadCase(path string) (Case, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return Case{}, err
+	}
+	defer file.Close()
+	decoder := yaml.NewDecoder(file)
+	decoder.KnownFields(true)
+	var value Case
+	if err := decoder.Decode(&value); err != nil {
+		return Case{}, fmt.Errorf("decode %s: %w", path, err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return Case{}, fmt.Errorf("%s must contain exactly one YAML document", path)
+	}
+	if err := validateCase(value); err != nil {
+		return Case{}, fmt.Errorf("validate %s: %w", path, err)
+	}
+	return value, nil
 }
 
 func LoadPriceBook(path string) (PriceBook, error) {
