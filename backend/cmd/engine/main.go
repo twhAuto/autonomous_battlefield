@@ -65,6 +65,15 @@ func startEngine(configuration config.Config) error {
 	defer stop()
 	runContext, cancelRun := context.WithCancel(signalContext)
 	defer cancelRun()
+	shutdownTracing, err := telemetry.ConfigureTracing(runContext, "battlefield-engine")
+	if err != nil {
+		return fmt.Errorf("configure tracing: %w", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(ctx)
+	}()
 
 	engineConfig := configuration.Engine
 	lifecycle := httpapi.NewLifecycleHandler(telemetry.MetricsHandler())

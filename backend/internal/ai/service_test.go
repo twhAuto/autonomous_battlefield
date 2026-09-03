@@ -107,6 +107,21 @@ func TestCapabilityAndObservationHash(t *testing.T) {
 	}
 }
 
+func FuzzVerifyCapability(f *testing.F) {
+	valid, err := MintCapability("secret", "request", time.Unix(2_000_000_000, 0))
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(valid)
+	f.Add("not-a-capability")
+	f.Fuzz(func(t *testing.T, token string) {
+		requestID, err := VerifyCapability("secret", token, time.Unix(1_900_000_000, 0))
+		if err == nil && requestID == "" {
+			t.Fatal("accepted capability has an empty request ID")
+		}
+	})
+}
+
 func TestDecisionServicePropagatesRepositoryFailure(t *testing.T) {
 	want := errors.New("database")
 	service := NewDecisionService(&memoryRepository{err: want})

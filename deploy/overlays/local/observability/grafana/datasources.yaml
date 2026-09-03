@@ -8,3 +8,9 @@ datasources:
     url: http://battlefield-prometheus:9090
     isDefault: true
     editable: false
+  - name: Tempo
+    uid: battlefield-tempo
+    type: tempo
+    access: proxy
+    url: http://battlefield-tempo:3200
+    editable: false

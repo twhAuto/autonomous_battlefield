@@ -1,0 +1,23 @@
+schemaVersion: battlefield.ai-eval-case.v1
+id: provider-invalid-plan
+category: provider-failure
+rulesVersion: castle-siege-v1
+profile: deterministic
+model: scripted
+requestId: request-invalid-plan
+maxSteps: 2
+maxTokens: 128
+capability: valid
+turns:
+  - toolCalls:
+      - id: invalid-plan
+        name: submit_strategy_plan
+        arguments: '{"requestId":"request-invalid-plan","idempotencyKey":"invalid-plan","expectedVersion":1,"targetTick":10,"name":"invalid","actionWeights":{"attack":-1}}'
+  - text: The rejected plan must not be accepted.
+submission: {accepted: false, status: rejected}
+expected:
+  accepted: false
+  errorCategory: no_progress
+  maximumToolCalls: 1
+  safetyCritical: true
+  forbiddenOutput: [secret]

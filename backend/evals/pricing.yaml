@@ -1,0 +1,9 @@
+schemaVersion: battlefield.ai-pricing.v1
+version: 2026-09-03
+models:
+  - model: scripted
+    inputUsdPerMillion: 0
+    outputUsdPerMillion: 0
+
+# Paid evaluation deliberately refuses unknown models. Add an operator-reviewed
+# provider price here, with a new version date, before invoking that model.

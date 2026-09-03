@@ -13,6 +13,7 @@ import (
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/server/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 type Postgres struct {
@@ -24,6 +25,8 @@ func NewPostgres(db postgres.DBTX) *Postgres {
 }
 
 func (r *Postgres) CreateBattle(ctx context.Context, params battleservice.CreateBattleParams) error {
+	ctx, span := telemetry.StartDatabaseSpan(ctx, "create_battle")
+	defer span.End()
 	snapshot, err := json.Marshal(params.ScenarioSnapshot)
 	if err != nil {
 		return fmt.Errorf("marshal battle scenario: %w", err)
@@ -33,9 +36,9 @@ func (r *Postgres) CreateBattle(ctx context.Context, params battleservice.Create
 		return fmt.Errorf("marshal battle initial state: %w", err)
 	}
 	_, err = r.db.Exec(ctx, `
-		INSERT INTO battle_runs (id, scenario_id, scenario_digest, scenario_snapshot, requested_ticks, initial_state, current_state)
-		VALUES ($1, $2, $3, $4, $5, $6, $6)
-	`, params.ID, params.ScenarioID, params.ScenarioDigest, snapshot, params.RequestedTicks, initialState)
+		INSERT INTO battle_runs (id, scenario_id, scenario_digest, scenario_snapshot, requested_ticks, initial_state, current_state, traceparent, tracestate)
+		VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8)
+	`, params.ID, params.ScenarioID, params.ScenarioDigest, snapshot, params.RequestedTicks, initialState, params.Traceparent, params.Tracestate)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -196,6 +199,8 @@ func (r *Postgres) ListBattleEvents(ctx context.Context, battleID string, attemp
 }
 
 func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDuration time.Duration, maxAttempts int) (*worker.BattleJob, error) {
+	ctx, span := telemetry.StartDatabaseSpan(ctx, "claim_battle")
+	defer span.End()
 	_, err := r.db.Exec(ctx, `
 		UPDATE battle_runs
 		SET status = 'failed', error_code = 'attempts_exhausted',
@@ -230,9 +235,11 @@ func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDurati
 		    result = NULL, error_code = NULL, error_message = NULL, updated_at = now()
 		FROM candidate
 		WHERE battle.id = candidate.id
-		RETURNING battle.id, battle.attempt, battle.scenario_snapshot, battle.requested_ticks
+		RETURNING battle.id, battle.attempt, battle.scenario_snapshot, battle.requested_ticks,
+		          battle.traceparent, battle.tracestate
 	`, workerID, leaseDuration.String(), maxAttempts).Scan(
 		&job.Lease.BattleID, &job.Lease.Attempt, &snapshot, &job.RequestedTicks,
+		&job.Traceparent, &job.Tracestate,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, worker.ErrNoBattleAvailable

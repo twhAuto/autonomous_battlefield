@@ -1,0 +1,19 @@
+schemaVersion: battlefield.ai-eval-case.v1
+id: provider-rate-limit
+category: provider-failure
+rulesVersion: castle-siege-v1
+profile: deterministic
+model: scripted
+requestId: request-rate-limit
+maxSteps: 2
+maxTokens: 128
+capability: valid
+turns:
+  - error: rate_limit
+submission: {accepted: false, status: rejected}
+expected:
+  accepted: false
+  errorCategory: rate_limit
+  maximumToolCalls: 0
+  safetyCritical: false
+  forbiddenOutput: [secret]

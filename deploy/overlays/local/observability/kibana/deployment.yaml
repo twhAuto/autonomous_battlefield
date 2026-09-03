@@ -74,6 +74,7 @@ spec:
               memory: 1536Mi
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL

@@ -16,6 +16,8 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/providers"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -39,7 +41,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		return errors.New("agent concurrency must be at least two")
 	}
 	if w.Client == nil {
-		w.Client = http.DefaultClient
+		w.Client = telemetry.HTTPClient(nil)
 	}
 	if w.Profiles == nil {
 		return errors.New("agent profile registry is required")
@@ -106,8 +108,10 @@ func waitFor(ctx context.Context, duration time.Duration) bool {
 }
 
 type job struct {
-	RequestID string `json:"requestId"`
-	ProfileID string `json:"profileId"`
+	RequestID   string `json:"requestId"`
+	ProfileID   string `json:"profileId"`
+	Traceparent string `json:"traceparent"`
+	Tracestate  string `json:"tracestate"`
 }
 
 type jobRun struct {
@@ -146,6 +150,12 @@ func (w *Worker) claim(ctx context.Context, profileIDs []string) (job, bool, err
 }
 
 func (w *Worker) runJob(parent context.Context, job job) {
+	parent = telemetry.ContextWithTrace(parent, job.Traceparent, job.Tracestate)
+	parent, span := telemetry.StartConsumerSpan(parent, "battlefield.agent.decision",
+		attribute.String("battlefield.request_id", job.RequestID),
+		attribute.String("battlefield.profile_id", job.ProfileID),
+	)
+	defer span.End()
 	started := time.Now()
 	logger := w.logger().With("worker_id", w.WorkerID, "request_id", job.RequestID, "profile_id", job.ProfileID)
 	profile, err := w.Profiles.Require(job.ProfileID)

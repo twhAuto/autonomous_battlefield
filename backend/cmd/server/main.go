@@ -97,6 +97,15 @@ func startServer(configuration config.Config) error {
 	defer stop()
 	processContext, cancelProcess := context.WithCancel(shutdownSignal)
 	defer cancelProcess()
+	shutdownTracing, err := telemetry.ConfigureTracing(processContext, "battlefield-api")
+	if err != nil {
+		return fmt.Errorf("configure tracing: %w", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(ctx)
+	}()
 
 	lifecycle := httpapi.NewLifecycleHandler(telemetry.MetricsHandler())
 	httpConfig := configuration.HTTP

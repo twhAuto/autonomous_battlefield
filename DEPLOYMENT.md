@@ -710,6 +710,21 @@ Once one replica works, exercise these behaviors deliberately:
 
 ## Moving the deployment to AWS
 
+The implementation root is [`infra/aws`](infra/aws). It creates budget alerts before the network and runtime resources, then provisions VPC networking, immutable ECR repositories, EKS, encrypted RDS PostgreSQL with managed master credentials and backups, Secrets Manager placeholders, control-plane logging, and an OIDC provider for IRSA.
+
+GHCR remains the build source of truth. `scripts/cd/promote-to-ecr.sh` copies the already verified subject and OCI referrers with ORAS, proves that the ECR subject digest is unchanged, then verifies the Cosign signature plus CycloneDX, SLSA-provenance, and AI-manifest attestations. It never rebuilds an image.
+
+Registry-backed Kind deployment uses full digest inputs:
+
+```bash
+IMAGE_SOURCE=registry \
+BACKEND_IMAGE_REF='ghcr.io/twh09/autonomous-battlefield-backend@sha256:…' \
+FRONTEND_IMAGE_REF='ghcr.io/twh09/autonomous-battlefield-frontend@sha256:…' \
+./scripts/cd/deploy-kind.sh
+```
+
+Jenkins additionally sets `ENFORCE_SUPPLY_CHAIN_POLICY=1`, which installs the Jenkins-only Kyverno verification policy. Unsigned local Kind development remains available through `IMAGE_SOURCE=local` and is never treated as promotion evidence.
+
 The AWS step should reuse the tested images and base resources:
 
 An AWS account is required before this stage, including billing verification.
@@ -719,14 +734,15 @@ cost budget and alerts before provisioning. Free Tier eligibility does not make
 an EKS environment free: the cluster control plane and its compute, database,
 load balancer, networking, and storage resources are independently billable.
 
-No AWS infrastructure is created by the current repository. The checked-in
-manifests and scripts deploy only to local kind; an infrastructure-as-code AWS
-stack and overlay are still future work.
+The checked-in Terraform is a reference implementation and has not been applied
+to an AWS account by this repository. Account-specific plans, IAM review,
+secret population, ingress installation, and recovery evidence are still
+required before treating the environment as production-ready.
 
 1. Create the AWS account, cost budget, and billing alerts.
-2. Provision ECR, networking, EKS, RDS, and Secrets Manager through
-   infrastructure as code.
-3. Push immutable, commit-addressed images to ECR.
+2. Review and apply `infra/aws` to provision ECR, networking, EKS, RDS, and
+   Secrets Manager.
+3. Promote immutable GHCR digests and all OCI referrers to ECR without rebuilding.
 4. Configure EKS workload identity and least-privilege access to the required
    secret.
 5. Point `DATABASE_URL` at the private RDS endpoint with TLS enabled.

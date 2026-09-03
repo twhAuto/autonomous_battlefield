@@ -82,3 +82,24 @@ func TestCatalogReturnsNotFound(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func FuzzScenarioYAML(f *testing.F) {
+	root := filepath.Join("..", "..", "..", "..")
+	seed, err := os.ReadFile(filepath.Join(root, "scenarios", "castle-siege-v1.yaml"))
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(seed)
+	f.Add([]byte("id: fuzz\nunknown: true\n"))
+	f.Fuzz(func(t *testing.T, value []byte) {
+		if len(value) > 64<<10 {
+			t.Skip()
+		}
+		path := filepath.Join(t.TempDir(), "scenario.yaml")
+		if err := os.WriteFile(path, value, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var scenario game.Scenario
+		_ = decodeOne(path, &scenario)
+	})
+}

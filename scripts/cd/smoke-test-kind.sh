@@ -10,6 +10,7 @@ kube_context="${KUBERNETES_CONTEXT:-kind-${cluster_name}}"
 api_port="${SMOKE_TEST_API_PORT:-18081}"
 prometheus_port="${SMOKE_TEST_PROMETHEUS_PORT:-18082}"
 elasticsearch_port="${SMOKE_TEST_ELASTICSEARCH_PORT:-18083}"
+tempo_port="${SMOKE_TEST_TEMPO_PORT:-18084}"
 gateway_port="${SMOKE_TEST_GATEWAY_PORT:-8888}"
 frontend_host="${SMOKE_TEST_FRONTEND_HOST:-battlefield.localhost}"
 grafana_host="${SMOKE_TEST_GRAFANA_HOST:-grafana.localhost}"
@@ -41,7 +42,7 @@ for command in base64 curl kubectl node; do
   fi
 done
 
-ports=("${api_port}" "${prometheus_port}" "${elasticsearch_port}" "${gateway_port}")
+ports=("${api_port}" "${prometheus_port}" "${elasticsearch_port}" "${tempo_port}" "${gateway_port}")
 for port in "${ports[@]}"; do
   if [[ ! "${port}" =~ ^[0-9]+$ ]] || ((port < 1024 || port > 65535)); then
     echo "Smoke-test ports must be integers between 1024 and 65535." >&2
@@ -67,6 +68,13 @@ kube port-forward \
   service/battlefield-prometheus \
   "${prometheus_port}:9090" \
   >"${runtime_dir}/prometheus-port-forward.log" 2>&1 &
+pids+=("$!")
+
+kube port-forward \
+  --namespace "${namespace}" \
+  service/battlefield-tempo \
+  "${tempo_port}:3200" \
+  >"${runtime_dir}/tempo-port-forward.log" 2>&1 &
 pids+=("$!")
 
 kube port-forward \
@@ -236,6 +244,7 @@ wait_for_url \
 wait_for_url \
   "Elasticsearch readiness" \
   "http://127.0.0.1:${elasticsearch_port}/_cluster/health"
+wait_for_url "Tempo readiness" "http://127.0.0.1:${tempo_port}/ready"
 
 wait_for_prometheus_query() {
   local name="$1"

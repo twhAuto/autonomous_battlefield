@@ -1,0 +1,104 @@
+pipeline {
+    agent any
+
+    parameters {
+        choice(name: 'MODE', choices: ['nightly', 'load', 'failure-drills', 'provider-eval', 'aws-promotion'], description: 'Assurance workflow to run')
+        choice(name: 'AI_PROVIDER', choices: ['openai', 'gemini'], description: 'Provider for an explicitly paid evaluation')
+        string(name: 'AI_MODEL', defaultValue: '', description: 'Model with a reviewed entry in backend/evals/pricing.yaml')
+        string(name: 'AI_CASE_COUNT', defaultValue: '1', description: 'Explicit fixed-corpus provider case budget')
+        string(name: 'AI_MAX_TOKENS', defaultValue: '1024', description: 'Maximum output tokens per provider turn')
+        string(name: 'AI_MAX_STEPS', defaultValue: '4', description: 'Maximum provider/tool turns')
+        string(name: 'LOAD_VUS', defaultValue: '20', description: 'Virtual users for representative load')
+        string(name: 'LOAD_DURATION', defaultValue: '10m', description: 'Representative load duration')
+        string(name: 'AWS_ACCOUNT_ID', defaultValue: '', description: 'Destination AWS account for an artifact promotion')
+        string(name: 'AWS_REGION', defaultValue: 'ap-southeast-1', description: 'Destination AWS region')
+        string(name: 'ECR_BACKEND_REPOSITORY', defaultValue: '', description: 'Full ECR backend repository URL')
+        string(name: 'ECR_FRONTEND_REPOSITORY', defaultValue: '', description: 'Full ECR frontend repository URL')
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        disableConcurrentBuilds()
+        timestamps()
+        timeout(time: 90, unit: 'MINUTES')
+    }
+
+    stages {
+        stage('Validate explicit limits') {
+            steps {
+                script {
+                    if (params.MODE == 'provider-eval' && !params.AI_MODEL) {
+                        error('Provider evaluation requires a model with reviewed pricing.')
+                    }
+                }
+            }
+        }
+
+        stage('Nightly offline assurance') {
+            when { expression { params.MODE == 'nightly' } }
+            steps {
+                sh './scripts/ci/security-and-policy.sh'
+                sh 'FUZZ_SECONDS=120 ./scripts/ci/fuzz-smoke.sh'
+                sh './scripts/ci/test-ai-evals.sh'
+            }
+        }
+
+        stage('Representative load') {
+            when { expression { params.MODE == 'load' } }
+            steps {
+                sh 'K6_VUS="${LOAD_VUS}" K6_DURATION="${LOAD_DURATION}" ./scripts/perf/run-k6.sh'
+            }
+        }
+
+        stage('Disposable Kind failure drills') {
+            when { expression { params.MODE == 'failure-drills' } }
+            steps {
+                sh 'RUN_DESTRUCTIVE_KIND_DRILLS=I_UNDERSTAND_THIS_RESTARTS_DISPOSABLE_KIND_WORKLOADS ./scripts/ops/run-kind-failure-drills.sh'
+            }
+        }
+
+        stage('Paid provider evaluation') {
+            when { expression { params.MODE == 'provider-eval' } }
+            steps {
+                script {
+                    def credentialId = params.AI_PROVIDER == 'openai' ? 'battlefield-openai-api-key' : 'battlefield-gemini-api-key'
+                    def variableName = params.AI_PROVIDER == 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY'
+                    withCredentials([string(credentialsId: credentialId, variable: variableName)]) {
+                        sh '''
+                            cd backend
+                            AI_EVAL_ALLOW_PAID=1 go run ./cmd/aieval \
+                              -mode provider -provider "${AI_PROVIDER}" -model "${AI_MODEL}" \
+                              -case-count "${AI_CASE_COUNT}" -cases evals/cases \
+                              -max-steps "${AI_MAX_STEPS}" -max-tokens "${AI_MAX_TOKENS}" \
+                              -json ../artifacts/ai-eval/provider-results.json \
+                              -junit ../artifacts/ai-eval/provider-results.xml
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Verified GHCR to ECR promotion') {
+            when { expression { params.MODE == 'aws-promotion' } }
+            steps {
+                withCredentials([
+                    usernamePassword(credentialsId: 'battlefield-ghcr', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN'),
+                    file(credentialsId: 'battlefield-cosign-public-key', variable: 'COSIGN_PUBLIC_KEY_FILE')
+                ]) {
+                    sh '''
+                        test -n "${AWS_ACCOUNT_ID}" && test -n "${ECR_BACKEND_REPOSITORY}" && test -n "${ECR_FRONTEND_REPOSITORY}"
+                        trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+                        printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io --username "${GHCR_USER}" --password-stdin
+                        ./scripts/cd/promote-to-ecr.sh
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'artifacts/**/*', allowEmptyArchive: true, fingerprint: true
+        }
+    }
+}

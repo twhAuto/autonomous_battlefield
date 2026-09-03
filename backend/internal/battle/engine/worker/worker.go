@@ -14,6 +14,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation/controller"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type Config struct {
@@ -92,24 +93,32 @@ func (w *Worker) Run(ctx context.Context) error {
 			return fmt.Errorf("claim battle: %w", err)
 		}
 		telemetry.ObserveEngineClaim(job.Lease.Attempt > 1)
-		w.logger.InfoContext(ctx, "battle_claimed",
+		jobContext := telemetry.ContextWithTrace(ctx, job.Traceparent, job.Tracestate)
+		jobContext, span := telemetry.StartConsumerSpan(jobContext, "battlefield.engine.process",
+			attribute.String("battlefield.battle_id", job.Lease.BattleID),
+			attribute.Int("battlefield.attempt", job.Lease.Attempt),
+		)
+		w.logger.InfoContext(jobContext, "battle_claimed",
 			"battle_id", job.Lease.BattleID,
 			"attempt", job.Lease.Attempt,
 			"reclaimed", job.Lease.Attempt > 1,
 			"scenario_id", job.Scenario.ID,
 			"requested_ticks", job.RequestedTicks,
 		)
-		if err := w.process(ctx, job); err != nil {
-			attributes := []any{"battle_id", job.Lease.BattleID, "attempt", job.Lease.Attempt, "error", err}
+		processErr := w.process(jobContext, job)
+		if processErr != nil {
+			span.RecordError(processErr)
+			attributes := []any{"battle_id", job.Lease.BattleID, "attempt", job.Lease.Attempt, "error", processErr}
 			switch {
-			case errors.Is(err, context.Canceled):
+			case errors.Is(processErr, context.Canceled):
 				// Graceful requeue paths log their successful handoff directly.
-			case errors.Is(err, ErrBattleLeaseLost):
-				w.logger.WarnContext(ctx, "battle_lease_lost", attributes...)
+			case errors.Is(processErr, ErrBattleLeaseLost):
+				w.logger.WarnContext(jobContext, "battle_lease_lost", attributes...)
 			default:
-				w.logger.ErrorContext(ctx, "battle_processing_stopped", attributes...)
+				w.logger.ErrorContext(jobContext, "battle_processing_stopped", attributes...)
 			}
 		}
+		span.End()
 	}
 }
 
@@ -269,10 +278,12 @@ func (w *Worker) prepareDecision(ctx context.Context, lease BattleLease, simulat
 		return err
 	}
 	decisionContext.ObservationHash = hash
+	traceparent, tracestate := telemetry.TraceContext(ctx)
 	record, err := w.decisions.CreateOrReuseDecision(ctx, ai.CreateDecisionParams{ID: decisionContext.RequestID, BattleID: lease.BattleID, Attempt: lease.Attempt,
 		FactionID: factionID, TargetTick: targetTick, ControllerType: setup.Controller.Type, ProfileID: setup.Controller.ProfileID,
 		Provider: setup.Controller.Provider, Runtime: setup.Controller.Runtime, ModelIdentifier: setup.Controller.ModelIdentifier,
-		PromptVersion: "battlefield-agent-v2", ToolSchemaVersion: ai.ToolSchema, Observation: decisionContext, ObservationHash: hash})
+		PromptVersion: ai.PromptVersion, ToolSchemaVersion: ai.ToolSchema, Observation: decisionContext, ObservationHash: hash,
+		Traceparent: traceparent, Tracestate: tracestate})
 	if err != nil {
 		return err
 	}

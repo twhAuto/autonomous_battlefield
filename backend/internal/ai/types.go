@@ -17,6 +17,7 @@ const (
 	ContextSchema      = "battlefield.decision-context.v1"
 	PlanSchema         = "battlefield.strategy-plan.v1"
 	ToolSchema         = "battlefield.mcp-tools.v2"
+	PromptVersion      = "battlefield-agent-v2"
 )
 
 type DecisionSession struct {
@@ -64,9 +65,9 @@ type ToolCall struct {
 }
 
 type Usage struct {
-	InputTokens  int64 `json:"inputTokens,omitempty"`
-	OutputTokens int64 `json:"outputTokens,omitempty"`
-	Requests     int64 `json:"requests,omitempty"`
+	InputTokens  int64 `json:"inputTokens,omitempty" yaml:"inputTokens,omitempty"`
+	OutputTokens int64 `json:"outputTokens,omitempty" yaml:"outputTokens,omitempty"`
+	Requests     int64 `json:"requests,omitempty" yaml:"requests,omitempty"`
 }
 
 // DecisionRunner is implemented by the shared API agent loop and CLI-owned
@@ -156,6 +157,8 @@ type DecisionRecord struct {
 	IdempotencyKey      string
 	CapabilityHash      string
 	CapabilityExpiresAt time.Time
+	Traceparent         string
+	Tracestate          string
 	CreatedAt           time.Time
 	ResolvedAt          *time.Time
 }

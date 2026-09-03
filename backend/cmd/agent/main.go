@@ -16,6 +16,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agent"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 func main() {
@@ -37,6 +38,15 @@ func main() {
 func run(configuration config.Config) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	shutdownTracing, err := telemetry.ConfigureTracing(ctx, "battlefield-agent")
+	if err != nil {
+		return fmt.Errorf("configure tracing: %w", err)
+	}
+	defer func() {
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(shutdown)
+	}()
 	worker := &agent.Worker{MCPURL: configuration.AI.MCPURL, Secret: configuration.AI.CapabilitySecret, WorkerID: hostname(), Profiles: ai.NewProfileRegistry(configuration.AI.Environment, configuration.AI.Profiles), PollInterval: time.Second, DecisionTimeout: configuration.AI.DecisionTimeout, Concurrency: 2}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -46,7 +56,7 @@ func run(configuration config.Config) error {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
-	server := &http.Server{Addr: configuration.AI.AgentHealthAddress, Handler: mux, ReadHeaderTimeout: 2 * time.Second}
+	server := &http.Server{Addr: configuration.AI.AgentHealthAddress, Handler: telemetry.HTTPHandler("battlefield-agent.http", mux), ReadHeaderTimeout: 2 * time.Second}
 	serverErrors := make(chan error, 1)
 	go func() {
 		err := server.ListenAndServe()

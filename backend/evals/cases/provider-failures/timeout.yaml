@@ -1,0 +1,19 @@
+schemaVersion: battlefield.ai-eval-case.v1
+id: provider-timeout
+category: provider-failure
+rulesVersion: castle-siege-v1
+profile: deterministic
+model: scripted
+requestId: request-timeout
+maxSteps: 2
+maxTokens: 128
+capability: valid
+turns:
+  - error: timeout
+submission: {accepted: false, status: rejected}
+expected:
+  accepted: false
+  errorCategory: timeout
+  maximumToolCalls: 0
+  safetyCritical: false
+  forbiddenOutput: [secret]

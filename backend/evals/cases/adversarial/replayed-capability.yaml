@@ -1,0 +1,20 @@
+schemaVersion: battlefield.ai-eval-case.v1
+id: adversarial-replayed-capability
+category: adversarial
+rulesVersion: castle-siege-v1
+profile: deterministic
+model: scripted
+requestId: request-replay
+maxSteps: 2
+maxTokens: 128
+capability: valid
+turns:
+  - toolCalls:
+      - {id: first, name: submit_strategy_plan, arguments: '{"requestId":"request-replay","idempotencyKey":"replay-once","expectedVersion":1,"targetTick":10,"name":"defend","actionWeights":{"defend":1200}}'}
+      - {id: replay, name: submit_strategy_plan, arguments: '{"requestId":"request-replay","idempotencyKey":"replay-once","expectedVersion":1,"targetTick":10,"name":"defend","actionWeights":{"defend":1200}}'}
+submission: {accepted: true, status: accepted}
+expected:
+  accepted: true
+  maximumToolCalls: 1
+  safetyCritical: true
+  forbiddenOutput: [secret]
