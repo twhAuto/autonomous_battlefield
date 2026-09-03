@@ -2,6 +2,7 @@ package eval
 
 import (
 	"context"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -74,6 +75,33 @@ func TestPaidProviderUsesTheVersionedIsolatedCase(t *testing.T) {
 	)
 	if !report.Passed || len(report.Cases) != 1 || report.Cases[0].Profile != "openai" || report.Cases[0].Outcome != "accepted" {
 		t.Fatalf("provider report = %#v", report)
+	}
+}
+
+func TestReportMetricsAggregatesOutcomes(t *testing.T) {
+	firstCost := 1.25
+	secondCost := 0.75
+	metrics := reportMetrics([]CaseReport{
+		{Accepted: true, DurationMS: 10, ToolCalls: []string{"submit_strategy_plan"}, StrategyFingerprint: "strategy-a", EstimatedCostUSD: &firstCost},
+		{FallbackCategory: "invalid_plan", DurationMS: 20, ToolCalls: []string{"submit_strategy_plan"}, StrategyFingerprint: "strategy-a"},
+		{FallbackCategory: "timeout", DurationMS: 30, StrategyFingerprint: "strategy-b", EstimatedCostUSD: &secondCost},
+	})
+	if metrics.CaseCount != 3 || metrics.StrategyDiversity != 2 {
+		t.Fatalf("metric counts = %#v", metrics)
+	}
+	assertClose := func(name string, got, want float64) {
+		t.Helper()
+		if math.Abs(got-want) > 1e-9 {
+			t.Fatalf("%s = %v, want %v", name, got, want)
+		}
+	}
+	assertClose("accepted rate", metrics.AcceptedRate, 1.0/3.0)
+	assertClose("invalid plan rate", metrics.InvalidPlanRate, 0.5)
+	assertClose("fallback rate", metrics.FallbackRate, 2.0/3.0)
+	assertClose("average latency", metrics.AverageLatencyMS, 20)
+	assertClose("total cost", metrics.TotalCostUSD, 2)
+	if empty := reportMetrics(nil); empty != (ReportMetrics{}) {
+		t.Fatalf("empty metrics = %#v", empty)
 	}
 }
 

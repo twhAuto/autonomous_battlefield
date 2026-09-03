@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -112,8 +113,9 @@ func (r Runner) RunProvider(ctx context.Context, cases []Case, provider ai.TurnP
 	}
 	started := now()
 	report := Report{SchemaVersion: ReportSchema, CorpusVersion: r.CorpusVersion, PromptVersion: ai.PromptVersion, ToolVersion: ai.ToolSchema, StartedAt: started, Passed: true}
+	options := providerRunOptions{provider: provider, profile: profile, model: model, maxSteps: maxSteps, maxTokens: maxTokens, now: now}
 	for _, value := range cases {
-		entry := r.runProviderCase(ctx, value, provider, profile, model, maxSteps, maxTokens, now)
+		entry := r.runProviderCase(ctx, value, options)
 		report.Cases = append(report.Cases, entry)
 		report.Passed = report.Passed && entry.Passed
 	}
@@ -132,19 +134,26 @@ func (r Runner) RunProvider(ctx context.Context, cases []Case, provider ai.TurnP
 	return report
 }
 
-func (r Runner) runProviderCase(ctx context.Context, value Case, provider ai.TurnProvider, profile, model string, maxSteps, maxTokens int, now func() time.Time) CaseReport {
-	caseStarted := now()
+type providerRunOptions struct {
+	provider            ai.TurnProvider
+	profile, model      string
+	maxSteps, maxTokens int
+	now                 func() time.Time
+}
+
+func (r Runner) runProviderCase(ctx context.Context, value Case, options providerRunOptions) CaseReport {
+	caseStarted := options.now()
 	secret := "evaluation-only-secret"
 	token, _ := ai.MintCapability(secret, value.RequestID, caseStarted.Add(time.Hour))
 	session := &scriptedSession{value: value}
-	recorder := &recordingProvider{inner: provider}
+	recorder := &recordingProvider{inner: options.provider}
 	result, runErr := (airunner.AgentLoop{Provider: recorder, Connector: scriptedConnector{secret: secret, requestID: value.RequestID, now: caseStarted, session: session}}).Run(ctx, ai.DecisionSession{
 		RequestID: value.RequestID, CapabilityToken: token, MCPURL: "memory://evaluation",
-		Profile: ai.ModelProfile{ID: profile, ModelLabel: model, MaxSteps: maxSteps, MaxOutputTokens: maxTokens},
+		Profile: ai.ModelProfile{ID: options.profile, ModelLabel: options.model, MaxSteps: options.maxSteps, MaxOutputTokens: options.maxTokens},
 	})
-	entry := CaseReport{ID: value.ID, Category: value.Category, Profile: profile, Model: model,
+	entry := CaseReport{ID: value.ID, Category: value.Category, Profile: options.profile, Model: options.model,
 		PromptVersion: ai.PromptVersion, ToolSchemaVersion: ai.ToolSchema, RulesVersion: value.RulesVersion,
-		Accepted: result.Accepted, ErrorCategory: result.ErrorCategory, DurationMS: max(0, now().Sub(caseStarted).Milliseconds()),
+		Accepted: result.Accepted, ErrorCategory: result.ErrorCategory, DurationMS: max(0, options.now().Sub(caseStarted).Milliseconds()),
 		InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests,
 		ToolCalls: append([]string(nil), session.calls...)}
 	entry.StrategyFingerprint = session.strategyFingerprint
@@ -159,7 +168,7 @@ func (r Runner) runProviderCase(ctx context.Context, value Case, provider ai.Tur
 		entry.SafetyFailures = append(entry.SafetyFailures, "provider run did not complete")
 	}
 	entry.Passed = len(entry.SafetyFailures) == 0
-	if cost, ok := r.Prices.Estimate(model, result.Usage); ok {
+	if cost, ok := r.Prices.Estimate(options.model, result.Usage); ok {
 		entry.EstimatedCostUSD = &cost
 		entry.PricingVersion = r.Prices.Version
 	}
@@ -167,44 +176,61 @@ func (r Runner) runProviderCase(ctx context.Context, value Case, provider ai.Tur
 }
 
 func reportMetrics(cases []CaseReport) ReportMetrics {
-	metrics := ReportMetrics{CaseCount: len(cases)}
 	if len(cases) == 0 {
-		return metrics
+		return ReportMetrics{}
 	}
-	strategies := map[string]struct{}{}
-	var accepted, fallback, submitted, invalidPlans int
-	var latency int64
+	accumulator := newMetricsAccumulator()
 	for _, value := range cases {
-		if value.Accepted {
-			accepted++
-		}
-		if value.FallbackCategory != "" {
-			fallback++
-		}
-		for _, tool := range value.ToolCalls {
-			if tool == "submit_strategy_plan" {
-				submitted++
-				if !value.Accepted {
-					invalidPlans++
-				}
-				break
-			}
-		}
-		if value.StrategyFingerprint != "" {
-			strategies[value.StrategyFingerprint] = struct{}{}
-		}
-		latency += value.DurationMS
-		if value.EstimatedCostUSD != nil {
-			metrics.TotalCostUSD += *value.EstimatedCostUSD
+		accumulator.add(value)
+	}
+	return accumulator.report(len(cases))
+}
+
+type metricsAccumulator struct {
+	accepted, fallback, submitted, invalidPlans int
+	latency                                     int64
+	totalCost                                   float64
+	strategies                                  map[string]struct{}
+}
+
+func newMetricsAccumulator() *metricsAccumulator {
+	return &metricsAccumulator{strategies: make(map[string]struct{})}
+}
+
+func (a *metricsAccumulator) add(value CaseReport) {
+	if value.Accepted {
+		a.accepted++
+	}
+	if value.FallbackCategory != "" {
+		a.fallback++
+	}
+	if slices.Contains(value.ToolCalls, "submit_strategy_plan") {
+		a.submitted++
+		if !value.Accepted {
+			a.invalidPlans++
 		}
 	}
-	metrics.AcceptedRate = float64(accepted) / float64(len(cases))
-	if submitted > 0 {
-		metrics.InvalidPlanRate = float64(invalidPlans) / float64(submitted)
+	if value.StrategyFingerprint != "" {
+		a.strategies[value.StrategyFingerprint] = struct{}{}
 	}
-	metrics.FallbackRate = float64(fallback) / float64(len(cases))
-	metrics.AverageLatencyMS = float64(latency) / float64(len(cases))
-	metrics.StrategyDiversity = len(strategies)
+	a.latency += value.DurationMS
+	if value.EstimatedCostUSD != nil {
+		a.totalCost += *value.EstimatedCostUSD
+	}
+}
+
+func (a *metricsAccumulator) report(caseCount int) ReportMetrics {
+	metrics := ReportMetrics{
+		CaseCount:         caseCount,
+		AcceptedRate:      float64(a.accepted) / float64(caseCount),
+		FallbackRate:      float64(a.fallback) / float64(caseCount),
+		AverageLatencyMS:  float64(a.latency) / float64(caseCount),
+		TotalCostUSD:      a.totalCost,
+		StrategyDiversity: len(a.strategies),
+	}
+	if a.submitted > 0 {
+		metrics.InvalidPlanRate = float64(a.invalidPlans) / float64(a.submitted)
+	}
 	return metrics
 }
 

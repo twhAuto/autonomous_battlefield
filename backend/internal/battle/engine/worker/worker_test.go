@@ -226,15 +226,18 @@ func TestWorkerWaitsAndHeartbeats(t *testing.T) {
 	})
 
 	t.Run("heartbeat", func(t *testing.T) {
-		repository := &fakeBattleRepository{}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		repository := &fakeBattleRepository{onHeartbeat: cancel}
 		configuration := testWorkerConfig()
 		configuration.HeartbeatInterval = time.Millisecond
 		worker, _ := New(repository, configuration)
-		if err := worker.waitUntilNextTick(context.Background(), BattleLease{}, time.Now().Add(3*time.Millisecond)); err != nil {
-			t.Fatalf("waitUntilNextTick() returned an error: %v", err)
+		err := worker.waitUntilNextTick(ctx, BattleLease{}, time.Now().Add(time.Minute))
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("waitUntilNextTick() error = %v, want cancellation after heartbeat", err)
 		}
-		if repository.heartbeats == 0 {
-			t.Fatal("waitUntilNextTick() did not heartbeat")
+		if repository.heartbeats != 1 {
+			t.Fatalf("heartbeats = %d, want 1", repository.heartbeats)
 		}
 	})
 
@@ -295,6 +298,7 @@ type fakeBattleRepository struct {
 	requeued     bool
 	onSave       func()
 	onComplete   func()
+	onHeartbeat  func()
 	claimErr     error
 	saveErr      error
 	completeErr  error
@@ -344,6 +348,10 @@ func (r *fakeBattleRepository) CompleteBattle(_ context.Context, _ BattleLease, 
 
 func (r *fakeBattleRepository) HeartbeatBattle(context.Context, BattleLease, time.Duration) error {
 	r.heartbeats++
+	if r.onHeartbeat != nil {
+		r.onHeartbeat()
+		r.onHeartbeat = nil
+	}
 	return r.heartbeatErr
 }
 
