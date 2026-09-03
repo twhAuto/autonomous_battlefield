@@ -14,7 +14,9 @@ gateway_port="${SMOKE_TEST_GATEWAY_PORT:-8888}"
 frontend_host="${SMOKE_TEST_FRONTEND_HOST:-battlefield.localhost}"
 grafana_host="${SMOKE_TEST_GRAFANA_HOST:-grafana.localhost}"
 kibana_host="${SMOKE_TEST_KIBANA_HOST:-kibana.localhost}"
+auth_secret_name="${SMOKE_TEST_AUTH_SECRET_NAME:-battlefield-auth}"
 runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/autonomous-battlefield-smoke.XXXXXX")"
+application_cookie_file=""
 pids=()
 
 cleanup() {
@@ -32,7 +34,7 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-for command in curl kubectl node; do
+for command in base64 curl kubectl node; do
   if ! command -v "${command}" >/dev/null 2>&1; then
     echo "Required command not found: ${command}" >&2
     exit 1
@@ -85,10 +87,14 @@ wait_for_url() {
   local name="$1"
   local url="$2"
   local resolve="${3:-}"
+  local cookie_file="${4:-}"
   local curl_args=(--fail --silent --max-time 2 --noproxy '*')
 
   if [[ -n "${resolve}" ]]; then
     curl_args+=(--resolve "${resolve}")
+  fi
+  if [[ -n "${cookie_file}" ]]; then
+    curl_args+=(--cookie "${cookie_file}")
   fi
 
   for _ in {1..30}; do
@@ -114,18 +120,109 @@ wait_for_url() {
   return 1
 }
 
+read_auth_secret_value() {
+  local key="$1"
+  local encoded_value=""
+
+  encoded_value="$(
+    kube get secret "${auth_secret_name}" \
+      --namespace "${namespace}" \
+      -o "jsonpath={.data.${key}}" \
+      2>/dev/null || true
+  )"
+  if [[ -z "${encoded_value}" ]]; then
+    return 1
+  fi
+  printf '%s' "${encoded_value}" | base64 --decode
+}
+
+prepare_application_session() {
+  local auth_enabled=""
+  local cookie_secure=""
+  local username=""
+  local password=""
+  local login_payload="${runtime_dir}/login.json"
+  local login_status=""
+
+  auth_enabled="$(read_auth_secret_value BATTLEFIELD_AUTH_ENABLED || true)"
+  case "${auth_enabled,,}" in
+    "" | false)
+      return
+      ;;
+    true)
+      ;;
+    *)
+      echo "${auth_secret_name} has an invalid BATTLEFIELD_AUTH_ENABLED value." >&2
+      return 1
+      ;;
+  esac
+
+  cookie_secure="$(read_auth_secret_value BATTLEFIELD_AUTH_COOKIE_SECURE || true)"
+  case "${cookie_secure,,}" in
+    false)
+      ;;
+    true)
+      echo "${auth_secret_name} enables Secure cookies, but the local smoke-test gateway uses HTTP." >&2
+      echo "Set BATTLEFIELD_AUTH_COOKIE_SECURE=false for battlefield.localhost." >&2
+      return 1
+      ;;
+    *)
+      echo "${auth_secret_name} has an invalid BATTLEFIELD_AUTH_COOKIE_SECURE value." >&2
+      return 1
+      ;;
+  esac
+
+  username="$(read_auth_secret_value BATTLEFIELD_ADMIN_USERNAME || true)"
+  password="$(read_auth_secret_value BATTLEFIELD_ADMIN_PASSWORD || true)"
+  if [[ -z "${username}" || -z "${password}" ]]; then
+    echo "${auth_secret_name} does not contain smoke-test login credentials." >&2
+    return 1
+  fi
+
+  printf '%s\0%s' "${username}" "${password}" | node -e '
+    const fs = require("fs");
+    const input = fs.readFileSync(0);
+    const separator = input.indexOf(0);
+    if (separator < 0) process.exit(1);
+    process.stdout.write(JSON.stringify({
+      username: input.subarray(0, separator).toString("utf8"),
+      password: input.subarray(separator + 1).toString("utf8"),
+    }));
+  ' >"${login_payload}"
+  chmod 600 "${login_payload}"
+
+  application_cookie_file="${runtime_dir}/application-cookies.txt"
+  touch "${application_cookie_file}"
+  chmod 600 "${application_cookie_file}"
+  login_status="$(
+    curl --silent --show-error --max-time 5 \
+      --noproxy '*' \
+      --resolve "${frontend_host}:${gateway_port}:127.0.0.1" \
+      --header 'Content-Type: application/json' \
+      --data-binary "@${login_payload}" \
+      --cookie-jar "${application_cookie_file}" \
+      --output /dev/null \
+      --write-out '%{http_code}' \
+      "http://${frontend_host}:${gateway_port}/v1/auth/login"
+  )"
+  if [[ "${login_status}" != "204" ]]; then
+    echo "Smoke-test administrator login failed with HTTP ${login_status}." >&2
+    return 1
+  fi
+  echo "Administrator login through Gateway API: OK"
+}
+
 wait_for_url \
   "Frontend liveness through Gateway API" \
   "http://${frontend_host}:${gateway_port}/livez" \
   "${frontend_host}:${gateway_port}:127.0.0.1"
 wait_for_url "API readiness" "http://127.0.0.1:${api_port}/readyz"
+prepare_application_session
 wait_for_url \
   "Gateway API application route" \
   "http://${frontend_host}:${gateway_port}/v1/scenarios" \
-  "${frontend_host}:${gateway_port}:127.0.0.1"
-wait_for_url \
-  "API request for local metrics sample" \
-  "http://127.0.0.1:${api_port}/v1/scenarios"
+  "${frontend_host}:${gateway_port}:127.0.0.1" \
+  "${application_cookie_file}"
 wait_for_url "API metrics" "http://127.0.0.1:${api_port}/metrics"
 wait_for_url "Prometheus readiness" "http://127.0.0.1:${prometheus_port}/-/ready"
 wait_for_url \

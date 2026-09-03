@@ -593,7 +593,12 @@ Run the same non-interactive verification used by Jenkins at any time:
 
 It verifies the browser-facing frontend, Grafana, and Kibana routes through the
 local gateway. Temporary API, Prometheus, and Elasticsearch port-forwards are
-used only for internal diagnostic checks and are removed automatically.
+used only for internal diagnostic checks and are removed automatically. When
+the optional `battlefield-auth` Secret enables authentication, the smoke test
+reads its administrator credentials without printing them, logs in through the
+gateway, and keeps the resulting session cookie only in its private temporary
+directory. The check fails with an explicit configuration error if that Secret
+enables Secure cookies while verification is using the local HTTP gateway.
 
 ### Diagnose a local deployment
 
