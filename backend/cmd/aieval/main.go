@@ -15,26 +15,29 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	mode := flag.String("mode", "deterministic", "deterministic or provider")
-	casesPath := flag.String("cases", "evals/cases", "versioned deterministic case directory")
-	pricingPath := flag.String("pricing", "evals/pricing.yaml", "versioned provider pricing file")
-	jsonPath := flag.String("json", "../artifacts/ai-eval/results.json", "JSON report output")
-	junitPath := flag.String("junit", "../artifacts/ai-eval/results.xml", "JUnit report output")
-	corpusVersion := flag.String("corpus-version", "2026-09-03.v1", "evaluation corpus version")
-	providerName := flag.String("provider", "", "paid provider: openai or gemini")
-	model := flag.String("model", "", "paid provider model")
-	caseCount := flag.Int("case-count", 1, "number of fixed normal/adversarial cases for a paid run")
-	maxSteps := flag.Int("max-steps", 4, "maximum paid provider turns")
-	maxTokens := flag.Int("max-tokens", 1024, "maximum provider output tokens per turn")
-	timeout := flag.Duration("timeout", 90*time.Second, "whole evaluation timeout")
-	flag.Parse()
+func run(args []string) error {
+	flags := flag.NewFlagSet("aieval", flag.ContinueOnError)
+	mode := flags.String("mode", "deterministic", "deterministic or provider")
+	casesPath := flags.String("cases", "evals/cases", "versioned deterministic case directory")
+	pricingPath := flags.String("pricing", "evals/pricing.yaml", "versioned provider pricing file")
+	jsonPath := flags.String("json", "../artifacts/ai-eval/results.json", "JSON report output")
+	junitPath := flags.String("junit", "../artifacts/ai-eval/results.xml", "JUnit report output")
+	corpusVersion := flags.String("corpus-version", "2026-09-03.v1", "evaluation corpus version")
+	providerName := flags.String("provider", "", "paid provider: openai or gemini")
+	model := flags.String("model", "", "paid provider model")
+	caseCount := flags.Int("case-count", 1, "number of fixed normal/adversarial cases for a paid run")
+	maxSteps := flags.Int("max-steps", 4, "maximum paid provider turns")
+	maxTokens := flags.Int("max-tokens", 1024, "maximum provider output tokens per turn")
+	timeout := flags.Duration("timeout", 90*time.Second, "whole evaluation timeout")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
 
 	prices, err := aieval.LoadPriceBook(*pricingPath)
 	if err != nil {

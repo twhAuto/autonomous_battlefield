@@ -113,36 +113,7 @@ func (r Runner) RunProvider(ctx context.Context, cases []Case, provider ai.TurnP
 	started := now()
 	report := Report{SchemaVersion: ReportSchema, CorpusVersion: r.CorpusVersion, PromptVersion: ai.PromptVersion, ToolVersion: ai.ToolSchema, StartedAt: started, Passed: true}
 	for _, value := range cases {
-		caseStarted := now()
-		secret := "evaluation-only-secret"
-		token, _ := ai.MintCapability(secret, value.RequestID, caseStarted.Add(time.Hour))
-		session := &scriptedSession{value: value}
-		recorder := &recordingProvider{inner: provider}
-		result, runErr := (airunner.AgentLoop{Provider: recorder, Connector: scriptedConnector{secret: secret, requestID: value.RequestID, now: caseStarted, session: session}}).Run(ctx, ai.DecisionSession{
-			RequestID: value.RequestID, CapabilityToken: token, MCPURL: "memory://evaluation",
-			Profile: ai.ModelProfile{ID: profile, ModelLabel: model, MaxSteps: maxSteps, MaxOutputTokens: maxTokens},
-		})
-		entry := CaseReport{ID: value.ID, Category: value.Category, Profile: profile, Model: model,
-			PromptVersion: ai.PromptVersion, ToolSchemaVersion: ai.ToolSchema, RulesVersion: value.RulesVersion,
-			Accepted: result.Accepted, ErrorCategory: result.ErrorCategory, DurationMS: max(0, now().Sub(caseStarted).Milliseconds()),
-			InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests,
-			ToolCalls: append([]string(nil), session.calls...)}
-		entry.StrategyFingerprint = session.strategyFingerprint
-		entry.Outcome = "rejected"
-		if result.Accepted {
-			entry.Outcome = "accepted"
-		} else {
-			entry.FallbackCategory = result.ErrorCategory
-		}
-		entry.SafetyFailures = assess(value, result, recorder.output.String(), session)
-		if runErr != nil && len(entry.SafetyFailures) == 0 {
-			entry.SafetyFailures = append(entry.SafetyFailures, "provider run did not complete")
-		}
-		entry.Passed = len(entry.SafetyFailures) == 0
-		if cost, ok := r.Prices.Estimate(model, result.Usage); ok {
-			entry.EstimatedCostUSD = &cost
-			entry.PricingVersion = r.Prices.Version
-		}
+		entry := r.runProviderCase(ctx, value, provider, profile, model, maxSteps, maxTokens, now)
 		report.Cases = append(report.Cases, entry)
 		report.Passed = report.Passed && entry.Passed
 	}
@@ -159,6 +130,40 @@ func (r Runner) RunProvider(ctx context.Context, cases []Case, provider ai.TurnP
 		DiversityDelta:        report.Metrics.StrategyDiversity - baseline.Metrics.StrategyDiversity,
 	}
 	return report
+}
+
+func (r Runner) runProviderCase(ctx context.Context, value Case, provider ai.TurnProvider, profile, model string, maxSteps, maxTokens int, now func() time.Time) CaseReport {
+	caseStarted := now()
+	secret := "evaluation-only-secret"
+	token, _ := ai.MintCapability(secret, value.RequestID, caseStarted.Add(time.Hour))
+	session := &scriptedSession{value: value}
+	recorder := &recordingProvider{inner: provider}
+	result, runErr := (airunner.AgentLoop{Provider: recorder, Connector: scriptedConnector{secret: secret, requestID: value.RequestID, now: caseStarted, session: session}}).Run(ctx, ai.DecisionSession{
+		RequestID: value.RequestID, CapabilityToken: token, MCPURL: "memory://evaluation",
+		Profile: ai.ModelProfile{ID: profile, ModelLabel: model, MaxSteps: maxSteps, MaxOutputTokens: maxTokens},
+	})
+	entry := CaseReport{ID: value.ID, Category: value.Category, Profile: profile, Model: model,
+		PromptVersion: ai.PromptVersion, ToolSchemaVersion: ai.ToolSchema, RulesVersion: value.RulesVersion,
+		Accepted: result.Accepted, ErrorCategory: result.ErrorCategory, DurationMS: max(0, now().Sub(caseStarted).Milliseconds()),
+		InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests,
+		ToolCalls: append([]string(nil), session.calls...)}
+	entry.StrategyFingerprint = session.strategyFingerprint
+	entry.Outcome = "rejected"
+	if result.Accepted {
+		entry.Outcome = "accepted"
+	} else {
+		entry.FallbackCategory = result.ErrorCategory
+	}
+	entry.SafetyFailures = assess(value, result, recorder.output.String(), session)
+	if runErr != nil && len(entry.SafetyFailures) == 0 {
+		entry.SafetyFailures = append(entry.SafetyFailures, "provider run did not complete")
+	}
+	entry.Passed = len(entry.SafetyFailures) == 0
+	if cost, ok := r.Prices.Estimate(model, result.Usage); ok {
+		entry.EstimatedCostUSD = &cost
+		entry.PricingVersion = r.Prices.Version
+	}
+	return entry
 }
 
 func reportMetrics(cases []CaseReport) ReportMetrics {
