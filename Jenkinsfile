@@ -17,8 +17,8 @@ pipeline {
         KUBERNETES_NAMESPACE = 'battlefield'
         KUBERNETES_CONTEXT = 'kind-battlefield'
         DEPLOY_COMPONENTS = 'all'
-        PREVIOUS_BACKEND_IMAGE_TAG = ''
-        PREVIOUS_FRONTEND_IMAGE_TAG = ''
+        PREVIOUS_BACKEND_IMAGE_REF = ''
+        PREVIOUS_FRONTEND_IMAGE_REF = ''
         TRIVY_IMAGE = 'ghcr.io/aquasecurity/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969'
     }
 
@@ -56,7 +56,25 @@ pipeline {
 
                 stage('Backend tests and coverage') {
                     steps {
-                        sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" ./scripts/ci/test-go-coverage.sh'
+                        sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" ./scripts/ci/with-test-postgres.sh ./scripts/ci/test-backend.sh'
+                    }
+                }
+
+                stage('Source security and policy') {
+                    steps {
+                        sh './scripts/ci/security-and-policy.sh'
+                    }
+                }
+
+                stage('Fuzz smoke') {
+                    steps {
+                        sh 'FUZZ_SECONDS=5 ./scripts/ci/fuzz-smoke.sh'
+                    }
+                }
+
+                stage('Deterministic AI evaluation') {
+                    steps {
+                        sh './scripts/ci/test-ai-evals.sh'
                     }
                 }
 
@@ -126,7 +144,13 @@ pipeline {
 
                 stage('Main backend coverage') {
                     steps {
-                        sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" ./scripts/ci/test-go-coverage.sh'
+                        sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" ./scripts/ci/with-test-postgres.sh ./scripts/ci/test-backend.sh'
+                    }
+                }
+
+                stage('Main source security and policy') {
+                    steps {
+                        sh './scripts/ci/security-and-policy.sh'
                     }
                 }
 
@@ -137,6 +161,12 @@ pipeline {
                             sh 'npm test -- --coverage'
                             sh 'npm run build'
                         }
+                    }
+                }
+
+                stage('Main deterministic AI evaluation') {
+                    steps {
+                        sh './scripts/ci/test-ai-evals.sh'
                     }
                 }
             }
@@ -203,7 +233,25 @@ pipeline {
                 }
             }
             steps {
-                sh './scripts/ci/build-images.sh'
+                script {
+                    if (env.BRANCH_NAME == 'main') {
+                        withCredentials([
+                            usernamePassword(
+                                credentialsId: 'battlefield-ghcr',
+                                usernameVariable: 'GHCR_USER',
+                                passwordVariable: 'GHCR_TOKEN'
+                            )
+                        ]) {
+                            sh '''
+                                trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+                                printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io --username "${GHCR_USER}" --password-stdin
+                                ./scripts/ci/publish-images.sh
+                            '''
+                        }
+                    } else {
+                        sh './scripts/ci/build-images.sh'
+                    }
+                }
             }
         }
 
@@ -223,7 +271,62 @@ pipeline {
                 }
             }
             steps {
-                sh './scripts/ci/scan-images.sh "${IMAGE_TAG}"'
+                script {
+                    if (env.BRANCH_NAME == 'main') {
+                        withCredentials([
+                            usernamePassword(
+                                credentialsId: 'battlefield-ghcr',
+                                usernameVariable: 'GHCR_USER',
+                                passwordVariable: 'GHCR_TOKEN'
+                            )
+                        ]) {
+                            sh './scripts/ci/scan-published-images.sh'
+                        }
+                    } else {
+                        sh './scripts/ci/scan-images.sh "${IMAGE_TAG}"'
+                    }
+                }
+            }
+        }
+
+        stage('Attest, sign, and verify images') {
+            when {
+                allOf {
+                    branch 'main'
+                    expression {
+                        def components = (env.DEPLOY_COMPONENTS ?: 'all').tokenize(',')
+                        components.contains('all') ||
+                            components.contains('backend') ||
+                            components.contains('frontend')
+                    }
+                }
+            }
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'battlefield-ghcr',
+                        usernameVariable: 'GHCR_USER',
+                        passwordVariable: 'GHCR_TOKEN'
+                    ),
+                    file(
+                        credentialsId: 'battlefield-cosign-key',
+                        variable: 'COSIGN_KEY_FILE'
+                    ),
+                    string(
+                        credentialsId: 'battlefield-cosign-password',
+                        variable: 'COSIGN_PASSWORD'
+                    ),
+                    file(
+                        credentialsId: 'battlefield-cosign-public-key',
+                        variable: 'COSIGN_PUBLIC_KEY_FILE'
+                    )
+                ]) {
+                    sh '''
+                        trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+                        printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io --username "${GHCR_USER}" --password-stdin
+                        ./scripts/ci/attest-and-sign-images.sh
+                    '''
+                }
             }
         }
 
@@ -258,22 +361,39 @@ pipeline {
                         ''',
                         returnStdout: true
                     ).trim()
-                    env.PREVIOUS_BACKEND_IMAGE_TAG = previousBackendImage.contains(':')
-                        ? previousBackendImage.substring(previousBackendImage.lastIndexOf(':') + 1)
-                        : ''
-                    env.PREVIOUS_FRONTEND_IMAGE_TAG = previousFrontendImage.contains(':')
-                        ? previousFrontendImage.substring(previousFrontendImage.lastIndexOf(':') + 1)
-                        : ''
-                    echo "Previous backend SHA: ${env.PREVIOUS_BACKEND_IMAGE_TAG ?: 'none'}"
-                    echo "Previous frontend SHA: ${env.PREVIOUS_FRONTEND_IMAGE_TAG ?: 'none'}"
+                    env.PREVIOUS_BACKEND_IMAGE_REF = previousBackendImage
+                    env.PREVIOUS_FRONTEND_IMAGE_REF = previousFrontendImage
+                    echo "Previous backend image: ${env.PREVIOUS_BACKEND_IMAGE_REF ?: 'none'}"
+                    echo "Previous frontend image: ${env.PREVIOUS_FRONTEND_IMAGE_REF ?: 'none'}"
+                    sh 'mkdir -p artifacts/deployment'
+                    writeFile(
+                        file: 'artifacts/deployment/rollback-images.env',
+                        text: "PREVIOUS_BACKEND_IMAGE_REF=${env.PREVIOUS_BACKEND_IMAGE_REF}\nPREVIOUS_FRONTEND_IMAGE_REF=${env.PREVIOUS_FRONTEND_IMAGE_REF}\n"
+                    )
                 }
                 withCredentials([
                     file(
                         credentialsId: 'battlefield-local-secret-env',
                         variable: 'BATTLEFIELD_SECRET_FILE'
+                    ),
+                    usernamePassword(
+                        credentialsId: 'battlefield-ghcr',
+                        usernameVariable: 'GHCR_USER',
+                        passwordVariable: 'GHCR_TOKEN'
+                    ),
+                    file(
+                        credentialsId: 'battlefield-cosign-public-key',
+                        variable: 'COSIGN_PUBLIC_KEY_FILE'
                     )
                 ]) {
-                    sh 'ROLLBACK_ON_FAILURE=1 ./scripts/cd/deploy-kind.sh "${IMAGE_TAG}"'
+                    sh '''
+                        if [ -f artifacts/build/images.env ]; then
+                            set -a
+                            . artifacts/build/images.env
+                            set +a
+                        fi
+                        IMAGE_SOURCE=registry ENFORCE_SUPPLY_CHAIN_POLICY=1 ROLLBACK_ON_FAILURE=1 ./scripts/cd/deploy-kind.sh "${IMAGE_TAG}"
+                    '''
                 }
             }
         }
@@ -301,16 +421,37 @@ pipeline {
 
                         if (!applicationChanged) {
                             echo 'The targeted deployment did not change application images; skipping image rollback.'
-                        } else if (env.PREVIOUS_BACKEND_IMAGE_TAG ==~ /[0-9a-f]{40}/ &&
-                            env.PREVIOUS_FRONTEND_IMAGE_TAG ==~ /[0-9a-f]{40}/) {
+                        } else if (env.PREVIOUS_BACKEND_IMAGE_REF ==~ /[a-z0-9][a-z0-9._:\/-]+@sha256:[0-9a-f]{64}/ &&
+                            env.PREVIOUS_FRONTEND_IMAGE_REF ==~ /[a-z0-9][a-z0-9._:\/-]+@sha256:[0-9a-f]{64}/) {
                             sh '''
                                 ./scripts/cd/rollback-kind.sh \
-                                    "${PREVIOUS_BACKEND_IMAGE_TAG}" \
-                                    "${PREVIOUS_FRONTEND_IMAGE_TAG}"
+                                    "${PREVIOUS_BACKEND_IMAGE_REF}" \
+                                    "${PREVIOUS_FRONTEND_IMAGE_REF}"
                             '''
                         } else {
-                            echo 'Previous backend and frontend SHAs are not both available for automatic rollback.'
+                            echo 'Previous backend and frontend digest references are not both available for automatic rollback.'
                         }
+                    }
+                }
+            }
+        }
+
+        stage('Runtime assurance') {
+            when {
+                allOf {
+                    branch 'main'
+                    expression { (env.DEPLOY_COMPONENTS ?: 'all') != 'none' }
+                }
+            }
+            parallel {
+                stage('Smoke load') {
+                    steps {
+                        sh 'K6_VUS=3 K6_DURATION=30s ./scripts/perf/run-k6.sh'
+                    }
+                }
+                stage('ZAP baseline') {
+                    steps {
+                        sh './scripts/security/zap-baseline.sh'
                     }
                 }
             }
@@ -318,6 +459,13 @@ pipeline {
     }
 
     post {
+        always {
+            archiveArtifacts(
+                artifacts: 'artifacts/**/*,backend/coverage.out,backend/coverage-total.txt,frontend/coverage/**/*',
+                allowEmptyArchive: true,
+                fingerprint: true
+            )
+        }
         success {
             script {
                 if (env.CHANGE_ID) {

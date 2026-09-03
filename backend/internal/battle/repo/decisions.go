@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation/controller"
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 type decisionRow interface{ Scan(...any) error }
@@ -17,9 +18,11 @@ type decisionRow interface{ Scan(...any) error }
 const decisionColumns = `id, battle_id, attempt, faction_id, target_tick, version, status,
 controller_type, profile_id, provider, runtime, model_identifier, prompt_version, tool_schema_version,
 observation, observation_hash, resolved_plan, fallback_source, error_category, usage, provider_metadata,
-idempotency_key, created_at, resolved_at`
+idempotency_key, traceparent, tracestate, created_at, resolved_at`
 
 func (r *Postgres) CreateOrReuseDecision(ctx context.Context, params ai.CreateDecisionParams) (ai.DecisionRecord, error) {
+	ctx, span := telemetry.StartDatabaseSpan(ctx, "create_decision")
+	defer span.End()
 	observation, err := json.Marshal(params.Observation)
 	if err != nil {
 		return ai.DecisionRecord{}, fmt.Errorf("marshal decision observation: %w", err)
@@ -45,8 +48,8 @@ func (r *Postgres) CreateOrReuseDecision(ctx context.Context, params ai.CreateDe
 		WITH stored AS (
 			INSERT INTO battle_decisions (id, battle_id, attempt, faction_id, target_tick, status, controller_type,
 				profile_id, provider, runtime, model_identifier, prompt_version, tool_schema_version,
-				observation, observation_hash, resolved_plan, fallback_source, resolved_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
+				observation, observation_hash, resolved_plan, fallback_source, traceparent, tracestate, resolved_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
 				CASE WHEN $16::jsonb IS NULL THEN NULL ELSE now() END)
 			ON CONFLICT (battle_id, attempt, faction_id, target_tick) DO UPDATE SET battle_id = EXCLUDED.battle_id
 			RETURNING *
@@ -57,7 +60,8 @@ func (r *Postgres) CreateOrReuseDecision(ctx context.Context, params ai.CreateDe
 		SELECT `+decisionColumns+` FROM stored LEFT JOIN notified ON true`,
 		params.ID, params.BattleID, params.Attempt, params.FactionID, params.TargetTick, status, params.ControllerType,
 		params.ProfileID, params.Provider, params.Runtime, params.ModelIdentifier, params.PromptVersion,
-		params.ToolSchemaVersion, observation, params.ObservationHash, resolved, previousSource)
+		params.ToolSchemaVersion, observation, params.ObservationHash, resolved, previousSource,
+		params.Traceparent, params.Tracestate)
 	return scanDecision(row)
 }
 
@@ -155,6 +159,8 @@ func (r *Postgres) ResolveDecisionFallback(ctx context.Context, id string, expec
 }
 
 func (r *Postgres) ClaimModelDecision(ctx context.Context, owner string, profileIDs []string, lease time.Duration) (ai.DecisionRecord, error) {
+	ctx, span := telemetry.StartDatabaseSpan(ctx, "claim_decision")
+	defer span.End()
 	if len(profileIDs) == 0 {
 		return ai.DecisionRecord{}, ai.ErrNoDecision
 	}
@@ -207,6 +213,7 @@ func scanDecision(row decisionRow) (ai.DecisionRecord, error) {
 		&record.ControllerType, &record.ProfileID, &record.Provider, &record.Runtime, &record.ModelIdentifier,
 		&record.PromptVersion, &record.ToolSchemaVersion, &observation, &record.ObservationHash, &plan,
 		&record.FallbackSource, &record.ErrorCategory, &usage, &metadata, &record.IdempotencyKey,
+		&record.Traceparent, &record.Tracestate,
 		&record.CreatedAt, &record.ResolvedAt)
 	if err != nil {
 		return ai.DecisionRecord{}, err

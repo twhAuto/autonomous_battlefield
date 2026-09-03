@@ -2,7 +2,7 @@
 
 Autonomous Battlefield is a Go backend for an auto-battler and expansion game. The long-term product will let human players and AI agents control factions that gather resources, expand territory, and fight on a continuously running battlefield.
 
-The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, point-buy faction blueprints, autonomous economies, fog-of-war views, production-window decisions, provider-neutral model controllers over MCP, an optional single-admin login, validated configuration, health endpoints, and graceful shutdown. Player commands, multi-user authorization, and seeded map generation described in the [revision guide](REVISION.md) remain planned work.
+The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, point-buy faction blueprints, autonomous economies, fog-of-war views, production-window decisions, provider-neutral model controllers over MCP, an optional single-admin login, validated configuration, health endpoints, and graceful shutdown. Player commands, multi-user authorization, and seeded map generation remain planned work.
 
 ## Current capabilities
 
@@ -44,7 +44,6 @@ Choose the guide that matches the task:
 | Resume kind after restarting the computer | [DEPLOYMENT.md](DEPLOYMENT.md#resume-the-cluster-after-restarting-the-computer) |
 | Install and configure Jenkins, GitHub, and SonarQube | [JENKINS.md](JENKINS.md) |
 | Start the existing CI/CD services after reboot | [JENKINS.md](JENKINS.md#daily-startup-after-a-reboot) |
-| Understand the planned architecture and milestones | [REVISION.md](REVISION.md) |
 
 ## Run locally
 
@@ -234,10 +233,15 @@ successful build and only build, scan, migrate, or apply components affected by
 that change; an unavailable comparison or unclassified path safely falls back
 to a full deployment.
 
-The root `Jenkinsfile` provides pull-request CI and merged-`main` deployment:
-lint, coverage, tests, and vulnerability scans gate the PR, while the merge
-pipeline also waits for SonarQube before it rebuilds the exact commit, migrates,
-deploys to local kind, smoke-tests, and supports rollback.
+The root `Jenkinsfile` provides pull-request CI and merged-`main` deployment. It includes isolated PostgreSQL integration tests, the race detector, source/dependency/secret/Kubernetes policy gates, deterministic adversarial AI evaluation, immutable GHCR publication with supply-chain evidence, digest-only verified deployment, k6 smoke load, and a ZAP baseline scan. The merge pipeline also waits for SonarQube, migrates and smoke-tests Kind, and supports digest rollback. `Jenkinsfile.assurance` contains the offline nightly and explicitly triggered provider, long-load, failure-drill, and AWS-promotion workflows.
+
+Supply-chain and AI assurance references:
+
+- [`docs/security/ai-development-policy.md`](docs/security/ai-development-policy.md)
+- [`docs/operations/supply-chain-runbook.md`](docs/operations/supply-chain-runbook.md)
+- [`deploy/supply-chain/README.md`](deploy/supply-chain/README.md)
+- [`infra/aws/README.md`](infra/aws/README.md)
+
 See the [Jenkins setup guide](JENKINS.md) before configuring the Multibranch job
 or its local Kubernetes credential.
 
@@ -593,5 +597,3 @@ battle worker -> validated plans -> deterministic battle -> PostgreSQL events/re
 ## Project direction
 
 The intended architecture uses an authoritative, deterministic engine: clients propose typed commands and the engine validates and applies them. This keeps game rules out of HTTP handlers and prevents clients or AI agents from writing arbitrary world state.
-
-See [REVISION.md](REVISION.md) for the proposed architecture, design exercises, AI-agent boundary, infrastructure evolution, and milestone roadmap. The separate [Interview Revision Hub](../../revision/README.md) contains the broader Go, backend/cloud, system-design, AI, and behavioral study material.

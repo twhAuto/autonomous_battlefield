@@ -108,7 +108,10 @@ func (s *Server) handleAgentClaim(repository ai.DecisionRepository) http.Handler
 			return
 		}
 		s.logDecisionClaim(r.Context(), request.WorkerID, record)
-		_ = json.NewEncoder(w).Encode(map[string]any{"requestId": record.ID, "profileId": record.ProfileID})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"requestId": record.ID, "profileId": record.ProfileID,
+			"traceparent": record.Traceparent, "tracestate": record.Tracestate,
+		})
 	}
 }
 

@@ -10,3 +10,5 @@ resources:
   - elasticsearch
   - kibana
   - collector-rbac
+  - otel-collector
+  - tempo

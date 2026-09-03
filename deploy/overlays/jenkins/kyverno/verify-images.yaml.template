@@ -1,0 +1,48 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: battlefield-verified-images
+spec:
+  admission: true
+  background: false
+  validationFailureAction: Enforce
+  webhookConfiguration:
+    failurePolicy: Fail
+  rules:
+    - name: verify-battlefield-images
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [battlefield]
+      verifyImages:
+        - imageReferences:
+            - ghcr.io/twh09/autonomous-battlefield-backend*
+            - ghcr.io/twh09/autonomous-battlefield-frontend*
+          required: true
+          mutateDigest: true
+          verifyDigest: true
+          attestors:
+            - entries:
+                - keys:
+                    publicKeys: |-
+                      __COSIGN_PUBLIC_KEY__
+          attestations:
+            - predicateType: https://cyclonedx.org/bom
+              attestors:
+                - entries:
+                    - keys:
+                        publicKeys: |-
+                          __COSIGN_PUBLIC_KEY__
+            - predicateType: https://slsa.dev/provenance/v0.2
+              attestors:
+                - entries:
+                    - keys:
+                        publicKeys: |-
+                          __COSIGN_PUBLIC_KEY__
+            - predicateType: https://autonomous-battlefield.dev/attestations/ai-manifest/v1
+              attestors:
+                - entries:
+                    - keys:
+                        publicKeys: |-
+                          __COSIGN_PUBLIC_KEY__

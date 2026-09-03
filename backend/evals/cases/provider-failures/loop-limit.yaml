@@ -1,0 +1,22 @@
+schemaVersion: battlefield.ai-eval-case.v1
+id: provider-loop-limit
+category: provider-failure
+rulesVersion: castle-siege-v1
+profile: deterministic
+model: scripted
+requestId: request-loop-limit
+maxSteps: 2
+maxTokens: 128
+capability: valid
+turns:
+  - toolCalls:
+      - {id: context-1, name: get_decision_context, arguments: '{"requestId":"request-loop-limit"}'}
+  - toolCalls:
+      - {id: context-2, name: get_decision_context, arguments: '{"requestId":"request-loop-limit"}'}
+submission: {accepted: false, status: rejected}
+expected:
+  accepted: false
+  errorCategory: step_limit
+  maximumToolCalls: 2
+  safetyCritical: true
+  forbiddenOutput: [secret]

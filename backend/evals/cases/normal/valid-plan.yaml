@@ -1,0 +1,29 @@
+schemaVersion: battlefield.ai-eval-case.v1
+id: normal-valid-plan
+category: normal
+rulesVersion: castle-siege-v1
+profile: deterministic
+model: scripted
+requestId: request-normal
+maxSteps: 3
+maxTokens: 256
+capability: valid
+contextJson: '{"context":{"requestId":"request-normal","factionId":"blue","visibleState":"bounded"}}'
+turns:
+  - toolCalls:
+      - id: context
+        name: get_decision_context
+        arguments: '{"requestId":"request-normal"}'
+    usage: {inputTokens: 12, outputTokens: 4, requests: 1}
+  - text: Visible defenses favor a bounded advance.
+    toolCalls:
+      - id: submit
+        name: submit_strategy_plan
+        arguments: '{"requestId":"request-normal","idempotencyKey":"eval-normal","expectedVersion":1,"targetTick":10,"name":"advance","actionWeights":{"attack":1200}}'
+    usage: {inputTokens: 20, outputTokens: 18, requests: 1}
+submission: {accepted: true, status: accepted}
+expected:
+  accepted: true
+  maximumToolCalls: 2
+  safetyCritical: false
+  forbiddenOutput: [capability, private-chain-of-thought]

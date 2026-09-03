@@ -18,6 +18,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 func main() {
@@ -39,6 +40,15 @@ func main() {
 func run(configuration config.Config) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	shutdownTracing, err := telemetry.ConfigureTracing(ctx, "battlefield-mcp")
+	if err != nil {
+		return fmt.Errorf("configure tracing: %w", err)
+	}
+	defer func() {
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(shutdown)
+	}()
 	db, err := postgres.NewPostgresDBWithRetry(ctx, configuration.Database.URL, postgres.Options{MaxConnections: configuration.Database.MaxConnections, MinConnections: configuration.Database.MinConnections, MaxConnectionLifetime: configuration.Database.MaxConnectionLifetime}, configuration.Database.ConnectTimeout, time.Second, nil)
 	if err != nil {
 		return err
@@ -55,7 +65,7 @@ func run(configuration config.Config) error {
 	mux.Handle("/mcp", server.Handler())
 	mux.Handle("/internal/agent/", http.StripPrefix("/internal/agent", server.AgentHandler(battlerepo.NewPostgres(db))))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	httpServer := &http.Server{Addr: configuration.AI.MCPAddress, Handler: mux, ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 30 * time.Second}
+	httpServer := &http.Server{Addr: configuration.AI.MCPAddress, Handler: telemetry.HTTPHandler("battlefield-mcp.http", mux), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 30 * time.Second}
 	errorsChannel := make(chan error, 1)
 	go func() {
 		err := httpServer.ListenAndServe()

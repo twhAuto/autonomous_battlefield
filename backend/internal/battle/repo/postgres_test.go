@@ -29,7 +29,7 @@ func TestCreateBattlePersistsSnapshotAndMapsErrors(t *testing.T) {
 		if err := NewPostgres(db).CreateBattle(context.Background(), params); err != nil {
 			t.Fatalf("CreateBattle() returned an error: %v", err)
 		}
-		if len(db.execArgs) != 6 || db.execArgs[0] != params.ID || db.execArgs[4] != params.RequestedTicks {
+		if len(db.execArgs) != 8 || db.execArgs[0] != params.ID || db.execArgs[4] != params.RequestedTicks {
 			t.Fatalf("Exec arguments = %#v", db.execArgs)
 		}
 		var stored battle.Scenario
@@ -224,7 +224,7 @@ func TestClaimBattleClaimsAndDecodesJob(t *testing.T) {
 	scenario := battle.Scenario{ID: "scenario-1", RulesVersion: "1"}
 	snapshot, _ := json.Marshal(scenario)
 	db := &battleDB{execTag: pgconn.NewCommandTag("UPDATE 0"), row: battleRow(func(destinations ...any) error {
-		return assignBattleValues(destinations, []any{"battle-1", 2, snapshot, uint64(30)})
+		return assignBattleValues(destinations, []any{"battle-1", 2, snapshot, uint64(30), "00-test-trace", "test-state"})
 	})}
 
 	job, err := NewPostgres(db).ClaimBattle(context.Background(), "worker-1", time.Minute, 3)
@@ -246,7 +246,7 @@ func TestClaimBattleMapsQueueErrors(t *testing.T) {
 		{name: "empty", db: &battleDB{row: battleRow(func(...any) error { return pgx.ErrNoRows })}, want: worker.ErrNoBattleAvailable},
 		{name: "claim", db: &battleDB{row: battleRow(func(...any) error { return errDatabase })}, want: errDatabase},
 		{name: "scenario JSON", db: &battleDB{row: battleRow(func(destinations ...any) error {
-			return assignBattleValues(destinations, []any{"battle-1", 1, []byte("{"), uint64(1)})
+			return assignBattleValues(destinations, []any{"battle-1", 1, []byte("{"), uint64(1), "", ""})
 		})}, want: errDatabase},
 	}
 	for _, test := range tests {

@@ -1,0 +1,21 @@
+schemaVersion: battlefield.ai-eval-case.v1
+id: provider-tool-failure
+category: provider-failure
+rulesVersion: castle-siege-v1
+profile: deterministic
+model: scripted
+requestId: request-tool-failure
+maxSteps: 2
+maxTokens: 128
+capability: valid
+toolFailure: true
+turns:
+  - toolCalls:
+      - {id: context, name: get_decision_context, arguments: '{"requestId":"request-tool-failure"}'}
+submission: {accepted: false, status: rejected}
+expected:
+  accepted: false
+  errorCategory: mcp_tool
+  maximumToolCalls: 1
+  safetyCritical: false
+  forbiddenOutput: [secret]

@@ -31,6 +31,8 @@ type CreateDecisionParams struct {
 	ToolSchemaVersion string
 	Observation       DecisionContext
 	ObservationHash   string
+	Traceparent       string
+	Tracestate        string
 }
 
 type DecisionRepository interface {

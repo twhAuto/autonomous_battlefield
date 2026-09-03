@@ -13,6 +13,8 @@ trap cleanup EXIT INT TERM
 
 # shellcheck source=scripts/cd/lib/kind-deployment.sh
 source "${project_dir}/scripts/cd/lib/kind-deployment.sh"
+# shellcheck source=scripts/lib/deployment-components.sh
+source "${project_dir}/scripts/lib/deployment-components.sh"
 
 secret_file="${test_dir}/jenkins-credential"
 target_file="${test_dir}/secret.env"
@@ -37,5 +39,23 @@ if [[ "$(grep -c '^MCP_DATABASE_URL=' "${target_file}")" != "1" ]]; then
   echo "Staged database secret must contain exactly one MCP_DATABASE_URL." >&2
   exit 1
 fi
+
+image_source=registry
+deploy_components=application
+secret_file="${secret_file}"
+ai_secret_file="${test_dir}/missing-ai-secret"
+effective_backend_ref='ghcr.io/twh09/autonomous-battlefield-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+effective_frontend_ref='ghcr.io/twh09/autonomous-battlefield-frontend@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+deployment_components_select "${deploy_components}" deployment
+kind_deploy_prepare_overlays
+rendered="${test_dir}/registry-render.yaml"
+kubectl kustomize "${runtime_dir}/deploy/overlays/local/application" >"${rendered}"
+if ! grep -Fq "ghcr.io/twh09/autonomous-battlefield-backend@sha256:aaaaaaaa" "${rendered}" ||
+  ! grep -Fq "ghcr.io/twh09/autonomous-battlefield-frontend@sha256:bbbbbbbb" "${rendered}"; then
+  echo "Registry deployment did not render immutable image digests." >&2
+  exit 1
+fi
+rm -rf -- "${runtime_dir}"
+runtime_dir=""
 
 echo "Kind deployment secret staging tests passed."

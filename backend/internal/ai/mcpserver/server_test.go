@@ -126,6 +126,29 @@ func TestMCPRejectsMissingCapabilityAndForeignOrigin(t *testing.T) {
 	}
 }
 
+func FuzzMCPRequestBody(f *testing.F) {
+	f.Add([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	f.Add([]byte(`{"jsonrpc":"2.0","id":"tools/call"}`))
+	f.Fuzz(func(t *testing.T, body []byte) {
+		if len(body) > 64<<10 {
+			t.Skip()
+		}
+		token, err := ai.MintCapability("secret", "request", time.Now().Add(time.Minute))
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, "http://server", bytes.NewReader(body))
+		request.Header.Set("Authorization", "Bearer "+token)
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Accept", "application/json, text/event-stream")
+		response := httptest.NewRecorder()
+		New(&fakeRepository{}, "secret", nil).Handler().ServeHTTP(response, request)
+		if response.Body.Len() > 1<<20 {
+			t.Fatalf("response body exceeded safety bound: %d bytes", response.Body.Len())
+		}
+	})
+}
+
 func TestAgentControlPlaneAuthorizationAndEmptyQueue(t *testing.T) {
 	repository := &fakeRepository{claimErr: ai.ErrNoDecision}
 	handler := New(repository, "secret", nil).AgentHandler(repository)

@@ -15,6 +15,7 @@ import (
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 // App is the application's composition root. It constructs and connects the
@@ -45,7 +46,7 @@ func NewAPIWithAuthentication(db Database, catalog *catalog.Catalog, maxTicks ui
 		return authn.RequireAuthentication(authentication.Enabled, authenticationManager, next)
 	}
 	router := httpapi.NewRouterWithMiddleware(
-		[]httpapi.Middleware{authenticationMiddleware},
+		[]httpapi.Middleware{func(next http.Handler) http.Handler { return telemetry.HTTPHandler("battlefield-api.http", next) }, authenticationMiddleware},
 		readinessRoutes, authn.NewRoutes(authenticationManager), factionHandler, battleHandler,
 	)
 	return &App{httpHandler: router}

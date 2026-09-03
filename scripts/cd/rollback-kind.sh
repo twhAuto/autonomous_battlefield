@@ -13,7 +13,7 @@ frontend_image="${FRONTEND_IMAGE:-autonomous-battlefield-frontend}"
 deployments=(battlefield-api battlefield-engine battlefield-agent battlefield-mcp battlefield-frontend)
 
 if [[ "$#" -gt 2 ]]; then
-  echo "Usage: $0 [previous-backend-git-sha [previous-frontend-git-sha]]" >&2
+  echo "Usage: $0 [previous-backend-image [previous-frontend-image]]" >&2
   exit 1
 fi
 
@@ -39,31 +39,31 @@ kube() {
 }
 
 if [[ "$#" -ge 1 ]]; then
-  previous_backend_tag="$1"
-  previous_frontend_tag="${2:-$1}"
+  previous_backend="$1"
+  previous_frontend="${2:-$1}"
+  if [[ "${previous_backend}" =~ ^[0-9a-f]{40}$ && "${previous_frontend}" =~ ^[0-9a-f]{40}$ ]]; then
+    previous_backend="${backend_image}:${previous_backend}"
+    previous_frontend="${frontend_image}:${previous_frontend}"
+  elif [[ ! "${previous_backend}" =~ ^[a-z0-9][a-z0-9._:/-]+@sha256:[0-9a-f]{64}$ || ! "${previous_frontend}" =~ ^[a-z0-9][a-z0-9._:/-]+@sha256:[0-9a-f]{64}$ ]]; then
+    echo "Previous images must both be full Git SHAs or repository@sha256 references." >&2
+    exit 1
+  fi
 
-  for image_tag in "${previous_backend_tag}" "${previous_frontend_tag}"; do
-    if [[ ! "${image_tag}" =~ ^[0-9a-f]{40}$ ]]; then
-      echo "Previous image tags must be full 40-character lowercase Git SHAs." >&2
-      exit 1
-    fi
-  done
-
-  echo "Restoring backend ${previous_backend_tag} and frontend ${previous_frontend_tag}..."
+  echo "Restoring backend ${previous_backend} and frontend ${previous_frontend}..."
   kube set image deployment/battlefield-api \
-    "api=${backend_image}:${previous_backend_tag}" \
+    "api=${previous_backend}" \
     --namespace "${namespace}"
   kube set image deployment/battlefield-engine \
-    "engine=${backend_image}:${previous_backend_tag}" \
+    "engine=${previous_backend}" \
     --namespace "${namespace}"
   kube set image deployment/battlefield-agent \
-    "agent=${backend_image}:${previous_backend_tag}" \
+    "agent=${previous_backend}" \
     --namespace "${namespace}"
   kube set image deployment/battlefield-mcp \
-    "mcp=${backend_image}:${previous_backend_tag}" \
+    "mcp=${previous_backend}" \
     --namespace "${namespace}"
   kube set image deployment/battlefield-frontend \
-    "frontend=${frontend_image}:${previous_frontend_tag}" \
+    "frontend=${previous_frontend}" \
     --namespace "${namespace}"
 
   for deployment in "${deployments[@]}"; do

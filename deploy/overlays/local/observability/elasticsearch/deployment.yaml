@@ -64,6 +64,7 @@ spec:
               memory: 1Gi
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL
@@ -76,6 +77,8 @@ spec:
               mountPath: /usr/share/elasticsearch/data
             - name: tmp
               mountPath: /tmp
+            - name: logs
+              mountPath: /usr/share/elasticsearch/logs
       volumes:
         - name: config
           configMap:
@@ -83,4 +86,6 @@ spec:
         - name: data
           emptyDir: {}
         - name: tmp
+          emptyDir: {}
+        - name: logs
           emptyDir: {}

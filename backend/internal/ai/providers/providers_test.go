@@ -61,10 +61,10 @@ func TestGeminiParsesToolCallsAndErrors(t *testing.T) {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 	failure := clientWith(http.StatusTooManyRequests, "no", nil)
-	if _, err := (&Gemini{Client: failure}).NextTurn(context.Background(), providerRequest()); err == nil || !strings.Contains(err.Error(), "429") {
+	if _, err := (&Gemini{Client: failure}).NextTurn(context.Background(), providerRequest()); !errors.Is(err, ErrRateLimit) || !strings.Contains(err.Error(), "429") {
 		t.Fatal(err)
 	}
-	if _, err := (&OpenAI{Client: failure}).NextTurn(context.Background(), providerRequest()); err == nil {
-		t.Fatal("OpenAI status accepted")
+	if _, err := (&OpenAI{Client: failure}).NextTurn(context.Background(), providerRequest()); !errors.Is(err, ErrRateLimit) {
+		t.Fatalf("OpenAI rate-limit error = %v", err)
 	}
 }

@@ -82,14 +82,43 @@ Use a dedicated Linux or WSL Jenkins agent with:
 - Git.
 - Go 1.26.5 or newer.
 - Node.js 24 and npm.
+- GCC and the C development toolchain required by `go test -race`.
 - Docker, with permission to use the Docker daemon.
-- `kubectl`, `kind`, and `curl`.
+- `kubectl`, `kind`, `curl`, and AWS CLI for the optional promotion job.
 - Access to the `battlefield` kind cluster through context `kind-battlefield`.
 
 The agent needs Docker access to build images and run the pinned Trivy scanner.
+The publishing script creates or reuses a dedicated `docker-container` Buildx
+builder named `battlefield-jenkins`; this driver preserves BuildKit SBOM and
+provenance attestations when images are pushed even if the daemon uses the
+classic local image store.
 Docker daemon access is effectively privileged host access. Do not run untrusted
 fork pull requests on this agent, and do not use the Jenkins controller itself
 as the long-term build agent.
+
+Security scanners, Kubeconform, Conftest, Syft, Cosign, ORAS, k6, and ZAP run
+from versions pinned in `scripts/ci/tool-versions.env`. Main builds require
+private GHCR packages named `autonomous-battlefield-backend` and
+`autonomous-battlefield-frontend` with inherited repository access.
+
+## Delivery-assurance credentials
+
+Create these narrowly scoped Jenkins credentials before enabling main delivery:
+
+| ID | Kind | Purpose |
+|---|---|---|
+| `battlefield-ghcr` | username/password | GitHub Packages identity and token with only `read:packages` and `write:packages` |
+| `battlefield-cosign-key` | secret file | encrypted Cosign private key |
+| `battlefield-cosign-password` | secret text | password for the encrypted signing key |
+| `battlefield-cosign-public-key` | secret file | reviewed public verification key |
+| `battlefield-openai-api-key` | secret text | manual OpenAI evaluation only |
+| `battlefield-gemini-api-key` | secret text | manual Gemini evaluation only |
+
+Never expose signing or provider credentials to pull-request stages. Configure a
+second Pipeline job using `Jenkinsfile.assurance`; schedule only its `nightly`
+mode. All other modes require an operator trigger and explicit bounds. AWS
+promotion additionally requires an assumed agent role or other short-lived AWS
+credential source; do not store long-lived access keys in the repository.
 
 ## Required Jenkins plugins
 

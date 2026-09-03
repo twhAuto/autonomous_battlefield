@@ -60,3 +60,19 @@ func TestWriteJSONDoesNotCommitOnEncodingError(t *testing.T) {
 		t.Fatalf("response body = %q, want empty body", response.Body.String())
 	}
 }
+
+func FuzzReadJSON(f *testing.F) {
+	f.Add([]byte(`{"name":"Northwind"}`))
+	f.Add([]byte(`{"name":"Northwind"}{}`))
+	f.Add([]byte("{"))
+	f.Fuzz(func(t *testing.T, body []byte) {
+		if len(body) > maxJSONRequestBodyBytes+1 {
+			t.Skip()
+		}
+		request := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
+		var destination struct {
+			Name string `json:"name"`
+		}
+		_ = ReadJSON(httptest.NewRecorder(), request, &destination)
+	})
+}

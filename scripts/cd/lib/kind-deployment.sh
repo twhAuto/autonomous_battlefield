@@ -20,9 +20,21 @@ kind_deploy_validate_inputs() {
     return 1
   fi
 
-  for command in docker git grep kind kubectl; do
+  for command in git grep kind kubectl; do
     kind_deploy_require_command "${command}"
   done
+
+  if [[ "${image_source}" != "local" && "${image_source}" != "registry" ]]; then
+    echo "IMAGE_SOURCE must be local or registry." >&2
+    return 1
+  fi
+  if [[ "${enforce_supply_chain_policy}" != "0" && "${enforce_supply_chain_policy}" != "1" ]]; then
+    echo "ENFORCE_SUPPLY_CHAIN_POLICY must be either 0 or 1." >&2
+    return 1
+  fi
+  if [[ "${image_source}" == "local" ]]; then
+    kind_deploy_require_command docker
+  fi
 
   if [[ "${rollback_on_failure}" != "0" && "${rollback_on_failure}" != "1" ]]; then
     echo "ROLLBACK_ON_FAILURE must be either 0 or 1." >&2
@@ -56,7 +68,7 @@ kind_deploy_validate_inputs() {
     return 1
   fi
 
-  if deployment_component_selected backend; then
+  if [[ "${image_source}" == "local" ]] && deployment_component_selected backend; then
     if [[ ! "${backend_image_tag}" =~ ^[0-9a-f]{40}$ ]] \
       || ! git -C "${project_dir}" cat-file -e "${backend_image_tag}^{commit}" 2>/dev/null; then
       echo "BACKEND_IMAGE_TAG must be an available full Git commit SHA." >&2
@@ -64,10 +76,25 @@ kind_deploy_validate_inputs() {
     fi
   fi
 
-  if deployment_component_selected frontend; then
+  if [[ "${image_source}" == "local" ]] && deployment_component_selected frontend; then
     if [[ ! "${frontend_image_tag}" =~ ^[0-9a-f]{40}$ ]] \
       || ! git -C "${project_dir}" cat-file -e "${frontend_image_tag}^{commit}" 2>/dev/null; then
       echo "FRONTEND_IMAGE_TAG must be an available full Git commit SHA." >&2
+      return 1
+    fi
+  fi
+
+  if [[ "${image_source}" == "registry" ]]; then
+    if deployment_component_selected backend && [[ ! "${backend_image_ref}" =~ ^[a-z0-9][a-z0-9._:/-]+@sha256:[0-9a-f]{64}$ ]]; then
+      echo "BACKEND_IMAGE_REF must be a full repository@sha256 reference in registry mode." >&2
+      return 1
+    fi
+    if deployment_component_selected frontend && [[ ! "${frontend_image_ref}" =~ ^[a-z0-9][a-z0-9._:/-]+@sha256:[0-9a-f]{64}$ ]]; then
+      echo "FRONTEND_IMAGE_REF must be a full repository@sha256 reference in registry mode." >&2
+      return 1
+    fi
+    if [[ -z "${GHCR_USER:-}" || -z "${GHCR_TOKEN:-}" ]]; then
+      echo "GHCR_USER and GHCR_TOKEN are required in registry mode." >&2
       return 1
     fi
   fi
@@ -128,6 +155,26 @@ kind_deploy_capture_current_images() {
 }
 
 kind_deploy_resolve_images() {
+	if [[ "${image_source}" == "registry" ]]; then
+		effective_backend_ref="${backend_image_ref}"
+		effective_frontend_ref="${frontend_image_ref}"
+		if ! deployment_component_selected backend && { deployment_component_selected application || deployment_component_selected migration; }; then
+			if [[ -z "${current_backend_image}" || "${current_backend_image}" != "${current_engine_image}" || "${current_backend_image}" != "${current_agent_image}" || "${current_backend_image}" != "${current_mcp_image}" ]]; then
+				echo "Cannot preserve the current backend image; include backend in DEPLOY_COMPONENTS." >&2
+				return 1
+			fi
+			effective_backend_ref="${current_backend_image}"
+		fi
+		if ! deployment_component_selected frontend && deployment_component_selected application; then
+			if [[ -z "${current_frontend_image}" ]]; then
+				echo "Cannot preserve the current frontend image; include frontend in DEPLOY_COMPONENTS." >&2
+				return 1
+			fi
+			effective_frontend_ref="${current_frontend_image}"
+		fi
+		return
+	fi
+
   effective_backend_image="${backend_image}"
   effective_backend_tag="${backend_image_tag}"
   effective_frontend_image="${frontend_image}"
@@ -161,14 +208,14 @@ kind_deploy_resolve_images() {
 }
 
 kind_deploy_validate_artifacts() {
-  if deployment_component_selected backend \
+  if [[ "${image_source}" == "local" ]] && deployment_component_selected backend \
     && ! docker image inspect "${backend_image}:${backend_image_tag}" >/dev/null 2>&1; then
     echo "Local image not found: ${backend_image}:${backend_image_tag}" >&2
     echo "Build the backend revision first with BUILD_COMPONENTS=backend ./scripts/ci/build-images.sh" >&2
     return 1
   fi
 
-  if deployment_component_selected frontend \
+  if [[ "${image_source}" == "local" ]] && deployment_component_selected frontend \
     && ! docker image inspect "${frontend_image}:${frontend_image_tag}" >/dev/null 2>&1; then
     echo "Local image not found: ${frontend_image}:${frontend_image_tag}" >&2
     echo "Build the frontend revision first with BUILD_COMPONENTS=frontend ./scripts/ci/build-images.sh" >&2
@@ -278,7 +325,22 @@ kind_deploy_prepare_overlays() {
 
   rollback_overlay="${runtime_dir}/deploy/overlays/local/rollback-application"
 
-  if deployment_component_selected application; then
+  if deployment_component_selected application && [[ "${image_source}" == "registry" ]]; then
+    backend_name="${effective_backend_ref%@*}"
+    backend_digest="${effective_backend_ref##*@}"
+    frontend_name="${effective_frontend_ref%@*}"
+    frontend_digest="${effective_frontend_ref##*@}"
+    cat >>"${runtime_dir}/deploy/overlays/local/application/kustomization.yaml" <<EOF
+
+images:
+  - name: autonomous-battlefield-backend
+    newName: "${backend_name}"
+    digest: "${backend_digest}"
+  - name: autonomous-battlefield-frontend
+    newName: "${frontend_name}"
+    digest: "${frontend_digest}"
+EOF
+  elif deployment_component_selected application; then
     cat >>"${runtime_dir}/deploy/overlays/local/application/kustomization.yaml" <<EOF
 
 images:
@@ -291,7 +353,17 @@ images:
 EOF
   fi
 
-  if deployment_component_selected migration; then
+  if deployment_component_selected migration && [[ "${image_source}" == "registry" ]]; then
+    backend_name="${effective_backend_ref%@*}"
+    backend_digest="${effective_backend_ref##*@}"
+    cat >>"${runtime_dir}/deploy/overlays/local/migration/kustomization.yaml" <<EOF
+
+images:
+  - name: autonomous-battlefield-backend
+    newName: "${backend_name}"
+    digest: "${backend_digest}"
+EOF
+  elif deployment_component_selected migration; then
     cat >>"${runtime_dir}/deploy/overlays/local/migration/kustomization.yaml" <<EOF
 
 images:
@@ -303,6 +375,9 @@ EOF
 }
 
 kind_deploy_load_images() {
+  if [[ "${image_source}" == "registry" ]]; then
+    return
+  fi
   if deployment_component_selected backend || deployment_component_selected frontend; then
     echo "Loading changed commit-addressed images into kind cluster ${cluster_name}..."
   fi
@@ -312,6 +387,20 @@ kind_deploy_load_images() {
   if deployment_component_selected frontend; then
     kind load docker-image "${frontend_image}:${frontend_image_tag}" --name "${cluster_name}"
   fi
+}
+
+kind_deploy_registry_credentials() {
+  echo "Configuring private GHCR pull credentials..."
+  kind_deploy_kube create secret docker-registry battlefield-ghcr \
+    --namespace "${namespace}" \
+    --docker-server ghcr.io \
+    --docker-username "${GHCR_USER}" \
+    --docker-password "${GHCR_TOKEN}" \
+    --dry-run=client -o yaml | kind_deploy_kube apply -f -
+  kind_deploy_kube patch serviceaccount default \
+    --namespace "${namespace}" \
+    --type merge \
+    --patch '{"imagePullSecrets":[{"name":"battlefield-ghcr"}]}'
 }
 
 kind_deploy_infrastructure() {
@@ -370,6 +459,29 @@ images:
     newTag: "${previous_frontend_tag}"
 EOF
     rollback_overlay_ready=1
+  elif [[ -n "${current_backend_image}" \
+    && "${current_backend_image}" == "${current_engine_image}" \
+    && "${current_backend_image}" == "${current_agent_image}" \
+    && "${current_backend_image}" == "${current_mcp_image}" \
+    && -n "${current_frontend_image}" \
+    && "${current_backend_image}" == *@sha256:* \
+    && "${current_frontend_image}" == *@sha256:* ]]; then
+    previous_backend_name="${current_backend_image%@*}"
+    previous_backend_digest="${current_backend_image##*@}"
+    previous_frontend_name="${current_frontend_image%@*}"
+    previous_frontend_digest="${current_frontend_image##*@}"
+
+    cat >>"${rollback_overlay}/kustomization.yaml" <<EOF
+
+images:
+  - name: autonomous-battlefield-backend
+    newName: "${previous_backend_name}"
+    digest: "${previous_backend_digest}"
+  - name: autonomous-battlefield-frontend
+    newName: "${previous_frontend_name}"
+    digest: "${previous_frontend_digest}"
+EOF
+    rollback_overlay_ready=1
   fi
 
   for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-mcp battlefield-frontend; do
@@ -415,6 +527,8 @@ kind_deploy_observability() {
     battlefield-prometheus \
     battlefield-kube-state-metrics \
     battlefield-grafana \
+    battlefield-otel-collector \
+    battlefield-tempo \
     battlefield-elasticsearch \
     battlefield-kibana; do
     kind_deploy_kube rollout status "deployment/${deployment}" \

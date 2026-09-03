@@ -23,6 +23,8 @@ type BattleJob struct {
 	Lease          BattleLease
 	Scenario       game.Scenario
 	RequestedTicks uint64
+	Traceparent    string
+	Tracestate     string
 }
 
 // Repository describes the durable queue operations required by the worker.

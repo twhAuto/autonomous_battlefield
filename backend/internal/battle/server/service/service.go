@@ -14,6 +14,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 var (
@@ -49,6 +50,8 @@ type CreateBattleParams struct {
 	ScenarioSnapshot game.Scenario
 	InitialState     game.State
 	RequestedTicks   uint64
+	Traceparent      string
+	Tracestate       string
 }
 
 type BattleRun struct {
@@ -202,6 +205,7 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		return nil, fmt.Errorf("build initial battle state: %w", err)
 	}
 	initialState := match.State()
+	traceparent, tracestate := telemetry.TraceContext(ctx)
 	err = s.battles.CreateBattle(ctx, CreateBattleParams{
 		ID:               input.ID,
 		ScenarioID:       resolved.ID,
@@ -209,6 +213,8 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		ScenarioSnapshot: resolved,
 		InitialState:     initialState,
 		RequestedTicks:   input.TickCount,
+		Traceparent:      traceparent,
+		Tracestate:       tracestate,
 	})
 	if errors.Is(err, ErrBattleAlreadyExists) {
 		return nil, ErrBattleAlreadyExists

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -64,6 +65,27 @@ func TestListScenariosReturnsCatalog(t *testing.T) {
 	if len(body.Scenarios) != 1 || body.Scenarios[0].ID != "skirmish-v1" {
 		t.Fatalf("scenarios = %#v", body.Scenarios)
 	}
+}
+
+func FuzzEventCursorQuery(f *testing.F) {
+	f.Add("0", "100", "1", "false")
+	f.Add("-1", "nope", "-2", "wat")
+	f.Fuzz(func(t *testing.T, after, limit, attempt, latest string) {
+		if len(after)+len(limit)+len(attempt)+len(latest) > 4096 {
+			t.Skip()
+		}
+		battles := &fakeBattleService{}
+		handler := NewHandler(battles)
+		request := httptest.NewRequest(http.MethodGet, "/v1/battles/id/events?after="+
+			url.QueryEscape(after)+"&limit="+url.QueryEscape(limit)+"&attempt="+
+			url.QueryEscape(attempt)+"&latest="+url.QueryEscape(latest), nil)
+		request.SetPathValue("id", "7f22e693-bacd-46bb-b942-64fa613cd388")
+		response := httptest.NewRecorder()
+		handler.ListEvents(response, request)
+		if response.Code < 100 || response.Code > 599 {
+			t.Fatalf("invalid HTTP status %d", response.Code)
+		}
+	})
 }
 
 func TestListsSafeModelProfilesAndDecisionHistory(t *testing.T) {

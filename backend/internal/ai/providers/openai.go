@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 type OpenAI struct {
@@ -41,13 +42,16 @@ func (p *OpenAI) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	request.Header.Set("Content-Type", "application/json")
 	client := p.Client
 	if client == nil {
-		client = http.DefaultClient
+		client = telemetry.HTTPClient(nil)
 	}
 	response, err := client.Do(request)
 	if err != nil {
 		return ai.ModelTurnResult{}, err
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusTooManyRequests {
+		return ai.ModelTurnResult{}, fmt.Errorf("%w: OpenAI response status %d", ErrRateLimit, response.StatusCode)
+	}
 	if response.StatusCode/100 != 2 {
 		return ai.ModelTurnResult{}, fmt.Errorf("OpenAI response status %d", response.StatusCode)
 	}

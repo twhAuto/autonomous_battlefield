@@ -40,6 +40,9 @@ spec:
             - -config
             - /etc/battlefield/config.yaml
           env:
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://battlefield-otel-collector:4318"}
+            - {name: OTEL_TRACES_SAMPLER_ARG, value: "0.1"}
+            - {name: BATTLEFIELD_ENVIRONMENT, value: local}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

@@ -1,0 +1,22 @@
+schemaVersion: battlefield.ai-eval-case.v1
+id: provider-malformed-tool-output
+category: provider-failure
+rulesVersion: castle-siege-v1
+profile: deterministic
+model: scripted
+requestId: request-malformed
+maxSteps: 2
+maxTokens: 128
+capability: valid
+turns:
+  - toolCalls:
+      - id: malformed
+        name: submit_strategy_plan
+        arguments: '{"requestId":'
+submission: {accepted: false, status: rejected}
+expected:
+  accepted: false
+  errorCategory: mcp_tool
+  maximumToolCalls: 1
+  safetyCritical: true
+  forbiddenOutput: [secret]
