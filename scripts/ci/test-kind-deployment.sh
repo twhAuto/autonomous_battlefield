@@ -5,6 +5,11 @@ set -Eeuo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 test_dir="$(mktemp -d "${TMPDIR:-/tmp}/autonomous-battlefield-kind-deployment-test.XXXXXX")"
 
+if [[ ! -x "${project_dir}/scripts/cd/apply-kyverno-policy.sh" ]]; then
+  echo "The Kyverno policy installer must be executable." >&2
+  exit 1
+fi
+
 cleanup() {
   chmod -R u+w "${test_dir}" 2>/dev/null || true
   rm -rf -- "${test_dir}"
