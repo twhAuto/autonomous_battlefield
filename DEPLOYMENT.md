@@ -570,11 +570,13 @@ kubectl rollout status daemonset/battlefield-fluent-bit \
 The application namespace continues to enforce the Pod Security `baseline`
 profile. kube-state-metrics is non-privileged and can read only selected
 workload objects in `battlefield`. Prometheus has a separate ClusterRole limited
-to node discovery and kubelet metrics-proxy reads. Fluent Bit is isolated in
-`battlefield-logging`, whose `privileged` enforcement level is required for
-read-only node log mounts. Its service account receives only `get`, `list`, and
-`watch` access to pods in the `battlefield` namespace; the application
-workloads do not inherit that exception.
+to node discovery and `nodes/metrics` reads. It scrapes the local kubelet
+directly and deliberately does not receive the broader `nodes/proxy`
+permission. Fluent Bit is isolated in `battlefield-logging`, whose `privileged`
+enforcement level is required for read-only node log mounts. Its service
+account receives only `get`, `list`, and `watch` access to pods in the
+`battlefield` namespace; the application workloads do not inherit that
+exception.
 
 Open `http://grafana.localhost:8888` for the Autonomous Battlefield application
 and Kubernetes Workloads dashboards.

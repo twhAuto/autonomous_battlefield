@@ -43,3 +43,21 @@ scrape_configs:
       - source_labels:
           - __meta_kubernetes_pod_name
         target_label: scrape_pod
+
+  - job_name: kubernetes-cadvisor
+    scheme: https
+    metrics_path: /metrics/cadvisor
+    authorization:
+      credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    # kind's kubelet serving certificate is node-local rather than signed by
+    # the Kubernetes API CA mounted in this Pod. This direct scrape is confined
+    # to the disposable local cluster and still authenticates with the service
+    # account token.
+    tls_config:
+      insecure_skip_verify: true
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - source_labels:
+          - __meta_kubernetes_node_name
+        target_label: node

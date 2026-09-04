@@ -21,8 +21,10 @@ application container stdout --> Fluent Bit --> Elasticsearch --> Kibana
 Prometheus discovers annotated pods in the `battlefield` namespace and uses
 Kubernetes node discovery for one cAdvisor target per kubelet. Its namespaced
 Role can list and watch application pods. A separate ClusterRole permits only
-node discovery and `GET` access to the kubelet metrics proxy. Grafana receives
-no Kubernetes credentials and uses the internal Prometheus Service as its sole
+node discovery and `GET` access to the kubelet metrics subresource. Prometheus
+uses its mounted service-account token to scrape each local kubelet directly;
+it does not receive the broader `nodes/proxy` permission. Grafana receives no
+Kubernetes credentials and uses the internal Prometheus Service as its sole
 data source.
 
 The local stack deliberately does not include Alertmanager. Prometheus evaluates
@@ -78,8 +80,12 @@ The Kubernetes dashboard combines two complementary metric sources:
 The local kube-state-metrics deployment watches only the `battlefield`
 namespace and only the workload resource types listed in its manifest. It does
 not read Secrets or cluster-wide application objects. Prometheus scrapes
-cAdvisor through the authenticated Kubernetes API proxy, so no privileged
-cAdvisor DaemonSet or host mounts are required.
+cAdvisor directly from each local kubelet over HTTPS with service-account
+authentication, so no privileged cAdvisor DaemonSet or host mounts are
+required. The Kind-only scrape skips serving-certificate verification because
+the kubelet certificate is node-local rather than signed by the API CA mounted
+in the Prometheus pod; this exception must not be carried into an external
+cluster without a trusted kubelet CA.
 
 Open **Autonomous Battlefield / Kubernetes Workloads** in Grafana to see pod
 phases, readiness, restarts, deployment availability, and per-pod CPU, memory,
