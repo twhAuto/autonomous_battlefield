@@ -9,6 +9,10 @@ if [[ ! -x "${project_dir}/scripts/cd/apply-kyverno-policy.sh" ]]; then
   echo "The Kyverno policy installer must be executable." >&2
   exit 1
 fi
+if ! grep -Fq -- '--server-side' "${project_dir}/scripts/cd/apply-kyverno-policy.sh"; then
+  echo "The Kyverno installer must use server-side apply for its large CRDs." >&2
+  exit 1
+fi
 
 cleanup() {
   chmod -R u+w "${test_dir}" 2>/dev/null || true

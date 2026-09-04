@@ -17,7 +17,11 @@ if [[ ! -s "${public_key}" ]]; then
   exit 1
 fi
 
-kubectl --context "${kube_context}" apply -f \
+kubectl --context "${kube_context}" apply \
+  --server-side \
+  --force-conflicts \
+  --field-manager=battlefield-jenkins \
+  -f \
   "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/install.yaml"
 kubectl --context "${kube_context}" rollout status deployment/kyverno-admission-controller \
   --namespace kyverno --timeout=180s
