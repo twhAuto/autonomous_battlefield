@@ -23,8 +23,24 @@ kubectl --context "${kube_context}" apply \
   --field-manager=battlefield-jenkins \
   -f \
   "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/install.yaml"
-kubectl --context "${kube_context}" rollout status deployment/kyverno-admission-controller \
-  --namespace kyverno --timeout=180s
+if ! kubectl --context "${kube_context}" wait \
+  --namespace kyverno \
+  --for=condition=Available \
+  deployment/kyverno-admission-controller \
+  --timeout=180s; then
+  echo "Kyverno admission controller did not become available." >&2
+  kubectl --context "${kube_context}" get pods \
+    --namespace kyverno -o wide >&2 || true
+  kubectl --context "${kube_context}" describe deployment/kyverno-admission-controller \
+    --namespace kyverno >&2 || true
+  kubectl --context "${kube_context}" logs \
+    --namespace kyverno \
+    --selector app.kubernetes.io/component=admission-controller \
+    --all-containers=true \
+    --prefix=true \
+    --tail=100 >&2 || true
+  exit 1
+fi
 
 awk -v key_file="${public_key}" '
   /__COSIGN_PUBLIC_KEY__/ {

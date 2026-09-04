@@ -723,7 +723,7 @@ FRONTEND_IMAGE_REF='ghcr.io/twh09/autonomous-battlefield-frontend@sha256:…' \
 ./scripts/cd/deploy-kind.sh
 ```
 
-Jenkins additionally sets `ENFORCE_SUPPLY_CHAIN_POLICY=1`, which installs the Jenkins-only Kyverno verification policy. The tagged Kyverno manifest is installed with server-side apply so its large CRDs do not exceed Kubernetes' client-side last-applied annotation limit. Unsigned local Kind development remains available through `IMAGE_SOURCE=local` and is never treated as promotion evidence.
+Jenkins additionally sets `ENFORCE_SUPPLY_CHAIN_POLICY=1`, which installs the Jenkins-only Kyverno verification policy. The tagged Kyverno manifest is installed with server-side apply so its large CRDs do not exceed Kubernetes' client-side last-applied annotation limit. Deployment waits for the admission controller's `Available` condition and prints pod, Deployment, and controller-log diagnostics on timeout. Unsigned local Kind development remains available through `IMAGE_SOURCE=local` and is never treated as promotion evidence.
 
 The AWS step should reuse the tested images and base resources:
 
