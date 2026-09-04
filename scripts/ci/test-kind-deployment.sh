@@ -13,6 +13,10 @@ if ! grep -Fq -- '--server-side' "${project_dir}/scripts/cd/apply-kyverno-policy
   echo "The Kyverno installer must use server-side apply for its large CRDs." >&2
   exit 1
 fi
+if ! grep -Fq -- '--for=condition=Available' "${project_dir}/scripts/cd/apply-kyverno-policy.sh"; then
+  echo "The Kyverno installer must wait for controller availability." >&2
+  exit 1
+fi
 
 cleanup() {
   chmod -R u+w "${test_dir}" 2>/dev/null || true
