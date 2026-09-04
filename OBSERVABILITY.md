@@ -258,6 +258,12 @@ recreates the checked-in data view, but it does not restore logs. This is
 appropriate for a disposable kind cluster, not for an SLA evidence or audit
 source.
 
+Elasticsearch keeps its container root filesystem read-only. A non-root init
+container copies the image's complete default configuration and the checked-in
+`elasticsearch.yml` into a dedicated writable `emptyDir`, because Elasticsearch
+must create and upgrade `elasticsearch.keystore` in that directory at startup.
+The writable mount contains configuration state only and remains disposable.
+
 For AWS, keep the application metric contract but replace the local stack with
 a durable managed or self-hosted metrics and logging backend. Add ingress or
 load-balancer metrics so the availability SLI covers failures that never reach

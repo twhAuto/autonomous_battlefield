@@ -29,6 +29,36 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: prepare-elasticsearch-config
+          image: docker.elastic.co/elasticsearch/elasticsearch:9.4.4
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              cp -R /usr/share/elasticsearch/config/. /writable-config/
+              cp /config-source/elasticsearch.yml /writable-config/elasticsearch.yml
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: config-source
+              mountPath: /config-source
+              readOnly: true
+            - name: config
+              mountPath: /writable-config
       containers:
         - name: elasticsearch
           image: docker.elastic.co/elasticsearch/elasticsearch:9.4.4
@@ -70,9 +100,7 @@ spec:
                 - ALL
           volumeMounts:
             - name: config
-              mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
-              subPath: elasticsearch.yml
-              readOnly: true
+              mountPath: /usr/share/elasticsearch/config
             - name: data
               mountPath: /usr/share/elasticsearch/data
             - name: tmp
@@ -80,9 +108,11 @@ spec:
             - name: logs
               mountPath: /usr/share/elasticsearch/logs
       volumes:
-        - name: config
+        - name: config-source
           configMap:
             name: battlefield-elasticsearch-config
+        - name: config
+          emptyDir: {}
         - name: data
           emptyDir: {}
         - name: tmp

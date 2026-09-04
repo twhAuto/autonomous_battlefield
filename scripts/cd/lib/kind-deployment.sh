@@ -50,6 +50,10 @@ kind_deploy_validate_inputs() {
     echo "ROLLOUT_TIMEOUT must be a positive number of seconds such as 120s." >&2
     return 1
   fi
+  if [[ ! "${observability_rollout_timeout}" =~ ^[1-9][0-9]*s$ ]]; then
+    echo "OBSERVABILITY_ROLLOUT_TIMEOUT must be a positive number of seconds such as 900s." >&2
+    return 1
+  fi
 
   for image_name in "${backend_image}" "${frontend_image}"; do
     if [[ ! "${image_name}" =~ ^[a-z0-9][a-z0-9._:/-]*$ ]]; then
@@ -514,8 +518,34 @@ EOF
   application_update_started=0
 }
 
+kind_deploy_report_workload_failure() {
+  local resource="$1"
+  local target_namespace="$2"
+
+  echo "Diagnostics for ${target_namespace}/${resource}:" >&2
+  kind_deploy_kube get "${resource}" \
+    --namespace "${target_namespace}" -o wide >&2 || true
+  kind_deploy_kube describe "${resource}" \
+    --namespace "${target_namespace}" >&2 || true
+  kind_deploy_kube logs "${resource}" \
+    --namespace "${target_namespace}" \
+    --all-containers=true \
+    --prefix=true \
+    --tail=100 >&2 || true
+}
+
 kind_deploy_observability() {
-  local deployment
+  local deployment available
+  local deployments=(
+    battlefield-prometheus
+    battlefield-kube-state-metrics
+    battlefield-grafana
+    battlefield-otel-collector
+    battlefield-tempo
+    battlefield-elasticsearch
+    battlefield-kibana
+  )
+  local deployment_resources=()
 
   echo "Deploying local observability stack..."
   kind_deploy_kube delete job battlefield-kibana-setup \
@@ -523,21 +553,36 @@ kind_deploy_observability() {
     --ignore-not-found
   kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/observability"
   kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/logging-collector"
-  for deployment in \
-    battlefield-prometheus \
-    battlefield-kube-state-metrics \
-    battlefield-grafana \
-    battlefield-otel-collector \
-    battlefield-tempo \
-    battlefield-elasticsearch \
-    battlefield-kibana; do
-    kind_deploy_kube rollout status "deployment/${deployment}" \
-      --namespace "${namespace}" \
-      --timeout="${rollout_timeout}"
+  for deployment in "${deployments[@]}"; do
+    deployment_resources+=("deployment/${deployment}")
   done
-  kind_deploy_kube rollout status daemonset/battlefield-fluent-bit \
+  if ! kind_deploy_kube wait \
+    --for=condition=Available \
+    "${deployment_resources[@]}" \
+    --namespace "${namespace}" \
+    --timeout="${observability_rollout_timeout}"; then
+    for deployment in "${deployments[@]}"; do
+      available="$(kind_deploy_kube get "deployment/${deployment}" \
+        --namespace "${namespace}" \
+        -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' \
+        2>/dev/null || true)"
+      if [[ "${available}" != "True" ]]; then
+        kind_deploy_report_workload_failure "deployment/${deployment}" "${namespace}"
+      fi
+    done
+    echo "Recent ${namespace} events:" >&2
+    kind_deploy_kube get events \
+      --namespace "${namespace}" \
+      --sort-by=.lastTimestamp >&2 || true
+    return 1
+  fi
+  if ! kind_deploy_kube rollout status daemonset/battlefield-fluent-bit \
     --namespace "${logging_namespace}" \
-    --timeout="${rollout_timeout}"
+    --timeout="${rollout_timeout}"; then
+    kind_deploy_report_workload_failure \
+      daemonset/battlefield-fluent-bit "${logging_namespace}"
+    return 1
+  fi
 
   if ! kind_deploy_kube wait --for=condition=complete \
     job/battlefield-kibana-setup \

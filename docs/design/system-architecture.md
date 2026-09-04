@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft — describes the current working tree, including uncommitted changes |
-| Last reviewed | 2026-09-04 |
+| Last reviewed | 2026-09-05 |
 | Audience | Contributors reviewing or extending system behavior |
 | Scope | Runtime components, data flows, durability, security, and deployment |
 
@@ -415,6 +415,12 @@ Secret for the admission controller; neither changes the cryptographic trust
 root.
 
 W3C trace context is persisted on `battle_runs` and `battle_decisions`. API inbound spans flow through PostgreSQL; engine and agent workers extract that durable context and create consumer spans before simulation, MCP, and provider work. Outbound HTTP clients and selected database operations are instrumented. The local OpenTelemetry Collector exports to Tempo, which Grafana provisions as a data source. Span attributes deliberately exclude prompts, credentials, capabilities, full observations, and raw provider responses.
+
+The local Elasticsearch workload keeps its root filesystem read-only but uses
+a non-root init container to stage the image defaults and checked-in settings
+into a writable, pod-scoped configuration volume. Elasticsearch requires that
+narrow writable path to bootstrap its keystore; logs and configuration state
+remain disposable with the pod.
 
 The in-cluster agent is intended for API providers. `run-k8s-cli-agent.sh` bridges host subscription CLIs by validating the local binary and login, forwarding MCP to loopback, running a local agent, advertising availability to the API, and removing that availability on exit.
 
