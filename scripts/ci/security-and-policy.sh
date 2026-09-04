@@ -9,7 +9,7 @@ artifact_dir="${SECURITY_ARTIFACT_DIR:-${project_dir}/artifacts/security}"
 mkdir -p "${artifact_dir}"
 failure=0
 
-for command in docker git go kubectl npm; do
+for command in docker git go kubectl; do
   if ! command -v "${command}" >/dev/null 2>&1; then
     echo "Required security command not found: ${command}" >&2
     exit 1
@@ -24,13 +24,26 @@ fi
 echo "Auditing frontend runtime and CI dependencies..."
 npm_audit_report="${artifact_dir}/npm-audit.json"
 npm_audit_passed=0
+npm_audit_definitive=0
+
+run_npm_audit() {
+  local report="$1"
+  shift
+  docker run --rm \
+    --network bridge \
+    --volume "${project_dir}/frontend:/workspace:ro" \
+    --workdir /workspace \
+    "${NPM_AUDIT_IMAGE:?NPM_AUDIT_IMAGE must be configured}" \
+    npm audit --audit-level=high --json \
+      --fetch-retries=2 \
+      --fetch-retry-mintimeout=5000 \
+      --fetch-retry-maxtimeout=15000 \
+      --fetch-timeout=60000 "$@" >"${report}"
+}
+
 for attempt in 1 2; do
   : >"${npm_audit_report}"
-  if (cd "${project_dir}/frontend" && npm audit --audit-level=high --json \
-    --fetch-retries=2 \
-    --fetch-retry-mintimeout=5000 \
-    --fetch-retry-maxtimeout=15000 \
-    --fetch-timeout=60000 >"${npm_audit_report}"); then
+  if run_npm_audit "${npm_audit_report}"; then
     npm_audit_passed=1
     break
   fi
@@ -38,6 +51,7 @@ for attempt in 1 2; do
   # A completed audit with findings is authoritative and must fail immediately.
   # Retry only when npm could not obtain an audit report from the registry.
   if grep -Eq '"auditReportVersion"[[:space:]]*:|"vulnerabilities"[[:space:]]*:' "${npm_audit_report}"; then
+    npm_audit_definitive=1
     break
   fi
   if [[ "${attempt}" -lt 2 ]]; then
@@ -45,8 +59,20 @@ for attempt in 1 2; do
     sleep 5
   fi
 done
-if [[ "${npm_audit_passed}" != "1" ]]; then
+
+if [[ "${npm_audit_passed}" == "1" ]]; then
+  printf '{"mode":"full"}\n' >"${artifact_dir}/npm-audit-mode.json"
+elif [[ "${npm_audit_definitive}" == "1" ]]; then
   failure=1
+else
+  echo "Full npm audit endpoint unavailable; auditing production dependencies and requiring Trivy coverage for development dependencies." >&2
+  npm_production_audit_report="${artifact_dir}/npm-audit-production.json"
+  if run_npm_audit "${npm_production_audit_report}" --omit=dev; then
+    printf '{"mode":"production-plus-trivy-dev","reason":"full-npm-audit-endpoint-unavailable"}\n' \
+      >"${artifact_dir}/npm-audit-mode.json"
+  else
+    failure=1
+  fi
 fi
 
 echo "Scanning Git history for secrets with redacted findings..."
@@ -69,7 +95,7 @@ if ! docker run --rm \
   --workdir /project \
   "${TRIVY_IMAGE:?TRIVY_IMAGE must be exported by Jenkins}" \
   fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL \
-  --ignore-unfixed --skip-dirs artifacts --exit-code 1 \
+  --include-dev-deps --ignore-unfixed --skip-dirs artifacts --exit-code 1 \
   --format json --output /dev/stdout . \
   >"${artifact_dir}/trivy-filesystem.json"; then
   failure=1
