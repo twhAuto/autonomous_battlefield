@@ -51,6 +51,11 @@ attest() {
     echo "BuildKit provenance is missing for ${reference}." >&2
     return 1
   fi
+  if ! grep -Eq '"builder"[[:space:]]*:[[:space:]]*\{' "${provenance}"; then
+    echo "BuildKit provenance for ${reference} is not an SLSA v0.2 predicate." >&2
+    echo "Cosign's slsaprovenance attestation requires the top-level builder field." >&2
+    return 1
+  fi
 
   cosign_run attest --yes --key "/signing-key/$(basename -- "${cosign_key}")" \
     --type cyclonedx --predicate "/evidence/$(basename -- "${sbom}")" "${reference}"

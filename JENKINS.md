@@ -91,7 +91,8 @@ The agent needs Docker access to build images and run the pinned Trivy scanner.
 The publishing script creates or reuses a dedicated `docker-container` Buildx
 builder named `battlefield-jenkins`; this driver preserves BuildKit SBOM and
 provenance attestations when images are pushed even if the daemon uses the
-classic local image store.
+classic local image store. Provenance is explicitly emitted as SLSA v0.2 so
+the extracted predicate is compatible with Cosign's `slsaprovenance` schema.
 Docker daemon access is effectively privileged host access. Do not run untrusted
 fork pull requests on this agent, and do not use the Jenkins controller itself
 as the long-term build agent.

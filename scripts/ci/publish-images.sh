@@ -50,7 +50,7 @@ publish() {
     --platform "${platform}" \
     --push \
     --sbom=true \
-    --provenance=mode=max \
+    --attest type=provenance,mode=max,version=v0.2 \
     --metadata-file "${metadata}" \
     --label "org.opencontainers.image.source=${source_url}" \
     --label "org.opencontainers.image.revision=${image_tag}" \
