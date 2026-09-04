@@ -22,25 +22,28 @@ spec:
           required: true
           mutateDigest: true
           verifyDigest: true
+          imageRegistryCredentials:
+            secrets:
+              - battlefield-ghcr
           attestors:
             - entries:
                 - keys:
                     publicKeys: |-
                       __COSIGN_PUBLIC_KEY__
           attestations:
-            - predicateType: https://cyclonedx.org/bom
+            - type: https://cyclonedx.org/bom
               attestors:
                 - entries:
                     - keys:
                         publicKeys: |-
                           __COSIGN_PUBLIC_KEY__
-            - predicateType: https://slsa.dev/provenance/v0.2
+            - type: https://slsa.dev/provenance/v0.2
               attestors:
                 - entries:
                     - keys:
                         publicKeys: |-
                           __COSIGN_PUBLIC_KEY__
-            - predicateType: https://autonomous-battlefield.dev/attestations/ai-manifest/v1
+            - type: https://autonomous-battlefield.dev/attestations/ai-manifest/v1
               attestors:
                 - entries:
                     - keys:

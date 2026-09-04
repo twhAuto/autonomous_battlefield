@@ -7,6 +7,7 @@ project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${project_dir}/scripts/ci/tool-versions.env"
 kube_context="${KUBERNETES_CONTEXT:-kind-${KIND_CLUSTER_NAME:-battlefield}}"
 public_key="${COSIGN_PUBLIC_KEY_FILE:?COSIGN_PUBLIC_KEY_FILE is required}"
+docker_config_file="${DOCKER_CONFIG:-${HOME}/.docker}/config.json"
 template="${project_dir}/deploy/overlays/jenkins/kyverno/verify-images.yaml.template"
 runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-kyverno.XXXXXX")"
 policy="${runtime_dir}/verify-images.yaml"
@@ -14,6 +15,10 @@ trap 'rm -rf -- "${runtime_dir}"' EXIT INT TERM
 
 if [[ ! -s "${public_key}" ]]; then
   echo "Cosign public key is missing or empty." >&2
+  exit 1
+fi
+if [[ ! -s "${docker_config_file}" ]]; then
+  echo "An authenticated Docker config is required for Kyverno registry access." >&2
   exit 1
 fi
 
@@ -41,6 +46,16 @@ if ! kubectl --context "${kube_context}" wait \
     --tail=100 >&2 || true
   exit 1
 fi
+
+kubectl --context "${kube_context}" create secret generic battlefield-ghcr \
+  --namespace kyverno \
+  --type=kubernetes.io/dockerconfigjson \
+  --from-file=.dockerconfigjson="${docker_config_file}" \
+  --dry-run=client -o yaml | \
+  kubectl --context "${kube_context}" apply \
+    --server-side \
+    --field-manager=battlefield-jenkins \
+    -f -
 
 awk -v key_file="${public_key}" '
   /__COSIGN_PUBLIC_KEY__/ {
