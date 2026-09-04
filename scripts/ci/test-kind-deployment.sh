@@ -17,6 +17,11 @@ if ! grep -Fq -- '--for=condition=Available' "${project_dir}/scripts/cd/apply-ky
   echo "The Kyverno installer must wait for controller availability." >&2
   exit 1
 fi
+if ! grep -Fq 'imageRegistryCredentials:' \
+  "${project_dir}/deploy/overlays/jenkins/kyverno/verify-images.yaml.template"; then
+  echo "The Kyverno policy must declare credentials for private GHCR verification." >&2
+  exit 1
+fi
 
 cleanup() {
   chmod -R u+w "${test_dir}" 2>/dev/null || true
