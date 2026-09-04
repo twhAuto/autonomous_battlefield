@@ -7,6 +7,7 @@ source "${project_dir}/scripts/ci/tool-versions.env"
 images_file="${BUILD_IMAGES_FILE:-${project_dir}/artifacts/build/images.env}"
 public_key="${COSIGN_PUBLIC_KEY_FILE:?COSIGN_PUBLIC_KEY_FILE is required}"
 docker_config_dir="${DOCKER_CONFIG:-${HOME}/.docker}"
+container_user="$(id -u):$(id -g)"
 report_dir="${project_dir}/artifacts/aws-promotion"
 mkdir -p "${report_dir}"
 
@@ -29,6 +30,16 @@ container_run() {
   docker run --rm -v "${docker_config_dir}:/root/.docker:ro" "$image" "$@"
 }
 
+cosign_run() {
+  docker run --rm \
+    --user "${container_user}" \
+    --env HOME=/tmp \
+    --env DOCKER_CONFIG=/docker-config \
+    --volume "${docker_config_dir}:/docker-config:ro" \
+    --volume "$(dirname -- "${public_key}"):/verification-key:ro" \
+    "${COSIGN_IMAGE}" "$@"
+}
+
 promote() {
   local component="$1"
   local source_ref="$2"
@@ -47,15 +58,11 @@ promote() {
     return 1
   fi
 
-  docker run --rm -v "${docker_config_dir}:/root/.docker:ro" \
-    -v "$(dirname -- "${public_key}"):/verification-key:ro" \
-    "${COSIGN_IMAGE}" verify --key "/verification-key/$(basename -- "${public_key}")" \
+  cosign_run verify --key "/verification-key/$(basename -- "${public_key}")" \
     "${target_ref}" >"${report_dir}/${component}-signature.json"
   for type in cyclonedx slsaprovenance https://autonomous-battlefield.dev/attestations/ai-manifest/v1; do
     safe_type="$(printf '%s' "${type}" | tr '/:' '--')"
-    docker run --rm -v "${docker_config_dir}:/root/.docker:ro" \
-      -v "$(dirname -- "${public_key}"):/verification-key:ro" \
-      "${COSIGN_IMAGE}" verify-attestation --key "/verification-key/$(basename -- "${public_key}")" \
+    cosign_run verify-attestation --key "/verification-key/$(basename -- "${public_key}")" \
       --type "${type}" "${target_ref}" >"${report_dir}/${component}-${safe_type}.json"
   done
   docker run --rm -v "${docker_config_dir}:/root/.docker:ro" \
