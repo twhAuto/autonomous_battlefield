@@ -51,6 +51,23 @@ if grep -Fq 'subPath: elasticsearch.yml' "${elasticsearch_deployment}"; then
   echo "Elasticsearch configuration must not leave its keystore directory read-only." >&2
   exit 1
 fi
+prometheus_config="${project_dir}/deploy/overlays/local/observability/prometheus/prometheus.yml"
+prometheus_rbac="${project_dir}/deploy/overlays/local/observability/prometheus/rbac.yaml"
+if ! grep -Fq 'job_name: kubernetes-cadvisor' "${prometheus_config}" \
+  || ! grep -Fq 'metrics_path: /metrics/cadvisor' "${prometheus_config}" \
+  || ! grep -Fq 'role: node' "${prometheus_config}"; then
+  echo "Prometheus must discover Kubernetes nodes and scrape kubelet cAdvisor metrics." >&2
+  exit 1
+fi
+if ! grep -Fq 'nodes/metrics' "${prometheus_rbac}"; then
+  echo "Prometheus must have narrowly scoped kubelet metrics permission." >&2
+  exit 1
+fi
+if grep -Fq 'nodes/proxy' "${prometheus_rbac}" \
+  || grep -Fq '/api/v1/nodes/' "${prometheus_config}"; then
+  echo "Prometheus must scrape the kubelet directly instead of receiving broad node proxy access." >&2
+  exit 1
+fi
 
 cleanup() {
   chmod -R u+w "${test_dir}" 2>/dev/null || true

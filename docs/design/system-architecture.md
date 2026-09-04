@@ -433,6 +433,9 @@ The in-cluster agent is intended for API providers. `run-k8s-cli-agent.sh` bridg
 - Full combat detail lives in `battle_events` rather than normal process logs.
 - API and engine expose lifecycle checks; agent and MCP expose `/healthz`.
 - Prometheus, Grafana, Elasticsearch, Kibana, and Fluent Bit are provided for the local Kubernetes environment.
+- Local Prometheus discovers nodes and scrapes each kubelet's cAdvisor endpoint
+  using service-account authentication and the narrow `nodes/metrics`
+  permission; it does not receive general kubelet proxy access.
 
 ## 13. Decisions and trade-offs
 
