@@ -10,6 +10,7 @@ artifact_dir="${project_dir}/artifacts/supply-chain"
 cosign_key="${COSIGN_KEY_FILE:?COSIGN_KEY_FILE must point to the Jenkins signing-key credential}"
 cosign_public_key="${COSIGN_PUBLIC_KEY_FILE:?COSIGN_PUBLIC_KEY_FILE must point to the reviewed public key}"
 docker_config_dir="${DOCKER_CONFIG:-${HOME}/.docker}"
+container_user="$(id -u):$(id -g)"
 mkdir -p "${artifact_dir}"
 
 if [[ ! -f "${images_file}" || ! -f "${cosign_key}" || ! -f "${cosign_public_key}" ]]; then
@@ -22,8 +23,11 @@ source "${images_file}"
 
 cosign_run() {
   docker run --rm \
+    --user "${container_user}" \
+    --env HOME=/tmp \
+    --env DOCKER_CONFIG=/docker-config \
     --env COSIGN_PASSWORD \
-    --volume "${docker_config_dir}:/root/.docker:ro" \
+    --volume "${docker_config_dir}:/docker-config:ro" \
     --volume "$(dirname -- "${cosign_key}"):/signing-key:ro" \
     --volume "$(dirname -- "${cosign_public_key}"):/verification-key:ro" \
     --volume "${artifact_dir}:/evidence" \
