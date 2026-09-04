@@ -18,6 +18,13 @@ Merge into main
                smoke test, and rollback on failure
 ```
 
+The Declarative Pipeline groups these paths under `PR verification` and
+`Main delivery`. Jenkins still displays the inactive parent stage as skipped so
+the branch decision remains auditable, but it does not execute that parent's
+nested stages. Within an active `Main delivery` run, image and deployment stages
+can still appear as skipped when the changed-component classifier determines
+that they are unnecessary; those skips are intentional and remain visible.
+
 Direct pushes to non-`main` branches do not run CI or CD stages. This keeps
 `dev` available as a local work branch: use `run-dev.sh` while developing, then
 open a pull request when the change is ready for Jenkins CI. Only `main`
