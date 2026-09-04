@@ -108,6 +108,12 @@ Security scanners, Kubeconform, Conftest, Syft, Cosign, ORAS, k6, and ZAP run
 from versions pinned in `scripts/ci/tool-versions.env`. Main builds require
 private GHCR packages named `autonomous-battlefield-backend` and
 `autonomous-battlefield-frontend` with inherited repository access.
+Cosign publishes each signature and signed attestation in its v3 OCI 1.1
+referrer format and as a legacy digest-tag compatibility mirror. The OCI
+referrers remain the portable promotion evidence; the mirror exists because
+the pinned Kyverno 1.15 admission verifier discovers `.sig` and `.att` tags,
+not Cosign v3's referrer-only evidence. Both forms are signed with the same
+Jenkins-managed key and cover the same immutable subject digest.
 Each authenticated registry stage uses a mode-700, per-stage `DOCKER_CONFIG`
 directory and deletes it on exit. Docker may still warn that the temporary
 configuration is not encrypted, but GHCR credentials are not stored in the

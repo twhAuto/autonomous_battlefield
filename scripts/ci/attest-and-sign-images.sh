@@ -34,6 +34,24 @@ cosign_run() {
     "${COSIGN_IMAGE}" "$@"
 }
 
+publish_cosign_evidence() {
+  local reference="$1"
+  local sbom="$2"
+  local provenance="$3"
+  shift 3
+  local format_args=("$@")
+
+  cosign_run attest "${format_args[@]}" --yes --key "/signing-key/$(basename -- "${cosign_key}")" \
+    --type cyclonedx --predicate "/evidence/$(basename -- "${sbom}")" "${reference}"
+  cosign_run attest "${format_args[@]}" --yes --key "/signing-key/$(basename -- "${cosign_key}")" \
+    --type slsaprovenance --predicate "/evidence/$(basename -- "${provenance}")" "${reference}"
+  cosign_run attest "${format_args[@]}" --yes --key "/signing-key/$(basename -- "${cosign_key}")" \
+    --type https://autonomous-battlefield.dev/attestations/ai-manifest/v1 \
+    --predicate /evidence/ai-manifest.json "${reference}"
+  cosign_run sign "${format_args[@]}" --yes --key "/signing-key/$(basename -- "${cosign_key}")" \
+    --annotations "revision=${IMAGE_TAG:?IMAGE_TAG is required}" "${reference}"
+}
+
 attest() {
   local component="$1"
   local reference="$2"
@@ -57,15 +75,12 @@ attest() {
     return 1
   fi
 
-  cosign_run attest --yes --key "/signing-key/$(basename -- "${cosign_key}")" \
-    --type cyclonedx --predicate "/evidence/$(basename -- "${sbom}")" "${reference}"
-  cosign_run attest --yes --key "/signing-key/$(basename -- "${cosign_key}")" \
-    --type slsaprovenance --predicate "/evidence/$(basename -- "${provenance}")" "${reference}"
-  cosign_run attest --yes --key "/signing-key/$(basename -- "${cosign_key}")" \
-    --type https://autonomous-battlefield.dev/attestations/ai-manifest/v1 \
-    --predicate /evidence/ai-manifest.json "${reference}"
-  cosign_run sign --yes --key "/signing-key/$(basename -- "${cosign_key}")" \
-    --annotations "revision=${IMAGE_TAG:?IMAGE_TAG is required}" "${reference}"
+  # Cosign v3 evidence is the portable source of truth copied to ECR as OCI 1.1
+  # referrers. Kyverno 1.15 uses Cosign's legacy digest-tag discovery, so publish
+  # a second compatibility set covering the same digest and predicates.
+  publish_cosign_evidence "${reference}" "${sbom}" "${provenance}"
+  publish_cosign_evidence "${reference}" "${sbom}" "${provenance}" \
+    --new-bundle-format=false --use-signing-config=false
 
   cosign_run verify --key "/verification-key/$(basename -- "${cosign_public_key}")" \
     --annotations "revision=${IMAGE_TAG}" "${reference}" >"${artifact_dir}/${component}-signature-verification.json"

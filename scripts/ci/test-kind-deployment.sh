@@ -22,6 +22,16 @@ if ! grep -Fq 'imageRegistryCredentials:' \
   echo "The Kyverno policy must declare credentials for private GHCR verification." >&2
   exit 1
 fi
+if ! grep -Fq -- '--new-bundle-format=false' \
+  "${project_dir}/scripts/ci/attest-and-sign-images.sh"; then
+  echo "Cosign evidence must include the legacy discovery mirror required by Kyverno." >&2
+  exit 1
+fi
+if ! grep -Fq -- '--use-signing-config=false' \
+  "${project_dir}/scripts/ci/attest-and-sign-images.sh"; then
+  echo "Legacy Cosign publication must disable its new-format signing config." >&2
+  exit 1
+fi
 
 cleanup() {
   chmod -R u+w "${test_dir}" 2>/dev/null || true

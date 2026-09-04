@@ -5,6 +5,10 @@
 The deployed unit is a full `repository@sha256:...` reference. Jenkins archives reports, SBOM copies, provenance summaries, AI manifests, deployment digests, and test evidence; it does not archive image tarballs. GHCR is the source of truth. Release subjects are permanent, while non-release main subjects remain for at least 90 days or the last 20 successful builds, whichever is greater.
 
 Retention automation must begin in report-only mode. Before deletion it must subtract every digest referenced by a live environment, the recorded rollback pair, a release, an active incident, or a legal hold. Package deletion is not enabled by this repository.
+Cosign v3 OCI referrers and the Kyverno-compatible legacy `.sig` and `.att`
+digest tags are evidence belonging to their subject; retention must preserve or
+remove them as one unit and must never orphan a deployable subject from either
+verification layout.
 
 ## Signing-key rotation
 
