@@ -23,6 +23,8 @@ fi
 
 echo "Auditing frontend runtime and CI dependencies..."
 npm_audit_report="${artifact_dir}/npm-audit.json"
+npm_audit_log_dir="${artifact_dir}/npm-logs"
+mkdir -p "${npm_audit_log_dir}"
 npm_audit_passed=0
 npm_audit_definitive=0
 
@@ -32,7 +34,9 @@ run_npm_audit() {
   docker run --rm \
     --network bridge \
     --volume "${project_dir}/frontend:/workspace:ro" \
+    --volume "${npm_audit_log_dir}:/npm-logs" \
     --workdir /workspace \
+    --env NPM_CONFIG_LOGS_DIR=/npm-logs \
     "${NPM_AUDIT_IMAGE:?NPM_AUDIT_IMAGE must be configured}" \
     npm audit --audit-level=high --json \
       --fetch-retries=2 \

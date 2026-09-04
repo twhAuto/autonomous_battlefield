@@ -106,7 +106,10 @@ Node container. If the npm advisory endpoint remains unavailable after its
 bounded retry, the stage requires both a passing production-only npm audit and
 a passing Trivy scan with development dependencies included. A definitive npm
 vulnerability report is never replaced by the fallback. The archived
-`npm-audit-mode.json` records which path supplied the build evidence.
+`npm-audit-mode.json` records which path supplied the build evidence. npm debug
+logs from the disposable audit containers are archived under
+`artifacts/security/npm-logs/`; paths printed by npm refer to the container and
+are not paths on the Jenkins agent.
 
 ## Delivery-assurance credentials
 
