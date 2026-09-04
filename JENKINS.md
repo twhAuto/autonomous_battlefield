@@ -101,6 +101,12 @@ Security scanners, Kubeconform, Conftest, Syft, Cosign, ORAS, k6, and ZAP run
 from versions pinned in `scripts/ci/tool-versions.env`. Main builds require
 private GHCR packages named `autonomous-battlefield-backend` and
 `autonomous-battlefield-frontend` with inherited repository access.
+Each authenticated registry stage uses a mode-700, per-stage `DOCKER_CONFIG`
+directory and deletes it on exit. Docker may still warn that the temporary
+configuration is not encrypted, but GHCR credentials are not stored in the
+agent user's persistent `~/.docker/config.json`. `BUILDX_CONFIG` remains on the
+agent so the named Buildx builder can be reused without persisting registry
+authentication.
 
 The source-security stage first requests a full npm audit from a digest-pinned
 Node container. If the npm advisory endpoint remains unavailable after its

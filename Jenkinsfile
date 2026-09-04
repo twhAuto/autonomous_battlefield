@@ -243,7 +243,15 @@ pipeline {
                             )
                         ]) {
                             sh '''
-                                trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+                                docker_config="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-docker-config.XXXXXX")"
+                                chmod 700 "${docker_config}"
+                                cleanup_docker_config() {
+                                    docker logout ghcr.io >/dev/null 2>&1 || true
+                                    rm -rf -- "${docker_config}"
+                                }
+                                trap cleanup_docker_config EXIT
+                                export BUILDX_CONFIG="${BUILDX_CONFIG:-${HOME}/.docker/buildx}"
+                                export DOCKER_CONFIG="${docker_config}"
                                 printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io --username "${GHCR_USER}" --password-stdin
                                 ./scripts/ci/publish-images.sh
                             '''
@@ -322,7 +330,15 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+                        docker_config="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-docker-config.XXXXXX")"
+                        chmod 700 "${docker_config}"
+                        cleanup_docker_config() {
+                            docker logout ghcr.io >/dev/null 2>&1 || true
+                            rm -rf -- "${docker_config}"
+                        }
+                        trap cleanup_docker_config EXIT
+                        export BUILDX_CONFIG="${BUILDX_CONFIG:-${HOME}/.docker/buildx}"
+                        export DOCKER_CONFIG="${docker_config}"
                         printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io --username "${GHCR_USER}" --password-stdin
                         ./scripts/ci/attest-and-sign-images.sh
                     '''
@@ -387,6 +403,16 @@ pipeline {
                     )
                 ]) {
                     sh '''
+                        docker_config="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-docker-config.XXXXXX")"
+                        chmod 700 "${docker_config}"
+                        cleanup_docker_config() {
+                            docker logout ghcr.io >/dev/null 2>&1 || true
+                            rm -rf -- "${docker_config}"
+                        }
+                        trap cleanup_docker_config EXIT
+                        export BUILDX_CONFIG="${BUILDX_CONFIG:-${HOME}/.docker/buildx}"
+                        export DOCKER_CONFIG="${docker_config}"
+                        printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io --username "${GHCR_USER}" --password-stdin
                         if [ -f artifacts/build/images.env ]; then
                             set -a
                             . artifacts/build/images.env
