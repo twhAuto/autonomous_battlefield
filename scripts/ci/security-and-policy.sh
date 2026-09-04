@@ -22,7 +22,30 @@ if ! (cd "${project_dir}/backend" && go run "golang.org/x/vuln/cmd/govulncheck@$
 fi
 
 echo "Auditing frontend runtime and CI dependencies..."
-if ! (cd "${project_dir}/frontend" && npm audit --audit-level=high --json >"${artifact_dir}/npm-audit.json"); then
+npm_audit_report="${artifact_dir}/npm-audit.json"
+npm_audit_passed=0
+for attempt in 1 2; do
+  : >"${npm_audit_report}"
+  if (cd "${project_dir}/frontend" && npm audit --audit-level=high --json \
+    --fetch-retries=2 \
+    --fetch-retry-mintimeout=5000 \
+    --fetch-retry-maxtimeout=15000 \
+    --fetch-timeout=60000 >"${npm_audit_report}"); then
+    npm_audit_passed=1
+    break
+  fi
+
+  # A completed audit with findings is authoritative and must fail immediately.
+  # Retry only when npm could not obtain an audit report from the registry.
+  if grep -Eq '"auditReportVersion"[[:space:]]*:|"vulnerabilities"[[:space:]]*:' "${npm_audit_report}"; then
+    break
+  fi
+  if [[ "${attempt}" -lt 2 ]]; then
+    echo "npm audit endpoint unavailable; retrying once..." >&2
+    sleep 5
+  fi
+done
+if [[ "${npm_audit_passed}" != "1" ]]; then
   failure=1
 fi
 
