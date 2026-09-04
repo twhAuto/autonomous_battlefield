@@ -103,11 +103,11 @@ private GHCR packages named `autonomous-battlefield-backend` and
 
 The source-security stage first requests a full npm audit from a digest-pinned
 Node container. If the npm advisory endpoint remains unavailable after its
-bounded retry, the stage requires both a passing production-only npm audit and
-a passing Trivy scan with development dependencies included. A definitive npm
-vulnerability report is never replaced by the fallback. The archived
-`npm-audit-mode.json` records which path supplied the build evidence. npm debug
-logs from the disposable audit containers are archived under
+bounded retry, the stage requires a passing Trivy lockfile scan covering all
+frontend dependencies, including development and unfixed vulnerabilities. A
+definitive npm vulnerability report is never replaced by the fallback. The
+archived `npm-audit-mode.json` records which path supplied the build evidence.
+npm debug logs from the disposable audit containers are archived under
 `artifacts/security/npm-logs/`; paths printed by npm refer to the container and
 are not paths on the Jenkins agent.
 
