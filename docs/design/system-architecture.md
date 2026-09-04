@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft — describes the current working tree, including uncommitted changes |
-| Last reviewed | 2026-09-02 |
+| Last reviewed | 2026-09-04 |
 | Audience | Contributors reviewing or extending system behavior |
 | Scope | Runtime components, data flows, durability, security, and deployment |
 
@@ -403,6 +403,16 @@ The API catalog advertises profiles users may select. In cluster mode, an operat
 ### Kubernetes
 
 Kustomize deploys separate API, engine, agent, MCP, frontend, and migration workloads. The API optionally imports `battlefield-auth`, the API and agent read profile availability from `battlefield-ai`, MCP receives a distinct `MCP_DATABASE_URL`, and the processes mount a common non-secret ConfigMap. Post-deployment verification uses the optional administrator Secret to establish a temporary authenticated session before probing protected application routes; neither credentials nor the session cookie are retained after the smoke test.
+
+Registry-backed Jenkins deployments use immutable GHCR digest references. Before
+admission, Kyverno validates a Cosign signature plus CycloneDX, SLSA v0.2, and
+AI-manifest attestations with the reviewed public key. Cosign v3 OCI 1.1
+referrers remain the portable evidence copied during registry promotion. The
+CI publisher also writes legacy digest-tag mirrors of the same signed evidence
+because the pinned Kyverno 1.15 verifier discovers that layout. Registry access
+uses short-lived Docker configuration in Jenkins and a namespace-local pull
+Secret for the admission controller; neither changes the cryptographic trust
+root.
 
 W3C trace context is persisted on `battle_runs` and `battle_decisions`. API inbound spans flow through PostgreSQL; engine and agent workers extract that durable context and create consumer spans before simulation, MCP, and provider work. Outbound HTTP clients and selected database operations are instrumented. The local OpenTelemetry Collector exports to Tempo, which Grafana provisions as a data source. Span attributes deliberately exclude prompts, credentials, capabilities, full observations, and raw provider responses.
 
