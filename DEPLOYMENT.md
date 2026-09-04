@@ -379,9 +379,13 @@ API routes:
 ./scripts/cd/deploy-kind.sh
 ```
 
-The default rollout timeout is five minutes because the first local deployment
-must pull the comparatively large Elastic images. Override it with a positive
-seconds value such as `ROLLOUT_TIMEOUT=600s` on a slower connection.
+Application rollouts default to five minutes. The observability stack has a
+separate 15-minute budget because a new single-node Kind cluster may serialize
+the Prometheus, Grafana, Elastic, OpenTelemetry, and Tempo image pulls. Override
+these with positive seconds values such as `ROLLOUT_TIMEOUT=600s` and
+`OBSERVABILITY_ROLLOUT_TIMEOUT=1200s` on a slower connection. Observability
+timeout output includes the unavailable workload descriptions, container logs,
+and recent namespace events.
 
 Pass a previous full SHA to deploy a locally built revision explicitly:
 
@@ -544,7 +548,9 @@ Kubernetes dashboards, and a centralized logging path from Fluent Bit through
 Elasticsearch to Kibana. The deployment script waits for every workload and
 provisions the Kibana data view. The smoke test verifies application, workload,
 and container resource metrics, both Grafana dashboards, Kibana, and indexed
-logs.
+logs. Elasticsearch retains a read-only container root while a non-root init
+container stages its default files and checked-in settings into a writable,
+disposable configuration volume required for keystore creation.
 
 ```bash
 kubectl rollout status deployment/battlefield-prometheus \

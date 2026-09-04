@@ -549,6 +549,14 @@ After that pull request is merged, the `main` pipeline performs:
    cAdvisor target discovery, both Grafana dashboards, the Kibana data view,
    and Elasticsearch log ingestion.
 
+The deployment keeps the normal application rollout budget at five minutes but
+allows 15 minutes for the observability group as a whole. A new single-node
+Kind cluster may queue the large Elastic, Grafana, Prometheus, OpenTelemetry,
+and Tempo pulls; the group deadline prevents the first named Deployment from
+failing while its image is still waiting behind those pulls. On failure,
+Jenkins prints descriptions and logs for every unavailable observability
+Deployment plus recent namespace events.
+
 `scripts/cd/deploy-kind.sh` can reapply a temporary Kustomize overlay containing
 the previous images if an application apply or rollout fails. Before deploying,
 Jenkins records the independently deployed backend and frontend SHAs. If an

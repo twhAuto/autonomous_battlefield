@@ -32,6 +32,25 @@ if ! grep -Fq -- '--use-signing-config=false' \
   echo "Legacy Cosign publication must disable its new-format signing config." >&2
   exit 1
 fi
+if ! grep -Fq 'OBSERVABILITY_ROLLOUT_TIMEOUT:-900s' \
+  "${project_dir}/scripts/cd/deploy-kind.sh"; then
+  echo "Cold observability deployment must have a dedicated rollout budget." >&2
+  exit 1
+fi
+if ! grep -Fq 'kind_deploy_report_workload_failure' \
+  "${project_dir}/scripts/cd/lib/kind-deployment.sh"; then
+  echo "Observability rollout failures must emit workload diagnostics." >&2
+  exit 1
+fi
+elasticsearch_deployment="${project_dir}/deploy/overlays/local/observability/elasticsearch/deployment.yaml"
+if ! grep -Fq 'name: prepare-elasticsearch-config' "${elasticsearch_deployment}"; then
+  echo "Elasticsearch must prepare a writable configuration directory." >&2
+  exit 1
+fi
+if grep -Fq 'subPath: elasticsearch.yml' "${elasticsearch_deployment}"; then
+  echo "Elasticsearch configuration must not leave its keystore directory read-only." >&2
+  exit 1
+fi
 
 cleanup() {
   chmod -R u+w "${test_dir}" 2>/dev/null || true
