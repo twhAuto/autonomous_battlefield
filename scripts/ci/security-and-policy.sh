@@ -27,6 +27,7 @@ npm_audit_log_dir="${artifact_dir}/npm-logs"
 mkdir -p "${npm_audit_log_dir}"
 npm_audit_passed=0
 npm_audit_definitive=0
+trivy_ignore_unfixed=(--ignore-unfixed)
 
 run_npm_audit() {
   local report="$1"
@@ -69,14 +70,10 @@ if [[ "${npm_audit_passed}" == "1" ]]; then
 elif [[ "${npm_audit_definitive}" == "1" ]]; then
   failure=1
 else
-  echo "Full npm audit endpoint unavailable; auditing production dependencies and requiring Trivy coverage for development dependencies." >&2
-  npm_production_audit_report="${artifact_dir}/npm-audit-production.json"
-  if run_npm_audit "${npm_production_audit_report}" --omit=dev; then
-    printf '{"mode":"production-plus-trivy-dev","reason":"full-npm-audit-endpoint-unavailable"}\n' \
-      >"${artifact_dir}/npm-audit-mode.json"
-  else
-    failure=1
-  fi
+  echo "Full npm audit endpoint unavailable; requiring Trivy coverage for all frontend dependencies, including unfixed vulnerabilities." >&2
+  printf '{"mode":"trivy-all-dependencies","reason":"full-npm-audit-endpoint-unavailable"}\n' \
+    >"${artifact_dir}/npm-audit-mode.json"
+  trivy_ignore_unfixed=()
 fi
 
 echo "Scanning Git history for secrets with redacted findings..."
@@ -99,7 +96,7 @@ if ! docker run --rm \
   --workdir /project \
   "${TRIVY_IMAGE:?TRIVY_IMAGE must be exported by Jenkins}" \
   fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL \
-  --include-dev-deps --ignore-unfixed --skip-dirs artifacts --exit-code 1 \
+  --include-dev-deps "${trivy_ignore_unfixed[@]}" --skip-dirs artifacts --exit-code 1 \
   --format json --output /dev/stdout . \
   >"${artifact_dir}/trivy-filesystem.json"; then
   failure=1
