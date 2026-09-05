@@ -17,7 +17,6 @@ const (
 	ContextSchema      = "battlefield.decision-context.v1"
 	PlanSchema         = "battlefield.strategy-plan.v1"
 	ToolSchema         = "battlefield.mcp-tools.v2"
-	PromptVersion      = "battlefield-agent-v2"
 )
 
 type DecisionSession struct {
@@ -94,6 +93,7 @@ type DecisionContext struct {
 	View               game.View               `json:"view"`
 	Economy            EconomyContext          `json:"economy"`
 	Legal              LegalChoices            `json:"legal"`
+	Memory             []FactionMemoryEntry    `json:"memory,omitempty"`
 	ActivePlan         controller.PlanProposal `json:"activePlan"`
 }
 

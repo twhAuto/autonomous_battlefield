@@ -631,3 +631,17 @@ battle worker -> validated plans -> deterministic battle -> PostgreSQL events/re
 ## Project direction
 
 The intended architecture uses an authoritative, deterministic engine: clients propose typed commands and the engine validates and applies them. This keeps game rules out of HTTP handlers and prevents clients or AI agents from writing arbitrary world state.
+
+### Shared AI prompts, memory, and comparisons
+
+Workers share Git-versioned decision instructions with a complete prompt digest.
+Each faction receives up to three historical decisions (8 KiB maximum), scoped
+to its current battle attempt. Run the free API/MCP comparison with:
+
+```bash
+cd backend
+go run ./cmd/aieval -mode compare -cases evals/comparison-cases -comparison-config evals/comparison.yaml -corpus-version 2026-09-06.comparison-v1 -json ../artifacts/ai-eval/comparison.json
+```
+
+See [AI comparisons](docs/operations/ai-comparisons.md) for live API/Codex/Antigravity
+variants, memory ablations, limits, and report interpretation.

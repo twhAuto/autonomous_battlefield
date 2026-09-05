@@ -34,8 +34,10 @@ func (r *Postgres) CreateOrReuseDecision(ctx context.Context, params ai.CreateDe
 		FROM battle_decisions
 		WHERE battle_id = $1 AND faction_id = $2 AND target_tick = $3 AND observation_hash = $4
 		  AND status IN ('accepted', 'fallback') AND resolved_plan IS NOT NULL
+          AND prompt_version=$5 AND tool_schema_version=$6 AND profile_id=$7
+          AND provider=$8 AND runtime=$9 AND model_identifier=$10
 		ORDER BY attempt DESC LIMIT 1
-	`, params.BattleID, params.FactionID, params.TargetTick, params.ObservationHash).Scan(&previousPlan, &previousSource)
+	`, params.BattleID, params.FactionID, params.TargetTick, params.ObservationHash, params.PromptVersion, params.ToolSchemaVersion, params.ProfileID, params.Provider, params.Runtime, params.ModelIdentifier).Scan(&previousPlan, &previousSource)
 	if previousErr != nil && !errors.Is(previousErr, pgx.ErrNoRows) {
 		return ai.DecisionRecord{}, fmt.Errorf("find reusable decision: %w", previousErr)
 	}
@@ -235,4 +237,29 @@ func scanDecision(row decisionRow) (ai.DecisionRecord, error) {
 		_ = json.Unmarshal(metadata, &record.ProviderMetadata)
 	}
 	return record, nil
+}
+
+// ListFactionMemory filters before retrieval; another faction or attempt must
+// never enter a model context, even if a downstream filter would discard it.
+func (r *Postgres) ListFactionMemory(ctx context.Context, battleID string, attempt int, factionID string, beforeTick uint64) ([]ai.FactionMemoryEntry, error) {
+	rows, err := r.db.Query(ctx, `SELECT `+decisionColumns+` FROM battle_decisions
+        WHERE battle_id=$1 AND attempt=$2 AND faction_id=$3 AND target_tick<$4
+          AND status IN ('accepted','fallback') AND resolved_plan IS NOT NULL
+        ORDER BY target_tick DESC LIMIT $5`, battleID, attempt, factionID, beforeTick, ai.FactionMemoryLimit)
+	if err != nil {
+		return nil, fmt.Errorf("list faction memory: %w", err)
+	}
+	defer rows.Close()
+	var records []ai.DecisionRecord
+	for rows.Next() {
+		record, err := scanDecision(rows)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ai.BuildFactionMemory(records, battleID, attempt, factionID, beforeTick), nil
 }

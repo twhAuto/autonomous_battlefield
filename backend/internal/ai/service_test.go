@@ -143,9 +143,15 @@ func (r *boundedCLIRepository) FinishDecisionFailure(_ context.Context, _ string
 	r.failed = category
 	return nil
 }
-func TestCLIRejectsPlaceholderAndStopsGuessing(t *testing.T) {
+func TestModelRuntimesRejectPlaceholderAndStopGuessing(t *testing.T) {
+	for _, runtime := range []string{"cli", "api"} {
+		t.Run(runtime, func(t *testing.T) { testModelRejectsPlaceholderAndStopsGuessing(t, runtime) })
+	}
+}
+
+func testModelRejectsPlaceholderAndStopsGuessing(t *testing.T, runtime string) {
 	record := validRecord()
-	record.Runtime = "cli"
+	record.Runtime = runtime
 	record.Status = "running"
 	submission := PlanSubmission{RequestID: "request", IdempotencyKey: "once", ExpectedVersion: record.Version, TargetTick: record.TargetTick, Plan: controller.PlanProposal{Name: "Strategy", Rationale: "Test target tick."}}
 	issues := ValidateSubmission(record, submission)
@@ -168,4 +174,8 @@ func TestCLIRejectsPlaceholderAndStopsGuessing(t *testing.T) {
 	if err != nil || result.Errors[0].Code != "terminal" || repository.validations != 1 {
 		t.Fatal("terminal decision revalidated")
 	}
+}
+
+func (r *memoryRepository) ListFactionMemory(context.Context, string, int, string, uint64) ([]FactionMemoryEntry, error) {
+	return nil, nil
 }

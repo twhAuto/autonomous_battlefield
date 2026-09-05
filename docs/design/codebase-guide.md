@@ -238,6 +238,8 @@ SQL concurrency behavior is part of the application's correctness. Changes to st
 | [`types.go`](../../backend/internal/ai/types.go) | Decision sessions, contexts, submissions, records, model turns, tools, usage, and profiles |
 | [`repository.go`](../../backend/internal/ai/repository.go) | Durable decision repository contract and errors |
 | [`service.go`](../../backend/internal/ai/service.go) | Context reads, plan validation, observation hashes, and HMAC capabilities |
+| [`prompts.go`](../../backend/internal/ai/prompts.go) | Embedded shared instructions, context delivery, and complete prompt digest |
+| [`memory.go`](../../backend/internal/ai/memory.go) | Scoped, chronological historical decision summaries with count/byte bounds |
 | [`profiles.go`](../../backend/internal/ai/profiles.go) | API/CLI profile validation and availability evaluation |
 
 `DecisionRunner` is the execution boundary used by the agent. `TurnProvider` is the narrower boundary implemented by model APIs that participate in the shared tool loop.
@@ -540,3 +542,25 @@ successor. It avoids a wall-clock deadline that depends on Jenkins load.
 `scripts/test/test-security-launchers.sh` checks Trivy database registry fallback,
 shared cache mounting, and a failing gate when preparation or a scanner fails.
 See [Jenkins operations](../operations/jenkins.md#trivy-database-download-recovery).
+
+### Matched AI comparison workflow
+
+`backend/cmd/aieval/comparison.go` adds `-mode compare` with strict YAML variants,
+live-provider opt-ins, reviewed API pricing, and a free scripted integration
+baseline. `backend/internal/ai/eval/comparison.go` runs fresh API/CLI runners
+against isolated loopback MCP servers and the production decision validator.
+`backend/evals/comparison-cases/` holds complete synthetic contexts;
+`backend/evals/comparison.yaml` is the free memory-ablation configuration.
+
+`DecisionRepository.ListFactionMemory` scopes and bounds history in SQL;
+`internal/battle/worker/decisions.go` freezes the bounded summary into the next
+context before hashing. Tests cover cross-faction/attempt isolation, byte/count
+bounds, consecutive windows, optional-read failure, invalid submissions, and
+false CLI success. See [comparison commands and report limits](../operations/ai-comparisons.md).
+
+`internal/ai/mcpserver/tool_logging.go` observes SDK tool-input failures before
+typed handlers, emitting only fixed missing-field names and authenticated request
+metadata. `tool_logging_test.go` exercises malformed arguments through MCP and
+checks that payloads do not enter logs. Worker fallback tests verify that
+runner failure categories survive fallback persistence. The shared prompt tests
+cover complete flat submission arguments.

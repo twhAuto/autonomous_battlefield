@@ -65,6 +65,12 @@ func (w *Worker) prepareDecision(ctx context.Context, lease BattleLease, simulat
 	}
 	setup := factionSetup(simulation.Scenario(), factionID)
 	decisionContext := newDecisionContext(lease, factionID, targetTick, snapshot)
+	decisionContext.Memory, err = w.decisions.ListFactionMemory(ctx, lease.BattleID, lease.Attempt, factionID, targetTick)
+	if err != nil {
+		// Memory is optional continuity. Current authoritative context remains usable.
+		w.logger.WarnContext(ctx, "faction_memory_unavailable", "battle_id", lease.BattleID, "attempt", lease.Attempt, "faction_id", factionID)
+		decisionContext.Memory = nil
+	}
 	hash, err := ai.ObservationHash(decisionContext)
 	if err != nil {
 		return err
@@ -175,14 +181,15 @@ func (w *Worker) resolveDecisionRecord(ctx context.Context, simulation *game.Mat
 	}
 	if record.ResolvedPlan == nil {
 		fallback, source := fallbackPlan(simulation, targetTick, baselines, record)
-		accepted, err := w.decisions.ResolveDecisionFallback(ctx, record.ID, record.Version, fallback, source, "timeout")
+		category := fallbackCategory(record)
+		accepted, err := w.decisions.ResolveDecisionFallback(ctx, record.ID, record.Version, fallback, source, category)
 		if err != nil {
 			return record, err
 		}
 		if accepted {
 			resolvedAt := time.Now()
 			record.Status, record.ResolvedPlan, record.FallbackSource = "fallback", &fallback, source
-			record.ErrorCategory, record.ResolvedAt = "timeout", &resolvedAt
+			record.ErrorCategory, record.ResolvedAt = category, &resolvedAt
 		} else {
 			record, err = w.decisions.GetDecision(ctx, record.ID)
 			if err != nil {
@@ -237,4 +244,11 @@ func decisionID(battleID string, attempt int, factionID string, targetTick uint6
 	bytes[6] = (bytes[6] & 0x0f) | 0x50
 	bytes[8] = (bytes[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
+}
+
+func fallbackCategory(record ai.DecisionRecord) string {
+	if record.Status == "failed" && record.ErrorCategory != "" {
+		return record.ErrorCategory
+	}
+	return "timeout"
 }

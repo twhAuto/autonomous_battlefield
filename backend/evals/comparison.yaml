@@ -1,0 +1,7 @@
+# Free integration comparison; replace providers/models for a live comparison.
+variants:
+  - id: scripted-with-memory
+    provider: scripted
+  - id: scripted-without-memory
+    provider: scripted
+    withoutMemory: true

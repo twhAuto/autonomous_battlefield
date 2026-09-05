@@ -373,6 +373,7 @@ type decisionBattleRepository struct {
 	records            map[string]ai.DecisionRecord
 	failModels         bool
 	modelErrorCategory string
+	memoryErr          error
 }
 
 func (r *decisionBattleRepository) CreateOrReuseDecision(_ context.Context, p ai.CreateDecisionParams) (ai.DecisionRecord, error) {
@@ -495,6 +496,55 @@ func runDecisionWindowFallbackCase(t *testing.T, model bool) {
 		t.Fatal(simulation.State().Tick)
 	}
 	assertDecisionLogs(t, logs.String(), model)
+	assertNextWindowMemory(t, worker, repository, job, simulation, model)
+	assertMemoryReadFailure(t, worker, repository, job, simulation, &logs)
+}
+
+func assertNextWindowMemory(t *testing.T, worker *Worker, repository *decisionBattleRepository, job *BattleJob, simulation *battle.Match, model bool) {
+	t.Helper()
+
+	for range 9 {
+		if _, err := simulation.Advance(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := worker.resolveDecisionWindow(context.Background(), job.Lease, simulation); err != nil {
+		t.Fatal(err)
+	}
+
+	assertHistoricalOutcomes(t, repository.records, job.Scenario.Factions[0].ID, model)
+}
+
+func assertHistoricalOutcomes(t *testing.T, records map[string]ai.DecisionRecord, modelFaction string, model bool) {
+	t.Helper()
+	for _, record := range records {
+		if record.TargetTick != 20 {
+			continue
+		}
+		if len(record.Observation.Memory) != 1 || record.Observation.Memory[0].TargetTick != 10 {
+			t.Fatalf("history not frozen: %+v", record.Observation.Memory)
+		}
+		want := "accepted"
+		if model && record.FactionID == modelFaction {
+			want = "fallback"
+		}
+		if record.Observation.Memory[0].Status != want {
+			t.Fatal("historical outcome mislabeled")
+		}
+	}
+}
+
+func assertMemoryReadFailure(t *testing.T, worker *Worker, repository *decisionBattleRepository, job *BattleJob, simulation *battle.Match, logs *bytes.Buffer) {
+	t.Helper()
+
+	repository.memoryErr = errors.New("memory unavailable")
+	if err := worker.prepareDecision(context.Background(), job.Lease, simulation, job.Scenario.Factions[0].ID, 30, simulation.ScriptedPlans(), ai.NewDecisionService(repository)); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(logs.String(), "faction_memory_unavailable") {
+		t.Fatal("memory failure not observable")
+	}
+
 }
 
 func assertDecisionLogs(t *testing.T, logs string, model bool) {
@@ -506,5 +556,46 @@ func assertDecisionLogs(t *testing.T, logs string, model bool) {
 	}
 	if model && (!strings.Contains(logs, `"decision_status":"fallback"`) || !strings.Contains(logs, `"error_category":"timeout"`)) {
 		t.Fatalf("fallback fields missing: %s", logs)
+	}
+}
+
+func (r *decisionBattleRepository) ListFactionMemory(_ context.Context, battleID string, attempt int, factionID string, beforeTick uint64) ([]ai.FactionMemoryEntry, error) {
+	if r.memoryErr != nil {
+		return nil, r.memoryErr
+	}
+	var records []ai.DecisionRecord
+	for _, record := range r.records {
+		records = append(records, record)
+	}
+	return ai.BuildFactionMemory(records, battleID, attempt, factionID, beforeTick), nil
+}
+
+func TestFallbackPreservesRunnerFailureCategory(t *testing.T) {
+	for _, test := range []struct{ status, category, want string }{
+		{"failed", "plan_not_submitted", "plan_not_submitted"},
+		{"failed", "validation_limit", "validation_limit"},
+		{"failed", "", "timeout"},
+		{"running", "", "timeout"},
+	} {
+		t.Run(test.status+test.category, func(t *testing.T) {
+			job := testJob(20)
+			simulation, err := battle.NewMatch(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
+			if err != nil {
+				t.Fatal(err)
+			}
+			record := ai.DecisionRecord{ID: "request", Status: test.status, ErrorCategory: test.category, FactionID: job.Scenario.Factions[0].ID, TargetTick: 10, Version: 1}
+			repository := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{record.ID: record}}
+			worker, err := New(repository, testWorkerConfig())
+			if err != nil {
+				t.Fatal(err)
+			}
+			resolved, err := worker.resolveDecisionRecord(context.Background(), simulation, 10, simulation.ScriptedPlans(), record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resolved.ErrorCategory != test.want || repository.records[record.ID].ErrorCategory != test.want || resolved.Status != "fallback" {
+				t.Fatalf("incorrect fallback: %+v", resolved)
+			}
+		})
 	}
 }

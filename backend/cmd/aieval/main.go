@@ -23,7 +23,9 @@ func main() {
 
 func run(args []string) error {
 	flags := flag.NewFlagSet("aieval", flag.ContinueOnError)
-	mode := flags.String("mode", "deterministic", "deterministic or provider")
+	mode := flags.String("mode", "deterministic", "deterministic, provider, or compare")
+	comparisonPath := flags.String("comparison-config", "evals/comparison.yaml", "comparison variant configuration")
+	repetitions := flags.Int("repetitions", 3, "matched repetitions per comparison case and variant")
 	casesPath := flags.String("cases", "evals/cases", "versioned deterministic case directory")
 	pricingPath := flags.String("pricing", "evals/pricing.yaml", "versioned provider pricing file")
 	jsonPath := flags.String("json", "../artifacts/ai-eval/results.json", "JSON report output")
@@ -42,6 +44,9 @@ func run(args []string) error {
 	prices, err := aieval.LoadPriceBook(*pricingPath)
 	if err != nil {
 		return fmt.Errorf("load pricing: %w", err)
+	}
+	if *mode == "compare" {
+		return runComparison(*comparisonPath, *casesPath, *jsonPath, *corpusVersion, prices, aieval.ComparisonOptions{Repetitions: *repetitions, MaxSteps: *maxSteps, MaxTokens: *maxTokens, Timeout: *timeout})
 	}
 	if *mode == "deterministic" {
 		cases, err := aieval.LoadCases(*casesPath)

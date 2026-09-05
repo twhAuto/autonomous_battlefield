@@ -131,3 +131,28 @@ func TestCreateDecisionAndRetryReuse(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestFactionMemoryQueryScopesAndLimitsBeforeRead(t *testing.T) {
+	db := &battleDB{rows: &battleRows{scans: []battleRow{decisionTestRow("accepted", &controller.PlanProposal{Name: "reserve", ReserveGold: 10})}}}
+	got, err := NewPostgres(db).ListFactionMemory(context.Background(), "22222222-2222-2222-2222-222222222222", 1, "33333333-3333-3333-3333-333333333333", 20)
+	if err != nil || len(got) != 1 || got[0].Plan.ReserveGold != 10 {
+		t.Fatalf("memory=%+v err=%v", got, err)
+	}
+	for _, part := range []string{"battle_id=$1", "attempt=$2", "faction_id=$3", "target_tick<$4", "ORDER BY target_tick DESC LIMIT $5"} {
+		if !strings.Contains(db.querySQL, part) {
+			t.Fatalf("unscoped query: %s", db.querySQL)
+		}
+	}
+	if len(db.queryArgs) != 5 || db.queryArgs[4] != ai.FactionMemoryLimit {
+		t.Fatal("unbounded query")
+	}
+	db.queryErr = errors.New("unavailable")
+	if _, err := NewPostgres(db).ListFactionMemory(context.Background(), "b", 1, "f", 20); err == nil {
+		t.Fatal("query failure lost")
+	}
+	db.queryErr = nil
+	db.rows = &battleRows{scans: []battleRow{func(...any) error { return errors.New("scan") }}}
+	if _, err := NewPostgres(db).ListFactionMemory(context.Background(), "b", 1, "f", 20); err == nil {
+		t.Fatal("scan failure lost")
+	}
+}
