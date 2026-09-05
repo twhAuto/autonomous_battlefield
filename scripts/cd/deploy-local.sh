@@ -3,6 +3,15 @@
 set -Eeuo pipefail
 
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${project_dir}/scripts/lib/deployment-environment.sh"
+[[ "${DEPLOY_ENV:-dev}" == dev ]] || { echo 'deploy-local.sh only deploys dev.' >&2; exit 1; }
+export DEPLOY_ENV=dev
+battlefield_env_preflight
+battlefield_env_verify_docker
+[[ -f "${BATTLEFIELD_SECRET_FILE}" && -f "${BATTLEFIELD_AUTH_SECRET_FILE}" ]] || {
+  echo 'Dev database and authentication secret files must exist; see the environment setup guide.' >&2
+  exit 1
+}
 cluster_name="${KIND_CLUSTER_NAME:-battlefield}"
 backend_image="${BACKEND_IMAGE:-autonomous-battlefield-backend}"
 frontend_image="${FRONTEND_IMAGE:-autonomous-battlefield-frontend}"
@@ -30,8 +39,9 @@ fi
 echo
 echo "Deploying local configuration, backend, and frontend to kind cluster ${cluster_name}..."
 FORCE_RESTART="${dirty_worktree}" \
-  DEPLOY_COMPONENTS=infrastructure,backend,frontend \
+  DEPLOY_COMPONENTS="${DEPLOY_COMPONENTS:-infrastructure,backend,frontend,gateway}" \
   "${project_dir}/scripts/cd/deploy-kind.sh" "${image_tag}"
 
 echo
-echo "Local application deployment is ready: http://battlefield.localhost:8888"
+"${project_dir}/scripts/cd/smoke-test-kind.sh"
+echo "Dev application deployment is ready: ${TARGET_URL}"

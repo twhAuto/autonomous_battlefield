@@ -9,6 +9,18 @@
 
 For a package-by-package explanation of the implementation, see the [codebase guide](codebase-guide.md).
 
+## Deployment environment boundary
+
+WSL dev and server production use separate Kubernetes clusters, PostgreSQL
+volumes, kubeconfigs, and secrets. The shared environment resolver pins the
+cluster UID before operations. Dev loads working-tree images through a local
+Docker socket; production accepts verified GHCR digests through Jenkins main
+rollout. Context aliases distinguish environments without renaming resources.
+Missing production AI/auth files preserve existing cluster Secrets. Production
+rollback verifies both prior digests; local development never pulls production
+deployment credentials. Observability is optional for dev. See the
+[environment guide](../operations/environments.md) for registration and recovery.
+
 ## 1. Purpose
 
 Autonomous Battlefield is a deterministic castle-siege auto-battler. Users create reusable faction blueprints, stage a finite battle between two factions, and watch a separate engine execute it. Each faction can use either deterministic scripted plans or a model-backed strategic controller.

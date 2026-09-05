@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 
 set -Eeuo pipefail
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${project_dir}/scripts/lib/deployment-environment.sh"
+[[ "${DEPLOY_ENV:-dev}" == dev ]] || { echo "Local CLI agent requires dev." >&2; exit 1; }
+battlefield_env_preflight
+
 
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 backend_dir="${project_dir}/backend"

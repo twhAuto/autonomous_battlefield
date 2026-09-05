@@ -9,6 +9,18 @@
 
 For runtime boundaries, data flows, durability, and security decisions, see the [system architecture](system-architecture.md).
 
+## Environment tooling
+
+`scripts/lib/deployment-environment.sh` owns profile loading, conflicting-override
+checks, cluster UID verification, and dev Docker identity verification.
+`scripts/cd/setup-environment.sh` registers an existing cluster without changing
+its original kubeconfig. `prepare-dev-secrets.sh` provisions private dev files;
+`create-kind-cluster.sh` starts/bootstrap dev without recreation. Deployment,
+rollback, smoke, dev CLI agents, retention reports, and runtime assurance share
+the resolver. `scripts/test/test-deployment-environment.sh` exercises rejection
+and bootstrap paths. See the [environment guide](../operations/environments.md)
+for machine configuration, Jenkins credentials, and commands.
+
 ## 1. Repository map
 
 ```text

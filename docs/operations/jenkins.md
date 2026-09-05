@@ -1,5 +1,9 @@
 # Jenkins and GitHub deployment pipeline
 
+Production now runs on the server at `192.168.1.104` (Jenkins port `8080`).
+Before merging the environment split, complete the [server transition](environments.md#server-transition-before-merging-the-pipeline-change).
+The following installation commands are server administration instructions.
+
 The repository owns its pipeline in `Jenkinsfile`. GitHub stores the source;
 the local Jenkins Multibranch job discovers branches and pull requests through
 periodic scans, checks out the exact commit, and executes the pipeline on an
@@ -92,7 +96,7 @@ Use a dedicated Linux or WSL Jenkins agent with:
 - GCC and the C development toolchain required by `go test -race`.
 - Docker, with permission to use the Docker daemon.
 - `kubectl`, `kind`, `curl`, and AWS CLI for the optional promotion job.
-- Access to the `battlefield` kind cluster through context `kind-battlefield`.
+- Access to the `battlefield` kind cluster through the dedicated `battlefield-production` context and registered production profile.
 
 The agent needs Docker access to build images and run the pinned Trivy scanner.
 It also needs enough free space and inode quota in its Jenkins workspace for
@@ -161,6 +165,7 @@ Create these narrowly scoped Jenkins credentials before enabling main delivery:
 
 | ID | Kind | Purpose |
 |---|---|---|
+| `battlefield-production-kubeconfig` | secret file | Dedicated production kubeconfig; bound only during rollout (or explicit assurance load) |
 | `battlefield-ghcr` | username/password | GitHub Packages identity and token with only `read:packages` and `write:packages` |
 | `battlefield-cosign-key` | secret file | encrypted Cosign private key |
 | `battlefield-cosign-password` | secret text | password for the encrypted signing key |
@@ -505,55 +510,16 @@ work after the underlying job is deleted.
 
 ## Daily startup after a reboot
 
-The Jenkins configuration is persistent, and SonarQube uses Docker restart
-policies. The normal daily sequence is therefore to verify the existing
-services, not repeat the one-time setup:
+Jenkins, SonarQube, and the production Kind cluster run on the server. Verify
+those existing services and run `DEPLOY_ENV=production ./scripts/cd/smoke-test-kind.sh`
+as the configured agent account. Do not run the dev bootstrap on this machine.
+If the production cluster is missing, recover its data and registered identity;
+do not recreate it as a daily startup step.
 
-```bash
-# Configure Docker Desktop to start at login and wait until this succeeds.
-docker info >/dev/null
-
-systemctl is-active --quiet jenkins
-systemctl --user is-active --quiet jenkins-agent
-
-until curl --silent --fail http://localhost:9000/api/system/status | \
-  grep --quiet '"status":"UP"'; do sleep 2; done
-
-kind get clusters
-kubectl cluster-info --context kind-battlefield
-kubectl get pods --namespace battlefield
-./scripts/cd/smoke-test-kind.sh
-```
-
-If a service was stopped intentionally, start it again with
-`sudo systemctl start jenkins`, `systemctl --user start jenkins-agent`, or
-`docker compose -f quality/sonarqube/compose.yaml up -d` as appropriate.
-
-If `kind get clusters` does not include `battlefield`, recreate it and redeploy
-the committed revision:
-
-```bash
-./scripts/cd/create-kind-cluster.sh
-./scripts/ci/build-images.sh
-./scripts/cd/deploy-kind.sh
-./scripts/cd/smoke-test-kind.sh
-```
-
-If the cluster predates local Gateway API access, recreate it with
-`./scripts/cd/create-kind-cluster.sh --recreate`. This explicitly deletes the
-cluster and its local PostgreSQL data before publishing the required node port.
-
-The build and deployment commands require a clean Git worktree. The local
-secret file or Jenkins `battlefield-local-secret-env` credential must still
-exist. Starting SonarQube with `docker compose up -d` reuses its named volumes;
-do not add `-v` when stopping it unless the data is intentionally disposable.
-
-After the checks pass, open `http://localhost:8080` for Jenkins,
-`http://localhost:9000` for SonarQube,
-`http://battlefield.localhost:8888` for the deployed application, and
-`http://grafana.localhost:8888` for Grafana, or
-`http://kibana.localhost:8888` for Kibana. The three `.localhost` routes use the
-Kind node port and do not require a persistent `kubectl port-forward` process.
+Use the [server transition and recovery guide](environments.md) for registration,
+the `battlefield-production` agent label, dedicated kubeconfig credential, and
+pre-rollout database export. WSL requires only Docker and its dev cluster for
+local iteration; local Jenkins and SonarQube need not be started.
 
 ## Troubleshooting setup and pipeline waits
 

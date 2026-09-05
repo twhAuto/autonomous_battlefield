@@ -3,6 +3,10 @@
 set -Eeuo pipefail
 
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${project_dir}/scripts/lib/deployment-environment.sh"
+battlefield_env_preflight
+
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "${project_dir}/scripts/ci/tool-versions.env"
 kube_context="${KUBERNETES_CONTEXT:-kind-${KIND_CLUSTER_NAME:-battlefield}}"

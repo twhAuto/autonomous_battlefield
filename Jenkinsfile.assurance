@@ -1,5 +1,5 @@
 pipeline {
-    agent any
+    agent { label 'battlefield-production' }
 
     parameters {
         choice(name: 'MODE', choices: ['nightly', 'load', 'failure-drills', 'provider-eval', 'aws-promotion'], description: 'Assurance workflow to run')
@@ -8,6 +8,7 @@ pipeline {
         string(name: 'AI_CASE_COUNT', defaultValue: '1', description: 'Explicit fixed-corpus provider case budget')
         string(name: 'AI_MAX_TOKENS', defaultValue: '1024', description: 'Maximum output tokens per provider turn')
         string(name: 'AI_MAX_STEPS', defaultValue: '4', description: 'Maximum provider/tool turns')
+        string(name: 'DISPOSABLE_ENV_FILE', defaultValue: '', description: 'Absolute path to a registered disposable dev profile on this agent; required for drills')
         string(name: 'LOAD_VUS', defaultValue: '20', description: 'Virtual users for representative load')
         string(name: 'LOAD_DURATION', defaultValue: '10m', description: 'Representative load duration')
         string(name: 'AWS_ACCOUNT_ID', defaultValue: '', description: 'Destination AWS account for an artifact promotion')
@@ -57,6 +58,10 @@ pipeline {
 
         stage('Representative load') {
             when { expression { params.MODE == 'load' } }
+            environment {
+                DEPLOY_ENV = 'production'
+                KUBECONFIG = credentials('battlefield-production-kubeconfig')
+            }
             steps {
                 sh 'K6_VUS="${LOAD_VUS}" K6_DURATION="${LOAD_DURATION}" ./scripts/perf/run-k6.sh'
             }
@@ -65,7 +70,8 @@ pipeline {
         stage('Disposable Kind failure drills') {
             when { expression { params.MODE == 'failure-drills' } }
             steps {
-                sh 'RUN_DESTRUCTIVE_KIND_DRILLS=I_UNDERSTAND_THIS_RESTARTS_DISPOSABLE_KIND_WORKLOADS ./scripts/ops/run-kind-failure-drills.sh'
+                sh 'test -n "${DISPOSABLE_ENV_FILE}"'
+                sh 'DEPLOY_ENV=dev BATTLEFIELD_ENV_FILE="${DISPOSABLE_ENV_FILE}" RUN_DESTRUCTIVE_KIND_DRILLS=I_UNDERSTAND_THIS_RESTARTS_DISPOSABLE_KIND_WORKLOADS ./scripts/ops/run-kind-failure-drills.sh'
             }
         }
 

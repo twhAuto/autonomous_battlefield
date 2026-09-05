@@ -232,6 +232,11 @@ kind_deploy_validate_artifacts() {
     return 1
   fi
 
+  if [[ "${DEPLOY_ENV:-dev}" == production ]] && deployment_component_selected infrastructure && [[ ! -f "${BATTLEFIELD_AUTH_SECRET_FILE:-}" ]]; then
+    kind_deploy_kube get secret battlefield-auth --namespace "${namespace}" >/dev/null || {
+      echo 'Production authentication Secret is missing; supply its server file before deploying.' >&2; return 1;
+    }
+  fi
   if deployment_component_selected infrastructure && [[ ! -f "${secret_file}" ]]; then
     echo "Local Kubernetes secret file not found: ${secret_file}" >&2
     echo "Copy secret.env.example to secret.env before deploying." >&2
@@ -279,6 +284,22 @@ kind_deploy_prepare_ai_secret() {
 
   if [[ -f "${ai_secret_file}" ]]; then
     cp "${ai_secret_file}" "${target_file}"
+    chmod 600 "${target_file}"
+    return
+  fi
+
+  if [[ "${DEPLOY_ENV:-dev}" == production ]]; then
+    # Preserve all server AI settings, not just its capability key, when no file is supplied.
+    kind_deploy_kube get secret battlefield-ai --namespace "${namespace}" -o json | node -e '
+      const fs = require("fs");
+      const data = JSON.parse(fs.readFileSync(0, "utf8")).data || {};
+      if (!Object.keys(data).length) process.exit(1);
+      for (const [key, value] of Object.entries(data)) {
+        const decoded = Buffer.from(value, "base64").toString("utf8");
+        if (!/^[A-Z_][A-Z0-9_]*$/.test(key) || /[\r\n\0]/.test(decoded)) process.exit(1);
+        process.stdout.write(key + "=" + decoded + "\n");
+      }
+    ' >"${target_file}" || return
     chmod 600 "${target_file}"
     return
   fi
@@ -423,8 +444,14 @@ kind_deploy_registry_credentials() {
 }
 
 kind_deploy_infrastructure() {
-  echo "Applying local infrastructure..."
+  echo "Applying ${DEPLOY_ENV:-dev} infrastructure..."
   kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/infrastructure"
+  if [[ -f "${BATTLEFIELD_AUTH_SECRET_FILE:-}" ]]; then
+    kind_deploy_kube create secret generic battlefield-auth --namespace "${namespace}" \
+      --from-env-file="${BATTLEFIELD_AUTH_SECRET_FILE}" --dry-run=client -o yaml | kind_deploy_kube apply -f -
+  elif [[ "${DEPLOY_ENV:-dev}" == production ]]; then
+    kind_deploy_kube get secret battlefield-auth --namespace "${namespace}" >/dev/null
+  fi
   kind_deploy_kube rollout status statefulset/battlefield-postgres \
     --namespace "${namespace}" \
     --timeout="${rollout_timeout}"
@@ -622,6 +649,14 @@ kind_deploy_gateway() {
 }
 
 kind_deploy_rollback_application() {
+  if [[ "${DEPLOY_ENV:-dev}" == production ]]; then
+    if [[ "${current_backend_image}" != "${current_engine_image}" || "${current_backend_image}" != "${current_agent_image}" || "${current_backend_image}" != "${current_mcp_image}" ]]; then
+      echo 'Previous backend digests are inconsistent; production rollback requires operator recovery.' >&2
+      return 1
+    fi
+    "${project_dir}/scripts/cd/rollback-kind.sh" "${current_backend_image}" "${current_frontend_image}"
+    return
+  fi
   local rollback_failed=0
   local rollback_started=0
   local deployment
@@ -712,7 +747,7 @@ kind_deploy_print_summary() {
     -o custom-columns='NAME:.metadata.name,SUCCEEDED:.status.succeeded,IMAGE:.spec.template.spec.containers[0].image' \
     2>/dev/null || true
   echo
-  echo "Frontend: http://battlefield.localhost:8888"
+  echo "Frontend: ${TARGET_URL:-http://battlefield.localhost:8888}"
   echo "Grafana:  http://grafana.localhost:8888"
   echo "Kibana:   http://kibana.localhost:8888"
 }

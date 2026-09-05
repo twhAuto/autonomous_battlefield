@@ -1,5 +1,10 @@
 # Autonomous Battlefield
 
+Deployment environments are separate: **WSL dev** builds and loads local images;
+**server production** receives verified GHCR images from Jenkins `main` delivery.
+Start with the [environment setup guide](docs/operations/environments.md).
+
+
 Autonomous Battlefield is a Go backend for an auto-battler and expansion game. The long-term product will let human players and AI agents control factions that gather resources, expand territory, and fight on a continuously running battlefield.
 
 The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, point-buy faction blueprints, autonomous economies, fog-of-war views, production-window decisions, provider-neutral model controllers over MCP, an optional single-admin login, validated configuration, health endpoints, and graceful shutdown. Player commands, multi-user authorization, and seeded map generation remain planned work.
@@ -253,7 +258,7 @@ Supply-chain and AI assurance references:
 - [`infra/aws/README.md`](infra/aws/README.md)
 
 See the [Jenkins setup guide](docs/operations/jenkins.md) before configuring the Multibranch job
-or its local Kubernetes credential.
+or its production Kubernetes credential.
 
 For fast iteration after the local cluster, infrastructure, and gateway have
 already been deployed, rebuild and redeploy only the backend and frontend with:
@@ -265,8 +270,8 @@ already been deployed, rebuild and redeploy only the backend and frontend with:
 This convenience command accepts uncommitted local changes, runs the backend
 migration gate, and updates the API, engine, agent, MCP, and frontend workloads. When the
 working tree is dirty, it also restarts those workloads so images rebuilt under
-the current commit tag are picked up immediately. It does not deploy or update
-PostgreSQL, observability, logging, or gateway resources.
+the current commit tag are picked up immediately. It also applies dev PostgreSQL/configuration and gateway resources and runs
+application smoke checks. Observability and logging remain optional.
 
 ### Use a different configuration file
 

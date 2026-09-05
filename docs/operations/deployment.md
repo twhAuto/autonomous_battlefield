@@ -1,5 +1,9 @@
 # Deployment learning guide
 
+Deployment targets are now explicit: WSL dev and server production. Start with
+the [environment setup and transition guide](environments.md). The `local` overlay
+name below denotes shared Kind manifests used by both environments.
+
 This guide records the deployment direction for Autonomous Battlefield and the
 recommended path from local Kubernetes to AWS. The goal is to learn the native
 Kubernetes concepts first while keeping the application portable enough to run
@@ -152,118 +156,26 @@ Add the Go binary directory to the shell profile if it is not already on
 `PATH`. The upstream quick-start page should be used when intentionally updating
 the pinned version.
 
-### 3. Create and inspect the cluster
+### 3. Register or resume WSL dev
 
-```bash
-./scripts/cd/create-kind-cluster.sh
-kubectl cluster-info --context kind-battlefield
-kubectl get nodes
-kubectl get pods --all-namespaces
-```
+Follow the [environment setup guide](environments.md) to register the existing
+cluster, prepare independent dev secrets, and deploy. For a stopped or absent
+dev cluster, `./scripts/cd/create-kind-cluster.sh` starts existing nodes or creates
+a first cluster. It never recreates a registered cluster and rejects `--recreate`.
 
-The cluster script publishes node port `30080` as `127.0.0.1:8888` and installs
-the pinned Envoy Gateway release plus its Gateway API definitions. Binding the
-listener to loopback keeps the application and unauthenticated local Grafana
-and Kibana viewers unavailable to other machines.
-
-An older `battlefield` cluster created without this mapping cannot be modified
-in place. Recreate that disposable local cluster explicitly:
-
-```bash
-./scripts/cd/create-kind-cluster.sh --recreate
-```
-
-`--recreate` deletes the existing cluster, including its local PostgreSQL
-volume, before creating the replacement.
-
-`kind` writes the cluster connection to the normal kubeconfig and selects the
-new context. Confirm it before applying resources:
-
-```bash
-kubectl config current-context
-```
-
-The expected context is `kind-battlefield`.
-
-### 4. Run a disposable smoke test
-
-This verifies scheduling, image pulling, service discovery, and port forwarding
-before project-specific resources are introduced:
-
-```bash
-kubectl create deployment k8s-smoke --image=nginx:1.29-alpine
-kubectl expose deployment k8s-smoke --port=80
-kubectl rollout status deployment/k8s-smoke
-kubectl port-forward service/k8s-smoke 8088:80
-```
-
-While the port-forward command is running, open `http://localhost:8088`. Stop
-the port forward with Ctrl+C, then remove the smoke-test resources:
-
-```bash
-kubectl delete service/k8s-smoke deployment/k8s-smoke
-```
-
-### 5. Stop or remove the cluster
-
-A `kind` cluster runs as Docker containers. Delete it when the exercise is
-finished:
-
-```bash
-kind delete cluster --name battlefield
-```
-
-Recreating a local cluster is expected and provides useful practice proving
-that configuration is reproducible rather than dependent on manual changes.
-
-### Resume the cluster after restarting the computer
-
-Start Docker Desktop and open the WSL distribution before checking the cluster:
-
-```bash
-docker info >/dev/null
-kind get clusters
-kubectl cluster-info --context kind-battlefield
-kubectl get nodes
-```
-
-The existing `battlefield` cluster is a Docker container and normally resumes
-with Docker. If the cluster exists but its node is stopped, inspect it before
-starting it again:
-
-```bash
-docker ps --all --filter name=battlefield-control-plane
-docker start battlefield-control-plane
-kubectl get pods --all-namespaces
-```
-
-If the cluster no longer exists, create it again and follow the deployment
-steps below. Deleting and recreating kind also deletes the PostgreSQL data that
-was stored inside that cluster.
+The dedicated kubeconfig uses context `battlefield-dev`. Production uses
+`battlefield-production` on the server; neither deployment depends on your
+current kubectl context. Both keep the physical Kind name `battlefield`.
 
 ## Deploy the application locally
 
-### 1. Create the local secret file
+### 1. Prepare private dev secret files
 
-The database secret is ignored by Git. Create it once from the
-development-only example:
-
-```bash
-cp deploy/overlays/local/infrastructure/secret.env.example \
-  deploy/overlays/local/infrastructure/secret.env
-```
-
-The administrator login is optional. To enable it for the local cluster, copy
-the ignored authentication template, replace its password and signing-secret
-placeholders, and create the optional Secret before deploying the application:
-
-```bash
-cp deploy/overlays/local/infrastructure/auth-secret.env.example \
-  deploy/overlays/local/infrastructure/auth-secret.env
-kubectl --context kind-battlefield -n battlefield create secret generic battlefield-auth \
-  --from-env-file=deploy/overlays/local/infrastructure/auth-secret.env \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
+After registering dev, run `./scripts/cd/prepare-dev-secrets.sh`. It preserves
+existing PostgreSQL credentials and creates independent authentication and
+capability secrets under `~/.config/autonomous-battlefield/dev/`. Existing files
+are never overwritten. `./deploy-local.sh` applies these files to dev only.
+See [environment setup](environments.md) for fresh clusters and production.
 
 Set `BATTLEFIELD_AUTH_COOKIE_SECURE=false` for the checked-in loopback HTTP
 gateway and `true` before publishing the application through an HTTPS tunnel.
@@ -279,7 +191,7 @@ sets both API model profiles unavailable, so scripted battles can be tested
 without provider credentials. It also reuses `DATABASE_URL` for MCP when the
 local database file does not contain `MCP_DATABASE_URL`.
 
-To enable an API provider, copy `ai-secret.env.example` to `ai-secret.env`, set
+To enable an API provider, edit the private dev `ai.env` using `ai-secret.env.example` as a reference, set
 a strong capability secret, add the provider key and model, and change that
 provider's `*_PROFILE_AVAILABLE` value to `true`. Production should always
 supply explicit secrets and point `MCP_DATABASE_URL` at a login granted only
@@ -736,7 +648,7 @@ GHCR remains the build source of truth. `scripts/cd/promote-to-ecr.sh` copies th
 Registry-backed Kind deployment uses full digest inputs:
 
 ```bash
-IMAGE_SOURCE=registry \
+DEPLOY_ENV=production IMAGE_SOURCE=registry \
 BACKEND_IMAGE_REF='ghcr.io/twh09/autonomous-battlefield-backend@sha256:…' \
 FRONTEND_IMAGE_REF='ghcr.io/twh09/autonomous-battlefield-frontend@sha256:…' \
 ./scripts/cd/deploy-kind.sh

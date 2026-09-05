@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${project_dir}/scripts/lib/deployment-environment.sh"
+battlefield_env_preflight
+
 cluster_name="${KIND_CLUSTER_NAME:-battlefield}"
 context="${KUBERNETES_CONTEXT:-kind-${cluster_name}}"
 namespace="${KUBERNETES_NAMESPACE:-battlefield}"
@@ -10,10 +14,11 @@ if [[ "${RUN_DESTRUCTIVE_KIND_DRILLS:-}" != "I_UNDERSTAND_THIS_RESTARTS_DISPOSAB
   echo "Set RUN_DESTRUCTIVE_KIND_DRILLS=I_UNDERSTAND_THIS_RESTARTS_DISPOSABLE_KIND_WORKLOADS." >&2
   exit 2
 fi
-if [[ "${context}" != kind-* ]]; then
-  echo "Failure drills are restricted to a disposable Kind context." >&2
+if [[ "${DEPLOY_ENV}" != dev || "${BF_DISPOSABLE:-0}" != 1 ]]; then
+  echo 'Failure drills require an explicitly registered disposable dev cluster; production is forbidden.' >&2
   exit 2
 fi
+battlefield_env_verify_docker
 
 mkdir -p "${report_dir}"
 started="$(date -u +%FT%TZ)"

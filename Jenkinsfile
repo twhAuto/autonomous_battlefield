@@ -1,5 +1,5 @@
 pipeline {
-    agent any
+    agent { label 'battlefield-production' }
 
     options {
         buildDiscarder(logRotator(numToKeepStr: '20'))
@@ -13,9 +13,6 @@ pipeline {
         BACKEND_IMAGE = 'autonomous-battlefield-backend'
         FRONTEND_IMAGE = 'autonomous-battlefield-frontend'
         GO_COVERAGE_MIN = '80'
-        KIND_CLUSTER_NAME = 'battlefield'
-        KUBERNETES_NAMESPACE = 'battlefield'
-        KUBERNETES_CONTEXT = 'kind-battlefield'
         DEPLOY_COMPONENTS = 'all'
         PREVIOUS_BACKEND_IMAGE_REF = ''
         PREVIOUS_FRONTEND_IMAGE_REF = ''
@@ -101,6 +98,7 @@ pipeline {
                                     ./scripts/test/test-kind-deployment.sh
                                     ./scripts/test/test-command-wrappers.sh
                                     ./scripts/test/test-runtime-assurance.sh
+                                    ./scripts/test/test-deployment-environment.sh
                                     ./scripts/test/test-security-launchers.sh
                                 '''
                             }
@@ -214,6 +212,7 @@ pipeline {
                             ./scripts/test/test-kind-deployment.sh
                             ./scripts/test/test-command-wrappers.sh
                             ./scripts/test/test-runtime-assurance.sh
+                            ./scripts/test/test-deployment-environment.sh
                             ./scripts/test/test-security-launchers.sh
                         '''
                         script {
@@ -335,129 +334,149 @@ pipeline {
                     }
                 }
 
-                stage('Deploy local kind') {
-                    when {
-                        expression {
-                            (env.DEPLOY_COMPONENTS ?: 'all') != 'none'
-                        }
+                stage('Production rollout') {
+                    when { expression { (env.DEPLOY_COMPONENTS ?: 'all') != 'none' } }
+                    environment {
+                        DEPLOY_ENV = 'production'
+                        KUBECONFIG = credentials('battlefield-production-kubeconfig')
                     }
-                    steps {
-                        script {
-                            def previousBackendImage = sh(
-                                script: '''
-                                    kubectl --context "${KUBERNETES_CONTEXT}" \
-                                        get deployment/battlefield-api \
-                                        --namespace "${KUBERNETES_NAMESPACE}" \
-                                        -o jsonpath='{.spec.template.spec.containers[?(@.name=="api")].image}' \
-                                        2>/dev/null || true
-                                ''',
-                                returnStdout: true
-                            ).trim()
-                            def previousFrontendImage = sh(
-                                script: '''
-                                    kubectl --context "${KUBERNETES_CONTEXT}" \
-                                        get deployment/battlefield-frontend \
-                                        --namespace "${KUBERNETES_NAMESPACE}" \
-                                        -o jsonpath='{.spec.template.spec.containers[?(@.name=="frontend")].image}' \
-                                        2>/dev/null || true
-                                ''',
-                                returnStdout: true
-                            ).trim()
-                            env.PREVIOUS_BACKEND_IMAGE_REF = previousBackendImage
-                            env.PREVIOUS_FRONTEND_IMAGE_REF = previousFrontendImage
-                            echo "Previous backend image: ${env.PREVIOUS_BACKEND_IMAGE_REF ?: 'none'}"
-                            echo "Previous frontend image: ${env.PREVIOUS_FRONTEND_IMAGE_REF ?: 'none'}"
-                            sh 'mkdir -p artifacts/deployment'
-                            writeFile(
-                                file: 'artifacts/deployment/rollback-images.env',
-                                text: "PREVIOUS_BACKEND_IMAGE_REF=${env.PREVIOUS_BACKEND_IMAGE_REF}\nPREVIOUS_FRONTEND_IMAGE_REF=${env.PREVIOUS_FRONTEND_IMAGE_REF}\n"
-                            )
-                        }
-                        withCredentials([
-                            file(
-                                credentialsId: 'battlefield-local-secret-env',
-                                variable: 'BATTLEFIELD_SECRET_FILE'
-                            ),
-                            usernamePassword(
-                                credentialsId: 'battlefield-ghcr',
-                                usernameVariable: 'GHCR_USER',
-                                passwordVariable: 'GHCR_TOKEN'
-                            ),
-                            file(
-                                credentialsId: 'battlefield-cosign-public-key',
-                                variable: 'COSIGN_PUBLIC_KEY_FILE'
-                            )
-                        ]) {
-                            sh '''
-                                docker_config="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-docker-config.XXXXXX")"
-                                chmod 700 "${docker_config}"
-                                cleanup_docker_config() {
-                                    docker logout ghcr.io >/dev/null 2>&1 || true
-                                    rm -rf -- "${docker_config}"
+                    stages {
+                        stage('Deploy production') {
+                            when {
+                                expression {
+                                    (env.DEPLOY_COMPONENTS ?: 'all') != 'none'
                                 }
-                                trap cleanup_docker_config EXIT
-                                export BUILDX_CONFIG="${BUILDX_CONFIG:-${HOME}/.docker/buildx}"
-                                export DOCKER_CONFIG="${docker_config}"
-                                printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io --username "${GHCR_USER}" --password-stdin
-                                if [ -f artifacts/build/images.env ]; then
-                                    set -a
-                                    . artifacts/build/images.env
-                                    set +a
-                                fi
-                                IMAGE_SOURCE=registry ENFORCE_SUPPLY_CHAIN_POLICY=1 ROLLBACK_ON_FAILURE=1 ./scripts/cd/deploy-kind.sh "${IMAGE_TAG}"
-                            '''
-                        }
-                    }
-                }
-
-                stage('Verify deployment') {
-                    when {
-                        expression {
-                            (env.DEPLOY_COMPONENTS ?: 'all') != 'none'
-                        }
-                    }
-                    steps {
-                        sh './scripts/cd/smoke-test-kind.sh'
-                    }
-                    post {
-                        failure {
-                            script {
-                                def components = (env.DEPLOY_COMPONENTS ?: 'all').tokenize(',')
-                                def applicationChanged = components.contains('all') ||
-                                    components.contains('backend') ||
-                                    components.contains('frontend') ||
-                                    components.contains('application')
-
-                                if (!applicationChanged) {
-                                    echo 'The targeted deployment did not change application images; skipping image rollback.'
-                                } else if (env.PREVIOUS_BACKEND_IMAGE_REF ==~ /[a-z0-9][a-z0-9._:\/-]+@sha256:[0-9a-f]{64}/ &&
-                                    env.PREVIOUS_FRONTEND_IMAGE_REF ==~ /[a-z0-9][a-z0-9._:\/-]+@sha256:[0-9a-f]{64}/) {
+                            }
+                            steps {
+                                script {
+                                    def previousBackendImage = sh(
+                                        script: '''#!/usr/bin/env bash
+                                            set -Eeuo pipefail
+                                            . ./scripts/lib/deployment-environment.sh
+                                            battlefield_env_preflight
+                                            kubectl --context "${KUBERNETES_CONTEXT}" \
+                                                get deployment/battlefield-api \
+                                                --namespace "${KUBERNETES_NAMESPACE}" \
+                                                -o jsonpath='{.spec.template.spec.containers[?(@.name=="api")].image}' \
+                                                2>/dev/null || true
+                                        ''',
+                                        returnStdout: true
+                                    ).trim()
+                                    def previousFrontendImage = sh(
+                                        script: '''#!/usr/bin/env bash
+                                            set -Eeuo pipefail
+                                            . ./scripts/lib/deployment-environment.sh
+                                            battlefield_env_preflight
+                                            kubectl --context "${KUBERNETES_CONTEXT}" \
+                                                get deployment/battlefield-frontend \
+                                                --namespace "${KUBERNETES_NAMESPACE}" \
+                                                -o jsonpath='{.spec.template.spec.containers[?(@.name=="frontend")].image}' \
+                                                2>/dev/null || true
+                                        ''',
+                                        returnStdout: true
+                                    ).trim()
+                                    env.PREVIOUS_BACKEND_IMAGE_REF = previousBackendImage
+                                    env.PREVIOUS_FRONTEND_IMAGE_REF = previousFrontendImage
+                                    echo "Previous backend image: ${env.PREVIOUS_BACKEND_IMAGE_REF ?: 'none'}"
+                                    echo "Previous frontend image: ${env.PREVIOUS_FRONTEND_IMAGE_REF ?: 'none'}"
+                                    sh 'mkdir -p artifacts/deployment'
+                                    writeFile(
+                                        file: 'artifacts/deployment/rollback-images.env',
+                                        text: "PREVIOUS_BACKEND_IMAGE_REF=${env.PREVIOUS_BACKEND_IMAGE_REF}\nPREVIOUS_FRONTEND_IMAGE_REF=${env.PREVIOUS_FRONTEND_IMAGE_REF}\n"
+                                    )
+                                }
+                                withCredentials([
+                                    file(
+                                        credentialsId: 'battlefield-local-secret-env',
+                                        variable: 'BATTLEFIELD_SECRET_FILE'
+                                    ),
+                                    usernamePassword(
+                                        credentialsId: 'battlefield-ghcr',
+                                        usernameVariable: 'GHCR_USER',
+                                        passwordVariable: 'GHCR_TOKEN'
+                                    ),
+                                    file(
+                                        credentialsId: 'battlefield-cosign-public-key',
+                                        variable: 'COSIGN_PUBLIC_KEY_FILE'
+                                    )
+                                ]) {
                                     sh '''
-                                        ./scripts/cd/rollback-kind.sh \
-                                            "${PREVIOUS_BACKEND_IMAGE_REF}" \
-                                            "${PREVIOUS_FRONTEND_IMAGE_REF}"
+                                        docker_config="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-docker-config.XXXXXX")"
+                                        chmod 700 "${docker_config}"
+                                        cleanup_docker_config() {
+                                            docker logout ghcr.io >/dev/null 2>&1 || true
+                                            rm -rf -- "${docker_config}"
+                                        }
+                                        trap cleanup_docker_config EXIT
+                                        export BUILDX_CONFIG="${BUILDX_CONFIG:-${HOME}/.docker/buildx}"
+                                        export DOCKER_CONFIG="${docker_config}"
+                                        printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io --username "${GHCR_USER}" --password-stdin
+                                        if [ -f artifacts/build/images.env ]; then
+                                            set -a
+                                            . artifacts/build/images.env
+                                            set +a
+                                        fi
+                                        IMAGE_SOURCE=registry ENFORCE_SUPPLY_CHAIN_POLICY=1 ROLLBACK_ON_FAILURE=1 ./scripts/cd/deploy-kind.sh "${IMAGE_TAG}"
                                     '''
-                                } else {
-                                    echo 'Previous backend and frontend digest references are not both available for automatic rollback.'
                                 }
                             }
                         }
-                    }
-                }
 
-                stage('Runtime assurance') {
-                    when {
-                        expression { (env.DEPLOY_COMPONENTS ?: 'all') != 'none' }
-                    }
-                    parallel {
-                        stage('Smoke load') {
+                        stage('Verify deployment') {
+                            when {
+                                expression {
+                                    (env.DEPLOY_COMPONENTS ?: 'all') != 'none'
+                                }
+                            }
                             steps {
-                                sh 'K6_VUS=3 K6_DURATION=30s ./scripts/perf/run-k6.sh'
+                                sh './scripts/cd/smoke-test-kind.sh'
+                            }
+                            post {
+                                failure {
+                                    script {
+                                        def components = (env.DEPLOY_COMPONENTS ?: 'all').tokenize(',')
+                                        def applicationChanged = components.contains('all') ||
+                                            components.contains('backend') ||
+                                            components.contains('frontend') ||
+                                            components.contains('application')
+
+                                        if (!applicationChanged) {
+                                            echo 'The targeted deployment did not change application images; skipping image rollback.'
+                                        } else if (env.PREVIOUS_BACKEND_IMAGE_REF ==~ /[a-z0-9][a-z0-9._:\/-]+@sha256:[0-9a-f]{64}/ &&
+                                            env.PREVIOUS_FRONTEND_IMAGE_REF ==~ /[a-z0-9][a-z0-9._:\/-]+@sha256:[0-9a-f]{64}/) {
+                                            withCredentials([
+                                                usernamePassword(credentialsId: 'battlefield-ghcr', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN'),
+                                                file(credentialsId: 'battlefield-cosign-public-key', variable: 'COSIGN_PUBLIC_KEY_FILE')
+                                            ]) {
+                                                sh '''
+                                                    ./scripts/cd/rollback-kind.sh \
+                                                        "${PREVIOUS_BACKEND_IMAGE_REF}" \
+                                                        "${PREVIOUS_FRONTEND_IMAGE_REF}"
+                                                '''
+                                            }
+                                        } else {
+                                            echo 'Previous backend and frontend digest references are not both available for automatic rollback.'
+                                        }
+                                    }
+                                }
                             }
                         }
-                        stage('ZAP baseline') {
-                            steps {
-                                sh './scripts/security/zap-baseline.sh'
+
+                        stage('Runtime assurance') {
+                            when {
+                                expression { (env.DEPLOY_COMPONENTS ?: 'all') != 'none' }
+                            }
+                            parallel {
+                                stage('Smoke load') {
+                                    steps {
+                                        sh 'K6_VUS=3 K6_DURATION=30s ./scripts/perf/run-k6.sh'
+                                    }
+                                }
+                                stage('ZAP baseline') {
+                                    steps {
+                                        sh './scripts/security/zap-baseline.sh'
+                                    }
+                                }
                             }
                         }
                     }
