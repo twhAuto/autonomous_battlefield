@@ -17,7 +17,7 @@ The central architectural rule is:
 
 > Models propose bounded strategy plans. The deterministic engine validates and applies those plans and remains the only component that controls battlefield-state mutation.
 
-This document describes the system's runtime boundaries and interactions. Operational instructions remain in [README.md](../../README.md), [DEPLOYMENT.md](../../DEPLOYMENT.md), and [OBSERVABILITY.md](../../OBSERVABILITY.md).
+This document describes the system's runtime boundaries and interactions. Operational instructions remain in [README.md](../../README.md), [docs/operations/deployment.md](../operations/deployment.md), and [docs/operations/observability.md](../operations/observability.md).
 
 ## 2. System context
 
@@ -57,6 +57,8 @@ PostgreSQL is the durable coordination point. The API and engine do not call eac
 | PostgreSQL | Factions, battle queue, event history, snapshots, leases, and model decisions | Persistent storage |
 | Scenario catalog | Authored map, timing, fallback plans, unit/building rules, and combat rules | Loaded by API and frozen into battle rows |
 
+The backend commands are `cmd/server`, `cmd/engine`, `cmd/mcp`, `cmd/agent`, and `cmd/aieval`. The first four are runtime processes; `aieval` runs offline evaluation cases and produces reports.
+
 ### Why four backend processes?
 
 - The API remains responsive while battles and model calls take time.
@@ -66,6 +68,12 @@ PostgreSQL is the durable coordination point. The API and engine do not call eac
 - Local subscription CLIs can run on a developer host without copying login credentials into Kubernetes.
 
 ## 4. Architectural boundaries
+
+### Source ownership
+
+`internal/game` owns deterministic simulation and its infrastructure-free `controller` subpackage. `internal/battle/{api,service,catalog,worker,repo}` separates HTTP delivery, use cases, authored inputs, durable execution, and persistence. Repository files group battle operations, leases, and tick writes within one adapter package, preserving atomic transactions.
+
+Frontend features live in `src/features/{battles,factions,auth}`, with application composition in `src/app` and shared transport and visuals in `src/shared`. Kubernetes manifests remain in `deploy`; Terraform remains in `infra/aws`. Launchers live in `scripts/dev` and `scripts/cd`, test runners in `scripts/test`, and operational guides in `docs/operations`. Root launch commands and old CI test commands forward to their implementations.
 
 ### Deterministic simulation boundary
 
@@ -468,5 +476,5 @@ The UI polls the API, the engine polls battle rows, and agents long-poll MCP. Po
 - API adapters build text transcripts instead of preserving provider-native structured tool history.
 - A successful CLI exit is treated as an accepted runner result; an explicit final decision-status assertion would strengthen this contract.
 - One shared secret authorizes the agent control plane and capability minting. Separate keys or server-minted capabilities would reduce agent signing authority.
-- The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [codebase guide](codebase-guide.md#internalbattlesimulationcontroller-deterministic-policy-abstractions).
+- The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [codebase guide](codebase-guide.md#internalgamecontroller-deterministic-policy-abstractions).
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.

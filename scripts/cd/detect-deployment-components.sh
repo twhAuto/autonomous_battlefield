@@ -35,12 +35,14 @@ all=0
 unclassified_files=()
 
 # Keep these rules synchronized with "Change-to-deployment mapping" in
-# DEPLOYMENT.md and with scripts/ci/test-deployment-components.sh.
+# docs/operations/deployment.md and with scripts/test/test-deployment-components.sh.
 while IFS= read -r -d '' changed_file; do
   case "${changed_file}" in
     *.md|LICENSE|LICENSE.*|.gitignore)
       ;;
     quality/*|sonar-project.properties)
+      ;;
+    scripts/test/*|tests/*)
       ;;
     scripts/ci/coverage-check-summary.sh|scripts/ci/lint-go.sh|scripts/ci/test-deployment-components.sh|scripts/ci/test-go-coverage.sh)
       ;;

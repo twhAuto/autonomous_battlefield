@@ -14,7 +14,7 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/app"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/server/catalog"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/catalog"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 	"github.com/twh09/autonomous_battlefield/backend/internal/logging"

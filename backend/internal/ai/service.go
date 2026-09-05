@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation/controller"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 // DecisionSubmissionRepository is intentionally unable to mutate battle

@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/engine/worker"
 	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 	"github.com/twh09/autonomous_battlefield/backend/internal/logging"

@@ -11,8 +11,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/engine/worker"
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/server/service"
+	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
 	battle "github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 

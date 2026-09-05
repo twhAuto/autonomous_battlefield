@@ -54,7 +54,7 @@ requirements:
 Before declaring relevant implementation work complete, run:
 
 ```bash
-./scripts/ci/test-go-coverage.sh
+./scripts/test/test-go-coverage.sh
 (cd frontend && npm test -- --coverage)
 ```
 

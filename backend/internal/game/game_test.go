@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation/controller"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 func TestOddRowHexNeighborsAndDistance(t *testing.T) {
