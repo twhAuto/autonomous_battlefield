@@ -232,9 +232,9 @@ SQL concurrency behavior is part of the application's correctness. Changes to st
 
 `DecisionService` deliberately receives only a `DecisionSubmissionRepository`, which cannot modify battles or simulation state.
 
-### `internal/ai/agent`: provider-neutral worker
+### `internal/ai/worker`: provider-neutral worker
 
-[`worker.go`](../../backend/internal/ai/agent/worker.go) starts one claim loop per concurrency slot. Each loop:
+[`worker.go`](../../backend/internal/ai/worker/worker.go) starts one claim loop per concurrency slot. Each loop:
 
 1. long-polls the MCP agent-control endpoint with executable profile IDs;
 2. immediately runs the claimed job in its owned slot;
@@ -250,7 +250,7 @@ The default runner factory is the only place that chooses concrete provider impl
 
 | File | Responsibility |
 | --- | --- |
-| [`agent_loop.go`](../../backend/internal/ai/runner/agent_loop.go) | Shared bounded tool loop for API providers |
+| [`api.go`](../../backend/internal/ai/runner/api.go) | Shared bounded tool loop for API providers |
 | [`mcp.go`](../../backend/internal/ai/runner/mcp.go) | Authenticated streamable HTTP MCP client and normalized tool calls |
 | [`cli.go`](../../backend/internal/ai/runner/cli.go) | Isolated Codex/Gemini CLI execution and environment setup |
 
@@ -481,8 +481,8 @@ For a focused change, start with the affected package tests. Before completing i
 2. [`backend/internal/battle/worker/decisions.go`](../../backend/internal/battle/worker/decisions.go), starting at `resolveDecisionWindow`
 3. [`backend/internal/battle/repo/decisions.go`](../../backend/internal/battle/repo/decisions.go)
 4. [`backend/internal/ai/mcpserver/server.go`](../../backend/internal/ai/mcpserver/server.go)
-5. [`backend/internal/ai/agent/worker.go`](../../backend/internal/ai/agent/worker.go)
-6. [`backend/internal/ai/runner/agent_loop.go`](../../backend/internal/ai/runner/agent_loop.go)
+5. [`backend/internal/ai/worker/worker.go`](../../backend/internal/ai/worker/worker.go)
+6. [`backend/internal/ai/runner/api.go`](../../backend/internal/ai/runner/api.go)
 7. [`backend/internal/ai/providers/openai.go`](../../backend/internal/ai/providers/openai.go) or [`gemini.go`](../../backend/internal/ai/providers/gemini.go)
 
 ### Learn application composition

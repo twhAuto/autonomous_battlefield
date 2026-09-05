@@ -114,13 +114,13 @@ func (c errorConnector) Connect(context.Context, string, string) (DecisionToolSe
 	return c.session, c.err
 }
 
-func TestAgentLoopFailureCategories(t *testing.T) {
+func TestAPIRunnerFailureCategories(t *testing.T) {
 	want := errors.New("failure")
 	session := ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 1}}
 	for _, test := range []struct {
-		loop     AgentLoop
+		loop     APIRunner
 		category string
-	}{{AgentLoop{Provider: errorProvider{}, Connector: errorConnector{err: want}}, "mcp_connect"}, {AgentLoop{Provider: errorProvider{}, Connector: errorConnector{session: errorSession{toolsErr: want}}}, "mcp_discovery"}, {AgentLoop{Provider: errorProvider{err: want}, Connector: errorConnector{session: errorSession{}}}, "provider"}, {AgentLoop{Provider: errorProvider{err: providers.ErrRefusal}, Connector: errorConnector{session: errorSession{}}}, "refusal"}, {AgentLoop{Provider: errorProvider{err: providers.ErrRateLimit}, Connector: errorConnector{session: errorSession{}}}, "rate_limit"}, {AgentLoop{Provider: errorProvider{err: context.DeadlineExceeded}, Connector: errorConnector{session: errorSession{}}}, "timeout"}, {AgentLoop{Provider: errorProvider{result: ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "shell"}}}}, Connector: errorConnector{session: errorSession{}}}, "unauthorized_tool"}, {AgentLoop{Provider: errorProvider{result: ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "get_decision_context", Arguments: []byte(`{}`)}}}}, Connector: errorConnector{session: errorSession{callErr: want}}}, "mcp_tool"}} {
+	}{{APIRunner{Provider: errorProvider{}, Connector: errorConnector{err: want}}, "mcp_connect"}, {APIRunner{Provider: errorProvider{}, Connector: errorConnector{session: errorSession{toolsErr: want}}}, "mcp_discovery"}, {APIRunner{Provider: errorProvider{err: want}, Connector: errorConnector{session: errorSession{}}}, "provider"}, {APIRunner{Provider: errorProvider{err: providers.ErrRefusal}, Connector: errorConnector{session: errorSession{}}}, "refusal"}, {APIRunner{Provider: errorProvider{err: providers.ErrRateLimit}, Connector: errorConnector{session: errorSession{}}}, "rate_limit"}, {APIRunner{Provider: errorProvider{err: context.DeadlineExceeded}, Connector: errorConnector{session: errorSession{}}}, "timeout"}, {APIRunner{Provider: errorProvider{result: ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "shell"}}}}, Connector: errorConnector{session: errorSession{}}}, "unauthorized_tool"}, {APIRunner{Provider: errorProvider{result: ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "get_decision_context", Arguments: []byte(`{}`)}}}}, Connector: errorConnector{session: errorSession{callErr: want}}}, "mcp_tool"}} {
 		result, err := test.loop.Run(context.Background(), session)
 		if err == nil || result.ErrorCategory != test.category {
 			t.Fatalf("category=%s result=%#v err=%v", test.category, result, err)
@@ -144,17 +144,17 @@ func (p *turnProvider) NextTurn(context.Context, ai.ModelTurnRequest) (ai.ModelT
 	return ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "submit_strategy_plan", Arguments: []byte(`{"requestId":"request","idempotencyKey":"once","expectedVersion":1,"targetTick":10,"name":"advance","actionWeights":{"attack":1200},"reserveGold":0,"spendOrder":["recruitment"],"constructionPriorities":[],"recruitmentPriorities":[]}`)}}, Usage: ai.Usage{OutputTokens: 3, Requests: 1}}, nil
 }
 
-func TestAgentLoopUsesMCPForContextAndSubmission(t *testing.T) {
+func TestAPIRunnerUsesMCPForContextAndSubmission(t *testing.T) {
 	tools := &fakeToolSession{}
 	provider := &turnProvider{}
-	result, err := (AgentLoop{Provider: provider, Connector: fakeConnector{tools}}).Run(context.Background(), ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 3, MaxOutputTokens: 100}})
+	result, err := (APIRunner{Provider: provider, Connector: fakeConnector{tools}}).Run(context.Background(), ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 3, MaxOutputTokens: 100}})
 	if err != nil || !result.Accepted || !tools.submitted || result.Usage.InputTokens != 2 || result.Usage.OutputTokens != 3 {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 }
 
-func TestAgentLoopStopsOnNoProgress(t *testing.T) {
-	result, err := (AgentLoop{Provider: &turnProvider{noProgress: true}, Connector: fakeConnector{&fakeToolSession{}}}).Run(context.Background(), ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 1}})
+func TestAPIRunnerStopsOnNoProgress(t *testing.T) {
+	result, err := (APIRunner{Provider: &turnProvider{noProgress: true}, Connector: fakeConnector{&fakeToolSession{}}}).Run(context.Background(), ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 1}})
 	if err == nil || result.ErrorCategory != "no_progress" {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
@@ -195,8 +195,8 @@ func (p *injectionProvider) NextTurn(_ context.Context, request ai.ModelTurnRequ
 	return ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "submit_strategy_plan", Arguments: []byte(`{"requestId":"request"}`)}}}, nil
 }
 
-func TestAgentLoopKeepsObservationInstructionsUntrusted(t *testing.T) {
-	result, err := (AgentLoop{Provider: &injectionProvider{}, Connector: injectionConnector{}}).Run(context.Background(), ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 2, MaxOutputTokens: 100}})
+func TestAPIRunnerKeepsObservationInstructionsUntrusted(t *testing.T) {
+	result, err := (APIRunner{Provider: &injectionProvider{}, Connector: injectionConnector{}}).Run(context.Background(), ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 2, MaxOutputTokens: 100}})
 	if err != nil || !result.Accepted {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}

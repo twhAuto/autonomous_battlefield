@@ -1,4 +1,4 @@
-package agent
+package worker
 
 import (
 	"bytes"
@@ -250,7 +250,7 @@ func defaultRunner(profile ai.ModelProfile) (ai.DecisionRunner, error) {
 	default:
 		return nil, fmt.Errorf("unsupported provider %q", profile.Provider)
 	}
-	return runner.AgentLoop{Provider: provider}, nil
+	return runner.APIRunner{Provider: provider}, nil
 }
 
 func (w *Worker) reportUsage(ctx context.Context, requestID string, result ai.DecisionResult) error {

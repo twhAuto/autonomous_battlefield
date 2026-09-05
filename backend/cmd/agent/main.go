@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agent"
+	aiworker "github.com/twh09/autonomous_battlefield/backend/internal/ai/worker"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
@@ -47,7 +47,7 @@ func run(configuration config.Config) error {
 		defer cancel()
 		_ = shutdownTracing(shutdown)
 	}()
-	worker := &agent.Worker{MCPURL: configuration.AI.MCPURL, Secret: configuration.AI.CapabilitySecret, WorkerID: hostname(), Profiles: ai.NewProfileRegistry(configuration.AI.Environment, configuration.AI.Profiles), PollInterval: time.Second, DecisionTimeout: configuration.AI.DecisionTimeout, Concurrency: 2}
+	worker := &aiworker.Worker{MCPURL: configuration.AI.MCPURL, Secret: configuration.AI.CapabilitySecret, WorkerID: hostname(), Profiles: ai.NewProfileRegistry(configuration.AI.Environment, configuration.AI.Profiles), PollInterval: time.Second, DecisionTimeout: configuration.AI.DecisionTimeout, Concurrency: 2}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		if !worker.Ready() {

@@ -10,12 +10,12 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/providers"
 )
 
-type AgentLoop struct {
+type APIRunner struct {
 	Provider  ai.TurnProvider
 	Connector MCPConnector
 }
 
-func (r AgentLoop) Run(ctx context.Context, session ai.DecisionSession) (ai.DecisionResult, error) {
+func (r APIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.DecisionResult, error) {
 	connector := r.Connector
 	if connector == nil {
 		connector = MCPClient{}

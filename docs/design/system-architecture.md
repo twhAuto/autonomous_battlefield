@@ -210,11 +210,11 @@ At the decision deadline:
 
 ## 6. Model execution
 
-Two execution paths implement the same provider-neutral decision-runner contract.
+`internal/ai/worker` owns decision claims, concurrency, timeouts, and outcome reporting. It selects an `APIRunner` or `CLIRunner` from `internal/ai/runner`; both implement the same provider-neutral decision-runner contract.
 
 ### API runtime
 
-The shared agent loop:
+`APIRunner` in `internal/ai/runner/api.go` runs the shared API tool loop:
 
 1. connects to MCP with a request-scoped capability;
 2. requires discovery of exactly `get_decision_context` and `submit_strategy_plan`;
