@@ -608,3 +608,20 @@ exercise an incremental path. Run
 These commands exercise the same local path, but they do not validate Jenkins
 Declarative Pipeline syntax. Use the configured Jenkins Multibranch job for the
 final `Jenkinsfile` validation.
+
+### Trivy database download recovery
+
+The source-security launcher prepares the vulnerability database before scanning,
+using the persistent Docker volume `autonomous-battlefield-trivy-cache` (override
+with `TRIVY_CACHE_VOLUME`). It tries `mirror.gcr.io/aquasec/trivy-db:2`, then
+`ghcr.io/aquasecurity/trivy-db:2` if preparation fails, with a three-minute timeout
+per attempt and progress bars disabled. Only after successful preparation does the
+filesystem scan use `--skip-db-update`; cached data alone does not bypass failed
+preparation. Both preparation failures fail the security gate. Scan findings are
+not retried or ignored. Kubernetes policy checks still run and publish reports.
+
+A `read: connection reset by peer` during preparation indicates a download failure,
+not a vulnerability finding. If both registries fail, inspect agent/container
+connectivity to those registries and rerun after recovery. The launcher tests stub
+networked scanners to verify registry fallback and failure propagation; they do
+not establish that the remote registries are reachable.

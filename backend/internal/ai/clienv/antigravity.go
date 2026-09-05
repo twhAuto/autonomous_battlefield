@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 )
 
+const geminiDirectory = ".gemini"
+
 // PrepareAntigravity uses the OS keyring or a private copy of the CLI-native
 // fallback login. HOME and XDG configuration paths remain private per invocation.
 func PrepareAntigravity(home, mcpURL, capability string) ([]string, error) {
@@ -25,7 +27,7 @@ func PrepareAntigravity(home, mcpURL, capability string) ([]string, error) {
 			"deny":  []string{"read_file(*)", "write_file(*)", "command(*)", "unsandboxed(*)", "read_url(*)", "execute_url(*)"},
 		},
 	}
-	if err := writeJSON(filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"), settings); err != nil {
+	if err := writeJSON(filepath.Join(home, geminiDirectory, "antigravity-cli", "settings.json"), settings); err != nil {
 		return nil, err
 	}
 	if err := copyAntigravityLogin(home); err != nil {
@@ -38,7 +40,7 @@ func PrepareAntigravity(home, mcpURL, capability string) ([]string, error) {
 			"headers":   map[string]string{"Authorization": "Bearer " + capability},
 		}
 	}
-	if err := writeJSON(filepath.Join(home, ".gemini", "config", "mcp_config.json"), map[string]any{"mcpServers": servers}); err != nil {
+	if err := writeJSON(filepath.Join(home, geminiDirectory, "config", "mcp_config.json"), map[string]any{"mcpServers": servers}); err != nil {
 		return nil, err
 	}
 	// Only transport variables required for the local keyring and network proxy
@@ -61,7 +63,7 @@ func copyAntigravityLogin(home string) error {
 	if err != nil {
 		return fmt.Errorf("locate Antigravity login: %w", err)
 	}
-	relative := filepath.Join(".gemini", "antigravity-cli", "antigravity-oauth-token")
+	relative := filepath.Join(geminiDirectory, "antigravity-cli", "antigravity-oauth-token")
 	source := filepath.Join(sourceHome, relative)
 	info, err := os.Lstat(source)
 	if os.IsNotExist(err) {

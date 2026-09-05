@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft — describes the current working tree, including uncommitted changes |
-| Last reviewed | 2026-09-05 |
+| Last reviewed | 2026-09-06 |
 | Audience | Contributors reviewing or extending system behavior |
 | Scope | Runtime components, data flows, durability, security, and deployment |
 
@@ -40,13 +40,15 @@ flowchart LR
     API[Go API<br/>cmd/server]
     Engine[Battle engine<br/>cmd/engine]
     DB[(PostgreSQL)]
+    Cache[(Optional Redis)]
     MCP[MCP decision service<br/>cmd/mcp]
     Agent[Decision agent<br/>cmd/agent]
     Provider[OpenAI / Gemini API<br/>or Codex / Antigravity CLI]
 
     User --> UI
     UI -->|HTTP /v1| API
-    API -->|factions, battle runs, reads| DB
+    API -->|factions, battle runs, cache misses| DB
+    API -->|completed battle snapshots with TTL| Cache
     Engine -->|claim battles, persist ticks| DB
     Engine -->|create and resolve decisions| DB
     DB -.->|LISTEN/NOTIFY wake-up| MCP
@@ -66,6 +68,7 @@ PostgreSQL is the durable coordination point. The API and engine do not call eac
 | Battle engine | Battle queue claims, deterministic ticks, strategy windows, state/event persistence | PostgreSQL |
 | MCP decision service | Two request-scoped model tools and an internal agent control plane | PostgreSQL |
 | Decision agent | Model-decision claims and API or CLI model execution | MCP service, model provider |
+| Redis (optional) | Disposable completed battle read cache; no engine or readiness dependency | Memory, API-only connection |
 | PostgreSQL | Factions, battle queue, event history, snapshots, leases, and model decisions | Persistent storage |
 | Scenario catalog | Authored map, timing, fallback plans, unit/building rules, and combat rules | Loaded by API and frozen into battle rows |
 
@@ -512,3 +515,37 @@ The UI polls the API, the engine polls battle rows, and agents long-poll MCP. Po
 CLI context responses include explicit target-tick and version metadata alongside the full structured context. CLI prompts require copying those values and making a substantive tactical or production decision. Name-only CLI plans are rejected; after three invalid submissions the decision is failed so the battle can fall back. MCP logs record context byte counts and validation field/code pairs without dumping observations or credentials. Usage reporting retries transient failures up to three times.
 
 Antigravity CLI offloads larger MCP tool responses to local files. Because battlefield CLI sessions deny file reads, the host now fetches the request-scoped context through the MCP SDK and embeds the validated JSON directly in the Antigravity prompt (maximum 64 KiB). The model submits through MCP without fetching the large response again. This keeps existing file restrictions and avoids blind tick guessing when the CLI hides an offloaded response.
+
+## Completed battle result caching
+
+The API service optionally checks Redis before `GetBattle` reads PostgreSQL. A miss,
+invalid entry, or Redis error falls back to PostgreSQL. Only a `completed` run with
+non-null result is stored, as a JSON snapshot containing its final state and scenario.
+Existing battle responses retain their schema. Faction views are projected from the
+snapshot after retrieval; event payloads and decision history remain PostgreSQL reads.
+Authentication runs before cache access. Engine and MCP persistence never use Redis.
+
+Keys are `battlefield:completed-battle:v1:<lowercase-battle-uuid>`, with a default
+one-hour TTL and 100 ms deadline per cache operation, with command retries disabled.
+Completed runs cannot currently be restarted or modified by application commands, so
+no writer invalidation is required. Any future result edit, battle deletion/reuse, or
+restart of a completed battle must add invalidation/versioning before release. After
+restoring PostgreSQL, clear the dedicated cache database or use a fresh Redis database.
+The `v1` namespace must change for incompatible cached schema changes.
+
+Redis is lazy-connected, optional, and excluded from readiness. An empty
+`BATTLEFIELD_REDIS_URL` disables it. Malformed URLs fail API initialization without
+logging their credentials; outages and cache write failures do not fail battle reads.
+Concurrent misses may issue duplicate database reads; this first implementation does
+not coalesce requests. Redis expiry and eviction bound the cached working set. Use a
+separate Redis database or instance per deployment environment.
+
+See [Redis operations](../operations/redis.md) for setup and verification.
+
+### Source-security scanner dependency
+
+CI prepares Trivy's vulnerability database in a persistent Docker cache volume,
+trying the Google mirror followed by the official GHCR repository on failure.
+Filesystem scanning starts only after successful preparation, and exhausted
+preparation attempts fail the gate. Runtime services do not depend on this cache.
+See [Jenkins recovery](../operations/jenkins.md#trivy-database-download-recovery).

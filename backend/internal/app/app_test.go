@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/catalog"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 )
 
@@ -45,3 +48,38 @@ func (appDatabase) Exec(context.Context, string, ...any) (pgconn.CommandTag, err
 }
 func (appDatabase) Query(context.Context, string, ...any) (pgx.Rows, error) { return nil, nil }
 func (appDatabase) QueryRow(context.Context, string, ...any) pgx.Row        { return nil }
+
+type cachedBattle struct{ reads int }
+
+func (c *cachedBattle) Get(_ context.Context, id string) (*service.BattleRun, error) {
+	c.reads++
+	return &service.BattleRun{ID: id, Status: "completed", CurrentTick: 42, Result: &game.Result{}}, nil
+}
+func (c *cachedBattle) Set(context.Context, *service.BattleRun) error { return nil }
+
+func TestCachedResultHTTPAndAuthentication(t *testing.T) {
+	const id = "abcdefab-1234-1234-1234-123456789012"
+	cache := &cachedBattle{}
+	// appDatabase.QueryRow returns nil: this request must be served entirely from cache.
+	application := NewAPIWithResultCache(appDatabase{}, &catalog.Catalog{}, 100, authn.Config{}, cache)
+	response := httptest.NewRecorder()
+	application.HTTPHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/battles/"+id, nil))
+	var result struct {
+		ID          string
+		Status      string
+		CurrentTick uint64
+		Result      *game.Result
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusOK || result.ID != id || result.Status != "completed" || result.CurrentTick != 42 || result.Result == nil || cache.reads != 1 {
+		t.Fatalf("cached HTTP response: %s", response.Body.String())
+	}
+	protected := NewAPIWithResultCache(appDatabase{}, &catalog.Catalog{}, 100, authn.Config{Enabled: true, SessionSecret: "test-secret-with-at-least-32-characters", SessionTTL: time.Hour}, cache)
+	response = httptest.NewRecorder()
+	protected.HTTPHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/battles/"+id, nil))
+	if response.Code != http.StatusUnauthorized || cache.reads != 1 {
+		t.Fatal("authentication did not precede cache lookup")
+	}
+}

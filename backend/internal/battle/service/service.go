@@ -138,19 +138,25 @@ func (s *battleService) ListScenarios() []ScenarioSummary {
 }
 
 type battleService struct {
-	battles  Repository
-	factions factionRepository
-	catalog  ScenarioCatalog
-	maxTicks uint64
-	profiles *ai.ProfileRegistry
+	battles     Repository
+	factions    factionRepository
+	catalog     ScenarioCatalog
+	maxTicks    uint64
+	profiles    *ai.ProfileRegistry
+	resultCache ResultCache
 }
 
 func NewService(battles Repository, factions factionRepository, catalog ScenarioCatalog, maxTicks uint64, registries ...*ai.ProfileRegistry) Service {
+	return NewServiceWithResultCache(battles, factions, catalog, maxTicks, nil, registries...)
+}
+
+// NewServiceWithResultCache enables optional caching of terminal battle snapshots.
+func NewServiceWithResultCache(battles Repository, factions factionRepository, catalog ScenarioCatalog, maxTicks uint64, cache ResultCache, registries ...*ai.ProfileRegistry) Service {
 	registry := ai.NewProfileRegistry("local", nil)
 	if len(registries) > 0 && registries[0] != nil {
 		registry = registries[0]
 	}
-	return &battleService{battles: battles, factions: factions, catalog: catalog, maxTicks: maxTicks, profiles: registry}
+	return &battleService{battles: battles, factions: factions, catalog: catalog, maxTicks: maxTicks, profiles: registry, resultCache: cache}
 }
 
 func (s *battleService) ListModelProfiles() []ai.ModelProfile { return s.profiles.List() }
@@ -296,7 +302,17 @@ func (s *battleService) GetBattle(ctx context.Context, id string) (*BattleRun, e
 	if !battleUUIDPattern.MatchString(id) {
 		return nil, ErrInvalidBattle
 	}
+	id = strings.ToLower(id)
+	if s.resultCache != nil {
+		if run, err := s.resultCache.Get(ctx, id); err == nil && cacheableResult(run, id) {
+			return run, nil
+		}
+	}
 	run, err := s.battles.GetBattle(ctx, id)
+	if err == nil && s.resultCache != nil && cacheableResult(run, id) {
+		// A cache failure must never turn a successful database read into an API failure.
+		_ = s.resultCache.Set(ctx, run)
+	}
 	return run, err
 }
 
@@ -353,4 +369,14 @@ func (s *battleService) ListBattleEvents(ctx context.Context, id string, request
 		page.NextCursor = &cursor
 	}
 	return page, nil
+}
+
+// ResultCache stores complete snapshots; callers still apply perspective projection.
+type ResultCache interface {
+	Get(context.Context, string) (*BattleRun, error)
+	Set(context.Context, *BattleRun) error
+}
+
+func cacheableResult(run *BattleRun, id string) bool {
+	return run != nil && run.ID == id && run.Status == "completed" && run.Result != nil
 }

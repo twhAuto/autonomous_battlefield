@@ -28,7 +28,7 @@ autonomous_battlefield/
 ├── backend/
 │   ├── cmd/{server,engine,mcp,agent,aieval}/ # Startup and command wiring
 │   ├── internal/
-│   │   ├── battle/{api,service,catalog,worker,repo}/
+│   │   ├── battle/{api,service,catalog,worker,repo,resultcache}/
 │   │   ├── faction/{api,service,repo}/
 │   │   ├── game/               # Deterministic state transitions
 │   │   │   └── controller/     # Infrastructure-free controller contracts
@@ -512,3 +512,31 @@ CLI completion is verified against the accepted decision in the MCP control plan
 CLI context responses include explicit target-tick and version metadata alongside the full structured context. CLI prompts require copying those values and making a substantive tactical or production decision. Name-only CLI plans are rejected; after three invalid submissions the decision is failed so the battle can fall back. MCP logs record context byte counts and validation field/code pairs without dumping observations or credentials. Usage reporting retries transient failures up to three times.
 
 Antigravity CLI offloads larger MCP tool responses to local files. Because battlefield CLI sessions deny file reads, the host now fetches the request-scoped context through the MCP SDK and embeds the validated JSON directly in the Antigravity prompt (maximum 64 KiB). The model submits through MCP without fetching the large response again. This keeps existing file restrictions and avoids blind tick guessing when the CLI hides an offloaded response.
+
+## Completed result cache
+
+- `internal/battle/service/service.go`: `ResultCache` port and
+  `NewServiceWithResultCache`; validates IDs and caches only completed snapshots.
+- `internal/battle/resultcache/redis.go`: go-redis adapter, JSON validation,
+  versioned keys, TTL, bounded operations, and connection cleanup.
+- `internal/app/app.go`: `NewAPIWithResultCache` wires the optional cache beneath
+  the existing authentication middleware and battle handlers.
+- `internal/config/config.go`: API-only `resultCache` settings; `cmd/server`
+  constructs the client and closes it after server shutdown.
+- `result_cache_test.go` in service/config and `resultcache/redis_test.go` cover
+  hits, misses, failures, validation, and expiry using an in-process Redis protocol
+  server. App tests check HTTP response and authentication on cache hits.
+
+Run `./scripts/test/test-go-coverage.sh` for the backend gate. Redis adapter tests
+open a loopback socket but require no external Redis process. Local Compose setup
+and optional Kubernetes Secret wiring are described in
+[Redis operations](../operations/redis.md).
+
+### CI failure regression checks
+
+`frontend/src/app/App.test.tsx` controls the timer for event-page draining: one
+polling interval fetches the next full page, then an immediate timer drains its
+successor. It avoids a wall-clock deadline that depends on Jenkins load.
+`scripts/test/test-security-launchers.sh` checks Trivy database registry fallback,
+shared cache mounting, and a failing gate when preparation or a scanner fails.
+See [Jenkins operations](../operations/jenkins.md#trivy-database-download-recovery).

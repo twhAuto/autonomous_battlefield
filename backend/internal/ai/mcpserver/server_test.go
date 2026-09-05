@@ -99,9 +99,14 @@ func TestStreamableMCPToolsAreAuthenticatedAndScoped(t *testing.T) {
 	if err != nil || submitted.IsError || repository.submitted.IdempotencyKey != "once" || repository.submitted.Plan.Rationale == "" {
 		t.Fatalf("submit=%#v err=%v", submitted, err)
 	}
+	assertDecisionToolLogs(t, logs.String())
+}
+
+func assertDecisionToolLogs(t *testing.T, logs string) {
+	t.Helper()
 	for _, expected := range []string{`"msg":"decision_context_served"`, `"msg":"decision_context_denied"`, `"msg":"decision_plan_submitted"`, `"accepted":true`} {
-		if !strings.Contains(logs.String(), expected) {
-			t.Fatalf("logs do not contain %s: %s", expected, logs.String())
+		if !strings.Contains(logs, expected) {
+			t.Fatalf("logs do not contain %s: %s", expected, logs)
 		}
 	}
 }
