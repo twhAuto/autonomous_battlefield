@@ -34,6 +34,11 @@ pipeline {
                 deleteDir()
                 checkout scm
                 script {
+                    env.CI_WORK_ROOT = "${pwd(tmp: true)}/autonomous-battlefield"
+                    env.GOCACHE = "${env.CI_WORK_ROOT}/cache/go-build"
+                    env.GOTMPDIR = "${env.CI_WORK_ROOT}/tmp/go"
+                    env.TMPDIR = "${env.CI_WORK_ROOT}/tmp/general"
+                    sh 'mkdir -p "${GOCACHE}" "${GOTMPDIR}" "${TMPDIR}"'
                     env.IMAGE_TAG = sh(
                         script: 'git rev-parse HEAD',
                         returnStdout: true
@@ -58,7 +63,7 @@ pipeline {
 
                         stage('Backend tests and coverage') {
                             steps {
-                                sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" ./scripts/ci/with-test-postgres.sh ./scripts/ci/test-backend.sh'
+                                sh './scripts/ci/with-test-postgres.sh ./scripts/ci/test-backend.sh'
                             }
                         }
 
@@ -162,7 +167,7 @@ pipeline {
 
                         stage('Main backend coverage') {
                             steps {
-                                sh 'GOCACHE="/tmp/autonomous-battlefield-go-cache-${BUILD_NUMBER}" ./scripts/ci/with-test-postgres.sh ./scripts/ci/test-backend.sh'
+                                sh './scripts/ci/with-test-postgres.sh ./scripts/ci/test-backend.sh'
                             }
                         }
 
@@ -464,6 +469,13 @@ pipeline {
 
     post {
         always {
+            script {
+                if (env.CI_WORK_ROOT) {
+                    dir(env.CI_WORK_ROOT) {
+                        deleteDir()
+                    }
+                }
+            }
             archiveArtifacts(
                 artifacts: 'artifacts/**/*,backend/coverage.out,backend/coverage-total.txt,frontend/coverage/**/*',
                 allowEmptyArchive: true,
