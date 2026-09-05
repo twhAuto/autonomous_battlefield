@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -615,11 +615,24 @@ describe('App', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
-    renderApp(`/battles/${battleId}`)
-
-    expect(await screen.findByText('#0101', {}, { timeout: 2500 })).toBeInTheDocument()
-    expect(screen.getByText(/LATEST TICK 38/)).toBeInTheDocument()
-    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes('after=100'))).toBe(true)
+    vi.useFakeTimers()
+    const view = renderApp(`/battles/${battleId}`)
+    try {
+      // Flush the initial status/latest-page requests before advancing polling.
+      await act(async () => {})
+      expect(screen.getByText('#0050')).toBeInTheDocument()
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+      expect(screen.getByText('#0100')).toBeInTheDocument()
+      expect(screen.queryByText('#0101')).not.toBeInTheDocument()
+      // A full page must trigger an immediate drain, not another polling interval.
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      expect(screen.getByText('#0101')).toBeInTheDocument()
+      expect(screen.getByText(/LATEST TICK 38/)).toBeInTheDocument()
+      expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes('after=100'))).toBe(true)
+    } finally {
+      view.unmount()
+      vi.useRealTimers()
+    }
   })
 
   it('renders the not-found route', () => {

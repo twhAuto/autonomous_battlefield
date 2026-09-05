@@ -531,3 +531,12 @@ Run `./scripts/test/test-go-coverage.sh` for the backend gate. Redis adapter tes
 open a loopback socket but require no external Redis process. Local Compose setup
 and optional Kubernetes Secret wiring are described in
 [Redis operations](../operations/redis.md).
+
+### CI failure regression checks
+
+`frontend/src/app/App.test.tsx` controls the timer for event-page draining: one
+polling interval fetches the next full page, then an immediate timer drains its
+successor. It avoids a wall-clock deadline that depends on Jenkins load.
+`scripts/test/test-security-launchers.sh` checks Trivy database registry fallback,
+shared cache mounting, and a failing gate when preparation or a scanner fails.
+See [Jenkins operations](../operations/jenkins.md#trivy-database-download-recovery).

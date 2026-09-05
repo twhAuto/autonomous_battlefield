@@ -8,6 +8,11 @@ source "${project_dir}/scripts/ci/tool-versions.env"
 artifact_dir="${SECURITY_ARTIFACT_DIR:-${project_dir}/artifacts/security}"
 mkdir -p "${artifact_dir}"
 failure=0
+trivy_cache_volume="${TRIVY_CACHE_VOLUME:-autonomous-battlefield-trivy-cache}"
+if [[ ! "${trivy_cache_volume}" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]]; then
+  echo "Invalid Trivy cache volume name: ${trivy_cache_volume}" >&2
+  exit 1
+fi
 
 for command in docker git go kubectl; do
   if ! command -v "${command}" >/dev/null 2>&1; then
@@ -90,16 +95,37 @@ if ! docker run --rm \
   failure=1
 fi
 
+# Retry only database preparation, never a completed scan with findings.
+# Explicitly switch registries after a transport failure such as a reset mid-download.
+trivy_db_ready=0
+for repository in mirror.gcr.io/aquasec/trivy-db:2 ghcr.io/aquasecurity/trivy-db:2; do
+  echo "Preparing Trivy vulnerability database from ${repository}..."
+  if docker run --rm \
+    --volume "${trivy_cache_volume}:/root/.cache/trivy" \
+    "${TRIVY_IMAGE}" image --download-db-only --no-progress --timeout 3m \
+    --db-repository "${repository}"; then
+    trivy_db_ready=1
+    break
+  fi
+done
+
 echo "Scanning source and infrastructure configuration with Trivy..."
-if ! docker run --rm \
-  --volume "${project_dir}:/project:ro" \
-  --workdir /project \
-  "${TRIVY_IMAGE}" \
-  fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL \
-  --include-dev-deps "${trivy_ignore_unfixed[@]}" --skip-dirs artifacts --exit-code 1 \
-  --format json --output /dev/stdout . \
-  >"${artifact_dir}/trivy-filesystem.json"; then
+if [[ "${trivy_db_ready}" != "1" ]]; then
+  echo "Trivy database preparation failed for both registries; vulnerability scan cannot pass." >&2
   failure=1
+else
+  if ! docker run --rm \
+    --volume "${trivy_cache_volume}:/root/.cache/trivy" \
+    --volume "${project_dir}:/project:ro" \
+    --workdir /project \
+    "${TRIVY_IMAGE}" \
+    fs --skip-db-update --no-progress --timeout 10m --scanners vuln,secret,misconfig --severity HIGH,CRITICAL \
+    --include-dev-deps "${trivy_ignore_unfixed[@]}" --skip-dirs artifacts --exit-code 1 \
+    --format json --output /dev/stdout . \
+    >"${artifact_dir}/trivy-filesystem.json"; then
+    failure=1
+  fi
+
 fi
 
 manifest_file="${artifact_dir}/rendered-manifests.yaml"
@@ -117,6 +143,7 @@ done
 
 echo "Scanning freshly rendered Kubernetes configuration with Trivy..."
 if ! docker run --rm \
+  --volume "${trivy_cache_volume}:/root/.cache/trivy" \
   --volume "${project_dir}:/project:ro" \
   --volume "${artifact_dir}:/reports:ro" \
   --workdir /project \

@@ -541,3 +541,11 @@ not coalesce requests. Redis expiry and eviction bound the cached working set. U
 separate Redis database or instance per deployment environment.
 
 See [Redis operations](../operations/redis.md) for setup and verification.
+
+### Source-security scanner dependency
+
+CI prepares Trivy's vulnerability database in a persistent Docker cache volume,
+trying the Google mirror followed by the official GHCR repository on failure.
+Filesystem scanning starts only after successful preparation, and exhausted
+preparation attempts fail the gate. Runtime services do not depend on this cache.
+See [Jenkins recovery](../operations/jenkins.md#trivy-database-download-recovery).

@@ -12,7 +12,18 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const args = process.argv.slice(2);
 if (args[0] === 'image' && args[1] === 'inspect') process.exit(0);
+if (process.env.SCANNER_CALL_LOG) fs.appendFileSync(process.env.SCANNER_CALL_LOG, JSON.stringify(args) + '\n');
 const mounts = args.flatMap((arg, i) => arg === '--volume' ? [args[i + 1]] : []);
+if (args.includes('--download-db-only') || args.includes('fs')) {
+  assert.ok(mounts.includes(`${process.env.TRIVY_CACHE_VOLUME}:/root/.cache/trivy`));
+  assert.ok(args.includes('--no-progress'));
+  if (args.includes('--download-db-only')) {
+    assert.ok(args.includes('--timeout'));
+    if (process.env.DB_FAILURE === 'all' || (process.env.DB_FAILURE === 'mirror' && args.includes('mirror.gcr.io/aquasec/trivy-db:2'))) process.exit(23);
+  } else {
+    assert.ok(args.includes('--skip-db-update'));
+  }
+}
 if (args.includes('config') || args.includes('test')) {
   assert.ok(mounts.includes(`${process.env.SECURITY_ARTIFACT_DIR}:/reports:ro`));
   assert.ok(args.includes('/reports/rendered-manifests.yaml'));
@@ -30,11 +41,13 @@ STUB
 chmod +x "${test_dir}/bin/"*
 export PATH="${test_dir}/bin:${PATH}"
 export SECURITY_ARTIFACT_DIR="${test_dir}/reports with spaces"
-unset EXPECTED_TRIVY_IMAGE FAIL_SCANNER_COMMAND
+unset EXPECTED_TRIVY_IMAGE FAIL_SCANNER_COMMAND DB_FAILURE
+export TRIVY_CACHE_VOLUME=battlefield-security-test-cache
+export SCANNER_CALL_LOG="${test_dir}/scanner-calls.jsonl"
 
 # Render real manifests but stub networked scanners. Custom artifact locations
 # must reach both Kubernetes scanners and scanner failures must fail the gate.
-for FAIL_SCANNER_COMMAND in '' config test; do
+for FAIL_SCANNER_COMMAND in '' fs config test; do
   export FAIL_SCANNER_COMMAND
   status=0
   "${project_dir}/scripts/ci/security-and-policy.sh" >"${test_dir}/security.log" 2>&1 || status=$?
@@ -45,6 +58,30 @@ for FAIL_SCANNER_COMMAND in '' config test; do
   fi
 done
 unset FAIL_SCANNER_COMMAND
+
+# A transport failure must switch repositories; exhausting both must fail closed.
+for DB_FAILURE in mirror all; do
+  export DB_FAILURE
+  : >"${SCANNER_CALL_LOG}"
+  status=0
+  "${project_dir}/scripts/ci/security-and-policy.sh" >"${test_dir}/security.log" 2>&1 || status=$?
+  if [[ "${DB_FAILURE}" == mirror ]]; then
+    [[ "${status}" == 0 ]] || { cat "${test_dir}/security.log" >&2; exit 1; }
+  else
+    [[ "${status}" == 1 ]] || { cat "${test_dir}/security.log" >&2; exit 1; }
+  fi
+  node <<'CHECK'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const calls = fs.readFileSync(process.env.SCANNER_CALL_LOG, 'utf8').trim().split('\n').map(JSON.parse);
+const downloads = calls.filter(args => args.includes('--download-db-only'));
+assert.equal(downloads.length, 2);
+assert.ok(downloads[0].includes('mirror.gcr.io/aquasec/trivy-db:2'));
+assert.ok(downloads[1].includes('ghcr.io/aquasecurity/trivy-db:2'));
+assert.equal(calls.filter(args => args.includes('fs')).length, process.env.DB_FAILURE === 'all' ? 0 : 1);
+CHECK
+done
+unset DB_FAILURE
 
 # The local scan shares the central pin while retaining its existing override.
 source "${project_dir}/scripts/ci/tool-versions.env"
