@@ -1,12 +1,15 @@
 package ai
 
 import (
+	"context"
 	"errors"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/clienv"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 var ErrProfileUnavailable = errors.New("model profile unavailable")
@@ -20,8 +23,8 @@ type profileRegistryPurpose uint8
 const (
 	profileExecutor profileRegistryPurpose = iota
 	profileCatalog
-	codexCLIProvider  = "codex-cli"
-	geminiCLIProvider = "gemini-cli"
+	codexCLIProvider       = "codex-cli"
+	antigravityCLIProvider = "antigravity-cli"
 )
 
 func NewProfileRegistry(environment string, configured []ModelProfile) *ProfileRegistry {
@@ -109,7 +112,7 @@ func evaluateExternalCLIProfile(profile ModelProfile, purpose profileRegistryPur
 		profile.UnavailableReason = "host CLI agent is not connected"
 		return profile
 	}
-	if profile.Runtime != "cli" || (profile.Provider != codexCLIProvider && profile.Provider != geminiCLIProvider) || strings.TrimSpace(profile.SupportedVersionPrefix) == "" {
+	if profile.Runtime != "cli" || (profile.Provider != codexCLIProvider && profile.Provider != antigravityCLIProvider) || strings.TrimSpace(profile.SupportedVersionPrefix) == "" {
 		profile.UnavailableReason = "invalid external CLI profile configuration"
 		return profile
 	}
@@ -144,7 +147,7 @@ func evaluateAPIProfile(environment string, profile ModelProfile) ModelProfile {
 }
 
 func evaluateLocalCLIProfile(profile ModelProfile) ModelProfile {
-	binary := map[string]string{codexCLIProvider: "codex", geminiCLIProvider: "gemini"}[profile.Provider]
+	binary := map[string]string{codexCLIProvider: "codex", antigravityCLIProvider: "agy"}[profile.Provider]
 	if binary == "" {
 		profile.UnavailableReason = "unsupported CLI provider"
 		return profile
@@ -158,11 +161,19 @@ func evaluateLocalCLIProfile(profile ModelProfile) ModelProfile {
 		profile.UnavailableReason = binary + " CLI version is not supported"
 		return profile
 	}
-	home, _ := os.UserHomeDir()
-	authPath := map[string]string{codexCLIProvider: filepath.Join(home, ".codex", "auth.json"), geminiCLIProvider: filepath.Join(home, ".gemini", "oauth_creds.json")}[profile.Provider]
-	if _, err := os.Stat(authPath); err != nil {
-		profile.UnavailableReason = binary + " CLI is not authenticated"
-		return profile
+	if profile.Provider == antigravityCLIProvider {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := clienv.CheckAntigravityAuth(ctx); err != nil {
+			profile.UnavailableReason = err.Error()
+			return profile
+		}
+	} else {
+		home, _ := os.UserHomeDir()
+		if _, err := os.Stat(filepath.Join(home, ".codex", "auth.json")); err != nil {
+			profile.UnavailableReason = binary + " CLI is not authenticated"
+			return profile
+		}
 	}
 	if profile.ModelLabel == "" {
 		profile.ModelLabel = binary + " subscription"

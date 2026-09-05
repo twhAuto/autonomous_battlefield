@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${project_dir}/scripts/lib/deployment-environment.sh"
+battlefield_env_preflight
+
 
 owner="${GHCR_OWNER:-twh09}"
 report_dir="${REPORT_DIR:-artifacts/retention}"

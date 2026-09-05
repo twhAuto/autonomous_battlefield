@@ -2,7 +2,11 @@
 
 set -Eeuo pipefail
 
-# Verifies the workloads and observability endpoints deployed to local kind.
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${project_dir}/scripts/lib/deployment-environment.sh"
+battlefield_env_preflight
+
+# Verifies the registered application and optionally its observability endpoints.
 
 cluster_name="${KIND_CLUSTER_NAME:-battlefield}"
 namespace="${KUBERNETES_NAMESPACE:-battlefield}"
@@ -12,7 +16,6 @@ prometheus_port="${SMOKE_TEST_PROMETHEUS_PORT:-18082}"
 elasticsearch_port="${SMOKE_TEST_ELASTICSEARCH_PORT:-18083}"
 tempo_port="${SMOKE_TEST_TEMPO_PORT:-18084}"
 gateway_port="${SMOKE_TEST_GATEWAY_PORT:-8888}"
-frontend_host="${SMOKE_TEST_FRONTEND_HOST:-battlefield.localhost}"
 grafana_host="${SMOKE_TEST_GRAFANA_HOST:-grafana.localhost}"
 kibana_host="${SMOKE_TEST_KIBANA_HOST:-kibana.localhost}"
 auth_secret_name="${SMOKE_TEST_AUTH_SECRET_NAME:-battlefield-auth}"
@@ -63,19 +66,23 @@ kube() {
   kubectl --context "${kube_context}" "$@"
 }
 
-kube port-forward \
-  --namespace "${namespace}" \
-  service/battlefield-prometheus \
-  "${prometheus_port}:9090" \
-  >"${runtime_dir}/prometheus-port-forward.log" 2>&1 &
-pids+=("$!")
+if [[ "${SMOKE_TEST_OBSERVABILITY}" == 1 ]]; then
+  kube port-forward \
+    --namespace "${namespace}" \
+    service/battlefield-prometheus \
+    "${prometheus_port}:9090" \
+    >"${runtime_dir}/prometheus-port-forward.log" 2>&1 &
+  pids+=("$!")
+fi
 
-kube port-forward \
-  --namespace "${namespace}" \
-  service/battlefield-tempo \
-  "${tempo_port}:3200" \
-  >"${runtime_dir}/tempo-port-forward.log" 2>&1 &
-pids+=("$!")
+if [[ "${SMOKE_TEST_OBSERVABILITY}" == 1 ]]; then
+  kube port-forward \
+    --namespace "${namespace}" \
+    service/battlefield-tempo \
+    "${tempo_port}:3200" \
+    >"${runtime_dir}/tempo-port-forward.log" 2>&1 &
+  pids+=("$!")
+fi
 
 kube port-forward \
   --namespace "${namespace}" \
@@ -84,12 +91,14 @@ kube port-forward \
   >"${runtime_dir}/api-port-forward.log" 2>&1 &
 pids+=("$!")
 
-kube port-forward \
-  --namespace "${namespace}" \
-  service/battlefield-elasticsearch \
-  "${elasticsearch_port}:9200" \
-  >"${runtime_dir}/elasticsearch-port-forward.log" 2>&1 &
-pids+=("$!")
+if [[ "${SMOKE_TEST_OBSERVABILITY}" == 1 ]]; then
+  kube port-forward \
+    --namespace "${namespace}" \
+    service/battlefield-elasticsearch \
+    "${elasticsearch_port}:9200" \
+    >"${runtime_dir}/elasticsearch-port-forward.log" 2>&1 &
+  pids+=("$!")
+fi
 
 wait_for_url() {
   local name="$1"
@@ -170,9 +179,7 @@ prepare_application_session() {
     false)
       ;;
     true)
-      echo "${auth_secret_name} enables Secure cookies, but the local smoke-test gateway uses HTTP." >&2
-      echo "Set BATTLEFIELD_AUTH_COOKIE_SECURE=false for battlefield.localhost." >&2
-      return 1
+      [[ "${TARGET_URL}" == https://* ]] || { echo "Secure auth cookies require an HTTPS TARGET_URL." >&2; return 1; }
       ;;
     *)
       echo "${auth_secret_name} has an invalid BATTLEFIELD_AUTH_COOKIE_SECURE value." >&2
@@ -205,13 +212,12 @@ prepare_application_session() {
   login_status="$(
     curl --silent --show-error --max-time 5 \
       --noproxy '*' \
-      --resolve "${frontend_host}:${gateway_port}:127.0.0.1" \
       --header 'Content-Type: application/json' \
       --data-binary "@${login_payload}" \
       --cookie-jar "${application_cookie_file}" \
       --output /dev/null \
       --write-out '%{http_code}' \
-      "http://${frontend_host}:${gateway_port}/v1/auth/login"
+      "${TARGET_URL}/v1/auth/login"
   )"
   if [[ "${login_status}" != "204" ]]; then
     echo "Smoke-test administrator login failed with HTTP ${login_status}." >&2
@@ -222,16 +228,19 @@ prepare_application_session() {
 
 wait_for_url \
   "Frontend liveness through Gateway API" \
-  "http://${frontend_host}:${gateway_port}/livez" \
-  "${frontend_host}:${gateway_port}:127.0.0.1"
+  "${TARGET_URL}/livez"
 wait_for_url "API readiness" "http://127.0.0.1:${api_port}/readyz"
 prepare_application_session
 wait_for_url \
   "Gateway API application route" \
-  "http://${frontend_host}:${gateway_port}/v1/scenarios" \
-  "${frontend_host}:${gateway_port}:127.0.0.1" \
+  "${TARGET_URL}/v1/scenarios" \
+  "" \
   "${application_cookie_file}"
 wait_for_url "API metrics" "http://127.0.0.1:${api_port}/metrics"
+if [[ "${SMOKE_TEST_OBSERVABILITY}" != 1 ]]; then
+  echo "${DEPLOY_ENV} application smoke test completed successfully."
+  exit 0
+fi
 wait_for_url "Prometheus readiness" "http://127.0.0.1:${prometheus_port}/-/ready"
 wait_for_url \
   "Grafana health through Gateway API" \
@@ -382,4 +391,4 @@ wait_for_elasticsearch_logs() {
 
 wait_for_elasticsearch_logs
 
-echo "Local kind application and observability smoke test completed successfully."
+echo "${DEPLOY_ENV} application and observability smoke test completed successfully."

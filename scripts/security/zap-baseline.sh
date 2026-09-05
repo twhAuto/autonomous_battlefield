@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${project_dir}/scripts/lib/deployment-environment.sh"
+battlefield_env_preflight
 # shellcheck source=../ci/tool-versions.env
 source "${project_dir}/scripts/ci/tool-versions.env"
 report_dir="${project_dir}/artifacts/security/zap"

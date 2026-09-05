@@ -1,5 +1,11 @@
 # Autonomous Battlefield
 
+Deployment environments are separate: **WSL dev** builds and loads local images;
+**server production** receives verified GHCR images from Jenkins `main` delivery.
+Start with the [environment setup guide](docs/operations/environments.md);
+version-controlled configuration templates live in [`deploy/environments/`](deploy/environments/).
+
+
 Autonomous Battlefield is a Go backend for an auto-battler and expansion game. The long-term product will let human players and AI agents control factions that gather resources, expand territory, and fight on a continuously running battlefield.
 
 The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, point-buy faction blueprints, autonomous economies, fog-of-war views, production-window decisions, provider-neutral model controllers over MCP, an optional single-admin login, validated configuration, health endpoints, and graceful shutdown. Player commands, multi-user authorization, and seeded map generation remain planned work.
@@ -24,7 +30,7 @@ The project is in an early stage. The current backend provides PostgreSQL-backed
 - Shut down the HTTP server gracefully on `SIGINT` or `SIGTERM`.
 - Rank valid faction actions with an in-memory deterministic utility controller.
 - Schedule configurable strategy-decision windows and use a safe fallback plan between them.
-- Run OpenAI or Gemini API profiles through a shared MCP tool loop, with optional local Codex and Gemini CLI subscription profiles.
+- Run OpenAI or Gemini API profiles through a shared MCP tool loop, with optional local Codex and Antigravity CLI subscription profiles.
 - Queue finite battles durably in PostgreSQL and claim them safely across engine workers.
 - Run deterministic hex movement, economy, recruitment, castle combat, and persist replay state, statistics, and paginated events.
 - Protect `/v1` application routes with an explicitly enabled, environment-backed administrator login and signed HttpOnly session cookie.
@@ -110,15 +116,21 @@ START_AGENT=1 OPENAI_API_KEY='...' OPENAI_MODEL='gpt-5-mini' ./run-dev.sh
 ```
 
 API profiles are available only when both configured credential and model
-variables are present. Local `codex-cli` and `gemini-cli` profiles instead
-require the corresponding binary and an existing interactive login. The CLI
+variables are present. Local `codex-cli` and `antigravity-cli` profiles instead
+require the corresponding binary and an existing interactive login. Antigravity
+supports its native keyring or saved token file on WSL. The host supplies its
+authorized context directly to Antigravity to avoid the CLI’s file offloading
+of larger tool responses. The CLI
 runners use an empty temporary workspace and an isolated MCP-only
 configuration; subscription authentication directories are never mounted in
 Kubernetes. `supportedVersionPrefix` pins the tested CLI release family; an
 unmatched installation is reported as unavailable instead of being invoked.
+CLI completion requires an accepted strategy submission; a denied tool or missing
+submission fails the decision instead of leaving it waiting for the timeout.
+CLI plans must contain an explicit decision; three invalid submissions close the
+decision and allow fallback.
 Each CLI profile also pins its model and passes it explicitly with `--model`.
-The supplied profiles use `gpt-5.6-luna` for Codex and the Gemini CLI `flash`
-alias. Their safe model labels appear in the profile catalog and battle history.
+The supplied profiles use `gpt-5.6-luna` for Codex and `gemini-3.7-flash-medium` for Antigravity. Their safe model labels appear in the profile catalog and battle history.
 
 To use a subscription CLI in a battle running on the local Kubernetes cluster,
 deploy the application and start the host bridge in a second terminal:
@@ -128,7 +140,10 @@ deploy the application and start the host bridge in a second terminal:
 ./run-k8s-cli-agent.sh codex
 ```
 
-Use `gemini`, `both`, or `auto` instead of `codex` when appropriate. Keep the
+Use `antigravity`, `both`, or `auto` instead of `codex` when appropriate.
+For Antigravity, install the supported 1.1.x CLI and run `agy` to sign in
+with Google first; see [Antigravity setup](docs/operations/antigravity-cli.md).
+The old `gemini` launcher argument remains an alias for `antigravity`. Keep the
 bridge terminal open, browse to `http://battlefield.localhost:8888`, and select
 the enabled subscription profile as a faction controller. The host agent
 long-polls the internal MCP service through a loopback-only port-forward and
@@ -253,7 +268,7 @@ Supply-chain and AI assurance references:
 - [`infra/aws/README.md`](infra/aws/README.md)
 
 See the [Jenkins setup guide](docs/operations/jenkins.md) before configuring the Multibranch job
-or its local Kubernetes credential.
+or its production Kubernetes credential.
 
 For fast iteration after the local cluster, infrastructure, and gateway have
 already been deployed, rebuild and redeploy only the backend and frontend with:
@@ -265,8 +280,8 @@ already been deployed, rebuild and redeploy only the backend and frontend with:
 This convenience command accepts uncommitted local changes, runs the backend
 migration gate, and updates the API, engine, agent, MCP, and frontend workloads. When the
 working tree is dirty, it also restarts those workloads so images rebuilt under
-the current commit tag are picked up immediately. It does not deploy or update
-PostgreSQL, observability, logging, or gateway resources.
+the current commit tag are picked up immediately. It also applies dev PostgreSQL/configuration and gateway resources and runs
+application smoke checks. Observability and logging remain optional.
 
 ### Use a different configuration file
 

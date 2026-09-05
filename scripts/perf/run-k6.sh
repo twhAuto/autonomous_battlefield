@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${project_dir}/scripts/lib/deployment-environment.sh"
+battlefield_env_preflight
 # shellcheck source=../ci/tool-versions.env
 source "${project_dir}/scripts/ci/tool-versions.env"
 test_file="${1:-tests/performance/k6-smoke.js}"

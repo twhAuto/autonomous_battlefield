@@ -9,6 +9,18 @@
 
 For runtime boundaries, data flows, durability, and security decisions, see the [system architecture](system-architecture.md).
 
+## Environment tooling
+
+`scripts/lib/deployment-environment.sh` owns profile loading, conflicting-override
+checks, cluster UID verification, and dev Docker identity verification.
+`scripts/cd/setup-environment.sh` registers an existing cluster without changing
+its original kubeconfig. `prepare-dev-secrets.sh` provisions private dev files;
+`create-kind-cluster.sh` starts/bootstrap dev without recreation. Deployment,
+rollback, smoke, dev CLI agents, retention reports, and runtime assurance share
+the resolver. `scripts/test/test-deployment-environment.sh` exercises rejection
+and bootstrap paths. See the [environment guide](../operations/environments.md)
+for machine configuration, Jenkins credentials, and commands.
+
 ## 1. Repository map
 
 ```text
@@ -232,9 +244,9 @@ SQL concurrency behavior is part of the application's correctness. Changes to st
 
 `DecisionService` deliberately receives only a `DecisionSubmissionRepository`, which cannot modify battles or simulation state.
 
-### `internal/ai/agent`: provider-neutral worker
+### `internal/ai/worker`: provider-neutral worker
 
-[`worker.go`](../../backend/internal/ai/agent/worker.go) starts one claim loop per concurrency slot. Each loop:
+[`worker.go`](../../backend/internal/ai/worker/worker.go) starts one claim loop per concurrency slot. Each loop:
 
 1. long-polls the MCP agent-control endpoint with executable profile IDs;
 2. immediately runs the claimed job in its owned slot;
@@ -250,9 +262,9 @@ The default runner factory is the only place that chooses concrete provider impl
 
 | File | Responsibility |
 | --- | --- |
-| [`agent_loop.go`](../../backend/internal/ai/runner/agent_loop.go) | Shared bounded tool loop for API providers |
+| [`api.go`](../../backend/internal/ai/runner/api.go) | Shared bounded tool loop for API providers |
 | [`mcp.go`](../../backend/internal/ai/runner/mcp.go) | Authenticated streamable HTTP MCP client and normalized tool calls |
-| [`cli.go`](../../backend/internal/ai/runner/cli.go) | Isolated Codex/Gemini CLI execution and environment setup |
+| [`cli.go`](../../backend/internal/ai/runner/cli.go) | Isolated Codex/Antigravity CLI execution and result parsing |
 
 The API loop discovers exactly two MCP tools and accepts only those names. It appends tool calls and results to the neutral message transcript and accumulates usage over turns.
 
@@ -382,8 +394,9 @@ The battle feature's `hooks/` directory owns status, event, decision-history, an
 | [`backend/rulesets`](../../backend/rulesets) | Versioned unit, building, economy, and combat values |
 | [`backend/scenarios`](../../backend/scenarios) | Map layout, timing, scripted plans, and fallbacks |
 | [`deploy/base/infrastructure/configmap.yaml`](../../deploy/base/infrastructure/configmap.yaml) | Cluster configuration equivalent |
-| [`deploy/overlays/local/infrastructure/ai-secret.env.example`](../../deploy/overlays/local/infrastructure/ai-secret.env.example) | Local Kubernetes AI secret template |
-| [`deploy/overlays/local/infrastructure/auth-secret.env.example`](../../deploy/overlays/local/infrastructure/auth-secret.env.example) | Optional local Kubernetes administrator-session secret template |
+| [`deploy/environments/database.env.example`](../../deploy/environments/database.env.example) | Database secret reference; preserve existing credentials |
+| [`deploy/environments/ai.env.example`](../../deploy/environments/ai.env.example) | Local Kubernetes AI secret template |
+| [`deploy/environments/auth.env.example`](../../deploy/environments/auth.env.example) | Optional local Kubernetes administrator-session secret template |
 
 Configuration is decoded with `yaml.KnownFields(true)`. Update the file-facing struct, parsed runtime struct, validation, examples, deployment ConfigMap, and tests together.
 
@@ -481,8 +494,8 @@ For a focused change, start with the affected package tests. Before completing i
 2. [`backend/internal/battle/worker/decisions.go`](../../backend/internal/battle/worker/decisions.go), starting at `resolveDecisionWindow`
 3. [`backend/internal/battle/repo/decisions.go`](../../backend/internal/battle/repo/decisions.go)
 4. [`backend/internal/ai/mcpserver/server.go`](../../backend/internal/ai/mcpserver/server.go)
-5. [`backend/internal/ai/agent/worker.go`](../../backend/internal/ai/agent/worker.go)
-6. [`backend/internal/ai/runner/agent_loop.go`](../../backend/internal/ai/runner/agent_loop.go)
+5. [`backend/internal/ai/worker/worker.go`](../../backend/internal/ai/worker/worker.go)
+6. [`backend/internal/ai/runner/api.go`](../../backend/internal/ai/runner/api.go)
 7. [`backend/internal/ai/providers/openai.go`](../../backend/internal/ai/providers/openai.go) or [`gemini.go`](../../backend/internal/ai/providers/gemini.go)
 
 ### Learn application composition
@@ -491,3 +504,11 @@ For a focused change, start with the affected package tests. Before completing i
 2. [`backend/internal/app/app.go`](../../backend/internal/app/app.go)
 3. A feature's `api`, `service`, and `repo` packages in that order
 4. The matching frontend API client and page
+
+The [`clienv` package](../../backend/internal/ai/clienv/antigravity.go) shares Antigravity permission configuration, environment isolation, and saved-login authentication probing between profile discovery and execution. The host launcher uses the agent’s `-check-antigravity-auth` flag before advertising availability. See [Antigravity setup](../operations/antigravity-cli.md).
+
+CLI completion is verified against the accepted decision in the MCP control plane. The worker treats a completion conflict as `plan_not_submitted`; Antigravity results with denied actions fail as `cli_permission`.
+
+CLI context responses include explicit target-tick and version metadata alongside the full structured context. CLI prompts require copying those values and making a substantive tactical or production decision. Name-only CLI plans are rejected; after three invalid submissions the decision is failed so the battle can fall back. MCP logs record context byte counts and validation field/code pairs without dumping observations or credentials. Usage reporting retries transient failures up to three times.
+
+Antigravity CLI offloads larger MCP tool responses to local files. Because battlefield CLI sessions deny file reads, the host now fetches the request-scoped context through the MCP SDK and embeds the validated JSON directly in the Antigravity prompt (maximum 64 KiB). The model submits through MCP without fetching the large response again. This keeps existing file restrictions and avoids blind tick guessing when the CLI hides an offloaded response.

@@ -84,6 +84,13 @@ func TestStreamableMCPToolsAreAuthenticatedAndScoped(t *testing.T) {
 	if err != nil || contextResult.IsError {
 		t.Fatalf("context=%#v err=%v", contextResult, err)
 	}
+	if len(contextResult.Content) == 0 {
+		t.Fatal("missing text context")
+	}
+	text, ok := contextResult.Content[0].(*mcp.TextContent)
+	if !ok || !strings.Contains(text.Text, "targetTick=10") || !strings.Contains(text.Text, "expectedVersion=1") {
+		t.Fatal("explicit decision metadata missing")
+	}
 	denied, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "get_decision_context", Arguments: map[string]any{"requestId": "another"}})
 	if err != nil || !denied.IsError {
 		t.Fatalf("cross-request result=%#v err=%v", denied, err)
@@ -180,7 +187,7 @@ func TestAgentControlPlaneRejectsMalformedBodies(t *testing.T) {
 }
 
 func TestAgentControlPlane(t *testing.T) {
-	repository := &fakeRepository{record: ai.DecisionRecord{ID: "request", ProfileID: "profile"}}
+	repository := &fakeRepository{record: ai.DecisionRecord{ID: "request", ProfileID: "profile", Status: "accepted"}}
 	var logs bytes.Buffer
 	handler := NewWithLogger(repository, "secret", nil, slog.New(slog.NewJSONHandler(&logs, nil))).AgentHandler(repository)
 	claim := httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{"workerId":"agent","leaseSeconds":5,"profileIds":["profile","profile","  "]}`))
@@ -263,5 +270,25 @@ func TestAgentClaimLongPollTimesOut(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusNoContent || time.Since(started) < 900*time.Millisecond {
 		t.Fatalf("status=%d elapsed=%s", response.Code, time.Since(started))
+	}
+}
+
+func TestUsageRequiresAcceptedPlan(t *testing.T) {
+	for _, status := range []string{"running", "pending", "failed", "fallback", "accepted"} {
+		t.Run(status, func(t *testing.T) {
+			repository := &fakeRepository{record: ai.DecisionRecord{ID: "request", Status: status}}
+			handler := NewWithLogger(repository, "secret", nil, slog.Default()).AgentHandler(repository)
+			request := httptest.NewRequest(http.MethodPost, "/usage", strings.NewReader(`{"requestId":"request","usage":{"requests":1}}`))
+			request.Header.Set("Authorization", "Bearer secret")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if status == "accepted" {
+				if response.Code != http.StatusNoContent || repository.usage != 1 {
+					t.Fatal("accepted plan usage rejected")
+				}
+			} else if response.Code != http.StatusConflict || repository.usage != 0 {
+				t.Fatal("completion without accepted plan acknowledged")
+			}
+		})
 	}
 }

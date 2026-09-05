@@ -114,13 +114,13 @@ func (c errorConnector) Connect(context.Context, string, string) (DecisionToolSe
 	return c.session, c.err
 }
 
-func TestAgentLoopFailureCategories(t *testing.T) {
+func TestAPIRunnerFailureCategories(t *testing.T) {
 	want := errors.New("failure")
 	session := ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 1}}
 	for _, test := range []struct {
-		loop     AgentLoop
+		loop     APIRunner
 		category string
-	}{{AgentLoop{Provider: errorProvider{}, Connector: errorConnector{err: want}}, "mcp_connect"}, {AgentLoop{Provider: errorProvider{}, Connector: errorConnector{session: errorSession{toolsErr: want}}}, "mcp_discovery"}, {AgentLoop{Provider: errorProvider{err: want}, Connector: errorConnector{session: errorSession{}}}, "provider"}, {AgentLoop{Provider: errorProvider{err: providers.ErrRefusal}, Connector: errorConnector{session: errorSession{}}}, "refusal"}, {AgentLoop{Provider: errorProvider{err: providers.ErrRateLimit}, Connector: errorConnector{session: errorSession{}}}, "rate_limit"}, {AgentLoop{Provider: errorProvider{err: context.DeadlineExceeded}, Connector: errorConnector{session: errorSession{}}}, "timeout"}, {AgentLoop{Provider: errorProvider{result: ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "shell"}}}}, Connector: errorConnector{session: errorSession{}}}, "unauthorized_tool"}, {AgentLoop{Provider: errorProvider{result: ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "get_decision_context", Arguments: []byte(`{}`)}}}}, Connector: errorConnector{session: errorSession{callErr: want}}}, "mcp_tool"}} {
+	}{{APIRunner{Provider: errorProvider{}, Connector: errorConnector{err: want}}, "mcp_connect"}, {APIRunner{Provider: errorProvider{}, Connector: errorConnector{session: errorSession{toolsErr: want}}}, "mcp_discovery"}, {APIRunner{Provider: errorProvider{err: want}, Connector: errorConnector{session: errorSession{}}}, "provider"}, {APIRunner{Provider: errorProvider{err: providers.ErrRefusal}, Connector: errorConnector{session: errorSession{}}}, "refusal"}, {APIRunner{Provider: errorProvider{err: providers.ErrRateLimit}, Connector: errorConnector{session: errorSession{}}}, "rate_limit"}, {APIRunner{Provider: errorProvider{err: context.DeadlineExceeded}, Connector: errorConnector{session: errorSession{}}}, "timeout"}, {APIRunner{Provider: errorProvider{result: ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "shell"}}}}, Connector: errorConnector{session: errorSession{}}}, "unauthorized_tool"}, {APIRunner{Provider: errorProvider{result: ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "get_decision_context", Arguments: []byte(`{}`)}}}}, Connector: errorConnector{session: errorSession{callErr: want}}}, "mcp_tool"}} {
 		result, err := test.loop.Run(context.Background(), session)
 		if err == nil || result.ErrorCategory != test.category {
 			t.Fatalf("category=%s result=%#v err=%v", test.category, result, err)
@@ -144,17 +144,17 @@ func (p *turnProvider) NextTurn(context.Context, ai.ModelTurnRequest) (ai.ModelT
 	return ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "submit_strategy_plan", Arguments: []byte(`{"requestId":"request","idempotencyKey":"once","expectedVersion":1,"targetTick":10,"name":"advance","actionWeights":{"attack":1200},"reserveGold":0,"spendOrder":["recruitment"],"constructionPriorities":[],"recruitmentPriorities":[]}`)}}, Usage: ai.Usage{OutputTokens: 3, Requests: 1}}, nil
 }
 
-func TestAgentLoopUsesMCPForContextAndSubmission(t *testing.T) {
+func TestAPIRunnerUsesMCPForContextAndSubmission(t *testing.T) {
 	tools := &fakeToolSession{}
 	provider := &turnProvider{}
-	result, err := (AgentLoop{Provider: provider, Connector: fakeConnector{tools}}).Run(context.Background(), ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 3, MaxOutputTokens: 100}})
+	result, err := (APIRunner{Provider: provider, Connector: fakeConnector{tools}}).Run(context.Background(), ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 3, MaxOutputTokens: 100}})
 	if err != nil || !result.Accepted || !tools.submitted || result.Usage.InputTokens != 2 || result.Usage.OutputTokens != 3 {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 }
 
-func TestAgentLoopStopsOnNoProgress(t *testing.T) {
-	result, err := (AgentLoop{Provider: &turnProvider{noProgress: true}, Connector: fakeConnector{&fakeToolSession{}}}).Run(context.Background(), ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 1}})
+func TestAPIRunnerStopsOnNoProgress(t *testing.T) {
+	result, err := (APIRunner{Provider: &turnProvider{noProgress: true}, Connector: fakeConnector{&fakeToolSession{}}}).Run(context.Background(), ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 1}})
 	if err == nil || result.ErrorCategory != "no_progress" {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
@@ -195,8 +195,8 @@ func (p *injectionProvider) NextTurn(_ context.Context, request ai.ModelTurnRequ
 	return ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "submit_strategy_plan", Arguments: []byte(`{"requestId":"request"}`)}}}, nil
 }
 
-func TestAgentLoopKeepsObservationInstructionsUntrusted(t *testing.T) {
-	result, err := (AgentLoop{Provider: &injectionProvider{}, Connector: injectionConnector{}}).Run(context.Background(), ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 2, MaxOutputTokens: 100}})
+func TestAPIRunnerKeepsObservationInstructionsUntrusted(t *testing.T) {
+	result, err := (APIRunner{Provider: &injectionProvider{}, Connector: injectionConnector{}}).Run(context.Background(), ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 2, MaxOutputTokens: 100}})
 	if err != nil || !result.Accepted {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
@@ -230,28 +230,74 @@ func TestCLIRunnerBuildsRestrictedCodexInvocation(t *testing.T) {
 	}
 }
 
-func TestGeminiRunnerUsesIsolatedAuthentication(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	authDir := filepath.Join(home, ".gemini")
-	if err := os.Mkdir(authDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(authDir, "oauth_creds.json"), []byte(`{"token":"test"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	executor := &fakeExecutor{}
-	result, err := (CLIRunner{Provider: "gemini-cli", Model: "flash", Executor: executor}).Run(context.Background(), ai.DecisionSession{RequestID: "request", MCPURL: "http://mcp/mcp", CapabilityToken: "token"})
-	if err != nil || !result.Accepted || executor.name != "gemini" || !strings.Contains(strings.Join(executor.args, " "), "--model flash") {
+func TestAntigravityRunnerUsesIsolatedConfiguration(t *testing.T) {
+	executor := &inspectAntigravityExecutor{t: t}
+	result, err := (CLIRunner{Connector: errorConnector{session: contextFixtureSession{}}, Provider: "antigravity-cli", Model: "gemini-3.7-flash-medium", Executor: executor}).Run(context.Background(), ai.DecisionSession{RequestID: "request", MCPURL: "http://mcp/mcp", CapabilityToken: "secret-token"})
+	if err != nil || !result.Accepted || result.Usage.InputTokens != 12 || result.Usage.OutputTokens != 4 {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
-	executor.err = errors.New("exit")
-	result, err = (CLIRunner{Provider: "codex-cli", Executor: executor}).Run(context.Background(), ai.DecisionSession{})
+	if _, err := os.Stat(executor.home); !os.IsNotExist(err) {
+		t.Fatal("temporary home was not cleaned")
+	}
+	result, err = (CLIRunner{Provider: "codex-cli", Executor: &fakeExecutor{err: errors.New("exit")}}).Run(context.Background(), ai.DecisionSession{})
 	if err == nil || result.ErrorCategory != "cli" {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
-	if boundedOutput(make([]byte, 3000)) == "" {
-		t.Fatal("bounded output empty")
+}
+
+type inspectAntigravityExecutor struct {
+	t    *testing.T
+	home string
+}
+
+func (e *inspectAntigravityExecutor) Run(_ context.Context, name string, args, env []string, directory string) ([]byte, error) {
+	e.t.Helper()
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, `"targetTick":73`) || !strings.Contains(joined, "BEGIN_BATTLEFIELD_CONTEXT") {
+		e.t.Fatal("authorized context missing from prompt")
+	}
+	if name != "agy" || !strings.Contains(joined, "--model gemini-3.7-flash-medium") || !strings.Contains(joined, "--disable-slash-commands") || strings.Contains(joined, "skip-permissions") || strings.Contains(joined, "secret-token") {
+		e.t.Fatalf("unsafe invocation: %s %v", name, args)
+	}
+	for _, v := range env {
+		if strings.HasPrefix(v, "HOME=") {
+			e.home = strings.TrimPrefix(v, "HOME=")
+		}
+	}
+	if directory != filepath.Join(e.home, "workspace") {
+		e.t.Fatal("workspace not isolated")
+	}
+	data, err := os.ReadFile(filepath.Join(e.home, ".gemini", "config", "mcp_config.json"))
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	var config map[string]any
+	if json.Unmarshal(data, &config) != nil {
+		e.t.Fatal("invalid MCP JSON")
+	}
+	servers := config["mcpServers"].(map[string]any)
+	if len(servers) != 1 {
+		e.t.Fatal("unrelated MCP servers inherited")
+	}
+	server := servers["battlefield"].(map[string]any)
+	if server["serverUrl"] != "http://mcp/mcp" || server["headers"].(map[string]any)["Authorization"] != "Bearer secret-token" {
+		e.t.Fatal("MCP authentication incorrect")
+	}
+	return []byte("diagnostic\n{\"status\":\"SUCCESS\",\"usage\":{\"input_tokens\":12,\"output_tokens\":4}}\n"), nil
+}
+
+func TestAntigravityRejectsMissingOrFailedResult(t *testing.T) {
+	for _, output := range []string{"done", `{"status":"ERROR","error":"denied"}`, `{"status":"CANCELLED"}`} {
+		result, err := antigravityResult([]byte(output))
+		if err == nil || result.Accepted || result.ErrorCategory != "cli" {
+			t.Fatalf("accepted %s", output)
+		}
+	}
+	if strings.Contains(redactedCLIOutput([]byte("Bearer secret"), "secret"), "secret") {
+		t.Fatal("capability leaked")
+	}
+	if len(boundedOutput(make([]byte, 3000))) != 2048 {
+		t.Fatal("output not bounded")
 	}
 }
 
@@ -259,11 +305,9 @@ func TestCLIHelpersAndMissingAuthentication(t *testing.T) {
 	if output, err := (OSCommandExecutor{}).Run(context.Background(), "true", nil, os.Environ(), t.TempDir()); err != nil || len(output) != 0 {
 		t.Fatalf("output=%q err=%v", output, err)
 	}
-	home := t.TempDir()
-	t.Setenv("HOME", home)
 	result, err := (CLIRunner{Provider: "gemini-cli", Executor: &fakeExecutor{}}).Run(context.Background(), ai.DecisionSession{})
-	if err == nil || result.ErrorCategory != "cli_auth" {
-		t.Fatalf("result=%#v err=%v", result, err)
+	if err == nil || result.ErrorCategory != "cli_provider" {
+		t.Fatal("retired Gemini CLI must not run")
 	}
 	values := replaceEnvironment([]string{"HOME=old", "PATH=/bin"}, "HOME", "new")
 	if strings.Join(values, ",") != "PATH=/bin,HOME=new" {
@@ -271,5 +315,35 @@ func TestCLIHelpersAndMissingAuthentication(t *testing.T) {
 	}
 	if _, err := (MCPClient{}).Connect(context.Background(), "://bad", "token"); err == nil {
 		t.Fatal("invalid MCP endpoint accepted")
+	}
+}
+
+func TestAntigravitySuccessWithDeniedToolsFails(t *testing.T) {
+	result, err := antigravityResult([]byte(`{"status":"SUCCESS","denied_actions":[{"action":"mcp"}]}`))
+	if err == nil || result.Accepted || result.ErrorCategory != "cli_permission" {
+		t.Fatal("soft-denied tool counted as success")
+	}
+}
+
+type contextFixtureSession struct {
+	errorSession
+	payload json.RawMessage
+}
+
+func (s contextFixtureSession) Call(_ context.Context, call ai.ToolCall) (json.RawMessage, bool, error) {
+	if call.Name != "get_decision_context" {
+		return nil, false, errors.New("unexpected tool")
+	}
+	if s.payload != nil {
+		return s.payload, false, nil
+	}
+	return json.RawMessage(`{"context":{"requestId":"request","targetTick":73,"expectedVersion":1,"legal":{"actionKinds":["defend"]}}}`), false, nil
+}
+func TestCLIContextPrefetchFailsClosed(t *testing.T) {
+	for _, payload := range []string{`{}`, `{"context":{"requestId":"another","targetTick":73,"expectedVersion":1}}`, strings.Repeat("x", 65537)} {
+		r := CLIRunner{Connector: errorConnector{session: contextFixtureSession{payload: json.RawMessage(payload)}}}
+		if _, err := r.prefetchContext(context.Background(), ai.DecisionSession{RequestID: "request"}); err == nil {
+			t.Fatal("invalid context accepted")
+		}
 	}
 }

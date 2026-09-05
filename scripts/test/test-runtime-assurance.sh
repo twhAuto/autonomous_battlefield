@@ -7,10 +7,13 @@ trap 'rm -rf -- "${test_dir}"' EXIT
 
 # Exercise the real launchers in an isolated workspace, including paths with spaces.
 fixture="${test_dir}/project with spaces"
-mkdir -p "${fixture}/scripts/"{perf,security,ci} "${fixture}/tests/performance" "${test_dir}/bin"
+mkdir -p "${fixture}/scripts/"{perf,security,ci,lib} "${fixture}/tests/performance" "${test_dir}/bin"
 cp "${project_dir}/scripts/perf/run-k6.sh" "${fixture}/scripts/perf/"
 cp "${project_dir}/scripts/security/zap-baseline.sh" "${fixture}/scripts/security/"
 cp "${project_dir}/scripts/ci/tool-versions.env" "${fixture}/scripts/ci/"
+cat >"${fixture}/scripts/lib/deployment-environment.sh" <<'STUB'
+battlefield_env_preflight() { :; }
+STUB
 touch "${fixture}/tests/performance/k6-smoke.js" "${fixture}/tests/performance/custom scenario.js"
 
 cat >"${test_dir}/bin/docker" <<'STUB'

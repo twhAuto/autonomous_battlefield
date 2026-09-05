@@ -52,7 +52,7 @@ func (r Runner) runCase(ctx context.Context, value Case, now func() time.Time) C
 	provider := &scriptedProvider{turns: value.Turns}
 	session := &scriptedSession{value: value}
 	connector := scriptedConnector{secret: secret, requestID: value.RequestID, now: started, session: session}
-	result, _ := (airunner.AgentLoop{Provider: provider, Connector: connector}).Run(ctx, ai.DecisionSession{
+	result, _ := (airunner.APIRunner{Provider: provider, Connector: connector}).Run(ctx, ai.DecisionSession{
 		RequestID: value.RequestID, CapabilityToken: token, MCPURL: "memory://evaluation",
 		Profile: ai.ModelProfile{ID: value.Profile, ModelLabel: value.Model, MaxSteps: value.MaxSteps, MaxOutputTokens: value.MaxTokens},
 	})
@@ -147,7 +147,7 @@ func (r Runner) runProviderCase(ctx context.Context, value Case, options provide
 	token, _ := ai.MintCapability(secret, value.RequestID, caseStarted.Add(time.Hour))
 	session := &scriptedSession{value: value}
 	recorder := &recordingProvider{inner: options.provider}
-	result, runErr := (airunner.AgentLoop{Provider: recorder, Connector: scriptedConnector{secret: secret, requestID: value.RequestID, now: caseStarted, session: session}}).Run(ctx, ai.DecisionSession{
+	result, runErr := (airunner.APIRunner{Provider: recorder, Connector: scriptedConnector{secret: secret, requestID: value.RequestID, now: caseStarted, session: session}}).Run(ctx, ai.DecisionSession{
 		RequestID: value.RequestID, CapabilityToken: token, MCPURL: "memory://evaluation",
 		Profile: ai.ModelProfile{ID: options.profile, ModelLabel: options.model, MaxSteps: options.maxSteps, MaxOutputTokens: options.maxTokens},
 	})

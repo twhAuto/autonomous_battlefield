@@ -1,4 +1,4 @@
-package agent
+package worker
 
 import (
 	"bytes"
@@ -22,6 +22,8 @@ import (
 )
 
 const bearerPrefix = "Bearer "
+
+var errNoAcceptedPlan = errors.New("decision has no accepted plan")
 
 type Worker struct {
 	MCPURL, Secret, WorkerID                 string
@@ -200,10 +202,17 @@ func (w *Worker) finishJob(parent, runContext context.Context, run jobRun, resul
 			run.logger.ErrorContext(parent, "decision_failure_report_failed", "error", reportErr)
 		}
 	} else {
-		run.logger.InfoContext(parent, "decision_runner_completed", "provider", run.profile.Provider, "runtime", run.profile.Runtime, "duration_ms", time.Since(run.started).Milliseconds(), "input_tokens", result.Usage.InputTokens, "output_tokens", result.Usage.OutputTokens, "provider_requests", result.Usage.Requests)
 		if reportErr := w.reportUsage(parent, run.requestID, result); reportErr != nil {
-			run.logger.ErrorContext(parent, "decision_usage_report_failed", "error", reportErr)
+			if errors.Is(reportErr, errNoAcceptedPlan) {
+				result.Accepted = false
+				result.ErrorCategory = "plan_not_submitted"
+				w.finishJob(parent, runContext, run, result, reportErr)
+			} else {
+				run.logger.ErrorContext(parent, "decision_usage_report_failed", "error", reportErr)
+			}
+			return
 		}
+		run.logger.InfoContext(parent, "decision_runner_completed", "provider", run.profile.Provider, "runtime", run.profile.Runtime, "duration_ms", time.Since(run.started).Milliseconds(), "input_tokens", result.Usage.InputTokens, "output_tokens", result.Usage.OutputTokens, "provider_requests", result.Usage.Requests)
 	}
 }
 
@@ -250,10 +259,30 @@ func defaultRunner(profile ai.ModelProfile) (ai.DecisionRunner, error) {
 	default:
 		return nil, fmt.Errorf("unsupported provider %q", profile.Provider)
 	}
-	return runner.AgentLoop{Provider: provider}, nil
+	return runner.APIRunner{Provider: provider}, nil
 }
 
 func (w *Worker) reportUsage(ctx context.Context, requestID string, result ai.DecisionResult) error {
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		err = w.reportUsageOnce(ctx, requestID, result)
+		if err == nil || errors.Is(err, errNoAcceptedPlan) || ctx.Err() != nil {
+			return err
+		}
+		if attempt < 2 {
+			timer := time.NewTimer(time.Duration(attempt+1) * 100 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+	return err
+}
+
+func (w *Worker) reportUsageOnce(ctx context.Context, requestID string, result ai.DecisionResult) error {
 	payload, _ := json.Marshal(map[string]any{"requestId": requestID, "usage": result.Usage, "metadata": result.ProviderData})
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(w.MCPURL, "/mcp")+"/internal/agent/usage", bytes.NewReader(payload))
 	if err != nil {
@@ -266,6 +295,9 @@ func (w *Worker) reportUsage(ctx context.Context, requestID string, result ai.De
 	}
 	defer response.Body.Close()
 	if response.StatusCode/100 != 2 {
+		if response.StatusCode == http.StatusConflict {
+			return errNoAcceptedPlan
+		}
 		return fmt.Errorf("agent usage status %d", response.StatusCode)
 	}
 	return nil
