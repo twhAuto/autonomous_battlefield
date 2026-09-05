@@ -29,6 +29,12 @@ func TestPrepareAntigravityRestrictsToolsAndEnvironment(t *testing.T) {
 	if !strings.Contains(joined, "HOME="+home) || !strings.Contains(joined, "DBUS_SESSION_BUS_ADDRESS=unix:path=/keyring") {
 		t.Fatal("isolated home/keyring transport missing")
 	}
+	assertPrivateAntigravitySettings(t, home)
+	assertAntigravityMCPToken(t, home)
+}
+
+func assertPrivateAntigravitySettings(t *testing.T, home string) {
+	t.Helper()
 	for _, file := range []string{".gemini/antigravity-cli/settings.json", ".gemini/config/mcp_config.json"} {
 		info, err := os.Stat(filepath.Join(home, file))
 		if err != nil {
@@ -55,7 +61,11 @@ func TestPrepareAntigravityRestrictsToolsAndEnvironment(t *testing.T) {
 			t.Fatalf("missing %s", rule)
 		}
 	}
-	data, _ = os.ReadFile(filepath.Join(home, ".gemini/config/mcp_config.json"))
+}
+
+func assertAntigravityMCPToken(t *testing.T, home string) {
+	t.Helper()
+	data, _ := os.ReadFile(filepath.Join(home, ".gemini/config/mcp_config.json"))
 	var mcp struct {
 		Servers map[string]struct {
 			URL     string            `json:"serverUrl"`

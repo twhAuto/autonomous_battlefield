@@ -51,29 +51,37 @@ func (s *DecisionService) SubmitPlan(ctx context.Context, submission PlanSubmiss
 	}
 	issues := ValidateSubmission(record, submission)
 	if len(issues) > 0 {
-		if recorder, ok := s.repository.(decisionValidationRecorder); ok {
-			if err := recorder.RecordDecisionValidation(ctx, submission.RequestID); err != nil {
-				return SubmissionResult{}, err
-			}
-		}
-		if record.Runtime == "cli" {
-			countJSON, _ := json.Marshal(record.ProviderMetadata["validationFailures"])
-			var count int
-			_ = json.Unmarshal(countJSON, &count)
-			if count >= 2 {
-				if repo, ok := s.repository.(interface {
-					FinishDecisionFailure(context.Context, string, string, Usage, map[string]any) error
-				}); ok {
-					if err := repo.FinishDecisionFailure(ctx, submission.RequestID, "validation_limit", Usage{}, map[string]any{"runnerOutcome": "validation_limit"}); err != nil {
-						return SubmissionResult{}, err
-					}
-					return SubmissionResult{Status: "failed", Errors: []ValidationIssue{{Field: "plan", Code: "validation_limit", Message: "Three invalid submissions. Decision closed; stop submitting."}}}, nil
-				}
-			}
-		}
-		return SubmissionResult{Status: "rejected", Errors: issues}, nil
+		return s.rejectInvalidPlan(ctx, record, submission.RequestID, issues)
 	}
 	return s.repository.SubmitDecisionPlan(ctx, submission)
+}
+
+func (s *DecisionService) rejectInvalidPlan(ctx context.Context, record DecisionRecord, requestID string, issues []ValidationIssue) (SubmissionResult, error) {
+	if recorder, ok := s.repository.(decisionValidationRecorder); ok {
+		if err := recorder.RecordDecisionValidation(ctx, requestID); err != nil {
+			return SubmissionResult{}, err
+		}
+	}
+	rejected := SubmissionResult{Status: "rejected", Errors: issues}
+	if record.Runtime != "cli" {
+		return rejected, nil
+	}
+	countJSON, _ := json.Marshal(record.ProviderMetadata["validationFailures"])
+	var count int
+	_ = json.Unmarshal(countJSON, &count)
+	if count < 2 {
+		return rejected, nil
+	}
+	repo, ok := s.repository.(interface {
+		FinishDecisionFailure(context.Context, string, string, Usage, map[string]any) error
+	})
+	if !ok {
+		return rejected, nil
+	}
+	if err := repo.FinishDecisionFailure(ctx, requestID, "validation_limit", Usage{}, map[string]any{"runnerOutcome": "validation_limit"}); err != nil {
+		return SubmissionResult{}, err
+	}
+	return SubmissionResult{Status: "failed", Errors: []ValidationIssue{{Field: "plan", Code: "validation_limit", Message: "Three invalid submissions. Decision closed; stop submitting."}}}, nil
 }
 
 func ValidateSubmission(record DecisionRecord, submission PlanSubmission) []ValidationIssue {
