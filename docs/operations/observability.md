@@ -278,3 +278,12 @@ collector, use durable retention and lifecycle policies, encrypt log transport
 and storage, configure authenticated least-privilege Grafana and Kibana access,
 and route alerts to an owned notification channel. The unauthenticated local
 Elastic configuration must not be reused in a shared or production cluster.
+
+## Health endpoint implementation
+
+Process entry points wire the shared `httpapi.LifecycleHandler`, which owns all
+health probes. Application routing does not register a second set of probes.
+Engine readiness requires both a running worker and a successful database ping;
+worker shutdown or database failure makes readiness fail while liveness remains
+available. See the [codebase guide](../design/codebase-guide.md#process-health-ownership)
+for source ownership and lifecycle tests.

@@ -128,7 +128,7 @@ func (c *Catalog) Resolve(id string, identities [2]battleservice.FactionIdentity
 		if _, err := game.ValidateBlueprint(ruleset, identity.Blueprint); err != nil {
 			return game.Scenario{}, "", err
 		}
-		factions[index] = game.FactionSetup{ID: identity.ID, Name: identity.Name, Blueprint: game.CloneBlueprint(identity.Blueprint), FallbackPlan: clonePlan(tmpl.FallbackPlan), ScriptedPlans: clonePlans(tmpl.ScriptedPlans)}
+		factions[index] = game.FactionSetup{ID: identity.ID, Name: identity.Name, Blueprint: game.CloneBlueprint(identity.Blueprint), FallbackPlan: controller.ClonePlanProposal(tmpl.FallbackPlan), ScriptedPlans: controller.ClonePlanProposals(tmpl.ScriptedPlans)}
 	}
 	duration, _ := time.ParseDuration(tmpl.TickDuration)
 	resolved := game.Scenario{ID: tmpl.ID, RulesVersion: tmpl.RulesVersion, RulesetID: tmpl.RulesetID, MaximumTicks: tmpl.MaximumTicks, TickDuration: duration, DecisionIntervalTicks: tmpl.DecisionIntervalTicks, Map: game.CloneMap(tmpl.Map), Ruleset: cloneRuleset(ruleset), Factions: factions}
@@ -233,24 +233,4 @@ func cloneRuleset(value game.Ruleset) game.Ruleset {
 	value.Units = append([]game.UnitType(nil), value.Units...)
 	value.Upgrades = append([]game.Upgrade(nil), value.Upgrades...)
 	return value
-}
-
-func clonePlan(value controller.PlanProposal) controller.PlanProposal {
-	result := controller.PlanProposal{Name: value.Name, Rationale: value.Rationale, ActionWeights: make(map[string]int64, len(value.ActionWeights)), TargetBonuses: make(map[string]int64, len(value.TargetBonuses)), ReserveGold: value.ReserveGold,
-		SpendOrder: append([]string(nil), value.SpendOrder...), ConstructionPriorities: append([]controller.Coordinate(nil), value.ConstructionPriorities...), RecruitmentPriorities: append([]string(nil), value.RecruitmentPriorities...)}
-	for key, weight := range value.ActionWeights {
-		result.ActionWeights[key] = weight
-	}
-	for key, bonus := range value.TargetBonuses {
-		result.TargetBonuses[key] = bonus
-	}
-	return result
-}
-
-func clonePlans(values []controller.PlanProposal) []controller.PlanProposal {
-	result := make([]controller.PlanProposal, len(values))
-	for index := range values {
-		result[index] = clonePlan(values[index])
-	}
-	return result
 }

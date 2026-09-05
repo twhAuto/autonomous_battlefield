@@ -5,8 +5,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -264,31 +262,6 @@ func TestWorkerWaitsAndHeartbeats(t *testing.T) {
 		}
 	})
 }
-
-func TestHealthHandlerReportsReadiness(t *testing.T) {
-	repo := &fakeBattleRepository{}
-	worker, err := New(repo, testWorkerConfig())
-	if err != nil {
-		t.Fatalf("New() returned an error: %v", err)
-	}
-	handler := HealthHandler(worker, fakePinger{})
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/readyz", nil))
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("not-ready status = %d, want %d", response.Code, http.StatusServiceUnavailable)
-	}
-	worker.ready.Store(true)
-	response = httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/readyz", nil))
-	if response.Code != http.StatusOK {
-		t.Fatalf("ready status = %d, want %d", response.Code, http.StatusOK)
-	}
-}
-
-type fakePinger struct{ err error }
-
-func (p fakePinger) Ping(context.Context) error { return p.err }
 
 type fakeBattleRepository struct {
 	job          *BattleJob

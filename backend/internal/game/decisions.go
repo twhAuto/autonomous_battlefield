@@ -40,7 +40,7 @@ func (m *Match) DecisionSnapshot(factionID string) (DecisionSnapshot, error) {
 		EconomyCost: m.scenario.Ruleset.Buildings.EconomyCost, EconomyIncome: m.scenario.Ruleset.Buildings.EconomyIncome + runtime.economyBonus,
 		EconomyCount: m.economyCount(factionID), MaximumEconomy: m.scenario.Ruleset.Buildings.MaximumEconomyCount,
 		LegalUnits: append([]UnitType(nil), m.scenario.Ruleset.Units...), LegalSites: legalSites,
-		ActivePlan: clonePlan(runtime.activePlan)}, nil
+		ActivePlan: controller.ClonePlanProposal(runtime.activePlan)}, nil
 }
 
 // ScriptedPlans resolves deterministic plans without exposing authoritative
@@ -66,7 +66,7 @@ func (m *Match) applyPlans(plans map[string]controller.PlanProposal) error {
 		if err := validateProductionPlan(m.scenario, runtime.setup, proposal); err != nil {
 			return err
 		}
-		runtime.activePlan = clonePlan(proposal)
+		runtime.activePlan = controller.ClonePlanProposal(proposal)
 		runtime.activeSource = "accepted"
 	}
 	return nil
@@ -109,11 +109,11 @@ func (f *factionRuntime) scriptedPlan() controller.PlanProposal {
 		index = len(f.setup.ScriptedPlans) - 1
 	}
 	f.planIndex++
-	return clonePlan(f.setup.ScriptedPlans[index])
+	return controller.ClonePlanProposal(f.setup.ScriptedPlans[index])
 }
 
 func normalizedPlan(value controller.PlanProposal, setup FactionSetup) controller.PlanProposal {
-	result := clonePlan(value)
+	result := controller.ClonePlanProposal(value)
 	if len(result.SpendOrder) == 0 {
 		result.SpendOrder = []string{"construction", "recruitment"}
 	}

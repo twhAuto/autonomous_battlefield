@@ -69,11 +69,17 @@ The backend commands are `cmd/server`, `cmd/engine`, `cmd/mcp`, `cmd/agent`, and
 
 ## 4. Architectural boundaries
 
+### Process health ownership
+
+The process entry points compose `httpapi.LifecycleHandler` around application traffic. That handler alone serves `/startupz`, `/livez`, `/healthz`, `/readyz`, and `/metrics`; the inner application router does not register duplicate probes. Engine readiness combines `Worker.Ready()` with a database ping. Database failure affects readiness while liveness remains available.
+
 ### Source ownership
 
 `internal/game` owns deterministic simulation and its infrastructure-free `controller` subpackage. `internal/battle/{api,service,catalog,worker,repo}` separates HTTP delivery, use cases, authored inputs, durable execution, and persistence. Repository files group battle operations, leases, and tick writes within one adapter package, preserving atomic transactions.
 
-Frontend features live in `src/features/{battles,factions,auth}`, with application composition in `src/app` and shared transport and visuals in `src/shared`. Kubernetes manifests remain in `deploy`; Terraform remains in `infra/aws`. Launchers live in `scripts/dev` and `scripts/cd`, test runners in `scripts/test`, and operational guides in `docs/operations`. Root launch commands and old CI test commands forward to their implementations.
+Worker code separates decision-window orchestration from execution and lifecycle waits within the same package. The controller package separates production plan validation and deep copying from its retained standalone utility-controller implementation. All proposal copies use the same helper, preserving independent mutable state.
+
+Frontend features live in `src/features/{battles,factions,auth}`, with application composition in `src/app` and shared transport and visuals in `src/shared`. Kubernetes manifests remain in `deploy`; Terraform remains in `infra/aws`. Launchers live in `scripts/dev` and `scripts/cd`, test runners in `scripts/test`, and operational guides in `docs/operations`. Root launch commands and old CI test commands forward to their implementations. Battle-page data hooks and panels remain feature-local. Shared HTTP transport applies the API base URL, preserves cancellation, and maps network failures to feature errors; authentication handles its own 401 responses without broadcasting session expiry.
 
 ### Deterministic simulation boundary
 

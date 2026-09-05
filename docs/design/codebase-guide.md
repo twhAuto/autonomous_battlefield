@@ -92,6 +92,10 @@ Repository interfaces live close to the service or worker that consumes them. Th
 
 [`backend/internal/battle/worker`](../../backend/internal/battle/worker) is an application worker around that domain. It owns persistence orchestration but delegates game rules and state mutation to `game.Match`.
 
+### Process health ownership
+
+`httpapi.LifecycleHandler` is the sole owner of startup, liveness, readiness, and metrics endpoints. Each `cmd` entry point wires its dependencies and readiness callback into that handler. The application router owns business routes only, and the application database contract requires SQL operations without a health-ping dependency. `Worker.Ready()` exposes execution state; the worker package contains no HTTP health wrapper. Engine lifecycle integration tests cover worker startup/shutdown and database failure through the shared handler.
+
 ### AI-oriented code
 
 [`backend/internal/ai`](../../backend/internal/ai) defines neutral contracts first, then separates execution into:
@@ -175,8 +179,9 @@ Keep domain validation in the service. The handler should concentrate on transpo
 | File | Responsibility |
 | --- | --- |
 | [`repository.go`](../../backend/internal/battle/worker/repository.go) | Battle-job, lease, and worker repository contracts |
-| [`worker.go`](../../backend/internal/battle/worker/worker.go) | Claim loop, deterministic attempts, tick persistence, decisions, pause, retries, and shutdown |
-| [`health.go`](../../backend/internal/battle/worker/health.go) | Worker readiness behavior |
+| [`worker.go`](../../backend/internal/battle/worker/worker.go) | Construction, claims, battle/tick execution, persistence, and completion |
+| [`decisions.go`](../../backend/internal/battle/worker/decisions.go) | Decision-window preparation, waiting, validation, fallback, and logging |
+| [`lifecycle.go`](../../backend/internal/battle/worker/lifecycle.go) | Worker readiness, pause/heartbeat waits, cancellation, and requeue |
 
 The worker's main call path is:
 
@@ -284,7 +289,7 @@ The server validates request scope before calling `DecisionService`. PostgreSQL 
 
 [`utility_controller.go`](../../backend/internal/game/controller/utility_controller.go) is an independently tested in-memory utility controller with its own decision scheduling and pending-plan lifecycle. It is not constructed by the API, engine, or `game.Match` production path. The current match consumes `PlanProposal` directly and performs deterministic action scoring internally.
 
-Treat the utility controller's scheduling types as a standalone or transitional abstraction unless it is deliberately integrated later.
+The standalone controller is retained as an intentional, independently tested capability. Shared production plan validation lives in [`validation.go`](../../backend/internal/game/controller/validation.go); [`clone.go`](../../backend/internal/game/controller/clone.go) owns `ClonePlanProposal` and `ClonePlanProposals`, used by the match, catalog, and utility controller. Add new mutable proposal fields to that copy implementation and its isolation test.
 
 ### `internal/faction`: reusable blueprints
 
@@ -351,20 +356,22 @@ The frontend is a React/Vite single-page application.
 | --- | --- |
 | [`app/App.tsx`](../../frontend/src/app/App.tsx) | Shared layout and route table |
 | [`features/auth/api/auth.ts`](../../frontend/src/features/auth/api/auth.ts) | Session discovery, login, and logout client |
-| [`shared/api/request.ts`](../../frontend/src/shared/api/request.ts) | Shared request wrapper that announces expired or invalid sessions |
+| [`shared/api/request.ts`](../../frontend/src/shared/api/request.ts) | API base URL, cancellation-preserving network error mapping, and opt-in unauthorized-session notifications |
 | [`features/factions/api/factions.ts`](../../frontend/src/features/factions/api/factions.ts) | Typed faction and ruleset requests |
 | [`features/battles/api/battles.ts`](../../frontend/src/features/battles/api/battles.ts) | Typed scenario, profile, battle, event, view, control, and decision requests |
 | [`features/factions/pages/CreateFactionPage.tsx`](../../frontend/src/features/factions/pages/CreateFactionPage.tsx) | Point-buy faction builder |
 | [`features/factions/pages/FactionsPage.tsx`](../../frontend/src/features/factions/pages/FactionsPage.tsx) | Faction registry and deletion |
 | [`features/battles/pages/CreateBattlePage.tsx`](../../frontend/src/features/battles/pages/CreateBattlePage.tsx) | Scenario, participants, controllers, and tick-limit selection |
-| [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx) | Polling, map, perspective, controls, events, AI decisions, and statistics |
+| [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx) | Route-level composition, selected perspective/panel, and control actions |
 | [`features/auth/pages/LoginPage.tsx`](../../frontend/src/features/auth/pages/LoginPage.tsx) | Single-administrator credential form and error state |
 | [`features/battles/components/HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx) | Hex-map visualization |
 | [`shared/components/Emblem.tsx`](../../frontend/src/shared/components/Emblem.tsx) | Deterministic faction emblem |
 
 Feature-specific API clients live in `src/features/<feature>/api`; common HTTP transport lives in `src/shared/api`. Page components should consume typed client functions rather than duplicating `fetch` calls.
 
-`BattlePage` contains several local hooks for status, events, decision history, and faction perspective. It polls while the battle is active and stops or slows behavior based on terminal/error state; there is no WebSocket or server-sent-event client.
+The battle feature's `hooks/` directory owns status, event, decision-history, and faction-perspective requests. Each hook preserves its own polling cadence, retries, cancellation, and terminal-state handling. `components/AIDecisionPanel.tsx`, `components/EventConsole.tsx`, and `components/BattlePresentation.tsx` own the panels and visual presentation; shared UI state types live in `types.ts`. There is no WebSocket or server-sent-event client.
+
+`shared/api/request.ts` accepts API paths and applies the configured base URL. `createApiClient` preserves abort errors and wraps network failures in the feature's error type. Authentication disables global unauthorized notifications so login/session failures are handled locally. Feature clients retain HTTP status messages; battle stop/pause/resume share one response mapper.
 
 ## 8. Configuration and authored content
 
@@ -471,7 +478,7 @@ For a focused change, start with the affected package tests. Before completing i
 ### Learn the AI decision path
 
 1. [`backend/internal/ai/types.go`](../../backend/internal/ai/types.go)
-2. [`backend/internal/battle/worker/worker.go`](../../backend/internal/battle/worker/worker.go), starting at `resolveDecisionWindow`
+2. [`backend/internal/battle/worker/decisions.go`](../../backend/internal/battle/worker/decisions.go), starting at `resolveDecisionWindow`
 3. [`backend/internal/battle/repo/decisions.go`](../../backend/internal/battle/repo/decisions.go)
 4. [`backend/internal/ai/mcpserver/server.go`](../../backend/internal/ai/mcpserver/server.go)
 5. [`backend/internal/ai/agent/worker.go`](../../backend/internal/ai/agent/worker.go)
