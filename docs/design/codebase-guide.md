@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft — describes the current working tree, including uncommitted changes |
-| Last reviewed | 2026-09-05 |
+| Last reviewed | 2026-09-06 |
 | Audience | Contributors navigating or modifying the implementation |
 | Scope | Repository layout, entry points, packages, dependencies, tests, and reading paths |
 
@@ -106,7 +106,10 @@ Repository interfaces live close to the service or worker that consumes them. Th
 
 ### Process health ownership
 
-`httpapi.LifecycleHandler` is the sole owner of startup, liveness, readiness, and metrics endpoints. Each `cmd` entry point wires its dependencies and readiness callback into that handler. The application router owns business routes only, and the application database contract requires SQL operations without a health-ping dependency. `Worker.Ready()` exposes execution state; the worker package contains no HTTP health wrapper. Engine lifecycle integration tests cover worker startup/shutdown and database failure through the shared handler.
+`httpapi.LifecycleHandler` is the sole owner of startup, liveness, readiness, and metrics endpoints. The API and engine entry points wire its dependencies and readiness callback into that handler. The application router owns business routes only, and the application database contract requires SQL operations without a health-ping dependency. `Worker.Ready()` exposes execution state; the worker package contains no HTTP health wrapper. Engine lifecycle integration tests cover worker startup/shutdown and database failure through the shared handler.
+
+Agent and MCP commands expose a separate `/healthz` endpoint; they do not use
+`LifecycleHandler`.
 
 ### AI-oriented code
 
@@ -131,7 +134,9 @@ The package root contains types and interfaces shared across these subpackages, 
 | [`initialization.go`](../../backend/internal/game/initialization.go) | Scenario validation and initial factions, castles, and units |
 | [`decisions.go`](../../backend/internal/game/decisions.go) | Decision snapshots, plan validation, scripted plans, and tactics |
 | [`economy.go`](../../backend/internal/game/economy.go) | Income, construction, and recruitment |
-| [`combat.go`](../../backend/internal/game/combat.go) | Unit turns, movement, targeting, damage, and loot |
+| [`combat.go`](../../backend/internal/game/combat.go) | Unit turns, targeting, damage, and loot |
+| [`movement.go`](../../backend/internal/game/movement.go) | Castle approach paths and reachable enemy alternatives |
+| [`knowledge.go`](../../backend/internal/game/knowledge.go) | Ruleset knowledge validation and defensive copying |
 | [`visibility.go`](../../backend/internal/game/visibility.go) | Faction perspectives and fog of war |
 | [`clone.go`](../../backend/internal/game/clone.go) | Defensive copying of state, scenarios, results, and plans |
 | [`map.go`](../../backend/internal/game/map.go) | Hex-map validation, coordinates, traversal, and visibility helpers |
@@ -167,22 +172,23 @@ The API stores this resolved value in `battle_runs.scenario_snapshot`. The engin
 
 [`repository.go`](../../backend/internal/battle/service/repository.go) defines the persistence operations required by these use cases. [`catalog.go`](../../backend/internal/battle/service/catalog.go) defines catalog-facing types and interfaces.
 
+### `internal/battle/resultcache`: optional read cache
+
+[`redis.go`](../../backend/internal/battle/resultcache/redis.go) implements the
+service's `ResultCache` port. `cmd/server` constructs and closes it;
+`app.NewAPIWithResultCache` wires it beneath authentication. Service/config tests
+and `resultcache/redis_test.go` cover caching and failure behavior with an
+in-process Redis protocol server; no external Redis process is required.
+See [cache behavior](system-architecture.md#completed-battle-result-caching) and
+[Redis operations](../operations/redis.md).
+
 ### `internal/battle/api`: battle HTTP delivery
 
 [`handler.go`](../../backend/internal/battle/api/handler.go) registers and implements:
 
-| Route | Handler responsibility |
-| --- | --- |
-| `GET /v1/scenarios` | Return selectable scenario summaries |
-| `GET /v1/model-profiles` | Return selectable profiles and availability |
-| `POST /v1/battles` | Decode and enqueue a battle |
-| `GET /v1/battles/{id}` | Return current state and result |
-| `GET /v1/battles/{id}/events` | Parse cursors and return durable events |
-| `GET /v1/battles/{id}/decisions` | Return decision history for an attempt |
-| `GET /v1/battles/{id}/factions/{factionId}/view` | Return a fog-of-war perspective |
-| `POST /v1/battles/{id}/pause` | Pause an active battle |
-| `POST /v1/battles/{id}/resume` | Resume an active battle |
-| `POST /v1/battles/{id}/stop` | Stop an active battle |
+Battle, scenario, and profile routes are documented in the
+[HTTP API reference](../reference/api.md). This handler owns JSON decoding,
+cursor/attempt parsing, HTTP status mapping, and response encoding for those routes.
 
 Keep domain validation in the service. The handler should concentrate on transport validation and stable HTTP status mapping.
 
@@ -239,6 +245,7 @@ SQL concurrency behavior is part of the application's correctness. Changes to st
 | [`repository.go`](../../backend/internal/ai/repository.go) | Durable decision repository contract and errors |
 | [`service.go`](../../backend/internal/ai/service.go) | Context reads, plan validation, observation hashes, and HMAC capabilities |
 | [`prompts.go`](../../backend/internal/ai/prompts.go) | Embedded shared instructions, context delivery, and complete prompt digest |
+| [`knowledge.go`](../../backend/internal/ai/knowledge.go) | Bounded knowledge selection from frozen rules and faction-visible context |
 | [`memory.go`](../../backend/internal/ai/memory.go) | Scoped, chronological historical decision summaries with count/byte bounds |
 | [`profiles.go`](../../backend/internal/ai/profiles.go) | API/CLI profile validation and availability evaluation |
 
@@ -271,6 +278,12 @@ The default runner factory is the only place that chooses concrete provider impl
 The API loop discovers exactly two MCP tools and accepts only those names. It appends tool calls and results to the neutral message transcript and accumulates usage over turns.
 
 The CLI runner creates a temporary directory, passes the profile's allowlisted model explicitly with `--model`, and constructs provider-specific command-line restrictions. Tests use the `CommandExecutor` interface to inspect the selected model and execution restrictions without starting a real CLI.
+
+[`clienv/antigravity.go`](../../backend/internal/ai/clienv/antigravity.go) shares
+permission configuration, environment isolation, and saved-login probing between
+profile discovery and execution. `cmd/agent -check-antigravity-auth` supports the
+host launcher's preflight. See [CLI runtime](system-architecture.md#cli-runtime)
+for context delivery and accepted-plan enforcement.
 
 ### `internal/ai/providers`: external API adapters
 
@@ -323,7 +336,8 @@ Deleting a faction removes it from the active registry but does not affect the c
 - [`internal/postgres`](../../backend/internal/postgres) manages the `pgx` pool, embedded Goose migrations, startup retries, and `LISTEN/NOTIFY`.
 - [`internal/httpapi`](../../backend/internal/httpapi) provides bounded strict JSON, lifecycle/readiness routes, request IDs, routing, and access logging.
 - [`internal/logging`](../../backend/internal/logging) configures structured process logging.
-- [`internal/telemetry`](../../backend/internal/telemetry) defines Prometheus metrics used by API and engine.
+- [`internal/telemetry`](../../backend/internal/telemetry) defines API/engine Prometheus metrics and shared OpenTelemetry tracing, HTTP
+  instrumentation, and durable trace-context propagation.
 
 ## 5. Important shared data types
 
@@ -442,6 +456,26 @@ Merge-blocking gates require at least 80% Go statement coverage and at least 80%
 
 For a focused change, start with the affected package tests. Before completing implementation work, run the applicable repository coverage gate.
 
+### AI comparison and regression coverage
+
+[`cmd/aieval/comparison.go`](../../backend/cmd/aieval/comparison.go) owns compare
+flags and configuration; [`ai/eval/comparison.go`](../../backend/internal/ai/eval/comparison.go)
+runs isolated MCP sessions through production validation. `ai/eval/knowledge.go`
+exports retrieval metadata. `backend/evals/comparison-cases/` contains synthetic
+contexts, including the large-roster fixture. See [comparison operations](../operations/ai-comparisons.md).
+
+`DecisionRepository.ListFactionMemory` bounds history in SQL; the battle worker
+freezes memory and selected knowledge before hashing. Tests cover faction/attempt
+isolation, bounds, optional-read failure, invalid submissions, and false CLI success.
+`ai/mcpserver/tool_logging_test.go` verifies safe schema-rejection diagnostics;
+worker tests verify fallback error attribution.
+
+`game/movement_test.go` covers blocked approaches and enemy filtering.
+Recruitment tests in `game`, `game/controller`, and `ai` cover explicit quantities,
+reserves, spawn blocking, empty orders, and validation. `AIDecisionPanel.test.tsx`
+checks their presentation. `frontend/src/app/App.test.tsx` uses controlled timers
+to verify event-page draining without load-sensitive wall-clock deadlines.
+
 ## 11. Common change paths
 
 ### Add a battle API field
@@ -506,83 +540,3 @@ For a focused change, start with the affected package tests. Before completing i
 2. [`backend/internal/app/app.go`](../../backend/internal/app/app.go)
 3. A feature's `api`, `service`, and `repo` packages in that order
 4. The matching frontend API client and page
-
-The [`clienv` package](../../backend/internal/ai/clienv/antigravity.go) shares Antigravity permission configuration, environment isolation, and saved-login authentication probing between profile discovery and execution. The host launcher uses the agent’s `-check-antigravity-auth` flag before advertising availability. See [Antigravity setup](../operations/antigravity-cli.md).
-
-CLI completion is verified against the accepted decision in the MCP control plane. The worker treats a completion conflict as `plan_not_submitted`; Antigravity results with denied actions fail as `cli_permission`.
-
-CLI context responses include explicit target-tick and version metadata alongside the full structured context. CLI prompts require copying those values and making a substantive tactical or production decision. Name-only CLI plans are rejected; after three invalid submissions the decision is failed so the battle can fall back. MCP logs record context byte counts and validation field/code pairs without dumping observations or credentials. Usage reporting retries transient failures up to three times.
-
-Antigravity CLI offloads larger MCP tool responses to local files. Because battlefield CLI sessions deny file reads, the host now fetches the request-scoped context through the MCP SDK and embeds the validated JSON directly in the Antigravity prompt (maximum 64 KiB). The model submits through MCP without fetching the large response again. This keeps existing file restrictions and avoids blind tick guessing when the CLI hides an offloaded response.
-
-## Completed result cache
-
-- `internal/battle/service/service.go`: `ResultCache` port and
-  `NewServiceWithResultCache`; validates IDs and caches only completed snapshots.
-- `internal/battle/resultcache/redis.go`: go-redis adapter, JSON validation,
-  versioned keys, TTL, bounded operations, and connection cleanup.
-- `internal/app/app.go`: `NewAPIWithResultCache` wires the optional cache beneath
-  the existing authentication middleware and battle handlers.
-- `internal/config/config.go`: API-only `resultCache` settings; `cmd/server`
-  constructs the client and closes it after server shutdown.
-- `result_cache_test.go` in service/config and `resultcache/redis_test.go` cover
-  hits, misses, failures, validation, and expiry using an in-process Redis protocol
-  server. App tests check HTTP response and authentication on cache hits.
-
-Run `./scripts/test/test-go-coverage.sh` for the backend gate. Redis adapter tests
-open a loopback socket but require no external Redis process. Local Compose setup
-and optional Kubernetes Secret wiring are described in
-[Redis operations](../operations/redis.md).
-
-### CI failure regression checks
-
-`frontend/src/app/App.test.tsx` controls the timer for event-page draining: one
-polling interval fetches the next full page, then an immediate timer drains its
-successor. It avoids a wall-clock deadline that depends on Jenkins load.
-`scripts/test/test-security-launchers.sh` checks Trivy database registry fallback,
-shared cache mounting, and a failing gate when preparation or a scanner fails.
-See [Jenkins operations](../operations/jenkins.md#trivy-database-download-recovery).
-
-### Matched AI comparison workflow
-
-`backend/cmd/aieval/comparison.go` adds `-mode compare` with strict YAML variants,
-live-provider opt-ins, reviewed API pricing, and a free scripted integration
-baseline. `backend/internal/ai/eval/comparison.go` runs fresh API/CLI runners
-against isolated loopback MCP servers and the production decision validator.
-`backend/evals/comparison-cases/` holds complete synthetic contexts;
-`backend/evals/comparison.yaml` is the free memory-ablation configuration.
-
-`DecisionRepository.ListFactionMemory` scopes and bounds history in SQL;
-`internal/battle/worker/decisions.go` freezes the bounded summary into the next
-context before hashing. Tests cover cross-faction/attempt isolation, byte/count
-bounds, consecutive windows, optional-read failure, invalid submissions, and
-false CLI success. See [comparison commands and report limits](../operations/ai-comparisons.md).
-
-`internal/ai/mcpserver/tool_logging.go` observes SDK tool-input failures before
-typed handlers, emitting only fixed missing-field names and authenticated request
-metadata. `tool_logging_test.go` exercises malformed arguments through MCP and
-checks that payloads do not enter logs. Worker fallback tests verify that
-runner failure categories survive fallback persistence. The shared prompt tests
-cover complete flat submission arguments.
-
-### Unit knowledge extension points
-
-- `backend/internal/game/knowledge.go` validates and clones optional ruleset cards.
-- `backend/internal/ai/knowledge.go` selects bounded knowledge from frozen rules
-  and visible decision context; worker preparation persists it before hashing.
-- `backend/internal/ai/eval/knowledge.go` exports retrieval metadata in comparisons.
-- `backend/evals/comparison-cases/large-roster.yaml` exercises a larger synthetic
-  roster; `backend/evals/comparison.yaml` includes knowledge ablation and limits.
-
-See [unit knowledge retrieval](../operations/ai-comparisons.md#unit-knowledge-retrieval)
-for the YAML authoring and deployment workflow.
-
-`backend/internal/game/movement.go` supplies enemy approach goals when the preferred
-castle route is blocked. `movement_test.go` covers occupied castle perimeters,
-blocked neighbors, and exclusion of friendly/destroyed targets.
-
-Explicit unit purchasing uses `controller.RecruitmentOrder` and the optional
-`PlanProposal.RecruitmentOrders` field. Engine recruitment consumes a bounded
-ordered sequence; `recruitment_test.go` covers mixed buys, reserves, spawn blocking,
-and empty orders. The AI submission validator checks legal types, and
-`AIDecisionPanel` renders quantities alongside legacy priority lists.

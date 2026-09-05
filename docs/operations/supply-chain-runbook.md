@@ -24,11 +24,22 @@ For suspected compromise, stop promotion, revoke Jenkins access, remove the key 
 
 ## Rollback and cluster recreation
 
-Before every rollout Jenkins records both previous image digest references. A failed rollout runs `scripts/cd/rollback-kind.sh` with that exact pair. If the Kind cluster is lost, recreate it, authenticate to private GHCR, verify the stored signature and attestations, then deploy with `IMAGE_SOURCE=registry` and the stored `BACKEND_IMAGE_REF` and `FRONTEND_IMAGE_REF`. Tags must not be substituted.
+Jenkins records the previous backend/frontend digest pair before rollout.
+Application rollout or smoke-test failure can restore that verified pair with
+`scripts/cd/rollback-kind.sh`; database migrations are not reversed. See
+[Jenkins pipeline behavior](jenkins.md#pipeline-behavior).
+
+A lost registered cluster requires explicit recovery. Follow
+[environment validation and recovery](environments.md#validation-and-recovery)
+to restore the database and verify the replacement cluster before registration.
+Then authenticate to GHCR and deploy the verified stored digest pair. Restoring
+images does not restore PostgreSQL data; normal bootstrap refuses to recreate a
+missing registered cluster.
 
 ## Disaster-recovery exercises
 
-- Quarterly: recreate Kind and restore the last known-good digest pair.
+- Quarterly, in a disposable environment: restore database backups into a replacement
+  Kind cluster, register its verified identity, and restore the last known-good digest pair.
 - Quarterly: rotate the MCP capability secret and application authentication secret.
 - Quarterly: exercise engine lease reclaim, duplicate submission, PostgreSQL restart, MCP outage, provider timeout/429, failed migration, failed rollout, and rollback.
 - Before production: restore RDS from backup, disrupt an EKS pod and node, and complete Terraform teardown in a disposable account.

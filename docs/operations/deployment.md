@@ -21,23 +21,9 @@ remaining operational gaps, and optional simplifications.
 Use the same application containers and core Kubernetes resources locally and
 on AWS:
 
-```text
-Browser
-   |
-   v
-Frontend / reverse proxy
-   |
-   v
-Go API Deployment ------> PostgreSQL
-                              ^
-                              |
-                       Engine Deployment
-```
-
-The API and engine are separate workloads. PostgreSQL remains the durable
-source of truth and battle queue. Do not introduce SQS merely to deploy the
-current application; it can be a later architecture exercise if the queue
-requirements change.
+See the [system context](../design/system-architecture.md#2-system-context)
+for the API, engine, MCP, agent, PostgreSQL, and optional Redis topology.
+PostgreSQL remains the durable queue in both deployment environments.
 
 For a first AWS deployment, use:
 
@@ -65,13 +51,15 @@ deploy/
 │   └── application/        Workloads, Services, Ingress, HPA, and PDBs
 └── overlays/
     └── local/
-        ├── infrastructure/ Disposable PostgreSQL and local Secret
+        ├── infrastructure/ PVC-backed PostgreSQL and staged Secrets
         ├── migration/      Local migration composition
         ├── application/    Local application composition
         ├── observability/  Composed metrics and logging backends
         │   ├── prometheus/ Metrics collection and alert rules
         │   ├── kube-state-metrics/  Namespaced Kubernetes object state
         │   ├── grafana/    Metrics UI and dashboard provisioning
+        │   ├── otel-collector/  OTLP trace receiver
+        │   ├── tempo/      Trace storage
         │   ├── elasticsearch/  Disposable local log storage
         │   ├── kibana/     Logging UI and data-view provisioning
         │   └── collector-rbac/  Collector access to application pod metadata
@@ -88,16 +76,19 @@ overlay.
 | Container image | Image loaded into `kind` | Image pushed to ECR |
 | API and engine | `Deployment` | The same `Deployment` on EKS |
 | Internal networking | `Service` DNS | The same `Service` DNS on EKS |
-| Database | Disposable development PostgreSQL | RDS PostgreSQL |
+| Database | PVC-backed development PostgreSQL | RDS PostgreSQL |
 | Database credential | Uncommitted local Secret | Secrets Manager integration |
 | Public access | Loopback-only Envoy Gateway | ALB-backed Ingress |
 | Non-secret settings | `ConfigMap` | The same `ConfigMap`, with an overlay if needed |
 
 Kustomize is already included in `kubectl`. Render each stage before applying
-it when reviewing a change:
+it when reviewing a change. The infrastructure overlay requires staged private
+secret files and cannot render directly from a clean checkout. Use
+`./scripts/test/test-kind-deployment.sh` for disposable render fixtures; deployment
+stages registered secret inputs into temporary overlays. The remaining overlays
+can be rendered without credentials:
 
 ```bash
-kubectl kustomize deploy/overlays/local/infrastructure
 kubectl kustomize deploy/overlays/local/migration
 kubectl kustomize deploy/overlays/local/application
 kubectl kustomize deploy/overlays/local/observability
@@ -225,8 +216,8 @@ Do not reuse these credentials outside the disposable local cluster.
 ### 2. Build commit-addressed images
 
 The normal Kubernetes workflow tags each changed application image with the
-full Git commit SHA. This makes deployed revisions unambiguous and gives Jenkins
-the same build entry point that will later push images to ECR.
+full Git commit SHA. Clean builds identify their source revision; local dirty
+builds require an explicit opt-in and must not be published as release evidence.
 
 `VERSION` contains the release line in semantic `major.minor.patch` form. The
 initial version is `0.1.0`. When a CI build number is present, the build also
@@ -267,8 +258,9 @@ autonomous-battlefield-backend:<full-git-sha>
 autonomous-battlefield-frontend:<full-git-sha>
 ```
 
-Kubernetes always deploys the full-SHA tag. The build-number alias is for CI
-screens, logs, and human communication; it does not replace the immutable tag.
+Local dev deploys the full-SHA tag loaded into Kind. Jenkins production deploys
+verified `repository@sha256:...` references from GHCR. Build-number aliases are
+for human navigation and are not production deployment identities.
 
 ### Release tags on GitHub
 
@@ -406,8 +398,17 @@ internal functions live in `scripts/cd/lib/kind-deployment.sh`, while
 shared by CI and CD. Files under either `lib` directory are sourced libraries
 and are not intended to be run directly.
 
-The following sections show the individual Kubernetes stages executed by the
-script and are useful when diagnosing a failure.
+The following sections show individual stages for diagnosis. Direct `kubectl`
+commands do not use the scripts' environment resolver. In a dedicated dev shell,
+select the registered kubeconfig before running the inspection or cleanup commands:
+
+```bash
+export KUBECONFIG="$HOME/.config/autonomous-battlefield/dev/kubeconfig"
+kubectl config current-context  # must be battlefield-dev
+```
+
+For production inspection, use the production profile as described in
+[environments](environments.md); local cleanup commands below are for dev.
 
 ### 4. Inspect PostgreSQL and configuration
 
@@ -466,49 +467,10 @@ CPU target is `<unknown>` until metrics-server is installed.
 
 ### Inspect local observability
 
-The local-only observability overlay deploys Prometheus with namespace-scoped
-pod discovery plus authenticated kubelet cAdvisor scraping, kube-state-metrics
-with namespace-scoped workload access, Grafana with provisioned application and
-Kubernetes dashboards, and a centralized logging path from Fluent Bit through
-Elasticsearch to Kibana. The deployment script waits for every workload and
-provisions the Kibana data view. The smoke test verifies application, workload,
-and container resource metrics, both Grafana dashboards, Kibana, and indexed
-logs. Elasticsearch retains a read-only container root while a non-root init
-container stages its default files and checked-in settings into a writable,
-disposable configuration volume required for keystore creation.
-
-```bash
-kubectl rollout status deployment/battlefield-prometheus \
-  --namespace battlefield --timeout=120s
-kubectl rollout status deployment/battlefield-kube-state-metrics \
-  --namespace battlefield --timeout=120s
-kubectl rollout status deployment/battlefield-grafana \
-  --namespace battlefield --timeout=120s
-kubectl rollout status deployment/battlefield-elasticsearch \
-  --namespace battlefield --timeout=120s
-kubectl rollout status deployment/battlefield-kibana \
-  --namespace battlefield --timeout=120s
-kubectl rollout status daemonset/battlefield-fluent-bit \
-  --namespace battlefield-logging --timeout=120s
-```
-
-The application namespace continues to enforce the Pod Security `baseline`
-profile. kube-state-metrics is non-privileged and can read only selected
-workload objects in `battlefield`. Prometheus has a separate ClusterRole limited
-to node discovery and `nodes/metrics` reads. It scrapes the local kubelet
-directly and deliberately does not receive the broader `nodes/proxy`
-permission. Fluent Bit is isolated in `battlefield-logging`, whose `privileged`
-enforcement level is required for read-only node log mounts. Its service
-account receives only `get`, `list`, and `watch` access to pods in the
-`battlefield` namespace; the application workloads do not inherit that
-exception.
-
-Open `http://grafana.localhost:8888` for the Autonomous Battlefield application
-and Kubernetes Workloads dashboards.
-Open `http://kibana.localhost:8888` and select the **Autonomous Battlefield
-Logs** data view in Discover. No port-forward process is required. See
-[docs/operations/observability.md](observability.md) for metrics, log queries, direct backend
-access, SLI formulas, alert behavior, and production boundaries.
+See [observability operations](observability.md) for deployment, rollout checks,
+Grafana/Kibana access, direct service inspection, and storage/security limits.
+The dev smoke check skips this stack by default; set `SMOKE_TEST_OBSERVABILITY=1`
+to verify it after installing the full overlay.
 
 ### 7. Open the application
 
@@ -524,9 +486,10 @@ Run the same non-interactive verification used by Jenkins at any time:
 ./scripts/cd/smoke-test-kind.sh
 ```
 
-It verifies the browser-facing frontend, Grafana, and Kibana routes through the
-local gateway. Temporary API, Prometheus, and Elasticsearch port-forwards are
-used only for internal diagnostic checks and are removed automatically. When
+It verifies frontend access and API readiness, authentication, and scenario
+responses. With `SMOKE_TEST_OBSERVABILITY=1` (the production default), it also
+checks Grafana, Kibana, metrics, and log ingestion. Temporary diagnostic
+port-forwards are removed automatically. When
 the optional `battlefield-auth` Secret enables authentication, the smoke test
 reads its administrator credentials without printing them, logs in through the
 gateway, and keeps the resulting session cookie only in its private temporary
@@ -576,19 +539,10 @@ Deleting the entire `kind` cluster has the same data-loss consequence.
 
 ## Jenkins deployment pipeline
 
-The repository includes a root `Jenkinsfile` for a GitHub-backed Multibranch
-Pipeline. Pull requests targeting `main` run lint, tests with coverage, image
-builds, and vulnerability scans. After the PR is merged, the `main` pipeline
-regenerates coverage, waits for the SonarQube quality gate, rebuilds and scans
-the exact merge revision, runs the migration gate once, deploys, verifies
-health, and rolls back application Deployments after a failed rollout or smoke
-test. Direct `dev` pushes are intentionally left to the local development
-workflow.
-
-See [docs/operations/jenkins.md](jenkins.md) for the agent prerequisites, required plugins,
-secret-file credential, GitHub branch discovery, local webhook limitation, and
-pipeline behavior. The local pipeline deploys to kind; ECR and EKS replace the
-image-loading and deployment targets later without changing the earlier gates.
+[Jenkins operations](jenkins.md#pipeline-behavior) owns the PR/main stage sequence,
+credentials, publication, verification, and digest rollback workflow. Main deploys
+to the registered production Kind cluster; local dev loads its own images.
+AWS promotion copies verified images to ECR without rebuilding.
 
 ## Repository-specific requirements
 
@@ -656,7 +610,7 @@ FRONTEND_IMAGE_REF='ghcr.io/twh09/autonomous-battlefield-frontend@sha256:…' \
 ./scripts/cd/deploy-kind.sh
 ```
 
-Jenkins additionally sets `ENFORCE_SUPPLY_CHAIN_POLICY=1`, which installs the Jenkins-only Kyverno verification policy. The tagged Kyverno manifest is installed with server-side apply so its large CRDs do not exceed Kubernetes' client-side last-applied annotation limit. Deployment waits for the admission controller's `Available` condition and prints pod, Deployment, and controller-log diagnostics on timeout. For private GHCR verification, the stage's temporary Docker authentication is copied into a `battlefield-ghcr` pull Secret in the `kyverno` namespace and referenced only by the verification policy. Cosign publishes modern OCI 1.1 referrers for promotion plus legacy digest-tag signature and attestation mirrors for Kyverno 1.15 admission discovery; both sets cover the same digest and use the same key. Unsigned local Kind development remains available through `IMAGE_SOURCE=local` and is never treated as promotion evidence.
+The production environment resolver requires `ENFORCE_SUPPLY_CHAIN_POLICY=1`, which installs the Jenkins-only Kyverno verification policy. The tagged Kyverno manifest is installed with server-side apply so its large CRDs do not exceed Kubernetes' client-side last-applied annotation limit. Deployment waits for the admission controller's `Available` condition and prints pod, Deployment, and controller-log diagnostics on timeout. For private GHCR verification, the stage's temporary Docker authentication is copied into a `battlefield-ghcr` pull Secret in the `kyverno` namespace and referenced only by the verification policy. Cosign publishes modern OCI 1.1 referrers for promotion plus legacy digest-tag signature and attestation mirrors for Kyverno 1.15 admission discovery; both sets cover the same digest and use the same key. Unsigned local Kind development remains available through `IMAGE_SOURCE=local` and is never treated as promotion evidence.
 
 The AWS step should reuse the tested images and base resources:
 
@@ -684,11 +638,7 @@ required before treating the environment as production-ready.
 8. Exercise secret rotation, backup restore, pod disruption, failed rollout,
    and teardown.
 
-Amazon EKS itself is billable. A standard-support cluster has an hourly control
-plane charge in addition to compute, load balancer, database, networking, and
-storage charges. Learn locally first, create AWS Budgets before provisioning,
-and destroy learning environments when they are not in use. Budget alerts are
-notifications rather than guaranteed hard spending limits.
+Budget alerts are notifications, not guaranteed spending limits.
 
 ## Reference documentation
 

@@ -1,7 +1,8 @@
 # Jenkins and GitHub deployment pipeline
 
 Production now runs on the server at `192.168.1.104` (Jenkins port `8080`).
-Before merging the environment split, complete the [server transition](environments.md#server-transition-before-merging-the-pipeline-change).
+For initial setup or migration of an existing server, complete the
+[server registration](environments.md#server-registration-and-migration).
 The following installation commands are server administration instructions.
 
 The repository owns its pipeline in `Jenkinsfile`. GitHub stores the source;
@@ -22,6 +23,9 @@ Merge into main
                smoke test, and rollback on failure
 ```
 
+The diagram summarizes the branch split; [pipeline behavior](#pipeline-behavior)
+lists all current gates, publication, and verification stages.
+
 The Declarative Pipeline groups these paths under `PR verification` and
 `Main delivery`. Jenkins still displays the inactive parent stage as skipped so
 the branch decision remains auditable, but it does not execute that parent's
@@ -32,7 +36,7 @@ that they are unnecessary; those skips are intentional and remain visible.
 Direct pushes to non-`main` branches do not run CI or CD stages. This keeps
 `dev` available as a local work branch: use `run-dev.sh` while developing, then
 open a pull request when the change is ready for Jenkins CI. Only `main`
-receives the local `kind` deployment credential and can deploy.
+receives the production `kind` deployment credential and can deploy.
 
 The `main` branch must require pull requests and disallow direct pushes. Jenkins
 sees a `main` update rather than a distinct "PR merged" pipeline condition, so
@@ -92,7 +96,7 @@ Use a dedicated Linux or WSL Jenkins agent with:
 
 - Git.
 - Go 1.26.5 or newer.
-- Node.js 24 and npm.
+- Node.js 24, npm, and Python 3 for deployment regression tests.
 - GCC and the C development toolchain required by `go test -race`.
 - Docker, with permission to use the Docker daemon.
 - `kubectl`, `kind`, `curl`, and AWS CLI for the optional promotion job.
@@ -208,8 +212,8 @@ If a build reports `disk quota exceeded`, inspect capacity, inode usage, the
 user quota, and old project caches on the agent before retrying:
 
 ```bash
-df -h /tmp /home/twh09/jenkins-agent
-df -i /tmp /home/twh09/jenkins-agent
+df -h /tmp "$HOME/jenkins-agent"
+df -i /tmp "$HOME/jenkins-agent"
 quota -s 2>/dev/null || true
 du -sh /tmp/autonomous-battlefield-go-cache-* /tmp/go-build* 2>/dev/null || true
 find /tmp -maxdepth 1 -user "$(id -un)" -type d \
@@ -234,15 +238,16 @@ Use a separate agent so builds do not execute on the Jenkins controller:
 
 1. Open **Manage Jenkins > Nodes > New Node**.
 2. Name it `battlefield-local`, choose **Permanent Agent**, and use one executor.
-3. Set the remote root directory to `/home/efilorez/jenkins-agent`.
+3. Add the label `battlefield-production`, which both Jenkinsfiles require.
+   Set the remote root directory to the agent account’s `~/jenkins-agent`.
 4. Choose **Launch agent by connecting it to the controller** and enable the
    WebSocket launch option.
 5. Save the node, create its work directory, and download the current agent JAR:
 
    ```bash
-   install -d -m 700 /home/efilorez/jenkins-agent
+   install -d -m 700 $HOME/jenkins-agent
    curl --fail --location \
-     --output /home/efilorez/jenkins-agent/agent.jar \
+     --output $HOME/jenkins-agent/agent.jar \
      http://localhost:8080/jnlpJars/agent.jar
    ```
 
@@ -327,7 +332,7 @@ Configure Jenkins as follows:
 The scanner polls SonarQube for the quality-gate result for up to five minutes
 and fails the build when the gate fails. No SonarQube webhook is required. This
 avoids requiring the SonarQube Docker container to connect back to the Jenkins
-controller running in WSL.
+controller on the server.
 
 SonarQube imports `backend/coverage.out` and `frontend/coverage/lcov.info` using
 `sonar-project.properties`. It does not generate those reports itself. The
@@ -347,12 +352,6 @@ docker compose -f quality/sonarqube/compose.yaml stop
 
 Do not use `docker compose down -v` unless you intentionally want to erase the
 SonarQube database and configuration.
-
-SonarQube displays coverage but does not run the tests that generate it. Go
-writes `backend/coverage.out`, Vitest writes `frontend/coverage/lcov.info`, and
-SonarScanner imports both files together with static reliability, security,
-maintainability, complexity, and duplication findings. The quality gate turns
-the configured rules into a pass/fail deployment decision.
 
 ## Publish pull-request coverage to GitHub
 
@@ -443,7 +442,7 @@ For a private repository, prefer a narrowly scoped GitHub App or token managed
 by Jenkins rather than embedding credentials in the repository.
 
 A GitHub webhook cannot reach Jenkins through `localhost`. While Jenkins runs
-only inside local WSL, trigger **Scan Repository Now** or configure periodic
+on a private server, trigger **Scan Repository Now** or configure periodic
 repository scans. Add a webhook only after Jenkins has an authenticated,
 HTTPS-protected address reachable from GitHub.
 
@@ -538,31 +537,29 @@ local iteration; local Jenkins and SonarQube need not be started.
 For a pull request targeting `main`, the pipeline performs:
 
 1. Clean checkout of the exact GitHub commit.
-2. Parallel Go formatting/vet, Go tests with a coverage profile, frontend tests
-   with LCOV and JSON-summary coverage, frontend build, and Kustomize rendering.
-3. A dedicated GitHub `Coverage` check containing both coverage summaries.
-4. Image build through `scripts/ci/build-images.sh`. Jenkins `BUILD_NUMBER`
-   produces the human-readable build alias; the full SHA remains immutable.
-5. Image scanning through `scripts/ci/scan-images.sh`. Trivy v0.74.0 is pinned by
-   image digest and rejects fixable HIGH or CRITICAL findings.
+2. Parallel Go lint, isolated PostgreSQL-backed tests (coverage and race checks),
+   frontend coverage/build, source security and policy validation, fuzz smoke,
+   deterministic AI evaluation, and deployment-script checks.
+3. Publication of the GitHub `Coverage` check.
+4. Local image builds and vulnerability scans, without publication or production credentials.
 
-After that pull request is merged, the `main` pipeline performs:
+For `main`, the pipeline performs:
 
-1. Clean checkout of the exact merged commit.
-2. Regenerate coverage and wait for the SonarQube quality gate.
-3. Compare the merge SHA with `GIT_PREVIOUS_SUCCESSFUL_COMMIT` and classify
-   changed deployment components. If the baseline is unavailable, deploy all
-   components conservatively. Unclassified paths also deploy all components and
-   emit a warning until an explicit classifier rule is added.
-4. Build and scan only changed backend and frontend images. A PR validation SHA
-   and the final merge SHA are not assumed to be interchangeable.
-5. Apply only the selected infrastructure, migration, application,
-   observability, and Gateway API stages. Documentation-only changes deploy
-   nothing.
-6. After a deployment, verify frontend, Grafana, and Kibana gateway access, API
-   readiness and metrics, Prometheus application, kube-state-metrics, and
-   cAdvisor target discovery, both Grafana dashboards, the Kibana data view,
-   and Elasticsearch log ingestion.
+1. Clean checkout, Go lint, backend/frontend coverage, source security, and deterministic AI evaluation.
+2. SonarQube analysis and quality-gate enforcement.
+3. Deployment-script checks and component classification against the previous
+   successful commit. Documentation-only changes select no deployment; an unknown
+   path or unavailable baseline selects all components.
+4. Publication of changed images to GHCR, scanning of the published images,
+   then attestation, signing, and verification.
+5. Production rollout with the dedicated kubeconfig, recorded previous backend
+   and frontend digest references, migration gating, and Kyverno admission verification.
+6. Application and observability smoke verification, followed by parallel k6
+   smoke load and ZAP baseline checks.
+
+See [deployment component mapping](deployment.md#change-to-deployment-mapping)
+for the paths that select each rollout stage and
+[supply-chain assets](../../deploy/supply-chain/README.md) for the trust root.
 
 The deployment keeps the normal application rollout budget at five minutes but
 allows 15 minutes for the observability group as a whole. A new single-node
@@ -574,7 +571,7 @@ Deployment plus recent namespace events.
 
 `scripts/cd/deploy-kind.sh` can reapply a temporary Kustomize overlay containing
 the previous images if an application apply or rollout fails. Before deploying,
-Jenkins records the independently deployed backend and frontend SHAs. If an
+Jenkins records the independently deployed backend and frontend digest references. If an
 application-related deployment later fails smoke testing,
 `scripts/cd/rollback-kind.sh` restores those two exact immutable revisions without
 re-running migrations or changing observability. Image rollback is skipped for
@@ -582,13 +579,15 @@ infrastructure-, migration-, observability-, or gateway-only changes. Database
 migrations are deliberately not reversed automatically, so migrations must
 remain backward-compatible with the previous application revision.
 
-The local pipeline loads changed images directly into kind. The later AWS
-version will push changed tags to ECR and deploy their SHA tags to EKS while
-preserving the same test, scan, migration, verification, and rollback gates.
+Local dev loads images into Kind. Production pulls verified GHCR digests. The
+separate AWS promotion helper copies those verified subjects and their evidence
+to ECR; its assurance-job artifact-input gap remains documented in the
+[deployment review](deployment-review.md).
 
-## Run the pipeline commands without Jenkins
+## Run local build and deployment checks without Jenkins
 
-After committing the intended source so the worktree is clean:
+After [dev environment setup](environments.md#wsl-setup-and-normal-use) and
+committing the intended source so the worktree is clean:
 
 ```bash
 ./scripts/ci/lint-go.sh
@@ -605,7 +604,8 @@ supported comma-separated selection on the build, scan, and deploy commands to
 exercise an incremental path. Run
 `./scripts/test/test-deployment-components.sh` to verify the path classifier.
 
-These commands exercise the same local path, but they do not validate Jenkins
+These commands exercise local build/deploy checks after dev environment setup;
+they do not publish, sign, or verify production registry artifacts or validate Jenkins
 Declarative Pipeline syntax. Use the configured Jenkins Multibranch job for the
 final `Jenkinsfile` validation.
 

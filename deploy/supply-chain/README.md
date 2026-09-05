@@ -18,9 +18,5 @@ the source copied during registry promotion. The mirror allows the pinned
 Kyverno 1.15 admission controller to discover the same evidence in private
 GHCR; it is not a separate trust root or a mutable deployment artifact.
 
-Rotate the key by pausing publication, installing a new credential pair,
-committing the new public key, signing a canary digest, verifying it, and then
-resuming. Keep the retired public key until every deployable and rollback digest
-signed by it has expired from retention. If compromise is suspected, disable
-the credential immediately, block deployment, preserve audit evidence, rotate,
-and re-sign only artifacts rebuilt from reviewed source.
+For key rotation, compromise response, retention, rollback, and recovery, follow
+the [supply-chain runbook](../../docs/operations/supply-chain-runbook.md).

@@ -1,7 +1,7 @@
 # Observability and reliability objectives
 
-Autonomous Battlefield exposes Prometheus metrics from both Go processes and
-ships local metrics and logging stacks for the `kind` deployment. Prometheus
+Autonomous Battlefield exposes Prometheus metrics from the API and engine and
+ships local metrics, tracing, and logging stacks for the `kind` deployment. Prometheus
 and Grafana provide metrics; Fluent Bit, Elasticsearch, and Kibana provide
 centralized logs. The dashboard and objectives in this guide are internal
 operating targets. They are not a customer-facing service-level agreement.
@@ -16,6 +16,7 @@ kubelet /metrics/cadvisor -----+          |
                                           +--> recording and alert rules
 
 application container stdout --> Fluent Bit --> Elasticsearch --> Kibana
+API / engine / MCP / agent spans --> OTel Collector --> Tempo --> Grafana
 ```
 
 Prometheus discovers annotated pods in the `battlefield` namespace and uses
@@ -24,14 +25,14 @@ Role can list and watch application pods. A separate ClusterRole permits only
 node discovery and `GET` access to the kubelet metrics subresource. Prometheus
 uses its mounted service-account token to scrape each local kubelet directly;
 it does not receive the broader `nodes/proxy` permission. Grafana receives no
-Kubernetes credentials and uses the internal Prometheus Service as its sole
-data source.
+Kubernetes credentials. It uses internal Prometheus and Tempo Services as
+its metrics and trace data sources.
 
 The local stack deliberately does not include Alertmanager. Prometheus evaluates
 the checked-in alert rules and shows their state, but notifications require an
 Alertmanager or another production alert-delivery integration.
 
-Fluent Bit runs once per node and tails API, engine, frontend, and migration
+Fluent Bit runs once per node and tails API, engine, agent, MCP, frontend, and migration
 container logs from the `battlefield` namespace. It enriches each record with
 pod, container, and label metadata and sends daily
 `battlefield-app-YYYY.MM.DD` indices to Elasticsearch. JSON application logs
@@ -42,6 +43,21 @@ the dedicated `battlefield-logging` namespace so its required read-only node
 log mounts do not weaken the application namespace's Pod Security policy. Its
 Role can read pods in the `battlefield` namespace only, and its own logs are
 outside the configured input path.
+
+## Distributed traces
+
+The API, engine, MCP, and agent use OpenTelemetry. W3C trace context is stored on
+battle and decision rows so workers can continue it after queue claims. The
+collector accepts OTLP and exports traces to Tempo. In Grafana Explore, select
+**Tempo** and search for the relevant service or trace ID. Host agents need an
+OTLP endpoint reachable from the host to export their own spans.
+
+See [`internal/telemetry/tracing.go`](../../backend/internal/telemetry/tracing.go)
+for environment configuration and instrumentation, and the
+[collector configuration](../../deploy/overlays/local/observability/otel-collector/config.yaml)
+for the in-cluster path. Prompts, credentials, capabilities, full observations,
+and raw provider responses are excluded from span attributes. Tempo storage is
+also disposable; it is not an audit archive.
 
 ## Application metrics
 
@@ -131,13 +147,11 @@ on the proposed 99.9% objective (`1 - 0.999 = 0.001`).
 
 ## Run the local stack
 
-The normal deployment command renders and applies observability after the
-application rollouts:
+After [dev environment registration and secret preparation](environments.md#wsl-setup-and-normal-use),
+build and deploy the complete stack with:
 
 ```bash
-./scripts/cd/create-kind-cluster.sh
-./scripts/cd/deploy-kind.sh
-./scripts/cd/smoke-test-kind.sh
+DEPLOY_COMPONENTS=all SMOKE_TEST_OBSERVABILITY=1 ./deploy-local.sh
 ```
 
 Visit `http://grafana.localhost:8888` and open **Autonomous Battlefield /
@@ -180,6 +194,14 @@ Local Grafana allows anonymous Viewer access and disables basic login. The
 local Elasticsearch and Kibana deployment also disables authentication. Envoy
 Gateway exposes the web interfaces only through a Kind node port bound to
 `127.0.0.1`, so they are reachable from the local machine but not the network.
+
+For the direct `kubectl` commands below, first select the registered dev
+kubeconfig in this shell:
+
+```bash
+export KUBECONFIG="$HOME/.config/autonomous-battlefield/dev/kubeconfig"
+kubectl config current-context  # must be battlefield-dev
+```
 
 As a troubleshooting fallback, bypass the gateway with a temporary forward:
 

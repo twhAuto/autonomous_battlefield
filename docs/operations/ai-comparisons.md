@@ -2,52 +2,37 @@
 
 ## Shared prompts
 
-All API and CLI workers use the Git-versioned templates in
-`backend/internal/ai/prompts/`. `prompts.go` embeds the shared role, decision
-instructions, and the two context-delivery instructions. `PromptVersion`
-contains `battlefield-agent-v3` and a SHA-256 digest of all four templates, so
-editing any instruction changes the provenance recorded on decisions and reports.
-Rebuild the backend binaries after editing a template. The v2 file is retained
-as historical source; it is not used by the current workers.
-
-API workers and Codex fetch context with MCP. Antigravity receives the same
-shared instructions with host-prefetched context because its CLI offloads large
-MCP results to files. Both model runtimes reject placeholder plans and close a
-decision after three rejected submissions. CLI tools may supply their own
-internal instructions in addition to the application's templates.
+The [architecture contract](../design/system-architecture.md#shared-prompt-provenance-and-faction-memory)
+describes shared prompts, provenance, and bounded faction memory. The active
+embedded templates live in `backend/internal/ai/prompts/`; the retained v2 file
+is historical source. Rebuild backend binaries after editing active templates,
+and restart host agents so recorded prompt digests match the deployed policy.
+CLI tools may add their own internal instructions.
 
 ## Faction memory
 
-Each frozen decision context includes up to three prior resolved decisions from
-the same battle, attempt, and faction, ordered oldest first. Each entry contains
-the observation tick, decision target tick, accepted/fallback status, historical
-economy, own/visible enemy unit counts, and the resolved plan. These observations
-precede the associated plan; they are not measurements of that plan's effects.
-Compare them with later entries and current context to assess changes.
-
-The database query scopes and limits records before retrieval. Memory is capped
-at 8 KiB; whole oversized entries are omitted. It contains no nested memory,
-raw provider output, or another faction's private observations. Historical plan
-names and rationales remain untrusted data. Current context and legal choices
-always take precedence. There is no independent model-written scratchpad.
-
-Memory is reconstructed from decision rows, then persisted inside the next
-observation JSON. No schema migration is needed. Failed reads emit
-`faction_memory_unavailable` and allow the current decision to proceed without
-memory. New attempts start with no history from earlier attempts. The memory
-participates in the observation hash; retry reuse also requires matching prompt,
-tool, profile, provider, runtime, and model identifiers.
+Memory observations precede their associated plans; they do not measure the
+plans' effects. Compare later observations and current context when assessing
+changes. Historical names and rationales are untrusted data, and current legal
+choices take precedence. A `faction_memory_unavailable` log means the optional
+history read failed and the decision proceeded without memory. Use the ablations
+below to compare memory with an otherwise matched configuration.
 
 ## Free verification
 
 From `backend/`:
 
 ```bash
-go run ./cmd/aieval -mode compare   -comparison-config evals/comparison.yaml   -cases evals/comparison-cases   -corpus-version 2026-09-06.comparison-v1   -repetitions 3 -max-steps 4 -max-tokens 1024 -timeout 30s   -json ../artifacts/ai-eval/comparison.json
+go run ./cmd/aieval -mode compare \
+  -comparison-config evals/comparison.yaml \
+  -cases evals/comparison-cases \
+  -corpus-version 2026-09-06.comparison-v1 \
+  -repetitions 3 -max-steps 4 -max-tokens 1024 -timeout 30s \
+  -json ../artifacts/ai-eval/comparison.json
 ```
 
-The checked-in configuration compares a scripted provider with and without
-memory. Both traverse the production API runner, loopback MCP server, and
+The checked-in configuration compares a scripted baseline, a variant without
+memory, and a variant without knowledge. All three traverse the production API runner, loopback MCP server, and
 submission validator. This is a free integration check, not evidence that memory
 improves a real model's strategy.
 
@@ -163,8 +148,8 @@ If even metadata cannot fit, optional knowledge is omitted. If mechanics cannot
 fit, it is omitted and truncation is recorded. Otherwise retrieval preserves
 priority order and stops before a whole card would exceed either budget.
 
-Selection uses visible enemy types, own deployed types, current recruitment
-priority order, then other legal units by increasing cost, with unit ID breaking
+Selection uses visible enemy types, own deployed types, explicit recruitment
+order types, legacy recruitment priorities, then other legal units by increasing cost, with unit ID breaking
 ties. It never uses hidden enemy state. All legal unit statistics remain present.
 Selection is performed once before decision hashing; persisted contexts include
 source IDs, a ruleset-content digest, effective limits, serialized size, and
