@@ -18,13 +18,15 @@ import (
 )
 
 type comparisonConfig struct {
-	Variants []comparisonVariantConfig `yaml:"variants"`
+	KnowledgeRetrieval ai.KnowledgeLimits        `yaml:"knowledgeRetrieval"`
+	Variants           []comparisonVariantConfig `yaml:"variants"`
 }
 type comparisonVariantConfig struct {
-	ID            string `yaml:"id"`
-	Provider      string `yaml:"provider"`
-	Model         string `yaml:"model"`
-	WithoutMemory bool   `yaml:"withoutMemory"`
+	WithoutKnowledge bool   `yaml:"withoutKnowledge"`
+	ID               string `yaml:"id"`
+	Provider         string `yaml:"provider"`
+	Model            string `yaml:"model"`
+	WithoutMemory    bool   `yaml:"withoutMemory"`
 }
 
 func runComparison(configPath, casesPath, jsonPath, corpus string, prices aieval.PriceBook, options aieval.ComparisonOptions) error {
@@ -35,7 +37,7 @@ func runComparison(configPath, casesPath, jsonPath, corpus string, prices aieval
 	defer file.Close()
 	decoder := yaml.NewDecoder(file)
 	decoder.KnownFields(true)
-	var config comparisonConfig
+	config := comparisonConfig{KnowledgeRetrieval: ai.DefaultKnowledgeLimits()}
 	if err := decoder.Decode(&config); err != nil {
 		return err
 	}
@@ -43,6 +45,10 @@ func runComparison(configPath, casesPath, jsonPath, corpus string, prices aieval
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return errors.New("comparison config must contain one YAML document")
 	}
+	if err := config.KnowledgeRetrieval.Validate(); err != nil {
+		return err
+	}
+	options.KnowledgeRetrieval = config.KnowledgeRetrieval
 	var variants []aieval.ComparisonVariant
 	for _, v := range config.Variants {
 		variant, err := makeComparisonVariant(v, prices)
@@ -76,7 +82,7 @@ func runComparison(configPath, casesPath, jsonPath, corpus string, prices aieval
 }
 
 func makeComparisonVariant(v comparisonVariantConfig, prices aieval.PriceBook) (aieval.ComparisonVariant, error) {
-	result := aieval.ComparisonVariant{ID: v.ID, Provider: v.Provider, Model: v.Model, WithoutMemory: v.WithoutMemory, Runtime: "api"}
+	result := aieval.ComparisonVariant{ID: v.ID, Provider: v.Provider, Model: v.Model, WithoutMemory: v.WithoutMemory, WithoutKnowledge: v.WithoutKnowledge, Runtime: "api"}
 	if v.Provider == "scripted" {
 		result.Model = "scripted"
 		result.NewRunner = func() ai.DecisionRunner { return runner.APIRunner{Provider: &comparisonBaseline{}} }

@@ -591,3 +591,18 @@ When a runner fails before the deadline, the engine carries its error category
 into the fallback record instead of replacing it with `timeout`. Unresolved
 requests that reach the deadline retain the timeout category. CLI terminal
 success remains subject to the worker's accepted-plan check.
+
+### Versioned unit knowledge
+
+Optional ruleset knowledge is frozen in the resolved scenario JSON alongside unit
+statistics, and participates in the scenario content hash. At each decision
+window the engine retrieves unit cards using only the faction-visible context.
+Selection runs before observation hashing and persistence. API MCP reads and host
+CLI inline delivery consume that identical persisted knowledge. Retrieval has no
+external service dependency and does not change engine combat or plan validation.
+
+`engine.knowledgeRetrieval` controls positive card and byte limits (defaults 16
+and 16384). Effective limits, selected source IDs, content digest, byte size, and
+truncation accompany decision knowledge. Old scenarios without knowledge remain
+valid. See [AI comparisons](../operations/ai-comparisons.md#unit-knowledge-retrieval)
+for authoring, configuration, and evaluation details.

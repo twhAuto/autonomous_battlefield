@@ -41,6 +41,7 @@ func CloneResult(value Result) Result {
 }
 
 func CloneScenario(value Scenario) Scenario {
+	value.Ruleset.Knowledge = CloneKnowledge(value.Ruleset.Knowledge)
 	value.Map = CloneMap(value.Map)
 	value.Ruleset.Units = append([]UnitType(nil), value.Ruleset.Units...)
 	value.Ruleset.Upgrades = append([]Upgrade(nil), value.Ruleset.Upgrades...)

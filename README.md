@@ -645,3 +645,7 @@ go run ./cmd/aieval -mode compare -cases evals/comparison-cases -comparison-conf
 
 See [AI comparisons](docs/operations/ai-comparisons.md) for live API/Codex/Antigravity
 variants, memory ablations, limits, and report interpretation.
+
+Unit rosters and optional AI knowledge cards are authored in ruleset YAML. Shared
+retrieval supports configurable card and byte budgets; see
+[unit knowledge retrieval](docs/operations/ai-comparisons.md#unit-knowledge-retrieval).

@@ -230,6 +230,7 @@ func isYAML(name string) bool {
 }
 
 func cloneRuleset(value game.Ruleset) game.Ruleset {
+	value.Knowledge = game.CloneKnowledge(value.Knowledge)
 	value.Units = append([]game.UnitType(nil), value.Units...)
 	value.Upgrades = append([]game.Upgrade(nil), value.Upgrades...)
 	return value

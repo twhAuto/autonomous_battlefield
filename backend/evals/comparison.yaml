@@ -5,3 +5,10 @@ variants:
   - id: scripted-without-memory
     provider: scripted
     withoutMemory: true
+
+  - id: scripted-without-knowledge
+    provider: scripted
+    withoutKnowledge: true
+knowledgeRetrieval:
+  maxUnitCards: 16
+  maxBytes: 16384

@@ -130,3 +130,56 @@ After changing embedded prompts, rebuild/restart the host agent. Deploy the
 backend to pick up MCP diagnostics and engine fallback attribution. For dev,
 run `./deploy-local.sh`, then stop and restart `./run-k8s-cli-agent.sh` in its
 terminal before starting a new battle.
+
+## Unit knowledge retrieval
+
+Rulesets may include a `knowledge` section with `mechanics` and `cards`. Each card
+has `unitId`, `role`, `strengths`, `weaknesses`, and `guidance`. Knowledge-enabled
+rulesets require exactly one card per unit; legacy rulesets may omit knowledge.
+Mechanics text is limited to 4096 UTF-8 bytes and each descriptive field to 1024.
+Numerical card facts are generated from unit definitions. Current observed unit
+stats may include upgrades; tactical text is advice, not a guaranteed counter.
+
+To add a unit, add its numerical definition and card to the ruleset YAML, using
+existing movement, targeting, and combat mechanics. Publish a new ruleset ID and
+version and a scenario referencing it when changing a published roster. Existing
+faction blueprints remain associated with their ruleset. No engine switch or UI
+unit list needs editing. New abilities still require engine implementation.
+Knowledge and its ruleset are copied into the persisted scenario at battle
+creation. Editing catalog files cannot alter an existing battle snapshot.
+
+Engine YAML (also available in the deployment ConfigMap):
+
+```yaml
+engine:
+  knowledgeRetrieval:
+    maxUnitCards: 16
+    maxBytes: 16384
+```
+
+Both settings must be positive. Omitted settings use the defaults above; values
+above eight are supported. The byte budget includes mechanics, cards, and metadata.
+If even metadata cannot fit, optional knowledge is omitted. If mechanics cannot
+fit, it is omitted and truncation is recorded. Otherwise retrieval preserves
+priority order and stops before a whole card would exceed either budget.
+
+Selection uses visible enemy types, own deployed types, current recruitment
+priority order, then other legal units by increasing cost, with unit ID breaking
+ties. It never uses hidden enemy state. All legal unit statistics remain present.
+Selection is performed once before decision hashing; persisted contexts include
+source IDs, a ruleset-content digest, effective limits, serialized size, and
+truncation. MCP and inline CLI delivery use the same stored context. Engine
+configuration changes affect newly prepared decisions after restart; retries
+reuse persisted decisions.
+
+Comparison YAML accepts the same `knowledgeRetrieval` block at the top level.
+Variants may set `withoutKnowledge: true`, independently of `withoutMemory`.
+Cases can supply `knowledgeRuleset` to prepare context using the production
+selector. The large-roster fixture contains 23 units; it exercises selection
+without changing the production roster. Comparison reports include retrieval
+metadata, never full knowledge text. Run the existing compare command with the
+same corpus and different configuration files to compare budgets.
+
+Free scripted comparisons validate integration, not tactical improvement. Live
+comparisons remain opt-in; full battles are needed for outcome claims. This
+worker-context feature does not complete AB-76's separate rules-coach experiment.

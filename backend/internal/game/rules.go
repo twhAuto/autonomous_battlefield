@@ -7,6 +7,9 @@ import (
 )
 
 func ValidateRuleset(ruleset Ruleset) error {
+	if err := ValidateKnowledge(ruleset); err != nil {
+		return err
+	}
 	if !validRulesetMetadata(ruleset) {
 		return fmt.Errorf("%w: ID, version, budget, and starting gold are invalid", ErrInvalidRuleset)
 	}

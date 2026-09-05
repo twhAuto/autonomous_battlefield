@@ -564,3 +564,15 @@ metadata. `tool_logging_test.go` exercises malformed arguments through MCP and
 checks that payloads do not enter logs. Worker fallback tests verify that
 runner failure categories survive fallback persistence. The shared prompt tests
 cover complete flat submission arguments.
+
+### Unit knowledge extension points
+
+- `backend/internal/game/knowledge.go` validates and clones optional ruleset cards.
+- `backend/internal/ai/knowledge.go` selects bounded knowledge from frozen rules
+  and visible decision context; worker preparation persists it before hashing.
+- `backend/internal/ai/eval/knowledge.go` exports retrieval metadata in comparisons.
+- `backend/evals/comparison-cases/large-roster.yaml` exercises a larger synthetic
+  roster; `backend/evals/comparison.yaml` includes knowledge ablation and limits.
+
+See [unit knowledge retrieval](../operations/ai-comparisons.md#unit-knowledge-retrieval)
+for the YAML authoring and deployment workflow.

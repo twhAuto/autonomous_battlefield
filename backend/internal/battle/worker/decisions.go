@@ -65,6 +65,10 @@ func (w *Worker) prepareDecision(ctx context.Context, lease BattleLease, simulat
 	}
 	setup := factionSetup(simulation.Scenario(), factionID)
 	decisionContext := newDecisionContext(lease, factionID, targetTick, snapshot)
+	decisionContext.Knowledge, err = ai.RetrieveKnowledge(simulation.Scenario().Ruleset, decisionContext, w.config.KnowledgeRetrieval)
+	if err != nil {
+		return err
+	}
 	decisionContext.Memory, err = w.decisions.ListFactionMemory(ctx, lease.BattleID, lease.Attempt, factionID, targetTick)
 	if err != nil {
 		// Memory is optional continuity. Current authoritative context remains usable.
