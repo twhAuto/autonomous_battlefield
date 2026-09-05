@@ -46,15 +46,21 @@ type Observation struct {
 // PlanProposal is the strategy input supplied by a human, scripted bot, or
 // later an LLM. Weights are fixed-point multipliers where 1,000 means 1x.
 // Missing action kinds use Config.DefaultActionWeight.
+type RecruitmentOrder struct {
+	UnitType string `json:"unitType" yaml:"unitType"`
+	Count    int    `json:"count" yaml:"count"`
+}
+
 type PlanProposal struct {
-	Name                   string           `json:"name" yaml:"name"`
-	Rationale              string           `json:"rationale,omitempty" yaml:"rationale,omitempty"`
-	ActionWeights          map[string]int64 `json:"actionWeights,omitempty" yaml:"actionWeights,omitempty"`
-	TargetBonuses          map[string]int64 `json:"targetBonuses,omitempty" yaml:"targetBonuses,omitempty"`
-	ReserveGold            int64            `json:"reserveGold,omitempty" yaml:"reserveGold,omitempty"`
-	SpendOrder             []string         `json:"spendOrder,omitempty" yaml:"spendOrder,omitempty"`
-	ConstructionPriorities []Coordinate     `json:"constructionPriorities,omitempty" yaml:"constructionPriorities,omitempty"`
-	RecruitmentPriorities  []string         `json:"recruitmentPriorities,omitempty" yaml:"recruitmentPriorities,omitempty"`
+	RecruitmentOrders      *[]RecruitmentOrder `json:"recruitmentOrders,omitempty" yaml:"recruitmentOrders,omitempty"`
+	Name                   string              `json:"name" yaml:"name"`
+	Rationale              string              `json:"rationale,omitempty" yaml:"rationale,omitempty"`
+	ActionWeights          map[string]int64    `json:"actionWeights,omitempty" yaml:"actionWeights,omitempty"`
+	TargetBonuses          map[string]int64    `json:"targetBonuses,omitempty" yaml:"targetBonuses,omitempty"`
+	ReserveGold            int64               `json:"reserveGold,omitempty" yaml:"reserveGold,omitempty"`
+	SpendOrder             []string            `json:"spendOrder,omitempty" yaml:"spendOrder,omitempty"`
+	ConstructionPriorities []Coordinate        `json:"constructionPriorities,omitempty" yaml:"constructionPriorities,omitempty"`
+	RecruitmentPriorities  []string            `json:"recruitmentPriorities,omitempty" yaml:"recruitmentPriorities,omitempty"`
 }
 
 // Coordinate is independent of the game package so controller plans remain
@@ -67,6 +73,7 @@ type Coordinate struct {
 // StrategyPlan is an accepted, immutable plan with a deterministic lifetime.
 // ValidUntilTick is exclusive.
 type StrategyPlan struct {
+	RecruitmentOrders      *[]RecruitmentOrder
 	ID                     string
 	Name                   string
 	Rationale              string

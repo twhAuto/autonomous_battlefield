@@ -183,3 +183,39 @@ same corpus and different configuration files to compare budgets.
 Free scripted comparisons validate integration, not tactical improvement. Live
 comparisons remain opt-in; full battles are needed for outcome claims. This
 worker-context feature does not complete AB-76's separate rules-coach experiment.
+
+## Explicit unit purchases
+
+New model decisions use `recruitmentOrders`, for example:
+
+```json
+{
+  "reserveGold": 20,
+  "spendOrder": ["recruitment", "construction"],
+  "recruitmentPriorities": [],
+  "recruitmentOrders": [
+    {"unitType": "ranger", "count": 2},
+    {"unitType": "vanguard", "count": 1}
+  ]
+}
+```
+
+These are requested purchases for each production window, not army composition
+ratios. Each order has a positive integer count; at most six units total may be
+requested, matching the six possible castle-adjacent spawn positions. The engine
+buys in order, respects reserve gold, and stops at the first unaffordable unit or
+unavailable spawn. There is no substitution, extra purchasing, or outstanding
+queue. Reassess unmet quantities at the next decision. If an existing plan is
+reused, its quantities apply again for that production window.
+
+An explicit empty `recruitmentOrders: []` buys nothing. Absence/null preserves the
+legacy repeated-first-affordable priority behavior for old saved/scripted plans.
+Nonempty priorities and explicit orders together are rejected. Omitting recruitment
+from a nonempty spend order also skips buying. Construction and income timing are
+unchanged; recruits can act on the following tick. The decision panel displays
+requested quantities, while `unit_recruited` events record actual purchases.
+
+MCP tool schema is now `battlefield.mcp-tools.v3`; existing clients may omit the
+optional orders field. Both model providers share the updated purchasing prompt.
+Deploy API, MCP, engine, and agent together and restart the host CLI agent so tool
+schemas and prompts agree. Existing battle JSON requires no database migration.

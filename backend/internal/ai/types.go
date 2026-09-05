@@ -16,7 +16,7 @@ const (
 	ControllerModel    = "model"
 	ContextSchema      = "battlefield.decision-context.v1"
 	PlanSchema         = "battlefield.strategy-plan.v1"
-	ToolSchema         = "battlefield.mcp-tools.v2"
+	ToolSchema         = "battlefield.mcp-tools.v3"
 )
 
 type DecisionSession struct {

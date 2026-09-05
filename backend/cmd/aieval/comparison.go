@@ -150,6 +150,6 @@ func (p *comparisonBaseline) NextTurn(_ context.Context, request ai.ModelTurnReq
 		return ai.ModelTurnResult{}, errors.New("baseline requires legal context")
 	}
 	c := envelope.Context
-	args, _ := json.Marshal(map[string]any{"requestId": c.RequestID, "idempotencyKey": "baseline", "expectedVersion": c.ExpectedVersion, "targetTick": c.TargetTick, "name": "baseline", "rationale": "Use a legal action from the visible context.", "actionWeights": map[string]int64{c.Legal.ActionKinds[0]: 1000}, "reserveGold": 0, "spendOrder": []string{}, "constructionPriorities": []any{}, "recruitmentPriorities": []string{}})
+	args, _ := json.Marshal(map[string]any{"requestId": c.RequestID, "idempotencyKey": "baseline", "expectedVersion": c.ExpectedVersion, "targetTick": c.TargetTick, "name": "baseline", "rationale": "Use a legal action from the visible context.", "actionWeights": map[string]int64{c.Legal.ActionKinds[0]: 1000}, "reserveGold": 0, "spendOrder": []string{}, "constructionPriorities": []any{}, "recruitmentPriorities": []string{}, "recruitmentOrders": []any{}})
 	return ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "submit_strategy_plan", Arguments: args}}, Usage: ai.Usage{Requests: 1}}, nil
 }

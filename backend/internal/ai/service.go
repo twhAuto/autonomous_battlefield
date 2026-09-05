@@ -98,18 +98,10 @@ func ValidateSubmission(record DecisionRecord, submission PlanSubmission) []Vali
 	if err := controller.ValidatePlanProposal(submission.Plan, record.Observation.Legal.ActionKinds); err != nil {
 		issues = append(issues, ValidationIssue{Field: "plan", Code: "invalid", Message: err.Error()})
 	}
-	if (record.Runtime == "cli" || record.Runtime == "api") && len(submission.Plan.ActionWeights) == 0 && len(submission.Plan.RecruitmentPriorities) == 0 && len(submission.Plan.ConstructionPriorities) == 0 && submission.Plan.ReserveGold == 0 {
+	if (record.Runtime == "cli" || record.Runtime == "api") && len(submission.Plan.ActionWeights) == 0 && submission.Plan.RecruitmentOrders == nil && len(submission.Plan.RecruitmentPriorities) == 0 && len(submission.Plan.ConstructionPriorities) == 0 && submission.Plan.ReserveGold == 0 {
 		issues = append(issues, ValidationIssue{Field: "plan", Code: "empty_decision", Message: "Provide an explicit tactical weight, production priority, or gold reserve; a name and rationale alone are not a strategy."})
 	}
-	legalUnits := make(map[string]bool, len(record.Observation.Legal.Units))
-	for _, unit := range record.Observation.Legal.Units {
-		legalUnits[unit.ID] = true
-	}
-	for _, unitType := range submission.Plan.RecruitmentPriorities {
-		if !legalUnits[unitType] {
-			issues = append(issues, ValidationIssue{Field: "plan.recruitmentPriorities", Code: "unsupported", Message: fmt.Sprintf("unit type %q is not legal", unitType)})
-		}
-	}
+	issues = append(issues, validateRecruitmentChoices(record, submission.Plan)...)
 	legalSites := make(map[controller.Coordinate]bool, len(record.Observation.Legal.EconomySites))
 	for _, site := range record.Observation.Legal.EconomySites {
 		legalSites[site] = true
@@ -176,4 +168,26 @@ func VerifyCapability(secret, token string, now time.Time) (string, error) {
 		return "", errors.New("expired capability token")
 	}
 	return claims.RequestID, nil
+}
+
+func validateRecruitmentChoices(record DecisionRecord, plan controller.PlanProposal) []ValidationIssue {
+	var issues []ValidationIssue
+	legalUnits := make(map[string]bool, len(record.Observation.Legal.Units))
+	for _, unit := range record.Observation.Legal.Units {
+		legalUnits[unit.ID] = true
+	}
+	for _, unitType := range plan.RecruitmentPriorities {
+		if !legalUnits[unitType] {
+			issues = append(issues, ValidationIssue{Field: "plan.recruitmentPriorities", Code: "unsupported", Message: fmt.Sprintf("unit type %q is not legal", unitType)})
+		}
+	}
+	if plan.RecruitmentOrders != nil {
+		for _, order := range *plan.RecruitmentOrders {
+			if !legalUnits[order.UnitType] {
+				issues = append(issues, ValidationIssue{Field: "plan.recruitmentOrders", Code: "unsupported", Message: fmt.Sprintf("unit type %q is not legal", order.UnitType)})
+			}
+		}
+	}
+
+	return issues
 }

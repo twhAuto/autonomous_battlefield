@@ -115,6 +115,11 @@ func knowledgeCandidates(c DecisionContext) []string {
 		return legal[i].ID < legal[j].ID
 	})
 	ids := append(enemy, own...)
+	if c.ActivePlan.RecruitmentOrders != nil {
+		for _, order := range *c.ActivePlan.RecruitmentOrders {
+			ids = append(ids, order.UnitType)
+		}
+	}
 	ids = append(ids, c.ActivePlan.RecruitmentPriorities...)
 	for _, u := range legal {
 		ids = append(ids, u.ID)

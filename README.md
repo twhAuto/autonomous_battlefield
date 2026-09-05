@@ -23,6 +23,7 @@ The project is in an early stage. The current backend provides PostgreSQL-backed
 ## Current capabilities
 
 - Create reusable faction blueprints under a versioned point-buy ruleset.
+- Let AI controllers request exact unit purchase quantities at production windows.
 - Retrieve a faction's name by ID.
 - Store factions in PostgreSQL through `pgx`.
 - Configure HTTP and database connection settings from YAML and `DATABASE_URL`.

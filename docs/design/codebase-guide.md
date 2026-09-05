@@ -576,3 +576,13 @@ cover complete flat submission arguments.
 
 See [unit knowledge retrieval](../operations/ai-comparisons.md#unit-knowledge-retrieval)
 for the YAML authoring and deployment workflow.
+
+`backend/internal/game/movement.go` supplies enemy approach goals when the preferred
+castle route is blocked. `movement_test.go` covers occupied castle perimeters,
+blocked neighbors, and exclusion of friendly/destroyed targets.
+
+Explicit unit purchasing uses `controller.RecruitmentOrder` and the optional
+`PlanProposal.RecruitmentOrders` field. Engine recruitment consumes a bounded
+ordered sequence; `recruitment_test.go` covers mixed buys, reserves, spawn blocking,
+and empty orders. The AI submission validator checks legal types, and
+`AIDecisionPanel` renders quantities alongside legacy priority lists.

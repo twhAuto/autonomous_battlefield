@@ -92,17 +92,27 @@ func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) [
 	}
 	definitions := UnitTypesByID(m.scenario.Ruleset)
 	events := make([]Event, 0, 6)
+	orders := expandedRecruitmentOrders(plan.RecruitmentOrders)
+	purchased := 0
 	for {
+		if plan.RecruitmentOrders != nil && purchased >= len(orders) {
+			break
+		}
 		spawn, available := m.recruitmentSpawn(castle.Position)
 		if !available {
 			events = append(events, m.event("production_skipped", map[string]any{"factionId": factionID, "kind": "recruitment", "reason": "no_spawn"}))
 			break
 		}
-		selected := affordableUnit(definitions, plan.RecruitmentPriorities, state.Gold, plan.ReserveGold)
+		priorities := plan.RecruitmentPriorities
+		if plan.RecruitmentOrders != nil {
+			priorities = orders[purchased : purchased+1]
+		}
+		selected := affordableUnit(definitions, priorities, state.Gold, plan.ReserveGold)
 		if selected.ID == "" {
 			events = append(events, m.event("production_skipped", map[string]any{"factionId": factionID, "kind": "recruitment", "reason": "reserve_required"}))
 			break
 		}
+		purchased++
 		state.Gold -= selected.Cost
 		state.GoldSpent += selected.Cost
 		state.UnitsRecruited++
@@ -142,4 +152,17 @@ func (m *Match) economyCount(id string) int {
 		}
 	}
 	return count
+}
+
+func expandedRecruitmentOrders(orders *[]controller.RecruitmentOrder) []string {
+	if orders == nil {
+		return nil
+	}
+	result := []string{}
+	for _, order := range *orders {
+		for i := 0; i < order.Count; i++ {
+			result = append(result, order.UnitType)
+		}
+	}
+	return result
 }

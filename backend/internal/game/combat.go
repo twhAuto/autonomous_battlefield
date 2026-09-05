@@ -206,6 +206,10 @@ func (m *Match) moveTowardCastle(unit *Unit) {
 	occupied := m.occupied()
 	delete(occupied, unit.Position)
 	path := shortestPath(m.scenario.Map, unit.Position, goals, occupied)
+	// An occupied castle perimeter must not prevent approaching enemy blockers.
+	if len(path) == 0 && !goals[unit.Position] {
+		path = shortestPath(m.scenario.Map, unit.Position, m.enemyApproachGoals(*unit), occupied)
+	}
 	steps := min(unit.Movement, len(path))
 	if steps > 0 {
 		unit.Position = path[steps-1]

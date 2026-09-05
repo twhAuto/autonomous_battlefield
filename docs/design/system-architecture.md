@@ -304,7 +304,7 @@ A model or scripted controller can propose:
 - target-specific bonuses;
 - reserve gold and spend ordering;
 - construction-site priorities;
-- recruitment priorities.
+- explicit ordered unit purchases with quantities (legacy plans may use recruitment priorities).
 
 The service validates decision version, target tick, general plan bounds, and context-specific units and sites before persistence.
 
@@ -606,3 +606,24 @@ and 16384). Effective limits, selected source IDs, content digest, byte size, an
 truncation accompany decision knowledge. Old scenarios without knowledge remain
 valid. See [AI comparisons](../operations/ai-comparisons.md#unit-knowledge-retrieval)
 for authoring, configuration, and evaluation details.
+
+### Blocked castle approaches
+
+Unit movement prefers a complete path to a position within attack range of the
+opposing castle. If occupied approach tiles prevent that route, the engine searches
+for reachable attack positions around living enemy units and buildings. This
+prevents occupied castle perimeters from freezing both armies. Paths still exclude
+occupied and impassable tiles, and execution remains bounded by unit movement.
+Movement and attack targeting use authoritative engine state; faction sight filters
+AI observations rather than controlling these engine paths.
+
+### Explicit recruitment orders
+
+The shared model prompt requests ordered `{unitType, count}` purchases through
+`recruitmentOrders`. MCP and engine validation enforce legal unit IDs, positive
+counts, and a six-unit per-window maximum. The engine executes only the requested
+sequence, preserving reserve gold and spawn occupancy; it stops on the first
+blocked purchase. Empty orders mean no buying; missing orders retain legacy
+priority behavior. Orders are deep-copied and persisted with plans, faction memory,
+and decision hashes. The UI shows requested quantities; recruitment events report
+actual spending. See the AI comparison guide for partial-order and reuse semantics.

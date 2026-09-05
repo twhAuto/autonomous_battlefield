@@ -296,18 +296,19 @@ type getContextOutput struct {
 }
 
 type submitPlanInput struct {
-	RequestID              string                  `json:"requestId"`
-	IdempotencyKey         string                  `json:"idempotencyKey"`
-	ExpectedVersion        int64                   `json:"expectedVersion" jsonschema:"Copy context.expectedVersion exactly from get_decision_context; never guess."`
-	TargetTick             uint64                  `json:"targetTick" jsonschema:"Copy context.targetTick exactly from get_decision_context; never guess or use the observation tick."`
-	Name                   string                  `json:"name"`
-	Rationale              string                  `json:"rationale" jsonschema:"A concise 1-3 sentence explanation based on visible battlefield facts. Do not include private chain-of-thought."`
-	ActionWeights          map[string]int64        `json:"actionWeights"`
-	TargetBonuses          map[string]int64        `json:"targetBonuses,omitempty"`
-	ReserveGold            int64                   `json:"reserveGold"`
-	SpendOrder             []string                `json:"spendOrder"`
-	ConstructionPriorities []controller.Coordinate `json:"constructionPriorities"`
-	RecruitmentPriorities  []string                `json:"recruitmentPriorities"`
+	RecruitmentOrders      *[]controller.RecruitmentOrder `json:"recruitmentOrders,omitempty" jsonschema:"Explicit ordered purchases for this production window. Use [] to buy nothing; at most six units total. Leave recruitmentPriorities empty when using orders."`
+	RequestID              string                         `json:"requestId"`
+	IdempotencyKey         string                         `json:"idempotencyKey"`
+	ExpectedVersion        int64                          `json:"expectedVersion" jsonschema:"Copy context.expectedVersion exactly from get_decision_context; never guess."`
+	TargetTick             uint64                         `json:"targetTick" jsonschema:"Copy context.targetTick exactly from get_decision_context; never guess or use the observation tick."`
+	Name                   string                         `json:"name"`
+	Rationale              string                         `json:"rationale" jsonschema:"A concise 1-3 sentence explanation based on visible battlefield facts. Do not include private chain-of-thought."`
+	ActionWeights          map[string]int64               `json:"actionWeights"`
+	TargetBonuses          map[string]int64               `json:"targetBonuses,omitempty"`
+	ReserveGold            int64                          `json:"reserveGold"`
+	SpendOrder             []string                       `json:"spendOrder"`
+	ConstructionPriorities []controller.Coordinate        `json:"constructionPriorities"`
+	RecruitmentPriorities  []string                       `json:"recruitmentPriorities"`
 }
 
 func (s *Server) mcpServer() *mcp.Server {
@@ -355,7 +356,7 @@ func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest,
 		s.logger.WarnContext(ctx, "decision_submission_denied", "request_id", input.RequestID, "target_tick", input.TargetTick)
 		return nil, ai.SubmissionResult{}, err
 	}
-	plan := controller.PlanProposal{Name: input.Name, Rationale: input.Rationale, ActionWeights: input.ActionWeights, TargetBonuses: input.TargetBonuses,
+	plan := controller.PlanProposal{RecruitmentOrders: input.RecruitmentOrders, Name: input.Name, Rationale: input.Rationale, ActionWeights: input.ActionWeights, TargetBonuses: input.TargetBonuses,
 		ReserveGold: input.ReserveGold, SpendOrder: input.SpendOrder, ConstructionPriorities: input.ConstructionPriorities,
 		RecruitmentPriorities: input.RecruitmentPriorities}
 	result, err := s.decisions.SubmitPlan(ctx, ai.PlanSubmission{RequestID: input.RequestID, IdempotencyKey: input.IdempotencyKey,

@@ -25,6 +25,9 @@ func validateProposal(proposal PlanProposal, actionKinds map[string]struct{}) er
 	if err := validateSpendOrder(proposal.SpendOrder); err != nil {
 		return err
 	}
+	if err := validateRecruitmentOrders(proposal); err != nil {
+		return err
+	}
 	if err := validateRecruitmentPriorities(proposal.RecruitmentPriorities); err != nil {
 		return err
 	}
@@ -109,4 +112,27 @@ func ValidatePlanProposal(proposal PlanProposal, actionKinds []string) error {
 		return fmt.Errorf("%w: at least one action kind is required", ErrInvalidPlan)
 	}
 	return validateProposal(proposal, allowed)
+}
+
+func validateRecruitmentOrders(plan PlanProposal) error {
+	if plan.RecruitmentOrders == nil {
+		return nil
+	}
+	if len(plan.RecruitmentPriorities) > 0 {
+		return fmt.Errorf("%w: use recruitmentOrders or recruitmentPriorities, not both", ErrInvalidPlan)
+	}
+	if len(*plan.RecruitmentOrders) > 6 {
+		return fmt.Errorf("%w: at most six recruitment orders per window", ErrInvalidPlan)
+	}
+	total := 0
+	for _, order := range *plan.RecruitmentOrders {
+		if strings.TrimSpace(order.UnitType) == "" || order.Count < 1 || order.Count > 6 {
+			return fmt.Errorf("%w: recruitment orders need a unitType and count from 1 to 6", ErrInvalidPlan)
+		}
+		total += order.Count
+	}
+	if total > 6 {
+		return fmt.Errorf("%w: at most six requested units per window", ErrInvalidPlan)
+	}
+	return nil
 }
