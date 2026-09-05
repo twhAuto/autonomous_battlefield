@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/clienv"
 	aiworker "github.com/twh09/autonomous_battlefield/backend/internal/ai/worker"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
@@ -23,7 +24,17 @@ func main() {
 	logger := logging.New("agent")
 	slog.SetDefault(logger)
 	configPath := flag.String("config", "config.yaml", "path to YAML configuration")
+	checkAuth := flag.Bool("check-antigravity-auth", false, "check isolated Antigravity keyring login without model inference")
 	flag.Parse()
+	if *checkAuth {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := clienv.CheckAntigravityAuth(ctx); err != nil {
+			logger.Error("antigravity_auth_unavailable", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	configuration, err := config.LoadAgent(*configPath)
 	if err != nil {
 		logger.Error("configuration_load_failed", "error", err)

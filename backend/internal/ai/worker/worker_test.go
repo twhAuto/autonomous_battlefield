@@ -239,3 +239,49 @@ func TestRunJobReportsUnavailableAndRunnerFailures(t *testing.T) {
 		t.Fatalf("outcome=%q logs=%s", reportedOutcome, logs.String())
 	}
 }
+
+func TestCompletionWithoutPlanFailsImmediately(t *testing.T) {
+	var failed bool
+	var logs bytes.Buffer
+	w := &Worker{MCPURL: "http://mcp/mcp", Client: &http.Client{Transport: agentRoundTrip(func(r *http.Request) (*http.Response, error) {
+		status := http.StatusConflict
+		if strings.HasSuffix(r.URL.Path, "/fail") {
+			var body struct {
+				Category string
+				Usage    ai.Usage
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if body.Category != "plan_not_submitted" || body.Usage.Requests != 1 {
+				t.Fatal("failure lost reason or usage")
+			}
+			failed = true
+			status = http.StatusNoContent
+		}
+		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil
+	})}}
+	ctx := context.Background()
+	w.finishJob(ctx, ctx, jobRun{logger: slog.New(slog.NewJSONHandler(&logs, nil)), started: time.Now(), requestID: "request"}, ai.DecisionResult{Accepted: true, Usage: ai.Usage{Requests: 1}}, nil)
+	if !failed || strings.Contains(logs.String(), "decision_runner_completed") {
+		t.Fatal("false success was not converted to failure")
+	}
+}
+
+func TestUsageRetriesTransientEOF(t *testing.T) {
+	attempts := 0
+	w := &Worker{MCPURL: "http://mcp/mcp", Client: &http.Client{Transport: agentRoundTrip(func(r *http.Request) (*http.Response, error) {
+		attempts++
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal("retry lost request body")
+		}
+		if attempts == 1 {
+			return nil, io.EOF
+		}
+		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader(""))}, nil
+	})}}
+	if err := w.reportUsage(context.Background(), "request", ai.DecisionResult{}); err != nil || attempts != 2 {
+		t.Fatalf("retry failed %d %v", attempts, err)
+	}
+}

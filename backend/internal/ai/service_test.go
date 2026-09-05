@@ -133,3 +133,39 @@ func TestDecisionServicePropagatesRepositoryFailure(t *testing.T) {
 func validRecord() DecisionRecord {
 	return DecisionRecord{ID: "request", Version: 1, TargetTick: 10, Observation: DecisionContext{RequestID: "request", TargetTick: 10, ExpectedVersion: 1, Legal: LegalChoices{ActionKinds: []string{"attack", "defend"}, Units: []game.UnitType{{ID: "vanguard"}}, EconomySites: []controller.Coordinate{{X: 2, Y: 2}}}}}
 }
+
+type boundedCLIRepository struct {
+	memoryRepository
+	failed string
+}
+
+func (r *boundedCLIRepository) FinishDecisionFailure(_ context.Context, _ string, category string, _ Usage, _ map[string]any) error {
+	r.failed = category
+	return nil
+}
+func TestCLIRejectsPlaceholderAndStopsGuessing(t *testing.T) {
+	record := validRecord()
+	record.Runtime = "cli"
+	record.Status = "running"
+	submission := PlanSubmission{RequestID: "request", IdempotencyKey: "once", ExpectedVersion: record.Version, TargetTick: record.TargetTick, Plan: controller.PlanProposal{Name: "Strategy", Rationale: "Test target tick."}}
+	issues := ValidateSubmission(record, submission)
+	if len(issues) != 1 || issues[0].Code != "empty_decision" {
+		t.Fatalf("placeholder accepted: %+v", issues)
+	}
+	submission.Plan.ActionWeights = map[string]int64{"defend": 1000}
+	if issues = ValidateSubmission(record, submission); len(issues) != 0 {
+		t.Fatalf("explicit defensive decision rejected: %+v", issues)
+	}
+	submission.TargetTick = 999
+	record.ProviderMetadata = map[string]any{"validationFailures": float64(2)}
+	repository := &boundedCLIRepository{memoryRepository: memoryRepository{record: record}}
+	result, err := NewDecisionService(repository).SubmitPlan(context.Background(), submission)
+	if err != nil || result.Status != "failed" || repository.failed != "validation_limit" {
+		t.Fatalf("guessing not bounded: %+v %v", result, err)
+	}
+	repository.record.Status = "failed"
+	result, err = NewDecisionService(repository).SubmitPlan(context.Background(), submission)
+	if err != nil || result.Errors[0].Code != "terminal" || repository.validations != 1 {
+		t.Fatal("terminal decision revalidated")
+	}
+}

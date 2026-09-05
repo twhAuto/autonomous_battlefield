@@ -10,6 +10,7 @@ battlefield_env_preflight
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 backend_dir="${project_dir}/backend"
 requested_provider="${1:-auto}"
+export PATH="${HOME}/.local/bin:${PATH}"
 cluster_name="${KIND_CLUSTER_NAME:-battlefield}"
 kube_context="${KUBERNETES_CONTEXT:-kind-${cluster_name}}"
 namespace="${KUBERNETES_NAMESPACE:-battlefield}"
@@ -73,17 +74,17 @@ codex_available() {
     && [[ -s "${HOME}/.codex/auth.json" ]]
 }
 
-gemini_available() {
-  command -v gemini >/dev/null 2>&1 \
-    && [[ "$(gemini --version 2>/dev/null || true)" == 0.39.* ]] \
-    && [[ -s "${HOME}/.gemini/oauth_creds.json" ]]
+antigravity_available() {
+  command -v agy >/dev/null 2>&1 \
+    && [[ "$(agy --version 2>/dev/null || true)" == 1.1.* ]] \
+    && "${runtime_dir}/agent" -check-antigravity-auth >/dev/null 2>&1
 }
 
 select_profiles() {
   case "${requested_provider}" in
     auto)
       codex_available && use_codex=1
-      gemini_available && use_gemini=1
+      antigravity_available && use_gemini=1
       ;;
     codex)
       if ! codex_available; then
@@ -92,29 +93,29 @@ select_profiles() {
       fi
       use_codex=1
       ;;
-    gemini)
-      if ! gemini_available; then
-        echo "Gemini CLI 0.39.x with an existing Google login is required." >&2
+    antigravity|gemini)
+      if ! antigravity_available; then
+        echo "Antigravity CLI 1.1.x with a working saved login is required. Run agy to sign in." >&2
         exit 1
       fi
       use_gemini=1
       ;;
     both)
-      if ! codex_available || ! gemini_available; then
-        echo "Both supported and authenticated Codex and Gemini CLIs are required." >&2
+      if ! codex_available || ! antigravity_available; then
+        echo "Both supported and authenticated Codex and Antigravity CLIs are required." >&2
         exit 1
       fi
       use_codex=1
       use_gemini=1
       ;;
     *)
-      echo "Usage: $0 [auto|codex|gemini|both]" >&2
+      echo "Usage: $0 [auto|codex|antigravity|both]" >&2
       exit 2
       ;;
   esac
   if [[ "${use_codex}" != "1" && "${use_gemini}" != "1" ]]; then
     echo "No supported authenticated subscription CLI was found." >&2
-    echo "Run 'codex login' or start 'gemini' and choose Sign in with Google." >&2
+    echo "Run 'codex login' or start 'agy' and complete Google sign-in." >&2
     exit 1
   fi
 }
@@ -141,12 +142,12 @@ write_agent_config() {
     fi
     if [[ "${use_gemini}" == "1" ]]; then
       printf '    - id: gemini-subscription-local\n'
-      printf '      displayName: Gemini CLI / Google subscription\n'
-      printf '      provider: gemini-cli\n'
+      printf '      displayName: Antigravity / Google subscription\n'
+      printf '      provider: antigravity-cli\n'
       printf '      runtime: cli\n'
-      printf '      model: flash\n'
+      printf '      model: gemini-3.7-flash-medium\n'
       printf '      scope: local\n'
-      printf '      supportedVersionPrefix: 0.39.\n'
+      printf '      supportedVersionPrefix: 1.1.\n'
       printf '      maxSteps: 3\n'
       printf '      enabled: true\n'
     fi
@@ -158,7 +159,8 @@ wait_for_endpoint() {
   local url="$1"
   local process_id="$2"
   local label="$3"
-  for _ in {1..50}; do
+  # Allow the bounded subscription authentication probe to finish at startup.
+  for _ in {1..150}; do
     if curl --fail --silent --show-error --output /dev/null "${url}" 2>/dev/null; then
       return
     fi
@@ -176,6 +178,8 @@ require_command base64
 require_command curl
 require_command go
 require_command kubectl
+echo "Building the host decision agent..."
+(cd "${backend_dir}" && go build -o "${runtime_dir}/agent" ./cmd/agent)
 select_profiles
 
 if [[ ! "${mcp_port}" =~ ^[0-9]+$ || ! "${health_port}" =~ ^[0-9]+$ ]]; then
@@ -194,8 +198,7 @@ export BATTLEFIELD_MCP_CAPABILITY_SECRET="$(printf '%s' "${encoded_secret}" | ba
 unset encoded_secret
 
 write_agent_config
-echo "Building the host decision agent..."
-(cd "${backend_dir}" && go build -o "${runtime_dir}/agent" ./cmd/agent)
+
 
 echo "Forwarding Kubernetes MCP to http://127.0.0.1:${mcp_port}/mcp..."
 kube port-forward --address 127.0.0.1 service/battlefield-mcp "${mcp_port}:8084" >"${runtime_dir}/port-forward.log" 2>&1 &

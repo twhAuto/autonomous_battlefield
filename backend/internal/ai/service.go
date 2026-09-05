@@ -46,11 +46,29 @@ func (s *DecisionService) SubmitPlan(ctx context.Context, submission PlanSubmiss
 	if err != nil {
 		return SubmissionResult{}, err
 	}
+	if record.Status == "failed" || record.Status == "fallback" {
+		return SubmissionResult{Status: "failed", Errors: []ValidationIssue{{Field: "requestId", Code: "terminal", Message: "Decision is closed. Stop submitting."}}}, nil
+	}
 	issues := ValidateSubmission(record, submission)
 	if len(issues) > 0 {
 		if recorder, ok := s.repository.(decisionValidationRecorder); ok {
 			if err := recorder.RecordDecisionValidation(ctx, submission.RequestID); err != nil {
 				return SubmissionResult{}, err
+			}
+		}
+		if record.Runtime == "cli" {
+			countJSON, _ := json.Marshal(record.ProviderMetadata["validationFailures"])
+			var count int
+			_ = json.Unmarshal(countJSON, &count)
+			if count >= 2 {
+				if repo, ok := s.repository.(interface {
+					FinishDecisionFailure(context.Context, string, string, Usage, map[string]any) error
+				}); ok {
+					if err := repo.FinishDecisionFailure(ctx, submission.RequestID, "validation_limit", Usage{}, map[string]any{"runnerOutcome": "validation_limit"}); err != nil {
+						return SubmissionResult{}, err
+					}
+					return SubmissionResult{Status: "failed", Errors: []ValidationIssue{{Field: "plan", Code: "validation_limit", Message: "Three invalid submissions. Decision closed; stop submitting."}}}, nil
+				}
 			}
 		}
 		return SubmissionResult{Status: "rejected", Errors: issues}, nil
@@ -64,13 +82,16 @@ func ValidateSubmission(record DecisionRecord, submission PlanSubmission) []Vali
 		issues = append(issues, ValidationIssue{Field: "idempotencyKey", Code: "required", Message: "idempotencyKey is required"})
 	}
 	if submission.ExpectedVersion != record.Version {
-		issues = append(issues, ValidationIssue{Field: "expectedVersion", Code: "conflict", Message: "decision version changed"})
+		issues = append(issues, ValidationIssue{Field: "expectedVersion", Code: "conflict", Message: fmt.Sprintf("Use expectedVersion=%d from get_decision_context", record.Version)})
 	}
 	if submission.TargetTick != record.TargetTick {
-		issues = append(issues, ValidationIssue{Field: "targetTick", Code: "stale", Message: "target tick does not match"})
+		issues = append(issues, ValidationIssue{Field: "targetTick", Code: "stale", Message: fmt.Sprintf("Use targetTick=%d from get_decision_context; do not guess", record.TargetTick)})
 	}
 	if err := controller.ValidatePlanProposal(submission.Plan, record.Observation.Legal.ActionKinds); err != nil {
 		issues = append(issues, ValidationIssue{Field: "plan", Code: "invalid", Message: err.Error()})
+	}
+	if record.Runtime == "cli" && len(submission.Plan.ActionWeights) == 0 && len(submission.Plan.RecruitmentPriorities) == 0 && len(submission.Plan.ConstructionPriorities) == 0 && submission.Plan.ReserveGold == 0 {
+		issues = append(issues, ValidationIssue{Field: "plan", Code: "empty_decision", Message: "Provide an explicit tactical weight, production priority, or gold reserve; a name and rationale alone are not a strategy."})
 	}
 	legalUnits := make(map[string]bool, len(record.Observation.Legal.Units))
 	for _, unit := range record.Observation.Legal.Units {

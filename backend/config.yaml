@@ -73,11 +73,11 @@ ai:
       maxSteps: 3
       enabled: true
     - id: gemini-subscription-local
-      displayName: Gemini CLI / Google subscription
-      provider: gemini-cli
+      displayName: Antigravity / Google subscription
+      provider: antigravity-cli
       runtime: cli
-      model: flash
+      model: gemini-3.7-flash-medium
       scope: local
-      supportedVersionPrefix: 0.39.
+      supportedVersionPrefix: 1.1.
       maxSteps: 3
       enabled: true

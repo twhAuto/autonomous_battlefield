@@ -101,3 +101,28 @@ func TestLocalCLIProfileRequiresPinnedVersionAndAuthentication(t *testing.T) {
 		t.Fatalf("profile=%#v", profile)
 	}
 }
+
+func TestAntigravityProfileRequiresWorkingIsolatedLogin(t *testing.T) {
+	bin := t.TempDir()
+	t.Setenv("PATH", bin)
+	binary := filepath.Join(bin, "agy")
+	script := "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 1.1.27; exit 0; fi\nexit 1\n"
+	if err := os.WriteFile(binary, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	profile := ModelProfile{ID: "gemini-subscription-local", DisplayName: "Antigravity", Provider: "antigravity-cli", Runtime: "cli", Scope: "local", SupportedVersionPrefix: "1.1.", Enabled: true}
+	got, _ := NewProfileRegistry("local", []ModelProfile{profile}).Get(profile.ID)
+	if got.Available {
+		t.Fatal("installed but unauthenticated CLI advertised")
+	}
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 1.1.27; fi\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewProfileRegistry("local", []ModelProfile{profile}).Require(profile.ID); err != nil {
+		t.Fatal(err)
+	}
+	profile.Provider = "gemini-cli"
+	if _, err := NewProfileRegistry("local", []ModelProfile{profile}).Require(profile.ID); err == nil {
+		t.Fatal("retired CLI still advertised")
+	}
+}

@@ -42,7 +42,7 @@ flowchart LR
     DB[(PostgreSQL)]
     MCP[MCP decision service<br/>cmd/mcp]
     Agent[Decision agent<br/>cmd/agent]
-    Provider[OpenAI / Gemini API<br/>or Codex / Gemini CLI]
+    Provider[OpenAI / Gemini API<br/>or Codex / Antigravity CLI]
 
     User --> UI
     UI -->|HTTP /v1| API
@@ -239,7 +239,7 @@ OpenAI Responses and Gemini GenerateContent adapters normalize provider tool cal
 
 ### CLI runtime
 
-The CLI runner starts Codex or Gemini CLI in a new temporary directory with:
+The CLI runner starts Codex or Antigravity CLI in a new temporary directory with:
 
 - an empty workspace;
 - a request-scoped MCP bearer token;
@@ -249,7 +249,7 @@ The CLI runner starts Codex or Gemini CLI in a new temporary directory with:
 - the allowlisted profile model passed explicitly with `--model`;
 - a pre-validated CLI version family.
 
-Codex uses the existing host login without copying it. Gemini copies its OAuth credential into the temporary isolated home with mode `0600`. Subscription credentials are not placed in Kubernetes.
+Codex uses the existing host login without copying it. Antigravity uses the host OS keyring or a private temporary copy of its native `antigravity-oauth-token` login file, with a temporary HOME and XDG directories. Its environment excludes provider keys and personal CLI overrides. Generated permissions allow the two battlefield MCP tools and deny file, command, and URL operations; slash-command expansion is disabled. A headless account-usage probe must succeed before advertising the profile. JSON result envelopes must report SUCCESS with no denied actions. Explicit permission rules are used without strict mode, which overrides MCP allows in CLI 1.1.27. The MCP usage endpoint verifies that a plan is accepted before acknowledging completion; missing submissions trigger a worker failure and fallback. Usage counters are recorded for accepted plans. Subscription credentials are not placed in Kubernetes.
 
 ## 7. Decision contracts and lifecycle
 
@@ -508,3 +508,7 @@ The UI polls the API, the engine polls battle rows, and agents long-poll MCP. Po
 - One shared secret authorizes the agent control plane and capability minting. Separate keys or server-minted capabilities would reduce agent signing authority.
 - The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [codebase guide](codebase-guide.md#internalgamecontroller-deterministic-policy-abstractions).
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
+
+CLI context responses include explicit target-tick and version metadata alongside the full structured context. CLI prompts require copying those values and making a substantive tactical or production decision. Name-only CLI plans are rejected; after three invalid submissions the decision is failed so the battle can fall back. MCP logs record context byte counts and validation field/code pairs without dumping observations or credentials. Usage reporting retries transient failures up to three times.
+
+Antigravity CLI offloads larger MCP tool responses to local files. Because battlefield CLI sessions deny file reads, the host now fetches the request-scoped context through the MCP SDK and embeds the validated JSON directly in the Antigravity prompt (maximum 64 KiB). The model submits through MCP without fetching the large response again. This keeps existing file restrictions and avoids blind tick guessing when the CLI hides an offloaded response.

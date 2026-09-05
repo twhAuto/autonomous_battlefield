@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -195,6 +196,15 @@ func (s *Server) handleAgentUsage(repository ai.DecisionRepository) http.Handler
 			http.Error(w, invalidRequestMessage, http.StatusBadRequest)
 			return
 		}
+		record, err := repository.GetDecision(r.Context(), request.RequestID)
+		if err != nil {
+			http.Error(w, "decision lookup failed", http.StatusInternalServerError)
+			return
+		}
+		if record.Status != "accepted" {
+			http.Error(w, "decision has no accepted plan", http.StatusConflict)
+			return
+		}
 		if err := repository.RecordDecisionUsage(r.Context(), request.RequestID, request.Usage, request.Metadata); err != nil {
 			s.logger.ErrorContext(r.Context(), "decision_usage_update_failed", "request_id", request.RequestID, "error", err)
 			http.Error(w, "usage update failed", http.StatusInternalServerError)
@@ -288,8 +298,8 @@ type getContextOutput struct {
 type submitPlanInput struct {
 	RequestID              string                  `json:"requestId"`
 	IdempotencyKey         string                  `json:"idempotencyKey"`
-	ExpectedVersion        int64                   `json:"expectedVersion"`
-	TargetTick             uint64                  `json:"targetTick"`
+	ExpectedVersion        int64                   `json:"expectedVersion" jsonschema:"Copy context.expectedVersion exactly from get_decision_context; never guess."`
+	TargetTick             uint64                  `json:"targetTick" jsonschema:"Copy context.targetTick exactly from get_decision_context; never guess or use the observation tick."`
 	Name                   string                  `json:"name"`
 	Rationale              string                  `json:"rationale" jsonschema:"A concise 1-3 sentence explanation based on visible battlefield facts. Do not include private chain-of-thought."`
 	ActionWeights          map[string]int64        `json:"actionWeights"`
@@ -326,7 +336,17 @@ func (s *Server) getDecisionContext(ctx context.Context, _ *mcp.CallToolRequest,
 	} else {
 		s.logger.InfoContext(ctx, "decision_context_served", "request_id", input.RequestID, "battle_id", value.BattleID, "faction_id", value.FactionID, "target_tick", value.TargetTick, "observation_version", value.ObservationVersion)
 	}
-	return nil, getContextOutput{Context: value}, err
+	if err != nil {
+		return nil, getContextOutput{}, err
+	}
+	payload, err := json.Marshal(getContextOutput{Context: value})
+	if err != nil {
+		return nil, getContextOutput{}, err
+	}
+	s.logger.InfoContext(ctx, "decision_context_response", "request_id", input.RequestID, "target_tick", value.TargetTick, "expected_version", value.ExpectedVersion, "response_bytes", len(payload))
+	// Explicit text supports clients that do not expose structuredContent reliably.
+	text := fmt.Sprintf("Decision metadata: requestId=%s targetTick=%d expectedVersion=%d. Copy these values exactly; do not guess. Full faction-visible context JSON follows:\n%s", value.RequestID, value.TargetTick, value.ExpectedVersion, payload)
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, getContextOutput{Context: value}, nil
 }
 
 func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest, input submitPlanInput) (*mcp.CallToolResult, ai.SubmissionResult, error) {
@@ -342,6 +362,9 @@ func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		s.logger.WarnContext(ctx, "decision_submission_failed", "request_id", input.RequestID, "target_tick", input.TargetTick, "error", err)
 	} else {
+		for _, issue := range result.Errors {
+			s.logger.WarnContext(ctx, "decision_validation_rejected", "request_id", input.RequestID, "target_tick", input.TargetTick, "expected_version", input.ExpectedVersion, "field", issue.Field, "code", issue.Code)
+		}
 		level := slog.LevelWarn
 		if result.Accepted {
 			level = slog.LevelInfo

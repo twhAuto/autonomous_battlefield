@@ -30,7 +30,7 @@ The project is in an early stage. The current backend provides PostgreSQL-backed
 - Shut down the HTTP server gracefully on `SIGINT` or `SIGTERM`.
 - Rank valid faction actions with an in-memory deterministic utility controller.
 - Schedule configurable strategy-decision windows and use a safe fallback plan between them.
-- Run OpenAI or Gemini API profiles through a shared MCP tool loop, with optional local Codex and Gemini CLI subscription profiles.
+- Run OpenAI or Gemini API profiles through a shared MCP tool loop, with optional local Codex and Antigravity CLI subscription profiles.
 - Queue finite battles durably in PostgreSQL and claim them safely across engine workers.
 - Run deterministic hex movement, economy, recruitment, castle combat, and persist replay state, statistics, and paginated events.
 - Protect `/v1` application routes with an explicitly enabled, environment-backed administrator login and signed HttpOnly session cookie.
@@ -116,15 +116,21 @@ START_AGENT=1 OPENAI_API_KEY='...' OPENAI_MODEL='gpt-5-mini' ./run-dev.sh
 ```
 
 API profiles are available only when both configured credential and model
-variables are present. Local `codex-cli` and `gemini-cli` profiles instead
-require the corresponding binary and an existing interactive login. The CLI
+variables are present. Local `codex-cli` and `antigravity-cli` profiles instead
+require the corresponding binary and an existing interactive login. Antigravity
+supports its native keyring or saved token file on WSL. The host supplies its
+authorized context directly to Antigravity to avoid the CLI’s file offloading
+of larger tool responses. The CLI
 runners use an empty temporary workspace and an isolated MCP-only
 configuration; subscription authentication directories are never mounted in
 Kubernetes. `supportedVersionPrefix` pins the tested CLI release family; an
 unmatched installation is reported as unavailable instead of being invoked.
+CLI completion requires an accepted strategy submission; a denied tool or missing
+submission fails the decision instead of leaving it waiting for the timeout.
+CLI plans must contain an explicit decision; three invalid submissions close the
+decision and allow fallback.
 Each CLI profile also pins its model and passes it explicitly with `--model`.
-The supplied profiles use `gpt-5.6-luna` for Codex and the Gemini CLI `flash`
-alias. Their safe model labels appear in the profile catalog and battle history.
+The supplied profiles use `gpt-5.6-luna` for Codex and `gemini-3.7-flash-medium` for Antigravity. Their safe model labels appear in the profile catalog and battle history.
 
 To use a subscription CLI in a battle running on the local Kubernetes cluster,
 deploy the application and start the host bridge in a second terminal:
@@ -134,7 +140,10 @@ deploy the application and start the host bridge in a second terminal:
 ./run-k8s-cli-agent.sh codex
 ```
 
-Use `gemini`, `both`, or `auto` instead of `codex` when appropriate. Keep the
+Use `antigravity`, `both`, or `auto` instead of `codex` when appropriate.
+For Antigravity, install the supported 1.1.x CLI and run `agy` to sign in
+with Google first; see [Antigravity setup](docs/operations/antigravity-cli.md).
+The old `gemini` launcher argument remains an alias for `antigravity`. Keep the
 bridge terminal open, browse to `http://battlefield.localhost:8888`, and select
 the enabled subscription profile as a faction controller. The host agent
 long-polls the internal MCP service through a loopback-only port-forward and
