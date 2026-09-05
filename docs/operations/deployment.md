@@ -6,8 +6,11 @@ Kubernetes concepts first while keeping the application portable enough to run
 on Amazon EKS without rewriting it.
 
 The application has production-shaped container images and a staged local
-Kubernetes deployment. The remaining cloud work is to add an AWS overlay and
-provision ECR, EKS, RDS, ingress, and managed secrets.
+Kubernetes deployment. The AWS infrastructure reference is in `infra/aws`; the application still needs
+an AWS overlay and account-specific provisioning and verification.
+
+The [deployment structure review](deployment-review.md) records the cleanup,
+remaining operational gaps, and optional simplifications.
 
 ## Deployment direction
 
@@ -383,8 +386,10 @@ Application rollouts default to five minutes. The observability stack has a
 separate 15-minute budget because a new single-node Kind cluster may serialize
 the Prometheus, Grafana, Elastic, OpenTelemetry, and Tempo image pulls. Override
 these with positive seconds values such as `ROLLOUT_TIMEOUT=600s` and
-`OBSERVABILITY_ROLLOUT_TIMEOUT=1200s` on a slower connection. Observability
-timeout output includes the unavailable workload descriptions, container logs,
+`OBSERVABILITY_ROLLOUT_TIMEOUT=1200s` on a slower connection.
+Each observability Deployment must finish its new rollout; waits run concurrently
+within that budget. Cancellation stops outstanding rollout waits. Timeout
+output includes the failed workload descriptions, container logs,
 and recent namespace events.
 
 Pass a previous full SHA to deploy a locally built revision explicitly:
@@ -410,7 +415,10 @@ Supported components are `infrastructure`, `migration`, `backend`, `frontend`,
 `application`, `observability`, and `gateway`. Selecting `backend` also runs the
 migration gate and applies the application overlay; selecting `frontend` also
 applies the application overlay. `all` preserves the original full-deployment
-behavior and `none` exits without changing the cluster.
+behavior and `none` exits without changing the cluster. Empty entries, trailing
+commas, whitespace, and unknown names are rejected. Deployment scratch space
+contains only selected overlays and their dependencies; local secret files are
+staged explicitly only when infrastructure is selected.
 
 Jenkins calculates this value with
 `scripts/cd/detect-deployment-components.sh`, comparing the current revision with

@@ -13,7 +13,9 @@ if [[ ! -f "${project_dir}/${test_file}" ]]; then
   exit 1
 fi
 
-docker run --rm --add-host battlefield.localhost:host-gateway \
+# The kind gateway is published on host loopback, not the Docker bridge.
+docker run --rm --network host --add-host battlefield.localhost:127.0.0.1 \
+  --user "$(id -u):$(id -g)" \
   -e TARGET_URL="${TARGET_URL:-http://battlefield.localhost:8888}" \
   -e K6_VUS="${K6_VUS:-3}" -e K6_DURATION="${K6_DURATION:-30s}" \
   -e ADMIN_USERNAME="${ADMIN_USERNAME:-}" -e ADMIN_PASSWORD="${ADMIN_PASSWORD:-}" \

@@ -106,7 +106,6 @@ fi
 
 image_source=registry
 deploy_components=application
-secret_file="${secret_file}"
 ai_secret_file="${test_dir}/missing-ai-secret"
 effective_backend_ref='ghcr.io/twh09/autonomous-battlefield-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 effective_frontend_ref='ghcr.io/twh09/autonomous-battlefield-frontend@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
@@ -122,4 +121,89 @@ fi
 rm -rf -- "${runtime_dir}"
 runtime_dir=""
 
-echo "Kind deployment secret staging tests passed."
+# Each targeted deployment stages only its selected overlays and dependencies.
+for selection in application migration gateway observability infrastructure all; do
+  deployment_components_select "${selection}" deployment
+  kind_deploy_kube() { return 0; }
+  namespace=battlefield
+  kind_deploy_prepare_overlays >"${test_dir}/staging.log"
+  for component in infrastructure migration application observability gateway; do
+    overlay="${runtime_dir}/deploy/overlays/local/${component}"
+    if deployment_component_selected "${component}"; then
+      [[ -d "${overlay}" ]]
+      kubectl kustomize "${overlay}" >"${test_dir}/${component}.yaml"
+    else
+      [[ ! -e "${overlay}" ]]
+    fi
+  done
+  if deployment_component_selected application; then
+    [[ -d "${rollback_overlay}" ]]
+  else
+    [[ ! -e "${rollback_overlay}" ]]
+  fi
+  if deployment_component_selected observability; then
+    kubectl kustomize "${runtime_dir}/deploy/overlays/local/logging-collector" >"${test_dir}/logging.yaml"
+  else
+    [[ ! -e "${runtime_dir}/deploy/overlays/local/logging-collector" ]]
+  fi
+  [[ ! -e "${runtime_dir}/deploy/overlays/local/infrastructure/auth-secret.env" ]]
+  [[ ! -e "${runtime_dir}/deploy/overlays/local/infrastructure/secret.env.example" ]]
+  rm -rf -- "${runtime_dir}"
+  runtime_dir=""
+done
+
+# A pre-existing Available condition cannot substitute for completing an update.
+namespace=battlefield
+logging_namespace=battlefield-logging
+rollout_timeout=30s
+observability_rollout_timeout=90s
+runtime_dir="${test_dir}"
+kind_deploy_kube() {
+  printf '%s\n' "$*" >>"${test_dir}/kube-calls"
+  if [[ "$1 $2" == 'rollout status' && "$3" == "${failed_resource:-}" ]]; then
+    return 1
+  fi
+}
+kind_deploy_wait_rollout() {
+  kind_deploy_kube rollout status "$@"
+}
+for failed_resource in '' deployment/battlefield-tempo; do
+  : >"${test_dir}/kube-calls"
+  status=0
+  kind_deploy_observability >"${test_dir}/observability.log" 2>&1 || status=$?
+  for deployment in prometheus kube-state-metrics grafana otel-collector tempo elasticsearch kibana; do
+    grep -Fq "rollout status deployment/battlefield-${deployment} --namespace battlefield --timeout=90s" "${test_dir}/kube-calls"
+  done
+  if [[ -n "${failed_resource}" ]]; then
+    [[ "${status}" == 1 ]]
+    grep -Fq "describe ${failed_resource}" "${test_dir}/kube-calls"
+    if grep -Fq 'job/battlefield-kibana-setup' "${test_dir}/kube-calls"; then
+      echo 'Failed rollout proceeded to the setup job.' >&2
+      exit 1
+    fi
+  else
+    [[ "${status}" == 0 ]]
+    grep -Fq 'rollout status daemonset/battlefield-fluent-bit' "${test_dir}/kube-calls"
+    grep -Fq 'wait --for=condition=complete job/battlefield-kibana-setup' "${test_dir}/kube-calls"
+  fi
+done
+runtime_dir=""
+
+# Cancellation must stop child rollout waits and retain its nonzero status.
+status=0
+(
+  runtime_dir=""
+  rollback_on_failure=0
+  sleep 30 &
+  rollout_pids=("$!")
+  printf '%s\n' "${rollout_pids[0]}" >"${test_dir}/rollout-pid"
+  trap kind_deploy_cleanup EXIT
+  exit 143
+) || status=$?
+[[ "${status}" == 143 ]]
+if kill -0 "$(cat "${test_dir}/rollout-pid")" 2>/dev/null; then
+  echo 'Cancellation left a rollout wait running.' >&2
+  exit 1
+fi
+
+echo "Kind deployment staging, rendering, and rollout checks passed."

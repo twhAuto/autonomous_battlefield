@@ -19,7 +19,6 @@ pipeline {
         DEPLOY_COMPONENTS = 'all'
         PREVIOUS_BACKEND_IMAGE_REF = ''
         PREVIOUS_FRONTEND_IMAGE_REF = ''
-        TRIVY_IMAGE = 'ghcr.io/aquasecurity/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969'
     }
 
     stages {
@@ -95,18 +94,14 @@ pipeline {
                             }
                         }
 
-                        stage('Kubernetes render') {
+                        stage('Deployment script checks') {
                             steps {
                                 sh '''
-                                    kubectl kustomize deploy/base/infrastructure >/dev/null
-                                    kubectl kustomize deploy/overlays/local/migration >/dev/null
-                                    kubectl kustomize deploy/overlays/local/application >/dev/null
-                                    kubectl kustomize deploy/overlays/local/observability >/dev/null
-                                    kubectl kustomize deploy/overlays/local/logging-collector >/dev/null
-                                    kubectl kustomize deploy/overlays/local/gateway >/dev/null
                                     ./scripts/test/test-deployment-components.sh
                                     ./scripts/test/test-kind-deployment.sh
                                     ./scripts/test/test-command-wrappers.sh
+                                    ./scripts/test/test-runtime-assurance.sh
+                                    ./scripts/test/test-security-launchers.sh
                                 '''
                             }
                         }
@@ -218,6 +213,8 @@ pipeline {
                             ./scripts/test/test-deployment-components.sh
                             ./scripts/test/test-kind-deployment.sh
                             ./scripts/test/test-command-wrappers.sh
+                            ./scripts/test/test-runtime-assurance.sh
+                            ./scripts/test/test-security-launchers.sh
                         '''
                         script {
                             def previousSuccessfulCommit = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: ''

@@ -428,6 +428,18 @@ uses short-lived Docker configuration in Jenkins and a namespace-local pull
 Secret for the admission controller; neither changes the cryptographic trust
 root.
 
+Deployment staging copies only selected overlays and their base dependencies.
+Infrastructure secret inputs are staged explicitly; unrelated local credentials
+are not copied. Observability verification waits for completion of each new
+Deployment rollout concurrently and reports failures before setup verification.
+The source-security stage owns CI manifest rendering and policy validation;
+scanner versions are centralized in `scripts/ci/tool-versions.env`.
+
+Runtime assurance runs k6 and ZAP with Linux host networking so they can reach
+the kind gateway on `127.0.0.1:8888` using the `battlefield.localhost` route.
+Scanner containers use the agent UID/GID for writable, Jenkins-owned reports;
+ZAP keeps its runtime home and working files in container-local `/tmp`.
+
 W3C trace context is persisted on `battle_runs` and `battle_decisions`. API inbound spans flow through PostgreSQL; engine and agent workers extract that durable context and create consumer spans before simulation, MCP, and provider work. Outbound HTTP clients and selected database operations are instrumented. The local OpenTelemetry Collector exports to Tempo, which Grafana provisions as a data source. Span attributes deliberately exclude prompts, credentials, capabilities, full observations, and raw provider responses.
 
 The local Elasticsearch workload keeps its root filesystem read-only but uses

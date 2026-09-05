@@ -110,7 +110,14 @@ fork pull requests on this agent, and do not use the Jenkins controller itself
 as the long-term build agent.
 
 Security scanners, Kubeconform, Conftest, Syft, Cosign, ORAS, k6, and ZAP run
-from versions pinned in `scripts/ci/tool-versions.env`. Main builds require
+from versions pinned in `scripts/ci/tool-versions.env`. This is also the default
+Trivy pin for local image scans; `TRIVY_IMAGE` can override that local command.
+The source-security stage owns the shared manifest rendering, schema checks,
+and policy checks on both PR and main builds. The deployment-script checks
+exercise staging, component selection, scanner launchers, and compatibility
+wrappers separately. `SECURITY_ARTIFACT_DIR` can relocate security reports,
+including the rendered manifest consumed by Trivy and Conftest.
+Main builds require
 private GHCR packages named `autonomous-battlefield-backend` and
 `autonomous-battlefield-frontend` with inherited repository access.
 Cosign publishes each signature and signed attestation in its v3 OCI 1.1
@@ -135,6 +142,18 @@ archived `npm-audit-mode.json` records which path supplied the build evidence.
 npm debug logs from the disposable audit containers are archived under
 `artifacts/security/npm-logs/`; paths printed by npm refer to the container and
 are not paths on the Jenkins agent.
+
+Runtime k6 and ZAP containers use host networking on the Linux agent and map
+`battlefield.localhost` to `127.0.0.1`, matching kind's loopback-only gateway
+publication. The Docker daemon must run on the same host as the agent. Both
+containers run with the invoking user's UID/GID so their bind-mounted reports
+are writable and remain owned by Jenkins. ZAP uses container-local `/tmp` for
+its Python/Java home and working directory. Target overrides (`TARGET_URL` and
+`ZAP_TARGET_URL`) are still supported. A refused connection to `172.17.0.1:8888`
+indicates an outdated launcher using the Docker bridge gateway.
+Run `./scripts/test/test-runtime-assurance.sh` to check launcher networking,
+report ownership settings, target overrides, and failure propagation without
+starting scanners or contacting a deployment.
 
 ## Delivery-assurance credentials
 

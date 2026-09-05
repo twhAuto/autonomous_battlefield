@@ -44,6 +44,11 @@ deployment_components_select() {
 
   DEPLOYMENT_SELECTED_COMPONENTS=()
 
+  if [[ ! "${selection}" =~ ^[a-z]+(,[a-z]+)*$ ]]; then
+    echo "Invalid ${consumer} component list: ${selection}" >&2
+    return 1
+  fi
+
   case "${selection}" in
     all)
       for component in "${DEPLOYMENT_COMPONENT_ORDER[@]}"; do

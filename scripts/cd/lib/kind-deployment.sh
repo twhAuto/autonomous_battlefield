@@ -7,6 +7,12 @@ kind_deploy_kube() {
   kubectl --context "${kube_context}" "$@"
 }
 
+# Run only in a background subshell: exec makes the tracked PID the kubectl
+# process itself, so cancellation does not leave an orphaned rollout watcher.
+kind_deploy_wait_rollout() {
+  exec kubectl --context "${kube_context}" rollout status "$@"
+}
+
 kind_deploy_require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Required command not found: $1" >&2
@@ -303,22 +309,31 @@ kind_deploy_prepare_overlays() {
     "${runtime_dir}/deploy/base" \
     "${runtime_dir}/deploy/overlays/local"
 
-  cp -R \
-    "${project_dir}/deploy/base/application" \
-    "${project_dir}/deploy/base/infrastructure" \
-    "${project_dir}/deploy/base/migration" \
-    "${runtime_dir}/deploy/base/"
-  cp -R \
-    "${project_dir}/deploy/overlays/local/application" \
-    "${project_dir}/deploy/overlays/local/gateway" \
-    "${project_dir}/deploy/overlays/local/infrastructure" \
-    "${project_dir}/deploy/overlays/local/logging-collector" \
-    "${project_dir}/deploy/overlays/local/migration" \
-    "${project_dir}/deploy/overlays/local/observability" \
-    "${runtime_dir}/deploy/overlays/local/"
-  cp -R \
-    "${project_dir}/deploy/overlays/local/application" \
-    "${runtime_dir}/deploy/overlays/local/rollback-application"
+  local component
+  for component in infrastructure migration application observability gateway; do
+    deployment_component_selected "${component}" || continue
+    if [[ -d "${project_dir}/deploy/base/${component}" ]]; then
+      cp -R "${project_dir}/deploy/base/${component}" "${runtime_dir}/deploy/base/"
+    fi
+    if [[ "${component}" == "infrastructure" ]]; then
+      mkdir -p "${runtime_dir}/deploy/overlays/local/infrastructure"
+      # Stage only manifests. Secret inputs are copied explicitly below; optional
+      # local authentication files do not belong in deployment scratch space.
+      cp "${project_dir}/deploy/overlays/local/infrastructure/"*.yaml \
+        "${runtime_dir}/deploy/overlays/local/infrastructure/"
+    else
+      cp -R "${project_dir}/deploy/overlays/local/${component}" \
+        "${runtime_dir}/deploy/overlays/local/"
+    fi
+  done
+  if deployment_component_selected observability; then
+    cp -R "${project_dir}/deploy/overlays/local/logging-collector" \
+      "${runtime_dir}/deploy/overlays/local/"
+  fi
+  if deployment_component_selected application; then
+    cp -R "${project_dir}/deploy/overlays/local/application" \
+      "${runtime_dir}/deploy/overlays/local/rollback-application"
+  fi
 
   if deployment_component_selected infrastructure; then
     kind_deploy_prepare_database_secret \
@@ -535,7 +550,10 @@ kind_deploy_report_workload_failure() {
 }
 
 kind_deploy_observability() {
-  local deployment available
+  local deployment index
+  local rollout_failed=0
+  rollout_pids=()
+  local failed_deployments=()
   local deployments=(
     battlefield-prometheus
     battlefield-kube-state-metrics
@@ -545,7 +563,6 @@ kind_deploy_observability() {
     battlefield-elasticsearch
     battlefield-kibana
   )
-  local deployment_resources=()
 
   echo "Deploying local observability stack..."
   kind_deploy_kube delete job battlefield-kibana-setup \
@@ -553,22 +570,24 @@ kind_deploy_observability() {
     --ignore-not-found
   kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/observability"
   kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/logging-collector"
+  # Wait for the new ReplicaSets, not a possibly stale Available condition.
+  # Start waits together so cold image pulls share the same rollout budget.
   for deployment in "${deployments[@]}"; do
-    deployment_resources+=("deployment/${deployment}")
+    kind_deploy_wait_rollout "deployment/${deployment}" \
+      --namespace "${namespace}" \
+      --timeout="${observability_rollout_timeout}" &
+    rollout_pids+=("$!")
   done
-  if ! kind_deploy_kube wait \
-    --for=condition=Available \
-    "${deployment_resources[@]}" \
-    --namespace "${namespace}" \
-    --timeout="${observability_rollout_timeout}"; then
-    for deployment in "${deployments[@]}"; do
-      available="$(kind_deploy_kube get "deployment/${deployment}" \
-        --namespace "${namespace}" \
-        -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' \
-        2>/dev/null || true)"
-      if [[ "${available}" != "True" ]]; then
-        kind_deploy_report_workload_failure "deployment/${deployment}" "${namespace}"
-      fi
+  for index in "${!rollout_pids[@]}"; do
+    if ! wait "${rollout_pids[${index}]}"; then
+      rollout_failed=1
+      failed_deployments+=("${deployments[${index}]}")
+    fi
+  done
+  rollout_pids=()
+  if [[ "${rollout_failed}" == "1" ]]; then
+    for deployment in "${failed_deployments[@]}"; do
+      kind_deploy_report_workload_failure "deployment/${deployment}" "${namespace}"
     done
     echo "Recent ${namespace} events:" >&2
     kind_deploy_kube get events \
@@ -661,6 +680,11 @@ kind_deploy_rollback_application() {
 kind_deploy_cleanup() {
   local exit_code=$?
   trap - EXIT INT TERM
+
+  if ((${#rollout_pids[@]} > 0)); then
+    kill "${rollout_pids[@]}" 2>/dev/null || true
+    wait "${rollout_pids[@]}" 2>/dev/null || true
+  fi
 
   if [[ "${exit_code}" != "0" \
     && "${rollback_on_failure}" == "1" \
