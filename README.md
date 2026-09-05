@@ -36,6 +36,15 @@ The project is in an early stage. The current backend provides PostgreSQL-backed
 - Protect `/v1` application routes with an explicitly enabled, environment-backed administrator login and signed HttpOnly session cookie.
 - Exercise HTTP delivery, faction and battle use cases, PostgreSQL adapters, deterministic combat, workers, scenarios, configuration, and JSON helpers with tests.
 
+## Optional Redis result cache
+
+Completed battle snapshots can be cached in Redis with a one-hour TTL. Set
+`BATTLEFIELD_REDIS_URL` to enable it; cache misses and outages fall back to
+PostgreSQL. Start the optional local service with
+`docker compose -f backend/compose.yaml --profile cache up -d redis`, then run
+`BATTLEFIELD_REDIS_URL=redis://127.0.0.1:6379/0 ./run-dev.sh`.
+See [Redis setup and verification](docs/operations/redis.md).
+
 ## Requirements
 
 - Go 1.26.5 or a compatible newer version.
@@ -606,7 +615,7 @@ backend/
 ├── migrations/            Embedded Goose SQL migrations
 ├── rulesets/              Versioned point-buy unit and upgrade catalogs
 ├── scenarios/             Versioned authored maps and strategy templates
-├── compose.yaml           Local PostgreSQL service
+├── compose.yaml           Local PostgreSQL and optional Redis services
 └── config.yaml            Default non-secret configuration
 ```
 

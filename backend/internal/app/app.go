@@ -28,9 +28,13 @@ func NewAPI(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, registr
 }
 
 func NewAPIWithAuthentication(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, registries ...*ai.ProfileRegistry) *App {
+	return NewAPIWithResultCache(db, catalog, maxTicks, authentication, nil, registries...)
+}
+
+func NewAPIWithResultCache(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, registries ...*ai.ProfileRegistry) *App {
 	factionRepository := factionrepo.NewPostgres(db)
 	factionService := factionservice.NewService(factionRepository, catalog)
-	battleService := battleservice.NewService(battlerepo.NewPostgres(db), factionRepository, catalog, maxTicks, registries...)
+	battleService := battleservice.NewServiceWithResultCache(battlerepo.NewPostgres(db), factionRepository, catalog, maxTicks, cache, registries...)
 
 	factionHandler := factionapi.NewHandler(factionService)
 	battleHandler := battleapi.NewHandler(battleService)

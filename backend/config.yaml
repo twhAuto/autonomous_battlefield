@@ -81,3 +81,9 @@ ai:
       supportedVersionPrefix: 1.1.
       maxSteps: 3
       enabled: true
+
+# Optional API-only cache; an unset/empty URL disables Redis.
+resultCache:
+  urlEnvironmentVariable: BATTLEFIELD_REDIS_URL
+  ttl: 1h
+  timeout: 100ms

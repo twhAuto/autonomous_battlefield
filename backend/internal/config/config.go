@@ -15,12 +15,19 @@ import (
 )
 
 type Config struct {
-	HTTP     HTTPServer
-	Database Database
-	API      API
-	Auth     authn.Config
-	Engine   Engine
-	AI       AI
+	HTTP        HTTPServer
+	Database    Database
+	API         API
+	Auth        authn.Config
+	ResultCache ResultCache
+	Engine      Engine
+	AI          AI
+}
+
+type ResultCache struct {
+	URL     string
+	TTL     time.Duration
+	Timeout time.Duration
 }
 
 type API struct {
@@ -69,6 +76,11 @@ type HTTPServer struct {
 }
 
 type fileConfig struct {
+	ResultCache struct {
+		URLEnvironmentVariable string `yaml:"urlEnvironmentVariable"`
+		TTL                    string `yaml:"ttl"`
+		Timeout                string `yaml:"timeout"`
+	} `yaml:"resultCache"`
 	HTTP struct {
 		Address           string `yaml:"address"`
 		ReadHeaderTimeout string `yaml:"readHeaderTimeout"`
@@ -148,7 +160,11 @@ func LoadAPI(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
 	}
-	return Config{HTTP: httpConfig, Database: databaseConfig, API: apiConfig, Auth: authConfig, AI: aiConfig}, nil
+	cache, err := parseResultCacheConfig(raw)
+	if err != nil {
+		return Config{}, err
+	}
+	return Config{ResultCache: cache, HTTP: httpConfig, Database: databaseConfig, API: apiConfig, Auth: authConfig, AI: aiConfig}, nil
 }
 
 func parseAuthConfig(raw fileConfig) (authn.Config, error) {
@@ -538,4 +554,16 @@ func parseDuration(field, value string) (time.Duration, error) {
 	}
 
 	return duration, nil
+}
+
+func parseResultCacheConfig(raw fileConfig) (ResultCache, error) {
+	ttl, err := parseOptionalDuration("resultCache.ttl", raw.ResultCache.TTL, time.Hour, false)
+	if err != nil {
+		return ResultCache{}, err
+	}
+	timeout, err := parseOptionalDuration("resultCache.timeout", raw.ResultCache.Timeout, 100*time.Millisecond, false)
+	if err != nil {
+		return ResultCache{}, err
+	}
+	return ResultCache{URL: strings.TrimSpace(os.Getenv(environmentVariableName(raw.ResultCache.URLEnvironmentVariable, "BATTLEFIELD_REDIS_URL"))), TTL: ttl, Timeout: timeout}, nil
 }

@@ -45,6 +45,12 @@ spec:
                 name: battlefield-auth
                 optional: true
           env:
+            - name: BATTLEFIELD_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: battlefield-cache
+                  key: BATTLEFIELD_REDIS_URL
+                  optional: true
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://battlefield-otel-collector:4318
             - name: OTEL_TRACES_SAMPLER_ARG
