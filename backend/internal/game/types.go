@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation/controller"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 const (

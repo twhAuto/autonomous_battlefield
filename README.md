@@ -4,6 +4,16 @@ Autonomous Battlefield is a Go backend for an auto-battler and expansion game. T
 
 The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, point-buy faction blueprints, autonomous economies, fog-of-war views, production-window decisions, provider-neutral model controllers over MCP, an optional single-admin login, validated configuration, health endpoints, and graceful shutdown. Player commands, multi-user authorization, and seeded map generation remain planned work.
 
+## Find the right files
+
+- `backend/cmd`: five commands—API server, engine, MCP service, agent, and offline AI evaluation.
+- `backend/internal`: feature code under `battle` and `faction`, simulation under `game`, model execution under `ai`.
+- `frontend/src/features`: battle, faction, and authentication pages and API clients; `app` owns routing and `shared` owns common transport and visuals.
+- `deploy` contains Kubernetes manifests; `infra/aws` contains Terraform provisioning.
+- `scripts/dev` and `scripts/cd` contain launch and deployment implementations; existing root launch commands remain available.
+- `scripts/test` contains reusable test runners; unit and adapter integration tests stay beside their code. `tests/performance` contains k6 scenarios.
+- `docs/design` explains the system and codebase; `docs/operations` contains deployment, Jenkins, and observability guides.
+
 ## Current capabilities
 
 - Create reusable faction blueprints under a versioned point-buy ruleset.
@@ -27,7 +37,7 @@ The project is in an early stage. The current backend provides PostgreSQL-backed
 
 For the planned path from local Kubernetes to Amazon EKS, including the
 Kustomize-versus-Helm decision and the first local cluster exercise, see the
-[deployment learning guide](DEPLOYMENT.md).
+[deployment learning guide](docs/operations/deployment.md).
 
 ## Setup paths
 
@@ -37,13 +47,13 @@ Choose the guide that matches the task:
 | --- | --- |
 | Run the application while coding | `./run-dev.sh` and [Run locally](#run-locally) |
 | Quickly redeploy the backend and frontend to an existing local cluster | `./deploy-local.sh` |
-| Build and deploy to local Kubernetes | [DEPLOYMENT.md](DEPLOYMENT.md#deploy-the-application-locally) |
-| Inspect metrics, logs, Grafana, Kibana, and reliability objectives | [OBSERVABILITY.md](OBSERVABILITY.md) |
+| Build and deploy to local Kubernetes | [docs/operations/deployment.md](docs/operations/deployment.md#deploy-the-application-locally) |
+| Inspect metrics, logs, Grafana, Kibana, and reliability objectives | [docs/operations/observability.md](docs/operations/observability.md) |
 | Understand runtime components and AI decision flow | [System architecture](docs/design/system-architecture.md) |
 | Navigate packages, files, and common code changes | [Codebase guide](docs/design/codebase-guide.md) |
-| Resume kind after restarting the computer | [DEPLOYMENT.md](DEPLOYMENT.md#resume-the-cluster-after-restarting-the-computer) |
-| Install and configure Jenkins, GitHub, and SonarQube | [JENKINS.md](JENKINS.md) |
-| Start the existing CI/CD services after reboot | [JENKINS.md](JENKINS.md#daily-startup-after-a-reboot) |
+| Resume kind after restarting the computer | [docs/operations/deployment.md](docs/operations/deployment.md#resume-the-cluster-after-restarting-the-computer) |
+| Install and configure Jenkins, GitHub, and SonarQube | [docs/operations/jenkins.md](docs/operations/jenkins.md) |
+| Start the existing CI/CD services after reboot | [docs/operations/jenkins.md](docs/operations/jenkins.md#daily-startup-after-a-reboot) |
 
 ## Run locally
 
@@ -193,7 +203,7 @@ authentication. Stop it with:
 docker compose -f backend/compose.yaml stop dbhub
 ```
 
-Application processes write structured JSON operational logs to stdout for container log collection. API logs include request IDs, status codes, response sizes, and latency. Engine logs cover claims, reclaimed attempts, completion results, graceful requeues, lease loss, and failures. Individual combat ticks remain in the durable `battle_events` stream instead of being duplicated in normal process logs. Send `X-Request-ID` with an API request to preserve an upstream correlation ID; otherwise the server generates one and returns it in the response header. The API and engine expose Prometheus metrics at `/metrics`; see the [observability and reliability guide](OBSERVABILITY.md) for the metric catalog and proposed SLIs/SLOs.
+Application processes write structured JSON operational logs to stdout for container log collection. API logs include request IDs, status codes, response sizes, and latency. Engine logs cover claims, reclaimed attempts, completion results, graceful requeues, lease loss, and failures. Individual combat ticks remain in the durable `battle_events` stream instead of being duplicated in normal process logs. Send `X-Request-ID` with an API request to preserve an upstream correlation ID; otherwise the server generates one and returns it in the response header. The API and engine expose Prometheus metrics at `/metrics`; see the [observability and reliability guide](docs/operations/observability.md) for the metric catalog and proposed SLIs/SLOs.
 
 The credentials in `compose.yaml` and `.env.example` are for local development only. Use a secret manager to provide `DATABASE_URL` in deployed environments. The application only runs schema migrations when explicitly started with `-migrate`.
 
@@ -218,7 +228,7 @@ The repository includes a staged Kustomize deployment for `kind`:
    frontend, Grafana, and Kibana without persistent port-forward commands.
 
 Follow the complete build, image-loading, deployment, verification, and cleanup
-commands in the [deployment learning guide](DEPLOYMENT.md#deploy-the-application-locally).
+commands in the [deployment learning guide](docs/operations/deployment.md#deploy-the-application-locally).
 The standard container workflow uses `./scripts/cd/create-kind-cluster.sh`,
 `./scripts/ci/build-images.sh`, and `./scripts/cd/deploy-kind.sh` so every deployed
 application image is identified by the full source commit SHA. After deployment,
@@ -242,7 +252,7 @@ Supply-chain and AI assurance references:
 - [`deploy/supply-chain/README.md`](deploy/supply-chain/README.md)
 - [`infra/aws/README.md`](infra/aws/README.md)
 
-See the [Jenkins setup guide](JENKINS.md) before configuring the Multibranch job
+See the [Jenkins setup guide](docs/operations/jenkins.md) before configuring the Multibranch job
 or its local Kubernetes credential.
 
 For fast iteration after the local cluster, infrastructure, and gateway have
@@ -284,7 +294,7 @@ Run the same Go lint and coverage work used by Jenkins:
 
 ```bash
 ./scripts/ci/lint-go.sh
-./scripts/ci/test-go-coverage.sh
+./scripts/test/test-go-coverage.sh
 (cd frontend && npm ci && npm test -- --coverage && npm run build)
 ```
 
@@ -292,7 +302,7 @@ Go coverage is written to `backend/coverage.out`; frontend LCOV coverage is
 written to `frontend/coverage/lcov.info`. Both are ignored by Git and imported
 by SonarQube. The test commands require at least 80% Go statement coverage and
 80% frontend statement, branch, function, and line coverage. See
-[JENKINS.md](JENKINS.md#configure-local-sonarqube) for the local server and
+[docs/operations/jenkins.md](docs/operations/jenkins.md#configure-local-sonarqube) for the local server and
 Jenkins quality-gate setup. SonarQube displays and evaluates these externally
 generated reports alongside static reliability, security, maintainability,
 complexity, and duplication findings; it does not run the tests that produce

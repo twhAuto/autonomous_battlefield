@@ -14,7 +14,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation/controller"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 type requestIDKey struct{}

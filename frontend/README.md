@@ -69,3 +69,15 @@ The full Service DNS name is required because Nginx's runtime resolver does not
 apply the pod's DNS search suffixes in the same way as normal application name
 resolution. If an overlay changes the namespace from `battlefield`, it must
 also update `API_UPSTREAM`.
+
+## Source layout
+
+`src/app` owns the application shell, routes, and application integration tests.
+`src/features/battles`, `src/features/factions`, and `src/features/auth` each own
+their pages, typed API clients, and feature tests. The battle map belongs to the
+battle feature. `src/shared/api` provides HTTP transport, and
+`src/shared/components` contains visuals used across features. `src/pages`
+contains general pages; `src/test` contains shared test setup.
+
+Keep unit tests beside the implementation. See the
+[codebase guide](../docs/design/codebase-guide.md) for backend and tooling ownership.

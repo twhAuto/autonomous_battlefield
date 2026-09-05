@@ -4,7 +4,7 @@ set -Eeuo pipefail
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../ci/tool-versions.env
 source "${project_dir}/scripts/ci/tool-versions.env"
-test_file="${1:-scripts/perf/k6-smoke.js}"
+test_file="${1:-tests/performance/k6-smoke.js}"
 report_dir="${project_dir}/artifacts/performance"
 mkdir -p "${report_dir}"
 

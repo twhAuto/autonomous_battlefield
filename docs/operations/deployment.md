@@ -1,0 +1,781 @@
+# Deployment learning guide
+
+This guide records the deployment direction for Autonomous Battlefield and the
+recommended path from local Kubernetes to AWS. The goal is to learn the native
+Kubernetes concepts first while keeping the application portable enough to run
+on Amazon EKS without rewriting it.
+
+The application has production-shaped container images and a staged local
+Kubernetes deployment. The remaining cloud work is to add an AWS overlay and
+provision ECR, EKS, RDS, ingress, and managed secrets.
+
+## Deployment direction
+
+Use the same application containers and core Kubernetes resources locally and
+on AWS:
+
+```text
+Browser
+   |
+   v
+Frontend / reverse proxy
+   |
+   v
+Go API Deployment ------> PostgreSQL
+                              ^
+                              |
+                       Engine Deployment
+```
+
+The API and engine are separate workloads. PostgreSQL remains the durable
+source of truth and battle queue. Do not introduce SQS merely to deploy the
+current application; it can be a later architecture exercise if the queue
+requirements change.
+
+For a first AWS deployment, use:
+
+- Amazon ECR for container images.
+- Amazon EKS for Kubernetes.
+- Amazon RDS for PostgreSQL.
+- An Application Load Balancer for HTTPS ingress.
+- AWS Secrets Manager for database credentials.
+- CloudWatch or OpenTelemetry for operational signals.
+- Route 53 and ACM when a public domain and TLS certificate are needed.
+
+Keep PostgreSQL outside EKS in AWS. Running a production database inside the
+cluster introduces storage, backup, failover, and upgrade responsibilities that
+are separate from the application-deployment exercise.
+
+## Portable base and environment overlays
+
+Start with native YAML resources and organize them with Kustomize:
+
+```text
+deploy/
+├── base/
+│   ├── infrastructure/     Namespace and non-secret configuration
+│   ├── migration/          One-shot schema migration Job
+│   └── application/        Workloads, Services, Ingress, HPA, and PDBs
+└── overlays/
+    └── local/
+        ├── infrastructure/ Disposable PostgreSQL and local Secret
+        ├── migration/      Local migration composition
+        ├── application/    Local application composition
+        ├── observability/  Composed metrics and logging backends
+        │   ├── prometheus/ Metrics collection and alert rules
+        │   ├── kube-state-metrics/  Namespaced Kubernetes object state
+        │   ├── grafana/    Metrics UI and dashboard provisioning
+        │   ├── elasticsearch/  Disposable local log storage
+        │   ├── kibana/     Logging UI and data-view provisioning
+        │   └── collector-rbac/  Collector access to application pod metadata
+        ├── logging-collector/  Node log collector and isolated namespace
+        └── gateway/        Local Gateway API routes through Envoy Gateway
+```
+
+The base should contain standard Kubernetes behavior. Provider-specific
+annotations, resource identifiers, and secret integrations belong in the AWS
+overlay.
+
+| Portable Kubernetes resource | Local implementation | AWS implementation |
+| --- | --- | --- |
+| Container image | Image loaded into `kind` | Image pushed to ECR |
+| API and engine | `Deployment` | The same `Deployment` on EKS |
+| Internal networking | `Service` DNS | The same `Service` DNS on EKS |
+| Database | Disposable development PostgreSQL | RDS PostgreSQL |
+| Database credential | Uncommitted local Secret | Secrets Manager integration |
+| Public access | Loopback-only Envoy Gateway | ALB-backed Ingress |
+| Non-secret settings | `ConfigMap` | The same `ConfigMap`, with an overlay if needed |
+
+Kustomize is already included in `kubectl`. Render each stage before applying
+it when reviewing a change:
+
+```bash
+kubectl kustomize deploy/overlays/local/infrastructure
+kubectl kustomize deploy/overlays/local/migration
+kubectl kustomize deploy/overlays/local/application
+kubectl kustomize deploy/overlays/local/observability
+kubectl kustomize deploy/overlays/local/logging-collector
+kubectl kustomize deploy/overlays/local/gateway
+```
+
+## Why Helm comes later
+
+Do not begin by translating every resource into a Helm template. First write,
+deploy, inspect, and troubleshoot the Kubernetes resources directly. This keeps
+the revision exercise focused on what Kubernetes itself is doing.
+
+Add a Helm chart later when one or more of these becomes true:
+
+- Other users need to install the application as a packaged release.
+- Many deployments need configurable domains, images, replicas, resources, and
+  feature settings.
+- The project needs chart versions and Helm install, upgrade, and rollback
+  workflows.
+- Kustomize overlays become repetitive or difficult to maintain.
+
+Converting working resources into a chart is then a useful packaging exercise,
+not a prerequisite for the first deployment.
+
+## First local Kubernetes session
+
+The recommended local cluster is
+[`kind`](https://kind.sigs.k8s.io/docs/user/quick-start/). It runs Kubernetes
+nodes as Docker containers and works well for application development and
+deployment exercises.
+
+### 1. Verify the existing prerequisites
+
+From WSL, confirm Docker and `kubectl` are usable:
+
+```bash
+docker info
+kubectl version --client
+```
+
+If `docker info` cannot reach the daemon, start Docker Desktop and enable its
+WSL integration for the current distribution before continuing.
+
+### 2. Install `kind`
+
+With Go already installed, install the current pinned `kind` release:
+
+```bash
+go install sigs.k8s.io/kind@v0.32.0
+export PATH="$(go env GOPATH)/bin:$PATH"
+kind version
+```
+
+Add the Go binary directory to the shell profile if it is not already on
+`PATH`. The upstream quick-start page should be used when intentionally updating
+the pinned version.
+
+### 3. Create and inspect the cluster
+
+```bash
+./scripts/cd/create-kind-cluster.sh
+kubectl cluster-info --context kind-battlefield
+kubectl get nodes
+kubectl get pods --all-namespaces
+```
+
+The cluster script publishes node port `30080` as `127.0.0.1:8888` and installs
+the pinned Envoy Gateway release plus its Gateway API definitions. Binding the
+listener to loopback keeps the application and unauthenticated local Grafana
+and Kibana viewers unavailable to other machines.
+
+An older `battlefield` cluster created without this mapping cannot be modified
+in place. Recreate that disposable local cluster explicitly:
+
+```bash
+./scripts/cd/create-kind-cluster.sh --recreate
+```
+
+`--recreate` deletes the existing cluster, including its local PostgreSQL
+volume, before creating the replacement.
+
+`kind` writes the cluster connection to the normal kubeconfig and selects the
+new context. Confirm it before applying resources:
+
+```bash
+kubectl config current-context
+```
+
+The expected context is `kind-battlefield`.
+
+### 4. Run a disposable smoke test
+
+This verifies scheduling, image pulling, service discovery, and port forwarding
+before project-specific resources are introduced:
+
+```bash
+kubectl create deployment k8s-smoke --image=nginx:1.29-alpine
+kubectl expose deployment k8s-smoke --port=80
+kubectl rollout status deployment/k8s-smoke
+kubectl port-forward service/k8s-smoke 8088:80
+```
+
+While the port-forward command is running, open `http://localhost:8088`. Stop
+the port forward with Ctrl+C, then remove the smoke-test resources:
+
+```bash
+kubectl delete service/k8s-smoke deployment/k8s-smoke
+```
+
+### 5. Stop or remove the cluster
+
+A `kind` cluster runs as Docker containers. Delete it when the exercise is
+finished:
+
+```bash
+kind delete cluster --name battlefield
+```
+
+Recreating a local cluster is expected and provides useful practice proving
+that configuration is reproducible rather than dependent on manual changes.
+
+### Resume the cluster after restarting the computer
+
+Start Docker Desktop and open the WSL distribution before checking the cluster:
+
+```bash
+docker info >/dev/null
+kind get clusters
+kubectl cluster-info --context kind-battlefield
+kubectl get nodes
+```
+
+The existing `battlefield` cluster is a Docker container and normally resumes
+with Docker. If the cluster exists but its node is stopped, inspect it before
+starting it again:
+
+```bash
+docker ps --all --filter name=battlefield-control-plane
+docker start battlefield-control-plane
+kubectl get pods --all-namespaces
+```
+
+If the cluster no longer exists, create it again and follow the deployment
+steps below. Deleting and recreating kind also deletes the PostgreSQL data that
+was stored inside that cluster.
+
+## Deploy the application locally
+
+### 1. Create the local secret file
+
+The database secret is ignored by Git. Create it once from the
+development-only example:
+
+```bash
+cp deploy/overlays/local/infrastructure/secret.env.example \
+  deploy/overlays/local/infrastructure/secret.env
+```
+
+The administrator login is optional. To enable it for the local cluster, copy
+the ignored authentication template, replace its password and signing-secret
+placeholders, and create the optional Secret before deploying the application:
+
+```bash
+cp deploy/overlays/local/infrastructure/auth-secret.env.example \
+  deploy/overlays/local/infrastructure/auth-secret.env
+kubectl --context kind-battlefield -n battlefield create secret generic battlefield-auth \
+  --from-env-file=deploy/overlays/local/infrastructure/auth-secret.env \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Set `BATTLEFIELD_AUTH_COOKIE_SECURE=false` for the checked-in loopback HTTP
+gateway and `true` before publishing the application through an HTTPS tunnel.
+The API deployment treats `battlefield-auth` as optional, so its absence keeps
+the existing unauthenticated local workflow. Production must enable the login,
+store credentials in a managed secret system, and share one signing secret
+across every API replica. The single-admin login does not replace Cloudflare
+Access or future player-level authorization.
+
+`ai-secret.env` is optional for local deployments. When it is absent, the
+deployment helper generates or reuses an internal MCP capability secret and
+sets both API model profiles unavailable, so scripted battles can be tested
+without provider credentials. It also reuses `DATABASE_URL` for MCP when the
+local database file does not contain `MCP_DATABASE_URL`.
+
+To enable an API provider, copy `ai-secret.env.example` to `ai-secret.env`, set
+a strong capability secret, add the provider key and model, and change that
+provider's `*_PROFILE_AVAILABLE` value to `true`. Production should always
+supply explicit secrets and point `MCP_DATABASE_URL` at a login granted only
+the `battlefield_mcp` role created by the decision migration.
+The production migration principal therefore needs `CREATEROLE` for the first
+application of migration `00004`; the MCP workload login itself must not have
+that privilege.
+
+The `CODEX_CLI_PROFILE_AVAILABLE` and `GEMINI_CLI_PROFILE_AVAILABLE` values
+should normally remain `false` in the secret file. For a local kind battle,
+`run-k8s-cli-agent.sh` manages these flags while an authenticated host worker is
+connected:
+
+```bash
+./run-k8s-cli-agent.sh codex
+```
+
+The helper supports `auto`, `codex`, `gemini`, and `both`. It verifies the
+tested CLI version and existing host login, forwards only the internal MCP
+service to loopback, runs the decision agent on the host, and temporarily makes
+the connected profiles selectable through the API. No CLI authentication
+directory or provider credential is mounted into the cluster. Keep the helper
+running for the duration of the battle and press Ctrl+C afterward. The generated
+host-agent profile passes `--model gpt-5.6-luna` to Codex or `--model flash` to
+Gemini, matching the allowlisted profile metadata deployed to the API.
+
+Do not reuse these credentials outside the disposable local cluster.
+
+### 2. Build commit-addressed images
+
+The normal Kubernetes workflow tags each changed application image with the
+full Git commit SHA. This makes deployed revisions unambiguous and gives Jenkins
+the same build entry point that will later push images to ECR.
+
+`VERSION` contains the release line in semantic `major.minor.patch` form. The
+initial version is `0.1.0`. When a CI build number is present, the build also
+adds a human-readable alias to the same image:
+
+```text
+autonomous-battlefield-backend:0.1.0-build.27
+autonomous-battlefield-frontend:0.1.0-build.27
+```
+
+Jenkins supplies `BUILD_NUMBER` automatically. GitHub Actions supplies
+`GITHUB_RUN_NUMBER` and `GITHUB_RUN_ATTEMPT`; the script recognizes both CI
+systems. `CI_BUILD_NUMBER` and `CI_BUILD_ATTEMPT` are provider-neutral explicit
+overrides.
+
+Commit the intended source first and confirm the worktree is clean:
+
+```bash
+git status --short
+./scripts/ci/build-images.sh
+```
+
+To simulate CI build 27 locally after committing the changes:
+
+```bash
+CI_BUILD_NUMBER=27 ./scripts/ci/build-images.sh
+```
+
+The build refuses a dirty worktree by default because a Git SHA cannot identify
+uncommitted source. For an intentional local experiment only, set
+`ALLOW_DIRTY=1`; do not publish an image produced that way.
+
+The images include OCI revision, version, and source labels. Their names look
+like:
+
+```text
+autonomous-battlefield-backend:<full-git-sha>
+autonomous-battlefield-frontend:<full-git-sha>
+```
+
+Kubernetes always deploys the full-SHA tag. The build-number alias is for CI
+screens, logs, and human communication; it does not replace the immutable tag.
+
+### Release tags on GitHub
+
+Do not create a Git tag for every Jenkins or GitHub Actions build. Create an
+annotated Git tag only for an intentional release, using the value in `VERSION`:
+
+```bash
+git tag -a "v$(<VERSION)" -m "Autonomous Battlefield v$(<VERSION)"
+git push origin "v$(<VERSION)"
+```
+
+After it is pushed, the tag appears on GitHub and can be used to create a GitHub
+Release. Increment `VERSION` deliberately: patch for compatible fixes, minor for
+compatible features, and major for breaking releases.
+
+### 3. Deploy that exact revision
+
+The deployment script defaults to a full deployment of the checked-out commit:
+it loads both tagged images into `kind`, applies infrastructure, runs the
+migration gate, waits for the application rollouts, deploys Prometheus,
+Grafana, Fluent Bit, Elasticsearch, and Kibana, and programs the local Gateway
+API routes:
+
+```bash
+./scripts/cd/deploy-kind.sh
+```
+
+Application rollouts default to five minutes. The observability stack has a
+separate 15-minute budget because a new single-node Kind cluster may serialize
+the Prometheus, Grafana, Elastic, OpenTelemetry, and Tempo image pulls. Override
+these with positive seconds values such as `ROLLOUT_TIMEOUT=600s` and
+`OBSERVABILITY_ROLLOUT_TIMEOUT=1200s` on a slower connection. Observability
+timeout output includes the unavailable workload descriptions, container logs,
+and recent namespace events.
+
+Pass a previous full SHA to deploy a locally built revision explicitly:
+
+```bash
+./scripts/cd/deploy-kind.sh "$(git rev-parse HEAD)"
+```
+
+For an incremental manual deployment, set `DEPLOY_COMPONENTS`. The image build
+and scan scripts consume the same value and ignore non-image components:
+
+```bash
+# Frontend source changed: build, scan, and roll only the frontend.
+DEPLOY_COMPONENTS=frontend ./scripts/ci/build-images.sh
+DEPLOY_COMPONENTS=frontend ./scripts/ci/scan-images.sh "$(git rev-parse HEAD)"
+DEPLOY_COMPONENTS=frontend ./scripts/cd/deploy-kind.sh "$(git rev-parse HEAD)"
+
+# Only dashboards, alert rules, or observability manifests changed.
+DEPLOY_COMPONENTS=observability ./scripts/cd/deploy-kind.sh "$(git rev-parse HEAD)"
+```
+
+Supported components are `infrastructure`, `migration`, `backend`, `frontend`,
+`application`, `observability`, and `gateway`. Selecting `backend` also runs the
+migration gate and applies the application overlay; selecting `frontend` also
+applies the application overlay. `all` preserves the original full-deployment
+behavior and `none` exits without changing the cluster.
+
+Jenkins calculates this value with
+`scripts/cd/detect-deployment-components.sh`, comparing the current revision with
+the previous successful build. An unavailable baseline intentionally selects
+`all`; documentation-only changes select `none`. Any path not covered by an
+explicit classifier rule also selects `all` and writes a warning to the build
+log. This fail-safe means a newly added directory cannot silently skip a needed
+deployment; add a targeted or known-non-deploying rule once its ownership is
+understood.
+
+#### Change-to-deployment mapping
+
+Changes under `scripts/test/` and `tests/` do not select application deployment components. Renames inspect both old and new paths, so moving production code into a test path still selects the production component. Unknown paths retain the conservative full-deployment fallback.
+
+The path classifier evaluates the following rules from top to bottom for each
+path, so an earlier documentation rule takes precedence over a broader source
+folder rule. Multiple changed paths contribute the union of their components;
+`all` takes precedence over every targeted selection.
+
+| Changed path | Selected components | Image build and scan |
+| --- | --- | --- |
+| Any `*.md`, `LICENSE`, `LICENSE.*`, or root `.gitignore` | `none` | None |
+| `quality/**` or `sonar-project.properties` | `none` | None |
+| `scripts/test/**` and `tests/**` | `none` | None |
+| CI lint, coverage, summary, or classifier-test scripts | `none` | None |
+| `backend/**` | `migration,backend,application` | Backend image |
+| `frontend/**` | `frontend,application` | Frontend image |
+| `deploy/base/infrastructure/**` or `deploy/overlays/local/infrastructure/**` | `infrastructure` | None |
+| `deploy/base/migration/**` or `deploy/overlays/local/migration/**` | `migration` | None; uses the deployed backend image |
+| `deploy/base/application/**` or `deploy/overlays/local/application/**` | `application` | None; preserves deployed image tags |
+| `deploy/overlays/local/observability/**` or `deploy/overlays/local/logging-collector/**` | `observability` | None |
+| `deploy/overlays/local/gateway/**` | `gateway` | None |
+| `VERSION` | `migration,backend,frontend,application` | Both application images |
+| CI image build or scan scripts | `all` | Both application images |
+| Anything under `scripts/cd/**` or `scripts/lib/**` | `all` | Both application images |
+| `deploy/kind.yaml` | `all` | Both application images |
+| Any other or newly introduced path | `all`, with a warning | Both application images |
+| Missing or invalid previous-successful revision | `all` | Both application images |
+
+The selected components have these deployment effects:
+
+| Component | Kubernetes action |
+| --- | --- |
+| `infrastructure` | Apply namespace configuration, Secret, and PostgreSQL; wait for PostgreSQL rollout. |
+| `migration` | Recreate the migration Job with the selected or currently deployed backend image and wait for completion. |
+| `backend` | Load the backend image into kind; automatically includes `migration` and `application`. |
+| `frontend` | Load the frontend image into kind; automatically includes `application`. |
+| `application` | Apply API, engine, agent, internal MCP, frontend, Services, network policy, autoscaling, and disruption-budget resources; wait for application rollouts. |
+| `observability` | Apply Prometheus, kube-state-metrics, Grafana, Fluent Bit, Elasticsearch, Kibana, dashboards, data views, recording rules, and alerts; wait for readiness. |
+| `gateway` | Apply Envoy Gateway routes and wait for the local Gateway to become programmed. |
+| `all` | Execute every action above. |
+| `none` | Build, scan, and deployment commands exit without changing Kubernetes. |
+
+Renames are evaluated as one deletion plus one addition, so both the old and new
+locations influence the result. When adding or repurposing a folder, update the
+classifier, its tests, and this table together. Until then, the unknown-path
+fallback safely selects `all`.
+
+The script composes temporary Kustomize overlays with the selected backend and
+frontend tags, leaving the tracked portable manifests unchanged. An unchanged
+component retains its currently deployed tag. Because the local Deployments use
+`imagePullPolicy: IfNotPresent`, Kubernetes uses commit-addressed images loaded
+into the `kind` node rather than an external registry.
+
+Automation is grouped by pipeline responsibility: `scripts/ci` contains lint,
+coverage, image build and scan, and classifier tests; `scripts/cd` contains
+cluster setup, deployment-scope detection, deploy, rollback, and smoke-test
+commands. `scripts/cd/deploy-kind.sh` is the public deployment orchestrator. Its
+internal functions live in `scripts/cd/lib/kind-deployment.sh`, while
+`scripts/lib/deployment-components.sh` provides the component-selection rules
+shared by CI and CD. Files under either `lib` directory are sourced libraries
+and are not intended to be run directly.
+
+The following sections show the individual Kubernetes stages executed by the
+script and are useful when diagnosing a failure.
+
+### 4. Inspect PostgreSQL and configuration
+
+```bash
+kubectl rollout status statefulset/battlefield-postgres \
+  --namespace battlefield \
+  --timeout=120s
+```
+
+The local PostgreSQL StatefulSet uses a 1 GiB persistent volume from `kind`'s
+default local-path provisioner. It is suitable for learning only.
+
+### 5. Inspect the migration gate
+
+The deployment script deletes the previous completed Job, recreates it with the
+selected backend image, and waits for success. Inspect the result with:
+
+```bash
+kubectl wait --for=condition=complete \
+  job/battlefield-migrate \
+  --namespace battlefield \
+  --timeout=120s
+
+kubectl logs job/battlefield-migrate --namespace battlefield
+```
+
+Do not apply the application stage if the Job fails.
+
+### 6. Inspect the application
+
+```bash
+kubectl rollout status deployment/battlefield-api \
+  --namespace battlefield \
+  --timeout=120s
+kubectl rollout status deployment/battlefield-engine \
+  --namespace battlefield \
+  --timeout=120s
+kubectl rollout status deployment/battlefield-agent \
+  --namespace battlefield \
+  --timeout=120s
+kubectl rollout status deployment/battlefield-mcp \
+  --namespace battlefield \
+  --timeout=120s
+kubectl rollout status deployment/battlefield-frontend \
+  --namespace battlefield \
+  --timeout=120s
+
+kubectl get pods,services,jobs,persistentvolumeclaims \
+  --namespace battlefield
+```
+
+The base application retains a portable Ingress for later cloud overlays. The
+local overlay removes that unhandled resource and uses Gateway API routes
+managed by Envoy Gateway instead. The API HPA remains a scaling exercise; its
+CPU target is `<unknown>` until metrics-server is installed.
+
+### Inspect local observability
+
+The local-only observability overlay deploys Prometheus with namespace-scoped
+pod discovery plus authenticated kubelet cAdvisor scraping, kube-state-metrics
+with namespace-scoped workload access, Grafana with provisioned application and
+Kubernetes dashboards, and a centralized logging path from Fluent Bit through
+Elasticsearch to Kibana. The deployment script waits for every workload and
+provisions the Kibana data view. The smoke test verifies application, workload,
+and container resource metrics, both Grafana dashboards, Kibana, and indexed
+logs. Elasticsearch retains a read-only container root while a non-root init
+container stages its default files and checked-in settings into a writable,
+disposable configuration volume required for keystore creation.
+
+```bash
+kubectl rollout status deployment/battlefield-prometheus \
+  --namespace battlefield --timeout=120s
+kubectl rollout status deployment/battlefield-kube-state-metrics \
+  --namespace battlefield --timeout=120s
+kubectl rollout status deployment/battlefield-grafana \
+  --namespace battlefield --timeout=120s
+kubectl rollout status deployment/battlefield-elasticsearch \
+  --namespace battlefield --timeout=120s
+kubectl rollout status deployment/battlefield-kibana \
+  --namespace battlefield --timeout=120s
+kubectl rollout status daemonset/battlefield-fluent-bit \
+  --namespace battlefield-logging --timeout=120s
+```
+
+The application namespace continues to enforce the Pod Security `baseline`
+profile. kube-state-metrics is non-privileged and can read only selected
+workload objects in `battlefield`. Prometheus has a separate ClusterRole limited
+to node discovery and `nodes/metrics` reads. It scrapes the local kubelet
+directly and deliberately does not receive the broader `nodes/proxy`
+permission. Fluent Bit is isolated in `battlefield-logging`, whose `privileged`
+enforcement level is required for read-only node log mounts. Its service
+account receives only `get`, `list`, and `watch` access to pods in the
+`battlefield` namespace; the application workloads do not inherit that
+exception.
+
+Open `http://grafana.localhost:8888` for the Autonomous Battlefield application
+and Kubernetes Workloads dashboards.
+Open `http://kibana.localhost:8888` and select the **Autonomous Battlefield
+Logs** data view in Discover. No port-forward process is required. See
+[docs/operations/observability.md](observability.md) for metrics, log queries, direct backend
+access, SLI formulas, alert behavior, and production boundaries.
+
+### 7. Open the application
+
+Open `http://battlefield.localhost:8888`. The Gateway API routes `/v1` directly
+to the API and all other paths to the frontend. The `.localhost` domain resolves
+to loopback without an `/etc/hosts` entry. The frontend Nginx process retains
+its internal `/v1` proxy so direct Service access and cloud deployment overlays
+continue to work.
+
+Run the same non-interactive verification used by Jenkins at any time:
+
+```bash
+./scripts/cd/smoke-test-kind.sh
+```
+
+It verifies the browser-facing frontend, Grafana, and Kibana routes through the
+local gateway. Temporary API, Prometheus, and Elasticsearch port-forwards are
+used only for internal diagnostic checks and are removed automatically. When
+the optional `battlefield-auth` Secret enables authentication, the smoke test
+reads its administrator credentials without printing them, logs in through the
+gateway, and keeps the resulting session cookie only in its private temporary
+directory. The check fails with an explicit configuration error if that Secret
+enables Secure cookies while verification is using the local HTTP gateway.
+
+### Diagnose a local deployment
+
+Start with workload state, recent events, and the application logs:
+
+```bash
+kubectl get deployments,pods,services,endpointslices \
+  --namespace battlefield \
+  --output wide
+kubectl get events --namespace battlefield \
+  --sort-by='.metadata.creationTimestamp'
+kubectl logs deployment/battlefield-api \
+  --namespace battlefield --tail=100
+kubectl logs deployment/battlefield-engine \
+  --namespace battlefield --tail=100
+kubectl logs deployment/battlefield-agent \
+  --namespace battlefield --tail=100
+kubectl logs deployment/battlefield-mcp \
+  --namespace battlefield --tail=100
+kubectl logs deployment/battlefield-frontend \
+  --namespace battlefield --tail=100
+```
+
+Use `kubectl describe pod <pod-name> --namespace battlefield` for probe,
+scheduling, image, or volume failures. A completed migration pod is expected;
+inspect `job/battlefield-migrate` only when its Job did not reach `Complete`.
+
+### 8. Remove the local deployment
+
+Deleting both local namespaces also deletes the PostgreSQL claim, observability
+data, and logging collector. Remove Prometheus's cluster-scoped kubelet access
+at the same time:
+
+```bash
+kubectl delete clusterrole/battlefield-prometheus-kubelet \
+  clusterrolebinding/battlefield-prometheus-kubelet \
+  --ignore-not-found
+kubectl delete namespace battlefield battlefield-logging
+```
+
+Deleting the entire `kind` cluster has the same data-loss consequence.
+
+## Jenkins deployment pipeline
+
+The repository includes a root `Jenkinsfile` for a GitHub-backed Multibranch
+Pipeline. Pull requests targeting `main` run lint, tests with coverage, image
+builds, and vulnerability scans. After the PR is merged, the `main` pipeline
+regenerates coverage, waits for the SonarQube quality gate, rebuilds and scans
+the exact merge revision, runs the migration gate once, deploys, verifies
+health, and rolls back application Deployments after a failed rollout or smoke
+test. Direct `dev` pushes are intentionally left to the local development
+workflow.
+
+See [docs/operations/jenkins.md](jenkins.md) for the agent prerequisites, required plugins,
+secret-file credential, GitHub branch discovery, local webhook limitation, and
+pipeline behavior. The local pipeline deploys to kind; ECR and EKS replace the
+image-loading and deployment targets later without changing the earlier gates.
+
+## Repository-specific requirements
+
+- Run migrations once through a Kubernetes `Job` using the existing
+  `server -migrate` mode. Never let every API replica race to migrate.
+- Pass an explicit configuration path in containers, for example
+  `-config /etc/battlefield/config.yaml`.
+- Scenario paths are resolved relative to the configuration file. If the
+  ConfigMap is mounted under `/etc/battlefield`, set
+  `api.scenarioCatalogPath` to an absolute image path such as
+  `/app/scenarios`.
+- Use `/startupz`, `/livez`, and `/readyz` for startup, liveness, and readiness
+  respectively. The API serves them on port 8080 and the engine on port 8081.
+- Startup remains unavailable until PostgreSQL and application initialization
+  complete. Liveness is process-only. Readiness checks PostgreSQL and becomes
+  unavailable before graceful shutdown; engine readiness also checks its worker.
+- The API and engine expose lifecycle endpoints before connecting and retry
+  transient PostgreSQL startup failures. Invalid configuration still fails
+  immediately.
+- Frontend Nginx resolves the API Service at request time, so temporary absence
+  of the API DNS record no longer prevents the frontend container from starting.
+- Set `terminationGracePeriodSeconds` longer than the configured ten-second
+  graceful-shutdown deadline.
+- The engine can have multiple replicas because work is claimed through durable
+  database leases. Each pod still requires a unique worker identity; its pod
+  name or UID can be injected with the Downward API.
+- Account for database-pool multiplication. Each replica currently permits up
+  to ten connections, so the total possible connections grow with every API and
+  engine pod.
+- Keep `DATABASE_URL` out of Git, image layers, ConfigMaps, logs, and command
+  examples containing real credentials.
+- Keep the administrator password and session-signing secret out of Git,
+  images, ConfigMaps, and command examples. Public HTTPS deployments must set
+  `BATTLEFIELD_AUTH_COOKIE_SECURE=true`; all API replicas must share the same
+  signing secret for stateless session validation.
+
+## Scaling and reliability exercises
+
+Once one replica works, exercise these behaviors deliberately:
+
+- Scale the API and engine separately.
+- Terminate an engine pod during a battle and verify requeue or lease recovery.
+- Verify readiness removes a pod from service without immediately restarting it.
+- Verify liveness restarts a genuinely stuck process.
+- Perform a rolling update and rollback.
+- Add CPU and memory requests based on observations.
+- Scale the API from a request or CPU signal and the engine from battle backlog
+  or oldest queued work rather than CPU by default.
+- Add a Pod Disruption Budget only to workloads with enough replicas to remain
+  available during disruption.
+- Recreate the entire cluster and application from committed configuration.
+
+## Moving the deployment to AWS
+
+The implementation root is [`infra/aws`](../../infra/aws). It creates budget alerts before the network and runtime resources, then provisions VPC networking, immutable ECR repositories, EKS, encrypted RDS PostgreSQL with managed master credentials and backups, Secrets Manager placeholders, control-plane logging, and an OIDC provider for IRSA.
+
+GHCR remains the build source of truth. `scripts/cd/promote-to-ecr.sh` copies the already verified subject and OCI referrers with ORAS, proves that the ECR subject digest is unchanged, then verifies the Cosign signature plus CycloneDX, SLSA-provenance, and AI-manifest attestations. It never rebuilds an image.
+
+Registry-backed Kind deployment uses full digest inputs:
+
+```bash
+IMAGE_SOURCE=registry \
+BACKEND_IMAGE_REF='ghcr.io/twh09/autonomous-battlefield-backend@sha256:…' \
+FRONTEND_IMAGE_REF='ghcr.io/twh09/autonomous-battlefield-frontend@sha256:…' \
+./scripts/cd/deploy-kind.sh
+```
+
+Jenkins additionally sets `ENFORCE_SUPPLY_CHAIN_POLICY=1`, which installs the Jenkins-only Kyverno verification policy. The tagged Kyverno manifest is installed with server-side apply so its large CRDs do not exceed Kubernetes' client-side last-applied annotation limit. Deployment waits for the admission controller's `Available` condition and prints pod, Deployment, and controller-log diagnostics on timeout. For private GHCR verification, the stage's temporary Docker authentication is copied into a `battlefield-ghcr` pull Secret in the `kyverno` namespace and referenced only by the verification policy. Cosign publishes modern OCI 1.1 referrers for promotion plus legacy digest-tag signature and attestation mirrors for Kyverno 1.15 admission discovery; both sets cover the same digest and use the same key. Unsigned local Kind development remains available through `IMAGE_SOURCE=local` and is never treated as promotion evidence.
+
+The AWS step should reuse the tested images and base resources:
+
+An AWS account is required before this stage, including billing verification.
+Secure the root user with MFA, avoid using it for daily administration, and use
+temporary role-based credentials for normal human and workload access. Create a
+cost budget and alerts before provisioning. Free Tier eligibility does not make
+an EKS environment free: the cluster control plane and its compute, database,
+load balancer, networking, and storage resources are independently billable.
+
+The checked-in Terraform is a reference implementation and has not been applied
+to an AWS account by this repository. Account-specific plans, IAM review,
+secret population, ingress installation, and recovery evidence are still
+required before treating the environment as production-ready.
+
+1. Create the AWS account, cost budget, and billing alerts.
+2. Review and apply `infra/aws` to provision ECR, networking, EKS, RDS, and
+   Secrets Manager.
+3. Promote immutable GHCR digests and all OCI referrers to ECR without rebuilding.
+4. Configure EKS workload identity and least-privilege access to the required
+   secret.
+5. Point `DATABASE_URL` at the private RDS endpoint with TLS enabled.
+6. Add the AWS Load Balancer configuration in the AWS overlay.
+7. Run the migration Job and deploy the workloads.
+8. Exercise secret rotation, backup restore, pod disruption, failed rollout,
+   and teardown.
+
+Amazon EKS itself is billable. A standard-support cluster has an hourly control
+plane charge in addition to compute, load balancer, database, networking, and
+storage charges. Learn locally first, create AWS Budgets before provisioning,
+and destroy learning environments when they are not in use. Budget alerts are
+notifications rather than guaranteed hard spending limits.
+
+## Reference documentation
+
+- [`kind` quick start](https://kind.sigs.k8s.io/docs/user/quick-start/)
+- [Kustomize with `kubectl`](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/)
+- [Kubernetes probes](https://kubernetes.io/docs/concepts/workloads/pods/probes/)
+- [Amazon EKS pricing](https://aws.amazon.com/eks/pricing/)
+- [AWS Free Tier plans](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/free-tier-plans.html)
+- [AWS Budgets](https://docs.aws.amazon.com/cost-management/latest/userguide/create-cost-budget.html)
+- [AWS root-user security practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/root-user-best-practices.html)
+- [EKS Auto Mode](https://docs.aws.amazon.com/eks/latest/userguide/automode.html)
+- [Using Secrets Manager secrets with EKS pods](https://docs.aws.amazon.com/eks/latest/userguide/manage-secrets.html)

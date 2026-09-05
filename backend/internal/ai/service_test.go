@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation/controller"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 type memoryRepository struct {

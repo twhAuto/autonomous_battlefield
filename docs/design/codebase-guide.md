@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft — describes the current working tree, including uncommitted changes |
-| Last reviewed | 2026-09-02 |
+| Last reviewed | 2026-09-05 |
 | Audience | Contributors navigating or modifying the implementation |
 | Scope | Repository layout, entry points, packages, dependencies, tests, and reading paths |
 
@@ -14,43 +14,44 @@ For runtime boundaries, data flows, durability, and security decisions, see the 
 ```text
 autonomous_battlefield/
 ├── backend/
-│   ├── cmd/
-│   │   ├── server/       # Public API and migration command
-│   │   ├── engine/       # Durable battle worker
-│   │   ├── mcp/          # MCP tools and agent control plane
-│   │   └── agent/        # Provider-neutral decision worker
+│   ├── cmd/{server,engine,mcp,agent,aieval}/ # Startup and command wiring
 │   ├── internal/
-│   │   ├── ai/           # Decision contracts, validation, profiles, and runners
-│   │   ├── app/          # API composition root
-│   │   ├── authn/        # Administrator login, signed sessions, and trusted actor context
-│   │   ├── battle/       # Battle delivery, use cases, persistence, and worker
-│   │   ├── faction/      # Faction domain, delivery, use cases, and persistence
-│   │   ├── game/         # Deterministic simulation domain
-│   │   ├── config/       # Strict YAML and environment configuration
-│   │   ├── httpapi/      # HTTP lifecycle, JSON, routing, and request logging
-│   │   ├── postgres/     # Pool, migrations, and notifications
-│   │   ├── logging/      # Structured logging setup
-│   │   └── telemetry/    # Prometheus metrics
-│   ├── migrations/       # Embedded Goose SQL migrations
-│   ├── rulesets/         # Versioned game rules
-│   └── scenarios/        # Authored battle templates
-├── frontend/
-│   └── src/
-│       ├── api/           # Typed fetch clients
-│       ├── components/    # Reusable visual components
-│       └── pages/         # Route-level React components
-├── deploy/
-│   ├── base/              # Portable Kustomize resources
-│   └── overlays/local/    # kind infrastructure and observability
+│   │   ├── battle/{api,service,catalog,worker,repo}/
+│   │   ├── faction/{api,service,repo}/
+│   │   ├── game/               # Deterministic state transitions
+│   │   │   └── controller/     # Infrastructure-free controller contracts
+│   │   ├── ai/                 # Decision execution, providers, MCP, evaluations
+│   │   └── ...                 # app, authn, config, httpapi, postgres, logging, telemetry
+│   ├── migrations/             # Embedded SQL migrations
+│   ├── rulesets/               # Versioned game rules
+│   ├── scenarios/              # Authored battle templates
+│   └── evals/                  # Evaluation cases and pricing configuration
+├── frontend/src/
+│   ├── app/                    # Application shell, routes, integration tests
+│   ├── features/{battles,factions,auth}/ # Feature pages, API clients, unit tests
+│   ├── shared/{api,components}/ # HTTP transport and cross-feature visuals
+│   ├── pages/                  # General pages, including Home
+│   └── test/                   # Shared test setup
+├── deploy/                     # Kubernetes bases, overlays, supply-chain assets
+├── infra/aws/                  # AWS provisioning with Terraform
 ├── scripts/
-│   ├── ci/                # Lint, test, coverage, and image checks
-│   └── cd/                # kind deployment, smoke test, and rollback
-└── docs/design/           # Version-controlled design documentation
+│   ├── dev/                    # Local application and host-agent launchers
+│   ├── test/                   # Test runners and deployment script tests
+│   ├── ci/                     # Lint, builds, coverage summaries, image assurance
+│   ├── cd/                     # Deployment, smoke checks, rollback
+│   ├── perf/                   # Performance-test launcher
+│   ├── security/               # Security-test launcher
+│   ├── ops/                    # Operational reports and failure drills
+│   └── lib/                    # Shared script functions
+├── tests/performance/          # k6 scenarios
+├── quality/sonarqube/          # Local analysis service
+├── policy/                     # Deployment policy
+└── docs/{design,operations,security}/
 ```
 
 ## 2. Executable entry points
 
-The backend builds four binaries from one Go module.
+The backend has five commands in one Go module: four runtime processes and the offline AI evaluation command. The application image contains the four runtime binaries.
 
 | Process | Entry point | What the entry point owns |
 | --- | --- | --- |
@@ -58,6 +59,7 @@ The backend builds four binaries from one Go module.
 | Engine | [`backend/cmd/engine/main.go`](../../backend/cmd/engine/main.go) | Configuration, PostgreSQL startup, worker construction, health server, signals, graceful requeue/shutdown |
 | MCP | [`backend/cmd/mcp/main.go`](../../backend/cmd/mcp/main.go) | Restricted repository construction, PostgreSQL notification listener, MCP and agent-control routes, HTTP lifecycle |
 | Agent | [`backend/cmd/agent/main.go`](../../backend/cmd/agent/main.go) | Profile registry, decision worker, health endpoint, signals, shutdown |
+| AI evaluation | [`backend/cmd/aieval/main.go`](../../backend/cmd/aieval/main.go) | Evaluation case execution, pricing inputs, and reports |
 
 `cmd` packages should remain thin. Domain and use-case behavior belongs under `internal`; entry points should focus on composition and process lifecycle.
 
@@ -88,7 +90,7 @@ Repository interfaces live close to the service or worker that consumes them. Th
 
 [`backend/internal/game`](../../backend/internal/game) does not use the HTTP feature layering. It is an infrastructure-free domain package that takes resolved input and returns deterministic state transitions.
 
-[`backend/internal/battle/engine/worker`](../../backend/internal/battle/engine/worker) is an application worker around that domain. It owns persistence orchestration but delegates game rules and state mutation to `game.Match`.
+[`backend/internal/battle/worker`](../../backend/internal/battle/worker) is an application worker around that domain. It owns persistence orchestration but delegates game rules and state mutation to `game.Match`.
 
 ### AI-oriented code
 
@@ -109,7 +111,13 @@ The package root contains types and interfaces shared across these subpackages, 
 | File | Responsibility |
 | --- | --- |
 | [`types.go`](../../backend/internal/game/types.go) | Maps, rulesets, factions, units, buildings, state, events, results, controller config, and faction views |
-| [`match.go`](../../backend/internal/game/match.go) | In-memory battle runtime, decision snapshots, production, tactics, movement, combat, and results |
+| [`match.go`](../../backend/internal/game/match.go) | Runtime state, tick orchestration, events, and results |
+| [`initialization.go`](../../backend/internal/game/initialization.go) | Scenario validation and initial factions, castles, and units |
+| [`decisions.go`](../../backend/internal/game/decisions.go) | Decision snapshots, plan validation, scripted plans, and tactics |
+| [`economy.go`](../../backend/internal/game/economy.go) | Income, construction, and recruitment |
+| [`combat.go`](../../backend/internal/game/combat.go) | Unit turns, movement, targeting, damage, and loot |
+| [`visibility.go`](../../backend/internal/game/visibility.go) | Faction perspectives and fog of war |
+| [`clone.go`](../../backend/internal/game/clone.go) | Defensive copying of state, scenarios, results, and plans |
 | [`map.go`](../../backend/internal/game/map.go) | Hex-map validation, coordinates, traversal, and visibility helpers |
 | [`rules.go`](../../backend/internal/game/rules.go) | Ruleset and point-buy blueprint validation |
 
@@ -123,15 +131,15 @@ The package root contains types and interfaces shared across these subpackages, 
 
 `Match` contains no database, HTTP, or model-provider dependency. Preserve this property when adding game behavior.
 
-### `internal/battle/server/catalog`: authored inputs
+### `internal/battle/catalog`: authored inputs
 
-[`catalog.go`](../../backend/internal/battle/server/catalog/catalog.go) strictly decodes scenario and ruleset YAML with unknown-field rejection. It validates templates, combines a scenario with two stored faction identities, and returns a complete resolved `game.Scenario` plus digest.
+[`catalog.go`](../../backend/internal/battle/catalog/catalog.go) strictly decodes scenario and ruleset YAML with unknown-field rejection. It validates templates, combines a scenario with two stored faction identities, and returns a complete resolved `game.Scenario` plus digest.
 
 The API stores this resolved value in `battle_runs.scenario_snapshot`. The engine therefore does not reload live YAML when it claims a battle.
 
-### `internal/battle/server/service`: battle use cases
+### `internal/battle/service`: battle use cases
 
-[`service.go`](../../backend/internal/battle/server/service/service.go) contains public battle rules:
+[`service.go`](../../backend/internal/battle/service/service.go) contains public battle rules:
 
 - validate battle IDs, participants, controller selections, and tick counts;
 - ensure requested model profiles are available;
@@ -141,11 +149,11 @@ The API stores this resolved value in `battle_runs.scenario_snapshot`. The engin
 - enqueue, read, pause, resume, and stop battles;
 - read events, decision history, and faction perspectives.
 
-[`repository.go`](../../backend/internal/battle/server/service/repository.go) defines the persistence operations required by these use cases. [`catalog.go`](../../backend/internal/battle/server/service/catalog.go) defines catalog-facing types and interfaces.
+[`repository.go`](../../backend/internal/battle/service/repository.go) defines the persistence operations required by these use cases. [`catalog.go`](../../backend/internal/battle/service/catalog.go) defines catalog-facing types and interfaces.
 
-### `internal/battle/server/api`: battle HTTP delivery
+### `internal/battle/api`: battle HTTP delivery
 
-[`handler.go`](../../backend/internal/battle/server/api/handler.go) registers and implements:
+[`handler.go`](../../backend/internal/battle/api/handler.go) registers and implements:
 
 | Route | Handler responsibility |
 | --- | --- |
@@ -162,13 +170,13 @@ The API stores this resolved value in `battle_runs.scenario_snapshot`. The engin
 
 Keep domain validation in the service. The handler should concentrate on transport validation and stable HTTP status mapping.
 
-### `internal/battle/engine/worker`: durable execution
+### `internal/battle/worker`: durable execution
 
 | File | Responsibility |
 | --- | --- |
-| [`repository.go`](../../backend/internal/battle/engine/worker/repository.go) | Battle-job, lease, and worker repository contracts |
-| [`worker.go`](../../backend/internal/battle/engine/worker/worker.go) | Claim loop, deterministic attempts, tick persistence, decisions, pause, retries, and shutdown |
-| [`health.go`](../../backend/internal/battle/engine/worker/health.go) | Worker readiness behavior |
+| [`repository.go`](../../backend/internal/battle/worker/repository.go) | Battle-job, lease, and worker repository contracts |
+| [`worker.go`](../../backend/internal/battle/worker/worker.go) | Claim loop, deterministic attempts, tick persistence, decisions, pause, retries, and shutdown |
+| [`health.go`](../../backend/internal/battle/worker/health.go) | Worker readiness behavior |
 
 The worker's main call path is:
 
@@ -192,7 +200,7 @@ All persistence calls carry the current battle lease. Do not add an unguarded wr
 
 ### `internal/battle/repo`: PostgreSQL battle adapter
 
-[`postgres.go`](../../backend/internal/battle/repo/postgres.go) implements both public battle persistence and engine queue operations. It contains the battle lease predicates and atomic state/event writes.
+The adapter stays in one package: [`postgres.go`](../../backend/internal/battle/repo/postgres.go) constructs it, [`battles.go`](../../backend/internal/battle/repo/battles.go) owns public battle operations, [`queue.go`](../../backend/internal/battle/repo/queue.go) owns queue leases, and [`ticks.go`](../../backend/internal/battle/repo/ticks.go) owns atomic tick and completion writes. Splitting files does not change transaction boundaries.
 
 [`decisions.go`](../../backend/internal/battle/repo/decisions.go) implements the AI decision repository:
 
@@ -270,11 +278,11 @@ The MCP tools are:
 
 The server validates request scope before calling `DecisionService`. PostgreSQL notifications close an in-memory wake-up channel so long-polling claim requests promptly query durable state.
 
-### `internal/battle/simulation/controller`: deterministic policy abstractions
+### `internal/game/controller`: deterministic policy abstractions
 
-[`types.go`](../../backend/internal/battle/simulation/controller/types.go) defines `PlanProposal`, action candidates, strategy plans, and a controller interface. `PlanProposal` is actively used by the game, AI subsystem, scenarios, repository, API, and frontend.
+[`types.go`](../../backend/internal/game/controller/types.go) defines `PlanProposal`, action candidates, strategy plans, and a controller interface. `PlanProposal` is actively used by the game, AI subsystem, scenarios, repository, API, and frontend.
 
-[`utility_controller.go`](../../backend/internal/battle/simulation/controller/utility_controller.go) is an independently tested in-memory utility controller with its own decision scheduling and pending-plan lifecycle. It is not constructed by the API, engine, or `game.Match` production path. The current match consumes `PlanProposal` directly and performs deterministic action scoring internally.
+[`utility_controller.go`](../../backend/internal/game/controller/utility_controller.go) is an independently tested in-memory utility controller with its own decision scheduling and pending-plan lifecycle. It is not constructed by the API, engine, or `game.Match` production path. The current match consumes `PlanProposal` directly and performs deterministic action scoring internally.
 
 Treat the utility controller's scheduling types as a standalone or transitional abstraction unless it is deliberately integrated later.
 
@@ -306,11 +314,11 @@ Deleting a faction removes it from the active registry but does not affect the c
 | `game.State` | `internal/game/types.go` | Current authoritative simulation snapshot |
 | `game.Transition` | `internal/game/types.go` | One tick's state, events, and optional result |
 | `game.View` | `internal/game/types.go` | Faction-projected fog-of-war state |
-| `controller.PlanProposal` | `battle/simulation/controller/types.go` | Scripted/model strategy and production input |
+| `controller.PlanProposal` | `game/controller/types.go` | Scripted/model strategy and production input |
 | `ai.DecisionContext` | `internal/ai/types.go` | Frozen bounded model observation |
 | `ai.DecisionRecord` | `internal/ai/types.go` | Durable decision state and provenance |
-| `service.BattleRun` | `battle/server/service/service.go` | Public/use-case representation of a stored run |
-| `worker.BattleLease` | `battle/engine/worker/repository.go` | Attempt and ownership guard for engine writes |
+| `service.BattleRun` | `battle/service/service.go` | Public/use-case representation of a stored run |
+| `worker.BattleLease` | `battle/worker/repository.go` | Attempt and ownership guard for engine writes |
 
 When introducing a new field, identify its authority:
 
@@ -331,6 +339,7 @@ Migrations under [`backend/migrations`](../../backend/migrations) are embedded i
 | `00004_battle_decisions.sql` | Model decisions, indexes, evaluation view, restricted MCP role |
 | `00005_stop_battles.sql` | `stopped` battle status |
 | `00006_pause_battles.sql` | Pause flag and unpaused claim index |
+| `00007_trace_context.sql` | Persisted trace propagation context |
 
 Schema changes should be made with a new migration, then reflected in repository scan/serialization logic and tests. Do not edit an already-applied migration to evolve a shared database.
 
@@ -340,20 +349,20 @@ The frontend is a React/Vite single-page application.
 
 | Area | Responsibility |
 | --- | --- |
-| [`App.tsx`](../../frontend/src/App.tsx) | Shared layout and route table |
-| [`api/auth.ts`](../../frontend/src/api/auth.ts) | Session discovery, login, and logout client |
-| [`api/request.ts`](../../frontend/src/api/request.ts) | Shared request wrapper that announces expired or invalid sessions |
-| [`api/factions.ts`](../../frontend/src/api/factions.ts) | Typed faction and ruleset requests |
-| [`api/battles.ts`](../../frontend/src/api/battles.ts) | Typed scenario, profile, battle, event, view, control, and decision requests |
-| [`pages/CreateFactionPage.tsx`](../../frontend/src/pages/CreateFactionPage.tsx) | Point-buy faction builder |
-| [`pages/FactionsPage.tsx`](../../frontend/src/pages/FactionsPage.tsx) | Faction registry and deletion |
-| [`pages/CreateBattlePage.tsx`](../../frontend/src/pages/CreateBattlePage.tsx) | Scenario, participants, controllers, and tick-limit selection |
-| [`pages/BattlePage.tsx`](../../frontend/src/pages/BattlePage.tsx) | Polling, map, perspective, controls, events, AI decisions, and statistics |
-| [`pages/LoginPage.tsx`](../../frontend/src/pages/LoginPage.tsx) | Single-administrator credential form and error state |
-| [`components/HexBattleMap.tsx`](../../frontend/src/components/HexBattleMap.tsx) | Hex-map visualization |
-| [`components/Emblem.tsx`](../../frontend/src/components/Emblem.tsx) | Deterministic faction emblem |
+| [`app/App.tsx`](../../frontend/src/app/App.tsx) | Shared layout and route table |
+| [`features/auth/api/auth.ts`](../../frontend/src/features/auth/api/auth.ts) | Session discovery, login, and logout client |
+| [`shared/api/request.ts`](../../frontend/src/shared/api/request.ts) | Shared request wrapper that announces expired or invalid sessions |
+| [`features/factions/api/factions.ts`](../../frontend/src/features/factions/api/factions.ts) | Typed faction and ruleset requests |
+| [`features/battles/api/battles.ts`](../../frontend/src/features/battles/api/battles.ts) | Typed scenario, profile, battle, event, view, control, and decision requests |
+| [`features/factions/pages/CreateFactionPage.tsx`](../../frontend/src/features/factions/pages/CreateFactionPage.tsx) | Point-buy faction builder |
+| [`features/factions/pages/FactionsPage.tsx`](../../frontend/src/features/factions/pages/FactionsPage.tsx) | Faction registry and deletion |
+| [`features/battles/pages/CreateBattlePage.tsx`](../../frontend/src/features/battles/pages/CreateBattlePage.tsx) | Scenario, participants, controllers, and tick-limit selection |
+| [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx) | Polling, map, perspective, controls, events, AI decisions, and statistics |
+| [`features/auth/pages/LoginPage.tsx`](../../frontend/src/features/auth/pages/LoginPage.tsx) | Single-administrator credential form and error state |
+| [`features/battles/components/HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx) | Hex-map visualization |
+| [`shared/components/Emblem.tsx`](../../frontend/src/shared/components/Emblem.tsx) | Deterministic faction emblem |
 
-The browser's API boundary lives in `src/api`. Page components should consume typed client functions rather than duplicating `fetch` calls.
+Feature-specific API clients live in `src/features/<feature>/api`; common HTTP transport lives in `src/shared/api`. Page components should consume typed client functions rather than duplicating `fetch` calls.
 
 `BattlePage` contains several local hooks for status, events, decision history, and faction perspective. It polls while the battle is active and stops or slows behavior based on terminal/error state; there is no WebSocket or server-sent-event client.
 
@@ -384,7 +393,9 @@ The key application manifests are:
 - frontend deployment and service;
 - migration overlay job.
 
-[`run-dev.sh`](../../run-dev.sh) is the local multi-process launcher. It obtains the Compose PostgreSQL password from the shell or the Git-ignored `backend/.env`; `backend/compose.yaml` has no committed database credential. [`run-k8s-cli-agent.sh`](../../run-k8s-cli-agent.sh) bridges authenticated host subscription CLIs to a Kubernetes MCP service. CI/CD helpers under `scripts` classify affected components, build images, apply migrations, deploy, smoke-test, and roll back.
+[`run-dev.sh`](../../scripts/dev/run-dev.sh) is the local multi-process launcher. It obtains the Compose PostgreSQL password from the shell or the Git-ignored `backend/.env`; `backend/compose.yaml` has no committed database credential. [`run-k8s-cli-agent.sh`](../../scripts/dev/run-k8s-cli-agent.sh) bridges authenticated host subscription CLIs to a Kubernetes MCP service. CI/CD helpers under `scripts` classify affected components, build images, apply migrations, deploy, smoke-test, and roll back.
+
+Root launch scripts remain compatibility entry points that `exec` their implementations under `scripts/dev` and `scripts/cd`. `deploy/` owns Kubernetes configuration; `infra/aws/` provisions cloud resources. Operational instructions live under `docs/operations`.
 
 ## 10. Testing layout and expectations
 
@@ -398,10 +409,12 @@ Tests are colocated with their Go or React implementation. The codebase includes
 - HTTP contract/status tests;
 - React component and typed API-client tests.
 
+Package-specific PostgreSQL integration tests remain beside their adapters and require `TEST_DATABASE_URL`; the isolated PostgreSQL harness supplies it. `scripts/test` contains reusable test runners and deployment script tests. Old `scripts/ci` test commands forward to those runners. `scripts/test/test-command-wrappers.sh` verifies argument, environment, working-directory, exit-status, and signal forwarding without launching the application. Performance scenarios live in `tests/performance`; AI cases remain in `backend/evals`. Add an end-to-end folder only when whole-application tests exist.
+
 Merge-blocking gates require at least 80% Go statement coverage and at least 80% frontend statements, branches, functions, and lines:
 
 ```bash
-./scripts/ci/test-go-coverage.sh
+./scripts/test/with-test-postgres.sh ./scripts/test/test-backend.sh
 (cd frontend && npm test -- --coverage)
 ```
 
@@ -415,7 +428,7 @@ For a focused change, start with the affected package tests. Before completing i
 2. Update the service type/use case.
 3. Update repository serialization or query scanning if persisted.
 4. Update the handler response.
-5. Update `frontend/src/api/battles.ts`.
+5. Update `frontend/src/features/battles/api/battles.ts`.
 6. Update the consuming page/component and both backend/frontend tests.
 
 ### Add a plan field
@@ -450,15 +463,15 @@ For a focused change, start with the affected package tests. Before completing i
 
 1. [`backend/internal/game/types.go`](../../backend/internal/game/types.go)
 2. [`backend/internal/game/match.go`](../../backend/internal/game/match.go)
-3. [`backend/internal/battle/server/service/service.go`](../../backend/internal/battle/server/service/service.go)
-4. [`backend/internal/battle/engine/worker/worker.go`](../../backend/internal/battle/engine/worker/worker.go)
-5. [`backend/internal/battle/repo/postgres.go`](../../backend/internal/battle/repo/postgres.go)
-6. [`frontend/src/pages/BattlePage.tsx`](../../frontend/src/pages/BattlePage.tsx)
+3. [`backend/internal/battle/service/service.go`](../../backend/internal/battle/service/service.go)
+4. [`backend/internal/battle/worker/worker.go`](../../backend/internal/battle/worker/worker.go)
+5. [`backend/internal/battle/repo/battles.go`](../../backend/internal/battle/repo/battles.go) and [`queue.go`](../../backend/internal/battle/repo/queue.go)
+6. [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx)
 
 ### Learn the AI decision path
 
 1. [`backend/internal/ai/types.go`](../../backend/internal/ai/types.go)
-2. [`backend/internal/battle/engine/worker/worker.go`](../../backend/internal/battle/engine/worker/worker.go), starting at `resolveDecisionWindow`
+2. [`backend/internal/battle/worker/worker.go`](../../backend/internal/battle/worker/worker.go), starting at `resolveDecisionWindow`
 3. [`backend/internal/battle/repo/decisions.go`](../../backend/internal/battle/repo/decisions.go)
 4. [`backend/internal/ai/mcpserver/server.go`](../../backend/internal/ai/mcpserver/server.go)
 5. [`backend/internal/ai/agent/worker.go`](../../backend/internal/ai/agent/worker.go)

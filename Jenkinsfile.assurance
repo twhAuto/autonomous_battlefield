@@ -50,8 +50,8 @@ pipeline {
             when { expression { params.MODE == 'nightly' } }
             steps {
                 sh './scripts/ci/security-and-policy.sh'
-                sh 'FUZZ_SECONDS=120 ./scripts/ci/fuzz-smoke.sh'
-                sh './scripts/ci/test-ai-evals.sh'
+                sh 'FUZZ_SECONDS=120 ./scripts/test/fuzz-smoke.sh'
+                sh './scripts/test/test-ai-evals.sh'
             }
         }
 

@@ -63,7 +63,7 @@ pipeline {
 
                         stage('Backend tests and coverage') {
                             steps {
-                                sh './scripts/ci/with-test-postgres.sh ./scripts/ci/test-backend.sh'
+                                sh './scripts/test/with-test-postgres.sh ./scripts/test/test-backend.sh'
                             }
                         }
 
@@ -75,13 +75,13 @@ pipeline {
 
                         stage('Fuzz smoke') {
                             steps {
-                                sh 'FUZZ_SECONDS=5 ./scripts/ci/fuzz-smoke.sh'
+                                sh 'FUZZ_SECONDS=5 ./scripts/test/fuzz-smoke.sh'
                             }
                         }
 
                         stage('Deterministic AI evaluation') {
                             steps {
-                                sh './scripts/ci/test-ai-evals.sh'
+                                sh './scripts/test/test-ai-evals.sh'
                             }
                         }
 
@@ -104,8 +104,9 @@ pipeline {
                                     kubectl kustomize deploy/overlays/local/observability >/dev/null
                                     kubectl kustomize deploy/overlays/local/logging-collector >/dev/null
                                     kubectl kustomize deploy/overlays/local/gateway >/dev/null
-                                    ./scripts/ci/test-deployment-components.sh
-                                    ./scripts/ci/test-kind-deployment.sh
+                                    ./scripts/test/test-deployment-components.sh
+                                    ./scripts/test/test-kind-deployment.sh
+                                    ./scripts/test/test-command-wrappers.sh
                                 '''
                             }
                         }
@@ -167,7 +168,7 @@ pipeline {
 
                         stage('Main backend coverage') {
                             steps {
-                                sh './scripts/ci/with-test-postgres.sh ./scripts/ci/test-backend.sh'
+                                sh './scripts/test/with-test-postgres.sh ./scripts/test/test-backend.sh'
                             }
                         }
 
@@ -189,7 +190,7 @@ pipeline {
 
                         stage('Main deterministic AI evaluation') {
                             steps {
-                                sh './scripts/ci/test-ai-evals.sh'
+                                sh './scripts/test/test-ai-evals.sh'
                             }
                         }
                     }
@@ -214,8 +215,9 @@ pipeline {
                 stage('Determine deployment scope') {
                     steps {
                         sh '''
-                            ./scripts/ci/test-deployment-components.sh
-                            ./scripts/ci/test-kind-deployment.sh
+                            ./scripts/test/test-deployment-components.sh
+                            ./scripts/test/test-kind-deployment.sh
+                            ./scripts/test/test-command-wrappers.sh
                         '''
                         script {
                             def previousSuccessfulCommit = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: ''

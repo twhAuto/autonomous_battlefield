@@ -6,10 +6,10 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
+	battleapi "github.com/twh09/autonomous_battlefield/backend/internal/battle/api"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/catalog"
 	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
-	battleapi "github.com/twh09/autonomous_battlefield/backend/internal/battle/server/api"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/server/catalog"
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/server/service"
+	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	factionapi "github.com/twh09/autonomous_battlefield/backend/internal/faction/api"
 	factionrepo "github.com/twh09/autonomous_battlefield/backend/internal/faction/repo"
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"

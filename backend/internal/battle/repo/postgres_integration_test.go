@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/engine/worker"
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/server/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/simulation/controller"
+	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
 	battle "github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
