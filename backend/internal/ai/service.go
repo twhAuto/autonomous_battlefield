@@ -63,7 +63,7 @@ func (s *DecisionService) rejectInvalidPlan(ctx context.Context, record Decision
 		}
 	}
 	rejected := SubmissionResult{Status: "rejected", Errors: issues}
-	if record.Runtime != "cli" {
+	if record.Runtime != "cli" && record.Runtime != "api" {
 		return rejected, nil
 	}
 	countJSON, _ := json.Marshal(record.ProviderMetadata["validationFailures"])
@@ -98,7 +98,7 @@ func ValidateSubmission(record DecisionRecord, submission PlanSubmission) []Vali
 	if err := controller.ValidatePlanProposal(submission.Plan, record.Observation.Legal.ActionKinds); err != nil {
 		issues = append(issues, ValidationIssue{Field: "plan", Code: "invalid", Message: err.Error()})
 	}
-	if record.Runtime == "cli" && len(submission.Plan.ActionWeights) == 0 && len(submission.Plan.RecruitmentPriorities) == 0 && len(submission.Plan.ConstructionPriorities) == 0 && submission.Plan.ReserveGold == 0 {
+	if (record.Runtime == "cli" || record.Runtime == "api") && len(submission.Plan.ActionWeights) == 0 && len(submission.Plan.RecruitmentPriorities) == 0 && len(submission.Plan.ConstructionPriorities) == 0 && submission.Plan.ReserveGold == 0 {
 		issues = append(issues, ValidationIssue{Field: "plan", Code: "empty_decision", Message: "Provide an explicit tactical weight, production priority, or gold reserve; a name and rationale alone are not a strategy."})
 	}
 	legalUnits := make(map[string]bool, len(record.Observation.Legal.Units))

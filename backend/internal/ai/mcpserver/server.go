@@ -312,6 +312,7 @@ type submitPlanInput struct {
 
 func (s *Server) mcpServer() *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "autonomous-battlefield-decisions", Version: ai.ToolSchema}, nil)
+	server.AddReceivingMiddleware(s.logToolInputFailures)
 	mcp.AddTool(server, &mcp.Tool{Name: "get_decision_context", Description: "Read the bounded faction-visible context authorized for this decision request."}, s.getDecisionContext)
 	mcp.AddTool(server, &mcp.Tool{Name: "submit_strategy_plan", Description: "Validate and atomically submit the strategy and production plan for this decision request."}, s.submitStrategyPlan)
 	return server

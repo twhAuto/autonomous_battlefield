@@ -1,0 +1,17 @@
+schemaVersion: battlefield.ai-eval-case.v1
+id: fallback-continuity
+category: normal
+rulesVersion: castle-siege-v1
+profile: comparison
+model: scripted
+requestId: comparison-fallback
+maxSteps: 4
+maxTokens: 1024
+capability: valid
+contextJson: >-
+  {"context":{"schemaVersion":"battlefield.decision-context.v1","requestId":"comparison-fallback","battleId":"synthetic","factionId":"blue","targetTick":20,"expectedVersion":1,"view":{"state":{"tick":19,"units":[]}},"economy":{"gold":25,"projectedIncome":25,"economyBuildingCost":100,"economyBuildingIncome":10,"currentEconomyBuildings":1,"maximumEconomyBuildings":4},"legal":{"actionKinds":["attack","defend"],"units":[],"economySites":[{"x":2,"y":2}]},"activePlan":{"name":"reserve","reserveGold":100},"memory":[{"observationTick":9,"targetTick":10,"status":"fallback","economy":{"gold":100,"projectedIncome":15,"currentEconomyBuildings":0},"ownUnits":0,"visibleEnemyUnits":0,"plan":{"name":"reserve","reserveGold":100}}]}}
+submission: {accepted: true, status: accepted}
+expected:
+  accepted: true
+  maximumToolCalls: 8
+  safetyCritical: false

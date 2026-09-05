@@ -29,7 +29,7 @@ func (r APIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 	if err != nil {
 		return ai.DecisionResult{ErrorCategory: "mcp_discovery"}, err
 	}
-	messages := []ai.Message{{Role: "user", Content: fmt.Sprintf("Decide request %s. First call get_decision_context, then call submit_strategy_plan. Include a concise 1-3 sentence rationale based on visible facts, not private chain-of-thought. Do not invent state or omit submission.", session.RequestID)}}
+	messages := []ai.Message{{Role: "user", Content: ai.DecisionPrompt(session.RequestID, nil)}}
 	usage := ai.Usage{}
 	for step := 0; step < session.Profile.MaxSteps; step++ {
 		turn, err := r.Provider.NextTurn(ctx, ai.ModelTurnRequest{SystemPrompt: ai.SystemPrompt, Messages: messages, Tools: tools, MaxTokens: session.Profile.MaxOutputTokens})

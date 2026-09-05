@@ -256,6 +256,34 @@ Codex uses the existing host login without copying it. Antigravity uses the host
 
 ## 7. Decision contracts and lifecycle
 
+### Shared prompt provenance and faction memory
+
+API, Codex, and Antigravity use one embedded decision policy assembled by
+`internal/ai/prompts.go`. Only context delivery differs: tool fetch versus
+Antigravity host-prefetched JSON. The persisted `PromptVersion` includes a SHA-256
+digest covering the base, policy, and both delivery templates. Both API and CLI
+model submissions require a substantive plan and stop after three validation
+rejections.
+
+Before hashing a decision observation, the engine reads at most three earlier
+resolved records scoped in SQL to the same battle, attempt, and faction.
+`BuildFactionMemory` produces historical economy/unit counts and resolved plans,
+with observation ticks and accepted/fallback status, bounded to 8 KiB. These
+snapshots describe state before the historical decisions, not attributed effects.
+Memory is embedded in the frozen observation JSON and included in its hash;
+no separate mutable scratchpad or database migration is required. Read failures
+are logged and the engine proceeds without optional history. Reuse requires
+matching prompt/tool versions and profile/provider/runtime/model identifiers as
+well as observation hashes. Attempts never read memory from previous attempts.
+
+`aieval -mode compare` runs matched, repeated synthetic decisions through the
+production MCP validator with isolated loopback repositories and API/CLI runners.
+It verifies persisted acceptance rather than trusting CLI success, and records
+context hashes, prompt provenance, validation failures, latency, usage and
+canonical plan diversity. This measures individual decisions; win rate remains
+null. CLI internal token/turn budgets differ from API enforcement and are labeled
+in reports. See [AI comparisons](../operations/ai-comparisons.md).
+
 ### Bounded context
 
 A decision context contains:
@@ -549,3 +577,17 @@ trying the Google mirror followed by the official GHCR repository on failure.
 Filesystem scanning starts only after successful preparation, and exhausted
 preparation attempts fail the gate. Runtime services do not depend on this cache.
 See [Jenkins recovery](../operations/jenkins.md#trivy-database-download-recovery).
+
+### Submission-shape failures and fallback attribution
+
+The shared decision instructions require a flat MCP argument object with all
+required fields, including empty objects/arrays where appropriate. Antigravity
+can otherwise stop after SDK schema errors without reaching the typed plan
+handler. MCP receiving middleware records `decision_tool_input_rejected` with
+only the authenticated request ID, allowlisted missing field names, and a
+nested-plan flag; argument values and raw SDK errors are excluded.
+
+When a runner fails before the deadline, the engine carries its error category
+into the fallback record instead of replacing it with `timeout`. Unresolved
+requests that reach the deadline retain the timeout category. CLI terminal
+success remains subject to the worker's accepted-plan check.

@@ -364,6 +364,8 @@ type battleDB struct {
 	execTag     pgconn.CommandTag
 	execErr     error
 	execArgs    []any
+	querySQL    string
+	queryArgs   []any
 	queryRowSQL string
 }
 
@@ -372,7 +374,9 @@ func (db *battleDB) Exec(_ context.Context, _ string, arguments ...any) (pgconn.
 	return db.execTag, db.execErr
 }
 
-func (db *battleDB) Query(context.Context, string, ...any) (pgx.Rows, error) {
+func (db *battleDB) Query(_ context.Context, sql string, args ...any) (pgx.Rows, error) {
+	db.querySQL = sql
+	db.queryArgs = args
 	return db.rows, db.queryErr
 }
 

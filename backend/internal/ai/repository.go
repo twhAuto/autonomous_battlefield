@@ -37,6 +37,7 @@ type CreateDecisionParams struct {
 
 type DecisionRepository interface {
 	CreateOrReuseDecision(context.Context, CreateDecisionParams) (DecisionRecord, error)
+	ListFactionMemory(context.Context, string, int, string, uint64) ([]FactionMemoryEntry, error)
 	GetDecision(context.Context, string) (DecisionRecord, error)
 	ListWindowDecisions(context.Context, string, int, uint64) ([]DecisionRecord, error)
 	SubmitDecisionPlan(context.Context, PlanSubmission) (SubmissionResult, error)

@@ -297,3 +297,7 @@ func TestUsageRequiresAcceptedPlan(t *testing.T) {
 		})
 	}
 }
+
+func (r *fakeRepository) ListFactionMemory(context.Context, string, int, string, uint64) ([]ai.FactionMemoryEntry, error) {
+	return nil, nil
+}
