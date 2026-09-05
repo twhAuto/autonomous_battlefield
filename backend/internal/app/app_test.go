@@ -11,12 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/catalog"
+	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 )
 
 func TestNewAPIComposesHTTPApplication(t *testing.T) {
 	application := NewAPI(appDatabase{}, &catalog.Catalog{}, 10_000)
 	response := httptest.NewRecorder()
-	application.HTTPHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	lifecycle := httpapi.NewLifecycleHandler()
+	lifecycle.Activate(application.HTTPHandler(), appDatabase{}, nil)
+	lifecycle.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("health status = %d, want %d", response.Code, http.StatusOK)
 	}

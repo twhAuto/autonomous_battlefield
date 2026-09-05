@@ -1,3 +1,5 @@
+import { apiFetch, createApiClient } from '../../../shared/api/request'
+
 export interface CreateFactionInput {
   id: string
   name: string
@@ -34,7 +36,7 @@ export interface Faction {
 }
 
 export async function listFactionRulesets(signal?: AbortSignal): Promise<FactionRuleset[]> {
-  const response = await apiFetch(`${API_URL}/v1/faction-rulesets`, { signal })
+  const response = await apiFetch(`/v1/faction-rulesets`, { signal })
   if (!response.ok) throw new FactionApiError('Faction design rules could not be loaded.', response.status)
   const body = (await response.json()) as { rulesets: FactionRuleset[] }
   return body.rulesets
@@ -50,19 +52,10 @@ export class FactionApiError extends Error {
   }
 }
 
-const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
+const factionFetch = createApiClient(FactionApiError)
 
 export async function listFactions(signal?: AbortSignal): Promise<Faction[]> {
-  let response: Response
-
-  try {
-    response = await apiFetch(`${API_URL}/v1/factions`, { signal })
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw error
-    throw new FactionApiError(
-      'The command post is unreachable. Check that the battlefield server is running.',
-    )
-  }
+  const response = await factionFetch(`/v1/factions`, { signal })
 
   if (!response.ok) {
     throw new FactionApiError(
@@ -78,19 +71,11 @@ export async function listFactions(signal?: AbortSignal): Promise<Faction[]> {
 export async function createFaction(
   faction: CreateFactionInput,
 ): Promise<void> {
-  let response: Response
-
-  try {
-    response = await apiFetch(`${API_URL}/v1/factions`, {
+  const response = await factionFetch(`/v1/factions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(faction),
     })
-  } catch {
-    throw new FactionApiError(
-      'The command post is unreachable. Check that the battlefield server is running.',
-    )
-  }
 
   if (response.ok) return
 
@@ -123,14 +108,7 @@ export async function createFaction(
 }
 
 export async function deleteFaction(id: string): Promise<void> {
-	let response: Response
-	try {
-		response = await apiFetch(`${API_URL}/v1/factions/${encodeURIComponent(id)}`, { method: 'DELETE' })
-	} catch {
-		throw new FactionApiError(
-			'The command post is unreachable. Check that the battlefield server is running.',
-		)
-	}
+	const response = await factionFetch(`/v1/factions/${encodeURIComponent(id)}`, { method: 'DELETE' })
 	if (response.ok) return
 	if (response.status === 404) {
 		throw new FactionApiError('That faction no longer exists.', response.status)
@@ -140,4 +118,3 @@ export async function deleteFaction(id: string): Promise<void> {
 	}
 	throw new FactionApiError('The faction could not be deleted. Please try again.', response.status)
 }
-import { apiFetch } from '../../../shared/api/request'

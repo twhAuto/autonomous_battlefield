@@ -187,8 +187,20 @@ if ! deployment_component_selected frontend \
   exit 1
 fi
 
-if deployment_components_select "unknown" test 2>/dev/null; then
-  echo "Unknown component selection unexpectedly succeeded." >&2
+for invalid in unknown '' , backend, ,frontend backend,,frontend 'backend frontend' $'backend\nfrontend' all,frontend; do
+  if deployment_components_select "${invalid}" test 2>/dev/null; then
+    echo "Invalid component selection unexpectedly succeeded: ${invalid}" >&2
+    exit 1
+  fi
+done
+
+deployment_components_select all test
+for component in "${DEPLOYMENT_COMPONENT_ORDER[@]}"; do
+  deployment_component_selected "${component}"
+done
+deployment_components_select none test
+if deployment_components_any_selected; then
+  echo "Selecting none retained previous components." >&2
   exit 1
 fi
 

@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"unicode/utf8"
 )
 
 // UtilityController ranks engine-provided candidates using a current strategy
@@ -47,7 +46,7 @@ func NewUtilityController(config Config) (*UtilityController, error) {
 		config:         cloneConfig(config),
 		actionKinds:    actionKinds,
 		traitModifiers: traitModifiers,
-		fallback:       cloneProposal(config.FallbackPlan),
+		fallback:       ClonePlanProposal(config.FallbackPlan),
 		pending:        make(map[string]DecisionRequest),
 		expired:        make(map[string]Tick),
 	}, nil
@@ -301,129 +300,15 @@ func validateTraits(traits []Trait, actionKinds map[string]struct{}) error {
 	return nil
 }
 
-func validateProposal(proposal PlanProposal, actionKinds map[string]struct{}) error {
-	if strings.TrimSpace(proposal.Name) == "" {
-		return fmt.Errorf("%w: name is required", ErrInvalidPlan)
-	}
-	if utf8.RuneCountInString(strings.TrimSpace(proposal.Rationale)) > maxRationaleCharacters {
-		return fmt.Errorf("%w: rationale exceeds %d characters", ErrInvalidPlan, maxRationaleCharacters)
-	}
-	if proposal.ReserveGold < 0 {
-		return fmt.Errorf("%w: reserve gold cannot be negative", ErrInvalidPlan)
-	}
-	if err := validateActionWeights(proposal.ActionWeights, actionKinds); err != nil {
-		return err
-	}
-	if err := validateTargetBonuses(proposal.TargetBonuses); err != nil {
-		return err
-	}
-	if err := validateSpendOrder(proposal.SpendOrder); err != nil {
-		return err
-	}
-	if err := validateRecruitmentPriorities(proposal.RecruitmentPriorities); err != nil {
-		return err
-	}
-	return validateConstructionPriorities(proposal.ConstructionPriorities)
-}
-
-func validateActionWeights(weights map[string]int64, actionKinds map[string]struct{}) error {
-	for kind, weight := range weights {
-		if _, ok := actionKinds[kind]; !ok {
-			return fmt.Errorf("%w: unsupported action kind %q", ErrInvalidPlan, kind)
-		}
-		if weight < 0 || weight > maxWeight {
-			return fmt.Errorf("%w: action weight for %q is outside [0, %d]", ErrInvalidPlan, kind, maxWeight)
-		}
-	}
-	return nil
-}
-
-func validateTargetBonuses(bonuses map[string]int64) error {
-	for target, bonus := range bonuses {
-		if strings.TrimSpace(target) == "" {
-			return fmt.Errorf("%w: target bonus key is required", ErrInvalidPlan)
-		}
-		if bonus < -maxTargetBonus || bonus > maxTargetBonus {
-			return fmt.Errorf("%w: target bonus for %q is outside [%d, %d]", ErrInvalidPlan, target, -maxTargetBonus, maxTargetBonus)
-		}
-	}
-	return nil
-}
-
-func validateSpendOrder(spendOrder []string) error {
-	seenSpend := make(map[string]bool, len(spendOrder))
-	for _, kind := range spendOrder {
-		if kind != "construction" && kind != "recruitment" {
-			return fmt.Errorf("%w: unsupported spend kind %q", ErrInvalidPlan, kind)
-		}
-		if seenSpend[kind] {
-			return fmt.Errorf("%w: duplicate spend kind %q", ErrInvalidPlan, kind)
-		}
-		seenSpend[kind] = true
-	}
-	return nil
-}
-
-func validateRecruitmentPriorities(priorities []string) error {
-	seenRecruitment := make(map[string]bool, len(priorities))
-	for _, unitType := range priorities {
-		if strings.TrimSpace(unitType) == "" || seenRecruitment[unitType] {
-			return fmt.Errorf("%w: recruitment priorities must be unique and non-empty", ErrInvalidPlan)
-		}
-		seenRecruitment[unitType] = true
-	}
-	return nil
-}
-
-func validateConstructionPriorities(priorities []Coordinate) error {
-	seenSites := make(map[Coordinate]bool, len(priorities))
-	for _, site := range priorities {
-		if seenSites[site] {
-			return fmt.Errorf("%w: construction priorities must be unique", ErrInvalidPlan)
-		}
-		seenSites[site] = true
-	}
-	return nil
-}
-
-// ValidatePlanProposal validates a data-driven plan against the action kinds
-// supported by a ruleset. It lets scenario loaders reject invalid plans before
-// a battle is queued.
-func ValidatePlanProposal(proposal PlanProposal, actionKinds []string) error {
-	allowed := make(map[string]struct{}, len(actionKinds))
-	for _, kind := range actionKinds {
-		if strings.TrimSpace(kind) == "" {
-			return fmt.Errorf("%w: action kinds cannot be empty", ErrInvalidPlan)
-		}
-		if _, duplicate := allowed[kind]; duplicate {
-			return fmt.Errorf("%w: duplicate action kind %q", ErrInvalidPlan, kind)
-		}
-		allowed[kind] = struct{}{}
-	}
-	if len(allowed) == 0 {
-		return fmt.Errorf("%w: at least one action kind is required", ErrInvalidPlan)
-	}
-	return validateProposal(proposal, allowed)
-}
-
 func cloneConfig(config Config) Config {
 	copy := config
 	copy.ActionKinds = append([]string(nil), config.ActionKinds...)
-	copy.FallbackPlan = cloneProposal(config.FallbackPlan)
+	copy.FallbackPlan = ClonePlanProposal(config.FallbackPlan)
 	copy.Traits = make([]Trait, len(config.Traits))
 	for i, trait := range config.Traits {
 		copy.Traits[i] = Trait{ID: trait.ID, ActionWeightModifiers: cloneMap(trait.ActionWeightModifiers)}
 	}
 	return copy
-}
-
-func cloneProposal(proposal PlanProposal) PlanProposal {
-	return PlanProposal{
-		Name: proposal.Name, Rationale: proposal.Rationale, ActionWeights: cloneMap(proposal.ActionWeights), TargetBonuses: cloneMap(proposal.TargetBonuses),
-		ReserveGold: proposal.ReserveGold, SpendOrder: append([]string(nil), proposal.SpendOrder...),
-		ConstructionPriorities: append([]Coordinate(nil), proposal.ConstructionPriorities...),
-		RecruitmentPriorities:  append([]string(nil), proposal.RecruitmentPriorities...),
-	}
 }
 
 func clonePlan(plan StrategyPlan) StrategyPlan {

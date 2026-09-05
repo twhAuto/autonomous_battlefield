@@ -1,4 +1,4 @@
-const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
+import { createApiClient } from '../../../shared/api/request'
 
 export interface ScenarioSummary {
   id: string
@@ -156,16 +156,7 @@ export class BattleApiError extends Error {
   }
 }
 
-async function battlefieldFetch(path: string, init?: RequestInit): Promise<Response> {
-  try {
-    return await apiFetch(`${API_URL}${path}`, init)
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw error
-    throw new BattleApiError(
-      'The command post is unreachable. Check that the battlefield server is running.',
-    )
-  }
-}
+const battlefieldFetch = createApiClient(BattleApiError)
 
 export async function listScenarios(signal?: AbortSignal): Promise<ScenarioSummary[]> {
   const response = await battlefieldFetch('/v1/scenarios', { signal })
@@ -216,30 +207,26 @@ export async function getBattle(id: string, signal?: AbortSignal): Promise<Battl
   throw new BattleApiError('Battle status could not be loaded.', response.status)
 }
 
-export async function stopBattle(id: string): Promise<BattleRun> {
-  const response = await battlefieldFetch(`/v1/battles/${encodeURIComponent(id)}/stop`, { method: 'POST' })
-  if (response.ok) return (await response.json()) as BattleRun
-  if (response.status === 404) throw new BattleApiError('This battle could not be found.', 404)
-  if (response.status === 409) throw new BattleApiError('This battle has already ended.', 409)
-  if (response.status === 400) throw new BattleApiError('That battle identifier is invalid.', 400)
-  throw new BattleApiError('The battle could not be stopped.', response.status)
-}
-
-async function setBattlePaused(id: string, action: 'pause' | 'resume'): Promise<BattleRun> {
+async function controlBattle(id: string, action: 'stop' | 'pause' | 'resume'): Promise<BattleRun> {
   const response = await battlefieldFetch(`/v1/battles/${encodeURIComponent(id)}/${action}`, { method: 'POST' })
   if (response.ok) return (await response.json()) as BattleRun
   if (response.status === 404) throw new BattleApiError('This battle could not be found.', 404)
   if (response.status === 409) throw new BattleApiError('This battle has already ended.', 409)
   if (response.status === 400) throw new BattleApiError('That battle identifier is invalid.', 400)
-  throw new BattleApiError(`The battle could not be ${action === 'pause' ? 'paused' : 'resumed'}.`, response.status)
+  const outcome = { stop: 'stopped', pause: 'paused', resume: 'resumed' }[action]
+  throw new BattleApiError(`The battle could not be ${outcome}.`, response.status)
+}
+
+export function stopBattle(id: string): Promise<BattleRun> {
+  return controlBattle(id, 'stop')
 }
 
 export function pauseBattle(id: string): Promise<BattleRun> {
-  return setBattlePaused(id, 'pause')
+  return controlBattle(id, 'pause')
 }
 
 export function resumeBattle(id: string): Promise<BattleRun> {
-  return setBattlePaused(id, 'resume')
+  return controlBattle(id, 'resume')
 }
 
 export async function listBattleEvents(
@@ -269,4 +256,3 @@ export async function listDecisionHistory(id: string, attempt: number, signal?: 
   if (!response.ok) throw new BattleApiError('Decision history could not be loaded.', response.status)
   return ((await response.json()) as { decisions: DecisionHistory[] }).decisions
 }
-import { apiFetch } from '../../../shared/api/request'

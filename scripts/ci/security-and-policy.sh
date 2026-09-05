@@ -94,7 +94,7 @@ echo "Scanning source and infrastructure configuration with Trivy..."
 if ! docker run --rm \
   --volume "${project_dir}:/project:ro" \
   --workdir /project \
-  "${TRIVY_IMAGE:?TRIVY_IMAGE must be exported by Jenkins}" \
+  "${TRIVY_IMAGE}" \
   fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL \
   --include-dev-deps "${trivy_ignore_unfixed[@]}" --skip-dirs artifacts --exit-code 1 \
   --format json --output /dev/stdout . \
@@ -118,10 +118,11 @@ done
 echo "Scanning freshly rendered Kubernetes configuration with Trivy..."
 if ! docker run --rm \
   --volume "${project_dir}:/project:ro" \
+  --volume "${artifact_dir}:/reports:ro" \
   --workdir /project \
-  "${TRIVY_IMAGE:?TRIVY_IMAGE must be exported by Jenkins}" \
+  "${TRIVY_IMAGE}" \
   config --severity HIGH,CRITICAL --exit-code 1 \
-  --format json --output /dev/stdout /project/artifacts/security/rendered-manifests.yaml \
+  --format json --output /dev/stdout /reports/rendered-manifests.yaml \
   >"${artifact_dir}/trivy-kubernetes.json"; then
   failure=1
 fi
@@ -135,9 +136,10 @@ fi
 
 echo "Evaluating application workload policy..."
 if ! docker run --rm \
-  --volume "${project_dir}:/project:ro" \
-  "${CONFTEST_IMAGE}" test /project/artifacts/security/rendered-manifests.yaml \
-  --policy /project/policy/kubernetes --all-namespaces --output json \
+  --volume "${project_dir}/policy/kubernetes:/policy:ro" \
+  --volume "${artifact_dir}:/reports:ro" \
+  "${CONFTEST_IMAGE}" test /reports/rendered-manifests.yaml \
+  --policy /policy --all-namespaces --output json \
   >"${artifact_dir}/conftest.json"; then
   failure=1
 fi

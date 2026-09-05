@@ -47,6 +47,7 @@ effective_frontend_tag=""
 effective_backend_ref=""
 effective_frontend_ref=""
 declare -A previous_revisions=()
+rollout_pids=()
 
 deployment_components_select "${deploy_components}" deployment
 if ! deployment_components_any_selected; then
@@ -54,7 +55,9 @@ if ! deployment_components_any_selected; then
   exit 0
 fi
 
-trap kind_deploy_cleanup EXIT INT TERM
+trap kind_deploy_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 kind_deploy_validate_inputs "$@"
 kind_deploy_validate_cluster

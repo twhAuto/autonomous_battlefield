@@ -6,10 +6,14 @@ project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=scripts/lib/deployment-components.sh
 source "${project_dir}/scripts/lib/deployment-components.sh"
 
+trivy_image_override="${TRIVY_IMAGE:-}"
+# shellcheck source=scripts/ci/tool-versions.env
+source "${project_dir}/scripts/ci/tool-versions.env"
+
 backend_image="${BACKEND_IMAGE:-autonomous-battlefield-backend}"
 frontend_image="${FRONTEND_IMAGE:-autonomous-battlefield-frontend}"
 image_tag="${1:-${IMAGE_TAG:-$(git -C "${project_dir}" rev-parse HEAD)}}"
-trivy_image="${TRIVY_IMAGE:-ghcr.io/aquasecurity/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969}"
+trivy_image="${trivy_image_override:-${TRIVY_IMAGE}}"
 trivy_cache_volume="${TRIVY_CACHE_VOLUME:-autonomous-battlefield-trivy-cache}"
 scan_components="${SCAN_COMPONENTS:-${DEPLOY_COMPONENTS:-all}}"
 deployment_components_select "${scan_components}" scan

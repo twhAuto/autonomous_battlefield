@@ -10,9 +10,10 @@ import (
 )
 
 func TestReadinessReturnsOKWhenDatabaseResponds(t *testing.T) {
-	router := NewRouter(NewReadinessRoutes(pingerFunc(func(context.Context) error {
+	router := NewLifecycleHandler()
+	router.Activate(http.NotFoundHandler(), pingerFunc(func(context.Context) error {
 		return nil
-	})))
+	}), nil)
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/readyz", nil))
@@ -26,9 +27,10 @@ func TestReadinessReturnsOKWhenDatabaseResponds(t *testing.T) {
 }
 
 func TestReadinessReturnsUnavailableWhenDatabasePingFails(t *testing.T) {
-	router := NewRouter(NewReadinessRoutes(pingerFunc(func(context.Context) error {
+	router := NewLifecycleHandler()
+	router.Activate(http.NotFoundHandler(), pingerFunc(func(context.Context) error {
 		return errors.New("database is unavailable")
-	})))
+	}), nil)
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/readyz", nil))
@@ -42,12 +44,12 @@ func TestReadinessReturnsUnavailableWhenDatabasePingFails(t *testing.T) {
 }
 
 func TestReadinessBoundsDatabasePing(t *testing.T) {
-	routes := NewReadinessRoutes(pingerFunc(func(ctx context.Context) error {
+	router := NewLifecycleHandler()
+	router.Activate(http.NotFoundHandler(), pingerFunc(func(ctx context.Context) error {
 		<-ctx.Done()
 		return ctx.Err()
-	}))
-	routes.timeout = time.Millisecond
-	router := NewRouter(routes)
+	}), nil)
+	router.timeout = time.Millisecond
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/readyz", nil))
@@ -57,8 +59,9 @@ func TestReadinessBoundsDatabasePing(t *testing.T) {
 	}
 }
 
-func TestHealthEndpoints(t *testing.T) {
-	router := NewRouter()
+func TestLifecycleHealthEndpoints(t *testing.T) {
+	router := NewLifecycleHandler()
+	router.Activate(http.NotFoundHandler(), pingerFunc(func(context.Context) error { return nil }), nil)
 	for _, path := range []string{"/healthz", "/livez", "/startupz"} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		response := httptest.NewRecorder()
@@ -89,4 +92,11 @@ type pingerFunc func(context.Context) error
 
 func (f pingerFunc) Ping(ctx context.Context) error {
 	return f(ctx)
+}
+
+func TestApplicationRouterDoesNotOwnProcessProbes(t *testing.T) {
+	router := NewRouter()
+	for _, path := range []string{"/healthz", "/livez", "/startupz", "/readyz"} {
+		assertStatus(t, router, path, http.StatusNotFound)
+	}
 }

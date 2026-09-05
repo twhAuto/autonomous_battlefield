@@ -69,11 +69,17 @@ The backend commands are `cmd/server`, `cmd/engine`, `cmd/mcp`, `cmd/agent`, and
 
 ## 4. Architectural boundaries
 
+### Process health ownership
+
+The process entry points compose `httpapi.LifecycleHandler` around application traffic. That handler alone serves `/startupz`, `/livez`, `/healthz`, `/readyz`, and `/metrics`; the inner application router does not register duplicate probes. Engine readiness combines `Worker.Ready()` with a database ping. Database failure affects readiness while liveness remains available.
+
 ### Source ownership
 
 `internal/game` owns deterministic simulation and its infrastructure-free `controller` subpackage. `internal/battle/{api,service,catalog,worker,repo}` separates HTTP delivery, use cases, authored inputs, durable execution, and persistence. Repository files group battle operations, leases, and tick writes within one adapter package, preserving atomic transactions.
 
-Frontend features live in `src/features/{battles,factions,auth}`, with application composition in `src/app` and shared transport and visuals in `src/shared`. Kubernetes manifests remain in `deploy`; Terraform remains in `infra/aws`. Launchers live in `scripts/dev` and `scripts/cd`, test runners in `scripts/test`, and operational guides in `docs/operations`. Root launch commands and old CI test commands forward to their implementations.
+Worker code separates decision-window orchestration from execution and lifecycle waits within the same package. The controller package separates production plan validation and deep copying from its retained standalone utility-controller implementation. All proposal copies use the same helper, preserving independent mutable state.
+
+Frontend features live in `src/features/{battles,factions,auth}`, with application composition in `src/app` and shared transport and visuals in `src/shared`. Kubernetes manifests remain in `deploy`; Terraform remains in `infra/aws`. Launchers live in `scripts/dev` and `scripts/cd`, test runners in `scripts/test`, and operational guides in `docs/operations`. Root launch commands and old CI test commands forward to their implementations. Battle-page data hooks and panels remain feature-local. Shared HTTP transport applies the API base URL, preserves cancellation, and maps network failures to feature errors; authentication handles its own 401 responses without broadcasting session expiry.
 
 ### Deterministic simulation boundary
 
@@ -421,6 +427,18 @@ because the pinned Kyverno 1.15 verifier discovers that layout. Registry access
 uses short-lived Docker configuration in Jenkins and a namespace-local pull
 Secret for the admission controller; neither changes the cryptographic trust
 root.
+
+Deployment staging copies only selected overlays and their base dependencies.
+Infrastructure secret inputs are staged explicitly; unrelated local credentials
+are not copied. Observability verification waits for completion of each new
+Deployment rollout concurrently and reports failures before setup verification.
+The source-security stage owns CI manifest rendering and policy validation;
+scanner versions are centralized in `scripts/ci/tool-versions.env`.
+
+Runtime assurance runs k6 and ZAP with Linux host networking so they can reach
+the kind gateway on `127.0.0.1:8888` using the `battlefield.localhost` route.
+Scanner containers use the agent UID/GID for writable, Jenkins-owned reports;
+ZAP keeps its runtime home and working files in container-local `/tmp`.
 
 W3C trace context is persisted on `battle_runs` and `battle_decisions`. API inbound spans flow through PostgreSQL; engine and agent workers extract that durable context and create consumer spans before simulation, MCP, and provider work. Outbound HTTP clients and selected database operations are instrumented. The local OpenTelemetry Collector exports to Tempo, which Grafana provisions as a data source. Span attributes deliberately exclude prompts, credentials, capabilities, full observations, and raw provider responses.
 

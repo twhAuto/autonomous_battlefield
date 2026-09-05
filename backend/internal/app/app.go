@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -24,30 +23,24 @@ type App struct {
 	httpHandler http.Handler
 }
 
-type Database interface {
-	postgres.DBTX
-	Ping(context.Context) error
-}
-
-func NewAPI(db Database, catalog *catalog.Catalog, maxTicks uint64, registries ...*ai.ProfileRegistry) *App {
+func NewAPI(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, registries ...*ai.ProfileRegistry) *App {
 	return NewAPIWithAuthentication(db, catalog, maxTicks, authn.Config{}, registries...)
 }
 
-func NewAPIWithAuthentication(db Database, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, registries ...*ai.ProfileRegistry) *App {
+func NewAPIWithAuthentication(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, registries ...*ai.ProfileRegistry) *App {
 	factionRepository := factionrepo.NewPostgres(db)
 	factionService := factionservice.NewService(factionRepository, catalog)
 	battleService := battleservice.NewService(battlerepo.NewPostgres(db), factionRepository, catalog, maxTicks, registries...)
 
 	factionHandler := factionapi.NewHandler(factionService)
 	battleHandler := battleapi.NewHandler(battleService)
-	readinessRoutes := httpapi.NewReadinessRoutes(db)
 	authenticationManager := authn.NewManager(authentication)
 	authenticationMiddleware := func(next http.Handler) http.Handler {
 		return authn.RequireAuthentication(authentication.Enabled, authenticationManager, next)
 	}
 	router := httpapi.NewRouterWithMiddleware(
 		[]httpapi.Middleware{func(next http.Handler) http.Handler { return telemetry.HTTPHandler("battlefield-api.http", next) }, authenticationMiddleware},
-		readinessRoutes, authn.NewRoutes(authenticationManager), factionHandler, battleHandler,
+		authn.NewRoutes(authenticationManager), factionHandler, battleHandler,
 	)
 	return &App{httpHandler: router}
 }
