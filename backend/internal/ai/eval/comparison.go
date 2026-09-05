@@ -17,24 +17,27 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/mcpserver"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 // ComparisonVariant creates a fresh runner per sample; conversation state cannot
 // leak between repetitions or variants. Disabling memory is an explicit ablation.
 type ComparisonVariant struct {
-	ID            string
-	Provider      string
-	Model         string
-	Runtime       string
-	WithoutMemory bool
-	NewRunner     func() ai.DecisionRunner
+	ID               string
+	Provider         string
+	Model            string
+	Runtime          string
+	WithoutMemory    bool
+	WithoutKnowledge bool
+	NewRunner        func() ai.DecisionRunner
 }
 
 type ComparisonOptions struct {
-	Repetitions int           `json:"repetitions"`
-	MaxSteps    int           `json:"maxSteps"`
-	MaxTokens   int           `json:"maxTokens"`
-	Timeout     time.Duration `json:"timeoutNs"`
+	KnowledgeRetrieval ai.KnowledgeLimits `json:"knowledgeRetrieval"`
+	Repetitions        int                `json:"repetitions"`
+	MaxSteps           int                `json:"maxSteps"`
+	MaxTokens          int                `json:"maxTokens"`
+	Timeout            time.Duration      `json:"timeoutNs"`
 }
 
 type ComparisonReport struct {
@@ -47,6 +50,7 @@ type ComparisonReport struct {
 }
 
 type VariantReport struct {
+	WithoutKnowledge  bool               `json:"withoutKnowledge"`
 	ID                string             `json:"id"`
 	Provider          string             `json:"provider"`
 	Model             string             `json:"model"`
@@ -58,6 +62,7 @@ type VariantReport struct {
 }
 
 type ComparisonSample struct {
+	Knowledge *KnowledgeReport `json:"knowledge,omitempty"`
 	CaseReport
 	Repetition         int    `json:"repetition"`
 	ContextHash        string `json:"contextHash"`
@@ -67,6 +72,12 @@ type ComparisonSample struct {
 // Compare runs matched cases through the production MCP server and validator.
 // No production database is used. CLI exit status alone cannot pass a sample.
 func (r Runner) Compare(ctx context.Context, cases []Case, variants []ComparisonVariant, options ComparisonOptions) (ComparisonReport, error) {
+	if options.KnowledgeRetrieval == (ai.KnowledgeLimits{}) {
+		options.KnowledgeRetrieval = ai.DefaultKnowledgeLimits()
+	}
+	if err := options.KnowledgeRetrieval.Validate(); err != nil {
+		return ComparisonReport{}, err
+	}
 	report := ComparisonReport{SchemaVersion: "battlefield.ai-comparison.v1", PromptVersion: ai.PromptVersion, CorpusVersion: r.CorpusVersion, Options: options, Passed: true}
 	if len(cases) == 0 || len(cases) > 20 || len(variants) < 1 || len(variants) > 8 || options.Repetitions < 1 || options.Repetitions > 10 || options.MaxSteps < 1 || options.MaxSteps > 16 || options.MaxTokens < 1 || options.MaxTokens > 65536 || options.Timeout <= 0 || options.Timeout > 5*time.Minute {
 		return report, errors.New("comparison requires bounded cases, variants, repetitions, steps, tokens and timeout")
@@ -77,7 +88,7 @@ func (r Runner) Compare(ctx context.Context, cases []Case, variants []Comparison
 	if err != nil {
 		return report, err
 	}
-	observations, err := comparisonObservations(cases)
+	observations, err := comparisonObservations(cases, options.KnowledgeRetrieval)
 	if err != nil {
 		return report, err
 	}
@@ -104,13 +115,13 @@ func comparisonVariantReports(variants []ComparisonVariant) ([]VariantReport, er
 		if v.Runtime == "cli" {
 			enforcement = "per-sample deadline and three submission rejections; CLI internal turns/tokens are not host-enforced"
 		}
-		reports = append(reports, VariantReport{ID: v.ID, Provider: v.Provider, Model: v.Model, Runtime: v.Runtime, WithoutMemory: v.WithoutMemory, BudgetEnforcement: enforcement})
+		reports = append(reports, VariantReport{ID: v.ID, Provider: v.Provider, Model: v.Model, Runtime: v.Runtime, WithoutMemory: v.WithoutMemory, WithoutKnowledge: v.WithoutKnowledge, BudgetEnforcement: enforcement})
 	}
 	return reports, nil
 }
 
 // Validate the full corpus before any paid call.
-func comparisonObservations(cases []Case) ([]ai.DecisionContext, error) {
+func comparisonObservations(cases []Case, limits ai.KnowledgeLimits) ([]ai.DecisionContext, error) {
 	observations := make([]ai.DecisionContext, len(cases))
 	for i, c := range cases {
 		var envelope struct {
@@ -118,6 +129,17 @@ func comparisonObservations(cases []Case) ([]ai.DecisionContext, error) {
 		}
 		if len(c.ContextJSON) > 64<<10 || json.Unmarshal([]byte(c.ContextJSON), &envelope) != nil || envelope.Context.RequestID != c.RequestID || envelope.Context.TargetTick == 0 || envelope.Context.ExpectedVersion != 1 || len(envelope.Context.Legal.ActionKinds) == 0 {
 			return nil, fmt.Errorf("case %s needs a complete decision context with version 1", c.ID)
+		}
+		if c.KnowledgeRuleset != nil {
+			if err := game.ValidateRuleset(*c.KnowledgeRuleset); err != nil {
+				return nil, err
+			}
+			envelope.Context.Legal.Units = append([]game.UnitType(nil), c.KnowledgeRuleset.Units...)
+			var err error
+			envelope.Context.Knowledge, err = ai.RetrieveKnowledge(*c.KnowledgeRuleset, envelope.Context, limits)
+			if err != nil {
+				return nil, err
+			}
 		}
 		observations[i] = envelope.Context
 	}
@@ -133,6 +155,9 @@ func (r Runner) compareRepetition(ctx context.Context, cases []Case, observation
 				return err
 			}
 			observation := observations[ci]
+			if variants[vi].WithoutKnowledge {
+				observation.Knowledge = nil
+			}
 			if variants[vi].WithoutMemory {
 				observation.Memory = nil
 			}
@@ -200,7 +225,7 @@ func (r Runner) compareSample(ctx context.Context, c Case, observation ai.Decisi
 		entry.EstimatedCostUSD = &cost
 		entry.PricingVersion = r.Prices.Version
 	}
-	return ComparisonSample{CaseReport: entry, Repetition: repetition, ContextHash: hash, ValidationFailures: repository.validationFailures}, nil
+	return ComparisonSample{Knowledge: knowledgeReport(observation.Knowledge), CaseReport: entry, Repetition: repetition, ContextHash: hash, ValidationFailures: repository.validationFailures}, nil
 }
 
 // Only MCP's decision methods are exposed by this server, never AgentHandler.

@@ -13,6 +13,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
@@ -60,7 +61,7 @@ func (r *fakeRepository) RecordDecisionUsage(context.Context, string, ai.Usage, 
 }
 
 func TestStreamableMCPToolsAreAuthenticatedAndScoped(t *testing.T) {
-	repository := &fakeRepository{record: ai.DecisionRecord{ID: "request-1", Version: 1, TargetTick: 10, Observation: ai.DecisionContext{RequestID: "request-1", TargetTick: 10, ExpectedVersion: 1, Legal: ai.LegalChoices{ActionKinds: []string{"attack", "defend"}}}}}
+	repository := &fakeRepository{record: ai.DecisionRecord{ID: "request-1", Version: 1, TargetTick: 10, Observation: ai.DecisionContext{RequestID: "request-1", TargetTick: 10, ExpectedVersion: 1, Legal: ai.LegalChoices{ActionKinds: []string{"attack", "defend"}, Units: []game.UnitType{{ID: "ranger"}}}}}}
 	var logs bytes.Buffer
 	service := NewWithLogger(repository, "secret", []string{"https://agent.example"}, slog.New(slog.NewJSONHandler(&logs, nil)))
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -95,8 +96,8 @@ func TestStreamableMCPToolsAreAuthenticatedAndScoped(t *testing.T) {
 	if err != nil || !denied.IsError {
 		t.Fatalf("cross-request result=%#v err=%v", denied, err)
 	}
-	submitted, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "submit_strategy_plan", Arguments: map[string]any{"requestId": "request-1", "idempotencyKey": "once", "expectedVersion": 1, "targetTick": 10, "name": "advance", "rationale": "The visible lane is open, so reinforce the advance.", "actionWeights": map[string]any{"attack": 1200}, "reserveGold": 0, "spendOrder": []any{"recruitment"}, "constructionPriorities": []any{}, "recruitmentPriorities": []any{}}})
-	if err != nil || submitted.IsError || repository.submitted.IdempotencyKey != "once" || repository.submitted.Plan.Rationale == "" {
+	submitted, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "submit_strategy_plan", Arguments: map[string]any{"requestId": "request-1", "idempotencyKey": "once", "expectedVersion": 1, "targetTick": 10, "name": "advance", "rationale": "The visible lane is open, so reinforce the advance.", "actionWeights": map[string]any{"attack": 1200}, "reserveGold": 0, "spendOrder": []any{"recruitment"}, "constructionPriorities": []any{}, "recruitmentPriorities": []any{}, "recruitmentOrders": []any{map[string]any{"unitType": "ranger", "count": 2}}}})
+	if err != nil || submitted.IsError || repository.submitted.IdempotencyKey != "once" || repository.submitted.Plan.Rationale == "" || repository.submitted.Plan.RecruitmentOrders == nil || (*repository.submitted.Plan.RecruitmentOrders)[0].Count != 2 {
 		t.Fatalf("submit=%#v err=%v", submitted, err)
 	}
 	assertDecisionToolLogs(t, logs.String())

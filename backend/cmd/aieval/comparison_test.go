@@ -20,7 +20,7 @@ func TestFreeComparisonCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	var report aieval.ComparisonReport
-	if json.Unmarshal(data, &report) != nil || !report.Passed || len(report.Variants) != 2 || len(report.Variants[0].Samples) != 6 {
+	if json.Unmarshal(data, &report) != nil || !report.Passed || len(report.Variants) != 3 || len(report.Variants[0].Samples) != 8 {
 		t.Fatalf("invalid report: %s", data)
 	}
 }
@@ -53,6 +53,35 @@ func TestComparisonLiveGatesAndFactories(t *testing.T) {
 	for _, v := range []comparisonVariantConfig{{Provider: "unknown", Model: "test"}, {Provider: "openai", Model: "unknown"}, {Provider: "codex-cli"}} {
 		if _, err := makeComparisonVariant(v, prices); err == nil {
 			t.Fatal("invalid variant accepted")
+		}
+	}
+}
+
+func TestComparisonKnowledgeAblation(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "comparison.json")
+	if err := run([]string{"-mode", "compare", "-cases", "../../evals/comparison-cases", "-comparison-config", "../../evals/comparison.yaml", "-pricing", "../../evals/pricing.yaml", "-repetitions", "1", "-json", output}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report aieval.ComparisonReport
+	if err = json.Unmarshal(data, &report); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range report.Variants {
+		for _, s := range v.Samples {
+			if s.ID != "large-roster" {
+				continue
+			}
+			if v.WithoutKnowledge {
+				if s.Knowledge != nil {
+					t.Fatal("ablation retained knowledge")
+				}
+			} else if s.Knowledge == nil || len(s.Knowledge.SelectedIDs) != 16 || !s.Knowledge.Truncated {
+				t.Fatal("missing bounded knowledge")
+			}
 		}
 	}
 }

@@ -15,14 +15,15 @@ import (
 )
 
 type Config struct {
-	WorkerID          string
-	PollInterval      time.Duration
-	LeaseDuration     time.Duration
-	HeartbeatInterval time.Duration
-	ShutdownTimeout   time.Duration
-	MaxAttempts       int
-	DecisionTimeout   time.Duration
-	CapabilitySecret  string
+	KnowledgeRetrieval ai.KnowledgeLimits
+	WorkerID           string
+	PollInterval       time.Duration
+	LeaseDuration      time.Duration
+	HeartbeatInterval  time.Duration
+	ShutdownTimeout    time.Duration
+	MaxAttempts        int
+	DecisionTimeout    time.Duration
+	CapabilitySecret   string
 }
 
 type Worker struct {
@@ -39,6 +40,12 @@ func New(repository Repository, config Config) (*Worker, error) {
 }
 
 func NewWithLogger(repository Repository, config Config, logger *slog.Logger) (*Worker, error) {
+	if config.KnowledgeRetrieval == (ai.KnowledgeLimits{}) {
+		config.KnowledgeRetrieval = ai.DefaultKnowledgeLimits()
+	}
+	if err := config.KnowledgeRetrieval.Validate(); err != nil {
+		return nil, err
+	}
 	if config.DecisionTimeout == 0 {
 		config.DecisionTimeout = 2 * time.Minute
 	}

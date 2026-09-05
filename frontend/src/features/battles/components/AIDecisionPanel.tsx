@@ -47,7 +47,7 @@ export function AIDecisionPanel({ decisions, participantNames, message, hasModel
                 <DecisionDetail label="Tactics" value={formatWeights(decision.resolvedPlan?.actionWeights)} />
                 <DecisionDetail label="Reserve" value={decision.resolvedPlan ? `${decision.resolvedPlan.reserveGold ?? 0} gold` : '—'} />
                 <DecisionDetail label="Spend order" value={formatList(decision.resolvedPlan?.spendOrder)} />
-                <DecisionDetail label="Recruit" value={formatList(decision.resolvedPlan?.recruitmentPriorities)} />
+                <DecisionDetail label="Recruit" value={formatRecruitment(decision.resolvedPlan)} />
                 <DecisionDetail label="Build sites" value={formatCoordinates(decision.resolvedPlan?.constructionPriorities)} />
                 <DecisionDetail label="Model" value={decision.modelIdentifier || decision.profileId || '—'} />
               </dl>
@@ -74,4 +74,11 @@ function formatList(values?: string[]) {
 
 function formatCoordinates(values?: { x: number; y: number }[]) {
   return values?.length ? values.map(({ x, y }) => `(${x},${y})`).join(' → ') : '—'
+}
+
+function formatRecruitment(plan?: DecisionHistory['resolvedPlan']) {
+  if (plan?.recruitmentOrders != null) {
+    return plan.recruitmentOrders.length ? plan.recruitmentOrders.map(({ unitType, count }) => `${count} × ${unitType}`).join(' → ') : 'No purchases'
+  }
+  return formatList(plan?.recruitmentPriorities)
 }

@@ -35,6 +35,9 @@ data:
       heartbeatInterval: 10s
       shutdownTimeout: 10s
       maxAttempts: 3
+      knowledgeRetrieval:
+        maxUnitCards: 16
+        maxBytes: 16384
       workerIdEnvironmentVariable: ENGINE_WORKER_ID
     ai:
       environment: cluster

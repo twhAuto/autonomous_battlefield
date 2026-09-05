@@ -97,7 +97,7 @@ KUBECONFIG="$HOME/.config/autonomous-battlefield/dev/kubeconfig" \
   kubectl --context battlefield-dev -n battlefield get pods
 ```
 
-## Server transition before merging the pipeline change
+## Server registration and migration
 
 Perform these steps as the server's Jenkins agent account; do not run dev
 bootstrap or copy WSL kubeconfigs/secrets to the server.
@@ -143,7 +143,7 @@ bootstrap or copy WSL kubeconfigs/secrets to the server.
    database credential IDs. The dedicated kubeconfig is bound only inside the
    main pipeline's **Production rollout** stages, not PR or build stages.
    The profile must exist in the agent account's default config directory.
-7. Merge through the usual PR process. Observe **Publish immutable images**,
+7. Trigger delivery through the usual PR process. Observe **Publish immutable images**,
    **Deploy production**, verification, and runtime assurance. Confirm recorded
    deployment digests match GHCR and the production PVC is unchanged.
 8. Run another local dev deployment and compare production's recorded image

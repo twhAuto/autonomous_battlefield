@@ -4,6 +4,7 @@
 package eval
 
 import (
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -15,21 +16,22 @@ const (
 )
 
 type Case struct {
-	SchemaVersion string       `yaml:"schemaVersion"`
-	ID            string       `yaml:"id"`
-	Category      string       `yaml:"category"`
-	RulesVersion  string       `yaml:"rulesVersion"`
-	Profile       string       `yaml:"profile"`
-	Model         string       `yaml:"model"`
-	RequestID     string       `yaml:"requestId"`
-	MaxSteps      int          `yaml:"maxSteps"`
-	MaxTokens     int          `yaml:"maxTokens"`
-	Capability    string       `yaml:"capability"`
-	ContextJSON   string       `yaml:"contextJson"`
-	Turns         []ScriptTurn `yaml:"turns"`
-	ToolFailure   bool         `yaml:"toolFailure"`
-	Submission    Submission   `yaml:"submission"`
-	Expected      Expected     `yaml:"expected"`
+	KnowledgeRuleset *game.Ruleset `yaml:"knowledgeRuleset"`
+	SchemaVersion    string        `yaml:"schemaVersion"`
+	ID               string        `yaml:"id"`
+	Category         string        `yaml:"category"`
+	RulesVersion     string        `yaml:"rulesVersion"`
+	Profile          string        `yaml:"profile"`
+	Model            string        `yaml:"model"`
+	RequestID        string        `yaml:"requestId"`
+	MaxSteps         int           `yaml:"maxSteps"`
+	MaxTokens        int           `yaml:"maxTokens"`
+	Capability       string        `yaml:"capability"`
+	ContextJSON      string        `yaml:"contextJson"`
+	Turns            []ScriptTurn  `yaml:"turns"`
+	ToolFailure      bool          `yaml:"toolFailure"`
+	Submission       Submission    `yaml:"submission"`
+	Expected         Expected      `yaml:"expected"`
 }
 
 type ScriptTurn struct {

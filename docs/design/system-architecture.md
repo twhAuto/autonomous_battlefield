@@ -64,7 +64,7 @@ PostgreSQL is the durable coordination point. The API and engine do not call eac
 | Component | Responsibility | Direct dependencies |
 | --- | --- | --- |
 | React frontend | Administrator login, faction creation, battle staging, map display, controls, event stream, and AI decision history | Public API |
-| Public API | Administrator sessions, HTTP validation, scenario resolution, faction and battle persistence, and selectable model-profile catalog | PostgreSQL, scenario/ruleset YAML |
+| Public API | Administrator sessions, HTTP validation, scenario resolution, faction and battle persistence, and selectable model-profile catalog | PostgreSQL, scenario/ruleset YAML, optional Redis |
 | Battle engine | Battle queue claims, deterministic ticks, strategy windows, state/event persistence | PostgreSQL |
 | MCP decision service | Two request-scoped model tools and an internal agent control plane | PostgreSQL |
 | Decision agent | Model-decision claims and API or CLI model execution | MCP service, model provider |
@@ -72,7 +72,7 @@ PostgreSQL is the durable coordination point. The API and engine do not call eac
 | PostgreSQL | Factions, battle queue, event history, snapshots, leases, and model decisions | Persistent storage |
 | Scenario catalog | Authored map, timing, fallback plans, unit/building rules, and combat rules | Loaded by API and frozen into battle rows |
 
-The backend commands are `cmd/server`, `cmd/engine`, `cmd/mcp`, `cmd/agent`, and `cmd/aieval`. The first four are runtime processes; `aieval` runs offline evaluation cases and produces reports.
+The backend commands are `cmd/server`, `cmd/engine`, `cmd/mcp`, `cmd/agent`, and `cmd/aieval`. The first four are runtime processes; `aieval` runs deterministic offline cases or explicitly enabled live comparisons and produces reports.
 
 ### Why four backend processes?
 
@@ -86,21 +86,29 @@ The backend commands are `cmd/server`, `cmd/engine`, `cmd/mcp`, `cmd/agent`, and
 
 ### Process health ownership
 
-The process entry points compose `httpapi.LifecycleHandler` around application traffic. That handler alone serves `/startupz`, `/livez`, `/healthz`, `/readyz`, and `/metrics`; the inner application router does not register duplicate probes. Engine readiness combines `Worker.Ready()` with a database ping. Database failure affects readiness while liveness remains available.
+The API and engine entry points compose `httpapi.LifecycleHandler` around application traffic. That handler alone serves `/startupz`, `/livez`, `/healthz`, `/readyz`, and `/metrics`; the inner application router does not register duplicate probes. Engine readiness combines `Worker.Ready()` with a database ping. Database failure affects readiness while liveness remains available.
 
 ### Source ownership
 
-`internal/game` owns deterministic simulation and its infrastructure-free `controller` subpackage. `internal/battle/{api,service,catalog,worker,repo}` separates HTTP delivery, use cases, authored inputs, durable execution, and persistence. Repository files group battle operations, leases, and tick writes within one adapter package, preserving atomic transactions.
-
-Worker code separates decision-window orchestration from execution and lifecycle waits within the same package. The controller package separates production plan validation and deep copying from its retained standalone utility-controller implementation. All proposal copies use the same helper, preserving independent mutable state.
-
-Frontend features live in `src/features/{battles,factions,auth}`, with application composition in `src/app` and shared transport and visuals in `src/shared`. Kubernetes manifests remain in `deploy`; Terraform remains in `infra/aws`. Launchers live in `scripts/dev` and `scripts/cd`, test runners in `scripts/test`, and operational guides in `docs/operations`. Root launch commands and old CI test commands forward to their implementations. Battle-page data hooks and panels remain feature-local. Shared HTTP transport applies the API base URL, preserves cancellation, and maps network failures to feature errors; authentication handles its own 401 responses without broadcasting session expiry.
+See the [codebase guide](codebase-guide.md#3-backend-organization) for package
+boundaries, frontend ownership, and launcher locations.
 
 ### Deterministic simulation boundary
 
 The simulation receives a resolved scenario and optional plans, then produces deterministic state transitions and events. It does not access PostgreSQL, HTTP, environment variables, or model providers.
 
 The engine owns orchestration around this pure domain: leases, retries, pauses, decision deadlines, persistence, and shutdown handling.
+
+### Blocked castle approaches
+
+
+Unit movement prefers a complete path to a position within attack range of the
+opposing castle. If occupied approach tiles prevent that route, the engine searches
+for reachable attack positions around living enemy units and buildings. This
+prevents occupied castle perimeters from freezing both armies. Paths still exclude
+occupied and impassable tiles, and execution remains bounded by unit movement.
+Movement and attack targeting use authoritative engine state; faction sight filters
+AI observations rather than controlling these engine paths.
 
 ### Public application boundary
 
@@ -254,6 +262,10 @@ The CLI runner starts Codex or Antigravity CLI in a new temporary directory with
 
 Codex uses the existing host login without copying it. Antigravity uses the host OS keyring or a private temporary copy of its native `antigravity-oauth-token` login file, with a temporary HOME and XDG directories. Its environment excludes provider keys and personal CLI overrides. Generated permissions allow the two battlefield MCP tools and deny file, command, and URL operations; slash-command expansion is disabled. A headless account-usage probe must succeed before advertising the profile. JSON result envelopes must report SUCCESS with no denied actions. Explicit permission rules are used without strict mode, which overrides MCP allows in CLI 1.1.27. The MCP usage endpoint verifies that a plan is accepted before acknowledging completion; missing submissions trigger a worker failure and fallback. Usage counters are recorded for accepted plans. Subscription credentials are not placed in Kubernetes.
 
+CLI context responses include explicit target-tick and version metadata alongside the full structured context. CLI prompts require copying those values and making a substantive tactical or production decision. Name-only CLI plans are rejected; after three invalid submissions the decision is failed so the battle can fall back. MCP logs record context byte counts and validation field/code pairs without dumping observations or credentials. Usage reporting retries transient failures up to three times.
+
+Antigravity CLI offloads larger MCP tool responses to local files. Because battlefield CLI sessions deny file reads, the host now fetches the request-scoped context through the MCP SDK and embeds the validated JSON directly in the Antigravity prompt (maximum 64 KiB). The model submits through MCP without fetching the large response again. This keeps existing file restrictions and avoids blind tick guessing when the CLI hides an offloaded response.
+
 ## 7. Decision contracts and lifecycle
 
 ### Shared prompt provenance and faction memory
@@ -293,6 +305,7 @@ A decision context contains:
 - current and projected economy values;
 - legal action kinds, unit definitions, and construction sites;
 - the currently active plan;
+- optional bounded faction memory and retrieved unit knowledge;
 - a hash of the observation excluding request-specific fields.
 
 ### Submitted strategy
@@ -304,9 +317,53 @@ A model or scripted controller can propose:
 - target-specific bonuses;
 - reserve gold and spend ordering;
 - construction-site priorities;
-- recruitment priorities.
+- explicit ordered unit purchases with quantities (legacy plans may use recruitment priorities).
 
 The service validates decision version, target tick, general plan bounds, and context-specific units and sites before persistence.
+
+### Explicit recruitment orders
+
+
+The shared model prompt requests ordered `{unitType, count}` purchases through
+`recruitmentOrders`. MCP and engine validation enforce legal unit IDs, positive
+counts, and a six-unit per-window maximum. The engine executes only the requested
+sequence, preserving reserve gold and spawn occupancy; it stops on the first
+blocked purchase. Empty orders mean no buying; missing orders retain legacy
+priority behavior. Orders are deep-copied and persisted with plans, faction memory,
+and decision hashes. The UI shows requested quantities; recruitment events report
+actual spending. See [explicit unit purchases](../operations/ai-comparisons.md#explicit-unit-purchases)
+for partial-order and reuse semantics.
+
+### Versioned unit knowledge
+
+
+Optional ruleset knowledge is frozen in the resolved scenario JSON alongside unit
+statistics, and participates in the scenario content hash. At each decision
+window the engine retrieves unit cards using only the faction-visible context.
+Selection runs before observation hashing and persistence. API MCP reads and host
+CLI inline delivery consume that identical persisted knowledge. Retrieval has no
+external service dependency and does not change engine combat or plan validation.
+
+`engine.knowledgeRetrieval` controls positive card and byte limits (defaults 16
+and 16384). Effective limits, selected source IDs, content digest, byte size, and
+truncation accompany decision knowledge. Old scenarios without knowledge remain
+valid. See [AI comparisons](../operations/ai-comparisons.md#unit-knowledge-retrieval)
+for authoring, configuration, and evaluation details.
+
+### Submission-shape failures and fallback attribution
+
+
+The shared decision instructions require a flat MCP argument object with all
+required fields, including empty objects/arrays where appropriate. Antigravity
+can otherwise stop after SDK schema errors without reaching the typed plan
+handler. MCP receiving middleware records `decision_tool_input_rejected` with
+only the authenticated request ID, allowlisted missing field names, and a
+nested-plan flag; argument values and raw SDK errors are excluded.
+
+When a runner fails before the deadline, the engine carries its error category
+into the fallback record instead of replacing it with `timeout`. Unresolved
+requests that reach the deadline retain the timeout category. CLI terminal
+success remains subject to the worker's accepted-plan check.
 
 ### State machine
 
@@ -379,6 +436,33 @@ erDiagram
 ```
 
 `battle_decisions.faction_id` is historical snapshot data rather than a foreign key to `factions`. PostgreSQL `NOTIFY` only reduces claim latency: it carries no authoritative work payload and is safe to miss because agents query durable state after every wake-up.
+
+### Completed battle result caching
+
+
+The API service optionally checks Redis before `GetBattle` reads PostgreSQL. A miss,
+invalid entry, or Redis error falls back to PostgreSQL. Only a `completed` run with
+non-null result is stored, as a JSON snapshot containing its final state and scenario.
+Existing battle responses retain their schema. Faction views are projected from the
+snapshot after retrieval; event payloads and decision history remain PostgreSQL reads.
+Authentication runs before cache access. Engine and MCP persistence never use Redis.
+
+Keys are `battlefield:completed-battle:v1:<lowercase-battle-uuid>`, with a default
+one-hour TTL and 100 ms deadline per cache operation, with command retries disabled.
+Completed runs cannot currently be restarted or modified by application commands, so
+no writer invalidation is required. Any future result edit, battle deletion/reuse, or
+restart of a completed battle must add invalidation/versioning before release. After
+restoring PostgreSQL, clear the dedicated cache database or use a fresh Redis database.
+The `v1` namespace must change for incompatible cached schema changes.
+
+Redis is lazy-connected, optional, and excluded from readiness. An empty
+`BATTLEFIELD_REDIS_URL` disables it. Malformed URLs fail API initialization without
+logging their credentials; outages and cache write failures do not fail battle reads.
+Concurrent misses may issue duplicate database reads; this first implementation does
+not coalesce requests. Redis expiry and eviction bound the cached working set. Use a
+separate Redis database or instance per deployment environment.
+
+See [Redis operations](../operations/redis.md) for setup and verification.
 
 ### Battle retries
 
@@ -478,18 +562,12 @@ Deployment rollout concurrently and reports failures before setup verification.
 The source-security stage owns CI manifest rendering and policy validation;
 scanner versions are centralized in `scripts/ci/tool-versions.env`.
 
-Runtime assurance runs k6 and ZAP with Linux host networking so they can reach
-the kind gateway on `127.0.0.1:8888` using the `battlefield.localhost` route.
-Scanner containers use the agent UID/GID for writable, Jenkins-owned reports;
-ZAP keeps its runtime home and working files in container-local `/tmp`.
-
 W3C trace context is persisted on `battle_runs` and `battle_decisions`. API inbound spans flow through PostgreSQL; engine and agent workers extract that durable context and create consumer spans before simulation, MCP, and provider work. Outbound HTTP clients and selected database operations are instrumented. The local OpenTelemetry Collector exports to Tempo, which Grafana provisions as a data source. Span attributes deliberately exclude prompts, credentials, capabilities, full observations, and raw provider responses.
 
-The local Elasticsearch workload keeps its root filesystem read-only but uses
-a non-root init container to stage the image defaults and checked-in settings
-into a writable, pod-scoped configuration volume. Elasticsearch requires that
-narrow writable path to bootstrap its keystore; logs and configuration state
-remain disposable with the pod.
+The observability overlay includes metrics, tracing, and disposable log storage.
+See [observability operations](../operations/observability.md) for storage,
+security, and access details, and [Jenkins](../operations/jenkins.md) for runtime
+assurance launchers.
 
 The in-cluster agent is intended for API providers. `run-k8s-cli-agent.sh` bridges host subscription CLIs by validating the local binary and login, forwarding MCP to loopback, running a local agent, advertising availability to the API, and removing that availability on exit.
 
@@ -535,59 +613,6 @@ The UI polls the API, the engine polls battle rows, and agents long-poll MCP. Po
 - Load and failover behavior needs testing before increasing engine, MCP, or agent replicas.
 - Agent concurrency is fixed at two rather than configured in YAML.
 - API adapters build text transcripts instead of preserving provider-native structured tool history.
-- A successful CLI exit is treated as an accepted runner result; an explicit final decision-status assertion would strengthen this contract.
 - One shared secret authorizes the agent control plane and capability minting. Separate keys or server-minted capabilities would reduce agent signing authority.
 - The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [codebase guide](codebase-guide.md#internalgamecontroller-deterministic-policy-abstractions).
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
-
-CLI context responses include explicit target-tick and version metadata alongside the full structured context. CLI prompts require copying those values and making a substantive tactical or production decision. Name-only CLI plans are rejected; after three invalid submissions the decision is failed so the battle can fall back. MCP logs record context byte counts and validation field/code pairs without dumping observations or credentials. Usage reporting retries transient failures up to three times.
-
-Antigravity CLI offloads larger MCP tool responses to local files. Because battlefield CLI sessions deny file reads, the host now fetches the request-scoped context through the MCP SDK and embeds the validated JSON directly in the Antigravity prompt (maximum 64 KiB). The model submits through MCP without fetching the large response again. This keeps existing file restrictions and avoids blind tick guessing when the CLI hides an offloaded response.
-
-## Completed battle result caching
-
-The API service optionally checks Redis before `GetBattle` reads PostgreSQL. A miss,
-invalid entry, or Redis error falls back to PostgreSQL. Only a `completed` run with
-non-null result is stored, as a JSON snapshot containing its final state and scenario.
-Existing battle responses retain their schema. Faction views are projected from the
-snapshot after retrieval; event payloads and decision history remain PostgreSQL reads.
-Authentication runs before cache access. Engine and MCP persistence never use Redis.
-
-Keys are `battlefield:completed-battle:v1:<lowercase-battle-uuid>`, with a default
-one-hour TTL and 100 ms deadline per cache operation, with command retries disabled.
-Completed runs cannot currently be restarted or modified by application commands, so
-no writer invalidation is required. Any future result edit, battle deletion/reuse, or
-restart of a completed battle must add invalidation/versioning before release. After
-restoring PostgreSQL, clear the dedicated cache database or use a fresh Redis database.
-The `v1` namespace must change for incompatible cached schema changes.
-
-Redis is lazy-connected, optional, and excluded from readiness. An empty
-`BATTLEFIELD_REDIS_URL` disables it. Malformed URLs fail API initialization without
-logging their credentials; outages and cache write failures do not fail battle reads.
-Concurrent misses may issue duplicate database reads; this first implementation does
-not coalesce requests. Redis expiry and eviction bound the cached working set. Use a
-separate Redis database or instance per deployment environment.
-
-See [Redis operations](../operations/redis.md) for setup and verification.
-
-### Source-security scanner dependency
-
-CI prepares Trivy's vulnerability database in a persistent Docker cache volume,
-trying the Google mirror followed by the official GHCR repository on failure.
-Filesystem scanning starts only after successful preparation, and exhausted
-preparation attempts fail the gate. Runtime services do not depend on this cache.
-See [Jenkins recovery](../operations/jenkins.md#trivy-database-download-recovery).
-
-### Submission-shape failures and fallback attribution
-
-The shared decision instructions require a flat MCP argument object with all
-required fields, including empty objects/arrays where appropriate. Antigravity
-can otherwise stop after SDK schema errors without reaching the typed plan
-handler. MCP receiving middleware records `decision_tool_input_rejected` with
-only the authenticated request ID, allowlisted missing field names, and a
-nested-plan flag; argument values and raw SDK errors are excluded.
-
-When a runner fails before the deadline, the engine carries its error category
-into the fallback record instead of replacing it with `timeout`. Unresolved
-requests that reach the deadline retain the timeout category. CLI terminal
-success remains subject to the worker's accepted-plan check.

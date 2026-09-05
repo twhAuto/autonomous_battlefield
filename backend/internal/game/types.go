@@ -82,15 +82,28 @@ type CombatRules struct {
 	LootPercent              int64 `json:"lootPercent" yaml:"lootPercent"`
 }
 
+type UnitCard struct {
+	UnitID     string `json:"unitId" yaml:"unitId"`
+	Role       string `json:"role" yaml:"role"`
+	Strengths  string `json:"strengths" yaml:"strengths"`
+	Weaknesses string `json:"weaknesses" yaml:"weaknesses"`
+	Guidance   string `json:"guidance" yaml:"guidance"`
+}
+type RulesKnowledge struct {
+	Mechanics string     `json:"mechanics" yaml:"mechanics"`
+	Cards     []UnitCard `json:"cards" yaml:"cards"`
+}
+
 type Ruleset struct {
-	ID           string        `json:"id" yaml:"id"`
-	Version      string        `json:"version" yaml:"version"`
-	DesignBudget int64         `json:"designBudget" yaml:"designBudget"`
-	StartingGold int64         `json:"startingGold" yaml:"startingGold"`
-	Units        []UnitType    `json:"units" yaml:"units"`
-	Upgrades     []Upgrade     `json:"upgrades" yaml:"upgrades"`
-	Buildings    BuildingRules `json:"buildings" yaml:"buildings"`
-	Combat       CombatRules   `json:"combat" yaml:"combat"`
+	Knowledge    *RulesKnowledge `json:"knowledge,omitempty" yaml:"knowledge,omitempty"`
+	ID           string          `json:"id" yaml:"id"`
+	Version      string          `json:"version" yaml:"version"`
+	DesignBudget int64           `json:"designBudget" yaml:"designBudget"`
+	StartingGold int64           `json:"startingGold" yaml:"startingGold"`
+	Units        []UnitType      `json:"units" yaml:"units"`
+	Upgrades     []Upgrade       `json:"upgrades" yaml:"upgrades"`
+	Buildings    BuildingRules   `json:"buildings" yaml:"buildings"`
+	Combat       CombatRules     `json:"combat" yaml:"combat"`
 }
 
 type UnitSelection struct {

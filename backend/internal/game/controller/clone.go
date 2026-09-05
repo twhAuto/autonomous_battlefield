@@ -2,7 +2,7 @@ package controller
 
 // ClonePlanProposal copies a proposal without sharing mutable maps or slices.
 func ClonePlanProposal(value PlanProposal) PlanProposal {
-	result := PlanProposal{Name: value.Name, Rationale: value.Rationale, ActionWeights: make(map[string]int64, len(value.ActionWeights)), TargetBonuses: make(map[string]int64, len(value.TargetBonuses)), ReserveGold: value.ReserveGold,
+	result := PlanProposal{RecruitmentOrders: CloneRecruitmentOrders(value.RecruitmentOrders), Name: value.Name, Rationale: value.Rationale, ActionWeights: make(map[string]int64, len(value.ActionWeights)), TargetBonuses: make(map[string]int64, len(value.TargetBonuses)), ReserveGold: value.ReserveGold,
 		SpendOrder: append([]string(nil), value.SpendOrder...), ConstructionPriorities: append([]Coordinate(nil), value.ConstructionPriorities...), RecruitmentPriorities: append([]string(nil), value.RecruitmentPriorities...)}
 	for k, v := range value.ActionWeights {
 		result.ActionWeights[k] = v
@@ -20,4 +20,13 @@ func ClonePlanProposals(values []PlanProposal) []PlanProposal {
 		result[i] = ClonePlanProposal(values[i])
 	}
 	return result
+}
+
+// Preserve absent orders (legacy priorities) versus an explicit empty list (no purchases).
+func CloneRecruitmentOrders(orders *[]RecruitmentOrder) *[]RecruitmentOrder {
+	if orders == nil {
+		return nil
+	}
+	result := append([]RecruitmentOrder{}, (*orders)...)
+	return &result
 }

@@ -141,6 +141,7 @@ export interface DecisionHistory {
     spendOrder?: string[]
     constructionPriorities?: HexPosition[]
     recruitmentPriorities?: string[]
+    recruitmentOrders?: { unitType: string; count: number }[] | null
   }
   usage: { inputTokens?: number; outputTokens?: number; requests?: number }
   createdAt: string; resolvedAt?: string

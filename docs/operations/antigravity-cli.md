@@ -14,15 +14,17 @@ The pinned model is `gemini-3.7-flash-medium`. Model access depends on the signe
 
 ## Isolation and troubleshooting
 
-Each invocation gets a temporary home, private MCP configuration, and permissions allowing only the two battlefield MCP tools while denying file, command, and URL operations. Personal settings, unrelated MCP servers, and provider API keys are not inherited. Authentication comes from the host keyring or a mode-0600 temporary copy of the native token file. The copy is removed with the isolated home when the invocation ends and is never written back to the host login or placed in Kubernetes. See the official [headless](https://antigravity.google/docs/cli/headless/), [permissions](https://antigravity.google/docs/cli/permissions/), and [MCP](https://antigravity.google/docs/cli/mcp/) documentation.
+See [CLI runtime](../design/system-architecture.md#cli-runtime) for isolation,
+context delivery, and submission enforcement.
 
 Before enabling the profile, the launcher runs a bounded account-usage probe under the same isolation. If this fails, confirm interactive sign-in in the same WSL session. A native token file must be a regular file, not a symlink. Temporary token refreshes are not persisted back to the host; if the saved login expires, sign in again with `agy`. CLI execution errors and unsuccessful or missing result envelopes fail the decision. Account authentication does not by itself establish model access or successful MCP submission.
 
 Restart the bridge after deployment or CLI configuration changes. Ctrl+C removes the advertised availability. Production does not need an Antigravity installation or subscription login: this is a host development bridge, and no server deployment is performed by installing it.
 
-The runner deliberately omits `toolPermission: strict`: CLI 1.1.27 blocks explicitly allowed MCP calls in that mode. The exact MCP allowlist and file, shell, and URL deny rules remain enforced. A result containing `denied_actions` fails as `cli_permission`, even if the CLI reports SUCCESS. The MCP completion endpoint also requires an accepted database plan; completion without one becomes `plan_not_submitted`, allowing immediate fallback instead of waiting for the decision timeout. Redeploy dev and restart the host bridge after this change.
-
-CLI context responses include explicit target-tick and version metadata alongside the full structured context. CLI prompts require copying those values and making a substantive tactical or production decision. Name-only CLI plans are rejected; after three invalid submissions the decision is failed so the battle can fall back. MCP logs record context byte counts and validation field/code pairs without dumping observations or credentials. Usage reporting retries transient failures up to three times.
+For `plan_not_submitted` or malformed MCP arguments, use the
+[missing-plan troubleshooting guide](ai-comparisons.md#troubleshooting-a-missing-antigravity-plan).
+A `cli_permission` failure means the result reported a denied action; verify the
+installed version against the configured prefix before restarting the bridge.
 
 For an opt-in real CLI regression check using only synthetic in-memory battle data, run from `backend`:
 
@@ -31,5 +33,3 @@ PATH="$HOME/.local/bin:$PATH" BATTLEFIELD_LIVE_AGY=1 go test ./internal/ai/mcpse
 ```
 
 This uses the installed CLI and its subscription allowance. Normal test runs skip it. It verifies a substantive submission for the exact context tick through the application MCP server; it does not deploy or alter existing battles.
-
-Antigravity CLI offloads larger MCP tool responses to local files. Because battlefield CLI sessions deny file reads, the host now fetches the request-scoped context through the MCP SDK and embeds the validated JSON directly in the Antigravity prompt (maximum 64 KiB). The model submits through MCP without fetching the large response again. This keeps existing file restrictions and avoids blind tick guessing when the CLI hides an offloaded response.

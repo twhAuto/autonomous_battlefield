@@ -16,7 +16,7 @@ const (
 	ControllerModel    = "model"
 	ContextSchema      = "battlefield.decision-context.v1"
 	PlanSchema         = "battlefield.strategy-plan.v1"
-	ToolSchema         = "battlefield.mcp-tools.v2"
+	ToolSchema         = "battlefield.mcp-tools.v3"
 )
 
 type DecisionSession struct {
@@ -82,6 +82,7 @@ type TurnProvider interface {
 }
 
 type DecisionContext struct {
+	Knowledge          *DecisionKnowledge      `json:"knowledge,omitempty"`
 	SchemaVersion      string                  `json:"schemaVersion"`
 	RequestID          string                  `json:"requestId"`
 	BattleID           string                  `json:"battleId"`

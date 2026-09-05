@@ -1,0 +1,111 @@
+schemaVersion: battlefield.ai-eval-case.v1
+id: large-roster
+category: normal
+rulesVersion: castle-siege-v1
+profile: comparison
+model: scripted
+requestId: comparison-roster
+maxSteps: 4
+maxTokens: 1024
+capability: valid
+contextJson: >-
+  {"context":{"schemaVersion":"battlefield.decision-context.v1","requestId":"comparison-roster","battleId":"synthetic","factionId":"blue","targetTick":20,"expectedVersion":1,"view":{"state":{"tick":19,"units":[]}},"economy":{"gold":150,"projectedIncome":25,"economyBuildingCost":100,"economyBuildingIncome":10,"currentEconomyBuildings":1,"maximumEconomyBuildings":4},"legal":{"actionKinds":["attack","defend"],"units":[],"economySites":[{"x":2,"y":2}]},"activePlan":{"name":"reserve","reserveGold":100},"memory":[{"observationTick":9,"targetTick":10,"status":"accepted","economy":{"gold":100,"projectedIncome":15,"currentEconomyBuildings":0},"ownUnits":0,"visibleEnemyUnits":0,"plan":{"name":"reserve","reserveGold":100}}]}}
+submission: {accepted: true, status: accepted}
+expected:
+  accepted: true
+  maximumToolCalls: 8
+  safetyCritical: false
+
+knowledgeRuleset:
+  id: castle-siege-v1
+  version: "1"
+  designBudget: 120
+  startingGold: 60
+  units:
+    - {id: vanguard, cost: 35, health: 70, attack: 9, defense: 7, speed: 4, movement: 1, range: 1, vision: 2}
+    - {id: striker, cost: 25, health: 42, attack: 14, defense: 3, speed: 8, movement: 2, range: 1, vision: 3}
+    - {id: ranger, cost: 30, health: 30, attack: 11, defense: 2, speed: 6, movement: 1, range: 3, vision: 4}
+    - {id: reserve-00, cost: 20, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-01, cost: 21, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-02, cost: 22, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-03, cost: 23, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-04, cost: 24, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-05, cost: 25, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-06, cost: 26, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-07, cost: 27, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-08, cost: 28, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-09, cost: 29, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-10, cost: 30, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-11, cost: 31, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-12, cost: 32, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-13, cost: 33, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-14, cost: 34, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-15, cost: 35, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-16, cost: 36, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-17, cost: 37, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-18, cost: 38, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+    - {id: reserve-19, cost: 39, health: 40, attack: 8, defense: 3, speed: 5, movement: 1, range: 1, vision: 2}
+  upgrades:
+    - {id: arsenal, cost: 20, attackBonus: 2}
+    - {id: plating, cost: 20, defenseBonus: 2}
+    - {id: industry, cost: 20, economyIncomeBonus: 2}
+  buildings:
+    castleHealth: 300
+    castleDefense: 8
+    castleVision: 4
+    castleIncome: 10
+    economyCost: 50
+    economyHealth: 60
+    economyDefense: 2
+    economyVision: 2
+    economyIncome: 10
+    maximumEconomyCount: 2
+  combat:
+    minimumDamage: 1
+    defendAttackPercent: 80
+    defendDamageTakenPercent: 70
+    lootPercent: 50
+  
+  knowledge:
+    mechanics: >-
+      Recruitment and construction follow the submitted spend order and reserve gold.
+      Range limits attack distance; movement limits travel per movement action.
+      Defense reduces damage subject to the minimum damage rule. Unit actions and targeting
+      are executed by the engine; a plan sets faction priorities, not individual commands.
+      Knowledge guidance is advisory. Current observed stats include active modifications.
+    cards:
+      - unitId: vanguard
+        role: Durable melee unit
+        strengths: High base health and defense relative to the other starter units.
+        weaknesses: Lower movement and attack than the starter Striker; costs more gold.
+        guidance: Consider when durability matters, while accounting for travel time and budget.
+      - unitId: striker
+        role: Mobile melee attacker
+        strengths: Higher base attack and movement than the other starter units.
+        weaknesses: Less health and defense than the starter Vanguard; melee attack range.
+        guidance: Consider for mobile pressure, but assess exposure using visible enemy positions.
+      - unitId: ranger
+        role: Ranged attacker and observer
+        strengths: Greater base attack range and vision than the other starter units.
+        weaknesses: Lower health and defense than the other starter units.
+        guidance: Consider reach and visibility; do not assume a guaranteed counter or manual positioning.
+      - {unitId: reserve-00, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-01, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-02, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-03, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-04, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-05, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-06, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-07, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-08, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-09, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-10, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-11, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-12, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-13, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-14, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-15, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-16, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-17, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-18, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}
+      - {unitId: reserve-19, role: Reserve melee, strengths: Uses existing melee mechanics., weaknesses: Limited reach., guidance: Compare its base stats with visible modified stats and available gold.}

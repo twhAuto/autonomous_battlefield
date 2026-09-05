@@ -4,28 +4,10 @@ React and TypeScript command interface for faction management and queued battles
 
 ## Run locally
 
-From the project root, the development launcher starts PostgreSQL, applies
-migrations, and runs the API, battle engine, and frontend together:
+Follow the [project setup](../README.md#run-locally) to configure the database
+password and start all processes with `./run-dev.sh` from the project root.
 
-```bash
-./run-dev.sh
-```
-
-Open `http://localhost:5173` and press Ctrl+C to stop the application processes.
-
-To run the components separately, start PostgreSQL, apply migrations, and run
-both backend processes:
-
-```bash
-cd ../backend
-docker compose up -d postgres
-export DATABASE_URL='postgres://battlefield:battlefield@localhost:5432/battlefield?sslmode=disable'
-go run ./cmd/server -migrate
-go run ./cmd/server
-```
-
-Run `go run ./cmd/engine` in another backend terminal with the same
-`DATABASE_URL`. Then start the frontend:
+With the API and engine already running, start only the frontend from this directory:
 
 ```bash
 npm ci
@@ -72,12 +54,5 @@ also update `API_UPSTREAM`.
 
 ## Source layout
 
-`src/app` owns the application shell, routes, and application integration tests.
-`src/features/battles`, `src/features/factions`, and `src/features/auth` each own
-their pages, typed API clients, and feature tests. The battle map belongs to the
-battle feature. `src/shared/api` provides HTTP transport, and
-`src/shared/components` contains visuals used across features. `src/pages`
-contains general pages; `src/test` contains shared test setup.
-
-Keep unit tests beside the implementation. See the
-[codebase guide](../docs/design/codebase-guide.md) for backend and tooling ownership.
+See [frontend organization](../docs/design/codebase-guide.md#7-frontend-organization)
+for feature ownership, shared transport, polling hooks, and test placement.

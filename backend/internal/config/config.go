@@ -37,6 +37,7 @@ type API struct {
 }
 
 type Engine struct {
+	KnowledgeRetrieval          ai.KnowledgeLimits
 	HealthAddress               string
 	PollInterval                time.Duration
 	LeaseDuration               time.Duration
@@ -110,6 +111,10 @@ type fileConfig struct {
 		SessionTTL                       string `yaml:"sessionTTL"`
 	} `yaml:"auth"`
 	Engine struct {
+		KnowledgeRetrieval struct {
+			MaxUnitCards *int `yaml:"maxUnitCards"`
+			MaxBytes     *int `yaml:"maxBytes"`
+		} `yaml:"knowledgeRetrieval"`
 		HealthAddress               string `yaml:"healthAddress"`
 		PollInterval                string `yaml:"pollInterval"`
 		LeaseDuration               string `yaml:"leaseDuration"`
@@ -443,7 +448,17 @@ func parseEngineConfig(raw fileConfig) (Engine, error) {
 	if workerEnv == "" {
 		workerEnv = "ENGINE_WORKER_ID"
 	}
-	return Engine{
+	limits := ai.DefaultKnowledgeLimits()
+	if raw.Engine.KnowledgeRetrieval.MaxUnitCards != nil {
+		limits.MaxUnitCards = *raw.Engine.KnowledgeRetrieval.MaxUnitCards
+	}
+	if raw.Engine.KnowledgeRetrieval.MaxBytes != nil {
+		limits.MaxBytes = *raw.Engine.KnowledgeRetrieval.MaxBytes
+	}
+	if err := limits.Validate(); err != nil {
+		return Engine{}, err
+	}
+	return Engine{KnowledgeRetrieval: limits,
 		HealthAddress: healthAddress, PollInterval: pollInterval, LeaseDuration: leaseDuration,
 		HeartbeatInterval: heartbeatInterval, ShutdownTimeout: shutdownTimeout,
 		MaxAttempts: maxAttempts, WorkerIDEnvironmentVariable: workerEnv,

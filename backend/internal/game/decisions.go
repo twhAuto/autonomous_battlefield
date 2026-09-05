@@ -117,7 +117,7 @@ func normalizedPlan(value controller.PlanProposal, setup FactionSetup) controlle
 	if len(result.SpendOrder) == 0 {
 		result.SpendOrder = []string{"construction", "recruitment"}
 	}
-	if len(result.RecruitmentPriorities) == 0 {
+	if result.RecruitmentOrders == nil && len(result.RecruitmentPriorities) == 0 {
 		result.RecruitmentPriorities = append([]string(nil), setup.Blueprint.RecruitmentPriority...)
 	}
 	if len(result.ConstructionPriorities) == 0 {
@@ -149,6 +149,13 @@ func validateProductionPlan(scenario Scenario, setup FactionSetup, plan controll
 		return err
 	}
 	units := UnitTypesByID(scenario.Ruleset)
+	if plan.RecruitmentOrders != nil {
+		for _, order := range *plan.RecruitmentOrders {
+			if _, ok := units[order.UnitType]; !ok {
+				return fmt.Errorf("%w: unsupported recruitment unit %q", controller.ErrInvalidPlan, order.UnitType)
+			}
+		}
+	}
 	for _, unitType := range plan.RecruitmentPriorities {
 		if _, ok := units[unitType]; !ok {
 			return fmt.Errorf("%w: unsupported recruitment unit %q", controller.ErrInvalidPlan, unitType)
