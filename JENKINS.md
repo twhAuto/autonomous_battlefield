@@ -95,6 +95,11 @@ Use a dedicated Linux or WSL Jenkins agent with:
 - Access to the `battlefield` kind cluster through context `kind-battlefield`.
 
 The agent needs Docker access to build images and run the pinned Trivy scanner.
+It also needs enough free space and inode quota in its Jenkins workspace for
+parallel Go compilation. The pipelines place `GOCACHE`, `GOTMPDIR`, and general
+temporary files in Jenkins's workspace-associated temporary directory, share
+that Go cache across parallel stages, and remove the project subdirectory
+before archiving build evidence.
 The publishing script creates or reuses a dedicated `docker-container` Buildx
 builder named `battlefield-jenkins`; this driver preserves BuildKit SBOM and
 provenance attestations when images are pushed even if the daemon uses the
@@ -166,13 +171,38 @@ Verify the Go installation under the same account that runs the agent:
 
 ```bash
 go version
-GOCACHE="/tmp/autonomous-battlefield-go-check-$(go env GOVERSION)" go list sync/atomic
+go list sync/atomic
 ```
 
 The second command must print `sync/atomic`. A stale build cache from a replaced
 Go installation can otherwise make standard-library packages appear missing.
-Jenkins uses a build-specific cache, and the local coverage script defaults to
-a version-specific cache under `/tmp`.
+Jenkins uses a disposable workspace-scoped cache; the local coverage script
+continues to use the caller's `GOCACHE` or a version-specific cache under
+`TMPDIR`.
+
+If a build reports `disk quota exceeded`, inspect capacity, inode usage, the
+user quota, and old project caches on the agent before retrying:
+
+```bash
+df -h /tmp /home/twh09/jenkins-agent
+df -i /tmp /home/twh09/jenkins-agent
+quota -s 2>/dev/null || true
+du -sh /tmp/autonomous-battlefield-go-cache-* /tmp/go-build* 2>/dev/null || true
+find /tmp -maxdepth 1 -user "$(id -un)" -type d \
+  \( -name 'autonomous-battlefield-go-cache-*' -o -name 'go-build*' \) -print
+```
+
+After all Jenkins builds have stopped, remove only the directories printed by
+that final command. They are compiler caches and interrupted Go work trees, not
+build evidence:
+
+```bash
+find /tmp -maxdepth 1 -user "$(id -un)" -type d \
+  \( -name 'autonomous-battlefield-go-cache-*' -o -name 'go-build*' \) \
+  -exec rm -rf -- {} +
+```
+
+New pipeline runs no longer create those project caches in `/tmp`.
 
 ## Create the persistent `battlefield-local` agent
 

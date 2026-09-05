@@ -24,6 +24,18 @@ pipeline {
     }
 
     stages {
+        stage('Prepare build workspace') {
+            steps {
+                script {
+                    env.CI_WORK_ROOT = "${pwd(tmp: true)}/autonomous-battlefield"
+                    env.GOCACHE = "${env.CI_WORK_ROOT}/cache/go-build"
+                    env.GOTMPDIR = "${env.CI_WORK_ROOT}/tmp/go"
+                    env.TMPDIR = "${env.CI_WORK_ROOT}/tmp/general"
+                    sh 'mkdir -p "${GOCACHE}" "${GOTMPDIR}" "${TMPDIR}"'
+                }
+            }
+        }
+
         stage('Validate explicit limits') {
             steps {
                 script {
@@ -106,6 +118,13 @@ pipeline {
 
     post {
         always {
+            script {
+                if (env.CI_WORK_ROOT) {
+                    dir(env.CI_WORK_ROOT) {
+                        deleteDir()
+                    }
+                }
+            }
             archiveArtifacts artifacts: 'artifacts/**/*', allowEmptyArchive: true, fingerprint: true
         }
     }
