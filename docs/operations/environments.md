@@ -20,8 +20,12 @@ kubeconfig with one context alias and an `environment.env` file under
 `~/.config/autonomous-battlefield/dev/` or `production/`. It leaves the original
 kubeconfig and current context untouched. These are trusted local shell files,
 not files to commit, source from untrusted repositories, or archive in Jenkins.
-The credential-free template is
+The credential-free environment profile template is
 [`deploy/environments/environment.env.example`](../../deploy/environments/environment.env.example).
+Secret references live beside it: [database.env.example](../../deploy/environments/database.env.example),
+[auth.env.example](../../deploy/environments/auth.env.example), and
+[ai.env.example](../../deploy/environments/ai.env.example). Actual secrets stay in
+the private configuration directory; do not copy them into the manifest tree.
 
 `BF_UID` pins the `kube-system` namespace UID. All deployment entry points compare
 it with the actual cluster before operating. Local deployment also checks that

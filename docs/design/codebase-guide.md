@@ -394,8 +394,9 @@ The battle feature's `hooks/` directory owns status, event, decision-history, an
 | [`backend/rulesets`](../../backend/rulesets) | Versioned unit, building, economy, and combat values |
 | [`backend/scenarios`](../../backend/scenarios) | Map layout, timing, scripted plans, and fallbacks |
 | [`deploy/base/infrastructure/configmap.yaml`](../../deploy/base/infrastructure/configmap.yaml) | Cluster configuration equivalent |
-| [`deploy/overlays/local/infrastructure/ai-secret.env.example`](../../deploy/overlays/local/infrastructure/ai-secret.env.example) | Local Kubernetes AI secret template |
-| [`deploy/overlays/local/infrastructure/auth-secret.env.example`](../../deploy/overlays/local/infrastructure/auth-secret.env.example) | Optional local Kubernetes administrator-session secret template |
+| [`deploy/environments/database.env.example`](../../deploy/environments/database.env.example) | Database secret reference; preserve existing credentials |
+| [`deploy/environments/ai.env.example`](../../deploy/environments/ai.env.example) | Local Kubernetes AI secret template |
+| [`deploy/environments/auth.env.example`](../../deploy/environments/auth.env.example) | Optional local Kubernetes administrator-session secret template |
 
 Configuration is decoded with `yaml.KnownFields(true)`. Update the file-facing struct, parsed runtime struct, validation, examples, deployment ConfigMap, and tests together.
 

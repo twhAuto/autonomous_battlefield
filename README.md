@@ -2,7 +2,8 @@
 
 Deployment environments are separate: **WSL dev** builds and loads local images;
 **server production** receives verified GHCR images from Jenkins `main` delivery.
-Start with the [environment setup guide](docs/operations/environments.md).
+Start with the [environment setup guide](docs/operations/environments.md);
+version-controlled configuration templates live in [`deploy/environments/`](deploy/environments/).
 
 
 Autonomous Battlefield is a Go backend for an auto-battler and expansion game. The long-term product will let human players and AI agents control factions that gather resources, expand territory, and fight on a continuously running battlefield.

@@ -191,7 +191,7 @@ sets both API model profiles unavailable, so scripted battles can be tested
 without provider credentials. It also reuses `DATABASE_URL` for MCP when the
 local database file does not contain `MCP_DATABASE_URL`.
 
-To enable an API provider, edit the private dev `ai.env` using `ai-secret.env.example` as a reference, set
+To enable an API provider, edit the private dev `ai.env` using [`deploy/environments/ai.env.example`](../../deploy/environments/ai.env.example) as a reference, set
 a strong capability secret, add the provider key and model, and change that
 provider's `*_PROFILE_AVAILABLE` value to `true`. Production should always
 supply explicit secrets and point `MCP_DATABASE_URL` at a login granted only

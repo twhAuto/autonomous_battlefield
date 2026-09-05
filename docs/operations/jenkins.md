@@ -404,7 +404,7 @@ successfully; afterward it can be selected in the GitHub branch ruleset.
 ## Add the local database credential
 
 Create a local secret file using the same three-line format as
-`deploy/overlays/local/infrastructure/secret.env.example`:
+`deploy/environments/database.env.example`:
 
 ```text
 POSTGRES_USER=...

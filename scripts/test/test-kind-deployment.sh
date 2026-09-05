@@ -147,7 +147,7 @@ for selection in application migration gateway observability infrastructure all;
     [[ ! -e "${runtime_dir}/deploy/overlays/local/logging-collector" ]]
   fi
   [[ ! -e "${runtime_dir}/deploy/overlays/local/infrastructure/auth-secret.env" ]]
-  [[ ! -e "${runtime_dir}/deploy/overlays/local/infrastructure/secret.env.example" ]]
+  [[ ! -d "${runtime_dir}/deploy/environments" ]]
   rm -rf -- "${runtime_dir}"
   runtime_dir=""
 done

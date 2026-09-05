@@ -238,8 +238,8 @@ kind_deploy_validate_artifacts() {
     }
   fi
   if deployment_component_selected infrastructure && [[ ! -f "${secret_file}" ]]; then
-    echo "Local Kubernetes secret file not found: ${secret_file}" >&2
-    echo "Copy secret.env.example to secret.env before deploying." >&2
+    echo "Database secret file not found: ${secret_file}" >&2
+    echo "See docs/operations/environments.md to prepare the private database file; deploy/environments/database.env.example is reference-only." >&2
     return 1
   fi
   if deployment_component_selected infrastructure && [[ ! -f "${ai_secret_file}" ]]; then
