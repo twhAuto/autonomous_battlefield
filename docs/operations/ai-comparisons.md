@@ -128,7 +128,7 @@ stats may include upgrades; tactical text is advice, not a guaranteed counter.
 To add a unit, add its numerical definition and card to a versioned content library, select it in the ruleset, and use
 existing movement, targeting, and combat mechanics. Publish a new ruleset ID and
 version and a scenario referencing it when changing a published roster. Existing
-faction blueprints remain associated with their ruleset. No engine switch or UI
+faction doctrines can be reused across rulesets. No engine switch or UI
 unit list needs editing. New abilities still require engine implementation.
 Library references and scenario restrictions are resolved before knowledge and its ruleset are copied into the persisted scenario at battle
 creation. Editing catalog files cannot alter an existing battle snapshot.

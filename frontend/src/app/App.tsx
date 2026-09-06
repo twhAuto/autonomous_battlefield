@@ -124,6 +124,7 @@ export default function App({ authentication = authenticationClient, initialSess
       <Route element={<AppLayout actorID={session.actor?.id ?? 'local-development'} onLogout={logout} />}>
         <Route index element={<HomePage />} />
         <Route path="factions/new" element={<CreateFactionPage />} />
+ <Route path="factions/:id/edit" element={<CreateFactionPage />} />
         <Route path="factions" element={<FactionsPage />} />
         <Route path="battles/new" element={<CreateBattlePage />} />
         <Route path="battles/:id" element={<BattlePage />} />

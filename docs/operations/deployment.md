@@ -651,3 +651,17 @@ Budget alerts are notifications, not guaranteed spending limits.
 - [AWS root-user security practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/root-user-best-practices.html)
 - [EKS Auto Mode](https://docs.aws.amazon.com/eks/latest/userguide/automode.html)
 - [Using Secrets Manager secrets with EKS pods](https://docs.aws.amazon.com/eks/latest/userguide/manage-secrets.html)
+
+## Doctrine profile rollout
+
+Deploy API, engine, MCP, agent, and frontend from the same revision. Startup migration
+00008 preserves existing faction IDs/names and legacy blueprints, backfills balanced
+doctrine, and permits tick-zero decisions. New battles use snapshot version 2;
+existing queued battles retain their snapshotted legacy rules. No data reset is needed.
+Obsolete clients posting blueprint-based faction bodies must be updated.
+
+The migration down path deliberately refuses a lossy rollback when doctrine-only
+profiles or opening decisions exist. Restore a pre-rollout database backup if a full
+application/database rollback is required. Validate the rollout by creating/editing
+a doctrine, staging a battle, and observing opening decisions and purchase events at
+tick zero before tick one. Purchases should reduce the same gold balance throughout.

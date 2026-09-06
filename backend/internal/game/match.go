@@ -58,6 +58,9 @@ func (m *Match) AdvanceWithPlans(plans map[string]controller.PlanProposal) (Tran
 	if m.finished {
 		return Transition{}, ErrMatchFinished
 	}
+	if m.OpeningDue() {
+		return m.advanceOpening(plans)
+	}
 	decisionWindow := m.DecisionWindowDue()
 	if !decisionWindow && len(plans) > 0 {
 		return Transition{}, fmt.Errorf("plans may only be applied at a decision window")

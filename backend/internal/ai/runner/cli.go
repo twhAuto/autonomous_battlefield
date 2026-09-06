@@ -49,7 +49,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 	if executor == nil {
 		executor = OSCommandExecutor{}
 	}
-	prompt := ai.SystemPrompt + "\n" + ai.DecisionPrompt(session.RequestID, nil)
+	prompt := ai.SystemPromptForDoctrine(session.Doctrine) + "\n" + ai.DecisionPrompt(session.RequestID, nil)
 	var name string
 	var args, environment []string
 	switch r.Provider {
@@ -70,7 +70,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 		if contextErr != nil {
 			return ai.DecisionResult{ErrorCategory: "mcp_context"}, contextErr
 		}
-		prompt = ai.SystemPrompt + "\n" + ai.DecisionPrompt(session.RequestID, payload)
+		prompt = ai.SystemPromptForDoctrine(session.Doctrine) + "\n" + ai.DecisionPrompt(session.RequestID, payload)
 
 		environment, err = clienv.PrepareAntigravity(temporary, session.MCPURL, session.CapabilityToken)
 		if err != nil {
@@ -173,7 +173,7 @@ func (r CLIRunner) prefetchContext(ctx context.Context, session ai.DecisionSessi
 	var result struct {
 		Context ai.DecisionContext `json:"context"`
 	}
-	if json.Unmarshal(payload, &result) != nil || result.Context.RequestID != session.RequestID || result.Context.TargetTick == 0 || result.Context.ExpectedVersion < 1 {
+	if json.Unmarshal(payload, &result) != nil || result.Context.RequestID != session.RequestID || (result.Context.TargetTick == 0 && !result.Context.Opening) || result.Context.ExpectedVersion < 1 {
 		return nil, fmt.Errorf("invalid decision context metadata")
 	}
 	return payload, nil

@@ -25,6 +25,9 @@ func validateProposal(proposal PlanProposal, actionKinds map[string]struct{}) er
 	if err := validateSpendOrder(proposal.SpendOrder); err != nil {
 		return err
 	}
+	if err := validateRecruitmentPriorities(proposal.UpgradeOrders); err != nil {
+		return fmt.Errorf("upgrade orders: %w", err)
+	}
 	if err := validateRecruitmentOrders(proposal); err != nil {
 		return err
 	}
@@ -61,7 +64,7 @@ func validateTargetBonuses(bonuses map[string]int64) error {
 func validateSpendOrder(spendOrder []string) error {
 	seenSpend := make(map[string]bool, len(spendOrder))
 	for _, kind := range spendOrder {
-		if kind != "construction" && kind != "recruitment" {
+		if kind != "construction" && kind != "recruitment" && kind != "upgrades" {
 			return fmt.Errorf("%w: unsupported spend kind %q", ErrInvalidPlan, kind)
 		}
 		if seenSpend[kind] {

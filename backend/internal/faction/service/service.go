@@ -3,9 +3,10 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
+
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
@@ -21,10 +22,9 @@ var (
 var uuidPattern = regexp.MustCompile(`^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$`)
 
 type CreateInput struct {
-	ID        string
-	Name      string
-	RulesetID string
-	Blueprint game.Blueprint
+	Doctrine string
+	ID       string
+	Name     string
 }
 
 type Service interface {
@@ -61,9 +61,6 @@ func (s *service) ListFactions(ctx context.Context) ([]faction.Faction, error) {
 	if err != nil {
 		return nil, err
 	}
-	for index := range values {
-		s.decorate(&values[index])
-	}
 	return values, nil
 }
 
@@ -78,19 +75,12 @@ func (s *service) CreateFaction(ctx context.Context, input CreateInput) error {
 	if !uuidPattern.MatchString(input.ID) || strings.TrimSpace(input.Name) == "" {
 		return ErrInvalidFaction
 	}
-	if s.catalog != nil {
-		ruleset, ok := s.catalog.Ruleset(input.RulesetID)
-		if !ok {
-			return fmt.Errorf("%w: unknown ruleset %q", ErrInvalidBlueprint, input.RulesetID)
-		}
-		if _, err := game.ValidateBlueprint(ruleset, input.Blueprint); err != nil {
-			return err
-		}
+	if strings.TrimSpace(input.Doctrine) == "" || utf8.RuneCountInString(strings.TrimSpace(input.Doctrine)) > 4000 {
+		return ErrInvalidFaction
 	}
 
 	storedFaction := faction.Faction{
-		ID: input.ID, Name: strings.TrimSpace(input.Name), RulesetID: input.RulesetID,
-		Blueprint: game.CloneBlueprint(input.Blueprint),
+		ID: input.ID, Name: strings.TrimSpace(input.Name), Doctrine: strings.TrimSpace(input.Doctrine),
 	}
 	if err := s.repository.CreateFaction(ctx, storedFaction); err != nil {
 		return err
@@ -104,18 +94,6 @@ func (s *service) DeleteFaction(ctx context.Context, id string) error {
 		return ErrInvalidFaction
 	}
 	return s.repository.DeleteFaction(ctx, id)
-}
-
-func (s *service) decorate(value *faction.Faction) {
-	if s.catalog == nil {
-		return
-	}
-	ruleset, ok := s.catalog.Ruleset(value.RulesetID)
-	if !ok {
-		return
-	}
-	value.SpentPoints = game.DesignCost(ruleset, value.Blueprint)
-	value.Remaining = ruleset.DesignBudget - value.SpentPoints
 }
 
 func NewService(repository Repository, catalogs ...RulesetCatalog) Service {

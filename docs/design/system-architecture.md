@@ -23,7 +23,7 @@ deployment credentials. Observability is optional for dev. See the
 
 ## 1. Purpose
 
-Autonomous Battlefield is a deterministic castle-siege auto-battler. Users create reusable faction blueprints, stage a finite battle between two factions, and watch a separate engine execute it. Each faction can use either deterministic scripted plans or a model-backed strategic controller.
+Autonomous Battlefield is a deterministic castle-siege auto-battler. Users create reusable faction doctrines, stage a finite battle between two factions, and watch a separate engine execute it. Each faction can use either deterministic scripted plans or a model-backed strategic controller.
 
 The central architectural rule is:
 
@@ -216,7 +216,8 @@ The battle must make progress even if a model does not answer.
 
 At the decision deadline:
 
-- the first production window uses the scenario's scripted fallback;
+- the tick-zero opening uses a deterministic sorted-roster purchase fallback;
+- the first in-battle production window uses the scenario's scripted baseline;
 - later windows reuse the faction's previously active plan;
 - the fallback is stored with status `fallback` and error category `timeout`;
 - a racing model submission and fallback are resolved by version and status predicates, so only one wins;
@@ -388,7 +389,7 @@ An accepted submission is idempotent when it repeats the stored idempotency key.
 
 | Table or view | Purpose | Important behavior |
 | --- | --- | --- |
-| `factions` | Reusable faction identity and blueprint | Existing battle snapshots survive faction deletion |
+| `factions` | Reusable faction identity and doctrine; archived legacy blueprint | Existing battle snapshots survive faction deletion |
 | `battle_runs` | Queue, scenario/initial snapshot, current state, lease, status, and result | Lease owner and attempt guard writes |
 | `battle_events` | Replayable per-attempt event stream | Primary key and conflict handling make insertion idempotent |
 | `battle_decisions` | Observations, provenance, leases, plans, fallbacks, errors, and usage | Unique per battle/attempt/faction/tick; versioned resolution |
@@ -399,8 +400,9 @@ erDiagram
     FACTIONS {
         uuid id PK
         text name
-        text ruleset_id
-        jsonb blueprint
+        text ruleset_id "legacy only"
+        text doctrine
+        jsonb blueprint "legacy only"
     }
     BATTLE_RUNS {
         uuid id PK
@@ -633,12 +635,39 @@ building roles, and unit cards together. Rulesets select content and own global
 balance rules; scenarios can narrow units, upgrades, and buildings. Invalid
 references, incompatible authored plans, and invalid definitions fail startup.
 
-Scenario summaries expose effective allowed IDs. The faction builder filters
-content by a chosen scenario, and battle setup filters compatible blueprints.
-The backend validates compatibility independently. The resolved scenario contains
+Scenario summaries expose effective allowed IDs. Faction profiles are independent
+of rulesets and scenarios. The backend validates purchases against the selected scenario. The resolved scenario contains
 full definitions, filtered cards, and library provenance; its hash and persisted
 JSON freeze these across later catalog edits. AI legal choices, retrieval, and
 purchase validation consume the same resolved roster. Excluding economy buildings
 removes legal construction sites and disables their production. No schema migration
 or runtime content service is required. See the
 [content authoring guide](../operations/content-library.md).
+
+## Faction doctrine and opening purchases
+
+New battle snapshots use version 2. Factions contain identity and doctrine, independent
+of model profiles and scenario catalogs. The owning doctrine is frozen in each
+decision context, included in observation hashes, and delivered to API and CLI
+runners beneath core rules using the versioned doctrine prompt template. Opponent
+doctrines are absent from agent observations.
+
+The first worker transition is an opening decision at tick zero. Both contexts
+are prepared from castles and starting gold before either plan is applied. Opening
+permits zero to six recruited units and one-time upgrades, with no construction,
+income, or combat. The worker persists opening state and events through `SaveTick`
+before tick one. Opening units become ready at tick one. Accepted decisions and
+fallbacks use the existing durable records, deadlines, and attempt/requeue semantics.
+The persisted `openingComplete` state and engine phase prevent repeated spending.
+
+Gold is the only resource: Castle Siege starts with 180; unspent gold carries forward.
+`upgradeOrders` is an ordered array of legal IDs executed at the `upgrades` position
+in `spendOrder`. Already-owned IDs are skipped free; the first unaffordable upgrade
+stops that category, respecting reserves. Attack/defense bonuses update living units
+and future recruits. Economy bonuses update existing and future economy buildings;
+new bonuses affect the next income collection. In-battle income still precedes spending.
+
+Scripted controllers and opening fallback ignore doctrine. They buy legal units
+round-robin in sorted ID order, skipping unaffordable types, until six purchases or
+no affordable type remains. Legacy snapshots without version 2 retain their starting
+blueprints, initial upgrade bonuses, and original decision schedule.

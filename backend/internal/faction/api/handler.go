@@ -20,6 +20,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/faction-rulesets", h.ListRulesets)
 	mux.HandleFunc("GET /v1/factions/{id}/name", h.GetFactionName)
 	mux.HandleFunc("POST /v1/factions", h.CreateFaction)
+	mux.HandleFunc("PUT /v1/factions/{id}", h.UpdateFaction)
 	mux.HandleFunc("DELETE /v1/factions/{id}", h.DeleteFaction)
 }
 
@@ -71,10 +72,9 @@ func (h *Handler) GetFactionName(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateFaction(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		ID        string         `json:"id"`
-		Name      string         `json:"name"`
-		RulesetID string         `json:"rulesetId"`
-		Blueprint game.Blueprint `json:"blueprint"`
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Doctrine string `json:"doctrine"`
 	}
 	if err := httpapi.ReadJSON(w, r, &request); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -82,20 +82,10 @@ func (h *Handler) CreateFaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := h.factionService.CreateFaction(r.Context(), factionservice.CreateInput{
-		ID: request.ID, Name: request.Name, RulesetID: request.RulesetID, Blueprint: request.Blueprint,
+		ID: request.ID, Name: request.Name, Doctrine: request.Doctrine,
 	})
 	if errors.Is(err, factionservice.ErrInvalidFaction) {
 		http.Error(w, "invalid faction", http.StatusBadRequest)
-		return
-	}
-	if errors.Is(err, factionservice.ErrInvalidBlueprint) {
-		slog.WarnContext(r.Context(), "faction_blueprint_rejected",
-			"request_id", httpapi.RequestID(r.Context()),
-			"faction_id", request.ID,
-			"ruleset_id", request.RulesetID,
-			"error", err,
-		)
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 	if errors.Is(err, factionservice.ErrFactionAlreadyExists) {
@@ -135,5 +125,32 @@ func (h *Handler) DeleteFaction(w http.ResponseWriter, r *http.Request) {
 func NewHandler(factionService factionservice.Service) *Handler {
 	return &Handler{
 		factionService: factionService,
+	}
+}
+
+func (h *Handler) UpdateFaction(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Name     string `json:"name"`
+		Doctrine string `json:"doctrine"`
+	}
+	if err := httpapi.ReadJSON(w, r, &request); err != nil {
+		http.Error(w, "invalid request body", 400)
+		return
+	}
+	updater, ok := h.factionService.(factionservice.Updater)
+	if !ok {
+		http.Error(w, "could not update faction", 500)
+		return
+	}
+	err := updater.UpdateFaction(r.Context(), factionservice.CreateInput{ID: r.PathValue("id"), Name: request.Name, Doctrine: request.Doctrine})
+	switch {
+	case errors.Is(err, factionservice.ErrInvalidFaction):
+		http.Error(w, "invalid faction", 400)
+	case errors.Is(err, factionservice.ErrFactionNotFound):
+		http.Error(w, "faction not found", 404)
+	case err != nil:
+		http.Error(w, "could not update faction", 500)
+	default:
+		w.WriteHeader(http.StatusNoContent)
 	}
 }

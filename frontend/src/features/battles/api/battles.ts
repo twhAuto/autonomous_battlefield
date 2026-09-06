@@ -73,9 +73,11 @@ export interface BattleBuilding {
   health: number; maxHealth: number; defense: number; vision: number; income: number
 }
 export interface BattleFactionState {
+  ownedUpgradeIds?: string[]
   factionId: string; gold: number; goldEarned: number; goldSpent: number; goldLooted: number
 }
 export interface BattleState {
+  openingComplete?: boolean
   battleId: string; tick: number; factions: BattleFactionState[]
   units: BattleUnit[]; buildings: BattleBuilding[]
 }
@@ -144,6 +146,7 @@ export interface DecisionHistory {
     spendOrder?: string[]
     constructionPriorities?: HexPosition[]
     recruitmentPriorities?: string[]
+    upgradeOrders?: string[]
     recruitmentOrders?: { unitType: string; count: number }[] | null
   }
   usage: { inputTokens?: number; outputTokens?: number; requests?: number }

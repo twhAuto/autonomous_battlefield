@@ -1,7 +1,6 @@
 id: castle-siege-v1
 version: "1"
-designBudget: 120
-startingGold: 60
+startingGold: 180
 library:
   id: core
   version: "1"

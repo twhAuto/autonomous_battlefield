@@ -416,21 +416,8 @@ footer { display: flex; justify-content: space-between; padding: 28px clamp(24px
   *, *::before, *::after { transition-duration: 0.01ms !important; }
 }
 
-/* Castle-siege blueprint and map */
-.creation-layout--blueprint { grid-template-columns: minmax(0, 1.18fr) minmax(330px, .82fr); }
-.blueprint-fieldset { border: 1px solid var(--line, #303942); margin: 24px 0; padding: 14px; }
-.blueprint-fieldset legend { color: #9eabb5; font-size: 11px; letter-spacing: .15em; padding: 0 8px; text-transform: uppercase; }
-.point-buy-row, .upgrade-toggle, .priority-list li, .budget-meter { align-items: center; border-bottom: 1px solid rgba(255,255,255,.08); display: flex; gap: 16px; justify-content: space-between; padding: 12px 4px; }
-.point-buy-row small, .upgrade-toggle small { color: #8f9ba4; display: block; margin-top: 4px; text-transform: uppercase; }
-.quantity-control { align-items: center; display: flex; gap: 8px; }
-.quantity-control button, .priority-list button, .map-toolbar button { background: #192129; border: 1px solid #48535d; color: #fff; cursor: pointer; min-height: 32px; min-width: 32px; }
-.quantity-control output { min-width: 24px; text-align: center; }
-.upgrade-toggle { cursor: pointer; justify-content: flex-start; }
-.priority-list { list-style: none; margin: 0; padding: 0; }
-.priority-list li span:last-child { display: flex; gap: 6px; }
-.budget-meter { border: 1px solid #47705a; margin: 20px 0; padding: 14px; }
-.budget-meter--error { border-color: #e45e52; color: #ff8176; }
-.registry-card__ruleset { color: #65d7b0; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
+/* Castle-siege map */
+.map-toolbar button { background: #192129; border: 1px solid #48535d; color: #fff; cursor: pointer; min-height: 32px; min-width: 32px; }
 .map-panel { background: #0e1419; border: 1px solid #303a42; margin-bottom: 28px; }
 .map-toolbar { align-items: center; border-bottom: 1px solid #303a42; display: flex; gap: 18px; justify-content: space-between; min-height: 58px; padding: 10px 16px; }
 .map-toolbar > span { color: #9aa6af; font-size: 10px; letter-spacing: .14em; }
@@ -470,6 +457,12 @@ footer { display: flex; justify-content: space-between; padding: 28px clamp(24px
 .entity-details span { color: #9da8b0; }
 
 @media (max-width: 760px) {
-  .creation-layout--blueprint { grid-template-columns: 1fr; }
   .map-viewport { height: 460px; }
 }
+
+/* Faction behavior editor */
+.form-panel textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 14px; color: inherit; background: #10171b; border: 1px solid #52636b; font: inherit; line-height: 1.6; }
+.form-panel textarea:focus-visible { outline: 2px solid #b9d776; outline-offset: 2px; }
+.form-panel fieldset { margin: 24px 0; padding: 14px; border: 1px solid #52636b; }
+.form-panel fieldset button { margin: 4px; padding: 8px 12px; }
+.registry-card p { overflow-wrap: anywhere; }

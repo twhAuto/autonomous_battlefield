@@ -2,8 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFaction, deleteFaction, FactionApiError, listFactionRulesets, listFactions } from './factions'
 
 const faction = {
-  id: '7f22e693-bacd-46bb-b942-64fa613cd388', name: 'Northwind', rulesetId: 'castle-siege-v1',
-  blueprint: { units: [{ type: 'vanguard', count: 1 }], upgradeIds: [], recruitmentPriority: ['vanguard'] },
+  id: '7f22e693-bacd-46bb-b942-64fa613cd388', name: 'Northwind', doctrine: 'Defend your castle.',
 }
 
 describe('faction API', () => {
@@ -16,11 +15,6 @@ describe('faction API', () => {
 
     await expect(listFactions()).resolves.toEqual([faction])
     expect(fetch).toHaveBeenCalledWith('/v1/factions', { signal: undefined })
-  })
-
-  it.each([null, undefined])('normalizes empty upgrade IDs from the server (%s)', async (upgradeIds) => {
-    vi.mocked(fetch).mockResolvedValue(jsonResponse({ factions: [{ ...faction, blueprint: { ...faction.blueprint, upgradeIds } }] }))
-    await expect(listFactions()).resolves.toEqual([faction])
   })
 
   it('discovers faction rulesets', async () => {
@@ -60,7 +54,7 @@ describe('faction API', () => {
   it.each([
     [409, 'identifier is already in use'],
     [400, 'server rejected these faction details'],
-    [422, 'blueprint is illegal'],
+    [422, 'faction details are invalid'],
     [500, 'faction could not be created'],
   ])('maps create status %d', async (status, message) => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status }))

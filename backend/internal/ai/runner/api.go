@@ -32,7 +32,7 @@ func (r APIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 	messages := []ai.Message{{Role: "user", Content: ai.DecisionPrompt(session.RequestID, nil)}}
 	usage := ai.Usage{}
 	for step := 0; step < session.Profile.MaxSteps; step++ {
-		turn, err := r.Provider.NextTurn(ctx, ai.ModelTurnRequest{SystemPrompt: ai.SystemPrompt, Messages: messages, Tools: tools, MaxTokens: session.Profile.MaxOutputTokens})
+		turn, err := r.Provider.NextTurn(ctx, ai.ModelTurnRequest{SystemPrompt: ai.SystemPromptForDoctrine(session.Doctrine), Messages: messages, Tools: tools, MaxTokens: session.Profile.MaxOutputTokens})
 		if err != nil {
 			return ai.DecisionResult{ErrorCategory: providerErrorCategory(ctx, err), Usage: usage}, err
 		}

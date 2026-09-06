@@ -52,6 +52,9 @@ func (m *Match) addFaction(slot int, setup FactionSetup, occupied map[Position]b
 	m.factions[setup.ID] = runtime
 	m.state.Factions = append(m.state.Factions, FactionState{FactionID: setup.ID, Gold: m.scenario.Ruleset.StartingGold})
 	castle := m.addCastle(slot, setup.ID, occupied)
+	if m.scenario.SnapshotVersion >= DoctrineSnapshotVersion {
+		return nil
+	}
 	if err := m.addStartingUnits(setup, runtime, availableSpawns(m.scenario.Map, castle.Position, occupied), occupied); err != nil {
 		return err
 	}
@@ -63,8 +66,12 @@ func newFactionRuntime(scenario Scenario, setup FactionSetup) (*factionRuntime, 
 	if strings.TrimSpace(setup.ID) == "" || strings.TrimSpace(setup.Name) == "" {
 		return nil, fmt.Errorf("%w: faction identity is invalid", ErrInvalidScenario)
 	}
-	if _, err := ValidateBlueprint(scenario.Ruleset, setup.Blueprint); err != nil {
-		return nil, err
+	if scenario.SnapshotVersion < DoctrineSnapshotVersion {
+		if _, err := ValidateBlueprint(scenario.Ruleset, setup.Blueprint); err != nil {
+			return nil, err
+		}
+	} else {
+		setup.Blueprint = Blueprint{}
 	}
 	if len(setup.ScriptedPlans) == 0 || strings.TrimSpace(setup.FallbackPlan.Name) == "" {
 		return nil, fmt.Errorf("%w: faction %q requires controller plans", ErrInvalidScenario, setup.ID)

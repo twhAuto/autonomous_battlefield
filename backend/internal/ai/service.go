@@ -172,6 +172,25 @@ func VerifyCapability(secret, token string, now time.Time) (string, error) {
 
 func validateRecruitmentChoices(record DecisionRecord, plan controller.PlanProposal) []ValidationIssue {
 	var issues []ValidationIssue
+	legalUpgrades := map[string]bool{}
+	for _, upgrade := range record.Observation.Legal.Upgrades {
+		legalUpgrades[upgrade.ID] = true
+	}
+	for _, id := range plan.UpgradeOrders {
+		if !legalUpgrades[id] {
+			issues = append(issues, ValidationIssue{Field: "plan.upgradeOrders", Code: "unsupported", Message: fmt.Sprintf("upgrade %q is not legal", id)})
+		}
+	}
+	if record.Observation.Opening {
+		if plan.RecruitmentOrders == nil {
+			issues = append(issues, ValidationIssue{Field: "plan.recruitmentOrders", Code: "required", Message: "Opening requires explicit orders; use [] to buy nothing."})
+		}
+		for _, kind := range plan.SpendOrder {
+			if kind == "construction" {
+				issues = append(issues, ValidationIssue{Field: "plan.spendOrder", Code: "unsupported", Message: "Construction is unavailable during opening."})
+			}
+		}
+	}
 	legalUnits := make(map[string]bool, len(record.Observation.Legal.Units))
 	for _, unit := range record.Observation.Legal.Units {
 		legalUnits[unit.ID] = true

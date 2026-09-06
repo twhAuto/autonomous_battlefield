@@ -1,3 +1,4 @@
+import { doctrineTemplates } from '../features/factions/pages/CreateFactionPage'
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -136,11 +137,7 @@ describe('App', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
 	  body: JSON.stringify({
-	    id: firstId, name: 'The Verdant Accord', rulesetId: 'castle-siege-v1',
-	    blueprint: {
-	      units: [{ type: 'vanguard', count: 1 }, { type: 'striker', count: 1 }, { type: 'ranger', count: 1 }],
-	      upgradeIds: ['arsenal'], recruitmentPriority: ['vanguard', 'striker', 'ranger'],
-	    },
+	    id: firstId, name: 'The Verdant Accord', doctrine: doctrineTemplates.Balanced,
 	  }),
     })
     expect(await screen.findByText('The Verdant Accord has entered the battlefield.')).toBeInTheDocument()
@@ -172,24 +169,13 @@ describe('App', () => {
     expect(screen.queryByTitle(firstId)).not.toBeInTheDocument()
   })
 
-  it('updates blueprint budget, upgrades, quantities, and recruitment order', async () => {
-    vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify({ rulesets: [ruleset], scenarios: [] }), { status: 200 }))
+  it('uses editable doctrine templates', async () => {
     const user = userEvent.setup()
     renderApp('/factions/new')
-    await screen.findByLabelText('Faction name')
-    await user.click(screen.getByRole('button', { name: 'Add vanguard' }))
-    expect(screen.getByText('25 over budget')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Remove vanguard' }))
-    await user.click(screen.getByRole('button', { name: 'Remove vanguard' }))
-    expect(screen.getByLabelText('vanguard quantity')).toHaveTextContent('0')
-    await user.click(screen.getByRole('checkbox', { name: /arsenal/i }))
-    expect(screen.getByText('65 unspent')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Add vanguard' }))
-    expect(screen.getByLabelText('vanguard quantity')).toHaveTextContent('1')
-    expect(screen.getByText('3. vanguard')).toBeInTheDocument()
-    expect(screen.getByText('30 unspent')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Move ranger up' }))
-    expect(screen.getByText('1. ranger')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Aggressive' }))
+    expect(screen.getByLabelText('Doctrine')).toHaveValue(doctrineTemplates.Aggressive)
+    await user.clear(screen.getByLabelText('Doctrine'))
+    expect(screen.getByRole('button', {name: 'CREATE FACTION'})).toBeDisabled()
   })
 
   it('renders every faction returned by the registry', async () => {

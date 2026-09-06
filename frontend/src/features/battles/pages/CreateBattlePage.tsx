@@ -1,4 +1,3 @@
-import { compatibleWithScenario } from '../../factions/compatibility'
 import { type SubmitEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -70,9 +69,8 @@ export function CreateBattlePage() {
     () => scenarios.find((scenario) => scenario.id === scenarioID),
     [scenarioID, scenarios],
   )
-  const compatibleFactions = useMemo(() => factions.filter((faction) => compatibleWithScenario(faction, selectedScenario)), [factions, selectedScenario])
-  const firstFaction = compatibleFactions.find((faction) => faction.id === firstFactionID)
-  const secondFaction = compatibleFactions.find((faction) => faction.id === secondFactionID)
+  const firstFaction = factions.find((faction) => faction.id === firstFactionID)
+  const secondFaction = factions.find((faction) => faction.id === secondFactionID)
   const maximumTicks = selectedScenario?.maximumTicks ?? 500
   const validTicks = typeof tickCount === 'number' && Number.isInteger(tickCount) && tickCount >= 1 && tickCount <= maximumTicks
   const canSubmit = loadState === 'ready'
@@ -85,9 +83,8 @@ export function CreateBattlePage() {
 
   useEffect(() => {
     if (!selectedScenario) return
-    const compatible = factions.filter((faction) => compatibleWithScenario(faction, selectedScenario))
-    setFirstFactionID(compatible[0]?.id ?? '')
-    setSecondFactionID(compatible[1]?.id ?? '')
+    setFirstFactionID(factions[0]?.id ?? '')
+    setSecondFactionID(factions[1]?.id ?? '')
     const scenarioMaximum = selectedScenario.maximumTicks ?? 500
     setTickCount((current) => current === '' ? current : Math.min(current, scenarioMaximum))
   }, [factions, selectedScenario])
@@ -174,7 +171,7 @@ export function CreateBattlePage() {
                 <div className="battle-form__field">
                   <label htmlFor="first-faction">Slot one</label>
                   <select id="first-faction" value={firstFactionID} onChange={(event) => setFirstFactionID(event.target.value)}>
-                    {compatibleFactions.map((faction) => <option key={faction.id} value={faction.id} disabled={faction.id === secondFactionID}>{faction.name}</option>)}
+                    {factions.map((faction) => <option key={faction.id} value={faction.id} disabled={faction.id === secondFactionID}>{faction.name}</option>)}
                   </select>
                   <label htmlFor="first-controller">Controller</label>
                   <ControllerSelect id="first-controller" value={firstController} onChange={setFirstController} profiles={profiles} />
@@ -183,14 +180,14 @@ export function CreateBattlePage() {
                 <div className="battle-form__field">
                   <label htmlFor="second-faction">Slot two</label>
                   <select id="second-faction" value={secondFactionID} onChange={(event) => setSecondFactionID(event.target.value)}>
-                    {compatibleFactions.map((faction) => <option key={faction.id} value={faction.id} disabled={faction.id === firstFactionID}>{faction.name}</option>)}
+                    {factions.map((faction) => <option key={faction.id} value={faction.id} disabled={faction.id === firstFactionID}>{faction.name}</option>)}
                   </select>
                   <label htmlFor="second-controller">Controller</label>
                   <ControllerSelect id="second-controller" value={secondController} onChange={setSecondController} profiles={profiles} />
                 </div>
               </div>
               {firstFactionID === secondFactionID && <p className="field-error" role="alert">Choose two different factions.</p>}
-              {compatibleFactions.length < 2 && <p className="field-error" role="alert">This scenario requires {selectedScenario?.rulesetId} and its allowed units and upgrades. Create two compatible factions before deployment.</p>}
+              {factions.length < 2 && <p className="field-error" role="alert">Create two factions before deployment.</p>}
 
               <div className="battle-form__field">
                 <label htmlFor="tick-count">Maximum ticks</label>

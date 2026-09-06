@@ -6,6 +6,7 @@ import (
 )
 
 type FactionIdentity struct {
+	Doctrine  string
 	ID        string
 	Name      string
 	RulesetID string

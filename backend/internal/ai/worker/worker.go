@@ -110,6 +110,7 @@ func waitFor(ctx context.Context, duration time.Duration) bool {
 }
 
 type job struct {
+	Doctrine    string `json:"doctrine"`
 	RequestID   string `json:"requestId"`
 	ProfileID   string `json:"profileId"`
 	Traceparent string `json:"traceparent"`
@@ -182,7 +183,7 @@ func (w *Worker) runJob(parent context.Context, job job) {
 		w.reportJobFailure(parent, logger, started, job.RequestID, "provider_unavailable", "provider_unavailable", ai.DecisionResult{})
 		return
 	}
-	result, err := decisionRunner.Run(ctx, ai.DecisionSession{RequestID: job.RequestID, CapabilityToken: token, MCPURL: w.MCPURL, Profile: profile})
+	result, err := decisionRunner.Run(ctx, ai.DecisionSession{Doctrine: job.Doctrine, RequestID: job.RequestID, CapabilityToken: token, MCPURL: w.MCPURL, Profile: profile})
 	w.finishJob(parent, ctx, jobRun{logger: logger, started: started, requestID: job.RequestID, profile: profile}, result, err)
 }
 

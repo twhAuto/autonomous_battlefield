@@ -1,0 +1,27 @@
+schemaVersion: battlefield.ai-eval-case.v1
+id: normal-opening-upgrades
+category: normal
+rulesVersion: castle-siege-v1
+profile: deterministic
+model: scripted
+requestId: request-opening
+maxSteps: 3
+maxTokens: 256
+capability: valid
+contextJson: '{"context":{"schemaVersion":"battlefield.decision-context.v2","requestId":"request-opening","factionId":"blue","targetTick":0,"expectedVersion":1,"opening":true,"doctrine":"Invest in durable forces and preserve income.","economy":{"gold":180,"projectedIncome":0},"legal":{"actionKinds":["attack","defend"],"units":[{"id":"ranger","cost":30}],"upgrades":[{"id":"plating","cost":20,"defenseBonus":2}]}}}'
+turns:
+  - toolCalls:
+      - id: context
+        name: get_decision_context
+        arguments: '{"requestId":"request-opening"}'
+  - text: Buy protection and keep enough gold for later decisions.
+    toolCalls:
+      - id: submit
+        name: submit_strategy_plan
+        arguments: '{"requestId":"request-opening","idempotencyKey":"opening","expectedVersion":1,"targetTick":0,"name":"durable-opening","rationale":"Buy protection while preserving gold.","actionWeights":{"defend":1200},"reserveGold":50,"spendOrder":["upgrades","recruitment"],"constructionPriorities":[],"recruitmentPriorities":[],"recruitmentOrders":[{"unitType":"ranger","count":2}],"upgradeOrders":["plating"]}'
+submission: {accepted: true, status: accepted}
+expected:
+  accepted: true
+  maximumToolCalls: 2
+  safetyCritical: false
+  forbiddenOutput: [capability, private-chain-of-thought]

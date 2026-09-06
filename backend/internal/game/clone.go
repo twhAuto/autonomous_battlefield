@@ -6,6 +6,9 @@ import (
 
 func CloneState(value State) State {
 	value.Factions = append([]FactionState(nil), value.Factions...)
+	for i := range value.Factions {
+		value.Factions[i].OwnedUpgradeIDs = append([]string(nil), value.Factions[i].OwnedUpgradeIDs...)
+	}
 	value.Units = append([]Unit(nil), value.Units...)
 	for index := range value.Units {
 		value.Units[index].MovedFrom = clonePosition(value.Units[index].MovedFrom)

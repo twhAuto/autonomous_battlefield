@@ -140,7 +140,7 @@ The package root contains types and interfaces shared across these subpackages, 
 | [`visibility.go`](../../backend/internal/game/visibility.go) | Faction perspectives and fog of war |
 | [`clone.go`](../../backend/internal/game/clone.go) | Defensive copying of state, scenarios, results, and plans |
 | [`map.go`](../../backend/internal/game/map.go) | Hex-map validation, coordinates, traversal, and visibility helpers |
-| [`rules.go`](../../backend/internal/game/rules.go) | Ruleset and point-buy blueprint validation |
+| [`rules.go`](../../backend/internal/game/rules.go) | Ruleset and legacy blueprint validation |
 
 `game.Match` is the in-memory authority for one battle attempt. Important methods include:
 
@@ -318,12 +318,12 @@ The server validates request scope before calling `DecisionService`. PostgreSQL 
 
 The standalone controller is retained as an intentional, independently tested capability. Shared production plan validation lives in [`validation.go`](../../backend/internal/game/controller/validation.go); [`clone.go`](../../backend/internal/game/controller/clone.go) owns `ClonePlanProposal` and `ClonePlanProposals`, used by the match, catalog, and utility controller. Add new mutable proposal fields to that copy implementation and its isolation test.
 
-### `internal/faction`: reusable blueprints
+### `internal/faction`: reusable doctrines
 
 | Area | Responsibility |
 | --- | --- |
 | [`faction.go`](../../backend/internal/faction/faction.go) | Stored and decorated faction model |
-| [`service`](../../backend/internal/faction/service) | UUID/name validation, ruleset lookup, blueprint validation, design-cost decoration |
+| [`service`](../../backend/internal/faction/service) | UUID/name/doctrine validation and profile creation/update |
 | [`api`](../../backend/internal/faction/api) | Faction and faction-ruleset HTTP routes |
 | [`repo`](../../backend/internal/faction/repo) | PostgreSQL serialization and errors |
 
@@ -552,12 +552,24 @@ to verify event-page draining without load-sensitive wall-clock deadlines.
   and unit-knowledge library; rulesets reference it instead of duplicating stats.
 - `backend/internal/battle/catalog/library.go` resolves and validates library
   references; `restrictions.go` narrows scenario choices and validates authored plans.
-- `frontend/src/features/factions/compatibility.ts` shares scenario filtering
-  between the faction builder and battle setup. Scenario summaries carry allowed IDs.
+- Faction creation/editing uses name and doctrine, with editable strategy templates.
+  Scenario summaries carry allowed IDs for purchase validation; profiles are generic.
 
 Library-backed and inline rulesets both resolve to the existing immutable game
 snapshot. See [content libraries](../operations/content-library.md) for authoring.
 
-The faction API client normalizes null or omitted blueprint `upgradeIds` to an
-empty array before scenario compatibility filtering. Page tests cover factions
-with no upgrades against restricted scenarios.
+The faction API exchanges `{ id, name, doctrine }`; edit requests use PUT.
+Battle setup selects generic profiles without blueprint compatibility filtering.
+
+### Doctrine profile implementation
+
+- `backend/internal/faction/service/update.go` and the faction handler/repository
+  implement validated name/doctrine updates. Creation and listing expose only profile fields.
+- `backend/internal/game/opening.go` handles the tick-zero phase and deterministic
+  fallback; `upgrades.go` executes one-time gold purchases and propagates bonuses.
+- `backend/internal/ai/prompts/*v4.txt` and doctrine-aware API/CLI runners define
+  the new context/tool contract. Decision records retain doctrine in observation provenance.
+- `backend/migrations/00008_faction_doctrine.sql` backfills balanced doctrine,
+  preserves legacy columns, and permits decision records at tick zero.
+- Faction routes `/factions/new` and `/factions/:id/edit` share the doctrine editor.
+  The decision panel displays opening plans and requested upgrades.

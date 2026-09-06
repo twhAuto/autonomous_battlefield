@@ -62,16 +62,7 @@ Content-Type: application/json
 {
   "id": "4db8d152-1e04-4d10-8824-859c6ed72878",
   "name": "Northern Alliance",
-  "rulesetId": "castle-siege-v1",
-  "blueprint": {
-    "units": [
-      {"type":"vanguard","count":1},
-      {"type":"striker","count":1},
-      {"type":"ranger","count":1}
-    ],
-    "upgradeIds": ["arsenal"],
-    "recruitmentPriority": ["vanguard","striker","ranger"]
-  }
+  "doctrine": "Protect income, scout before committing, and adapt purchases to visible threats."
 }
 ```
 
@@ -80,18 +71,23 @@ Responses:
 | Status | Meaning |
 | --- | --- |
 | `201 Created` | The faction was created. The response has no body. |
-| `400 Bad Request` | The JSON is invalid, the ID is not UUID-shaped, or the trimmed name is empty. |
-| `422 Unprocessable Entity` | The blueprint is illegal, unknown, or over budget. |
+| `400 Bad Request` | The JSON is invalid, the ID is not UUID-shaped, or the trimmed name/doctrine is empty, or doctrine exceeds 4,000 Unicode characters. |
 | `409 Conflict` | A faction with the same ID already exists. |
 | `500 Internal Server Error` | The faction could not be persisted. |
 
-Request bodies are limited to 64 KiB and must contain exactly one JSON value. Names are trimmed before storage.
+Request bodies are limited to 64 KiB and must contain exactly one JSON value. Names and doctrines are trimmed before storage. Obsolete blueprint/ruleset request fields are rejected.
 
-`GET /v1/faction-rulesets` returns the available budgets, unit statistics, upgrades, and costs used by the faction builder.
+`GET /v1/faction-rulesets` returns catalog starting gold, unit statistics, upgrades, and costs; faction creation does not require it.
+
+## Update a faction
+
+`PUT /v1/factions/{id}` accepts `{ "name": "Northern Alliance", "doctrine": "Protect income." }`.
+Returns `204` on success, `400` for invalid fields or ID, `404` for missing profiles,
+and `500` for persistence failures. Changes apply only to future battles.
 
 ## List factions
 
-`GET /v1/factions` returns the registered factions for battle staging.
+`GET /v1/factions` returns `{ "factions": [{ "id": "…", "name": "…", "doctrine": "…" }] }` in stable creation order.
 
 ## Delete a faction
 
@@ -126,7 +122,7 @@ The endpoint returns `404 Not Found` when the faction does not exist and `500 In
 
 ## Queue a battle
 
-Both factions must already exist and use the scenario's ruleset. The scenario ID refers to a strict YAML template in `backend/scenarios`; the API resolves both persisted blueprints, the map, ruleset, and controller plans into a deterministic snapshot for replay.
+Both factions must already exist. The scenario ID refers to a strict YAML template in `backend/scenarios`; the API snapshots faction names/doctrines, the map, ruleset, and controller plans. New snapshots use `snapshotVersion: 2` and start with castles and gold. Older queued snapshots retain legacy initialization.
 
 The frontend discovers available templates through `GET /v1/scenarios`, which returns scenario IDs, rules versions, scenario-specific maximum ticks, tick pacing, and decision timing. `castle-siege-v1` allows at most 500 ticks.
 

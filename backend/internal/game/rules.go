@@ -40,7 +40,7 @@ func ValidateRuleset(ruleset Ruleset) error {
 }
 
 func validRulesetMetadata(ruleset Ruleset) bool {
-	return strings.TrimSpace(ruleset.ID) != "" && strings.TrimSpace(ruleset.Version) != "" && ruleset.DesignBudget > 0 && ruleset.StartingGold >= 0
+	return strings.TrimSpace(ruleset.ID) != "" && strings.TrimSpace(ruleset.Version) != "" && ruleset.DesignBudget >= 0 && ruleset.StartingGold >= 0
 }
 
 func validUnitType(unit UnitType) bool {

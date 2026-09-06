@@ -13,8 +13,7 @@ starting gold, design budget, combat percentages, and economy-building limits:
 ```yaml
 id: example-v1
 version: "1"
-designBudget: 120
-startingGold: 60
+startingGold: 180
 library:
   id: core
   version: "1"
@@ -69,15 +68,11 @@ The map still uses the existing castle spawns and economy-site geometry.
 
 Explicit scripted/fallback recruitment orders or priorities must use allowed
 units. Explicit construction sites are rejected when economy buildings are disabled.
-Generic fallback plans can leave recruitment unspecified to inherit each compatible
-faction blueprint. Battle creation rejects incompatible blueprint units, upgrades,
-and recruitment priorities with an HTTP 422 explanation.
-
-The faction builder's **Scenario compatibility** selector limits displayed units
-and upgrades and resets the draft blueprint to those choices. **All content in
-ruleset** designs a reusable unrestricted blueprint; it may be incompatible with
-some scenarios. Battle setup filters factions against scenario selections as well
-as the ruleset ID. The server independently validates compatibility.
+Generic scripted plans with unspecified recruitment use deterministic round-robin
+purchases from the sorted legal unit roster, capped at six units and available gold.
+Faction profiles have no ruleset binding. Scenario restrictions constrain both
+opening and subsequent purchases, including upgrades. `startingGold` funds opening
+units and upgrades; unspent gold carries forward. There is no design-point budget.
 
 ## Versioning and runtime behavior
 

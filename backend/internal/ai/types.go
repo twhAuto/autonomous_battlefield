@@ -14,12 +14,13 @@ import (
 const (
 	ControllerScripted = "scripted"
 	ControllerModel    = "model"
-	ContextSchema      = "battlefield.decision-context.v1"
-	PlanSchema         = "battlefield.strategy-plan.v1"
-	ToolSchema         = "battlefield.mcp-tools.v3"
+	ContextSchema      = "battlefield.decision-context.v2"
+	PlanSchema         = "battlefield.strategy-plan.v2"
+	ToolSchema         = "battlefield.mcp-tools.v4"
 )
 
 type DecisionSession struct {
+	Doctrine        string
 	RequestID       string
 	CapabilityToken string
 	MCPURL          string
@@ -82,6 +83,9 @@ type TurnProvider interface {
 }
 
 type DecisionContext struct {
+	Doctrine           string                  `json:"doctrine,omitempty"`
+	Opening            bool                    `json:"opening,omitempty"`
+	OwnedUpgradeIDs    []string                `json:"ownedUpgradeIds,omitempty"`
 	Knowledge          *DecisionKnowledge      `json:"knowledge,omitempty"`
 	SchemaVersion      string                  `json:"schemaVersion"`
 	RequestID          string                  `json:"requestId"`
@@ -108,6 +112,7 @@ type EconomyContext struct {
 }
 
 type LegalChoices struct {
+	Upgrades     []game.Upgrade          `json:"upgrades,omitempty"`
 	ActionKinds  []string                `json:"actionKinds"`
 	Units        []game.UnitType         `json:"units"`
 	EconomySites []controller.Coordinate `json:"economySites"`

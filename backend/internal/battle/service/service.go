@@ -263,7 +263,7 @@ func (s *battleService) resolveParticipants(ctx context.Context, participants []
 			return identities, controllers, err
 		}
 		controllers[index] = controller
-		identities[index] = FactionIdentity{ID: storedFaction.ID, Name: storedFaction.Name, RulesetID: storedFaction.RulesetID, Blueprint: game.CloneBlueprint(storedFaction.Blueprint)}
+		identities[index] = FactionIdentity{ID: storedFaction.ID, Name: storedFaction.Name, Doctrine: storedFaction.Doctrine, RulesetID: storedFaction.RulesetID, Blueprint: game.CloneBlueprint(storedFaction.Blueprint)}
 	}
 	return identities, controllers, nil
 }

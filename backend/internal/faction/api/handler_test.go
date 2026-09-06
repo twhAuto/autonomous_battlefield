@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -152,7 +151,6 @@ func TestCreateFactionErrors(t *testing.T) {
 		{name: "malformed body", body: `{`, wantStatus: http.StatusBadRequest},
 		{name: "trailing JSON", body: `{}` + `{}`, wantStatus: http.StatusBadRequest},
 		{name: "invalid faction", body: `{}`, serviceErr: factionservice.ErrInvalidFaction, wantStatus: http.StatusBadRequest},
-		{name: "invalid blueprint", body: `{}`, serviceErr: fmt.Errorf("%w: unknown ruleset", factionservice.ErrInvalidBlueprint), wantStatus: http.StatusUnprocessableEntity},
 		{name: "duplicate faction", body: `{}`, serviceErr: factionservice.ErrFactionAlreadyExists, wantStatus: http.StatusConflict},
 		{name: "repository failure", body: `{}`, serviceErr: errors.New("database unavailable"), wantStatus: http.StatusInternalServerError},
 	}

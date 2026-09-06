@@ -110,7 +110,7 @@ func (s *Server) handleAgentClaim(repository ai.DecisionRepository) http.Handler
 		}
 		s.logDecisionClaim(r.Context(), request.WorkerID, record)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"requestId": record.ID, "profileId": record.ProfileID,
+			"requestId": record.ID, "profileId": record.ProfileID, "doctrine": record.Observation.Doctrine,
 			"traceparent": record.Traceparent, "tracestate": record.Tracestate,
 		})
 	}
@@ -296,6 +296,7 @@ type getContextOutput struct {
 }
 
 type submitPlanInput struct {
+	UpgradeOrders          []string                       `json:"upgradeOrders,omitempty" jsonschema:"Ordered one-time upgrade purchases. Include upgrades in spendOrder. Already-owned upgrades are skipped without charging."`
 	RecruitmentOrders      *[]controller.RecruitmentOrder `json:"recruitmentOrders,omitempty" jsonschema:"Explicit ordered purchases for this production window. Use [] to buy nothing; at most six units total. Leave recruitmentPriorities empty when using orders."`
 	RequestID              string                         `json:"requestId"`
 	IdempotencyKey         string                         `json:"idempotencyKey"`
@@ -356,7 +357,7 @@ func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest,
 		s.logger.WarnContext(ctx, "decision_submission_denied", "request_id", input.RequestID, "target_tick", input.TargetTick)
 		return nil, ai.SubmissionResult{}, err
 	}
-	plan := controller.PlanProposal{RecruitmentOrders: input.RecruitmentOrders, Name: input.Name, Rationale: input.Rationale, ActionWeights: input.ActionWeights, TargetBonuses: input.TargetBonuses,
+	plan := controller.PlanProposal{UpgradeOrders: input.UpgradeOrders, RecruitmentOrders: input.RecruitmentOrders, Name: input.Name, Rationale: input.Rationale, ActionWeights: input.ActionWeights, TargetBonuses: input.TargetBonuses,
 		ReserveGold: input.ReserveGold, SpendOrder: input.SpendOrder, ConstructionPriorities: input.ConstructionPriorities,
 		RecruitmentPriorities: input.RecruitmentPriorities}
 	result, err := s.decisions.SubmitPlan(ctx, ai.PlanSubmission{RequestID: input.RequestID, IdempotencyKey: input.IdempotencyKey,

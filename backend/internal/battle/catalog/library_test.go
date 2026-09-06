@@ -2,7 +2,6 @@ package catalog
 
 import (
 	"encoding/json"
-	"errors"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	service "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
@@ -106,7 +105,7 @@ func TestScenarioContentRestrictionsReachEngineAndAI(t *testing.T) {
 	if len(ai.ValidateSubmission(ai.DecisionRecord{Version: 1, TargetTick: 10, Observation: ctx}, submission)) == 0 {
 		t.Fatal("AI accepted excluded purchase")
 	}
-	for range 9 {
+	for range 10 {
 		if _, err = m.Advance(); err != nil {
 			t.Fatal(err)
 		}
@@ -124,12 +123,12 @@ func TestScenarioContentRestrictionsReachEngineAndAI(t *testing.T) {
 	}
 	bad := ids
 	bad[0].Blueprint = game.Blueprint{Units: []game.UnitSelection{{Type: "striker", Count: 1}}, RecruitmentPriority: []string{"striker"}}
-	if _, _, err = c.Resolve("restricted", bad); !errors.Is(err, service.ErrIncompatibleFaction) {
+	if _, _, err = c.Resolve("restricted", bad); err != nil {
 		t.Fatalf("incompatible unit blueprint: %v", err)
 	}
 	bad = ids
 	bad[0].Blueprint.UpgradeIDs = []string{"arsenal"}
-	if _, _, err = c.Resolve("restricted", bad); !errors.Is(err, service.ErrIncompatibleFaction) {
+	if _, _, err = c.Resolve("restricted", bad); err != nil {
 		t.Fatalf("incompatible upgrade blueprint: %v", err)
 	}
 	// Editing library source changes new snapshots, never existing ones.

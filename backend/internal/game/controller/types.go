@@ -52,6 +52,7 @@ type RecruitmentOrder struct {
 }
 
 type PlanProposal struct {
+	UpgradeOrders          []string            `json:"upgradeOrders,omitempty" yaml:"upgradeOrders,omitempty"`
 	RecruitmentOrders      *[]RecruitmentOrder `json:"recruitmentOrders,omitempty" yaml:"recruitmentOrders,omitempty"`
 	Name                   string              `json:"name" yaml:"name"`
 	Rationale              string              `json:"rationale,omitempty" yaml:"rationale,omitempty"`
@@ -73,6 +74,7 @@ type Coordinate struct {
 // StrategyPlan is an accepted, immutable plan with a deterministic lifetime.
 // ValidUntilTick is exclusive.
 type StrategyPlan struct {
+	UpgradeOrders          []string
 	RecruitmentOrders      *[]RecruitmentOrder
 	ID                     string
 	Name                   string

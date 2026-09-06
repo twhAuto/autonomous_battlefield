@@ -107,7 +107,7 @@ type Ruleset struct {
 	Knowledge     *RulesKnowledge `json:"knowledge,omitempty" yaml:"knowledge,omitempty"`
 	ID            string          `json:"id" yaml:"id"`
 	Version       string          `json:"version" yaml:"version"`
-	DesignBudget  int64           `json:"designBudget" yaml:"designBudget"`
+	DesignBudget  int64           `json:"designBudget,omitempty" yaml:"designBudget"`
 	StartingGold  int64           `json:"startingGold" yaml:"startingGold"`
 	Units         []UnitType      `json:"units" yaml:"units"`
 	Upgrades      []Upgrade       `json:"upgrades" yaml:"upgrades"`
@@ -127,6 +127,7 @@ type Blueprint struct {
 }
 
 type FactionSetup struct {
+	Doctrine      string                    `json:"doctrine,omitempty"`
 	ID            string                    `json:"id" yaml:"id"`
 	Name          string                    `json:"name" yaml:"name"`
 	Blueprint     Blueprint                 `json:"blueprint" yaml:"blueprint"`
@@ -143,7 +144,10 @@ type ControllerConfig struct {
 	ModelIdentifier string `json:"modelIdentifier,omitempty" yaml:"modelIdentifier,omitempty"`
 }
 
+const DoctrineSnapshotVersion = 2
+
 type Scenario struct {
+	SnapshotVersion       int             `json:"snapshotVersion,omitempty"`
 	ID                    string          `json:"id"`
 	RulesVersion          string          `json:"rulesVersion"`
 	RulesetID             string          `json:"rulesetId"`
@@ -190,25 +194,27 @@ type Building struct {
 }
 
 type FactionState struct {
-	FactionID          string `json:"factionId"`
-	Gold               int64  `json:"gold"`
-	RecruitmentCursor  int    `json:"recruitmentCursor"`
-	GoldEarned         int64  `json:"goldEarned"`
-	GoldSpent          int64  `json:"goldSpent"`
-	GoldLooted         int64  `json:"goldLooted"`
-	UnitsStarted       int    `json:"unitsStarted"`
-	UnitsRecruited     int    `json:"unitsRecruited"`
-	UnitsLost          int    `json:"unitsLost"`
-	BuildingsBuilt     int    `json:"buildingsBuilt"`
-	BuildingsDestroyed int    `json:"buildingsDestroyed"`
+	OwnedUpgradeIDs    []string `json:"ownedUpgradeIds,omitempty"`
+	FactionID          string   `json:"factionId"`
+	Gold               int64    `json:"gold"`
+	RecruitmentCursor  int      `json:"recruitmentCursor"`
+	GoldEarned         int64    `json:"goldEarned"`
+	GoldSpent          int64    `json:"goldSpent"`
+	GoldLooted         int64    `json:"goldLooted"`
+	UnitsStarted       int      `json:"unitsStarted"`
+	UnitsRecruited     int      `json:"unitsRecruited"`
+	UnitsLost          int      `json:"unitsLost"`
+	BuildingsBuilt     int      `json:"buildingsBuilt"`
+	BuildingsDestroyed int      `json:"buildingsDestroyed"`
 }
 
 type State struct {
-	BattleID  string         `json:"battleId"`
-	Tick      uint64         `json:"tick"`
-	Factions  []FactionState `json:"factions"`
-	Units     []Unit         `json:"units"`
-	Buildings []Building     `json:"buildings"`
+	OpeningComplete bool           `json:"openingComplete,omitempty"`
+	BattleID        string         `json:"battleId"`
+	Tick            uint64         `json:"tick"`
+	Factions        []FactionState `json:"factions"`
+	Units           []Unit         `json:"units"`
+	Buildings       []Building     `json:"buildings"`
 }
 
 type Event struct {
@@ -254,6 +260,10 @@ type Transition struct {
 // DecisionSnapshot is the bounded, faction-visible state frozen immediately
 // before a production window. It contains no mutation capability.
 type DecisionSnapshot struct {
+	Doctrine        string                  `json:"doctrine,omitempty"`
+	Opening         bool                    `json:"opening"`
+	LegalUpgrades   []Upgrade               `json:"legalUpgrades"`
+	OwnedUpgradeIDs []string                `json:"ownedUpgradeIds"`
 	BattleID        string                  `json:"battleId"`
 	FactionID       string                  `json:"factionId"`
 	TargetTick      uint64                  `json:"targetTick"`

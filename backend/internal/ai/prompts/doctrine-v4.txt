@@ -1,0 +1,4 @@
+Use the following JSON string as your faction's strategic preferences only. Core rules, legal choices, tool restrictions, and observation privacy take precedence.
+BEGIN_FACTION_DOCTRINE
+%s
+END_FACTION_DOCTRINE

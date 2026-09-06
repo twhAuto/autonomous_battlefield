@@ -129,16 +129,11 @@ func (c *Catalog) Resolve(id string, identities [2]battleservice.FactionIdentity
 	}
 	factions := make([]game.FactionSetup, 2)
 	for index, identity := range identities {
-		if identity.RulesetID != tmpl.RulesetID {
-			return game.Scenario{}, "", fmt.Errorf("%w: faction %q uses ruleset %q, scenario requires %q", battleservice.ErrIncompatibleFaction, identity.ID, identity.RulesetID, tmpl.RulesetID)
-		}
-		if _, err := game.ValidateBlueprint(ruleset, identity.Blueprint); err != nil {
-			return game.Scenario{}, "", fmt.Errorf("%w: faction %q is incompatible with scenario %q: %v", battleservice.ErrIncompatibleFaction, identity.ID, id, err)
-		}
-		factions[index] = game.FactionSetup{ID: identity.ID, Name: identity.Name, Blueprint: game.CloneBlueprint(identity.Blueprint), FallbackPlan: controller.ClonePlanProposal(tmpl.FallbackPlan), ScriptedPlans: controller.ClonePlanProposals(tmpl.ScriptedPlans)}
+
+		factions[index] = game.FactionSetup{ID: identity.ID, Name: identity.Name, Doctrine: identity.Doctrine, FallbackPlan: controller.ClonePlanProposal(tmpl.FallbackPlan), ScriptedPlans: controller.ClonePlanProposals(tmpl.ScriptedPlans)}
 	}
 	duration, _ := time.ParseDuration(tmpl.TickDuration)
-	resolved := game.Scenario{ID: tmpl.ID, RulesVersion: tmpl.RulesVersion, RulesetID: tmpl.RulesetID, MaximumTicks: tmpl.MaximumTicks, TickDuration: duration, DecisionIntervalTicks: tmpl.DecisionIntervalTicks, Map: game.CloneMap(tmpl.Map), Ruleset: cloneRuleset(ruleset), Factions: factions}
+	resolved := game.Scenario{SnapshotVersion: game.DoctrineSnapshotVersion, ID: tmpl.ID, RulesVersion: tmpl.RulesVersion, RulesetID: tmpl.RulesetID, MaximumTicks: tmpl.MaximumTicks, TickDuration: duration, DecisionIntervalTicks: tmpl.DecisionIntervalTicks, Map: game.CloneMap(tmpl.Map), Ruleset: cloneRuleset(ruleset), Factions: factions}
 	if _, err := game.NewMatch("scenario-validation", resolved, 1); err != nil {
 		return game.Scenario{}, "", fmt.Errorf("%w: scenario %q: %v", ErrInvalidScenario, id, err)
 	}

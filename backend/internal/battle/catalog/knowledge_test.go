@@ -50,7 +50,7 @@ func TestAdditionalUnitFromYAML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for range 9 {
+	for range 10 {
 		if _, err = match.Advance(); err != nil {
 			t.Fatal(err)
 		}

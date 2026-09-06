@@ -3,15 +3,7 @@ import { apiFetch, createApiClient } from '../../../shared/api/request'
 export interface CreateFactionInput {
   id: string
   name: string
-  rulesetId: string
-  blueprint: FactionBlueprint
-}
-
-export interface UnitSelection { type: string; count: number }
-export interface FactionBlueprint {
-  units: UnitSelection[]
-  upgradeIds: string[]
-  recruitmentPriority: string[]
+  doctrine: string
 }
 
 export interface UnitRule {
@@ -22,17 +14,14 @@ export interface UpgradeRule {
   id: string; cost: number; attackBonus: number; defenseBonus: number; economyIncomeBonus: number
 }
 export interface FactionRuleset {
-  id: string; version: string; designBudget: number; startingGold: number
+  id: string; version: string; startingGold: number
   units: UnitRule[]; upgrades: UpgradeRule[]
 }
 
 export interface Faction {
   id: string
   name: string
-  rulesetId: string
-  blueprint: FactionBlueprint
-  spentPoints: number
-  remainingPoints: number
+  doctrine: string
 }
 
 export async function listFactionRulesets(signal?: AbortSignal): Promise<FactionRuleset[]> {
@@ -65,11 +54,7 @@ export async function listFactions(signal?: AbortSignal): Promise<Faction[]> {
   }
 
   const body = (await response.json()) as { factions: Faction[] }
-  // Go encodes an empty optional upgrade slice as null. Keep the UI model an array.
-  return body.factions.map(faction => faction.blueprint ? {
-    ...faction,
-    blueprint: { ...faction.blueprint, upgradeIds: faction.blueprint.upgradeIds ?? [] },
-  } : faction)
+  return body.factions
 }
 
 export async function createFaction(
@@ -92,7 +77,7 @@ export async function createFaction(
 
   if (response.status === 400) {
     throw new FactionApiError(
-      'The server rejected these faction details. Review the name and try again.',
+      'The server rejected these faction details. Review the name and doctrine and try again.',
       response.status,
     )
   }
@@ -100,7 +85,7 @@ export async function createFaction(
   if (response.status === 422) {
     const detail = (await response.text()).trim()
     throw new FactionApiError(
-      detail || 'This blueprint is illegal or exceeds its design budget.',
+      detail || 'These faction details are invalid.',
       response.status,
     )
   }
@@ -121,4 +106,12 @@ export async function deleteFaction(id: string): Promise<void> {
 		throw new FactionApiError('The faction identifier is invalid.', response.status)
 	}
 	throw new FactionApiError('The faction could not be deleted. Please try again.', response.status)
+}
+
+export async function updateFaction(faction: CreateFactionInput): Promise<void> {
+ const response = await factionFetch(`/v1/factions/${encodeURIComponent(faction.id)}`, {
+ method: 'PUT', headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ name: faction.name, doctrine: faction.doctrine }),
+ })
+ if (!response.ok) throw new FactionApiError(response.status === 404 ? 'Faction not found.' : 'The faction could not be updated. Check the name and doctrine and try again.', response.status)
 }

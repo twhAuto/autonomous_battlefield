@@ -32,13 +32,13 @@ export function AIDecisionPanel({ decisions, participantNames, message, hasModel
         <strong>{modelDecisions.length}</strong>
       </div>
       {message && <div className="ai-decision-panel__state ai-decision-panel__state--error" role="alert">{message}</div>}
-      {!message && modelDecisions.length === 0 && <div className="ai-decision-panel__state">{hasModelController ? 'Waiting for the first production window.' : 'This battle uses scripted controllers, so no model decisions will be created.'}</div>}
+      {!message && modelDecisions.length === 0 && <div className="ai-decision-panel__state">{hasModelController ? 'Waiting for the opening decision.' : 'This battle uses scripted controllers, so no model decisions will be created.'}</div>}
       {modelDecisions.length > 0 && (
         <ol className="ai-decision-list">
           {[...modelDecisions].reverse().map((decision) => (
             <li key={decision.requestId}>
               <div className="ai-decision-list__heading">
-                <div><strong>{participantNames.get(decision.factionId) ?? decision.factionId}</strong><span>TICK {decision.targetTick}</span></div>
+                <div><strong>{participantNames.get(decision.factionId) ?? decision.factionId}</strong><span>{decision.targetTick === 0 ? 'OPENING' : `TICK ${decision.targetTick}`}</span></div>
                 <span className={`decision-state decision-state--${decision.status}`}>{decisionLabel(decision)}</span>
               </div>
               <dl>
@@ -48,6 +48,7 @@ export function AIDecisionPanel({ decisions, participantNames, message, hasModel
                 <DecisionDetail label="Reserve" value={decision.resolvedPlan ? `${decision.resolvedPlan.reserveGold ?? 0} gold` : '—'} />
                 <DecisionDetail label="Spend order" value={formatList(decision.resolvedPlan?.spendOrder)} />
                 <DecisionDetail label="Recruit" value={formatRecruitment(decision.resolvedPlan)} />
+                <DecisionDetail label="Upgrades" value={formatList(decision.resolvedPlan?.upgradeOrders)} />
                 <DecisionDetail label="Build sites" value={formatCoordinates(decision.resolvedPlan?.constructionPriorities)} />
                 <DecisionDetail label="Model" value={decision.modelIdentifier || decision.profileId || '—'} />
               </dl>

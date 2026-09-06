@@ -29,6 +29,8 @@ func (m *Match) runFactionEconomy(slot int, factionID string, productionWindow b
 	plan := m.factions[factionID].activePlan
 	for _, kind := range plan.SpendOrder {
 		switch kind {
+		case "upgrades":
+			events = append(events, m.runUpgrades(factionID, plan)...)
 		case "construction":
 			events = append(events, m.runConstruction(slot, factionID, plan)...)
 		case "recruitment":
