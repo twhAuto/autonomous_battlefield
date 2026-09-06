@@ -2,51 +2,17 @@ id: castle-siege-v1
 version: "1"
 designBudget: 120
 startingGold: 60
-units:
-  - {id: vanguard, cost: 35, health: 70, attack: 9, defense: 7, speed: 4, movement: 1, range: 1, vision: 2}
-  - {id: striker, cost: 25, health: 42, attack: 14, defense: 3, speed: 8, movement: 2, range: 1, vision: 3}
-  - {id: ranger, cost: 30, health: 30, attack: 11, defense: 2, speed: 6, movement: 1, range: 3, vision: 4}
-upgrades:
-  - {id: arsenal, cost: 20, attackBonus: 2}
-  - {id: plating, cost: 20, defenseBonus: 2}
-  - {id: industry, cost: 20, economyIncomeBonus: 2}
+library:
+  id: core
+  version: "1"
+  units: [vanguard, striker, ranger]
+  upgrades: [arsenal, plating, industry]
+  castle: castle
+  economy: economy
 buildings:
-  castleHealth: 300
-  castleDefense: 8
-  castleVision: 4
-  castleIncome: 10
-  economyCost: 50
-  economyHealth: 60
-  economyDefense: 2
-  economyVision: 2
-  economyIncome: 10
   maximumEconomyCount: 2
 combat:
   minimumDamage: 1
   defendAttackPercent: 80
   defendDamageTakenPercent: 70
   lootPercent: 50
-
-knowledge:
-  mechanics: >-
-    Recruitment and construction follow the submitted spend order and reserve gold.
-    Range limits attack distance; movement limits travel per movement action.
-    Defense reduces damage subject to the minimum damage rule. Unit actions and targeting
-    are executed by the engine; a plan sets faction priorities, not individual commands.
-    Knowledge guidance is advisory. Current observed stats include active modifications.
-  cards:
-    - unitId: vanguard
-      role: Durable melee unit
-      strengths: High base health and defense relative to the other starter units.
-      weaknesses: Lower movement and attack than the starter Striker; costs more gold.
-      guidance: Consider when durability matters, while accounting for travel time and budget.
-    - unitId: striker
-      role: Mobile melee attacker
-      strengths: Higher base attack and movement than the other starter units.
-      weaknesses: Less health and defense than the starter Vanguard; melee attack range.
-      guidance: Consider for mobile pressure, but assess exposure using visible enemy positions.
-    - unitId: ranger
-      role: Ranged attacker and observer
-      strengths: Greater base attack range and vision than the other starter units.
-      weaknesses: Lower health and defense than the other starter units.
-      guidance: Consider reach and visibility; do not assume a guaranteed counter or manual positioning.

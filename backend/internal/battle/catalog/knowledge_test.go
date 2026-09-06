@@ -12,14 +12,12 @@ import (
 
 func TestAdditionalUnitFromYAML(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
-	data, err := os.ReadFile(filepath.Join(root, "rulesets", "castle-siege-v1.yaml"))
+	seed, err := LoadCatalog(filepath.Join(root, "scenarios"), filepath.Join(root, "rulesets"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var rules game.Ruleset
-	if err = yaml.Unmarshal(data, &rules); err != nil {
-		t.Fatal(err)
-	}
+	rules, _ := seed.Ruleset("castle-siege-v1")
+	var data []byte
 	unit := rules.Units[0]
 	unit.ID = "sentinel"
 	unit.Cost = 10

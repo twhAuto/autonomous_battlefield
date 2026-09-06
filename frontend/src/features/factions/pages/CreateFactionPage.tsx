@@ -1,3 +1,5 @@
+import { listScenarios, type ScenarioSummary } from '../../battles/api/battles'
+import { rulesForScenario } from '../compatibility'
 import { type SubmitEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -15,6 +17,8 @@ export function CreateFactionPage() {
   const [factionId, setFactionId] = useState(newFactionId)
   const [rulesets, setRulesets] = useState<FactionRuleset[]>([])
   const [rulesetId, setRulesetId] = useState('')
+  const [scenarios, setScenarios] = useState<ScenarioSummary[]>([])
+  const [scenarioId, setScenarioId] = useState('')
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [upgradeIds, setUpgradeIds] = useState<string[]>([])
   const [priority, setPriority] = useState<string[]>([])
@@ -24,7 +28,8 @@ export function CreateFactionPage() {
 
   useEffect(() => {
     const controller = new AbortController()
-    listFactionRulesets(controller.signal).then((loaded) => {
+    Promise.all([listFactionRulesets(controller.signal), listScenarios(controller.signal)]).then(([loaded, loadedScenarios]) => {
+      setScenarios(loadedScenarios ?? [])
       setRulesets(loaded)
       if (loaded[0]) selectRuleset(loaded[0])
       setLoading(false)
@@ -37,7 +42,9 @@ export function CreateFactionPage() {
     return () => controller.abort()
   }, [])
 
-  const ruleset = rulesets.find((value) => value.id === rulesetId)
+  const baseRuleset = rulesets.find((value) => value.id === rulesetId)
+  const selectedScenario = scenarios.find(value => value.id === scenarioId)
+  const ruleset = useMemo(() => baseRuleset ? rulesForScenario(baseRuleset, selectedScenario) : undefined, [baseRuleset, selectedScenario])
   const spent = useMemo(() => {
     if (!ruleset) return 0
     const unitCost = ruleset.units.reduce((sum, unit) => sum + unit.cost * (counts[unit.id] ?? 0), 0)
@@ -51,6 +58,11 @@ export function CreateFactionPage() {
   const canSubmit = trimmedName.length > 0 && legalBlueprint && status !== 'submitting'
 
   function selectRuleset(selected: FactionRuleset) {
+    setScenarioId('')
+    resetBlueprint(selected)
+  }
+
+  function resetBlueprint(selected: FactionRuleset) {
     const defaults = Object.fromEntries(selected.units.map((unit) => [unit.id, 1]))
     setRulesetId(selected.id)
     setCounts(defaults)
@@ -133,6 +145,16 @@ export function CreateFactionPage() {
                 {rulesets.map((item) => <option key={item.id} value={item.id}>{item.id} v{item.version}</option>)}
               </select>
 
+              <label htmlFor="scenario-compatibility">Scenario compatibility</label>
+              <select id="scenario-compatibility" value={scenarioId} onChange={event => {
+                const id = event.target.value
+                setScenarioId(id)
+                if (baseRuleset) resetBlueprint(rulesForScenario(baseRuleset, scenarios.find(item => item.id === id)))
+              }}>
+                <option value="">All content in ruleset</option>
+                {scenarios.filter(item => item.rulesetId === rulesetId).map(item => <option key={item.id} value={item.id}>{item.id}</option>)}
+              </select>
+              <p className="field-hint">Select a scenario to design using only its allowed units and upgrades.</p>
               {ruleset && <>
                 <fieldset className="blueprint-fieldset">
                   <legend>Starting units</legend>

@@ -125,12 +125,12 @@ Mechanics text is limited to 4096 UTF-8 bytes and each descriptive field to 1024
 Numerical card facts are generated from unit definitions. Current observed unit
 stats may include upgrades; tactical text is advice, not a guaranteed counter.
 
-To add a unit, add its numerical definition and card to the ruleset YAML, using
+To add a unit, add its numerical definition and card to a versioned content library, select it in the ruleset, and use
 existing movement, targeting, and combat mechanics. Publish a new ruleset ID and
 version and a scenario referencing it when changing a published roster. Existing
 faction blueprints remain associated with their ruleset. No engine switch or UI
 unit list needs editing. New abilities still require engine implementation.
-Knowledge and its ruleset are copied into the persisted scenario at battle
+Library references and scenario restrictions are resolved before knowledge and its ruleset are copied into the persisted scenario at battle
 creation. Editing catalog files cannot alter an existing battle snapshot.
 
 Engine YAML (also available in the deployment ConfigMap):
@@ -204,3 +204,6 @@ MCP tool schema is now `battlefield.mcp-tools.v3`; existing clients may omit the
 optional orders field. Both model providers share the updated purchasing prompt.
 Deploy API, MCP, engine, and agent together and restart the host CLI agent so tool
 schemas and prompts agree. Existing battle JSON requires no database migration.
+
+See [content libraries and scenario selections](content-library.md) for shared units,
+buildings, upgrades, roster filtering, and version publication.

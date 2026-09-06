@@ -573,9 +573,17 @@ The in-cluster agent is intended for API providers. `run-k8s-cli-agent.sh` bridg
 
 ## 12. Observability
 
-- Processes emit structured logs with stable event names.
-- API logs carry or generate `X-Request-ID`.
-- Engine logs cover battle claims, lease loss, decision windows, fallbacks, requeues, and completion.
+- Processes emit structured JSON logs with stable `event` identifiers and readable
+  `msg` summaries containing selected operational fields. The shared logging
+  handler attaches `trace_id` and `span_id` from active contexts without moving
+  those fields into user attribute groups. `LOG_LEVEL` defaults to INFO.
+- API logs carry or generate `X-Request-ID`. Tracing wraps access logging so
+  completion logs, including authentication rejections, share the request span.
+- Engine logs cover battle claims, lease loss, decision windows, fallbacks, requeues,
+  and completion. Running battles and pending decision windows report progress
+  immediately at their first reporting point and at most every 15 seconds
+  thereafter. Waiting updates include pending faction counts; completion includes
+  elapsed wall time. Per-tick persistence events require DEBUG logging.
 - Agent/MCP logs cover decision claims, tool access, validation, provider outcome, usage, and latency.
 - Full combat detail lives in `battle_events` rather than normal process logs.
 - API and engine expose lifecycle checks; agent and MCP expose `/healthz`.
@@ -616,3 +624,21 @@ The UI polls the API, the engine polls battle rows, and agents long-poll MCP. Po
 - One shared secret authorizes the agent control plane and capability minting. Separate keys or server-minted capabilities would reduce agent signing authority.
 - The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [codebase guide](codebase-guide.md#internalgamecontroller-deterministic-policy-abstractions).
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
+
+### Shared content library and scenario restrictions
+
+Catalog startup resolves ruleset library references from the sibling `content`
+directory. Libraries version unit definitions, upgrades, existing castle/economy
+building roles, and unit cards together. Rulesets select content and own global
+balance rules; scenarios can narrow units, upgrades, and buildings. Invalid
+references, incompatible authored plans, and invalid definitions fail startup.
+
+Scenario summaries expose effective allowed IDs. The faction builder filters
+content by a chosen scenario, and battle setup filters compatible blueprints.
+The backend validates compatibility independently. The resolved scenario contains
+full definitions, filtered cards, and library provenance; its hash and persisted
+JSON freeze these across later catalog edits. AI legal choices, retrieval, and
+purchase validation consume the same resolved roster. Excluding economy buildings
+removes legal construction sites and disables their production. No schema migration
+or runtime content service is required. See the
+[content authoring guide](../operations/content-library.md).

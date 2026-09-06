@@ -13,8 +13,8 @@ func ValidateRuleset(ruleset Ruleset) error {
 	if !validRulesetMetadata(ruleset) {
 		return fmt.Errorf("%w: ID, version, budget, and starting gold are invalid", ErrInvalidRuleset)
 	}
-	if len(ruleset.Units) == 0 || len(ruleset.Upgrades) == 0 {
-		return fmt.Errorf("%w: units and upgrades are required", ErrInvalidRuleset)
+	if len(ruleset.Units) == 0 {
+		return fmt.Errorf("%w: units are required", ErrInvalidRuleset)
 	}
 	unitIDs := make(map[string]bool, len(ruleset.Units))
 	for _, unit := range ruleset.Units {
@@ -52,7 +52,7 @@ func validUpgrade(upgrade Upgrade) bool {
 }
 
 func validBuildingRules(rules BuildingRules) bool {
-	return rules.CastleHealth > 0 && rules.CastleDefense >= 0 && rules.CastleVision > 0 && rules.CastleIncome >= 0 && rules.EconomyCost > 0 && rules.EconomyHealth > 0 && rules.EconomyDefense >= 0 && rules.EconomyVision > 0 && rules.EconomyIncome >= 0 && rules.MaximumEconomyCount == 2
+	return rules.CastleHealth > 0 && rules.CastleDefense >= 0 && rules.CastleVision > 0 && rules.CastleIncome >= 0 && rules.EconomyCost > 0 && rules.EconomyHealth > 0 && rules.EconomyDefense >= 0 && rules.EconomyVision > 0 && rules.EconomyIncome >= 0 && rules.MaximumEconomyCount >= 0 && rules.MaximumEconomyCount <= 2
 }
 
 func validCombatRules(rules CombatRules) bool {

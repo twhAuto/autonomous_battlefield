@@ -28,6 +28,9 @@ type Catalog struct {
 }
 
 type template struct {
+	AllowedUnits          []string                  `yaml:"allowedUnits"`
+	AllowedUpgrades       []string                  `yaml:"allowedUpgrades"`
+	AllowedBuildings      []string                  `yaml:"allowedBuildings"`
 	ID                    string                    `yaml:"id"`
 	RulesVersion          string                    `yaml:"rulesVersion"`
 	RulesetID             string                    `yaml:"rulesetId"`
@@ -91,7 +94,8 @@ func (c *Catalog) Summaries() []battleservice.ScenarioSummary {
 	result := make([]battleservice.ScenarioSummary, 0, len(c.templates))
 	for _, id := range c.IDs() {
 		value := c.templates[id]
-		result = append(result, battleservice.ScenarioSummary{ID: value.ID, RulesVersion: value.RulesVersion, RulesetID: value.RulesetID, MaximumTicks: value.MaximumTicks, TickDuration: value.TickDuration, DecisionIntervalTicks: value.DecisionIntervalTicks, MapWidth: value.Map.Width, MapHeight: value.Map.Height})
+		restricted, _ := restrictRuleset(c.rulesets[value.RulesetID], value)
+		result = append(result, battleservice.ScenarioSummary{AllowedUnits: unitIDs(restricted), AllowedUpgrades: upgradeIDs(restricted), AllowedBuildings: buildingIDs(restricted), ID: value.ID, RulesVersion: value.RulesVersion, RulesetID: value.RulesetID, MaximumTicks: value.MaximumTicks, TickDuration: value.TickDuration, DecisionIntervalTicks: value.DecisionIntervalTicks, MapWidth: value.Map.Width, MapHeight: value.Map.Height})
 	}
 	return result
 }
@@ -119,14 +123,17 @@ func (c *Catalog) Resolve(id string, identities [2]battleservice.FactionIdentity
 	if !ok {
 		return game.Scenario{}, "", fmt.Errorf("%w: %q", battleservice.ErrScenarioNotFound, id)
 	}
-	ruleset := c.rulesets[tmpl.RulesetID]
+	ruleset, err := restrictRuleset(c.rulesets[tmpl.RulesetID], tmpl)
+	if err != nil {
+		return game.Scenario{}, "", err
+	}
 	factions := make([]game.FactionSetup, 2)
 	for index, identity := range identities {
 		if identity.RulesetID != tmpl.RulesetID {
 			return game.Scenario{}, "", fmt.Errorf("%w: faction %q uses ruleset %q, scenario requires %q", battleservice.ErrIncompatibleFaction, identity.ID, identity.RulesetID, tmpl.RulesetID)
 		}
 		if _, err := game.ValidateBlueprint(ruleset, identity.Blueprint); err != nil {
-			return game.Scenario{}, "", err
+			return game.Scenario{}, "", fmt.Errorf("%w: faction %q is incompatible with scenario %q: %v", battleservice.ErrIncompatibleFaction, identity.ID, id, err)
 		}
 		factions[index] = game.FactionSetup{ID: identity.ID, Name: identity.Name, Blueprint: game.CloneBlueprint(identity.Blueprint), FallbackPlan: controller.ClonePlanProposal(tmpl.FallbackPlan), ScriptedPlans: controller.ClonePlanProposals(tmpl.ScriptedPlans)}
 	}
@@ -154,9 +161,13 @@ func loadRulesets(directory string) (map[string]game.Ruleset, error) {
 			continue
 		}
 		path := filepath.Join(directory, entry.Name())
-		var value game.Ruleset
-		if err := decodeOne(path, &value); err != nil {
+		var source rulesetFile
+		if err := decodeOne(path, &source); err != nil {
 			return nil, err
+		}
+		value, err := resolveLibrary(directory, source)
+		if err != nil {
+			return nil, fmt.Errorf("ruleset %q: %w", path, err)
 		}
 		if err := game.ValidateRuleset(value); err != nil {
 			return nil, fmt.Errorf("ruleset %q: %w", path, err)
@@ -178,6 +189,13 @@ func validateTemplate(value template, rulesets map[string]game.Ruleset) error {
 	}
 	if _, ok := rulesets[value.RulesetID]; !ok {
 		return fmt.Errorf("unknown ruleset %q", value.RulesetID)
+	}
+	restricted, err := restrictRuleset(rulesets[value.RulesetID], value)
+	if err != nil {
+		return err
+	}
+	if err := validateSelectedPlans(value, restricted); err != nil {
+		return err
 	}
 	if value.MaximumTicks == 0 || value.MaximumTicks > 10_000 {
 		return errors.New("maximum ticks must be between 1 and 10000")
@@ -231,7 +249,11 @@ func isYAML(name string) bool {
 
 func cloneRuleset(value game.Ruleset) game.Ruleset {
 	value.Knowledge = game.CloneKnowledge(value.Knowledge)
+	if value.ContentSource != nil {
+		copy := *value.ContentSource
+		value.ContentSource = &copy
+	}
 	value.Units = append([]game.UnitType(nil), value.Units...)
-	value.Upgrades = append([]game.Upgrade(nil), value.Upgrades...)
+	value.Upgrades = append([]game.Upgrade{}, value.Upgrades...)
 	return value
 }

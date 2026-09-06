@@ -13,6 +13,9 @@ type FactionIdentity struct {
 }
 
 type ScenarioSummary struct {
+	AllowedUnits          []string        `json:"allowedUnits"`
+	AllowedUpgrades       []string        `json:"allowedUpgrades"`
+	AllowedBuildings      []string        `json:"allowedBuildings"`
 	ID                    string          `json:"id"`
 	RulesVersion          string          `json:"rulesVersion"`
 	TickDuration          string          `json:"tickDuration"`

@@ -46,6 +46,7 @@ func requestLogging(next http.Handler, logger *slog.Logger) http.Handler {
 			"status", response.status,
 			"response_bytes", response.bytes,
 			"duration", duration,
+			"duration_ms", duration.Milliseconds(),
 		)
 	})
 }

@@ -43,10 +43,11 @@ func NewAPIWithResultCache(db postgres.DBTX, catalog *catalog.Catalog, maxTicks 
 		return authn.RequireAuthentication(authentication.Enabled, authenticationManager, next)
 	}
 	router := httpapi.NewRouterWithMiddleware(
-		[]httpapi.Middleware{func(next http.Handler) http.Handler { return telemetry.HTTPHandler("battlefield-api.http", next) }, authenticationMiddleware},
+		[]httpapi.Middleware{authenticationMiddleware},
 		authn.NewRoutes(authenticationManager), factionHandler, battleHandler,
 	)
-	return &App{httpHandler: router}
+	// Tracing wraps access logging so completion logs share the request span.
+	return &App{httpHandler: telemetry.HTTPHandler("battlefield-api.http", router)}
 }
 
 func (a *App) HTTPHandler() http.Handler {

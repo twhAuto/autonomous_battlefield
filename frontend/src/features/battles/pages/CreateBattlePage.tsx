@@ -1,3 +1,4 @@
+import { compatibleWithScenario } from '../../factions/compatibility'
 import { type SubmitEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -69,7 +70,7 @@ export function CreateBattlePage() {
     () => scenarios.find((scenario) => scenario.id === scenarioID),
     [scenarioID, scenarios],
   )
-  const compatibleFactions = useMemo(() => factions.filter((faction) => !selectedScenario?.rulesetId || faction.rulesetId === selectedScenario.rulesetId), [factions, selectedScenario])
+  const compatibleFactions = useMemo(() => factions.filter((faction) => compatibleWithScenario(faction, selectedScenario)), [factions, selectedScenario])
   const firstFaction = compatibleFactions.find((faction) => faction.id === firstFactionID)
   const secondFaction = compatibleFactions.find((faction) => faction.id === secondFactionID)
   const maximumTicks = selectedScenario?.maximumTicks ?? 500
@@ -84,7 +85,7 @@ export function CreateBattlePage() {
 
   useEffect(() => {
     if (!selectedScenario) return
-    const compatible = factions.filter((faction) => faction.rulesetId === selectedScenario.rulesetId)
+    const compatible = factions.filter((faction) => compatibleWithScenario(faction, selectedScenario))
     setFirstFactionID(compatible[0]?.id ?? '')
     setSecondFactionID(compatible[1]?.id ?? '')
     const scenarioMaximum = selectedScenario.maximumTicks ?? 500
@@ -189,7 +190,7 @@ export function CreateBattlePage() {
                 </div>
               </div>
               {firstFactionID === secondFactionID && <p className="field-error" role="alert">Choose two different factions.</p>}
-              {compatibleFactions.length < 2 && <p className="field-error" role="alert">This scenario requires {selectedScenario?.rulesetId}. Create two compatible factions before deployment.</p>}
+              {compatibleFactions.length < 2 && <p className="field-error" role="alert">This scenario requires {selectedScenario?.rulesetId} and its allowed units and upgrades. Create two compatible factions before deployment.</p>}
 
               <div className="battle-form__field">
                 <label htmlFor="tick-count">Maximum ticks</label>

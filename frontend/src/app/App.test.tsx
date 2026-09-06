@@ -123,7 +123,7 @@ describe('App', () => {
   })
 
   it('creates a faction from its dedicated route', async () => {
-	vi.mocked(fetch).mockImplementation(async (input) => String(input) === '/v1/faction-rulesets'
+	vi.mocked(fetch).mockImplementation(async (input) => String(input) === '/v1/scenarios' ? new Response(JSON.stringify({ scenarios: [] }), { status: 200 }) : String(input) === '/v1/faction-rulesets'
 	  ? new Response(JSON.stringify({ rulesets: [ruleset] }), { status: 200 })
 	  : new Response(null, { status: 201 }))
     const user = userEvent.setup()
@@ -148,7 +148,7 @@ describe('App', () => {
   })
 
   it('shows the faction blueprint validation detail returned by the server', async () => {
-	vi.mocked(fetch).mockImplementation(async (input) => String(input) === '/v1/faction-rulesets'
+	vi.mocked(fetch).mockImplementation(async (input) => String(input) === '/v1/scenarios' ? new Response(JSON.stringify({ scenarios: [] }), { status: 200 }) : String(input) === '/v1/faction-rulesets'
 	  ? new Response(JSON.stringify({ rulesets: [ruleset] }), { status: 200 })
 	  : new Response('invalid faction blueprint: recruitment priority is incomplete\n', { status: 422 }))
     const user = userEvent.setup()
@@ -161,7 +161,7 @@ describe('App', () => {
   })
 
   it('regenerates a faction identifier', async () => {
-	vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ rulesets: [ruleset] }), { status: 200 }))
+	vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify({ rulesets: [ruleset], scenarios: [] }), { status: 200 }))
     const user = userEvent.setup()
     renderApp('/factions/new')
 
@@ -173,7 +173,7 @@ describe('App', () => {
   })
 
   it('updates blueprint budget, upgrades, quantities, and recruitment order', async () => {
-    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ rulesets: [ruleset] }), { status: 200 }))
+    vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify({ rulesets: [ruleset], scenarios: [] }), { status: 200 }))
     const user = userEvent.setup()
     renderApp('/factions/new')
     await screen.findByLabelText('Faction name')
@@ -254,13 +254,13 @@ describe('App', () => {
       const url = String(input)
       if (url === '/v1/factions') {
         return new Response(JSON.stringify({ factions: [
-          { id: firstId, name: 'Northwind', rulesetId: 'castle-siege-v1' },
-          { id: secondId, name: 'Verdant Accord', rulesetId: 'castle-siege-v1' },
+          { id: firstId, name: 'Northwind', rulesetId: 'castle-siege-v1', blueprint: { units: [{ type: 'vanguard', count: 1 }], upgradeIds: null, recruitmentPriority: ['vanguard'] } },
+          { id: secondId, name: 'Verdant Accord', rulesetId: 'castle-siege-v1', blueprint: { units: [{ type: 'vanguard', count: 1 }], upgradeIds: null, recruitmentPriority: ['vanguard'] } },
         ] }), { status: 200 })
       }
       if (url === '/v1/scenarios') {
         return new Response(JSON.stringify({ scenarios: [{
-          id: 'skirmish-v1', rulesetId: 'castle-siege-v1', rulesVersion: '1', maximumTicks: 500, mapWidth: 15, mapHeight: 11, tickDuration: '0s', decisionIntervalTicks: 10,
+          id: 'skirmish-v1', rulesetId: 'castle-siege-v1', allowedUnits: ['vanguard'], allowedUpgrades: [], rulesVersion: '1', maximumTicks: 500, mapWidth: 15, mapHeight: 11, tickDuration: '0s', decisionIntervalTicks: 10,
         }] }), { status: 200 })
       }
       if (url === '/v1/battles' && init?.method === 'POST') {

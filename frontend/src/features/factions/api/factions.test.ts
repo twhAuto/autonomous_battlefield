@@ -18,6 +18,11 @@ describe('faction API', () => {
     expect(fetch).toHaveBeenCalledWith('/v1/factions', { signal: undefined })
   })
 
+  it.each([null, undefined])('normalizes empty upgrade IDs from the server (%s)', async (upgradeIds) => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ factions: [{ ...faction, blueprint: { ...faction.blueprint, upgradeIds } }] }))
+    await expect(listFactions()).resolves.toEqual([faction])
+  })
+
   it('discovers faction rulesets', async () => {
     const ruleset = { id: 'castle-siege-v1', version: '1', designBudget: 120, units: [], upgrades: [] }
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ rulesets: [ruleset] }))

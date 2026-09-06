@@ -170,8 +170,11 @@ authentication. Stop it with:
 docker compose -f backend/compose.yaml stop dbhub
 ```
 
-For request correlation, structured logs, health behavior, metrics, and traces,
-see [observability](docs/operations/observability.md).
+Backend logs provide readable `msg` summaries, stable `event` fields, battle
+progress and decision-wait updates, and trace correlation. `LOG_LEVEL` defaults
+to INFO; DEBUG enables per-tick diagnostics. For compact Kibana views, request
+correlation, health behavior, metrics, and traces, see
+[observability](docs/operations/observability.md).
 
 ## Run in local Kubernetes
 
@@ -236,3 +239,6 @@ See [AI comparisons](docs/operations/ai-comparisons.md) for the free scripted
 comparison command, live-provider opt-ins, memory and knowledge ablations,
 explicit recruitment orders, and report limits. Unit rosters and optional
 knowledge cards are authored in ruleset YAML.
+
+Reusable content libraries and per-scenario restrictions are documented in the
+[content authoring guide](docs/operations/content-library.md).

@@ -126,6 +126,7 @@ func (w *Worker) Run(ctx context.Context) error {
 
 func (w *Worker) process(ctx context.Context, job *BattleJob) (resultErr error) {
 	started := time.Now()
+	ctx = context.WithValue(ctx, battleStartedKey{}, started)
 	outcome := "error"
 	defer func() {
 		if errors.Is(resultErr, ErrBattleLeaseLost) {
@@ -147,10 +148,16 @@ func (w *Worker) process(ctx context.Context, job *BattleJob) (resultErr error) 
 }
 
 func (w *Worker) runBattle(ctx context.Context, job *BattleJob, simulation *game.Match) (string, error) {
+	var progress progressLog
 	for {
 		outcome, finished, err := w.runTick(ctx, job.Lease, simulation)
 		if finished {
 			return outcome, err
+		}
+		if ctx.Err() == nil && progress.due(time.Now()) {
+			w.logger.InfoContext(ctx, "battle_progress", "battle_id", job.Lease.BattleID,
+				"attempt", job.Lease.Attempt, "current_tick", simulation.State().Tick,
+				"requested_ticks", job.RequestedTicks, "elapsed_ms", elapsedBattleMilliseconds(ctx))
 		}
 	}
 }
@@ -204,6 +211,7 @@ func (w *Worker) persistRunningTick(ctx context.Context, lease BattleLease, simu
 		outcome, err := requeueOutcome(w.requeueAfterCancellation(ctx, lease))
 		return outcome, true, err
 	}
+	w.logger.DebugContext(ctx, "battle_tick_completed", "battle_id", lease.BattleID, "attempt", lease.Attempt, "current_tick", transition.Tick, "duration_ms", time.Since(tickStarted).Milliseconds())
 	if duration := simulation.TickDuration(); duration > 0 {
 		if err := w.waitUntilNextTick(ctx, lease, tickStarted.Add(duration)); err != nil {
 			if errors.Is(err, context.Canceled) {
@@ -248,6 +256,7 @@ func (w *Worker) completeBattle(ctx context.Context, lease BattleLease, transiti
 		"battle_id", lease.BattleID,
 		"attempt", lease.Attempt,
 		"ticks_run", transition.Tick,
+		"elapsed_ms", elapsedBattleMilliseconds(ctx),
 		"winner_faction_id", winner,
 		"reason", transition.Result.Reason,
 	)

@@ -335,7 +335,12 @@ Deleting a faction removes it from the active registry but does not affect the c
 - [`internal/config/config.go`](../../backend/internal/config/config.go) strictly decodes one YAML document, rejects unknown fields, resolves environment variables, and provides process-specific loaders.
 - [`internal/postgres`](../../backend/internal/postgres) manages the `pgx` pool, embedded Goose migrations, startup retries, and `LISTEN/NOTIFY`.
 - [`internal/httpapi`](../../backend/internal/httpapi) provides bounded strict JSON, lifecycle/readiness routes, request IDs, routing, and access logging.
-- [`internal/logging`](../../backend/internal/logging) configures structured process logging.
+- [`internal/logging`](../../backend/internal/logging) configures `LOG_LEVEL`,
+  formats readable operational messages while retaining stable event names, and
+  enriches logs with active trace/span IDs. `handler.go` preserves slog attribute
+  grouping; `messages.go` selects the operational fields shown in compact messages.
+- [`worker/progress.go`](../../backend/internal/battle/worker/progress.go) bounds
+  battle and decision-wait updates to one per 15 seconds and supplies elapsed time.
 - [`internal/telemetry`](../../backend/internal/telemetry) defines API/engine Prometheus metrics and shared OpenTelemetry tracing, HTTP
   instrumentation, and durable trace-context propagation.
 
@@ -540,3 +545,19 @@ to verify event-page draining without load-sensitive wall-clock deadlines.
 2. [`backend/internal/app/app.go`](../../backend/internal/app/app.go)
 3. A feature's `api`, `service`, and `repo` packages in that order
 4. The matching frontend API client and page
+
+### Shared content catalog
+
+- `backend/content/core-v1.yaml` is the shipped versioned unit, upgrade, building,
+  and unit-knowledge library; rulesets reference it instead of duplicating stats.
+- `backend/internal/battle/catalog/library.go` resolves and validates library
+  references; `restrictions.go` narrows scenario choices and validates authored plans.
+- `frontend/src/features/factions/compatibility.ts` shares scenario filtering
+  between the faction builder and battle setup. Scenario summaries carry allowed IDs.
+
+Library-backed and inline rulesets both resolve to the existing immutable game
+snapshot. See [content libraries](../operations/content-library.md) for authoring.
+
+The faction API client normalizes null or omitted blueprint `upgradeIds` to an
+empty array before scenario compatibility filtering. Page tests cover factions
+with no upgrades against restricted scenarios.

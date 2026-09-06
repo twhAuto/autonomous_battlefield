@@ -125,19 +125,29 @@ func submitScriptedPlan(ctx context.Context, service *ai.DecisionService, record
 func (w *Worker) waitForWindowDecisions(ctx context.Context, lease BattleLease, targetTick uint64) error {
 	deadline := time.Now().Add(w.config.DecisionTimeout)
 	nextHeartbeat := time.Now().Add(w.config.HeartbeatInterval)
+	var progress progressLog
+	started := time.Now()
 	for {
 		pausedFor, err := w.waitWhilePaused(ctx, lease)
 		if err != nil {
 			return err
 		}
 		deadline = deadline.Add(pausedFor)
-		nextHeartbeat = time.Now().Add(w.config.HeartbeatInterval)
+		if pausedFor > 0 {
+			nextHeartbeat = time.Now().Add(w.config.HeartbeatInterval)
+		}
 		records, err := w.decisions.ListWindowDecisions(ctx, lease.BattleID, lease.Attempt, targetTick)
 		if err != nil {
 			return err
 		}
-		if !decisionsPending(records) || !time.Now().Before(deadline) {
+		pending := pendingDecisionCount(records)
+		if pending == 0 || !time.Now().Before(deadline) {
 			return nil
+		}
+		if progress.due(time.Now()) {
+			w.logger.InfoContext(ctx, "decision_window_waiting", "battle_id", lease.BattleID,
+				"attempt", lease.Attempt, "target_tick", targetTick, "pending_count", pending,
+				"elapsed_ms", time.Since(started).Milliseconds(), "remaining_ms", max(0, time.Until(deadline).Milliseconds()))
 		}
 		if !wait(ctx, min(100*time.Millisecond, time.Until(deadline), time.Until(nextHeartbeat))) {
 			return context.Canceled
@@ -151,13 +161,14 @@ func (w *Worker) waitForWindowDecisions(ctx context.Context, lease BattleLease, 
 	}
 }
 
-func decisionsPending(records []ai.DecisionRecord) bool {
+func pendingDecisionCount(records []ai.DecisionRecord) int {
+	count := 0
 	for _, record := range records {
 		if record.Status == "pending" || record.Status == "running" {
-			return true
+			count++
 		}
 	}
-	return false
+	return count
 }
 
 func (w *Worker) resolveDecisionPlans(ctx context.Context, lease BattleLease, simulation *game.Match, targetTick uint64, baselines map[string]controller.PlanProposal, records []ai.DecisionRecord) (map[string]controller.PlanProposal, int, int, error) {

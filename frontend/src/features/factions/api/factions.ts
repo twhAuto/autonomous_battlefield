@@ -65,7 +65,11 @@ export async function listFactions(signal?: AbortSignal): Promise<Faction[]> {
   }
 
   const body = (await response.json()) as { factions: Faction[] }
-  return body.factions
+  // Go encodes an empty optional upgrade slice as null. Keep the UI model an array.
+  return body.factions.map(faction => faction.blueprint ? {
+    ...faction,
+    blueprint: { ...faction.blueprint, upgradeIds: faction.blueprint.upgradeIds ?? [] },
+  } : faction)
 }
 
 export async function createFaction(

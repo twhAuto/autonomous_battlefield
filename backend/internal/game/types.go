@@ -63,16 +63,18 @@ type Upgrade struct {
 }
 
 type BuildingRules struct {
-	CastleHealth        int64 `json:"castleHealth" yaml:"castleHealth"`
-	CastleDefense       int64 `json:"castleDefense" yaml:"castleDefense"`
-	CastleVision        int   `json:"castleVision" yaml:"castleVision"`
-	CastleIncome        int64 `json:"castleIncome" yaml:"castleIncome"`
-	EconomyCost         int64 `json:"economyCost" yaml:"economyCost"`
-	EconomyHealth       int64 `json:"economyHealth" yaml:"economyHealth"`
-	EconomyDefense      int64 `json:"economyDefense" yaml:"economyDefense"`
-	EconomyVision       int   `json:"economyVision" yaml:"economyVision"`
-	EconomyIncome       int64 `json:"economyIncome" yaml:"economyIncome"`
-	MaximumEconomyCount int   `json:"maximumEconomyCount" yaml:"maximumEconomyCount"`
+	CastleTypeID        string `json:"castleTypeId,omitempty" yaml:"castleTypeId,omitempty"`
+	EconomyTypeID       string `json:"economyTypeId,omitempty" yaml:"economyTypeId,omitempty"`
+	CastleHealth        int64  `json:"castleHealth" yaml:"castleHealth"`
+	CastleDefense       int64  `json:"castleDefense" yaml:"castleDefense"`
+	CastleVision        int    `json:"castleVision" yaml:"castleVision"`
+	CastleIncome        int64  `json:"castleIncome" yaml:"castleIncome"`
+	EconomyCost         int64  `json:"economyCost" yaml:"economyCost"`
+	EconomyHealth       int64  `json:"economyHealth" yaml:"economyHealth"`
+	EconomyDefense      int64  `json:"economyDefense" yaml:"economyDefense"`
+	EconomyVision       int    `json:"economyVision" yaml:"economyVision"`
+	EconomyIncome       int64  `json:"economyIncome" yaml:"economyIncome"`
+	MaximumEconomyCount int    `json:"maximumEconomyCount" yaml:"maximumEconomyCount"`
 }
 
 type CombatRules struct {
@@ -94,16 +96,23 @@ type RulesKnowledge struct {
 	Cards     []UnitCard `json:"cards" yaml:"cards"`
 }
 
+type ContentSource struct {
+	ID      string `json:"id"`
+	Version string `json:"version"`
+	Digest  string `json:"digest"`
+}
+
 type Ruleset struct {
-	Knowledge    *RulesKnowledge `json:"knowledge,omitempty" yaml:"knowledge,omitempty"`
-	ID           string          `json:"id" yaml:"id"`
-	Version      string          `json:"version" yaml:"version"`
-	DesignBudget int64           `json:"designBudget" yaml:"designBudget"`
-	StartingGold int64           `json:"startingGold" yaml:"startingGold"`
-	Units        []UnitType      `json:"units" yaml:"units"`
-	Upgrades     []Upgrade       `json:"upgrades" yaml:"upgrades"`
-	Buildings    BuildingRules   `json:"buildings" yaml:"buildings"`
-	Combat       CombatRules     `json:"combat" yaml:"combat"`
+	ContentSource *ContentSource  `json:"contentSource,omitempty" yaml:"contentSource,omitempty"`
+	Knowledge     *RulesKnowledge `json:"knowledge,omitempty" yaml:"knowledge,omitempty"`
+	ID            string          `json:"id" yaml:"id"`
+	Version       string          `json:"version" yaml:"version"`
+	DesignBudget  int64           `json:"designBudget" yaml:"designBudget"`
+	StartingGold  int64           `json:"startingGold" yaml:"startingGold"`
+	Units         []UnitType      `json:"units" yaml:"units"`
+	Upgrades      []Upgrade       `json:"upgrades" yaml:"upgrades"`
+	Buildings     BuildingRules   `json:"buildings" yaml:"buildings"`
+	Combat        CombatRules     `json:"combat" yaml:"combat"`
 }
 
 type UnitSelection struct {

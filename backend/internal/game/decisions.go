@@ -29,7 +29,7 @@ func (m *Match) DecisionSnapshot(factionID string) (DecisionSnapshot, error) {
 	}
 	legalSites := make([]controller.Coordinate, 0, 2)
 	for slot, setup := range m.scenario.Factions {
-		if setup.ID == factionID {
+		if setup.ID == factionID && m.scenario.Ruleset.Buildings.MaximumEconomyCount > 0 {
 			for _, site := range m.scenario.Map.EconomySites[slot] {
 				legalSites = append(legalSites, controller.Coordinate{X: site.X, Y: site.Y})
 			}
@@ -131,7 +131,7 @@ func normalizedPlan(value controller.PlanProposal, setup FactionSetup) controlle
 func (m *Match) normalizedFactionPlan(factionID string, value controller.PlanProposal) controller.PlanProposal {
 	runtime := m.factions[factionID]
 	result := normalizedPlan(value, runtime.setup)
-	if len(result.ConstructionPriorities) == 0 {
+	if len(result.ConstructionPriorities) == 0 && m.scenario.Ruleset.Buildings.MaximumEconomyCount > 0 {
 		for slot, setup := range m.scenario.Factions {
 			if setup.ID != factionID {
 				continue
@@ -163,7 +163,7 @@ func validateProductionPlan(scenario Scenario, setup FactionSetup, plan controll
 	}
 	allowedSites := make(map[Position]bool)
 	for slot, faction := range scenario.Factions {
-		if faction.ID == setup.ID {
+		if faction.ID == setup.ID && scenario.Ruleset.Buildings.MaximumEconomyCount > 0 {
 			for _, site := range scenario.Map.EconomySites[slot] {
 				allowedSites[site] = true
 			}

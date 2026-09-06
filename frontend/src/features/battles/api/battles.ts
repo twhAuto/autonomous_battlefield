@@ -1,6 +1,9 @@
 import { createApiClient } from '../../../shared/api/request'
 
 export interface ScenarioSummary {
+  allowedUnits?: string[]
+  allowedUpgrades?: string[]
+  allowedBuildings?: string[]
   id: string
   rulesVersion: string
   tickDuration: string
