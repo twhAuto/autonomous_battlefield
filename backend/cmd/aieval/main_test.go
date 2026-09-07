@@ -1,10 +1,13 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 
 	aieval "github.com/twh09/autonomous_battlefield/backend/internal/ai/eval"
 )
@@ -100,5 +103,30 @@ func TestWriteReportsReturnsEvaluationAndFilesystemErrors(t *testing.T) {
 	jsonPath := filepath.Join(directory, "passing.json")
 	if err := writeReports(jsonPath, directory, aieval.Report{Passed: true}); err == nil {
 		t.Fatal("writeReports() accepted a directory as the JUnit output path")
+	}
+}
+
+func TestMetadataWorksWithoutEvaluationInputs(t *testing.T) {
+	output, err := os.CreateTemp(t.TempDir(), "metadata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output.Close()
+	original := os.Stdout
+	os.Stdout = output
+	defer func() { os.Stdout = original }()
+	if err := run([]string{"-mode", "metadata", "-pricing", "missing.yaml", "-cases", "missing"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := output.Seek(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) != 3 || fields[0] != ai.PromptVersion || fields[2] != ai.ToolSchema || !strings.HasSuffix(fields[0], "."+fields[1]) || len(fields[1]) != 64 {
+		t.Fatalf("invalid runtime provenance: %q", data)
 	}
 }

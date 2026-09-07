@@ -1,1 +1,0 @@
-Resolve battlefield decision %s. First call get_decision_context, then call submit_strategy_plan.

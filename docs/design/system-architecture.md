@@ -274,7 +274,10 @@ Antigravity CLI offloads larger MCP tool responses to local files. Because battl
 API, Codex, and Antigravity use one embedded decision policy assembled by
 `internal/ai/prompts.go`. Only context delivery differs: tool fetch versus
 Antigravity host-prefetched JSON. The persisted `PromptVersion` includes a SHA-256
-digest covering the base, policy, and both delivery templates. Both API and CLI
+digest covering the base, identity, doctrine, policy, and both delivery templates.
+Each prompt purpose has one current `.txt` file; Git preserves previous revisions.
+The build manifest reads the runtime prompt version, bundle digest, and tool schema
+through `go run ./cmd/aieval -mode metadata`, requiring Go during manifest generation. Both API and CLI
 model submissions require a substantive plan and stop after three validation
 rejections.
 

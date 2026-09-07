@@ -4,6 +4,12 @@
 
 The deployed unit is a full `repository@sha256:...` reference. Jenkins archives reports, SBOM copies, provenance summaries, AI manifests, deployment digests, and test evidence; it does not archive image tarballs. GHCR is the source of truth. Release subjects are permanent, while non-release main subjects remain for at least 90 days or the last 20 successful builds, whichever is greater.
 
+AI manifest generation requires the backend Go toolchain and module dependencies.
+`scripts/ci/generate-ai-manifest.sh` runs `go run ./cmd/aieval -mode metadata`
+from `backend/` to obtain the runtime prompt version (including its content digest),
+the complete decision prompt bundle SHA-256, and the tool schema version.
+It does not run evaluations or call a model provider.
+
 Retention automation must begin in report-only mode. Before deletion it must subtract every digest referenced by a live environment, the recorded rollback pair, a release, an active incident, or a legal hold. Package deletion is not enabled by this repository.
 Cosign v3 OCI referrers and the Kyverno-compatible legacy `.sig` and `.att`
 digest tags are evidence belonging to their subject; retention must preserve or

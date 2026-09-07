@@ -71,7 +71,7 @@ The backend has five commands in one Go module: four runtime processes and the o
 | Engine | [`backend/cmd/engine/main.go`](../../backend/cmd/engine/main.go) | Configuration, PostgreSQL startup, worker construction, health server, signals, graceful requeue/shutdown |
 | MCP | [`backend/cmd/mcp/main.go`](../../backend/cmd/mcp/main.go) | Restricted repository construction, PostgreSQL notification listener, MCP and agent-control routes, HTTP lifecycle |
 | Agent | [`backend/cmd/agent/main.go`](../../backend/cmd/agent/main.go) | Profile registry, decision worker, health endpoint, signals, shutdown |
-| AI evaluation | [`backend/cmd/aieval/main.go`](../../backend/cmd/aieval/main.go) | Evaluation case execution, pricing inputs, and reports |
+| AI evaluation | [`backend/cmd/aieval/main.go`](../../backend/cmd/aieval/main.go) | Evaluation case execution, pricing inputs, reports, and runtime provenance via `-mode metadata` |
 
 `cmd` packages should remain thin. Domain and use-case behavior belongs under `internal`; entry points should focus on composition and process lifecycle.
 
@@ -572,7 +572,7 @@ Battle setup selects generic profiles without blueprint compatibility filtering.
   implement validated name/doctrine/background updates. Creation and listing expose only profile fields.
 - `backend/internal/game/opening.go` handles the tick-zero phase and deterministic
   fallback; `upgrades.go` executes one-time gold purchases and propagates bonuses.
-- `backend/internal/ai/prompts/*v5.txt` and doctrine-aware API/CLI runners define
+- `backend/internal/ai/prompts/*.txt` and doctrine-aware API/CLI runners define
   the new context/tool contract. Decision records retain doctrine in observation provenance.
 - `backend/migrations/00008_faction_doctrine.sql` backfills balanced doctrine,
   preserves legacy columns, and permits decision records at tick zero.
@@ -590,8 +590,8 @@ Battle setup selects generic profiles without blueprint compatibility filtering.
   are preserved. `internal/postgres/migrations.go` serializes migration runners
   with a PostgreSQL advisory session lock, including concurrent fresh schemas.
 - Faction API/service/repository and battle catalog/worker copy background with
-  name/doctrine; `ai.SessionSystemPrompt` uses `identity-v5.txt`. Observation
-  hashing includes owning identity. Older prompt files remain versioned history.
+  name/doctrine; `ai.SessionSystemPrompt` uses `identity.txt`. Observation
+  hashing includes owning identity. Prompt history lives in Git; filenames identify purpose without version suffixes.
 - `backend/internal/ai/mcpserver/generation.go` provides draft-only tools and
   namespaced capabilities; `internal/ai/worker/generation.go` executes and reports
   background jobs without battle data, using the configured writer profile.

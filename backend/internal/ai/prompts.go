@@ -11,25 +11,25 @@ import (
 // All instructions are embedded and versioned together. The digest changes even
 // if an editor forgets to bump the human-readable version.
 //
-//go:embed prompts/battlefield-agent-v5.txt
+//go:embed prompts/battlefield-agent.txt
 var systemPromptTemplate string
 
-//go:embed prompts/decision-v5.txt
+//go:embed prompts/decision.txt
 var decisionPromptTemplate string
 
-//go:embed prompts/tool-context-v5.txt
+//go:embed prompts/tool-context.txt
 var toolContextTemplate string
 
-//go:embed prompts/inline-context-v5.txt
+//go:embed prompts/inline-context.txt
 var inlineContextTemplate string
 
-//go:embed prompts/doctrine-v5.txt
+//go:embed prompts/doctrine.txt
 var doctrinePromptTemplate string
 
-//go:embed prompts/identity-v5.txt
+//go:embed prompts/identity.txt
 var identityPromptTemplate string
 
-//go:embed prompts/background-generation-v1.txt
+//go:embed prompts/background-generation.txt
 var backgroundGenerationPrompt string
 
 var GenerationPromptVersion = fmt.Sprintf("faction-background-v1.%x", sha256.Sum256([]byte(backgroundGenerationPrompt)))
