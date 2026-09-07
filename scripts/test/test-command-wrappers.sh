@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Checks compatibility launchers forward arguments, working directories, and exit statuses
+# to their canonical scripts.
 
 set -Eeuo pipefail
 

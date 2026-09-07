@@ -1,3 +1,6 @@
+// Reusable decorative faction emblem with a deterministic color palette derived from its
+// text seed.
+
 type EmblemProps = Readonly<{
   seed?: string
   size?: 'large' | 'small'

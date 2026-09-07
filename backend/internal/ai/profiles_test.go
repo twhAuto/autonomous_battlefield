@@ -1,3 +1,6 @@
+// Checks profile allowlists and the credential, environment, version, and login
+// requirements for advertised or executable models.
+
 package ai
 
 import (

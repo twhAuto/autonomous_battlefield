@@ -14,12 +14,16 @@ import (
 const (
 	ControllerScripted = "scripted"
 	ControllerModel    = "model"
-	ContextSchema      = "battlefield.decision-context.v1"
-	PlanSchema         = "battlefield.strategy-plan.v1"
-	ToolSchema         = "battlefield.mcp-tools.v3"
+	ContextSchema      = "battlefield.decision-context.v2"
+	PlanSchema         = "battlefield.strategy-plan.v2"
+	ToolSchema         = "battlefield.mcp-tools.v5"
 )
 
 type DecisionSession struct {
+	FactionName     string
+	Background      string
+	JobType         string
+	Doctrine        string
 	RequestID       string
 	CapabilityToken string
 	MCPURL          string
@@ -82,6 +86,11 @@ type TurnProvider interface {
 }
 
 type DecisionContext struct {
+	FactionName        string                  `json:"factionName,omitempty"`
+	Background         string                  `json:"background,omitempty"`
+	Doctrine           string                  `json:"doctrine,omitempty"`
+	Opening            bool                    `json:"opening,omitempty"`
+	OwnedUpgradeIDs    []string                `json:"ownedUpgradeIds,omitempty"`
 	Knowledge          *DecisionKnowledge      `json:"knowledge,omitempty"`
 	SchemaVersion      string                  `json:"schemaVersion"`
 	RequestID          string                  `json:"requestId"`
@@ -99,6 +108,7 @@ type DecisionContext struct {
 }
 
 type EconomyContext struct {
+	MaximumBuildings        int   `json:"maximumBuildings,omitempty"`
 	Gold                    int64 `json:"gold"`
 	ProjectedIncome         int64 `json:"projectedIncome"`
 	EconomyBuildingCost     int64 `json:"economyBuildingCost"`
@@ -108,9 +118,12 @@ type EconomyContext struct {
 }
 
 type LegalChoices struct {
-	ActionKinds  []string                `json:"actionKinds"`
-	Units        []game.UnitType         `json:"units"`
-	EconomySites []controller.Coordinate `json:"economySites"`
+	Buildings          []game.BuildingType     `json:"buildings,omitempty"`
+	RecruitmentSources []string                `json:"recruitmentSources,omitempty"`
+	Upgrades           []game.Upgrade          `json:"upgrades,omitempty"`
+	ActionKinds        []string                `json:"actionKinds"`
+	Units              []game.UnitType         `json:"units"`
+	EconomySites       []controller.Coordinate `json:"economySites"`
 }
 
 type PlanSubmission struct {

@@ -1,8 +1,11 @@
+// Copies controller plans and their nested collections to prevent callers from mutating
+// accepted decisions.
+
 package controller
 
 // ClonePlanProposal copies a proposal without sharing mutable maps or slices.
 func ClonePlanProposal(value PlanProposal) PlanProposal {
-	result := PlanProposal{RecruitmentOrders: CloneRecruitmentOrders(value.RecruitmentOrders), Name: value.Name, Rationale: value.Rationale, ActionWeights: make(map[string]int64, len(value.ActionWeights)), TargetBonuses: make(map[string]int64, len(value.TargetBonuses)), ReserveGold: value.ReserveGold,
+	result := PlanProposal{ConstructionOrders: CloneConstructionOrders(value.ConstructionOrders), UpgradeOrders: append([]string(nil), value.UpgradeOrders...), RecruitmentOrders: CloneRecruitmentOrders(value.RecruitmentOrders), Name: value.Name, Rationale: value.Rationale, ActionWeights: make(map[string]int64, len(value.ActionWeights)), TargetBonuses: make(map[string]int64, len(value.TargetBonuses)), ReserveGold: value.ReserveGold,
 		SpendOrder: append([]string(nil), value.SpendOrder...), ConstructionPriorities: append([]Coordinate(nil), value.ConstructionPriorities...), RecruitmentPriorities: append([]string(nil), value.RecruitmentPriorities...)}
 	for k, v := range value.ActionWeights {
 		result.ActionWeights[k] = v
@@ -28,5 +31,14 @@ func CloneRecruitmentOrders(orders *[]RecruitmentOrder) *[]RecruitmentOrder {
 		return nil
 	}
 	result := append([]RecruitmentOrder{}, (*orders)...)
+	return &result
+}
+
+// CloneConstructionOrders preserves the distinction between absent and empty orders.
+func CloneConstructionOrders(orders *[]ConstructionOrder) *[]ConstructionOrder {
+	if orders == nil {
+		return nil
+	}
+	result := append([]ConstructionOrder{}, (*orders)...)
 	return &result
 }

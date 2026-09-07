@@ -1,3 +1,6 @@
+// Maps battle, scenario, profile, event, and control HTTP routes to service operations and
+// stable response statuses.
+
 package api
 
 import (
@@ -28,6 +31,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/scenarios", h.ListScenarios)
 	mux.HandleFunc("GET /v1/model-profiles", h.ListModelProfiles)
 	mux.HandleFunc("POST /v1/battles", h.CreateBattle)
+	mux.HandleFunc("GET /v1/battles", h.ListBattles)
 	mux.HandleFunc("GET /v1/battles/{id}", h.GetBattle)
 	mux.HandleFunc("POST /v1/battles/{id}/stop", h.StopBattle)
 	mux.HandleFunc("POST /v1/battles/{id}/pause", h.PauseBattle)
@@ -35,6 +39,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/battles/{id}/factions/{factionId}/view", h.GetFactionView)
 	mux.HandleFunc("GET /v1/battles/{id}/events", h.ListEvents)
 	mux.HandleFunc("GET /v1/battles/{id}/decisions", h.ListDecisions)
+	mux.HandleFunc("GET /v1/battles/{id}/decisions/{requestId}/context", h.GetDecisionContext)
 }
 
 func (h *Handler) PauseBattle(w http.ResponseWriter, r *http.Request) {
@@ -300,7 +305,7 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 func battleResponse(run *battleservice.BattleRun) any {
 	participants := make([]map[string]any, 0, len(run.ScenarioSnapshot.Factions))
 	for _, faction := range run.ScenarioSnapshot.Factions {
-		participants = append(participants, map[string]any{"id": faction.ID, "name": faction.Name, "controller": faction.Controller})
+		participants = append(participants, map[string]any{"id": faction.ID, "name": faction.Name, "controller": faction.Controller, "background": faction.Background, "doctrine": faction.Doctrine})
 	}
 	return struct {
 		ID             string  `json:"id"`

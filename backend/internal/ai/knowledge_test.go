@@ -1,3 +1,6 @@
+// Checks knowledge selection stays within visibility, frozen-rule, card-count, and byte-
+// budget boundaries.
+
 package ai
 
 import (

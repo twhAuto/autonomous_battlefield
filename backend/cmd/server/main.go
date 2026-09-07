@@ -1,3 +1,6 @@
+// Starts the HTTP API or runs migrations, wiring configuration, database access, scenario
+// catalogs, and process health.
+
 package main
 
 import (
@@ -154,7 +157,7 @@ func startServer(configuration config.Config) error {
 		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
 	}
 	defer cache.Close()
-	application := app.NewAPIWithResultCache(db, catalog, configuration.API.MaxTicks, configuration.Auth, cache, profiles)
+	application := app.NewAPIWithGeneration(db, catalog, configuration.API.MaxTicks, configuration.Auth, cache, configuration.AI.BackgroundGeneration, profiles)
 	lifecycle.Activate(application.HTTPHandler(), db, nil)
 	slog.Info("api_ready", "address", server.Addr)
 

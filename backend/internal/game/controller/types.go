@@ -47,11 +47,20 @@ type Observation struct {
 // later an LLM. Weights are fixed-point multipliers where 1,000 means 1x.
 // Missing action kinds use Config.DefaultActionWeight.
 type RecruitmentOrder struct {
-	UnitType string `json:"unitType" yaml:"unitType"`
-	Count    int    `json:"count" yaml:"count"`
+	SourceBuildingID string `json:"sourceBuildingId,omitempty" yaml:"sourceBuildingId,omitempty"`
+	UnitType         string `json:"unitType" yaml:"unitType"`
+	Count            int    `json:"count" yaml:"count"`
+}
+
+type ConstructionOrder struct {
+	BuildingType string     `json:"buildingType" yaml:"buildingType"`
+	Position     Coordinate `json:"position" yaml:"position"`
 }
 
 type PlanProposal struct {
+	ConstructionOrders *[]ConstructionOrder `json:"constructionOrders,omitempty" yaml:"constructionOrders,omitempty"`
+
+	UpgradeOrders          []string            `json:"upgradeOrders,omitempty" yaml:"upgradeOrders,omitempty"`
 	RecruitmentOrders      *[]RecruitmentOrder `json:"recruitmentOrders,omitempty" yaml:"recruitmentOrders,omitempty"`
 	Name                   string              `json:"name" yaml:"name"`
 	Rationale              string              `json:"rationale,omitempty" yaml:"rationale,omitempty"`
@@ -73,6 +82,8 @@ type Coordinate struct {
 // StrategyPlan is an accepted, immutable plan with a deterministic lifetime.
 // ValidUntilTick is exclusive.
 type StrategyPlan struct {
+	ConstructionOrders     *[]ConstructionOrder
+	UpgradeOrders          []string
 	RecruitmentOrders      *[]RecruitmentOrder
 	ID                     string
 	Name                   string

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Checks deployed application flows through temporary port forwards and optionally
+# verifies metrics, logs, and tracing endpoints.
 
 set -Eeuo pipefail
 

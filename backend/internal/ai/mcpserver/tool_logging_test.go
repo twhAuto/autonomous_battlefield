@@ -1,3 +1,5 @@
+// Checks tool-schema failures are logged without exposing submitted payloads.
+
 package mcpserver
 
 import (

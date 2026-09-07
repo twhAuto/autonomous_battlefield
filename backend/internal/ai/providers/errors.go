@@ -1,3 +1,6 @@
+// Defines provider failure categories shared by HTTP adapters and the runner's fallback
+// classification.
+
 package providers
 
 import "errors"

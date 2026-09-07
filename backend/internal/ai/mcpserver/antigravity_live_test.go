@@ -1,3 +1,5 @@
+// Opt-in live Antigravity integration check for a complete decision through the MCP tools.
+
 package mcpserver
 
 import (

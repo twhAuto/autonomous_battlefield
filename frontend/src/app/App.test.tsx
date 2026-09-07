@@ -1,3 +1,7 @@
+// Exercises user flows across routes with mocked APIs, including authentication, faction
+// management, battle creation, and live battle controls.
+
+import { doctrineTemplates } from '../features/factions/pages/CreateFactionPage'
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -109,6 +113,7 @@ describe('App', () => {
     expect(within(menu).getByRole('link', { name: /create faction/i })).toHaveAttribute('href', '/factions/new')
     expect(within(menu).getByRole('link', { name: /view all factions/i })).toHaveAttribute('href', '/factions')
     expect(within(menu).getByRole('link', { name: /stage a battle/i })).toHaveAttribute('href', '/battles/new')
+    expect(within(menu).getByRole('link', { name: /battle history/i })).toHaveAttribute('href', '/battles')
   })
 
   it('navigates from the main menu to faction creation', async () => {
@@ -123,7 +128,7 @@ describe('App', () => {
   })
 
   it('creates a faction from its dedicated route', async () => {
-	vi.mocked(fetch).mockImplementation(async (input) => String(input) === '/v1/faction-rulesets'
+	vi.mocked(fetch).mockImplementation(async (input) => String(input) === '/v1/scenarios' ? new Response(JSON.stringify({ scenarios: [] }), { status: 200 }) : String(input) === '/v1/faction-rulesets'
 	  ? new Response(JSON.stringify({ rulesets: [ruleset] }), { status: 200 })
 	  : new Response(null, { status: 201 }))
     const user = userEvent.setup()
@@ -136,11 +141,7 @@ describe('App', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
 	  body: JSON.stringify({
-	    id: firstId, name: 'The Verdant Accord', rulesetId: 'castle-siege-v1',
-	    blueprint: {
-	      units: [{ type: 'vanguard', count: 1 }, { type: 'striker', count: 1 }, { type: 'ranger', count: 1 }],
-	      upgradeIds: ['arsenal'], recruitmentPriority: ['vanguard', 'striker', 'ranger'],
-	    },
+	    id: firstId, name: 'The Verdant Accord', doctrine: doctrineTemplates.Balanced, background: '',
 	  }),
     })
     expect(await screen.findByText('The Verdant Accord has entered the battlefield.')).toBeInTheDocument()
@@ -148,7 +149,7 @@ describe('App', () => {
   })
 
   it('shows the faction blueprint validation detail returned by the server', async () => {
-	vi.mocked(fetch).mockImplementation(async (input) => String(input) === '/v1/faction-rulesets'
+	vi.mocked(fetch).mockImplementation(async (input) => String(input) === '/v1/scenarios' ? new Response(JSON.stringify({ scenarios: [] }), { status: 200 }) : String(input) === '/v1/faction-rulesets'
 	  ? new Response(JSON.stringify({ rulesets: [ruleset] }), { status: 200 })
 	  : new Response('invalid faction blueprint: recruitment priority is incomplete\n', { status: 422 }))
     const user = userEvent.setup()
@@ -161,7 +162,7 @@ describe('App', () => {
   })
 
   it('regenerates a faction identifier', async () => {
-	vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ rulesets: [ruleset] }), { status: 200 }))
+	vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify({ rulesets: [ruleset], scenarios: [] }), { status: 200 }))
     const user = userEvent.setup()
     renderApp('/factions/new')
 
@@ -172,24 +173,13 @@ describe('App', () => {
     expect(screen.queryByTitle(firstId)).not.toBeInTheDocument()
   })
 
-  it('updates blueprint budget, upgrades, quantities, and recruitment order', async () => {
-    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ rulesets: [ruleset] }), { status: 200 }))
+  it('uses editable doctrine templates', async () => {
     const user = userEvent.setup()
     renderApp('/factions/new')
-    await screen.findByLabelText('Faction name')
-    await user.click(screen.getByRole('button', { name: 'Add vanguard' }))
-    expect(screen.getByText('25 over budget')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Remove vanguard' }))
-    await user.click(screen.getByRole('button', { name: 'Remove vanguard' }))
-    expect(screen.getByLabelText('vanguard quantity')).toHaveTextContent('0')
-    await user.click(screen.getByRole('checkbox', { name: /arsenal/i }))
-    expect(screen.getByText('65 unspent')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Add vanguard' }))
-    expect(screen.getByLabelText('vanguard quantity')).toHaveTextContent('1')
-    expect(screen.getByText('3. vanguard')).toBeInTheDocument()
-    expect(screen.getByText('30 unspent')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Move ranger up' }))
-    expect(screen.getByText('1. ranger')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Aggressive' }))
+    expect(screen.getByLabelText('Doctrine')).toHaveValue(doctrineTemplates.Aggressive)
+    await user.clear(screen.getByLabelText('Doctrine'))
+    expect(screen.getByRole('button', {name: 'CREATE FACTION'})).toBeDisabled()
   })
 
   it('renders every faction returned by the registry', async () => {
@@ -254,13 +244,13 @@ describe('App', () => {
       const url = String(input)
       if (url === '/v1/factions') {
         return new Response(JSON.stringify({ factions: [
-          { id: firstId, name: 'Northwind', rulesetId: 'castle-siege-v1' },
-          { id: secondId, name: 'Verdant Accord', rulesetId: 'castle-siege-v1' },
+          { id: firstId, name: 'Northwind', rulesetId: 'castle-siege-v1', blueprint: { units: [{ type: 'vanguard', count: 1 }], upgradeIds: null, recruitmentPriority: ['vanguard'] } },
+          { id: secondId, name: 'Verdant Accord', rulesetId: 'castle-siege-v1', blueprint: { units: [{ type: 'vanguard', count: 1 }], upgradeIds: null, recruitmentPriority: ['vanguard'] } },
         ] }), { status: 200 })
       }
       if (url === '/v1/scenarios') {
         return new Response(JSON.stringify({ scenarios: [{
-          id: 'skirmish-v1', rulesetId: 'castle-siege-v1', rulesVersion: '1', maximumTicks: 500, mapWidth: 15, mapHeight: 11, tickDuration: '0s', decisionIntervalTicks: 10,
+          id: 'skirmish-v1', rulesetId: 'castle-siege-v1', allowedUnits: ['vanguard'], allowedUpgrades: [], rulesVersion: '1', maximumTicks: 500, mapWidth: 15, mapHeight: 11, tickDuration: '0s', decisionIntervalTicks: 10,
         }] }), { status: 200 })
       }
       if (url === '/v1/battles' && init?.method === 'POST') {
@@ -276,6 +266,11 @@ describe('App', () => {
           status: 'queued',
           attempt: 0,
           participants: [{ id: firstId, name: 'Northwind' }, { id: secondId, name: 'Verdant Accord' }],
+          state: {
+            battleId, tick: 0, openingComplete: false,
+            factions: [firstId, secondId].map((factionId) => ({ factionId, gold: 60, goldEarned: 0, goldSpent: 0, goldLooted: 0 })),
+            units: null, buildings: null,
+          },
           result: null,
         }), { status: 200 })
       }
@@ -312,10 +307,12 @@ describe('App', () => {
     })
     expect(await screen.findByRole('heading', { name: 'Battle in progress' })).toBeInTheDocument()
     expect(screen.getByText('Awaiting engine')).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'EVENTS' })).toHaveAttribute('aria-selected', 'true')
-    await user.click(screen.getByRole('tab', { name: /AI DECISIONS/ }))
-    expect(screen.getByRole('tab', { name: /AI DECISIONS/ })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText('This battle uses scripted controllers, so no model decisions will be created.')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Inspect' })).toHaveValue('system')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Inspect' }), firstId)
+    const inspector = within(screen.getByRole('complementary', { name: 'Battle inspector' }))
+    expect(inspector.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
+    await user.click(screen.getByRole('tab', { name: 'Decisions' }))
+    expect(screen.getByRole('region', { name: 'AI decisions' })).toHaveTextContent('No decisions recorded for this player in the current attempt.')
   })
 
   it('shows battle tick validation before deployment', async () => {
@@ -445,16 +442,17 @@ describe('App', () => {
 
     expect(await screen.findByRole('heading', { name: 'Battle complete' })).toBeInTheDocument()
     expect(screen.getByText('Northwind wins')).toBeInTheDocument()
-    expect(await screen.findByText('battle started')).toBeInTheDocument()
+    expect(await screen.findByText('battle started', { selector: 'strong' })).toBeInTheDocument()
     expect((await screen.findAllByRole('listitem'))[0]).toHaveTextContent('battle completed')
     expect(screen.getByRole('heading', { name: 'Latest events' })).toBeInTheDocument()
     expect(screen.getAllByText('Damage dealt')).toHaveLength(2)
-    await user.click(screen.getByRole('tab', { name: /AI DECISIONS/ }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Inspect' }), firstId)
+    await user.click(screen.getByRole('tab', { name: 'Decisions' }))
     expect(await screen.findByRole('region', { name: 'AI decisions' })).toHaveTextContent('pressure')
     expect(screen.getByRole('region', { name: 'AI decisions' })).toHaveTextContent('attack 1400 · defend 800')
     expect(screen.getByRole('region', { name: 'AI decisions' })).toHaveTextContent('The visible lane is open')
-    expect(screen.getByRole('region', { name: 'AI decisions' })).toHaveTextContent('ranger → vanguard')
-    expect(screen.getByText('gemini-2.5-flash')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'AI decisions' })).toHaveTextContent('Ranger → Vanguard')
+    expect(within(screen.getByRole('region', { name: 'AI decisions' })).getByText('gemini-2.5-flash')).toBeInTheDocument()
   })
 
   it('stops an active battle from the battle control panel', async () => {
@@ -723,8 +721,34 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Battle failed' })).toBeInTheDocument()
     expect(screen.getByText('engine_error')).toBeInTheDocument()
     expect(await screen.findByText('{"phase":"advance"}')).toBeInTheDocument()
-    expect(screen.getByText('—')).toBeInTheDocument()
+    expect(within(screen.getByRole('listitem')).getByText('—')).toBeInTheDocument()
     expect(screen.getByText('false')).toBeInTheDocument()
     expect(screen.getByText('3', { selector: 'dd' })).toBeInTheDocument()
+  })
+})
+
+describe('battle history navigation', () => {
+  beforeEach(() => { vi.stubGlobal('fetch', vi.fn()) })
+  it('navigates from history to staging with exact active links', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const path = String(input)
+      if (path.startsWith('/v1/battles?')) return new Response(JSON.stringify({ battles: [], nextCursor: null }))
+      if (path === '/v1/factions') return new Response(JSON.stringify({ factions: [] }))
+      if (path === '/v1/scenarios') return new Response(JSON.stringify({ scenarios: [] }))
+      return new Response(JSON.stringify({ profiles: [] }))
+    })
+    renderApp('/battles')
+    await screen.findByText('No battles yet')
+    const navigation = screen.getByRole('navigation', { name: 'Primary navigation' })
+    expect(within(navigation).getByRole('link', { name: 'Battle history' })).toHaveAttribute('aria-current', 'page')
+    await user.click(within(navigation).getByRole('link', { name: 'Stage battle' }))
+    expect(within(navigation).getByRole('link', { name: 'Battle history' })).not.toHaveAttribute('aria-current')
+    expect(within(navigation).getByRole('link', { name: 'Stage battle' })).toHaveAttribute('aria-current', 'page')
+  })
+  it('returns to login when history requests are unauthorized', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 401 }))
+    renderApp('/battles')
+    expect(await screen.findByRole('button', { name: /enter command post/i })).toBeInTheDocument()
   })
 })

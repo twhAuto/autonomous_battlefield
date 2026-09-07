@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Reports GHCR package versions alongside running image references to support retention
+# review; it does not delete registry versions.
+
 set -Eeuo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${project_dir}/scripts/lib/deployment-environment.sh"

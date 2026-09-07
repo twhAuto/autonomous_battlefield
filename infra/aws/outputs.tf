@@ -1,3 +1,6 @@
+# Exports provisioned cluster, registry, database, secret, and IAM identifiers for
+# application deployment and operations.
+
 output "cluster_name" {
   value = aws_eks_cluster.this.name
 }

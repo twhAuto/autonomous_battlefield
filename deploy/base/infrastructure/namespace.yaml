@@ -1,3 +1,6 @@
+# Application namespace with baseline pod-security enforcement and restricted
+# audit/warning labels.
+
 apiVersion: v1
 kind: Namespace
 metadata:

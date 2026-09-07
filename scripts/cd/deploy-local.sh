@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Builds and deploys the current working tree to the registered dev cluster, requires
+# existing secret files, and runs smoke checks after rollout.
 
 set -Eeuo pipefail
 

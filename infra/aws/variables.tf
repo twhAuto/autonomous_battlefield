@@ -1,3 +1,6 @@
+# Configurable region, environment, budget, database, and Kubernetes inputs for the AWS
+# reference stack.
+
 variable "aws_region" {
   type        = string
   description = "AWS region for the reference environment."

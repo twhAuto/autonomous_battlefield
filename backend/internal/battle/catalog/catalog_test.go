@@ -1,3 +1,6 @@
+// Checks strict catalog loading, resolved faction snapshots, unknown scenarios, and
+// malformed scenario YAML.
+
 package catalog
 
 import (
@@ -29,10 +32,10 @@ func TestCatalogLoadsRulesetAndResolvesBlueprints(t *testing.T) {
 	if digest == "" || digest != nextDigest || first.Map.Width != 15 || second.Map.Height != 11 {
 		t.Fatalf("unexpected resolutions: %#v", first)
 	}
-	if summaries := catalog.Summaries(); len(summaries) != 1 || summaries[0].RulesetID != "castle-siege-v1" || summaries[0].MapWidth != 15 || summaries[0].MaximumTicks != 500 {
+	if summaries := catalog.Summaries(); len(summaries) != 3 || summaries[0].RulesetID != "castle-siege-v1" || summaries[0].MapWidth != 15 || summaries[0].MaximumTicks != 500 {
 		t.Fatalf("summaries = %#v", summaries)
 	}
-	if rulesets := catalog.Rulesets(); len(rulesets) != 1 || rulesets[0].DesignBudget != 120 {
+	if rulesets := catalog.Rulesets(); len(rulesets) != 2 || rulesets[0].DesignBudget != 0 || rulesets[0].StartingGold != 180 {
 		t.Fatalf("rulesets = %#v", rulesets)
 	}
 	if ruleset, ok := catalog.Ruleset("castle-siege-v1"); !ok || ruleset.ID != "castle-siege-v1" {
@@ -59,14 +62,14 @@ func TestCatalogRejectsUnknownScenarioField(t *testing.T) {
 	}
 }
 
-func TestCatalogRejectsIncompatibleFaction(t *testing.T) {
+func TestCatalogAcceptsGenericFaction(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	catalog, err := LoadCatalog(filepath.Join(root, "scenarios"), filepath.Join(root, "rulesets"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = catalog.Resolve("castle-siege-v1", [2]battleservice.FactionIdentity{{RulesetID: "other"}, {RulesetID: "other"}})
-	if !errors.Is(err, battleservice.ErrIncompatibleFaction) {
+	_, _, err = catalog.Resolve("castle-siege-v1", [2]battleservice.FactionIdentity{{ID: "a", Name: "A", Doctrine: "Defend", RulesetID: "other"}, {ID: "b", Name: "B", Doctrine: "Attack", RulesetID: "other"}})
+	if err != nil {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -102,4 +105,32 @@ func FuzzScenarioYAML(f *testing.F) {
 		var scenario game.Scenario
 		_ = decodeOne(path, &scenario)
 	})
+}
+
+func TestDoctrineSnapshotIsIndependentOfFutureProfileEdits(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	catalog, err := LoadCatalog(filepath.Join(root, "scenarios"), filepath.Join(root, "rulesets"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	identities := [2]battleservice.FactionIdentity{{ID: "a", Name: "A", Doctrine: "Scout", Background: "Old roots"}, {ID: "b", Name: "B", Doctrine: "Defend"}}
+	first, hash, err := catalog.Resolve("castle-siege-v1", identities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identities[0].Name = "Edited"
+	identities[0].Doctrine = "Attack"
+	identities[0].Background = "A new history"
+	_, updated, err := catalog.Resolve("castle-siege-v1", identities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Factions[0].Background != "Old roots" || first.Factions[0].Name != "A" || first.Factions[0].Doctrine != "Scout" || hash == updated || first.SnapshotVersion != game.DoctrineSnapshotVersion {
+		t.Fatal("profile snapshot not immutable")
+	}
+	for _, summary := range catalog.Summaries() {
+		if _, _, err := catalog.Resolve(summary.ID, identities); err != nil {
+			t.Fatal("generic profiles cannot cross scenarios", err)
+		}
+	}
 }

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Compatibility entry point for scripts/dev/run-k8s-cli-agent.sh; forwards arguments and
+# preserves the invoked command's exit status.
 
 set -Eeuo pipefail
 

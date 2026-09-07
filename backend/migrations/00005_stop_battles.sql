@@ -1,3 +1,6 @@
+-- Adds the stopped battle status; downgrade maps stopped rows back into the older allowed
+-- status set.
+
 -- +goose Up
 ALTER TABLE battle_runs
     DROP CONSTRAINT battle_runs_status_check;

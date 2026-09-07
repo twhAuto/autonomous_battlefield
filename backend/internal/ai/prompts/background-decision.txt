@@ -1,0 +1,1 @@
+Generate background for request %s. First call get_background_context, then submit_faction_background.

@@ -1,3 +1,6 @@
+// Exercises claimed battle execution, pause and heartbeat handling, shutdown requeue,
+// failure paths, and decision windows.
+
 package worker
 
 import (
@@ -371,6 +374,7 @@ func testJob(maxTicks uint64) *BattleJob {
 type decisionBattleRepository struct {
 	*fakeBattleRepository
 	records            map[string]ai.DecisionRecord
+	acceptModels       bool
 	failModels         bool
 	modelErrorCategory string
 	memoryErr          error
@@ -381,6 +385,15 @@ func (r *decisionBattleRepository) CreateOrReuseDecision(_ context.Context, p ai
 	if p.ControllerType == ai.ControllerModel && r.failModels {
 		record.Status = "failed"
 		record.ErrorCategory = r.modelErrorCategory
+	}
+	if p.ControllerType == ai.ControllerModel && r.acceptModels {
+		orders := []controller.RecruitmentOrder{{UnitType: p.Observation.Legal.Units[0].ID, Count: 1}}
+		plan := controller.PlanProposal{Name: "model-stub", RecruitmentOrders: &orders, SpendOrder: []string{"upgrades", "recruitment"}}
+		if len(p.Observation.Legal.Upgrades) > 0 {
+			plan.UpgradeOrders = []string{p.Observation.Legal.Upgrades[0].ID}
+		}
+		record.Status = "accepted"
+		record.ResolvedPlan = &plan
 	}
 	r.records[record.ID] = record
 	return record, nil

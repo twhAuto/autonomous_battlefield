@@ -1,11 +1,14 @@
+// Normalizes faction profiles, enforces text and identifier rules, and coordinates
+// repository and ruleset-catalog access.
+
 package service
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
@@ -15,16 +18,15 @@ var (
 	ErrFactionNotFound      = errors.New("faction not found")
 	ErrFactionAlreadyExists = errors.New("faction already exists")
 	ErrInvalidFaction       = errors.New("invalid faction")
-	ErrInvalidBlueprint     = game.ErrInvalidBlueprint
 )
 
 var uuidPattern = regexp.MustCompile(`^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$`)
 
 type CreateInput struct {
-	ID        string
-	Name      string
-	RulesetID string
-	Blueprint game.Blueprint
+	Background string
+	Doctrine   string
+	ID         string
+	Name       string
 }
 
 type Service interface {
@@ -35,7 +37,6 @@ type Service interface {
 }
 
 type RulesetCatalog interface {
-	Ruleset(string) (game.Ruleset, bool)
 	Rulesets() []game.Ruleset
 }
 
@@ -57,14 +58,7 @@ func (s *service) GetFactionName(ctx context.Context, id string) (string, error)
 }
 
 func (s *service) ListFactions(ctx context.Context) ([]faction.Faction, error) {
-	values, err := s.repository.ListFactions(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for index := range values {
-		s.decorate(&values[index])
-	}
-	return values, nil
+	return s.repository.ListFactions(ctx)
 }
 
 func (s *service) ListRulesets() []game.Ruleset {
@@ -75,28 +69,26 @@ func (s *service) ListRulesets() []game.Ruleset {
 }
 
 func (s *service) CreateFaction(ctx context.Context, input CreateInput) error {
-	if !uuidPattern.MatchString(input.ID) || strings.TrimSpace(input.Name) == "" {
-		return ErrInvalidFaction
-	}
-	if s.catalog != nil {
-		ruleset, ok := s.catalog.Ruleset(input.RulesetID)
-		if !ok {
-			return fmt.Errorf("%w: unknown ruleset %q", ErrInvalidBlueprint, input.RulesetID)
-		}
-		if _, err := game.ValidateBlueprint(ruleset, input.Blueprint); err != nil {
-			return err
-		}
-	}
-
-	storedFaction := faction.Faction{
-		ID: input.ID, Name: strings.TrimSpace(input.Name), RulesetID: input.RulesetID,
-		Blueprint: game.CloneBlueprint(input.Blueprint),
-	}
-	if err := s.repository.CreateFaction(ctx, storedFaction); err != nil {
+	stored, err := normalizeFaction(input)
+	if err != nil {
 		return err
 	}
+	return s.repository.CreateFaction(ctx, stored)
+}
 
-	return nil
+// normalizeFaction keeps creation and editing subject to the same profile rules.
+func normalizeFaction(input CreateInput) (faction.Faction, error) {
+	stored := faction.Faction{
+		ID:         input.ID,
+		Name:       strings.TrimSpace(input.Name),
+		Doctrine:   strings.TrimSpace(input.Doctrine),
+		Background: strings.TrimSpace(input.Background),
+	}
+	if !uuidPattern.MatchString(stored.ID) || stored.Name == "" || stored.Doctrine == "" ||
+		utf8.RuneCountInString(stored.Doctrine) > faction.MaxDoctrineLength || utf8.RuneCountInString(stored.Background) > faction.MaxBackgroundLength {
+		return faction.Faction{}, ErrInvalidFaction
+	}
+	return stored, nil
 }
 
 func (s *service) DeleteFaction(ctx context.Context, id string) error {
@@ -104,18 +96,6 @@ func (s *service) DeleteFaction(ctx context.Context, id string) error {
 		return ErrInvalidFaction
 	}
 	return s.repository.DeleteFaction(ctx, id)
-}
-
-func (s *service) decorate(value *faction.Faction) {
-	if s.catalog == nil {
-		return
-	}
-	ruleset, ok := s.catalog.Ruleset(value.RulesetID)
-	if !ok {
-		return
-	}
-	value.SpentPoints = game.DesignCost(ruleset, value.Blueprint)
-	value.Remaining = ruleset.DesignBudget - value.SpentPoints
 }
 
 func NewService(repository Repository, catalogs ...RulesetCatalog) Service {

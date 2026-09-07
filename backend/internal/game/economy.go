@@ -1,3 +1,6 @@
+// Applies faction income, construction, and recruitment using production-window rules,
+// gold reserves, and available spawn cells.
+
 package game
 
 import (
@@ -29,6 +32,8 @@ func (m *Match) runFactionEconomy(slot int, factionID string, productionWindow b
 	plan := m.factions[factionID].activePlan
 	for _, kind := range plan.SpendOrder {
 		switch kind {
+		case "upgrades":
+			events = append(events, m.runUpgrades(factionID, plan)...)
 		case "construction":
 			events = append(events, m.runConstruction(slot, factionID, plan)...)
 		case "recruitment":
@@ -51,9 +56,10 @@ func (m *Match) incomeFor(factionID string, castleIncome int64) int64 {
 
 func (m *Match) runConstruction(_ int, factionID string, plan controller.PlanProposal) []Event {
 	events := make([]Event, 0, len(plan.ConstructionPriorities))
-	for _, coordinate := range plan.ConstructionPriorities {
+	for _, order := range constructionOrders(plan) {
+		coordinate := order.Position
 		site := Position{X: coordinate.X, Y: coordinate.Y}
-		building, reason := m.buildEconomyBuildingAt(factionID, site, plan.ReserveGold)
+		building, reason := m.buildStructureAt(factionID, order.BuildingType, site, plan.ReserveGold)
 		if reason != "" {
 			events = append(events, m.event("production_skipped", map[string]any{"factionId": factionID, "kind": "construction", "position": site, "reason": reason}))
 			continue
@@ -87,25 +93,44 @@ func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) [
 	runtime := m.factions[factionID]
 	state := m.factionState(factionID)
 	castle := m.castle(factionID)
-	if castle == nil {
+	if castle == nil || castle.Health <= 0 {
 		return nil
 	}
 	definitions := UnitTypesByID(m.scenario.Ruleset)
 	events := make([]Event, 0, 6)
 	orders := expandedRecruitmentOrders(plan.RecruitmentOrders)
 	purchased := 0
+	attempted := 0
+	sourceIDs := expandedRecruitmentSources(plan.RecruitmentOrders)
 	for {
-		if plan.RecruitmentOrders != nil && purchased >= len(orders) {
+		// Expanded sources share an explicit cap. Legacy priorities still stop on
+		// occupied castle neighbors, preserving their historical skipped event.
+		if purchased >= 6 && len(m.scenario.Ruleset.Structures) > 0 {
 			break
 		}
-		spawn, available := m.recruitmentSpawn(castle.Position)
+		if plan.RecruitmentOrders != nil && attempted >= len(orders) {
+			break
+		}
+		source := castle
+		if plan.RecruitmentOrders != nil {
+			source = m.recruitmentSource(factionID, sourceIDs[attempted])
+			attempted++
+		}
+		if source == nil || source.Health <= 0 || source.ReadyAtTick > m.state.Tick {
+			events = append(events, m.event("production_skipped", map[string]any{"factionId": factionID, "kind": "recruitment", "reason": "source_unavailable"}))
+			continue
+		}
+		spawn, available := m.recruitmentSpawn(source.Position)
 		if !available {
 			events = append(events, m.event("production_skipped", map[string]any{"factionId": factionID, "kind": "recruitment", "reason": "no_spawn"}))
+			if source.Type == BuildingBarracks {
+				continue
+			}
 			break
 		}
 		priorities := plan.RecruitmentPriorities
 		if plan.RecruitmentOrders != nil {
-			priorities = orders[purchased : purchased+1]
+			priorities = orders[attempted-1 : attempted]
 		}
 		selected := affordableUnit(definitions, priorities, state.Gold, plan.ReserveGold)
 		if selected.ID == "" {
@@ -119,7 +144,11 @@ func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) [
 		runtime.unitSequence++
 		unit := runtime.newUnit(selected, spawn, m.state.Tick+1)
 		m.state.Units = append(m.state.Units, unit)
-		events = append(events, m.event("unit_recruited", map[string]any{"factionId": factionID, "unitId": unit.ID, "unitType": unit.Type, "position": spawn, "readyAtTick": unit.ReadyAtTick, "cost": unit.Cost}))
+		data := map[string]any{"factionId": factionID, "unitId": unit.ID, "unitType": unit.Type, "position": spawn, "readyAtTick": unit.ReadyAtTick, "cost": unit.Cost}
+		if len(m.scenario.Ruleset.Structures) > 0 {
+			data["sourceBuildingId"] = source.ID
+		}
+		events = append(events, m.event("unit_recruited", data))
 	}
 	return events
 }
@@ -162,6 +191,19 @@ func expandedRecruitmentOrders(orders *[]controller.RecruitmentOrder) []string {
 	for _, order := range *orders {
 		for i := 0; i < order.Count; i++ {
 			result = append(result, order.UnitType)
+		}
+	}
+	return result
+}
+
+func expandedRecruitmentSources(orders *[]controller.RecruitmentOrder) []string {
+	if orders == nil {
+		return nil
+	}
+	result := []string{}
+	for _, order := range *orders {
+		for i := 0; i < order.Count; i++ {
+			result = append(result, order.SourceBuildingID)
 		}
 	}
 	return result

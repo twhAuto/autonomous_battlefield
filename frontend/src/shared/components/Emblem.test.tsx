@@ -1,3 +1,5 @@
+// Checks emblem palette selection uses complete Unicode code points from its seed.
+
 import { render } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { Emblem } from './Emblem'

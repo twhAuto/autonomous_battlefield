@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Deployment entry point for a registered Kind environment. Resolves selected components
+# and delegates rollout, validation, and cleanup to cd/lib/kind-deployment.sh.
 
 set -Eeuo pipefail
 
@@ -7,8 +9,6 @@ source "${project_dir}/scripts/lib/deployment-environment.sh"
 battlefield_env_preflight
 [[ "${DEPLOY_ENV}" != dev ]] || battlefield_env_verify_docker
 
-
-project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 deploy_command="$0"
 
 # shellcheck source=scripts/lib/deployment-components.sh
@@ -81,7 +81,9 @@ kind_deploy_load_images
 deployment_component_selected infrastructure && kind_deploy_infrastructure
 [[ "${image_source}" == "registry" ]] && kind_deploy_registry_credentials
 if [[ "${image_source}" == "registry" && "${enforce_supply_chain_policy}" == "1" ]]; then
-  "${project_dir}/scripts/cd/apply-kyverno-policy.sh"
+  POLICY_BACKEND_IMAGE_REF="${effective_backend_ref:-${current_backend_image}}" \
+    POLICY_FRONTEND_IMAGE_REF="${effective_frontend_ref:-${current_frontend_image}}" \
+    "${project_dir}/scripts/cd/apply-kyverno-policy.sh"
 fi
 deployment_component_selected migration && kind_deploy_migration
 deployment_component_selected application && kind_deploy_application

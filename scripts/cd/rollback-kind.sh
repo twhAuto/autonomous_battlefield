@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Restores application deployments using supplied images or rollout history;
+# production requires verified backend and frontend digest references.
 
 set -Eeuo pipefail
 
@@ -12,14 +14,9 @@ if [[ "${DEPLOY_ENV}" == production ]]; then
   [[ "$#" == 2 && "$1" == *@sha256:* && "$2" == *@sha256:* ]] || {
     echo 'Production rollback requires both exact image digests.' >&2; exit 1;
   }
-  (
-    docker_config="$(mktemp -d)"
-    chmod 700 "${docker_config}"
-    trap 'rm -rf -- "${docker_config}"' EXIT
-    export DOCKER_CONFIG="${docker_config}"
-    printf '%s' "${GHCR_TOKEN:?GHCR_TOKEN is required}" | docker login ghcr.io --username "${GHCR_USER:?GHCR_USER is required}" --password-stdin
-    BACKEND_IMAGE_REVISION= FRONTEND_IMAGE_REVISION= "${project_dir}/scripts/cd/verify-registry-images.sh" "$1" "$2"
-  )
+  BACKEND_IMAGE_REVISION= FRONTEND_IMAGE_REVISION= \
+    "${project_dir}/scripts/ci/with-ghcr-auth.sh" \
+    "${project_dir}/scripts/cd/verify-registry-images.sh" "$1" "$2"
 fi
 cluster_name="${KIND_CLUSTER_NAME:-battlefield}"
 namespace="${KUBERNETES_NAMESPACE:-battlefield}"

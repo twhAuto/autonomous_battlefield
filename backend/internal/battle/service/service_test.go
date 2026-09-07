@@ -1,3 +1,6 @@
+// Checks battle validation, frozen participant snapshots, model selection, controls,
+// perspectives, and safe decision/event reads.
+
 package service
 
 import (
@@ -341,19 +344,21 @@ func (r *battleFactionRepo) GetFaction(_ context.Context, id string) (*faction.F
 }
 
 type fakeBattleRepo struct {
-	created     CreateBattleParams
-	createErr   error
-	run         *BattleRun
-	events      []StoredBattleEvent
-	listAttempt int
-	listLatest  bool
-	getErr      error
-	listErr     error
-	stopErr     error
-	stoppedID   string
-	pauseErr    error
-	pausedID    string
-	pausedValue bool
+	summaries    []BattleSummary
+	historyQuery BattleHistoryQuery
+	created      CreateBattleParams
+	createErr    error
+	run          *BattleRun
+	events       []StoredBattleEvent
+	listAttempt  int
+	listLatest   bool
+	getErr       error
+	listErr      error
+	stopErr      error
+	stoppedID    string
+	pauseErr     error
+	pausedID     string
+	pausedValue  bool
 }
 
 func (r *fakeBattleRepo) CreateBattle(_ context.Context, params CreateBattleParams) error {
@@ -394,4 +399,9 @@ func serviceTestScenario(identities [2]FactionIdentity) game.Scenario {
 		factions[index] = game.FactionSetup{ID: identity.ID, Name: identity.Name, Blueprint: blueprint, FallbackPlan: plan, ScriptedPlans: []controller.PlanProposal{plan}}
 	}
 	return game.Scenario{ID: "castle-siege-v1", RulesVersion: "1", RulesetID: ruleset.ID, MaximumTicks: 500, DecisionIntervalTicks: 10, DecisionLeadTicks: 2, Map: gameMap, Ruleset: ruleset, Factions: factions}
+}
+
+func (r *fakeBattleRepo) ListBattles(_ context.Context, query BattleHistoryQuery) ([]BattleSummary, error) {
+	r.historyQuery = query
+	return r.summaries, r.listErr
 }

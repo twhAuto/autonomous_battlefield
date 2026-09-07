@@ -4,12 +4,32 @@
 
 The [architecture contract](../design/system-architecture.md#shared-prompt-provenance-and-faction-memory)
 describes shared prompts, provenance, and bounded faction memory. The active
-embedded templates live in `backend/internal/ai/prompts/`; the retained v2 file
-is historical source. Rebuild backend binaries after editing active templates,
+embedded templates live in `backend/internal/ai/prompts/`; each purpose has one current file, with older revisions kept in Git.
+The bundle version and content digest are maintained in `internal/ai/prompts.go`. Rebuild backend binaries after editing active templates,
 and restart host agents so recorded prompt digests match the deployed policy.
 CLI tools may add their own internal instructions.
 
 ## Faction memory
+
+In a running or saved battle, select a player in the sidebar’s **Inspect** dropdown and open
+**Decisions**. Expand a decision to compare its rationale, orders, and fallback
+provenance. Expand **Saved decision context** to load the historical economy,
+visible forces, legal choices, prior plan, memory, and knowledge. The observation
+tick is distinct from the plan's target tick and the current snapshot displayed
+in the player header. Missing legacy observations are labeled explicitly.
+**Faction** displays background/doctrine saved at battle creation, even if the
+current faction profile has changed or been deleted. **Units** shows the current
+living army grouped by type; expand a group for individual HP and coordinates.
+
+Use **System** for comparison rows and the event type filter. Expand **Inspect
+event** to check execution: an order does not prove that purchases were fulfilled.
+Event filters apply to loaded history only. The event attempt selector does not
+change player resources or decision history, which show the current attempt.
+
+Roll out the backend before the frontend: the additive participant fields and
+context endpoint require no database migration. During version skew, missing
+profile fields and unavailable context appear locally in the inspector and do
+not prevent inspecting the rest of the battle.
 
 Memory observations precede their associated plans; they do not measure the
 plans' effects. Compare later observations and current context when assessing
@@ -125,12 +145,12 @@ Mechanics text is limited to 4096 UTF-8 bytes and each descriptive field to 1024
 Numerical card facts are generated from unit definitions. Current observed unit
 stats may include upgrades; tactical text is advice, not a guaranteed counter.
 
-To add a unit, add its numerical definition and card to the ruleset YAML, using
+To add a unit, add its numerical definition and card to a versioned content library, select it in the ruleset, and use
 existing movement, targeting, and combat mechanics. Publish a new ruleset ID and
 version and a scenario referencing it when changing a published roster. Existing
-faction blueprints remain associated with their ruleset. No engine switch or UI
+faction doctrines can be reused across rulesets. No engine switch or UI
 unit list needs editing. New abilities still require engine implementation.
-Knowledge and its ruleset are copied into the persisted scenario at battle
+Library references and scenario restrictions are resolved before knowledge and its ruleset are copied into the persisted scenario at battle
 creation. Editing catalog files cannot alter an existing battle snapshot.
 
 Engine YAML (also available in the deployment ConfigMap):
@@ -204,3 +224,14 @@ MCP tool schema is now `battlefield.mcp-tools.v3`; existing clients may omit the
 optional orders field. Both model providers share the updated purchasing prompt.
 Deploy API, MCP, engine, and agent together and restart the host CLI agent so tool
 schemas and prompts agree. Existing battle JSON requires no database migration.
+
+See [content libraries and scenario selections](content-library.md) for shared units,
+buildings, upgrades, roster filtering, and version publication.
+
+For expanded scenarios, recruitment orders may specify `sourceBuildingId` from
+`legal.recruitmentSources`; omitted sources use the castle. The six-unit limit is
+shared across sources. Unavailable explicit sources and blocked Barracks orders
+are skipped without substitution; blocked castle spawns or an unaffordable order
+stop remaining purchases. Typed `constructionOrders` select building definitions
+from `legal.buildings` at `legal.economySites`. See
+[Frontier Siege](../design/frontier-siege.md) for the new mechanics and balance probes.

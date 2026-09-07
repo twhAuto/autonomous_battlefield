@@ -1,6 +1,12 @@
+// Defines battle API payloads and requests for scenarios, model profiles, battle
+// creation/history, live state, events, decisions, and controls.
+
 import { createApiClient } from '../../../shared/api/request'
 
 export interface ScenarioSummary {
+  allowedUnits?: string[]
+  allowedUpgrades?: string[]
+  allowedBuildings?: string[]
   id: string
   rulesVersion: string
   tickDuration: string
@@ -30,6 +36,8 @@ export type BattleStatus = 'queued' | 'running' | 'completed' | 'failed' | 'stop
 export interface BattleParticipant {
   id: string
   name: string
+  background?: string
+  doctrine?: string
   controller?: BattleController
 }
 
@@ -57,24 +65,34 @@ export interface BattleMap {
   castleSpawns: [HexPosition, HexPosition]
   economySites: [HexPosition[], HexPosition[]]
 }
-export interface BattleUnit {
+export interface UnitCapabilities {
+  class?: string; minimumRange?: number; buildingPriority?: boolean
+  buildingDamageBonus?: number; bonusAgainstClass?: string; classDamageBonus?: number; healAmount?: number
+}
+export interface BattleUnit extends UnitCapabilities {
   id: string; factionId: string; type: string; position: HexPosition
   health: number; maxHealth: number; attack: number; defense: number
   speed: number; movement: number; range: number; vision: number; readyAtTick: number
+  healTargetId?: string
+  healTargetPosition?: HexPosition
   movedFrom?: HexPosition
   attackTargetId?: string
   attackTargetPosition?: HexPosition
 }
 export interface BattleBuilding {
-  id: string; factionId: string; type: 'castle' | 'economy'; position: HexPosition
+  attack?: number; range?: number; readyAtTick?: number
+  attackTargetId?: string; attackTargetPosition?: HexPosition
+  id: string; factionId: string; type: 'castle' | 'economy' | 'defense_tower' | 'watchtower' | 'barracks'; position: HexPosition
   health: number; maxHealth: number; defense: number; vision: number; income: number
 }
 export interface BattleFactionState {
+  ownedUpgradeIds?: string[]
   factionId: string; gold: number; goldEarned: number; goldSpent: number; goldLooted: number
 }
 export interface BattleState {
-  battleId: string; tick: number; factions: BattleFactionState[]
-  units: BattleUnit[]; buildings: BattleBuilding[]
+  openingComplete?: boolean
+  battleId: string; tick: number; factions: BattleFactionState[] | null
+  units: BattleUnit[] | null; buildings: BattleBuilding[] | null
 }
 export interface BattleView { map: BattleMap; state: BattleState; visiblePositions: HexPosition[] }
 
@@ -139,12 +157,37 @@ export interface DecisionHistory {
     targetBonuses?: Record<string, number>
     reserveGold?: number
     spendOrder?: string[]
+    constructionOrders?: { buildingType: string; position: HexPosition }[] | null
     constructionPriorities?: HexPosition[]
     recruitmentPriorities?: string[]
-    recruitmentOrders?: { unitType: string; count: number }[] | null
+    upgradeOrders?: string[]
+    recruitmentOrders?: { unitType: string; count: number; sourceBuildingId?: string }[] | null
   }
   usage: { inputTokens?: number; outputTokens?: number; requests?: number }
   createdAt: string; resolvedAt?: string
+}
+
+// Saved public observation; never substitutes the live spectator state.
+export interface SavedDecisionContext {
+  requestId: string; battleId: string; factionId: string; attempt: number
+  targetTick: number; observationTick: number
+  context: {
+    factionName?: string; background?: string; doctrine?: string; opening: boolean
+    ownedUpgradeIds: string[] | null
+    economy: { gold: number; projectedIncome: number; economyBuildingCost: number; economyBuildingIncome: number; currentEconomyBuildings: number; maximumEconomyBuildings: number; maximumBuildings?: number }
+    view: BattleView
+    legal: { actionKinds: string[] | null; units: { id: string; cost: number }[] | null; economySites: HexPosition[] | null; buildings?: { id: string; cost: number }[] | null; upgrades?: { id: string; cost: number }[] | null; recruitmentSources?: string[] | null }
+    activePlan: DecisionHistory['resolvedPlan']
+    memory?: JsonValue
+    knowledge?: JsonValue
+  } | null
+}
+
+export async function getDecisionContext(id: string, requestId: string, attempt: number, signal?: AbortSignal): Promise<SavedDecisionContext> {
+  const response = await battlefieldFetch(`/v1/battles/${encodeURIComponent(id)}/decisions/${encodeURIComponent(requestId)}/context?attempt=${attempt}`, { signal })
+  if (response.ok) return await response.json() as SavedDecisionContext
+  if (response.status === 404) throw new BattleApiError('Saved context is unavailable for this decision.', 404)
+  throw new BattleApiError('Decision context could not be loaded.', response.status)
 }
 
 export class BattleApiError extends Error {
@@ -256,4 +299,31 @@ export async function listDecisionHistory(id: string, attempt: number, signal?: 
   const response = await battlefieldFetch(`/v1/battles/${encodeURIComponent(id)}/decisions?attempt=${attempt}`, { signal })
   if (!response.ok) throw new BattleApiError('Decision history could not be loaded.', response.status)
   return ((await response.json()) as { decisions: DecisionHistory[] }).decisions
+}
+
+export interface BattleSummary {
+  id: string
+  scenarioId: string
+  participants: BattleParticipant[]
+  status: BattleStatus
+  paused: boolean
+  requestedTicks: number
+  currentTick: number
+  createdAt: string
+  startedAt: string | null
+  completedAt: string | null
+  outcome: { winnerFactionId: string | null; reason: string } | null
+}
+export interface BattleHistoryPage {
+  battles: BattleSummary[]
+  nextCursor: string | null
+}
+export async function listBattles(query: { status?: string; cursor?: string; limit?: number }, signal?: AbortSignal): Promise<BattleHistoryPage> {
+  const params = new URLSearchParams()
+  if (query.status) params.set('status', query.status)
+  if (query.cursor) params.set('cursor', query.cursor)
+  params.set('limit', String(query.limit ?? 25))
+  const response = await battlefieldFetch(`/v1/battles?${params}`, { signal })
+  if (!response.ok) throw new BattleApiError(response.status === 400 ? 'That battle history query is invalid.' : 'Battle history could not be loaded.', response.status)
+  return await response.json() as BattleHistoryPage
 }

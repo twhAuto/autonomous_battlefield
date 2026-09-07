@@ -1,3 +1,6 @@
+# Dedicated namespace permitting the host access needed for node log collection while
+# retaining restricted audit/warning labels.
+
 apiVersion: v1
 kind: Namespace
 metadata:

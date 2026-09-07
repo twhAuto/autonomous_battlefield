@@ -1,7 +1,11 @@
+// Application shell and route table. Checks the session, handles login/logout and API
+// authentication expiry, and wraps feature pages in shared navigation.
+
 import { useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { CreateFactionPage } from '../features/factions/pages/CreateFactionPage'
 import { CreateBattlePage } from '../features/battles/pages/CreateBattlePage'
+import { BattleHistoryPage } from '../features/battles/pages/BattleHistoryPage'
 import { BattlePage } from '../features/battles/pages/BattlePage'
 import { FactionsPage } from '../features/factions/pages/FactionsPage'
 import { HomePage } from '../pages/HomePage'
@@ -30,6 +34,7 @@ function AppLayout({ actorID, onLogout }: Readonly<{ actorID: string; onLogout()
           <span>AUTONOMOUS<br />BATTLEFIELD</span>
         </Link>
         <nav className="primary-nav" aria-label="Primary navigation">
+          <NavLink to="/battles" end>Battle history</NavLink>
           <NavLink to="/battles/new">Stage battle</NavLink>
           <NavLink to="/factions/new">Create faction</NavLink>
           <NavLink to="/factions">All factions</NavLink>
@@ -124,7 +129,9 @@ export default function App({ authentication = authenticationClient, initialSess
       <Route element={<AppLayout actorID={session.actor?.id ?? 'local-development'} onLogout={logout} />}>
         <Route index element={<HomePage />} />
         <Route path="factions/new" element={<CreateFactionPage />} />
+ <Route path="factions/:id/edit" element={<CreateFactionPage />} />
         <Route path="factions" element={<FactionsPage />} />
+        <Route path="battles" element={<BattleHistoryPage />} />
         <Route path="battles/new" element={<CreateBattlePage />} />
         <Route path="battles/:id" element={<BattlePage />} />
         <Route path="*" element={<NotFoundPage />} />

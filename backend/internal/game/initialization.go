@@ -1,3 +1,6 @@
+// Validates a resolved scenario and creates the match's initial faction runtimes, castles,
+// and starting units.
+
 package game
 
 import (
@@ -52,6 +55,9 @@ func (m *Match) addFaction(slot int, setup FactionSetup, occupied map[Position]b
 	m.factions[setup.ID] = runtime
 	m.state.Factions = append(m.state.Factions, FactionState{FactionID: setup.ID, Gold: m.scenario.Ruleset.StartingGold})
 	castle := m.addCastle(slot, setup.ID, occupied)
+	if m.scenario.SnapshotVersion >= DoctrineSnapshotVersion {
+		return nil
+	}
 	if err := m.addStartingUnits(setup, runtime, availableSpawns(m.scenario.Map, castle.Position, occupied), occupied); err != nil {
 		return err
 	}
@@ -63,8 +69,12 @@ func newFactionRuntime(scenario Scenario, setup FactionSetup) (*factionRuntime, 
 	if strings.TrimSpace(setup.ID) == "" || strings.TrimSpace(setup.Name) == "" {
 		return nil, fmt.Errorf("%w: faction identity is invalid", ErrInvalidScenario)
 	}
-	if _, err := ValidateBlueprint(scenario.Ruleset, setup.Blueprint); err != nil {
-		return nil, err
+	if scenario.SnapshotVersion < DoctrineSnapshotVersion {
+		if _, err := ValidateBlueprint(scenario.Ruleset, setup.Blueprint); err != nil {
+			return nil, err
+		}
+	} else {
+		setup.Blueprint = Blueprint{}
 	}
 	if len(setup.ScriptedPlans) == 0 || strings.TrimSpace(setup.FallbackPlan.Name) == "" {
 		return nil, fmt.Errorf("%w: faction %q requires controller plans", ErrInvalidScenario, setup.ID)
@@ -128,5 +138,9 @@ func (m *Match) addStartingUnits(setup FactionSetup, runtime *factionRuntime, sp
 }
 
 func (f *factionRuntime) newUnit(definition UnitType, position Position, ready uint64) Unit {
-	return Unit{ID: fmt.Sprintf("%s:%s:%03d", f.setup.ID, definition.ID, f.unitSequence), FactionID: f.setup.ID, Type: definition.ID, Position: position, Health: definition.Health, MaxHealth: definition.Health, Attack: definition.Attack + f.attackBonus, Defense: definition.Defense + f.defenseBonus, Speed: definition.Speed, Movement: definition.Movement, Range: definition.Range, Vision: definition.Vision, Cost: definition.Cost, ReadyAtTick: ready}
+	attack := definition.Attack + f.attackBonus
+	if definition.HealAmount > 0 {
+		attack = 0
+	}
+	return Unit{Class: definition.Class, MinimumRange: definition.MinimumRange, BuildingPriority: definition.BuildingPriority, BuildingDamageBonus: definition.BuildingDamageBonus, BonusAgainstClass: definition.BonusAgainstClass, ClassDamageBonus: definition.ClassDamageBonus, HealAmount: definition.HealAmount, ID: fmt.Sprintf("%s:%s:%03d", f.setup.ID, definition.ID, f.unitSequence), FactionID: f.setup.ID, Type: definition.ID, Position: position, Health: definition.Health, MaxHealth: definition.Health, Attack: attack, Defense: definition.Defense + f.defenseBonus, Speed: definition.Speed, Movement: definition.Movement, Range: definition.Range, Vision: definition.Vision, Cost: definition.Cost, ReadyAtTick: ready}
 }

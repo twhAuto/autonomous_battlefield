@@ -1,3 +1,6 @@
+# Waits for Kibana and installs the log-view saved objects used to inspect battlefield
+# logs.
+
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -52,7 +55,7 @@ spec:
                 --request POST \
                 --header 'Content-Type: application/json' \
                 --header 'kbn-xsrf: battlefield-kibana-setup' \
-                --data '{"attributes":{"title":"Battlefield AI Decisions","description":"Decision claims, MCP tool calls, accepted plans, timeouts, and fallback outcomes.","columns":["@timestamp","service","msg","battle_id","request_id","faction_id","target_tick","profile_id","decision_status","error_category","fallback_source","duration_ms"],"sort":[["@timestamp","desc"]],"grid":{},"hideChart":false,"isTextBasedQuery":false,"kibanaSavedObjectMeta":{"searchSourceJSON":"{\"query\":{\"query\":\"msg: decision_*\",\"language\":\"kuery\"},\"filter\":[]}"}},"references":[{"name":"kibanaSavedObjectMeta.searchSourceJSON.index","type":"index-pattern","id":"battlefield-logs"}]}' \
+                --data '{"attributes":{"title":"Battlefield AI Decisions","description":"Decision claims, MCP tool calls, accepted plans, timeouts, and fallback outcomes.","columns":["@timestamp","msg"],"sort":[["@timestamp","desc"]],"grid":{},"hideChart":false,"isTextBasedQuery":false,"kibanaSavedObjectMeta":{"searchSourceJSON":"{\"query\":{\"query\":\"event: decision_* OR msg: decision_*\",\"language\":\"kuery\"},\"filter\":[]}"}},"references":[{"name":"kibanaSavedObjectMeta.searchSourceJSON.index","type":"index-pattern","id":"battlefield-logs"}]}' \
                 'http://battlefield-kibana:5601/api/saved_objects/search/battlefield-ai-decisions?overwrite=true'
           resources:
             requests:

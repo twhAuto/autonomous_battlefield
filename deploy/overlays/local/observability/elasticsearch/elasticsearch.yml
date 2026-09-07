@@ -1,3 +1,6 @@
+# Single-node local Elasticsearch configuration for collected logs, with built-in security
+# disabled for this local stack.
+
 cluster.name: battlefield-local
 discovery.type: single-node
 network.host: 0.0.0.0

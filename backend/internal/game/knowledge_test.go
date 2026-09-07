@@ -1,3 +1,5 @@
+// Checks rules knowledge references and validation against available unit definitions.
+
 package game
 
 import (

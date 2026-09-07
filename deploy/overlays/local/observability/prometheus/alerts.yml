@@ -1,3 +1,6 @@
+# Prometheus recording and alert rules for API availability/latency and application
+# runtime health.
+
 groups:
   - name: battlefield-sli-recording
     interval: 30s

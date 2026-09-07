@@ -1,3 +1,6 @@
+# Local SonarQube analysis service backed by its own PostgreSQL database and persistent
+# volumes.
+
 services:
   sonarqube:
     image: sonarqube:26.8.0.126808-community

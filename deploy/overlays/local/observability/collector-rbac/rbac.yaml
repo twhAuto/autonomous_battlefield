@@ -1,3 +1,6 @@
+# Grants the logging collector's service account access to application metadata for
+# Kubernetes log enrichment.
+
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

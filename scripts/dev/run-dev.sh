@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Starts the local database and development processes, tracks child processes, and shuts
+# them down together on exit.
 
 set -Eeuo pipefail
 

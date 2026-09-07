@@ -1,3 +1,6 @@
+// Implements faction profile reads and writes in PostgreSQL, mapping database outcomes to
+// service errors.
+
 package repo
 
 import (
@@ -21,10 +24,10 @@ func (r *Postgres) GetFaction(ctx context.Context, id string) (*faction.Faction,
 	var stored faction.Faction
 	var blueprint []byte
 	err := r.db.QueryRow(ctx, `
-		SELECT id, name, ruleset_id, blueprint
+		SELECT id, name, COALESCE(ruleset_id, ''), blueprint, doctrine, background
 		FROM factions
 		WHERE id = $1
-	`, id).Scan(&stored.ID, &stored.Name, &stored.RulesetID, &blueprint)
+	`, id).Scan(&stored.ID, &stored.Name, &stored.RulesetID, &blueprint, &stored.Doctrine, &stored.Background)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, factionservice.ErrFactionNotFound
 	}
@@ -42,7 +45,7 @@ func (r *Postgres) GetFaction(ctx context.Context, id string) (*faction.Faction,
 
 func (r *Postgres) ListFactions(ctx context.Context) ([]faction.Faction, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, name, ruleset_id, blueprint
+		SELECT id, name, COALESCE(ruleset_id, ''), blueprint, doctrine, background
 		FROM factions
 		ORDER BY created_at ASC, id ASC
 	`)
@@ -55,7 +58,7 @@ func (r *Postgres) ListFactions(ctx context.Context) ([]faction.Faction, error) 
 	for rows.Next() {
 		var stored faction.Faction
 		var blueprint []byte
-		if err := rows.Scan(&stored.ID, &stored.Name, &stored.RulesetID, &blueprint); err != nil {
+		if err := rows.Scan(&stored.ID, &stored.Name, &stored.RulesetID, &blueprint, &stored.Doctrine, &stored.Background); err != nil {
 			return nil, fmt.Errorf("scan faction: %w", err)
 		}
 		if len(blueprint) > 0 {
@@ -73,14 +76,9 @@ func (r *Postgres) ListFactions(ctx context.Context) ([]faction.Faction, error) 
 }
 
 func (r *Postgres) CreateFaction(ctx context.Context, stored faction.Faction) error {
-	blueprint, err := json.Marshal(stored.Blueprint)
-	if err != nil {
-		return fmt.Errorf("marshal faction %q blueprint: %w", stored.ID, err)
-	}
-	_, err = r.db.Exec(ctx, `
-		INSERT INTO factions (id, name, ruleset_id, blueprint)
-		VALUES ($1, $2, $3, $4)
-	`, stored.ID, stored.Name, stored.RulesetID, blueprint)
+	_, err := r.db.Exec(ctx, `
+        INSERT INTO factions (id, name, doctrine, background) VALUES ($1, $2, $3, $4)
+    `, stored.ID, stored.Name, stored.Doctrine, stored.Background)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -105,4 +103,15 @@ func (r *Postgres) DeleteFaction(ctx context.Context, id string) error {
 
 func NewPostgres(db postgres.DBTX) *Postgres {
 	return &Postgres{db: db}
+}
+
+func (r *Postgres) UpdateFaction(ctx context.Context, stored faction.Faction) error {
+	tag, err := r.db.Exec(ctx, `UPDATE factions SET name=$2, doctrine=$3, background=$4 WHERE id=$1`, stored.ID, stored.Name, stored.Doctrine, stored.Background)
+	if err != nil {
+		return fmt.Errorf("update faction: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return factionservice.ErrFactionNotFound
+	}
+	return nil
 }

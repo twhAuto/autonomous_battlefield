@@ -23,7 +23,7 @@ deployment credentials. Observability is optional for dev. See the
 
 ## 1. Purpose
 
-Autonomous Battlefield is a deterministic castle-siege auto-battler. Users create reusable faction blueprints, stage a finite battle between two factions, and watch a separate engine execute it. Each faction can use either deterministic scripted plans or a model-backed strategic controller.
+Autonomous Battlefield is a deterministic castle-siege auto-battler. Users create reusable faction doctrines, stage a finite battle between two factions, and watch a separate engine execute it. Each faction can use either deterministic scripted plans or a model-backed strategic controller.
 
 The central architectural rule is:
 
@@ -63,7 +63,7 @@ PostgreSQL is the durable coordination point. The API and engine do not call eac
 
 | Component | Responsibility | Direct dependencies |
 | --- | --- | --- |
-| React frontend | Administrator login, faction creation, battle staging, map display, controls, event stream, and AI decision history | Public API |
+| React frontend | Administrator login, faction creation, battle staging and history, map display, controls, event stream, and AI decision history | Public API |
 | Public API | Administrator sessions, HTTP validation, scenario resolution, faction and battle persistence, and selectable model-profile catalog | PostgreSQL, scenario/ruleset YAML, optional Redis |
 | Battle engine | Battle queue claims, deterministic ticks, strategy windows, state/event persistence | PostgreSQL |
 | MCP decision service | Two request-scoped model tools and an internal agent control plane | PostgreSQL |
@@ -92,6 +92,55 @@ The API and engine entry points compose `httpapi.LifecycleHandler` around applic
 
 See the [codebase guide](codebase-guide.md#3-backend-organization) for package
 boundaries, frontend ownership, and launcher locations.
+
+The Vite development proxy defaults to `http://localhost:8080` and accepts a
+server-only `DEV_API_PROXY_TARGET` override from the frontend env files or shell.
+Production/browser API routing continues to use `VITE_API_URL` and Nginx.
+
+Frontend feature clients, including faction ruleset discovery, use the shared
+HTTP transport to report network failures consistently while preserving request
+cancellation. Feature clients own HTTP status messages; protected requests also
+notify the application when authentication is required.
+
+### Battle inspection
+
+The battle page keeps progress/outcome and controls in a compact toolbar above
+the map. `BattleInspector` owns the native System/player dropdown and the shared inner tab
+(Overview, Decisions, Units, Faction), independently of map perspective. System
+shows a current-player comparison and the attempt-selectable event stream.
+Player headers show current gold, living units, castle health, and snapshot tick;
+Overview groups buildings and economy totals, Units groups living entities with
+individual HP/coordinates, and Faction shows the saved profile. Navigation stays
+fixed above a single scrolling content region; the inspector moves below the
+map at narrow widths. Hidden sections remain mounted to preserve filters and
+expanded decisions across tab changes; historical context requests run only in
+an active, expanded decision. New history rows do not collapse existing details.
+
+The player summary derives from the full spectator state, including under a
+faction map perspective. Null collection slices from Go JSON are handled safely;
+missing faction state displays unavailable values, while empty armies show zero.
+Battle participant responses include background and doctrine from the persisted
+scenario, not the current editable faction directory.
+
+`GET /v1/battles/{id}/decisions/{requestId}/context?attempt=N` reads the persisted
+observation through the existing decision repository. The service checks battle,
+attempt, request, and observation scope. An explicit response projection exposes
+only historical identity, economy, faction-visible view, legal choices, prior
+plan, memory, and knowledge; internal provider metadata and capabilities are
+excluded. Legacy rows without observations return `context: null`. No migration
+is needed. The browser loads on expansion, caches by battle/attempt/request, and
+aborts and ignores obsolete responses. Decision history also rejects responses
+from an obsolete battle/attempt. The inspector labels observation ticks and
+separates historical context from its current-resource header. Plans describe
+intent; events provide execution evidence. A running decision does not imply
+verified MCP connectivity. Private reasoning and tool-call traces are not exposed.
+
+Dropdown options and comparison rows iterate participant IDs without a two-slot assumption.
+Three-way simulation remains separate work: battle creation and scenario/map
+spawns require two factions, movement selects a single opponent, and destroying
+a castle currently ends the match. Supporting three players requires revisiting
+those contracts, elimination/winner rules, and map faction colors as well as the
+creation form.
 
 ### Deterministic simulation boundary
 
@@ -216,7 +265,8 @@ The battle must make progress even if a model does not answer.
 
 At the decision deadline:
 
-- the first production window uses the scenario's scripted fallback;
+- the tick-zero opening uses a deterministic sorted-roster purchase fallback;
+- the first in-battle production window uses the scenario's scripted baseline;
 - later windows reuse the faction's previously active plan;
 - the fallback is stored with status `fallback` and error category `timeout`;
 - a racing model submission and fallback are resolved by version and status predicates, so only one wins;
@@ -273,7 +323,10 @@ Antigravity CLI offloads larger MCP tool responses to local files. Because battl
 API, Codex, and Antigravity use one embedded decision policy assembled by
 `internal/ai/prompts.go`. Only context delivery differs: tool fetch versus
 Antigravity host-prefetched JSON. The persisted `PromptVersion` includes a SHA-256
-digest covering the base, policy, and both delivery templates. Both API and CLI
+digest covering the base, identity, doctrine, policy, and both delivery templates.
+Each prompt purpose has one current `.txt` file; Git preserves previous revisions.
+The build manifest reads the runtime prompt version, bundle digest, and tool schema
+through `go run ./cmd/aieval -mode metadata`, requiring Go during manifest generation. Both API and CLI
 model submissions require a substantive plan and stop after three validation
 rejections.
 
@@ -303,7 +356,7 @@ A decision context contains:
 - battle, faction, request, target-tick, and version identifiers;
 - a fog-of-war faction view;
 - current and projected economy values;
-- legal action kinds, unit definitions, and construction sites;
+- legal action kinds, unit/building definitions, construction sites, and owned recruitment sources;
 - the currently active plan;
 - optional bounded faction memory and retrieved unit knowledge;
 - a hash of the observation excluding request-specific fields.
@@ -316,7 +369,7 @@ A model or scripted controller can propose:
 - fixed-point attack and defend weights;
 - target-specific bonuses;
 - reserve gold and spend ordering;
-- construction-site priorities;
+- typed construction orders (or legacy economy-site priorities);
 - explicit ordered unit purchases with quantities (legacy plans may use recruitment priorities).
 
 The service validates decision version, target tick, general plan bounds, and context-specific units and sites before persistence.
@@ -324,11 +377,12 @@ The service validates decision version, target tick, general plan bounds, and co
 ### Explicit recruitment orders
 
 
-The shared model prompt requests ordered `{unitType, count}` purchases through
+The shared model prompt requests ordered `{unitType, count, sourceBuildingId?}` purchases through
 `recruitmentOrders`. MCP and engine validation enforce legal unit IDs, positive
 counts, and a six-unit per-window maximum. The engine executes only the requested
-sequence, preserving reserve gold and spawn occupancy; it stops on the first
-blocked purchase. Empty orders mean no buying; missing orders retain legacy
+sequence, preserving reserve gold and spawn occupancy. Unavailable explicit sources
+and blocked Barracks orders are skipped; blocked castle spawns or an unaffordable
+purchase stop remaining purchases. The six-unit limit spans all sources. Empty orders mean no buying; missing orders retain legacy
 priority behavior. Orders are deep-copied and persisted with plans, faction memory,
 and decision hashes. The UI shows requested quantities; recruitment events report
 actual spending. See [explicit unit purchases](../operations/ai-comparisons.md#explicit-unit-purchases)
@@ -388,7 +442,7 @@ An accepted submission is idempotent when it repeats the stored idempotency key.
 
 | Table or view | Purpose | Important behavior |
 | --- | --- | --- |
-| `factions` | Reusable faction identity and blueprint | Existing battle snapshots survive faction deletion |
+| `factions` | Reusable faction identity and doctrine; archived legacy blueprint | Existing battle snapshots survive faction deletion |
 | `battle_runs` | Queue, scenario/initial snapshot, current state, lease, status, and result | Lease owner and attempt guard writes |
 | `battle_events` | Replayable per-attempt event stream | Primary key and conflict handling make insertion idempotent |
 | `battle_decisions` | Observations, provenance, leases, plans, fallbacks, errors, and usage | Unique per battle/attempt/faction/tick; versioned resolution |
@@ -399,8 +453,9 @@ erDiagram
     FACTIONS {
         uuid id PK
         text name
-        text ruleset_id
-        jsonb blueprint
+        text ruleset_id "legacy only"
+        text doctrine
+        jsonb blueprint "legacy only"
     }
     BATTLE_RUNS {
         uuid id PK
@@ -545,7 +600,11 @@ The API catalog advertises profiles users may select. In cluster mode, an operat
 
 Kustomize deploys separate API, engine, agent, MCP, frontend, and migration workloads. The API optionally imports `battlefield-auth`, the API and agent read profile availability from `battlefield-ai`, MCP receives a distinct `MCP_DATABASE_URL`, and the processes mount a common non-secret ConfigMap. Post-deployment verification uses the optional administrator Secret to establish a temporary authenticated session before probing protected application routes; neither credentials nor the session cookie are retained after the smoke test.
 
-Registry-backed Jenkins deployments use immutable GHCR digest references. Before
+Registry-backed Jenkins deployments use immutable GHCR digest references.
+Publication and admission rendering share validated repository settings. The
+rollout supplies its resolved image references so preserved repositories remain
+covered during partial updates. Image source labels are derived from Git origin
+or an explicit `SOURCE_URL`, rather than a fixed project URL. Before
 admission, Kyverno validates a Cosign signature plus CycloneDX, SLSA v0.2, and
 AI-manifest attestations with the reviewed public key. Cosign v3 OCI 1.1
 referrers remain the portable evidence copied during registry promotion. The
@@ -555,12 +614,25 @@ uses short-lived Docker configuration in Jenkins and a namespace-local pull
 Secret for the admission controller; neither changes the cryptographic trust
 root.
 
+Main delivery classifies changes after the CI quality gates. Application-test-only
+changes and known CI test wrappers skip image publication and rollout; production
+file removals and unknown paths still select deployment. The shared
+`scripts/ci/with-ghcr-auth.sh` wrapper isolates registry credentials for each
+authenticated command, including rollback, and cleans up on cancellation.
+
 Deployment staging copies only selected overlays and their base dependencies.
 Infrastructure secret inputs are staged explicitly; unrelated local credentials
 are not copied. Observability verification waits for completion of each new
 Deployment rollout concurrently and reports failures before setup verification.
 The source-security stage owns CI manifest rendering and policy validation;
 scanner versions are centralized in `scripts/ci/tool-versions.env`.
+Its Trivy filesystem scan excludes generated `artifacts` and `frontend/coverage`
+directories so parallel coverage cleanup cannot race with source analysis.
+Frontend source and dependency lockfiles remain in scan scope.
+Frontend tests use two Vitest workers and a 15-second per-test timeout to allow
+multi-step DOM interactions to finish while the agent runs parallel CI checks.
+Testing Library async waits have a separate five-second deadline inside that
+per-test budget.
 
 W3C trace context is persisted on `battle_runs` and `battle_decisions`. API inbound spans flow through PostgreSQL; engine and agent workers extract that durable context and create consumer spans before simulation, MCP, and provider work. Outbound HTTP clients and selected database operations are instrumented. The local OpenTelemetry Collector exports to Tempo, which Grafana provisions as a data source. Span attributes deliberately exclude prompts, credentials, capabilities, full observations, and raw provider responses.
 
@@ -573,9 +645,17 @@ The in-cluster agent is intended for API providers. `run-k8s-cli-agent.sh` bridg
 
 ## 12. Observability
 
-- Processes emit structured logs with stable event names.
-- API logs carry or generate `X-Request-ID`.
-- Engine logs cover battle claims, lease loss, decision windows, fallbacks, requeues, and completion.
+- Processes emit structured JSON logs with stable `event` identifiers and readable
+  `msg` summaries containing selected operational fields. The shared logging
+  handler attaches `trace_id` and `span_id` from active contexts without moving
+  those fields into user attribute groups. `LOG_LEVEL` defaults to INFO.
+- API logs carry or generate `X-Request-ID`. Tracing wraps access logging so
+  completion logs, including authentication rejections, share the request span.
+- Engine logs cover battle claims, lease loss, decision windows, fallbacks, requeues,
+  and completion. Running battles and pending decision windows report progress
+  immediately at their first reporting point and at most every 15 seconds
+  thereafter. Waiting updates include pending faction counts; completion includes
+  elapsed wall time. Per-tick persistence events require DEBUG logging.
 - Agent/MCP logs cover decision claims, tool access, validation, provider outcome, usage, and latency.
 - Full combat detail lives in `battle_events` rather than normal process logs.
 - API and engine expose lifecycle checks; agent and MCP expose `/healthz`.
@@ -610,9 +690,164 @@ The UI polls the API, the engine polls battle rows, and agents long-poll MCP. Po
 
 - Authentication is limited to one configured administrator; player accounts, credential recovery, per-faction ownership, authorization, and shared brute-force protection remain future work.
 - Public battle updates use polling rather than push delivery.
+  A terminal battle-control response cancels status polling and invalidates
+  in-flight responses so stale running status cannot overwrite an operator stop.
 - Load and failover behavior needs testing before increasing engine, MCP, or agent replicas.
 - Agent concurrency is fixed at two rather than configured in YAML.
 - API adapters build text transcripts instead of preserving provider-native structured tool history.
 - One shared secret authorizes the agent control plane and capability minting. Separate keys or server-minted capabilities would reduce agent signing authority.
 - The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [codebase guide](codebase-guide.md#internalgamecontroller-deterministic-policy-abstractions).
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
+
+### Shared content library and scenario restrictions
+
+Catalog startup resolves ruleset library references from the sibling `content`
+directory. Libraries version unit definitions, upgrades, existing castle/economy
+building roles, and unit cards together. Rulesets select content and own global
+balance rules; scenarios can narrow units, upgrades, and buildings. Invalid
+references, incompatible authored plans, and invalid definitions fail startup.
+
+Scenario summaries expose effective allowed IDs. Faction profiles are independent
+of rulesets and scenarios. The backend validates purchases against the selected scenario. The resolved scenario contains
+full definitions, filtered cards, and library provenance; its hash and persisted
+JSON freeze these across later catalog edits. AI legal choices, retrieval, and
+purchase validation consume the same resolved roster. Excluding economy buildings
+disables economy production; legal construction sites remain when other structures are allowed. No schema migration
+or runtime content service is required. See the
+[content authoring guide](../operations/content-library.md).
+
+## Faction doctrine and opening purchases
+
+New battle snapshots use version 2. Factions contain identity and doctrine, independent
+of model profiles and scenario catalogs. The owning doctrine is frozen in each
+decision context, included in observation hashes, and delivered to API and CLI
+runners beneath core rules using the versioned doctrine prompt template. Opponent
+doctrines are absent from agent observations.
+
+The first worker transition is an opening decision at tick zero. Both contexts
+are prepared from castles and starting gold before either plan is applied. Opening
+permits zero to six recruited units and one-time upgrades, with no construction,
+income, or combat. The worker persists opening state and events through `SaveTick`
+before tick one. Opening units become ready at tick one. Accepted decisions and
+fallbacks use the existing durable records, deadlines, and attempt/requeue semantics.
+The persisted `openingComplete` state and engine phase prevent repeated spending.
+
+Gold is the only resource: Castle Siege starts with 180; unspent gold carries forward.
+`upgradeOrders` is an ordered array of legal IDs executed at the `upgrades` position
+in `spendOrder`. Already-owned IDs are skipped free; the first unaffordable upgrade
+stops that category, respecting reserves. Attack/defense bonuses update living units
+and future recruits. Economy bonuses update existing and future economy buildings;
+new bonuses affect the next income collection. In-battle income still precedes spending.
+
+Scripted controllers and opening fallback ignore doctrine. They buy legal units
+round-robin in sorted ID order, skipping unaffordable types, until six purchases or
+no affordable type remains. Legacy snapshots without version 2 retain their starting
+blueprints, initial upgrade bonuses, and original decision schedule.
+
+### Faction identity and background drafts
+
+Faction identity now consists of name, explicit strategic doctrine, and an
+optional background (trimmed, at most 1,000 Unicode characters). Backend validation,
+MCP descriptions, and the writer prompt share faction limit constants; the
+frontend editor and preview share matching feature constants. Background-generation
+provenance uses a `faction-background-v2` digest covering the rendered system
+instructions (including the character limit) and embedded request instructions. Battle creation
+copies all three into its immutable scenario snapshot. Missing background in old
+snapshots decodes as empty. Only the owning profile enters each decision context,
+observation hash, durable decision provenance, and API/CLI system prompt.
+The shared `battlefield-agent-v5` identity template JSON-escapes profile fields and
+asks the agent to act as the faction's commanding voice. Core rules take
+precedence over doctrine; background supplies perspective beneath doctrine.
+Scripted controllers do not interpret history or map keywords to tactical weights.
+
+The API's `internal/generation` package owns durable background draft admission.
+PostgreSQL serializes each actor's admissions by locking
+`faction_generation_accounts`; a partial unique index also prevents multiple
+active jobs. `faction_background_generations` stores input, idempotency hash,
+profile, quota admission day via `created_at`, expiry, result, prompt version,
+usage, timing, and model metadata. Reads/admissions/claims expire stale rows.
+Queued expiry refunds the original day; running expiry records a counted failure.
+No in-memory counter or browser state is authoritative for allowance.
+
+Generation workers reuse the agent execution infrastructure with an advertised
+`faction_background` job type and executable profile IDs. Legacy claims without
+job types remain battle-only. Battle claims take priority; generation starts only
+when a worker owns a free execution slot. Workers check ready background jobs
+before entering an empty battle long poll; jobs admitted during that poll are
+checked on the next claim. The MCP write timeout leaves room beyond the maximum
+20-second poll so a durable claim can be delivered. Claims use `FOR UPDATE SKIP LOCKED` and
+never reclaim running generation jobs. Generation capabilities are namespaced
+separately and authorize only the draft's two tools on `/generation-mcp`.
+The restricted MCP database role receives SELECT/UPDATE on generation jobs,
+without faction-table or battle-state access.
+
+One operator-configured profile selects the writer independently of battle
+models. API execution has at most three provider turns. Native CLI execution uses
+the generation-only prompt/tool surface, a three-turn instruction and three
+invalid-submission cap, and the same execution deadline; native CLI internal
+provider calls are not exposed as individually enforceable turns by the runner.
+There is no automatic model fallback. Model-returned prose alone is insufficient:
+a valid server-accepted tool submission is required for success.
+
+The frontend keeps generated text in an editable preview until Use background;
+Discard and errors leave current profile fields intact. Saving is a separate
+explicit action. Manual background editing works while generation is disabled.
+
+
+## Battle history reads
+
+The authenticated `GET /v1/battles` route passes through the battle API,
+service, and PostgreSQL repository. A single query projects participant
+identities/controllers from the immutable scenario snapshot and reads lifecycle
+timestamps, progress, status, and a compact outcome. It does not load simulation
+states or use the terminal-result cache. History is service-wide under the
+existing administrator authentication model.
+
+The `battle_runs_history_idx` index orders `created_at DESC, id DESC`.
+Migration `00010_battle_history.sql` adds it without rewriting existing data;
+rollback drops only the index. Keyset pagination uses the last displayed
+creation time and UUID, with one extra fetched row to detect the next page.
+Status filtering reads current values, so membership may change between requests.
+
+The React `/battles` page fetches on entry, filter/page navigation, retry, and
+manual refresh. It does not poll. URL parameters preserve the status, current
+cursor, and prior cursors for Previous/browser navigation; refresh returns to
+the newest page with the same filter. Detail links carry the originating URL
+in router state, and direct detail visits link back to the unfiltered archive.
+Obsolete requests are aborted and their results ignored.
+
+### Frontier Siege capabilities
+
+The optional `frontier-siege-v2` scenario resolves `core` version `2` through
+`castle-siege-v2`, with seven units, three additional structure types, and a 25×17
+map. Unit definitions and runtime units carry optional class, minimum range,
+building priority, damage bonus, and healing fields; omitted capabilities preserve
+ordinary v1 behavior. `Ruleset.structures` describes extra building types while
+legacy castle/economy stats remain in `BuildingRules`. `maximumBuildingCount`
+limits all living non-castle structures; the economy limit remains separate.
+
+Tick ordering is income/production, faction tactics, tower attacks in building-ID
+order, then unit turns by speed/ID. New tower attacks and Barracks sources activate
+on the next tick. Healing takes a unit action and never enters minimum-damage
+combat. Siege approaches structure firing positions; Herbalists approach allied
+soldiers. Shared pathfinding enforces terrain and occupancy. Authored map bounds
+are now odd widths 15–41 and heights 11–31 with two to eight mirrored construction
+sites per side. Existing authored maps remain valid.
+
+Typed `constructionOrders` and optional recruitment `sourceBuildingId` flow
+through controller cloning/validation, frozen worker observations, MCP submissions,
+and persisted decisions. Missing construction orders preserve legacy defaults;
+explicit empty arrays disable construction. New fields are optional in tool schema
+`battlefield.mcp-tools.v5`. All capability data is serialized in existing scenario
+and state JSON, requiring no database migration. Faction projections strip hidden
+action targets; spectators retain the complete event stream. The frontend renders
+healing and tower actions and displays recruitment origins in decision history.
+A frontend presentation layer derives readable entity names from existing IDs and
+state metadata; it does not change API payloads, persistence, or engine identity.
+Generated IDs retain their embedded sequence in labels even after an entity dies
+or an older attempt is inspected. Current-state metadata is only used for events
+from that attempt. The map uses its displayed perspective's entity metadata and
+local SVG unit/building icons; roster, event fields, and decision recruitment
+sources share naming helpers. Full IDs remain available through tooltips and raw
+inspection views, and freeform model text is preserved.
+See [Frontier Siege](frontier-siege.md) for gameplay and balance probes.

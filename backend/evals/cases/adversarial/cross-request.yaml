@@ -1,3 +1,6 @@
+# Evaluation fixture attempting to read context for a request outside the session's
+# authority.
+
 schemaVersion: battlefield.ai-eval-case.v1
 id: adversarial-cross-request
 category: adversarial

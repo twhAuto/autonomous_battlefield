@@ -1,9 +1,13 @@
+// Runs a bounded provider/tool loop over MCP, tracking usage and stopping on acceptance,
+// failure, or lack of progress.
+
 package runner
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -29,10 +33,10 @@ func (r APIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 	if err != nil {
 		return ai.DecisionResult{ErrorCategory: "mcp_discovery"}, err
 	}
-	messages := []ai.Message{{Role: "user", Content: ai.DecisionPrompt(session.RequestID, nil)}}
+	messages := []ai.Message{{Role: "user", Content: ai.SessionDecisionPrompt(session, nil)}}
 	usage := ai.Usage{}
 	for step := 0; step < session.Profile.MaxSteps; step++ {
-		turn, err := r.Provider.NextTurn(ctx, ai.ModelTurnRequest{SystemPrompt: ai.SystemPrompt, Messages: messages, Tools: tools, MaxTokens: session.Profile.MaxOutputTokens})
+		turn, err := r.Provider.NextTurn(ctx, ai.ModelTurnRequest{SystemPrompt: ai.SessionSystemPrompt(session), Messages: messages, Tools: tools, MaxTokens: session.Profile.MaxOutputTokens})
 		if err != nil {
 			return ai.DecisionResult{ErrorCategory: providerErrorCategory(ctx, err), Usage: usage}, err
 		}
@@ -42,7 +46,7 @@ func (r APIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 		if len(turn.ToolCalls) == 0 {
 			return ai.DecisionResult{ErrorCategory: "no_progress", Usage: usage}, fmt.Errorf("provider returned no tool call")
 		}
-		accepted, updatedMessages, err := executeToolCalls(ctx, clientSession, turn.ToolCalls, messages)
+		accepted, updatedMessages, err := executeToolCalls(ctx, clientSession, turn.ToolCalls, messages, ai.SessionToolNames(session)...)
 		if err != nil {
 			return ai.DecisionResult{ErrorCategory: toolErrorCategory(err), Usage: usage}, err
 		}
@@ -72,9 +76,12 @@ func providerErrorCategory(ctx context.Context, err error) string {
 
 var errUnauthorizedTool = errors.New("unauthorized tool")
 
-func executeToolCalls(ctx context.Context, session DecisionToolSession, calls []ai.ToolCall, messages []ai.Message) (bool, []ai.Message, error) {
+func executeToolCalls(ctx context.Context, session DecisionToolSession, calls []ai.ToolCall, messages []ai.Message, allowed ...string) (bool, []ai.Message, error) {
 	for _, call := range calls {
-		if call.Name != "get_decision_context" && call.Name != "submit_strategy_plan" {
+		if len(allowed) == 0 {
+			allowed = []string{"get_decision_context", "submit_strategy_plan"}
+		}
+		if !slices.Contains(allowed, call.Name) {
 			return false, messages, fmt.Errorf("%w: provider requested unsupported tool %q", errUnauthorizedTool, call.Name)
 		}
 		payload, accepted, err := session.Call(ctx, call)

@@ -1,3 +1,6 @@
+// Checks bounded database readiness, process health routes, and separation from business-
+// route middleware.
+
 package httpapi
 
 import (

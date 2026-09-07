@@ -1,3 +1,6 @@
+# Runs replicated HTTP API pods with database/configuration mounts, process probes, and
+# rollout/security settings.
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:

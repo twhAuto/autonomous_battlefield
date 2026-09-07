@@ -15,7 +15,14 @@ const geminiDirectory = ".gemini"
 
 // PrepareAntigravity uses the OS keyring or a private copy of the CLI-native
 // fallback login. HOME and XDG configuration paths remain private per invocation.
-func PrepareAntigravity(home, mcpURL, capability string) ([]string, error) {
+func PrepareAntigravity(home, mcpURL, capability string, toolNames ...string) ([]string, error) {
+	if len(toolNames) == 0 {
+		toolNames = []string{"get_decision_context", "submit_strategy_plan"}
+	}
+	allowed := []string{}
+	for _, name := range toolNames {
+		allowed = append(allowed, "mcp(battlefield/"+name+")")
+	}
 	// Do not set toolPermission=strict: agy 1.1.27 denies even explicitly
 	// allowed MCP calls in that mode. Enforce the explicit action rules below.
 	settings := map[string]any{
@@ -23,7 +30,7 @@ func PrepareAntigravity(home, mcpURL, capability string) ([]string, error) {
 		"enableTelemetry":         false,
 		"useG1Credits":            false,
 		"permissions": map[string]any{
-			"allow": []string{"mcp(battlefield/get_decision_context)", "mcp(battlefield/submit_strategy_plan)"},
+			"allow": allowed,
 			"deny":  []string{"read_file(*)", "write_file(*)", "command(*)", "unsandboxed(*)", "read_url(*)", "execute_url(*)"},
 		},
 	}

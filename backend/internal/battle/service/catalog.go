@@ -1,3 +1,6 @@
+// Defines the catalog contract and participant/scenario summaries used to resolve
+// immutable battle inputs.
+
 package service
 
 import (
@@ -6,13 +9,18 @@ import (
 )
 
 type FactionIdentity struct {
-	ID        string
-	Name      string
-	RulesetID string
-	Blueprint game.Blueprint
+	Background string
+	Doctrine   string
+	ID         string
+	Name       string
+	RulesetID  string
+	Blueprint  game.Blueprint
 }
 
 type ScenarioSummary struct {
+	AllowedUnits          []string        `json:"allowedUnits"`
+	AllowedUpgrades       []string        `json:"allowedUpgrades"`
+	AllowedBuildings      []string        `json:"allowedBuildings"`
 	ID                    string          `json:"id"`
 	RulesVersion          string          `json:"rulesVersion"`
 	TickDuration          string          `json:"tickDuration"`

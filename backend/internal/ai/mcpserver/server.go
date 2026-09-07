@@ -1,3 +1,6 @@
+// Serves decision-context and plan-submission tools with request-scoped capabilities, plus
+// authenticated agent job control.
+
 package mcpserver
 
 import (
@@ -16,6 +19,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 )
 
 type requestIDKey struct{}
@@ -26,6 +30,7 @@ const (
 )
 
 type agentClaimRequest struct {
+	JobTypes     []string `json:"jobTypes"`
 	WorkerID     string   `json:"workerId"`
 	LeaseSeconds int      `json:"leaseSeconds"`
 	WaitSeconds  int      `json:"waitSeconds"`
@@ -46,6 +51,7 @@ type agentUsageRequest struct {
 }
 
 type Server struct {
+	generations    generation.WorkerRepository
 	decisions      *ai.DecisionService
 	secret         string
 	allowedOrigins map[string]bool
@@ -83,6 +89,7 @@ func (s *Server) NotifyDecisionAvailable() { s.wakeups.notify() }
 // report runner failures. It does not expose decision context or game state.
 func (s *Server) AgentHandler(repository ai.DecisionRepository) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /generation-finish", s.finishGeneration)
 	mux.HandleFunc("POST /claim", s.handleAgentClaim(repository))
 	mux.HandleFunc("POST /fail", s.handleAgentFailure(repository))
 	mux.HandleFunc("POST /usage", s.handleAgentUsage(repository))
@@ -98,11 +105,36 @@ func (s *Server) handleAgentClaim(repository ai.DecisionRepository) http.Handler
 		if !ok {
 			return
 		}
-		record, found, err := s.waitForDecisionClaim(r.Context(), repository, request)
+		var record ai.DecisionRecord
+		var found bool
+		var err error
+		supportsBattle := len(request.JobTypes) == 0 || slices.Contains(request.JobTypes, "battle_decision")
+		supportsGeneration := slices.Contains(request.JobTypes, generation.JobType)
+		if supportsBattle {
+			first := request
+			if supportsGeneration {
+				first.WaitSeconds = 0
+			}
+			record, found, err = s.waitForDecisionClaim(r.Context(), repository, first)
+		}
 		if err != nil {
 			s.logger.ErrorContext(r.Context(), "decision_claim_failed", "worker_id", request.WorkerID, "error", err)
 			http.Error(w, "claim failed", http.StatusInternalServerError)
 			return
+		}
+		if !found && supportsGeneration {
+			// Check drafts before long-polling. Claiming after a full long poll
+			// risks leasing a job after the HTTP response deadline has elapsed.
+			if s.claimGeneration(w, r, request) {
+				return
+			}
+			if supportsBattle && request.WaitSeconds > 0 {
+				record, found, err = s.waitForDecisionClaim(r.Context(), repository, request)
+				if err != nil {
+					http.Error(w, "claim failed", http.StatusInternalServerError)
+					return
+				}
+			}
 		}
 		if !found {
 			w.WriteHeader(http.StatusNoContent)
@@ -110,7 +142,7 @@ func (s *Server) handleAgentClaim(repository ai.DecisionRepository) http.Handler
 		}
 		s.logDecisionClaim(r.Context(), request.WorkerID, record)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"requestId": record.ID, "profileId": record.ProfileID,
+			"requestId": record.ID, "profileId": record.ProfileID, "doctrine": record.Observation.Doctrine, "factionName": record.Observation.FactionName, "background": record.Observation.Background,
 			"traceparent": record.Traceparent, "tracestate": record.Tracestate,
 		})
 	}
@@ -120,9 +152,15 @@ func decodeAgentClaimRequest(w http.ResponseWriter, r *http.Request) (agentClaim
 	var request agentClaimRequest
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&request) != nil ||
 		request.WorkerID == "" || len(request.ProfileIDs) == 0 || len(request.ProfileIDs) > 32 ||
-		request.WaitSeconds < 0 || request.WaitSeconds > 20 {
+		request.WaitSeconds < 0 || request.WaitSeconds > 20 || len(request.JobTypes) > 2 {
 		http.Error(w, invalidRequestMessage, http.StatusBadRequest)
 		return request, false
+	}
+	for _, jobType := range request.JobTypes {
+		if jobType != "battle_decision" && jobType != generation.JobType {
+			http.Error(w, invalidRequestMessage, http.StatusBadRequest)
+			return request, false
+		}
 	}
 	request.ProfileIDs = normalizedProfileIDs(request.ProfileIDs)
 	if len(request.ProfileIDs) == 0 {
@@ -296,19 +334,21 @@ type getContextOutput struct {
 }
 
 type submitPlanInput struct {
-	RecruitmentOrders      *[]controller.RecruitmentOrder `json:"recruitmentOrders,omitempty" jsonschema:"Explicit ordered purchases for this production window. Use [] to buy nothing; at most six units total. Leave recruitmentPriorities empty when using orders."`
-	RequestID              string                         `json:"requestId"`
-	IdempotencyKey         string                         `json:"idempotencyKey"`
-	ExpectedVersion        int64                          `json:"expectedVersion" jsonschema:"Copy context.expectedVersion exactly from get_decision_context; never guess."`
-	TargetTick             uint64                         `json:"targetTick" jsonschema:"Copy context.targetTick exactly from get_decision_context; never guess or use the observation tick."`
-	Name                   string                         `json:"name"`
-	Rationale              string                         `json:"rationale" jsonschema:"A concise 1-3 sentence explanation based on visible battlefield facts. Do not include private chain-of-thought."`
-	ActionWeights          map[string]int64               `json:"actionWeights"`
-	TargetBonuses          map[string]int64               `json:"targetBonuses,omitempty"`
-	ReserveGold            int64                          `json:"reserveGold"`
-	SpendOrder             []string                       `json:"spendOrder"`
-	ConstructionPriorities []controller.Coordinate        `json:"constructionPriorities"`
-	RecruitmentPriorities  []string                       `json:"recruitmentPriorities"`
+	UpgradeOrders          []string                        `json:"upgradeOrders,omitempty" jsonschema:"Ordered one-time upgrade purchases. Include upgrades in spendOrder. Already-owned upgrades are skipped without charging."`
+	ConstructionOrders     *[]controller.ConstructionOrder `json:"constructionOrders,omitempty" jsonschema:"Typed construction purchases: buildingType and position from legal choices. Use [] to build nothing; leave constructionPriorities empty."`
+	RecruitmentOrders      *[]controller.RecruitmentOrder  `json:"recruitmentOrders,omitempty" jsonschema:"Explicit ordered purchases for this production window. Use [] to buy nothing; at most six units total. Leave recruitmentPriorities empty when using orders."`
+	RequestID              string                          `json:"requestId"`
+	IdempotencyKey         string                          `json:"idempotencyKey"`
+	ExpectedVersion        int64                           `json:"expectedVersion" jsonschema:"Copy context.expectedVersion exactly from get_decision_context; never guess."`
+	TargetTick             uint64                          `json:"targetTick" jsonschema:"Copy context.targetTick exactly from get_decision_context; never guess or use the observation tick."`
+	Name                   string                          `json:"name"`
+	Rationale              string                          `json:"rationale" jsonschema:"A concise 1-3 sentence explanation based on visible battlefield facts. Do not include private chain-of-thought."`
+	ActionWeights          map[string]int64                `json:"actionWeights"`
+	TargetBonuses          map[string]int64                `json:"targetBonuses,omitempty"`
+	ReserveGold            int64                           `json:"reserveGold"`
+	SpendOrder             []string                        `json:"spendOrder"`
+	ConstructionPriorities []controller.Coordinate         `json:"constructionPriorities"`
+	RecruitmentPriorities  []string                        `json:"recruitmentPriorities"`
 }
 
 func (s *Server) mcpServer() *mcp.Server {
@@ -356,7 +396,7 @@ func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest,
 		s.logger.WarnContext(ctx, "decision_submission_denied", "request_id", input.RequestID, "target_tick", input.TargetTick)
 		return nil, ai.SubmissionResult{}, err
 	}
-	plan := controller.PlanProposal{RecruitmentOrders: input.RecruitmentOrders, Name: input.Name, Rationale: input.Rationale, ActionWeights: input.ActionWeights, TargetBonuses: input.TargetBonuses,
+	plan := controller.PlanProposal{ConstructionOrders: input.ConstructionOrders, UpgradeOrders: input.UpgradeOrders, RecruitmentOrders: input.RecruitmentOrders, Name: input.Name, Rationale: input.Rationale, ActionWeights: input.ActionWeights, TargetBonuses: input.TargetBonuses,
 		ReserveGold: input.ReserveGold, SpendOrder: input.SpendOrder, ConstructionPriorities: input.ConstructionPriorities,
 		RecruitmentPriorities: input.RecruitmentPriorities}
 	result, err := s.decisions.SubmitPlan(ctx, ai.PlanSubmission{RequestID: input.RequestID, IdempotencyKey: input.IdempotencyKey,

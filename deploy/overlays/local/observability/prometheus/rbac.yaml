@@ -1,3 +1,6 @@
+# Grants Prometheus discovery and node-metrics access through its service account, roles,
+# and bindings.
+
 apiVersion: v1
 kind: ServiceAccount
 metadata:

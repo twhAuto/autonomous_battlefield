@@ -1,8 +1,10 @@
+// Checks faction SQL reads and writes, row decoding, missing records, and duplicate
+// identifiers.
+
 package repo
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -70,8 +72,7 @@ func TestCreateFaction(t *testing.T) {
 		t.Fatalf("CreateFaction() returned an error: %v", err)
 	}
 
-	blueprint, _ := json.Marshal(stored.Blueprint)
-	wantArguments := []any{stored.ID, stored.Name, stored.RulesetID, blueprint}
+	wantArguments := []any{stored.ID, stored.Name, stored.Doctrine, stored.Background}
 	if !reflect.DeepEqual(db.execArguments, wantArguments) {
 		t.Fatalf("Exec arguments = %#v, want %#v", db.execArguments, wantArguments)
 	}
@@ -183,4 +184,23 @@ func (r *fakeRows) Scan(destinations ...any) error {
 		*pointer = value.(string)
 	}
 	return nil
+}
+
+func TestUpdateFaction(t *testing.T) {
+	stored := faction.Faction{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "A", Doctrine: "Scout"}
+	db := &fakeDB{execTag: pgconn.NewCommandTag("UPDATE 1")}
+	if err := NewPostgres(db).UpdateFaction(context.Background(), stored); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(db.execArguments, []any{stored.ID, stored.Name, stored.Doctrine, stored.Background}) {
+		t.Fatal(db.execArguments)
+	}
+	db.execTag = pgconn.NewCommandTag("UPDATE 0")
+	if err := NewPostgres(db).UpdateFaction(context.Background(), stored); !errors.Is(err, factionservice.ErrFactionNotFound) {
+		t.Fatal(err)
+	}
+	db.execErr = errors.New("offline")
+	if err := NewPostgres(db).UpdateFaction(context.Background(), stored); err == nil {
+		t.Fatal("ignored database failure")
+	}
 }

@@ -1,3 +1,6 @@
+# Runtime Nginx server template serving the SPA, process health routes, and /v1 API proxy
+# with DNS re-resolution.
+
 server {
     listen 8080;
     server_name _;

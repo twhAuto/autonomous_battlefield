@@ -1,3 +1,6 @@
+// Persists battle snapshots and implements status, pause, stop, and event reads for API-
+// facing battle operations.
+
 package repo
 
 import (

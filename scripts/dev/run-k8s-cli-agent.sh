@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Runs a host-side model CLI agent against the registered dev cluster through temporary
+# MCP forwarding and a generated agent configuration.
 
 set -Eeuo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"

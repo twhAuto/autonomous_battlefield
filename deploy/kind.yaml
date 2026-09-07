@@ -1,3 +1,6 @@
+# Single-node Kind cluster definition mapping the gateway NodePort to host loopback port
+# 8888.
+
 apiVersion: kind.x-k8s.io/v1alpha4
 kind: Cluster
 

@@ -1,3 +1,5 @@
+# Example region, environment, and budget inputs for the reference Terraform stack.
+
 aws_region        = "ap-southeast-1"
 environment       = "dev"
 monthly_budget_usd = 150

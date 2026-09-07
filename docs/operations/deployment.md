@@ -337,7 +337,7 @@ understood.
 
 #### Change-to-deployment mapping
 
-Changes under `scripts/test/` and `tests/` do not select application deployment components. Renames inspect both old and new paths, so moving production code into a test path still selects the production component. Unknown paths retain the conservative full-deployment fallback.
+Changes under `scripts/test/` and `tests/`, Go `*_test.go` files, React/TypeScript `*.test.ts` and `*.test.tsx` files under `frontend/src`, and frontend test setup do not select application deployment components. These changes still run the normal CI quality gates. Renames inspect both old and new paths, so moving production code into a test path still selects the production component. Unknown paths retain the conservative full-deployment fallback.
 
 The path classifier evaluates the following rules from top to bottom for each
 path, so an earlier documentation rule takes precedence over a broader source
@@ -349,7 +349,8 @@ folder rule. Multiple changed paths contribute the union of their components;
 | Any `*.md`, `LICENSE`, `LICENSE.*`, or root `.gitignore` | `none` | None |
 | `quality/**` or `sonar-project.properties` | `none` | None |
 | `scripts/test/**` and `tests/**` | `none` | None |
-| CI lint, coverage, summary, or classifier-test scripts | `none` | None |
+| Go `backend/**/*_test.go`, frontend `src/**/*.test.ts`, `src/**/*.test.tsx`, or `src/test/**` | `none` | None |
+| CI lint/coverage summary and existing test compatibility wrappers (`test-*`, `fuzz-smoke`, `with-test-postgres`) | `none` | None |
 | `backend/**` | `migration,backend,application` | Backend image |
 | `frontend/**` | `frontend,application` | Frontend image |
 | `deploy/base/infrastructure/**` or `deploy/overlays/local/infrastructure/**` | `infrastructure` | None |
@@ -378,8 +379,12 @@ The selected components have these deployment effects:
 | `all` | Execute every action above. |
 | `none` | Build, scan, and deployment commands exit without changing Kubernetes. |
 
+Only the existing named CI test wrappers are exempt; new CI scripts still use
+the unknown-path fallback until explicitly classified.
+
 Renames are evaluated as one deletion plus one addition, so both the old and new
-locations influence the result. When adding or repurposing a folder, update the
+locations influence the result. Renaming a production Go file to `*_test.go`
+therefore still deploys the backend removal. When adding or repurposing a folder, update the
 classifier, its tests, and this table together. Until then, the unknown-path
 fallback safely selects `all`.
 
@@ -610,6 +615,17 @@ FRONTEND_IMAGE_REF='ghcr.io/twh09/autonomous-battlefield-frontend@sha256:…' \
 ./scripts/cd/deploy-kind.sh
 ```
 
+The admission policy derives its repository patterns from the same
+`REGISTRY_NAMESPACE`, `PUBLISHED_BACKEND_IMAGE`, and `PUBLISHED_FRONTEND_IMAGE`
+settings used by publication. During rollout, `deploy-kind.sh` supplies the
+resolved backend/frontend digest references through `POLICY_BACKEND_IMAGE_REF`
+and `POLICY_FRONTEND_IMAGE_REF`; this keeps preserved images covered during a
+partial rollout. Standalone policy installation uses the configured repository
+defaults when those references are absent. Inputs are validated before policy
+installation. Each repository receives separate tag and digest patterns, so a
+similarly prefixed repository name does not accidentally match. See
+[Kyverno image-reference matching](https://kyverno.io/docs/policy-types/cluster-policy/verify-images/overview/).
+
 The production environment resolver requires `ENFORCE_SUPPLY_CHAIN_POLICY=1`, which installs the Jenkins-only Kyverno verification policy. The tagged Kyverno manifest is installed with server-side apply so its large CRDs do not exceed Kubernetes' client-side last-applied annotation limit. Deployment waits for the admission controller's `Available` condition and prints pod, Deployment, and controller-log diagnostics on timeout. For private GHCR verification, the stage's temporary Docker authentication is copied into a `battlefield-ghcr` pull Secret in the `kyverno` namespace and referenced only by the verification policy. Cosign publishes modern OCI 1.1 referrers for promotion plus legacy digest-tag signature and attestation mirrors for Kyverno 1.15 admission discovery; both sets cover the same digest and use the same key. Unsigned local Kind development remains available through `IMAGE_SOURCE=local` and is never treated as promotion evidence.
 
 The AWS step should reuse the tested images and base resources:
@@ -651,3 +667,65 @@ Budget alerts are notifications, not guaranteed spending limits.
 - [AWS root-user security practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/root-user-best-practices.html)
 - [EKS Auto Mode](https://docs.aws.amazon.com/eks/latest/userguide/automode.html)
 - [Using Secrets Manager secrets with EKS pods](https://docs.aws.amazon.com/eks/latest/userguide/manage-secrets.html)
+
+## Doctrine profile rollout
+
+Deploy API, engine, MCP, agent, and frontend from the same revision. Startup migration
+00008 preserves existing faction IDs/names and legacy blueprints, backfills balanced
+doctrine, and permits tick-zero decisions. New battles use snapshot version 2;
+existing queued battles retain their snapshotted legacy rules. No data reset is needed.
+Obsolete clients posting blueprint-based faction bodies must be updated.
+
+The migration down path deliberately refuses a lossy rollback when doctrine-only
+profiles or opening decisions exist. Restore a pre-rollout database backup if a full
+application/database rollback is required. Validate the rollout by creating/editing
+a doctrine, staging a battle, and observing opening decisions and purchase events at
+tick zero before tick one. Purchases should reduce the same gold balance throughout.
+
+### Faction background generation rollout
+
+Deploy API, MCP, engine/agent workers and frontend from the same revision. Apply
+migration `00009_faction_background.sql` before rollout. It preserves existing
+factions (empty background), legacy blueprints and historical battle snapshots.
+Migration runners use a PostgreSQL advisory session lock to serialize startup.
+Restart host CLI workers too: old workers advertise battle support only and cannot
+execute background jobs. The internal MCP service must route `/generation-mcp`;
+it should not be exposed through public ingress.
+
+Configure the writer in `backend/config.yaml` or the deployment ConfigMap:
+
+```yaml
+ai:
+  backgroundGeneration:
+    enabled: true
+    profileId: codex-subscription-local
+    dailyAllowance: 10
+    cooldown: 30s
+    queueTimeout: 5m
+    executionTimeout: 2m
+```
+
+The profile uses its existing configured model, credentials, version validation,
+and availability settings. Enable the host CLI profile and run the normal host
+worker for the default subscription writer. Operators can select a supported
+OpenAI/Gemini API or Codex/Antigravity CLI profile independently of battle models.
+No player model selector or automatic fallback is used. An invalid/unavailable
+profile rejects admission before quota is reserved; a profile whose worker goes
+offline after admission leaves a queued job until expiry/refund. Disabled
+generation still permits manually writing and saving backgrounds.
+
+Allowance is persisted per authenticated actor, with a UTC-day boundary; when
+authentication is disabled every client shares `local-development`. Failed jobs
+count once execution begins. Repeated successful submissions do not change the
+result, and execution timeouts are not automatically retried. Queued reservations
+expire after five minutes by default and refund the original day; the admission
+cooldown remains in effect after a refund. Options/job reads and worker claims
+perform expiry, so an idle expired row may remain until the next such operation.
+
+Check options availability, queue a draft, observe queued/running/succeeded, use
+or discard the preview, then save a faction. Verify the historical battle retains
+its original identity after edits. Inspect job `error_category`, timestamps,
+`usage`, and `metadata` for failures; never log capability tokens or raw profile
+prompts. API models have a hard three-turn limit. CLI jobs are deadline-bound and
+instructed to use at most three turns; native CLI internal provider-turn counts
+are not available to enforce separately. Three invalid submissions fail the job.

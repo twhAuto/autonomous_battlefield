@@ -1,3 +1,6 @@
+// Checks trace propagation, optional exporter setup, sampling validation, and
+// HTTP/consumer/database instrumentation.
+
 package telemetry
 
 import (

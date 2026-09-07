@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Checks Go formatting and runs static analysis for the backend without rewriting source
+# files.
 
 set -Eeuo pipefail
 

@@ -1,3 +1,6 @@
+// Checks result-cache round trips, expiry, corrupt entries, disabled configuration, and
+// failures using an in-process Redis server.
+
 package resultcache
 
 import (

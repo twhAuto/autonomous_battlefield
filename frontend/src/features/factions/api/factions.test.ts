@@ -1,9 +1,11 @@
+// Checks faction/ruleset reads and profile writes, request encoding, cancellation, and
+// server/network error messages.
+
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFaction, deleteFaction, FactionApiError, listFactionRulesets, listFactions } from './factions'
 
 const faction = {
-  id: '7f22e693-bacd-46bb-b942-64fa613cd388', name: 'Northwind', rulesetId: 'castle-siege-v1',
-  blueprint: { units: [{ type: 'vanguard', count: 1 }], upgradeIds: [], recruitmentPriority: ['vanguard'] },
+  id: '7f22e693-bacd-46bb-b942-64fa613cd388', name: 'Northwind', doctrine: 'Defend your castle.',
 }
 
 describe('faction API', () => {
@@ -41,6 +43,25 @@ describe('faction API', () => {
     await expect(listFactions()).rejects.toBe(abort)
   })
 
+  it('maps ruleset failures and preserves cancellation', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 503 }))
+    await expect(listFactionRulesets()).rejects.toMatchObject({
+      name: 'FactionApiError', status: 503,
+      message: 'Faction design rules could not be loaded.',
+    })
+
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('offline'))
+    await expect(listFactionRulesets()).rejects.toEqual(new FactionApiError(
+      'The command post is unreachable. Check that the battlefield server is running.',
+    ))
+
+    const controller = new AbortController()
+    const abort = new DOMException('aborted', 'AbortError')
+    vi.mocked(fetch).mockRejectedValueOnce(abort)
+    await expect(listFactionRulesets(controller.signal)).rejects.toBe(abort)
+    expect(fetch).toHaveBeenLastCalledWith('/v1/faction-rulesets', { signal: controller.signal })
+  })
+
   it('creates a faction', async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 201 }))
 
@@ -55,7 +76,7 @@ describe('faction API', () => {
   it.each([
     [409, 'identifier is already in use'],
     [400, 'server rejected these faction details'],
-    [422, 'blueprint is illegal'],
+    [422, 'faction details are invalid'],
     [500, 'faction could not be created'],
   ])('maps create status %d', async (status, message) => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status }))

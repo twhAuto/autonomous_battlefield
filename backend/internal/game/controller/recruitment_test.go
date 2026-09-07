@@ -1,3 +1,6 @@
+// Checks explicit recruitment-order validation and copying, including empty purchase
+// lists.
+
 package controller
 
 import (

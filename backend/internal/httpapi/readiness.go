@@ -1,3 +1,6 @@
+// Defines the bounded database-ping dependency used by the shared process readiness
+// handler.
+
 package httpapi
 
 import (

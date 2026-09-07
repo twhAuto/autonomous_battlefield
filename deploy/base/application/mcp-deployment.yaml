@@ -1,3 +1,6 @@
+# Runs the MCP decision/background tools and agent-control endpoints with their database
+# and capability-secret configuration.
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:

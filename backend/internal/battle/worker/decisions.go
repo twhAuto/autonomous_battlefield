@@ -1,3 +1,6 @@
+// Freezes each faction's decision context, waits for model plans while maintaining the
+// lease, and resolves deterministic fallbacks.
+
 package worker
 
 import (
@@ -97,12 +100,12 @@ func (w *Worker) prepareDecision(ctx context.Context, lease BattleLease, simulat
 }
 
 func newDecisionContext(lease BattleLease, factionID string, targetTick uint64, snapshot game.DecisionSnapshot) ai.DecisionContext {
-	return ai.DecisionContext{SchemaVersion: ai.ContextSchema, RequestID: decisionID(lease.BattleID, lease.Attempt, factionID, targetTick), BattleID: lease.BattleID,
+	return ai.DecisionContext{Doctrine: snapshot.Doctrine, FactionName: snapshot.FactionName, Background: snapshot.Background, Opening: snapshot.Opening, OwnedUpgradeIDs: snapshot.OwnedUpgradeIDs, SchemaVersion: ai.ContextSchema, RequestID: decisionID(lease.BattleID, lease.Attempt, factionID, targetTick), BattleID: lease.BattleID,
 		FactionID: factionID, TargetTick: targetTick, ExpectedVersion: 1, ObservationVersion: snapshot.Version,
-		View: snapshot.View, Economy: ai.EconomyContext{Gold: snapshot.Gold, ProjectedIncome: snapshot.ProjectedIncome,
+		View: snapshot.View, Economy: ai.EconomyContext{MaximumBuildings: snapshot.MaximumBuildings, Gold: snapshot.Gold, ProjectedIncome: snapshot.ProjectedIncome,
 			EconomyBuildingCost: snapshot.EconomyCost, EconomyBuildingIncome: snapshot.EconomyIncome,
 			CurrentEconomyBuildings: snapshot.EconomyCount, MaximumEconomyBuildings: snapshot.MaximumEconomy},
-		Legal: ai.LegalChoices{ActionKinds: []string{game.ActionAttack, game.ActionDefend}, Units: snapshot.LegalUnits, EconomySites: snapshot.LegalSites}, ActivePlan: snapshot.ActivePlan}
+		Legal: ai.LegalChoices{Buildings: snapshot.LegalBuildings, RecruitmentSources: snapshot.RecruitmentSources, Upgrades: snapshot.LegalUpgrades, ActionKinds: []string{game.ActionAttack, game.ActionDefend}, Units: snapshot.LegalUnits, EconomySites: snapshot.LegalSites}, ActivePlan: snapshot.ActivePlan}
 }
 
 func (w *Worker) logPreparedDecision(ctx context.Context, lease BattleLease, targetTick uint64, factionID string, setup game.FactionSetup, record ai.DecisionRecord) {
@@ -125,19 +128,29 @@ func submitScriptedPlan(ctx context.Context, service *ai.DecisionService, record
 func (w *Worker) waitForWindowDecisions(ctx context.Context, lease BattleLease, targetTick uint64) error {
 	deadline := time.Now().Add(w.config.DecisionTimeout)
 	nextHeartbeat := time.Now().Add(w.config.HeartbeatInterval)
+	var progress progressLog
+	started := time.Now()
 	for {
 		pausedFor, err := w.waitWhilePaused(ctx, lease)
 		if err != nil {
 			return err
 		}
 		deadline = deadline.Add(pausedFor)
-		nextHeartbeat = time.Now().Add(w.config.HeartbeatInterval)
+		if pausedFor > 0 {
+			nextHeartbeat = time.Now().Add(w.config.HeartbeatInterval)
+		}
 		records, err := w.decisions.ListWindowDecisions(ctx, lease.BattleID, lease.Attempt, targetTick)
 		if err != nil {
 			return err
 		}
-		if !decisionsPending(records) || !time.Now().Before(deadline) {
+		pending := pendingDecisionCount(records)
+		if pending == 0 || !time.Now().Before(deadline) {
 			return nil
+		}
+		if progress.due(time.Now()) {
+			w.logger.InfoContext(ctx, "decision_window_waiting", "battle_id", lease.BattleID,
+				"attempt", lease.Attempt, "target_tick", targetTick, "pending_count", pending,
+				"elapsed_ms", time.Since(started).Milliseconds(), "remaining_ms", max(0, time.Until(deadline).Milliseconds()))
 		}
 		if !wait(ctx, min(100*time.Millisecond, time.Until(deadline), time.Until(nextHeartbeat))) {
 			return context.Canceled
@@ -151,13 +164,14 @@ func (w *Worker) waitForWindowDecisions(ctx context.Context, lease BattleLease, 
 	}
 }
 
-func decisionsPending(records []ai.DecisionRecord) bool {
+func pendingDecisionCount(records []ai.DecisionRecord) int {
+	count := 0
 	for _, record := range records {
 		if record.Status == "pending" || record.Status == "running" {
-			return true
+			count++
 		}
 	}
-	return false
+	return count
 }
 
 func (w *Worker) resolveDecisionPlans(ctx context.Context, lease BattleLease, simulation *game.Match, targetTick uint64, baselines map[string]controller.PlanProposal, records []ai.DecisionRecord) (map[string]controller.PlanProposal, int, int, error) {
@@ -208,7 +222,7 @@ func (w *Worker) resolveDecisionRecord(ctx context.Context, simulation *game.Mat
 }
 
 func fallbackPlan(simulation *game.Match, targetTick uint64, baselines map[string]controller.PlanProposal, record ai.DecisionRecord) (controller.PlanProposal, string) {
-	if targetTick == uint64(simulation.Scenario().DecisionIntervalTicks) {
+	if targetTick == 0 || targetTick == uint64(simulation.Scenario().DecisionIntervalTicks) {
 		return baselines[record.FactionID], "scripted_fallback"
 	}
 	return record.Observation.ActivePlan, "previous_plan"

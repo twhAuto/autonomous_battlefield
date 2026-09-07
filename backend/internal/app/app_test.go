@@ -1,8 +1,17 @@
+// Checks API composition, authenticated route access, cached results, and shared request
+// trace context.
+
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -81,5 +90,38 @@ func TestCachedResultHTTPAndAuthentication(t *testing.T) {
 	protected.HTTPHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/battles/"+id, nil))
 	if response.Code != http.StatusUnauthorized || cache.reads != 1 {
 		t.Fatal("authentication did not precede cache lookup")
+	}
+}
+
+func TestAccessLogSharesIncomingTrace(t *testing.T) {
+	var output bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(logging.NewHandler(slog.NewJSONHandler(&output, nil))))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+	previousProvider := otel.GetTracerProvider()
+	previousPropagator := otel.GetTextMapPropagator()
+	provider := tracesdk.NewTracerProvider()
+	otel.SetTracerProvider(provider)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previousProvider)
+		otel.SetTextMapPropagator(previousPropagator)
+		_ = provider.Shutdown(context.Background())
+	})
+	application := NewAPIWithAuthentication(appDatabase{}, &catalog.Catalog{}, 10_000, authn.Config{Enabled: true})
+	request := httptest.NewRequest(http.MethodGet, "/v1/factions", nil)
+	request.Header.Set("traceparent", "00-01000000000000000000000000000000-0200000000000000-01")
+	request.Header.Set("X-Request-ID", "request-123")
+	response := httptest.NewRecorder()
+	application.HTTPHandler().ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatal(response.Code)
+	}
+	var row map[string]any
+	if err := json.Unmarshal(output.Bytes(), &row); err != nil {
+		t.Fatal(err, output.String())
+	}
+	if row["event"] != "http_request_completed" || row["trace_id"] != "01000000000000000000000000000000" || row["span_id"] == nil || row["request_id"] != "request-123" || row["duration_ms"] == nil {
+		t.Fatal(row)
 	}
 }

@@ -1,0 +1,44 @@
+# Authored skirmish scenario with a restricted content selection, map, timing, and
+# scripted plans for queued battles.
+
+id: ranged-skirmish-v1
+rulesVersion: "1"
+rulesetId: castle-siege-v1
+maximumTicks: 500
+tickDuration: 1s
+decisionIntervalTicks: 10
+map:
+  kind: authored
+  width: 15
+  height: 11
+  rows:
+    - "..............."
+    - ".......#......."
+    - "..b....#....b.."
+    - "..............."
+    - ".......#......."
+    - "..............."
+    - ".......#......."
+    - "..............."
+    - "..b....#....b.."
+    - ".......#......."
+    - "..............."
+  castleSpawns:
+    - {x: 1, y: 5}
+    - {x: 13, y: 5}
+  economySites:
+    - [{x: 2, y: 2}, {x: 2, y: 8}]
+    - [{x: 12, y: 2}, {x: 12, y: 8}]
+fallbackPlan:
+  name: balanced
+  actionWeights: {attack: 1100, defend: 1000}
+scriptedPlans:
+  - name: opening-assault
+    actionWeights: {attack: 1400, defend: 800}
+  - name: hold-the-line
+    actionWeights: {attack: 850, defend: 1350}
+
+# Narrow the shared ruleset without copying unit or upgrade definitions.
+allowedUnits: [vanguard, ranger]
+allowedUpgrades: [plating]
+allowedBuildings: [castle]

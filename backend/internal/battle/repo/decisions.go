@@ -1,3 +1,6 @@
+// Persists decision windows, model claims, versioned submissions, fallbacks, usage, and
+// faction-scoped history in PostgreSQL.
+
 package repo
 
 import (

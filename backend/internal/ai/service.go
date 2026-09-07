@@ -1,3 +1,6 @@
+// Validates decision submissions against frozen observations and issues or verifies
+// request- scoped HMAC capabilities.
+
 package ai
 
 import (
@@ -41,6 +44,8 @@ func (s *DecisionService) GetContext(ctx context.Context, requestID string) (Dec
 	return record.Observation, nil
 }
 
+// SubmitPlan checks the persisted decision and its legal choices before writing
+// a plan; validation rejection is returned in the result rather than as an error.
 func (s *DecisionService) SubmitPlan(ctx context.Context, submission PlanSubmission) (SubmissionResult, error) {
 	record, err := s.repository.GetDecision(ctx, submission.RequestID)
 	if err != nil {
@@ -84,6 +89,8 @@ func (s *DecisionService) rejectInvalidPlan(ctx context.Context, record Decision
 	return SubmissionResult{Status: "failed", Errors: []ValidationIssue{{Field: "plan", Code: "validation_limit", Message: "Three invalid submissions. Decision closed; stop submitting."}}}, nil
 }
 
+// ValidateSubmission checks version, target tick, and plan choices against the
+// frozen observation without mutating the decision or simulation.
 func ValidateSubmission(record DecisionRecord, submission PlanSubmission) []ValidationIssue {
 	issues := make([]ValidationIssue, 0)
 	if strings.TrimSpace(submission.IdempotencyKey) == "" {
@@ -98,7 +105,7 @@ func ValidateSubmission(record DecisionRecord, submission PlanSubmission) []Vali
 	if err := controller.ValidatePlanProposal(submission.Plan, record.Observation.Legal.ActionKinds); err != nil {
 		issues = append(issues, ValidationIssue{Field: "plan", Code: "invalid", Message: err.Error()})
 	}
-	if (record.Runtime == "cli" || record.Runtime == "api") && len(submission.Plan.ActionWeights) == 0 && submission.Plan.RecruitmentOrders == nil && len(submission.Plan.RecruitmentPriorities) == 0 && len(submission.Plan.ConstructionPriorities) == 0 && submission.Plan.ReserveGold == 0 {
+	if (record.Runtime == "cli" || record.Runtime == "api") && len(submission.Plan.ActionWeights) == 0 && submission.Plan.RecruitmentOrders == nil && len(submission.Plan.RecruitmentPriorities) == 0 && len(submission.Plan.ConstructionPriorities) == 0 && submission.Plan.ConstructionOrders == nil && submission.Plan.ReserveGold == 0 {
 		issues = append(issues, ValidationIssue{Field: "plan", Code: "empty_decision", Message: "Provide an explicit tactical weight, production priority, or gold reserve; a name and rationale alone are not a strategy."})
 	}
 	issues = append(issues, validateRecruitmentChoices(record, submission.Plan)...)
@@ -111,9 +118,12 @@ func ValidateSubmission(record DecisionRecord, submission PlanSubmission) []Vali
 			issues = append(issues, ValidationIssue{Field: "plan.constructionPriorities", Code: "unsupported", Message: fmt.Sprintf("site (%d,%d) is not legal", site.X, site.Y)})
 		}
 	}
+	issues = append(issues, validateExpansionChoices(record.Observation, submission.Plan)...)
 	return issues
 }
 
+// ObservationHash fingerprints the decision context while excluding its request
+// ID and hash field, so those bookkeeping fields do not change the fingerprint.
 func ObservationHash(context DecisionContext) (string, error) {
 	copy := context
 	copy.RequestID = ""
@@ -131,6 +141,8 @@ type capabilityClaims struct {
 	ExpiresAt int64  `json:"expiresAt"`
 }
 
+// MintCapability signs a token granting access to one request until expiresAt.
+// The token is a bearer credential and must stay out of logs and model context.
 func MintCapability(secret, requestID string, expiresAt time.Time) (string, error) {
 	if secret == "" || requestID == "" {
 		return "", errors.New("capability secret and request ID are required")
@@ -145,6 +157,8 @@ func MintCapability(secret, requestID string, expiresAt time.Time) (string, erro
 	return encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
 }
 
+// VerifyCapability checks the signature and expiry and returns the authorized
+// request ID; callers must still check the request's current state.
 func VerifyCapability(secret, token string, now time.Time) (string, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 2 {
@@ -172,6 +186,25 @@ func VerifyCapability(secret, token string, now time.Time) (string, error) {
 
 func validateRecruitmentChoices(record DecisionRecord, plan controller.PlanProposal) []ValidationIssue {
 	var issues []ValidationIssue
+	legalUpgrades := map[string]bool{}
+	for _, upgrade := range record.Observation.Legal.Upgrades {
+		legalUpgrades[upgrade.ID] = true
+	}
+	for _, id := range plan.UpgradeOrders {
+		if !legalUpgrades[id] {
+			issues = append(issues, ValidationIssue{Field: "plan.upgradeOrders", Code: "unsupported", Message: fmt.Sprintf("upgrade %q is not legal", id)})
+		}
+	}
+	if record.Observation.Opening {
+		if plan.RecruitmentOrders == nil {
+			issues = append(issues, ValidationIssue{Field: "plan.recruitmentOrders", Code: "required", Message: "Opening requires explicit orders; use [] to buy nothing."})
+		}
+		for _, kind := range plan.SpendOrder {
+			if kind == "construction" {
+				issues = append(issues, ValidationIssue{Field: "plan.spendOrder", Code: "unsupported", Message: "Construction is unavailable during opening."})
+			}
+		}
+	}
 	legalUnits := make(map[string]bool, len(record.Observation.Legal.Units))
 	for _, unit := range record.Observation.Legal.Units {
 		legalUnits[unit.ID] = true

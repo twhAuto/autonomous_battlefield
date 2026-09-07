@@ -1,3 +1,6 @@
+// Exercises MCP authorization and request scoping, agent claims and long polling, usage
+// reporting, and malformed-input fuzzing.
+
 package mcpserver
 
 import (
@@ -61,7 +64,7 @@ func (r *fakeRepository) RecordDecisionUsage(context.Context, string, ai.Usage, 
 }
 
 func TestStreamableMCPToolsAreAuthenticatedAndScoped(t *testing.T) {
-	repository := &fakeRepository{record: ai.DecisionRecord{ID: "request-1", Version: 1, TargetTick: 10, Observation: ai.DecisionContext{RequestID: "request-1", TargetTick: 10, ExpectedVersion: 1, Legal: ai.LegalChoices{ActionKinds: []string{"attack", "defend"}, Units: []game.UnitType{{ID: "ranger"}}}}}}
+	repository := &fakeRepository{record: ai.DecisionRecord{ID: "request-1", Version: 1, TargetTick: 10, Observation: ai.DecisionContext{RequestID: "request-1", TargetTick: 10, ExpectedVersion: 1, Legal: ai.LegalChoices{Upgrades: []game.Upgrade{{ID: "plating", Cost: 20}}, ActionKinds: []string{"attack", "defend"}, Units: []game.UnitType{{ID: "ranger"}}}}}}
 	var logs bytes.Buffer
 	service := NewWithLogger(repository, "secret", []string{"https://agent.example"}, slog.New(slog.NewJSONHandler(&logs, nil)))
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -96,9 +99,21 @@ func TestStreamableMCPToolsAreAuthenticatedAndScoped(t *testing.T) {
 	if err != nil || !denied.IsError {
 		t.Fatalf("cross-request result=%#v err=%v", denied, err)
 	}
-	submitted, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "submit_strategy_plan", Arguments: map[string]any{"requestId": "request-1", "idempotencyKey": "once", "expectedVersion": 1, "targetTick": 10, "name": "advance", "rationale": "The visible lane is open, so reinforce the advance.", "actionWeights": map[string]any{"attack": 1200}, "reserveGold": 0, "spendOrder": []any{"recruitment"}, "constructionPriorities": []any{}, "recruitmentPriorities": []any{}, "recruitmentOrders": []any{map[string]any{"unitType": "ranger", "count": 2}}}})
-	if err != nil || submitted.IsError || repository.submitted.IdempotencyKey != "once" || repository.submitted.Plan.Rationale == "" || repository.submitted.Plan.RecruitmentOrders == nil || (*repository.submitted.Plan.RecruitmentOrders)[0].Count != 2 {
+	submitted, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "submit_strategy_plan", Arguments: map[string]any{"requestId": "request-1", "idempotencyKey": "once", "expectedVersion": 1, "targetTick": 10, "name": "advance", "rationale": "The visible lane is open, so reinforce the advance.", "actionWeights": map[string]any{"attack": 1200}, "reserveGold": 0, "upgradeOrders": []any{"plating"}, "spendOrder": []any{"upgrades", "recruitment"}, "constructionPriorities": []any{}, "recruitmentPriorities": []any{}, "recruitmentOrders": []any{map[string]any{"unitType": "ranger", "count": 2}}}})
+	if err != nil || submitted.IsError || repository.submitted.IdempotencyKey != "once" || repository.submitted.Plan.Rationale == "" || len(repository.submitted.Plan.UpgradeOrders) != 1 || repository.submitted.Plan.UpgradeOrders[0] != "plating" || repository.submitted.Plan.RecruitmentOrders == nil || (*repository.submitted.Plan.RecruitmentOrders)[0].Count != 2 {
 		t.Fatalf("submit=%#v err=%v", submitted, err)
+	}
+
+	repository.record.Observation.Legal.Buildings = []game.BuildingType{{ID: "defense_tower"}}
+	repository.record.Observation.Legal.EconomySites = []controller.Coordinate{{X: 9, Y: 7}}
+	repository.record.Observation.Legal.RecruitmentSources = []string{"a:barracks:1"}
+	expanded, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "submit_strategy_plan", Arguments: map[string]any{
+		"requestId": "request-1", "idempotencyKey": "expanded", "expectedVersion": 1, "targetTick": 10, "name": "fortify", "rationale": "Protect the forward recruitment site.", "actionWeights": map[string]any{"defend": 1200}, "reserveGold": 0, "spendOrder": []string{"construction", "recruitment"}, "constructionPriorities": []any{}, "recruitmentPriorities": []any{},
+		"constructionOrders": []any{map[string]any{"buildingType": "defense_tower", "position": map[string]any{"x": 9, "y": 7}}},
+		"recruitmentOrders":  []any{map[string]any{"unitType": "ranger", "count": 1, "sourceBuildingId": "a:barracks:1"}},
+	}})
+	if err != nil || expanded.IsError || repository.submitted.IdempotencyKey != "expanded" || repository.submitted.Plan.ConstructionOrders == nil || (*repository.submitted.Plan.ConstructionOrders)[0].BuildingType != "defense_tower" || (*repository.submitted.Plan.RecruitmentOrders)[0].SourceBuildingID != "a:barracks:1" {
+		t.Fatalf("expanded tool submission: %+v %v", expanded, err)
 	}
 	assertDecisionToolLogs(t, logs.String())
 }

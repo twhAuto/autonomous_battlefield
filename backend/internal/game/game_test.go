@@ -1,3 +1,6 @@
+// Checks deterministic match invariants, hex maps, blueprint costs, economy timing,
+// faction visibility, and terminal results.
+
 package game
 
 import (

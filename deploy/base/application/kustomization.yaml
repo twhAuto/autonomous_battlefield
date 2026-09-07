@@ -1,3 +1,6 @@
+# Assembles application deployments, services, routing, scaling, and disruption policies
+# in the battlefield namespace.
+
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

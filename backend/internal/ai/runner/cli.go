@@ -1,3 +1,6 @@
+// Executes supported model CLIs in isolated sessions with scoped tools, bounded output,
+// and provider-specific result parsing.
+
 package runner
 
 import (
@@ -49,7 +52,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 	if executor == nil {
 		executor = OSCommandExecutor{}
 	}
-	prompt := ai.SystemPrompt + "\n" + ai.DecisionPrompt(session.RequestID, nil)
+	prompt := ai.SessionSystemPrompt(session) + "\n" + ai.SessionDecisionPrompt(session, nil)
 	var name string
 	var args, environment []string
 	switch r.Provider {
@@ -59,7 +62,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 			disableFlag, "shell_tool", disableFlag, "browser_use", disableFlag, "in_app_browser", disableFlag, "computer_use", disableFlag, "apps", disableFlag, "image_generation", disableFlag, "multi_agent", disableFlag, "skill_search", disableFlag, "skill_mcp_dependency_install", disableFlag, "plugins", disableFlag, "hooks", disableFlag, "goals", disableFlag, "standalone_web_search",
 			"-c", `approval_policy="never"`, "-c", `mcp_servers.battlefield.url="` + session.MCPURL + `"`,
 			"-c", `mcp_servers.battlefield.env_http_headers={Authorization="BATTLEFIELD_MCP_AUTHORIZATION"}`,
-			"-c", `mcp_servers.battlefield.enabled_tools=["get_decision_context","submit_strategy_plan"]`,
+			"-c", `mcp_servers.battlefield.enabled_tools=["` + strings.Join(ai.SessionToolNames(session), `","`) + `"]`,
 			"-c", `mcp_servers.battlefield.default_tools_approval_mode="approve"`, prompt}
 		args = withModel(args, r.Model)
 		environment = replaceEnvironment(os.Environ(), "CODEX_WORKSPACE", workspace)
@@ -70,9 +73,9 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 		if contextErr != nil {
 			return ai.DecisionResult{ErrorCategory: "mcp_context"}, contextErr
 		}
-		prompt = ai.SystemPrompt + "\n" + ai.DecisionPrompt(session.RequestID, payload)
+		prompt = ai.SessionSystemPrompt(session) + "\n" + ai.SessionDecisionPrompt(session, payload)
 
-		environment, err = clienv.PrepareAntigravity(temporary, session.MCPURL, session.CapabilityToken)
+		environment, err = clienv.PrepareAntigravity(temporary, session.MCPURL, session.CapabilityToken, ai.SessionToolNames(session)...)
 		if err != nil {
 			return ai.DecisionResult{ErrorCategory: "cli_isolation"}, err
 		}
@@ -163,7 +166,7 @@ func (r CLIRunner) prefetchContext(ctx context.Context, session ai.DecisionSessi
 	}
 	defer client.Close()
 	arguments, _ := json.Marshal(map[string]string{"requestId": session.RequestID})
-	payload, _, err := client.Call(ctx, ai.ToolCall{Name: "get_decision_context", Arguments: arguments})
+	payload, _, err := client.Call(ctx, ai.ToolCall{Name: ai.SessionToolNames(session)[0], Arguments: arguments})
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +176,7 @@ func (r CLIRunner) prefetchContext(ctx context.Context, session ai.DecisionSessi
 	var result struct {
 		Context ai.DecisionContext `json:"context"`
 	}
-	if json.Unmarshal(payload, &result) != nil || result.Context.RequestID != session.RequestID || result.Context.TargetTick == 0 || result.Context.ExpectedVersion < 1 {
+	if json.Unmarshal(payload, &result) != nil || result.Context.RequestID != session.RequestID || (session.JobType != "faction_background" && ((result.Context.TargetTick == 0 && !result.Context.Opening) || result.Context.ExpectedVersion < 1)) {
 		return nil, fmt.Errorf("invalid decision context metadata")
 	}
 	return payload, nil

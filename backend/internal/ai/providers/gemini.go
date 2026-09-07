@@ -1,15 +1,15 @@
+// Adapts neutral model turns and tool schemas to Gemini requests, then decodes tool calls
+// and token usage.
+
 package providers
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 type Gemini struct {
@@ -17,15 +17,25 @@ type Gemini struct {
 	Client                  *http.Client
 }
 
+type geminiCandidate struct {
+	FinishReason string `json:"finishReason"`
+	Content      struct {
+		Parts []struct {
+			Text         string `json:"text"`
+			FunctionCall *struct {
+				Name string         `json:"name"`
+				Args map[string]any `json:"args"`
+			} `json:"functionCall"`
+		} `json:"parts"`
+	} `json:"content"`
+}
+
 func (p *Gemini) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.ModelTurnResult, error) {
 	declarations, err := geminiToolDeclarations(turn.Tools)
 	if err != nil {
 		return ai.ModelTurnResult{}, err
 	}
-	transcript := turn.SystemPrompt + "\n"
-	for _, message := range turn.Messages {
-		transcript += strings.ToUpper(message.Role) + ": " + message.Content + "\n"
-	}
+	transcript := modelTranscript(turn)
 	body, err := json.Marshal(map[string]any{"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": transcript}}}}, "tools": []any{map[string]any{"functionDeclarations": declarations}}, "generationConfig": map[string]any{"maxOutputTokens": turn.MaxTokens}})
 	if err != nil {
 		return ai.ModelTurnResult{}, err
@@ -40,40 +50,14 @@ func (p *Gemini) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	}
 	request.Header.Set("x-goog-api-key", p.APIKey)
 	request.Header.Set("Content-Type", "application/json")
-	client := p.Client
-	if client == nil {
-		client = telemetry.HTTPClient(nil)
-	}
-	response, err := client.Do(request)
-	if err != nil {
-		return ai.ModelTurnResult{}, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode == http.StatusTooManyRequests {
-		return ai.ModelTurnResult{}, fmt.Errorf("%w: Gemini response status %d", ErrRateLimit, response.StatusCode)
-	}
-	if response.StatusCode/100 != 2 {
-		return ai.ModelTurnResult{}, fmt.Errorf("Gemini response status %d", response.StatusCode)
-	}
 	var decoded struct {
-		Candidates []struct {
-			FinishReason string `json:"finishReason"`
-			Content      struct {
-				Parts []struct {
-					Text         string `json:"text"`
-					FunctionCall *struct {
-						Name string         `json:"name"`
-						Args map[string]any `json:"args"`
-					} `json:"functionCall"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-		Usage struct {
+		Candidates []geminiCandidate `json:"candidates"`
+		Usage      struct {
 			Prompt     int64 `json:"promptTokenCount"`
 			Candidates int64 `json:"candidatesTokenCount"`
 		} `json:"usageMetadata"`
 	}
-	if err := json.NewDecoder(response.Body).Decode(&decoded); err != nil {
+	if err := doJSON(p.Client, request, "Gemini", &decoded); err != nil {
 		return ai.ModelTurnResult{}, err
 	}
 	return geminiResult(decoded.Candidates, decoded.Usage.Prompt, decoded.Usage.Candidates)
@@ -91,18 +75,7 @@ func geminiToolDeclarations(tools []ai.ToolDefinition) ([]map[string]any, error)
 	return declarations, nil
 }
 
-func geminiResult(candidates []struct {
-	FinishReason string `json:"finishReason"`
-	Content      struct {
-		Parts []struct {
-			Text         string `json:"text"`
-			FunctionCall *struct {
-				Name string         `json:"name"`
-				Args map[string]any `json:"args"`
-			} `json:"functionCall"`
-		} `json:"parts"`
-	} `json:"content"`
-}, inputTokens, outputTokens int64) (ai.ModelTurnResult, error) {
+func geminiResult(candidates []geminiCandidate, inputTokens, outputTokens int64) (ai.ModelTurnResult, error) {
 	result := ai.ModelTurnResult{Usage: ai.Usage{InputTokens: inputTokens, OutputTokens: outputTokens, Requests: 1}}
 	for _, candidate := range candidates {
 		if candidate.FinishReason == "SAFETY" || candidate.FinishReason == "BLOCKLIST" || candidate.FinishReason == "PROHIBITED_CONTENT" {

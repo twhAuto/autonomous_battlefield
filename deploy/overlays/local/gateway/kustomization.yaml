@@ -1,3 +1,6 @@
+# Assembles the Envoy gateway class, proxy settings, listener, and
+# application/observability hostname routes.
+
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

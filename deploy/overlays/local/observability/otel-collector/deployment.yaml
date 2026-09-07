@@ -1,3 +1,6 @@
+# Runs the OpenTelemetry Collector, which receives and forwards application traces, with
+# the local stack's configuration and resource settings.
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:

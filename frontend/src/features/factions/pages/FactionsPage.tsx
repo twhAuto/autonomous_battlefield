@@ -1,3 +1,6 @@
+// Loads the faction registry with retry states, links to editing, and confirmed deletion
+// followed by a refreshed list.
+
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { deleteFaction, Faction, FactionApiError, listFactions } from '../api/factions'
@@ -102,9 +105,9 @@ export function FactionsPage() {
                   <span>REGISTERED FACTION</span>
                   <h2>{faction.name}</h2>
                   <code title={faction.id}>{faction.id}</code>
-                  <p className="registry-card__ruleset">{faction.rulesetId}</p>
-                  <p>{faction.blueprint?.units?.map((unit) => `${unit.count}× ${unit.type}`).join(' · ') || 'No composition'}</p>
-                  <p>{faction.blueprint?.upgradeIds?.join(' · ') || 'No upgrades'} · {faction.spentPoints ?? 0} points</p>
+                  <p style={{ whiteSpace: 'pre-wrap' }}>{faction.doctrine}</p>
+                  {faction.background && <p style={{ whiteSpace: 'pre-wrap' }}>{faction.background}</p>}
+                  <Link to={`/factions/${faction.id}/edit`}>Edit faction</Link>
                 </div>
                 <div className="registry-card__status"><span className="status-dot" /> ACTIVE</div>
                 <button

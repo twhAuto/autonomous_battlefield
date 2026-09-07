@@ -1,3 +1,6 @@
+# Runs Prometheus, which scrapes and evaluates application and cluster metrics, with the
+# local stack's configuration and resource settings.
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:

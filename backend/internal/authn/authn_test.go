@@ -1,3 +1,6 @@
+// Checks login, signed-cookie sessions, logout, token tampering/expiry, and optional
+// authentication middleware.
+
 package authn
 
 import (

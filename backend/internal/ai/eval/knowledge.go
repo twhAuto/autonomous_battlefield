@@ -1,3 +1,6 @@
+// Summarizes retrieved knowledge in evaluation reports without including the full decision
+// context.
+
 package eval
 
 import "github.com/twh09/autonomous_battlefield/backend/internal/ai"

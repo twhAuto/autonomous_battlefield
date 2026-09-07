@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Checks scanner launcher arguments, artifact locations, failure propagation, and bounded
+# vulnerability-database download retries.
+
 set -Eeuo pipefail
 
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -22,6 +25,12 @@ if (args.includes('--download-db-only') || args.includes('fs')) {
     if (process.env.DB_FAILURE === 'all' || (process.env.DB_FAILURE === 'mirror' && args.includes('mirror.gcr.io/aquasec/trivy-db:2'))) process.exit(23);
   } else {
     assert.ok(args.includes('--skip-db-update'));
+    // Vitest removes temporary coverage files while this scan runs in parallel.
+    // Exclude only generated reports; frontend source and lockfiles stay in scope.
+    const skippedDirs = args.flatMap((arg, i) => arg === '--skip-dirs' ? [args[i + 1]] : []);
+    assert.deepEqual(skippedDirs, ['artifacts', 'frontend/coverage']);
+    assert.equal(args.at(-1), '.');
+    assert.ok(args.includes('--include-dev-deps'));
   }
 }
 if (args.includes('config') || args.includes('test')) {

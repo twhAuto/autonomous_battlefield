@@ -1,3 +1,6 @@
+# Conftest rules for repository-built workload images, enforcing security settings,
+# resource bounds, readiness, and explicit image tags.
+
 package kubernetes.workload
 
 import rego.v1

@@ -1,3 +1,6 @@
+// Starts the authenticated MCP and agent-control server with restricted repositories and
+// database wakeup notifications.
+
 package main
 
 import (
@@ -16,6 +19,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/mcpserver"
 	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
+	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
@@ -54,7 +58,7 @@ func run(configuration config.Config) error {
 		return err
 	}
 	defer db.Close()
-	server := mcpserver.New(battlerepo.NewPostgres(db), configuration.AI.CapabilitySecret, configuration.AI.AllowedOrigins)
+	server := mcpserver.New(battlerepo.NewPostgres(db), configuration.AI.CapabilitySecret, configuration.AI.AllowedOrigins).WithGenerations(&generation.Postgres{DB: db})
 	notificationErrors := make(chan error, 1)
 	go func() {
 		notificationErrors <- postgres.ListenForNotifications(ctx, db, ai.DecisionReadyChannel, func(string) {
@@ -63,9 +67,10 @@ func run(configuration config.Config) error {
 	}()
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", server.Handler())
+	mux.Handle("/generation-mcp", server.GenerationHandler())
 	mux.Handle("/internal/agent/", http.StripPrefix("/internal/agent", server.AgentHandler(battlerepo.NewPostgres(db))))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	httpServer := &http.Server{Addr: configuration.AI.MCPAddress, Handler: telemetry.HTTPHandler("battlefield-mcp.http", mux), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 30 * time.Second}
+	httpServer := &http.Server{Addr: configuration.AI.MCPAddress, Handler: telemetry.HTTPHandler("battlefield-mcp.http", mux), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second}
 	errorsChannel := make(chan error, 1)
 	go func() {
 		err := httpServer.ListenAndServe()

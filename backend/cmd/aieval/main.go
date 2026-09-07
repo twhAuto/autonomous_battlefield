@@ -1,3 +1,6 @@
+// Command-line entry point for deterministic or provider AI evaluations and runtime
+// provenance reports.
+
 package main
 
 import (
@@ -23,7 +26,7 @@ func main() {
 
 func run(args []string) error {
 	flags := flag.NewFlagSet("aieval", flag.ContinueOnError)
-	mode := flags.String("mode", "deterministic", "deterministic, provider, or compare")
+	mode := flags.String("mode", "deterministic", "deterministic, provider, compare, or metadata")
 	comparisonPath := flags.String("comparison-config", "evals/comparison.yaml", "comparison variant configuration")
 	repetitions := flags.Int("repetitions", 3, "matched repetitions per comparison case and variant")
 	casesPath := flags.String("cases", "evals/cases", "versioned deterministic case directory")
@@ -39,6 +42,12 @@ func run(args []string) error {
 	timeout := flags.Duration("timeout", 90*time.Second, "whole evaluation timeout")
 	if err := flags.Parse(args); err != nil {
 		return err
+	}
+
+	if *mode == "metadata" {
+		_, digest, _ := strings.Cut(ai.PromptVersion, ".")
+		fmt.Printf("%s\t%s\t%s\n", ai.PromptVersion, digest, ai.ToolSchema)
+		return nil
 	}
 
 	prices, err := aieval.LoadPriceBook(*pricingPath)

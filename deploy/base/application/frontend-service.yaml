@@ -1,3 +1,5 @@
+# Provides a stable in-cluster HTTP endpoint for the frontend Nginx pods.
+
 apiVersion: v1
 kind: Service
 metadata:

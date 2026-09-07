@@ -1,3 +1,6 @@
+// Defines battle jobs, ownership leases, and the persistence contract used by the
+// simulation worker.
+
 package worker
 
 import (

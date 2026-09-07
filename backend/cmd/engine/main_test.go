@@ -1,3 +1,5 @@
+// Checks engine flag parsing, startup cleanup, and worker identity selection.
+
 package main
 
 import (

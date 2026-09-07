@@ -1,3 +1,6 @@
+// Owns one in-memory battle attempt and orchestrates ticks, transitions, events, and
+// terminal results without persistence dependencies.
+
 package game
 
 import (
@@ -36,14 +39,18 @@ type Match struct {
 
 func (m *Match) TickDuration() time.Duration { return m.scenario.TickDuration }
 
+// State returns a defensive copy that callers may inspect without altering the match.
 func (m *Match) State() State { return CloneState(m.state) }
 
+// Scenario returns an independent copy of the resolved inputs for this attempt.
 func (m *Match) Scenario() Scenario { return CloneScenario(m.scenario) }
 
 func (m *Match) Finished() bool { return m.finished }
 
 func (m *Match) FactionIDs() []string { return m.sortedFactionIDs() }
 
+// Advance progresses the simulation, using scripted plans when a decision is due.
+// Workers with externally resolved plans use AdvanceWithPlans instead.
 func (m *Match) Advance() (Transition, error) {
 	var plans map[string]controller.PlanProposal
 	if m.DecisionWindowDue() {
@@ -57,6 +64,9 @@ func (m *Match) Advance() (Transition, error) {
 func (m *Match) AdvanceWithPlans(plans map[string]controller.PlanProposal) (Transition, error) {
 	if m.finished {
 		return Transition{}, ErrMatchFinished
+	}
+	if m.OpeningDue() {
+		return m.advanceOpening(plans)
 	}
 	decisionWindow := m.DecisionWindowDue()
 	if !decisionWindow && len(plans) > 0 {
@@ -82,6 +92,7 @@ func (m *Match) AdvanceWithPlans(plans map[string]controller.PlanProposal) (Tran
 		return Transition{}, err
 	}
 	events = append(events, tacticEvents...)
+	events = append(events, m.runTowers(tactics)...)
 	combatEvents, winner := m.runUnits(tactics)
 	events = append(events, combatEvents...)
 	events = append(events, m.event("tick_completed", map[string]any{"tick": m.state.Tick}))

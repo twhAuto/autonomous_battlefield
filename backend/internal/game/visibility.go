@@ -1,3 +1,6 @@
+// Projects faction-visible battle state using allied vision while keeping hidden enemy
+// entities out of the returned view.
+
 package game
 
 import (
@@ -52,12 +55,28 @@ func visibleState(source State, factionID string, visible map[Position]bool) Sta
 	state.Units = state.Units[:0]
 	for _, unit := range source.Units {
 		if unit.FactionID == factionID || visible[unit.Position] {
+			if unit.AttackTargetPosition != nil && !visible[*unit.AttackTargetPosition] {
+				unit.AttackTargetID = ""
+				unit.AttackTargetPosition = nil
+			}
+			if unit.HealTargetPosition != nil && !visible[*unit.HealTargetPosition] {
+				unit.HealTargetID = ""
+				unit.HealTargetPosition = nil
+			}
+			unit.MovedFrom = clonePosition(unit.MovedFrom)
+			unit.AttackTargetPosition = clonePosition(unit.AttackTargetPosition)
+			unit.HealTargetPosition = clonePosition(unit.HealTargetPosition)
 			state.Units = append(state.Units, unit)
 		}
 	}
 	state.Buildings = state.Buildings[:0]
 	for _, building := range source.Buildings {
 		if building.FactionID == factionID || building.Type == BuildingCastle || visible[building.Position] {
+			if building.AttackTargetPosition != nil && !visible[*building.AttackTargetPosition] {
+				building.AttackTargetID = ""
+				building.AttackTargetPosition = nil
+			}
+			building.AttackTargetPosition = clonePosition(building.AttackTargetPosition)
 			state.Buildings = append(state.Buildings, building)
 		}
 	}

@@ -1,3 +1,5 @@
+// Checks optional Redis result-cache configuration and rejects invalid values.
+
 package config
 
 import (

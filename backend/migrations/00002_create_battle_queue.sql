@@ -1,3 +1,6 @@
+-- Creates durable battle runs and ordered events, including worker leases and attempt
+-- tracking for queued execution.
+
 -- +goose Up
 CREATE TABLE battle_runs (
     id uuid PRIMARY KEY,

@@ -1,3 +1,6 @@
+-- Adds durable decision windows, worker claim fields, and the restricted database role
+-- used by the MCP service.
+
 -- +goose Up
 CREATE TABLE battle_decisions (
     id uuid PRIMARY KEY,

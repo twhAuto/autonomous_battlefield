@@ -134,12 +134,34 @@ referrers remain the portable promotion evidence; the mirror exists because
 the pinned Kyverno 1.15 admission verifier discovers `.sig` and `.att` tags,
 not Cosign v3's referrer-only evidence. Both forms are signed with the same
 Jenkins-managed key and cover the same immutable subject digest.
-Each authenticated registry stage uses a mode-700, per-stage `DOCKER_CONFIG`
-directory and deletes it on exit. Docker may still warn that the temporary
+[`scripts/ci/with-ghcr-auth.sh`](../../scripts/ci/with-ghcr-auth.sh) supplies a
+mode-700 temporary `DOCKER_CONFIG` for publishing, signing, deployment, rollback,
+and AWS promotion. It logs in through standard input, forwards command arguments
+and exit status, and removes credentials on success, failure, or cancellation.
+[`test-registry-auth.sh`](../../scripts/test/test-registry-auth.sh) checks this
+lifecycle with a stub Docker command; it never contacts a registry. Docker may still warn that the temporary
 configuration is not encrypted, but GHCR credentials are not stored in the
 agent user's persistent `~/.docker/config.json`. `BUILDX_CONFIG` remains on the
 agent so the named Buildx builder can be reused without persisting registry
 authentication.
+
+Image repository defaults are shared by publication and policy rendering in
+`scripts/lib/image-metadata.sh`. `REGISTRY_NAMESPACE` changes the namespace;
+`PUBLISHED_BACKEND_IMAGE` and `PUBLISHED_FRONTEND_IMAGE` override individual full
+repository names. Names must omit tags, digests, and wildcards. Registry credentials
+must still grant access to the chosen repositories; the supplied login wrapper
+continues to authenticate GHCR.
+
+Both local and published image source labels come from Git `origin`, normalizing
+HTTPS and common Git SSH URLs. Set `SOURCE_URL=https://github.com/your-org/your-repo`
+to override this label. Credential-bearing or unsupported URLs are rejected without
+printing their contents. Publishing requires a source URL; local builds without
+an origin omit the label.
+
+`test-image-metadata.sh` exercises the real build/publish and policy-rendering
+scripts with stub Docker/Kubernetes commands, including repository overrides,
+preserved images, source metadata, and invalid-input rejection. Both PR and main
+run this check.
 
 The source-security stage first requests a full npm audit from a digest-pinned
 Node container. If the npm advisory endpoint remains unavailable after its
@@ -150,6 +172,19 @@ archived `npm-audit-mode.json` records which path supplied the build evidence.
 npm debug logs from the disposable audit containers are archived under
 `artifacts/security/npm-logs/`; paths printed by npm refer to the container and
 are not paths on the Jenkins agent.
+
+The Trivy source scan skips generated `artifacts` and `frontend/coverage`
+directories. Vitest creates and removes temporary coverage files during the
+parallel frontend stage; scanning those files can otherwise fail with a
+`stat frontend/coverage/.tmp/coverage-*.json: no such file or directory` error.
+Frontend source and dependency lockfiles remain included in the scan.
+
+Frontend Vitest runs are capped at two workers with a 15-second per-test timeout
+in `frontend/vite.config.ts`. This gives DOM interaction tests headroom while
+other CI branches share the agent; all assertions and 80% coverage gates apply.
+Testing Library's independent async-query deadline is five seconds, configured
+in `frontend/src/test/setup.ts`, so chained fetch/render effects can settle under
+the same shared-agent load.
 
 Runtime k6 and ZAP containers use host networking on the Linux agent and map
 `battlefield.localhost` to `127.0.0.1`, matching kind's loopback-only gateway
@@ -548,8 +583,9 @@ For `main`, the pipeline performs:
 1. Clean checkout, Go lint, backend/frontend coverage, source security, and deterministic AI evaluation.
 2. SonarQube analysis and quality-gate enforcement.
 3. Deployment-script checks and component classification against the previous
-   successful commit. Documentation-only changes select no deployment; an unknown
-   path or unavailable baseline selects all components.
+   successful commit. Documentation-only, application-test-only, and known CI-test-wrapper
+   changes select no deployment; an unknown path or unavailable baseline selects
+   all components. CI quality gates still run for these changes.
 4. Publication of changed images to GHCR, scanning of the published images,
    then attestation, signing, and verification.
 5. Production rollout with the dedicated kubeconfig, recorded previous backend

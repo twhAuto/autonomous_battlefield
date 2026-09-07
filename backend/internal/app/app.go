@@ -1,3 +1,6 @@
+// Composes API repositories, services, routes, and authentication middleware; process
+// startup remains in cmd/server.
+
 package app
 
 import (
@@ -12,6 +15,7 @@ import (
 	factionapi "github.com/twh09/autonomous_battlefield/backend/internal/faction/api"
 	factionrepo "github.com/twh09/autonomous_battlefield/backend/internal/faction/repo"
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
+	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
@@ -32,6 +36,14 @@ func NewAPIWithAuthentication(db postgres.DBTX, catalog *catalog.Catalog, maxTic
 }
 
 func NewAPIWithResultCache(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, registries ...*ai.ProfileRegistry) *App {
+	return NewAPIWithGeneration(db, catalog, maxTicks, authentication, cache, generation.DefaultConfig(), registries...)
+}
+func NewAPIWithGeneration(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, generationConfig generation.Config, registries ...*ai.ProfileRegistry) *App {
+	var profiles *ai.ProfileRegistry
+	if len(registries) > 0 {
+		profiles = registries[0]
+	}
+	generationHandler := &generation.Handler{Repository: &generation.Postgres{DB: db}, Config: generationConfig, Profiles: profiles}
 	factionRepository := factionrepo.NewPostgres(db)
 	factionService := factionservice.NewService(factionRepository, catalog)
 	battleService := battleservice.NewServiceWithResultCache(battlerepo.NewPostgres(db), factionRepository, catalog, maxTicks, cache, registries...)
@@ -43,10 +55,11 @@ func NewAPIWithResultCache(db postgres.DBTX, catalog *catalog.Catalog, maxTicks 
 		return authn.RequireAuthentication(authentication.Enabled, authenticationManager, next)
 	}
 	router := httpapi.NewRouterWithMiddleware(
-		[]httpapi.Middleware{func(next http.Handler) http.Handler { return telemetry.HTTPHandler("battlefield-api.http", next) }, authenticationMiddleware},
-		authn.NewRoutes(authenticationManager), factionHandler, battleHandler,
+		[]httpapi.Middleware{authenticationMiddleware},
+		authn.NewRoutes(authenticationManager), factionHandler, battleHandler, generationHandler,
 	)
-	return &App{httpHandler: router}
+	// Tracing wraps access logging so completion logs share the request span.
+	return &App{httpHandler: telemetry.HTTPHandler("battlefield-api.http", router)}
 }
 
 func (a *App) HTTPHandler() http.Handler {

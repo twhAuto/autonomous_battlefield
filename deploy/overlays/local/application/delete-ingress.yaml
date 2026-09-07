@@ -1,3 +1,6 @@
+# Kustomize deletion patch removing the base ingress because local traffic uses the Envoy
+# Gateway routes.
+
 $patch: delete
 apiVersion: networking.k8s.io/v1
 kind: Ingress

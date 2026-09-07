@@ -1,3 +1,6 @@
+# Configures Tempo's OTLP receiver, trace storage, and retention for the local
+# observability stack.
+
 server:
   http_listen_port: 3200
 distributor:

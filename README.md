@@ -7,7 +7,25 @@ version-controlled configuration templates live in [`deploy/environments/`](depl
 
 Autonomous Battlefield is a Go backend for an auto-battler and expansion game. The long-term product will let human players and AI agents control factions that gather resources, expand territory, and fight on a continuously running battlefield.
 
-The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, point-buy faction blueprints, autonomous economies, fog-of-war views, production-window decisions, provider-neutral model controllers over MCP, an optional single-admin login, validated configuration, health endpoints, and graceful shutdown. Player commands, multi-user authorization, and seeded map generation remain planned work.
+The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, editable faction doctrines and gold-funded opening armies, autonomous economies, fog-of-war views, production-window decisions, provider-neutral model controllers over MCP, an optional single-admin login, validated configuration, health endpoints, and graceful shutdown. Player commands, multi-user authorization, and seeded map generation remain planned work. The optional `frontier-siege-v2` scenario adds Catapults, Battering Rams, Pikemen, Herbalists, defense/watch towers, and forward Barracks on a 25×17 map. See [Frontier Siege](docs/design/frontier-siege.md) for the roster, construction limits, and play instructions.
+
+The **Battle history** menu opens `/battles`: browse every run, filter by status
+(including paused battles), page through older engagements, and manually refresh
+the newest entries. Open a battle to inspect its existing map, results, events,
+and AI decisions. Saved participant names survive faction edits and deletion.
+
+The battle inspector combines a **System** event stream and player comparison
+with an **Inspect** dropdown for selecting System or a player. Each player has **Overview**, **Decisions**, **Units**,
+and **Faction** sections, with current gold, living units, and castle health
+always visible. Decisions can load the saved observation used by that AI,
+including historical resources, visible forces, available choices, and memory.
+Faction background and doctrine come from the battle snapshot. Progress and
+controls remain in a compact toolbar above the map. The inspector accommodates
+additional players; creating and simulating battles still requires two factions.
+Unit and building markers use distinct tactical icons, with a collapsible icon
+legend. The map, roster, events, and recruitment sources display readable names
+such as **Iron Legion · Ranger #12**; full IDs remain available in tooltips and
+raw inspection views.
 
 ## Documentation
 
@@ -170,8 +188,11 @@ authentication. Stop it with:
 docker compose -f backend/compose.yaml stop dbhub
 ```
 
-For request correlation, structured logs, health behavior, metrics, and traces,
-see [observability](docs/operations/observability.md).
+Backend logs provide readable `msg` summaries, stable `event` fields, battle
+progress and decision-wait updates, and trace correlation. `LOG_LEVEL` defaults
+to INFO; DEBUG enables per-tick diagnostics. For compact Kibana views, request
+correlation, health behavior, metrics, and traces, see
+[observability](docs/operations/observability.md).
 
 ## Run in local Kubernetes
 
@@ -186,6 +207,9 @@ Open `http://battlefield.localhost:8888`. This command builds working-tree chang
 applies database/configuration, migrations, application and gateway resources,
 and runs application smoke checks. Observability is optional; the environment
 guide includes the full-stack option and restart/recovery procedure.
+
+For a development backend on another port, set `DEV_API_PROXY_TARGET` in
+`frontend/.env.local`; see [frontend setup](frontend/README.md#run-locally).
 
 Jenkins `main` delivery publishes, scans, signs, and verifies GHCR images before
 production deployment by digest. See [Jenkins](docs/operations/jenkins.md) for
@@ -214,7 +238,7 @@ coverage.
 ## API
 
 See the [HTTP API reference](docs/reference/api.md) for authentication, faction
-blueprints, battle creation and controls, results, views, and event pagination.
+profiles, battle creation and controls, results, views, and event pagination.
 
 ## Configuration
 
@@ -236,3 +260,14 @@ See [AI comparisons](docs/operations/ai-comparisons.md) for the free scripted
 comparison command, live-provider opt-ins, memory and knowledge ablations,
 explicit recruitment orders, and report limits. Unit rosters and optional
 knowledge cards are authored in ruleset YAML.
+
+Reusable content libraries and per-scenario restrictions are documented in the
+[content authoring guide](docs/operations/content-library.md).
+
+Factions support optional backgrounds and editable AI-generated drafts. Backgrounds
+and doctrines are snapshotted for each battle, and agents act as their faction’s
+commanding voice. The writer uses an operator-configured API or local CLI profile
+(default `codex-subscription-local`), with 10 requests per account per UTC day and
+a 30-second cooldown. Manual editing remains available when generation is off.
+See [generation configuration and rollout](docs/operations/deployment.md#faction-background-generation-rollout)
+and the [generation API](docs/reference/api.md#faction-background-generation).

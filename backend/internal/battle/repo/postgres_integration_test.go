@@ -1,3 +1,6 @@
+// Exercises the battle lifecycle, expired lease recovery, stale-worker rejection, and
+// exhausted attempts against PostgreSQL.
+
 package repo
 
 import (

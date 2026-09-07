@@ -1,3 +1,7 @@
+# Default backend process settings: listeners, database access, battle timing, AI
+# profiles, and background-generation limits. Secrets are read through named environment
+# variables.
+
 http:
   address: ":8080"
   readHeaderTimeout: 5s
@@ -34,6 +38,13 @@ engine:
     maxBytes: 16384
   workerIdEnvironmentVariable: ENGINE_WORKER_ID
 ai:
+  backgroundGeneration:
+    enabled: true
+    profileId: codex-subscription-local
+    dailyAllowance: 10
+    cooldown: 30s
+    queueTimeout: 5m
+    executionTimeout: 2m
   environment: local
   agentHealthAddress: ":8083"
   mcpAddress: ":8084"

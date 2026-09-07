@@ -1,3 +1,6 @@
+# Provides a stable in-cluster endpoint for HTTP API pods selected by
+# application/component labels.
+
 apiVersion: v1
 kind: Service
 metadata:

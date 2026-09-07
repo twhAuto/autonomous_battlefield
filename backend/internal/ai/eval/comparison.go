@@ -1,3 +1,6 @@
+// Compares runner variants against the same frozen observations using isolated submissions
+// and bounded repetitions.
+
 package eval
 
 import (
@@ -127,7 +130,7 @@ func comparisonObservations(cases []Case, limits ai.KnowledgeLimits) ([]ai.Decis
 		var envelope struct {
 			Context ai.DecisionContext `json:"context"`
 		}
-		if len(c.ContextJSON) > 64<<10 || json.Unmarshal([]byte(c.ContextJSON), &envelope) != nil || envelope.Context.RequestID != c.RequestID || envelope.Context.TargetTick == 0 || envelope.Context.ExpectedVersion != 1 || len(envelope.Context.Legal.ActionKinds) == 0 {
+		if len(c.ContextJSON) > 64<<10 || json.Unmarshal([]byte(c.ContextJSON), &envelope) != nil || envelope.Context.RequestID != c.RequestID || (envelope.Context.TargetTick == 0 && !envelope.Context.Opening) || envelope.Context.ExpectedVersion != 1 || len(envelope.Context.Legal.ActionKinds) == 0 {
 			return nil, fmt.Errorf("case %s needs a complete decision context with version 1", c.ID)
 		}
 		if c.KnowledgeRuleset != nil {
@@ -195,7 +198,7 @@ func (r Runner) compareSample(ctx context.Context, c Case, observation ai.Decisi
 	defer server.Close()
 	token, _ := ai.MintCapability(secret, c.RequestID, time.Now().Add(options.Timeout+time.Second))
 	started := time.Now()
-	result, runErr := variant.NewRunner().Run(ctx, ai.DecisionSession{RequestID: c.RequestID, MCPURL: "http://" + listener.Addr().String(), CapabilityToken: token, Profile: ai.ModelProfile{MaxSteps: options.MaxSteps, MaxOutputTokens: options.MaxTokens}})
+	result, runErr := variant.NewRunner().Run(ctx, ai.DecisionSession{Doctrine: observation.Doctrine, FactionName: observation.FactionName, Background: observation.Background, RequestID: c.RequestID, MCPURL: "http://" + listener.Addr().String(), CapabilityToken: token, Profile: ai.ModelProfile{MaxSteps: options.MaxSteps, MaxOutputTokens: options.MaxTokens}})
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
 	accepted := repository.record.Status == "accepted"

@@ -1,3 +1,5 @@
+// Main menu linking to faction creation, the faction registry, and battle staging.
+
 import { Link } from 'react-router-dom'
 
 export function HomePage() {
@@ -42,6 +44,12 @@ export function HomePage() {
               <h3>Stage a battle</h3>
               <p>Select two factions, queue an engagement, and follow its live event stream.</p>
             </div>
+            <span className="menu-card__arrow" aria-hidden="true">→</span>
+          </Link>
+          <Link className="menu-card" to="/battles">
+            <span className="menu-card__number">04</span>
+            <div><span className="menu-card__eyebrow">ENGAGEMENT ARCHIVE</span><h3>Battle history</h3>
+              <p>Browse every engagement, review results, and return to active battles.</p></div>
             <span className="menu-card__arrow" aria-hidden="true">→</span>
           </Link>
         </div>

@@ -163,7 +163,8 @@ the observability stage is considered complete.
 
 For model-controller troubleshooting, open the provisioned **Battlefield AI
 Decisions** saved search in Discover. It filters to decision lifecycle events
-and shows the correlation fields needed to follow one decision across the
+and defaults to `@timestamp` and readable `msg` columns. Expand a row to see
+the correlation fields needed to follow one decision across the
 engine, MCP service, and in-cluster agent: `battle_id`, `request_id`,
 `faction_id`, `target_tick`, `profile_id`, `decision_status`,
 `error_category`, `fallback_source`, and `duration_ms`. The collector includes
@@ -173,10 +174,51 @@ terminal; its MCP claims, tool calls, submissions, failures, and final engine
 resolution are recorded by Kubernetes services and therefore appear in
 Kibana.
 
+Application logs separate the stable machine-readable `event` identifier from
+`msg`, a readable summary that includes service and relevant operational
+context. Keep Discover on `@timestamp` and `msg` for a compact timeline; fields
+such as `battle_id`, `request_id`, `error`, and timing values remain structured
+for filtering and expanded inspection. For example:
+
+```text
+[engine] Battle simulation progressing; battle: castle-42; worker: engine-1; attempt: 1; requested ticks: 600; tick: 120; elapsed (ms): 94000
+[engine] Waiting for faction decisions; battle: castle-42; attempt: 1; target tick: 130; pending factions: 2; elapsed (ms): 0; remaining (ms): 119999
+```
+
+The engine emits the first progress update after a successful running tick,
+then at most once every 15 seconds as ticks finish. Updates contain the current
+and requested ticks plus elapsed wall time. A pending decision window emits an
+immediate waiting update and repeats at most every 15 seconds with the pending
+faction count and remaining timeout. Resolved windows produce no waiting
+message. Pauses and resumes retain their own lifecycle events; elapsed battle
+time includes pauses and decision waits. Completion includes ticks run, elapsed
+time, winner (when present), and reason. Full combat events remain in
+`battle_events`.
+
+`LOG_LEVEL` controls backend process logging (`DEBUG`, `INFO`, `WARN`, `ERROR`;
+case-insensitive). It defaults to INFO, including for invalid values. DEBUG adds
+`battle_tick_completed` after each successful running-tick save and enables
+health-request logs. Set it only while diagnosing detailed execution, then
+restore INFO. Environment changes take effect when the process restarts.
+
+Logs emitted with an active OpenTelemetry span include root-level `trace_id`
+and `span_id`. API access logs share the inbound request span, including
+rejected requests; engine and agent logs use their existing consumer spans.
+Startup logs without a span omit these fields. Copy `trace_id` into Grafana
+Explore's Tempo trace-ID search to inspect a retained trace. Sampling can mean
+a logged trace ID has no stored trace. HTTP logs include `duration_ms` while
+retaining the older `duration` field for compatibility.
+
+Older indexed records retain event identifiers in `msg`; the provisioned AI
+search matches both formats. New automation should filter on `event`. These
+changes affect newly emitted logs after rebuilding and deploying the backend;
+rerun the observability deployment to update the provisioned saved search.
+Your other saved Discover views are unaffected.
+
 Useful KQL filters include:
 
 ```text
-msg: decision_*
+event: decision_* OR msg: decision_*
 decision_status: fallback
 error_category: timeout
 battle_id: "<battle UUID>"

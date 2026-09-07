@@ -1,3 +1,6 @@
+// Checks request correlation IDs, response logging, and bounded route labels for HTTP
+// metrics.
+
 package httpapi
 
 import (

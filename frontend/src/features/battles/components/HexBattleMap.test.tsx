@@ -1,3 +1,5 @@
+// Checks hex-map terrain, accessible entity details, selection, and map controls.
+
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
@@ -29,11 +31,11 @@ describe('HexBattleMap', () => {
     expect(container.querySelectorAll('.hex-tile--fog')).toHaveLength(2)
     expect(container.querySelectorAll('.unit-direction--movement')).toHaveLength(1)
     expect(container.querySelectorAll('.unit-direction--attack')).toHaveLength(1)
-    expect(screen.getByText(/a:ranger:1 attacked a:castle/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'striker a:striker:dead' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Northwind · Ranger #1 attacked Northwind · Castle/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Northwind · Striker · a:strike' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Visible entity summary' })).not.toBeInTheDocument()
     expect(container.querySelector('.map-toolbar')).toContainElement(screen.getByLabelText('Perspective'))
-    await user.click(screen.getByRole('button', { name: 'ranger a:ranger:1' }))
+    await user.click(screen.getByRole('button', { name: 'Northwind · Ranger #1' }))
     expect(screen.getByText(/HP 20\/30/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Zoom in' }))
     await user.click(screen.getByRole('button', { name: 'Zoom out' }))
@@ -46,7 +48,37 @@ describe('HexBattleMap', () => {
     fireEvent.pointerMove(battlefield, { pointerId: 1, clientX: 20, clientY: 24 })
     fireEvent.pointerUp(battlefield, { pointerId: 1 })
     fireEvent.pointerCancel(battlefield, { pointerId: 1 })
-    fireEvent.keyDown(screen.getByRole('button', { name: 'castle a:castle' }), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Northwind · Castle' }), { key: 'Enter' })
     expect(screen.getByText(/HP 250\/300/)).toBeInTheDocument()
   })
+})
+
+it('renders distinct tactical artwork and readable labels, with separate keyboard selection', async () => {
+  const unitTypes = ['vanguard', 'striker', 'ranger', 'catapult', 'battering_ram', 'pikeman', 'herbalist', 'new_scout']
+  const buildingTypes = ['castle', 'economy', 'defense_tower', 'watchtower', 'barracks'] as const
+  const snapshot = { ...state,
+    units: unitTypes.map((type, index) => ({ ...state.units[0], id: `a:${type}:${index + 1}`, type, movedFrom: undefined, attackTargetPosition: undefined })),
+    buildings: buildingTypes.map((type, index) => ({ ...state.buildings[0], id: type === 'castle' ? 'a:castle' : `a:${type}:${index + 1}`, type })),
+  }
+  const { container, rerender } = render(<HexBattleMap map={map} state={snapshot} visiblePositions={[]} factionNames={new Map([['a', 'Northwind']])} />)
+  const markers = container.querySelectorAll('.map-entity')
+  expect(markers).toHaveLength(13)
+  expect(new Set([...markers].map((marker) => marker.querySelector('.entity-glyph path')?.getAttribute('d'))).size).toBe(13)
+  expect(container.querySelectorAll('.map-entity text')).toHaveLength(0)
+  const scout = screen.getByRole('button', { name: 'Northwind · New Scout #8' })
+  expect(scout).toHaveAttribute('aria-pressed', 'false')
+  expect(scout.querySelector('title')).toHaveTextContent('a:new_scout:8')
+  scout.focus()
+  await userEvent.keyboard(' ')
+  expect(scout).toHaveFocus()
+  expect(scout).toHaveAttribute('aria-pressed', 'true')
+  expect(container.querySelector('.entity-details')).toHaveTextContent('Northwind · New Scout #8')
+  await userEvent.click(screen.getByText('Unit & building icons'))
+  expect(screen.getByText('Battering Ram', { exact: true })).toBeVisible()
+  expect(screen.getByText('Defense Tower', { exact: true })).toBeVisible()
+  expect(screen.getByText('New Scout', { exact: true })).toBeVisible()
+  // Polling reorders living units and changes HP without changing selection/names.
+  rerender(<HexBattleMap map={map} state={{ ...snapshot, units: [...snapshot.units].reverse().map((unit) => ({ ...unit, health: 10 })) }} visiblePositions={[]} factionNames={new Map([['a', 'Northwind']])} />)
+  expect(screen.getByRole('button', { name: 'Northwind · New Scout #8' })).toHaveAttribute('aria-pressed', 'true')
+  expect(container.querySelector('.entity-details')).toHaveTextContent('HP 10/30')
 })

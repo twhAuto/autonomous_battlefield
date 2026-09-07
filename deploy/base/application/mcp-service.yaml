@@ -1,3 +1,5 @@
+# Stable in-cluster endpoint used by agents to reach MCP tools and job-control routes.
+
 apiVersion: v1
 kind: Service
 metadata:

@@ -1,3 +1,6 @@
+# Reference AWS infrastructure for networking, EKS, ECR, PostgreSQL, secrets, IAM, load
+# balancing, and a monthly budget.
+
 locals {
   name = "autonomous-battlefield-${var.environment}"
   tags = {

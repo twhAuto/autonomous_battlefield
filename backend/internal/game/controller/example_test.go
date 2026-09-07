@@ -1,3 +1,6 @@
+// Provides an executable example of configuring a utility controller and applying a
+// scheduled plan.
+
 package controller_test
 
 import (

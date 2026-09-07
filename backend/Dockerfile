@@ -1,3 +1,6 @@
+# Builds the API, engine, MCP, and agent binaries and packages their runtime configuration
+# and authored game content in a non-root image.
+
 FROM golang:1.26.6-alpine AS build
 
 WORKDIR /src
@@ -36,6 +39,7 @@ COPY --from=build --chown=battlefield:battlefield /out/mcp /app/mcp
 COPY --chown=battlefield:battlefield config.yaml /app/config.yaml
 COPY --chown=battlefield:battlefield scenarios /app/scenarios
 COPY --chown=battlefield:battlefield rulesets /app/rulesets
+COPY --chown=battlefield:battlefield content /app/content
 
 USER battlefield
 

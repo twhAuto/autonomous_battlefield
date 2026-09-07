@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Renders and installs the image-verification admission policy for the registered cluster
+# using the configured Cosign public key.
 
 set -Eeuo pipefail
 
@@ -6,9 +8,12 @@ project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${project_dir}/scripts/lib/deployment-environment.sh"
 battlefield_env_preflight
 
-project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck disable=SC1091
 source "${project_dir}/scripts/ci/tool-versions.env"
+source "${project_dir}/scripts/lib/image-metadata.sh"
+published_image_repositories
+policy_backend="$(policy_image_repository "${POLICY_BACKEND_IMAGE_REF:-}" "${published_backend_image}")"
+policy_frontend="$(policy_image_repository "${POLICY_FRONTEND_IMAGE_REF:-}" "${published_frontend_image}")"
 kube_context="${KUBERNETES_CONTEXT:-kind-${KIND_CLUSTER_NAME:-battlefield}}"
 public_key="${COSIGN_PUBLIC_KEY_FILE:?COSIGN_PUBLIC_KEY_FILE is required}"
 docker_config_file="${DOCKER_CONFIG:-${HOME}/.docker}/config.json"
@@ -25,6 +30,16 @@ if [[ ! -s "${docker_config_file}" ]]; then
   echo "An authenticated Docker config is required for Kyverno registry access." >&2
   exit 1
 fi
+
+awk -v key_file="${public_key}" -v backend="${policy_backend}" -v frontend="${policy_frontend}" '
+  /__COSIGN_PUBLIC_KEY__/ {
+    prefix = substr($0, 1, index($0, "__COSIGN_PUBLIC_KEY__") - 1)
+    while ((getline line < key_file) > 0) print prefix line
+    close(key_file)
+    next
+  }
+  { gsub(/__BACKEND_IMAGE_REPOSITORY__/, backend); gsub(/__FRONTEND_IMAGE_REPOSITORY__/, frontend); print }
+' "${template}" >"${policy}"
 
 kubectl --context "${kube_context}" apply \
   --server-side \
@@ -61,15 +76,6 @@ kubectl --context "${kube_context}" create secret generic battlefield-ghcr \
     --field-manager=battlefield-jenkins \
     -f -
 
-awk -v key_file="${public_key}" '
-  /__COSIGN_PUBLIC_KEY__/ {
-    prefix = substr($0, 1, index($0, "__COSIGN_PUBLIC_KEY__") - 1)
-    while ((getline line < key_file) > 0) print prefix line
-    close(key_file)
-    next
-  }
-  { print }
-' "${template}" >"${policy}"
 kubectl --context "${kube_context}" apply -f "${policy}"
 kubectl --context "${kube_context}" wait --for=condition=Ready \
   clusterpolicy/battlefield-verified-images --timeout=120s

@@ -1,3 +1,5 @@
+// Checks agent startup rejects invalid health-listener and MCP addresses.
+
 package main
 
 import (

@@ -1,3 +1,6 @@
+// Checks explicit unit purchases are validated against the decision context before
+// submission.
+
 package ai
 
 import (

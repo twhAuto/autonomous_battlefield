@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copies registry images and their evidence to ECR, then verifies preserved digests,
+# signatures, and attestations at the destination.
+
 set -Eeuo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

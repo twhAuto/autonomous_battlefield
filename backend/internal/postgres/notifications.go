@@ -1,3 +1,6 @@
+// Listens for PostgreSQL notifications on a dedicated pooled connection and forwards
+// payloads to a wakeup callback.
+
 package postgres
 
 import (

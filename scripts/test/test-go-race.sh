@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Runs backend tests with Go's race detector and checks the compiler prerequisites needed
+# for instrumentation.
 
 set -Eeuo pipefail
 

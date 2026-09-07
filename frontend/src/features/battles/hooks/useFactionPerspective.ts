@@ -1,6 +1,10 @@
+// Refreshes the selected faction's filtered view as ticks change; spectator rendering uses
+// the battle state supplied by the page.
+
 import { useEffect, useState } from 'react'
 import { BattleRun, BattleView, getBattleView } from '../api/battles'
 
+/** Returns the fetched faction view, or null for spectator mode, unavailable data, or a failed request. */
 export function useFactionPerspective(id: string, battle: BattleRun | null, perspective: string) {
   const [view, setView] = useState<BattleView | null>(null)
   useEffect(() => {

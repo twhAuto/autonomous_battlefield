@@ -1,3 +1,6 @@
+// Manages readiness, pause waits, lease heartbeats, and cancellation handoff so
+// interrupted battle work can be requeued.
+
 package worker
 
 import (

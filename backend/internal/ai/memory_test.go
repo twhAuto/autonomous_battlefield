@@ -1,3 +1,6 @@
+// Checks faction-memory scope, chronological ordering, size bounds, and contribution to
+// observation hashes.
+
 package ai
 
 import (

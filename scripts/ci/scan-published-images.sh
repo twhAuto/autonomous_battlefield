@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Scans published digest references and creates vulnerability/SBOM artifacts consumed by
+# the attestation workflow.
 
 set -Eeuo pipefail
 

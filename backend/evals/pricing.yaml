@@ -1,3 +1,6 @@
+# Versioned model prices used to estimate evaluation cost and reject live models without
+# an operator-reviewed price entry.
+
 schemaVersion: battlefield.ai-pricing.v1
 version: 2026-09-03
 models:

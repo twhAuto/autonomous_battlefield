@@ -1,3 +1,5 @@
+// Checks authored unit additions reach the loaded ruleset and knowledge catalog.
+
 package catalog
 
 import (
@@ -12,14 +14,12 @@ import (
 
 func TestAdditionalUnitFromYAML(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
-	data, err := os.ReadFile(filepath.Join(root, "rulesets", "castle-siege-v1.yaml"))
+	seed, err := LoadCatalog(filepath.Join(root, "scenarios"), filepath.Join(root, "rulesets"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var rules game.Ruleset
-	if err = yaml.Unmarshal(data, &rules); err != nil {
-		t.Fatal(err)
-	}
+	rules, _ := seed.Ruleset("castle-siege-v1")
+	var data []byte
 	unit := rules.Units[0]
 	unit.ID = "sentinel"
 	unit.Cost = 10
@@ -31,6 +31,19 @@ func TestAdditionalUnitFromYAML(t *testing.T) {
 	data, _ = yaml.Marshal(rules)
 	if err = os.WriteFile(filepath.Join(dir, "rules.yaml"), data, 0600); err != nil {
 		t.Fatal(err)
+	}
+	// Preserve the other authored rulesets when overriding only the v1 fixture.
+	for _, other := range seed.Rulesets() {
+		if other.ID == rules.ID {
+			continue
+		}
+		bytes, marshalErr := yaml.Marshal(other)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		if err = os.WriteFile(filepath.Join(dir, other.ID+".yaml"), bytes, 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	catalog, err := LoadCatalog(filepath.Join(root, "scenarios"), dir)
 	if err != nil {
@@ -52,7 +65,7 @@ func TestAdditionalUnitFromYAML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for range 9 {
+	for range 10 {
 		if _, err = match.Advance(); err != nil {
 			t.Fatal(err)
 		}

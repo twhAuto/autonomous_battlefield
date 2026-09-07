@@ -1,3 +1,6 @@
+// Validates rules knowledge against the ruleset and copies knowledge cards for isolated
+// snapshots.
+
 package game
 
 import (

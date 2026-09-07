@@ -1,3 +1,6 @@
+// Checks notification-listener configuration rejects missing dependencies and invalid
+// channels.
+
 package postgres
 
 import (

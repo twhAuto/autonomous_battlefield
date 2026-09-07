@@ -1,3 +1,6 @@
+// Builds comparison runners from YAML variants and applies the command's live-provider
+// limits before evaluating the corpus.
+
 package main
 
 import (
