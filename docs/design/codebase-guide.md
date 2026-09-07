@@ -537,8 +537,9 @@ For a focused change, start with the affected package tests. Before completing i
 
 Frontend Vitest runs use at most two workers, configured in
 `frontend/vite.config.ts`, to limit CPU contention with Jenkins's parallel Go,
-fuzz, and security checks. The five-second test timeout and 80% coverage gates
-remain in effect.
+fuzz, and security checks. Each test has a 15-second timeout to accommodate
+multi-step DOM interactions under shared-agent load. The 80% coverage gates
+remain in effect; the timeout is a hang guard, not a performance benchmark.
 
 Battle-history pagination, browser-back navigation, and refresh-to-newest behavior
 have separate component tests so each interaction sequence has its own timeout

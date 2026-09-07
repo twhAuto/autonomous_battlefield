@@ -179,6 +179,10 @@ parallel frontend stage; scanning those files can otherwise fail with a
 `stat frontend/coverage/.tmp/coverage-*.json: no such file or directory` error.
 Frontend source and dependency lockfiles remain included in the scan.
 
+Frontend Vitest runs are capped at two workers with a 15-second per-test timeout
+in `frontend/vite.config.ts`. This gives DOM interaction tests headroom while
+other CI branches share the agent; all assertions and 80% coverage gates apply.
+
 Runtime k6 and ZAP containers use host networking on the Linux agent and map
 `battlefield.localhost` to `127.0.0.1`, matching kind's loopback-only gateway
 publication. The Docker daemon must run on the same host as the agent. Both

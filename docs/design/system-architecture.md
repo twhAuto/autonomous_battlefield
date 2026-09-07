@@ -629,6 +629,8 @@ scanner versions are centralized in `scripts/ci/tool-versions.env`.
 Its Trivy filesystem scan excludes generated `artifacts` and `frontend/coverage`
 directories so parallel coverage cleanup cannot race with source analysis.
 Frontend source and dependency lockfiles remain in scan scope.
+Frontend tests use two Vitest workers and a 15-second per-test timeout to allow
+multi-step DOM interactions to finish while the agent runs parallel CI checks.
 
 W3C trace context is persisted on `battle_runs` and `battle_decisions`. API inbound spans flow through PostgreSQL; engine and agent workers extract that durable context and create consumer spans before simulation, MCP, and provider work. Outbound HTTP clients and selected database operations are instrumented. The local OpenTelemetry Collector exports to Tempo, which Grafana provisions as a data source. Span attributes deliberately exclude prompts, credentials, capabilities, full observations, and raw provider responses.
 

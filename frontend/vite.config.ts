@@ -32,6 +32,8 @@ export default defineConfig(({ mode }) => {
       // Jenkins shares its agent with parallel Go, fuzz, and security checks.
       // Bound DOM test concurrency so workers do not compete for every CPU.
       maxWorkers: 2,
+      // Multi-step DOM interactions need headroom on the shared CI agent.
+      testTimeout: 15_000,
       coverage: {
         provider: 'v8',
         reporter: ['text', 'lcov', 'json-summary'],
