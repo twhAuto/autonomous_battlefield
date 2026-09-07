@@ -117,7 +117,8 @@ spec:
         - name: config
           emptyDir: {}
         - name: data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: battlefield-elasticsearch-data
         - name: tmp
           emptyDir: {}
         - name: logs

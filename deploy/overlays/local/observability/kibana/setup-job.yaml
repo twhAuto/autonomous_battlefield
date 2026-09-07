@@ -11,6 +11,7 @@ metadata:
     app.kubernetes.io/part-of: autonomous-battlefield
 spec:
   backoffLimit: 4
+  activeDeadlineSeconds: 300
   ttlSecondsAfterFinished: 300
   template:
     metadata:
@@ -19,7 +20,7 @@ spec:
         app.kubernetes.io/component: logging
         app.kubernetes.io/part-of: autonomous-battlefield
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
@@ -36,22 +37,23 @@ spec:
             - -ec
           args:
             - |
-              until curl --fail --silent http://battlefield-kibana:5601/api/status >/dev/null; do
+              echo "Waiting for Kibana API..."
+              until curl --connect-timeout 5 --max-time 10 --fail --silent http://battlefield-kibana:5601/api/status >/dev/null; do
                 sleep 2
               done
-              curl --fail --silent --show-error \
+              curl --connect-timeout 5 --max-time 30 --fail-with-body --silent --show-error \
                 --request POST \
                 --header 'Content-Type: application/json' \
                 --header 'kbn-xsrf: battlefield-kibana-setup' \
                 --data '{"data_view":{"id":"battlefield-logs","name":"Autonomous Battlefield Logs","title":"battlefield-app-*","timeFieldName":"@timestamp","allowNoIndex":true},"override":true}' \
                 http://battlefield-kibana:5601/api/data_views/data_view
-              curl --fail --silent --show-error \
+              curl --connect-timeout 5 --max-time 30 --fail-with-body --silent --show-error \
                 --request POST \
                 --header 'Content-Type: application/json' \
                 --header 'kbn-xsrf: battlefield-kibana-setup' \
                 --data '{"data_view_id":"battlefield-logs","force":true}' \
                 http://battlefield-kibana:5601/api/data_views/default
-              curl --fail --silent --show-error \
+              curl --connect-timeout 5 --max-time 30 --fail-with-body --silent --show-error \
                 --request POST \
                 --header 'Content-Type: application/json' \
                 --header 'kbn-xsrf: battlefield-kibana-setup' \

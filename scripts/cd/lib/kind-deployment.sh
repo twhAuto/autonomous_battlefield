@@ -576,6 +576,33 @@ kind_deploy_report_workload_failure() {
     --tail=100 >&2 || true
 }
 
+# Watch both terminal conditions so a failed Job does not consume the full wait.
+kind_deploy_wait_kibana_setup() {
+  local deadline=$((SECONDS + ${rollout_timeout%s})) conditions
+  while ((SECONDS < deadline)); do
+    if ! conditions="$(kind_deploy_kube get job battlefield-kibana-setup \
+      --namespace "${namespace}" --request-timeout=10s \
+      -o 'jsonpath={range .status.conditions[*]}{.type}={.status}{"\n"}{end}')"; then
+      break
+    fi
+    if [[ "${conditions}" == *'Failed=True'* ]]; then
+      echo "Kibana setup job failed." >&2
+      break
+    fi
+    if [[ "${conditions}" == *'Complete=True'* ]]; then
+      echo "Kibana setup job completed."
+      return 0
+    fi
+    sleep 2
+  done
+  echo "Kibana setup did not complete; collecting diagnostics." >&2
+  kind_deploy_kube describe job battlefield-kibana-setup --namespace "${namespace}" --request-timeout=10s >&2 || true
+  kind_deploy_kube get pods --namespace "${namespace}" -l job-name=battlefield-kibana-setup --request-timeout=10s >&2 || true
+  kind_deploy_kube logs --namespace "${namespace}" -l job-name=battlefield-kibana-setup \
+    --all-containers=true --prefix=true --tail=100 --request-timeout=10s >&2 || true
+  return 1
+}
+
 kind_deploy_observability() {
   local deployment index
   local rollout_failed=0
@@ -588,7 +615,6 @@ kind_deploy_observability() {
     battlefield-otel-collector
     battlefield-tempo
     battlefield-elasticsearch
-    battlefield-kibana
   )
 
   echo "Deploying local observability stack..."
@@ -630,13 +656,19 @@ kind_deploy_observability() {
     return 1
   fi
 
-  if ! kind_deploy_kube wait --for=condition=complete \
-    job/battlefield-kibana-setup \
-    --namespace "${namespace}" \
-    --timeout="${rollout_timeout}"; then
-    kind_deploy_kube logs job/battlefield-kibana-setup --namespace "${namespace}" || true
+  # Reinitialize Kibana against the now-ready Elasticsearch instance. This also
+  # recovers the first transition from disposable storage to the persistent claim.
+  kind_deploy_kube rollout restart deployment/battlefield-kibana --namespace "${namespace}" || return
+  if ! kind_deploy_kube rollout status deployment/battlefield-kibana \
+    --namespace "${namespace}" --timeout="${observability_rollout_timeout}"; then
+    kind_deploy_report_workload_failure deployment/battlefield-kibana "${namespace}"
     return 1
   fi
+  echo "Creating Kibana saved objects..."
+  kind_deploy_kube apply --namespace "${namespace}" \
+    -f "${runtime_dir}/deploy/overlays/local/observability/kibana/setup-job.yaml" || return
+  kind_deploy_wait_kibana_setup
+
 }
 
 kind_deploy_gateway() {
