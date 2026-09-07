@@ -540,6 +540,8 @@ Frontend Vitest runs use at most two workers, configured in
 fuzz, and security checks. Each test has a 15-second timeout to accommodate
 multi-step DOM interactions under shared-agent load. The 80% coverage gates
 remain in effect; the timeout is a hang guard, not a performance benchmark.
+Testing Library async queries and `waitFor` use a five-second deadline configured
+in `frontend/src/test/setup.ts`, within Vitest's separate per-test budget.
 
 Battle-history pagination, browser-back navigation, and refresh-to-newest behavior
 have separate component tests so each interaction sequence has its own timeout

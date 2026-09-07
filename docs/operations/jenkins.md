@@ -182,6 +182,9 @@ Frontend source and dependency lockfiles remain included in the scan.
 Frontend Vitest runs are capped at two workers with a 15-second per-test timeout
 in `frontend/vite.config.ts`. This gives DOM interaction tests headroom while
 other CI branches share the agent; all assertions and 80% coverage gates apply.
+Testing Library's independent async-query deadline is five seconds, configured
+in `frontend/src/test/setup.ts`, so chained fetch/render effects can settle under
+the same shared-agent load.
 
 Runtime k6 and ZAP containers use host networking on the Linux agent and map
 `battlefield.localhost` to `127.0.0.1`, matching kind's loopback-only gateway
