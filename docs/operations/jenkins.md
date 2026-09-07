@@ -661,3 +661,14 @@ not a vulnerability finding. If both registries fail, inspect agent/container
 connectivity to those registries and rerun after recovery. The launcher tests stub
 networked scanners to verify registry fallback and failure propagation; they do
 not establish that the remote registries are reachable.
+
+### k6 HTTPS trust
+
+The k6 launcher mounts the Linux agent's `/etc/ssl/certs/ca-certificates.crt`
+read-only into the container and sets `SSL_CERT_FILE` to that mount. This makes
+the agent's installed private CAs available to k6 while retaining TLS verification.
+`K6_CA_BUNDLE` can select another readable, nonempty PEM CA bundle; missing or
+empty bundles fail before starting k6. The Docker daemon must share the agent's
+filesystem, as required for the existing source and report mounts. Browser trust
+settings do not configure k6. Install the Caddy root CA into the agent's system
+trust store before running production performance verification.

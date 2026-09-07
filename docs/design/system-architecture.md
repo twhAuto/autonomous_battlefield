@@ -873,3 +873,14 @@ After a manual recovery, recreate only the setup job with
 `kubectl -n battlefield delete job battlefield-kibana-setup --ignore-not-found`
 and `kubectl -n battlefield apply -f deploy/overlays/local/observability/kibana/setup-job.yaml`,
 then confirm completion before running production smoke verification.
+
+### k6 HTTPS trust
+
+The k6 launcher mounts the Linux agent's `/etc/ssl/certs/ca-certificates.crt`
+read-only into the container and sets `SSL_CERT_FILE` to that mount. This makes
+the agent's installed private CAs available to k6 while retaining TLS verification.
+`K6_CA_BUNDLE` can select another readable, nonempty PEM CA bundle; missing or
+empty bundles fail before starting k6. The Docker daemon must share the agent's
+filesystem, as required for the existing source and report mounts. Browser trust
+settings do not configure k6. Install the Caddy root CA into the agent's system
+trust store before running production performance verification.

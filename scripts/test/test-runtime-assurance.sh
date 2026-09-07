@@ -46,6 +46,9 @@ if ('TARGET_URL' in env) {
   assert.ok(args.includes('--summary-export=/reports/k6-summary.json'));
   assert.equal(args.at(-1), '/work/' + expected('EXPECTED_SCENARIO', 'tests/performance/k6-smoke.js'));
   reportDir = mounts.find((m) => m.endsWith(':/reports')).slice(0, -':/reports'.length);
+  assert.equal(env.SSL_CERT_FILE, '/certs/ca-bundle.crt');
+  assert.ok(mounts.includes(`${fs.realpathSync(expected('K6_CA_BUNDLE', '/etc/ssl/certs/ca-certificates.crt'))}:/certs/ca-bundle.crt:ro`));
+  assert.ok(!args.includes('--insecure-skip-tls-verify'));
   reports = ['k6-summary.json'];
 } else {
   assert.equal(value('-t'), expected('ZAP_TARGET_URL', 'http://battlefield.localhost:8888'));
@@ -64,7 +67,17 @@ chmod +x "${test_dir}/bin/docker"
 export PATH="${test_dir}/bin:${PATH}"
 unset TARGET_URL ZAP_TARGET_URL K6_VUS K6_DURATION ADMIN_USERNAME ADMIN_PASSWORD ZAP_SPIDER_MINUTES SCANNER_EXIT EXPECTED_SCENARIO
 
+unset K6_CA_BUNDLE
 bash "${fixture}/scripts/perf/run-k6.sh"
+printf 'test CA bundle\n' >"${test_dir}/custom ca.crt"
+K6_CA_BUNDLE="${test_dir}/custom ca.crt" bash "${fixture}/scripts/perf/run-k6.sh"
+for bundle in "${test_dir}/missing.crt" "${test_dir}/empty.crt"; do
+  touch "${test_dir}/empty.crt"
+  status=0
+  K6_CA_BUNDLE="${bundle}" bash "${fixture}/scripts/perf/run-k6.sh" 2>"${test_dir}/error" || status=$?
+  [[ "${status}" == 1 ]]
+  grep -q 'k6 CA bundle must be a readable, nonempty file' "${test_dir}/error"
+done
 bash "${fixture}/scripts/security/zap-baseline.sh"
 [[ -s "${fixture}/artifacts/performance/k6-summary.json" ]]
 for report in json md html; do
