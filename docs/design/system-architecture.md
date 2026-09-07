@@ -690,6 +690,8 @@ The UI polls the API, the engine polls battle rows, and agents long-poll MCP. Po
 
 - Authentication is limited to one configured administrator; player accounts, credential recovery, per-faction ownership, authorization, and shared brute-force protection remain future work.
 - Public battle updates use polling rather than push delivery.
+  A terminal battle-control response cancels status polling and invalidates
+  in-flight responses so stale running status cannot overwrite an operator stop.
 - Load and failover behavior needs testing before increasing engine, MCP, or agent replicas.
 - Agent concurrency is fixed at two rather than configured in YAML.
 - API adapters build text transcripts instead of preserving provider-native structured tool history.

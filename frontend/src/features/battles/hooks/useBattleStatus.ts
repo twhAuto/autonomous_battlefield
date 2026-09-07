@@ -1,7 +1,7 @@
 // Polls battle status until it settles, with bounded exponential reconnects, manual retry,
 // and updates from battle controls.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { BattleApiError, BattleRun, getBattle } from '../api/battles'
 import { type ConnectionState } from '../types'
 
@@ -11,6 +11,7 @@ export function useBattleStatus(id: string) {
   const [connection, setConnection] = useState<ConnectionState>('connecting')
   const [connectionMessage, setConnectionMessage] = useState('')
   const [retryVersion, setRetryVersion] = useState(0)
+  const stopPolling = useRef<() => void>(() => {})
 
   useEffect(() => {
     const controller = new AbortController()
@@ -49,15 +50,18 @@ export function useBattleStatus(id: string) {
     setConnection('connecting')
     setConnectionMessage('')
     void poll()
-    return () => {
+    const cancel = () => {
       stopped = true
       controller.abort()
       if (timer) clearTimeout(timer)
     }
+    stopPolling.current = cancel
+    return cancel
   }, [id, retryVersion])
 
   const retryConnection = useCallback(() => setRetryVersion((value) => value + 1), [])
   const applyBattle = useCallback((current: BattleRun) => {
+    if (current.status !== 'queued' && current.status !== 'running') stopPolling.current()
     setBattle(current)
     setConnection(current.status === 'queued' || current.status === 'running' ? 'live' : 'settled')
     setConnectionMessage('')

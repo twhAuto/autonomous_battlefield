@@ -428,6 +428,10 @@ Feature-specific API clients live in `src/features/<feature>/api`; common HTTP t
 
 The battle feature's `hooks/` directory owns status, event, decision-history, and faction-perspective requests. Each hook preserves its own polling cadence, retries, cancellation, and terminal-state handling. `components/AIDecisionPanel.tsx`, `components/EventConsole.tsx`, and `components/BattlePresentation.tsx` own the panels and visual presentation; shared UI state types live in `types.ts`. There is no WebSocket or server-sent-event client.
 
+`useBattleStatus` cancels polling when a control returns a terminal status.
+`useBattleStatus.test.ts` verifies that a late in-flight response cannot overwrite
+an operator stop or schedule further polls.
+
 `BattlePage` owns map perspective and controls. `components/BattleInspector.tsx`
 owns the System/player dropdown, the shared inner tab, and the scoped context cache;
 `InspectorTabs.tsx` implements inner-tab keyboard navigation. `AIDecisionPanel` keeps
