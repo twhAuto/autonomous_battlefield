@@ -100,7 +100,8 @@ if [[ -n "$(git -C "${project_dir}" status --porcelain --untracked-files=normal)
   echo "Warning: building a dirty worktree with the explicit ALLOW_DIRTY override." >&2
 fi
 
-source_url="$(git -C "${project_dir}" config --get remote.origin.url || true)"
+source "${project_dir}/scripts/lib/image-metadata.sh"
+source_url="$(image_source_url "${project_dir}")"
 
 common_labels=(
   --label "org.opencontainers.image.revision=${image_tag}"

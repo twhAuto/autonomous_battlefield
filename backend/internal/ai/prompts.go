@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 )
 
 // All instructions are embedded and versioned together. The digest changes even
@@ -32,11 +34,19 @@ var identityPromptTemplate string
 //go:embed prompts/background-generation.txt
 var backgroundGenerationPrompt string
 
-var GenerationPromptVersion = fmt.Sprintf("faction-background-v1.%x", sha256.Sum256([]byte(backgroundGenerationPrompt)))
+//go:embed prompts/background-decision.txt
+var backgroundDecisionTemplate string
+
+var generationSystemPrompt = fmt.Sprintf(strings.TrimSpace(backgroundGenerationPrompt), faction.MaxBackgroundLength)
+var GenerationPromptVersion = generationPromptVersion(generationSystemPrompt, backgroundDecisionTemplate)
 
 var SystemPrompt = strings.TrimSpace(systemPromptTemplate)
 var DecisionInstructions = strings.TrimSpace(decisionPromptTemplate)
 var PromptVersion = fmt.Sprintf("battlefield-agent-v5.%x", sha256.Sum256([]byte(systemPromptTemplate+"\x00"+identityPromptTemplate+"\x00"+doctrinePromptTemplate+"\x00"+decisionPromptTemplate+"\x00"+toolContextTemplate+"\x00"+inlineContextTemplate)))
+
+func generationPromptVersion(system, decision string) string {
+	return fmt.Sprintf("faction-background-v2.%x", sha256.Sum256([]byte(system+"\x00"+decision)))
+}
 
 // DecisionPrompt varies only the context transport; decision policy is shared.
 // A nil context means the model must fetch it through MCP.
@@ -63,7 +73,7 @@ func SystemPromptForDoctrine(doctrine string) string {
 
 func SessionSystemPrompt(session DecisionSession) string {
 	if session.JobType == "faction_background" {
-		return strings.TrimSpace(backgroundGenerationPrompt)
+		return generationSystemPrompt
 	}
 	if session.FactionName == "" && session.Background == "" {
 		return SystemPromptForDoctrine(session.Doctrine)
@@ -75,7 +85,7 @@ func SessionDecisionPrompt(session DecisionSession, inline []byte) string {
 	if session.JobType != "faction_background" {
 		return DecisionPrompt(session.RequestID, inline)
 	}
-	prompt := "Generate background for request " + session.RequestID + ". First call get_background_context, then submit_faction_background."
+	prompt := fmt.Sprintf(strings.TrimSpace(backgroundDecisionTemplate), session.RequestID)
 	if inline != nil {
 		prompt += "\nBEGIN_BACKGROUND_CONTEXT\n" + string(inline) + "\nEND_BACKGROUND_CONTEXT"
 	}

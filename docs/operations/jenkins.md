@@ -145,6 +145,24 @@ agent user's persistent `~/.docker/config.json`. `BUILDX_CONFIG` remains on the
 agent so the named Buildx builder can be reused without persisting registry
 authentication.
 
+Image repository defaults are shared by publication and policy rendering in
+`scripts/lib/image-metadata.sh`. `REGISTRY_NAMESPACE` changes the namespace;
+`PUBLISHED_BACKEND_IMAGE` and `PUBLISHED_FRONTEND_IMAGE` override individual full
+repository names. Names must omit tags, digests, and wildcards. Registry credentials
+must still grant access to the chosen repositories; the supplied login wrapper
+continues to authenticate GHCR.
+
+Both local and published image source labels come from Git `origin`, normalizing
+HTTPS and common Git SSH URLs. Set `SOURCE_URL=https://github.com/your-org/your-repo`
+to override this label. Credential-bearing or unsupported URLs are rejected without
+printing their contents. Publishing requires a source URL; local builds without
+an origin omit the label.
+
+`test-image-metadata.sh` exercises the real build/publish and policy-rendering
+scripts with stub Docker/Kubernetes commands, including repository overrides,
+preserved images, source metadata, and invalid-input rejection. Both PR and main
+run this check.
+
 The source-security stage first requests a full npm audit from a digest-pinned
 Node container. If the npm advisory endpoint remains unavailable after its
 bounded retry, the stage requires a passing Trivy lockfile scan covering all

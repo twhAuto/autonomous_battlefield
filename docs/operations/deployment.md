@@ -615,6 +615,17 @@ FRONTEND_IMAGE_REF='ghcr.io/twh09/autonomous-battlefield-frontend@sha256:…' \
 ./scripts/cd/deploy-kind.sh
 ```
 
+The admission policy derives its repository patterns from the same
+`REGISTRY_NAMESPACE`, `PUBLISHED_BACKEND_IMAGE`, and `PUBLISHED_FRONTEND_IMAGE`
+settings used by publication. During rollout, `deploy-kind.sh` supplies the
+resolved backend/frontend digest references through `POLICY_BACKEND_IMAGE_REF`
+and `POLICY_FRONTEND_IMAGE_REF`; this keeps preserved images covered during a
+partial rollout. Standalone policy installation uses the configured repository
+defaults when those references are absent. Inputs are validated before policy
+installation. Each repository receives separate tag and digest patterns, so a
+similarly prefixed repository name does not accidentally match. See
+[Kyverno image-reference matching](https://kyverno.io/docs/policy-types/cluster-policy/verify-images/overview/).
+
 The production environment resolver requires `ENFORCE_SUPPLY_CHAIN_POLICY=1`, which installs the Jenkins-only Kyverno verification policy. The tagged Kyverno manifest is installed with server-side apply so its large CRDs do not exceed Kubernetes' client-side last-applied annotation limit. Deployment waits for the admission controller's `Available` condition and prints pod, Deployment, and controller-log diagnostics on timeout. For private GHCR verification, the stage's temporary Docker authentication is copied into a `battlefield-ghcr` pull Secret in the `kyverno` namespace and referenced only by the verification policy. Cosign publishes modern OCI 1.1 referrers for promotion plus legacy digest-tag signature and attestation mirrors for Kyverno 1.15 admission discovery; both sets cover the same digest and use the same key. Unsigned local Kind development remains available through `IMAGE_SOURCE=local` and is never treated as promotion evidence.
 
 The AWS step should reuse the tested images and base resources:

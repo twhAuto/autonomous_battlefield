@@ -249,6 +249,13 @@ SQL concurrency behavior is part of the application's correctness. Changes to st
 | [`memory.go`](../../backend/internal/ai/memory.go) | Scoped, chronological historical decision summaries with count/byte bounds |
 | [`profiles.go`](../../backend/internal/ai/profiles.go) | API/CLI profile validation and availability evaluation |
 
+Background writer instructions live in `prompts/background-generation.txt` and
+`prompts/background-decision.txt`. `GenerationPromptVersion` covers both instruction
+components and the rendered character limit. Faction limits are declared in
+`internal/faction/faction.go` and mirrored in frontend `features/factions/limits.ts`;
+update both when changing this API contract. Existing Unicode boundary tests cover
+editor, service, and generation validation.
+
 `DecisionRunner` is the execution boundary used by the agent. `TurnProvider` is the narrower boundary implemented by model APIs that participate in the shared tool loop.
 
 `DecisionService` deliberately receives only a `DecisionSubmissionRepository`, which cannot modify battles or simulation state.
@@ -458,6 +465,12 @@ GHCR login and command cleanup for both Jenkins pipelines and production rollbac
 checks credential isolation, argument/input forwarding, failures, and cancellation
 without registry access. Component-classifier tests include application test files,
 CI compatibility wrappers, mixed changes, and production-to-test renames.
+
+[`scripts/lib/image-metadata.sh`](../../scripts/lib/image-metadata.sh) owns published
+repository defaults, policy reference validation, and source-URL normalization.
+[`scripts/test/test-image-metadata.sh`](../../scripts/test/test-image-metadata.sh)
+checks publishing and admission rendering with stub external commands. The Vite
+configuration and `frontend/vite.config.test.ts` cover development proxy overrides.
 
 Root launch scripts remain compatibility entry points that `exec` their implementations under `scripts/dev` and `scripts/cd`. `deploy/` owns Kubernetes configuration; `infra/aws/` provisions cloud resources. Operational instructions live under `docs/operations`.
 

@@ -1,3 +1,4 @@
+import { maxBackgroundLength } from '../limits'
 import { useEffect, useRef, useState } from 'react'
 import { backgroundJob, generateBackground, generationOptions, GenerationError, type BackgroundInput, type GenerationOptions } from '../api/backgrounds'
 
@@ -84,8 +85,8 @@ export function BackgroundGenerator({ input, valid, onUse }: Readonly<{ input: B
   {preview !== null && <div className="background-draft">
    <label htmlFor="background-draft">Generated draft for {draftName}</label>
    <textarea id="background-draft" rows={6} value={preview} onChange={event => setPreview(event.target.value)} />
-   <p>{previewCount} / 1,000 characters. Using this draft updates the form; save the faction to keep it.</p>
-   <button type="button" disabled={previewCount === 0 || previewCount > 1000} onClick={() => { onUse(preview.trim()); setPreview(null); setMessage('Background added to the form. Save the faction to keep it.') }}>Use background</button>
+   <p>{previewCount} / {maxBackgroundLength.toLocaleString('en-US')} characters. Using this draft updates the form; save the faction to keep it.</p>
+   <button type="button" disabled={previewCount === 0 || previewCount > maxBackgroundLength} onClick={() => { onUse(preview.trim()); setPreview(null); setMessage('Background added to the form. Save the faction to keep it.') }}>Use background</button>
    <button type="button" onClick={() => { setPreview(null); setMessage('Draft discarded.') }}>Discard</button>
   </div>}
  </section>

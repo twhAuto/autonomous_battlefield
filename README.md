@@ -195,6 +195,9 @@ applies database/configuration, migrations, application and gateway resources,
 and runs application smoke checks. Observability is optional; the environment
 guide includes the full-stack option and restart/recovery procedure.
 
+For a development backend on another port, set `DEV_API_PROXY_TARGET` in
+`frontend/.env.local`; see [frontend setup](frontend/README.md#run-locally).
+
 Jenkins `main` delivery publishes, scans, signs, and verifies GHCR images before
 production deployment by digest. See [Jenkins](docs/operations/jenkins.md) for
 setup and [deployment](docs/operations/deployment.md) for staged operations.

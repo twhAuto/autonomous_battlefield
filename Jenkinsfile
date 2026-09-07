@@ -101,6 +101,7 @@ pipeline {
                                     ./scripts/test/test-deployment-environment.sh
                                     ./scripts/test/test-security-launchers.sh
                                     ./scripts/test/test-registry-auth.sh
+                                    ./scripts/test/test-image-metadata.sh
                                 '''
                             }
                         }
@@ -216,6 +217,7 @@ pipeline {
                             ./scripts/test/test-deployment-environment.sh
                             ./scripts/test/test-security-launchers.sh
                             ./scripts/test/test-registry-auth.sh
+                            ./scripts/test/test-image-metadata.sh
                         '''
                         script {
                             def previousSuccessfulCommit = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: ''

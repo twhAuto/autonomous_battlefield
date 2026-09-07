@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 )
 
@@ -42,13 +44,13 @@ func (s *Server) backgroundServer() *mcp.Server {
 		}
 		return nil, backgroundOutput{Context: backgroundContext{RequestID: job.ID, Input: job.Input}}, nil
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "submit_faction_background", Description: "Submit 1-1000 Unicode characters of background. This returns a draft; it never saves a faction."}, func(ctx context.Context, _ *mcp.CallToolRequest, input backgroundInput) (*mcp.CallToolResult, ai.SubmissionResult, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "submit_faction_background", Description: fmt.Sprintf("Submit 1-%d Unicode characters of background. This returns a draft; it never saves a faction.", faction.MaxBackgroundLength)}, func(ctx context.Context, _ *mcp.CallToolRequest, input backgroundInput) (*mcp.CallToolResult, ai.SubmissionResult, error) {
 		if err := authorizedRequestID(ctx, input.RequestID); err != nil {
 			return nil, ai.SubmissionResult{}, err
 		}
 		accepted, err := s.generations.Submit(ctx, input.RequestID, input.Background)
 		if errors.Is(err, generation.ErrInvalid) {
-			return nil, ai.SubmissionResult{Status: "rejected", Errors: []ai.ValidationIssue{{Field: "background", Code: "invalid", Message: "Submit between 1 and 1000 Unicode characters."}}}, nil
+			return nil, ai.SubmissionResult{Status: "rejected", Errors: []ai.ValidationIssue{{Field: "background", Code: "invalid", Message: fmt.Sprintf("Submit between 1 and %d Unicode characters.", faction.MaxBackgroundLength)}}}, nil
 		}
 		return nil, ai.SubmissionResult{Accepted: accepted, Status: map[bool]string{true: "accepted", false: "closed"}[accepted]}, err
 	})

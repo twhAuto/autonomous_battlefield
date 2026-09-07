@@ -2,8 +2,11 @@ package ai
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 )
 
 func TestIdentityTemplateEscapesProfileAndDefinesPrecedence(t *testing.T) {
@@ -35,6 +38,32 @@ func TestGenerationPromptIsSeparate(t *testing.T) {
 	}
 	if names := SessionToolNames(session); len(names) != 2 || names[0] != "get_background_context" || names[1] != "submit_faction_background" {
 		t.Fatal(names)
+	}
+}
+
+func TestGenerationPromptVersionCoversBothInstructions(t *testing.T) {
+	session := DecisionSession{JobType: "faction_background", RequestID: "draft-%s"}
+	want := "Generate background for request draft-%s. First call get_background_context, then submit_faction_background."
+	if got := SessionDecisionPrompt(session, nil); got != want {
+		t.Fatalf("request prompt = %q", got)
+	}
+	if got := SessionDecisionPrompt(session, []byte(`{"name":"A"}`)); got != want+"\nBEGIN_BACKGROUND_CONTEXT\n{\"name\":\"A\"}\nEND_BACKGROUND_CONTEXT" {
+		t.Fatalf("inline prompt = %q", got)
+	}
+	system := SessionSystemPrompt(session)
+	if !strings.Contains(system, fmt.Sprintf("between 1 and %d Unicode characters", faction.MaxBackgroundLength)) {
+		t.Fatal("prompt does not use the enforced background limit")
+	}
+	if GenerationPromptVersion != generationPromptVersion(system, backgroundDecisionTemplate) {
+		t.Fatal("published version does not describe the embedded instructions")
+	}
+	for _, version := range []string{
+		generationPromptVersion(system+" changed", backgroundDecisionTemplate),
+		generationPromptVersion(system, backgroundDecisionTemplate+" changed"),
+	} {
+		if version == GenerationPromptVersion {
+			t.Fatal("instruction change did not affect provenance")
+		}
 	}
 }
 

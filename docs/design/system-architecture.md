@@ -93,6 +93,10 @@ The API and engine entry points compose `httpapi.LifecycleHandler` around applic
 See the [codebase guide](codebase-guide.md#3-backend-organization) for package
 boundaries, frontend ownership, and launcher locations.
 
+The Vite development proxy defaults to `http://localhost:8080` and accepts a
+server-only `DEV_API_PROXY_TARGET` override from the frontend env files or shell.
+Production/browser API routing continues to use `VITE_API_URL` and Nginx.
+
 Frontend feature clients, including faction ruleset discovery, use the shared
 HTTP transport to report network failures consistently while preserving request
 cancellation. Feature clients own HTTP status messages; protected requests also
@@ -555,7 +559,11 @@ The API catalog advertises profiles users may select. In cluster mode, an operat
 
 Kustomize deploys separate API, engine, agent, MCP, frontend, and migration workloads. The API optionally imports `battlefield-auth`, the API and agent read profile availability from `battlefield-ai`, MCP receives a distinct `MCP_DATABASE_URL`, and the processes mount a common non-secret ConfigMap. Post-deployment verification uses the optional administrator Secret to establish a temporary authenticated session before probing protected application routes; neither credentials nor the session cookie are retained after the smoke test.
 
-Registry-backed Jenkins deployments use immutable GHCR digest references. Before
+Registry-backed Jenkins deployments use immutable GHCR digest references.
+Publication and admission rendering share validated repository settings. The
+rollout supplies its resolved image references so preserved repositories remain
+covered during partial updates. Image source labels are derived from Git origin
+or an explicit `SOURCE_URL`, rather than a fixed project URL. Before
 admission, Kyverno validates a Cosign signature plus CycloneDX, SLSA v0.2, and
 AI-manifest attestations with the reviewed public key. Cosign v3 OCI 1.1
 referrers remain the portable evidence copied during registry promotion. The
@@ -689,7 +697,11 @@ blueprints, initial upgrade bonuses, and original decision schedule.
 ### Faction identity and background drafts
 
 Faction identity now consists of name, explicit strategic doctrine, and an
-optional background (trimmed, at most 1,000 Unicode characters). Battle creation
+optional background (trimmed, at most 1,000 Unicode characters). Backend validation,
+MCP descriptions, and the writer prompt share faction limit constants; the
+frontend editor and preview share matching feature constants. Background-generation
+provenance uses a `faction-background-v2` digest covering the rendered system
+instructions (including the character limit) and embedded request instructions. Battle creation
 copies all three into its immutable scenario snapshot. Missing background in old
 snapshots decodes as empty. Only the owning profile enters each decision context,
 observation hash, durable decision provenance, and API/CLI system prompt.

@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 )
 
 const JobType = "faction_background"
@@ -49,7 +50,7 @@ func (i Input) Normalized() (Input, error) {
 	i.Name = strings.TrimSpace(i.Name)
 	i.Doctrine = strings.TrimSpace(i.Doctrine)
 	i.Background = strings.TrimSpace(i.Background)
-	if i.Name == "" || i.Doctrine == "" || utf8.RuneCountInString(i.Doctrine) > 4000 || utf8.RuneCountInString(i.Background) > 1000 {
+	if i.Name == "" || i.Doctrine == "" || utf8.RuneCountInString(i.Doctrine) > faction.MaxDoctrineLength || utf8.RuneCountInString(i.Background) > faction.MaxBackgroundLength {
 		return i, ErrInvalid
 	}
 	return i, nil

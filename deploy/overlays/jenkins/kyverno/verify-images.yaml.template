@@ -17,8 +17,10 @@ spec:
               namespaces: [battlefield]
       verifyImages:
         - imageReferences:
-            - ghcr.io/twh09/autonomous-battlefield-backend*
-            - ghcr.io/twh09/autonomous-battlefield-frontend*
+            - "__BACKEND_IMAGE_REPOSITORY__:*"
+            - "__BACKEND_IMAGE_REPOSITORY__@sha256:*"
+            - "__FRONTEND_IMAGE_REPOSITORY__:*"
+            - "__FRONTEND_IMAGE_REPOSITORY__@sha256:*"
           required: true
           mutateDigest: true
           verifyDigest: true

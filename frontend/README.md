@@ -15,7 +15,12 @@ npm run dev
 ```
 
 Open `http://localhost:5173`. Vite proxies `/v1` requests to the backend during
-development, so no local CORS configuration is required.
+development, so no local CORS configuration is required. To use a backend on a
+different port, set `DEV_API_PROXY_TARGET=http://localhost:9080` in
+`frontend/.env.local` or in the environment before `npm run dev`. Restart Vite
+after changing it. This setting accepts only an HTTP(S) origin, without credentials,
+paths, queries, or fragments, and is not exposed to browser code. `VITE_API_URL`
+continues to control direct browser API requests separately.
 
 The **Stage battle** flow loads registered factions and server-defined
 scenarios, queues a battle, and navigates to a live status view. The view polls

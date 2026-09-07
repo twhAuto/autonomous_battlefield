@@ -82,7 +82,7 @@ func normalizeFaction(input CreateInput) (faction.Faction, error) {
 		Background: strings.TrimSpace(input.Background),
 	}
 	if !uuidPattern.MatchString(stored.ID) || stored.Name == "" || stored.Doctrine == "" ||
-		utf8.RuneCountInString(stored.Doctrine) > 4000 || utf8.RuneCountInString(stored.Background) > 1000 {
+		utf8.RuneCountInString(stored.Doctrine) > faction.MaxDoctrineLength || utf8.RuneCountInString(stored.Background) > faction.MaxBackgroundLength {
 		return faction.Faction{}, ErrInvalidFaction
 	}
 	return stored, nil

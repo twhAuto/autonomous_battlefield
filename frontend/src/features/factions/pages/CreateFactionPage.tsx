@@ -1,3 +1,4 @@
+import { maxBackgroundLength, maxDoctrineLength } from '../limits'
 import { BackgroundGenerator } from '../components/BackgroundGenerator'
 import { useEffect, useState, type SubmitEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -40,7 +41,7 @@ export function CreateFactionPage() {
  }, [id])
  const count = Array.from(doctrine.trim()).length
  const backgroundCount = Array.from(background.trim()).length
- const valid = backgroundCount <= 1000 && name.trim().length > 0 && count > 0 && count <= 4000 && !loading && !loadFailed
+ const valid = backgroundCount <= maxBackgroundLength && name.trim().length > 0 && count > 0 && count <= maxDoctrineLength && !loading && !loadFailed
  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
  event.preventDefault()
  if (!valid || status === 'submitting') return
@@ -69,12 +70,12 @@ export function CreateFactionPage() {
  <fieldset><legend>Doctrine templates</legend>{Object.entries(doctrineTemplates).map(([label, text]) => <button type="button" key={label} onClick={() => {setDoctrine(text); setStatus('idle')}}>{label}</button>)}</fieldset>
  <label htmlFor="faction-doctrine">Doctrine</label>
  <textarea id="faction-doctrine" rows={9} value={doctrine} aria-describedby="doctrine-hint" onChange={event => {setDoctrine(event.target.value);setStatus('idle')}} />
- <p id="doctrine-hint" className="field-hint">Describe priorities, risk tolerance, and how to adapt. {count} / 4,000 characters.</p>
- {count > 4000 && <p role="alert">Doctrine must be at most 4,000 characters.</p>}
+ <p id="doctrine-hint" className="field-hint">Describe priorities, risk tolerance, and how to adapt. {count} / {maxDoctrineLength.toLocaleString('en-US')} characters.</p>
+ {count > maxDoctrineLength && <p role="alert">Doctrine must be at most {maxDoctrineLength.toLocaleString('en-US')} characters.</p>}
  <label htmlFor="faction-background">Background (optional)</label>
  <textarea id="faction-background" rows={6} value={background} aria-describedby="background-hint" onChange={event => {setBackground(event.target.value);setStatus('idle')}} />
- <p id="background-hint">Origins, history, and values. {backgroundCount} / 1,000 characters.</p>
- {backgroundCount > 1000 && <p role="alert">Background must be at most 1,000 characters.</p>}
+ <p id="background-hint">Origins, history, and values. {backgroundCount} / {maxBackgroundLength.toLocaleString('en-US')} characters.</p>
+ {backgroundCount > maxBackgroundLength && <p role="alert">Background must be at most {maxBackgroundLength.toLocaleString('en-US')} characters.</p>}
  <BackgroundGenerator key={id ?? factionId} input={{name:name.trim(),doctrine:doctrine.trim(),background:background.trim()}} valid={valid && status !== 'submitting'} onUse={value => {setBackground(value);setStatus('idle');setMessage('')}} />
  <div className="identity-block"><div><span className="identity-block__label">SYSTEM IDENTIFIER</span><code title={id ?? factionId}>{id ?? factionId}</code></div>{!editing && <button type="button" className="icon-button" onClick={() => setFactionId(crypto.randomUUID())} aria-label="Generate a new faction identifier">↻</button>}</div>
  <button className="submit-button" type="submit" disabled={!valid || status === 'submitting'}>{status === 'submitting' ? 'SAVING…' : editing ? 'SAVE FACTION' : 'CREATE FACTION'}</button>

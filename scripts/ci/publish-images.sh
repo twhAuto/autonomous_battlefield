@@ -6,15 +6,17 @@ project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=scripts/lib/deployment-components.sh
 source "${project_dir}/scripts/lib/deployment-components.sh"
 
-registry_namespace="${REGISTRY_NAMESPACE:-ghcr.io/twh09}"
-backend_image="${PUBLISHED_BACKEND_IMAGE:-${registry_namespace}/autonomous-battlefield-backend}"
-frontend_image="${PUBLISHED_FRONTEND_IMAGE:-${registry_namespace}/autonomous-battlefield-frontend}"
+source "${project_dir}/scripts/lib/image-metadata.sh"
+published_image_repositories
+backend_image="${published_backend_image}"
+frontend_image="${published_frontend_image}"
 image_tag="${IMAGE_TAG:-$(git -C "${project_dir}" rev-parse HEAD)}"
 platform="${IMAGE_PLATFORM:-linux/amd64}"
 builder="${BUILDX_BUILDER:-battlefield-jenkins}"
 build_components="${BUILD_COMPONENTS:-${DEPLOY_COMPONENTS:-all}}"
 artifact_dir="${BUILD_ARTIFACT_DIR:-${project_dir}/artifacts/build}"
-source_url="https://github.com/twh09/autonomous_battlefield"
+source_url="$(image_source_url "${project_dir}")"
+[[ -n "${source_url}" ]] || { echo 'Set SOURCE_URL or configure origin before publishing images.' >&2; exit 1; }
 
 deployment_components_select "${build_components}" build
 mkdir -p "${artifact_dir}"

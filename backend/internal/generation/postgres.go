@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
@@ -183,7 +184,7 @@ func (p *Postgres) Claim(ctx context.Context, worker string, profiles []string) 
 }
 func (p *Postgres) Submit(ctx context.Context, id, background string) (bool, error) {
 	background = strings.TrimSpace(background)
-	if background == "" || utf8.RuneCountInString(background) > 1000 {
+	if background == "" || utf8.RuneCountInString(background) > faction.MaxBackgroundLength {
 		_, err := p.DB.Exec(ctx, `UPDATE faction_background_generations SET submissions=submissions+1,status=CASE WHEN submissions>=2 THEN 'failed' ELSE status END,error_category=CASE WHEN submissions>=2 THEN 'invalid_output' ELSE error_category END,finished_at=CASE WHEN submissions>=2 THEN now() ELSE finished_at END WHERE id::text=$1 AND status='running' AND expires_at>now()`, id)
 		if err != nil {
 			return false, err
