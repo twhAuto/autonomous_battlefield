@@ -40,20 +40,7 @@ func validateProposal(proposal PlanProposal, actionKinds map[string]struct{}) er
 	if err := validateConstructionPriorities(proposal.ConstructionPriorities); err != nil {
 		return err
 	}
-	if proposal.ConstructionOrders != nil {
-		if len(proposal.ConstructionPriorities) > 0 || len(*proposal.ConstructionOrders) > 8 {
-			return fmt.Errorf("%w: use at most eight typed construction orders without legacy priorities", ErrInvalidPlan)
-		}
-		sites := []Coordinate{}
-		for _, order := range *proposal.ConstructionOrders {
-			if strings.TrimSpace(order.BuildingType) == "" {
-				return fmt.Errorf("%w: buildingType is required", ErrInvalidPlan)
-			}
-			sites = append(sites, order.Position)
-		}
-		return validateConstructionPriorities(sites)
-	}
-	return nil
+	return validateTypedConstruction(proposal)
 }
 
 func validateActionWeights(weights map[string]int64, actionKinds map[string]struct{}) error {
@@ -157,4 +144,22 @@ func validateRecruitmentOrders(plan PlanProposal) error {
 		return fmt.Errorf("%w: at most six requested units per window", ErrInvalidPlan)
 	}
 	return nil
+}
+
+func validateTypedConstruction(proposal PlanProposal) error {
+	if proposal.ConstructionOrders != nil {
+		if len(proposal.ConstructionPriorities) > 0 || len(*proposal.ConstructionOrders) > 8 {
+			return fmt.Errorf("%w: use at most eight typed construction orders without legacy priorities", ErrInvalidPlan)
+		}
+		sites := []Coordinate{}
+		for _, order := range *proposal.ConstructionOrders {
+			if strings.TrimSpace(order.BuildingType) == "" {
+				return fmt.Errorf("%w: buildingType is required", ErrInvalidPlan)
+			}
+			sites = append(sites, order.Position)
+		}
+		return validateConstructionPriorities(sites)
+	}
+	return nil
+
 }

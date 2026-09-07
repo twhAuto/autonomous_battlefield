@@ -49,23 +49,7 @@ func (m *Match) followPatient(unit *Unit) []Event {
 		if !eligiblePatient(*unit, patient) {
 			continue
 		}
-		goals := m.positionsInRange(patient.Position, 1, 1)
-		// An idle escort prefers the castle side of its soldier.
-		if patient.Health == patient.MaxHealth {
-			if castle := m.castle(unit.FactionID); castle != nil {
-				rear := map[Position]bool{}
-				for p := range goals {
-					if HexDistance(p, castle.Position) < HexDistance(patient.Position, castle.Position) {
-						rear[p] = true
-					}
-				}
-				if path, ok := m.routeTo(*unit, rear); ok {
-					routes = append(routes, patientRoute{patient, path})
-					continue
-				}
-			}
-		}
-		if path, ok := m.routeTo(*unit, goals); ok {
+		if path, ok := m.patientPath(*unit, patient); ok {
 			routes = append(routes, patientRoute{patient, path})
 		}
 	}
@@ -73,24 +57,7 @@ func (m *Match) followPatient(unit *Unit) []Event {
 		return nil
 	}
 	sort.Slice(routes, func(i, j int) bool {
-		l, r := routes[i], routes[j]
-		li, ri := l.patient.Health < l.patient.MaxHealth, r.patient.Health < r.patient.MaxHealth
-		if li != ri {
-			return li
-		}
-		if !li && (l.patient.Type == "vanguard") != (r.patient.Type == "vanguard") {
-			return l.patient.Type == "vanguard"
-		}
-		if len(l.path) != len(r.path) {
-			return len(l.path) < len(r.path)
-		}
-		if moreInjured(l.patient, r.patient) {
-			return true
-		}
-		if moreInjured(r.patient, l.patient) {
-			return false
-		}
-		return l.patient.ID < r.patient.ID
+		return patientRouteLess(routes[i], routes[j])
 	})
 	return m.moveAlong(unit, routes[0].path)
 }
@@ -128,4 +95,48 @@ func (m *Match) moveAlong(unit *Unit, path []Position) []Event {
 	unit.Position = path[steps-1]
 	unit.MovedFrom = &from
 	return []Event{m.event("unit_moved", map[string]any{"factionId": unit.FactionID, "unitId": unit.ID, "from": from, "to": unit.Position})}
+}
+
+func (m *Match) patientPath(unit Unit, patient Unit) ([]Position, bool) {
+	goals := m.positionsInRange(patient.Position, 1, 1)
+	// An idle escort prefers the castle side of its soldier.
+	if patient.Health == patient.MaxHealth {
+		if castle := m.castle(unit.FactionID); castle != nil {
+			rear := patientRearGoals(goals, patient.Position, castle.Position)
+			if path, ok := m.routeTo(unit, rear); ok {
+				return path, true
+			}
+		}
+	}
+	return m.routeTo(unit, goals)
+}
+
+func patientRearGoals(goals map[Position]bool, patient, castle Position) map[Position]bool {
+	rear := map[Position]bool{}
+	for p := range goals {
+		if HexDistance(p, castle) < HexDistance(patient, castle) {
+			rear[p] = true
+		}
+	}
+	return rear
+}
+
+func patientRouteLess(l, r patientRoute) bool {
+	li, ri := l.patient.Health < l.patient.MaxHealth, r.patient.Health < r.patient.MaxHealth
+	if li != ri {
+		return li
+	}
+	if !li && (l.patient.Type == "vanguard") != (r.patient.Type == "vanguard") {
+		return l.patient.Type == "vanguard"
+	}
+	if len(l.path) != len(r.path) {
+		return len(l.path) < len(r.path)
+	}
+	if moreInjured(l.patient, r.patient) {
+		return true
+	}
+	if moreInjured(r.patient, l.patient) {
+		return false
+	}
+	return l.patient.ID < r.patient.ID
 }

@@ -58,7 +58,7 @@ func (m *Manager) Enabled() bool {
 
 func (m *Manager) Authenticate(request *http.Request) (Actor, bool) {
 	if !m.config.Enabled {
-		return Actor{ID: "local-development"}, true
+		return Actor{ID: localDevelopmentActor}, true
 	}
 	cookie, err := request.Cookie(sessionCookieName)
 	if err != nil {
@@ -182,7 +182,7 @@ func (r *Routes) login(response http.ResponseWriter, request *http.Request) {
 	}
 	actor := Actor{ID: r.manager.config.Username}
 	if !r.manager.Enabled() {
-		actor.ID = "local-development"
+		actor.ID = localDevelopmentActor
 	}
 	r.manager.setSessionCookie(response, actor)
 	response.Header().Set(cacheControlHeader, noStoreDirective)
@@ -214,7 +214,7 @@ func (r *Routes) logout(response http.ResponseWriter, _ *http.Request) {
 func RequireAuthentication(enabled bool, authenticator Authenticator, next http.Handler) http.Handler {
 	if !enabled {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorContextKey{}, Actor{ID: "local-development"})))
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorContextKey{}, Actor{ID: localDevelopmentActor})))
 		})
 	}
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -235,3 +235,5 @@ func RequireAuthentication(enabled bool, authenticator Authenticator, next http.
 func isPublicAuthenticationPath(path string) bool {
 	return path == "/v1/auth/login" || path == "/v1/auth/session"
 }
+
+const localDevelopmentActor = "local-development"

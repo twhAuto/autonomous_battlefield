@@ -97,11 +97,7 @@ func (w *Worker) runClaimLoop(ctx context.Context, profileIDs []string) error {
 		w.logger().InfoContext(ctx, "decision_claimed", "worker_id", w.WorkerID, "request_id", job.RequestID, "profile_id", job.ProfileID)
 		// Each claim loop owns one concurrency slot, so a leased decision is
 		// always executed immediately instead of waiting behind another job.
-		if job.JobType == "faction_background" {
-			w.runGeneration(ctx, job)
-		} else {
-			w.runJob(ctx, job)
-		}
+		w.runClaimedJob(ctx, job)
 	}
 }
 
@@ -331,4 +327,12 @@ func (w *Worker) fail(ctx context.Context, requestID, category string, result ai
 		return fmt.Errorf("agent failure status %d", response.StatusCode)
 	}
 	return nil
+}
+
+func (w *Worker) runClaimedJob(ctx context.Context, job job) {
+	if job.JobType == "faction_background" {
+		w.runGeneration(ctx, job)
+	} else {
+		w.runJob(ctx, job)
+	}
 }

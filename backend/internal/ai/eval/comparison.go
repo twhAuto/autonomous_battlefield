@@ -157,13 +157,7 @@ func (r Runner) compareRepetition(ctx context.Context, cases []Case, observation
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			observation := observations[ci]
-			if variants[vi].WithoutKnowledge {
-				observation.Knowledge = nil
-			}
-			if variants[vi].WithoutMemory {
-				observation.Memory = nil
-			}
+			observation := comparisonObservation(observations[ci], variants[vi])
 			sample, err := r.compareSample(ctx, c, observation, variants[vi], report.Options, repetition+1)
 			if err != nil {
 				return err
@@ -275,4 +269,14 @@ func (r *comparisonRepository) FinishDecisionFailure(_ context.Context, _ string
 	r.record.Status = "failed"
 	r.record.ErrorCategory = category
 	return nil
+}
+
+func comparisonObservation(observation ai.DecisionContext, variant ComparisonVariant) ai.DecisionContext {
+	if variant.WithoutKnowledge {
+		observation.Knowledge = nil
+	}
+	if variant.WithoutMemory {
+		observation.Memory = nil
+	}
+	return observation
 }

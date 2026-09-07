@@ -130,7 +130,7 @@ it('does not display stale successful or failed requests after changing filters'
     .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSecond = reject }))
     .mockResolvedValue({ battles: [], nextCursor: null })
   renderHistory()
-  expect(screen.getByText('Loading battle history…')).toHaveAttribute('role', 'status')
+  expect(screen.getByText('Loading battle history…')).toHaveRole('status')
   const firstSignal = vi.mocked(listBattles).mock.calls[0][1]
   await user.selectOptions(screen.getByRole('combobox'), 'running')
   expect(firstSignal?.aborted).toBe(true)
@@ -179,5 +179,5 @@ it('restores the first page from a directly loaded cursor without prior cursors'
   renderHistory('/battles?cursor=older')
   await screen.findByText('No matching battles')
   await user.click(screen.getByRole('button', { name: /previous/i }))
-  await screen.findByText('No battles yet')
+  expect(await screen.findByText('No battles yet')).toBeInTheDocument()
 })

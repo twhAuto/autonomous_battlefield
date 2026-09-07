@@ -44,16 +44,8 @@ func (m *Match) advanceOpening(plans map[string]controller.PlanProposal) (Transi
 		resolved[id] = m.OpeningFallback(id)
 	}
 	for id, plan := range plans {
-		if len(plan.ConstructionPriorities) > 0 || plan.ConstructionOrders != nil && len(*plan.ConstructionOrders) > 0 {
-			return Transition{}, fmt.Errorf("construction is unavailable during opening")
-		}
-		for _, kind := range plan.SpendOrder {
-			if kind == "construction" {
-				return Transition{}, fmt.Errorf("construction is unavailable during opening")
-			}
-		}
-		if plan.RecruitmentOrders == nil {
-			return Transition{}, fmt.Errorf("opening requires explicit recruitment orders")
+		if err := validateOpeningPlan(plan); err != nil {
+			return Transition{}, err
 		}
 		resolved[id] = plan
 	}
@@ -80,4 +72,19 @@ func (m *Match) advanceOpening(plans map[string]controller.PlanProposal) (Transi
 	events = append(events, m.event("opening_completed", map[string]any{}))
 	m.sortState()
 	return m.transition(events), nil
+}
+
+func validateOpeningPlan(plan controller.PlanProposal) error {
+	if len(plan.ConstructionPriorities) > 0 || plan.ConstructionOrders != nil && len(*plan.ConstructionOrders) > 0 {
+		return fmt.Errorf("construction is unavailable during opening")
+	}
+	for _, kind := range plan.SpendOrder {
+		if kind == "construction" {
+			return fmt.Errorf("construction is unavailable during opening")
+		}
+	}
+	if plan.RecruitmentOrders == nil {
+		return fmt.Errorf("opening requires explicit recruitment orders")
+	}
+	return nil
 }

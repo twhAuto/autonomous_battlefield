@@ -33,7 +33,7 @@ export function DecisionContextPanel({ battleId, requestId, attempt, active, cac
     <summary>Saved decision context</summary>
     {open && <div>
       {error && <p role="alert">{error} <button className="text-button" type="button" onClick={() => setRetry((value) => value + 1)}>Retry context</button></p>}
-      {!error && !data && <p role="status">Loading saved context…</p>}
+      {!error && !data && <output>Loading saved context…</output>}
       {data && (data.context ? <Observation data={data} context={data.context} /> : <p>No observation was saved for this decision.</p>)}
     </div>}
   </details>

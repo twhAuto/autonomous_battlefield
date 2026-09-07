@@ -21,6 +21,18 @@ func (m *Match) enemyApproachGoals(unit Unit) map[Position]bool {
 	if len(targets) == 0 {
 		return nil
 	}
+	return m.approachGoals(unit, targets)
+}
+
+func targetsAsGoals(targets []Position) map[Position]bool {
+	goals := make(map[Position]bool, len(targets))
+	for _, p := range targets {
+		goals[p] = true
+	}
+	return goals
+}
+
+func (m *Match) approachGoals(unit Unit, targets []Position) map[Position]bool {
 	targetGoals := targetsAsGoals(targets)
 	goals := map[Position]bool{}
 	for y := 0; y < m.scenario.Map.Height; y++ {
@@ -33,11 +45,5 @@ func (m *Match) enemyApproachGoals(unit Unit) map[Position]bool {
 		}
 	}
 	return goals
-}
-func targetsAsGoals(targets []Position) map[Position]bool {
-	goals := make(map[Position]bool, len(targets))
-	for _, p := range targets {
-		goals[p] = true
-	}
-	return goals
+
 }

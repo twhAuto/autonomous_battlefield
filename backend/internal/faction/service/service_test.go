@@ -194,9 +194,8 @@ func (r *fakeFactionRepository) DeleteFaction(_ context.Context, id string) erro
 	return r.deleteErr
 }
 
-func (r *fakeFactionRepository) UpdateFaction(_ context.Context, stored faction.Faction) error {
-	r.createdFaction = &stored
-	return r.createErr
+func (r *fakeFactionRepository) UpdateFaction(ctx context.Context, stored faction.Faction) error {
+	return r.CreateFaction(ctx, stored)
 }
 
 func TestBackgroundCreationAndEditing(t *testing.T) {

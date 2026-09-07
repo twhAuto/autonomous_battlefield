@@ -147,19 +147,13 @@ func (w *Worker) waitForWindowDecisions(ctx context.Context, lease BattleLease, 
 		if pending == 0 || !time.Now().Before(deadline) {
 			return nil
 		}
-		if progress.due(time.Now()) {
-			w.logger.InfoContext(ctx, "decision_window_waiting", "battle_id", lease.BattleID,
-				"attempt", lease.Attempt, "target_tick", targetTick, "pending_count", pending,
-				"elapsed_ms", time.Since(started).Milliseconds(), "remaining_ms", max(0, time.Until(deadline).Milliseconds()))
-		}
+		w.logWindowProgress(ctx, lease, targetTick, pending, started, deadline, &progress)
 		if !wait(ctx, min(100*time.Millisecond, time.Until(deadline), time.Until(nextHeartbeat))) {
 			return context.Canceled
 		}
-		if !time.Now().Before(nextHeartbeat) {
-			if err := w.repository.HeartbeatBattle(ctx, lease, w.config.LeaseDuration); err != nil {
-				return err
-			}
-			nextHeartbeat = time.Now().Add(w.config.HeartbeatInterval)
+		nextHeartbeat, err = w.heartbeatWindow(ctx, lease, nextHeartbeat)
+		if err != nil {
+			return err
 		}
 	}
 }
@@ -269,4 +263,23 @@ func fallbackCategory(record ai.DecisionRecord) string {
 		return record.ErrorCategory
 	}
 	return "timeout"
+}
+
+func (w *Worker) heartbeatWindow(ctx context.Context, lease BattleLease, nextHeartbeat time.Time) (time.Time, error) {
+	if !time.Now().Before(nextHeartbeat) {
+		if err := w.repository.HeartbeatBattle(ctx, lease, w.config.LeaseDuration); err != nil {
+			return nextHeartbeat, err
+		}
+		nextHeartbeat = time.Now().Add(w.config.HeartbeatInterval)
+	}
+	return nextHeartbeat, nil
+}
+
+func (w *Worker) logWindowProgress(ctx context.Context, lease BattleLease, targetTick uint64, pending int, started, deadline time.Time, progress *progressLog) {
+	if progress.due(time.Now()) {
+		w.logger.InfoContext(ctx, "decision_window_waiting", "battle_id", lease.BattleID,
+			"attempt", lease.Attempt, "target_tick", targetTick, "pending_count", pending,
+			"elapsed_ms", time.Since(started).Milliseconds(), "remaining_ms", max(0, time.Until(deadline).Milliseconds()))
+	}
+
 }

@@ -55,17 +55,7 @@ func visibleState(source State, factionID string, visible map[Position]bool) Sta
 	state.Units = state.Units[:0]
 	for _, unit := range source.Units {
 		if unit.FactionID == factionID || visible[unit.Position] {
-			if unit.AttackTargetPosition != nil && !visible[*unit.AttackTargetPosition] {
-				unit.AttackTargetID = ""
-				unit.AttackTargetPosition = nil
-			}
-			if unit.HealTargetPosition != nil && !visible[*unit.HealTargetPosition] {
-				unit.HealTargetID = ""
-				unit.HealTargetPosition = nil
-			}
-			unit.MovedFrom = clonePosition(unit.MovedFrom)
-			unit.AttackTargetPosition = clonePosition(unit.AttackTargetPosition)
-			unit.HealTargetPosition = clonePosition(unit.HealTargetPosition)
+			unit = visibleUnit(unit, visible)
 			state.Units = append(state.Units, unit)
 		}
 	}
@@ -111,4 +101,19 @@ func allPositions(m Map) []Position {
 		}
 	}
 	return result
+}
+
+func visibleUnit(unit Unit, visible map[Position]bool) Unit {
+	if unit.AttackTargetPosition != nil && !visible[*unit.AttackTargetPosition] {
+		unit.AttackTargetID = ""
+		unit.AttackTargetPosition = nil
+	}
+	if unit.HealTargetPosition != nil && !visible[*unit.HealTargetPosition] {
+		unit.HealTargetID = ""
+		unit.HealTargetPosition = nil
+	}
+	unit.MovedFrom = clonePosition(unit.MovedFrom)
+	unit.AttackTargetPosition = clonePosition(unit.AttackTargetPosition)
+	unit.HealTargetPosition = clonePosition(unit.HealTargetPosition)
+	return unit
 }

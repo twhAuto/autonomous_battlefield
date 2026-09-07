@@ -8,7 +8,9 @@ export function playerStatus(state: BattleState | undefined, factionId: string) 
   const units = state?.units?.filter((unit) => unit.factionId === factionId && unit.health > 0) ?? []
   const buildings = state?.buildings?.filter((building) => building.factionId === factionId && building.health > 0) ?? []
   const castle = buildings.find((building) => building.type === 'castle')
-  return { faction, units, buildings, castleHealth: faction ? (castle ? `${castle.health} / ${castle.maxHealth}` : 'Destroyed') : '—' }
+  let castleHealth = '—'
+  if (faction) castleHealth = castle ? `${castle.health} / ${castle.maxHealth}` : 'Destroyed'
+  return { faction, units, buildings, castleHealth }
 }
 
 type PlayerStatus = ReturnType<typeof playerStatus>
@@ -41,7 +43,7 @@ export function PlayerOverview({ status }: Readonly<{ status: PlayerStatus }>) {
 
 export function PlayerUnits({ status }: Readonly<{ status: PlayerStatus }>) {
   const naming = { entities: entityIndex(status), localFactionId: status.faction?.factionId }
-  const types = [...new Set(status.units.map((unit) => unit.type))].sort()
+  const types = [...new Set(status.units.map((unit) => unit.type))].sort((a, b) => a.localeCompare(b))
   return <section aria-label="Fielded units">
     <h3>Living army</h3>
     {!status.faction && <p>Waiting for player state.</p>}

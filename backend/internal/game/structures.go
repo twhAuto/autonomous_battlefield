@@ -31,12 +31,7 @@ func constructionOrders(plan controller.PlanProposal) []controller.ConstructionO
 
 func (m *Match) buildStructureAt(factionID, kind string, site Position, reserve int64) (Building, string) {
 	if m.scenario.Ruleset.Buildings.MaximumBuildingCount > 0 {
-		count := 0
-		for _, b := range m.state.Buildings {
-			if b.FactionID == factionID && b.Health > 0 && b.Type != BuildingCastle {
-				count++
-			}
-		}
+		count := m.livingStructureCount(factionID)
 		if count >= m.scenario.Ruleset.Buildings.MaximumBuildingCount {
 			return Building{}, "maximum_reached"
 		}
@@ -105,17 +100,7 @@ func (m *Match) runTowers(tactics map[string]string) []Event {
 	for _, index := range indices {
 		b := &m.state.Buildings[index]
 		attacker := Unit{ID: b.ID, FactionID: b.FactionID, Position: b.Position, Attack: b.Attack, Range: b.Range}
-		var target *attackTarget
-		for i := range m.state.Units {
-			u := &m.state.Units[i]
-			if u.Health <= 0 || u.FactionID == b.FactionID || HexDistance(u.Position, b.Position) > b.Range {
-				continue
-			}
-			candidate := &attackTarget{id: u.ID, kind: "unit", factionID: u.FactionID, position: u.Position, defense: u.Defense, cost: u.Cost, unit: u}
-			if target == nil || attackTargetLess(attacker, candidate, target) {
-				target = candidate
-			}
-		}
+		target := m.towerTarget(b, attacker)
 		if target == nil {
 			continue
 		}
@@ -177,4 +162,29 @@ func (m *Match) assignForwardRecruitment(factionID string, plan *controller.Plan
 			(*plan.RecruitmentOrders)[i].SourceBuildingID = source.ID
 		}
 	}
+}
+
+func (m *Match) livingStructureCount(factionID string) int {
+	count := 0
+	for _, b := range m.state.Buildings {
+		if b.FactionID == factionID && b.Health > 0 && b.Type != BuildingCastle {
+			count++
+		}
+	}
+	return count
+}
+
+func (m *Match) towerTarget(b *Building, attacker Unit) *attackTarget {
+	var target *attackTarget
+	for i := range m.state.Units {
+		u := &m.state.Units[i]
+		if u.Health <= 0 || u.FactionID == b.FactionID || HexDistance(u.Position, b.Position) > b.Range {
+			continue
+		}
+		candidate := &attackTarget{id: u.ID, kind: "unit", factionID: u.FactionID, position: u.Position, defense: u.Defense, cost: u.Cost, unit: u}
+		if target == nil || attackTargetLess(attacker, candidate, target) {
+			target = candidate
+		}
+	}
+	return target
 }

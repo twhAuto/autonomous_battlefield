@@ -4,6 +4,8 @@
 package generation
 
 import (
+	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -72,34 +74,24 @@ func TestGenerationEndpoints(t *testing.T) {
 		req := httptest.NewRequest(tt.method, "/v1/faction-background-generations"+tt.path, strings.NewReader(tt.body))
 		req.Header.Set("Content-Type", "application/json")
 		h.ServeHTTP(w, req)
-		if w.Code != tt.status {
-			t.Fatalf("%s %s: %d %s", tt.method, tt.path, w.Code, w.Body.String())
-		}
+		testutil.Require(t, w.Code == tt.status, func() { t.Fatalf("%s %s: %d %s", tt.method, tt.path, w.Code, w.Body.String()) })
 		if w.Code == 429 {
 			var o Options
-			if json.Unmarshal(w.Body.Bytes(), &o) != nil || !o.Available || w.Header().Get("Retry-After") == "" {
-				t.Fatal(w.Body.String())
-			}
+			testutil.Require(t, !(json.Unmarshal(w.Body.Bytes(), &o) != nil || !o.Available || w.Header().Get("Retry-After") == ""), func() { t.Fatal(w.Body.String()) })
 		}
 	}
-	if r.actor != "local-development" {
-		t.Fatal(r.actor)
-	}
+	testutil.Require(t, r.actor == "local-development", func() { t.Fatal(r.actor) })
 	r.err = nil
 	h = generationHTTP(t, r, false)
 	before := r.calls
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest("POST", "/v1/faction-background-generations", strings.NewReader(`{"name":"A","doctrine":"d"}`)))
-	if w.Code != 503 || r.calls != before {
-		t.Fatal("disabled reserved quota", w.Code)
-	}
+	testutil.Require(t, !(w.Code != 503 || r.calls != before), func() { t.Fatal("disabled reserved quota", w.Code) })
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/v1/faction-background-generations/options", nil))
 	var o Options
 	_ = json.Unmarshal(w.Body.Bytes(), &o)
-	if w.Code != 200 || o.Available || o.Reason == "" {
-		t.Fatal(o)
-	}
+	testutil.Require(t, !(w.Code != 200 || o.Available || o.Reason == ""), func() { t.Fatal(o) })
 	mux := http.NewServeMux()
 	(&Handler{Repository: r}).RegisterRoutes(mux)
 	for _, method := range []string{"GET", "POST"} {
@@ -109,8 +101,6 @@ func TestGenerationEndpoints(t *testing.T) {
 			path += "/job"
 		}
 		mux.ServeHTTP(w, httptest.NewRequest(method, path, nil))
-		if w.Code != 401 {
-			t.Fatal(w.Code)
-		}
+		testutil.Require(t, w.Code == 401, func() { t.Fatal(w.Code) })
 	}
 }

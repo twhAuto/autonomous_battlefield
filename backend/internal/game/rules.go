@@ -26,22 +26,14 @@ func ValidateRuleset(ruleset Ruleset) error {
 		}
 		unitIDs[unit.ID] = true
 	}
-	upgradeIDs := make(map[string]bool, len(ruleset.Upgrades))
-	for _, upgrade := range ruleset.Upgrades {
-		if !validUpgrade(upgrade) || upgradeIDs[upgrade.ID] {
-			return fmt.Errorf("%w: invalid or duplicate upgrade %q", ErrInvalidRuleset, upgrade.ID)
-		}
-		upgradeIDs[upgrade.ID] = true
+	if err := validateRulesetUpgrades(ruleset); err != nil {
+		return err
 	}
 	if !validBuildingRules(ruleset.Buildings) {
 		return fmt.Errorf("%w: invalid building rules", ErrInvalidRuleset)
 	}
-	seenBuildings := map[string]bool{}
-	for _, b := range ruleset.Structures {
-		if !ValidStructure(b) || seenBuildings[b.ID] {
-			return fmt.Errorf("%w: invalid or duplicate structure %q", ErrInvalidRuleset, b.ID)
-		}
-		seenBuildings[b.ID] = true
+	if err := validateRulesetStructures(ruleset); err != nil {
+		return err
 	}
 	if len(ruleset.Structures) > 0 && ruleset.Buildings.MaximumBuildingCount == 0 {
 		return fmt.Errorf("%w: structures require a building limit", ErrInvalidRuleset)
@@ -205,4 +197,26 @@ func ValidStructure(b BuildingType) bool {
 		return b.Attack > 0 && b.Range > 0
 	}
 	return (b.Kind == BuildingWatchtower || b.Kind == BuildingBarracks) && b.Attack == 0 && b.Range == 0
+}
+
+func validateRulesetUpgrades(ruleset Ruleset) error {
+	upgradeIDs := make(map[string]bool, len(ruleset.Upgrades))
+	for _, upgrade := range ruleset.Upgrades {
+		if !validUpgrade(upgrade) || upgradeIDs[upgrade.ID] {
+			return fmt.Errorf("%w: invalid or duplicate upgrade %q", ErrInvalidRuleset, upgrade.ID)
+		}
+		upgradeIDs[upgrade.ID] = true
+	}
+	return nil
+}
+
+func validateRulesetStructures(ruleset Ruleset) error {
+	seenBuildings := map[string]bool{}
+	for _, b := range ruleset.Structures {
+		if !ValidStructure(b) || seenBuildings[b.ID] {
+			return fmt.Errorf("%w: invalid or duplicate structure %q", ErrInvalidRuleset, b.ID)
+		}
+		seenBuildings[b.ID] = true
+	}
+	return nil
 }

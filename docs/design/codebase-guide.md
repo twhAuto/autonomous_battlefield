@@ -33,6 +33,7 @@ autonomous_battlefield/
 │   │   ├── game/               # Deterministic state transitions
 │   │   │   └── controller/     # Infrastructure-free controller contracts
 │   │   ├── ai/                 # Decision execution, providers, MCP, evaluations
+│   │   ├── testutil/           # Shared assertions with lazy failure diagnostics
 │   │   └── ...                 # app, authn, config, httpapi, postgres, logging, telemetry
 │   ├── migrations/             # Embedded SQL migrations
 │   ├── rulesets/               # Versioned game rules
@@ -527,6 +528,17 @@ Tests are colocated with their Go or React implementation. The codebase includes
 - provider, MCP, runner, profile, and capability tests;
 - HTTP contract/status tests;
 - React component and typed API-client tests.
+
+`backend/internal/testutil.Require` shares fatal assertion checks while evaluating
+diagnostics only on failure. Larger balance, opening, and generation tests use
+named scenario helpers to keep setup, execution, and assertions readable.
+Ruleset and plan validation, recruitment, healing routes, and agent claims have
+separate helpers for their individual validation or execution phases; their
+owning packages and runtime contracts remain the same.
+
+Battle inspector regions use labelled sections, and asynchronous loading messages
+use native `output` elements. Component tests verify the resulting accessibility
+roles rather than requiring redundant explicit role attributes.
 
 Package-specific PostgreSQL integration tests remain beside their adapters and require `TEST_DATABASE_URL`; the isolated PostgreSQL harness supplies it. `scripts/test` contains reusable test runners and deployment script tests. Old `scripts/ci` test commands forward to those runners. `scripts/test/test-command-wrappers.sh` verifies argument, environment, working-directory, exit-status, and signal forwarding without launching the application. `scripts/test/test-kind-deployment.sh` checks selected-overlay staging, real Kustomize renders, and rollout failure handling. `scripts/test/test-security-launchers.sh` checks scanner artifact paths, failure propagation, and the shared Trivy pin using scanner stubs. Performance scenarios live in `tests/performance`; AI cases remain in `backend/evals`. Add an end-to-end folder only when whole-application tests exist.
 

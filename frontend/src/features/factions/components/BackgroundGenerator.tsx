@@ -58,10 +58,17 @@ export function BackgroundGenerator({ input, valid, onUse }: Readonly<{ input: B
   if (options && Date.parse(options.resetAt) <= now) { setOptions(undefined); setRevision(value => value + 1) }
  }, [now, options])
  const blocked = !valid || !options?.available || options.remaining <= 0 || seconds > 0 || busy || Boolean(activeId)
+ function applyGenerationError(error: unknown) {
+  if (!(error instanceof GenerationError)) return
+  if (error.status) pending.current = null
+  if (!error.options) return
+  setOptions(error.options)
+  if (error.options.activeJobId) setActiveId(error.options.activeJobId)
+ }
  async function generate() {
   if (blocked) return
   const serialized = JSON.stringify(input)
-  if (!pending.current || pending.current.input !== serialized) pending.current = { input: serialized, key: crypto.randomUUID() }
+  if (pending.current?.input !== serialized) pending.current = { input: serialized, key: crypto.randomUUID() }
   setBusy(true); setMessage('')
   controller.current = new AbortController()
   try {
@@ -71,10 +78,7 @@ export function BackgroundGenerator({ input, valid, onUse }: Readonly<{ input: B
   } catch (error) {
    if (controller.current.signal.aborted) return
    setMessage(error instanceof Error ? error.message : 'Could not generate background.')
-   if (error instanceof GenerationError) {
-    if (error.status) pending.current = null
-    if (error.options) { setOptions(error.options); if (error.options.activeJobId) setActiveId(error.options.activeJobId) }
-   }
+   applyGenerationError(error)
   } finally { if (!controller.current.signal.aborted) setBusy(false) }
  }
  const previewCount = Array.from(preview?.trim() ?? '').length

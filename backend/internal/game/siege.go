@@ -62,6 +62,11 @@ func (m *Match) retreatFromCloseEnemies(unit *Unit) ([]Event, bool) {
 	if currentDistance >= unit.MinimumRange {
 		return nil, false
 	}
+	return m.retreatAlongReachablePath(unit, goals)
+
+}
+
+func (m *Match) retreatAlongReachablePath(unit *Unit, goals map[Position]bool) ([]Event, bool) {
 	// Only choose destinations reachable in this action, without crossing occupants.
 	occupied := m.occupied()
 	paths := map[Position][]Position{unit.Position: nil}

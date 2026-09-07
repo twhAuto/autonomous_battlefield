@@ -82,8 +82,8 @@ export function BattleHistoryPage() {
           </select></label>
           <button className="compact-action" type="button" onClick={refresh} disabled={loading}>REFRESH</button>
         </div>
-        {loading && <p role="status">Loading battle history…</p>}
-        {error && <div role="alert"><p>{error}</p><button className="compact-action" onClick={() => setVersion((value) => value + 1)}>RETRY</button></div>}
+        {loading && <output>Loading battle history…</output>}
+        {error && <div role="alert"><p>{error}</p><button className="compact-action" type="button" onClick={() => setVersion((value) => value + 1)}>RETRY</button></div>}
         {!loading && page && <>
           {page.battles.length === 0 ? <div className="directory-state">
             <h2>{status || cursor ? 'No matching battles' : 'No battles yet'}</h2>

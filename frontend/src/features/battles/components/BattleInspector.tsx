@@ -35,7 +35,7 @@ export function BattleInspector({ battle, decisions, decisionMessage, events }: 
       </div>
     })}
     <div id="inspector-content" className="inspector-scroll">
-      <div id="inspector-panel-system" role="region" aria-label="System information" hidden={selected !== 'system'} tabIndex={0}>
+      <section id="inspector-panel-system" aria-label="System information" hidden={selected !== 'system'}>
         <table className="player-comparison"><caption>Current player comparison{battle.state ? ` · tick ${battle.state.tick}` : ' · awaiting state'}</caption><thead><tr><th>Player</th><th>Gold</th><th>Units</th><th>Castle HP</th></tr></thead><tbody>
           {battle.participants.map((player) => {
             const status = playerStatus(battle.state, player.id)
@@ -43,18 +43,18 @@ export function BattleInspector({ battle, decisions, decisionMessage, events }: 
           })}
         </tbody></table>
         <EventConsole {...events} entities={entities} />
-      </div>
+      </section>
       {battle.participants.map((player) => {
         const status = playerStatus(battle.state, player.id)
         const panelId = `player-${player.id}`
-        return <div key={player.id} id={`inspector-panel-${player.id}`} role="region" aria-labelledby={`inspector-player-title-${player.id}`} hidden={selected !== player.id}>
+        return <section key={player.id} id={`inspector-panel-${player.id}`} aria-labelledby={`inspector-player-title-${player.id}`} hidden={selected !== player.id}>
           {sections.map((item) => <div key={item} id={`${panelId}-panel-${item}`} role="tabpanel" aria-labelledby={`${panelId}-tab-${item}`} hidden={section !== item} tabIndex={0} className="inspector-section">
             {item === 'overview' && <PlayerOverview status={status} />}
             {item === 'units' && <PlayerUnits status={status} />}
             {item === 'decisions' && <AIDecisionPanel entities={entities} decisions={decisions} participantNames={names} message={decisionMessage} hasModelController={player.controller?.type === 'model'} selectedFaction={player.id} attempt={battle.attempt} battleId={battle.id} active={selected === player.id && section === 'decisions'} contextCache={cache} embedded />}
             {item === 'faction' && <section aria-label="Saved faction profile"><h3>Background</h3><p className="faction-prose">{player.background || 'No background saved with this battle.'}</p><h3>Doctrine</h3><p className="faction-prose">{player.doctrine || 'No doctrine saved with this battle.'}</p><h3>Controller</h3><p>{controllerLabel(player.controller)}</p><p>{player.controller?.type ?? 'scripted'}{player.controller?.provider ? ` · ${player.controller.provider}` : ''}{player.controller?.runtime ? ` · ${player.controller.runtime}` : ''}</p><p>Faction profile saved when this battle was created.</p></section>}
           </div>)}
-        </div>
+        </section>
       })}
     </div>
   </aside>

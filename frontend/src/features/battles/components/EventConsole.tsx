@@ -13,7 +13,7 @@ export function EventConsole({ battleAttempt, selectedAttempt, setSelectedAttemp
   setSelectedAttempt: (attempt: number) => void
   events: BattleEvent[]
   participantNames?: Map<string, string>
-  entities?: EntityNaming['entities']
+  entities?: NonNullable<EntityNaming['entities']>
   eventCursor: number
   eventHasMore: boolean
   eventState: EventState
@@ -21,7 +21,7 @@ export function EventConsole({ battleAttempt, selectedAttempt, setSelectedAttemp
   loadEventPage: (after: number, reset: boolean, signal?: AbortSignal) => Promise<void>
 }>) {
   const [eventType, setEventType] = useState('all')
-  const eventTypes = [...new Set([...events.map((event) => event.type), ...(eventType === 'all' ? [] : [eventType])])].sort()
+  const eventTypes = [...new Set([...events.map((event) => event.type), ...(eventType === 'all' ? [] : [eventType])])].sort((a, b) => a.localeCompare(b))
   const visibleEvents = events.filter((event) => eventType === 'all' || event.type === eventType)
   const latestTick = events.reduce((latest, event) => Math.max(latest, event.tick), 0)
   return (

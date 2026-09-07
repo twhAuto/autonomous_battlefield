@@ -26,6 +26,12 @@ func validateExpansionChoices(context DecisionContext, plan controller.PlanPropo
 			}
 		}
 	}
+	issues = append(issues, validateRecruitmentSources(plan, sources)...)
+	return issues
+}
+
+func validateRecruitmentSources(plan controller.PlanProposal, sources map[string]bool) []ValidationIssue {
+	issues := []ValidationIssue{}
 	if plan.RecruitmentOrders != nil {
 		for _, order := range *plan.RecruitmentOrders {
 			if order.SourceBuildingID != "" && !sources[order.SourceBuildingID] {

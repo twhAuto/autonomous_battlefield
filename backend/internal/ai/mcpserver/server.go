@@ -105,35 +105,19 @@ func (s *Server) handleAgentClaim(repository ai.DecisionRepository) http.Handler
 		if !ok {
 			return
 		}
-		var record ai.DecisionRecord
-		var found bool
-		var err error
 		supportsBattle := len(request.JobTypes) == 0 || slices.Contains(request.JobTypes, "battle_decision")
 		supportsGeneration := slices.Contains(request.JobTypes, generation.JobType)
-		if supportsBattle {
-			first := request
-			if supportsGeneration {
-				first.WaitSeconds = 0
-			}
-			record, found, err = s.waitForDecisionClaim(r.Context(), repository, first)
-		}
+		record, found, err := s.initialDecisionClaim(r.Context(), repository, request, supportsBattle, supportsGeneration)
 		if err != nil {
 			s.logger.ErrorContext(r.Context(), "decision_claim_failed", "worker_id", request.WorkerID, "error", err)
 			http.Error(w, "claim failed", http.StatusInternalServerError)
 			return
 		}
 		if !found && supportsGeneration {
-			// Check drafts before long-polling. Claiming after a full long poll
-			// risks leasing a job after the HTTP response deadline has elapsed.
-			if s.claimGeneration(w, r, request) {
+			var handled bool
+			record, found, handled = s.claimAfterGeneration(w, r, repository, request, supportsBattle)
+			if handled {
 				return
-			}
-			if supportsBattle && request.WaitSeconds > 0 {
-				record, found, err = s.waitForDecisionClaim(r.Context(), repository, request)
-				if err != nil {
-					http.Error(w, "claim failed", http.StatusInternalServerError)
-					return
-				}
 			}
 		}
 		if !found {
@@ -416,4 +400,39 @@ func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest,
 			slog.String("decision_status", result.Status), slog.Int("validation_error_count", len(result.Errors)))
 	}
 	return nil, result, err
+}
+
+func (s *Server) initialDecisionClaim(ctx context.Context, repository ai.DecisionRepository, request agentClaimRequest, supportsBattle, supportsGeneration bool) (ai.DecisionRecord, bool, error) {
+	var record ai.DecisionRecord
+	var found bool
+	var err error
+	if supportsBattle {
+		first := request
+		if supportsGeneration {
+			first.WaitSeconds = 0
+		}
+		record, found, err = s.waitForDecisionClaim(ctx, repository, first)
+	}
+
+	return record, found, err
+}
+
+func (s *Server) claimAfterGeneration(w http.ResponseWriter, r *http.Request, repository ai.DecisionRepository, request agentClaimRequest, supportsBattle bool) (ai.DecisionRecord, bool, bool) {
+	var record ai.DecisionRecord
+	var found bool
+	var err error
+	// Check drafts before long-polling. Claiming after a full long poll
+	// risks leasing a job after the HTTP response deadline has elapsed.
+	if s.claimGeneration(w, r, request) {
+		return record, found, true
+	}
+	if supportsBattle && request.WaitSeconds > 0 {
+		record, found, err = s.waitForDecisionClaim(r.Context(), repository, request)
+		if err != nil {
+			http.Error(w, "claim failed", http.StatusInternalServerError)
+			return record, found, true
+		}
+	}
+
+	return record, found, false
 }

@@ -128,14 +128,7 @@ func (p *Postgres) Admit(ctx context.Context, actor, key string, input Input, c 
 	var id string
 	err = tx.QueryRow(ctx, `SELECT id,input_hash FROM faction_background_generations WHERE actor_id=$1 AND idempotency_key=$2`, actor, key).Scan(&id, &storedHash)
 	if err == nil {
-		if hash != storedHash {
-			return Job{}, Options{}, ErrConflict
-		}
-		j, e := scan(tx.QueryRow(ctx, `SELECT `+columns+` FROM faction_background_generations WHERE id=$1`, id))
-		if e != nil {
-			return j, Options{}, e
-		}
-		return j, Options{}, tx.Commit(ctx)
+		return existingAdmission(ctx, tx, id, hash, storedHash)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, Options{}, err
@@ -205,4 +198,15 @@ func (p *Postgres) Finish(ctx context.Context, id, category string, usage ai.Usa
 	}
 	tag, err := p.DB.Exec(ctx, `UPDATE faction_background_generations SET usage=$2,metadata=$3,model_label=COALESCE(NULLIF($3::jsonb->>'modelIdentifier',''),model_label),status=CASE WHEN status='running' THEN 'failed' ELSE status END,error_category=CASE WHEN status='running' THEN $4 ELSE error_category END,finished_at=COALESCE(finished_at,now()) WHERE id::text=$1 AND status IN ('running','succeeded','failed')`, id, raw, meta, category)
 	return tag.RowsAffected() == 1, err
+}
+
+func existingAdmission(ctx context.Context, tx pgx.Tx, id, hash, storedHash string) (Job, Options, error) {
+	if hash != storedHash {
+		return Job{}, Options{}, ErrConflict
+	}
+	j, e := scan(tx.QueryRow(ctx, `SELECT `+columns+` FROM faction_background_generations WHERE id=$1`, id))
+	if e != nil {
+		return j, Options{}, e
+	}
+	return j, Options{}, tx.Commit(ctx)
 }
