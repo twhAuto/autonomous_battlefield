@@ -535,6 +535,11 @@ Merge-blocking gates require at least 80% Go statement coverage and at least 80%
 
 For a focused change, start with the affected package tests. Before completing implementation work, run the applicable repository coverage gate.
 
+Frontend Vitest runs use at most two workers, configured in
+`frontend/vite.config.ts`, to limit CPU contention with Jenkins's parallel Go,
+fuzz, and security checks. The five-second test timeout and 80% coverage gates
+remain in effect.
+
 ### AI comparison and regression coverage
 
 [`cmd/aieval/comparison.go`](../../backend/cmd/aieval/comparison.go) owns compare
