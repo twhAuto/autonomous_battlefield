@@ -60,7 +60,7 @@ deploy/
         │   ├── grafana/    Metrics UI and dashboard provisioning
         │   ├── otel-collector/  OTLP trace receiver
         │   ├── tempo/      Trace storage
-        │   ├── elasticsearch/  Disposable local log storage
+        │   ├── elasticsearch/  Persistent log storage
         │   ├── kibana/     Logging UI and data-view provisioning
         │   └── collector-rbac/  Collector access to application pod metadata
         ├── logging-collector/  Node log collector and isolated namespace
@@ -729,3 +729,25 @@ its original identity after edits. Inspect job `error_category`, timestamps,
 prompts. API models have a hard three-turn limit. CLI jobs are deadline-bound and
 instructed to use at most three turns; native CLI internal provider-turn counts
 are not available to enforce separately. Three invalid submissions fail the job.
+
+### Elasticsearch and Kibana rollout recovery
+
+Elasticsearch uses the 10Gi `battlefield-elasticsearch-data` PVC with the Kind
+`standard` storage class. Pod replacement retains log indices and Kibana saved
+objects; deleting the cluster or its backing storage does not. The first rollout
+from the previous `emptyDir` configuration starts with empty storage. Export or
+snapshot any data that must be preserved before that transition.
+
+The deployment helper waits for Elasticsearch and the other observability
+workloads, restarts Kibana against the ready Elasticsearch instance, waits for
+Kibana's rollout, then applies its setup job separately. Applying the observability
+Kustomization alone no longer creates the setup job. Each observability rollout
+briefly restarts Kibana. The setup job has a 300-second deadline, bounded HTTP
+requests, and separate pods for retries so failed-attempt logs remain available.
+The helper detects both successful and failed Job conditions and prints job, pod,
+and container diagnostics on failure. Finished jobs are retained for 300 seconds.
+
+After a manual recovery, recreate only the setup job with
+`kubectl -n battlefield delete job battlefield-kibana-setup --ignore-not-found`
+and `kubectl -n battlefield apply -f deploy/overlays/local/observability/kibana/setup-job.yaml`,
+then confirm completion before running production smoke verification.

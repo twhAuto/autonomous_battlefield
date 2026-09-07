@@ -320,13 +320,20 @@ curl --fail http://localhost:8080/metrics
 
 ## Local versus production
 
-The local Prometheus TSDB, Grafana database, and Elasticsearch data use
-`emptyDir`; their data is lost when the corresponding pod is replaced. Kibana
-saved objects live in the same disposable Elasticsearch store. Prometheus
-retains up to 30 days only while its pod remains intact. The Kibana setup Job
-recreates the checked-in data view, but it does not restore logs. This is
-appropriate for a disposable kind cluster, not for an SLA evidence or audit
-source.
+The local Prometheus TSDB and Grafana database use `emptyDir`; their data is
+lost when their pods are replaced. Prometheus retains up to 30 days only while
+its pod remains intact. Elasticsearch log indices and Kibana saved objects use
+the 10Gi `battlefield-elasticsearch-data` PVC (`standard` storage class), retaining
+data across pod replacement. This is not a backup against cluster or disk loss.
+The first transition from `emptyDir` starts empty; preserve required data before
+rolling out that storage change. The setup Job recreates checked-in saved objects,
+but does not restore logs.
+
+The deployment helper waits for Elasticsearch, restarts and waits for Kibana,
+then applies `kibana/setup-job.yaml` separately from the observability overlay.
+Setup requests and the Job lifetime are bounded. Each retry gets a separate pod,
+and terminal failure immediately triggers diagnostics. Finished Jobs and their
+pods expire after 300 seconds, so capture failure output promptly.
 
 Elasticsearch keeps its container root filesystem read-only. A non-root init
 container copies the image's complete default configuration and the checked-in

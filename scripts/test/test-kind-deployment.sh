@@ -144,6 +144,13 @@ for selection in application migration gateway observability infrastructure all;
     [[ ! -e "${rollback_overlay}" ]]
   fi
   if deployment_component_selected observability; then
+    grep -Fq 'claimName: battlefield-elasticsearch-data' "${test_dir}/observability.yaml"
+    grep -Fq 'kind: PersistentVolumeClaim' "${test_dir}/observability.yaml"
+    if grep -Fq 'kind: Job' "${test_dir}/observability.yaml"; then
+      echo 'Setup Job must not start before observability readiness.' >&2
+      exit 1
+    fi
+    [[ -f "${runtime_dir}/deploy/overlays/local/observability/kibana/setup-job.yaml" ]]
     kubectl kustomize "${runtime_dir}/deploy/overlays/local/logging-collector" >"${test_dir}/logging.yaml"
   else
     [[ ! -e "${runtime_dir}/deploy/overlays/local/logging-collector" ]]
@@ -162,6 +169,9 @@ observability_rollout_timeout=90s
 runtime_dir="${test_dir}"
 kind_deploy_kube() {
   printf '%s\n' "$*" >>"${test_dir}/kube-calls"
+  if [[ "$1 $2" == 'get job' ]]; then
+    printf '%s\n' "${job_condition:-Complete=True}"
+  fi
   if [[ "$1 $2" == 'rollout status' && "$3" == "${failed_resource:-}" ]]; then
     return 1
   fi
@@ -169,26 +179,44 @@ kind_deploy_kube() {
 kind_deploy_wait_rollout() {
   kind_deploy_kube rollout status "$@"
 }
-for failed_resource in '' deployment/battlefield-tempo; do
+for failed_resource in '' deployment/battlefield-tempo deployment/battlefield-kibana; do
   : >"${test_dir}/kube-calls"
   status=0
   kind_deploy_observability >"${test_dir}/observability.log" 2>&1 || status=$?
-  for deployment in prometheus kube-state-metrics grafana otel-collector tempo elasticsearch kibana; do
+  for deployment in prometheus kube-state-metrics grafana otel-collector tempo elasticsearch; do
     grep -Fq "rollout status deployment/battlefield-${deployment} --namespace battlefield --timeout=90s" "${test_dir}/kube-calls"
   done
   if [[ -n "${failed_resource}" ]]; then
     [[ "${status}" == 1 ]]
     grep -Fq "describe ${failed_resource}" "${test_dir}/kube-calls"
-    if grep -Fq 'job/battlefield-kibana-setup' "${test_dir}/kube-calls"; then
+    if grep -Fq 'get job battlefield-kibana-setup' "${test_dir}/kube-calls"; then
       echo 'Failed rollout proceeded to the setup job.' >&2
       exit 1
     fi
   else
     [[ "${status}" == 0 ]]
     grep -Fq 'rollout status daemonset/battlefield-fluent-bit' "${test_dir}/kube-calls"
-    grep -Fq 'wait --for=condition=complete job/battlefield-kibana-setup' "${test_dir}/kube-calls"
+    python3 - "${test_dir}/kube-calls" <<'CHECK'
+import sys
+calls = open(sys.argv[1]).read().splitlines()
+def position(prefix):
+    return next(i for i, line in enumerate(calls) if line.startswith(prefix))
+assert position('rollout status deployment/battlefield-elasticsearch ') < position('rollout restart deployment/battlefield-kibana ')
+assert position('rollout restart deployment/battlefield-kibana ') < position('rollout status deployment/battlefield-kibana ')
+assert position('rollout status deployment/battlefield-kibana ') < position('apply --namespace battlefield -f ')
+assert position('apply --namespace battlefield -f ') < position('get job battlefield-kibana-setup ')
+CHECK
   fi
 done
+# Terminal Job failures return immediately and collect logs from every attempt.
+job_condition=Failed=True
+: >"${test_dir}/kube-calls"
+status=0
+kind_deploy_wait_kibana_setup >"${test_dir}/job.log" 2>&1 || status=$?
+[[ "${status}" == 1 ]]
+grep -Fq 'describe job battlefield-kibana-setup' "${test_dir}/kube-calls"
+grep -Fq 'logs --namespace battlefield -l job-name=battlefield-kibana-setup' "${test_dir}/kube-calls"
+unset job_condition
 runtime_dir=""
 
 # Cancellation must stop child rollout waits and retain its nonzero status.

@@ -1,0 +1,12 @@
+# Retains log indices and Kibana saved objects across Elasticsearch pod replacement.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: battlefield-elasticsearch-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 10Gi
