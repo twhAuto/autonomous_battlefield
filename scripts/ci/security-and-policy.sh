@@ -122,7 +122,7 @@ else
     --workdir /project \
     "${TRIVY_IMAGE}" \
     fs --skip-db-update --no-progress --timeout 10m --scanners vuln,secret,misconfig --severity HIGH,CRITICAL \
-    --include-dev-deps "${trivy_ignore_unfixed[@]}" --skip-dirs artifacts --exit-code 1 \
+    --include-dev-deps "${trivy_ignore_unfixed[@]}" --skip-dirs artifacts --skip-dirs frontend/coverage --exit-code 1 \
     --format json --output /dev/stdout . \
     >"${artifact_dir}/trivy-filesystem.json"; then
     failure=1

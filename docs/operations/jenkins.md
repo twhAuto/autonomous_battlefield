@@ -173,6 +173,12 @@ npm debug logs from the disposable audit containers are archived under
 `artifacts/security/npm-logs/`; paths printed by npm refer to the container and
 are not paths on the Jenkins agent.
 
+The Trivy source scan skips generated `artifacts` and `frontend/coverage`
+directories. Vitest creates and removes temporary coverage files during the
+parallel frontend stage; scanning those files can otherwise fail with a
+`stat frontend/coverage/.tmp/coverage-*.json: no such file or directory` error.
+Frontend source and dependency lockfiles remain included in the scan.
+
 Runtime k6 and ZAP containers use host networking on the Linux agent and map
 `battlefield.localhost` to `127.0.0.1`, matching kind's loopback-only gateway
 publication. The Docker daemon must run on the same host as the agent. Both
