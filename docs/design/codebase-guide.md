@@ -540,6 +540,10 @@ Frontend Vitest runs use at most two workers, configured in
 fuzz, and security checks. The five-second test timeout and 80% coverage gates
 remain in effect.
 
+Battle-history pagination, browser-back navigation, and refresh-to-newest behavior
+have separate component tests so each interaction sequence has its own timeout
+budget on the shared CI agent.
+
 ### AI comparison and regression coverage
 
 [`cmd/aieval/comparison.go`](../../backend/cmd/aieval/comparison.go) owns compare

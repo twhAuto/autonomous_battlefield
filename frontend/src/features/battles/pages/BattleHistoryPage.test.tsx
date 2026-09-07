@@ -55,7 +55,7 @@ it('renders summaries and distinguishes a draw from absent outcomes', async () =
   expect(screen.getByRole('button', { name: /next/i })).toBeDisabled()
 })
 
-it('paginates, restores earlier cursors, refreshes newest, and handles browser back', async () => {
+it('paginates and restores earlier cursors', async () => {
   const user = userEvent.setup()
   vi.mocked(listBattles).mockImplementation(async ({ cursor }) => ({ battles: [{ ...summary, id: cursor || 'first' }], nextCursor: cursor === 'third' ? null : cursor === 'second' ? 'third' : 'second' }))
   renderHistory('/battles?status=completed')
@@ -69,9 +69,25 @@ it('paginates, restores earlier cursors, refreshes newest, and handles browser b
   await screen.findByText('second')
   await user.click(screen.getByRole('button', { name: /previous/i }))
   await screen.findByText('first')
+  expect(screen.getByTestId('location').textContent).toBe('/battles?status=completed')
+})
+
+it('restores the previous page through browser back', async () => {
+  const user = userEvent.setup()
+  vi.mocked(listBattles).mockImplementation(async ({ cursor }) => ({ battles: [{ ...summary, id: cursor || 'first' }], nextCursor: cursor ? null : 'second' }))
+  renderHistory('/battles?status=completed')
+  await screen.findByText('first')
   await user.click(screen.getByRole('button', { name: /next/i }))
   await screen.findByText('second')
   await user.click(screen.getByRole('button', { name: 'Browser back' }))
+  await screen.findByText('first')
+  expect(screen.getByTestId('location').textContent).toBe('/battles?status=completed')
+})
+
+it('refreshes an older page back to the newest results', async () => {
+  const user = userEvent.setup()
+  vi.mocked(listBattles).mockImplementation(async ({ cursor }) => ({ battles: [{ ...summary, id: cursor || 'first' }], nextCursor: cursor ? null : 'second' }))
+  renderHistory('/battles?status=completed')
   await screen.findByText('first')
   await user.click(screen.getByRole('button', { name: /next/i }))
   await screen.findByText('second')
