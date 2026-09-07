@@ -63,7 +63,7 @@ PostgreSQL is the durable coordination point. The API and engine do not call eac
 
 | Component | Responsibility | Direct dependencies |
 | --- | --- | --- |
-| React frontend | Administrator login, faction creation, battle staging, map display, controls, event stream, and AI decision history | Public API |
+| React frontend | Administrator login, faction creation, battle staging and history, map display, controls, event stream, and AI decision history | Public API |
 | Public API | Administrator sessions, HTTP validation, scenario resolution, faction and battle persistence, and selectable model-profile catalog | PostgreSQL, scenario/ruleset YAML, optional Redis |
 | Battle engine | Battle queue claims, deterministic ticks, strategy windows, state/event persistence | PostgreSQL |
 | MCP decision service | Two request-scoped model tools and an internal agent control plane | PostgreSQL |
@@ -671,3 +671,71 @@ Scripted controllers and opening fallback ignore doctrine. They buy legal units
 round-robin in sorted ID order, skipping unaffordable types, until six purchases or
 no affordable type remains. Legacy snapshots without version 2 retain their starting
 blueprints, initial upgrade bonuses, and original decision schedule.
+
+### Faction identity and background drafts
+
+Faction identity now consists of name, explicit strategic doctrine, and an
+optional background (trimmed, at most 1,000 Unicode characters). Battle creation
+copies all three into its immutable scenario snapshot. Missing background in old
+snapshots decodes as empty. Only the owning profile enters each decision context,
+observation hash, durable decision provenance, and API/CLI system prompt.
+The shared `battlefield-agent-v5` identity template JSON-escapes profile fields and
+asks the agent to act as the faction's commanding voice. Core rules take
+precedence over doctrine; background supplies perspective beneath doctrine.
+Scripted controllers do not interpret history or map keywords to tactical weights.
+
+The API's `internal/generation` package owns durable background draft admission.
+PostgreSQL serializes each actor's admissions by locking
+`faction_generation_accounts`; a partial unique index also prevents multiple
+active jobs. `faction_background_generations` stores input, idempotency hash,
+profile, quota admission day via `created_at`, expiry, result, prompt version,
+usage, timing, and model metadata. Reads/admissions/claims expire stale rows.
+Queued expiry refunds the original day; running expiry records a counted failure.
+No in-memory counter or browser state is authoritative for allowance.
+
+Generation workers reuse the agent execution infrastructure with an advertised
+`faction_background` job type and executable profile IDs. Legacy claims without
+job types remain battle-only. Battle claims take priority; generation starts only
+when a worker owns a free execution slot. Workers check ready background jobs
+before entering an empty battle long poll; jobs admitted during that poll are
+checked on the next claim. The MCP write timeout leaves room beyond the maximum
+20-second poll so a durable claim can be delivered. Claims use `FOR UPDATE SKIP LOCKED` and
+never reclaim running generation jobs. Generation capabilities are namespaced
+separately and authorize only the draft's two tools on `/generation-mcp`.
+The restricted MCP database role receives SELECT/UPDATE on generation jobs,
+without faction-table or battle-state access.
+
+One operator-configured profile selects the writer independently of battle
+models. API execution has at most three provider turns. Native CLI execution uses
+the generation-only prompt/tool surface, a three-turn instruction and three
+invalid-submission cap, and the same execution deadline; native CLI internal
+provider calls are not exposed as individually enforceable turns by the runner.
+There is no automatic model fallback. Model-returned prose alone is insufficient:
+a valid server-accepted tool submission is required for success.
+
+The frontend keeps generated text in an editable preview until Use background;
+Discard and errors leave current profile fields intact. Saving is a separate
+explicit action. Manual background editing works while generation is disabled.
+
+
+## Battle history reads
+
+The authenticated `GET /v1/battles` route passes through the battle API,
+service, and PostgreSQL repository. A single query projects participant
+identities/controllers from the immutable scenario snapshot and reads lifecycle
+timestamps, progress, status, and a compact outcome. It does not load simulation
+states or use the terminal-result cache. History is service-wide under the
+existing administrator authentication model.
+
+The `battle_runs_history_idx` index orders `created_at DESC, id DESC`.
+Migration `00010_battle_history.sql` adds it without rewriting existing data;
+rollback drops only the index. Keyset pagination uses the last displayed
+creation time and UUID, with one extra fetched row to detect the next page.
+Status filtering reads current values, so membership may change between requests.
+
+The React `/battles` page fetches on entry, filter/page navigation, retry, and
+manual refresh. It does not poll. URL parameters preserve the status, current
+cursor, and prior cursors for Previous/browser navigation; refresh returns to
+the newest page with the same filter. Detail links carry the originating URL
+in router state, and direct detail visits link back to the unfiltered archive.
+Obsolete requests are aborted and their results ignored.

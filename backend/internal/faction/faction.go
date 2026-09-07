@@ -6,9 +6,10 @@ import "github.com/twh09/autonomous_battlefield/backend/internal/game"
 const BalancedDoctrine = "Balance offense, defense, and economic growth. Protect your castle and income, scout before committing, and adapt purchases to visible threats."
 
 type Faction struct {
-	Doctrine  string         `json:"doctrine"`
-	ID        string         `json:"id"`
-	Name      string         `json:"name"`
-	RulesetID string         `json:"-"`
-	Blueprint game.Blueprint `json:"-"`
+	Background string         `json:"background,omitempty"`
+	Doctrine   string         `json:"doctrine"`
+	ID         string         `json:"id"`
+	Name       string         `json:"name"`
+	RulesetID  string         `json:"-"`
+	Blueprint  game.Blueprint `json:"-"`
 }

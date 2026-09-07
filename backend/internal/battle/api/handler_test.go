@@ -345,6 +345,8 @@ func TestListEventsMapsServiceErrorsAndDefaults(t *testing.T) {
 }
 
 type fakeBattleService struct {
+	historyInput  battleservice.BattleHistoryInput
+	historyPage   battleservice.BattleHistoryPage
 	run           *battleservice.BattleRun
 	page          battleservice.BattleEventPage
 	err           error
@@ -397,4 +399,9 @@ func (s *fakeBattleService) ListBattleEvents(_ context.Context, _ string, attemp
 	s.eventsLimit = limit
 	s.eventsLatest = latest
 	return s.page, s.err
+}
+
+func (s *fakeBattleService) ListBattles(_ context.Context, input battleservice.BattleHistoryInput) (battleservice.BattleHistoryPage, error) {
+	s.historyInput = input
+	return s.historyPage, s.err
 }

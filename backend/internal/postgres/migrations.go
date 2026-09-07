@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/lock"
 	"github.com/twh09/autonomous_battlefield/backend/migrations"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -28,7 +29,11 @@ func Migrate(ctx context.Context, url string, connectTimeout time.Duration) (int
 		return 0, fmt.Errorf("ping PostgreSQL: %w", err)
 	}
 
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.Files)
+	locker, err := lock.NewPostgresSessionLocker()
+	if err != nil {
+		return 0, fmt.Errorf("create migration lock: %w", err)
+	}
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.Files, goose.WithSessionLocker(locker))
 	if err != nil {
 		return 0, fmt.Errorf("create migration provider: %w", err)
 	}

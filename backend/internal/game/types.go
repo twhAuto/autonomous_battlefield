@@ -127,6 +127,7 @@ type Blueprint struct {
 }
 
 type FactionSetup struct {
+	Background    string                    `json:"background,omitempty"`
 	Doctrine      string                    `json:"doctrine,omitempty"`
 	ID            string                    `json:"id" yaml:"id"`
 	Name          string                    `json:"name" yaml:"name"`
@@ -260,6 +261,8 @@ type Transition struct {
 // DecisionSnapshot is the bounded, faction-visible state frozen immediately
 // before a production window. It contains no mutation capability.
 type DecisionSnapshot struct {
+	FactionName     string                  `json:"factionName,omitempty"`
+	Background      string                  `json:"background,omitempty"`
 	Doctrine        string                  `json:"doctrine,omitempty"`
 	Opening         bool                    `json:"opening"`
 	LegalUpgrades   []Upgrade               `json:"legalUpgrades"`

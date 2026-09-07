@@ -22,9 +22,10 @@ var (
 var uuidPattern = regexp.MustCompile(`^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$`)
 
 type CreateInput struct {
-	Doctrine string
-	ID       string
-	Name     string
+	Background string
+	Doctrine   string
+	ID         string
+	Name       string
 }
 
 type Service interface {
@@ -75,12 +76,12 @@ func (s *service) CreateFaction(ctx context.Context, input CreateInput) error {
 	if !uuidPattern.MatchString(input.ID) || strings.TrimSpace(input.Name) == "" {
 		return ErrInvalidFaction
 	}
-	if strings.TrimSpace(input.Doctrine) == "" || utf8.RuneCountInString(strings.TrimSpace(input.Doctrine)) > 4000 {
+	if utf8.RuneCountInString(strings.TrimSpace(input.Background)) > 1000 || strings.TrimSpace(input.Doctrine) == "" || utf8.RuneCountInString(strings.TrimSpace(input.Doctrine)) > 4000 {
 		return ErrInvalidFaction
 	}
 
 	storedFaction := faction.Faction{
-		ID: input.ID, Name: strings.TrimSpace(input.Name), Doctrine: strings.TrimSpace(input.Doctrine),
+		ID: input.ID, Name: strings.TrimSpace(input.Name), Doctrine: strings.TrimSpace(input.Doctrine), Background: strings.TrimSpace(input.Background),
 	}
 	if err := s.repository.CreateFaction(ctx, storedFaction); err != nil {
 		return err

@@ -94,7 +94,11 @@ func (w *Worker) runClaimLoop(ctx context.Context, profileIDs []string) error {
 		w.logger().InfoContext(ctx, "decision_claimed", "worker_id", w.WorkerID, "request_id", job.RequestID, "profile_id", job.ProfileID)
 		// Each claim loop owns one concurrency slot, so a leased decision is
 		// always executed immediately instead of waiting behind another job.
-		w.runJob(ctx, job)
+		if job.JobType == "faction_background" {
+			w.runGeneration(ctx, job)
+		} else {
+			w.runJob(ctx, job)
+		}
 	}
 }
 
@@ -110,11 +114,15 @@ func waitFor(ctx context.Context, duration time.Duration) bool {
 }
 
 type job struct {
-	Doctrine    string `json:"doctrine"`
-	RequestID   string `json:"requestId"`
-	ProfileID   string `json:"profileId"`
-	Traceparent string `json:"traceparent"`
-	Tracestate  string `json:"tracestate"`
+	FactionName             string `json:"factionName"`
+	Background              string `json:"background"`
+	JobType                 string `json:"jobType"`
+	ExecutionTimeoutSeconds int    `json:"executionTimeoutSeconds"`
+	Doctrine                string `json:"doctrine"`
+	RequestID               string `json:"requestId"`
+	ProfileID               string `json:"profileId"`
+	Traceparent             string `json:"traceparent"`
+	Tracestate              string `json:"tracestate"`
 }
 
 type jobRun struct {
@@ -127,7 +135,7 @@ type jobRun struct {
 func (w *Worker) claim(ctx context.Context, profileIDs []string) (job, bool, error) {
 	payload, _ := json.Marshal(map[string]any{
 		"workerId": w.WorkerID, "leaseSeconds": int(w.DecisionTimeout.Seconds()) + 5,
-		"waitSeconds": max(1, min(20, int(w.ClaimWait.Seconds()))), "profileIds": profileIDs,
+		"waitSeconds": max(1, min(20, int(w.ClaimWait.Seconds()))), "profileIds": profileIDs, "jobTypes": []string{"battle_decision", "faction_background"},
 	})
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(w.MCPURL, "/mcp")+"/internal/agent/claim", bytes.NewReader(payload))
 	if err != nil {
@@ -183,7 +191,7 @@ func (w *Worker) runJob(parent context.Context, job job) {
 		w.reportJobFailure(parent, logger, started, job.RequestID, "provider_unavailable", "provider_unavailable", ai.DecisionResult{})
 		return
 	}
-	result, err := decisionRunner.Run(ctx, ai.DecisionSession{Doctrine: job.Doctrine, RequestID: job.RequestID, CapabilityToken: token, MCPURL: w.MCPURL, Profile: profile})
+	result, err := decisionRunner.Run(ctx, ai.DecisionSession{Doctrine: job.Doctrine, FactionName: job.FactionName, Background: job.Background, RequestID: job.RequestID, CapabilityToken: token, MCPURL: w.MCPURL, Profile: profile})
 	w.finishJob(parent, ctx, jobRun{logger: logger, started: started, requestID: job.RequestID, profile: profile}, result, err)
 }
 

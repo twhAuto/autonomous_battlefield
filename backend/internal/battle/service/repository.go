@@ -8,6 +8,7 @@ import (
 
 // Repository describes the battle persistence required by the API-facing service.
 type Repository interface {
+	ListBattles(context.Context, BattleHistoryQuery) ([]BattleSummary, error)
 	CreateBattle(context.Context, CreateBattleParams) error
 	GetBattle(context.Context, string) (*BattleRun, error)
 	StopBattle(context.Context, string) error

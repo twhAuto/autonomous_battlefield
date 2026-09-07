@@ -39,3 +39,38 @@ func TestDoctrineReachesCLIRunner(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+type identityProvider struct {
+	t *testing.T
+	turnProvider
+}
+
+func (p *identityProvider) NextTurn(ctx context.Context, request ai.ModelTurnRequest) (ai.ModelTurnResult, error) {
+	if !strings.Contains(request.SystemPrompt, `"name":"Northwind"`) || !strings.Contains(request.SystemPrompt, `"background":"Old roots"`) || !strings.Contains(request.SystemPrompt, `"doctrine":"Protect income"`) {
+		p.t.Fatal("API identity missing")
+	}
+	return p.turnProvider.NextTurn(ctx, request)
+}
+
+type identityExecutor struct{ t *testing.T }
+
+func (e identityExecutor) Run(_ context.Context, _ string, args, _ []string, _ string) ([]byte, error) {
+	text := strings.Join(args, " ")
+	for _, want := range []string{`"name":"Northwind"`, `"background":"Old roots"`, `"doctrine":"Protect income"`} {
+		if !strings.Contains(text, want) {
+			e.t.Fatal("CLI identity missing", want)
+		}
+	}
+	return nil, nil
+}
+func TestIdentityReachesBothRunners(t *testing.T) {
+	session := ai.DecisionSession{RequestID: "request", FactionName: "Northwind", Background: "Old roots", Doctrine: "Protect income", Profile: ai.ModelProfile{MaxSteps: 3}}
+	result, err := (APIRunner{Provider: &identityProvider{t: t}, Connector: fakeConnector{&fakeToolSession{}}}).Run(context.Background(), session)
+	if err != nil || !result.Accepted {
+		t.Fatal(result, err)
+	}
+	_, err = (CLIRunner{Provider: "codex-cli", Executor: identityExecutor{t}}).Run(context.Background(), session)
+	if err != nil {
+		t.Fatal(err)
+	}
+}

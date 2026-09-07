@@ -192,3 +192,30 @@ func (r *fakeFactionRepository) UpdateFaction(_ context.Context, stored faction.
 	r.createdFaction = &stored
 	return r.createErr
 }
+
+func TestBackgroundCreationAndEditing(t *testing.T) {
+	repo := &fakeFactionRepository{}
+	s := NewService(repo)
+	for _, background := range []string{"", " Old roots. ", " " + strings.Repeat("😀", 1000) + " "} {
+		input := CreateInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Name", Doctrine: "Doctrine", Background: background}
+		if err := s.CreateFaction(context.Background(), input); err != nil {
+			t.Fatal(err)
+		}
+		if repo.createdFaction.Background != strings.TrimSpace(background) {
+			t.Fatal("background not preserved")
+		}
+		if err := s.(Updater).UpdateFaction(context.Background(), input); err != nil {
+			t.Fatal(err)
+		}
+		if repo.createdFaction.Background != strings.TrimSpace(background) {
+			t.Fatal("background edit not preserved")
+		}
+	}
+	input := CreateInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Name", Doctrine: "Doctrine", Background: strings.Repeat("😀", 1001)}
+	if err := s.CreateFaction(context.Background(), input); !errors.Is(err, ErrInvalidFaction) {
+		t.Fatal(err)
+	}
+	if err := s.(Updater).UpdateFaction(context.Background(), input); !errors.Is(err, ErrInvalidFaction) {
+		t.Fatal(err)
+	}
+}

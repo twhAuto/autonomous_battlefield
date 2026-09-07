@@ -103,6 +103,7 @@ export function FactionsPage() {
                   <h2>{faction.name}</h2>
                   <code title={faction.id}>{faction.id}</code>
                   <p style={{ whiteSpace: 'pre-wrap' }}>{faction.doctrine}</p>
+                  {faction.background && <p style={{ whiteSpace: 'pre-wrap' }}>{faction.background}</p>}
                   <Link to={`/factions/${faction.id}/edit`}>Edit faction</Link>
                 </div>
                 <div className="registry-card__status"><span className="status-dot" /> ACTIVE</div>

@@ -90,6 +90,7 @@ type BattleEventPage struct {
 }
 
 type Service interface {
+	ListBattles(context.Context, BattleHistoryInput) (BattleHistoryPage, error)
 	ListScenarios() []ScenarioSummary
 	CreateBattle(context.Context, CreateBattleInput) (*BattleRun, error)
 	GetBattle(context.Context, string) (*BattleRun, error)
@@ -263,7 +264,7 @@ func (s *battleService) resolveParticipants(ctx context.Context, participants []
 			return identities, controllers, err
 		}
 		controllers[index] = controller
-		identities[index] = FactionIdentity{ID: storedFaction.ID, Name: storedFaction.Name, Doctrine: storedFaction.Doctrine, RulesetID: storedFaction.RulesetID, Blueprint: game.CloneBlueprint(storedFaction.Blueprint)}
+		identities[index] = FactionIdentity{ID: storedFaction.ID, Name: storedFaction.Name, Doctrine: storedFaction.Doctrine, Background: storedFaction.Background, RulesetID: storedFaction.RulesetID, Blueprint: game.CloneBlueprint(storedFaction.Blueprint)}
 	}
 	return identities, controllers, nil
 }

@@ -351,3 +351,28 @@ database:
 	}
 	return path
 }
+
+func TestBackgroundGenerationConfiguration(t *testing.T) {
+	const base = "http:\n  address: \":8080\"\n  readHeaderTimeout: 1s\n  readTimeout: 2s\n  writeTimeout: 2s\n  idleTimeout: 30s\n  shutdownTimeout: 1s\n"
+	c, err := Load(writeConfigFile(t, base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := c.AI.BackgroundGeneration
+	if !g.Enabled || g.ProfileID != "codex-subscription-local" || g.DailyAllowance != 10 || g.Cooldown != 30*time.Second || g.QueueTimeout != 5*time.Minute || g.ExecutionTimeout != 2*time.Minute {
+		t.Fatal(g)
+	}
+	c, err = Load(writeConfigFile(t, base+"ai:\n  backgroundGeneration:\n    enabled: false\n    profileId: custom-writer\n    dailyAllowance: 7\n    cooldown: 45s\n    queueTimeout: 3m\n    executionTimeout: 1m\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g = c.AI.BackgroundGeneration
+	if g.Enabled || g.ProfileID != "custom-writer" || g.DailyAllowance != 7 || g.Cooldown != 45*time.Second || g.QueueTimeout != 3*time.Minute || g.ExecutionTimeout != time.Minute {
+		t.Fatal(g)
+	}
+	for _, field := range []string{"dailyAllowance: 0", "cooldown: 0s", "cooldown: nonsense", "queueTimeout: -1s", "executionTimeout: nonsense"} {
+		if _, err := Load(writeConfigFile(t, base+"ai:\n  backgroundGeneration:\n    "+field+"\n")); err == nil {
+			t.Fatal("invalid generation config accepted", field)
+		}
+	}
+}

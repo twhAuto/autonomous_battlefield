@@ -40,6 +40,13 @@ data:
         maxBytes: 16384
       workerIdEnvironmentVariable: ENGINE_WORKER_ID
     ai:
+      backgroundGeneration:
+        enabled: true
+        profileId: codex-subscription-local
+        dailyAllowance: 10
+        cooldown: 30s
+        queueTimeout: 5m
+        executionTimeout: 2m
       environment: cluster
       agentHealthAddress: ":8083"
       mcpAddress: ":8084"

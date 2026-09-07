@@ -11,6 +11,7 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
+	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -48,15 +49,16 @@ type Engine struct {
 }
 
 type AI struct {
-	Environment         string
-	AgentHealthAddress  string
-	MCPAddress          string
-	MCPURL              string
-	DecisionTimeout     time.Duration
-	CapabilitySecret    string
-	CapabilitySecretEnv string
-	AllowedOrigins      []string
-	Profiles            []ai.ModelProfile
+	BackgroundGeneration generation.Config
+	Environment          string
+	AgentHealthAddress   string
+	MCPAddress           string
+	MCPURL               string
+	DecisionTimeout      time.Duration
+	CapabilitySecret     string
+	CapabilitySecretEnv  string
+	AllowedOrigins       []string
+	Profiles             []ai.ModelProfile
 }
 
 type Database struct {
@@ -124,6 +126,14 @@ type fileConfig struct {
 		WorkerIDEnvironmentVariable string `yaml:"workerIdEnvironmentVariable"`
 	} `yaml:"engine"`
 	AI struct {
+		BackgroundGeneration struct {
+			Enabled          *bool  `yaml:"enabled"`
+			ProfileID        string `yaml:"profileId"`
+			DailyAllowance   *int   `yaml:"dailyAllowance"`
+			Cooldown         string `yaml:"cooldown"`
+			QueueTimeout     string `yaml:"queueTimeout"`
+			ExecutionTimeout string `yaml:"executionTimeout"`
+		} `yaml:"backgroundGeneration"`
 		Environment                         string            `yaml:"environment"`
 		AgentHealthAddress                  string            `yaml:"agentHealthAddress"`
 		MCPAddress                          string            `yaml:"mcpAddress"`
@@ -304,7 +314,11 @@ func parseAIConfig(raw fileConfig) (AI, error) {
 	if err := validateAIProfiles(raw.AI.Profiles); err != nil {
 		return AI{}, err
 	}
-	return AI{Environment: environment, AgentHealthAddress: health, MCPAddress: mcpAddress, MCPURL: mcpURL,
+	gen, err := parseBackgroundGeneration(raw)
+	if err != nil {
+		return AI{}, err
+	}
+	return AI{BackgroundGeneration: gen, Environment: environment, AgentHealthAddress: health, MCPAddress: mcpAddress, MCPURL: mcpURL,
 		DecisionTimeout: timeout, CapabilitySecret: secret, CapabilitySecretEnv: secretEnv,
 		AllowedOrigins: append([]string(nil), raw.AI.AllowedOrigins...), Profiles: append([]ai.ModelProfile(nil), raw.AI.Profiles...)}, nil
 }
@@ -581,4 +595,32 @@ func parseResultCacheConfig(raw fileConfig) (ResultCache, error) {
 		return ResultCache{}, err
 	}
 	return ResultCache{URL: strings.TrimSpace(os.Getenv(environmentVariableName(raw.ResultCache.URLEnvironmentVariable, "BATTLEFIELD_REDIS_URL"))), TTL: ttl, Timeout: timeout}, nil
+}
+
+func parseBackgroundGeneration(raw fileConfig) (generation.Config, error) {
+	c := generation.DefaultConfig()
+	v := raw.AI.BackgroundGeneration
+	if v.Enabled != nil {
+		c.Enabled = *v.Enabled
+	}
+	if v.ProfileID != "" {
+		c.ProfileID = v.ProfileID
+	}
+	if v.DailyAllowance != nil {
+		c.DailyAllowance = *v.DailyAllowance
+	}
+	var err error
+	c.Cooldown, err = parseOptionalDuration("ai.backgroundGeneration.cooldown", v.Cooldown, c.Cooldown, false)
+	if err != nil {
+		return c, err
+	}
+	c.QueueTimeout, err = parseOptionalDuration("ai.backgroundGeneration.queueTimeout", v.QueueTimeout, c.QueueTimeout, false)
+	if err != nil {
+		return c, err
+	}
+	c.ExecutionTimeout, err = parseOptionalDuration("ai.backgroundGeneration.executionTimeout", v.ExecutionTimeout, c.ExecutionTimeout, false)
+	if err != nil {
+		return c, err
+	}
+	return c, c.Validate()
 }

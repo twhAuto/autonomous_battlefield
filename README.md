@@ -9,6 +9,11 @@ Autonomous Battlefield is a Go backend for an auto-battler and expansion game. T
 
 The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, editable faction doctrines and gold-funded opening armies, autonomous economies, fog-of-war views, production-window decisions, provider-neutral model controllers over MCP, an optional single-admin login, validated configuration, health endpoints, and graceful shutdown. Player commands, multi-user authorization, and seeded map generation remain planned work.
 
+The **Battle history** menu opens `/battles`: browse every run, filter by status
+(including paused battles), page through older engagements, and manually refresh
+the newest entries. Open a battle to inspect its existing map, results, events,
+and AI decisions. Saved participant names survive faction edits and deletion.
+
 ## Documentation
 
 | Task | Guide |
@@ -242,3 +247,11 @@ knowledge cards are authored in ruleset YAML.
 
 Reusable content libraries and per-scenario restrictions are documented in the
 [content authoring guide](docs/operations/content-library.md).
+
+Factions support optional backgrounds and editable AI-generated drafts. Backgrounds
+and doctrines are snapshotted for each battle, and agents act as their faction’s
+commanding voice. The writer uses an operator-configured API or local CLI profile
+(default `codex-subscription-local`), with 10 requests per account per UTC day and
+a 30-second cooldown. Manual editing remains available when generation is off.
+See [generation configuration and rollout](docs/operations/deployment.md#faction-background-generation-rollout)
+and the [generation API](docs/reference/api.md#faction-background-generation).

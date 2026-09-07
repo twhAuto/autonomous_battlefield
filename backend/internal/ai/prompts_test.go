@@ -9,7 +9,7 @@ func TestVersionedSystemPromptIsEmbedded(t *testing.T) {
 	if strings.TrimSpace(SystemPrompt) == "" || !strings.Contains(SystemPrompt, "untrusted data") {
 		t.Fatalf("versioned system prompt is empty or missing its trust boundary")
 	}
-	if !strings.HasPrefix(PromptVersion, "battlefield-agent-v4.") {
+	if !strings.HasPrefix(PromptVersion, "battlefield-agent-v5.") {
 		t.Fatalf("PromptVersion = %q", PromptVersion)
 	}
 }

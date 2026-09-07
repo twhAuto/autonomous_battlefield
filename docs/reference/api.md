@@ -62,7 +62,8 @@ Content-Type: application/json
 {
   "id": "4db8d152-1e04-4d10-8824-859c6ed72878",
   "name": "Northern Alliance",
-  "doctrine": "Protect income, scout before committing, and adapt purchases to visible threats."
+  "doctrine": "Protect income, scout before committing, and adapt purchases to visible threats.",
+  "background": "Descendants of the northern watch, sworn to shelter displaced families."
 }
 ```
 
@@ -71,11 +72,11 @@ Responses:
 | Status | Meaning |
 | --- | --- |
 | `201 Created` | The faction was created. The response has no body. |
-| `400 Bad Request` | The JSON is invalid, the ID is not UUID-shaped, or the trimmed name/doctrine is empty, or doctrine exceeds 4,000 Unicode characters. |
+| `400 Bad Request` | The JSON is invalid, the ID is not UUID-shaped, or the trimmed name/doctrine is empty, or doctrine exceeds 4,000 Unicode characters, or background exceeds 1,000. |
 | `409 Conflict` | A faction with the same ID already exists. |
 | `500 Internal Server Error` | The faction could not be persisted. |
 
-Request bodies are limited to 64 KiB and must contain exactly one JSON value. Names and doctrines are trimmed before storage. Obsolete blueprint/ruleset request fields are rejected.
+Request bodies are limited to 64 KiB and must contain exactly one JSON value. Names, doctrines, and backgrounds are trimmed before storage. Background is optional and limited to 1,000 Unicode characters. Obsolete blueprint/ruleset request fields are rejected.
 
 `GET /v1/faction-rulesets` returns catalog starting gold, unit statistics, upgrades, and costs; faction creation does not require it.
 
@@ -122,7 +123,7 @@ The endpoint returns `404 Not Found` when the faction does not exist and `500 In
 
 ## Queue a battle
 
-Both factions must already exist. The scenario ID refers to a strict YAML template in `backend/scenarios`; the API snapshots faction names/doctrines, the map, ruleset, and controller plans. New snapshots use `snapshotVersion: 2` and start with castles and gold. Older queued snapshots retain legacy initialization.
+Both factions must already exist. The scenario ID refers to a strict YAML template in `backend/scenarios`; the API snapshots faction names/backgrounds/doctrines, the map, ruleset, and controller plans. New snapshots use `snapshotVersion: 2` and start with castles and gold. Older queued snapshots retain legacy initialization.
 
 The frontend discovers available templates through `GET /v1/scenarios`, which returns scenario IDs, rules versions, scenario-specific maximum ticks, tick pacing, and decision timing. `castle-siege-v1` allows at most 500 ticks.
 
@@ -147,7 +148,7 @@ Content-Type: application/json
 }
 ```
 
-A valid request returns `202 Accepted`, a queued status, and `Location: /v1/battles/{id}`. Invalid input returns `400`, a missing scenario or faction returns `404`, incompatible faction rulesets return `422`, and a duplicate battle ID returns `409`.
+A valid request returns `202 Accepted`, a queued status, and `Location: /v1/battles/{id}`. Invalid input returns `400`, a missing scenario or faction returns `404`, and a duplicate battle ID returns `409`.
 
 `GET /v1/model-profiles` returns the operator allowlist with safe availability,
 provider, runtime, scope, model-label, and tool-capability fields. It never
@@ -164,6 +165,36 @@ decision metadata is available from
 For persisted battle comparisons, query `battle_controller_evaluation`. It groups
 scripted and model profiles by controller/provider/runtime and reports win,
 invalid-plan, fallback, latency, normalized usage, and plan-diversity metrics.
+
+## Browse battle history
+
+```http
+GET /v1/battles?status=completed&limit=25
+```
+
+This service-wide list uses the same administrator session as the other battle
+routes. Omit `status` for all battles, or choose `queued`, `running`, `paused`,
+`completed`, `failed`, or `stopped`. Paused means an active queued/running
+battle with its pause flag set; queued and running filters exclude paused runs.
+
+`limit` defaults to 25 and accepts integers from 1 through 100. The response is
+`{ "battles": [...], "nextCursor": null }`; when more rows exist, `nextCursor`
+is an opaque string to pass as `cursor` with the same filter. Rows are ordered
+by creation time descending, then ID descending. Newer insertions do not shift
+subsequent pages; restart without a cursor to see them. Status changes can alter
+membership in a filtered list between requests.
+
+Each summary contains `id`, `scenarioId`, `participants` (snapshot IDs, names,
+and controllers), `status`, `paused`, `requestedTicks`, `currentTick`,
+`createdAt`, nullable `startedAt` and `completedAt`, and nullable `outcome`.
+Timestamps are RFC 3339 strings. An outcome contains `winnerFactionId`
+(nullable for a draw) and `reason`. Only a completed battle with an outcome
+and no winner represents a draw. Summaries omit maps, simulation states, events,
+and detailed result statistics; obtain these through the battle detail routes.
+Faction edits or deletion do not change saved participant identities.
+
+Invalid limits, statuses, or cursors return `400`; persistence failures return
+`500`. An empty list returns `200` with `battles: []` and `nextCursor: null`.
 
 ## Get battle status and results
 
@@ -191,3 +222,46 @@ GET /v1/battles/{id}/events?attempt=1&after=0&limit=100
 
 `attempt` defaults to the battle's current attempt, `after` is the last event sequence already observed, and `limit` defaults to 100 with a maximum of 500. Events are ordered by sequence and the response includes `nextCursor`.
 
+
+## Faction background generation
+
+Faction profiles accept an optional `background` on POST/PUT and return it on
+listing when nonempty. Background is trimmed and limited to 1,000 Unicode
+characters (not UTF-8 bytes); missing background means empty. New battle snapshots
+freeze it alongside name and doctrine. Historical snapshots are not rewritten.
+
+These endpoints require the normal authenticated session. With authentication
+disabled, all clients share the `local-development` actor and its allowance.
+
+| Route | Contract |
+| --- | --- |
+| `GET /v1/faction-background-generations/options` | `available`, `modelLabel`, optional `reason`, `remaining`, `resetAt`, `retryAt`, optional `activeJobId` |
+| `POST /v1/faction-background-generations` | Accepts `{ "name": "Northwind", "doctrine": "Protect income.", "background": "Optional inspiration", "idempotencyKey": "client-generated-unique-key" }`; returns `202` and a job |
+| `GET /v1/faction-background-generations/{id}` | Returns only the requesting actor's job; another actor's ID returns `404` |
+
+Jobs contain `id`, `input`, `profileId`, `modelLabel`, `promptVersion`, `status`,
+`background`, timestamps, execution timeout, and an optional `errorCategory`.
+States are `queued`, `running`, `succeeded`, `failed`, and `expired`. A succeeded
+job is an editable draft, not a saved faction. The client must explicitly use the
+draft and save the faction through the normal profile endpoint.
+
+Admission allows 10 requests per actor per UTC day, at least 30 seconds apart,
+and one queued/running job. A repeated key with the same normalized input returns
+the original job without another charge; different input returns `409`.
+Validation failures return `400`, unavailable/disabled profiles return `503`,
+and neither reserves quota. Limits return `429`, `Retry-After`, and the options
+object containing retry/reset information. Options and job reads use `no-store`.
+
+Queued jobs expire after five minutes and refund their reservation on the
+original admission day. Once execution starts, failures and two-minute execution
+timeouts count. Expired running jobs are never automatically rerun. Repeated
+identical successful submissions are idempotent. Three invalid background
+submissions close the job with `invalid_output`.
+
+The internal claim endpoint accepts `jobTypes: ["battle_decision",
+"faction_background"]` and executable `profileIds`. Omitted job types mean
+battle decisions only. Battle decisions receive priority. Generation capabilities
+are separate from battle capabilities; `/generation-mcp` exposes only
+`get_background_context` and `submit_faction_background`. Neither tool receives
+battle data. Workers report actual configured model, prompt version, usage, and
+failure category to `/internal/agent/generation-finish`.

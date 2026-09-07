@@ -665,3 +665,51 @@ profiles or opening decisions exist. Restore a pre-rollout database backup if a 
 application/database rollback is required. Validate the rollout by creating/editing
 a doctrine, staging a battle, and observing opening decisions and purchase events at
 tick zero before tick one. Purchases should reduce the same gold balance throughout.
+
+### Faction background generation rollout
+
+Deploy API, MCP, engine/agent workers and frontend from the same revision. Apply
+migration `00009_faction_background.sql` before rollout. It preserves existing
+factions (empty background), legacy blueprints and historical battle snapshots.
+Migration runners use a PostgreSQL advisory session lock to serialize startup.
+Restart host CLI workers too: old workers advertise battle support only and cannot
+execute background jobs. The internal MCP service must route `/generation-mcp`;
+it should not be exposed through public ingress.
+
+Configure the writer in `backend/config.yaml` or the deployment ConfigMap:
+
+```yaml
+ai:
+  backgroundGeneration:
+    enabled: true
+    profileId: codex-subscription-local
+    dailyAllowance: 10
+    cooldown: 30s
+    queueTimeout: 5m
+    executionTimeout: 2m
+```
+
+The profile uses its existing configured model, credentials, version validation,
+and availability settings. Enable the host CLI profile and run the normal host
+worker for the default subscription writer. Operators can select a supported
+OpenAI/Gemini API or Codex/Antigravity CLI profile independently of battle models.
+No player model selector or automatic fallback is used. An invalid/unavailable
+profile rejects admission before quota is reserved; a profile whose worker goes
+offline after admission leaves a queued job until expiry/refund. Disabled
+generation still permits manually writing and saving backgrounds.
+
+Allowance is persisted per authenticated actor, with a UTC-day boundary; when
+authentication is disabled every client shares `local-development`. Failed jobs
+count once execution begins. Repeated successful submissions do not change the
+result, and execution timeouts are not automatically retried. Queued reservations
+expire after five minutes by default and refund the original day; the admission
+cooldown remains in effect after a refund. Options/job reads and worker claims
+perform expiry, so an idle expired row may remain until the next such operation.
+
+Check options availability, queue a draft, observe queued/running/succeeded, use
+or discard the preview, then save a faction. Verify the historical battle retains
+its original identity after edits. Inspect job `error_category`, timestamps,
+`usage`, and `metadata` for failures; never log capability tokens or raw profile
+prompts. API models have a hard three-turn limit. CLI jobs are deadline-bound and
+instructed to use at most three turns; native CLI internal provider-turn counts
+are not available to enforce separately. Three invalid submissions fail the job.

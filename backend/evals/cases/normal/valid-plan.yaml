@@ -8,7 +8,7 @@ requestId: request-normal
 maxSteps: 3
 maxTokens: 256
 capability: valid
-contextJson: '{"context":{"requestId":"request-normal","factionId":"blue","visibleState":"bounded"}}'
+contextJson: '{"context":{"requestId":"request-normal","factionId":"blue","factionName":"Northwind","background":"Founded by refugees who rebuilt a northern watchtower.","doctrine":"Protect income and adapt to visible threats.","visibleState":"bounded"}}'
 turns:
   - toolCalls:
       - id: context

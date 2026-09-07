@@ -110,6 +110,7 @@ describe('App', () => {
     expect(within(menu).getByRole('link', { name: /create faction/i })).toHaveAttribute('href', '/factions/new')
     expect(within(menu).getByRole('link', { name: /view all factions/i })).toHaveAttribute('href', '/factions')
     expect(within(menu).getByRole('link', { name: /stage a battle/i })).toHaveAttribute('href', '/battles/new')
+    expect(within(menu).getByRole('link', { name: /battle history/i })).toHaveAttribute('href', '/battles')
   })
 
   it('navigates from the main menu to faction creation', async () => {
@@ -137,7 +138,7 @@ describe('App', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
 	  body: JSON.stringify({
-	    id: firstId, name: 'The Verdant Accord', doctrine: doctrineTemplates.Balanced,
+	    id: firstId, name: 'The Verdant Accord', doctrine: doctrineTemplates.Balanced, background: '',
 	  }),
     })
     expect(await screen.findByText('The Verdant Accord has entered the battlefield.')).toBeInTheDocument()
@@ -712,5 +713,31 @@ describe('App', () => {
     expect(screen.getByText('—')).toBeInTheDocument()
     expect(screen.getByText('false')).toBeInTheDocument()
     expect(screen.getByText('3', { selector: 'dd' })).toBeInTheDocument()
+  })
+})
+
+describe('battle history navigation', () => {
+  beforeEach(() => { vi.stubGlobal('fetch', vi.fn()) })
+  it('navigates from history to staging with exact active links', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const path = String(input)
+      if (path.startsWith('/v1/battles?')) return new Response(JSON.stringify({ battles: [], nextCursor: null }))
+      if (path === '/v1/factions') return new Response(JSON.stringify({ factions: [] }))
+      if (path === '/v1/scenarios') return new Response(JSON.stringify({ scenarios: [] }))
+      return new Response(JSON.stringify({ profiles: [] }))
+    })
+    renderApp('/battles')
+    await screen.findByText('No battles yet')
+    const navigation = screen.getByRole('navigation', { name: 'Primary navigation' })
+    expect(within(navigation).getByRole('link', { name: 'Battle history' })).toHaveAttribute('aria-current', 'page')
+    await user.click(within(navigation).getByRole('link', { name: 'Stage battle' }))
+    expect(within(navigation).getByRole('link', { name: 'Battle history' })).not.toHaveAttribute('aria-current')
+    expect(within(navigation).getByRole('link', { name: 'Stage battle' })).toHaveAttribute('aria-current', 'page')
+  })
+  it('returns to login when history requests are unauthorized', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 401 }))
+    renderApp('/battles')
+    expect(await screen.findByRole('button', { name: /enter command post/i })).toBeInTheDocument()
   })
 })

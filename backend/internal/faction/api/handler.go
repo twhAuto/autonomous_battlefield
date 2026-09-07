@@ -72,9 +72,10 @@ func (h *Handler) GetFactionName(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateFaction(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		Doctrine string `json:"doctrine"`
+		ID         string `json:"id"`
+		Name       string `json:"name"`
+		Doctrine   string `json:"doctrine"`
+		Background string `json:"background"`
 	}
 	if err := httpapi.ReadJSON(w, r, &request); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -82,7 +83,7 @@ func (h *Handler) CreateFaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := h.factionService.CreateFaction(r.Context(), factionservice.CreateInput{
-		ID: request.ID, Name: request.Name, Doctrine: request.Doctrine,
+		ID: request.ID, Name: request.Name, Doctrine: request.Doctrine, Background: request.Background,
 	})
 	if errors.Is(err, factionservice.ErrInvalidFaction) {
 		http.Error(w, "invalid faction", http.StatusBadRequest)
@@ -130,8 +131,9 @@ func NewHandler(factionService factionservice.Service) *Handler {
 
 func (h *Handler) UpdateFaction(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		Name     string `json:"name"`
-		Doctrine string `json:"doctrine"`
+		Name       string `json:"name"`
+		Doctrine   string `json:"doctrine"`
+		Background string `json:"background"`
 	}
 	if err := httpapi.ReadJSON(w, r, &request); err != nil {
 		http.Error(w, "invalid request body", 400)
@@ -142,7 +144,7 @@ func (h *Handler) UpdateFaction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not update faction", 500)
 		return
 	}
-	err := updater.UpdateFaction(r.Context(), factionservice.CreateInput{ID: r.PathValue("id"), Name: request.Name, Doctrine: request.Doctrine})
+	err := updater.UpdateFaction(r.Context(), factionservice.CreateInput{ID: r.PathValue("id"), Name: request.Name, Doctrine: request.Doctrine, Background: request.Background})
 	switch {
 	case errors.Is(err, factionservice.ErrInvalidFaction):
 		http.Error(w, "invalid faction", 400)

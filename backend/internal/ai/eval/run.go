@@ -53,7 +53,7 @@ func (r Runner) runCase(ctx context.Context, value Case, now func() time.Time) C
 	session := &scriptedSession{value: value}
 	connector := scriptedConnector{secret: secret, requestID: value.RequestID, now: started, session: session}
 	result, _ := (airunner.APIRunner{Provider: provider, Connector: connector}).Run(ctx, ai.DecisionSession{
-		Doctrine: caseDoctrine(value), RequestID: value.RequestID, CapabilityToken: token, MCPURL: "memory://evaluation",
+		FactionName: caseIdentity(value).FactionName, Background: caseIdentity(value).Background, Doctrine: caseIdentity(value).Doctrine, RequestID: value.RequestID, CapabilityToken: token, MCPURL: "memory://evaluation",
 		Profile: ai.ModelProfile{ID: value.Profile, ModelLabel: value.Model, MaxSteps: value.MaxSteps, MaxOutputTokens: value.MaxTokens},
 	})
 	entry := CaseReport{
@@ -148,7 +148,7 @@ func (r Runner) runProviderCase(ctx context.Context, value Case, options provide
 	session := &scriptedSession{value: value}
 	recorder := &recordingProvider{inner: options.provider}
 	result, runErr := (airunner.APIRunner{Provider: recorder, Connector: scriptedConnector{secret: secret, requestID: value.RequestID, now: caseStarted, session: session}}).Run(ctx, ai.DecisionSession{
-		Doctrine: caseDoctrine(value), RequestID: value.RequestID, CapabilityToken: token, MCPURL: "memory://evaluation",
+		FactionName: caseIdentity(value).FactionName, Background: caseIdentity(value).Background, Doctrine: caseIdentity(value).Doctrine, RequestID: value.RequestID, CapabilityToken: token, MCPURL: "memory://evaluation",
 		Profile: ai.ModelProfile{ID: options.profile, ModelLabel: options.model, MaxSteps: options.maxSteps, MaxOutputTokens: options.maxTokens},
 	})
 	entry := CaseReport{ID: value.ID, Category: value.Category, Profile: options.profile, Model: options.model,
@@ -344,10 +344,10 @@ func (p PriceBook) Estimate(model string, usage ai.Usage) (float64, bool) {
 	return p.estimate(model, usage)
 }
 
-func caseDoctrine(value Case) string {
+func caseIdentity(value Case) ai.DecisionContext {
 	var envelope struct {
 		Context ai.DecisionContext `json:"context"`
 	}
 	_ = json.Unmarshal([]byte(value.ContextJSON), &envelope)
-	return envelope.Context.Doctrine
+	return envelope.Context
 }

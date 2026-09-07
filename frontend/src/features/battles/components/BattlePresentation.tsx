@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { BattleRun } from '../api/battles'
 import { type ConnectionState, type BattleControlState, type BattleControlAction } from '../types'
 
@@ -10,8 +10,12 @@ export function BattleHeader({ battle, battleTitle, connection, connectionMessag
   connectionMessage: string
   retryConnection: () => void
 }>) {
+  const location = useLocation()
+  const candidate: unknown = location.state?.historyURL
+  const historyURL = typeof candidate === 'string' && (candidate === '/battles' || candidate.startsWith('/battles?')) ? candidate : '/battles'
   return (
     <section className="page-header battle-status-header">
+      <Link className="back-link" to={historyURL}>← BATTLE HISTORY</Link>
       <Link className="back-link" to="/battles/new">← NEW BATTLE</Link>
       <div className="battle-status-heading">
         <div>

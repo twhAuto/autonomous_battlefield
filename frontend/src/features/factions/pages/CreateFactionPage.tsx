@@ -1,3 +1,4 @@
+import { BackgroundGenerator } from '../components/BackgroundGenerator'
 import { useEffect, useState, type SubmitEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { createFaction, listFactions, updateFaction } from '../api/factions'
@@ -15,6 +16,7 @@ export function CreateFactionPage() {
  const editing = Boolean(id)
  const [factionId, setFactionId] = useState(() => crypto.randomUUID())
  const [name, setName] = useState('')
+ const [background, setBackground] = useState('')
  const [doctrine, setDoctrine] = useState(doctrineTemplates.Balanced)
  const [loading, setLoading] = useState(editing)
  const [loadFailed, setLoadFailed] = useState(false)
@@ -29,7 +31,7 @@ export function CreateFactionPage() {
  if (controller.signal.aborted) return
  const faction = factions.find(value => value.id === id)
  if (!faction) throw new Error('Faction not found.')
- setName(faction.name); setDoctrine(faction.doctrine); setLoading(false)
+ setName(faction.name); setDoctrine(faction.doctrine); setBackground(faction.background ?? ''); setLoading(false)
  }).catch(error => {
  if (controller.signal.aborted) return
  setLoading(false); setLoadFailed(true); setStatus('error'); setMessage(error instanceof Error ? error.message : 'Faction could not be loaded.')
@@ -37,16 +39,17 @@ export function CreateFactionPage() {
  return () => controller.abort()
  }, [id])
  const count = Array.from(doctrine.trim()).length
- const valid = name.trim().length > 0 && count > 0 && count <= 4000 && !loading && !loadFailed
+ const backgroundCount = Array.from(background.trim()).length
+ const valid = backgroundCount <= 1000 && name.trim().length > 0 && count > 0 && count <= 4000 && !loading && !loadFailed
  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
  event.preventDefault()
  if (!valid || status === 'submitting') return
  setStatus('submitting'); setMessage('')
  try {
- const faction = { id: id ?? factionId, name: name.trim(), doctrine: doctrine.trim() }
+ const faction = { id: id ?? factionId, name: name.trim(), doctrine: doctrine.trim(), background: background.trim() }
  await (editing ? updateFaction(faction) : createFaction(faction))
  setStatus('success'); setMessage(editing ? `${faction.name} has been updated. Changes apply to future battles.` : `${faction.name} has entered the battlefield.`)
- if (!editing) { setName(''); setFactionId(crypto.randomUUID()) }
+ if (!editing) { setName(''); setBackground(''); setFactionId(crypto.randomUUID()) }
  } catch (error) { setStatus('error'); setMessage(error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.') }
  }
  return <>
@@ -68,12 +71,17 @@ export function CreateFactionPage() {
  <textarea id="faction-doctrine" rows={9} value={doctrine} aria-describedby="doctrine-hint" onChange={event => {setDoctrine(event.target.value);setStatus('idle')}} />
  <p id="doctrine-hint" className="field-hint">Describe priorities, risk tolerance, and how to adapt. {count} / 4,000 characters.</p>
  {count > 4000 && <p role="alert">Doctrine must be at most 4,000 characters.</p>}
+ <label htmlFor="faction-background">Background (optional)</label>
+ <textarea id="faction-background" rows={6} value={background} aria-describedby="background-hint" onChange={event => {setBackground(event.target.value);setStatus('idle')}} />
+ <p id="background-hint">Origins, history, and values. {backgroundCount} / 1,000 characters.</p>
+ {backgroundCount > 1000 && <p role="alert">Background must be at most 1,000 characters.</p>}
+ <BackgroundGenerator key={id ?? factionId} input={{name:name.trim(),doctrine:doctrine.trim(),background:background.trim()}} valid={valid && status !== 'submitting'} onUse={value => {setBackground(value);setStatus('idle');setMessage('')}} />
  <div className="identity-block"><div><span className="identity-block__label">SYSTEM IDENTIFIER</span><code title={id ?? factionId}>{id ?? factionId}</code></div>{!editing && <button type="button" className="icon-button" onClick={() => setFactionId(crypto.randomUUID())} aria-label="Generate a new faction identifier">↻</button>}</div>
  <button className="submit-button" type="submit" disabled={!valid || status === 'submitting'}>{status === 'submitting' ? 'SAVING…' : editing ? 'SAVE FACTION' : 'CREATE FACTION'}</button>
  </form>}
  <div className="form-message" aria-live="polite">{message && <p className={`form-message--${status}`}>{message}</p>}{status === 'success' && <Link className="text-link" to="/factions">View faction registry →</Link>}</div>
  </div>
- <aside className="preview-panel" aria-label="Faction doctrine preview"><div className="preview-panel__grid" /><div className="preview-panel__heading"><span>FACTION PREVIEW</span></div><div className="preview-panel__content"><Emblem seed={name.trim() || 'Your faction'} /><h3>{name.trim() || 'Your faction'}</h3><p style={{whiteSpace:'pre-wrap'}}>{doctrine}</p></div></aside>
+ <aside className="preview-panel" aria-label="Faction doctrine preview"><div className="preview-panel__grid" /><div className="preview-panel__heading"><span>FACTION PREVIEW</span></div><div className="preview-panel__content"><Emblem seed={name.trim() || 'Your faction'} /><h3>{name.trim() || 'Your faction'}</h3><p style={{whiteSpace:'pre-wrap'}}>{doctrine}</p>{background && <p style={{whiteSpace:'pre-wrap'}}>{background}</p>}</div></aside>
  </section>
  </>
 }

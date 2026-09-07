@@ -1,0 +1,121 @@
+package mcpserver
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
+)
+
+func (s *Server) WithGenerations(repo generation.WorkerRepository) *Server {
+	s.generations = repo
+	return s
+}
+
+type backgroundInput struct {
+	RequestID  string `json:"requestId"`
+	Background string `json:"background"`
+}
+type backgroundContext struct {
+	RequestID string `json:"requestId"`
+	generation.Input
+}
+type backgroundOutput struct {
+	Context backgroundContext `json:"context"`
+}
+
+func (s *Server) backgroundServer() *mcp.Server {
+	server := mcp.NewServer(&mcp.Implementation{Name: "faction-background", Version: ai.GenerationPromptVersion}, nil)
+	mcp.AddTool(server, &mcp.Tool{Name: "get_background_context", Description: "Read the draft faction profile for this generation request."}, func(ctx context.Context, _ *mcp.CallToolRequest, input getContextInput) (*mcp.CallToolResult, backgroundOutput, error) {
+		if err := authorizedRequestID(ctx, input.RequestID); err != nil {
+			return nil, backgroundOutput{}, err
+		}
+		job, err := s.generations.Context(ctx, input.RequestID)
+		if err != nil {
+			return nil, backgroundOutput{}, err
+		}
+		return nil, backgroundOutput{Context: backgroundContext{RequestID: job.ID, Input: job.Input}}, nil
+	})
+	mcp.AddTool(server, &mcp.Tool{Name: "submit_faction_background", Description: "Submit 1-1000 Unicode characters of background. This returns a draft; it never saves a faction."}, func(ctx context.Context, _ *mcp.CallToolRequest, input backgroundInput) (*mcp.CallToolResult, ai.SubmissionResult, error) {
+		if err := authorizedRequestID(ctx, input.RequestID); err != nil {
+			return nil, ai.SubmissionResult{}, err
+		}
+		accepted, err := s.generations.Submit(ctx, input.RequestID, input.Background)
+		if errors.Is(err, generation.ErrInvalid) {
+			return nil, ai.SubmissionResult{Status: "rejected", Errors: []ai.ValidationIssue{{Field: "background", Code: "invalid", Message: "Submit between 1 and 1000 Unicode characters."}}}, nil
+		}
+		return nil, ai.SubmissionResult{Accepted: accepted, Status: map[bool]string{true: "accepted", false: "closed"}[accepted]}, err
+	})
+	return server
+}
+func (s *Server) GenerationHandler() http.Handler {
+	transport := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s.backgroundServer() }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 64 << 10, PropagateRequestCancellation: true})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.generations == nil {
+			http.Error(w, "generation unavailable", 503)
+			return
+		}
+		if origin := strings.TrimSpace(r.Header.Get("Origin")); origin != "" && !s.allowedOrigins[origin] {
+			http.Error(w, "origin not allowed", 403)
+			return
+		}
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), bearerPrefix)
+		id, err := ai.VerifyCapability(s.secret, token, time.Now())
+		if err != nil || !strings.HasPrefix(id, "generation:") {
+			http.Error(w, "invalid generation capability", 401)
+			return
+		}
+		id = strings.TrimPrefix(id, "generation:")
+		transport.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestIDKey{}, id)))
+	})
+}
+func (s *Server) claimGeneration(w http.ResponseWriter, r *http.Request, request agentClaimRequest) bool {
+	if s.generations == nil {
+		return false
+	}
+	job, err := s.generations.Claim(r.Context(), request.WorkerID, request.ProfileIDs)
+	if errors.Is(err, generation.ErrNotFound) {
+		return false
+	}
+	if err != nil {
+		http.Error(w, "generation claim failed", 500)
+		return true
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"jobType": generation.JobType, "requestId": job.ID, "profileId": job.ProfileID, "executionTimeoutSeconds": job.ExecutionSeconds})
+	return true
+}
+func (s *Server) finishGeneration(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAgentAuthorization(w, r) {
+		return
+	}
+	if s.generations == nil {
+		http.Error(w, "generation unavailable", 503)
+		return
+	}
+	var body struct {
+		RequestID string         `json:"requestId"`
+		Category  string         `json:"category"`
+		Usage     ai.Usage       `json:"usage"`
+		Metadata  map[string]any `json:"metadata"`
+	}
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body) != nil {
+		http.Error(w, "invalid request", 400)
+		return
+	}
+	ok, err := s.generations.Finish(r.Context(), body.RequestID, body.Category, body.Usage, body.Metadata)
+	if err != nil {
+		http.Error(w, "generation report failed", 500)
+		return
+	}
+	if !ok {
+		http.Error(w, "generation closed", 409)
+		return
+	}
+	w.WriteHeader(204)
+}

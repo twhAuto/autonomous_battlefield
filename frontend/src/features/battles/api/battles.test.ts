@@ -5,6 +5,7 @@ import {
   getBattle,
   getBattleView,
   listBattleEvents,
+  listBattles,
   listDecisionHistory,
   listModelProfiles,
   listScenarios,
@@ -147,7 +148,7 @@ describe('battle API', () => {
 
   it('lists events with default pagination', async () => {
     const page = { attempt: 2, events: [], nextCursor: null }
-    vi.mocked(fetch).mockResolvedValue(jsonResponse(page))
+    vi.mocked(fetch).mockImplementation(async () => jsonResponse(page))
 
     await expect(listBattleEvents('battle/id', { attempt: 2 })).resolves.toEqual(page)
     expect(fetch).toHaveBeenCalledWith(
@@ -158,7 +159,7 @@ describe('battle API', () => {
 
 	it('requests the newest event page', async () => {
 		const page = { attempt: 2, events: [], nextCursor: null }
-		vi.mocked(fetch).mockResolvedValue(jsonResponse(page))
+		vi.mocked(fetch).mockImplementation(async () => jsonResponse(page))
 
 		await expect(listBattleEvents('battle/id', { attempt: 2, latest: true })).resolves.toEqual(page)
 		expect(fetch).toHaveBeenCalledWith(
@@ -197,3 +198,31 @@ function jsonResponse(value: unknown, status = 200) {
     headers: { 'Content-Type': 'application/json' },
   })
 }
+
+describe('battle history API', () => {
+  beforeEach(() => { vi.stubGlobal('fetch', vi.fn()) })
+  it('encodes queries, preserves cancellation, and returns the page', async () => {
+    const page = { battles: [], nextCursor: null }
+    vi.mocked(fetch).mockImplementation(async () => jsonResponse(page))
+    const signal = new AbortController().signal
+    await expect(listBattles({ status: 'paused', cursor: 'a+b', limit: 10 }, signal)).resolves.toEqual(page)
+    expect(fetch).toHaveBeenLastCalledWith('/v1/battles?status=paused&cursor=a%2Bb&limit=10', { signal })
+    await listBattles({})
+    expect(fetch).toHaveBeenLastCalledWith('/v1/battles?limit=25', { signal: undefined })
+  })
+  it.each([400, 500])('maps HTTP %s', async (status) => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status }))
+    await expect(listBattles({})).rejects.toMatchObject({ status, message: status === 400 ? 'That battle history query is invalid.' : 'Battle history could not be loaded.' })
+  })
+  it('notifies the app when authentication expires', async () => {
+    const listener = vi.fn()
+    window.addEventListener('battlefield:authentication-required', listener)
+    try {
+      vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 401 }))
+      await expect(listBattles({})).rejects.toMatchObject({ status: 401 })
+      expect(listener).toHaveBeenCalledOnce()
+    } finally {
+      window.removeEventListener('battlefield:authentication-required', listener)
+    }
+  })
+})

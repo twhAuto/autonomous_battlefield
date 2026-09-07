@@ -195,7 +195,7 @@ func (r Runner) compareSample(ctx context.Context, c Case, observation ai.Decisi
 	defer server.Close()
 	token, _ := ai.MintCapability(secret, c.RequestID, time.Now().Add(options.Timeout+time.Second))
 	started := time.Now()
-	result, runErr := variant.NewRunner().Run(ctx, ai.DecisionSession{Doctrine: observation.Doctrine, RequestID: c.RequestID, MCPURL: "http://" + listener.Addr().String(), CapabilityToken: token, Profile: ai.ModelProfile{MaxSteps: options.MaxSteps, MaxOutputTokens: options.MaxTokens}})
+	result, runErr := variant.NewRunner().Run(ctx, ai.DecisionSession{Doctrine: observation.Doctrine, FactionName: observation.FactionName, Background: observation.Background, RequestID: c.RequestID, MCPURL: "http://" + listener.Addr().String(), CapabilityToken: token, Profile: ai.ModelProfile{MaxSteps: options.MaxSteps, MaxOutputTokens: options.MaxTokens}})
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
 	accepted := repository.record.Status == "accepted"

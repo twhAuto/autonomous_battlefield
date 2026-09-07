@@ -69,7 +69,7 @@ func TestCreateFaction(t *testing.T) {
 		t.Fatalf("CreateFaction() returned an error: %v", err)
 	}
 
-	wantArguments := []any{stored.ID, stored.Name, stored.Doctrine}
+	wantArguments := []any{stored.ID, stored.Name, stored.Doctrine, stored.Background}
 	if !reflect.DeepEqual(db.execArguments, wantArguments) {
 		t.Fatalf("Exec arguments = %#v, want %#v", db.execArguments, wantArguments)
 	}
@@ -189,7 +189,7 @@ func TestUpdateFaction(t *testing.T) {
 	if err := NewPostgres(db).UpdateFaction(context.Background(), stored); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(db.execArguments, []any{stored.ID, stored.Name, stored.Doctrine}) {
+	if !reflect.DeepEqual(db.execArguments, []any{stored.ID, stored.Name, stored.Doctrine, stored.Background}) {
 		t.Fatal(db.execArguments)
 	}
 	db.execTag = pgconn.NewCommandTag("UPDATE 0")

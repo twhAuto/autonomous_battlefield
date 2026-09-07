@@ -210,7 +210,9 @@ func (r *Routes) logout(response http.ResponseWriter, _ *http.Request) {
 
 func RequireAuthentication(enabled bool, authenticator Authenticator, next http.Handler) http.Handler {
 	if !enabled {
-		return next
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorContextKey{}, Actor{ID: "local-development"})))
+		})
 	}
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if !strings.HasPrefix(request.URL.Path, "/v1/") || isPublicAuthenticationPath(request.URL.Path) {

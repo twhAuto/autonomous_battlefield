@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CreateFactionPage, doctrineTemplates } from './CreateFactionPage'
+vi.mock('../components/BackgroundGenerator', () => ({ BackgroundGenerator: () => null }))
 const id='7f22e693-bacd-46bb-b942-64fa613cd388'
 function show(path='/factions/new') {return render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/factions/new" element={<CreateFactionPage/>}/><Route path="/factions/:id/edit" element={<CreateFactionPage/>}/></Routes></MemoryRouter>)}
 describe('faction doctrine',()=>{
@@ -12,9 +13,11 @@ describe('faction doctrine',()=>{
  const user=userEvent.setup();show()
  expect(fetch).not.toHaveBeenCalled()
  await user.type(screen.getByLabelText('Faction name'),'  Northwind  ')
+ await user.type(screen.getByLabelText('Background (optional)'),' Old roots ')
+
  await user.click(screen.getByRole('button',{name:'Economic'}))
  await user.click(screen.getByRole('button',{name:'CREATE FACTION'}))
- expect(fetch).toHaveBeenCalledWith('/v1/factions',expect.objectContaining({body:JSON.stringify({id,name:'Northwind',doctrine:doctrineTemplates.Economic})}))
+ expect(fetch).toHaveBeenCalledWith('/v1/factions',expect.objectContaining({body:JSON.stringify({id,name:'Northwind',doctrine:doctrineTemplates.Economic,background:'Old roots'})}))
  expect(await screen.findByText('Northwind has entered the battlefield.')).toBeInTheDocument()
  })
  it('requires nonblank doctrine and counts Unicode characters',()=>{
@@ -28,12 +31,14 @@ describe('faction doctrine',()=>{
  expect(screen.getByRole('button',{name:'CREATE FACTION'})).toBeDisabled()
  })
  it('loads and edits an existing profile',async()=>{
- vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({factions:[{id,name:'A',doctrine:'Scout'}]}))).mockResolvedValueOnce(new Response(null,{status:204}))
+ vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({factions:[{id,name:'A',doctrine:'Scout',background:'Old roots'}]}))).mockResolvedValueOnce(new Response(null,{status:204}))
  const user=userEvent.setup();show(`/factions/${id}/edit`)
  expect(screen.getByText('Loading faction…')).toBeInTheDocument()
  await user.clear(await screen.findByLabelText('Doctrine'));await user.type(screen.getByLabelText('Doctrine'),' Defend ')
+ expect(screen.getByLabelText('Background (optional)')).toHaveValue('Old roots')
+ await user.clear(screen.getByLabelText('Background (optional)'));await user.type(screen.getByLabelText('Background (optional)'),' New history ')
  await user.click(screen.getByRole('button',{name:'SAVE FACTION'}))
- expect(fetch).toHaveBeenLastCalledWith(`/v1/factions/${id}`,expect.objectContaining({method:'PUT',body:JSON.stringify({name:'A',doctrine:'Defend'})}))
+ expect(fetch).toHaveBeenLastCalledWith(`/v1/factions/${id}`,expect.objectContaining({method:'PUT',body:JSON.stringify({name:'A',doctrine:'Defend',background:'New history'})}))
  expect(await screen.findByText(/Changes apply to future battles/)).toBeInTheDocument()
  })
  it.each([404,500])('reports an edit loading failure (%s)',async status=>{
@@ -51,4 +56,14 @@ describe('faction doctrine',()=>{
  resolve(new Response(null,{status:409}))
  expect(await screen.findByText(/identifier is already in use/)).toBeInTheDocument()
  })
+})
+
+it('validates optional Unicode backgrounds independently of doctrine',()=>{
+ show();fireEvent.change(screen.getByLabelText('Faction name'),{target:{value:'A'}})
+ const field=screen.getByLabelText('Background (optional)')
+ fireEvent.change(field,{target:{value:'😀'.repeat(1000)}})
+ expect(screen.getByRole('button',{name:'CREATE FACTION'})).toBeEnabled()
+ fireEvent.change(field,{target:{value:'😀'.repeat(1001)}})
+ expect(screen.getByRole('alert')).toHaveTextContent('1,000')
+ expect(screen.getByRole('button',{name:'CREATE FACTION'})).toBeDisabled()
 })

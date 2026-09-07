@@ -110,18 +110,19 @@ func TestDoctrineSnapshotIsIndependentOfFutureProfileEdits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	identities := [2]battleservice.FactionIdentity{{ID: "a", Name: "A", Doctrine: "Scout"}, {ID: "b", Name: "B", Doctrine: "Defend"}}
+	identities := [2]battleservice.FactionIdentity{{ID: "a", Name: "A", Doctrine: "Scout", Background: "Old roots"}, {ID: "b", Name: "B", Doctrine: "Defend"}}
 	first, hash, err := catalog.Resolve("castle-siege-v1", identities)
 	if err != nil {
 		t.Fatal(err)
 	}
 	identities[0].Name = "Edited"
 	identities[0].Doctrine = "Attack"
+	identities[0].Background = "A new history"
 	_, updated, err := catalog.Resolve("castle-siege-v1", identities)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Factions[0].Name != "A" || first.Factions[0].Doctrine != "Scout" || hash == updated || first.SnapshotVersion != game.DoctrineSnapshotVersion {
+	if first.Factions[0].Background != "Old roots" || first.Factions[0].Name != "A" || first.Factions[0].Doctrine != "Scout" || hash == updated || first.SnapshotVersion != game.DoctrineSnapshotVersion {
 		t.Fatal("profile snapshot not immutable")
 	}
 	for _, summary := range catalog.Summaries() {

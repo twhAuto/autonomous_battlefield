@@ -263,3 +263,30 @@ export async function listDecisionHistory(id: string, attempt: number, signal?: 
   if (!response.ok) throw new BattleApiError('Decision history could not be loaded.', response.status)
   return ((await response.json()) as { decisions: DecisionHistory[] }).decisions
 }
+
+export interface BattleSummary {
+  id: string
+  scenarioId: string
+  participants: BattleParticipant[]
+  status: BattleStatus
+  paused: boolean
+  requestedTicks: number
+  currentTick: number
+  createdAt: string
+  startedAt: string | null
+  completedAt: string | null
+  outcome: { winnerFactionId: string | null; reason: string } | null
+}
+export interface BattleHistoryPage {
+  battles: BattleSummary[]
+  nextCursor: string | null
+}
+export async function listBattles(query: { status?: string; cursor?: string; limit?: number }, signal?: AbortSignal): Promise<BattleHistoryPage> {
+  const params = new URLSearchParams()
+  if (query.status) params.set('status', query.status)
+  if (query.cursor) params.set('cursor', query.cursor)
+  params.set('limit', String(query.limit ?? 25))
+  const response = await battlefieldFetch(`/v1/battles?${params}`, { signal })
+  if (!response.ok) throw new BattleApiError(response.status === 400 ? 'That battle history query is invalid.' : 'Battle history could not be loaded.', response.status)
+  return await response.json() as BattleHistoryPage
+}

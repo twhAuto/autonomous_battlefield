@@ -2,8 +2,10 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"strings"
 	"testing"
 	"time"
 )
@@ -15,6 +17,7 @@ func TestOpeningIsRecordedAndPersistedBeforeCombat(t *testing.T) {
 		job.Scenario.Ruleset.StartingGold = 180
 		for i := range job.Scenario.Factions {
 			job.Scenario.Factions[i].Doctrine = []string{"Scout", "Defend"}[i]
+			job.Scenario.Factions[i].Background = []string{"Northern ancestors", "Southern ancestors"}[i]
 			job.Scenario.Factions[i].Controller = game.ControllerConfig{Type: ai.ControllerScripted}
 		}
 		if model {
@@ -45,6 +48,14 @@ func TestOpeningIsRecordedAndPersistedBeforeCombat(t *testing.T) {
 			expected := "Defend"
 			if record.FactionID == job.Scenario.Factions[0].ID {
 				expected = "Scout"
+			}
+			owner, opponent := job.Scenario.Factions[1], job.Scenario.Factions[0]
+			if record.FactionID == job.Scenario.Factions[0].ID {
+				owner, opponent = opponent, owner
+			}
+			raw, _ := json.Marshal(record.Observation)
+			if record.Observation.Background != owner.Background || record.Observation.FactionName != owner.Name || strings.Contains(string(raw), opponent.Background) {
+				t.Fatal("identity isolation", string(raw))
 			}
 			if record.Observation.Doctrine != expected {
 				t.Fatal("wrong doctrine exposed")

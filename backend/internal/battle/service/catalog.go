@@ -6,11 +6,12 @@ import (
 )
 
 type FactionIdentity struct {
-	Doctrine  string
-	ID        string
-	Name      string
-	RulesetID string
-	Blueprint game.Blueprint
+	Background string
+	Doctrine   string
+	ID         string
+	Name       string
+	RulesetID  string
+	Blueprint  game.Blueprint
 }
 
 type ScenarioSummary struct {

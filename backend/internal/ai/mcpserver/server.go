@@ -16,6 +16,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 )
 
 type requestIDKey struct{}
@@ -26,6 +27,7 @@ const (
 )
 
 type agentClaimRequest struct {
+	JobTypes     []string `json:"jobTypes"`
 	WorkerID     string   `json:"workerId"`
 	LeaseSeconds int      `json:"leaseSeconds"`
 	WaitSeconds  int      `json:"waitSeconds"`
@@ -46,6 +48,7 @@ type agentUsageRequest struct {
 }
 
 type Server struct {
+	generations    generation.WorkerRepository
 	decisions      *ai.DecisionService
 	secret         string
 	allowedOrigins map[string]bool
@@ -83,6 +86,7 @@ func (s *Server) NotifyDecisionAvailable() { s.wakeups.notify() }
 // report runner failures. It does not expose decision context or game state.
 func (s *Server) AgentHandler(repository ai.DecisionRepository) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /generation-finish", s.finishGeneration)
 	mux.HandleFunc("POST /claim", s.handleAgentClaim(repository))
 	mux.HandleFunc("POST /fail", s.handleAgentFailure(repository))
 	mux.HandleFunc("POST /usage", s.handleAgentUsage(repository))
@@ -98,11 +102,36 @@ func (s *Server) handleAgentClaim(repository ai.DecisionRepository) http.Handler
 		if !ok {
 			return
 		}
-		record, found, err := s.waitForDecisionClaim(r.Context(), repository, request)
+		var record ai.DecisionRecord
+		var found bool
+		var err error
+		supportsBattle := len(request.JobTypes) == 0 || slices.Contains(request.JobTypes, "battle_decision")
+		supportsGeneration := slices.Contains(request.JobTypes, generation.JobType)
+		if supportsBattle {
+			first := request
+			if supportsGeneration {
+				first.WaitSeconds = 0
+			}
+			record, found, err = s.waitForDecisionClaim(r.Context(), repository, first)
+		}
 		if err != nil {
 			s.logger.ErrorContext(r.Context(), "decision_claim_failed", "worker_id", request.WorkerID, "error", err)
 			http.Error(w, "claim failed", http.StatusInternalServerError)
 			return
+		}
+		if !found && supportsGeneration {
+			// Check drafts before long-polling. Claiming after a full long poll
+			// risks leasing a job after the HTTP response deadline has elapsed.
+			if s.claimGeneration(w, r, request) {
+				return
+			}
+			if supportsBattle && request.WaitSeconds > 0 {
+				record, found, err = s.waitForDecisionClaim(r.Context(), repository, request)
+				if err != nil {
+					http.Error(w, "claim failed", http.StatusInternalServerError)
+					return
+				}
+			}
 		}
 		if !found {
 			w.WriteHeader(http.StatusNoContent)
@@ -110,7 +139,7 @@ func (s *Server) handleAgentClaim(repository ai.DecisionRepository) http.Handler
 		}
 		s.logDecisionClaim(r.Context(), request.WorkerID, record)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"requestId": record.ID, "profileId": record.ProfileID, "doctrine": record.Observation.Doctrine,
+			"requestId": record.ID, "profileId": record.ProfileID, "doctrine": record.Observation.Doctrine, "factionName": record.Observation.FactionName, "background": record.Observation.Background,
 			"traceparent": record.Traceparent, "tracestate": record.Tracestate,
 		})
 	}
@@ -120,9 +149,15 @@ func decodeAgentClaimRequest(w http.ResponseWriter, r *http.Request) (agentClaim
 	var request agentClaimRequest
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&request) != nil ||
 		request.WorkerID == "" || len(request.ProfileIDs) == 0 || len(request.ProfileIDs) > 32 ||
-		request.WaitSeconds < 0 || request.WaitSeconds > 20 {
+		request.WaitSeconds < 0 || request.WaitSeconds > 20 || len(request.JobTypes) > 2 {
 		http.Error(w, invalidRequestMessage, http.StatusBadRequest)
 		return request, false
+	}
+	for _, jobType := range request.JobTypes {
+		if jobType != "battle_decision" && jobType != generation.JobType {
+			http.Error(w, invalidRequestMessage, http.StatusBadRequest)
+			return request, false
+		}
 	}
 	request.ProfileIDs = normalizedProfileIDs(request.ProfileIDs)
 	if len(request.ProfileIDs) == 0 {

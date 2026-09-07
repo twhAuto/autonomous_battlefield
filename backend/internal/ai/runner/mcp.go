@@ -87,7 +87,7 @@ func callTool(ctx context.Context, session *mcp.ClientSession, call ai.ToolCall)
 		return nil, false, err
 	}
 	accepted := false
-	if call.Name == "submit_strategy_plan" {
+	if call.Name == "submit_strategy_plan" || call.Name == "submit_faction_background" {
 		var submission ai.SubmissionResult
 		if json.Unmarshal(payload, &submission) == nil {
 			accepted = submission.Accepted

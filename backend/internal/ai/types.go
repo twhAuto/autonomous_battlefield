@@ -20,6 +20,9 @@ const (
 )
 
 type DecisionSession struct {
+	FactionName     string
+	Background      string
+	JobType         string
 	Doctrine        string
 	RequestID       string
 	CapabilityToken string
@@ -83,6 +86,8 @@ type TurnProvider interface {
 }
 
 type DecisionContext struct {
+	FactionName        string                  `json:"factionName,omitempty"`
+	Background         string                  `json:"background,omitempty"`
 	Doctrine           string                  `json:"doctrine,omitempty"`
 	Opening            bool                    `json:"opening,omitempty"`
 	OwnedUpgradeIDs    []string                `json:"ownedUpgradeIds,omitempty"`

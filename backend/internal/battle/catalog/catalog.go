@@ -130,7 +130,7 @@ func (c *Catalog) Resolve(id string, identities [2]battleservice.FactionIdentity
 	factions := make([]game.FactionSetup, 2)
 	for index, identity := range identities {
 
-		factions[index] = game.FactionSetup{ID: identity.ID, Name: identity.Name, Doctrine: identity.Doctrine, FallbackPlan: controller.ClonePlanProposal(tmpl.FallbackPlan), ScriptedPlans: controller.ClonePlanProposals(tmpl.ScriptedPlans)}
+		factions[index] = game.FactionSetup{ID: identity.ID, Name: identity.Name, Doctrine: identity.Doctrine, Background: identity.Background, FallbackPlan: controller.ClonePlanProposal(tmpl.FallbackPlan), ScriptedPlans: controller.ClonePlanProposals(tmpl.ScriptedPlans)}
 	}
 	duration, _ := time.ParseDuration(tmpl.TickDuration)
 	resolved := game.Scenario{SnapshotVersion: game.DoctrineSnapshotVersion, ID: tmpl.ID, RulesVersion: tmpl.RulesVersion, RulesetID: tmpl.RulesetID, MaximumTicks: tmpl.MaximumTicks, TickDuration: duration, DecisionIntervalTicks: tmpl.DecisionIntervalTicks, Map: game.CloneMap(tmpl.Map), Ruleset: cloneRuleset(ruleset), Factions: factions}
