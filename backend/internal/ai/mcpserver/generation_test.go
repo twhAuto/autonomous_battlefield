@@ -1,3 +1,6 @@
+// Checks background-generation tools, capability scoping, agent control, and prompt
+// claiming when battle work is absent.
+
 package mcpserver
 
 import (

@@ -1,3 +1,6 @@
+// Enriches structured log events with readable messages and active trace IDs while
+// preserving their original fields.
+
 package logging
 
 import (

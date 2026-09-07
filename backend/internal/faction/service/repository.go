@@ -1,3 +1,6 @@
+// Defines the faction persistence operations needed by the service without depending on a
+// database driver.
+
 package service
 
 import (

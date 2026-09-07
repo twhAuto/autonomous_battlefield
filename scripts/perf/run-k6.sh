@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Runs a containerized k6 scenario against the registered environment's gateway and writes
+# performance artifacts.
+
 set -Eeuo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

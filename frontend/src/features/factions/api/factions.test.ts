@@ -1,3 +1,6 @@
+// Checks faction/ruleset reads and profile writes, request encoding, cancellation, and
+// server/network error messages.
+
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFaction, deleteFaction, FactionApiError, listFactionRulesets, listFactions } from './factions'
 

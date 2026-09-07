@@ -1,3 +1,5 @@
+// Checks application metrics are recorded and exposed through the Prometheus handler.
+
 package telemetry
 
 import (

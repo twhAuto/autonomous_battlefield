@@ -1,3 +1,6 @@
+# Runs the model job worker with configured provider profiles, MCP access, health checks,
+# and resource limits.
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:

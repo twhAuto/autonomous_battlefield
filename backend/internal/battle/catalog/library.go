@@ -1,3 +1,6 @@
+// Resolves versioned content libraries into rulesets, validating source references and
+// hashing loaded library content.
+
 package catalog
 
 import (

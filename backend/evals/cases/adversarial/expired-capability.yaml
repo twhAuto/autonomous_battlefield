@@ -1,3 +1,6 @@
+# Evaluation fixture checking an expired request capability cannot open an authorized tool
+# session.
+
 schemaVersion: battlefield.ai-eval-case.v1
 id: adversarial-expired-capability
 category: adversarial

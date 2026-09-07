@@ -1,3 +1,6 @@
+// Exercises comparison command configuration, live-provider gates, runner factories, and
+// knowledge ablation.
+
 package main
 
 import (

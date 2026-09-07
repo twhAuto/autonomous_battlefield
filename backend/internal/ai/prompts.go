@@ -1,3 +1,6 @@
+// Embeds shared model instructions and derives prompt versions; renders prompts and tool
+// allowlists for each session purpose.
+
 package ai
 
 import (

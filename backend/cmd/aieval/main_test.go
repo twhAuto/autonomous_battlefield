@@ -1,3 +1,6 @@
+// Checks evaluation command modes, bounded provider options, provenance output, and
+// report- writing failures.
+
 package main
 
 import (

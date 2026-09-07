@@ -1,3 +1,6 @@
+// Serves process probes and metrics across startup, activation, and shutdown, delegating
+// application traffic only when active.
+
 package httpapi
 
 import (

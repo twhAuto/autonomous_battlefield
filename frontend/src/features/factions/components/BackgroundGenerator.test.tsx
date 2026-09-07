@@ -1,3 +1,6 @@
+// Checks draft preview/apply behavior, resumed jobs, polling retries, idempotency after
+// uncertain failures, and quota refresh.
+
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { BackgroundGenerator } from './BackgroundGenerator'

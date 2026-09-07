@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Restores application deployments using supplied images or rollout history;
+# production requires verified backend and frontend digest references.
 
 set -Eeuo pipefail
 

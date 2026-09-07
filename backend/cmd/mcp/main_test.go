@@ -1,3 +1,5 @@
+// Checks MCP startup reports a failed database connection.
+
 package main
 
 import (

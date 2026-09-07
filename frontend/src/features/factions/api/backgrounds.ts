@@ -1,3 +1,6 @@
+// Client for generation availability, idempotent background-draft requests, and job
+// polling, including quota details on rejected requests.
+
 import { createApiClient } from '../../../shared/api/request'
 export interface BackgroundInput { name: string; doctrine: string; background: string }
 export interface GenerationOptions { available: boolean; modelLabel: string; reason?: string; remaining: number; resetAt: string; retryAt: string; activeJobId?: string }

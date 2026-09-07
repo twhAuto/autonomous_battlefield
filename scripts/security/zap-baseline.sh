@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Runs the pinned ZAP baseline scanner against the registered environment's frontend and
+# writes security reports.
+
 set -Eeuo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

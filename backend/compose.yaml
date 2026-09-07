@@ -1,3 +1,6 @@
+# Local PostgreSQL with persistent storage, an optional disposable Redis cache, and an
+# optional DBHub database browser. Application processes are started separately.
+
 services:
   postgres:
     image: postgres:17-alpine

@@ -1,3 +1,5 @@
+// Checks knowledge-retrieval settings and their configured bounds.
+
 package config
 
 import (

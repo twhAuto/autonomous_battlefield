@@ -1,3 +1,6 @@
+# Scales API replicas from resource utilization while bounding the permitted replica
+# count.
+
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

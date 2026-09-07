@@ -1,3 +1,6 @@
+// Battle registry with URL-backed status filters, cursor navigation, refresh/retry states,
+// and links that preserve the return location.
+
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { listBattles, type BattleHistoryPage as HistoryPage, type BattleSummary } from '../api/battles'

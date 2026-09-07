@@ -1,3 +1,6 @@
+// Queries filtered battle summaries with stable cursor ordering, keeping history listings
+// separate from full battle reads.
+
 package repo
 
 import (

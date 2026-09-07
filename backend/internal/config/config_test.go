@@ -1,3 +1,6 @@
+// Checks strict backend configuration loading, process-specific defaults, durations,
+// authentication, and AI profile validation.
+
 package config
 
 import (

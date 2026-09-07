@@ -1,3 +1,6 @@
+// Parses battle-history filters and pagination parameters for the service and returns
+// summary pages over HTTP.
+
 package api
 
 import (

@@ -1,3 +1,6 @@
+# Runs replicated frontend Nginx pods with API upstream configuration, process probes, and
+# rollout/security settings.
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:

@@ -1,3 +1,6 @@
+// Checks development proxy defaults, origin validation, env-file loading, and separation
+// from browser-exposed settings.
+
 import { afterEach, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

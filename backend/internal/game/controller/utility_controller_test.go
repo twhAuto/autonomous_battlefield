@@ -1,3 +1,6 @@
+// Checks deterministic action scoring, decision scheduling, plan expiry, validation, and
+// defensive copying.
+
 package controller
 
 import (

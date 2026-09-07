@@ -1,3 +1,6 @@
+// Checks progress-log throttling, production log formatting, pending-decision reporting,
+// and lease renewal while waiting.
+
 package worker
 
 import (

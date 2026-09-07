@@ -1,3 +1,6 @@
+// Checks faction normalization, creation/editing limits, Unicode backgrounds, and
+// repository/catalog delegation.
+
 package service
 
 import (

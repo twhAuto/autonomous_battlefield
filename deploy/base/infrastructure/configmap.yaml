@@ -1,3 +1,6 @@
+# Shared non-secret backend YAML mounted into application pods; credential values are
+# supplied separately through Secrets.
+
 apiVersion: v1
 kind: ConfigMap
 metadata:

@@ -1,3 +1,5 @@
+// Checks battle-summary row decoding and repository query outcomes.
+
 package repo
 
 import (

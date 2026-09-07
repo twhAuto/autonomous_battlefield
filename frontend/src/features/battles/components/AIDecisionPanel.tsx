@@ -1,3 +1,6 @@
+// Formats faction controller and decision history for the battle page, including plan
+// purchases, outcomes, and fallback information.
+
 import { BattleRun, DecisionHistory } from '../api/battles'
 
 export function latestDecision(decisions: DecisionHistory[], factionId: string) {

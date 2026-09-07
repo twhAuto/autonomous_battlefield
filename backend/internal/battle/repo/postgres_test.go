@@ -1,3 +1,6 @@
+// Checks battle snapshot persistence, decoding, control transitions, events, and queue
+// error mapping with database doubles.
+
 package repo
 
 import (

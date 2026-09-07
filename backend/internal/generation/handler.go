@@ -1,3 +1,6 @@
+// Serves account-scoped background-generation availability, admission, and job status
+// through the authenticated HTTP API.
+
 package generation
 
 import (

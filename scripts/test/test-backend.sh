@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Requires an integration-test database and runs backend coverage followed by the Go race
+# checks.
 
 set -Eeuo pipefail
 

@@ -1,3 +1,6 @@
+// Applies the tick-zero opening decision and its deterministic fallback before normal
+// combat ticks begin.
+
 package game
 
 import (

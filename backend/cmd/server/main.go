@@ -1,3 +1,6 @@
+// Starts the HTTP API or runs migrations, wiring configuration, database access, scenario
+// catalogs, and process health.
+
 package main
 
 import (

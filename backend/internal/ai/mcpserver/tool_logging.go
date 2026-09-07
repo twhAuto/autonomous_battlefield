@@ -1,3 +1,6 @@
+// Records rejected tool-input shapes while keeping submitted payloads out of operational
+// logs.
+
 package mcpserver
 
 import (

@@ -1,3 +1,6 @@
+// Checks API URL normalization, request forwarding, optional authentication notifications,
+// and preservation of cancellation errors.
+
 import { describe, expect, it, vi } from 'vitest'
 import { apiFetch, authenticationRequiredEvent } from './request'
 

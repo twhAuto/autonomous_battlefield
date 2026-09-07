@@ -1,3 +1,6 @@
+// Projects faction-visible battle state using allied vision while keeping hidden enemy
+// entities out of the returned view.
+
 package game
 
 import (

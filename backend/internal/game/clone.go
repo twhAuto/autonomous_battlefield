@@ -1,3 +1,6 @@
+// Copies simulation state and nested collections so snapshots and callers cannot mutate
+// the live match through shared references.
+
 package game
 
 import (

@@ -1,3 +1,6 @@
+// Starts the model-agent process, wiring executable profiles, the job worker, health
+// checks, and graceful shutdown.
+
 package main
 
 import (

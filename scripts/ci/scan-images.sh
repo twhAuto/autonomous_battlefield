@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Scans selected locally built application images with Trivy and stores reports for CI
+# review.
 
 set -Eeuo pipefail
 

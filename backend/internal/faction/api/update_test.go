@@ -1,3 +1,5 @@
+// Checks the faction-edit HTTP route and its response behavior.
+
 package api
 
 import (

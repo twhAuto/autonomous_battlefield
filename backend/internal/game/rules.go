@@ -1,3 +1,6 @@
+// Validates rulesets and legacy faction blueprints, calculates design costs, and resolves
+// unit and upgrade definitions.
+
 package game
 
 import (

@@ -1,3 +1,5 @@
+// Checks faction and ruleset HTTP responses, write validation, and service error mapping.
+
 package api
 
 import (

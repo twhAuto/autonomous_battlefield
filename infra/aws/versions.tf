@@ -1,3 +1,6 @@
+# Pins Terraform/provider requirements and configures AWS, Kubernetes, and Helm access for
+# the reference stack.
+
 terraform {
   required_version = ">= 1.8.0"
   required_providers {

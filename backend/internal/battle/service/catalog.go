@@ -1,3 +1,6 @@
+// Defines the catalog contract and participant/scenario summaries used to resolve
+// immutable battle inputs.
+
 package service
 
 import (

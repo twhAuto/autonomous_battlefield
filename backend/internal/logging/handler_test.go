@@ -1,3 +1,6 @@
+// Checks readable event messages preserve structured attributes and correlate the current
+// trace without leaking across calls.
+
 package logging
 
 import (

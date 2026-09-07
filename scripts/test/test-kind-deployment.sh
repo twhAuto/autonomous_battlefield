@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Exercises deployment helpers with command doubles, including targeted overlays, rollout
+# failure, and cancellation cleanup.
 
 set -Eeuo pipefail
 

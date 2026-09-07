@@ -1,3 +1,6 @@
+// Constructs the PostgreSQL adapter shared by battle services and workers; SQL operations
+// are split across sibling files.
+
 package repo
 
 import (

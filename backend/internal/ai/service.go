@@ -1,3 +1,6 @@
+// Validates decision submissions against frozen observations and issues or verifies
+// request- scoped HMAC capabilities.
+
 package ai
 
 import (
@@ -41,6 +44,8 @@ func (s *DecisionService) GetContext(ctx context.Context, requestID string) (Dec
 	return record.Observation, nil
 }
 
+// SubmitPlan checks the persisted decision and its legal choices before writing
+// a plan; validation rejection is returned in the result rather than as an error.
 func (s *DecisionService) SubmitPlan(ctx context.Context, submission PlanSubmission) (SubmissionResult, error) {
 	record, err := s.repository.GetDecision(ctx, submission.RequestID)
 	if err != nil {
@@ -84,6 +89,8 @@ func (s *DecisionService) rejectInvalidPlan(ctx context.Context, record Decision
 	return SubmissionResult{Status: "failed", Errors: []ValidationIssue{{Field: "plan", Code: "validation_limit", Message: "Three invalid submissions. Decision closed; stop submitting."}}}, nil
 }
 
+// ValidateSubmission checks version, target tick, and plan choices against the
+// frozen observation without mutating the decision or simulation.
 func ValidateSubmission(record DecisionRecord, submission PlanSubmission) []ValidationIssue {
 	issues := make([]ValidationIssue, 0)
 	if strings.TrimSpace(submission.IdempotencyKey) == "" {
@@ -114,6 +121,8 @@ func ValidateSubmission(record DecisionRecord, submission PlanSubmission) []Vali
 	return issues
 }
 
+// ObservationHash fingerprints the decision context while excluding its request
+// ID and hash field, so those bookkeeping fields do not change the fingerprint.
 func ObservationHash(context DecisionContext) (string, error) {
 	copy := context
 	copy.RequestID = ""
@@ -131,6 +140,8 @@ type capabilityClaims struct {
 	ExpiresAt int64  `json:"expiresAt"`
 }
 
+// MintCapability signs a token granting access to one request until expiresAt.
+// The token is a bearer credential and must stay out of logs and model context.
 func MintCapability(secret, requestID string, expiresAt time.Time) (string, error) {
 	if secret == "" || requestID == "" {
 		return "", errors.New("capability secret and request ID are required")
@@ -145,6 +156,8 @@ func MintCapability(secret, requestID string, expiresAt time.Time) (string, erro
 	return encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
 }
 
+// VerifyCapability checks the signature and expiry and returns the authorized
+// request ID; callers must still check the request's current state.
 func VerifyCapability(secret, token string, now time.Time) (string, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 2 {

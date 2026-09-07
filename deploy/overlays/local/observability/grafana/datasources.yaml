@@ -1,3 +1,6 @@
+# Provisions Grafana connections to Prometheus metrics and Tempo traces using in-cluster
+# service names.
+
 apiVersion: 1
 
 datasources:

@@ -1,3 +1,6 @@
+# Castle-siege ruleset selecting content from core version 1 and defining the starting
+# budget and shared game limits.
+
 id: castle-siege-v1
 version: "1"
 startingGold: 180

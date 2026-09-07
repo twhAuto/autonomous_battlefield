@@ -1,3 +1,6 @@
+-- Persists W3C trace context on battle and decision rows so worker processes can continue
+-- request traces.
+
 -- +goose Up
 ALTER TABLE battle_runs
     ADD COLUMN traceparent text NOT NULL DEFAULT '',

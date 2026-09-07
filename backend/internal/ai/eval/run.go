@@ -1,3 +1,6 @@
+// Executes scripted or provider evaluations through isolated tool sessions and aggregates
+// outcome, usage, and cost metrics.
+
 package eval
 
 import (

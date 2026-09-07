@@ -1,3 +1,6 @@
+// Renders an interactive SVG hex battlefield from supplied state, including fog of war,
+// entity selection, and map navigation.
+
 import { type PointerEvent, type ReactNode, useMemo, useState } from 'react'
 import type { BattleMap, BattleState, HexPosition } from '../api/battles'
 

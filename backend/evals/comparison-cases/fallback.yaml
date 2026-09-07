@@ -1,3 +1,5 @@
+# Shared comparison observation for planning after an earlier fallback decision.
+
 schemaVersion: battlefield.ai-eval-case.v1
 id: fallback-continuity
 category: normal

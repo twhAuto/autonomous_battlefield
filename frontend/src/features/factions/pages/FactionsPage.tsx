@@ -1,3 +1,6 @@
+// Loads the faction registry with retry states, links to editing, and confirmed deletion
+// followed by a refreshed list.
+
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { deleteFaction, Faction, FactionApiError, listFactions } from '../api/factions'

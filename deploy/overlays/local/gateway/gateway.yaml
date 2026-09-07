@@ -1,3 +1,5 @@
+# Defines the shared local HTTP gateway and allows routes from its namespace to attach.
+
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:

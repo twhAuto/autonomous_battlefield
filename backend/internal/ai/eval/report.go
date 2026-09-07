@@ -1,3 +1,5 @@
+// Writes evaluation results as JSON and JUnit reports for local review and CI consumers.
+
 package eval
 
 import (

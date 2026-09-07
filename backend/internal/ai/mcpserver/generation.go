@@ -1,3 +1,6 @@
+// Exposes capability-scoped background-draft tools and connects generation jobs to the
+// agent control plane.
+
 package mcpserver
 
 import (

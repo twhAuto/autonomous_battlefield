@@ -1,3 +1,6 @@
+// Loads events for the selected battle attempt, polls the active attempt, and keeps a
+// bounded, deduplicated event buffer.
+
 import { useCallback, useEffect, useState } from 'react'
 import { BattleApiError, BattleEvent, BattleRun, listBattleEvents } from '../api/battles'
 import { eventPageSize, eventPollIntervalMs } from './constants'
@@ -73,6 +76,7 @@ export function useBattleEventStream(id: string, battleAttempt?: number, battleS
   }
 }
 
+/** Deduplicates overlapping pages by sequence and keeps only the latest 500 events in memory. */
 function mergeEvents(current: BattleEvent[], incoming: BattleEvent[], reset: boolean) {
   const combined = reset ? incoming : [...current, ...incoming]
   return [...new Map(combined.map((event) => [event.sequence, event])).values()]

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Publishes image signatures and attestations from build/security artifacts, then verifies
+# the resulting supply-chain evidence.
 
 set -Eeuo pipefail
 

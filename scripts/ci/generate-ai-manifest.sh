@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Writes the runtime's embedded AI provenance as a build artifact for image metadata and
+# attestations.
 
 set -Eeuo pipefail
 

@@ -1,3 +1,6 @@
+// Applies scenario content selections to a ruleset and checks that authored plans only
+// refer to available content.
+
 package catalog
 
 import (

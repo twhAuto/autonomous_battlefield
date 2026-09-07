@@ -1,3 +1,6 @@
+// Separate Jenkins entry point for offline assurance, load tests, disposable-cluster
+// failure drills, bounded provider evaluations, and verified AWS image promotion.
+
 pipeline {
     agent { label 'battlefield-production' }
 

@@ -1,3 +1,6 @@
+// Owns one in-memory battle attempt and orchestrates ticks, transitions, events, and
+// terminal results without persistence dependencies.
+
 package game
 
 import (
@@ -36,14 +39,18 @@ type Match struct {
 
 func (m *Match) TickDuration() time.Duration { return m.scenario.TickDuration }
 
+// State returns a defensive copy that callers may inspect without altering the match.
 func (m *Match) State() State { return CloneState(m.state) }
 
+// Scenario returns an independent copy of the resolved inputs for this attempt.
 func (m *Match) Scenario() Scenario { return CloneScenario(m.scenario) }
 
 func (m *Match) Finished() bool { return m.finished }
 
 func (m *Match) FactionIDs() []string { return m.sortedFactionIDs() }
 
+// Advance progresses the simulation, using scripted plans when a decision is due.
+// Workers with externally resolved plans use AdvanceWithPlans instead.
 func (m *Match) Advance() (Transition, error) {
 	var plans map[string]controller.PlanProposal
 	if m.DecisionWindowDue() {

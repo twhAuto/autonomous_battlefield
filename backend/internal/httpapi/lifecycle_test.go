@@ -1,3 +1,5 @@
+// Checks startup, active, and shutdown probe transitions while metrics remain accessible.
+
 package httpapi
 
 import (

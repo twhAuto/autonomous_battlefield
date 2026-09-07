@@ -1,3 +1,6 @@
+// Checks pinned content-library reuse, scenario restrictions, legacy inline rules, and
+// rejection of invalid content.
+
 package catalog
 
 import (

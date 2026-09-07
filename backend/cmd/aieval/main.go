@@ -1,3 +1,6 @@
+// Command-line entry point for deterministic or provider AI evaluations and runtime
+// provenance reports.
+
 package main
 
 import (

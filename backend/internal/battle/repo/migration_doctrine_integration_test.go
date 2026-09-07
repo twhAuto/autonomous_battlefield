@@ -1,3 +1,6 @@
+// Checks the doctrine migration backfills faction profiles without rewriting historical
+// battle snapshots.
+
 package repo
 
 import (

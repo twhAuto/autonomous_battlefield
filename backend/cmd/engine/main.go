@@ -1,3 +1,6 @@
+// Starts the durable battle engine with PostgreSQL, lifecycle probes, tracing, and signal-
+// driven worker shutdown.
+
 package main
 
 import (

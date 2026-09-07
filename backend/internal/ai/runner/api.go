@@ -1,3 +1,6 @@
+// Runs a bounded provider/tool loop over MCP, tracking usage and stopping on acceptance,
+// failure, or lack of progress.
+
 package runner
 
 import (

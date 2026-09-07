@@ -1,3 +1,6 @@
+// Executes supported model CLIs in isolated sessions with scoped tools, bounded output,
+// and provider-specific result parsing.
+
 package runner
 
 import (

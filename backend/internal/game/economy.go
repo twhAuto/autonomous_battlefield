@@ -1,3 +1,6 @@
+// Applies faction income, construction, and recruitment using production-window rules,
+// gold reserves, and available spawn cells.
+
 package game
 
 import (

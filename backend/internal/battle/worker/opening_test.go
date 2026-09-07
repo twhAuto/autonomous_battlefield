@@ -1,3 +1,6 @@
+// Checks opening decisions are recorded before combat and model-controlled doctrine
+// battles can complete.
+
 package worker
 
 import (

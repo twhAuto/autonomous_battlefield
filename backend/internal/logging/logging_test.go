@@ -1,3 +1,5 @@
+// Checks process logger creation and environment-configured log levels.
+
 package logging
 
 import (

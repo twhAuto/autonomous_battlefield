@@ -1,3 +1,6 @@
+// Checks battle HTTP responses, controls, perspectives, profile/decision reads, and event-
+// cursor validation and fuzzing.
+
 package api
 
 import (

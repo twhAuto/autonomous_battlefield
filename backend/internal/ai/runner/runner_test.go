@@ -1,3 +1,6 @@
+// Exercises bounded API tool loops and isolated CLI invocations, including authorization,
+// failures, and untrusted context handling.
+
 package runner
 
 import (

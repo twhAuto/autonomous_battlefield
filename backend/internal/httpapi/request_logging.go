@@ -1,3 +1,6 @@
+// Wraps HTTP requests with correlation IDs, response status and timing logs, and
+// normalized- route metrics.
+
 package httpapi
 
 import (

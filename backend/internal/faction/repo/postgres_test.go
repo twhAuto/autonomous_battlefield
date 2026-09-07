@@ -1,3 +1,6 @@
+// Checks faction SQL reads and writes, row decoding, missing records, and duplicate
+// identifiers.
+
 package repo
 
 import (

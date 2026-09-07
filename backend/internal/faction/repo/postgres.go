@@ -1,3 +1,6 @@
+// Implements faction profile reads and writes in PostgreSQL, mapping database outcomes to
+// service errors.
+
 package repo
 
 import (

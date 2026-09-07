@@ -1,3 +1,6 @@
+// Checks only completed results are cached and cache failures preserve the repository read
+// path.
+
 package service
 
 import (

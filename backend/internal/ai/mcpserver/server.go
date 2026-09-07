@@ -1,3 +1,6 @@
+// Serves decision-context and plan-submission tools with request-scoped capabilities, plus
+// authenticated agent job control.
+
 package mcpserver
 
 import (

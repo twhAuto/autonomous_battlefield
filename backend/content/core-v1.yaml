@@ -1,3 +1,6 @@
+# Reusable versioned unit, upgrade, building, and knowledge definitions selected by
+# rulesets; scenarios may further restrict the available content.
+
 id: core
 version: "1"
 units:

@@ -1,3 +1,5 @@
+// Checks plan copies isolate mutable nested fields from the original proposal.
+
 package controller
 
 import (

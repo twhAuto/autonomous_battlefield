@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Restarts engine, database, and MCP workloads in an explicitly registered disposable dev
+# cluster, then runs smoke checks and writes a recovery report.
+
 set -Eeuo pipefail
 
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"

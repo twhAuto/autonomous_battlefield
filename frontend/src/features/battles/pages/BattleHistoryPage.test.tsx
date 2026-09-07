@@ -1,3 +1,6 @@
+// Checks battle-history filters, cursor navigation, browser history, stale-request
+// handling, and return links from battle details.
+
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'

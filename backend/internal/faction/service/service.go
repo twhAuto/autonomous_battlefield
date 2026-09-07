@@ -1,3 +1,6 @@
+// Normalizes faction profiles, enforces text and identifier rules, and coordinates
+// repository and ruleset-catalog access.
+
 package service
 
 import (

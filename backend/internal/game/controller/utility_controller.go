@@ -1,3 +1,6 @@
+// Schedules decision requests and selects actions from validated utility plans with
+// deterministic tie-breaking.
+
 package controller
 
 import (

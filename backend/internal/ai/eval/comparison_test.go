@@ -1,3 +1,6 @@
+// Checks comparison inputs and plan validation, including CLI runs that report success
+// without an accepted plan.
+
 package eval
 
 import (

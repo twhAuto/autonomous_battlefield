@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Runs backend tests with package-wide coverage and fails when aggregate statement
+# coverage is below the configured minimum.
 
 set -Eeuo pipefail
 

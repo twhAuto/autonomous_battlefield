@@ -1,3 +1,6 @@
+// Checks provider tool-call and usage decoding, refusal/error mapping, and HTTP response
+// cleanup.
+
 package providers
 
 import (

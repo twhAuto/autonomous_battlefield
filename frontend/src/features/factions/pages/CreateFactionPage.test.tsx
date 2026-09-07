@@ -1,3 +1,6 @@
+// Checks profile creation and editing, doctrine/background Unicode limits, save failures,
+// and duplicate-submission prevention.
+
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'

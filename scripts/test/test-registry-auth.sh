@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Checks temporary registry credentials preserve caller configuration and are removed
+# after both success and failure.
 
 set -Eeuo pipefail
 

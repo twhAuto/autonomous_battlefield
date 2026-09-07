@@ -1,3 +1,6 @@
+// Checks API composition, authenticated route access, cached results, and shared request
+// trace context.
+
 package app
 
 import (

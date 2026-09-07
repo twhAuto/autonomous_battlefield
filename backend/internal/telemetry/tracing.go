@@ -1,3 +1,6 @@
+// Configures optional OpenTelemetry export and carries trace context through HTTP
+// requests, database work, and queued jobs.
+
 package telemetry
 
 import (

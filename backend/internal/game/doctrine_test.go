@@ -1,3 +1,6 @@
+// Checks tick-zero opening behavior, upgrade ordering and budgets, frozen views, and
+// legacy fallback behavior.
+
 package game
 
 import (

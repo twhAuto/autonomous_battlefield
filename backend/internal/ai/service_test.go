@@ -1,3 +1,6 @@
+// Checks decision authority and schema validation, repository errors, capability
+// integrity, and malformed-token fuzzing.
+
 package ai
 
 import (

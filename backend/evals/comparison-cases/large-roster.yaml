@@ -1,3 +1,6 @@
+# Shared comparison observation with a larger unit roster to exercise bounded
+# rules-knowledge retrieval.
+
 schemaVersion: battlefield.ai-eval-case.v1
 id: large-roster
 category: normal

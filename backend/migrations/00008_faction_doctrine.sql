@@ -1,3 +1,6 @@
+-- Adds faction doctrine, permits profiles without legacy blueprints, and allows tick-zero
+-- opening decisions; downgrade guards against incompatible data.
+
 -- +goose Up
 ALTER TABLE factions ADD COLUMN doctrine text NOT NULL DEFAULT 'Balance offense, defense, and economic growth. Protect your castle and income, scout before committing, and adapt purchases to visible threats.';
 ALTER TABLE factions ADD CONSTRAINT factions_doctrine_valid CHECK (length(trim(doctrine)) BETWEEN 1 AND 4000);

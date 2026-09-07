@@ -1,3 +1,6 @@
+// Adds profile editing through optional update contracts, reusing the same normalization
+// as faction creation.
+
 package service
 
 import (

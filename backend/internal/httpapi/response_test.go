@@ -1,3 +1,6 @@
+// Checks single-value JSON decoding, encoding failures before header commitment, and
+// malformed-body fuzzing.
+
 package httpapi
 
 import (

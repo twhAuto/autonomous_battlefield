@@ -1,3 +1,6 @@
+// Copies controller plans and their nested collections to prevent callers from mutating
+// accepted decisions.
+
 package controller
 
 // ClonePlanProposal copies a proposal without sharing mutable maps or slices.

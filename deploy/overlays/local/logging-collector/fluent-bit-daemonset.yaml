@@ -1,3 +1,6 @@
+# Runs Fluent Bit on cluster nodes to collect container logs and forward them to
+# Elasticsearch.
+
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:

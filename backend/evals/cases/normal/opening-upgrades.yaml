@@ -1,3 +1,6 @@
+# Successful evaluation fixture for a tick-zero opening plan with explicit upgrade
+# purchases.
+
 schemaVersion: battlefield.ai-eval-case.v1
 id: normal-opening-upgrades
 category: normal

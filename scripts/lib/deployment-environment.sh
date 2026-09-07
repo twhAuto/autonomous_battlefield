@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Shared environment resolver: loads a registered profile, locks conflicting
+# overrides, and verifies Kubernetes/Docker identity before operational commands.
 # Trusted machine configuration lives outside the checkout; never source secrets.
 
 battlefield_env_error() { echo "Deployment environment: $*" >&2; return 1; }
@@ -67,6 +69,8 @@ battlefield_env_verify() {
   [[ -n "${uid}" && "${uid}" == "${BF_UID}" ]] || { battlefield_env_error 'Cluster identity mismatch; refusing to operate.'; return 1; }
 }
 
+# Load the requested environment and verify the live cluster's registered UID.
+# Callers perform Docker identity verification separately when they need it.
 battlefield_env_preflight() {
   battlefield_env_load || return
   battlefield_env_verify || return

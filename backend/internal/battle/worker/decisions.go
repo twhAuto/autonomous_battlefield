@@ -1,3 +1,6 @@
+// Freezes each faction's decision context, waits for model plans while maintaining the
+// lease, and resolves deterministic fallbacks.
+
 package worker
 
 import (

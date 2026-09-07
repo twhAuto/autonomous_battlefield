@@ -1,3 +1,5 @@
+// Faction profile editor for both creation and editing, selected by the route's id.
+// Owns form state, validation, and the live preview; API calls live in ../api/factions.
 import { maxBackgroundLength, maxDoctrineLength } from '../limits'
 import { BackgroundGenerator } from '../components/BackgroundGenerator'
 import { useEffect, useState, type SubmitEvent } from 'react'
@@ -5,6 +7,7 @@ import { Link, useParams } from 'react-router-dom'
 import { createFaction, listFactions, updateFaction } from '../api/factions'
 import { Emblem } from '../../../shared/components/Emblem'
 
+// Editable starting strategies; keep Balanced aligned with the backend's BalancedDoctrine.
 export const doctrineTemplates = {
  Balanced: 'Balance offense, defense, and economic growth. Protect your castle and income, scout before committing, and adapt purchases to visible threats.',
  Aggressive: 'Pressure the enemy early. Favor offensive units and upgrades, exploit exposed income, and commit when a decisive attack is possible. Protect your castle from counterattacks.',
@@ -12,6 +15,7 @@ export const doctrineTemplates = {
  Economic: 'Build a strong economy while maintaining enough defense to survive. Preserve income, invest in economic upgrades, and convert your advantage into a decisive army.',
 }
 
+/** Renders the profile form and optional background generator, loading the faction when editing. */
 export function CreateFactionPage() {
  const { id } = useParams()
  const editing = Boolean(id)
@@ -23,6 +27,7 @@ export function CreateFactionPage() {
  const [loadFailed, setLoadFailed] = useState(false)
  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
  const [message, setMessage] = useState('')
+ // Cancel the previous load when the route changes or the page unmounts to avoid stale form updates.
  useEffect(() => {
  if (!id) return
  const controller = new AbortController()
@@ -39,9 +44,11 @@ export function CreateFactionPage() {
  })
  return () => controller.abort()
  }, [id])
+ // Array.from counts Unicode code points, matching the API's rune-based text limits.
  const count = Array.from(doctrine.trim()).length
  const backgroundCount = Array.from(background.trim()).length
  const valid = backgroundCount <= maxBackgroundLength && name.trim().length > 0 && count > 0 && count <= maxDoctrineLength && !loading && !loadFailed
+ /** Saves a valid profile and reports the result; successful creation clears identity and background but keeps doctrine. */
  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
  event.preventDefault()
  if (!valid || status === 'submitting') return

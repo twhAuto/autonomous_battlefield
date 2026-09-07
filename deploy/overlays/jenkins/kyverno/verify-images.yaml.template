@@ -1,3 +1,6 @@
+# Admission-policy template rendered by apply-kyverno-policy.sh with image repositories
+# and a public key; requires signatures and build attestations.
+
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:

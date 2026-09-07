@@ -1,3 +1,5 @@
+// Exercises history queries and reversible history-index migration against PostgreSQL.
+
 package repo
 
 import (

@@ -1,3 +1,6 @@
+// Resolves unit turns, movement toward targets, attacks, damage, and loot within the
+// deterministic simulation.
+
 package game
 
 import (

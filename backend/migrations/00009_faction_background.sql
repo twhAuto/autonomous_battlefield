@@ -1,3 +1,6 @@
+-- Adds optional faction backgrounds and account-scoped generation jobs with idempotency,
+-- lifecycle, and usage fields.
+
 -- +goose Up
 ALTER TABLE factions ADD COLUMN background text NOT NULL DEFAULT '' CHECK (char_length(background) <= 1000);
 CREATE TABLE faction_generation_accounts (

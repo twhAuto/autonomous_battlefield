@@ -1,3 +1,6 @@
+// Starts the authenticated MCP and agent-control server with restricted repositories and
+// database wakeup notifications.
+
 package main
 
 import (

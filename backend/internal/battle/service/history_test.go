@@ -1,3 +1,5 @@
+// Checks stable history pagination and rejection of invalid filters and cursors.
+
 package service
 
 import (

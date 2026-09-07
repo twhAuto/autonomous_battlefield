@@ -1,3 +1,5 @@
+// Checks battle-history HTTP filters, pagination, and service error responses.
+
 package api
 
 import (

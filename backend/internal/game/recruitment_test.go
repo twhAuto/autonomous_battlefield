@@ -1,3 +1,5 @@
+// Checks explicit recruitment quantities, blocked spawns, and default production behavior.
+
 package game
 
 import (

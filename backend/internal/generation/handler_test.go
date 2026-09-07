@@ -1,3 +1,6 @@
+// Checks authenticated background-generation endpoints and availability, admission, and
+// job status responses.
+
 package generation
 
 import (

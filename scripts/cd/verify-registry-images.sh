@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Verifies configured registry image digests and Cosign evidence before deployment uses
+# them.
+
 set -Eeuo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

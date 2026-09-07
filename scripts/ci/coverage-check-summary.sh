@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Converts backend and frontend coverage summaries into a Markdown check report and exits
+# unsuccessfully when reports or thresholds fail.
 
 set -uo pipefail
 

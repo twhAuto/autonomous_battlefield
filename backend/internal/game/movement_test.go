@@ -1,3 +1,6 @@
+// Checks units find alternative enemy approaches without crossing blocked cells or
+// targeting friendly/destroyed entities.
+
 package game
 
 import (

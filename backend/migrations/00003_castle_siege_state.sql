@@ -1,3 +1,6 @@
+-- Introduces castle-siege faction configuration and persisted battle state; refuses
+-- upgrade when existing development battle/faction data is present.
+
 -- +goose Up
 -- +goose StatementBegin
 DO $$

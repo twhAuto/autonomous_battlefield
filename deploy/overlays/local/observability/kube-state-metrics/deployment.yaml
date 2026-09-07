@@ -1,3 +1,6 @@
+# Runs kube-state-metrics, which exports Kubernetes workload-state metrics, with the local
+# stack's configuration and resource settings.
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:

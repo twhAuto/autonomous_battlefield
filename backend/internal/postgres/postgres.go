@@ -1,3 +1,6 @@
+// Configures PostgreSQL connection pools and bounded startup retries with context-aware
+// cancellation.
+
 package postgres
 
 import (

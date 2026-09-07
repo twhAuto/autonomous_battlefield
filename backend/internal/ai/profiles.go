@@ -1,3 +1,6 @@
+// Evaluates configured model profiles for catalog visibility or local execution, checking
+// credentials and CLI availability.
+
 package ai
 
 import (

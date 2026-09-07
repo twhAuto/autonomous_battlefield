@@ -1,3 +1,5 @@
+// Checks opening-decision submissions reject invalid upgrade choices.
+
 package ai
 
 import (

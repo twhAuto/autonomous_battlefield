@@ -1,3 +1,6 @@
+// Claims queued or expired battle work and enforces worker lease ownership for heartbeats,
+// failure, and requeue writes.
+
 package repo
 
 import (

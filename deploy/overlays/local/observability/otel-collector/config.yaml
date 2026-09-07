@@ -1,3 +1,6 @@
+# Receives OTLP traces, applies memory/batch processing, and exports the trace pipeline to
+# Tempo.
+
 receivers:
   otlp:
     protocols:

@@ -1,3 +1,6 @@
+// Strictly decodes YAML and environment-backed settings, applying defaults and validation
+// for each backend process.
+
 package config
 
 import (

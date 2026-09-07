@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Runs short, bounded Go fuzz sessions against selected input parsers and capability
+# validation.
 
 set -Eeuo pipefail
 

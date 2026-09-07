@@ -1,3 +1,6 @@
+// Validates controller weights, priorities, construction coordinates, and explicit
+// recruitment orders before plans are applied.
+
 package controller
 
 import (

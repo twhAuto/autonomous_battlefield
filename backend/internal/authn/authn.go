@@ -1,3 +1,6 @@
+// Implements configured administrator login, signed session cookies, actor context, and
+// protection of application API routes.
+
 package authn
 
 import (

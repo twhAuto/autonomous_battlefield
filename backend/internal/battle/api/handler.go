@@ -1,3 +1,6 @@
+// Maps battle, scenario, profile, event, and control HTTP routes to service operations and
+// stable response statuses.
+
 package api
 
 import (

@@ -1,3 +1,6 @@
+// Checks strict catalog loading, resolved faction snapshots, unknown scenarios, and
+// malformed scenario YAML.
+
 package catalog
 
 import (

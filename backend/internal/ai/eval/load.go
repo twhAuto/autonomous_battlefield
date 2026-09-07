@@ -1,3 +1,6 @@
+// Loads and validates versioned evaluation cases and model prices from YAML before
+// execution.
+
 package eval
 
 import (

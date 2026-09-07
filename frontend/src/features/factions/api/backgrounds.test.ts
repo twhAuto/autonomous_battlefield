@@ -1,3 +1,6 @@
+// Checks generation availability, idempotent submission, job reads, and transport error
+// handling.
+
 import { beforeEach, expect, it, vi } from 'vitest'
 import { backgroundJob, generateBackground, generationOptions } from './backgrounds'
 const input = { name: 'A', doctrine: 'Defend', background: '' }

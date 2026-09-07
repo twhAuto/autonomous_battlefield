@@ -1,3 +1,6 @@
+# Authored skirmish scenario with a restricted content selection, map, timing, and
+# scripted plans for queued battles.
+
 id: ranged-skirmish-v1
 rulesVersion: "1"
 rulesetId: castle-siege-v1

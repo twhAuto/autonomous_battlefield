@@ -1,3 +1,6 @@
+# Limits incoming MCP pod traffic to matching agent pods where the cluster network
+# enforces NetworkPolicy.
+
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

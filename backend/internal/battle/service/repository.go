@@ -1,3 +1,6 @@
+// Defines the persistence operations required by battle use cases, independently of the
+// PostgreSQL implementation.
+
 package service
 
 import (

@@ -1,3 +1,6 @@
+// Defines durable decision records, repository operations, and errors shared by the
+// engine, agents, and MCP service.
+
 package ai
 
 import (

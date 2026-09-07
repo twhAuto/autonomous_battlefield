@@ -1,3 +1,5 @@
+// Checks authored unit additions reach the loaded ruleset and knowledge catalog.
+
 package catalog
 
 import (

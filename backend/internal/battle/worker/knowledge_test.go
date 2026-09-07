@@ -1,3 +1,6 @@
+// Checks retrieved knowledge is frozen before the decision observation is hashed and
+// persisted.
+
 package worker
 
 import (

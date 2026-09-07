@@ -1,3 +1,6 @@
+// Compares runner variants against the same frozen observations using isolated submissions
+// and bounded repetitions.
+
 package eval
 
 import (

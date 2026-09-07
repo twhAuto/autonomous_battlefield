@@ -1,3 +1,6 @@
+// Translates faction profile and ruleset HTTP requests into service calls, JSON responses,
+// and transport errors.
+
 package api
 
 import (

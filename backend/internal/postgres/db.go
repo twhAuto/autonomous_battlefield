@@ -1,3 +1,6 @@
+// Defines the shared SQL execution contract implemented by PostgreSQL pools and
+// transactions.
+
 package postgres
 
 import (

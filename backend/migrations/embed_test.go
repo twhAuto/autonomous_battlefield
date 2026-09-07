@@ -1,3 +1,6 @@
+// Checks SQL migrations are embedded and Goose keeps the procedural migration block as a
+// single statement.
+
 package migrations
 
 import (

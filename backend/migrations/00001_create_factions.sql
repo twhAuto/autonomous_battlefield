@@ -1,3 +1,6 @@
+-- Creates the initial faction identity table; later migrations add the game configuration
+-- and profile text fields.
+
 -- +goose Up
 CREATE TABLE factions (
     id uuid PRIMARY KEY,

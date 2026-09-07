@@ -1,3 +1,6 @@
+// Finds alternative enemy approach positions when a unit's route to the opposing castle is
+// blocked.
+
 package game
 
 // enemyApproachGoals provides reachable attack positions when the castle route

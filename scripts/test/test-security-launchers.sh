@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Checks scanner launcher arguments, artifact locations, failure propagation, and bounded
+# vulnerability-database download retries.
+
 set -Eeuo pipefail
 
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"

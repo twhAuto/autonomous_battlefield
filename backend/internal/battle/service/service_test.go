@@ -1,3 +1,6 @@
+// Checks battle validation, frozen participant snapshots, model selection, controls,
+// perspectives, and safe decision/event reads.
+
 package service
 
 import (

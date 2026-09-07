@@ -1,3 +1,6 @@
+// Presentational pieces for battle headings, connection state, statistics, outcomes, and
+// controls; data loading stays in the page and hooks.
+
 import { type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { BattleRun } from '../api/battles'

@@ -1,3 +1,6 @@
+# Waits for Kibana and installs the log-view saved objects used to inspect battlefield
+# logs.
+
 apiVersion: batch/v1
 kind: Job
 metadata:

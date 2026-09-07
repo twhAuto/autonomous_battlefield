@@ -1,3 +1,6 @@
+// Checks embedded prompt policy, shared tool instructions, doctrine rendering, and
+// provenance.
+
 package ai
 
 import (

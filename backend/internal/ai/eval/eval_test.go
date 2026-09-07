@@ -1,3 +1,6 @@
+// Exercises the versioned evaluation corpus, isolated provider cases, report aggregation,
+// and omission of sensitive payloads.
+
 package eval
 
 import (

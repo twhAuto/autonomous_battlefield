@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Runs source/dependency security checks and validates rendered Kubernetes manifests
+# against schemas and repository policy.
 
 set -Eeuo pipefail
 

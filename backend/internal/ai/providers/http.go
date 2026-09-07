@@ -1,3 +1,6 @@
+// Provides shared transcript rendering and HTTP response handling for model-provider
+// adapters.
+
 package providers
 
 import (

@@ -1,3 +1,6 @@
+// Composes API repositories, services, routes, and authentication middleware; process
+// startup remains in cmd/server.
+
 package app
 
 import (

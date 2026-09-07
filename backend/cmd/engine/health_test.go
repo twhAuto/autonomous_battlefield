@@ -1,3 +1,5 @@
+// Exercises engine probe responses as the worker and database enter and leave readiness.
+
 package main
 
 import (

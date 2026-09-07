@@ -1,3 +1,6 @@
+# Builds the Vite frontend and serves its static output with unprivileged Nginx and the
+# runtime API proxy template.
+
 FROM node:24-alpine AS build
 
 WORKDIR /src

@@ -1,3 +1,6 @@
+// Adapts neutral model turns and tool schemas to Gemini requests, then decodes tool calls
+// and token usage.
+
 package providers
 
 import (

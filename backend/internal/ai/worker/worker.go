@@ -1,3 +1,6 @@
+// Claims compatible model work through MCP within the configured concurrency limit and
+// reports execution outcomes.
+
 package worker
 
 import (

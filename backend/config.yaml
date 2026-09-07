@@ -1,3 +1,7 @@
+# Default backend process settings: listeners, database access, battle timing, AI
+# profiles, and background-generation limits. Secrets are read through named environment
+# variables.
+
 http:
   address: ":8080"
   readHeaderTimeout: 5s

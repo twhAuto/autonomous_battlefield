@@ -1,3 +1,6 @@
+// Runs embedded Goose migrations through a database connection separate from application
+// pool startup.
+
 package postgres
 
 import (

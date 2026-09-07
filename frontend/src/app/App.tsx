@@ -1,3 +1,6 @@
+// Application shell and route table. Checks the session, handles login/logout and API
+// authentication expiry, and wraps feature pages in shared navigation.
+
 import { useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { CreateFactionPage } from '../features/factions/pages/CreateFactionPage'

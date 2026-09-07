@@ -1,3 +1,6 @@
+// Validates battle requests, freezes scenario inputs, and coordinates battle reads,
+// controls, perspectives, and optional result caching.
+
 package service
 
 import (

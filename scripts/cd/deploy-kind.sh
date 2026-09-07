@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Deployment entry point for a registered Kind environment. Resolves selected components
+# and delegates rollout, validation, and cleanup to cd/lib/kind-deployment.sh.
 
 set -Eeuo pipefail
 

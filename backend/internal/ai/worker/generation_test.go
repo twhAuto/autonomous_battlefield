@@ -1,3 +1,5 @@
+// Checks background workers scope sessions to generation jobs and report their outcomes.
+
 package worker
 
 import (

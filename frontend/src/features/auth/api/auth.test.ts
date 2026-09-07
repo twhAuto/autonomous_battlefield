@@ -1,3 +1,6 @@
+// Checks session, login, and logout requests and maps authentication and network failures
+// to user-facing errors.
+
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { authenticationClient, AuthenticationError } from './auth'
 

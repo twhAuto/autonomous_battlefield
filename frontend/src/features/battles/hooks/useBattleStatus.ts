@@ -1,7 +1,11 @@
+// Polls battle status until it settles, with bounded exponential reconnects, manual retry,
+// and updates from battle controls.
+
 import { useCallback, useEffect, useState } from 'react'
 import { BattleApiError, BattleRun, getBattle } from '../api/battles'
 import { type ConnectionState } from '../types'
 
+/** Tracks one battle, stopping automatic polling at terminal status or after bounded reconnect failures. */
 export function useBattleStatus(id: string) {
   const [battle, setBattle] = useState<BattleRun | null>(null)
   const [connection, setConnection] = useState<ConnectionState>('connecting')

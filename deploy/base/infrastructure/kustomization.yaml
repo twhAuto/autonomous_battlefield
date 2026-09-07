@@ -1,3 +1,6 @@
+# Assembles the namespace and shared application configuration required before migrations
+# and workloads.
+
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

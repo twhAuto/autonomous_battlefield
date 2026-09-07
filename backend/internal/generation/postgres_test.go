@@ -1,3 +1,6 @@
+// Checks concurrent admission, per-account isolation, idempotency, quotas, expiry, and
+// generation accounting.
+
 package generation
 
 import (

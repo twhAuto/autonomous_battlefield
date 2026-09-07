@@ -1,3 +1,5 @@
+# Provisions the mounted battlefield dashboard files into a managed Grafana folder.
+
 apiVersion: 1
 
 providers:

@@ -1,3 +1,6 @@
+// Renders an attempt-selectable battle event log with paging controls and readable event
+// payload values.
+
 import { BattleEvent, JsonValue } from '../api/battles'
 import { eventPageSize } from '../hooks/constants'
 import { type EventState } from '../types'

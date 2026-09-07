@@ -1,3 +1,6 @@
+// Builds decision snapshots, validates and normalizes submitted production plans, and
+// selects per-faction tactics.
+
 package game
 
 import (

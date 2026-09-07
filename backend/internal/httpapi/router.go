@@ -1,3 +1,6 @@
+// Composes business route registrars and middleware beneath request logging; process
+// probes are handled separately.
+
 package httpapi
 
 import (

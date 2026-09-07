@@ -1,3 +1,6 @@
+// Writes simulation state, events, and completion atomically while checking the current
+// battle lease.
+
 package repo
 
 import (
@@ -10,6 +13,8 @@ import (
 	"time"
 )
 
+// SaveTick stores state and events and renews the lease in one SQL statement.
+// A worker whose attempt or owner no longer matches receives ErrBattleLeaseLost.
 func (r *Postgres) SaveTick(ctx context.Context, lease worker.BattleLease, transition game.Transition, leaseDuration time.Duration) error {
 	events, err := json.Marshal(transition.Events)
 	if err != nil {
@@ -44,6 +49,8 @@ func (r *Postgres) SaveTick(ctx context.Context, lease worker.BattleLease, trans
 	return nil
 }
 
+// CompleteBattle atomically stores the terminal state, result, and events and
+// releases the lease; unfinished transitions and stale workers are rejected.
 func (r *Postgres) CompleteBattle(ctx context.Context, lease worker.BattleLease, transition game.Transition) error {
 	if !transition.Finished || transition.Result == nil {
 		return errors.New("cannot complete battle without a finished transition")

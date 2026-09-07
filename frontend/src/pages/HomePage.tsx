@@ -1,3 +1,5 @@
+// Main menu linking to faction creation, the faction registry, and battle staging.
+
 import { Link } from 'react-router-dom'
 
 export function HomePage() {

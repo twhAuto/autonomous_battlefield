@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Maps changes between the previous successful commit and the current commit to a
+# deployment component list; missing history selects all components.
 
 set -Eeuo pipefail
 

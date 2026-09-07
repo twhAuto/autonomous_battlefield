@@ -1,3 +1,5 @@
+# Keeps at least one API pod available during voluntary Kubernetes disruptions.
+
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

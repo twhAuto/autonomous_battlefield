@@ -1,3 +1,5 @@
+# Evaluation fixture for a tool execution failure during a model decision.
+
 schemaVersion: battlefield.ai-eval-case.v1
 id: provider-tool-failure
 category: provider-failure

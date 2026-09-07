@@ -1,3 +1,5 @@
+// Checks database startup retries stop on cancellation or invalid configuration.
+
 package postgres
 
 import (

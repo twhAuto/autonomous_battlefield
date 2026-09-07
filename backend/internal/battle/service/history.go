@@ -1,3 +1,6 @@
+// Validates history filters and cursors and constructs paginated battle summaries from
+// repository results.
+
 package service
 
 import (
@@ -50,6 +53,8 @@ type BattleHistoryQuery struct {
 	Limit  int
 }
 
+// ListBattles validates the filter and cursor, then fetches one extra summary to
+// decide whether to return a next-page cursor without a separate count query.
 func (s *battleService) ListBattles(ctx context.Context, input BattleHistoryInput) (BattleHistoryPage, error) {
 	page := BattleHistoryPage{Battles: []BattleSummary{}}
 	switch input.Status {

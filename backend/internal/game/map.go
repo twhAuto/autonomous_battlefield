@@ -1,3 +1,6 @@
+// Implements odd-row hex coordinates, map validation, reachability, and deterministic
+// pathfinding for the simulation.
+
 package game
 
 import (

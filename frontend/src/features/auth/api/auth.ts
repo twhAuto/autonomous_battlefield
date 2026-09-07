@@ -1,3 +1,6 @@
+// Authentication API client for signed-cookie session checks, login, and logout; keeps
+// expected login failures local to the form.
+
 import { createApiClient } from '../../../shared/api/request'
 
 export interface AuthSession {
@@ -32,6 +35,7 @@ async function session(): Promise<AuthSession> {
   return (await response.json()) as AuthSession
 }
 
+/** Establishes the session cookie, then reads the session endpoint to obtain the authenticated actor. */
 async function login(username: string, password: string): Promise<AuthSession> {
   const response = await authFetch(`/v1/auth/login`, {
       method: 'POST',

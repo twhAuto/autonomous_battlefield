@@ -1,3 +1,6 @@
+// Stores background-generation jobs and enforces per-account quotas, idempotency, claims,
+// expiry, and completion accounting.
+
 package generation
 
 import (

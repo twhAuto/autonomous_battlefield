@@ -1,3 +1,6 @@
+// Rate-limits battle progress logging and measures elapsed runtime from the worker's
+// context.
+
 package worker
 
 import (

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Starts an isolated PostgreSQL container, exports its connection URL to the requested
+# test command, and removes it on exit.
 
 set -Eeuo pipefail
 

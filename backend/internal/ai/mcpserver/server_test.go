@@ -1,3 +1,6 @@
+// Exercises MCP authorization and request scoping, agent claims and long polling, usage
+// reporting, and malformed-input fuzzing.
+
 package mcpserver
 
 import (

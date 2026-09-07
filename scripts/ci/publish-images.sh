@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Builds and pushes selected application images and records immutable registry references
+# for downstream scans and deployment.
 
 set -Eeuo pipefail
 

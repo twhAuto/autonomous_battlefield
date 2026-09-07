@@ -1,3 +1,6 @@
+-- Adds the pause flag and an index that supports claiming only unpaused queued or running
+-- battles.
+
 -- +goose Up
 ALTER TABLE battle_runs
     ADD COLUMN paused boolean NOT NULL DEFAULT false;

@@ -1,3 +1,6 @@
+// Checks identity escaping, background prompt separation and versioning, and identity-
+// sensitive observation hashes.
+
 package ai
 
 import (

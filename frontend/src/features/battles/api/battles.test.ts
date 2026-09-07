@@ -1,3 +1,6 @@
+// Checks battle API request encoding, response decoding, control actions, perspectives,
+// pagination, and error mapping.
+
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   BattleApiError,

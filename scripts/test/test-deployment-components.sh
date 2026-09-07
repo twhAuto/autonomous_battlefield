@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Checks changed-path classification and component selection, including mixed changes,
+# deletions, and renames.
 
 set -Eeuo pipefail
 

@@ -1,3 +1,6 @@
+// Selects rules knowledge from faction-visible context, enforcing card and byte limits and
+// recording a digest.
+
 package ai
 
 import (

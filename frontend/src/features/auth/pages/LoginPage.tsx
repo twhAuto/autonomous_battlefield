@@ -1,3 +1,6 @@
+// Login form that submits credentials through the injected authentication client and
+// passes a successful session back to the app.
+
 import { type SubmitEvent, useState } from 'react'
 import type { AuthenticationClient, AuthSession } from '../api/auth'
 

@@ -1,3 +1,6 @@
+# Runs the durable battle simulation worker with database access, lifecycle probes, and
+# graceful shutdown settings.
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:

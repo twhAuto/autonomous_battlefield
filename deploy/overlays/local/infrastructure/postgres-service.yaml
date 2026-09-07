@@ -1,3 +1,5 @@
+# Provides the in-cluster database endpoint for the local PostgreSQL StatefulSet.
+
 apiVersion: v1
 kind: Service
 metadata:

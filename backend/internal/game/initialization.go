@@ -1,3 +1,6 @@
+// Validates a resolved scenario and creates the match's initial faction runtimes, castles,
+// and starting units.
+
 package game
 
 import (

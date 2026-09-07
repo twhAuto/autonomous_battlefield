@@ -1,3 +1,6 @@
+// Connects runners to MCP with bearer authentication and adapts SDK tool discovery and
+// calls to runner contracts.
+
 package runner
 
 import (

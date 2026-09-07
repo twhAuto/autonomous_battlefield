@@ -1,3 +1,6 @@
+// Checks explicit recruitment quantities, empty purchase orders, and compatibility with
+// older saved decision plans.
+
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { AIDecisionPanel } from './AIDecisionPanel'

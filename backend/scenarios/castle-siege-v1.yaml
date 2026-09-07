@@ -1,3 +1,6 @@
+# Authored castle-siege map, timing, and scripted strategy templates resolved with two
+# faction profiles when a battle is queued.
+
 id: castle-siege-v1
 rulesVersion: "1"
 rulesetId: castle-siege-v1

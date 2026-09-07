@@ -1,3 +1,6 @@
+# Assembles Fluent Bit's application-namespace metadata permissions separately from its
+# logging-namespace workload.
+
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Runs the deterministic AI evaluation corpus and writes JSON/JUnit reports for CI.
 
 set -Eeuo pipefail
 

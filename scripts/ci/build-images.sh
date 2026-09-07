@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Builds selected backend/frontend Docker images with commit and AI provenance metadata
+# for CI or deployment.
 
 set -Eeuo pipefail
 

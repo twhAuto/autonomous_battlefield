@@ -1,3 +1,5 @@
+// Exercises faction doctrine persistence and tick-zero decisions against PostgreSQL.
+
 package repo
 
 import (

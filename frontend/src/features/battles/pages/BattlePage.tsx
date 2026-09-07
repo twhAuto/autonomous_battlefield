@@ -1,3 +1,6 @@
+// Composes battle polling hooks, perspective selection, map and decision panels, event
+// history, and pause/resume/stop controls.
+
 import { useCallback, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { BattleApiError, pauseBattle, resumeBattle, stopBattle } from '../api/battles'

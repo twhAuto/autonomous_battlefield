@@ -1,3 +1,5 @@
+// Checks both API and CLI runners receive the faction doctrine and identity instructions.
+
 package runner
 
 import (

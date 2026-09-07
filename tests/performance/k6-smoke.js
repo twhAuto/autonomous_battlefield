@@ -1,3 +1,6 @@
+// k6 smoke-load scenario for application HTTP requests, with response checks and
+// latency/error thresholds.
+
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 

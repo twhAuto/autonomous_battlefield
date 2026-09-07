@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Runs a command with temporary private GHCR credentials, preserving the Docker builder
+# configuration and cleaning up on exit.
 
 set -Eeuo pipefail
 

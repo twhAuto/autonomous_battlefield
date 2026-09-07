@@ -1,3 +1,6 @@
+// Applies affordable upgrade purchases in plan order and updates the faction's existing
+// units and economy bonuses.
+
 package game
 
 import (

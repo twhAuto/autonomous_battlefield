@@ -1,3 +1,6 @@
+// Exercises claimed battle execution, pause and heartbeat handling, shutdown requeue,
+// failure paths, and decision windows.
+
 package worker
 
 import (

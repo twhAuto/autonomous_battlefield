@@ -1,3 +1,6 @@
+// Loads decision history for the current attempt and refreshes it while the battle remains
+// queued or running.
+
 import { useEffect, useState } from 'react'
 import { BattleApiError, BattleRun, DecisionHistory, listDecisionHistory } from '../api/battles'
 import { eventPollIntervalMs } from './constants'

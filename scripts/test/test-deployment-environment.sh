@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Exercises environment registration, override rejection, cluster identity, and dev
+# bootstrap using isolated command doubles.
+
 set -Eeuo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 python3 - "${project_dir}" <<'PY'

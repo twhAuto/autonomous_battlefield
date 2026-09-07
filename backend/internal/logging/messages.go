@@ -1,3 +1,6 @@
+// Maps stable operational event names to readable log messages using structured fields
+// supplied by callers.
+
 package logging
 
 import (

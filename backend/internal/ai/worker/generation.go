@@ -1,3 +1,6 @@
+// Runs claimed background-generation jobs in scoped model sessions and reports their usage
+// or failure through MCP.
+
 package worker
 
 import (

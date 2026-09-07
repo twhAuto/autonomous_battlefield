@@ -1,3 +1,5 @@
+// Checks API and migration command options and cleanup of interrupted initialization.
+
 package main
 
 import (

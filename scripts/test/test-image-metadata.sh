@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Checks image source labels, registry repository selection, and admission-policy inputs
+# using isolated fixtures.
+
 set -Eeuo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 python3 - "${project_dir}" <<'PY'

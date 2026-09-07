@@ -1,3 +1,6 @@
+// Loads faction, scenario, and model choices, validates the battle setup, and navigates to
+// the queued battle after creation.
+
 import { type SubmitEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {

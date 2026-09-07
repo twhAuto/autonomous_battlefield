@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Renders and installs the image-verification admission policy for the registered cluster
+# using the configured Cosign public key.
 
 set -Eeuo pipefail
 

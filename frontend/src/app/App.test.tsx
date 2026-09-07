@@ -1,3 +1,6 @@
+// Exercises user flows across routes with mocked APIs, including authentication, faction
+// management, battle creation, and live battle controls.
+
 import { doctrineTemplates } from '../features/factions/pages/CreateFactionPage'
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'

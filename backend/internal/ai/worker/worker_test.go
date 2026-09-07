@@ -1,3 +1,6 @@
+// Checks model job claiming, concurrency limits, runner selection, cancellation outcomes,
+// and usage-report retries.
+
 package worker
 
 import (

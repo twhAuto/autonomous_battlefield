@@ -1,3 +1,6 @@
+// Checks background-generation schema changes preserve faction profiles and historical
+// snapshots.
+
 package generation
 
 import (

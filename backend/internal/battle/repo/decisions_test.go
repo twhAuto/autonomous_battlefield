@@ -1,3 +1,6 @@
+// Checks decision SQL reads, claims, retry reuse, versioned/idempotent writes, and scoped
+// memory queries.
+
 package repo
 
 import (

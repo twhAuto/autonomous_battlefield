@@ -1,3 +1,6 @@
+// Defines battle API payloads and requests for scenarios, model profiles, battle
+// creation/history, live state, events, decisions, and controls.
+
 import { createApiClient } from '../../../shared/api/request'
 
 export interface ScenarioSummary {

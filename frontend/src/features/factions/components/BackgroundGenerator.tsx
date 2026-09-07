@@ -1,3 +1,6 @@
+// Requests and polls optional background drafts, tracks generation allowance, and lets the
+// user edit or apply a preview to the parent form.
+
 import { maxBackgroundLength } from '../limits'
 import { useEffect, useRef, useState } from 'react'
 import { backgroundJob, generateBackground, generationOptions, GenerationError, type BackgroundInput, type GenerationOptions } from '../api/backgrounds'
@@ -12,6 +15,7 @@ export function BackgroundGenerator({ input, valid, onUse }: Readonly<{ input: B
  const [draftName, setDraftName] = useState('')
  const [now, setNow] = useState(Date.now)
  const [revision, setRevision] = useState(0)
+ // Reuse the key after an uncertain network failure so retrying unchanged input cannot create a second job.
  const pending = useRef<{ input: string; key: string } | null>(null)
  const controller = useRef<AbortController | null>(null)
  useEffect(() => {
