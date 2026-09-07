@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -16,7 +15,6 @@ var (
 	ErrFactionNotFound      = errors.New("faction not found")
 	ErrFactionAlreadyExists = errors.New("faction already exists")
 	ErrInvalidFaction       = errors.New("invalid faction")
-	ErrInvalidBlueprint     = game.ErrInvalidBlueprint
 )
 
 var uuidPattern = regexp.MustCompile(`^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$`)
@@ -36,7 +34,6 @@ type Service interface {
 }
 
 type RulesetCatalog interface {
-	Ruleset(string) (game.Ruleset, bool)
 	Rulesets() []game.Ruleset
 }
 
@@ -58,11 +55,7 @@ func (s *service) GetFactionName(ctx context.Context, id string) (string, error)
 }
 
 func (s *service) ListFactions(ctx context.Context) ([]faction.Faction, error) {
-	values, err := s.repository.ListFactions(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return values, nil
+	return s.repository.ListFactions(ctx)
 }
 
 func (s *service) ListRulesets() []game.Ruleset {
@@ -73,21 +66,26 @@ func (s *service) ListRulesets() []game.Ruleset {
 }
 
 func (s *service) CreateFaction(ctx context.Context, input CreateInput) error {
-	if !uuidPattern.MatchString(input.ID) || strings.TrimSpace(input.Name) == "" {
-		return ErrInvalidFaction
-	}
-	if utf8.RuneCountInString(strings.TrimSpace(input.Background)) > 1000 || strings.TrimSpace(input.Doctrine) == "" || utf8.RuneCountInString(strings.TrimSpace(input.Doctrine)) > 4000 {
-		return ErrInvalidFaction
-	}
-
-	storedFaction := faction.Faction{
-		ID: input.ID, Name: strings.TrimSpace(input.Name), Doctrine: strings.TrimSpace(input.Doctrine), Background: strings.TrimSpace(input.Background),
-	}
-	if err := s.repository.CreateFaction(ctx, storedFaction); err != nil {
+	stored, err := normalizeFaction(input)
+	if err != nil {
 		return err
 	}
+	return s.repository.CreateFaction(ctx, stored)
+}
 
-	return nil
+// normalizeFaction keeps creation and editing subject to the same profile rules.
+func normalizeFaction(input CreateInput) (faction.Faction, error) {
+	stored := faction.Faction{
+		ID:         input.ID,
+		Name:       strings.TrimSpace(input.Name),
+		Doctrine:   strings.TrimSpace(input.Doctrine),
+		Background: strings.TrimSpace(input.Background),
+	}
+	if !uuidPattern.MatchString(stored.ID) || stored.Name == "" || stored.Doctrine == "" ||
+		utf8.RuneCountInString(stored.Doctrine) > 4000 || utf8.RuneCountInString(stored.Background) > 1000 {
+		return faction.Faction{}, ErrInvalidFaction
+	}
+	return stored, nil
 }
 
 func (s *service) DeleteFaction(ctx context.Context, id string) error {

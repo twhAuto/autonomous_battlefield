@@ -4,12 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 type OpenAI struct {
@@ -17,15 +14,22 @@ type OpenAI struct {
 	Client                  *http.Client
 }
 
+type openAIOutput struct {
+	Type      string `json:"type"`
+	CallID    string `json:"call_id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+	Content   []struct {
+		Type string `json:"type"`
+	} `json:"content"`
+}
+
 func (p *OpenAI) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.ModelTurnResult, error) {
 	tools, err := openAITools(turn.Tools)
 	if err != nil {
 		return ai.ModelTurnResult{}, err
 	}
-	transcript := turn.SystemPrompt + "\n"
-	for _, message := range turn.Messages {
-		transcript += strings.ToUpper(message.Role) + ": " + message.Content + "\n"
-	}
+	transcript := modelTranscript(turn)
 	body, err := json.Marshal(map[string]any{"model": p.Model, "input": transcript, "tools": tools, "tool_choice": "auto", "max_output_tokens": turn.MaxTokens})
 	if err != nil {
 		return ai.ModelTurnResult{}, err
@@ -40,37 +44,14 @@ func (p *OpenAI) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	}
 	request.Header.Set("Authorization", "Bearer "+p.APIKey)
 	request.Header.Set("Content-Type", "application/json")
-	client := p.Client
-	if client == nil {
-		client = telemetry.HTTPClient(nil)
-	}
-	response, err := client.Do(request)
-	if err != nil {
-		return ai.ModelTurnResult{}, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode == http.StatusTooManyRequests {
-		return ai.ModelTurnResult{}, fmt.Errorf("%w: OpenAI response status %d", ErrRateLimit, response.StatusCode)
-	}
-	if response.StatusCode/100 != 2 {
-		return ai.ModelTurnResult{}, fmt.Errorf("OpenAI response status %d", response.StatusCode)
-	}
 	var decoded struct {
-		Output []struct {
-			Type      string `json:"type"`
-			CallID    string `json:"call_id"`
-			Name      string `json:"name"`
-			Arguments string `json:"arguments"`
-			Content   []struct {
-				Type string `json:"type"`
-			} `json:"content"`
-		} `json:"output"`
-		Usage struct {
+		Output []openAIOutput `json:"output"`
+		Usage  struct {
 			Input  int64 `json:"input_tokens"`
 			Output int64 `json:"output_tokens"`
 		} `json:"usage"`
 	}
-	if err := json.NewDecoder(response.Body).Decode(&decoded); err != nil {
+	if err := doJSON(p.Client, request, "OpenAI", &decoded); err != nil {
 		return ai.ModelTurnResult{}, err
 	}
 	return openAIResult(decoded.Output, decoded.Usage.Input, decoded.Usage.Output)
@@ -88,15 +69,7 @@ func openAITools(definitions []ai.ToolDefinition) ([]map[string]any, error) {
 	return tools, nil
 }
 
-func openAIResult(output []struct {
-	Type      string `json:"type"`
-	CallID    string `json:"call_id"`
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
-	Content   []struct {
-		Type string `json:"type"`
-	} `json:"content"`
-}, inputTokens, outputTokens int64) (ai.ModelTurnResult, error) {
+func openAIResult(output []openAIOutput, inputTokens, outputTokens int64) (ai.ModelTurnResult, error) {
 	result := ai.ModelTurnResult{Usage: ai.Usage{InputTokens: inputTokens, OutputTokens: outputTokens, Requests: 1}}
 	for _, item := range output {
 		for _, content := range item.Content {

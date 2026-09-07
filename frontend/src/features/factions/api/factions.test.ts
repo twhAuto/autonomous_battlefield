@@ -40,6 +40,25 @@ describe('faction API', () => {
     await expect(listFactions()).rejects.toBe(abort)
   })
 
+  it('maps ruleset failures and preserves cancellation', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 503 }))
+    await expect(listFactionRulesets()).rejects.toMatchObject({
+      name: 'FactionApiError', status: 503,
+      message: 'Faction design rules could not be loaded.',
+    })
+
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('offline'))
+    await expect(listFactionRulesets()).rejects.toEqual(new FactionApiError(
+      'The command post is unreachable. Check that the battlefield server is running.',
+    ))
+
+    const controller = new AbortController()
+    const abort = new DOMException('aborted', 'AbortError')
+    vi.mocked(fetch).mockRejectedValueOnce(abort)
+    await expect(listFactionRulesets(controller.signal)).rejects.toBe(abort)
+    expect(fetch).toHaveBeenLastCalledWith('/v1/faction-rulesets', { signal: controller.signal })
+  })
+
   it('creates a faction', async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 201 }))
 

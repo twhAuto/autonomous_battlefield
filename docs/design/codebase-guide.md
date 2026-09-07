@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft — describes the current working tree, including uncommitted changes |
-| Last reviewed | 2026-09-06 |
+| Last reviewed | 2026-09-07 |
 | Audience | Contributors navigating or modifying the implementation |
 | Scope | Repository layout, entry points, packages, dependencies, tests, and reading paths |
 
@@ -289,6 +289,10 @@ for context delivery and accepted-plan enforcement.
 
 [`openai.go`](../../backend/internal/ai/providers/openai.go) translates neutral tools into OpenAI Responses function tools. [`gemini.go`](../../backend/internal/ai/providers/gemini.go) translates them into Gemini function declarations.
 
+[`http.go`](../../backend/internal/ai/providers/http.go) owns transcript formatting,
+the shared HTTP response lifecycle, status errors, and JSON decoding. Provider
+adapters retain their authentication, request schemas, and named response types.
+
 Both adapters:
 
 - accept a configurable HTTP client and endpoint for tests;
@@ -327,6 +331,10 @@ The standalone controller is retained as an intentional, independently tested ca
 | [`service`](../../backend/internal/faction/service) | UUID/name/doctrine/background validation and profile creation/update |
 | [`api`](../../backend/internal/faction/api) | Faction and faction-ruleset HTTP routes |
 | [`repo`](../../backend/internal/faction/repo) | PostgreSQL serialization and errors |
+
+Faction creation and editing share `normalizeFaction` in `service/service.go`,
+so whitespace normalization and Unicode length limits stay consistent. The
+`RulesetCatalog` port requires only the ruleset listing operation it consumes.
 
 Deleting a faction removes it from the active registry but does not affect the copied participant data inside existing battle snapshots.
 
@@ -409,7 +417,10 @@ Feature-specific API clients live in `src/features/<feature>/api`; common HTTP t
 
 The battle feature's `hooks/` directory owns status, event, decision-history, and faction-perspective requests. Each hook preserves its own polling cadence, retries, cancellation, and terminal-state handling. `components/AIDecisionPanel.tsx`, `components/EventConsole.tsx`, and `components/BattlePresentation.tsx` own the panels and visual presentation; shared UI state types live in `types.ts`. There is no WebSocket or server-sent-event client.
 
-`shared/api/request.ts` accepts API paths and applies the configured base URL. `createApiClient` preserves abort errors and wraps network failures in the feature's error type. Authentication disables global unauthorized notifications so login/session failures are handled locally. Feature clients retain HTTP status messages; battle stop/pause/resume share one response mapper.
+`shared/api/request.ts` accepts API paths and applies the configured base URL. `createApiClient` preserves abort errors and wraps network failures in the feature's error type. Authentication disables global unauthorized notifications so login/session failures are handled locally. Feature clients, including faction ruleset discovery, use this common error handling and retain HTTP status messages; battle stop/pause/resume share one response mapper.
+
+The frontend build enables TypeScript `noUnusedLocals` and `noUnusedParameters`
+to reject unused local declarations and parameters alongside strict type checks.
 
 ## 8. Configuration and authored content
 

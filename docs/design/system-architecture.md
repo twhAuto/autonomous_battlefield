@@ -93,6 +93,11 @@ The API and engine entry points compose `httpapi.LifecycleHandler` around applic
 See the [codebase guide](codebase-guide.md#3-backend-organization) for package
 boundaries, frontend ownership, and launcher locations.
 
+Frontend feature clients, including faction ruleset discovery, use the shared
+HTTP transport to report network failures consistently while preserving request
+cancellation. Feature clients own HTTP status messages; protected requests also
+notify the application when authentication is required.
+
 ### Deterministic simulation boundary
 
 The simulation receives a resolved scenario and optional plans, then produces deterministic state transitions and events. It does not access PostgreSQL, HTTP, environment variables, or model providers.

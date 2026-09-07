@@ -32,6 +32,9 @@ npm test          # run the component tests once
 npm test -- --coverage  # generate text, JSON-summary, and LCOV coverage
 ```
 
+`npm run build` also rejects unused local declarations and parameters through
+the TypeScript configuration.
+
 ## Container and Kubernetes behavior
 
 The production image serves the compiled frontend through unprivileged Nginx

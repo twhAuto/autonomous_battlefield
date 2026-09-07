@@ -1,4 +1,4 @@
-import { apiFetch, createApiClient } from '../../../shared/api/request'
+import { createApiClient } from '../../../shared/api/request'
 
 export interface CreateFactionInput {
   id: string
@@ -27,7 +27,7 @@ export interface Faction {
 }
 
 export async function listFactionRulesets(signal?: AbortSignal): Promise<FactionRuleset[]> {
-  const response = await apiFetch(`/v1/faction-rulesets`, { signal })
+  const response = await factionFetch(`/v1/faction-rulesets`, { signal })
   if (!response.ok) throw new FactionApiError('Faction design rules could not be loaded.', response.status)
   const body = (await response.json()) as { rulesets: FactionRuleset[] }
   return body.rulesets

@@ -29,7 +29,7 @@ func TestCreateFaction(t *testing.T) {
 	}
 }
 
-func TestCreateFactionRejectsInvalidInput(t *testing.T) {
+func TestFactionWritesRejectInvalidInput(t *testing.T) {
 	tests := []struct {
 		name  string
 		input CreateInput
@@ -44,12 +44,16 @@ func TestCreateFactionRejectsInvalidInput(t *testing.T) {
 			repo := &fakeFactionRepository{}
 			service := NewService(repo)
 
-			err := service.CreateFaction(context.Background(), tt.input)
-			if !errors.Is(err, ErrInvalidFaction) {
-				t.Fatalf("CreateFaction() error = %v, want ErrInvalidFaction", err)
-			}
-			if repo.createdFaction != nil {
-				t.Fatal("repository was called for invalid input")
+			for operation, write := range map[string]func(context.Context, CreateInput) error{
+				"create": service.CreateFaction,
+				"update": service.(Updater).UpdateFaction,
+			} {
+				if err := write(context.Background(), tt.input); !errors.Is(err, ErrInvalidFaction) {
+					t.Fatalf("%s error = %v, want ErrInvalidFaction", operation, err)
+				}
+				if repo.createdFaction != nil {
+					t.Fatalf("%s called repository for invalid input", operation)
+				}
 			}
 		})
 	}
@@ -167,8 +171,7 @@ type fakeFactionRepository struct {
 
 type fakeRulesets struct{ ruleset game.Ruleset }
 
-func (f fakeRulesets) Ruleset(id string) (game.Ruleset, bool) { return f.ruleset, id == f.ruleset.ID }
-func (f fakeRulesets) Rulesets() []game.Ruleset               { return []game.Ruleset{f.ruleset} }
+func (f fakeRulesets) Rulesets() []game.Ruleset { return []game.Ruleset{f.ruleset} }
 
 func (r *fakeFactionRepository) GetFaction(context.Context, string) (*faction.Faction, error) {
 	return r.storedFaction, r.getErr
