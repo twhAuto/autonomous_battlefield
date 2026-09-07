@@ -7,8 +7,6 @@ source "${project_dir}/scripts/lib/deployment-environment.sh"
 battlefield_env_preflight
 [[ "${DEPLOY_ENV}" != dev ]] || battlefield_env_verify_docker
 
-
-project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 deploy_command="$0"
 
 # shellcheck source=scripts/lib/deployment-components.sh

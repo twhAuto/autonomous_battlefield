@@ -565,6 +565,12 @@ uses short-lived Docker configuration in Jenkins and a namespace-local pull
 Secret for the admission controller; neither changes the cryptographic trust
 root.
 
+Main delivery classifies changes after the CI quality gates. Application-test-only
+changes and known CI test wrappers skip image publication and rollout; production
+file removals and unknown paths still select deployment. The shared
+`scripts/ci/with-ghcr-auth.sh` wrapper isolates registry credentials for each
+authenticated command, including rollback, and cleans up on cancellation.
+
 Deployment staging copies only selected overlays and their base dependencies.
 Infrastructure secret inputs are staged explicitly; unrelated local credentials
 are not copied. Observability verification waits for completion of each new

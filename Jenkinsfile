@@ -100,6 +100,7 @@ pipeline {
                                     ./scripts/test/test-runtime-assurance.sh
                                     ./scripts/test/test-deployment-environment.sh
                                     ./scripts/test/test-security-launchers.sh
+                                    ./scripts/test/test-registry-auth.sh
                                 '''
                             }
                         }
@@ -214,6 +215,7 @@ pipeline {
                             ./scripts/test/test-runtime-assurance.sh
                             ./scripts/test/test-deployment-environment.sh
                             ./scripts/test/test-security-launchers.sh
+                            ./scripts/test/test-registry-auth.sh
                         '''
                         script {
                             def previousSuccessfulCommit = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: ''
@@ -249,19 +251,7 @@ pipeline {
                                 passwordVariable: 'GHCR_TOKEN'
                             )
                         ]) {
-                            sh '''
-                                docker_config="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-docker-config.XXXXXX")"
-                                chmod 700 "${docker_config}"
-                                cleanup_docker_config() {
-                                    docker logout ghcr.io >/dev/null 2>&1 || true
-                                    rm -rf -- "${docker_config}"
-                                }
-                                trap cleanup_docker_config EXIT
-                                export BUILDX_CONFIG="${BUILDX_CONFIG:-${HOME}/.docker/buildx}"
-                                export DOCKER_CONFIG="${docker_config}"
-                                printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io --username "${GHCR_USER}" --password-stdin
-                                ./scripts/ci/publish-images.sh
-                            '''
+                            sh './scripts/ci/with-ghcr-auth.sh ./scripts/ci/publish-images.sh'
                         }
                     }
                 }
@@ -317,19 +307,7 @@ pipeline {
                                 variable: 'COSIGN_PUBLIC_KEY_FILE'
                             )
                         ]) {
-                            sh '''
-                                docker_config="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-docker-config.XXXXXX")"
-                                chmod 700 "${docker_config}"
-                                cleanup_docker_config() {
-                                    docker logout ghcr.io >/dev/null 2>&1 || true
-                                    rm -rf -- "${docker_config}"
-                                }
-                                trap cleanup_docker_config EXIT
-                                export BUILDX_CONFIG="${BUILDX_CONFIG:-${HOME}/.docker/buildx}"
-                                export DOCKER_CONFIG="${docker_config}"
-                                printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io --username "${GHCR_USER}" --password-stdin
-                                ./scripts/ci/attest-and-sign-images.sh
-                            '''
+                            sh './scripts/ci/with-ghcr-auth.sh ./scripts/ci/attest-and-sign-images.sh'
                         }
                     }
                 }
@@ -342,11 +320,6 @@ pipeline {
                     }
                     stages {
                         stage('Deploy production') {
-                            when {
-                                expression {
-                                    (env.DEPLOY_COMPONENTS ?: 'all') != 'none'
-                                }
-                            }
                             steps {
                                 script {
                                     def previousBackendImage = sh(
@@ -401,33 +374,18 @@ pipeline {
                                     )
                                 ]) {
                                     sh '''
-                                        docker_config="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-docker-config.XXXXXX")"
-                                        chmod 700 "${docker_config}"
-                                        cleanup_docker_config() {
-                                            docker logout ghcr.io >/dev/null 2>&1 || true
-                                            rm -rf -- "${docker_config}"
-                                        }
-                                        trap cleanup_docker_config EXIT
-                                        export BUILDX_CONFIG="${BUILDX_CONFIG:-${HOME}/.docker/buildx}"
-                                        export DOCKER_CONFIG="${docker_config}"
-                                        printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io --username "${GHCR_USER}" --password-stdin
                                         if [ -f artifacts/build/images.env ]; then
                                             set -a
                                             . artifacts/build/images.env
                                             set +a
                                         fi
-                                        IMAGE_SOURCE=registry ENFORCE_SUPPLY_CHAIN_POLICY=1 ROLLBACK_ON_FAILURE=1 ./scripts/cd/deploy-kind.sh "${IMAGE_TAG}"
+                                        IMAGE_SOURCE=registry ENFORCE_SUPPLY_CHAIN_POLICY=1 ROLLBACK_ON_FAILURE=1 ./scripts/ci/with-ghcr-auth.sh ./scripts/cd/deploy-kind.sh "${IMAGE_TAG}"
                                     '''
                                 }
                             }
                         }
 
                         stage('Verify deployment') {
-                            when {
-                                expression {
-                                    (env.DEPLOY_COMPONENTS ?: 'all') != 'none'
-                                }
-                            }
                             steps {
                                 sh './scripts/cd/smoke-test-kind.sh'
                             }
@@ -463,9 +421,6 @@ pipeline {
                         }
 
                         stage('Runtime assurance') {
-                            when {
-                                expression { (env.DEPLOY_COMPONENTS ?: 'all') != 'none' }
-                            }
                             parallel {
                                 stage('Smoke load') {
                                     steps {

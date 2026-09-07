@@ -337,7 +337,7 @@ understood.
 
 #### Change-to-deployment mapping
 
-Changes under `scripts/test/` and `tests/` do not select application deployment components. Renames inspect both old and new paths, so moving production code into a test path still selects the production component. Unknown paths retain the conservative full-deployment fallback.
+Changes under `scripts/test/` and `tests/`, Go `*_test.go` files, React/TypeScript `*.test.ts` and `*.test.tsx` files under `frontend/src`, and frontend test setup do not select application deployment components. These changes still run the normal CI quality gates. Renames inspect both old and new paths, so moving production code into a test path still selects the production component. Unknown paths retain the conservative full-deployment fallback.
 
 The path classifier evaluates the following rules from top to bottom for each
 path, so an earlier documentation rule takes precedence over a broader source
@@ -349,7 +349,8 @@ folder rule. Multiple changed paths contribute the union of their components;
 | Any `*.md`, `LICENSE`, `LICENSE.*`, or root `.gitignore` | `none` | None |
 | `quality/**` or `sonar-project.properties` | `none` | None |
 | `scripts/test/**` and `tests/**` | `none` | None |
-| CI lint, coverage, summary, or classifier-test scripts | `none` | None |
+| Go `backend/**/*_test.go`, frontend `src/**/*.test.ts`, `src/**/*.test.tsx`, or `src/test/**` | `none` | None |
+| CI lint/coverage summary and existing test compatibility wrappers (`test-*`, `fuzz-smoke`, `with-test-postgres`) | `none` | None |
 | `backend/**` | `migration,backend,application` | Backend image |
 | `frontend/**` | `frontend,application` | Frontend image |
 | `deploy/base/infrastructure/**` or `deploy/overlays/local/infrastructure/**` | `infrastructure` | None |
@@ -378,8 +379,12 @@ The selected components have these deployment effects:
 | `all` | Execute every action above. |
 | `none` | Build, scan, and deployment commands exit without changing Kubernetes. |
 
+Only the existing named CI test wrappers are exempt; new CI scripts still use
+the unknown-path fallback until explicitly classified.
+
 Renames are evaluated as one deletion plus one addition, so both the old and new
-locations influence the result. When adding or repurposing a folder, update the
+locations influence the result. Renaming a production Go file to `*_test.go`
+therefore still deploys the backend removal. When adding or repurposing a folder, update the
 classifier, its tests, and this table together. Until then, the unknown-path
 fallback safely selects `all`.
 

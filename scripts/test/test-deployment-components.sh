@@ -141,8 +141,18 @@ assert_detection "none" "scripts/test/test-go-coverage.sh"
 assert_detection "none" "scripts/test/test-command-wrappers.sh"
 assert_detection "none" "tests/performance/k6-smoke.js"
 assert_detection "none" "scripts/ci/test-go-coverage.sh"
+for wrapper in fuzz-smoke test-ai-evals test-backend test-go-race test-kind-deployment with-test-postgres; do
+  assert_detection "none" "scripts/ci/${wrapper}.sh"
+done
+assert_detection "none" "backend/internal/ai/providers/providers_test.go"
+assert_detection "none" "frontend/src/features/factions/api/factions.test.ts"
+assert_detection "none" "frontend/src/app/App.test.tsx"
+assert_detection "none" "frontend/src/test/setup.ts"
+assert_mixed_detection "migration,backend,application" "backend/internal/app/app.go" "backend/internal/app/app_test.go"
+assert_mixed_detection "frontend,application" "frontend/src/app/App.tsx" "frontend/src/app/App.test.tsx"
 assert_mixed_detection "frontend,application" "frontend/src/app/App.tsx" "tests/performance/k6-smoke.js"
 assert_detection "all" "scripts/ci/build-images.sh"
+assert_detection "all" "scripts/ci/with-ghcr-auth.sh" 1
 assert_detection "all" "scripts/cd/deploy-kind.sh"
 assert_detection "all" "scripts/cd/lib/kind-deployment.sh"
 assert_detection "all" "platform/controllers/reconcile.sh" 1
@@ -154,6 +164,8 @@ assert_deletion "migration,backend,application" "backend/legacy.go"
 assert_rename "all" "README.md" "platform/config.yaml"
 assert_rename "none" "README.md" "tests/README.md"
 assert_rename "migration,backend,application" "backend/legacy.go" "tests/legacy.go"
+assert_rename "migration,backend,application" "backend/legacy.go" "backend/legacy_test.go"
+assert_rename "frontend,application" "tests/performance/seed.js" "frontend/src/seed.tsx"
 assert_rename "frontend,application" "tests/performance/seed.js" "frontend/src/seed.js"
 assert_rename "none" "scripts/ci/test-go-coverage.sh" "scripts/test/test-go-coverage.sh"
 

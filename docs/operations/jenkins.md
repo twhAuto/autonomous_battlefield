@@ -134,8 +134,12 @@ referrers remain the portable promotion evidence; the mirror exists because
 the pinned Kyverno 1.15 admission verifier discovers `.sig` and `.att` tags,
 not Cosign v3's referrer-only evidence. Both forms are signed with the same
 Jenkins-managed key and cover the same immutable subject digest.
-Each authenticated registry stage uses a mode-700, per-stage `DOCKER_CONFIG`
-directory and deletes it on exit. Docker may still warn that the temporary
+[`scripts/ci/with-ghcr-auth.sh`](../../scripts/ci/with-ghcr-auth.sh) supplies a
+mode-700 temporary `DOCKER_CONFIG` for publishing, signing, deployment, rollback,
+and AWS promotion. It logs in through standard input, forwards command arguments
+and exit status, and removes credentials on success, failure, or cancellation.
+[`test-registry-auth.sh`](../../scripts/test/test-registry-auth.sh) checks this
+lifecycle with a stub Docker command; it never contacts a registry. Docker may still warn that the temporary
 configuration is not encrypted, but GHCR credentials are not stored in the
 agent user's persistent `~/.docker/config.json`. `BUILDX_CONFIG` remains on the
 agent so the named Buildx builder can be reused without persisting registry
@@ -548,8 +552,9 @@ For `main`, the pipeline performs:
 1. Clean checkout, Go lint, backend/frontend coverage, source security, and deterministic AI evaluation.
 2. SonarQube analysis and quality-gate enforcement.
 3. Deployment-script checks and component classification against the previous
-   successful commit. Documentation-only changes select no deployment; an unknown
-   path or unavailable baseline selects all components.
+   successful commit. Documentation-only, application-test-only, and known CI-test-wrapper
+   changes select no deployment; an unknown path or unavailable baseline selects
+   all components. CI quality gates still run for these changes.
 4. Publication of changed images to GHCR, scanning of the published images,
    then attestation, signing, and verification.
 5. Production rollout with the dedicated kubeconfig, recorded previous backend

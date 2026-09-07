@@ -452,6 +452,13 @@ The key application manifests are:
 
 [`run-dev.sh`](../../scripts/dev/run-dev.sh) is the local multi-process launcher. It obtains the Compose PostgreSQL password from the shell or the Git-ignored `backend/.env`; `backend/compose.yaml` has no committed database credential. [`run-k8s-cli-agent.sh`](../../scripts/dev/run-k8s-cli-agent.sh) bridges authenticated host subscription CLIs to a Kubernetes MCP service. CI/CD helpers under `scripts` classify affected components, build images, apply migrations, deploy, smoke-test, and roll back.
 
+[`scripts/ci/with-ghcr-auth.sh`](../../scripts/ci/with-ghcr-auth.sh) owns temporary
+GHCR login and command cleanup for both Jenkins pipelines and production rollback.
+[`scripts/test/test-registry-auth.sh`](../../scripts/test/test-registry-auth.sh)
+checks credential isolation, argument/input forwarding, failures, and cancellation
+without registry access. Component-classifier tests include application test files,
+CI compatibility wrappers, mixed changes, and production-to-test renames.
+
 Root launch scripts remain compatibility entry points that `exec` their implementations under `scripts/dev` and `scripts/cd`. `deploy/` owns Kubernetes configuration; `infra/aws/` provisions cloud resources. Operational instructions live under `docs/operations`.
 
 ## 10. Testing layout and expectations
