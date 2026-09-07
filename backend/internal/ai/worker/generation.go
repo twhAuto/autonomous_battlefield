@@ -39,27 +39,7 @@ func (w *Worker) runGeneration(parent context.Context, job job) {
 		}
 		metadata["modelIdentifier"] = model
 		metadata["promptVersion"] = ai.GenerationPromptVersion
-		token, tokenErr := ai.MintCapability(w.Secret, "generation:"+job.RequestID, time.Now().Add(duration))
-		if tokenErr != nil {
-			category = "capability"
-		} else {
-			factory := w.RunnerFactory
-			if factory == nil {
-				factory = defaultRunner
-			}
-			executor, runErr := factory(profile)
-			if runErr != nil {
-				category = "provider_unavailable"
-			} else {
-				result, runErr = executor.Run(ctx, ai.DecisionSession{JobType: "faction_background", RequestID: job.RequestID, CapabilityToken: token, MCPURL: strings.TrimSuffix(w.MCPURL, "/mcp") + "/generation-mcp", Profile: profile})
-				if runErr != nil || !result.Accepted {
-					category = result.ErrorCategory
-					if category == "" {
-						category = "execution_error"
-					}
-				}
-			}
-		}
+		result, category = w.executeGeneration(ctx, job, profile, duration)
 	}
 	if ctx.Err() != nil {
 		category = "timeout"
@@ -79,4 +59,27 @@ func (w *Worker) runGeneration(parent context.Context, job job) {
 	}
 	defer response.Body.Close()
 	w.logger().InfoContext(parent, "background_generation_finished", "request_id", job.RequestID, "category", category, "report_status", response.StatusCode)
+}
+
+func (w *Worker) executeGeneration(ctx context.Context, job job, profile ai.ModelProfile, duration time.Duration) (ai.DecisionResult, string) {
+	token, err := ai.MintCapability(w.Secret, "generation:"+job.RequestID, time.Now().Add(duration))
+	if err != nil {
+		return ai.DecisionResult{}, "capability"
+	}
+	factory := w.RunnerFactory
+	if factory == nil {
+		factory = defaultRunner
+	}
+	executor, err := factory(profile)
+	if err != nil {
+		return ai.DecisionResult{}, "provider_unavailable"
+	}
+	result, err := executor.Run(ctx, ai.DecisionSession{JobType: "faction_background", RequestID: job.RequestID, CapabilityToken: token, MCPURL: strings.TrimSuffix(w.MCPURL, "/mcp") + "/generation-mcp", Profile: profile})
+	if err == nil && result.Accepted {
+		return result, ""
+	}
+	if result.ErrorCategory != "" {
+		return result, result.ErrorCategory
+	}
+	return result, "execution_error"
 }

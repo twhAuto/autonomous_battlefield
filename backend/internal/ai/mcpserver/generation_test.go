@@ -4,6 +4,8 @@
 package mcpserver
 
 import (
+	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -121,28 +123,20 @@ func TestGenerationThroughAPIAndCLITools(t *testing.T) {
 			server := httptest.NewServer(service.GenerationHandler())
 			defer server.Close()
 			token, err := ai.MintCapability("secret", "generation:draft", time.Now().Add(time.Minute))
-			if err != nil {
-				t.Fatal(err)
-			}
+			testutil.Require(t, err == nil, func() { t.Fatal(err) })
 			session := ai.DecisionSession{JobType: generation.JobType, RequestID: "draft", MCPURL: server.URL, CapabilityToken: token, Profile: ai.ModelProfile{MaxSteps: 3, MaxOutputTokens: 1000}}
 			var executor ai.DecisionRunner = runner.APIRunner{Provider: &generationProvider{t: t}}
 			if runtime == "cli" {
 				executor = runner.CLIRunner{Provider: "codex-cli", Executor: generationCLI{t: t, endpoint: server.URL}}
 			}
 			result, err := executor.Run(context.Background(), session)
-			if err != nil || !result.Accepted || repo.value != "A new history" {
-				t.Fatal(result, err, repo.value)
-			}
+			testutil.Require(t, !(err != nil || !result.Accepted || repo.value != "A new history"), func() { t.Fatal(result, err, repo.value) })
 			client, err := (runner.MCPClient{}).Connect(context.Background(), server.URL, token)
-			if err != nil {
-				t.Fatal(err)
-			}
+			testutil.Require(t, err == nil, func() { t.Fatal(err) })
 			defer client.Close()
 			for _, call := range []ai.ToolCall{{Name: "get_background_context", Arguments: json.RawMessage(`{"requestId":"other"}`)}, {Name: "submit_faction_background", Arguments: json.RawMessage(`{"requestId":"other","background":"attack"}`)}, {Name: "submit_faction_background", Arguments: json.RawMessage(`{"requestId":"draft","background":""}`)}} {
 				_, accepted, err := client.Call(context.Background(), call)
-				if err != nil || accepted {
-					t.Fatal(accepted, err)
-				}
+				testutil.Require(t, !(err != nil || accepted), func() { t.Fatal(accepted, err) })
 			}
 		})
 	}
@@ -156,9 +150,7 @@ func TestGenerationCapabilityAndControlPlane(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer "+token)
 		w := httptest.NewRecorder()
 		service.GenerationHandler().ServeHTTP(w, req)
-		if w.Code != 401 {
-			t.Fatal(w.Code)
-		}
+		testutil.Require(t, w.Code == 401, func() { t.Fatal(w.Code) })
 	}
 	token, _ := ai.MintCapability("secret", "generation:draft", time.Now().Add(time.Minute))
 	req := httptest.NewRequest("POST", "/generation-mcp", nil)
@@ -166,9 +158,7 @@ func TestGenerationCapabilityAndControlPlane(t *testing.T) {
 	req.Header.Set("Origin", "https://evil.example")
 	w := httptest.NewRecorder()
 	service.GenerationHandler().ServeHTTP(w, req)
-	if w.Code != 403 {
-		t.Fatal(w.Code)
-	}
+	testutil.Require(t, w.Code == 403, func() { t.Fatal(w.Code) })
 	// Generation-only claims never consume battle decisions; omitted types remain battle-only.
 	battle := &fakeRepository{record: ai.DecisionRecord{ID: "battle", ProfileID: "writer"}}
 	for _, body := range []string{`{"workerId":"w","profileIds":["writer"],"jobTypes":["faction_background"]}`, `{"workerId":"w","profileIds":["writer"]}`, `{"workerId":"w","profileIds":["writer"],"jobTypes":["battle_decision","faction_background"]}`} {
@@ -176,13 +166,9 @@ func TestGenerationCapabilityAndControlPlane(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer secret")
 		w = httptest.NewRecorder()
 		service.AgentHandler(battle).ServeHTTP(w, req)
-		if w.Code != 200 {
-			t.Fatal(w.Code, w.Body.String())
-		}
+		testutil.Require(t, w.Code == 200, func() { t.Fatal(w.Code, w.Body.String()) })
 	}
-	if repo.claimed != 1 {
-		t.Fatal("legacy/mixed worker ignored battle priority", repo.claimed)
-	}
+	testutil.Require(t, repo.claimed == 1, func() { t.Fatal("legacy/mixed worker ignored battle priority", repo.claimed) })
 	for _, tc := range []struct {
 		body, auth string
 		status     int
@@ -191,9 +177,7 @@ func TestGenerationCapabilityAndControlPlane(t *testing.T) {
 		req.Header.Set("Authorization", tc.auth)
 		w = httptest.NewRecorder()
 		service.AgentHandler(battle).ServeHTTP(w, req)
-		if w.Code != tc.status {
-			t.Fatal(w.Code, w.Body.String())
-		}
+		testutil.Require(t, w.Code == tc.status, func() { t.Fatal(w.Code, w.Body.String()) })
 	}
 }
 
@@ -207,7 +191,5 @@ func TestReadyGenerationDoesNotWaitBehindEmptyBattlePoll(t *testing.T) {
 	defer cancel()
 	w := httptest.NewRecorder()
 	service.AgentHandler(battles).ServeHTTP(w, req.WithContext(ctx))
-	if w.Code != 200 || ctx.Err() != nil || !strings.Contains(w.Body.String(), `"jobType":"faction_background"`) {
-		t.Fatal(w.Code, w.Body.String(), ctx.Err())
-	}
+	testutil.Require(t, !(w.Code != 200 || ctx.Err() != nil || !strings.Contains(w.Body.String(), `"jobType":"faction_background"`)), func() { t.Fatal(w.Code, w.Body.String(), ctx.Err()) })
 }

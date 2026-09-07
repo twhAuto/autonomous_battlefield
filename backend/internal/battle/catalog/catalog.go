@@ -192,15 +192,8 @@ func validateTemplate(value template, rulesets map[string]game.Ruleset) error {
 	if err := validateSelectedPlans(value, restricted); err != nil {
 		return err
 	}
-	if value.MaximumTicks == 0 || value.MaximumTicks > 10_000 {
-		return errors.New("maximum ticks must be between 1 and 10000")
-	}
-	duration, err := time.ParseDuration(value.TickDuration)
-	if err != nil || duration < 0 || duration > 10*time.Second {
-		return errors.New("tick duration must be between 0 and 10s")
-	}
-	if value.DecisionIntervalTicks == 0 {
-		return errors.New("decision interval must be positive")
+	if err := validateTemplateTiming(value); err != nil {
+		return err
 	}
 	if err := game.ValidateMap(value.Map); err != nil {
 		return err
@@ -252,4 +245,18 @@ func cloneRuleset(value game.Ruleset) game.Ruleset {
 	value.Units = append([]game.UnitType(nil), value.Units...)
 	value.Upgrades = append([]game.Upgrade{}, value.Upgrades...)
 	return value
+}
+
+func validateTemplateTiming(value template) error {
+	if value.MaximumTicks == 0 || value.MaximumTicks > 10_000 {
+		return errors.New("maximum ticks must be between 1 and 10000")
+	}
+	duration, err := time.ParseDuration(value.TickDuration)
+	if err != nil || duration < 0 || duration > 10*time.Second {
+		return errors.New("tick duration must be between 0 and 10s")
+	}
+	if value.DecisionIntervalTicks == 0 {
+		return errors.New("decision interval must be positive")
+	}
+	return nil
 }

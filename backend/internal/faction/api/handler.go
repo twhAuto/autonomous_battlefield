@@ -59,7 +59,7 @@ func (h *Handler) ListRulesets(w http.ResponseWriter, _ *http.Request) {
 func (h *Handler) GetFactionName(w http.ResponseWriter, r *http.Request) {
 	name, err := h.factionService.GetFactionName(r.Context(), r.PathValue("id"))
 	if errors.Is(err, factionservice.ErrFactionNotFound) {
-		http.Error(w, "faction not found", http.StatusNotFound)
+		http.Error(w, factionNotFoundMessage, http.StatusNotFound)
 		return
 	}
 	if err != nil {
@@ -114,7 +114,7 @@ func (h *Handler) DeleteFaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, factionservice.ErrFactionNotFound) {
-		http.Error(w, "faction not found", http.StatusNotFound)
+		http.Error(w, factionNotFoundMessage, http.StatusNotFound)
 		return
 	}
 	if err != nil {
@@ -152,10 +152,12 @@ func (h *Handler) UpdateFaction(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, factionservice.ErrInvalidFaction):
 		http.Error(w, "invalid faction", 400)
 	case errors.Is(err, factionservice.ErrFactionNotFound):
-		http.Error(w, "faction not found", 404)
+		http.Error(w, factionNotFoundMessage, 404)
 	case err != nil:
 		http.Error(w, "could not update faction", 500)
 	default:
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
+
+const factionNotFoundMessage = "faction not found"

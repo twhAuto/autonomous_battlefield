@@ -30,22 +30,27 @@ func (m *Match) runUpgrades(id string, plan controller.PlanProposal) []Event {
 		runtime.attackBonus += upgrade.AttackBonus
 		runtime.defenseBonus += upgrade.DefenseBonus
 		runtime.economyBonus += upgrade.EconomyIncomeBonus
-		for i := range m.state.Units {
-			unit := &m.state.Units[i]
-			if unit.FactionID == id && unit.Health > 0 {
-				if unit.HealAmount == 0 {
-					unit.Attack += upgrade.AttackBonus
-				}
-				unit.Defense += upgrade.DefenseBonus
-			}
-		}
-		for i := range m.state.Buildings {
-			building := &m.state.Buildings[i]
-			if building.FactionID == id && building.Health > 0 && building.Type == BuildingEconomy {
-				building.Income += upgrade.EconomyIncomeBonus
-			}
-		}
+		m.applyUpgradeToEntities(id, upgrade)
 		events = append(events, m.event("upgrade_purchased", map[string]any{"factionId": id, "upgradeId": upgradeID, "cost": upgrade.Cost, "balance": state.Gold}))
 	}
 	return events
+}
+
+func (m *Match) applyUpgradeToEntities(id string, upgrade Upgrade) {
+	for i := range m.state.Units {
+		unit := &m.state.Units[i]
+		if unit.FactionID == id && unit.Health > 0 {
+			if unit.HealAmount == 0 {
+				unit.Attack += upgrade.AttackBonus
+			}
+			unit.Defense += upgrade.DefenseBonus
+		}
+	}
+	for i := range m.state.Buildings {
+		building := &m.state.Buildings[i]
+		if building.FactionID == id && building.Health > 0 && building.Type == BuildingEconomy {
+			building.Income += upgrade.EconomyIncomeBonus
+		}
+	}
+
 }

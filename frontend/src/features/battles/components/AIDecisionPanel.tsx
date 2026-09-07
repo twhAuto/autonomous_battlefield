@@ -30,7 +30,7 @@ export function decisionLabel(decision?: DecisionHistory) {
 }
 
 export function AIDecisionPanel({ decisions, participantNames, message, hasModelController, selectedFaction, onSelectFaction, attempt, battleId, active = true, contextCache, embedded = false, entities }: Readonly<{
-  entities?: EntityNaming['entities']
+  entities?: NonNullable<EntityNaming['entities']>
   decisions: DecisionHistory[]; participantNames: Map<string, string>; message: string; hasModelController: boolean
   selectedFaction?: string; onSelectFaction?: (factionId: string) => void; attempt?: number
   battleId?: string; active?: boolean; contextCache?: DecisionContextCache; embedded?: boolean
@@ -40,6 +40,7 @@ export function AIDecisionPanel({ decisions, participantNames, message, hasModel
   const faction = selectedFaction ?? localFaction
   const modelDecisions = decisions.filter((decision) => decision.controllerType === 'model' || Boolean(decision.profileId))
   const visibleDecisions = faction === 'all' ? modelDecisions : decisions.filter((decision) => decision.factionId === faction)
+  const allPlayersEmpty = hasModelController ? 'Waiting for the opening decision.' : 'This battle uses scripted controllers, so no model decisions will be created.'
   return (
     <section className="ai-decision-panel" aria-label="AI decisions" aria-live="polite">
       <div className="ai-decision-panel__header">
@@ -49,7 +50,7 @@ export function AIDecisionPanel({ decisions, participantNames, message, hasModel
       {!embedded && <label className="panel-filter" htmlFor="decision-player">Player<select id="decision-player" value={faction} onChange={(event) => (onSelectFaction ?? setLocalFaction)(event.target.value)}><option value="all">All AI players</option>{[...participantNames].map(([id, name]) => <option value={id} key={id}>{name}</option>)}</select></label>}
       <p className="decision-inspector-note">Submitted rationale explains the plan. Orders are intentions; the event stream records execution.</p>
       {message && <div className="ai-decision-panel__state ai-decision-panel__state--error" role="alert">{message}</div>}
-      {!message && visibleDecisions.length === 0 && <div className="ai-decision-panel__state">{faction !== 'all' ? 'No decisions recorded for this player in the current attempt.' : (hasModelController ? 'Waiting for the opening decision.' : 'This battle uses scripted controllers, so no model decisions will be created.')}</div>}
+      {!message && visibleDecisions.length === 0 && <div className="ai-decision-panel__state">{faction !== 'all' ? 'No decisions recorded for this player in the current attempt.' : allPlayersEmpty}</div>}
       {visibleDecisions.length > 0 && (
         <ol className="ai-decision-list">
           {[...visibleDecisions].reverse().map((decision, index) => (
@@ -62,7 +63,7 @@ export function AIDecisionPanel({ decisions, participantNames, message, hasModel
 }
 
 function DecisionCard({ decision, participantNames, initiallyOpen, battleId, attempt, active, cache, entities }: Readonly<{
-  entities?: EntityNaming['entities']
+  entities?: NonNullable<EntityNaming['entities']>
   decision: DecisionHistory; participantNames: Map<string, string>; initiallyOpen: boolean
   battleId?: string; attempt?: number; active: boolean; cache: DecisionContextCache
 }>) {

@@ -4,6 +4,8 @@
 package providers
 
 import (
+	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -36,27 +38,28 @@ func TestOpenAIParsesToolCallsAndUsage(t *testing.T) {
 		var body struct {
 			Input string `json:"input"`
 		}
-		if err := json.NewDecoder(request.Body).Decode(&body); err != nil || body.Input != "system\nUSER: decide\n" {
-			t.Fatalf("transcript=%q err=%v", body.Input, err)
+		{
+			err := json.NewDecoder(request.Body).Decode(&body)
+			testutil.Require(t, !(err != nil || body.Input != "system\nUSER: decide\n"), func() { t.Fatalf("transcript=%q err=%v", body.Input, err) })
 		}
 		if request.Header.Get("Authorization") != "Bearer key" {
 			t.Error("missing authorization")
 		}
 	})
 	result, err := (&OpenAI{APIKey: "key", Model: "model", Client: client}).NextTurn(context.Background(), providerRequest())
-	if err != nil || len(result.ToolCalls) != 1 || result.ToolCalls[0].ID != "call-1" || result.Usage.InputTokens != 12 {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
+	testutil.Require(t, !(err != nil || len(result.ToolCalls) != 1 || result.ToolCalls[0].ID != "call-1" || result.Usage.InputTokens != 12), func() { t.Fatalf("result=%#v err=%v", result, err) })
 }
 
 func TestProvidersRecognizeRefusals(t *testing.T) {
 	openAI := clientWith(http.StatusOK, `{"output":[{"type":"message","content":[{"type":"refusal","refusal":"no"}]}]}`, nil)
-	if _, err := (&OpenAI{Client: openAI}).NextTurn(context.Background(), providerRequest()); !errors.Is(err, ErrRefusal) {
-		t.Fatalf("OpenAI refusal error = %v", err)
+	{
+		_, err := (&OpenAI{Client: openAI}).NextTurn(context.Background(), providerRequest())
+		testutil.Require(t, errors.Is(err, ErrRefusal), func() { t.Fatalf("OpenAI refusal error = %v", err) })
 	}
 	gemini := clientWith(http.StatusOK, `{"candidates":[{"finishReason":"SAFETY","content":{"parts":[]}}]}`, nil)
-	if _, err := (&Gemini{Client: gemini}).NextTurn(context.Background(), providerRequest()); !errors.Is(err, ErrRefusal) {
-		t.Fatalf("Gemini refusal error = %v", err)
+	{
+		_, err := (&Gemini{Client: gemini}).NextTurn(context.Background(), providerRequest())
+		testutil.Require(t, errors.Is(err, ErrRefusal), func() { t.Fatalf("Gemini refusal error = %v", err) })
 	}
 }
 
@@ -69,26 +72,25 @@ func TestGeminiParsesToolCallsAndErrors(t *testing.T) {
 				} `json:"parts"`
 			} `json:"contents"`
 		}
-		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
-			t.Fatal(err)
+		{
+			err := json.NewDecoder(request.Body).Decode(&body)
+			testutil.Require(t, err == nil, func() { t.Fatal(err) })
 		}
-		if len(body.Contents) != 1 || len(body.Contents[0].Parts) != 1 || body.Contents[0].Parts[0].Text != "system\nUSER: decide\n" {
-			t.Fatalf("unexpected transcript: %+v", body)
-		}
+		testutil.Require(t, !(len(body.Contents) != 1 || len(body.Contents[0].Parts) != 1 || body.Contents[0].Parts[0].Text != "system\nUSER: decide\n"), func() { t.Fatalf("unexpected transcript: %+v", body) })
 		if request.Header.Get("x-goog-api-key") != "key" {
 			t.Error("missing key")
 		}
 	})
 	result, err := (&Gemini{APIKey: "key", Model: "model", Client: client}).NextTurn(context.Background(), providerRequest())
-	if err != nil || result.Text != "working" || len(result.ToolCalls) != 1 || result.Usage.OutputTokens != 3 {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
+	testutil.Require(t, !(err != nil || result.Text != "working" || len(result.ToolCalls) != 1 || result.Usage.OutputTokens != 3), func() { t.Fatalf("result=%#v err=%v", result, err) })
 	failure := clientWith(http.StatusTooManyRequests, "no", nil)
-	if _, err := (&Gemini{Client: failure}).NextTurn(context.Background(), providerRequest()); !errors.Is(err, ErrRateLimit) || !strings.Contains(err.Error(), "429") {
-		t.Fatal(err)
+	{
+		_, err := (&Gemini{Client: failure}).NextTurn(context.Background(), providerRequest())
+		testutil.Require(t, !(!errors.Is(err, ErrRateLimit) || !strings.Contains(err.Error(), "429")), func() { t.Fatal(err) })
 	}
-	if _, err := (&OpenAI{Client: failure}).NextTurn(context.Background(), providerRequest()); !errors.Is(err, ErrRateLimit) {
-		t.Fatalf("OpenAI rate-limit error = %v", err)
+	{
+		_, err := (&OpenAI{Client: failure}).NextTurn(context.Background(), providerRequest())
+		testutil.Require(t, errors.Is(err, ErrRateLimit), func() { t.Fatalf("OpenAI rate-limit error = %v", err) })
 	}
 }
 
@@ -117,27 +119,15 @@ func TestProvidersCloseResponsesAndPreserveErrors(t *testing.T) {
 			t.Run(name+"/"+test.name, func(t *testing.T) {
 				body := &trackedBody{Reader: strings.NewReader(test.body)}
 				client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-					if request.Method != http.MethodPost || request.Header.Get("Content-Type") != "application/json" {
-						t.Fatalf("unexpected request: %s %v", request.Method, request.Header)
-					}
+					testutil.Require(t, !(request.Method != http.MethodPost || request.Header.Get("Content-Type") != "application/json"), func() { t.Fatalf("unexpected request: %s %v", request.Method, request.Header) })
 					return &http.Response{StatusCode: test.status, Body: body, Header: make(http.Header)}, nil
 				})}
 				_, err := create(client).NextTurn(context.Background(), providerRequest())
-				if !body.closed {
-					t.Fatal("response body was not closed")
-				}
-				if (err == nil) != (test.name == "success") {
-					t.Fatalf("error=%v", err)
-				}
-				if test.status == 429 && !errors.Is(err, ErrRateLimit) {
-					t.Fatalf("rate limit identity lost: %v", err)
-				}
-				if test.status == 503 && err.Error() != name+" response status 503" {
-					t.Fatalf("unexpected error: %v", err)
-				}
-				if err != nil && strings.Contains(err.Error(), "private provider detail") {
-					t.Fatalf("response body leaked: %v", err)
-				}
+				testutil.Require(t, body.closed, func() { t.Fatal("response body was not closed") })
+				testutil.Require(t, (err == nil) == (test.name == "success"), func() { t.Fatalf("error=%v", err) })
+				testutil.Require(t, !(test.status == 429 && !errors.Is(err, ErrRateLimit)), func() { t.Fatalf("rate limit identity lost: %v", err) })
+				testutil.Require(t, !(test.status == 503 && err.Error() != name+" response status 503"), func() { t.Fatalf("unexpected error: %v", err) })
+				testutil.Require(t, !(err != nil && strings.Contains(err.Error(), "private provider detail")), func() { t.Fatalf("response body leaked: %v", err) })
 			})
 		}
 		t.Run(name+"/cancellation", func(t *testing.T) {
@@ -146,8 +136,9 @@ func TestProvidersCloseResponsesAndPreserveErrors(t *testing.T) {
 			client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 				return nil, request.Context().Err()
 			})}
-			if _, err := create(client).NextTurn(ctx, providerRequest()); !errors.Is(err, context.Canceled) {
-				t.Fatalf("cancellation identity lost: %v", err)
+			{
+				_, err := create(client).NextTurn(ctx, providerRequest())
+				testutil.Require(t, errors.Is(err, context.Canceled), func() { t.Fatalf("cancellation identity lost: %v", err) })
 			}
 		})
 	}

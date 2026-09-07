@@ -205,6 +205,11 @@ func validateProductionPlan(scenario Scenario, setup FactionSetup, plan controll
 			return fmt.Errorf("%w: unsupported recruitment unit %q", controller.ErrInvalidPlan, unitType)
 		}
 	}
+	return validateProductionSites(scenario, setup, plan)
+
+}
+
+func validateProductionSites(scenario Scenario, setup FactionSetup, plan controller.PlanProposal) error {
 	allowedSites := make(map[Position]bool)
 	for slot, faction := range scenario.Factions {
 		if faction.ID == setup.ID && len(ConstructibleBuildings(scenario.Ruleset)) > 0 {

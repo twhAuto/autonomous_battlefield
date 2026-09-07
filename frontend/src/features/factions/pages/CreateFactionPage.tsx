@@ -60,6 +60,7 @@ export function CreateFactionPage() {
  if (!editing) { setName(''); setBackground(''); setFactionId(crypto.randomUUID()) }
  } catch (error) { setStatus('error'); setMessage(error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.') }
  }
+ const saveLabel = editing ? 'SAVE FACTION' : 'CREATE FACTION'
  return <>
  <section className="page-header">
  <Link className="back-link" to="/">← MAIN MENU</Link>
@@ -85,7 +86,7 @@ export function CreateFactionPage() {
  {backgroundCount > maxBackgroundLength && <p role="alert">Background must be at most {maxBackgroundLength.toLocaleString('en-US')} characters.</p>}
  <BackgroundGenerator key={id ?? factionId} input={{name:name.trim(),doctrine:doctrine.trim(),background:background.trim()}} valid={valid && status !== 'submitting'} onUse={value => {setBackground(value);setStatus('idle');setMessage('')}} />
  <div className="identity-block"><div><span className="identity-block__label">SYSTEM IDENTIFIER</span><code title={id ?? factionId}>{id ?? factionId}</code></div>{!editing && <button type="button" className="icon-button" onClick={() => setFactionId(crypto.randomUUID())} aria-label="Generate a new faction identifier">↻</button>}</div>
- <button className="submit-button" type="submit" disabled={!valid || status === 'submitting'}>{status === 'submitting' ? 'SAVING…' : editing ? 'SAVE FACTION' : 'CREATE FACTION'}</button>
+ <button className="submit-button" type="submit" disabled={!valid || status === 'submitting'}>{status === 'submitting' ? 'SAVING…' : saveLabel}</button>
  </form>}
  <div className="form-message" aria-live="polite">{message && <p className={`form-message--${status}`}>{message}</p>}{status === 'success' && <Link className="text-link" to="/factions">View faction registry →</Link>}</div>
  </div>

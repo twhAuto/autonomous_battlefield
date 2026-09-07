@@ -186,6 +186,29 @@ func VerifyCapability(secret, token string, now time.Time) (string, error) {
 
 func validateRecruitmentChoices(record DecisionRecord, plan controller.PlanProposal) []ValidationIssue {
 	var issues []ValidationIssue
+	issues = append(issues, validateUpgradeAndOpeningChoices(record, plan)...)
+	legalUnits := make(map[string]bool, len(record.Observation.Legal.Units))
+	for _, unit := range record.Observation.Legal.Units {
+		legalUnits[unit.ID] = true
+	}
+	for _, unitType := range plan.RecruitmentPriorities {
+		if !legalUnits[unitType] {
+			issues = append(issues, ValidationIssue{Field: "plan.recruitmentPriorities", Code: "unsupported", Message: fmt.Sprintf("unit type %q is not legal", unitType)})
+		}
+	}
+	if plan.RecruitmentOrders != nil {
+		for _, order := range *plan.RecruitmentOrders {
+			if !legalUnits[order.UnitType] {
+				issues = append(issues, ValidationIssue{Field: "plan.recruitmentOrders", Code: "unsupported", Message: fmt.Sprintf("unit type %q is not legal", order.UnitType)})
+			}
+		}
+	}
+
+	return issues
+}
+
+func validateUpgradeAndOpeningChoices(record DecisionRecord, plan controller.PlanProposal) []ValidationIssue {
+	var issues []ValidationIssue
 	legalUpgrades := map[string]bool{}
 	for _, upgrade := range record.Observation.Legal.Upgrades {
 		legalUpgrades[upgrade.ID] = true
@@ -205,22 +228,5 @@ func validateRecruitmentChoices(record DecisionRecord, plan controller.PlanPropo
 			}
 		}
 	}
-	legalUnits := make(map[string]bool, len(record.Observation.Legal.Units))
-	for _, unit := range record.Observation.Legal.Units {
-		legalUnits[unit.ID] = true
-	}
-	for _, unitType := range plan.RecruitmentPriorities {
-		if !legalUnits[unitType] {
-			issues = append(issues, ValidationIssue{Field: "plan.recruitmentPriorities", Code: "unsupported", Message: fmt.Sprintf("unit type %q is not legal", unitType)})
-		}
-	}
-	if plan.RecruitmentOrders != nil {
-		for _, order := range *plan.RecruitmentOrders {
-			if !legalUnits[order.UnitType] {
-				issues = append(issues, ValidationIssue{Field: "plan.recruitmentOrders", Code: "unsupported", Message: fmt.Sprintf("unit type %q is not legal", order.UnitType)})
-			}
-		}
-	}
-
 	return issues
 }

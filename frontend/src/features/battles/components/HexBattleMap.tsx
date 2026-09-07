@@ -128,7 +128,8 @@ function terrainClass(symbol: string) {
 
 function entityStats(entity: Entity) {
   const stats = [`Defense ${entity.defense}`, `Vision ${entity.vision}`]
-  if (entity.attack) stats.push(`Attack ${entity.attack}`, `Range ${'minimumRange' in entity && entity.minimumRange ? `${entity.minimumRange}–` : ''}${entity.range}`)
+  const minimumRange = 'minimumRange' in entity && entity.minimumRange ? `${entity.minimumRange}–` : ''
+  if (entity.attack) stats.push(`Attack ${entity.attack}`, `Range ${minimumRange}${entity.range}`)
   if ('healAmount' in entity && entity.healAmount) stats.push(`Treat ${entity.healAmount} HP · adjacent soldiers`)
   if ('buildingDamageBonus' in entity && entity.buildingDamageBonus) stats.push(`+${entity.buildingDamageBonus} vs buildings`)
   if ('classDamageBonus' in entity && entity.classDamageBonus) stats.push(`+${entity.classDamageBonus} vs ${entity.bonusAgainstClass}`)

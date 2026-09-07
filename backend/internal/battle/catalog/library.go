@@ -90,26 +90,9 @@ func resolveLibrary(directory string, source rulesetFile) (game.Ruleset, error) 
 		return r, err
 	}
 	r.Knowledge = selectedKnowledge(library.Knowledge, r.Units)
-	buildings := map[string]buildingDefinition{}
-	for _, b := range library.Buildings {
-		buildings[b.ID] = b
-	}
-	castle, ok := buildings[ref.Castle]
-	if !ok || castle.Kind != "castle" {
-		return r, fmt.Errorf("library castle must reference a castle building")
-	}
-	economy, ok := buildings[ref.Economy]
-	if !ok || economy.Kind != "economy" {
-		return r, fmt.Errorf("library economy must reference an economy building")
-	}
-	// Rulesets own limits; library definitions own building stats.
-	r.Buildings = game.BuildingRules{CastleTypeID: castle.ID, EconomyTypeID: economy.ID, CastleHealth: castle.Health, CastleDefense: castle.Defense, CastleVision: castle.Vision, CastleIncome: castle.Income, EconomyCost: economy.Cost, EconomyHealth: economy.Health, EconomyDefense: economy.Defense, EconomyVision: economy.Vision, EconomyIncome: economy.Income, MaximumEconomyCount: r.Buildings.MaximumEconomyCount, MaximumBuildingCount: r.Buildings.MaximumBuildingCount}
-	for _, id := range ref.Structures {
-		b, exists := buildings[id]
-		if !exists || !game.ValidStructure(b.buildingType()) {
-			return r, fmt.Errorf("invalid structure selection %q", id)
-		}
-		r.Structures = append(r.Structures, b.buildingType())
+	r, err = applyLibraryBuildings(r, library, ref)
+	if err != nil {
+		return r, err
 	}
 	data, _ := json.Marshal(library)
 	digest := sha256.Sum256(data)
@@ -151,4 +134,29 @@ func validLibraryBuilding(b buildingDefinition) bool {
 		return game.ValidStructure(b.buildingType())
 	}
 	return b.Health > 0 && b.Defense >= 0 && b.Vision > 0 && b.Income > 0 && b.Cost >= 0 && b.Attack == 0 && b.Range == 0
+}
+
+func applyLibraryBuildings(r game.Ruleset, library contentLibrary, ref *librarySelection) (game.Ruleset, error) {
+	buildings := map[string]buildingDefinition{}
+	for _, b := range library.Buildings {
+		buildings[b.ID] = b
+	}
+	castle, ok := buildings[ref.Castle]
+	if !ok || castle.Kind != "castle" {
+		return r, fmt.Errorf("library castle must reference a castle building")
+	}
+	economy, ok := buildings[ref.Economy]
+	if !ok || economy.Kind != "economy" {
+		return r, fmt.Errorf("library economy must reference an economy building")
+	}
+	// Rulesets own limits; library definitions own building stats.
+	r.Buildings = game.BuildingRules{CastleTypeID: castle.ID, EconomyTypeID: economy.ID, CastleHealth: castle.Health, CastleDefense: castle.Defense, CastleVision: castle.Vision, CastleIncome: castle.Income, EconomyCost: economy.Cost, EconomyHealth: economy.Health, EconomyDefense: economy.Defense, EconomyVision: economy.Vision, EconomyIncome: economy.Income, MaximumEconomyCount: r.Buildings.MaximumEconomyCount, MaximumBuildingCount: r.Buildings.MaximumBuildingCount}
+	for _, id := range ref.Structures {
+		b, exists := buildings[id]
+		if !exists || !game.ValidStructure(b.buildingType()) {
+			return r, fmt.Errorf("invalid structure selection %q", id)
+		}
+		r.Structures = append(r.Structures, b.buildingType())
+	}
+	return r, nil
 }

@@ -3,6 +3,8 @@
 package repo
 
 import (
+	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
+
 	"context"
 	"strings"
 	"testing"
@@ -35,25 +37,15 @@ func TestListBattleSummaries(t *testing.T) {
 			before := &battleservice.BattleHistoryCursor{CreatedAt: time.Now(), ID: "00000000-0000-0000-0000-000000000002"}
 			result, err := NewPostgres(test.db).ListBattles(context.Background(), battleservice.BattleHistoryQuery{Status: "completed", Before: before, Limit: 26})
 			if test.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
-					t.Fatalf("err=%v", err)
-				}
+				testutil.Require(t, !(err == nil || !strings.Contains(err.Error(), test.wantErr)), func() { t.Fatalf("err=%v", err) })
 				return
 			}
-			if err != nil || result == nil {
-				t.Fatalf("result=%+v err=%v", result, err)
-			}
-			if test.db.queryArgs[1] != before.CreatedAt || test.db.queryArgs[2] != before.ID {
-				t.Fatal(test.db.queryArgs)
-			}
-			if test.name == "summary" && (result[0].Participants[0].Name != "Original" || *result[0].Outcome.WinnerFactionID != "f1") {
-				t.Fatal(result)
-			}
+			testutil.Require(t, !(err != nil || result == nil), func() { t.Fatalf("result=%+v err=%v", result, err) })
+			testutil.Require(t, !(test.db.queryArgs[1] != before.CreatedAt || test.db.queryArgs[2] != before.ID), func() { t.Fatal(test.db.queryArgs) })
+			testutil.Require(t, !(test.name == "summary" && (result[0].Participants[0].Name != "Original" || *result[0].Outcome.WinnerFactionID != "f1")), func() { t.Fatal(result) })
 		})
 	}
 	db := &battleDB{rows: &battleRows{}}
 	_, err := NewPostgres(db).ListBattles(context.Background(), battleservice.BattleHistoryQuery{Limit: 26})
-	if err != nil || db.queryArgs[1] != nil || db.queryArgs[2] != nil {
-		t.Fatalf("args=%+v err=%v", db.queryArgs, err)
-	}
+	testutil.Require(t, !(err != nil || db.queryArgs[1] != nil || db.queryArgs[2] != nil), func() { t.Fatalf("args=%+v err=%v", db.queryArgs, err) })
 }

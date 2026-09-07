@@ -27,7 +27,8 @@ export function entityName(id: string | undefined, naming: EntityNaming = {}) {
   const generated = parts.length > 0 && Boolean(type) && (sequence !== undefined || type === 'castle')
   const factionId = entity?.factionId ?? (generated ? parts.join(':') : undefined)
   const label = typeLabel(entity?.type ?? (generated ? type! : 'entity'))
-  const identity = generated ? (sequence === undefined ? label : `${label} #${sequence}`) : `${label} · ${id.slice(0, 8)}`
+  const generatedIdentity = sequence === undefined ? label : `${label} #${sequence}`
+  const identity = generated ? generatedIdentity : `${label} · ${id.slice(0, 8)}`
   if (!factionId || factionId === naming.localFactionId) return identity
   const faction = naming.factionNames?.get(factionId) ?? `Faction · ${factionId.slice(0, 8)}`
   return `${faction} · ${identity}`

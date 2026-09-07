@@ -90,8 +90,6 @@ func (m *Match) buildEconomyBuildingAt(factionID string, site Position, reserve 
 }
 
 func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) []Event {
-	runtime := m.factions[factionID]
-	state := m.factionState(factionID)
 	castle := m.castle(factionID)
 	if castle == nil || castle.Health <= 0 {
 		return nil
@@ -102,53 +100,27 @@ func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) [
 	purchased := 0
 	attempted := 0
 	sourceIDs := expandedRecruitmentSources(plan.RecruitmentOrders)
-	for {
-		// Expanded sources share an explicit cap. Legacy priorities still stop on
-		// occupied castle neighbors, preserving their historical skipped event.
-		if purchased >= 6 && len(m.scenario.Ruleset.Structures) > 0 {
-			break
-		}
-		if plan.RecruitmentOrders != nil && attempted >= len(orders) {
-			break
-		}
+	// Explicit orders and expanded rosters bound the loop; legacy priorities
+	// continue until reserve or castle spawn constraints stop recruitment.
+	for (purchased < 6 || len(m.scenario.Ruleset.Structures) == 0) && (plan.RecruitmentOrders == nil || attempted < len(orders)) {
 		source := castle
 		if plan.RecruitmentOrders != nil {
 			source = m.recruitmentSource(factionID, sourceIDs[attempted])
 			attempted++
 		}
-		if source == nil || source.Health <= 0 || source.ReadyAtTick > m.state.Tick {
-			events = append(events, m.event("production_skipped", map[string]any{"factionId": factionID, "kind": "recruitment", "reason": "source_unavailable"}))
-			continue
-		}
-		spawn, available := m.recruitmentSpawn(source.Position)
-		if !available {
-			events = append(events, m.event("production_skipped", map[string]any{"factionId": factionID, "kind": "recruitment", "reason": "no_spawn"}))
-			if source.Type == BuildingBarracks {
-				continue
-			}
-			break
-		}
 		priorities := plan.RecruitmentPriorities
 		if plan.RecruitmentOrders != nil {
 			priorities = orders[attempted-1 : attempted]
 		}
-		selected := affordableUnit(definitions, priorities, state.Gold, plan.ReserveGold)
-		if selected.ID == "" {
-			events = append(events, m.event("production_skipped", map[string]any{"factionId": factionID, "kind": "recruitment", "reason": "reserve_required"}))
+		event, bought, stop := m.attemptRecruitment(factionID, source, definitions, priorities, plan.ReserveGold)
+		events = append(events, event)
+		if stop {
 			break
 		}
-		purchased++
-		state.Gold -= selected.Cost
-		state.GoldSpent += selected.Cost
-		state.UnitsRecruited++
-		runtime.unitSequence++
-		unit := runtime.newUnit(selected, spawn, m.state.Tick+1)
-		m.state.Units = append(m.state.Units, unit)
-		data := map[string]any{"factionId": factionID, "unitId": unit.ID, "unitType": unit.Type, "position": spawn, "readyAtTick": unit.ReadyAtTick, "cost": unit.Cost}
-		if len(m.scenario.Ruleset.Structures) > 0 {
-			data["sourceBuildingId"] = source.ID
+		if bought {
+			purchased++
 		}
-		events = append(events, m.event("unit_recruited", data))
+
 	}
 	return events
 }
@@ -207,4 +179,38 @@ func expandedRecruitmentSources(orders *[]controller.RecruitmentOrder) []string 
 		}
 	}
 	return result
+}
+
+func (m *Match) purchaseRecruit(factionID string, selected UnitType, spawn Position, source *Building) Event {
+	state := m.factionState(factionID)
+	runtime := m.factions[factionID]
+	state.Gold -= selected.Cost
+	state.GoldSpent += selected.Cost
+	state.UnitsRecruited++
+	runtime.unitSequence++
+	unit := runtime.newUnit(selected, spawn, m.state.Tick+1)
+	m.state.Units = append(m.state.Units, unit)
+	data := map[string]any{"factionId": factionID, "unitId": unit.ID, "unitType": unit.Type, "position": spawn, "readyAtTick": unit.ReadyAtTick, "cost": unit.Cost}
+	if len(m.scenario.Ruleset.Structures) > 0 {
+		data["sourceBuildingId"] = source.ID
+	}
+	return m.event("unit_recruited", data)
+}
+
+func (m *Match) attemptRecruitment(factionID string, source *Building, definitions map[string]UnitType, priorities []string, reserve int64) (Event, bool, bool) {
+	skipped := func(reason string) Event {
+		return m.event("production_skipped", map[string]any{"factionId": factionID, "kind": "recruitment", "reason": reason})
+	}
+	if source == nil || source.Health <= 0 || source.ReadyAtTick > m.state.Tick {
+		return skipped("source_unavailable"), false, false
+	}
+	spawn, available := m.recruitmentSpawn(source.Position)
+	if !available {
+		return skipped("no_spawn"), false, source.Type != BuildingBarracks
+	}
+	selected := affordableUnit(definitions, priorities, m.factionState(factionID).Gold, reserve)
+	if selected.ID == "" {
+		return skipped("reserve_required"), false, true
+	}
+	return m.purchaseRecruit(factionID, selected, spawn, source), true, false
 }
