@@ -14,6 +14,19 @@ The **Battle history** menu opens `/battles`: browse every run, filter by status
 the newest entries. Open a battle to inspect its existing map, results, events,
 and AI decisions. Saved participant names survive faction edits and deletion.
 
+The battle inspector combines a **System** event stream and player comparison
+with an **Inspect** dropdown for selecting System or a player. Each player has **Overview**, **Decisions**, **Units**,
+and **Faction** sections, with current gold, living units, and castle health
+always visible. Decisions can load the saved observation used by that AI,
+including historical resources, visible forces, available choices, and memory.
+Faction background and doctrine come from the battle snapshot. Progress and
+controls remain in a compact toolbar above the map. The inspector accommodates
+additional players; creating and simulating battles still requires two factions.
+Unit and building markers use distinct tactical icons, with a collapsible icon
+legend. The map, roster, events, and recruitment sources display readable names
+such as **Iron Legion · Ranger #12**; full IDs remain available in tooltips and
+raw inspection views.
+
 ## Documentation
 
 | Task | Guide |

@@ -102,6 +102,46 @@ HTTP transport to report network failures consistently while preserving request
 cancellation. Feature clients own HTTP status messages; protected requests also
 notify the application when authentication is required.
 
+### Battle inspection
+
+The battle page keeps progress/outcome and controls in a compact toolbar above
+the map. `BattleInspector` owns the native System/player dropdown and the shared inner tab
+(Overview, Decisions, Units, Faction), independently of map perspective. System
+shows a current-player comparison and the attempt-selectable event stream.
+Player headers show current gold, living units, castle health, and snapshot tick;
+Overview groups buildings and economy totals, Units groups living entities with
+individual HP/coordinates, and Faction shows the saved profile. Navigation stays
+fixed above a single scrolling content region; the inspector moves below the
+map at narrow widths. Hidden sections remain mounted to preserve filters and
+expanded decisions across tab changes; historical context requests run only in
+an active, expanded decision. New history rows do not collapse existing details.
+
+The player summary derives from the full spectator state, including under a
+faction map perspective. Null collection slices from Go JSON are handled safely;
+missing faction state displays unavailable values, while empty armies show zero.
+Battle participant responses include background and doctrine from the persisted
+scenario, not the current editable faction directory.
+
+`GET /v1/battles/{id}/decisions/{requestId}/context?attempt=N` reads the persisted
+observation through the existing decision repository. The service checks battle,
+attempt, request, and observation scope. An explicit response projection exposes
+only historical identity, economy, faction-visible view, legal choices, prior
+plan, memory, and knowledge; internal provider metadata and capabilities are
+excluded. Legacy rows without observations return `context: null`. No migration
+is needed. The browser loads on expansion, caches by battle/attempt/request, and
+aborts and ignores obsolete responses. Decision history also rejects responses
+from an obsolete battle/attempt. The inspector labels observation ticks and
+separates historical context from its current-resource header. Plans describe
+intent; events provide execution evidence. A running decision does not imply
+verified MCP connectivity. Private reasoning and tool-call traces are not exposed.
+
+Dropdown options and comparison rows iterate participant IDs without a two-slot assumption.
+Three-way simulation remains separate work: battle creation and scenario/map
+spawns require two factions, movement selects a single opponent, and destroying
+a castle currently ends the match. Supporting three players requires revisiting
+those contracts, elimination/winner rules, and map faction colors as well as the
+creation form.
+
 ### Deterministic simulation boundary
 
 The simulation receives a resolved scenario and optional plans, then produces deterministic state transitions and events. It does not access PostgreSQL, HTTP, environment variables, or model providers.
@@ -793,4 +833,12 @@ explicit empty arrays disable construction. New fields are optional in tool sche
 and state JSON, requiring no database migration. Faction projections strip hidden
 action targets; spectators retain the complete event stream. The frontend renders
 healing and tower actions and displays recruitment origins in decision history.
+A frontend presentation layer derives readable entity names from existing IDs and
+state metadata; it does not change API payloads, persistence, or engine identity.
+Generated IDs retain their embedded sequence in labels even after an entity dies
+or an older attempt is inspected. Current-state metadata is only used for events
+from that attempt. The map uses its displayed perspective's entity metadata and
+local SVG unit/building icons; roster, event fields, and decision recruitment
+sources share naming helpers. Full IDs remain available through tooltips and raw
+inspection views, and freeform model text is preserved.
 See [Frontier Siege](frontier-siege.md) for gameplay and balance probes.

@@ -20,23 +20,23 @@ it('shows the expanded roster, distinct structures, treatment, and tower attacks
   expect(container.querySelectorAll('.hex-tile')).toHaveLength(425)
   expect(container.querySelectorAll('.unit-direction--healing')).toHaveLength(1)
   expect(container.querySelectorAll('.unit-direction--tower')).toHaveLength(1)
-  expect(screen.getByText('herbalist treated pikeman')).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'herbalist herbalist' }))
-  expect(screen.getByText(/treating pikeman.*Treat 3 HP/)).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'catapult catapult' }))
+  expect(screen.getByText('Northwind · Herbalist · herbalis treated Northwind · Pikeman · pikeman')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Northwind · Herbalist · herbalis' }))
+  expect(screen.getByText(/treating Northwind · Pikeman · pikeman.*Treat 3 HP/)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Northwind · Catapult · catapult' }))
   expect(screen.getByText(/Range 2–5.*\+20 vs buildings/)).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'pikeman pikeman' }))
+  await user.click(screen.getByRole('button', { name: 'Northwind · Pikeman · pikeman' }))
   expect(screen.getByText(/\+12 vs mobile/)).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'barracks barracks' }))
+  await user.click(screen.getByRole('button', { name: 'Northwind · Barracks · barracks' }))
   expect(screen.getByText(/Forward recruitment/)).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'watchtower watchtower' }))
+  await user.click(screen.getByRole('button', { name: 'Northwind · Watchtower · watchtow' }))
   expect(screen.getByText(/Vision 6/)).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'defense_tower defense_tower' }))
-  expect(screen.getByText(/attacking enemy.*Attack 12/)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Northwind · Defense Tower · defense_' }))
+  expect(screen.getByText(/attacking Entity · enemy.*Attack 12/)).toBeInTheDocument()
   // The next persisted tick has no transient action indicators.
   const next = structuredClone(state)
-  delete next.units[2].healTargetPosition
-  delete next.buildings[3].attackTargetPosition
+  delete next.units![2].healTargetPosition
+  delete next.buildings![3].attackTargetPosition
   rerender(<HexBattleMap map={map} state={next} visiblePositions={[]} factionNames={new Map()} />)
   expect(container.querySelectorAll('.unit-direction--healing, .unit-direction--tower')).toHaveLength(0)
 })
@@ -45,8 +45,9 @@ it('shows typed construction and forward recruitment in decision history', () =>
   const decision: DecisionHistory = { requestId: 'request', factionId: 'a', targetTick: 10, status: 'accepted', controllerType: 'model', usage: {}, createdAt: '', resolvedPlan: { name: 'fortify', constructionOrders: [{ buildingType: 'defense_tower', position: { x: 9, y: 7 } }], recruitmentOrders: [{ unitType: 'catapult', count: 1, sourceBuildingId: 'a:barracks:1' }] } }
   const props = { decisions: [decision], participantNames: new Map(), message: '', hasModelController: true }
   const { rerender } = render(<AIDecisionPanel {...props} />)
-  expect(screen.getByText('defense_tower (9,7)')).toBeInTheDocument()
-  expect(screen.getByText('1 × catapult from a:barracks:1')).toBeInTheDocument()
+  expect(screen.getByText('Defense Tower (9,7)')).toBeInTheDocument()
+  expect(screen.getByText('Recruit').nextElementSibling).toHaveTextContent('1 × Catapult from Barracks #1')
+  expect(screen.getByText('Barracks #1')).toHaveAttribute('title', 'a:barracks:1')
   decision.resolvedPlan!.constructionOrders = []
   rerender(<AIDecisionPanel {...props} />)
   expect(screen.getByText('No construction')).toBeInTheDocument()

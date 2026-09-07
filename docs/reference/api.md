@@ -162,6 +162,26 @@ Late plans cannot overwrite the fallback selected by the engine. Completed
 decision metadata is available from
 `GET /v1/battles/{id}/decisions?attempt={attempt}`.
 
+Battle detail participant objects additionally contain optional `background` and
+`doctrine` values from the saved scenario snapshot. These are historical values,
+not a lookup of the current faction profile.
+
+`GET /v1/battles/{id}/decisions/{requestId}/context?attempt=N` returns the saved
+observation for an individual decision. Battle/request IDs must be UUIDs and the
+attempt must be positive. A request belonging to another battle or attempt, or a
+missing decision, returns 404; invalid queries return 400 and read failures 500.
+The route uses the existing battle API authentication boundary.
+
+The JSON response has `requestId`, `battleId`, `factionId`, `attempt`, `targetTick`,
+`observationTick`, and `context`. `context` is null for legacy records without a
+saved observation. Otherwise it includes `factionName`, `background`, `doctrine`,
+`opening`, `ownedUpgradeIds`, `economy`, `view`, `legal`, `activePlan`, and optional
+`memory`/`knowledge`. `view` is the saved faction-visible battlefield, not current
+spectator state. Arrays can be null. Provider metadata, trace state, submission
+capabilities, and credentials are excluded. Clients should fetch on demand and
+cache by battle/attempt/request; the ordinary decision history response remains
+unchanged.
+
 For persisted battle comparisons, query `battle_controller_evaluation`. It groups
 scripted and model profiles by controller/provider/runtime and reports win,
 invalid-plan, fallback, latency, normalized usage, and plan-diversity metrics.

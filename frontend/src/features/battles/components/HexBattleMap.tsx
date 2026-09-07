@@ -2,9 +2,11 @@
 // entity selection, and map navigation.
 
 import { type PointerEvent, type ReactNode, useMemo, useState } from 'react'
-import type { BattleMap, BattleState, HexPosition } from '../api/battles'
+import type { BattleBuilding, BattleMap, BattleState, BattleUnit, HexPosition } from '../api/battles'
+import { entityIndex, entityName } from '../presentation/entities'
+import { EntityGlyph, EntityLegend } from './EntityIcon'
 
-type Entity = BattleState['units'][number] | BattleState['buildings'][number]
+type Entity = BattleUnit | BattleBuilding
 const size = 24
 const root3 = Math.sqrt(3)
 
@@ -22,6 +24,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
   const visible = useMemo(() => new Set(visiblePositions.map(key)), [visiblePositions])
   const liveUnits = (state.units ?? []).filter((unit) => unit.health > 0)
   const entities: Entity[] = [...(state.buildings ?? []), ...liveUnits]
+  const naming = { entities: entityIndex(state), factionNames }
   const selected = entities.find((entity) => entity.id === selectedId)
   const colors = new Map(state.factions?.map((faction, index) => [faction.factionId, index === 0 ? '#69d2ff' : '#ff6b55']))
   const width = root3 * size * (map.width + 0.5) + 48
@@ -65,23 +68,25 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
             }))}
             {liveUnits.filter((unit) => unit.movedFrom).map((unit) => {
               const line = directionalLine(unit.movedFrom!, unit.position, 2, 14)
-              return <line key={`move:${unit.id}`} className="unit-direction unit-direction--movement" {...line} markerEnd="url(#movement-arrowhead)"><title>{unit.id} moved from {unit.movedFrom!.x}, {unit.movedFrom!.y} to {unit.position.x}, {unit.position.y}</title></line>
+              return <line key={`move:${unit.id}`} className="unit-direction unit-direction--movement" {...line} markerEnd="url(#movement-arrowhead)"><title>{entityName(unit.id, naming)} moved from {unit.movedFrom!.x}, {unit.movedFrom!.y} to {unit.position.x}, {unit.position.y}</title></line>
             })}
             {entities.filter((unit) => unit.health > 0 && unit.attackTargetPosition).map((unit) => {
               const line = directionalLine(unit.position, unit.attackTargetPosition!, 12, 14)
-              return <line key={`attack:${unit.id}`} className={`unit-direction unit-direction--attack ${'income' in unit ? 'unit-direction--tower' : ''}`} {...line} markerEnd="url(#attack-arrowhead)"><title>{unit.id} attacked {unit.attackTargetId}</title></line>
+              return <line key={`attack:${unit.id}`} className={`unit-direction unit-direction--attack ${'income' in unit ? 'unit-direction--tower' : ''}`} {...line} markerEnd="url(#attack-arrowhead)"><title>{entityName(unit.id, naming)} attacked {entityName(unit.attackTargetId, naming)}</title></line>
             })}
             {liveUnits.filter((unit) => unit.healTargetPosition).map((unit) => {
               const line = directionalLine(unit.position, unit.healTargetPosition!, 12, 14)
-              return <line key={`heal:${unit.id}`} className="unit-direction unit-direction--healing" {...line}><title>{unit.id} treated {unit.healTargetId}</title></line>
+              return <line key={`heal:${unit.id}`} className="unit-direction unit-direction--healing" {...line}><title>{entityName(unit.id, naming)} treated {entityName(unit.healTargetId, naming)}</title></line>
             })}
             {entities.map((entity) => {
               const center = centerOf(entity.position)
               const isBuilding = 'income' in entity
               const color = colors.get(entity.factionId) ?? '#f2c94c'
-              return <g key={entity.id} className="map-entity" role="button" aria-label={`${entity.type} ${entity.id}`} tabIndex={0} transform={`translate(${center.x} ${center.y})`} onPointerDown={(event) => event.stopPropagation()} onClick={() => setSelectedId(entity.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedId(entity.id) }}>
-                {isBuilding ? <path d={buildingShape(entity.type)} fill={color} /> : <circle r="10" fill={color} />}
-                {(!isBuilding || entity.type !== 'castle' && entity.type !== 'economy') && <text textAnchor="middle" y="4">{entityLabel(entity.type)}</text>}
+              return <g key={entity.id} className="map-entity" role="button" aria-label={entityName(entity.id, naming)} aria-pressed={selectedId === entity.id} tabIndex={0} transform={`translate(${center.x} ${center.y})`} onPointerDown={(event) => event.stopPropagation()} onClick={() => setSelectedId(entity.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(entity.id) } }}>
+                <title>{entityName(entity.id, naming)} · {entity.id}</title>
+                {isBuilding ? <rect className="entity-focus-ring" x="-15" y="-15" width="30" height="30" rx="6" /> : <circle className="entity-focus-ring" r="15" />}
+                {isBuilding ? <rect x="-13" y="-13" width="26" height="26" rx="4" fill={color} /> : <circle r="13" fill={color} />}
+                <g transform="translate(-10 -10) scale(0.8333)"><EntityGlyph type={entity.type} /></g>
                 <rect x="-13" y="14" width="26" height="3" className="health-track" /><rect x="-13" y="14" width={26 * Math.max(0, entity.health / entity.maxHealth)} height="3" className="health-value" />
               </g>
             })}
@@ -89,8 +94,9 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
         </svg>
       </div>
       <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-site" /> Build site</span><span><i className="legend-fog" /> Outside vision</span><span><i className="legend-movement" /> Movement</span><span><i className="legend-attack" /> Attack</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
+      <EntityLegend types={entities.map((entity) => entity.type)} />
       <div className="entity-details" aria-live="polite">
-        {selected ? <><strong>{selected.type} · {factionNames.get(selected.factionId) ?? selected.factionId}</strong><span>HP {selected.health}/{selected.maxHealth} · ({selected.position.x}, {selected.position.y}){'movedFrom' in selected && selected.movedFrom ? ` · moved from (${selected.movedFrom.x}, ${selected.movedFrom.y})` : ''}{'attackTargetId' in selected && selected.attackTargetId ? ` · attacking ${selected.attackTargetId}` : ''}{'healTargetId' in selected && selected.healTargetId ? ` · treating ${selected.healTargetId}` : ''} · {entityStats(selected)}</span></> : <span>Select a castle, building, or unit for details.</span>}
+        {selected ? <><strong title={selected.id}>{entityName(selected.id, naming)}</strong><span title={[selected.attackTargetId, 'healTargetId' in selected ? selected.healTargetId : undefined].filter(Boolean).join(' · ')}>HP {selected.health}/{selected.maxHealth} · ({selected.position.x}, {selected.position.y}){'movedFrom' in selected && selected.movedFrom ? ` · moved from (${selected.movedFrom.x}, ${selected.movedFrom.y})` : ''}{'attackTargetId' in selected && selected.attackTargetId ? ` · attacking ${entityName(selected.attackTargetId, naming)}` : ''}{'healTargetId' in selected && selected.healTargetId ? ` · treating ${entityName(selected.healTargetId, naming)}` : ''} · {entityStats(selected)}</span></> : <span>Select a castle, building, or unit for details.</span>}
       </div>
     </section>
   )
@@ -120,16 +126,6 @@ function terrainClass(symbol: string) {
   return 'ground'
 }
 
-function buildingShape(type: string) {
-  if (type === 'castle') return 'M-12 11V-8L-7-4V-12L0-7L7-12V-4L12-8V11Z'
-  if (type === 'defense_tower' || type === 'watchtower') return 'M-9 11V-12H-4V-8H4V-12H9V11Z'
-  if (type === 'barracks') return 'M-13 11V-7L0-13L13-7V11Z'
-  return 'M-11 10V-6L0-13L11-6V10Z'
-}
-function entityLabel(type: string) {
-  const labels: Record<string, string> = { battering_ram: 'B', defense_tower: 'T', watchtower: 'W', barracks: 'F', herbalist: 'H' }
-  return labels[type] ?? type.slice(0, 1).toUpperCase()
-}
 function entityStats(entity: Entity) {
   const stats = [`Defense ${entity.defense}`, `Vision ${entity.vision}`]
   if (entity.attack) stats.push(`Attack ${entity.attack}`, `Range ${'minimumRange' in entity && entity.minimumRange ? `${entity.minimumRange}–` : ''}${entity.range}`)

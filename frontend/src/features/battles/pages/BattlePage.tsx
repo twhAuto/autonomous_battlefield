@@ -4,14 +4,12 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { BattleApiError, pauseBattle, resumeBattle, stopBattle } from '../api/battles'
-import { Emblem } from '../../../shared/components/Emblem'
 import { HexBattleMap } from '../components/HexBattleMap'
 import { type BattleControlState, type BattleControlAction } from '../types'
 import { useDecisionHistory } from '../hooks/useDecisionHistory'
-import { latestDecision, controllerLabel, decisionLabel, AIDecisionPanel } from '../components/AIDecisionPanel'
+import { BattleInspector } from '../components/BattleInspector'
 import { BattleHeader, BattleStatistics, battleTitleFor, Outcome, BattleControls, BattleState } from '../components/BattlePresentation'
 import { useFactionPerspective } from '../hooks/useFactionPerspective'
-import { EventConsole } from '../components/EventConsole'
 import { useBattleStatus } from '../hooks/useBattleStatus'
 import { useBattleEventStream } from '../hooks/useBattleEventStream'
 
@@ -43,7 +41,6 @@ export function BattlePage() {
   const [perspective, setPerspective] = useState('spectator')
   const factionView = useFactionPerspective(id, battle, perspective)
   const { decisions, decisionMessage } = useDecisionHistory(id, battle)
-  const [sidePanel, setSidePanel] = useState<'events' | 'decisions'>('events')
   const [controlState, setControlState] = useState<BattleControlState>('idle')
   const [controlMessage, setControlMessage] = useState('')
 
@@ -52,7 +49,6 @@ export function BattlePage() {
     () => new Map(battle?.participants.map((participant) => [participant.id, participant.name]) ?? []),
     [battle?.participants],
   )
-  const hasModelController = battle?.participants.some((participant) => participant.controller?.type === 'model') ?? false
 
   const runBattleControl = useCallback(async (action: BattleControlAction) => {
     setControlState(battleControlStates[action])
@@ -93,19 +89,11 @@ export function BattlePage() {
     <>
       <BattleHeader battle={battle} battleTitle={battleTitle} connection={connection} connectionMessage={connectionMessage} retryConnection={retryConnection} />
 
-      <section className="battle-overview battle-overview--compact">
+      <section className="battle-toolbar">
         <div className="battle-progress-panel">
           <div className="section-label"><span>COMBAT PROGRESS</span><span>{progress}%</span></div>
           <div className="battle-progress__numbers"><strong>{battle.currentTick}</strong><span>/ {battle.requestedTicks} TICKS</span></div>
           <progress className="battle-progress" aria-label="Battle progress" max={battle.requestedTicks} value={battle.currentTick}>{progress}%</progress>
-          <div className="participant-strip">
-            {battle.participants.map((participant) => (
-              <div key={participant.id}>
-                <Emblem seed={participant.name} size="small" />
-                <span>{participant.name}<small>{controllerLabel(participant.controller)} · {decisionLabel(latestDecision(decisions, participant.id))}</small></span>
-              </div>
-            ))}
-          </div>
         </div>
 
         <aside className={`outcome-panel outcome-panel--${battle.paused ? 'paused' : battle.status}`}>
@@ -127,27 +115,10 @@ export function BattlePage() {
             />
           }
         </div>
-        <aside className="battle-side-panels">
-          <div className="battle-side-panel-tabs" role="tablist" aria-label="Battle information">
-            <button id="events-tab" role="tab" type="button" aria-selected={sidePanel === 'events'} aria-controls="events-panel" onClick={() => setSidePanel('events')}>EVENTS</button>
-            <button id="decisions-tab" role="tab" type="button" aria-selected={sidePanel === 'decisions'} aria-controls="decisions-panel" onClick={() => setSidePanel('decisions')}>AI DECISIONS <span>{decisions.filter((decision) => decision.controllerType === 'model' || Boolean(decision.profileId)).length}</span></button>
-          </div>
-          <div className="battle-side-panel__content" id={sidePanel === 'events' ? 'events-panel' : 'decisions-panel'} role="tabpanel" aria-labelledby={sidePanel === 'events' ? 'events-tab' : 'decisions-tab'}>
-            {sidePanel === 'events'
-              ? <EventConsole
-                  battleAttempt={battle.attempt}
-                  selectedAttempt={selectedAttempt}
-                  setSelectedAttempt={setSelectedAttempt}
-                  events={events}
-                  eventCursor={eventCursor}
-                  eventHasMore={eventHasMore}
-                  eventState={eventState}
-                  eventMessage={eventMessage}
-                  loadEventPage={loadEventPage}
-                />
-              : <AIDecisionPanel decisions={decisions} participantNames={participantNames} message={decisionMessage} hasModelController={hasModelController} />}
-          </div>
-        </aside>
+        <BattleInspector key={`${id}:${battle.attempt}`} battle={battle} decisions={decisions} decisionMessage={decisionMessage} events={{
+          battleAttempt: battle.attempt, selectedAttempt, setSelectedAttempt, events, participantNames,
+          eventCursor, eventHasMore, eventState, eventMessage, loadEventPage,
+        }} />
       </section>
 
       <BattleStatistics battle={battle} participantNames={participantNames} />

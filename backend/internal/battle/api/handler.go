@@ -39,6 +39,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/battles/{id}/factions/{factionId}/view", h.GetFactionView)
 	mux.HandleFunc("GET /v1/battles/{id}/events", h.ListEvents)
 	mux.HandleFunc("GET /v1/battles/{id}/decisions", h.ListDecisions)
+	mux.HandleFunc("GET /v1/battles/{id}/decisions/{requestId}/context", h.GetDecisionContext)
 }
 
 func (h *Handler) PauseBattle(w http.ResponseWriter, r *http.Request) {
@@ -304,7 +305,7 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 func battleResponse(run *battleservice.BattleRun) any {
 	participants := make([]map[string]any, 0, len(run.ScenarioSnapshot.Factions))
 	for _, faction := range run.ScenarioSnapshot.Factions {
-		participants = append(participants, map[string]any{"id": faction.ID, "name": faction.Name, "controller": faction.Controller})
+		participants = append(participants, map[string]any{"id": faction.ID, "name": faction.Name, "controller": faction.Controller, "background": faction.Background, "doctrine": faction.Doctrine})
 	}
 	return struct {
 		ID             string  `json:"id"`

@@ -266,6 +266,11 @@ describe('App', () => {
           status: 'queued',
           attempt: 0,
           participants: [{ id: firstId, name: 'Northwind' }, { id: secondId, name: 'Verdant Accord' }],
+          state: {
+            battleId, tick: 0, openingComplete: false,
+            factions: [firstId, secondId].map((factionId) => ({ factionId, gold: 60, goldEarned: 0, goldSpent: 0, goldLooted: 0 })),
+            units: null, buildings: null,
+          },
           result: null,
         }), { status: 200 })
       }
@@ -302,10 +307,12 @@ describe('App', () => {
     })
     expect(await screen.findByRole('heading', { name: 'Battle in progress' })).toBeInTheDocument()
     expect(screen.getByText('Awaiting engine')).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'EVENTS' })).toHaveAttribute('aria-selected', 'true')
-    await user.click(screen.getByRole('tab', { name: /AI DECISIONS/ }))
-    expect(screen.getByRole('tab', { name: /AI DECISIONS/ })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText('This battle uses scripted controllers, so no model decisions will be created.')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Inspect' })).toHaveValue('system')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Inspect' }), firstId)
+    const inspector = within(screen.getByRole('complementary', { name: 'Battle inspector' }))
+    expect(inspector.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
+    await user.click(screen.getByRole('tab', { name: 'Decisions' }))
+    expect(screen.getByRole('region', { name: 'AI decisions' })).toHaveTextContent('No decisions recorded for this player in the current attempt.')
   })
 
   it('shows battle tick validation before deployment', async () => {
@@ -435,16 +442,17 @@ describe('App', () => {
 
     expect(await screen.findByRole('heading', { name: 'Battle complete' })).toBeInTheDocument()
     expect(screen.getByText('Northwind wins')).toBeInTheDocument()
-    expect(await screen.findByText('battle started')).toBeInTheDocument()
+    expect(await screen.findByText('battle started', { selector: 'strong' })).toBeInTheDocument()
     expect((await screen.findAllByRole('listitem'))[0]).toHaveTextContent('battle completed')
     expect(screen.getByRole('heading', { name: 'Latest events' })).toBeInTheDocument()
     expect(screen.getAllByText('Damage dealt')).toHaveLength(2)
-    await user.click(screen.getByRole('tab', { name: /AI DECISIONS/ }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Inspect' }), firstId)
+    await user.click(screen.getByRole('tab', { name: 'Decisions' }))
     expect(await screen.findByRole('region', { name: 'AI decisions' })).toHaveTextContent('pressure')
     expect(screen.getByRole('region', { name: 'AI decisions' })).toHaveTextContent('attack 1400 · defend 800')
     expect(screen.getByRole('region', { name: 'AI decisions' })).toHaveTextContent('The visible lane is open')
-    expect(screen.getByRole('region', { name: 'AI decisions' })).toHaveTextContent('ranger → vanguard')
-    expect(screen.getByText('gemini-2.5-flash')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'AI decisions' })).toHaveTextContent('Ranger → Vanguard')
+    expect(within(screen.getByRole('region', { name: 'AI decisions' })).getByText('gemini-2.5-flash')).toBeInTheDocument()
   })
 
   it('stops an active battle from the battle control panel', async () => {
@@ -713,7 +721,7 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Battle failed' })).toBeInTheDocument()
     expect(screen.getByText('engine_error')).toBeInTheDocument()
     expect(await screen.findByText('{"phase":"advance"}')).toBeInTheDocument()
-    expect(screen.getByText('—')).toBeInTheDocument()
+    expect(within(screen.getByRole('listitem')).getByText('—')).toBeInTheDocument()
     expect(screen.getByText('false')).toBeInTheDocument()
     expect(screen.getByText('3', { selector: 'dd' })).toBeInTheDocument()
   })

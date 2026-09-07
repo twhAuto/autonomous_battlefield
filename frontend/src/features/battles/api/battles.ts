@@ -36,6 +36,8 @@ export type BattleStatus = 'queued' | 'running' | 'completed' | 'failed' | 'stop
 export interface BattleParticipant {
   id: string
   name: string
+  background?: string
+  doctrine?: string
   controller?: BattleController
 }
 
@@ -89,8 +91,8 @@ export interface BattleFactionState {
 }
 export interface BattleState {
   openingComplete?: boolean
-  battleId: string; tick: number; factions: BattleFactionState[]
-  units: BattleUnit[]; buildings: BattleBuilding[]
+  battleId: string; tick: number; factions: BattleFactionState[] | null
+  units: BattleUnit[] | null; buildings: BattleBuilding[] | null
 }
 export interface BattleView { map: BattleMap; state: BattleState; visiblePositions: HexPosition[] }
 
@@ -163,6 +165,29 @@ export interface DecisionHistory {
   }
   usage: { inputTokens?: number; outputTokens?: number; requests?: number }
   createdAt: string; resolvedAt?: string
+}
+
+// Saved public observation; never substitutes the live spectator state.
+export interface SavedDecisionContext {
+  requestId: string; battleId: string; factionId: string; attempt: number
+  targetTick: number; observationTick: number
+  context: {
+    factionName?: string; background?: string; doctrine?: string; opening: boolean
+    ownedUpgradeIds: string[] | null
+    economy: { gold: number; projectedIncome: number; economyBuildingCost: number; economyBuildingIncome: number; currentEconomyBuildings: number; maximumEconomyBuildings: number; maximumBuildings?: number }
+    view: BattleView
+    legal: { actionKinds: string[] | null; units: { id: string; cost: number }[] | null; economySites: HexPosition[] | null; buildings?: { id: string; cost: number }[] | null; upgrades?: { id: string; cost: number }[] | null; recruitmentSources?: string[] | null }
+    activePlan: DecisionHistory['resolvedPlan']
+    memory?: JsonValue
+    knowledge?: JsonValue
+  } | null
+}
+
+export async function getDecisionContext(id: string, requestId: string, attempt: number, signal?: AbortSignal): Promise<SavedDecisionContext> {
+  const response = await battlefieldFetch(`/v1/battles/${encodeURIComponent(id)}/decisions/${encodeURIComponent(requestId)}/context?attempt=${attempt}`, { signal })
+  if (response.ok) return await response.json() as SavedDecisionContext
+  if (response.status === 404) throw new BattleApiError('Saved context is unavailable for this decision.', 404)
+  throw new BattleApiError('Decision context could not be loaded.', response.status)
 }
 
 export class BattleApiError extends Error {

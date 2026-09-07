@@ -421,11 +421,46 @@ The frontend is a React/Vite single-page application.
 | [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx) | Route-level composition, selected perspective/panel, and control actions |
 | [`features/auth/pages/LoginPage.tsx`](../../frontend/src/features/auth/pages/LoginPage.tsx) | Single-administrator credential form and error state |
 | [`features/battles/components/HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx) | Hex-map visualization |
+| [`features/battles/components/PlayerStatusPanel.tsx`](../../frontend/src/features/battles/components/PlayerStatusPanel.tsx) | Null-safe spectator summaries, economy/building overview, and grouped living units |
 | [`shared/components/Emblem.tsx`](../../frontend/src/shared/components/Emblem.tsx) | Deterministic faction emblem |
 
 Feature-specific API clients live in `src/features/<feature>/api`; common HTTP transport lives in `src/shared/api`. Page components should consume typed client functions rather than duplicating `fetch` calls.
 
 The battle feature's `hooks/` directory owns status, event, decision-history, and faction-perspective requests. Each hook preserves its own polling cadence, retries, cancellation, and terminal-state handling. `components/AIDecisionPanel.tsx`, `components/EventConsole.tsx`, and `components/BattlePresentation.tsx` own the panels and visual presentation; shared UI state types live in `types.ts`. There is no WebSocket or server-sent-event client.
+
+`BattlePage` owns map perspective and controls. `components/BattleInspector.tsx`
+owns the System/player dropdown, the shared inner tab, and the scoped context cache;
+`InspectorTabs.tsx` implements inner-tab keyboard navigation. `AIDecisionPanel` keeps
+individual decision expansion stable, while `DecisionContextPanel.tsx` lazily
+loads and presents the historical observation. `EventConsole` preserves loaded
+event filtering and payload expansion. Player/decision sections remain mounted
+when hidden; the inspector is reset for a different battle or attempt.
+
+`components/EntityIcon.tsx` supplies local SVG artwork for all seven core unit
+and five building types, reused by the map, player roster, building overview,
+and a collapsible legend of types present in the displayed map. Map markers keep
+faction-colored backgrounds and HP bars, with a separate selection/focus ring.
+`presentation/entities.ts` owns type labels, entity indexing, and readable
+references such as `Iron Legion · Ranger #12` (or `Ranger #12` inside that player's
+panel). It uses the sequence embedded in generated IDs, so deaths, polling,
+reordering, and historical event pages do not renumber entities. Opaque IDs use
+available entity metadata plus an eight-character ID; unknown references use
+`Entity · <short ID>`. Event metadata is scoped to the current attempt; older
+attempts resolve generated IDs directly. Full IDs remain in tooltips and raw
+inspection payloads. Structured recruitment sources and unit/building types use
+the same helpers, while freeform AI prose and raw JSON remain unchanged.
+Presentation tests cover naming stability, unknown types/IDs, historical attempts,
+raw payload preservation, icon distinctions, and keyboard selection.
+
+Backend `internal/battle/api/decision_context.go` routes the scoped context read;
+`internal/battle/service/decision_context.go` validates ownership and projects the
+saved observation through the existing repository `GetDecision` method. The
+battle response includes the scenario snapshot's background and doctrine.
+
+Component and route tests cover three-player navigation, keyboard focus,
+retained sections, null opening collections, recruitment updates, unit grouping,
+legacy profiles, lazy context loading/cache/retry, obsolete response cancellation,
+and stable decision expansion. Backend tests cover scope and public projection.
 
 `shared/api/request.ts` accepts API paths and applies the configured base URL. `createApiClient` preserves abort errors and wraps network failures in the feature's error type. Authentication disables global unauthorized notifications so login/session failures are handled locally. Feature clients, including faction ruleset discovery, use this common error handling and retain HTTP status messages; battle stop/pause/resume share one response mapper.
 

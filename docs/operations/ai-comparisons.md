@@ -11,6 +11,26 @@ CLI tools may add their own internal instructions.
 
 ## Faction memory
 
+In a running or saved battle, select a player in the sidebar’s **Inspect** dropdown and open
+**Decisions**. Expand a decision to compare its rationale, orders, and fallback
+provenance. Expand **Saved decision context** to load the historical economy,
+visible forces, legal choices, prior plan, memory, and knowledge. The observation
+tick is distinct from the plan's target tick and the current snapshot displayed
+in the player header. Missing legacy observations are labeled explicitly.
+**Faction** displays background/doctrine saved at battle creation, even if the
+current faction profile has changed or been deleted. **Units** shows the current
+living army grouped by type; expand a group for individual HP and coordinates.
+
+Use **System** for comparison rows and the event type filter. Expand **Inspect
+event** to check execution: an order does not prove that purchases were fulfilled.
+Event filters apply to loaded history only. The event attempt selector does not
+change player resources or decision history, which show the current attempt.
+
+Roll out the backend before the frontend: the additive participant fields and
+context endpoint require no database migration. During version skew, missing
+profile fields and unavailable context appear locally in the inspector and do
+not prevent inspecting the rest of the battle.
+
 Memory observations precede their associated plans; they do not measure the
 plans' effects. Compare later observations and current context when assessing
 changes. Historical names and rationales are untrusted data, and current legal
