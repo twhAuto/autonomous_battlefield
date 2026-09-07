@@ -102,10 +102,10 @@ func (w *Worker) prepareDecision(ctx context.Context, lease BattleLease, simulat
 func newDecisionContext(lease BattleLease, factionID string, targetTick uint64, snapshot game.DecisionSnapshot) ai.DecisionContext {
 	return ai.DecisionContext{Doctrine: snapshot.Doctrine, FactionName: snapshot.FactionName, Background: snapshot.Background, Opening: snapshot.Opening, OwnedUpgradeIDs: snapshot.OwnedUpgradeIDs, SchemaVersion: ai.ContextSchema, RequestID: decisionID(lease.BattleID, lease.Attempt, factionID, targetTick), BattleID: lease.BattleID,
 		FactionID: factionID, TargetTick: targetTick, ExpectedVersion: 1, ObservationVersion: snapshot.Version,
-		View: snapshot.View, Economy: ai.EconomyContext{Gold: snapshot.Gold, ProjectedIncome: snapshot.ProjectedIncome,
+		View: snapshot.View, Economy: ai.EconomyContext{MaximumBuildings: snapshot.MaximumBuildings, Gold: snapshot.Gold, ProjectedIncome: snapshot.ProjectedIncome,
 			EconomyBuildingCost: snapshot.EconomyCost, EconomyBuildingIncome: snapshot.EconomyIncome,
 			CurrentEconomyBuildings: snapshot.EconomyCount, MaximumEconomyBuildings: snapshot.MaximumEconomy},
-		Legal: ai.LegalChoices{Upgrades: snapshot.LegalUpgrades, ActionKinds: []string{game.ActionAttack, game.ActionDefend}, Units: snapshot.LegalUnits, EconomySites: snapshot.LegalSites}, ActivePlan: snapshot.ActivePlan}
+		Legal: ai.LegalChoices{Buildings: snapshot.LegalBuildings, RecruitmentSources: snapshot.RecruitmentSources, Upgrades: snapshot.LegalUpgrades, ActionKinds: []string{game.ActionAttack, game.ActionDefend}, Units: snapshot.LegalUnits, EconomySites: snapshot.LegalSites}, ActivePlan: snapshot.ActivePlan}
 }
 
 func (w *Worker) logPreparedDecision(ctx context.Context, lease BattleLease, targetTick uint64, factionID string, setup game.FactionSetup, record ai.DecisionRecord) {

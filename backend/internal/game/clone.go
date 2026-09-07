@@ -14,10 +14,14 @@ func CloneState(value State) State {
 	}
 	value.Units = append([]Unit(nil), value.Units...)
 	for index := range value.Units {
+		value.Units[index].HealTargetPosition = clonePosition(value.Units[index].HealTargetPosition)
 		value.Units[index].MovedFrom = clonePosition(value.Units[index].MovedFrom)
 		value.Units[index].AttackTargetPosition = clonePosition(value.Units[index].AttackTargetPosition)
 	}
 	value.Buildings = append([]Building(nil), value.Buildings...)
+	for i := range value.Buildings {
+		value.Buildings[i].AttackTargetPosition = clonePosition(value.Buildings[i].AttackTargetPosition)
+	}
 	return value
 }
 
@@ -47,6 +51,7 @@ func CloneResult(value Result) Result {
 }
 
 func CloneScenario(value Scenario) Scenario {
+	value.Ruleset.Structures = append([]BuildingType(nil), value.Ruleset.Structures...)
 	value.Ruleset.Knowledge = CloneKnowledge(value.Ruleset.Knowledge)
 	if value.Ruleset.ContentSource != nil {
 		copy := *value.Ruleset.ContentSource

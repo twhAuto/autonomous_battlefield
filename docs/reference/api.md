@@ -214,6 +214,34 @@ host subscription agent cannot continue the stopped run.
 
 `GET /v1/battles/{battleId}/factions/{factionId}/view` returns the same terrain with faction fog-of-war applied. Owned entities and both castles are always present; other hostile entities appear only inside current friendly vision.
 
+## Expanded battlefield data
+
+`GET /v1/scenarios` includes `frontier-siege-v2` (25×17), with the seven allowed
+unit IDs and five building IDs including the castle. `GET /v1/faction-rulesets`
+includes `castle-siege-v2`, optional `structures` definitions, and the shared
+`buildings.maximumBuildingCount` limit.
+
+Units may expose `class`, `minimumRange`, `buildingPriority`,
+`buildingDamageBonus`, `bonusAgainstClass`, `classDamageBonus`, and `healAmount`.
+Their per-tick treatment indicators are `healTargetId` and `healTargetPosition`.
+Buildings additionally expose optional `attack`, `range`, `readyAtTick`,
+`attackTargetId`, and `attackTargetPosition`. Absent fields retain legacy behavior.
+Faction views remove action target IDs/positions outside current visibility.
+
+Saved strategy plans may contain `constructionOrders` as
+`[{"buildingType":"defense_tower","position":{"x":9,"y":7}}]` and
+`recruitmentOrders` as
+`[{"unitType":"catapult","count":1,"sourceBuildingId":"a:barracks:003"}]`.
+Use actual IDs from the decision context, never guessed source IDs. Typed
+construction replaces nonempty legacy construction priorities; an explicit empty
+array means no construction. Omitting a recruitment source uses the castle.
+
+The new `unit_healed` event contains `factionId`, `healerId`, `targetId`, actual
+`amount`, and `remainingHealth`. `building_attacked` uses the existing attack
+payload (`attackerId`, `targetId`, `targetType`, `damage`, `remainingHealth`).
+Expanded-scenario `unit_recruited` events include `sourceBuildingId`.
+[Frontier Siege](../design/frontier-siege.md) documents action timing and limits.
+
 ## Page through battle events
 
 ```http

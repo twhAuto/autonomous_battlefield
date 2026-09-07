@@ -33,7 +33,9 @@ func (m *Match) runUpgrades(id string, plan controller.PlanProposal) []Event {
 		for i := range m.state.Units {
 			unit := &m.state.Units[i]
 			if unit.FactionID == id && unit.Health > 0 {
-				unit.Attack += upgrade.AttackBonus
+				if unit.HealAmount == 0 {
+					unit.Attack += upgrade.AttackBonus
+				}
 				unit.Defense += upgrade.DefenseBonus
 			}
 		}

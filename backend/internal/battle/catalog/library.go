@@ -18,13 +18,16 @@ type rulesetFile struct {
 	Library      *librarySelection `yaml:"library"`
 }
 type librarySelection struct {
-	ID       string   `yaml:"id"`
-	Version  string   `yaml:"version"`
-	Units    []string `yaml:"units"`
-	Upgrades []string `yaml:"upgrades"`
-	Castle   string   `yaml:"castle"`
-	Economy  string   `yaml:"economy"`
+	ID         string   `yaml:"id"`
+	Version    string   `yaml:"version"`
+	Units      []string `yaml:"units"`
+	Upgrades   []string `yaml:"upgrades"`
+	Castle     string   `yaml:"castle"`
+	Economy    string   `yaml:"economy"`
+	Structures []string `yaml:"structures"`
 }
+
+// Keep the original JSON field names in library hashes for unchanged v1 content.
 type buildingDefinition struct {
 	ID      string `yaml:"id"`
 	Kind    string `yaml:"kind"`
@@ -33,7 +36,14 @@ type buildingDefinition struct {
 	Vision  int    `yaml:"vision"`
 	Income  int64  `yaml:"income"`
 	Cost    int64  `yaml:"cost"`
+	Attack  int64  `json:"Attack,omitempty" yaml:"attack,omitempty"`
+	Range   int    `json:"Range,omitempty" yaml:"range,omitempty"`
 }
+
+func (b buildingDefinition) buildingType() game.BuildingType {
+	return game.BuildingType{ID: b.ID, Kind: b.Kind, Health: b.Health, Defense: b.Defense, Vision: b.Vision, Income: b.Income, Cost: b.Cost, Attack: b.Attack, Range: b.Range}
+}
+
 type contentLibrary struct {
 	ID        string               `yaml:"id"`
 	Version   string               `yaml:"version"`
@@ -49,14 +59,14 @@ func resolveLibrary(directory string, source rulesetFile) (game.Ruleset, error) 
 		return r, nil
 	}
 	ref := source.Library
-	if r.Buildings != (game.BuildingRules{MaximumEconomyCount: r.Buildings.MaximumEconomyCount}) {
-		return r, fmt.Errorf("library rulesets configure only maximumEconomyCount; building stats belong in the library")
+	if r.Buildings != (game.BuildingRules{MaximumEconomyCount: r.Buildings.MaximumEconomyCount, MaximumBuildingCount: r.Buildings.MaximumBuildingCount}) {
+		return r, fmt.Errorf("library rulesets configure only building limits; building stats belong in the library")
 	}
 	if !safeContentName(ref.ID) || !safeContentName(ref.Version) {
 		return r, fmt.Errorf("library ID and version must use letters, digits, dashes or underscores")
 	}
-	if len(r.Units) > 0 || len(r.Upgrades) > 0 || r.Knowledge != nil {
-		return r, fmt.Errorf("library selection cannot be mixed with inline units, upgrades or knowledge")
+	if len(r.Units) > 0 || len(r.Upgrades) > 0 || len(r.Structures) > 0 || r.Knowledge != nil {
+		return r, fmt.Errorf("library selection cannot be mixed with inline units, upgrades, structures or knowledge")
 	}
 	var library contentLibrary
 	path := filepath.Join(filepath.Dir(directory), "content", ref.ID+"-v"+ref.Version+".yaml")
@@ -93,7 +103,14 @@ func resolveLibrary(directory string, source rulesetFile) (game.Ruleset, error) 
 		return r, fmt.Errorf("library economy must reference an economy building")
 	}
 	// Rulesets own limits; library definitions own building stats.
-	r.Buildings = game.BuildingRules{CastleTypeID: castle.ID, EconomyTypeID: economy.ID, CastleHealth: castle.Health, CastleDefense: castle.Defense, CastleVision: castle.Vision, CastleIncome: castle.Income, EconomyCost: economy.Cost, EconomyHealth: economy.Health, EconomyDefense: economy.Defense, EconomyVision: economy.Vision, EconomyIncome: economy.Income, MaximumEconomyCount: r.Buildings.MaximumEconomyCount}
+	r.Buildings = game.BuildingRules{CastleTypeID: castle.ID, EconomyTypeID: economy.ID, CastleHealth: castle.Health, CastleDefense: castle.Defense, CastleVision: castle.Vision, CastleIncome: castle.Income, EconomyCost: economy.Cost, EconomyHealth: economy.Health, EconomyDefense: economy.Defense, EconomyVision: economy.Vision, EconomyIncome: economy.Income, MaximumEconomyCount: r.Buildings.MaximumEconomyCount, MaximumBuildingCount: r.Buildings.MaximumBuildingCount}
+	for _, id := range ref.Structures {
+		b, exists := buildings[id]
+		if !exists || !game.ValidStructure(b.buildingType()) {
+			return r, fmt.Errorf("invalid structure selection %q", id)
+		}
+		r.Structures = append(r.Structures, b.buildingType())
+	}
 	data, _ := json.Marshal(library)
 	digest := sha256.Sum256(data)
 	r.ContentSource = &game.ContentSource{ID: library.ID, Version: library.Version, Digest: hex.EncodeToString(digest[:])}
@@ -118,7 +135,7 @@ func validateLibrary(l contentLibrary) error {
 	}
 	seen := map[string]bool{}
 	for _, b := range l.Buildings {
-		if strings.TrimSpace(b.ID) == "" || seen[b.ID] || (b.Kind != "castle" && b.Kind != "economy") || b.Health <= 0 || b.Defense < 0 || b.Vision <= 0 || b.Income <= 0 || b.Cost < 0 {
+		if strings.TrimSpace(b.ID) == "" || seen[b.ID] || !validLibraryBuilding(b) {
 			return fmt.Errorf("invalid or duplicate library building %q", b.ID)
 		}
 		if b.Kind == "economy" && b.Cost == 0 {
@@ -127,4 +144,11 @@ func validateLibrary(l contentLibrary) error {
 		seen[b.ID] = true
 	}
 	return nil
+}
+
+func validLibraryBuilding(b buildingDefinition) bool {
+	if b.Kind != "castle" && b.Kind != "economy" {
+		return game.ValidStructure(b.buildingType())
+	}
+	return b.Health > 0 && b.Defense >= 0 && b.Vision > 0 && b.Income > 0 && b.Cost >= 0 && b.Attack == 0 && b.Range == 0
 }

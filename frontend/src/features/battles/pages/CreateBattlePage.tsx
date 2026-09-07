@@ -166,7 +166,11 @@ export function CreateBattlePage() {
                   {scenarios.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.id} · {scenario.mapWidth}×{scenario.mapHeight}</option>)}
                 </select>
                 {selectedScenario && (
-                  <p className="field-hint">Rules v{selectedScenario.rulesVersion} / decisions every {selectedScenario.decisionIntervalTicks} ticks / {selectedScenario.tickDuration} tick pace</p>
+                  <div className="field-hint"><p>Rules v{selectedScenario.rulesVersion} / decisions every {selectedScenario.decisionIntervalTicks} ticks / {selectedScenario.tickDuration} tick pace</p>
+                    <p>Units: {selectedScenario.allowedUnits?.join(', ') || 'Scenario roster'}</p>
+                    <p>Buildings: {selectedScenario.allowedBuildings?.join(', ') || 'Scenario buildings'}</p>
+                    {selectedScenario.id === 'frontier-siege-v2' && <p>Frontier Siege: broad siege approaches and two flanking lanes. Six sites per side; choose up to four buildings, including at most two economy buildings.</p>}
+                  </div>
                 )}
               </div>
 

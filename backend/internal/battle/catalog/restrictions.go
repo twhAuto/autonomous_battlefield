@@ -76,6 +76,9 @@ func buildingIDs(r game.Ruleset) []string {
 	if r.Buildings.MaximumEconomyCount > 0 {
 		ids = append(ids, economy)
 	}
+	for _, b := range r.Structures {
+		ids = append(ids, b.ID)
+	}
 	return ids
 }
 func restrictRuleset(base game.Ruleset, t template) (game.Ruleset, error) {
@@ -105,8 +108,22 @@ func restrictRuleset(base game.Ruleset, t template) (game.Ruleset, error) {
 		if !castleIncluded {
 			return r, fmt.Errorf("scenario must include required castle building %q", available[0])
 		}
-		if len(selected) == 1 {
+		selectedIDs := map[string]bool{}
+		for _, id := range selected {
+			selectedIDs[id] = true
+		}
+		economyID := base.Buildings.EconomyTypeID
+		if economyID == "" {
+			economyID = game.BuildingEconomy
+		}
+		if !selectedIDs[economyID] {
 			r.Buildings.MaximumEconomyCount = 0
+		}
+		r.Structures = nil
+		for _, b := range base.Structures {
+			if selectedIDs[b.ID] {
+				r.Structures = append(r.Structures, b)
+			}
 		}
 	}
 	if err := game.ValidateRuleset(r); err != nil {
@@ -126,6 +143,17 @@ func validateSelectedPlans(t template, r game.Ruleset) error {
 		for _, id := range ids {
 			if _, ok := units[id]; !ok {
 				return fmt.Errorf("plan %q recruits excluded unit %q", p.Name, id)
+			}
+		}
+		if p.ConstructionOrders != nil {
+			legal := map[string]bool{}
+			for _, b := range game.ConstructibleBuildings(r) {
+				legal[b.ID] = true
+			}
+			for _, order := range *p.ConstructionOrders {
+				if !legal[order.BuildingType] {
+					return fmt.Errorf("plan %q builds excluded type %q", p.Name, order.BuildingType)
+				}
 			}
 		}
 		if r.Buildings.MaximumEconomyCount == 0 && len(p.ConstructionPriorities) > 0 {

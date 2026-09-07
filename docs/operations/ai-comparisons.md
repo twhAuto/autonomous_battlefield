@@ -207,3 +207,11 @@ schemas and prompts agree. Existing battle JSON requires no database migration.
 
 See [content libraries and scenario selections](content-library.md) for shared units,
 buildings, upgrades, roster filtering, and version publication.
+
+For expanded scenarios, recruitment orders may specify `sourceBuildingId` from
+`legal.recruitmentSources`; omitted sources use the castle. The six-unit limit is
+shared across sources. Unavailable explicit sources and blocked Barracks orders
+are skipped without substitution; blocked castle spawns or an unaffordable order
+stop remaining purchases. Typed `constructionOrders` select building definitions
+from `legal.buildings` at `legal.economySites`. See
+[Frontier Siege](../design/frontier-siege.md) for the new mechanics and balance probes.

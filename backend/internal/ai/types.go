@@ -16,7 +16,7 @@ const (
 	ControllerModel    = "model"
 	ContextSchema      = "battlefield.decision-context.v2"
 	PlanSchema         = "battlefield.strategy-plan.v2"
-	ToolSchema         = "battlefield.mcp-tools.v4"
+	ToolSchema         = "battlefield.mcp-tools.v5"
 )
 
 type DecisionSession struct {
@@ -108,6 +108,7 @@ type DecisionContext struct {
 }
 
 type EconomyContext struct {
+	MaximumBuildings        int   `json:"maximumBuildings,omitempty"`
 	Gold                    int64 `json:"gold"`
 	ProjectedIncome         int64 `json:"projectedIncome"`
 	EconomyBuildingCost     int64 `json:"economyBuildingCost"`
@@ -117,10 +118,12 @@ type EconomyContext struct {
 }
 
 type LegalChoices struct {
-	Upgrades     []game.Upgrade          `json:"upgrades,omitempty"`
-	ActionKinds  []string                `json:"actionKinds"`
-	Units        []game.UnitType         `json:"units"`
-	EconomySites []controller.Coordinate `json:"economySites"`
+	Buildings          []game.BuildingType     `json:"buildings,omitempty"`
+	RecruitmentSources []string                `json:"recruitmentSources,omitempty"`
+	Upgrades           []game.Upgrade          `json:"upgrades,omitempty"`
+	ActionKinds        []string                `json:"actionKinds"`
+	Units              []game.UnitType         `json:"units"`
+	EconomySites       []controller.Coordinate `json:"economySites"`
 }
 
 type PlanSubmission struct {

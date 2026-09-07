@@ -25,7 +25,7 @@ func (m *Match) OpeningFallback(factionID string) controller.PlanProposal {
 			if len(orders) == 6 {
 				break
 			}
-			if unit.Cost <= gold {
+			if unit.HealAmount == 0 && unit.Cost <= gold {
 				orders = append(orders, controller.RecruitmentOrder{UnitType: unit.ID, Count: 1})
 				gold -= unit.Cost
 				purchased = true
@@ -44,7 +44,7 @@ func (m *Match) advanceOpening(plans map[string]controller.PlanProposal) (Transi
 		resolved[id] = m.OpeningFallback(id)
 	}
 	for id, plan := range plans {
-		if len(plan.ConstructionPriorities) > 0 {
+		if len(plan.ConstructionPriorities) > 0 || plan.ConstructionOrders != nil && len(*plan.ConstructionOrders) > 0 {
 			return Transition{}, fmt.Errorf("construction is unavailable during opening")
 		}
 		for _, kind := range plan.SpendOrder {

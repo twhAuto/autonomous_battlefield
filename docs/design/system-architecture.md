@@ -316,7 +316,7 @@ A decision context contains:
 - battle, faction, request, target-tick, and version identifiers;
 - a fog-of-war faction view;
 - current and projected economy values;
-- legal action kinds, unit definitions, and construction sites;
+- legal action kinds, unit/building definitions, construction sites, and owned recruitment sources;
 - the currently active plan;
 - optional bounded faction memory and retrieved unit knowledge;
 - a hash of the observation excluding request-specific fields.
@@ -329,7 +329,7 @@ A model or scripted controller can propose:
 - fixed-point attack and defend weights;
 - target-specific bonuses;
 - reserve gold and spend ordering;
-- construction-site priorities;
+- typed construction orders (or legacy economy-site priorities);
 - explicit ordered unit purchases with quantities (legacy plans may use recruitment priorities).
 
 The service validates decision version, target tick, general plan bounds, and context-specific units and sites before persistence.
@@ -337,11 +337,12 @@ The service validates decision version, target tick, general plan bounds, and co
 ### Explicit recruitment orders
 
 
-The shared model prompt requests ordered `{unitType, count}` purchases through
+The shared model prompt requests ordered `{unitType, count, sourceBuildingId?}` purchases through
 `recruitmentOrders`. MCP and engine validation enforce legal unit IDs, positive
 counts, and a six-unit per-window maximum. The engine executes only the requested
-sequence, preserving reserve gold and spawn occupancy; it stops on the first
-blocked purchase. Empty orders mean no buying; missing orders retain legacy
+sequence, preserving reserve gold and spawn occupancy. Unavailable explicit sources
+and blocked Barracks orders are skipped; blocked castle spawns or an unaffordable
+purchase stop remaining purchases. The six-unit limit spans all sources. Empty orders mean no buying; missing orders retain legacy
 priority behavior. Orders are deep-copied and persisted with plans, faction memory,
 and decision hashes. The UI shows requested quantities; recruitment events report
 actual spending. See [explicit unit purchases](../operations/ai-comparisons.md#explicit-unit-purchases)
@@ -662,7 +663,7 @@ of rulesets and scenarios. The backend validates purchases against the selected 
 full definitions, filtered cards, and library provenance; its hash and persisted
 JSON freeze these across later catalog edits. AI legal choices, retrieval, and
 purchase validation consume the same resolved roster. Excluding economy buildings
-removes legal construction sites and disables their production. No schema migration
+disables economy production; legal construction sites remain when other structures are allowed. No schema migration
 or runtime content service is required. See the
 [content authoring guide](../operations/content-library.md).
 
@@ -765,3 +766,31 @@ cursor, and prior cursors for Previous/browser navigation; refresh returns to
 the newest page with the same filter. Detail links carry the originating URL
 in router state, and direct detail visits link back to the unfiltered archive.
 Obsolete requests are aborted and their results ignored.
+
+### Frontier Siege capabilities
+
+The optional `frontier-siege-v2` scenario resolves `core` version `2` through
+`castle-siege-v2`, with seven units, three additional structure types, and a 25×17
+map. Unit definitions and runtime units carry optional class, minimum range,
+building priority, damage bonus, and healing fields; omitted capabilities preserve
+ordinary v1 behavior. `Ruleset.structures` describes extra building types while
+legacy castle/economy stats remain in `BuildingRules`. `maximumBuildingCount`
+limits all living non-castle structures; the economy limit remains separate.
+
+Tick ordering is income/production, faction tactics, tower attacks in building-ID
+order, then unit turns by speed/ID. New tower attacks and Barracks sources activate
+on the next tick. Healing takes a unit action and never enters minimum-damage
+combat. Siege approaches structure firing positions; Herbalists approach allied
+soldiers. Shared pathfinding enforces terrain and occupancy. Authored map bounds
+are now odd widths 15–41 and heights 11–31 with two to eight mirrored construction
+sites per side. Existing authored maps remain valid.
+
+Typed `constructionOrders` and optional recruitment `sourceBuildingId` flow
+through controller cloning/validation, frozen worker observations, MCP submissions,
+and persisted decisions. Missing construction orders preserve legacy defaults;
+explicit empty arrays disable construction. New fields are optional in tool schema
+`battlefield.mcp-tools.v5`. All capability data is serialized in existing scenario
+and state JSON, requiring no database migration. Faction projections strip hidden
+action targets; spectators retain the complete event stream. The frontend renders
+healing and tower actions and displays recruitment origins in decision history.
+See [Frontier Siege](frontier-siege.md) for gameplay and balance probes.

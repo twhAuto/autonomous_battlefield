@@ -52,7 +52,7 @@ export function AIDecisionPanel({ decisions, participantNames, message, hasModel
                 <DecisionDetail label="Spend order" value={formatList(decision.resolvedPlan?.spendOrder)} />
                 <DecisionDetail label="Recruit" value={formatRecruitment(decision.resolvedPlan)} />
                 <DecisionDetail label="Upgrades" value={formatList(decision.resolvedPlan?.upgradeOrders)} />
-                <DecisionDetail label="Build sites" value={formatCoordinates(decision.resolvedPlan?.constructionPriorities)} />
+                <DecisionDetail label="Build sites" value={formatConstruction(decision.resolvedPlan)} />
                 <DecisionDetail label="Model" value={decision.modelIdentifier || decision.profileId || '—'} />
               </dl>
             </li>
@@ -82,7 +82,14 @@ function formatCoordinates(values?: { x: number; y: number }[]) {
 
 function formatRecruitment(plan?: DecisionHistory['resolvedPlan']) {
   if (plan?.recruitmentOrders != null) {
-    return plan.recruitmentOrders.length ? plan.recruitmentOrders.map(({ unitType, count }) => `${count} × ${unitType}`).join(' → ') : 'No purchases'
+    return plan.recruitmentOrders.length ? plan.recruitmentOrders.map(({ unitType, count, sourceBuildingId }) => `${count} × ${unitType}${sourceBuildingId ? ` from ${sourceBuildingId}` : ''}`).join(' → ') : 'No purchases'
   }
   return formatList(plan?.recruitmentPriorities)
+}
+
+function formatConstruction(plan?: DecisionHistory['resolvedPlan']) {
+  if (plan?.constructionOrders != null) {
+    return plan.constructionOrders.length ? plan.constructionOrders.map(({ buildingType, position }) => `${buildingType} (${position.x},${position.y})`).join(' → ') : 'No construction'
+  }
+  return formatCoordinates(plan?.constructionPriorities)
 }

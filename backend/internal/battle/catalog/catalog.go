@@ -248,6 +248,7 @@ func cloneRuleset(value game.Ruleset) game.Ruleset {
 		copy := *value.ContentSource
 		value.ContentSource = &copy
 	}
+	value.Structures = append([]game.BuildingType(nil), value.Structures...)
 	value.Units = append([]game.UnitType(nil), value.Units...)
 	value.Upgrades = append([]game.Upgrade{}, value.Upgrades...)
 	return value

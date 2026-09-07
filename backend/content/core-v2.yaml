@@ -1,0 +1,78 @@
+# Expanded medieval roster and structures for Frontier Siege.
+
+id: core
+version: "2"
+units:
+  - {id: vanguard, class: infantry, cost: 35, health: 70, attack: 9, defense: 7, speed: 4, movement: 1, range: 1, vision: 2}
+  - {id: striker, class: mobile, cost: 25, health: 42, attack: 14, defense: 3, speed: 8, movement: 2, range: 1, vision: 3}
+  - {id: ranger, class: infantry, cost: 30, health: 30, attack: 11, defense: 2, speed: 6, movement: 1, range: 3, vision: 4}
+  - {id: catapult, class: siege, cost: 70, health: 40, attack: 4, defense: 1, speed: 2, movement: 1, range: 5, minimumRange: 2, vision: 5, buildingPriority: true, buildingDamageBonus: 20}
+  - {id: battering_ram, class: siege, cost: 65, health: 125, attack: 3, defense: 5, speed: 1, movement: 1, range: 1, vision: 2, buildingPriority: true, buildingDamageBonus: 25}
+  - {id: pikeman, class: infantry, cost: 30, health: 55, attack: 8, defense: 4, speed: 4, movement: 1, range: 1, vision: 3, bonusAgainstClass: mobile, classDamageBonus: 12}
+  - {id: herbalist, class: support, cost: 40, health: 25, attack: 0, defense: 1, speed: 3, movement: 1, range: 1, vision: 3, healAmount: 3}
+upgrades:
+  - {id: arsenal, cost: 20, attackBonus: 2}
+  - {id: plating, cost: 20, defenseBonus: 2}
+  - {id: industry, cost: 20, economyIncomeBonus: 2}
+buildings:
+  - {id: castle, kind: castle, health: 300, defense: 8, vision: 4, income: 10, cost: 0}
+  - {id: economy, kind: economy, health: 60, defense: 2, vision: 2, income: 10, cost: 50}
+  - {id: defense_tower, kind: defense_tower, health: 130, defense: 4, vision: 4, income: 0, cost: 80, attack: 12, range: 3}
+  - {id: watchtower, kind: watchtower, health: 50, defense: 1, vision: 6, income: 0, cost: 30}
+  - {id: barracks, kind: barracks, health: 100, defense: 3, vision: 3, income: 0, cost: 90}
+knowledge:
+  mechanics: >-
+    Recruitment and construction follow the submitted spend order and reserve gold.
+    Range limits attack distance; movement limits travel per movement action.
+    Defense reduces damage subject to the minimum damage rule. Unit actions and targeting
+    are executed by the engine; a plan sets faction priorities, not individual commands.
+    Siege units prefer defense towers, other structures, then castles; their damage bonus
+    applies before defense. Catapults retreat from adjacent enemies when possible and cannot
+    attack them. Pikemen gain 12 attack against mobile troops such as Strikers.
+    Herbalists treat one adjacent soldier for 3 HP instead of attacking; they cannot treat
+    siege engines or other healers and follow injured allies or escort soldiers.
+    Defense towers fire before units; newly built towers and Barracks become active next tick; watchtower vision is immediate.
+    Watchtowers extend vision without attacking. All non-castle structures share the building
+    limit and faction construction sites (listed as economySites); economy retains its own cap.
+    Barracks enable sourceBuildingId recruitment from adjacent free ground with the same
+    faction-wide six-unit production limit. Building a forward source reduces travel time
+    but exposes the investment. Every construction site has a protected ground approach;
+    stone ridges allow movement around their ends and do not block ranged fire or vision.
+    Knowledge guidance is advisory. Current observed stats include active modifications.
+  cards:
+    - unitId: vanguard
+      role: Durable melee unit
+      strengths: High base health and defense relative to the other starter units.
+      weaknesses: Lower movement and attack than the starter Striker; costs more gold.
+      guidance: Consider when durability matters, while accounting for travel time and budget.
+    - unitId: striker
+      role: Mobile melee attacker
+      strengths: Higher base attack and movement than the other starter units.
+      weaknesses: Less health and defense than the starter Vanguard; melee attack range.
+      guidance: Consider for mobile pressure, but assess exposure using visible enemy positions.
+    - unitId: ranger
+      role: Ranged attacker and observer
+      strengths: Greater base attack range and vision than the other starter units.
+      weaknesses: Lower health and defense than the other starter units.
+      guidance: Consider reach and visibility; do not assume a guaranteed counter or manual positioning.
+
+    - unitId: catapult
+      role: Long-range building siege
+      strengths: Outranges defense towers and gains 20 attack against buildings.
+      weaknesses: Fragile, slow, costly and unable to attack adjacent enemies.
+      guidance: Mix with troops to protect its approach; it prioritizes reachable enemy structures.
+    - unitId: battering_ram
+      role: Armored melee siege
+      strengths: High health and 25 bonus attack against buildings.
+      weaknesses: Slow with poor damage against soldiers.
+      guidance: Recruit with fighting escorts; it must reach adjacent ground to breach a structure.
+    - unitId: pikeman
+      role: Anti-mobile infantry
+      strengths: Gains 12 attack against mobile units such as Strikers.
+      weaknesses: Slow movement and melee range leave it exposed to Rangers.
+      guidance: Include against mobile pressure; escorts are autonomous and formations are not commanded.
+    - unitId: herbalist
+      role: Field treatment support
+      strengths: Restores 3 HP per action to an adjacent injured soldier and follows allies.
+      weaknesses: No attacks; cannot treat itself, other healers, siege engines or structures.
+      guidance: Buy alongside combat troops; healing replaces movement and does not scale with arsenal.

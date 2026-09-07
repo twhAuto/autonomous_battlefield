@@ -75,8 +75,8 @@ func validateMapTerrain(value Map) (map[Position]bool, error) {
 	if value.Kind != "authored" {
 		return nil, fmt.Errorf("%w: map kind must be authored", ErrInvalidScenario)
 	}
-	if value.Width != 15 || value.Height != 11 || len(value.Rows) != value.Height {
-		return nil, fmt.Errorf("%w: authored map must be 15x11", ErrInvalidScenario)
+	if value.Width < 15 || value.Width > 41 || value.Width%2 == 0 || value.Height < 11 || value.Height > 31 || value.Height%2 == 0 || len(value.Rows) != value.Height {
+		return nil, fmt.Errorf("%w: authored map dimensions must be odd, width 15..41 and height 11..31", ErrInvalidScenario)
 	}
 	buildSites := make(map[Position]bool)
 	for y, row := range value.Rows {
@@ -120,8 +120,8 @@ func validateCastleSpawns(value Map, seen map[Position]string) error {
 
 func validateEconomySites(value Map, buildSites map[Position]bool, seen map[Position]string) error {
 	for slot, sites := range value.EconomySites {
-		if len(sites) != 2 {
-			return fmt.Errorf("%w: slot %d requires two economy sites", ErrInvalidScenario, slot)
+		if len(sites) < 2 || len(sites) > 8 || len(sites) != len(value.EconomySites[1-slot]) {
+			return fmt.Errorf("%w: slot %d requires two to eight paired construction sites", ErrInvalidScenario, slot)
 		}
 		for _, site := range sites {
 			if !buildSites[site] {

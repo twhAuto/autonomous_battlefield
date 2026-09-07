@@ -134,6 +134,9 @@ The package root contains types and interfaces shared across these subpackages, 
 | [`initialization.go`](../../backend/internal/game/initialization.go) | Scenario validation and initial factions, castles, and units |
 | [`decisions.go`](../../backend/internal/game/decisions.go) | Decision snapshots, plan validation, scripted plans, and tactics |
 | [`economy.go`](../../backend/internal/game/economy.go) | Income, construction, and recruitment |
+| [`structures.go`](../../backend/internal/game/structures.go) | Typed construction, building caps, tower turns, and forward recruitment |
+| [`siege.go`](../../backend/internal/game/siege.go) | Structure approach priorities and minimum-range retreat |
+| [`support.go`](../../backend/internal/game/support.go) | Herbalist treatment and allied movement |
 | [`combat.go`](../../backend/internal/game/combat.go) | Unit turns, targeting, damage, and loot |
 | [`movement.go`](../../backend/internal/game/movement.go) | Castle approach paths and reachable enemy alternatives |
 | [`knowledge.go`](../../backend/internal/game/knowledge.go) | Ruleset knowledge validation and defensive copying |
@@ -584,8 +587,18 @@ to verify event-page draining without load-sensitive wall-clock deadlines.
 
 ### Shared content catalog
 
-- `backend/content/core-v1.yaml` is the shipped versioned unit, upgrade, building,
-  and unit-knowledge library; rulesets reference it instead of duplicating stats.
+- `backend/content/core-v1.yaml` preserves the starter roster. `core-v2.yaml`
+  adds siege/support units and defensive/production structures; rulesets reference
+  a versioned library instead of duplicating stats.
+- `backend/scenarios/frontier-siege-v2.yaml` supplies the expanded 25×17 authored
+  map and mixed scripted plans, selected through `castle-siege-v2`.
+- `backend/internal/ai/expansion.go` validates typed construction and recruitment
+  sources against frozen legal choices. The worker exposes structure definitions
+  and source IDs through the MCP context.
+- `backend/internal/game/expansion_test.go` covers expansion mechanics;
+  catalog `expansion_test.go` and `balance_test.go` cover actual content, replay,
+  and mirrored equal-budget probes. Frontend `ExpansionMap.test.tsx` covers the
+  larger map, new structures, treatment indicators, and decision history.
 - `backend/internal/battle/catalog/library.go` resolves and validates library
   references; `restrictions.go` narrows scenario choices and validates authored plans.
 - Faction creation/editing uses name, doctrine and optional background, with editable strategy templates.

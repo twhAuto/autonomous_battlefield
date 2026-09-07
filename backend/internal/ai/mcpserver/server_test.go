@@ -103,6 +103,18 @@ func TestStreamableMCPToolsAreAuthenticatedAndScoped(t *testing.T) {
 	if err != nil || submitted.IsError || repository.submitted.IdempotencyKey != "once" || repository.submitted.Plan.Rationale == "" || len(repository.submitted.Plan.UpgradeOrders) != 1 || repository.submitted.Plan.UpgradeOrders[0] != "plating" || repository.submitted.Plan.RecruitmentOrders == nil || (*repository.submitted.Plan.RecruitmentOrders)[0].Count != 2 {
 		t.Fatalf("submit=%#v err=%v", submitted, err)
 	}
+
+	repository.record.Observation.Legal.Buildings = []game.BuildingType{{ID: "defense_tower"}}
+	repository.record.Observation.Legal.EconomySites = []controller.Coordinate{{X: 9, Y: 7}}
+	repository.record.Observation.Legal.RecruitmentSources = []string{"a:barracks:1"}
+	expanded, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "submit_strategy_plan", Arguments: map[string]any{
+		"requestId": "request-1", "idempotencyKey": "expanded", "expectedVersion": 1, "targetTick": 10, "name": "fortify", "rationale": "Protect the forward recruitment site.", "actionWeights": map[string]any{"defend": 1200}, "reserveGold": 0, "spendOrder": []string{"construction", "recruitment"}, "constructionPriorities": []any{}, "recruitmentPriorities": []any{},
+		"constructionOrders": []any{map[string]any{"buildingType": "defense_tower", "position": map[string]any{"x": 9, "y": 7}}},
+		"recruitmentOrders":  []any{map[string]any{"unitType": "ranger", "count": 1, "sourceBuildingId": "a:barracks:1"}},
+	}})
+	if err != nil || expanded.IsError || repository.submitted.IdempotencyKey != "expanded" || repository.submitted.Plan.ConstructionOrders == nil || (*repository.submitted.Plan.ConstructionOrders)[0].BuildingType != "defense_tower" || (*repository.submitted.Plan.RecruitmentOrders)[0].SourceBuildingID != "a:barracks:1" {
+		t.Fatalf("expanded tool submission: %+v %v", expanded, err)
+	}
 	assertDecisionToolLogs(t, logs.String())
 }
 

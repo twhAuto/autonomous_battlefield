@@ -107,7 +107,7 @@ func (c *UtilityController) SubmitPlan(requestID string, proposal PlanProposal) 
 		return StrategyPlan{}, err
 	}
 
-	plan := StrategyPlan{UpgradeOrders: append([]string(nil), proposal.UpgradeOrders...), RecruitmentOrders: CloneRecruitmentOrders(proposal.RecruitmentOrders),
+	plan := StrategyPlan{ConstructionOrders: CloneConstructionOrders(proposal.ConstructionOrders), UpgradeOrders: append([]string(nil), proposal.UpgradeOrders...), RecruitmentOrders: CloneRecruitmentOrders(proposal.RecruitmentOrders),
 		ID:             request.ID,
 		Name:           strings.TrimSpace(proposal.Name),
 		Rationale:      strings.TrimSpace(proposal.Rationale),
@@ -152,7 +152,7 @@ func (c *UtilityController) planForTick(tick Tick) (PlanProposal, string, bool) 
 	for i := len(c.plans) - 1; i >= 0; i-- {
 		plan := c.plans[i]
 		if plan.ValidFromTick <= tick && tick < plan.ValidUntilTick {
-			return PlanProposal{UpgradeOrders: append([]string(nil), plan.UpgradeOrders...), RecruitmentOrders: CloneRecruitmentOrders(plan.RecruitmentOrders),
+			return PlanProposal{ConstructionOrders: CloneConstructionOrders(plan.ConstructionOrders), UpgradeOrders: append([]string(nil), plan.UpgradeOrders...), RecruitmentOrders: CloneRecruitmentOrders(plan.RecruitmentOrders),
 				Name: plan.Name, Rationale: plan.Rationale,
 				ActionWeights: plan.ActionWeights, TargetBonuses: plan.TargetBonuses,
 				ReserveGold: plan.ReserveGold, SpendOrder: append([]string(nil), plan.SpendOrder...),
@@ -316,6 +316,7 @@ func cloneConfig(config Config) Config {
 
 func clonePlan(plan StrategyPlan) StrategyPlan {
 	plan.UpgradeOrders = append([]string(nil), plan.UpgradeOrders...)
+	plan.ConstructionOrders = CloneConstructionOrders(plan.ConstructionOrders)
 	plan.RecruitmentOrders = CloneRecruitmentOrders(plan.RecruitmentOrders)
 	plan.ActionWeights = cloneMap(plan.ActionWeights)
 	plan.TargetBonuses = cloneMap(plan.TargetBonuses)

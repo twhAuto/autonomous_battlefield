@@ -1,0 +1,55 @@
+# Broad central siege approach and upper/lower flanking lanes, with rear,
+# midfield, and forward sites mirrored for both factions.
+id: frontier-siege-v2
+rulesVersion: "2"
+rulesetId: castle-siege-v2
+maximumTicks: 800
+tickDuration: 1s
+decisionIntervalTicks: 10
+map:
+  kind: authored
+  width: 25
+  height: 17
+  rows:
+    - "........................."
+    - "........................."
+    - ".......#.........#......."
+    - "....b.......#.......b...."
+    - "..........#.#.#.........."
+    - ".......b....#....b......."
+    - "........................."
+    - ".........b.....b........."
+    - "........................."
+    - ".........b.....b........."
+    - "........................."
+    - ".......b....#....b......."
+    - "..........#.#.#.........."
+    - "....b.......#.......b...."
+    - ".......#.........#......."
+    - "........................."
+    - "........................."
+  castleSpawns:
+    - {x: 2, y: 8}
+    - {x: 22, y: 8}
+  economySites:
+    - [{x: 4, y: 3}, {x: 4, y: 13}, {x: 7, y: 5}, {x: 7, y: 11}, {x: 9, y: 7}, {x: 9, y: 9}]
+    - [{x: 20, y: 3}, {x: 20, y: 13}, {x: 17, y: 5}, {x: 17, y: 11}, {x: 15, y: 7}, {x: 15, y: 9}]
+fallbackPlan:
+  name: combined-arms
+  actionWeights: {attack: 1100, defend: 1000}
+scriptedPlans:
+  - name: siege-column
+    actionWeights: {attack: 1200, defend: 1000}
+    recruitmentOrders:
+      - {unitType: vanguard, count: 1}
+      - {unitType: pikeman, count: 1}
+      - {unitType: catapult, count: 1}
+      - {unitType: herbalist, count: 1}
+  - name: reinforce-breach
+    actionWeights: {attack: 1200, defend: 1000}
+    recruitmentOrders:
+      - {unitType: striker, count: 1}
+      - {unitType: ranger, count: 1}
+      - {unitType: battering_ram, count: 1}
+      - {unitType: pikeman, count: 1}
+      - {unitType: herbalist, count: 1}

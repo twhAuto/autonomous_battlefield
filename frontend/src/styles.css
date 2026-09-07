@@ -502,3 +502,9 @@ footer { display: flex; justify-content: space-between; padding: 28px clamp(24px
   .primary-nav { display: grid; grid-template-columns: repeat(2, max-content); gap: 8px 16px; }
   .primary-nav a { padding: 4px 0; }
 }
+
+.unit-direction--healing { stroke: #65e6c4; stroke-dasharray: 2 3; stroke-width: 3; }
+.unit-direction--tower { stroke: #f8bd59; stroke-width: 3.5; }
+.map-legend .legend-healing, .map-legend .legend-tower { border-width: 0 0 3px; height: 0; width: 18px; }
+.map-legend .legend-healing { border-color: #65e6c4; border-style: dotted; }
+.map-legend .legend-tower { border-color: #f8bd59; }

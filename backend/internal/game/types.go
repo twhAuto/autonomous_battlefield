@@ -17,8 +17,11 @@ const (
 	TerrainRock      = "rock"
 	TerrainBuildSite = "build_site"
 
-	BuildingCastle  = "castle"
-	BuildingEconomy = "economy"
+	BuildingCastle     = "castle"
+	BuildingEconomy    = "economy"
+	BuildingTower      = "defense_tower"
+	BuildingWatchtower = "watchtower"
+	BuildingBarracks   = "barracks"
 )
 
 var (
@@ -43,6 +46,14 @@ type Map struct {
 }
 
 type UnitType struct {
+	Class               string `json:"class,omitempty" yaml:"class,omitempty"`
+	MinimumRange        int    `json:"minimumRange,omitempty" yaml:"minimumRange,omitempty"`
+	BuildingPriority    bool   `json:"buildingPriority,omitempty" yaml:"buildingPriority,omitempty"`
+	BuildingDamageBonus int64  `json:"buildingDamageBonus,omitempty" yaml:"buildingDamageBonus,omitempty"`
+	BonusAgainstClass   string `json:"bonusAgainstClass,omitempty" yaml:"bonusAgainstClass,omitempty"`
+	ClassDamageBonus    int64  `json:"classDamageBonus,omitempty" yaml:"classDamageBonus,omitempty"`
+	HealAmount          int64  `json:"healAmount,omitempty" yaml:"healAmount,omitempty"`
+
 	ID       string `json:"id" yaml:"id"`
 	Cost     int64  `json:"cost" yaml:"cost"`
 	Health   int64  `json:"health" yaml:"health"`
@@ -63,18 +74,19 @@ type Upgrade struct {
 }
 
 type BuildingRules struct {
-	CastleTypeID        string `json:"castleTypeId,omitempty" yaml:"castleTypeId,omitempty"`
-	EconomyTypeID       string `json:"economyTypeId,omitempty" yaml:"economyTypeId,omitempty"`
-	CastleHealth        int64  `json:"castleHealth" yaml:"castleHealth"`
-	CastleDefense       int64  `json:"castleDefense" yaml:"castleDefense"`
-	CastleVision        int    `json:"castleVision" yaml:"castleVision"`
-	CastleIncome        int64  `json:"castleIncome" yaml:"castleIncome"`
-	EconomyCost         int64  `json:"economyCost" yaml:"economyCost"`
-	EconomyHealth       int64  `json:"economyHealth" yaml:"economyHealth"`
-	EconomyDefense      int64  `json:"economyDefense" yaml:"economyDefense"`
-	EconomyVision       int    `json:"economyVision" yaml:"economyVision"`
-	EconomyIncome       int64  `json:"economyIncome" yaml:"economyIncome"`
-	MaximumEconomyCount int    `json:"maximumEconomyCount" yaml:"maximumEconomyCount"`
+	MaximumBuildingCount int    `json:"maximumBuildingCount,omitempty" yaml:"maximumBuildingCount,omitempty"`
+	CastleTypeID         string `json:"castleTypeId,omitempty" yaml:"castleTypeId,omitempty"`
+	EconomyTypeID        string `json:"economyTypeId,omitempty" yaml:"economyTypeId,omitempty"`
+	CastleHealth         int64  `json:"castleHealth" yaml:"castleHealth"`
+	CastleDefense        int64  `json:"castleDefense" yaml:"castleDefense"`
+	CastleVision         int    `json:"castleVision" yaml:"castleVision"`
+	CastleIncome         int64  `json:"castleIncome" yaml:"castleIncome"`
+	EconomyCost          int64  `json:"economyCost" yaml:"economyCost"`
+	EconomyHealth        int64  `json:"economyHealth" yaml:"economyHealth"`
+	EconomyDefense       int64  `json:"economyDefense" yaml:"economyDefense"`
+	EconomyVision        int    `json:"economyVision" yaml:"economyVision"`
+	EconomyIncome        int64  `json:"economyIncome" yaml:"economyIncome"`
+	MaximumEconomyCount  int    `json:"maximumEconomyCount" yaml:"maximumEconomyCount"`
 }
 
 type CombatRules struct {
@@ -103,6 +115,7 @@ type ContentSource struct {
 }
 
 type Ruleset struct {
+	Structures    []BuildingType  `json:"structures,omitempty" yaml:"structures,omitempty"`
 	ContentSource *ContentSource  `json:"contentSource,omitempty" yaml:"contentSource,omitempty"`
 	Knowledge     *RulesKnowledge `json:"knowledge,omitempty" yaml:"knowledge,omitempty"`
 	ID            string          `json:"id" yaml:"id"`
@@ -162,6 +175,16 @@ type Scenario struct {
 }
 
 type Unit struct {
+	Class               string    `json:"class,omitempty" yaml:"class,omitempty"`
+	MinimumRange        int       `json:"minimumRange,omitempty" yaml:"minimumRange,omitempty"`
+	BuildingPriority    bool      `json:"buildingPriority,omitempty" yaml:"buildingPriority,omitempty"`
+	BuildingDamageBonus int64     `json:"buildingDamageBonus,omitempty" yaml:"buildingDamageBonus,omitempty"`
+	BonusAgainstClass   string    `json:"bonusAgainstClass,omitempty" yaml:"bonusAgainstClass,omitempty"`
+	ClassDamageBonus    int64     `json:"classDamageBonus,omitempty" yaml:"classDamageBonus,omitempty"`
+	HealAmount          int64     `json:"healAmount,omitempty" yaml:"healAmount,omitempty"`
+	HealTargetID        string    `json:"healTargetId,omitempty"`
+	HealTargetPosition  *Position `json:"healTargetPosition,omitempty"`
+
 	ID                   string    `json:"id"`
 	FactionID            string    `json:"factionId"`
 	Type                 string    `json:"type"`
@@ -181,7 +204,27 @@ type Unit struct {
 	AttackTargetPosition *Position `json:"attackTargetPosition,omitempty"`
 }
 
+// BuildingType describes additional constructible structures; legacy castle/economy
+// stats remain in BuildingRules for persisted v1 scenarios.
+type BuildingType struct {
+	ID      string `json:"id" yaml:"id"`
+	Kind    string `json:"kind" yaml:"kind"`
+	Health  int64  `json:"health" yaml:"health"`
+	Defense int64  `json:"defense" yaml:"defense"`
+	Vision  int    `json:"vision" yaml:"vision"`
+	Income  int64  `json:"income" yaml:"income"`
+	Cost    int64  `json:"cost" yaml:"cost"`
+	Attack  int64  `json:"attack,omitempty" yaml:"attack,omitempty"`
+	Range   int    `json:"range,omitempty" yaml:"range,omitempty"`
+}
+
 type Building struct {
+	Attack               int64     `json:"attack,omitempty"`
+	Range                int       `json:"range,omitempty"`
+	ReadyAtTick          uint64    `json:"readyAtTick,omitempty"`
+	AttackTargetID       string    `json:"attackTargetId,omitempty"`
+	AttackTargetPosition *Position `json:"attackTargetPosition,omitempty"`
+
 	ID        string   `json:"id"`
 	FactionID string   `json:"factionId"`
 	Type      string   `json:"type"`
@@ -261,6 +304,10 @@ type Transition struct {
 // DecisionSnapshot is the bounded, faction-visible state frozen immediately
 // before a production window. It contains no mutation capability.
 type DecisionSnapshot struct {
+	LegalBuildings     []BuildingType `json:"legalBuildings,omitempty"`
+	RecruitmentSources []string       `json:"recruitmentSources,omitempty"`
+	MaximumBuildings   int            `json:"maximumBuildings,omitempty"`
+
 	FactionName     string                  `json:"factionName,omitempty"`
 	Background      string                  `json:"background,omitempty"`
 	Doctrine        string                  `json:"doctrine,omitempty"`

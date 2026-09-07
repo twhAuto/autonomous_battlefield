@@ -41,8 +41,17 @@ func (m *Match) unitTurnOrder() []int {
 }
 
 func (m *Match) runUnit(unit *Unit, tactics map[string]string) ([]Event, *string) {
+	if unit.HealAmount > 0 {
+		return m.runHealer(unit), nil
+	}
+	if events, moved := m.retreatFromCloseEnemies(unit); moved {
+		return events, nil
+	}
 	target := m.targetInRange(*unit)
 	if target == nil {
+		if unit.BuildingPriority {
+			return m.moveSiege(unit), nil
+		}
 		return m.moveUnit(unit), nil
 	}
 	return m.attackTarget(unit, target, tactics)
@@ -59,7 +68,14 @@ func (m *Match) moveUnit(unit *Unit) []Event {
 }
 
 func (m *Match) attackTarget(unit *Unit, target *attackTarget, tactics map[string]string) ([]Event, *string) {
-	damage := m.damage(*unit, target.defense, tactics[unit.FactionID], tactics[target.factionID])
+	attacker := *unit
+	if target.building != nil {
+		attacker.Attack += unit.BuildingDamageBonus
+	}
+	if target.unit != nil && unit.BonusAgainstClass != "" && target.unit.Class == unit.BonusAgainstClass {
+		attacker.Attack += unit.ClassDamageBonus
+	}
+	damage := m.damage(attacker, target.defense, tactics[unit.FactionID], tactics[target.factionID])
 	targetPosition := target.position
 	unit.AttackTargetID = target.id
 	unit.AttackTargetPosition = &targetPosition
@@ -105,7 +121,13 @@ func (m *Match) collectLoot(factionID string, target *attackTarget) (Event, bool
 }
 
 func (m *Match) clearUnitActions() {
+	for i := range m.state.Buildings {
+		m.state.Buildings[i].AttackTargetID = ""
+		m.state.Buildings[i].AttackTargetPosition = nil
+	}
 	for index := range m.state.Units {
+		m.state.Units[index].HealTargetID = ""
+		m.state.Units[index].HealTargetPosition = nil
 		m.state.Units[index].MovedFrom = nil
 		m.state.Units[index].AttackTargetID = ""
 		m.state.Units[index].AttackTargetPosition = nil
@@ -149,13 +171,13 @@ func (m *Match) targetInRange(attacker Unit) *attackTarget {
 	candidates := make([]*attackTarget, 0)
 	for index := range m.state.Units {
 		unit := &m.state.Units[index]
-		if unit.FactionID != attacker.FactionID && unit.Health > 0 && HexDistance(attacker.Position, unit.Position) <= attacker.Range {
+		if unit.FactionID != attacker.FactionID && unit.Health > 0 && inAttackRange(attacker, unit.Position) {
 			candidates = append(candidates, &attackTarget{id: unit.ID, kind: "unit", factionID: unit.FactionID, position: unit.Position, defense: unit.Defense, cost: unit.Cost, unit: unit})
 		}
 	}
 	for index := range m.state.Buildings {
 		building := &m.state.Buildings[index]
-		if building.FactionID != attacker.FactionID && building.Health > 0 && HexDistance(attacker.Position, building.Position) <= attacker.Range {
+		if building.FactionID != attacker.FactionID && building.Health > 0 && inAttackRange(attacker, building.Position) {
 			candidates = append(candidates, &attackTarget{id: building.ID, kind: building.Type, factionID: building.FactionID, position: building.Position, defense: building.Defense, cost: building.Cost, building: building})
 		}
 	}
@@ -169,8 +191,12 @@ func (m *Match) targetInRange(attacker Unit) *attackTarget {
 }
 
 func attackTargetLess(attacker Unit, left, right *attackTarget) bool {
-	if attackTargetPriority(left.kind) != attackTargetPriority(right.kind) {
-		return attackTargetPriority(left.kind) < attackTargetPriority(right.kind)
+	priority := attackTargetPriority
+	if attacker.BuildingPriority {
+		priority = siegePriority
+	}
+	if priority(left.kind) != priority(right.kind) {
+		return priority(left.kind) < priority(right.kind)
 	}
 	leftDistance, rightDistance := HexDistance(attacker.Position, left.position), HexDistance(attacker.Position, right.position)
 	if leftDistance != rightDistance {
@@ -201,7 +227,8 @@ func (m *Match) moveTowardCastle(unit *Unit) {
 	for y := 0; y < m.scenario.Map.Height; y++ {
 		for x := 0; x < m.scenario.Map.Width; x++ {
 			position := Position{X: x, Y: y}
-			if m.scenario.Map.Traversable(position) && HexDistance(position, castle.Position) <= unit.Range {
+			distance := HexDistance(position, castle.Position)
+			if m.scenario.Map.Traversable(position) && distance >= unit.MinimumRange && distance <= unit.Range {
 				goals[position] = true
 			}
 		}
@@ -236,9 +263,14 @@ func (m *Match) damage(attacker Unit, defense int64, attackerTactic, targetTacti
 func (m *Match) projectedPower(id string) int64 {
 	var value int64
 	for _, unit := range m.state.Units {
-		if unit.FactionID == id && unit.Health > 0 {
+		if unit.FactionID == id && unit.Health > 0 && unit.HealAmount == 0 {
 			value += unit.Attack
 		}
 	}
 	return value
+}
+
+func inAttackRange(attacker Unit, position Position) bool {
+	distance := HexDistance(attacker.Position, position)
+	return distance >= attacker.MinimumRange && distance <= attacker.Range
 }

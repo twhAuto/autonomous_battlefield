@@ -92,6 +92,7 @@ func (m *Match) AdvanceWithPlans(plans map[string]controller.PlanProposal) (Tran
 		return Transition{}, err
 	}
 	events = append(events, tacticEvents...)
+	events = append(events, m.runTowers(tactics)...)
 	combatEvents, winner := m.runUnits(tactics)
 	events = append(events, combatEvents...)
 	events = append(events, m.event("tick_completed", map[string]any{"tick": m.state.Tick}))

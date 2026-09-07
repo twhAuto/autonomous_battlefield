@@ -4,11 +4,13 @@ Author reusable unit, upgrade, and building definitions in
 `backend/content/<id>-v<version>.yaml`. The shipped `core-v1.yaml` contains the
 three starter units, their knowledge cards, three upgrades, and castle/economy
 building definitions. The version pins the whole library; unit IDs remain stable
-within it. Buildings support the existing `castle` and `economy` engine roles.
-New abilities or building roles require engine support.
+within it. `core-v2.yaml` additionally supplies siege/support units and
+`defense_tower`, `watchtower`, and `barracks` roles. See
+[Frontier Siege](../design/frontier-siege.md) for the complete roster and map.
+New abilities beyond these capabilities still require engine support.
 
 A ruleset references a library and selects content while retaining ownership of
-starting gold, design budget, combat percentages, and economy-building limits:
+starting gold, design budget, combat percentages, and building limits:
 
 ```yaml
 id: example-v1
@@ -62,14 +64,16 @@ allowedBuildings: [castle]
 An omitted/null list inherits the ruleset choices. An explicit empty upgrade list
 allows no upgrades. At least one unit and the selected castle building are required;
 empty unit/building lists are rejected. A scenario can only narrow its ruleset.
-Excluding its economy building sets the maximum economy count to zero, removes
-construction sites from AI legal choices, and disables default construction.
+Excluding its economy building sets the maximum economy count to zero and disables
+default economy construction. Construction sites remain legal when other structure
+types are allowed; excluding every constructible type removes legal sites.
 The map still uses the existing castle spawns and economy-site geometry.
 
 Explicit scripted/fallback recruitment orders or priorities must use allowed
 units. Explicit construction sites are rejected when economy buildings are disabled.
 Generic scripted plans with unspecified recruitment use deterministic round-robin
-purchases from the sorted legal unit roster, capped at six units and available gold.
+purchases from the sorted legal combat roster (excluding healers), capped at six
+units and available gold. Explicit orders can recruit healers.
 Faction profiles have no ruleset binding. Scenario restrictions constrain both
 opening and subsequent purchases, including upgrades. `startingGold` funds opening
 units and upgrades; unspent gold carries forward. There is no design-point budget.
@@ -97,3 +101,24 @@ Run backend coverage and frontend coverage/build before deployment:
 
 Deploy content, catalog code, engine, and UI together. Use a new battle to test new
 selections; old battles retain their saved definitions.
+
+## Expanded content fields
+
+Unit definitions optionally accept `class` (`infantry`, `mobile`, `siege`, or
+`support`), `minimumRange`, `buildingPriority`, `buildingDamageBonus`,
+`bonusAgainstClass`, `classDamageBonus`, and `healAmount`. Positive healing requires
+support class, zero attack, adjacent range, and no attack bonuses. Extra building
+roles use their kind as ID; towers require positive `attack` and `range`, while
+Watchtowers/Barracks have neither attack nor income.
+
+Select additional library structures using
+`library.structures: [defense_tower, watchtower, barracks]` and set
+`buildings.maximumBuildingCount` (1–8). Inline rulesets can instead specify resolved
+`structures` definitions. `maximumEconomyCount` retains its 0–2 range. All live
+non-castle buildings share the overall limit. Scenario `allowedBuildings` filters
+extra structures individually and still requires the selected castle.
+
+Authored maps accept odd widths 15–41, odd heights 11–31, and two to eight mirrored
+construction sites per faction. The `economySites` name is retained for wire and
+snapshot compatibility; all constructible types can use these faction-owned sites.
+The supplied Frontier map uses six sites per side and a four-building limit.

@@ -138,5 +138,9 @@ func (m *Match) addStartingUnits(setup FactionSetup, runtime *factionRuntime, sp
 }
 
 func (f *factionRuntime) newUnit(definition UnitType, position Position, ready uint64) Unit {
-	return Unit{ID: fmt.Sprintf("%s:%s:%03d", f.setup.ID, definition.ID, f.unitSequence), FactionID: f.setup.ID, Type: definition.ID, Position: position, Health: definition.Health, MaxHealth: definition.Health, Attack: definition.Attack + f.attackBonus, Defense: definition.Defense + f.defenseBonus, Speed: definition.Speed, Movement: definition.Movement, Range: definition.Range, Vision: definition.Vision, Cost: definition.Cost, ReadyAtTick: ready}
+	attack := definition.Attack + f.attackBonus
+	if definition.HealAmount > 0 {
+		attack = 0
+	}
+	return Unit{Class: definition.Class, MinimumRange: definition.MinimumRange, BuildingPriority: definition.BuildingPriority, BuildingDamageBonus: definition.BuildingDamageBonus, BonusAgainstClass: definition.BonusAgainstClass, ClassDamageBonus: definition.ClassDamageBonus, HealAmount: definition.HealAmount, ID: fmt.Sprintf("%s:%s:%03d", f.setup.ID, definition.ID, f.unitSequence), FactionID: f.setup.ID, Type: definition.ID, Position: position, Health: definition.Health, MaxHealth: definition.Health, Attack: attack, Defense: definition.Defense + f.defenseBonus, Speed: definition.Speed, Movement: definition.Movement, Range: definition.Range, Vision: definition.Vision, Cost: definition.Cost, ReadyAtTick: ready}
 }

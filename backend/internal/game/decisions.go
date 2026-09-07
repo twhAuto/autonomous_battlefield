@@ -37,7 +37,7 @@ func (m *Match) DecisionSnapshot(factionID string) (DecisionSnapshot, error) {
 	}
 	legalSites := make([]controller.Coordinate, 0, 2)
 	for slot, setup := range m.scenario.Factions {
-		if setup.ID == factionID && m.scenario.Ruleset.Buildings.MaximumEconomyCount > 0 {
+		if setup.ID == factionID && len(ConstructibleBuildings(m.scenario.Ruleset)) > 0 {
 			for _, site := range m.scenario.Map.EconomySites[slot] {
 				legalSites = append(legalSites, controller.Coordinate{X: site.X, Y: site.Y})
 			}
@@ -51,7 +51,7 @@ func (m *Match) DecisionSnapshot(factionID string) (DecisionSnapshot, error) {
 	if m.scenario.SnapshotVersion >= DoctrineSnapshotVersion {
 		upgrades = append(upgrades, m.scenario.Ruleset.Upgrades...)
 	}
-	return DecisionSnapshot{Doctrine: runtime.setup.Doctrine, FactionName: runtime.setup.Name, Background: runtime.setup.Background, Opening: m.OpeningDue(), LegalUpgrades: upgrades, OwnedUpgradeIDs: append([]string{}, m.factionState(factionID).OwnedUpgradeIDs...), BattleID: m.id, FactionID: factionID, TargetTick: m.DecisionTargetTick(), Version: m.state.Tick,
+	return DecisionSnapshot{LegalBuildings: ConstructibleBuildings(m.scenario.Ruleset), RecruitmentSources: m.recruitmentSources(factionID), MaximumBuildings: m.scenario.Ruleset.Buildings.MaximumBuildingCount, Doctrine: runtime.setup.Doctrine, FactionName: runtime.setup.Name, Background: runtime.setup.Background, Opening: m.OpeningDue(), LegalUpgrades: upgrades, OwnedUpgradeIDs: append([]string{}, m.factionState(factionID).OwnedUpgradeIDs...), BattleID: m.id, FactionID: factionID, TargetTick: m.DecisionTargetTick(), Version: m.state.Tick,
 		View: view, Gold: m.factionState(factionID).Gold, ProjectedIncome: projectedIncome,
 		EconomyCost: m.scenario.Ruleset.Buildings.EconomyCost, EconomyIncome: m.scenario.Ruleset.Buildings.EconomyIncome + runtime.economyBonus,
 		EconomyCount: m.economyCount(factionID), MaximumEconomy: m.scenario.Ruleset.Buildings.MaximumEconomyCount,
@@ -67,7 +67,9 @@ func (m *Match) ScriptedPlans() map[string]controller.PlanProposal {
 		if m.OpeningDue() {
 			plans[factionID] = m.OpeningFallback(factionID)
 		} else {
-			plans[factionID] = m.normalizedFactionPlan(factionID, m.factions[factionID].scriptedPlan())
+			plan := m.normalizedFactionPlan(factionID, m.factions[factionID].scriptedPlan())
+			m.assignForwardRecruitment(factionID, &plan)
+			plans[factionID] = plan
 		}
 	}
 	return plans
@@ -159,9 +161,14 @@ func (m *Match) normalizedFactionPlan(factionID string, value controller.PlanPro
 		orders := m.OpeningFallback(factionID).RecruitmentOrders
 		result.RecruitmentOrders = orders
 	}
-	if len(result.ConstructionPriorities) == 0 && !m.OpeningDue() && m.scenario.Ruleset.Buildings.MaximumEconomyCount > 0 {
+	if result.ConstructionOrders == nil && len(result.ConstructionPriorities) == 0 && !m.OpeningDue() && m.scenario.Ruleset.Buildings.MaximumEconomyCount > 0 {
 		for slot, setup := range m.scenario.Factions {
 			if setup.ID != factionID {
+				continue
+			}
+			if len(m.scenario.Ruleset.Structures) > 0 {
+				orders := m.defaultConstructionOrders(slot)
+				result.ConstructionOrders = &orders
 				continue
 			}
 			for _, site := range m.scenario.Map.EconomySites[slot] {
@@ -200,13 +207,21 @@ func validateProductionPlan(scenario Scenario, setup FactionSetup, plan controll
 	}
 	allowedSites := make(map[Position]bool)
 	for slot, faction := range scenario.Factions {
-		if faction.ID == setup.ID && scenario.Ruleset.Buildings.MaximumEconomyCount > 0 {
+		if faction.ID == setup.ID && len(ConstructibleBuildings(scenario.Ruleset)) > 0 {
 			for _, site := range scenario.Map.EconomySites[slot] {
 				allowedSites[site] = true
 			}
 		}
 	}
-	for _, coordinate := range plan.ConstructionPriorities {
+	legalBuildings := map[string]bool{}
+	for _, b := range ConstructibleBuildings(scenario.Ruleset) {
+		legalBuildings[b.ID] = true
+	}
+	for _, order := range constructionOrders(plan) {
+		coordinate := order.Position
+		if !legalBuildings[order.BuildingType] {
+			return fmt.Errorf("%w: unsupported construction type %q", controller.ErrInvalidPlan, order.BuildingType)
+		}
 		if !allowedSites[Position{X: coordinate.X, Y: coordinate.Y}] {
 			return fmt.Errorf("%w: construction site (%d,%d) is not legal", controller.ErrInvalidPlan, coordinate.X, coordinate.Y)
 		}

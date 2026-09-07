@@ -36,6 +36,16 @@ func ValidateRuleset(ruleset Ruleset) error {
 	if !validBuildingRules(ruleset.Buildings) {
 		return fmt.Errorf("%w: invalid building rules", ErrInvalidRuleset)
 	}
+	seenBuildings := map[string]bool{}
+	for _, b := range ruleset.Structures {
+		if !ValidStructure(b) || seenBuildings[b.ID] {
+			return fmt.Errorf("%w: invalid or duplicate structure %q", ErrInvalidRuleset, b.ID)
+		}
+		seenBuildings[b.ID] = true
+	}
+	if len(ruleset.Structures) > 0 && ruleset.Buildings.MaximumBuildingCount == 0 {
+		return fmt.Errorf("%w: structures require a building limit", ErrInvalidRuleset)
+	}
 	if !validCombatRules(ruleset.Combat) {
 		return fmt.Errorf("%w: invalid combat rules", ErrInvalidRuleset)
 	}
@@ -47,7 +57,7 @@ func validRulesetMetadata(ruleset Ruleset) bool {
 }
 
 func validUnitType(unit UnitType) bool {
-	return strings.TrimSpace(unit.ID) != "" && unit.Cost > 0 && unit.Health > 0 && unit.Attack >= 0 && unit.Defense >= 0 && unit.Speed >= 0 && unit.Movement > 0 && unit.Range > 0 && unit.Vision > 0
+	return validUnitCapabilities(unit) && strings.TrimSpace(unit.ID) != "" && unit.Cost > 0 && unit.Health > 0 && unit.Attack >= 0 && unit.Defense >= 0 && unit.Speed >= 0 && unit.Movement > 0 && unit.Range > 0 && unit.Vision > 0
 }
 
 func validUpgrade(upgrade Upgrade) bool {
@@ -55,7 +65,7 @@ func validUpgrade(upgrade Upgrade) bool {
 }
 
 func validBuildingRules(rules BuildingRules) bool {
-	return rules.CastleHealth > 0 && rules.CastleDefense >= 0 && rules.CastleVision > 0 && rules.CastleIncome >= 0 && rules.EconomyCost > 0 && rules.EconomyHealth > 0 && rules.EconomyDefense >= 0 && rules.EconomyVision > 0 && rules.EconomyIncome >= 0 && rules.MaximumEconomyCount >= 0 && rules.MaximumEconomyCount <= 2
+	return rules.MaximumBuildingCount >= 0 && rules.MaximumBuildingCount <= 8 && rules.CastleHealth > 0 && rules.CastleDefense >= 0 && rules.CastleVision > 0 && rules.CastleIncome >= 0 && rules.EconomyCost > 0 && rules.EconomyHealth > 0 && rules.EconomyDefense >= 0 && rules.EconomyVision > 0 && rules.EconomyIncome >= 0 && rules.MaximumEconomyCount >= 0 && rules.MaximumEconomyCount <= 2
 }
 
 func validCombatRules(rules CombatRules) bool {
@@ -177,4 +187,22 @@ func CloneBlueprint(value Blueprint) Blueprint {
 		UpgradeIDs:          append([]string(nil), value.UpgradeIDs...),
 		RecruitmentPriority: append([]string(nil), value.RecruitmentPriority...),
 	}
+}
+
+func validUnitCapabilities(u UnitType) bool {
+	validClass := func(c string) bool {
+		return c == "" || c == "infantry" || c == "mobile" || c == "siege" || c == "support"
+	}
+	return validClass(u.Class) && validClass(u.BonusAgainstClass) && u.MinimumRange >= 0 && u.MinimumRange <= u.Range && u.HealAmount >= 0 && u.BuildingDamageBonus >= 0 && u.ClassDamageBonus >= 0 && (u.ClassDamageBonus == 0 || u.BonusAgainstClass != "") && (u.HealAmount == 0 || u.Attack == 0 && u.Class == "support" && u.Range == 1 && u.MinimumRange == 0 && !u.BuildingPriority && u.BuildingDamageBonus == 0 && u.ClassDamageBonus == 0)
+}
+
+// ValidStructure accepts the additional constructible building capabilities.
+func ValidStructure(b BuildingType) bool {
+	if b.ID != b.Kind || b.Health <= 0 || b.Defense < 0 || b.Vision <= 0 || b.Cost <= 0 || b.Income != 0 {
+		return false
+	}
+	if b.Kind == BuildingTower {
+		return b.Attack > 0 && b.Range > 0
+	}
+	return (b.Kind == BuildingWatchtower || b.Kind == BuildingBarracks) && b.Attack == 0 && b.Range == 0
 }

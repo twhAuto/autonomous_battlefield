@@ -1,6 +1,7 @@
 // Faction profile and ruleset API types and requests, with shared transport and feature-
 // specific error messages.
 
+import type { UnitCapabilities } from '../../battles/api/battles'
 import { createApiClient } from '../../../shared/api/request'
 
 export interface CreateFactionInput {
@@ -10,7 +11,7 @@ export interface CreateFactionInput {
   background?: string
 }
 
-export interface UnitRule {
+export interface UnitRule extends UnitCapabilities {
   id: string; cost: number; health: number; attack: number; defense: number
   speed: number; movement: number; range: number; vision: number
 }

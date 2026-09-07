@@ -32,10 +32,10 @@ func TestCatalogLoadsRulesetAndResolvesBlueprints(t *testing.T) {
 	if digest == "" || digest != nextDigest || first.Map.Width != 15 || second.Map.Height != 11 {
 		t.Fatalf("unexpected resolutions: %#v", first)
 	}
-	if summaries := catalog.Summaries(); len(summaries) != 2 || summaries[0].RulesetID != "castle-siege-v1" || summaries[0].MapWidth != 15 || summaries[0].MaximumTicks != 500 {
+	if summaries := catalog.Summaries(); len(summaries) != 3 || summaries[0].RulesetID != "castle-siege-v1" || summaries[0].MapWidth != 15 || summaries[0].MaximumTicks != 500 {
 		t.Fatalf("summaries = %#v", summaries)
 	}
-	if rulesets := catalog.Rulesets(); len(rulesets) != 1 || rulesets[0].DesignBudget != 0 || rulesets[0].StartingGold != 180 {
+	if rulesets := catalog.Rulesets(); len(rulesets) != 2 || rulesets[0].DesignBudget != 0 || rulesets[0].StartingGold != 180 {
 		t.Fatalf("rulesets = %#v", rulesets)
 	}
 	if ruleset, ok := catalog.Ruleset("castle-siege-v1"); !ok || ruleset.ID != "castle-siege-v1" {

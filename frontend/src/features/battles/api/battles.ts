@@ -63,16 +63,24 @@ export interface BattleMap {
   castleSpawns: [HexPosition, HexPosition]
   economySites: [HexPosition[], HexPosition[]]
 }
-export interface BattleUnit {
+export interface UnitCapabilities {
+  class?: string; minimumRange?: number; buildingPriority?: boolean
+  buildingDamageBonus?: number; bonusAgainstClass?: string; classDamageBonus?: number; healAmount?: number
+}
+export interface BattleUnit extends UnitCapabilities {
   id: string; factionId: string; type: string; position: HexPosition
   health: number; maxHealth: number; attack: number; defense: number
   speed: number; movement: number; range: number; vision: number; readyAtTick: number
+  healTargetId?: string
+  healTargetPosition?: HexPosition
   movedFrom?: HexPosition
   attackTargetId?: string
   attackTargetPosition?: HexPosition
 }
 export interface BattleBuilding {
-  id: string; factionId: string; type: 'castle' | 'economy'; position: HexPosition
+  attack?: number; range?: number; readyAtTick?: number
+  attackTargetId?: string; attackTargetPosition?: HexPosition
+  id: string; factionId: string; type: 'castle' | 'economy' | 'defense_tower' | 'watchtower' | 'barracks'; position: HexPosition
   health: number; maxHealth: number; defense: number; vision: number; income: number
 }
 export interface BattleFactionState {
@@ -147,10 +155,11 @@ export interface DecisionHistory {
     targetBonuses?: Record<string, number>
     reserveGold?: number
     spendOrder?: string[]
+    constructionOrders?: { buildingType: string; position: HexPosition }[] | null
     constructionPriorities?: HexPosition[]
     recruitmentPriorities?: string[]
     upgradeOrders?: string[]
-    recruitmentOrders?: { unitType: string; count: number }[] | null
+    recruitmentOrders?: { unitType: string; count: number; sourceBuildingId?: string }[] | null
   }
   usage: { inputTokens?: number; outputTokens?: number; requests?: number }
   createdAt: string; resolvedAt?: string

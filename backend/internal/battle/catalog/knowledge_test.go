@@ -32,6 +32,19 @@ func TestAdditionalUnitFromYAML(t *testing.T) {
 	if err = os.WriteFile(filepath.Join(dir, "rules.yaml"), data, 0600); err != nil {
 		t.Fatal(err)
 	}
+	// Preserve the other authored rulesets when overriding only the v1 fixture.
+	for _, other := range seed.Rulesets() {
+		if other.ID == rules.ID {
+			continue
+		}
+		bytes, marshalErr := yaml.Marshal(other)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		if err = os.WriteFile(filepath.Join(dir, other.ID+".yaml"), bytes, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	catalog, err := LoadCatalog(filepath.Join(root, "scenarios"), dir)
 	if err != nil {
 		t.Fatal(err)

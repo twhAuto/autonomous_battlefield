@@ -26,7 +26,8 @@ func (m *Match) enemyApproachGoals(unit Unit) map[Position]bool {
 	for y := 0; y < m.scenario.Map.Height; y++ {
 		for x := 0; x < m.scenario.Map.Width; x++ {
 			p := Position{X: x, Y: y}
-			if m.scenario.Map.Traversable(p) && nearestDistance(p, targetGoals) <= unit.Range {
+			distance := nearestDistance(p, targetGoals)
+			if m.scenario.Map.Traversable(p) && distance >= unit.MinimumRange && distance <= unit.Range {
 				goals[p] = true
 			}
 		}
