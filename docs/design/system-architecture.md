@@ -884,3 +884,11 @@ empty bundles fail before starting k6. The Docker daemon must share the agent's
 filesystem, as required for the existing source and report mounts. Browser trust
 settings do not configure k6. Install the Caddy root CA into the agent's system
 trust store before running production performance verification.
+
+Production k6 resolves missing admin credentials from the deployed `battlefield-auth`
+Secret (overridable with `SMOKE_TEST_AUTH_SECRET_NAME`), using the registered
+Kubernetes context and namespace. This requires Python 3 and Secret read access
+on the agent. Credentials are passed to Docker by environment-variable name,
+with shell tracing disabled. Explicit `ADMIN_USERNAME`/`ADMIN_PASSWORD` values
+remain supported. Failed login or missing session cookies stops setup; successful
+login cookies are converted to request-cookie string values for each virtual user.

@@ -34,7 +34,7 @@ assert.equal(value('--add-host'), 'battlefield.localhost:127.0.0.1');
 assert.equal(value('--user'), `${process.getuid()}:${process.getgid()}`);
 const env = Object.fromEntries(values('-e').map((item) => {
   const separator = item.indexOf('=');
-  return [item.slice(0, separator), item.slice(separator + 1)];
+  return separator < 0 ? [item, process.env[item] || ''] : [item.slice(0, separator), item.slice(separator + 1)];
 }));
 const mounts = values('-v');
 let reportDir, reports;
@@ -99,4 +99,51 @@ status=0
 bash "${fixture}/scripts/perf/run-k6.sh" missing.js 2>"${test_dir}/error" || status=$?
 [[ "${status}" == 1 ]]
 grep -q 'k6 test not found: missing.js' "${test_dir}/error"
+# Production resolves deployed credentials without putting them in Docker arguments.
+cat >"${test_dir}/bin/kubectl" <<'STUB'
+#!/usr/bin/env python3
+import base64, json, os
+values = {"BATTLEFIELD_AUTH_ENABLED": "true", "BATTLEFIELD_ADMIN_USERNAME": "test-admin",
+          "BATTLEFIELD_ADMIN_PASSWORD": "test-password"}
+if os.environ.get("MISSING_AUTH"):
+    values.pop("BATTLEFIELD_ADMIN_PASSWORD")
+print(json.dumps({"data": {k: base64.b64encode(v.encode()).decode() for k,v in values.items()}}))
+STUB
+chmod +x "${test_dir}/bin/kubectl"
+DEPLOY_ENV=production KUBERNETES_CONTEXT=test KUBERNETES_NAMESPACE=battlefield \
+  bash "${fixture}/scripts/perf/run-k6.sh"
+status=0
+DEPLOY_ENV=production KUBERNETES_CONTEXT=test KUBERNETES_NAMESPACE=battlefield MISSING_AUTH=1 \
+  bash "${fixture}/scripts/perf/run-k6.sh" 2>"${test_dir}/error" || status=$?
+[[ "${status}" == 1 ]]
+grep -q 'requires deployed admin credentials' "${test_dir}/error"
+
+# Exercise the real k6 scenario with HTTP doubles without requiring k6 locally.
+node --input-type=module - "${project_dir}/tests/performance/k6-smoke.js" <<'JS'
+import fs from 'node:fs';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+let status = 204;
+let cookies = {session: [{value: 'test-session'}]};
+const requests = [];
+const source = fs.readFileSync(process.argv[2], 'utf8')
+  .replace(/^import .*;$/gm, '')
+  .replace('export default function', 'function iteration')
+  .replaceAll('export ', '');
+const context = vm.createContext({
+  __ENV: {ADMIN_USERNAME:'test', ADMIN_PASSWORD:'test'},
+  http: {post: () => ({status, cookies}), get: (url, params) => {
+    requests.push(params.cookies.session); return {status:200};
+  }},
+  check: (r, checks) => Object.values(checks).every(fn => fn(r)),
+  sleep: () => {}, fail: message => {throw new Error(message);},
+});
+vm.runInContext(source, context);
+vm.runInContext('iteration(setup())', context);
+assert.deepEqual(requests, ['test-session','test-session']);
+status = 401;
+assert.throws(() => vm.runInContext('setup()', context), /Login failed with HTTP 401/);
+status = 204; cookies = {};
+assert.throws(() => vm.runInContext('setup()', context), /no session cookies/);
+JS
 echo 'Runtime assurance launcher checks passed.'
