@@ -1,7 +1,7 @@
 // Renders an interactive SVG hex battlefield from supplied state, including fog of war,
 // entity selection, and map navigation.
 
-import { type PointerEvent, type ReactNode, useMemo, useState } from 'react'
+import { type PointerEvent, type ReactNode, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { BattleBuilding, BattleMap, BattleState, BattleUnit, HexPosition } from '../api/battles'
 import { entityIndex, entityName } from '../presentation/entities'
 import { EntityGlyph, EntityLegend } from './EntityIcon'
@@ -17,6 +17,8 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
   factionNames: Map<string, string>
   toolbarControls?: ReactNode
 }>) {
+  const markerId = useId()
+  const entityNodes = useRef(new Map<string, SVGGElement>())
   const [scale, setScale] = useState(1)
   const [pan, setPan] = useState({ x: 24, y: 30 })
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null)
@@ -56,8 +58,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
         >
           <title>{map.width} by {map.height} pointy-top hex battlefield</title>
           <defs>
-            <marker id="movement-arrowhead" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" /></marker>
-            <marker id="attack-arrowhead" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" /></marker>
+            {[...new Set([...colors.values(), '#f2c94c'])].map((color) => <marker key={color} id={`${markerId}-${color.slice(1)}`} fill={color} markerUnits="userSpaceOnUse" markerWidth="4.5" markerHeight="5.5" refX="4" refY="2.5" orient="auto" viewBox="0 0 4 5"><path d="M0,0 L4,2.5 L0,5 L1,2.5 Z" /></marker>)}
           </defs>
           <g className="map-layer" transform={`translate(${pan.x} ${pan.y}) scale(${scale})`}>
             {map.rows.map((row, y) => [...row].map((symbol, x) => {
@@ -67,33 +68,47 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
               return <polygon key={`${x}:${y}`} points={hexPoints(center.x, center.y)} className={`hex-tile hex-tile--${terrainClass(symbol)} ${isVisible ? '' : 'hex-tile--fog'}`} />
             }))}
             {liveUnits.filter((unit) => unit.movedFrom).map((unit) => {
-              const line = directionalLine(unit.movedFrom!, unit.position, 2, 14)
-              return <line key={`move:${unit.id}`} className="unit-direction unit-direction--movement" {...line} markerEnd="url(#movement-arrowhead)"><title>{entityName(unit.id, naming)} moved from {unit.movedFrom!.x}, {unit.movedFrom!.y} to {unit.position.x}, {unit.position.y}</title></line>
+              const route = unit.movementPath?.length ? unit.movementPath : [unit.movedFrom!, unit.position]
+              const previous = route[route.length - 2] ?? unit.movedFrom!
+              const line = actionLine(previous, unit.position, route.length === 2 ? 2 : 0, actionClearance(previous, unit.position, entities))
+              if (!line) return null
+              const start = directionalLine(route[0], route[1], 2, 0)
+              const points = [{ x: start.x1, y: start.y1 }, ...route.slice(1, -1).map(centerOf), { x: line.x2, y: line.y2 }]
+              return <polyline key={`move:${unit.id}`} className="unit-direction unit-direction--movement" style={{ stroke: colors.get(unit.factionId) ?? '#f2c94c' }} fill="none" points={points.map((point) => `${point.x},${point.y}`).join(' ')} markerEnd={`url(#${markerId}-${(colors.get(unit.factionId) ?? '#f2c94c').slice(1)})`}><title>{entityName(unit.id, naming)} moved from {unit.movedFrom!.x}, {unit.movedFrom!.y} to {unit.position.x}, {unit.position.y}</title></polyline>
             })}
             {entities.filter((unit) => unit.health > 0 && unit.attackTargetPosition).map((unit) => {
-              const line = directionalLine(unit.position, unit.attackTargetPosition!, 12, 14)
-              return <line key={`attack:${unit.id}`} className={`unit-direction unit-direction--attack ${'income' in unit ? 'unit-direction--tower' : ''}`} {...line} markerEnd="url(#attack-arrowhead)"><title>{entityName(unit.id, naming)} attacked {entityName(unit.attackTargetId, naming)}</title></line>
+              const target = entities.find((entity) => entity.id === unit.attackTargetId && entity.health > 0)
+              return <AttackVisual key={`${state.battleId}:${state.tick}:${unit.id}`} unit={unit} target={target} entities={entities} color={colors.get(unit.factionId) ?? '#f2c94c'} markerId={markerId} nodes={entityNodes.current} label={`${entityName(unit.id, naming)} ${unit.attackOutcome === 'miss' ? 'missed' : 'attacked'} ${unit.attackOutcome === 'miss' ? `hex ${unit.attackTargetPosition!.x}, ${unit.attackTargetPosition!.y}` : entityName(unit.attackTargetId, naming)}`} />
             })}
             {liveUnits.filter((unit) => unit.healTargetPosition).map((unit) => {
               const line = directionalLine(unit.position, unit.healTargetPosition!, 12, 14)
               return <line key={`heal:${unit.id}`} className="unit-direction unit-direction--healing" {...line}><title>{entityName(unit.id, naming)} treated {entityName(unit.healTargetId, naming)}</title></line>
             })}
+            {(state.unitDeaths ?? []).map((death) => {
+              const center = centerOf(death.position)
+              const label = `${entityName(death.id, { factionNames, entities: new Map([[death.id, death]]) })} died`
+              return <g key={`death:${state.battleId}:${state.tick}:${death.id}`} className="unit-death" style={{ stroke: colors.get(death.factionId) ?? '#f2c94c' }} role="img" aria-label={label} transform={`translate(${center.x} ${center.y})`}>
+                <title>{label}</title><circle r="10" /><path d="M-4,-4 L4,4 M-4,4 L4,-4" />
+              </g>
+            })}
             {entities.map((entity) => {
-              const center = centerOf(entity.position)
               const isBuilding = 'income' in entity
               const color = colors.get(entity.factionId) ?? '#f2c94c'
-              return <g key={entity.id} className="map-entity" role="button" aria-label={entityName(entity.id, naming)} aria-pressed={selectedId === entity.id} tabIndex={0} transform={`translate(${center.x} ${center.y})`} onPointerDown={(event) => event.stopPropagation()} onClick={() => setSelectedId(entity.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(entity.id) } }}>
+              const healthWidth = `${26 * Math.max(0, Math.min(1, entity.health / entity.maxHealth))}px`
+              return <MovingEntity key={`${state.battleId}:${entity.id}`} entity={entity} tick={state.tick} nodes={entityNodes.current}><AttackNudge entity={entity} tick={state.tick} target={entities.find((target) => target.id === entity.attackTargetId)}><g className="map-entity" role="button" aria-label={entityName(entity.id, naming)} aria-pressed={selectedId === entity.id} tabIndex={0} onPointerDown={(event) => event.stopPropagation()} onClick={() => setSelectedId(entity.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(entity.id) } }}>
                 <title>{entityName(entity.id, naming)} · {entity.id}</title>
                 {isBuilding ? <rect className="entity-focus-ring" x="-15" y="-15" width="30" height="30" rx="6" /> : <circle className="entity-focus-ring" r="15" />}
                 {isBuilding ? <rect x="-13" y="-13" width="26" height="26" rx="4" fill={color} /> : <circle r="13" fill={color} />}
                 <g transform="translate(-10 -10) scale(0.8333)"><EntityGlyph type={entity.type} /></g>
-                <rect x="-13" y="14" width="26" height="3" className="health-track" /><rect x="-13" y="14" width={26 * Math.max(0, entity.health / entity.maxHealth)} height="3" className="health-value" />
-              </g>
+                <rect x="-13" y="14" width="26" height="3" className="health-track" />
+                <rect x="-13" y="14" style={{ width: healthWidth }} height="3" className="health-damage" aria-hidden="true" />
+                <rect x="-13" y="14" style={{ width: healthWidth }} height="3" className="health-value" />
+              </g></AttackNudge></MovingEntity>
             })}
           </g>
         </svg>
       </div>
-      <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-site" /> Build site</span><span><i className="legend-fog" /> Outside vision</span><span><i className="legend-movement" /> Movement</span><span><i className="legend-attack" /> Attack</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
+      <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-site" /> Build site</span><span><i className="legend-fog" /> Outside vision</span><span><i className="legend-movement" /> Movement (faction color)</span><span><i className="legend-attack" /> Attack (faction color)</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
       <EntityLegend types={entities.map((entity) => entity.type)} />
       <div className="entity-details" aria-live="polite">
         {selected ? <><strong title={selected.id}>{entityName(selected.id, naming)}</strong><span title={[selected.attackTargetId, 'healTargetId' in selected ? selected.healTargetId : undefined].filter(Boolean).join(' · ')}>HP {selected.health}/{selected.maxHealth} · ({selected.position.x}, {selected.position.y}){'movedFrom' in selected && selected.movedFrom ? ` · moved from (${selected.movedFrom.x}, ${selected.movedFrom.y})` : ''}{'attackTargetId' in selected && selected.attackTargetId ? ` · attacking ${entityName(selected.attackTargetId, naming)}` : ''}{'healTargetId' in selected && selected.healTargetId ? ` · treating ${entityName(selected.healTargetId, naming)}` : ''} · {entityStats(selected)}</span></> : <span>Select a castle, building, or unit for details.</span>}
@@ -102,9 +117,148 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
   )
 }
 
+// Animate only recorded, continuous updates; opening a snapshot never replays a move.
+function MovingEntity({ entity, tick, children, nodes }: Readonly<{ entity: Entity; tick: number; children: ReactNode; nodes: Map<string, SVGGElement> }>) {
+  const element = useRef<SVGGElement>(null)
+  const previous = useRef<{ tick: number; position: string } | null>(null)
+  const position = key(entity.position)
+  const center = centerOf(entity.position)
+  const route = JSON.stringify('movedFrom' in entity ? movementRoute(entity) : [])
+  useLayoutEffect(() => {
+    const prior = previous.current
+    previous.current = { tick, position }
+    const points: HexPosition[] = JSON.parse(route)
+    if (!prior || tick <= prior.tick || points.length < 2 || prior.position !== key(points[0])) return
+    const node = element.current
+    const preference = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    if (!node?.animate || preference?.matches) return
+    const animation = node.animate(points.map((point) => {
+      const pixel = centerOf(point)
+      return { transform: `translate(${pixel.x}px, ${pixel.y}px)` }
+    }), { duration: Math.min(700, (points.length - 1) * 220), easing: 'linear' })
+    const stop = () => { if (preference?.matches) animation.cancel() }
+    preference?.addEventListener('change', stop)
+    return () => {
+      animation.cancel()
+      preference?.removeEventListener('change', stop)
+    }
+  }, [tick, position, route])
+  return <g ref={(node) => { element.current = node; if (node) nodes.set(entity.id, node); else nodes.delete(entity.id) }} transform={`translate(${center.x} ${center.y})`}>{children}</g>
+}
+
+function AttackNudge({ entity, tick, target, children }: Readonly<{ entity: Entity; tick: number; target?: Entity; children: ReactNode }>) {
+  const node = useRef<SVGGElement>(null)
+  const lastTick = useRef<number | null>(null)
+  const destination = entity.attackTargetPosition && ('attackMode' in entity && entity.attackMode === 'position' ? entity.attackTargetPosition : target?.position ?? entity.attackTargetPosition)
+  const from = centerOf(entity.position)
+  const to = destination && centerOf(destination)
+  const dx = to ? to.x - from.x : 0
+  const dy = to ? to.y - from.y : 0
+  const building = 'income' in entity
+  useLayoutEffect(() => {
+    if (lastTick.current === tick) return
+    lastTick.current = tick
+    const distance = Math.hypot(dx, dy)
+    const preference = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    if (building || !distance || !node.current?.animate || preference?.matches) return
+    const animation = node.current.animate([
+      { transform: 'translate(0px, 0px)' },
+      { transform: `translate(${0.75 * dx / distance}px, ${0.75 * dy / distance}px)`, offset: .4 },
+      { transform: 'translate(0px, 0px)' },
+    ], { duration: 200, easing: 'ease-out' })
+    const stop = () => { if (preference?.matches) animation.cancel() }
+    preference?.addEventListener('change', stop)
+    return () => { animation.cancel(); preference?.removeEventListener('change', stop) }
+  }, [tick, dx, dy, building])
+  return <g ref={node}>{children}</g>
+}
+
+function AttackVisual({ unit, target, entities, color, markerId, nodes, label }: Readonly<{
+  unit: Entity; target?: Entity; entities: Entity[]; color: string; markerId: string; nodes: Map<string, SVGGElement>; label: string
+}>) {
+  const group = useRef<SVGGElement>(null)
+  const fixed = 'attackMode' in unit && unit.attackMode === 'position'
+  const destination = fixed ? unit.attackTargetPosition! : target?.position ?? unit.attackTargetPosition!
+  const impact = fixed || !target
+  const missed = unit.attackOutcome === 'miss'
+  const line = actionLine(unit.position, destination, actionClearance(destination, unit.position, entities), impact ? 5 : actionClearance(unit.position, destination, entities))
+  const kind = 'income' in unit ? 'tower' : 'attack'
+  const center = centerOf(destination)
+  const unitId = unit.id
+  const targetId = fixed ? undefined : target?.id
+  const coordinates = JSON.stringify([unit.position, destination])
+  useLayoutEffect(() => {
+    if (!line || !targetId || typeof requestAnimationFrame !== 'function') return
+    let frame = 0
+    let start: number | undefined
+    // Read the same SVG transforms used by walking, including its intermediate frames.
+    const update = (time: number) => {
+      start ??= time
+      const positions: HexPosition[] = JSON.parse(coordinates)
+      const current = (id: string, fallback: HexPosition) => {
+        const node = nodes.get(id)
+        const matrix = node?.getCTM?.()
+        const parent = (node?.parentNode as SVGGElement | undefined)?.getCTM?.()
+        return matrix && parent ? { x: (matrix.e - parent.e) / parent.a, y: (matrix.f - parent.f) / parent.d } : centerOf(fallback)
+      }
+      const from = current(unitId, positions[0])
+      const to = current(targetId, positions[1])
+      const distance = Math.hypot(to.x - from.x, to.y - from.y)
+      const clearance = (building: boolean) => building && distance > 0 ? Math.max(17, 17 * distance / Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y))) : 17
+      const startPadding = clearance(kind === 'tower')
+      const endPadding = clearance(!!target && 'income' in target)
+      const visible = distance > startPadding + endPadding + 4.5
+      for (const element of group.current?.querySelectorAll('line') ?? []) {
+        element.style.visibility = visible ? 'visible' : 'hidden'
+        if (!visible) continue
+        const dx = (to.x - from.x) / distance
+        const dy = (to.y - from.y) / distance
+        for (const [name, value] of Object.entries({ x1: from.x + dx * startPadding, y1: from.y + dy * startPadding, x2: to.x - dx * endPadding, y2: to.y - dy * endPadding })) element.setAttribute(name, String(value))
+      }
+      if (time - start < 750) frame = requestAnimationFrame(update)
+    }
+    frame = requestAnimationFrame(update)
+    return () => cancelAnimationFrame(frame)
+  }, [unitId, targetId, coordinates, nodes, !!line])
+  return <g ref={group}>
+    {line && <>
+      <line className={`unit-direction unit-direction--attack ${kind === 'tower' ? 'unit-direction--tower' : ''} ${impact ? 'attack-impact-line' : ''}`} {...line} style={{ stroke: color }} markerEnd={`url(#${markerId}-${color.slice(1)})`}><title>{label}</title></line>
+      {!missed && <line className={`unit-direction attack-tracer ${impact ? 'attack-impact-line' : ''}`} {...line} style={{ stroke: color }} pathLength="100" aria-hidden="true" />}
+    </>}
+    {impact && <g className={`attack-impact ${missed ? 'attack-impact--miss' : 'attack-impact--hit'}`} transform={`translate(${center.x} ${center.y})`}><title>{label} · {missed ? 'miss' : 'hit'}</title>{missed ? <path d="M-3,-3 L3,3 M-3,3 L3,-3" /> : <circle r="5" />}</g>}
+  </g>
+}
+
+function movementRoute(unit: BattleUnit): HexPosition[] {
+  if (unit.movementPath && unit.movementPath.length > 1 && key(unit.movementPath[unit.movementPath.length - 1]) === key(unit.position)) return unit.movementPath
+  if (!unit.movedFrom) return []
+  const from = centerOf(unit.movedFrom)
+  const to = centerOf(unit.position)
+  const distance = Math.hypot(to.x - from.x, to.y - from.y)
+  // Old snapshots only contain endpoints: animate an adjacent step, never invent a route.
+  return distance > 0 && distance <= root3 * size + 0.01 ? [unit.movedFrom, unit.position] : []
+}
+
 function centerOf(position: HexPosition) {
   return { x: root3 * size * (position.x + 0.5 * (position.y & 1)), y: size * 1.5 * position.y }
 }
+// Clear every icon at the endpoint, including square building selection outlines.
+function actionClearance(fromPosition: HexPosition, position: HexPosition, entities: Entity[]) {
+  const from = centerOf(fromPosition)
+  const to = centerOf(position)
+  const distance = Math.hypot(to.x - from.x, to.y - from.y)
+  const hasBuilding = entities.some((entity) => 'income' in entity && key(entity.position) === key(position))
+  return hasBuilding && distance > 0 ? Math.max(17, 17 * distance / Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y))) : 17
+}
+
+function actionLine(from: HexPosition, to: HexPosition, startPadding: number, endPadding: number) {
+  const start = centerOf(from)
+  const end = centerOf(to)
+  // Hide paths too short to fit a head rather than reversing or overlapping icons.
+  if (Math.hypot(end.x - start.x, end.y - start.y) <= startPadding + endPadding + 4.5) return null
+  return directionalLine(from, to, startPadding, endPadding)
+}
+
 function directionalLine(fromPosition: HexPosition, toPosition: HexPosition, startPadding: number, endPadding: number) {
   const from = centerOf(fromPosition)
   const to = centerOf(toPosition)

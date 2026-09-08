@@ -137,7 +137,7 @@ func (f *factionRuntime) newUnit(definition UnitType, position Position, ready u
 	if definition.HealAmount > 0 {
 		attack = 0
 	}
-	return Unit{Class: definition.Class, MinimumRange: definition.MinimumRange, BuildingPriority: definition.BuildingPriority, BuildingDamageBonus: definition.BuildingDamageBonus, BonusAgainstClass: definition.BonusAgainstClass, ClassDamageBonus: definition.ClassDamageBonus, HealAmount: definition.HealAmount, ID: fmt.Sprintf("%s:%s:%03d", f.setup.ID, definition.ID, f.unitSequence), FactionID: f.setup.ID, Type: definition.ID, Position: position, Health: definition.Health, MaxHealth: definition.Health, Attack: attack, Defense: definition.Defense + f.defenseBonus, Speed: definition.Speed, Movement: definition.Movement, Range: definition.Range, Vision: definition.Vision, Cost: definition.Cost, ReadyAtTick: ready}
+	return Unit{AttackMode: definition.AttackMode, Class: definition.Class, MinimumRange: definition.MinimumRange, BuildingPriority: definition.BuildingPriority, BuildingDamageBonus: definition.BuildingDamageBonus, BonusAgainstClass: definition.BonusAgainstClass, ClassDamageBonus: definition.ClassDamageBonus, HealAmount: definition.HealAmount, ID: fmt.Sprintf("%s:%s:%03d", f.setup.ID, definition.ID, f.unitSequence), FactionID: f.setup.ID, Type: definition.ID, Position: position, Health: definition.Health, MaxHealth: definition.Health, Attack: attack, Defense: definition.Defense + f.defenseBonus, Speed: definition.Speed, Movement: definition.Movement, Range: definition.Range, Vision: definition.Vision, Cost: definition.Cost, ReadyAtTick: ready}
 }
 
 func validateFactionPlans(scenario Scenario, setup FactionSetup) error {

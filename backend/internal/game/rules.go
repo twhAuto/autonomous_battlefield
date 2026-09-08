@@ -49,7 +49,7 @@ func validRulesetMetadata(ruleset Ruleset) bool {
 }
 
 func validUnitType(unit UnitType) bool {
-	return validUnitCapabilities(unit) && strings.TrimSpace(unit.ID) != "" && unit.Cost > 0 && unit.Health > 0 && unit.Attack >= 0 && unit.Defense >= 0 && unit.Speed >= 0 && unit.Movement > 0 && unit.Range > 0 && unit.Vision > 0
+	return (unit.AttackMode == "" || unit.AttackMode == "tracking" || unit.AttackMode == "position") && validUnitCapabilities(unit) && strings.TrimSpace(unit.ID) != "" && unit.Cost > 0 && unit.Health > 0 && unit.Attack >= 0 && unit.Defense >= 0 && unit.Speed >= 0 && unit.Movement > 0 && unit.Range > 0 && unit.Vision > 0
 }
 
 func validUpgrade(upgrade Upgrade) bool {

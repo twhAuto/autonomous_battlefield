@@ -8,6 +8,7 @@ import { HexBattleMap } from '../components/HexBattleMap'
 import { type BattleControlState, type BattleControlAction } from '../types'
 import { useDecisionHistory } from '../hooks/useDecisionHistory'
 import { BattleInspector } from '../components/BattleInspector'
+import { FactionSummaries } from '../components/FactionSummaries'
 import { BattleHeader, BattleStatistics, battleTitleFor, Outcome, BattleControls, BattleState } from '../components/BattlePresentation'
 import { useFactionPerspective } from '../hooks/useFactionPerspective'
 import { useBattleStatus } from '../hooks/useBattleStatus'
@@ -95,6 +96,8 @@ export function BattlePage() {
           <div className="battle-progress__numbers"><strong>{battle.currentTick}</strong><span>/ {battle.requestedTicks} TICKS</span></div>
           <progress className="battle-progress" aria-label="Battle progress" max={battle.requestedTicks} value={battle.currentTick}>{progress}%</progress>
         </div>
+
+        <FactionSummaries battle={battle} decisions={decisions} decisionMessage={decisionMessage} />
 
         <aside className={`outcome-panel outcome-panel--${battle.paused ? 'paused' : battle.status}`}>
           <span className="outcome-panel__label">BATTLE CONTROL</span>

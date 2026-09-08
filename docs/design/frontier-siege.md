@@ -124,3 +124,15 @@ spawn arrangement, routing, and castle pressure matter alongside damage bonuses.
 Run `go test ./internal/battle/catalog -run TestFrontier -v` from `backend` to
 repeat the probes. Before deployment, run both repository coverage gates and the
 frontend production build. Tune future balance through a new content version.
+
+### Catapult targeting and attack presentation
+
+Newly resolved catapults use `attackMode: position`. They aim after economy and
+tactics, before unit turns, then hit that fixed hex on their speed-2 turn. Faster
+units can leave before impact. Another living enemy at the hex can take the hit;
+empty or friendly-only hexes miss. Existing siege target priority and building
+bonuses apply, with no splash or friendly fire. Retreat cancels an aimed shot.
+Speed controls turn order, not attacks per tick. Melee and rangers retain immediate
+tracking attacks. Previously resolved scenarios without `attackMode` retain their
+original behavior. The map shows attack nudges, tracking arrows, and distinct
+fixed-location hit/miss markers, respecting reduced motion.

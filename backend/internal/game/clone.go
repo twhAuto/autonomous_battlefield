@@ -8,6 +8,7 @@ import (
 )
 
 func CloneState(value State) State {
+	value.UnitDeaths = append([]UnitDeath(nil), value.UnitDeaths...)
 	value.Factions = append([]FactionState(nil), value.Factions...)
 	for i := range value.Factions {
 		value.Factions[i].OwnedUpgradeIDs = append([]string(nil), value.Factions[i].OwnedUpgradeIDs...)
@@ -15,6 +16,7 @@ func CloneState(value State) State {
 	value.Units = append([]Unit(nil), value.Units...)
 	for index := range value.Units {
 		value.Units[index].HealTargetPosition = clonePosition(value.Units[index].HealTargetPosition)
+		value.Units[index].MovementPath = append([]Position(nil), value.Units[index].MovementPath...)
 		value.Units[index].MovedFrom = clonePosition(value.Units[index].MovedFrom)
 		value.Units[index].AttackTargetPosition = clonePosition(value.Units[index].AttackTargetPosition)
 	}

@@ -26,6 +26,21 @@ func TestLegacyBattleTraceUnchanged(t *testing.T) {
 	for !m.Finished() {
 		transition, err := m.Advance()
 		testutil.Require(t, err == nil, func() { t.Fatal(err) })
+		// The legacy digest predates attack/route visualization metadata. Keep comparing
+		// every original simulation field without replacing the baseline digest.
+		transition.State.UnitDeaths = nil
+		for i := range transition.State.Units {
+			transition.State.Units[i].MovementPath = nil
+			transition.State.Units[i].AttackOutcome = ""
+		}
+		for i := range transition.State.Buildings {
+			transition.State.Buildings[i].AttackOutcome = ""
+		}
+		for _, event := range transition.Events {
+			delete(event.Data, "attackMode")
+			delete(event.Data, "outcome")
+			delete(event.Data, "impactPosition")
+		}
 		data, err := json.Marshal(transition)
 		testutil.Require(t, err == nil, func() { t.Fatal(err) })
 		h.Write(data)
