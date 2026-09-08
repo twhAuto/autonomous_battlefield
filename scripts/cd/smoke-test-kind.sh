@@ -315,11 +315,28 @@ wait_for_prometheus_query \
   'count(container_memory_working_set_bytes{namespace="battlefield",pod!=""})' \
   1
 
-curl --fail --silent --max-time 2 \
-  --output "${runtime_dir}/api-metrics.txt" \
-  "http://127.0.0.1:${api_port}/metrics"
-if ! grep -q '^battlefield_http_server_requests_total' \
-  "${runtime_dir}/api-metrics.txt"; then
+# Gateway traffic may reach a different replica. Probes and /metrics bypass
+# request instrumentation, so exercise an application route on this forward.
+# An anonymous session returns 401 when authentication is enabled, or 200 otherwise.
+session_status="$(curl --silent --show-error --max-time 2 --noproxy '*' \
+  --output /dev/null --write-out '%{http_code}' \
+  "http://127.0.0.1:${api_port}/v1/auth/session")"
+if [[ "${session_status}" != 200 && "${session_status}" != 401 ]]; then
+  echo "API metrics session probe failed with HTTP ${session_status}." >&2
+  exit 1
+fi
+
+# Instrumentation records the request after the response is written.
+for _ in {1..30}; do
+  if curl --fail --silent --max-time 2 --noproxy '*' \
+    --output "${runtime_dir}/api-metrics.txt" \
+    "http://127.0.0.1:${api_port}/metrics" \
+    && grep -q '^battlefield_http_server_requests_total' "${runtime_dir}/api-metrics.txt"; then
+    break
+  fi
+  sleep 1
+done
+if ! grep -q '^battlefield_http_server_requests_total' "${runtime_dir}/api-metrics.txt"; then
   echo "API metrics did not contain battlefield_http_server_requests_total." >&2
   exit 1
 fi

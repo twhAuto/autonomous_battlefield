@@ -81,7 +81,7 @@ func TestStreamableMCPToolsAreAuthenticatedAndScoped(t *testing.T) {
 	defer session.Close()
 	defer serverSession.Close()
 	tools, err := session.ListTools(context.Background(), nil)
-	if err != nil || len(tools.Tools) != 2 {
+	if err != nil || len(tools.Tools) != 3 {
 		t.Fatalf("tools=%#v err=%v", tools, err)
 	}
 	contextResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "get_decision_context", Arguments: map[string]any{"requestId": "request-1"}})

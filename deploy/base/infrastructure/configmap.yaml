@@ -32,6 +32,7 @@ data:
       cookieSecureEnvironmentVariable: BATTLEFIELD_AUTH_COOKIE_SECURE
       sessionTTL: 12h
     engine:
+      compactUnitContext: true
       healthAddress: ":8081"
       pollInterval: 1s
       leaseDuration: 30s

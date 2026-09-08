@@ -34,3 +34,14 @@ func TestKnowledgeConfiguration(t *testing.T) {
 		}
 	}
 }
+
+func TestCompactContextRolloutGate(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		var raw fileConfig
+		raw.Engine.CompactUnitContext = enabled
+		parsed, err := parseEngineConfig(raw)
+		if err != nil || parsed.CompactUnitContext != enabled {
+			t.Fatal(parsed, err)
+		}
+	}
+}

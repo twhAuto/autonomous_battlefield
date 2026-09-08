@@ -11,11 +11,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -26,13 +26,14 @@ import (
 // ComparisonVariant creates a fresh runner per sample; conversation state cannot
 // leak between repetitions or variants. Disabling memory is an explicit ablation.
 type ComparisonVariant struct {
-	ID               string
-	Provider         string
-	Model            string
-	Runtime          string
-	WithoutMemory    bool
-	WithoutKnowledge bool
-	NewRunner        func() ai.DecisionRunner
+	CompactUnitContext bool
+	ID                 string
+	Provider           string
+	Model              string
+	Runtime            string
+	WithoutMemory      bool
+	WithoutKnowledge   bool
+	NewRunner          func() ai.DecisionRunner
 }
 
 type ComparisonOptions struct {
@@ -53,15 +54,16 @@ type ComparisonReport struct {
 }
 
 type VariantReport struct {
-	WithoutKnowledge  bool               `json:"withoutKnowledge"`
-	ID                string             `json:"id"`
-	Provider          string             `json:"provider"`
-	Model             string             `json:"model"`
-	Runtime           string             `json:"runtime"`
-	WithoutMemory     bool               `json:"withoutMemory"`
-	BudgetEnforcement string             `json:"budgetEnforcement"`
-	Samples           []ComparisonSample `json:"samples"`
-	Metrics           ReportMetrics      `json:"metrics"`
+	CompactUnitContext bool               `json:"compactUnitContext"`
+	WithoutKnowledge   bool               `json:"withoutKnowledge"`
+	ID                 string             `json:"id"`
+	Provider           string             `json:"provider"`
+	Model              string             `json:"model"`
+	Runtime            string             `json:"runtime"`
+	WithoutMemory      bool               `json:"withoutMemory"`
+	BudgetEnforcement  string             `json:"budgetEnforcement"`
+	Samples            []ComparisonSample `json:"samples"`
+	Metrics            ReportMetrics      `json:"metrics"`
 }
 
 type ComparisonSample struct {
@@ -118,7 +120,7 @@ func comparisonVariantReports(variants []ComparisonVariant) ([]VariantReport, er
 		if v.Runtime == "cli" {
 			enforcement = "per-sample deadline and three submission rejections; CLI internal turns/tokens are not host-enforced"
 		}
-		reports = append(reports, VariantReport{ID: v.ID, Provider: v.Provider, Model: v.Model, Runtime: v.Runtime, WithoutMemory: v.WithoutMemory, WithoutKnowledge: v.WithoutKnowledge, BudgetEnforcement: enforcement})
+		reports = append(reports, VariantReport{CompactUnitContext: v.CompactUnitContext, ID: v.ID, Provider: v.Provider, Model: v.Model, Runtime: v.Runtime, WithoutMemory: v.WithoutMemory, WithoutKnowledge: v.WithoutKnowledge, BudgetEnforcement: enforcement})
 	}
 	return reports, nil
 }
@@ -144,6 +146,9 @@ func comparisonObservations(cases []Case, limits ai.KnowledgeLimits) ([]ai.Decis
 				return nil, err
 			}
 		}
+		if c.KnowledgeRuleset != nil {
+			envelope.Context.UnitReference = ai.FreezeUnitReference(*c.KnowledgeRuleset, envelope.Context)
+		}
 		observations[i] = envelope.Context
 	}
 	return observations, nil
@@ -158,6 +163,9 @@ func (r Runner) compareRepetition(ctx context.Context, cases []Case, observation
 				return err
 			}
 			observation := comparisonObservation(observations[ci], variants[vi])
+			if variants[vi].CompactUnitContext && observation.UnitReference == nil {
+				return fmt.Errorf("compact variant %s requires a frozen unit reference or knowledgeRuleset in case %s", variants[vi].ID, c.ID)
+			}
 			sample, err := r.compareSample(ctx, c, observation, variants[vi], report.Options, repetition+1)
 			if err != nil {
 				return err
@@ -182,7 +190,8 @@ func (r Runner) compareSample(ctx context.Context, c Case, observation ai.Decisi
 	defer cancel()
 	repository := &comparisonRepository{record: ai.DecisionRecord{ID: c.RequestID, Version: 1, TargetTick: observation.TargetTick, Status: "running", Runtime: variant.Runtime, Observation: observation, ProviderMetadata: map[string]any{}}}
 	secret := rand.Text()
-	handler := mcpserver.NewWithLogger(repository, secret, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
+	reads := &referenceReadCounter{}
+	handler := mcpserver.NewWithLogger(repository, secret, nil, slog.New(reads)).Handler()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return ComparisonSample{}, err
@@ -202,6 +211,9 @@ func (r Runner) compareSample(ctx context.Context, c Case, observation ai.Decisi
 	}
 	hash, _ := ai.ObservationHash(observation)
 	entry := CaseReport{ID: c.ID, Category: c.Category, Profile: variant.ID, Model: variant.Model, PromptVersion: ai.PromptVersion, ToolSchemaVersion: ai.ToolSchema, RulesVersion: c.RulesVersion, Passed: accepted && runErr == nil, Accepted: accepted, ErrorCategory: category, DurationMS: time.Since(started).Milliseconds(), InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests, ToolCalls: append([]string(nil), repository.calls...)}
+	entry.UnitDetailCalls = int(reads.calls.Load())
+	payload, _ := json.Marshal(map[string]any{"context": ai.AgentObservation(observation)})
+	entry.ContextBytes = len(payload)
 	entry.Outcome = "rejected"
 	if accepted {
 		entry.Outcome = "accepted"
@@ -272,11 +284,37 @@ func (r *comparisonRepository) FinishDecisionFailure(_ context.Context, _ string
 }
 
 func comparisonObservation(observation ai.DecisionContext, variant ComparisonVariant) ai.DecisionContext {
+	if variant.CompactUnitContext {
+		observation.SchemaVersion = ai.ContextSchema
+	} else if observation.SchemaVersion == ai.ContextSchema {
+		observation.SchemaVersion = ai.LegacyContextSchema
+	}
 	if variant.WithoutKnowledge {
 		observation.Knowledge = nil
+		if observation.UnitReference != nil {
+			clone := *observation.UnitReference
+			clone.Units = append([]ai.UnitDetail(nil), clone.Units...)
+			for i := range clone.Units {
+				clone.Units[i].Card = nil
+			}
+			observation.UnitReference = &clone
+		}
 	}
 	if variant.WithoutMemory {
 		observation.Memory = nil
 	}
 	return observation
 }
+
+// Counts authorized lookup attempts from the real MCP server without retaining payloads.
+type referenceReadCounter struct{ calls atomic.Int64 }
+
+func (h *referenceReadCounter) Enabled(context.Context, slog.Level) bool { return true }
+func (h *referenceReadCounter) Handle(_ context.Context, r slog.Record) error {
+	if r.Message == "unit_details_requested" {
+		h.calls.Add(1)
+	}
+	return nil
+}
+func (h *referenceReadCounter) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *referenceReadCounter) WithGroup(string) slog.Handler      { return h }

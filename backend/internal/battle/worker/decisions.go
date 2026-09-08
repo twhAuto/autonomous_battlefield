@@ -72,6 +72,11 @@ func (w *Worker) prepareDecision(ctx context.Context, lease BattleLease, simulat
 	if err != nil {
 		return err
 	}
+	if w.config.CompactUnitContext {
+		decisionContext.UnitReference = ai.FreezeUnitReference(simulation.Scenario().Ruleset, decisionContext)
+	} else {
+		decisionContext.SchemaVersion = ai.LegacyContextSchema
+	}
 	decisionContext.Memory, err = w.decisions.ListFactionMemory(ctx, lease.BattleID, lease.Attempt, factionID, targetTick)
 	if err != nil {
 		// Memory is optional continuity. Current authoritative context remains usable.

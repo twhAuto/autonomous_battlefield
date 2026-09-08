@@ -65,3 +65,13 @@ describe('saved context loading', () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('Saved context is unavailable for this decision.')
  })
 })
+
+ it('separates compact initial context from optional unit details', async () => {
+  const compact = { ...saved, initialContext: { legal: { units: [{ id: 'ranger', cost: 10, role: 'ranged' }] } }, availableUnitDetails: { units: [{ unitId: 'ranger', stats: { attack: 20 } }] } }
+  vi.mocked(fetch).mockResolvedValueOnce(response(compact))
+  render(<DecisionContextPanel battleId="battle" requestId="request" attempt={2} active cache={new Map()} />)
+  await userEvent.click(screen.getByText('Saved decision context'))
+  expect(await screen.findByText('Initial agent context')).toBeInTheDocument()
+  expect(screen.getByText('Unit details available on demand')).toBeInTheDocument()
+  expect(screen.getByText(/does not mean the agent fetched them/)).toBeInTheDocument()
+ })

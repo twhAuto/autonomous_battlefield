@@ -322,7 +322,17 @@ Both adapters:
 The MCP tools are:
 
 - `get_decision_context`;
+- `get_unit_details` (1–4 exact unit IDs);
 - `submit_strategy_plan`.
+
+[`agent_context.go`](../../backend/internal/ai/agent_context.go) owns the explicit
+agent projection, frozen unit reference snapshot, and exact lookup. The full
+`DecisionContext` remains persisted for validation. New snapshots are captured by
+the battle worker before hashing when `engine.compactUnitContext` is enabled.
+[`unit_details.go`](../../backend/internal/ai/mcpserver/unit_details.go) serves the
+capability-scoped lookup. The saved-context service and frontend inspector show
+initial context separately from optional reference details. Evaluation variants
+can enable `compactUnitContext`, with lookup and total input-token metrics.
 
 The server validates request scope before calling `DecisionService`. PostgreSQL notifications close an in-memory wake-up channel so long-polling claim requests promptly query durable state.
 

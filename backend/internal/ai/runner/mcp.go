@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -70,8 +72,14 @@ func toolDefinitions(ctx context.Context, session *mcp.ClientSession) ([]ai.Tool
 		}
 		result = append(result, ai.ToolDefinition{Name: tool.Name, Description: tool.Description, InputSchema: schema})
 	}
-	if len(result) != 2 {
-		return nil, fmt.Errorf("MCP exposed %d tools, want exactly 2", len(result))
+	names := make([]string, 0, len(result))
+	for _, tool := range result {
+		names = append(names, tool.Name)
+	}
+	slices.Sort(names)
+	valid := slices.Equal(names, []string{"get_decision_context", "submit_strategy_plan"}) || slices.Equal(names, []string{"get_decision_context", "get_unit_details", "submit_strategy_plan"}) || slices.Equal(names, []string{"get_background_context", "submit_faction_background"})
+	if !valid {
+		return nil, fmt.Errorf("MCP exposed an unsupported tool set")
 	}
 	return result, nil
 }
@@ -85,9 +93,29 @@ func callTool(ctx context.Context, session *mcp.ClientSession, call ai.ToolCall)
 	if err != nil {
 		return nil, false, err
 	}
-	payload, err := json.Marshal(result.StructuredContent)
-	if err != nil {
-		return nil, false, err
+	if result.IsError {
+		// Preserve schema/handler errors as model-visible tool results so bounded
+		// repair (including requesting a smaller batch) can occur in the same session.
+		payload, err := json.Marshal(map[string]any{"error": result.Content})
+		return payload, false, err
+	}
+	var payload []byte
+	if result.StructuredContent == nil {
+		var text strings.Builder
+		for _, content := range result.Content {
+			if part, ok := content.(*mcp.TextContent); ok {
+				text.WriteString(part.Text)
+			}
+		}
+		payload = []byte(text.String())
+		if !json.Valid(payload) {
+			return nil, false, fmt.Errorf("MCP returned no readable JSON result")
+		}
+	} else {
+		payload, err = json.Marshal(result.StructuredContent)
+		if err != nil {
+			return nil, false, err
+		}
 	}
 	accepted := false
 	if call.Name == "submit_strategy_plan" || call.Name == "submit_faction_background" {

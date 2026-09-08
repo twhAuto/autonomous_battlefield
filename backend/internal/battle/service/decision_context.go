@@ -20,13 +20,15 @@ type decisionContextRepository interface {
 }
 
 type SavedDecisionContext struct {
-	RequestID       string               `json:"requestId"`
-	BattleID        string               `json:"battleId"`
-	FactionID       string               `json:"factionId"`
-	Attempt         int                  `json:"attempt"`
-	TargetTick      uint64               `json:"targetTick"`
-	ObservationTick uint64               `json:"observationTick"`
-	Context         *DecisionObservation `json:"context"`
+	InitialContext       any                       `json:"initialContext,omitempty"`
+	AvailableUnitDetails *ai.UnitReferenceSnapshot `json:"availableUnitDetails,omitempty"`
+	RequestID            string                    `json:"requestId"`
+	BattleID             string                    `json:"battleId"`
+	FactionID            string                    `json:"factionId"`
+	Attempt              int                       `json:"attempt"`
+	TargetTick           uint64                    `json:"targetTick"`
+	ObservationTick      uint64                    `json:"observationTick"`
+	Context              *DecisionObservation      `json:"context"`
 }
 
 type DecisionObservation struct {
@@ -37,10 +39,10 @@ type DecisionObservation struct {
 	OwnedUpgradeIDs []string                `json:"ownedUpgradeIds"`
 	Economy         ai.EconomyContext       `json:"economy"`
 	View            game.View               `json:"view"`
-	Legal           ai.LegalChoices         `json:"legal"`
+	Legal           any                     `json:"legal"`
 	ActivePlan      controller.PlanProposal `json:"activePlan"`
 	Memory          []ai.FactionMemoryEntry `json:"memory,omitempty"`
-	Knowledge       *ai.DecisionKnowledge   `json:"knowledge,omitempty"`
+	Knowledge       any                     `json:"knowledge,omitempty"`
 }
 
 func (s *battleService) GetDecisionContext(ctx context.Context, battleID, requestID string, attempt int) (SavedDecisionContext, error) {
@@ -71,7 +73,17 @@ func (s *battleService) GetDecisionContext(ctx context.Context, battleID, reques
 		FactionName: observation.FactionName, Background: observation.Background, Doctrine: observation.Doctrine,
 		Opening: observation.Opening, OwnedUpgradeIDs: observation.OwnedUpgradeIDs,
 		Economy: observation.Economy, View: observation.View, Legal: observation.Legal,
-		ActivePlan: observation.ActivePlan, Memory: observation.Memory, Knowledge: observation.Knowledge,
+		ActivePlan: observation.ActivePlan, Memory: observation.Memory,
+	}
+	if observation.Knowledge != nil {
+		result.Context.Knowledge = observation.Knowledge
+	}
+	if observation.SchemaVersion == ai.ContextSchema {
+		compact := ai.CompactContext(observation)
+		result.InitialContext = compact
+		result.AvailableUnitDetails = observation.UnitReference
+		result.Context.Legal = compact.Legal
+		result.Context.Knowledge = compact.Knowledge
 	}
 	return result, nil
 }

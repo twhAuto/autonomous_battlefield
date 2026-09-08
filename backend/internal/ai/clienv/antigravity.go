@@ -17,7 +17,7 @@ const geminiDirectory = ".gemini"
 // fallback login. HOME and XDG configuration paths remain private per invocation.
 func PrepareAntigravity(home, mcpURL, capability string, toolNames ...string) ([]string, error) {
 	if len(toolNames) == 0 {
-		toolNames = []string{"get_decision_context", "submit_strategy_plan"}
+		toolNames = []string{"get_decision_context", "submit_strategy_plan", "get_unit_details"}
 	}
 	allowed := []string{}
 	for _, name := range toolNames {

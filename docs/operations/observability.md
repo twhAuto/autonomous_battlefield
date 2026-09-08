@@ -65,6 +65,12 @@ The API and engine expose `/metrics` on their existing operational ports. The
 endpoint remains available during startup and graceful shutdown so a failed
 dependency does not hide process diagnostics.
 
+HTTP request series appear only after a replica handles application traffic;
+lifecycle probes and metrics scrapes bypass request instrumentation. The smoke
+test probes `/v1/auth/session` through the same port-forward used for the metrics
+scrape, accepting anonymous session responses of 200 or 401, then waits for the
+request counter. Gateway traffic may reach another replica.
+
 | Metric | Type | Meaning |
 | --- | --- | --- |
 | `battlefield_http_server_requests_total` | Counter | API requests by method, normalized route pattern, and status code. |

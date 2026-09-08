@@ -170,10 +170,10 @@ priority order and stops before a whole card would exceed either budget.
 
 Selection uses visible enemy types, own deployed types, explicit recruitment
 order types, legacy recruitment priorities, then other legal units by increasing cost, with unit ID breaking
-ties. It never uses hidden enemy state. All legal unit statistics remain present.
+ties. It never uses hidden enemy state. With the default legacy response, all legal unit statistics remain present.
 Selection is performed once before decision hashing; persisted contexts include
 source IDs, a ruleset-content digest, effective limits, serialized size, and
-truncation. MCP and inline CLI delivery use the same stored context. Engine
+truncation. MCP and inline CLI delivery use the same versioned projection of the stored context. Engine
 configuration changes affect newly prepared decisions after restart; retries
 reuse persisted decisions.
 
@@ -220,7 +220,7 @@ from a nonempty spend order also skips buying. Construction and income timing ar
 unchanged; recruits can act on the following tick. The decision panel displays
 requested quantities, while `unit_recruited` events record actual purchases.
 
-MCP tool schema is now `battlefield.mcp-tools.v3`; existing clients may omit the
+MCP tool schema is now `battlefield.mcp-tools.v6`; existing clients may omit the
 optional orders field. Both model providers share the updated purchasing prompt.
 Deploy API, MCP, engine, and agent together and restart the host CLI agent so tool
 schemas and prompts agree. Existing battle JSON requires no database migration.
@@ -235,3 +235,72 @@ are skipped without substitution; blocked castle spawns or an unaffordable order
 stop remaining purchases. Typed `constructionOrders` select building definitions
 from `legal.buildings` at `legal.economySites`. See
 [Frontier Siege](../design/frontier-siege.md) for the new mechanics and balance probes.
+
+## Compact unit context
+
+The rollout gate `engine.compactUnitContext` defaults to `false` in
+`backend/config.yaml`. It controls newly prepared decisions; saved decisions and
+retries keep their recorded schema. No database migration is needed.
+
+1. Deploy the updated API/MCP server and frontend inspector with the gate off.
+2. Update every agent runner, including host CLI agents, to support tools v6.
+3. Run the checks below, then set `engine.compactUnitContext: true` in the engine's
+   YAML configuration (or its deployment ConfigMap) and restart the engine.
+4. Compare initial bytes, total input tokens across all turns, lookup frequency,
+   latency, accepted decisions, and fallback frequency. To stop creating compact
+   contexts, set the gate back to false; retain compatible readers/runners for
+   existing v3 decisions.
+
+Compact responses contain all recruitable unit overviews and a separate list for
+visible non-recruitable types. They retain mechanics and current battlefield
+stats. `get_unit_details` takes `requestId` and 1–4 distinct `unitIds`, returning
+frozen base stats and guidance. Missing guidance does not hide stats. Unknown and
+out-of-scope IDs both return unavailable. The 1800-byte JSON result limit returns
+an explicit error for oversized batches; retry with fewer IDs within existing
+turn/time limits. For long guidance, copy `nextGuidanceOffset` into a subsequent
+call's `guidanceOffset` with the same single unit ID. Offsets refer to UTF-8 bytes in
+the frozen guidance; each page retains complete base stats. This explicit
+continuation avoids silent truncation and CLI file offloading. Current effective
+stats take precedence over base rules.
+
+Reference data is frozen before hashing and does not depend on the automatic
+knowledge card count/byte limits. Those existing limits still govern stored
+legacy knowledge and mechanics selection. No vector database or external search
+service is involved.
+
+Comparison variants accept `compactUnitContext: true`; pair a variant with an
+otherwise identical legacy variant and use cases with `knowledgeRuleset` (or a
+saved unit reference). `withoutKnowledge` also strips optional card guidance from
+the reference copy without mutating the baseline. Reports add `contextBytes` and
+`unitDetailCalls` per case; aggregates include `totalInputTokens`,
+`unitDetailCalls`, and `lookupRate` (fraction of cases that fetched details).
+Provider-versus-scripted comparisons include input-token and lookup-rate deltas.
+Scripted token counts are fixture values, not measured provider savings. CLI usage
+is limited to what that CLI reports. Decision acceptance is not a win-rate measure.
+
+From the repository root:
+
+```bash
+(cd backend && go test ./internal/ai -run TestCompactContextSizeByBattleStage -v)
+./scripts/test/test-go-coverage.sh
+(cd frontend && npm test -- --coverage)
+(cd frontend && npm run build)
+```
+
+The synthetic opening/midgame/large fixtures retain identical battlefield data
+and assert reduced catalog bytes and non-growing complete initial responses.
+Their initial bytes were 4036→1556, 8592→6112, and 42308→39828 respectively when
+introduced. These are serialized JSON measurements, not token or cost estimates.
+
+The opt-in real CLI transport check uses only synthetic data and the existing
+subscription login. It attempts four unit details, retries a smaller batch when
+needed, and follows guidance continuation. The accepted rationale must include a
+verification word present only at the end of fetched guidance:
+
+```bash
+(cd backend && BATTLEFIELD_LIVE_AGY=1 go test ./internal/ai/mcpserver -run '^TestAntigravityLiveDecision$' -v -count=1)
+```
+
+The inspector's **Initial agent context** is the initial projection. **Unit details
+available on demand** shows stored reference data, not a history of actual tool
+reads. Legacy decisions retain their historical inspector presentation.

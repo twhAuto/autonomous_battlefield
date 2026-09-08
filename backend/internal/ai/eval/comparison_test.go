@@ -15,6 +15,7 @@ import (
 )
 
 type sampleRunner struct {
+	lookup bool
 	reject bool
 	omit   bool
 	rename string
@@ -32,6 +33,11 @@ func (r sampleRunner) Run(ctx context.Context, s ai.DecisionSession) (ai.Decisio
 	_, _, err = client.Call(ctx, ai.ToolCall{Name: "get_decision_context", Arguments: []byte(`{"requestId":"sample"}`)})
 	if err != nil {
 		return ai.DecisionResult{}, err
+	}
+	if r.lookup {
+		if _, _, err := client.Call(ctx, ai.ToolCall{Name: "get_unit_details", Arguments: []byte(`{"requestId":"sample","unitIds":["ranger"]}`)}); err != nil {
+			return ai.DecisionResult{}, err
+		}
 	}
 	weight := int64(1000)
 	if r.reject {

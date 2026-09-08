@@ -55,7 +55,7 @@ func assertPrivateAntigravitySettings(t *testing.T, home string) {
 	if err := json.Unmarshal(data, &settings); err != nil {
 		t.Fatal(err)
 	}
-	if settings.ToolPermission != "" || strings.Join(settings.Permissions.Allow, ",") != "mcp(battlefield/get_decision_context),mcp(battlefield/submit_strategy_plan)" {
+	if settings.ToolPermission != "" || strings.Join(settings.Permissions.Allow, ",") != "mcp(battlefield/get_decision_context),mcp(battlefield/submit_strategy_plan),mcp(battlefield/get_unit_details)" {
 		t.Fatal("MCP allowlist widened")
 	}
 	deny := strings.Join(settings.Permissions.Deny, ",")

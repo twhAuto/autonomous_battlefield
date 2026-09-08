@@ -314,7 +314,7 @@ type getContextInput struct {
 	RequestID string `json:"requestId" jsonschema:"request decision identifier"`
 }
 type getContextOutput struct {
-	Context ai.DecisionContext `json:"context"`
+	Context any `json:"context"`
 }
 
 type submitPlanInput struct {
@@ -338,6 +338,7 @@ type submitPlanInput struct {
 func (s *Server) mcpServer() *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "autonomous-battlefield-decisions", Version: ai.ToolSchema}, nil)
 	server.AddReceivingMiddleware(s.logToolInputFailures)
+	mcp.AddTool(server, &mcp.Tool{Name: "get_unit_details", Description: "Read frozen base stats and guidance for 1–4 distinct legal or visible unit types. Optional; current observations include active modifications."}, s.getUnitDetails)
 	mcp.AddTool(server, &mcp.Tool{Name: "get_decision_context", Description: "Read the bounded faction-visible context authorized for this decision request."}, s.getDecisionContext)
 	mcp.AddTool(server, &mcp.Tool{Name: "submit_strategy_plan", Description: "Validate and atomically submit the strategy and production plan for this decision request."}, s.submitStrategyPlan)
 	return server
@@ -365,14 +366,14 @@ func (s *Server) getDecisionContext(ctx context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		return nil, getContextOutput{}, err
 	}
-	payload, err := json.Marshal(getContextOutput{Context: value})
+	payload, err := json.Marshal(getContextOutput{Context: ai.AgentObservation(value)})
 	if err != nil {
 		return nil, getContextOutput{}, err
 	}
 	s.logger.InfoContext(ctx, "decision_context_response", "request_id", input.RequestID, "target_tick", value.TargetTick, "expected_version", value.ExpectedVersion, "response_bytes", len(payload))
 	// Explicit text supports clients that do not expose structuredContent reliably.
 	text := fmt.Sprintf("Decision metadata: requestId=%s targetTick=%d expectedVersion=%d. Copy these values exactly; do not guess. Full faction-visible context JSON follows:\n%s", value.RequestID, value.TargetTick, value.ExpectedVersion, payload)
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, getContextOutput{Context: value}, nil
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, getContextOutput{Context: ai.AgentObservation(value)}, nil
 }
 
 func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest, input submitPlanInput) (*mcp.CallToolResult, ai.SubmissionResult, error) {

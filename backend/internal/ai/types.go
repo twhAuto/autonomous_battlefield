@@ -12,11 +12,12 @@ import (
 )
 
 const (
-	ControllerScripted = "scripted"
-	ControllerModel    = "model"
-	ContextSchema      = "battlefield.decision-context.v2"
-	PlanSchema         = "battlefield.strategy-plan.v2"
-	ToolSchema         = "battlefield.mcp-tools.v5"
+	ControllerScripted  = "scripted"
+	ControllerModel     = "model"
+	LegacyContextSchema = "battlefield.decision-context.v2"
+	ContextSchema       = "battlefield.decision-context.v3"
+	PlanSchema          = "battlefield.strategy-plan.v2"
+	ToolSchema          = "battlefield.mcp-tools.v6"
 )
 
 type DecisionSession struct {
@@ -86,6 +87,7 @@ type TurnProvider interface {
 }
 
 type DecisionContext struct {
+	UnitReference      *UnitReferenceSnapshot  `json:"unitReference,omitempty"`
 	FactionName        string                  `json:"factionName,omitempty"`
 	Background         string                  `json:"background,omitempty"`
 	Doctrine           string                  `json:"doctrine,omitempty"`

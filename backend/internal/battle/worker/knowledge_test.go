@@ -27,6 +27,7 @@ func TestKnowledgePersistedBeforeDecisionHash(t *testing.T) {
 	}
 	repo := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}}
 	cfg := testWorkerConfig()
+	cfg.CompactUnitContext = true
 	cfg.KnowledgeRetrieval = ai.KnowledgeLimits{MaxUnitCards: 32, MaxBytes: 32768}
 	w, err := New(repo, cfg)
 	if err != nil {
@@ -36,6 +37,9 @@ func TestKnowledgePersistedBeforeDecisionHash(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, record := range repo.records {
+		if record.Observation.SchemaVersion != ai.ContextSchema || record.Observation.UnitReference == nil {
+			t.Fatal("compact reference not frozen")
+		}
 		k := record.Observation.Knowledge
 		if k == nil || k.Limits != cfg.KnowledgeRetrieval || len(k.Cards) != 1 {
 			t.Fatal("missing knowledge")

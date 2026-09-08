@@ -25,11 +25,12 @@ type comparisonConfig struct {
 	Variants           []comparisonVariantConfig `yaml:"variants"`
 }
 type comparisonVariantConfig struct {
-	WithoutKnowledge bool   `yaml:"withoutKnowledge"`
-	ID               string `yaml:"id"`
-	Provider         string `yaml:"provider"`
-	Model            string `yaml:"model"`
-	WithoutMemory    bool   `yaml:"withoutMemory"`
+	CompactUnitContext bool   `yaml:"compactUnitContext"`
+	WithoutKnowledge   bool   `yaml:"withoutKnowledge"`
+	ID                 string `yaml:"id"`
+	Provider           string `yaml:"provider"`
+	Model              string `yaml:"model"`
+	WithoutMemory      bool   `yaml:"withoutMemory"`
 }
 
 func runComparison(configPath, casesPath, jsonPath, corpus string, prices aieval.PriceBook, options aieval.ComparisonOptions) error {
@@ -85,7 +86,7 @@ func runComparison(configPath, casesPath, jsonPath, corpus string, prices aieval
 }
 
 func makeComparisonVariant(v comparisonVariantConfig, prices aieval.PriceBook) (aieval.ComparisonVariant, error) {
-	result := aieval.ComparisonVariant{ID: v.ID, Provider: v.Provider, Model: v.Model, WithoutMemory: v.WithoutMemory, WithoutKnowledge: v.WithoutKnowledge, Runtime: "api"}
+	result := aieval.ComparisonVariant{CompactUnitContext: v.CompactUnitContext, ID: v.ID, Provider: v.Provider, Model: v.Model, WithoutMemory: v.WithoutMemory, WithoutKnowledge: v.WithoutKnowledge, Runtime: "api"}
 	if v.Provider == "scripted" {
 		result.Model = "scripted"
 		result.NewRunner = func() ai.DecisionRunner { return runner.APIRunner{Provider: &comparisonBaseline{}} }

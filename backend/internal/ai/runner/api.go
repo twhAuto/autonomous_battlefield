@@ -79,7 +79,7 @@ var errUnauthorizedTool = errors.New("unauthorized tool")
 func executeToolCalls(ctx context.Context, session DecisionToolSession, calls []ai.ToolCall, messages []ai.Message, allowed ...string) (bool, []ai.Message, error) {
 	for _, call := range calls {
 		if len(allowed) == 0 {
-			allowed = []string{"get_decision_context", "submit_strategy_plan"}
+			allowed = []string{"get_decision_context", "submit_strategy_plan", "get_unit_details"}
 		}
 		if !slices.Contains(allowed, call.Name) {
 			return false, messages, fmt.Errorf("%w: provider requested unsupported tool %q", errUnauthorizedTool, call.Name)

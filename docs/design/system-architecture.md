@@ -172,7 +172,9 @@ observation through the existing decision repository. The service checks battle,
 attempt, request, and observation scope. An explicit response projection exposes
 only historical identity, economy, faction-visible view, legal choices, prior
 plan, memory, and knowledge; internal provider metadata and capabilities are
-excluded. Legacy rows without observations return `context: null`. No migration
+excluded. For v3 decisions, `initialContext` contains the initial agent projection
+and `availableUnitDetails` holds the frozen reference snapshot, clearly labelled
+as optional in the inspector. Legacy rows without observations return `context: null`. No migration
 is needed. The browser loads on expansion, caches by battle/attempt/request, and
 aborts and ignores obsolete responses. Decision history also rejects responses
 from an obsolete battle/attempt. The inspector labels observation ticks and
@@ -284,6 +286,14 @@ sequenceDiagram
     DB-->>MCP: Decision context
     MCP-->>Agent: Bounded context
     Agent-->>Model: Tool result
+    opt Unit details needed
+        Model->>Agent: Request get_unit_details
+        Agent->>MCP: Execute scoped lookup
+        MCP->>DB: Read frozen reference snapshot
+        DB-->>MCP: Authorized reference data
+        MCP-->>Agent: Inline base stats and guidance page
+        Agent-->>Model: Tool result (continuation available for long guidance)
+    end
     Model->>Agent: Request submit_strategy_plan
     Agent->>MCP: Execute tool call
     MCP->>MCP: Validate request, version, tick, plan, units, and sites
@@ -335,7 +345,7 @@ At the decision deadline:
 `APIRunner` in `internal/ai/runner/api.go` runs the shared API tool loop:
 
 1. connects to MCP with a request-scoped capability;
-2. requires discovery of exactly `get_decision_context` and `submit_strategy_plan`;
+2. accepts the battle tool set `get_decision_context`, `get_unit_details`, and `submit_strategy_plan` (also accepting the legacy pair during rollout);
 3. asks the configured provider for a tool-calling turn;
 4. rejects unsupported tools or a turn with no tool call;
 5. adds tool input and output to the transcript;
@@ -448,6 +458,39 @@ and 16384). Effective limits, selected source IDs, content digest, byte size, an
 truncation accompany decision knowledge. Old scenarios without knowledge remain
 valid. See [AI comparisons](../operations/ai-comparisons.md#unit-knowledge-retrieval)
 for authoring, configuration, and evaluation details.
+
+### Compact unit context and exact lookup
+
+`engine.compactUnitContext` defaults to `false` for staged rollout. When enabled,
+new decisions use `battlefield.decision-context.v3`. Before hashing, the engine
+freezes all legal or visible unit definitions and available cards in the persisted
+observation's `unitReference` JSON field. This reference is independent of the
+legacy automatic card budget. Full observations continue to drive validation.
+No database migration is required: observations are stored as JSON.
+
+The explicit `AgentContext` projection emits unit ID, cost, class, role, strengths,
+and weaknesses in `legal.units`, plus `referenceUnits` for visible types that are
+not recruitable. It keeps knowledge mechanics and source identity but omits cards,
+base statistics, and the stored reference snapshot. Battlefield observations,
+including effective unit stats, remain intact. API delivery and CLI prefetch use
+the same projection. Older decision versions retain their original MCP response.
+
+MCP tools v6 adds `get_unit_details(requestId, unitIds)`. The request capability
+and frozen legal/visible set scope every lookup. A batch contains 1–4 distinct
+nonempty IDs and returns base stats, guidance when present, and source
+identity/digest. Hidden and unknown IDs both return `available: false`. Responses
+above 1800 serialized JSON bytes return a recoverable tool error asking for fewer
+IDs. For a single long card, `nextGuidanceOffset` explicitly marks continuation;
+pass it as `guidanceOffset` with the same unit ID to read the remainder. Every page
+contains complete base stats. Text-only JSON delivery avoids duplicate CLI resource
+rendering. Overview text is not repeated in lookup results. All reference content remains untrusted data.
+
+The saved-context inspector exposes the exact initial projection separately from
+reference details labelled available on demand. Availability does not establish
+that the model fetched them. Evaluation reports count lookup calls and aggregate
+input tokens across turns, alongside latency, acceptance, fallback, and diversity.
+See [compact context rollout](../operations/ai-comparisons.md#compact-unit-context)
+for deployment order and checks.
 
 ### Submission-shape failures and fallback attribution
 
@@ -682,6 +725,9 @@ per-test budget.
 W3C trace context is persisted on `battle_runs` and `battle_decisions`. API inbound spans flow through PostgreSQL; engine and agent workers extract that durable context and create consumer spans before simulation, MCP, and provider work. Outbound HTTP clients and selected database operations are instrumented. The local OpenTelemetry Collector exports to Tempo, which Grafana provisions as a data source. Span attributes deliberately exclude prompts, credentials, capabilities, full observations, and raw provider responses.
 
 The observability overlay includes metrics, tracing, and disposable log storage.
+The observability smoke test generates application traffic on the same API
+port-forward it scrapes, because request counters are local to each replica and
+lifecycle probes bypass request instrumentation.
 See [observability operations](../operations/observability.md) for storage,
 security, and access details, and [Jenkins](../operations/jenkins.md) for runtime
 assurance launchers.

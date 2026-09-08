@@ -115,3 +115,25 @@ func TestBattleProfileSnapshotSurvivesFactionChanges(t *testing.T) {
 		}
 	}
 }
+
+func TestCompactSavedDecisionContext(t *testing.T) {
+	record := savedRecord()
+	record.Observation.SchemaVersion = ai.ContextSchema
+	rules := game.Ruleset{ID: "r", Version: "1", Units: []game.UnitType{{ID: "ranger", Cost: 10, Attack: 20}}}
+	record.Observation.Legal.Units = rules.Units
+	record.Observation.UnitReference = ai.FreezeUnitReference(rules, record.Observation)
+	repo := &contextRepo{fakeBattleRepo: &fakeBattleRepo{}, record: record}
+	svc := NewService(repo, &battleFactionRepo{}, &fakeScenarioCatalog{}, 100).(DecisionContextService)
+	result, err := svc.GetDecisionContext(context.Background(), contextBattleID, contextRequestID, 2)
+	if err != nil || result.InitialContext == nil || result.AvailableUnitDetails == nil {
+		t.Fatal(result, err)
+	}
+	initial, _ := json.Marshal(result.InitialContext)
+	expected, _ := json.Marshal(ai.AgentObservation(record.Observation))
+	if string(initial) != string(expected) || strings.Contains(string(initial), `"attack":20`) {
+		t.Fatal("incorrect initial projection")
+	}
+	if result.AvailableUnitDetails.Units[0].Stats.Attack != 20 {
+		t.Fatal("lost optional reference")
+	}
+}

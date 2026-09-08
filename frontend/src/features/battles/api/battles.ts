@@ -174,6 +174,8 @@ export interface DecisionHistory {
 
 // Saved public observation; never substitutes the live spectator state.
 export interface SavedDecisionContext {
+  initialContext?: JsonValue
+  availableUnitDetails?: JsonValue
   requestId: string; battleId: string; factionId: string; attempt: number
   targetTick: number; observationTick: number
   context: {

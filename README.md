@@ -256,6 +256,11 @@ migrations and exit. Normal startup does not run migrations.
 
 ## AI evaluation and authored content
 
+Agents support compact unit overviews with optional `get_unit_details` lookups.
+The `engine.compactUnitContext` rollout gate defaults to false until all runners
+are updated. See [compact context rollout](docs/operations/ai-comparisons.md#compact-unit-context).
+
+
 See [AI comparisons](docs/operations/ai-comparisons.md) for the free scripted
 comparison command, live-provider opt-ins, memory and knowledge ablations,
 explicit recruitment orders, and report limits. Unit rosters and optional

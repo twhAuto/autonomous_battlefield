@@ -66,6 +66,8 @@ func (r Runner) runCase(ctx context.Context, value Case, now func() time.Time) C
 		InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests,
 		ToolCalls: append([]string(nil), session.calls...),
 	}
+	entry.UnitDetailCalls = countUnitDetailCalls(session.calls)
+	entry.ContextBytes = evaluationContextBytes(value)
 	entry.StrategyFingerprint = session.strategyFingerprint
 	entry.Outcome = "rejected"
 	if result.Accepted {
@@ -94,7 +96,7 @@ func assess(value Case, result ai.DecisionResult, providerOutput string, session
 		failures = append(failures, fmt.Sprintf("tool calls=%d exceeds maximum %d", len(session.calls), value.Expected.MaximumToolCalls))
 	}
 	for _, call := range session.calls {
-		if call != "get_decision_context" && call != "submit_strategy_plan" {
+		if call != "get_decision_context" && call != "submit_strategy_plan" && call != "get_unit_details" {
 			failures = append(failures, "unauthorized tool call: "+call)
 		}
 	}
@@ -127,6 +129,8 @@ func (r Runner) RunProvider(ctx context.Context, cases []Case, provider ai.TurnP
 	baseline := r.Run(ctx, cases)
 	report.Baseline = &baseline.Metrics
 	report.Comparison = &ReportComparison{
+		InputTokensDelta:      report.Metrics.TotalInputTokens - baseline.Metrics.TotalInputTokens,
+		LookupRateDelta:       report.Metrics.LookupRate - baseline.Metrics.LookupRate,
 		AcceptedRateDelta:     report.Metrics.AcceptedRate - baseline.Metrics.AcceptedRate,
 		InvalidPlanRateDelta:  report.Metrics.InvalidPlanRate - baseline.Metrics.InvalidPlanRate,
 		FallbackRateDelta:     report.Metrics.FallbackRate - baseline.Metrics.FallbackRate,
@@ -159,6 +163,8 @@ func (r Runner) runProviderCase(ctx context.Context, value Case, options provide
 		Accepted: result.Accepted, ErrorCategory: result.ErrorCategory, DurationMS: max(0, options.now().Sub(caseStarted).Milliseconds()),
 		InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests,
 		ToolCalls: append([]string(nil), session.calls...)}
+	entry.UnitDetailCalls = countUnitDetailCalls(session.calls)
+	entry.ContextBytes = evaluationContextBytes(value)
 	entry.StrategyFingerprint = session.strategyFingerprint
 	entry.Outcome = "rejected"
 	if result.Accepted {
@@ -190,6 +196,8 @@ func reportMetrics(cases []CaseReport) ReportMetrics {
 }
 
 type metricsAccumulator struct {
+	inputTokens                                 int64
+	unitDetailCalls, lookupCases                int
 	accepted, fallback, submitted, invalidPlans int
 	latency                                     int64
 	totalCost                                   float64
@@ -201,6 +209,11 @@ func newMetricsAccumulator() *metricsAccumulator {
 }
 
 func (a *metricsAccumulator) add(value CaseReport) {
+	a.inputTokens += value.InputTokens
+	a.unitDetailCalls += value.UnitDetailCalls
+	if value.UnitDetailCalls > 0 {
+		a.lookupCases++
+	}
 	if value.Accepted {
 		a.accepted++
 	}
@@ -224,7 +237,8 @@ func (a *metricsAccumulator) add(value CaseReport) {
 
 func (a *metricsAccumulator) report(caseCount int) ReportMetrics {
 	metrics := ReportMetrics{
-		CaseCount:         caseCount,
+		CaseCount:        caseCount,
+		TotalInputTokens: a.inputTokens, UnitDetailCalls: a.unitDetailCalls, LookupRate: float64(a.lookupCases) / float64(caseCount),
 		AcceptedRate:      float64(a.accepted) / float64(caseCount),
 		FallbackRate:      float64(a.fallback) / float64(caseCount),
 		AverageLatencyMS:  float64(a.latency) / float64(caseCount),
@@ -303,6 +317,7 @@ func (s *scriptedSession) Tools(context.Context) ([]ai.ToolDefinition, error) {
 	contextSchema := json.RawMessage(`{"type":"object","additionalProperties":false,"required":["requestId"],"properties":{"requestId":{"type":"string"}}}`)
 	planSchema := json.RawMessage(`{"type":"object","additionalProperties":false,"required":["requestId","idempotencyKey","expectedVersion","targetTick","name","rationale","actionWeights","reserveGold","spendOrder","constructionPriorities","recruitmentPriorities"],"properties":{"requestId":{"type":"string"},"idempotencyKey":{"type":"string"},"expectedVersion":{"type":"integer"},"targetTick":{"type":"integer","minimum":0},"name":{"type":"string"},"rationale":{"type":"string"},"actionWeights":{"type":"object","additionalProperties":{"type":"integer"}},"targetBonuses":{"type":"object","additionalProperties":{"type":"integer"}},"reserveGold":{"type":"integer","minimum":0},"spendOrder":{"type":"array","items":{"type":"string"}},"constructionPriorities":{"type":"array","items":{"type":"object","required":["x","y"],"properties":{"x":{"type":"integer"},"y":{"type":"integer"}}}},"recruitmentPriorities":{"type":"array","items":{"type":"string"}}}}`)
 	return []ai.ToolDefinition{
+		{Name: "get_unit_details", Description: "Read frozen base stats for 1–4 distinct legal or visible types.", InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false,"required":["requestId","unitIds"],"properties":{"guidanceOffset":{"type":"integer","minimum":0},"requestId":{"type":"string"},"unitIds":{"type":"array","minItems":1,"maxItems":4,"uniqueItems":true,"items":{"type":"string","minLength":1}}}}`)},
 		{Name: "get_decision_context", Description: "Read the bounded context for this request.", InputSchema: contextSchema},
 		{Name: "submit_strategy_plan", Description: "Submit one validated strategy plan for this request.", InputSchema: planSchema},
 	}, nil
@@ -319,7 +334,27 @@ func (s *scriptedSession) Call(_ context.Context, call ai.ToolCall) (json.RawMes
 	if json.Unmarshal(call.Arguments, &request) != nil || request.RequestID != s.value.RequestID {
 		return nil, false, errors.New("request is outside evaluation capability scope")
 	}
+	if call.Name == "get_unit_details" {
+		var input struct {
+			UnitIDs        []string `json:"unitIds"`
+			GuidanceOffset int      `json:"guidanceOffset,omitempty"`
+		}
+		if err := json.Unmarshal(call.Arguments, &input); err != nil {
+			return nil, false, err
+		}
+		details, err := ai.LookupUnitDetailsPage(evaluationObservation(s.value), input.UnitIDs, input.GuidanceOffset)
+		if err != nil {
+			payload, _ := json.Marshal(map[string]string{"error": err.Error()})
+			return payload, false, nil
+		}
+		payload, err := json.Marshal(details)
+		return payload, false, err
+	}
 	if call.Name == "get_decision_context" {
+		if observation := evaluationObservation(s.value); observation.SchemaVersion == ai.ContextSchema {
+			payload, err := json.Marshal(map[string]any{"context": ai.AgentObservation(observation)})
+			return payload, false, err
+		}
 		contextJSON := s.value.ContextJSON
 		if contextJSON == "" {
 			contextJSON = `{}`
@@ -345,6 +380,15 @@ func (p PriceBook) estimate(model string, usage ai.Usage) (float64, bool) {
 
 func (p PriceBook) Estimate(model string, usage ai.Usage) (float64, bool) {
 	return p.estimate(model, usage)
+}
+
+func evaluationObservation(value Case) ai.DecisionContext {
+	c := caseIdentity(value)
+	if c.SchemaVersion == ai.ContextSchema && value.KnowledgeRuleset != nil {
+		c.UnitReference = ai.FreezeUnitReference(*value.KnowledgeRuleset, c)
+		c.Knowledge, _ = ai.RetrieveKnowledge(*value.KnowledgeRuleset, c, ai.DefaultKnowledgeLimits())
+	}
+	return c
 }
 
 func caseIdentity(value Case) ai.DecisionContext {
