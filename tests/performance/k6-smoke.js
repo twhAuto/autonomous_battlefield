@@ -2,7 +2,7 @@
 // latency/error thresholds.
 
 import http from 'k6/http';
-import { check, sleep } from 'k6';
+import { check, sleep, fail } from 'k6';
 
 const baseURL = __ENV.TARGET_URL || 'http://battlefield.localhost:8888';
 
@@ -22,8 +22,16 @@ export function setup() {
     username: __ENV.ADMIN_USERNAME,
     password: __ENV.ADMIN_PASSWORD,
   }), { headers: { 'Content-Type': 'application/json' } });
-  check(response, { 'login accepted': (r) => r.status === 204 });
-  return response.cookies;
+  if (!check(response, { 'login accepted': (r) => r.status === 204 })) {
+    fail(`Login failed with HTTP ${response.status}`);
+  }
+  // Response cookies are arrays of objects; request cookies require string values.
+  const cookies = {};
+  for (const [name, values] of Object.entries(response.cookies)) {
+    if (values.length) cookies[name] = values[0].value;
+  }
+  if (!Object.keys(cookies).length) fail('Login returned no session cookies');
+  return cookies;
 }
 
 export default function (cookies) {
