@@ -52,17 +52,36 @@ func visiblePositionsForFaction(gameMap Map, state State, factionID string) map[
 
 func visibleState(source State, factionID string, visible map[Position]bool) State {
 	state := CloneState(source)
+	state.UnitDeaths = state.UnitDeaths[:0]
+	for _, death := range source.UnitDeaths {
+		if death.FactionID == factionID || visible[death.Position] {
+			state.UnitDeaths = append(state.UnitDeaths, death)
+		}
+	}
 	state.Units = state.Units[:0]
 	for _, unit := range source.Units {
 		if unit.FactionID == factionID || visible[unit.Position] {
 			unit = visibleUnit(unit, visible)
+			if !attackEntityVisible(unit.AttackTargetID, source, visible) {
+				unit.AttackTargetID, unit.AttackOutcome, unit.AttackTargetPosition = "", "", nil
+			}
+			if unit.FactionID != factionID {
+				for _, step := range unit.MovementPath {
+					if !visible[step] {
+						unit.MovementPath = nil
+						unit.MovedFrom = nil
+						break
+					}
+				}
+			}
 			state.Units = append(state.Units, unit)
 		}
 	}
 	state.Buildings = state.Buildings[:0]
 	for _, building := range source.Buildings {
 		if building.FactionID == factionID || building.Type == BuildingCastle || visible[building.Position] {
-			if building.AttackTargetPosition != nil && !visible[*building.AttackTargetPosition] {
+			if (building.AttackTargetPosition != nil && !visible[*building.AttackTargetPosition]) || !attackEntityVisible(building.AttackTargetID, source, visible) {
+				building.AttackOutcome = ""
 				building.AttackTargetID = ""
 				building.AttackTargetPosition = nil
 			}
@@ -105,6 +124,7 @@ func allPositions(m Map) []Position {
 
 func visibleUnit(unit Unit, visible map[Position]bool) Unit {
 	if unit.AttackTargetPosition != nil && !visible[*unit.AttackTargetPosition] {
+		unit.AttackOutcome = ""
 		unit.AttackTargetID = ""
 		unit.AttackTargetPosition = nil
 	}
@@ -112,8 +132,19 @@ func visibleUnit(unit Unit, visible map[Position]bool) Unit {
 		unit.HealTargetID = ""
 		unit.HealTargetPosition = nil
 	}
+	unit.MovementPath = append([]Position(nil), unit.MovementPath...)
 	unit.MovedFrom = clonePosition(unit.MovedFrom)
 	unit.AttackTargetPosition = clonePosition(unit.AttackTargetPosition)
 	unit.HealTargetPosition = clonePosition(unit.HealTargetPosition)
 	return unit
+}
+
+// A tracking arrow must not reveal the current location of a target that left vision.
+func attackEntityVisible(id string, source State, visible map[Position]bool) bool {
+	for _, unit := range source.Units {
+		if unit.ID == id && unit.Health > 0 {
+			return visible[unit.Position]
+		}
+	}
+	return true
 }

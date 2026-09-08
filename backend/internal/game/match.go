@@ -26,15 +26,16 @@ type factionRuntime struct {
 }
 
 type Match struct {
-	id       string
-	scenario Scenario
-	maxTicks uint64
-	state    State
-	factions map[string]*factionRuntime
-	sequence uint64
-	started  bool
-	finished bool
-	result   *Result
+	attackAims map[string]Position
+	id         string
+	scenario   Scenario
+	maxTicks   uint64
+	state      State
+	factions   map[string]*factionRuntime
+	sequence   uint64
+	started    bool
+	finished   bool
+	result     *Result
 }
 
 func (m *Match) TickDuration() time.Duration { return m.scenario.TickDuration }
@@ -92,6 +93,7 @@ func (m *Match) AdvanceWithPlans(plans map[string]controller.PlanProposal) (Tran
 		return Transition{}, err
 	}
 	events = append(events, tacticEvents...)
+	m.captureAttackAims()
 	events = append(events, m.runTowers(tactics)...)
 	combatEvents, winner := m.runUnits(tactics)
 	events = append(events, combatEvents...)

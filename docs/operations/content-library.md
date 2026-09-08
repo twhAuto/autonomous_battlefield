@@ -122,3 +122,13 @@ Authored maps accept odd widths 15–41, odd heights 11–31, and two to eight m
 construction sites per faction. The `economySites` name is retained for wire and
 snapshot compatibility; all constructible types can use these faction-owned sites.
 The supplied Frontier map uses six sites per side and a four-building limit.
+
+### Attack targeting capability
+
+Unit definitions accept optional `attackMode: tracking | position`; omitted values
+mean tracking for backward compatibility. `core-v2.yaml` selects `position` for
+catapults. A position attacker locks a target hex before combat and resolves on its
+speed-ordered turn, allowing faster units to evade. Hits use the current enemy
+occupant and normal damage rules; misses cause no damage. Units that retreat cancel
+their shot. Invalid mode values fail ruleset validation. Changes affect newly
+resolved scenario snapshots; existing persisted snapshots keep their capabilities.

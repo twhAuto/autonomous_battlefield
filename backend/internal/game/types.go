@@ -46,6 +46,7 @@ type Map struct {
 }
 
 type UnitType struct {
+	AttackMode          string `json:"attackMode,omitempty" yaml:"attackMode,omitempty"`
 	Class               string `json:"class,omitempty" yaml:"class,omitempty"`
 	MinimumRange        int    `json:"minimumRange,omitempty" yaml:"minimumRange,omitempty"`
 	BuildingPriority    bool   `json:"buildingPriority,omitempty" yaml:"buildingPriority,omitempty"`
@@ -175,6 +176,8 @@ type Scenario struct {
 }
 
 type Unit struct {
+	AttackMode          string    `json:"attackMode,omitempty"`
+	AttackOutcome       string    `json:"attackOutcome,omitempty"`
 	Class               string    `json:"class,omitempty" yaml:"class,omitempty"`
 	MinimumRange        int       `json:"minimumRange,omitempty" yaml:"minimumRange,omitempty"`
 	BuildingPriority    bool      `json:"buildingPriority,omitempty" yaml:"buildingPriority,omitempty"`
@@ -185,23 +188,24 @@ type Unit struct {
 	HealTargetID        string    `json:"healTargetId,omitempty"`
 	HealTargetPosition  *Position `json:"healTargetPosition,omitempty"`
 
-	ID                   string    `json:"id"`
-	FactionID            string    `json:"factionId"`
-	Type                 string    `json:"type"`
-	Position             Position  `json:"position"`
-	Health               int64     `json:"health"`
-	MaxHealth            int64     `json:"maxHealth"`
-	Attack               int64     `json:"attack"`
-	Defense              int64     `json:"defense"`
-	Speed                int64     `json:"speed"`
-	Movement             int       `json:"movement"`
-	Range                int       `json:"range"`
-	Vision               int       `json:"vision"`
-	Cost                 int64     `json:"cost"`
-	ReadyAtTick          uint64    `json:"readyAtTick"`
-	MovedFrom            *Position `json:"movedFrom,omitempty"`
-	AttackTargetID       string    `json:"attackTargetId,omitempty"`
-	AttackTargetPosition *Position `json:"attackTargetPosition,omitempty"`
+	ID                   string     `json:"id"`
+	FactionID            string     `json:"factionId"`
+	Type                 string     `json:"type"`
+	Position             Position   `json:"position"`
+	Health               int64      `json:"health"`
+	MaxHealth            int64      `json:"maxHealth"`
+	Attack               int64      `json:"attack"`
+	Defense              int64      `json:"defense"`
+	Speed                int64      `json:"speed"`
+	Movement             int        `json:"movement"`
+	Range                int        `json:"range"`
+	Vision               int        `json:"vision"`
+	Cost                 int64      `json:"cost"`
+	ReadyAtTick          uint64     `json:"readyAtTick"`
+	MovementPath         []Position `json:"movementPath,omitempty"`
+	MovedFrom            *Position  `json:"movedFrom,omitempty"`
+	AttackTargetID       string     `json:"attackTargetId,omitempty"`
+	AttackTargetPosition *Position  `json:"attackTargetPosition,omitempty"`
 }
 
 // BuildingType describes additional constructible structures; legacy castle/economy
@@ -219,6 +223,7 @@ type BuildingType struct {
 }
 
 type Building struct {
+	AttackOutcome        string    `json:"attackOutcome,omitempty"`
 	Attack               int64     `json:"attack,omitempty"`
 	Range                int       `json:"range,omitempty"`
 	ReadyAtTick          uint64    `json:"readyAtTick,omitempty"`
@@ -252,7 +257,16 @@ type FactionState struct {
 	BuildingsDestroyed int      `json:"buildingsDestroyed"`
 }
 
+// UnitDeath records a confirmed death for presentation during the current tick.
+type UnitDeath struct {
+	ID        string   `json:"id"`
+	FactionID string   `json:"factionId"`
+	Type      string   `json:"type"`
+	Position  Position `json:"position"`
+}
+
 type State struct {
+	UnitDeaths      []UnitDeath    `json:"unitDeaths,omitempty"`
 	OpeningComplete bool           `json:"openingComplete,omitempty"`
 	BattleID        string         `json:"battleId"`
 	Tick            uint64         `json:"tick"`

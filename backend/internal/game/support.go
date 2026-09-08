@@ -92,6 +92,7 @@ func (m *Match) moveAlong(unit *Unit, path []Position) []Event {
 		return nil
 	}
 	from := unit.Position
+	unit.MovementPath = append([]Position{unit.Position}, path[:steps]...)
 	unit.Position = path[steps-1]
 	unit.MovedFrom = &from
 	return []Event{m.event("unit_moved", map[string]any{"factionId": unit.FactionID, "unitId": unit.ID, "from": from, "to": unit.Position})}

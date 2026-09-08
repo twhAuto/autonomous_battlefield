@@ -246,6 +246,10 @@ Units may expose `class`, `minimumRange`, `buildingPriority`,
 Their per-tick treatment indicators are `healTargetId` and `healTargetPosition`.
 Buildings additionally expose optional `attack`, `range`, `readyAtTick`,
 `attackTargetId`, and `attackTargetPosition`. Absent fields retain legacy behavior.
+Unit state also optionally includes `movementPath: [{x, y}, ...]`: the origin
+followed by each hex traversed in the current tick, including the destination.
+It is omitted on ticks without movement and in older snapshots. Faction views
+omit enemy routes (and their `movedFrom`) when any route step is outside vision.
 Faction views remove action target IDs/positions outside current visibility.
 
 Saved strategy plans may contain `constructionOrders` as
@@ -313,3 +317,23 @@ are separate from battle capabilities; `/generation-mcp` exposes only
 `get_background_context` and `submit_faction_background`. Neither tool receives
 battle data. Workers report actual configured model, prompt version, usage, and
 failure category to `/internal/agent/generation-finish`.
+
+### Attack targeting and outcomes
+
+Unit definitions and runtime unit state support optional `attackMode` values
+`tracking` and `position`; omission retains tracking. Unit and building action state
+includes optional `attackOutcome: hit | miss`, cleared with other per-tick actions.
+`attackTargetPosition` is the actual impact hex for fixed-position shots; tracking
+renderers may follow the visible `attackTargetId` instead. A miss has no target ID.
+
+`unit_attacked` and `building_attacked` events additionally include `attackMode`,
+`outcome: hit`, and `impactPosition: {x, y}`. `unit_attack_missed` carries
+`attackerId`, `attackMode: position`, `outcome: miss`, and `impactPosition`, with no
+damage. Faction state projections omit hidden target/impact action fields. Existing
+administrator event history keeps its current visibility model. No migration is
+required; omitted metadata in older snapshots remains supported.
+
+Battle state optionally includes `unitDeaths: [{id, factionId, type, position}]`
+for confirmed unit deaths in the current tick, cleared at the next tick. Faction
+views include allied deaths and enemy deaths at currently visible positions.
+Older snapshots omit the field; clients must not infer death from disappearance.

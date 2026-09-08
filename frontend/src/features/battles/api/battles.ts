@@ -66,6 +66,7 @@ export interface BattleMap {
   economySites: [HexPosition[], HexPosition[]]
 }
 export interface UnitCapabilities {
+  attackMode?: 'tracking' | 'position'
   class?: string; minimumRange?: number; buildingPriority?: boolean
   buildingDamageBonus?: number; bonusAgainstClass?: string; classDamageBonus?: number; healAmount?: number
 }
@@ -75,12 +76,15 @@ export interface BattleUnit extends UnitCapabilities {
   speed: number; movement: number; range: number; vision: number; readyAtTick: number
   healTargetId?: string
   healTargetPosition?: HexPosition
+  movementPath?: HexPosition[]
   movedFrom?: HexPosition
+  attackOutcome?: 'hit' | 'miss'
   attackTargetId?: string
   attackTargetPosition?: HexPosition
 }
 export interface BattleBuilding {
   attack?: number; range?: number; readyAtTick?: number
+  attackOutcome?: 'hit' | 'miss'
   attackTargetId?: string; attackTargetPosition?: HexPosition
   id: string; factionId: string; type: 'castle' | 'economy' | 'defense_tower' | 'watchtower' | 'barracks'; position: HexPosition
   health: number; maxHealth: number; defense: number; vision: number; income: number
@@ -90,6 +94,7 @@ export interface BattleFactionState {
   factionId: string; gold: number; goldEarned: number; goldSpent: number; goldLooted: number
 }
 export interface BattleState {
+  unitDeaths?: { id: string; factionId: string; type: string; position: HexPosition }[]
   openingComplete?: boolean
   battleId: string; tick: number; factions: BattleFactionState[] | null
   units: BattleUnit[] | null; buildings: BattleBuilding[] | null

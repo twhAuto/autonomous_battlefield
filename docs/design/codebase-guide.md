@@ -421,7 +421,7 @@ The frontend is a React/Vite single-page application.
 | [`features/battles/pages/BattleHistoryPage.tsx`](../../frontend/src/features/battles/pages/BattleHistoryPage.tsx) | Status-filtered history table/cards, cursor navigation, refresh, and detail links |
 | [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx) | Route-level composition, selected perspective/panel, and control actions |
 | [`features/auth/pages/LoginPage.tsx`](../../frontend/src/features/auth/pages/LoginPage.tsx) | Single-administrator credential form and error state |
-| [`features/battles/components/HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx) | Hex-map visualization |
+| [`features/battles/components/HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx) | Hex-map visualization, movement routes, tracking arrows, attack outcomes, and accessible unit animation |
 | [`features/battles/components/PlayerStatusPanel.tsx`](../../frontend/src/features/battles/components/PlayerStatusPanel.tsx) | Null-safe spectator summaries, economy/building overview, and grouped living units |
 | [`shared/components/Emblem.tsx`](../../frontend/src/shared/components/Emblem.tsx) | Deterministic faction emblem |
 
@@ -440,6 +440,21 @@ individual decision expansion stable, while `DecisionContextPanel.tsx` lazily
 loads and presents the historical observation. `EventConsole` preserves loaded
 event filtering and payload expansion. Player/decision sections remain mounted
 when hidden; the inspector is reset for a different battle or attempt.
+
+The battle toolbar places compact tick progress on the left, faction summaries in
+the flexible middle, and the outcome above Play/Pause/Stop on the right. Faction
+cards share available width with a 160px minimum before wrapping into equal-height
+rows. Progress, faction summaries, and controls stretch to matching outer heights;
+the toolbar and map layout stack at 1000px. Controls and inspector share a 340px
+desktop column and a 14px gutter, aligning their left and right borders.
+The map and inspector have matching desktop
+heights and scroll together with the page; only the inspector's content scrolls
+internally. `components/FactionSummaries.tsx` shows each
+participant's decision activity, gold, and living unit count using existing
+spectator state and current-attempt decision polling, independent of map
+perspective. Paused and terminal states override decision activity, polling errors
+show unavailable status, and missing metrics display a dash. The display accepts
+any participant count; battle creation and engine faction limits are unchanged.
 
 `components/EntityIcon.tsx` supplies local SVG artwork for all seven core unit
 and five building types, reused by the map, player roster, building overview,

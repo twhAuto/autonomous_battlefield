@@ -107,6 +107,7 @@ func (m *Match) runTowers(tactics map[string]string) []Event {
 		attackEvents, _ := m.attackTarget(&attacker, target, tactics)
 		attackEvents[0].Type = "building_attacked"
 		b.AttackTargetID, b.AttackTargetPosition = attacker.AttackTargetID, attacker.AttackTargetPosition
+		b.AttackOutcome = attacker.AttackOutcome
 		events = append(events, attackEvents...)
 	}
 	return events

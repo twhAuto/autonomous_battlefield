@@ -104,6 +104,50 @@ notify the application when authentication is required.
 
 ### Battle inspection
 
+The SVG map uses compact directional arrows beneath entity icons, matching the
+acting faction's unit color. Movement remains dashed and subdued; attacks use solid
+lines with a subtle traveling highlight, and tower fire uses a thicker stroke. Endpoints clear entity outlines; paths too short to fit an
+arrowhead are omitted. Indicators follow the current battle snapshot, and reduced
+motion preferences retain static lines without the traveling highlight. Health
+bars update their green fill and numeric HP immediately; lost HP appears red for
+300 ms before shrinking over 500 ms. Healing immediately covers the red layer.
+Reduced motion disables the damage trail transition. Defeated units leave the live roster immediately. Per-tick `unitDeaths` records
+provide a fading cross/ring in the fallen unit's faction color at its confirmed
+death position for 900 ms, or a
+static marker for reduced motion. Faction views expose allied deaths and visible
+enemy deaths only; disappearance from vision never creates a death marker.
+
+Unit snapshots include optional `movementPath` coordinates (start plus each hex
+actually traversed during the tick). The engine records these for normal, siege,
+retreat, and support movement and clears them with the other per-tick actions.
+Snapshot and faction-view copies own their route arrays; enemy routes crossing
+hidden hexes are omitted from faction views. No database migration is required.
+The map draws these routes and animates existing units along them at 220 ms per
+step, capped at 700 ms. Animation requires the recorded start to match the last
+displayed position; initial loads, discontinuous snapshots, and reduced-motion
+preferences show the current position immediately. New updates cancel any prior
+animation. Older snapshots can animate adjacent endpoint-only moves, but the UI
+does not infer missing multi-hex routes.
+
+Tracking attacks retain immediate damage. Their arrows follow the target's rendered
+walking position; missing/destroyed targets use a short impact marker at the stored
+hit position. Attacking units nudge 0.75 pixels forward and back over 200 ms on a
+separate transform layer, while towers remain stationary. Fixed-location shots
+show a fading impact ring for hits or a muted cross for misses, without a damage
+tracer on misses. Polling and map controls do not replay these effects, and reduced
+motion disables them.
+
+Optional `attackMode` capabilities default to `tracking`; newly resolved core-v2
+catapults use `position`. Position attacks lock the existing priority-selected hex
+after economy/tactics and before towers. On the unit's speed-ordered turn, retreat
+cancels the shot; otherwise a living enemy occupying the locked hex takes normal
+damage. Empty or friendly-only hexes miss, without splash or friendly fire. A unit
+without an initial aim moves normally and cannot acquire a late shot. Speed remains
+turn order, not attack frequency. Existing resolved snapshots without the capability
+retain tracking behavior. Per-tick `attackOutcome` and attack event impact metadata
+make hits and misses explicit; faction projections suppress hidden impact positions
+and targets. Event history remains the existing administrator-wide view.
+
 The battle page keeps progress/outcome and controls in a compact toolbar above
 the map. `BattleInspector` owns the native System/player dropdown and the shared inner tab
 (Overview, Decisions, Units, Faction), independently of map perspective. System
@@ -111,7 +155,8 @@ shows a current-player comparison and the attempt-selectable event stream.
 Player headers show current gold, living units, castle health, and snapshot tick;
 Overview groups buildings and economy totals, Units groups living entities with
 individual HP/coordinates, and Faction shows the saved profile. Navigation stays
-fixed above a single scrolling content region; the inspector moves below the
+fixed above a single scrolling content region. The inspector and map have matching
+desktop heights and scroll together with the page; the inspector moves below the
 map at narrow widths. Hidden sections remain mounted to preserve filters and
 expanded decisions across tab changes; historical context requests run only in
 an active, expanded decision. New history rows do not collapse existing details.
@@ -826,7 +871,8 @@ ordinary v1 behavior. `Ruleset.structures` describes extra building types while
 legacy castle/economy stats remain in `BuildingRules`. `maximumBuildingCount`
 limits all living non-castle structures; the economy limit remains separate.
 
-Tick ordering is income/production, faction tactics, tower attacks in building-ID
+Tick ordering is income/production, faction tactics, position-attack aim capture,
+tower attacks in building-ID
 order, then unit turns by speed/ID. New tower attacks and Barracks sources activate
 on the next tick. Healing takes a unit action and never enters minimum-damage
 combat. Siege approaches structure firing positions; Herbalists approach allied

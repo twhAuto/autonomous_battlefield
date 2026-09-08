@@ -6,7 +6,7 @@ units:
   - {id: vanguard, class: infantry, cost: 35, health: 70, attack: 9, defense: 7, speed: 4, movement: 1, range: 1, vision: 2}
   - {id: striker, class: mobile, cost: 25, health: 42, attack: 14, defense: 3, speed: 8, movement: 2, range: 1, vision: 3}
   - {id: ranger, class: infantry, cost: 30, health: 30, attack: 11, defense: 2, speed: 6, movement: 1, range: 3, vision: 4}
-  - {id: catapult, class: siege, cost: 70, health: 40, attack: 4, defense: 1, speed: 2, movement: 1, range: 5, minimumRange: 2, vision: 5, buildingPriority: true, buildingDamageBonus: 20}
+  - {id: catapult, attackMode: position, class: siege, cost: 70, health: 40, attack: 4, defense: 1, speed: 2, movement: 1, range: 5, minimumRange: 2, vision: 5, buildingPriority: true, buildingDamageBonus: 20}
   - {id: battering_ram, class: siege, cost: 65, health: 125, attack: 3, defense: 5, speed: 1, movement: 1, range: 1, vision: 2, buildingPriority: true, buildingDamageBonus: 25}
   - {id: pikeman, class: infantry, cost: 30, health: 55, attack: 8, defense: 4, speed: 4, movement: 1, range: 1, vision: 3, bonusAgainstClass: mobile, classDamageBonus: 12}
   - {id: herbalist, class: support, cost: 40, health: 25, attack: 0, defense: 1, speed: 3, movement: 1, range: 1, vision: 3, healAmount: 3}

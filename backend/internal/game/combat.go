@@ -47,6 +47,9 @@ func (m *Match) runUnit(unit *Unit, tactics map[string]string) ([]Event, *string
 	if events, moved := m.retreatFromCloseEnemies(unit); moved {
 		return events, nil
 	}
+	if unit.AttackMode == "position" {
+		return m.positionAttack(unit, tactics)
+	}
 	target := m.targetInRange(*unit)
 	if target == nil {
 		if unit.BuildingPriority {
@@ -77,13 +80,14 @@ func (m *Match) attackTarget(unit *Unit, target *attackTarget, tactics map[strin
 	}
 	damage := m.damage(attacker, target.defense, tactics[unit.FactionID], tactics[target.factionID])
 	targetPosition := target.position
+	unit.AttackOutcome = "hit"
 	unit.AttackTargetID = target.id
 	unit.AttackTargetPosition = &targetPosition
 	actual := min(damage, target.health())
 	target.applyDamage(actual)
 	m.factions[unit.FactionID].damageDealt += actual
 	m.factions[target.factionID].damageTaken += actual
-	events := []Event{m.event("unit_attacked", map[string]any{"attackerId": unit.ID, "targetId": target.id, "targetType": target.kind, "damage": actual, "remainingHealth": target.health()})}
+	events := []Event{m.event("unit_attacked", map[string]any{"attackerId": unit.ID, "targetId": target.id, "targetType": target.kind, "damage": actual, "remainingHealth": target.health(), "attackMode": effectiveAttackMode(unit.AttackMode), "outcome": "hit", "impactPosition": targetPosition})}
 	if target.health() > 0 {
 		return events, nil
 	}
@@ -121,7 +125,9 @@ func (m *Match) collectLoot(factionID string, target *attackTarget) (Event, bool
 }
 
 func (m *Match) clearUnitActions() {
+	m.state.UnitDeaths = nil
 	for i := range m.state.Buildings {
+		m.state.Buildings[i].AttackOutcome = ""
 		m.state.Buildings[i].AttackTargetID = ""
 		m.state.Buildings[i].AttackTargetPosition = nil
 	}
@@ -129,6 +135,8 @@ func (m *Match) clearUnitActions() {
 		m.state.Units[index].HealTargetID = ""
 		m.state.Units[index].HealTargetPosition = nil
 		m.state.Units[index].MovedFrom = nil
+		m.state.Units[index].MovementPath = nil
+		m.state.Units[index].AttackOutcome = ""
 		m.state.Units[index].AttackTargetID = ""
 		m.state.Units[index].AttackTargetPosition = nil
 	}
@@ -139,6 +147,8 @@ func (m *Match) removeDestroyedUnits() {
 	for _, unit := range m.state.Units {
 		if unit.Health > 0 {
 			survivors = append(survivors, unit)
+		} else {
+			m.state.UnitDeaths = append(m.state.UnitDeaths, UnitDeath{ID: unit.ID, FactionID: unit.FactionID, Type: unit.Type, Position: unit.Position})
 		}
 	}
 	m.state.Units = survivors
@@ -168,16 +178,20 @@ func (t *attackTarget) applyDamage(value int64) {
 }
 
 func (m *Match) targetInRange(attacker Unit) *attackTarget {
+	return m.targetAt(attacker, nil)
+}
+
+func (m *Match) targetAt(attacker Unit, position *Position) *attackTarget {
 	candidates := make([]*attackTarget, 0)
 	for index := range m.state.Units {
 		unit := &m.state.Units[index]
-		if unit.FactionID != attacker.FactionID && unit.Health > 0 && inAttackRange(attacker, unit.Position) {
+		if unit.FactionID != attacker.FactionID && unit.Health > 0 && inAttackRange(attacker, unit.Position) && (position == nil || unit.Position == *position) {
 			candidates = append(candidates, &attackTarget{id: unit.ID, kind: "unit", factionID: unit.FactionID, position: unit.Position, defense: unit.Defense, cost: unit.Cost, unit: unit})
 		}
 	}
 	for index := range m.state.Buildings {
 		building := &m.state.Buildings[index]
-		if building.FactionID != attacker.FactionID && building.Health > 0 && inAttackRange(attacker, building.Position) {
+		if building.FactionID != attacker.FactionID && building.Health > 0 && inAttackRange(attacker, building.Position) && (position == nil || building.Position == *position) {
 			candidates = append(candidates, &attackTarget{id: building.ID, kind: building.Type, factionID: building.FactionID, position: building.Position, defense: building.Defense, cost: building.Cost, building: building})
 		}
 	}
@@ -242,6 +256,7 @@ func (m *Match) moveTowardCastle(unit *Unit) {
 	}
 	steps := min(unit.Movement, len(path))
 	if steps > 0 {
+		unit.MovementPath = append([]Position{unit.Position}, path[:steps]...)
 		unit.Position = path[steps-1]
 	}
 }
@@ -273,4 +288,40 @@ func (m *Match) projectedPower(id string) int64 {
 func inAttackRange(attacker Unit, position Position) bool {
 	distance := HexDistance(attacker.Position, position)
 	return distance >= attacker.MinimumRange && distance <= attacker.Range
+}
+
+// Aims contain coordinates, never live target pointers that could move before impact.
+func (m *Match) captureAttackAims() {
+	m.attackAims = make(map[string]Position)
+	for _, unit := range m.state.Units {
+		if unit.AttackMode == "position" && unit.Health > 0 && unit.ReadyAtTick <= m.state.Tick {
+			if target := m.targetInRange(unit); target != nil {
+				m.attackAims[unit.ID] = target.position
+			}
+		}
+	}
+}
+
+func effectiveAttackMode(mode string) string {
+	if mode == "" {
+		return "tracking"
+	}
+	return mode
+}
+
+func (m *Match) positionAttack(unit *Unit, tactics map[string]string) ([]Event, *string) {
+	position, aimed := m.attackAims[unit.ID]
+	if !aimed {
+		if unit.BuildingPriority {
+			return m.moveSiege(unit), nil
+		}
+		return m.moveUnit(unit), nil
+	}
+	if target := m.targetAt(*unit, &position); target != nil {
+		return m.attackTarget(unit, target, tactics)
+	}
+	unit.AttackTargetPosition = &position
+	unit.AttackTargetID = ""
+	unit.AttackOutcome = "miss"
+	return []Event{m.event("unit_attack_missed", map[string]any{"attackerId": unit.ID, "attackMode": "position", "outcome": "miss", "impactPosition": position})}, nil
 }
