@@ -47,8 +47,7 @@ raw inspection views.
 | Provision the AWS reference | [AWS](infra/aws/README.md) |
 
 The architecture guide owns runtime explanations; the codebase guide owns source
-navigation. Operational guides own their setup and recovery commands. The root
-`DEPLOYMENT.md`, `JENKINS.md`, and `OBSERVABILITY.md` remain compatibility links.
+navigation. Operational guides own their setup and recovery commands.
 
 Production requires Cloudflare mode and rejects missing authentication settings. Players
 share gameplay and factions but control only their own content; diagnostics and CLI
@@ -271,49 +270,30 @@ migrations and exit. Normal startup does not run migrations.
 
 ## AI evaluation and authored content
 
-Agents support compact unit overviews with optional `get_unit_details` lookups.
-All decisions use the current compact format. See [compact context operations](docs/operations/ai-comparisons.md#compact-unit-context).
-
-
-See [AI comparisons](docs/operations/ai-comparisons.md) for the free scripted
-comparison command, live-provider opt-ins, memory and knowledge ablations,
-explicit recruitment orders, and report limits. Unit rosters and optional
-knowledge cards are authored in ruleset YAML.
-
-Reusable content libraries and per-scenario restrictions are documented in the
-[content authoring guide](docs/operations/content-library.md).
-
-Factions support optional backgrounds and editable AI-generated drafts. Backgrounds
-and doctrines are snapshotted for each battle, and agents act as their faction’s
-commanding voice. The writer uses an operator-configured API or local CLI profile
-(default `codex-subscription-local`), with 10 requests per account per UTC day and
+Unit rosters and optional knowledge cards are authored in ruleset YAML. Agents
+receive compact unit overviews with optional `get_unit_details` lookups. Factions
+support optional backgrounds and editable AI-generated drafts, snapshotted per
+battle; the writer uses an operator-configured API or local CLI profile (default
+`codex-subscription-local`), limited to 10 requests per account per UTC day with
 a 30-second cooldown. Manual editing remains available when generation is off.
-See [generation configuration and rollout](docs/operations/deployment.md#faction-background-generation-rollout)
-and the [generation API](docs/reference/api.md#faction-background-generation).
+
+- [AI comparisons](docs/operations/ai-comparisons.md) covers the free scripted
+  comparison command, live-provider opt-ins, ablations, and report limits.
+- [Content authoring](docs/operations/content-library.md) covers reusable
+  libraries and per-scenario restrictions.
+- [Generation rollout](docs/operations/deployment.md#faction-background-generation-rollout)
+  and the [generation API](docs/reference/api.md#faction-background-generation)
+  cover background drafts.
+- [Compact battlefield view](docs/design/system-architecture.md#17-compact-battlefield-view)
+  describes how observations are grouped and compressed for agents.
 
 Optional [self-hosted Langfuse](docs/operations/langfuse.md) provides AI decision
-traces, MCP tool timing/response sizes, and scoped token usage for API and CLI
-agents. The deployment uses the existing Kubernetes environment and collector;
-see the guide for installation and enabling host CLI tracing.
+traces, MCP tool timing and response sizes, and scoped token usage for API and CLI
+agents. It reuses the existing Kubernetes environment and collector, bootstraps
+checksum-verified Helm on Linux amd64 when missing, and serves
+`http://langfuse.localhost:8888` through the same gateway as Grafana and Kibana.
+Tracing is detected automatically, with no port-forward or per-shell enable flag.
 
-The Langfuse installer automatically bootstraps checksum-verified Helm on Linux
-amd64 when it is missing; no system installation is required.
-Once installed, open http://langfuse.localhost:8888 through the same gateway as
-Grafana and Kibana. Tracing is detected automatically by deployment and host CLI
-scripts, with no UI port-forward or per-shell enable flag required.
-## Compact battlefield observations
-
-Agent observations group units, buildings and statistics by faction, with shared
-building profiles when smaller. Full entity IDs and individual observations stay
-available; saved and spectator state retain their original structure.
-
-The current format also shares repeated plans and metadata. API/Gemini sessions
-send faction identity once when the system prompt already contains identical text.
-
-New compact AI contexts (v4) share identical current unit-stat profiles and encode
-visible cells as inclusive row ranges when smaller. Individual health, position,
-readiness and combat observations remain available upfront. See
-[context rollout and measurement](docs/operations/ai-comparisons.md#compact-unit-context)
-for compatibility and deployment order.
-
-For the one-time limited-access launch, run `./scripts/ops/prepare-limited-production.sh` on the registered server after rendering its private launch files; see the [launch runbook](docs/operations/limited-launch.md).
+For the one-time limited-access launch, run `./scripts/ops/prepare-limited-production.sh`
+on the registered server after rendering its private launch files; see the
+[launch runbook](docs/operations/limited-launch.md).

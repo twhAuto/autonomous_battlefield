@@ -1,19 +1,9 @@
 # Autonomous Battlefield System Architecture
 
-HTTP completion logs include `actor_id` and `actor_role` established by trusted
-authentication middleware, alongside method, resource path, status and request ID.
-An authentication observer carries identity to the outer request logger; rejected
-credentials leave identity empty. Tokens, cookies and email headers are not logged.
-These operational logs provide request attribution, not a tamper-proof audit store.
-
-The migration Job runs the server in migration-only mode and reads the required
-`battlefield-auth` Secret for configuration validation. Deployment supplies the
-same dev/production environment as the API; CLI profiles are disabled in this Job.
-
 | Field | Value |
 | --- | --- |
 | Status | Draft — describes the current working tree, including uncommitted changes |
-| Last reviewed | 2026-09-06 |
+| Last reviewed | 2026-09-10 |
 | Audience | Contributors reviewing or extending system behavior |
 | Scope | Runtime components, data flows, durability, security, and deployment |
 
@@ -725,6 +715,10 @@ The API catalog advertises profiles users may select. In cluster mode, an operat
 
 Kustomize deploys separate API, engine, agent, MCP, frontend, and migration workloads. The API requires `battlefield-auth`, the API and agent read profile availability from `battlefield-ai`, MCP receives a distinct `MCP_DATABASE_URL`, and the processes mount a common non-secret ConfigMap. Development smoke uses its local administrator Secret; production smoke requires a real invited Access JWT and uses private port forwards. Neither mode disables authentication for verification.
 
+The migration Job runs the server in migration-only mode and reads the required
+`battlefield-auth` Secret for configuration validation. Deployment supplies the
+same dev/production environment as the API; CLI profiles are disabled in this Job.
+
 Registry-backed Jenkins deployments use immutable GHCR digest references.
 Publication and admission rendering share validated repository settings. The
 rollout supplies its resolved image references so preserved repositories remain
@@ -779,6 +773,10 @@ The in-cluster agent is intended for API providers. `run-k8s-cli-agent.sh` bridg
   those fields into user attribute groups. `LOG_LEVEL` defaults to INFO.
 - API logs carry or generate `X-Request-ID`. Tracing wraps access logging so
   completion logs, including authentication rejections, share the request span.
+- HTTP completion logs carry `actor_id` and `actor_role` from authentication
+  middleware, providing request attribution rather than a tamper-proof audit
+  store. Tokens, cookies and email headers are not logged. See
+  [observability](../operations/observability.md) for the full field list.
 - Engine logs cover battle claims, lease loss, decision windows, fallbacks, requeues,
   and completion. Running battles and pending decision windows report progress
   immediately at their first reporting point and at most every 15 seconds
@@ -814,20 +812,8 @@ The same small, auditable tool surface supports API and subscription CLI models.
 
 The UI polls the API, the engine polls battle rows, and agents long-poll MCP. PostgreSQL notifications reduce model-claim latency without becoming a correctness dependency. Higher scale may justify push delivery or a dedicated broker.
 
-## 14. Current limitations and follow-up questions
+## 14. Shared content library and scenario restrictions
 
-- Authentication is limited to one configured administrator; player accounts, credential recovery, per-faction ownership, authorization, and shared brute-force protection remain future work.
-- Public battle updates use polling rather than push delivery.
-  A terminal battle-control response cancels status polling and invalidates
-  in-flight responses so stale running status cannot overwrite an operator stop.
-- Load and failover behavior needs testing before increasing engine, MCP, or agent replicas.
-- Agent concurrency is fixed at two rather than configured in YAML.
-- API adapters build text transcripts instead of preserving provider-native structured tool history.
-- One shared secret authorizes the agent control plane and capability minting. Separate keys or server-minted capabilities would reduce agent signing authority.
-- The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [codebase guide](codebase-guide.md#internalgamecontroller-deterministic-policy-abstractions).
-- Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
-
-### Shared content library and scenario restrictions
 
 Catalog startup resolves ruleset library references from the sibling `content`
 directory. Libraries version unit definitions, upgrades, existing castle/economy
@@ -844,7 +830,7 @@ disables economy production; legal construction sites remain when other structur
 or runtime content service is required. See the
 [content authoring guide](../operations/content-library.md).
 
-## Faction doctrine and opening purchases
+## 15. Faction doctrine and opening purchases
 
 New battle snapshots use version 2. Factions contain identity and doctrine, independent
 of model profiles and scenario catalogs. The owning doctrine is frozen in each
@@ -922,7 +908,7 @@ Discard and errors leave current profile fields intact. Saving is a separate
 explicit action. Manual background editing works while generation is disabled.
 
 
-## Battle history reads
+## 16. Battle history reads
 
 The authenticated `GET /v1/battles` route passes through the battle API,
 service, and PostgreSQL repository. A single query projects participant
@@ -981,48 +967,12 @@ sources share naming helpers. Full IDs remain available through tooltips and raw
 inspection views, and freeform model text is preserved.
 See [Frontier Siege](frontier-siege.md) for gameplay and balance probes.
 
-### Elasticsearch and Kibana rollout recovery
+These operational recovery procedures are owned by the operations guides:
+the [Elasticsearch and Kibana rollout recovery](../operations/deployment.md#elasticsearch-and-kibana-rollout-recovery)
+in the deployment guide, and [k6 HTTPS trust](../operations/jenkins.md#k6-https-trust)
+in the Jenkins guide.
 
-Elasticsearch uses the 10Gi `battlefield-elasticsearch-data` PVC with the Kind
-`standard` storage class. Pod replacement retains log indices and Kibana saved
-objects; deleting the cluster or its backing storage does not. The first rollout
-from the previous `emptyDir` configuration starts with empty storage. Export or
-snapshot any data that must be preserved before that transition.
-
-The deployment helper waits for Elasticsearch and the other observability
-workloads, restarts Kibana against the ready Elasticsearch instance, waits for
-Kibana's rollout, then applies its setup job separately. Applying the observability
-Kustomization alone no longer creates the setup job. Each observability rollout
-briefly restarts Kibana. The setup job has a 300-second deadline, bounded HTTP
-requests, and separate pods for retries so failed-attempt logs remain available.
-The helper detects both successful and failed Job conditions and prints job, pod,
-and container diagnostics on failure. Finished jobs are retained for 300 seconds.
-
-After a manual recovery, recreate only the setup job with
-`kubectl -n battlefield delete job battlefield-kibana-setup --ignore-not-found`
-and `kubectl -n battlefield apply -f deploy/overlays/local/observability/kibana/setup-job.yaml`,
-then confirm completion before running production smoke verification.
-
-### k6 HTTPS trust
-
-The k6 launcher mounts the Linux agent's `/etc/ssl/certs/ca-certificates.crt`
-read-only into the container and sets `SSL_CERT_FILE` to that mount. This makes
-the agent's installed private CAs available to k6 while retaining TLS verification.
-`K6_CA_BUNDLE` can select another readable, nonempty PEM CA bundle; missing or
-empty bundles fail before starting k6. The Docker daemon must share the agent's
-filesystem, as required for the existing source and report mounts. Browser trust
-settings do not configure k6. Install the Caddy root CA into the agent's system
-trust store before running production performance verification.
-
-Production k6 resolves missing admin credentials from the deployed `battlefield-auth`
-Secret (overridable with `SMOKE_TEST_AUTH_SECRET_NAME`), using the registered
-Kubernetes context and namespace. This requires Python 3 and Secret read access
-on the agent. Credentials are passed to Docker by environment-variable name,
-with shell tracing disabled. Explicit `ADMIN_USERNAME`/`ADMIN_PASSWORD` values
-remain supported. Failed login or missing session cookies stops setup; successful
-login cookies are converted to request-cookie string values for each virtual user.
-
-## Compact battlefield view
+## 17. Compact battlefield view
 
 The agent view groups units, buildings and statistics in `view.state.factions`:
 each group has `factionId`, optional `stats`, `units` and `buildings`. Entities
@@ -1055,7 +1005,7 @@ The inspector uses “Reconstructed agent context” and “Unit details availab
 demand” section labels without explanatory notices. Reconstruction can differ
 from original input. Evaluation and tool responses use the same projection.
 
-## Optional Langfuse AI observability
+## 18. Optional Langfuse AI observability
 
 The agent worker starts a separate, fully sampled trace for each decision request.
 Stable request-derived trace/root IDs let the capability-scoped MCP server attach
@@ -1095,7 +1045,23 @@ through the `battlefield-production-access-token` Secret file credential, scoped
 to the verification stage as `BATTLEFIELD_ACCESS_TOKEN_FILE`. Operators refresh
 this credential before delivery; missing or expired credentials fail verification.
 
-Production k6 smoke load uses the same Jenkins Access Secret file credential as
-origin verification, bound separately for its stage. The launcher requires
-Cloudflare mode and passes the JWT by environment variable to k6, which sends
-the Access assertion header on requests. Password login remains development-only.
+Production k6 smoke-load credential binding is described in the
+[launch runbook](../operations/limited-launch.md).
+
+## 19. Current limitations and follow-up questions
+
+- Production identity is delegated entirely to Cloudflare Access, so Access rule removal and session revocation are deployment responsibilities that offline JWT verification cannot observe. The development password login remains single-administrator and is not player identity.
+- Public battle updates use polling rather than push delivery.
+  A terminal battle-control response cancels status polling and invalidates
+  in-flight responses so stale running status cannot overwrite an operator stop.
+- Load and failover behavior needs testing before increasing engine, MCP, or agent replicas.
+- Agent concurrency is hardcoded to one in `cmd/agent` rather than configured in YAML.
+- API adapters build text transcripts instead of preserving provider-native structured tool history.
+- One shared secret authorizes the agent control plane and capability minting. Separate keys or server-minted capabilities would reduce agent signing authority.
+- The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [codebase guide](codebase-guide.md#internalgamecontroller-deterministic-policy-abstractions).
+- Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
+
+The image-verification admission webhook allows 30 seconds per request for
+registry signature and attestation retrieval (`webhookConfiguration.timeoutSeconds`).
+Verification remains enforced with `failurePolicy: Fail`; this timeout does not
+waive missing or invalid evidence.
