@@ -99,23 +99,9 @@ func callTool(ctx context.Context, session *mcp.ClientSession, call ai.ToolCall)
 		payload, err := json.Marshal(map[string]any{"error": result.Content})
 		return payload, false, err
 	}
-	var payload []byte
-	if result.StructuredContent == nil {
-		var text strings.Builder
-		for _, content := range result.Content {
-			if part, ok := content.(*mcp.TextContent); ok {
-				text.WriteString(part.Text)
-			}
-		}
-		payload = []byte(text.String())
-		if !json.Valid(payload) {
-			return nil, false, fmt.Errorf("MCP returned no readable JSON result")
-		}
-	} else {
-		payload, err = json.Marshal(result.StructuredContent)
-		if err != nil {
-			return nil, false, err
-		}
+	payload, err := toolResultJSON(result)
+	if err != nil {
+		return nil, false, err
 	}
 	accepted := false
 	if call.Name == "submit_strategy_plan" || call.Name == "submit_faction_background" {
@@ -125,4 +111,27 @@ func callTool(ctx context.Context, session *mcp.ClientSession, call ai.ToolCall)
 		}
 	}
 	return payload, accepted, nil
+}
+
+func toolResultJSON(result *mcp.CallToolResult) ([]byte, error) {
+	var payload []byte
+	var err error
+	if result.StructuredContent == nil {
+		var text strings.Builder
+		for _, content := range result.Content {
+			if part, ok := content.(*mcp.TextContent); ok {
+				text.WriteString(part.Text)
+			}
+		}
+		payload = []byte(text.String())
+		if !json.Valid(payload) {
+			return nil, fmt.Errorf("MCP returned no readable JSON result")
+		}
+	} else {
+		payload, err = json.Marshal(result.StructuredContent)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return payload, nil
 }

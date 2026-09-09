@@ -227,20 +227,20 @@ func (w *Worker) finishJob(parent, runContext context.Context, run jobRun, resul
 		if reportErr := w.fail(parent, run.requestID, category, result); reportErr != nil {
 			run.logger.ErrorContext(parent, "decision_failure_report_failed", "error", reportErr)
 		}
-	} else {
-		if reportErr := w.reportUsage(parent, run.requestID, result); reportErr != nil {
-			if errors.Is(reportErr, errNoAcceptedPlan) {
-				result.Accepted = false
-				result.ErrorCategory = "plan_not_submitted"
-				w.finishJob(parent, runContext, run, result, reportErr)
-			} else {
-				telemetry.AIOutcome(trace.SpanFromContext(parent), true, "usage_report_failed")
-				run.logger.ErrorContext(parent, "decision_usage_report_failed", "error", reportErr)
-			}
-			return
-		}
-		run.logger.InfoContext(parent, "decision_runner_completed", "provider", run.profile.Provider, "runtime", run.profile.Runtime, "duration_ms", time.Since(run.started).Milliseconds(), "input_tokens", result.Usage.InputTokens, "output_tokens", result.Usage.OutputTokens, "provider_requests", result.Usage.Requests)
+		return
 	}
+	if reportErr := w.reportUsage(parent, run.requestID, result); reportErr != nil {
+		if errors.Is(reportErr, errNoAcceptedPlan) {
+			result.Accepted = false
+			result.ErrorCategory = "plan_not_submitted"
+			w.finishJob(parent, runContext, run, result, reportErr)
+		} else {
+			telemetry.AIOutcome(trace.SpanFromContext(parent), true, "usage_report_failed")
+			run.logger.ErrorContext(parent, "decision_usage_report_failed", "error", reportErr)
+		}
+		return
+	}
+	run.logger.InfoContext(parent, "decision_runner_completed", "provider", run.profile.Provider, "runtime", run.profile.Runtime, "duration_ms", time.Since(run.started).Milliseconds(), "input_tokens", result.Usage.InputTokens, "output_tokens", result.Usage.OutputTokens, "provider_requests", result.Usage.Requests)
 }
 
 func (w *Worker) reportJobFailure(ctx context.Context, logger *slog.Logger, started time.Time, requestID, category, outcome string, result ai.DecisionResult) {

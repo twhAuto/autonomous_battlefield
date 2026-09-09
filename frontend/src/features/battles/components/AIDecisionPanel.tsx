@@ -94,7 +94,7 @@ function DecisionCard({ decision, participantNames, initiallyOpen, battleId, att
           <DecisionDetail label="Fallback" value={decision.fallbackSource || 'None'} />
           <DecisionDetail label="Error" value={decision.errorCategory || 'None'} />
           <DecisionDetail label="Tokens in / out" value={`${decision.usage.inputTokens ?? (decision.usage.tokensReported ? 0 : '—')} / ${decision.usage.outputTokens ?? (decision.usage.tokensReported ? 0 : '—')}`} />
-          <DecisionDetail label="Usage scope" value={decision.usage.scope === 'cli_session' ? 'CLI session total' : decision.usage.scope === 'api_calls' ? 'Sum of API calls' : 'Legacy / unspecified'} />
+          <DecisionDetail label="Usage scope" value={usageScopeLabel(decision.usage.scope)} />
           <DecisionDetail label="Cached input tokens" value={String(decision.usage.cachedInputTokens ?? '—')} />
           <DecisionDetail label="Reasoning output tokens" value={String(decision.usage.reasoningOutputTokens ?? '—')} />
           <DecisionDetail label="Model calls" value={String(decision.usage.modelCalls ?? '—')} />
@@ -137,4 +137,10 @@ function formatConstruction(plan?: DecisionHistory['resolvedPlan']) {
     return plan.constructionOrders.length ? plan.constructionOrders.map(({ buildingType, position }) => `${typeLabel(buildingType)} (${position.x},${position.y})`).join(' → ') : 'No construction'
   }
   return formatCoordinates(plan?.constructionPriorities)
+}
+
+function usageScopeLabel(scope: string | undefined) {
+  if (scope === 'cli_session') return 'CLI session total'
+  if (scope === 'api_calls') return 'Sum of API calls'
+  return 'Legacy / unspecified'
 }

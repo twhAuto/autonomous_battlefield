@@ -53,17 +53,7 @@ func TestBattlefieldContextExternalFixture(t *testing.T) {
 func TestBattlefieldCompressionPreservesObservations(t *testing.T) {
 	for _, count := range []int{0, 1, 46, 200} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
-			view := game.View{}
-			for i := 0; i < count; i++ {
-				view.State.Units = append(view.State.Units, game.Unit{ID: fmt.Sprint(i), FactionID: "own", Type: "ranger", Attack: int64(10 + i%3), Health: int64(i), MaxHealth: 50, ReadyAtTick: uint64(i), Position: game.Position{X: i % 25, Y: i / 25}, MovementPath: []game.Position{{X: 1, Y: 2}}, HealTargetID: "ally", AttackOutcome: "hit"})
-			}
-			for y := 0; y < 17; y++ {
-				for x := 0; x < 25; x++ {
-					if x != 12 {
-						view.VisiblePositions = append(view.VisiblePositions, game.Position{X: x, Y: y})
-					}
-				}
-			}
+			view := compressionView(count)
 			before := contextJSON(view)
 			projected := compactBattlefieldView(view)
 			if len(contextJSON(projected)) > len(before) {
@@ -72,40 +62,13 @@ func TestBattlefieldCompressionPreservesObservations(t *testing.T) {
 			if string(contextJSON(view)) != string(before) {
 				t.Fatal("source mutated")
 			}
-			state := contextObject(json.RawMessage(projected["state"]))
-			if raw, ok := projected["unitProfiles"]; ok {
-				var profiles map[string]map[string]json.RawMessage
-				var units []map[string]json.RawMessage
-				_ = json.Unmarshal(raw, &profiles)
-				_ = json.Unmarshal(state["units"], &units)
-				if len(profiles) != 3 {
-					t.Fatalf("distinct effective stats merged: %d", len(profiles))
-				}
-				for _, u := range units {
-					var id string
-					_ = json.Unmarshal(u["profile"], &id)
-					delete(u, "profile")
-					for k, v := range profiles[id] {
-						u[k] = v
-					}
-				}
-				state["units"] = contextJSON(units)
-			}
+			state := restoreProfiledUnits(t, projected)
 			var restored game.State
 			_ = json.Unmarshal(contextJSON(state), &restored)
 			if !reflect.DeepEqual(restored, view.State) {
 				t.Fatal("unit observations changed")
 			}
-			var rows []visibleRow
-			_ = json.Unmarshal(projected["visibleRowRanges"], &rows)
-			positions := []game.Position{}
-			for _, row := range rows {
-				for _, span := range row.XRanges {
-					for x := span[0]; x <= span[1]; x++ {
-						positions = append(positions, game.Position{X: x, Y: row.Y})
-					}
-				}
-			}
+			positions := restoreVisibleRows(projected)
 			if !reflect.DeepEqual(positions, view.VisiblePositions) {
 				t.Fatal("visibility changed, including empty cells or gaps")
 			}
@@ -136,4 +99,57 @@ func TestBattlefieldContextVersionCompatibility(t *testing.T) {
 	if string(contextJSON(compactBattlefieldView(v))) != string(contextJSON(contextObject(v))) {
 		t.Fatal("tiny view should stay inline")
 	}
+}
+
+func compressionView(count int) game.View {
+	view := game.View{}
+	for i := 0; i < count; i++ {
+		view.State.Units = append(view.State.Units, game.Unit{ID: fmt.Sprint(i), FactionID: "own", Type: "ranger", Attack: int64(10 + i%3), Health: int64(i), MaxHealth: 50, ReadyAtTick: uint64(i), Position: game.Position{X: i % 25, Y: i / 25}, MovementPath: []game.Position{{X: 1, Y: 2}}, HealTargetID: "ally", AttackOutcome: "hit"})
+	}
+	for y := 0; y < 17; y++ {
+		for x := 0; x < 25; x++ {
+			if x != 12 {
+				view.VisiblePositions = append(view.VisiblePositions, game.Position{X: x, Y: y})
+			}
+		}
+	}
+	return view
+}
+
+func restoreProfiledUnits(t *testing.T, projected map[string]json.RawMessage) map[string]json.RawMessage {
+	t.Helper()
+	state := contextObject(json.RawMessage(projected["state"]))
+	if raw, ok := projected["unitProfiles"]; ok {
+		var profiles map[string]map[string]json.RawMessage
+		var units []map[string]json.RawMessage
+		_ = json.Unmarshal(raw, &profiles)
+		_ = json.Unmarshal(state["units"], &units)
+		if len(profiles) != 3 {
+			t.Fatalf("distinct effective stats merged: %d", len(profiles))
+		}
+		for _, u := range units {
+			var id string
+			_ = json.Unmarshal(u["profile"], &id)
+			delete(u, "profile")
+			for k, v := range profiles[id] {
+				u[k] = v
+			}
+		}
+		state["units"] = contextJSON(units)
+	}
+	return state
+}
+
+func restoreVisibleRows(projected map[string]json.RawMessage) []game.Position {
+	var rows []visibleRow
+	_ = json.Unmarshal(projected["visibleRowRanges"], &rows)
+	positions := []game.Position{}
+	for _, row := range rows {
+		for _, span := range row.XRanges {
+			for x := span[0]; x <= span[1]; x++ {
+				positions = append(positions, game.Position{X: x, Y: row.Y})
+			}
+		}
+	}
+	return positions
 }

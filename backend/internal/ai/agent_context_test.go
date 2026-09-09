@@ -153,29 +153,7 @@ func TestOversizedDetailsAskForSmallerBatch(t *testing.T) {
 	if _, err := LookupUnitDetails(c, []string{"unit-00", "unit-01", "unit-02", "unit-03"}); err == nil {
 		t.Fatal("unbounded response")
 	}
-	joined := ""
-	offset := 0
-	pages := 0
-	for {
-		result, err := LookupUnitDetailsPage(c, []string{"unit-00"}, offset)
-		payload, _ := json.Marshal(result)
-		if err != nil || len(payload) > UnitDetailsMaxBytes || !result.Units[0].Available || result.Units[0].Stats == nil {
-			t.Fatal(result, err)
-		}
-		unit := result.Units[0]
-		joined += unit.Guidance
-		pages++
-		if unit.NextGuidanceOffset == nil {
-			break
-		}
-		if *unit.NextGuidanceOffset <= offset {
-			t.Fatal("pagination made no progress")
-		}
-		offset = *unit.NextGuidanceOffset
-	}
-	if joined != guidance || pages < 2 {
-		t.Fatal("lost guidance or continuation")
-	}
+	assertGuidancePagination(t, c, guidance)
 	for _, tc := range []struct {
 		ids    []string
 		offset int
@@ -207,5 +185,32 @@ func TestCompactOverviewIgnoresAutomaticCardLimit(t *testing.T) {
 	detail, err := LookupUnitDetails(restored, []string{r.Units[len(r.Units)-1].ID})
 	if err != nil || !detail.Units[0].Available || detail.Units[0].Guidance == "" {
 		t.Fatal("persisted reference omitted non-selected card", err)
+	}
+}
+
+func assertGuidancePagination(t *testing.T, c DecisionContext, guidance string) {
+	t.Helper()
+	joined := ""
+	offset := 0
+	pages := 0
+	for {
+		result, err := LookupUnitDetailsPage(c, []string{"unit-00"}, offset)
+		payload, _ := json.Marshal(result)
+		if err != nil || len(payload) > UnitDetailsMaxBytes || !result.Units[0].Available || result.Units[0].Stats == nil {
+			t.Fatal(result, err)
+		}
+		unit := result.Units[0]
+		joined += unit.Guidance
+		pages++
+		if unit.NextGuidanceOffset == nil {
+			break
+		}
+		if *unit.NextGuidanceOffset <= offset {
+			t.Fatal("pagination made no progress")
+		}
+		offset = *unit.NextGuidanceOffset
+	}
+	if joined != guidance || pages < 2 {
+		t.Fatal("lost guidance or continuation")
 	}
 }

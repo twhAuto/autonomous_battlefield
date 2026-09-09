@@ -36,16 +36,21 @@ func TestKnowledgePersistedBeforeDecisionHash(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, record := range repo.records {
-		if record.Observation.SchemaVersion != ai.ContextSchema || record.Observation.UnitReference == nil {
-			t.Fatal("compact reference not frozen")
-		}
-		k := record.Observation.Knowledge
-		if k == nil || k.Limits != cfg.KnowledgeRetrieval || len(k.Cards) != 1 {
-			t.Fatal("missing knowledge")
-		}
-		h, err := ai.ObservationHash(record.Observation)
-		if err != nil || h != record.Observation.ObservationHash {
-			t.Fatal("knowledge not hashed")
-		}
+		assertFrozenKnowledge(t, record, cfg.KnowledgeRetrieval)
+	}
+}
+
+func assertFrozenKnowledge(t *testing.T, record ai.DecisionRecord, limits ai.KnowledgeLimits) {
+	t.Helper()
+	if record.Observation.SchemaVersion != ai.ContextSchema || record.Observation.UnitReference == nil {
+		t.Fatal("compact reference not frozen")
+	}
+	k := record.Observation.Knowledge
+	if k == nil || k.Limits != limits || len(k.Cards) != 1 {
+		t.Fatal("missing knowledge")
+	}
+	h, err := ai.ObservationHash(record.Observation)
+	if err != nil || h != record.Observation.ObservationHash {
+		t.Fatal("knowledge not hashed")
 	}
 }

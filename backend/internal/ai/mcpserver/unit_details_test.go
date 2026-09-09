@@ -111,46 +111,7 @@ func TestCompactDecisionThroughAPIAndCLI(t *testing.T) {
 				if err != nil || !result.Accepted || repo.submitted.RequestID != "sample" {
 					t.Fatal(result, err)
 				}
-				count := 0
-				for _, span := range recorder.Ended() {
-					isTool := false
-					for _, a := range span.Attributes() {
-						if a.Key == "langfuse.observation.type" && a.Value.AsString() == "tool" {
-							isTool = true
-						}
-					}
-					if !isTool {
-						continue
-					}
-					if span.Name() == "get_decision_context" || span.Name() == "get_unit_details" {
-						sizes := map[string]int64{}
-						for _, a := range span.Attributes() {
-							sizes[string(a.Key)] = a.Value.AsInt64()
-						}
-						structured, present := sizes["battlefield.tool.structured_bytes"]
-						if !present || structured != 0 || sizes["battlefield.tool.text_bytes"] <= 0 || sizes["battlefield.tool.response_bytes"] <= sizes["battlefield.tool.text_bytes"] {
-							t.Fatal("single-copy byte measurements missing or inconsistent", sizes)
-						}
-					}
-					count++
-					if span.SpanContext().TraceID().String() != telemetry.DecisionTraceID("sample") {
-						t.Fatal("tool trace correlation lost")
-					}
-					encoded, _ := json.Marshal(span.Attributes())
-					if strings.Contains(string(encoded), token) || strings.Contains(string(encoded), "keep-distance-marker") {
-						t.Fatal("private payload exported")
-					}
-					if span.EndTime().Before(span.StartTime()) {
-						t.Fatal("invalid tool latency")
-					}
-				}
-				want := 2
-				if lookup {
-					want = 3
-				}
-				if count != want {
-					t.Fatalf("tool spans %d want %d", count, want)
-				}
+				assertCompactToolSpans(t, recorder, token, lookup)
 
 			})
 		}
@@ -178,5 +139,59 @@ func TestUnitDetailsToolAuthorizationAndErrors(t *testing.T) {
 	repo.err = errors.New("storage failed")
 	if payload, _, err := client.Call(context.Background(), ai.ToolCall{Name: "get_unit_details", Arguments: []byte(`{"requestId":"sample","unitIds":["ranger"]}`)}); err == nil && !strings.Contains(string(payload), `"error"`) {
 		t.Fatal("storage error ignored")
+	}
+}
+
+func assertCompactToolSpans(t *testing.T, recorder *tracetest.SpanRecorder, token string, lookup bool) {
+	t.Helper()
+	count := 0
+	for _, span := range recorder.Ended() {
+		isTool := isToolSpan(span)
+		if !isTool {
+			continue
+		}
+		assertCompactToolSpan(t, span, token)
+		count++
+	}
+	want := 2
+	if lookup {
+		want = 3
+	}
+	if count != want {
+		t.Fatalf("tool spans %d want %d", count, want)
+	}
+}
+
+func isToolSpan(span sdk.ReadOnlySpan) bool {
+	isTool := false
+	for _, a := range span.Attributes() {
+		if a.Key == "langfuse.observation.type" && a.Value.AsString() == "tool" {
+			isTool = true
+		}
+	}
+	return isTool
+}
+
+func assertCompactToolSpan(t *testing.T, span sdk.ReadOnlySpan, token string) {
+	t.Helper()
+	if span.Name() == "get_decision_context" || span.Name() == "get_unit_details" {
+		sizes := map[string]int64{}
+		for _, a := range span.Attributes() {
+			sizes[string(a.Key)] = a.Value.AsInt64()
+		}
+		structured, present := sizes["battlefield.tool.structured_bytes"]
+		if !present || structured != 0 || sizes["battlefield.tool.text_bytes"] <= 0 || sizes["battlefield.tool.response_bytes"] <= sizes["battlefield.tool.text_bytes"] {
+			t.Fatal("single-copy byte measurements missing or inconsistent", sizes)
+		}
+	}
+	if span.SpanContext().TraceID().String() != telemetry.DecisionTraceID("sample") {
+		t.Fatal("tool trace correlation lost")
+	}
+	encoded, _ := json.Marshal(span.Attributes())
+	if strings.Contains(string(encoded), token) || strings.Contains(string(encoded), "keep-distance-marker") {
+		t.Fatal("private payload exported")
+	}
+	if span.EndTime().Before(span.StartTime()) {
+		t.Fatal("invalid tool latency")
 	}
 }

@@ -73,7 +73,17 @@ func compactBattlefieldView(view game.View) map[string]json.RawMessage {
 		result = withProfiles
 	}
 
-	positions := append([]game.Position(nil), view.VisiblePositions...)
+	rows := compactVisibleRows(view.VisiblePositions)
+	encoded := contextJSON(rows)
+	if len(encoded)+len("visibleRowRanges") < len(result["visiblePositions"])+len("visiblePositions") {
+		delete(result, "visiblePositions")
+		result["visibleRowRanges"] = encoded
+	}
+	return result
+}
+
+func compactVisibleRows(visible []game.Position) []visibleRow {
+	positions := append([]game.Position(nil), visible...)
 	sort.Slice(positions, func(i, j int) bool {
 		if positions[i].Y != positions[j].Y {
 			return positions[i].Y < positions[j].Y
@@ -92,10 +102,5 @@ func compactBattlefieldView(view game.View) map[string]json.RawMessage {
 			row.XRanges = append(row.XRanges, [2]int{position.X, position.X})
 		}
 	}
-	encoded := contextJSON(rows)
-	if len(encoded)+len("visibleRowRanges") < len(result["visiblePositions"])+len("visiblePositions") {
-		delete(result, "visiblePositions")
-		result["visibleRowRanges"] = encoded
-	}
-	return result
+	return rows
 }

@@ -34,24 +34,29 @@ func TestContextTransportSingleJSONCopy(t *testing.T) {
 			}
 			// Repeated reads remain valid and identical; no new call limits.
 			for range 2 {
-				result, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "get_decision_context", Arguments: map[string]any{"requestId": "sample"}})
-				if err != nil {
-					t.Fatal(err)
-				}
-				if result.IsError || result.StructuredContent != nil || len(result.Content) != 1 {
-					t.Fatalf("expected one text copy: %+v", result)
-				}
-				part, ok := result.Content[0].(*mcp.TextContent)
-				if !ok || part.Text != string(want) {
-					t.Fatal("context envelope or snapshot changed")
-				}
-				wire, _ := json.Marshal(result)
-				oldWire, _ := json.Marshal(&mcp.CallToolResult{Content: result.Content, StructuredContent: json.RawMessage(want)})
-				if len(wire) >= len(oldWire) {
-					t.Fatal("transport did not shrink")
-				}
-				t.Logf("context JSON=%d bytes; single-copy transport=%d; duplicate transport=%d", len(want), len(wire), len(oldWire))
+				assertSingleContextCopy(t, cs, want)
 			}
 		})
 	}
+}
+
+func assertSingleContextCopy(t *testing.T, cs *mcp.ClientSession, want []byte) {
+	t.Helper()
+	result, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "get_decision_context", Arguments: map[string]any{"requestId": "sample"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError || result.StructuredContent != nil || len(result.Content) != 1 {
+		t.Fatalf("expected one text copy: %+v", result)
+	}
+	part, ok := result.Content[0].(*mcp.TextContent)
+	if !ok || part.Text != string(want) {
+		t.Fatal("context envelope or snapshot changed")
+	}
+	wire, _ := json.Marshal(result)
+	oldWire, _ := json.Marshal(&mcp.CallToolResult{Content: result.Content, StructuredContent: json.RawMessage(want)})
+	if len(wire) >= len(oldWire) {
+		t.Fatal("transport did not shrink")
+	}
+	t.Logf("context JSON=%d bytes; single-copy transport=%d; duplicate transport=%d", len(want), len(wire), len(oldWire))
 }

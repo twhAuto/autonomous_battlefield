@@ -197,29 +197,38 @@ func LookupUnitDetails(c DecisionContext, ids []string) (UnitDetailsResponse, er
 // repeats base stats and never truncates guidance without an explicit next offset.
 func LookupUnitDetailsPage(c DecisionContext, ids []string, offset int) (UnitDetailsResponse, error) {
 	response := UnitDetailsResponse{Units: []UnitDetailResult{}}
-	if offset < 0 || (offset > 0 && len(ids) != 1) {
-		return response, fmt.Errorf("guidanceOffset requires one unit ID and a nonnegative offset")
+	if err := validateUnitDetailsRequest(ids, offset); err != nil {
+		return response, err
 	}
-	if len(ids) < 1 || len(ids) > 4 {
-		return response, fmt.Errorf("supply 1–4 distinct unit IDs")
-	}
-	seen := map[string]bool{}
+	identity, details := unitDetailsReference(c)
+	response.ReferenceIdentity = identity
+	allowed := visibleAndLegalUnitIDs(c)
 	for _, id := range ids {
-		if id == "" || seen[id] {
-			return response, fmt.Errorf("supply 1–4 distinct nonempty unit IDs")
+		result := UnitDetailResult{UnitID: id}
+		if detail, ok := details[id]; ok && allowed[id] {
+			var err error
+			result, err = unitDetailPage(detail, id, offset)
+			if err != nil {
+				return response, err
+			}
 		}
-		seen[id] = true
+		response.Units = append(response.Units, result)
 	}
+	return boundUnitDetailsPage(response, offset)
+}
+
+func unitDetailsReference(c DecisionContext) (ReferenceIdentity, map[string]UnitDetail) {
+	var identity ReferenceIdentity
 	details := map[string]UnitDetail{}
 	if c.UnitReference != nil {
-		response.ReferenceIdentity = c.UnitReference.ReferenceIdentity
+		identity = c.UnitReference.ReferenceIdentity
 		for _, detail := range c.UnitReference.Units {
 			details[detail.UnitID] = detail
 		}
 	} else {
 		// Legacy records may only have some cards, but legal base stats remain authoritative.
 		if c.Knowledge != nil {
-			response.ReferenceIdentity = ReferenceIdentity{c.Knowledge.RulesetID, c.Knowledge.RulesetVersion, c.Knowledge.Digest}
+			identity = ReferenceIdentity{c.Knowledge.RulesetID, c.Knowledge.RulesetVersion, c.Knowledge.Digest}
 			for _, card := range c.Knowledge.Cards {
 				copy := card.UnitCard
 				details[card.UnitID] = UnitDetail{UnitID: card.UnitID, Stats: card.Stats, Card: &copy}
@@ -232,27 +241,28 @@ func LookupUnitDetailsPage(c DecisionContext, ids []string, offset int) (UnitDet
 			details[unit.ID] = detail
 		}
 	}
-	allowed := visibleAndLegalUnitIDs(c)
-	for _, id := range ids {
-		result := UnitDetailResult{UnitID: id}
-		if detail, ok := details[id]; ok && allowed[id] {
-			stats := detail.Stats
-			result.Available = true
-			result.Stats = &stats
-			if detail.Card != nil {
-				guidance := detail.Card.Guidance
-				if offset > len(guidance) || (offset < len(guidance) && !utf8.RuneStart(guidance[offset])) {
-					return response, fmt.Errorf("invalid guidanceOffset")
-				}
-				result.GuidanceOffset = offset
-				result.Guidance = guidance[offset:]
-			}
-		}
-		response.Units = append(response.Units, result)
+	return identity, details
+}
+
+func unitDetailPage(detail UnitDetail, id string, offset int) (UnitDetailResult, error) {
+	stats := detail.Stats
+	result := UnitDetailResult{UnitID: id, Available: true, Stats: &stats}
+	if detail.Card == nil {
+		return result, nil
 	}
+	guidance := detail.Card.Guidance
+	if offset > len(guidance) || (offset < len(guidance) && !utf8.RuneStart(guidance[offset])) {
+		return UnitDetailResult{UnitID: id}, fmt.Errorf("invalid guidanceOffset")
+	}
+	result.GuidanceOffset = offset
+	result.Guidance = guidance[offset:]
+	return result, nil
+}
+
+func boundUnitDetailsPage(response UnitDetailsResponse, offset int) (UnitDetailsResponse, error) {
 	payload, _ := json.Marshal(response)
 	if len(payload) > UnitDetailsMaxBytes {
-		if len(ids) > 1 {
+		if len(response.Units) > 1 {
 			return UnitDetailsResponse{}, fmt.Errorf("unit details exceed %d bytes; request one unit ID at a time", UnitDetailsMaxBytes)
 		}
 		unit := &response.Units[0]
@@ -270,4 +280,21 @@ func LookupUnitDetailsPage(c DecisionContext, ids []string, offset int) (UnitDet
 		}
 	}
 	return response, nil
+}
+
+func validateUnitDetailsRequest(ids []string, offset int) error {
+	if offset < 0 || (offset > 0 && len(ids) != 1) {
+		return fmt.Errorf("guidanceOffset requires one unit ID and a nonnegative offset")
+	}
+	if len(ids) < 1 || len(ids) > 4 {
+		return fmt.Errorf("supply 1–4 distinct unit IDs")
+	}
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if id == "" || seen[id] {
+			return fmt.Errorf("supply 1–4 distinct nonempty unit IDs")
+		}
+		seen[id] = true
+	}
+	return nil
 }

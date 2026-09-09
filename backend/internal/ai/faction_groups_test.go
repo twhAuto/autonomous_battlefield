@@ -43,31 +43,7 @@ func TestFactionGroupingPreservesEveryEntity(t *testing.T) {
 	for _, building := range state.Buildings {
 		expected[building.ID] = contextJSON(contextObject(building))
 	}
-	seen := 0
-	for _, group := range groups {
-		for _, kind := range [][]map[string]json.RawMessage{group.Units, group.Buildings} {
-			for _, item := range kind {
-				if item["factionId"] != nil {
-					t.Fatal("ownership repeated")
-				}
-				item["factionId"] = contextJSON(group.FactionID)
-				if ref := item["profile"]; ref != nil {
-					var id string
-					_ = json.Unmarshal(ref, &id)
-					delete(item, "profile")
-					for k, v := range profiles[id] {
-						item[k] = v
-					}
-				}
-				var id string
-				_ = json.Unmarshal(item["id"], &id)
-				if !sameContextJSON(contextJSON(item), expected[id]) {
-					t.Fatalf("entity changed: %s", id)
-				}
-				seen++
-			}
-		}
-	}
+	seen := assertGroupedEntities(t, groups, profiles, expected)
 	if seen != len(expected) {
 		t.Fatal("entity missing")
 	}
@@ -86,4 +62,39 @@ func TestBuildingProfilesKeepSmallSetsInline(t *testing.T) {
 			t.Fatal("small set changed")
 		}
 	}
+}
+
+func assertGroupedEntity(t *testing.T, item map[string]json.RawMessage, factionID string, profiles map[string]map[string]json.RawMessage, expected map[string]json.RawMessage) {
+	t.Helper()
+	if item["factionId"] != nil {
+		t.Fatal("ownership repeated")
+	}
+	item["factionId"] = contextJSON(factionID)
+	if ref := item["profile"]; ref != nil {
+		var id string
+		_ = json.Unmarshal(ref, &id)
+		delete(item, "profile")
+		for k, v := range profiles[id] {
+			item[k] = v
+		}
+	}
+	var id string
+	_ = json.Unmarshal(item["id"], &id)
+	if !sameContextJSON(contextJSON(item), expected[id]) {
+		t.Fatalf("entity changed: %s", id)
+	}
+}
+
+func assertGroupedEntities(t *testing.T, groups []factionObservationGroup, profiles map[string]map[string]json.RawMessage, expected map[string]json.RawMessage) int {
+	t.Helper()
+	seen := 0
+	for _, group := range groups {
+		for _, kind := range [][]map[string]json.RawMessage{group.Units, group.Buildings} {
+			for _, item := range kind {
+				assertGroupedEntity(t, item, group.FactionID, profiles, expected)
+				seen++
+			}
+		}
+	}
+	return seen
 }
