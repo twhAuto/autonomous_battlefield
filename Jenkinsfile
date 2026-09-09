@@ -444,7 +444,13 @@ pipeline {
                             parallel {
                                 stage('Smoke load') {
                                     steps {
-                                        sh 'K6_VUS=3 K6_DURATION=30s ./scripts/perf/run-k6.sh'
+                                        withCredentials([file(credentialsId: 'battlefield-production-access-token', variable: 'BATTLEFIELD_ACCESS_TOKEN_FILE')]) {
+                                            sh '''
+                                                set +x
+                                                chmod 600 "$BATTLEFIELD_ACCESS_TOKEN_FILE"
+                                                K6_VUS=3 K6_DURATION=30s ./scripts/perf/run-k6.sh
+                                            '''
+                                        }
                                     }
                                 }
                                 stage('ZAP baseline') {
