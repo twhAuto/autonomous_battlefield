@@ -13,9 +13,12 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 func (w *Worker) runGeneration(parent context.Context, job job) {
+	parent, span := telemetry.StartDecision(parent, job.RequestID)
+	defer span.End()
 	duration := time.Duration(job.ExecutionTimeoutSeconds) * time.Second
 	if duration <= 0 {
 		duration = 2 * time.Minute
@@ -44,6 +47,7 @@ func (w *Worker) runGeneration(parent context.Context, job job) {
 	if ctx.Err() != nil {
 		category = "timeout"
 	}
+	telemetry.AIOutcome(span, category != "", category)
 	payload, _ := json.Marshal(map[string]any{"requestId": job.RequestID, "category": category, "usage": result.Usage, "metadata": metadata})
 	reportCtx, reportCancel := context.WithTimeout(context.WithoutCancel(parent), 5*time.Second)
 	defer reportCancel()

@@ -81,7 +81,7 @@ func TestStreamableMCPToolsAreAuthenticatedAndScoped(t *testing.T) {
 	defer session.Close()
 	defer serverSession.Close()
 	tools, err := session.ListTools(context.Background(), nil)
-	if err != nil || len(tools.Tools) != 2 {
+	if err != nil || len(tools.Tools) != 3 {
 		t.Fatalf("tools=%#v err=%v", tools, err)
 	}
 	contextResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "get_decision_context", Arguments: map[string]any{"requestId": "request-1"}})
@@ -92,7 +92,7 @@ func TestStreamableMCPToolsAreAuthenticatedAndScoped(t *testing.T) {
 		t.Fatal("missing text context")
 	}
 	text, ok := contextResult.Content[0].(*mcp.TextContent)
-	if !ok || !strings.Contains(text.Text, "targetTick=10") || !strings.Contains(text.Text, "expectedVersion=1") {
+	if !ok || !strings.Contains(text.Text, `"targetTick":10`) || !strings.Contains(text.Text, `"expectedVersion":1`) {
 		t.Fatal("explicit decision metadata missing")
 	}
 	denied, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "get_decision_context", Arguments: map[string]any{"requestId": "another"}})

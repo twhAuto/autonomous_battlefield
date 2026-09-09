@@ -77,6 +77,12 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# Match the deployment entry point's helper dependencies without running preflight.
+# shellcheck source=scripts/lib/deployment-environment.sh
+source "${project_dir}/scripts/lib/deployment-environment.sh"
+# Overlay tests must not inherit host configuration or query a live cluster.
+LANGFUSE_ENABLED=0
+
 # shellcheck source=scripts/cd/lib/kind-deployment.sh
 source "${project_dir}/scripts/cd/lib/kind-deployment.sh"
 # shellcheck source=scripts/lib/deployment-components.sh
@@ -160,6 +166,22 @@ for selection in application migration gateway observability infrastructure all;
   rm -rf -- "${runtime_dir}"
   runtime_dir=""
 done
+
+# Langfuse selection must stage the matching collector configuration in either mode.
+for langfuse_enabled in 0 1; do
+  LANGFUSE_ENABLED="${langfuse_enabled}"
+  deployment_components_select observability deployment
+  kind_deploy_prepare_overlays >"${test_dir}/staging.log"
+  expected_collector="${project_dir}/deploy/overlays/local/observability/otel-collector/config.yaml"
+  if [[ "${langfuse_enabled}" == 1 ]]; then
+    expected_collector="${project_dir}/deploy/langfuse/collector-config.yaml"
+  fi
+  cmp "${expected_collector}" "${runtime_dir}/deploy/overlays/local/observability/otel-collector/config.yaml"
+  kubectl kustomize "${runtime_dir}/deploy/overlays/local/observability" >"${test_dir}/langfuse-${langfuse_enabled}.yaml"
+  rm -rf -- "${runtime_dir}"
+  runtime_dir=""
+done
+LANGFUSE_ENABLED=0
 
 # A pre-existing Available condition cannot substitute for completing an update.
 namespace=battlefield

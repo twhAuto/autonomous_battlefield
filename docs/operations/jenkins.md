@@ -627,7 +627,7 @@ committing the intended source so the worktree is clean:
 
 ```bash
 ./scripts/ci/lint-go.sh
-./scripts/test/test-go-coverage.sh
+./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
 (cd frontend && npm ci && npm test -- --coverage && npm run build)
 BUILD_NUMBER=1 ./scripts/ci/build-images.sh
 ./scripts/ci/scan-images.sh "$(git rev-parse HEAD)"
@@ -644,6 +644,10 @@ These commands exercise local build/deploy checks after dev environment setup;
 they do not publish, sign, or verify production registry artifacts or validate Jenkins
 Declarative Pipeline syntax. Use the configured Jenkins Multibranch job for the
 final `Jenkinsfile` validation.
+
+The source-security stage logs each failed check and its report path. Inspect the
+matching file under the build's archived `artifacts/security/` directory to
+separate dependency findings from rendered-manifest or workload-policy failures.
 
 ### Trivy database download recovery
 

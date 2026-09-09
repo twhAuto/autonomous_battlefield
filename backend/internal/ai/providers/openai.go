@@ -49,15 +49,29 @@ func (p *OpenAI) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	request.Header.Set("Content-Type", "application/json")
 	var decoded struct {
 		Output []openAIOutput `json:"output"`
-		Usage  struct {
-			Input  int64 `json:"input_tokens"`
-			Output int64 `json:"output_tokens"`
+		Usage  *struct {
+			Input        int64 `json:"input_tokens"`
+			Output       int64 `json:"output_tokens"`
+			InputDetails struct {
+				Cached *int64 `json:"cached_tokens"`
+			} `json:"input_tokens_details"`
+			OutputDetails struct {
+				Reasoning *int64 `json:"reasoning_tokens"`
+			} `json:"output_tokens_details"`
 		} `json:"usage"`
 	}
 	if err := doJSON(p.Client, request, "OpenAI", &decoded); err != nil {
 		return ai.ModelTurnResult{}, err
 	}
-	return openAIResult(decoded.Output, decoded.Usage.Input, decoded.Usage.Output)
+	if decoded.Usage == nil {
+		result, err := openAIResult(decoded.Output, 0, 0)
+		result.Usage.TokensReported = false
+		return result, err
+	}
+	result, err := openAIResult(decoded.Output, decoded.Usage.Input, decoded.Usage.Output)
+	result.Usage.CachedInputTokens = decoded.Usage.InputDetails.Cached
+	result.Usage.ReasoningOutputTokens = decoded.Usage.OutputDetails.Reasoning
+	return result, err
 }
 
 func openAITools(definitions []ai.ToolDefinition) ([]map[string]any, error) {
@@ -73,11 +87,11 @@ func openAITools(definitions []ai.ToolDefinition) ([]map[string]any, error) {
 }
 
 func openAIResult(output []openAIOutput, inputTokens, outputTokens int64) (ai.ModelTurnResult, error) {
-	result := ai.ModelTurnResult{Usage: ai.Usage{InputTokens: inputTokens, OutputTokens: outputTokens, Requests: 1}}
+	result := ai.ModelTurnResult{Usage: ai.Usage{InputTokens: inputTokens, OutputTokens: outputTokens, Requests: 1, TokensReported: true}}
 	for _, item := range output {
 		for _, content := range item.Content {
 			if content.Type == "refusal" {
-				return ai.ModelTurnResult{}, ErrRefusal
+				return result, ErrRefusal
 			}
 		}
 		if item.Type == "function_call" {

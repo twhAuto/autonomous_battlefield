@@ -322,7 +322,17 @@ Both adapters:
 The MCP tools are:
 
 - `get_decision_context`;
+- `get_unit_details` (1–4 exact unit IDs);
 - `submit_strategy_plan`.
+
+[`agent_context.go`](../../backend/internal/ai/agent_context.go) owns the explicit
+agent projection, frozen unit reference snapshot, and exact lookup. The full
+`DecisionContext` remains persisted for validation. New snapshots are captured by
+the battle worker before hashing for every decision.
+[`unit_details.go`](../../backend/internal/ai/mcpserver/unit_details.go) serves the
+capability-scoped lookup. The saved-context service and frontend inspector show
+reconstructed context separately from optional reference details. All evaluation
+variants use the current projection, with lookup and total input-token metrics.
 
 The server validates request scope before calling `DecisionService`. PostgreSQL notifications close an in-memory wake-up channel so long-polling claim requests promptly query durable state.
 
@@ -555,9 +565,9 @@ Battle inspector regions use labelled sections, and asynchronous loading message
 use native `output` elements. Component tests verify the resulting accessibility
 roles rather than requiring redundant explicit role attributes.
 
-Package-specific PostgreSQL integration tests remain beside their adapters and require `TEST_DATABASE_URL`; the isolated PostgreSQL harness supplies it. `scripts/test` contains reusable test runners and deployment script tests. Old `scripts/ci` test commands forward to those runners. `scripts/test/test-command-wrappers.sh` verifies argument, environment, working-directory, exit-status, and signal forwarding without launching the application. `scripts/test/test-kind-deployment.sh` checks selected-overlay staging, real Kustomize renders, and rollout failure handling. `scripts/test/test-security-launchers.sh` checks scanner artifact paths, failure propagation, and the shared Trivy pin using scanner stubs. Performance scenarios live in `tests/performance`; AI cases remain in `backend/evals`. Add an end-to-end folder only when whole-application tests exist.
+Package-specific PostgreSQL integration tests remain beside their adapters and require `TEST_DATABASE_URL`; the isolated PostgreSQL harness supplies it. `scripts/test` contains reusable test runners and deployment script tests. Old `scripts/ci` test commands forward to those runners. `scripts/test/test-command-wrappers.sh` verifies argument, environment, working-directory, exit-status, and signal forwarding without launching the application. `scripts/test/test-kind-deployment.sh` checks selected-overlay staging, collector configuration with Langfuse enabled and disabled, real Kustomize renders, and rollout failure handling. It loads the deployment environment helpers with explicit Langfuse overrides so overlay tests do not query a live cluster. `scripts/test/test-security-launchers.sh` checks scanner artifact paths, failure propagation, and the shared Trivy pin using scanner stubs. Performance scenarios live in `tests/performance`; AI cases remain in `backend/evals`. Add an end-to-end folder only when whole-application tests exist.
 
-Merge-blocking gates require at least 80% Go statement coverage and at least 80% frontend statements, branches, functions, and lines:
+Merge-blocking gates require at least 80% Go statement coverage in aggregate across the module — one repository-wide total from `go tool cover`, not a per-package floor, so thin wiring in `cmd/*` and `internal/postgres` may sit below 80% while the module passes — and at least 80% frontend statements, branches, functions, and lines. Measure through the PostgreSQL harness; a coverage run without `TEST_DATABASE_URL` skips tests that require the database and omits the code exercised only by those tests:
 
 ```bash
 ./scripts/test/with-test-postgres.sh ./scripts/test/test-backend.sh
@@ -753,3 +763,52 @@ Run the Go coverage gate with disposable PostgreSQL integration coverage:
 (cd frontend && npm test -- --coverage)
 (cd frontend && npm run build)
 ```
+
+## Langfuse integration
+
+`ai/faction_groups.go` groups observed units/buildings with faction statistics
+after metadata deduplication, and conditionally shares effective building stats.
+Its reconstruction tests verify ownership, missing faction statistics, distinct
+effective profiles, stable full IDs and individual observations. The inspector
+renders grouped JSON through its existing reconstructed-context section.
+
+`ai/context_duplicates.go` removes equal plan/metadata copies from the current
+projection. `ai/session_context.go` removes identity text only when the exact
+value is supplied in the system prompt. API tool delivery and Gemini prefetch
+apply this helper; MCP's canonical response stays self-contained. Tests cover
+historical differences, faction scope, source immutability and both runner paths.
+
+`backend/internal/ai/battlefield_context.go` implements the v4 agent view:
+effective-stat profiles and inclusive visibility row ranges, with independent
+size checks to retain inline fields when smaller. Its tests reconstruct observed
+units and visibility, check version compatibility and measure opening/small/large
+views. To measure a local JSON context without adding private data to fixtures,
+run `BATTLEFIELD_CONTEXT_FIXTURE=/path/to/context.json go test ./internal/ai -run TestBattlefieldContextExternalFixture -v`
+from `backend`.
+
+- `backend/internal/telemetry/ai.go` provides decision correlation, explicit AI
+  sampling and safe trace URLs alongside the existing infrastructure tracing.
+- `backend/internal/ai/runner/observability.go` emits generation observations;
+  `codex_usage.go` parses terminal JSONL usage without retaining model reasoning.
+  Provider adapters preserve cache/reasoning subsets and usage on refusals.
+- `backend/internal/ai/mcpserver/tool_logging.go` records server tool spans;
+  `context_telemetry.go` measures serialized initial-context sections in bytes.
+  Tool metrics distinguish serialized transport, text, and structured-content
+  bytes. `context_transport_test.go` checks single-copy JSON delivery, legacy
+  context fields, repeat-read compatibility, and reduced transport size.
+- Decision history exposes optional trace links and additive usage metadata;
+  `AIDecisionPanel` distinguishes API totals, CLI aggregates and legacy counters.
+- `deploy/langfuse/values.yaml` pins the self-hosted Helm configuration;
+  `collector-config.yaml` adds the filtered export pipeline. Run
+  `scripts/cd/deploy-langfuse.sh` using the registered environment and follow
+  [Langfuse operations](../operations/langfuse.md) to enable future deploys.
+
+`scripts/lib/ensure-helm.py` supplies the Langfuse installer with an existing
+Helm binary or a temporary checksum-pinned Linux amd64 download.
+
+`deploy/langfuse/values.yaml` also supplies explicit pod/container security contexts
+for Langfuse, SeaweedFS and PostgreSQL, preserving the namespace security policy.
+
+`deploy/overlays/local/gateway/langfuse-route.yaml` exposes the UI through the
+shared gateway. `battlefield_env_langfuse_enabled` in the environment helper detects
+the installed project for collector configuration and host CLI forwarding.

@@ -221,7 +221,7 @@ func (e *fakeExecutor) Run(_ context.Context, name string, args, environment []s
 	e.args = args
 	e.environment = environment
 	e.directory = directory
-	return []byte("done"), e.err
+	return []byte(`{"type":"turn.completed","usage":{"input_tokens":12,"output_tokens":4}}`), e.err
 }
 
 func TestCLIRunnerBuildsRestrictedCodexInvocation(t *testing.T) {

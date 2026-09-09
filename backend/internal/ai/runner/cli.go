@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go.opentelemetry.io/otel/attribute"
 
 	"os"
 	"os/exec"
@@ -38,7 +39,9 @@ type CLIRunner struct {
 	Connector MCPConnector
 }
 
-func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.DecisionResult, error) {
+func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result ai.DecisionResult, runErr error) {
+	ctx, span := generationSpan(ctx, session, "cli_session")
+	defer func() { finishGeneration(span, result.Usage, runErr != nil || !result.Accepted) }()
 	temporary, err := os.MkdirTemp("", "battlefield-agent-")
 	if err != nil {
 		return ai.DecisionResult{ErrorCategory: "cli_isolation"}, err
@@ -58,7 +61,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 	switch r.Provider {
 	case "codex-cli":
 		name = "codex"
-		args = []string{"exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "--ignore-user-config", "-C", workspace,
+		args = []string{"exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "--ignore-user-config", "-C", workspace,
 			disableFlag, "shell_tool", disableFlag, "browser_use", disableFlag, "in_app_browser", disableFlag, "computer_use", disableFlag, "apps", disableFlag, "image_generation", disableFlag, "multi_agent", disableFlag, "skill_search", disableFlag, "skill_mcp_dependency_install", disableFlag, "plugins", disableFlag, "hooks", disableFlag, "goals", disableFlag, "standalone_web_search",
 			"-c", `approval_policy="never"`, "-c", `mcp_servers.battlefield.url="` + session.MCPURL + `"`,
 			"-c", `mcp_servers.battlefield.env_http_headers={Authorization="BATTLEFIELD_MCP_AUTHORIZATION"}`,
@@ -84,14 +87,19 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 	default:
 		return ai.DecisionResult{ErrorCategory: "cli_provider"}, fmt.Errorf("unsupported CLI provider %q", r.Provider)
 	}
+	span.SetAttributes(attribute.Int("battlefield.prompt.bytes", len(prompt)))
 	output, err := executor.Run(ctx, name, args, environment, workspace)
-	if err != nil {
-		return ai.DecisionResult{ErrorCategory: "cli", ProviderData: map[string]any{"exitOutput": redactedCLIOutput(output, session.CapabilityToken)}}, err
-	}
 	if r.Provider == "antigravity-cli" {
-		return antigravityResult(output)
+		result, runErr = antigravityResult(output)
+	} else {
+		result, runErr = codexResult(output)
 	}
-	return ai.DecisionResult{Accepted: true, Usage: ai.Usage{Requests: 1}}, nil
+	if err != nil {
+		result.Accepted = false
+		result.ErrorCategory = "cli"
+		return result, err
+	}
+	return result, runErr
 }
 
 func withModel(arguments []string, model string) []string {
@@ -108,23 +116,29 @@ func antigravityResult(output []byte) (ai.DecisionResult, error) {
 		Status        string            `json:"status"`
 		DeniedActions []json.RawMessage `json:"denied_actions"`
 		Usage         struct {
-			Input  int64 `json:"input_tokens"`
-			Output int64 `json:"output_tokens"`
+			Input  *int64 `json:"input_tokens"`
+			Output *int64 `json:"output_tokens"`
 		} `json:"usage"`
 	}
 	for _, line := range strings.Split(string(output), "\n") {
 		var envelope resultEnvelope
 		if json.Unmarshal([]byte(line), &envelope) == nil && envelope.Status != "" {
+			usage := ai.Usage{Scope: "cli_session", CLIInvocations: 1, Requests: 1}
+			if envelope.Usage.Input != nil && envelope.Usage.Output != nil {
+				usage.InputTokens = *envelope.Usage.Input
+				usage.OutputTokens = *envelope.Usage.Output
+				usage.TokensReported = true
+			}
 			if len(envelope.DeniedActions) > 0 {
-				return ai.DecisionResult{ErrorCategory: "cli_permission"}, fmt.Errorf("Antigravity denied a required tool action")
+				return ai.DecisionResult{ErrorCategory: "cli_permission", Usage: usage}, fmt.Errorf("Antigravity denied a required tool action")
 			}
 			if envelope.Status != "SUCCESS" {
-				return ai.DecisionResult{ErrorCategory: "cli"}, fmt.Errorf("Antigravity returned %s", envelope.Status)
+				return ai.DecisionResult{ErrorCategory: "cli", Usage: usage}, fmt.Errorf("Antigravity returned %s", envelope.Status)
 			}
-			return ai.DecisionResult{Accepted: true, Usage: ai.Usage{Requests: 1, InputTokens: envelope.Usage.Input, OutputTokens: envelope.Usage.Output}}, nil
+			return ai.DecisionResult{Accepted: true, Usage: usage}, nil
 		}
 	}
-	return ai.DecisionResult{ErrorCategory: "cli"}, fmt.Errorf("Antigravity returned no terminal result")
+	return ai.DecisionResult{ErrorCategory: "cli", Usage: ai.Usage{Scope: "cli_session", CLIInvocations: 1, Requests: 1}}, fmt.Errorf("Antigravity returned no terminal result")
 }
 
 func replaceEnvironment(values []string, key, value string) []string {
@@ -179,5 +193,5 @@ func (r CLIRunner) prefetchContext(ctx context.Context, session ai.DecisionSessi
 	if json.Unmarshal(payload, &result) != nil || result.Context.RequestID != session.RequestID || (session.JobType != "faction_background" && ((result.Context.TargetTick == 0 && !result.Context.Opening) || result.Context.ExpectedVersion < 1)) {
 		return nil, fmt.Errorf("invalid decision context metadata")
 	}
-	return payload, nil
+	return ai.SessionContextPayload(session, payload), nil
 }

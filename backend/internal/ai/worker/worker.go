@@ -21,6 +21,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -113,6 +114,11 @@ func waitFor(ctx context.Context, duration time.Duration) bool {
 }
 
 type job struct {
+	BattleID   string `json:"battleId"`
+	FactionID  string `json:"factionId"`
+	Attempt    int    `json:"attempt"`
+	TargetTick uint64 `json:"targetTick"`
+
 	FactionName             string `json:"factionName"`
 	Background              string `json:"background"`
 	JobType                 string `json:"jobType"`
@@ -161,10 +167,14 @@ func (w *Worker) claim(ctx context.Context, profileIDs []string) (job, bool, err
 
 func (w *Worker) runJob(parent context.Context, job job) {
 	parent = telemetry.ContextWithTrace(parent, job.Traceparent, job.Tracestate)
-	parent, span := telemetry.StartConsumerSpan(parent, "battlefield.agent.decision",
-		attribute.String("battlefield.request_id", job.RequestID),
-		attribute.String("battlefield.profile_id", job.ProfileID),
-	)
+	parent = telemetry.WithDecisionMetadata(parent,
+		attribute.String("langfuse.session.id", job.BattleID),
+		attribute.String("langfuse.trace.metadata.battle_id", job.BattleID),
+		attribute.String("langfuse.trace.metadata.faction_id", job.FactionID),
+		attribute.Int("langfuse.trace.metadata.attempt", job.Attempt),
+		attribute.Int64("langfuse.trace.metadata.target_tick", int64(job.TargetTick)))
+	parent, span := telemetry.StartDecision(parent, job.RequestID)
+	span.SetAttributes(attribute.String("langfuse.trace.metadata.profile_id", job.ProfileID))
 	defer span.End()
 	started := time.Now()
 	logger := w.logger().With("worker_id", w.WorkerID, "request_id", job.RequestID, "profile_id", job.ProfileID)
@@ -191,10 +201,18 @@ func (w *Worker) runJob(parent context.Context, job job) {
 		return
 	}
 	result, err := decisionRunner.Run(ctx, ai.DecisionSession{Doctrine: job.Doctrine, FactionName: job.FactionName, Background: job.Background, RequestID: job.RequestID, CapabilityToken: token, MCPURL: w.MCPURL, Profile: profile})
+	if result.ProviderData == nil {
+		result.ProviderData = map[string]any{}
+	}
+	if span.IsRecording() {
+		result.ProviderData["aiTraceId"] = telemetry.DecisionTraceID(job.RequestID)
+	}
+	telemetry.AIOutcome(span, err != nil || !result.Accepted, result.ErrorCategory)
 	w.finishJob(parent, ctx, jobRun{logger: logger, started: started, requestID: job.RequestID, profile: profile}, result, err)
 }
 
 func (w *Worker) finishJob(parent, runContext context.Context, run jobRun, result ai.DecisionResult, runErr error) {
+	telemetry.AIOutcome(trace.SpanFromContext(parent), runErr != nil || !result.Accepted, result.ErrorCategory)
 	if runErr != nil || !result.Accepted {
 		category := result.ErrorCategory
 		if category == "" {
@@ -209,22 +227,24 @@ func (w *Worker) finishJob(parent, runContext context.Context, run jobRun, resul
 		if reportErr := w.fail(parent, run.requestID, category, result); reportErr != nil {
 			run.logger.ErrorContext(parent, "decision_failure_report_failed", "error", reportErr)
 		}
-	} else {
-		if reportErr := w.reportUsage(parent, run.requestID, result); reportErr != nil {
-			if errors.Is(reportErr, errNoAcceptedPlan) {
-				result.Accepted = false
-				result.ErrorCategory = "plan_not_submitted"
-				w.finishJob(parent, runContext, run, result, reportErr)
-			} else {
-				run.logger.ErrorContext(parent, "decision_usage_report_failed", "error", reportErr)
-			}
-			return
-		}
-		run.logger.InfoContext(parent, "decision_runner_completed", "provider", run.profile.Provider, "runtime", run.profile.Runtime, "duration_ms", time.Since(run.started).Milliseconds(), "input_tokens", result.Usage.InputTokens, "output_tokens", result.Usage.OutputTokens, "provider_requests", result.Usage.Requests)
+		return
 	}
+	if reportErr := w.reportUsage(parent, run.requestID, result); reportErr != nil {
+		if errors.Is(reportErr, errNoAcceptedPlan) {
+			result.Accepted = false
+			result.ErrorCategory = "plan_not_submitted"
+			w.finishJob(parent, runContext, run, result, reportErr)
+		} else {
+			telemetry.AIOutcome(trace.SpanFromContext(parent), true, "usage_report_failed")
+			run.logger.ErrorContext(parent, "decision_usage_report_failed", "error", reportErr)
+		}
+		return
+	}
+	run.logger.InfoContext(parent, "decision_runner_completed", "provider", run.profile.Provider, "runtime", run.profile.Runtime, "duration_ms", time.Since(run.started).Milliseconds(), "input_tokens", result.Usage.InputTokens, "output_tokens", result.Usage.OutputTokens, "provider_requests", result.Usage.Requests)
 }
 
 func (w *Worker) reportJobFailure(ctx context.Context, logger *slog.Logger, started time.Time, requestID, category, outcome string, result ai.DecisionResult) {
+	telemetry.AIOutcome(trace.SpanFromContext(ctx), true, category)
 	logger.WarnContext(ctx, "decision_runner_failed", "error_category", category, "runner_outcome", outcome, "duration_ms", time.Since(started).Milliseconds())
 	if err := w.fail(ctx, requestID, category, result); err != nil {
 		logger.ErrorContext(ctx, "decision_failure_report_failed", "error", err)

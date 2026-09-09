@@ -21,6 +21,7 @@ health_port="${HOST_AGENT_HEALTH_PORT:-18083}"
 runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-host-agent.XXXXXX")"
 port_forward_pid=""
 agent_pid=""
+otel_forward_pid=""
 profiles_enabled=0
 use_codex=0
 use_gemini=0
@@ -46,12 +47,12 @@ cleanup() {
     set_profile_flags false false || true
     kube rollout restart deployment/battlefield-api >/dev/null 2>&1 || true
   fi
-  for process_id in "${agent_pid}" "${port_forward_pid}"; do
+  for process_id in "${agent_pid}" "${port_forward_pid}" "${otel_forward_pid}"; do
     if [[ -n "${process_id}" ]]; then
       kill "${process_id}" 2>/dev/null || true
     fi
   done
-  for process_id in "${agent_pid}" "${port_forward_pid}"; do
+  for process_id in "${agent_pid}" "${port_forward_pid}" "${otel_forward_pid}"; do
     if [[ -n "${process_id}" ]]; then
       wait "${process_id}" 2>/dev/null || true
     fi
@@ -207,6 +208,16 @@ kube port-forward --address 127.0.0.1 service/battlefield-mcp "${mcp_port}:8084"
 port_forward_pid=$!
 wait_for_endpoint "http://127.0.0.1:${mcp_port}/healthz" "${port_forward_pid}" "MCP port-forward"
 
+LANGFUSE_ENABLED="$(battlefield_env_langfuse_enabled)"
+if [[ "${LANGFUSE_ENABLED}" == 1 ]]; then
+  otel_port="${HOST_OTEL_PORT:-14318}"
+  otel_health_port="${HOST_OTEL_HEALTH_PORT:-14333}"
+  kube port-forward --address 127.0.0.1 service/battlefield-otel-collector "${otel_port}:4318" "${otel_health_port}:13133" >"${runtime_dir}/otel-forward.log" 2>&1 &
+  otel_forward_pid=$!
+  wait_for_endpoint "http://127.0.0.1:${otel_health_port}/" "${otel_forward_pid}" "Collector port-forward"
+  export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:${otel_port}"
+fi
+
 echo "Starting the authenticated host decision agent..."
 (cd "${backend_dir}" && exec "${runtime_dir}/agent" -config "${runtime_dir}/config.yaml") &
 agent_pid=$!
@@ -228,7 +239,9 @@ echo "Decisions occur at ticks 10, 20, 30, ...; use at least 20 maximum ticks fo
 echo "Press Ctrl+C after the battle to disconnect the host agent and hide its profiles."
 
 set +e
-wait -n "${agent_pid}" "${port_forward_pid}"
+bridge_processes=("${agent_pid}" "${port_forward_pid}")
+[[ -z "${otel_forward_pid}" ]] || bridge_processes+=("${otel_forward_pid}")
+wait -n "${bridge_processes[@]}"
 exit_code=$?
 set -e
 echo "A host-agent process exited; shutting down the bridge." >&2

@@ -68,7 +68,7 @@ while IFS= read -r -d '' changed_file; do
     deploy/base/application/*|deploy/overlays/local/application/*)
       application=1
       ;;
-    deploy/overlays/local/observability/*|deploy/overlays/local/logging-collector/*)
+    deploy/langfuse/*|deploy/overlays/local/observability/*|deploy/overlays/local/logging-collector/*)
       observability=1
       ;;
     deploy/overlays/local/gateway/*)

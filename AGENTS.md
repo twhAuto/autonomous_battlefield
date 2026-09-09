@@ -45,7 +45,17 @@ Keep repository documentation synchronized with every implementation change.
 Implementation work must preserve the repository's merge-blocking coverage
 requirements:
 
-- Backend Go statement coverage must be at least 80% across all packages.
+- Backend Go statement coverage must be at least 80% in aggregate across the
+  module, as reported by the `total:` line from `go tool cover`. The gate is a
+  single repository-wide number, not a per-package floor, so thin wiring in
+  `cmd/*` and `internal/postgres` may sit below 80% while the module passes.
+  Do not read a low per-package figure as a gate failure, and do not treat the
+  aggregate as licence to leave new behavior untested.
+- Backend integration tests skip themselves unless `TEST_DATABASE_URL` is set,
+  so code exercised only by those tests remains uncovered. A coverage run
+  without that variable omits database-backed coverage, including in
+  `internal/generation`. Always measure through `with-test-postgres.sh` (see
+  the commands below) before drawing any conclusion about coverage.
 - Frontend statements, branches, functions, and lines must each be at least 80%.
 - Add or update meaningful tests for changed behavior. Do not lower thresholds,
   exclude production code from coverage, or add tests that only inflate coverage
@@ -54,9 +64,17 @@ requirements:
 Before declaring relevant implementation work complete, run:
 
 ```bash
-./scripts/test/test-go-coverage.sh
+./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
 (cd frontend && npm test -- --coverage)
 ```
+
+Run the backend command through `with-test-postgres.sh`, which starts a
+throwaway PostgreSQL container and exports `TEST_DATABASE_URL` for the wrapped
+command. Without `TEST_DATABASE_URL`, invoking `test-go-coverage.sh` directly
+skips tests that require the database; it still fails if tests fail or aggregate
+coverage falls below 80%. The harness requires Docker. If it cannot run, report
+that CI-equivalent coverage was not verified and label any measured coverage
+as excluding database-backed tests.
 
 Run the applicable command when a change affects only one side of the
 application. For documentation- or infrastructure-only changes, use the checks

@@ -14,9 +14,9 @@ import (
 const (
 	ControllerScripted = "scripted"
 	ControllerModel    = "model"
-	ContextSchema      = "battlefield.decision-context.v2"
+	ContextSchema      = "battlefield.decision-context.v4"
 	PlanSchema         = "battlefield.strategy-plan.v2"
-	ToolSchema         = "battlefield.mcp-tools.v5"
+	ToolSchema         = "battlefield.mcp-tools.v7"
 )
 
 type DecisionSession struct {
@@ -68,6 +68,14 @@ type ToolCall struct {
 }
 
 type Usage struct {
+	// Scope identifies whether usage is summed API calls or a CLI session envelope.
+	Scope                 string `json:"scope,omitempty" yaml:"scope,omitempty"`
+	TokensReported        bool   `json:"tokensReported,omitempty" yaml:"tokensReported,omitempty"`
+	CachedInputTokens     *int64 `json:"cachedInputTokens,omitempty" yaml:"cachedInputTokens,omitempty"`
+	ReasoningOutputTokens *int64 `json:"reasoningOutputTokens,omitempty" yaml:"reasoningOutputTokens,omitempty"`
+	ModelCalls            *int64 `json:"modelCalls,omitempty" yaml:"modelCalls,omitempty"`
+	CLIInvocations        int64  `json:"cliInvocations,omitempty" yaml:"cliInvocations,omitempty"`
+
 	InputTokens  int64 `json:"inputTokens,omitempty" yaml:"inputTokens,omitempty"`
 	OutputTokens int64 `json:"outputTokens,omitempty" yaml:"outputTokens,omitempty"`
 	Requests     int64 `json:"requests,omitempty" yaml:"requests,omitempty"`
@@ -86,6 +94,7 @@ type TurnProvider interface {
 }
 
 type DecisionContext struct {
+	UnitReference      *UnitReferenceSnapshot  `json:"unitReference,omitempty"`
 	FactionName        string                  `json:"factionName,omitempty"`
 	Background         string                  `json:"background,omitempty"`
 	Doctrine           string                  `json:"doctrine,omitempty"`

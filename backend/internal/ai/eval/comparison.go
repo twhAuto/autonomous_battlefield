@@ -11,11 +11,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -144,6 +144,9 @@ func comparisonObservations(cases []Case, limits ai.KnowledgeLimits) ([]ai.Decis
 				return nil, err
 			}
 		}
+		if c.KnowledgeRuleset != nil {
+			envelope.Context.UnitReference = ai.FreezeUnitReference(*c.KnowledgeRuleset, envelope.Context)
+		}
 		observations[i] = envelope.Context
 	}
 	return observations, nil
@@ -182,7 +185,8 @@ func (r Runner) compareSample(ctx context.Context, c Case, observation ai.Decisi
 	defer cancel()
 	repository := &comparisonRepository{record: ai.DecisionRecord{ID: c.RequestID, Version: 1, TargetTick: observation.TargetTick, Status: "running", Runtime: variant.Runtime, Observation: observation, ProviderMetadata: map[string]any{}}}
 	secret := rand.Text()
-	handler := mcpserver.NewWithLogger(repository, secret, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
+	reads := &referenceReadCounter{}
+	handler := mcpserver.NewWithLogger(repository, secret, nil, slog.New(reads)).Handler()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return ComparisonSample{}, err
@@ -201,7 +205,10 @@ func (r Runner) compareSample(ctx context.Context, c Case, observation ai.Decisi
 		category = "missing_submission"
 	}
 	hash, _ := ai.ObservationHash(observation)
-	entry := CaseReport{ID: c.ID, Category: c.Category, Profile: variant.ID, Model: variant.Model, PromptVersion: ai.PromptVersion, ToolSchemaVersion: ai.ToolSchema, RulesVersion: c.RulesVersion, Passed: accepted && runErr == nil, Accepted: accepted, ErrorCategory: category, DurationMS: time.Since(started).Milliseconds(), InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests, ToolCalls: append([]string(nil), repository.calls...)}
+	entry := CaseReport{Usage: &result.Usage, ID: c.ID, Category: c.Category, Profile: variant.ID, Model: variant.Model, PromptVersion: ai.PromptVersion, ToolSchemaVersion: ai.ToolSchema, RulesVersion: c.RulesVersion, Passed: accepted && runErr == nil, Accepted: accepted, ErrorCategory: category, DurationMS: time.Since(started).Milliseconds(), InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests, ToolCalls: append([]string(nil), repository.calls...)}
+	entry.UnitDetailCalls = int(reads.calls.Load())
+	payload, _ := json.Marshal(map[string]any{"context": ai.AgentObservation(observation)})
+	entry.ContextBytes = len(payload)
 	entry.Outcome = "rejected"
 	if accepted {
 		entry.Outcome = "accepted"
@@ -272,11 +279,33 @@ func (r *comparisonRepository) FinishDecisionFailure(_ context.Context, _ string
 }
 
 func comparisonObservation(observation ai.DecisionContext, variant ComparisonVariant) ai.DecisionContext {
+	observation.SchemaVersion = ai.ContextSchema
 	if variant.WithoutKnowledge {
 		observation.Knowledge = nil
+		if observation.UnitReference != nil {
+			clone := *observation.UnitReference
+			clone.Units = append([]ai.UnitDetail(nil), clone.Units...)
+			for i := range clone.Units {
+				clone.Units[i].Card = nil
+			}
+			observation.UnitReference = &clone
+		}
 	}
 	if variant.WithoutMemory {
 		observation.Memory = nil
 	}
 	return observation
 }
+
+// Counts authorized lookup attempts from the real MCP server without retaining payloads.
+type referenceReadCounter struct{ calls atomic.Int64 }
+
+func (h *referenceReadCounter) Enabled(context.Context, slog.Level) bool { return true }
+func (h *referenceReadCounter) Handle(_ context.Context, r slog.Record) error {
+	if r.Message == "unit_details_requested" {
+		h.calls.Add(1)
+	}
+	return nil
+}
+func (h *referenceReadCounter) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *referenceReadCounter) WithGroup(string) slog.Handler      { return h }

@@ -94,7 +94,7 @@ to explicit purchase orders and legacy recruitment priorities.
 Run backend coverage and frontend coverage/build before deployment:
 
 ```sh
-./scripts/test/test-go-coverage.sh
+./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
 (cd frontend && npm test -- --coverage && npm run build)
 ./deploy-local.sh
 ```

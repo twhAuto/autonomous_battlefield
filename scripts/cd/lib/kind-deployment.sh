@@ -363,6 +363,13 @@ kind_deploy_prepare_overlays() {
       "${runtime_dir}/deploy/overlays/local/infrastructure/ai-secret.env"
   fi
 
+  if deployment_component_selected observability; then
+    LANGFUSE_ENABLED="$(battlefield_env_langfuse_enabled)" || return
+    if [[ "${LANGFUSE_ENABLED}" == 1 ]]; then
+      cp "${project_dir}/deploy/langfuse/collector-config.yaml" "${runtime_dir}/deploy/overlays/local/observability/otel-collector/config.yaml"
+    fi
+  fi
+
   rollback_overlay="${runtime_dir}/deploy/overlays/local/rollback-application"
 
   if deployment_component_selected application && [[ "${image_source}" == "registry" ]]; then

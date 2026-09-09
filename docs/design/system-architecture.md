@@ -172,7 +172,9 @@ observation through the existing decision repository. The service checks battle,
 attempt, request, and observation scope. An explicit response projection exposes
 only historical identity, economy, faction-visible view, legal choices, prior
 plan, memory, and knowledge; internal provider metadata and capabilities are
-excluded. Legacy rows without observations return `context: null`. No migration
+excluded. For saved observations, `initialContext` contains the current reconstructed projection
+and `availableUnitDetails` holds the frozen reference snapshot, clearly labelled
+as optional in the inspector. Legacy rows without observations return `context: null`. No migration
 is needed. The browser loads on expansion, caches by battle/attempt/request, and
 aborts and ignores obsolete responses. Decision history also rejects responses
 from an obsolete battle/attempt. The inspector labels observation ticks and
@@ -284,6 +286,14 @@ sequenceDiagram
     DB-->>MCP: Decision context
     MCP-->>Agent: Bounded context
     Agent-->>Model: Tool result
+    opt Unit details needed
+        Model->>Agent: Request get_unit_details
+        Agent->>MCP: Execute scoped lookup
+        MCP->>DB: Read frozen reference snapshot
+        DB-->>MCP: Authorized reference data
+        MCP-->>Agent: Inline base stats and guidance page
+        Agent-->>Model: Tool result (continuation available for long guidance)
+    end
     Model->>Agent: Request submit_strategy_plan
     Agent->>MCP: Execute tool call
     MCP->>MCP: Validate request, version, tick, plan, units, and sites
@@ -335,7 +345,7 @@ At the decision deadline:
 `APIRunner` in `internal/ai/runner/api.go` runs the shared API tool loop:
 
 1. connects to MCP with a request-scoped capability;
-2. requires discovery of exactly `get_decision_context` and `submit_strategy_plan`;
+2. accepts the battle tool set `get_decision_context`, `get_unit_details`, and `submit_strategy_plan` (also accepting the legacy pair during rollout);
 3. asks the configured provider for a tool-calling turn;
 4. rejects unsupported tools or a turn with no tool call;
 5. adds tool input and output to the transcript;
@@ -448,6 +458,43 @@ and 16384). Effective limits, selected source IDs, content digest, byte size, an
 truncation accompany decision knowledge. Old scenarios without knowledge remain
 valid. See [AI comparisons](../operations/ai-comparisons.md#unit-knowledge-retrieval)
 for authoring, configuration, and evaluation details.
+
+### Compact unit context and exact lookup
+
+All new decisions use `battlefield.decision-context.v4`. Before hashing, the engine
+freezes all legal or visible unit definitions and available cards in the persisted
+observation's `unitReference` JSON field. This reference is independent of the
+legacy automatic card budget. Full observations continue to drive validation.
+No database migration is required: observations are stored as JSON.
+
+The explicit `AgentContext` projection emits unit ID, cost, class, role, strengths,
+and weaknesses in `legal.units`, plus `referenceUnits` for visible types that are
+not recruitable. It keeps knowledge mechanics and source identity but omits cards,
+base statistics, and the stored reference snapshot. Battlefield observations,
+including effective unit stats, remain intact. API delivery and CLI prefetch use
+the same projection. Older saved observations are also projected into the current format without rewriting storage.
+MCP tools v7 delivers `get_decision_context` as one JSON text block with the
+existing `context` envelope, without a duplicate structured-content copy. API
+runners parse the same text. Agents are instructed to reuse a successful frozen
+snapshot; retries remain available after failed or unreadable responses and
+existing step, timeout, and submission limits are unchanged.
+
+MCP tools v6 adds `get_unit_details(requestId, unitIds)`. The request capability
+and frozen legal/visible set scope every lookup. A batch contains 1–4 distinct
+nonempty IDs and returns base stats, guidance when present, and source
+identity/digest. Hidden and unknown IDs both return `available: false`. Responses
+above 1800 serialized JSON bytes return a recoverable tool error asking for fewer
+IDs. For a single long card, `nextGuidanceOffset` explicitly marks continuation;
+pass it as `guidanceOffset` with the same unit ID to read the remainder. Every page
+contains complete base stats. Text-only JSON delivery avoids duplicate CLI resource
+rendering. Overview text is not repeated in lookup results. All reference content remains untrusted data.
+
+The saved-context inspector exposes the exact initial projection separately from
+reference details labelled available on demand. Availability does not establish
+that the model fetched them. Evaluation reports count lookup calls and aggregate
+input tokens across turns, alongside latency, acceptance, fallback, and diversity.
+See [compact context rollout](../operations/ai-comparisons.md#compact-unit-context)
+for deployment order and checks.
 
 ### Submission-shape failures and fallback attribution
 
@@ -682,6 +729,9 @@ per-test budget.
 W3C trace context is persisted on `battle_runs` and `battle_decisions`. API inbound spans flow through PostgreSQL; engine and agent workers extract that durable context and create consumer spans before simulation, MCP, and provider work. Outbound HTTP clients and selected database operations are instrumented. The local OpenTelemetry Collector exports to Tempo, which Grafana provisions as a data source. Span attributes deliberately exclude prompts, credentials, capabilities, full observations, and raw provider responses.
 
 The observability overlay includes metrics, tracing, and disposable log storage.
+The observability smoke test generates application traffic on the same API
+port-forward it scrapes, because request counters are local to each replica and
+lifecycle probes bypass request instrumentation.
 See [observability operations](../operations/observability.md) for storage,
 security, and access details, and [Jenkins](../operations/jenkins.md) for runtime
 assurance launchers.
@@ -938,3 +988,69 @@ on the agent. Credentials are passed to Docker by environment-variable name,
 with shell tracing disabled. Explicit `ADMIN_USERNAME`/`ADMIN_PASSWORD` values
 remain supported. Failed login or missing session cookies stops setup; successful
 login cookies are converted to request-cookie string values for each virtual user.
+
+## Compact battlefield view
+
+The agent view groups units, buildings and statistics in `view.state.factions`:
+each group has `factionId`, optional `stats`, `units` and `buildings`. Entities
+inherit ownership from their group. Missing faction statistics are not invented
+when only entities are observed. Full entity IDs, targets and recruitment source
+references remain unchanged. `view.buildingProfiles` shares identical effective
+building properties only when the profile map and references reduce total size;
+health, location, readiness and combat observations remain individual. Unit
+profiles remain shared across groups. Persisted state and the game's regular
+view types retain flat entity arrays.
+
+The current projection also replaces an identical historical plan with
+`planRef: "#/activePlan"`, only when smaller. Repeated state battle ID/tick and
+own-faction gold/upgrades inherit their top-level values only when equal;
+differing historical/enemy facts stay explicit. The prompt documents these rules.
+API and Gemini CLI delivery omit exact copies of faction identity already present
+in the system prompt. They retain mismatches and all original identity wording.
+Direct MCP/Codex delivery and the inspector remain self-contained. Persistence
+and validation hashes are not changed by any projection.
+
+Decision context v4 additionally compresses the agent-facing battlefield view.
+`view.unitProfiles` stores identical effective-stat sets once; individual units
+reference a profile and retain health, positions, readiness, movement and combat
+observations. Profiles use observed modified stats, independently of catalog
+base-stat lookup. `view.visibleRowRanges` encodes visible cells with inclusive
+x ranges per y row, preserving visible empty cells and gaps. Each encoding is
+used only if it reduces serialized size; inline units and `visiblePositions`
+remain valid in v4. Persisted observations and validation remain unchanged.
+The inspector uses “Reconstructed agent context” and “Unit details available on
+demand” section labels without explanatory notices. Reconstruction can differ
+from original input. Evaluation and tool responses use the same projection.
+
+## Optional Langfuse AI observability
+
+The agent worker starts a separate, fully sampled trace for each decision request.
+Stable request-derived trace/root IDs let the capability-scoped MCP server attach
+server-side tool observations even when a CLI does not propagate trace headers.
+API runners emit one generation per model attempt; CLI runners emit one aggregate
+session generation. Decision roots carry no duplicate billable token usage.
+The worker stores a trace marker with existing provider metadata, and additive
+usage fields remain in the existing JSON usage payload. No database migration is
+required. Legacy history retains its original interpretation and no invented link.
+
+The collector keeps Tempo for infrastructure and optionally forwards only AI
+observations to a self-hosted Langfuse Helm release. Langfuse owns dedicated
+PostgreSQL, Valkey, ClickHouse/Keeper and SeaweedFS storage. Only the collector
+receives its ingestion credentials. The API reads an optional public URL/project
+ConfigMap for inspector links. Export is asynchronous and does not participate in
+decision acceptance or timeout enforcement. See [Langfuse operations](../operations/langfuse.md)
+for deployment order, sampling, privacy, persistence and token-accounting limits.
+
+The Langfuse deployment entry point bootstraps missing Helm in its private
+temporary workspace on Linux amd64, verifies a pinned release checksum before
+execution, and cleans it up on exit without changing system tools.
+
+Langfuse and SeaweedFS explicitly run with restricted Pod Security settings and
+non-root volume groups; PostgreSQL adds RuntimeDefault seccomp to its existing
+restricted container configuration. These settings are supplied through chart
+values rather than namespace-policy exceptions.
+
+Langfuse shares the Envoy gateway with Grafana and Kibana at
+`http://langfuse.localhost:8888`. The Helm login URL and API trace-link ConfigMap
+use that public address. Deployment and host-agent scripts detect the installed
+project ConfigMap to enable export automatically, with explicit 0/1 overrides.

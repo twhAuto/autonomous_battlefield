@@ -170,10 +170,10 @@ priority order and stops before a whole card would exceed either budget.
 
 Selection uses visible enemy types, own deployed types, explicit recruitment
 order types, legacy recruitment priorities, then other legal units by increasing cost, with unit ID breaking
-ties. It never uses hidden enemy state. All legal unit statistics remain present.
+ties. It never uses hidden enemy state. Legal unit base statistics are available through optional lookup from saved reference data.
 Selection is performed once before decision hashing; persisted contexts include
 source IDs, a ruleset-content digest, effective limits, serialized size, and
-truncation. MCP and inline CLI delivery use the same stored context. Engine
+truncation. MCP and inline CLI delivery use the same versioned projection of the stored context. Engine
 configuration changes affect newly prepared decisions after restart; retries
 reuse persisted decisions.
 
@@ -220,7 +220,7 @@ from a nonempty spend order also skips buying. Construction and income timing ar
 unchanged; recruits can act on the following tick. The decision panel displays
 requested quantities, while `unit_recruited` events record actual purchases.
 
-MCP tool schema is now `battlefield.mcp-tools.v3`; existing clients may omit the
+MCP tool schema is now `battlefield.mcp-tools.v7`; existing clients may omit the
 optional orders field. Both model providers share the updated purchasing prompt.
 Deploy API, MCP, engine, and agent together and restart the host CLI agent so tool
 schemas and prompts agree. Existing battle JSON requires no database migration.
@@ -235,3 +235,98 @@ are skipped without substitution; blocked castle spawns or an unaffordable order
 stop remaining purchases. Typed `constructionOrders` select building definitions
 from `legal.buildings` at `legal.economySites`. See
 [Frontier Siege](../design/frontier-siege.md) for the new mechanics and balance probes.
+
+## Compact unit context
+
+The current agent format uses `view.state.factions[].units` and `.buildings`
+instead of flat state entity arrays. Ownership comes from the containing
+`factionId`; faction counters are under `stats`. Building profiles are optional
+and resolve through `view.buildingProfiles`; inline building stats remain valid.
+Consumers should not expect per-entity faction IDs in this agent projection.
+Full IDs still work for recruitment and combat references. Stored observations
+and spectator APIs keep their original structure. Deploy backend changes and
+restart host CLI agents for updated embedded instructions.
+
+Identical memory plans reference `#/activePlan`. Omitted state battle ID/tick and
+own-faction gold/upgrades inherit the matching root values described in the
+prompt. API/Gemini delivery removes identity text already supplied verbatim in
+the system prompt; direct MCP/Codex and inspector JSON retain it. The reviewed
+11,883-byte sample becomes 11,235 bytes, with another 704 bytes removed during
+API/Gemini delivery. These measure context bytes only, excluding the prompt's
+reference instructions and provider/CLI scaffolding; use reported total input
+tokens to measure net savings. Shortened authored guidance affects newly frozen
+snapshots; existing references never consult edited content.
+
+All decisions use one current compact format, identified as
+`battlefield.decision-context.v4` for diagnostics. There are no legacy response
+branches or format rollout flags. Deploy the backend and frontend normally and
+restart host CLI agents to pick up embedded prompt changes. Stored observations
+and validation hashes are never rewritten. The inspector reconstructs the current
+format from saved data under “Reconstructed agent context”; it is not a recording
+of original input. The inspector uses section labels without explanatory notices.
+
+The reviewed tick-200 sample measured 36,166 bytes before and 26,187 after these
+two encodings (9,979 bytes / 27.6% saved), excluding formatting whitespace. This
+does not establish token or decision-quality savings: compare complete reported
+input usage, latency, lookups, acceptance, fallback and existing quality metrics.
+
+Compact responses contain all recruitable unit overviews and a separate list for
+visible non-recruitable types. They retain mechanics and current battlefield
+stats. `get_unit_details` takes `requestId` and 1–4 distinct `unitIds`, returning
+frozen base stats and guidance. Missing guidance does not hide stats. Unknown and
+out-of-scope IDs both return unavailable. The 1800-byte JSON result limit returns
+an explicit error for oversized batches; retry with fewer IDs within existing
+turn/time limits. For long guidance, copy `nextGuidanceOffset` into a subsequent
+call's `guidanceOffset` with the same single unit ID. Offsets refer to UTF-8 bytes in
+the frozen guidance; each page retains complete base stats. This explicit
+continuation avoids silent truncation and CLI file offloading. Current effective
+stats take precedence over base rules.
+
+Reference data is frozen before hashing and does not depend on the automatic
+knowledge card count/byte limits. Those existing limits still govern stored
+legacy knowledge and mechanics selection. No vector database or external search
+service is involved.
+
+All comparison variants use the current projection. Use cases with
+`knowledgeRuleset` or a saved unit reference. `withoutKnowledge` also strips optional card guidance from
+the reference copy without mutating the baseline. Reports add `contextBytes` and
+`unitDetailCalls` per case; aggregates include `totalInputTokens`,
+`unitDetailCalls`, and `lookupRate` (fraction of cases that fetched details).
+Provider-versus-scripted comparisons include input-token and lookup-rate deltas.
+Scripted token counts are fixture values, not measured provider savings. CLI usage
+is limited to what that CLI reports. Decision acceptance is not a win-rate measure.
+
+From the repository root:
+
+```bash
+(cd backend && go test ./internal/ai -run TestCompactContextSizeByBattleStage -v)
+./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
+(cd frontend && npm test -- --coverage)
+(cd frontend && npm run build)
+```
+
+The synthetic opening/midgame/large fixtures retain identical battlefield data
+and assert reduced catalog bytes and non-growing complete initial responses.
+Their initial bytes were 4036→1556, 8592→6112, and 42308→39828 respectively when
+introduced. These are serialized JSON measurements, not token or cost estimates.
+
+The opt-in real CLI transport check uses only synthetic data and the existing
+subscription login. It attempts four unit details, retries a smaller batch when
+needed, and follows guidance continuation. The accepted rationale must include a
+verification word present only at the end of fetched guidance:
+
+```bash
+(cd backend && BATTLEFIELD_LIVE_AGY=1 go test ./internal/ai/mcpserver -run '^TestAntigravityLiveDecision$' -v -count=1)
+```
+
+The inspector's **Initial agent context** is the initial projection. **Unit details
+available on demand** shows stored reference data, not a history of actual tool
+reads. Legacy decisions retain their historical inspector presentation.
+
+New per-case reports also retain the runner's `usage` object: its scope, reported
+input/output, optional cached/reasoning subsets, model-call count and CLI-invocation
+count. Existing top-level totals remain compatible. A missing optional counter
+means unavailable, not zero. CLI totals aggregate the CLI session, while API
+counts sum reported model attempts; neither is an initial-context token count.
+Use [Langfuse](langfuse.md) for production model/tool timing and context section
+bytes alongside these isolated decision-quality comparisons.

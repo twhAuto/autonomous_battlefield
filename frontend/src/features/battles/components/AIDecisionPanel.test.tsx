@@ -75,3 +75,22 @@ it('uses metadata for opaque recruitment sources and leaves freeform rationale i
   expect(screen.getByText('Barracks · 0c944652')).toHaveAttribute('title', id)
   expect(screen.getByText(rationale)).toBeInTheDocument()
 })
+
+it('shows CLI aggregate usage and a trace link without inventing model calls', () => {
+  const traceUrl = 'http://localhost:13000/project/battlefield-agents/traces/abc'
+  render(<AIDecisionPanel decisions={[{ requestId: 'r', factionId: 'a', targetTick: 10, status: 'accepted', controllerType: 'model', usage: { scope: 'cli_session', tokensReported: true, inputTokens: 30000, cachedInputTokens: 25000, reasoningOutputTokens: 100, cliInvocations: 1 }, traceUrl, createdAt: '' }]} participantNames={new Map()} message="" hasModelController />)
+  expect(screen.getByText('30000 / 0')).toBeVisible()
+  expect(screen.getByText('CLI session total')).toBeVisible()
+  expect(screen.getByText('Cached input tokens').nextElementSibling).toHaveTextContent('25000')
+  expect(screen.getByText('Model calls').nextElementSibling).toHaveTextContent('—')
+  expect(screen.getByRole('link', { name: 'View in Langfuse' })).toHaveAttribute('href', traceUrl)
+  expect(screen.queryByText('Requests (legacy)')).not.toBeInTheDocument()
+})
+
+it('labels API usage as summed model calls', () => {
+  render(<AIDecisionPanel decisions={[{ requestId: 'r', factionId: 'a', targetTick: 10, status: 'accepted', controllerType: 'model', usage: { scope: 'api_calls', tokensReported: true, modelCalls: 3 }, createdAt: '' }]} participantNames={new Map()} message="" hasModelController />)
+  expect(screen.getByText('0 / 0')).toBeVisible()
+  expect(screen.getByText('Sum of API calls')).toBeVisible()
+  expect(screen.getByText('Model calls').nextElementSibling).toHaveTextContent('3')
+  expect(screen.queryByRole('link', { name: 'View in Langfuse' })).not.toBeInTheDocument()
+})

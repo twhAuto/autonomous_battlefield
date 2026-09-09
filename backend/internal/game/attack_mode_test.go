@@ -18,41 +18,58 @@ func aimedMatch(t *testing.T) (*Match, Position) {
 }
 
 func TestPositionAttackOccupancy(t *testing.T) {
-	for _, mode := range []string{"stationary", "empty", "friendly", "replacement", "dead"} {
-		t.Run(mode, func(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		moved           bool
+		occupantFaction string
+		dead            bool
+		targetID        string
+	}{
+		{name: "stationary", targetID: "target"},
+		{name: "empty", moved: true},
+		{name: "friendly", moved: true, occupantFaction: "faction-a"},
+		{name: "replacement", moved: true, occupantFaction: "faction-b", targetID: "occupant"},
+		{name: "dead", moved: true, occupantFaction: "faction-b", dead: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			m, aim := aimedMatch(t)
 			originalHealth := m.state.Units[1].Health
-			if mode != "stationary" {
+			if tc.moved {
 				m.state.Units[1].Position = Position{6, 5}
 			}
-			if mode == "friendly" || mode == "replacement" || mode == "dead" {
-				occupant := soldier("occupant", "faction-b", aim)
-				if mode == "friendly" {
-					occupant.FactionID = "faction-a"
-				}
-				if mode == "dead" {
+			if tc.occupantFaction != "" {
+				occupant := soldier("occupant", tc.occupantFaction, aim)
+				if tc.dead {
 					occupant.Health = 0
 				}
 				m.state.Units = append(m.state.Units, occupant)
 			}
-			events, _ := m.runUnit(&m.state.Units[0], nil)
-			if len(events) != 1 || *m.state.Units[0].AttackTargetPosition != aim {
-				t.Fatalf("shot: %+v", events)
-			}
-			if mode == "stationary" || mode == "replacement" {
-				if events[0].Data["outcome"] != "hit" || events[0].Data["damage"].(int64) <= 0 {
-					t.Fatal("expected damage")
-				}
-				if mode == "replacement" && events[0].Data["targetId"] != "occupant" {
-					t.Fatal("wrong occupant")
-				}
-			} else if events[0].Type != "unit_attack_missed" || m.state.Units[0].AttackOutcome != "miss" {
-				t.Fatal("expected miss")
-			}
-			if mode != "stationary" && m.state.Units[1].Health != originalHealth {
+			assertPositionAttack(t, m, aim, tc.targetID)
+			if tc.moved && m.state.Units[1].Health != originalHealth {
 				t.Fatal("original target damaged after moving")
 			}
 		})
+	}
+}
+
+func assertPositionAttack(t *testing.T, m *Match, aim Position, targetID string) {
+	t.Helper()
+	events, _ := m.runUnit(&m.state.Units[0], nil)
+	position := m.state.Units[0].AttackTargetPosition
+	if len(events) != 1 || position == nil || *position != aim {
+		t.Fatalf("shot: %+v", events)
+	}
+	if targetID == "" {
+		if events[0].Type != "unit_attack_missed" || m.state.Units[0].AttackOutcome != "miss" {
+			t.Fatal("expected miss")
+		}
+		return
+	}
+	if events[0].Data["outcome"] != "hit" || events[0].Data["damage"].(int64) <= 0 {
+		t.Fatal("expected damage")
+	}
+	if events[0].Data["targetId"] != targetID {
+		t.Fatal("wrong occupant")
 	}
 }
 
@@ -85,18 +102,17 @@ func TestPositionAttackCancellationAndNoLateAim(t *testing.T) {
 			t.Fatalf("retreat fired: %+v", events)
 		}
 	})
-	for _, mode := range []string{"dead", "unready", "no-aim"} {
-		t.Run(mode, func(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		prepare func(*Match)
+	}{
+		{"dead", func(m *Match) { m.state.Units[0].Health = 0 }},
+		{"unready", func(m *Match) { m.state.Units[0].ReadyAtTick = m.state.Tick + 1 }},
+		{"no-aim", func(m *Match) { m.attackAims = nil }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			m, _ := aimedMatch(t)
-			if mode == "dead" {
-				m.state.Units[0].Health = 0
-			}
-			if mode == "unready" {
-				m.state.Units[0].ReadyAtTick = m.state.Tick + 1
-			}
-			if mode == "no-aim" {
-				m.attackAims = nil
-			}
+			tc.prepare(m)
 			events, _ := m.runUnits(nil)
 			for _, event := range events {
 				if event.Data["attackerId"] == "cat" {

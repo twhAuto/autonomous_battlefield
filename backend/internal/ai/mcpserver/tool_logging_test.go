@@ -5,6 +5,10 @@ package mcpserver
 import (
 	"bytes"
 	"context"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	sdk "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"log/slog"
 	"strings"
 	"testing"
@@ -14,6 +18,11 @@ import (
 )
 
 func TestSubmissionSchemaFailuresAreLoggedWithoutPayload(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdk.NewTracerProvider(sdk.WithSpanProcessor(recorder))
+	old := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() { otel.SetTracerProvider(old); _ = provider.Shutdown(context.Background()) })
 	repository := &fakeRepository{record: ai.DecisionRecord{ID: "authorized-request"}}
 	var logs bytes.Buffer
 	server := NewWithLogger(repository, "secret", nil, slog.New(slog.NewJSONHandler(&logs, nil)))
@@ -33,6 +42,10 @@ func TestSubmissionSchemaFailuresAreLoggedWithoutPayload(t *testing.T) {
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "submit_strategy_plan", Arguments: map[string]any{"requestId": "untrusted-secret-id", "plan": map[string]any{"rationale": "private-payload-marker", "actionWeights": map[string]int{"attack": 1000}}}})
 	if err == nil && (result == nil || !result.IsError) {
 		t.Fatal("malformed arguments accepted")
+	}
+	spans := recorder.Ended()
+	if len(spans) != 1 || spans[0].Name() != "submit_strategy_plan" || spans[0].Status().Code != codes.Error {
+		t.Fatal("rejected tool trace missing", spans)
 	}
 	if repository.submitted.RequestID != "" {
 		t.Fatal("invalid input reached plan persistence")

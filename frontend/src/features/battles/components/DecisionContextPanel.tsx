@@ -53,6 +53,8 @@ function Observation({ data, context }: Readonly<{ data: SavedDecisionContext; c
       <div><dt>Actions</dt><dd>{context.legal.actionKinds?.join(', ') || 'None recorded'}</dd></div>
       <div><dt>Available units</dt><dd>{context.legal.units?.map((unit) => `${typeLabel(unit.id)} (${unit.cost} gold)`).join(', ') || 'None recorded'}</dd></div>
     </dl>
+    {data.initialContext && <ContextDetail label="Reconstructed agent context" value={data.initialContext} />}
+    {data.availableUnitDetails && <ContextDetail label="Unit details available on demand" value={data.availableUnitDetails} />}
     <ContextDetail label="Visible battlefield and positions" value={context.view} />
     <ContextDetail label="Economy and available choices" value={{ economy: context.economy, legal: context.legal, ownedUpgradeIds: context.ownedUpgradeIds }} />
     <ContextDetail label="Prior active plan" value={context.activePlan} />

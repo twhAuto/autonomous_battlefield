@@ -61,31 +61,14 @@ func visibleState(source State, factionID string, visible map[Position]bool) Sta
 	state.Units = state.Units[:0]
 	for _, unit := range source.Units {
 		if unit.FactionID == factionID || visible[unit.Position] {
-			unit = visibleUnit(unit, visible)
-			if !attackEntityVisible(unit.AttackTargetID, source, visible) {
-				unit.AttackTargetID, unit.AttackOutcome, unit.AttackTargetPosition = "", "", nil
-			}
-			if unit.FactionID != factionID {
-				for _, step := range unit.MovementPath {
-					if !visible[step] {
-						unit.MovementPath = nil
-						unit.MovedFrom = nil
-						break
-					}
-				}
-			}
+			unit = visibleFactionUnit(unit, source, factionID, visible)
 			state.Units = append(state.Units, unit)
 		}
 	}
 	state.Buildings = state.Buildings[:0]
 	for _, building := range source.Buildings {
 		if building.FactionID == factionID || building.Type == BuildingCastle || visible[building.Position] {
-			if (building.AttackTargetPosition != nil && !visible[*building.AttackTargetPosition]) || !attackEntityVisible(building.AttackTargetID, source, visible) {
-				building.AttackOutcome = ""
-				building.AttackTargetID = ""
-				building.AttackTargetPosition = nil
-			}
-			building.AttackTargetPosition = clonePosition(building.AttackTargetPosition)
+			building = visibleBuilding(building, source, visible)
 			state.Buildings = append(state.Buildings, building)
 		}
 	}
@@ -147,4 +130,32 @@ func attackEntityVisible(id string, source State, visible map[Position]bool) boo
 		}
 	}
 	return true
+}
+
+func visibleFactionUnit(unit Unit, source State, factionID string, visible map[Position]bool) Unit {
+	unit = visibleUnit(unit, visible)
+	if !attackEntityVisible(unit.AttackTargetID, source, visible) {
+		unit.AttackTargetID, unit.AttackOutcome, unit.AttackTargetPosition = "", "", nil
+	}
+	if unit.FactionID == factionID {
+		return unit
+	}
+	for _, step := range unit.MovementPath {
+		if !visible[step] {
+			unit.MovementPath = nil
+			unit.MovedFrom = nil
+			break
+		}
+	}
+	return unit
+}
+
+func visibleBuilding(building Building, source State, visible map[Position]bool) Building {
+	if (building.AttackTargetPosition != nil && !visible[*building.AttackTargetPosition]) || !attackEntityVisible(building.AttackTargetID, source, visible) {
+		building.AttackOutcome = ""
+		building.AttackTargetID = ""
+		building.AttackTargetPosition = nil
+	}
+	building.AttackTargetPosition = clonePosition(building.AttackTargetPosition)
+	return building
 }

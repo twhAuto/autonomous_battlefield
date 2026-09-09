@@ -113,7 +113,7 @@ func (e generationCLI) Run(ctx context.Context, _ string, args, env []string, _ 
 	if err == nil && !ok {
 		return nil, errors.New("submission not accepted")
 	}
-	return nil, err
+	return []byte(`{"type":"turn.completed"}`), err
 }
 func TestGenerationThroughAPIAndCLITools(t *testing.T) {
 	for _, runtime := range []string{"api", "cli"} {

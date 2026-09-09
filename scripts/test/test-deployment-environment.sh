@@ -118,5 +118,46 @@ kind_deploy_rollback_application
     assert main < rollout < pipeline.index("credentials('battlefield-production-kubeconfig')")
     assert "branch 'main'" in pipeline[main:rollout]
     assert 'battlefield-production-kubeconfig' not in pipeline[:rollout]
-    print(f'{count} deployment environment and bootstrap scenarios passed.')
+    # A fresh forwarded replica has no HTTP series, even after Gateway traffic.
+    smoke=(root/'scripts/cd/smoke-test-kind.sh').read_text()
+    metrics_check=smoke[smoke.index('# Gateway traffic may reach'):smoke.index('\ncurl --fail --silent --max-time 2 \\\n  --noproxy', smoke.index('# Gateway traffic may reach'))]
+    harness=r'''
+set -Eeuo pipefail
+runtime_dir="$1"; api_port=18081
+curl() {
+  local output="" url="${!#}"
+  while (($#)); do
+    if [[ "$1" == --output ]]; then output="$2"; shift; fi
+    shift
+  done
+  case "$url" in
+    http://127.0.0.1:18081/v1/auth/session)
+      touch "$runtime_dir/probed"
+      printf '%s' "$SESSION_STATUS" ;;
+    http://127.0.0.1:18081/metrics)
+      test -f "$runtime_dir/probed"
+      if [[ -f "$runtime_dir/scraped" && "$MISSING_METRIC" == 0 ]]; then
+        echo 'battlefield_http_server_requests_total{code="401"} 1' >"$output"
+      else
+        echo 'go_goroutines 4' >"$output"
+      fi
+      touch "$runtime_dir/scraped" ;;
+    *) return 1 ;;
+  esac
+}
+sleep() { :; }
+'''
+    for status, missing, expected in [('200','0',0), ('401','0',0), ('503','0',1), ('401','1',1)]:
+        with tempfile.TemporaryDirectory(dir=tmp) as case:
+            result=subprocess.run(['bash','-c',harness+metrics_check,'_',case],
+                env={**os.environ,'SESSION_STATUS':status,'MISSING_METRIC':missing},
+                capture_output=True,text=True)
+            assert result.returncode == expected, result.stderr
+            if expected == 0:
+                assert pathlib.Path(case,'scraped').exists()
+            elif missing == '1':
+                assert 'API metrics did not contain' in result.stderr
+            else:
+                assert 'session probe failed with HTTP 503' in result.stderr
+    print(f'{count} deployment environment and bootstrap scenarios plus 4 metrics smoke scenarios passed.')
 PY

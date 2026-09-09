@@ -33,7 +33,7 @@ func (e doctrineExecutor) Run(_ context.Context, _ string, args []string, _ []st
 	if !strings.Contains(strings.Join(args, " "), "BEGIN_FACTION_DOCTRINE\n\"Protect income\"") {
 		e.t.Fatal("CLI doctrine missing")
 	}
-	return nil, nil
+	return []byte(`{"type":"turn.completed"}`), nil
 }
 func TestDoctrineReachesCLIRunner(t *testing.T) {
 	_, err := (CLIRunner{Provider: "codex-cli", Executor: doctrineExecutor{t}}).Run(context.Background(), ai.DecisionSession{RequestID: "request", Doctrine: "Protect income"})
@@ -63,7 +63,7 @@ func (e identityExecutor) Run(_ context.Context, _ string, args, _ []string, _ s
 			e.t.Fatal("CLI identity missing", want)
 		}
 	}
-	return nil, nil
+	return []byte(`{"type":"turn.completed"}`), nil
 }
 func TestIdentityReachesBothRunners(t *testing.T) {
 	session := ai.DecisionSession{RequestID: "request", FactionName: "Northwind", Background: "Old roots", Doctrine: "Protect income", Profile: ai.ModelProfile{MaxSteps: 3}}

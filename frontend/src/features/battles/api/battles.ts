@@ -168,12 +168,15 @@ export interface DecisionHistory {
     upgradeOrders?: string[]
     recruitmentOrders?: { unitType: string; count: number; sourceBuildingId?: string }[] | null
   }
-  usage: { inputTokens?: number; outputTokens?: number; requests?: number }
+  traceUrl?: string
+  usage: { inputTokens?: number; outputTokens?: number; requests?: number; scope?: string; tokensReported?: boolean; cachedInputTokens?: number; reasoningOutputTokens?: number; modelCalls?: number; cliInvocations?: number }
   createdAt: string; resolvedAt?: string
 }
 
 // Saved public observation; never substitutes the live spectator state.
 export interface SavedDecisionContext {
+  initialContext?: JsonValue
+  availableUnitDetails?: JsonValue
   requestId: string; battleId: string; factionId: string; attempt: number
   targetTick: number; observationTick: number
   context: {

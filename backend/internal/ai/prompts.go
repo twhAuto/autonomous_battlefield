@@ -45,7 +45,7 @@ var GenerationPromptVersion = generationPromptVersion(generationSystemPrompt, ba
 
 var SystemPrompt = strings.TrimSpace(systemPromptTemplate)
 var DecisionInstructions = strings.TrimSpace(decisionPromptTemplate)
-var PromptVersion = fmt.Sprintf("battlefield-agent-v5.%x", sha256.Sum256([]byte(systemPromptTemplate+"\x00"+identityPromptTemplate+"\x00"+doctrinePromptTemplate+"\x00"+decisionPromptTemplate+"\x00"+toolContextTemplate+"\x00"+inlineContextTemplate)))
+var PromptVersion = fmt.Sprintf("battlefield-agent-v6.%x", sha256.Sum256([]byte(systemPromptTemplate+"\x00"+identityPromptTemplate+"\x00"+doctrinePromptTemplate+"\x00"+decisionPromptTemplate+"\x00"+toolContextTemplate+"\x00"+inlineContextTemplate)))
 
 func generationPromptVersion(system, decision string) string {
 	return fmt.Sprintf("faction-background-v2.%x", sha256.Sum256([]byte(system+"\x00"+decision)))
@@ -98,5 +98,5 @@ func SessionToolNames(session DecisionSession) []string {
 	if session.JobType == "faction_background" {
 		return []string{"get_background_context", "submit_faction_background"}
 	}
-	return []string{"get_decision_context", "submit_strategy_plan"}
+	return []string{"get_decision_context", "submit_strategy_plan", "get_unit_details"}
 }

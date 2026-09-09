@@ -1,0 +1,77 @@
+# Pinned official Helm chart 2.1.0 (Langfuse 4.24.0). Single-node home-lab sizing.
+# Datastores are dedicated to Langfuse; application databases are not shared.
+langfuse:
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroup: 1001
+    seccompProfile: {type: RuntimeDefault}
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities: {drop: [ALL]}
+  image:
+    tag: "4.24.0"
+  features:
+    telemetryEnabled: false
+    signUpDisabled: true
+  nextauth:
+    url: http://langfuse.localhost:8888
+  web:
+    pod:
+      additionalEnvFrom:
+        - secretRef:
+            name: battlefield-langfuse-bootstrap
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {memory: 2Gi}
+postgresql:
+  podSecurityContext:
+    seccompProfile: {type: RuntimeDefault}
+  storage:
+    requestedSize: 10Gi
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 1Gi}
+redis:
+  dataStorage:
+    requestedSize: 2Gi
+    keepPvc: true
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}
+clickhouse:
+  cluster:
+    storage:
+      size: 20Gi
+  keeper:
+    replicas: 1
+    storage:
+      size: 2Gi
+s3:
+  # The bundled bucket-creation hook reads filer contexts even in all-in-one mode.
+  filer:
+    podSecurityContext:
+      enabled: true
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000
+      seccompProfile: {type: RuntimeDefault}
+    containerSecurityContext:
+      enabled: true
+      allowPrivilegeEscalation: false
+      capabilities: {drop: [ALL]}
+  allInOne:
+    podSecurityContext:
+      enabled: true
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000
+      fsGroup: 1000
+      seccompProfile: {type: RuntimeDefault}
+    containerSecurityContext:
+      enabled: true
+      allowPrivilegeEscalation: false
+      capabilities: {drop: [ALL]}
+    data:
+      size: 20Gi

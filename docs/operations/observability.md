@@ -65,6 +65,12 @@ The API and engine expose `/metrics` on their existing operational ports. The
 endpoint remains available during startup and graceful shutdown so a failed
 dependency does not hide process diagnostics.
 
+HTTP request series appear only after a replica handles application traffic;
+lifecycle probes and metrics scrapes bypass request instrumentation. The smoke
+test probes `/v1/auth/session` through the same port-forward used for the metrics
+scrape, accepting anonymous session responses of 200 or 401, then waits for the
+request counter. Gateway traffic may reach another replica.
+
 | Metric | Type | Meaning |
 | --- | --- | --- |
 | `battlefield_http_server_requests_total` | Counter | API requests by method, normalized route pattern, and status code. |
@@ -358,3 +364,17 @@ Engine readiness requires both a running worker and a successful database ping;
 worker shutdown or database failure makes readiness fail while liveness remains
 available. See the [codebase guide](../design/codebase-guide.md#process-health-ownership)
 for source ownership and lifecycle tests.
+
+## AI decision traces in Langfuse
+
+Open `http://langfuse.localhost:8888` through the shared gateway after installation.
+The installed project is detected automatically by observability deployments and
+host CLI launches; neither a UI port-forward nor a per-shell tracing flag is needed.
+
+The optional self-hosted [Langfuse deployment](langfuse.md) adds decision, model,
+and tool observations to the existing collector. AI spans are sampled at 100%;
+infrastructure retains its configured sampling ratio and Tempo pipeline. Codex
+JSONL and Antigravity envelopes provide explicitly scoped CLI usage totals.
+The decision inspector shows known cache/reasoning counts and a trace link for
+new recorded decisions. Raw prompts, tool payloads and reasoning are excluded.
+See the linked guide for installation, host CLI forwarding and measurement limits.

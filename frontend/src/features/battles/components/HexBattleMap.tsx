@@ -69,7 +69,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
             }))}
             {liveUnits.filter((unit) => unit.movedFrom).map((unit) => {
               const route = unit.movementPath?.length ? unit.movementPath : [unit.movedFrom!, unit.position]
-              const previous = route[route.length - 2] ?? unit.movedFrom!
+              const previous = route.at(-2) ?? unit.movedFrom!
               const line = actionLine(previous, unit.position, route.length === 2 ? 2 : 0, actionClearance(previous, unit.position, entities))
               if (!line) return null
               const start = directionalLine(route[0], route[1], 2, 0)
@@ -78,7 +78,8 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
             })}
             {entities.filter((unit) => unit.health > 0 && unit.attackTargetPosition).map((unit) => {
               const target = entities.find((entity) => entity.id === unit.attackTargetId && entity.health > 0)
-              return <AttackVisual key={`${state.battleId}:${state.tick}:${unit.id}`} unit={unit} target={target} entities={entities} color={colors.get(unit.factionId) ?? '#f2c94c'} markerId={markerId} nodes={entityNodes.current} label={`${entityName(unit.id, naming)} ${unit.attackOutcome === 'miss' ? 'missed' : 'attacked'} ${unit.attackOutcome === 'miss' ? `hex ${unit.attackTargetPosition!.x}, ${unit.attackTargetPosition!.y}` : entityName(unit.attackTargetId, naming)}`} />
+              const targetLabel = unit.attackOutcome === 'miss' ? `hex ${unit.attackTargetPosition!.x}, ${unit.attackTargetPosition!.y}` : entityName(unit.attackTargetId, naming)
+              return <AttackVisual key={`${state.battleId}:${state.tick}:${unit.id}`} unit={unit} target={target} entities={entities} color={colors.get(unit.factionId) ?? '#f2c94c'} markerId={markerId} nodes={entityNodes.current} label={`${entityName(unit.id, naming)} ${unit.attackOutcome === 'miss' ? 'missed' : 'attacked'} ${targetLabel}`} />
             })}
             {liveUnits.filter((unit) => unit.healTargetPosition).map((unit) => {
               const line = directionalLine(unit.position, unit.healTargetPosition!, 12, 14)
@@ -230,7 +231,7 @@ function AttackVisual({ unit, target, entities, color, markerId, nodes, label }:
 }
 
 function movementRoute(unit: BattleUnit): HexPosition[] {
-  if (unit.movementPath && unit.movementPath.length > 1 && key(unit.movementPath[unit.movementPath.length - 1]) === key(unit.position)) return unit.movementPath
+  if (unit.movementPath && unit.movementPath.length > 1 && key(unit.movementPath.at(-1)!) === key(unit.position)) return unit.movementPath
   if (!unit.movedFrom) return []
   const from = centerOf(unit.movedFrom)
   const to = centerOf(unit.position)
