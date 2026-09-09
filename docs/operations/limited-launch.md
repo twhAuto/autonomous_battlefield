@@ -1,4 +1,4 @@
-# Friends-only launch
+# Limited-access launch
 
 The chosen application hostname is **play.ordinalfrontier.com**, under Access team
 **ordinalfrontier-lab**. Start with the owner's Google identity only. Application
@@ -49,11 +49,11 @@ CLI jobs from your personal home directory.
 
    ```bash
    umask 077
-   python3 scripts/ops/render-friends-launch.py \
+   python3 scripts/ops/render-limited-launch.py \
      --hostname play.ordinalfrontier.com --team ordinalfrontier-lab \
      --audience "$ACCESS_AUD" --tunnel-id "$TUNNEL_ID" \
      --cloudflared-image "$CLOUDFLARED_IMAGE" --admin "$OWNER_EMAIL" \
-     --output "$HOME/.config/battlefield/friends"
+     --output "$HOME/.config/autonomous-battlefield/production/limited-launch"
    ```
 
    The renderer rejects duplicate identities and unpinned tunnel images. Add
@@ -78,7 +78,7 @@ CLI jobs from your personal home directory.
    kubectl -n battlefield create secret generic battlefield-tunnel \
      --from-file=credentials.json="$TUNNEL_CREDENTIALS_FILE" \
      --dry-run=client -o yaml | kubectl apply -f -
-   kubectl -n battlefield apply -f "$HOME/.config/battlefield/friends/tunnel.json"
+   kubectl -n battlefield apply -f "$HOME/.config/autonomous-battlefield/production/limited-launch/tunnel.json"
    ```
 
    Both tunnel ingress rules require Access token validation. The API independently
@@ -98,6 +98,31 @@ public deployment. From an unrelated test pod, prove frontend/API ingress is
 blocked. From a separate internet connection, try the server's public IPv4 and
 IPv6 directly on every published port. Record failure to connect; a DNS-only
 change or an Access login screen is not proof that the origin is private.
+
+## Repeatable production preparation
+
+After generating `limited-launch/auth.env` and `limited-launch/tunnel.json` under
+`~/.config/autonomous-battlefield/production/`, run from the server checkout:
+
+```bash
+./scripts/ops/prepare-limited-production.sh --launch-dir "$HOME/.config/autonomous-battlefield/production/limited-launch"
+```
+
+The command checks the registered production cluster UID, exact rendered template,
+tunnel credential UUID and permissions, role assignments and disabled AI profiles.
+It creates missing private files, recovering existing cluster AI credentials and
+adding independent missing worker/signing secrets. Existing files are preserved;
+conflicting auth settings or enabled AI profiles cause failure for operator review.
+It never starts a connector, modifies live Secrets, creates DNS, or deploys images.
+Use `--backup` to create a fresh custom-format PostgreSQL archive and validate its
+listing; skip that option when the pre-launch backup has already been taken.
+`--launch-dir` and `--credential-dir` select non-default private input directories.
+
+This is preparation, not launch certification. NetworkPolicy enforcement, direct
+origin isolation over IPv4/IPv6, and MFA still require live checks. Production
+smoke tests also require `BATTLEFIELD_ACCESS_TOKEN_FILE` pointing to a protected,
+fresh invited-user Access JWT. Arrange that input for the Jenkins agent before
+running delivery; the preparation script does not obtain or mint login tokens.
 
 ## Tunnel startup, shutdown and credential rotation
 
@@ -268,7 +293,7 @@ Run repository tests and the deployment artifact checks:
 ```bash
 GOCACHE=/tmp/battlefield-go-cache scripts/test/with-test-postgres.sh scripts/test/test-go-coverage.sh
 (cd frontend && npm test -- --coverage)
-python3 scripts/test/test-friends-launch.py
+python3 scripts/test/test-limited-launch.py
 scripts/test/test-kind-deployment.sh
 scripts/test/test-security-launchers.sh
 ```
@@ -295,3 +320,8 @@ References: [Access JWT validation](https://developers.cloudflare.com/cloudflare
 [Access sessions](https://developers.cloudflare.com/cloudflare-one/access-controls/access-settings/session-management/),
 [libvirt network filters](https://libvirt.org/formatnwfilter.html),
 [Linux process dumpability](https://man7.org/linux/man-pages/man2/PR_SET_DUMPABLE.2const.html).
+
+For existing installations, the preparation script retains the original
+`friends-launch` private directory as its default. Existing generated files remain
+valid; omit `--launch-dir` to use that directory. New installations should use the
+`limited-launch` directory shown above.

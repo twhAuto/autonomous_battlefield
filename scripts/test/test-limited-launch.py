@@ -11,7 +11,7 @@ import unittest
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
-spec = importlib.util.spec_from_file_location('launch', ROOT / 'scripts/ops/render-friends-launch.py')
+spec = importlib.util.spec_from_file_location('launch', ROOT / 'scripts/ops/render-limited-launch.py')
 launch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(launch)
 

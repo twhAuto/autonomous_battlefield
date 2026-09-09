@@ -337,7 +337,7 @@ for confirmed unit deaths in the current tick, cleared at the next tick. Faction
 views include allied deaths and enemy deaths at currently visible positions.
 Older snapshots omit the field; clients must not infer death from disappearance.
 
-## Friends-only authentication and permissions
+## Limited-access authentication and permissions
 
 Production uses Cloudflare Access JWTs on every `/v1` request and never accepts the
 legacy app cookie. `POST /v1/auth/login` returns 404 in Cloudflare mode.
@@ -346,7 +346,7 @@ legacy app cookie. `POST /v1/auth/login` returns 404 in Cloudflare mode.
 `{"logoutUrl":"/cdn-cgi/access/logout"}` for browser navigation. Unsafe browser
 requests require the configured Origin; bodies require `application/json`.
 Missing/invalid credentials return 401; missing roles and denied permissions do not
-grant access. See the [launch runbook](../operations/friends-launch.md).
+grant access. See the [launch runbook](../operations/limited-launch.md).
 
 Faction and battle responses include `ownerId`. Ownership is server-assigned.
 Update/delete factions and stop/pause/resume battles require own content or Admin.
