@@ -20,3 +20,7 @@ deploy/overlays/local/infrastructure/auth-secret.env
 deploy/environments/*.env
 deploy/environments/*/kubeconfig
 deploy/environments/*/*.env
+
+# Generated Python bytecode
+__pycache__/
+*.py[cod]

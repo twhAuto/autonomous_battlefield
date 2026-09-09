@@ -819,7 +819,7 @@ for Langfuse, SeaweedFS and PostgreSQL, preserving the namespace security policy
 shared gateway. `battlefield_env_langfuse_enabled` in the environment helper detects
 the installed project for collector configuration and host CLI forwarding.
 
-## Friends-only deployment and agent containment
+## Limited-access deployment and agent containment
 
 `internal/authn/cloudflare.go` owns Access verification/key refresh;
 `authorization.go` owns role capabilities, ownership checks, mutation origin checks
@@ -842,17 +842,19 @@ handles Access reauthentication/logout; Player battle pages do not mount inspect
 panels or request decision history. Faction editing and battle controls reflect
 ownership, with backend enforcement independent of the UI.
 
-`scripts/ops/render-friends-launch.py` produces private auth configuration and a
+`scripts/ops/render-limited-launch.py` produces private auth configuration and a
 Tunnel deployment with origin-side Access validation and application ingress policies.
 `deploy/agent-vm/` contains the libvirt network/filter, proxy and worker configuration;
 `create-agent-vm.sh` provisions a fresh VM after capacity/image checks;
 `verify-agent-isolation.py` tests its guest boundary. `ai-policy.sh` is the private
 operator stop/status/usage interface. `verify-access-origin.py` checks real Access
-credentials during production smoke. `scripts/test/test-friends-launch.py` verifies
+credentials during production smoke. `scripts/test/test-limited-launch.py` verifies
 rendered routing and isolation artifacts without modifying infrastructure.
-See [friends launch](../operations/friends-launch.md) for setup and live verification.
+See [limited-access launch](../operations/limited-launch.md) for setup and live verification.
 
 Authentication configuration parsing separates mode selection, Cloudflare identity
 assignments and local session settings. Signing-key decoding is separate from
 JWKS fetching and refresh caching. Regression tests cover malformed signing keys,
 profile eligibility and the default-deny browser/route boundaries.
+
+`scripts/ops/prepare-limited-production.sh` checks production cluster identity before invoking its Python helper to validate and prepare private launch files. Offline regression checks live in `scripts/test/test-production-preparation.py`.

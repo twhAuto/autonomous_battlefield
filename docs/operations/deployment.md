@@ -16,9 +16,9 @@ an AWS overlay and account-specific provisioning and verification.
 The [deployment structure review](deployment-review.md) records the cleanup,
 remaining operational gaps, and optional simplifications.
 
-## Friends-only production
+## Limited-access production
 
-For `play.ordinalfrontier.com`, follow [friends launch](friends-launch.md). Production
+For `play.ordinalfrontier.com`, follow [limited-access launch](limited-launch.md). Production
 requires Cloudflare mode and an Access application audience/issuer/origin and private
 role assignments. The API manifest fails startup on missing authentication config;
 development staging explicitly substitutes the dev environment. The tunnel exposes

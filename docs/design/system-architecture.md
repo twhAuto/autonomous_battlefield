@@ -218,7 +218,7 @@ AI observations rather than controlling these engine paths.
 
 ### Public application boundary
 
-Production requires Cloudflare Access on the whole application hostname through a named Tunnel. The API independently verifies the Access JWT and maps issuer/subject identity and verified email to a configured role on every request. No legacy password/cookie fallback is accepted. Explicit local-password and disabled-development modes remain development-only. Exact-origin mutation checks and a deny-by-default route permission registry wrap every application API. The browser never connects to the engine, MCP or PostgreSQL. See [friends launch](../operations/friends-launch.md).
+Production requires Cloudflare Access on the whole application hostname through a named Tunnel. The API independently verifies the Access JWT and maps issuer/subject identity and verified email to a configured role on every request. No legacy password/cookie fallback is accepted. Explicit local-password and disabled-development modes remain development-only. Exact-origin mutation checks and a deny-by-default route permission registry wrap every application API. The browser never connects to the engine, MCP or PostgreSQL. See [limited-access launch](../operations/limited-launch.md).
 
 ### Model boundary
 
@@ -1087,3 +1087,5 @@ Langfuse shares the Envoy gateway with Grafana and Kibana at
 `http://langfuse.localhost:8888`. The Helm login URL and API trace-link ConfigMap
 use that public address. Deployment and host-agent scripts detect the installed
 project ConfigMap to enable export automatically, with explicit 0/1 overrides.
+
+Production launch preparation validates the registered cluster identity and rendered Access/tunnel settings, preserves existing secrets, and optionally creates a database backup. It is separate from image delivery and public tunnel activation; the helper does not change live workloads or establish proof of network/MFA enforcement.

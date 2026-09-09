@@ -39,7 +39,7 @@ raw inspection views.
 | Build, deploy, inspect, or remove Kubernetes workloads | [Deployment](docs/operations/deployment.md) |
 | Configure CI/CD and SonarQube | [Jenkins](docs/operations/jenkins.md) |
 | Inspect metrics, traces, logs, and reliability objectives | [Observability](docs/operations/observability.md) |
-| Launch friends behind Access and provision the isolated CLI VM | [Friends-only launch](docs/operations/friends-launch.md) |
+| Launch for invited testers behind Access and provision the isolated CLI VM | [Limited-access launch](docs/operations/limited-launch.md) |
 | Configure subscription CLI authentication | [Antigravity](docs/operations/antigravity-cli.md) |
 | Compare controllers and author unit knowledge | [AI comparisons](docs/operations/ai-comparisons.md) |
 | Enable the optional completed-battle cache | [Redis](docs/operations/redis.md) |
@@ -53,7 +53,7 @@ navigation. Operational guides own their setup and recovery commands. The root
 Production requires Cloudflare mode and rejects missing authentication settings. Players
 share gameplay and factions but control only their own content; diagnostics and CLI
 profiles require Developer/Admin. CLI access stays disabled until VM verification.
-See the [launch runbook](docs/operations/friends-launch.md) for limits, backups, and
+See the [launch runbook](docs/operations/limited-launch.md) for limits, backups, and
 rollout to `play.ordinalfrontier.com`.
 
 ## Requirements
@@ -315,3 +315,5 @@ visible cells as inclusive row ranges when smaller. Individual health, position,
 readiness and combat observations remain available upfront. See
 [context rollout and measurement](docs/operations/ai-comparisons.md#compact-unit-context)
 for compatibility and deployment order.
+
+For the one-time limited-access launch, run `./scripts/ops/prepare-limited-production.sh` on the registered server after rendering its private launch files; see the [launch runbook](docs/operations/limited-launch.md).

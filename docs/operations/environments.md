@@ -183,7 +183,7 @@ its data. Keep the old profile until recovery is validated. A lost Kind node
 can mean a lost PostgreSQL volume; neither cluster recreation nor image rollback
 restores that data.
 
-## Friends-only production authentication
+## Limited-access production authentication
 
 Production API pods require Cloudflare Access. Use the private rendered `auth.env`
 as `BF_AUTH_FILE`; local password and disabled-development modes are rejected.
@@ -191,5 +191,5 @@ as `BF_AUTH_FILE`; local password and disabled-development modes are rejected.
 to the MCP capability-signing secret. Only the MCP service receives both. Developer
 CLI profiles additionally require the private API setting
 `BATTLEFIELD_CLI_ISOLATION_VERIFIED=true` after verified VM provisioning.
-See [friends launch](friends-launch.md) for the `play.ordinalfrontier.com` rollout,
+See [limited-access launch](limited-launch.md) for the `play.ordinalfrontier.com` rollout,
 Google allowlist/MFA, migration backups, smoke-token setup and recovery gates.
