@@ -1,9 +1,15 @@
 # Autonomous Battlefield Codebase Guide
 
+HTTP completion logs include `actor_id` and `actor_role` established by trusted
+authentication middleware, alongside method, resource path, status and request ID.
+An authentication observer carries identity to the outer request logger; rejected
+credentials leave identity empty. Tokens, cookies and email headers are not logged.
+These operational logs provide request attribution, not a tamper-proof audit store.
+
 | Field | Value |
 | --- | --- |
 | Status | Draft — describes the current working tree, including uncommitted changes |
-| Last reviewed | 2026-09-07 |
+| Last reviewed | 2026-09-09 |
 | Audience | Contributors navigating or modifying the implementation |
 | Scope | Repository layout, entry points, packages, dependencies, tests, and reading paths |
 
@@ -271,7 +277,7 @@ editor, service, and generation validation.
 1. long-polls the MCP agent-control endpoint with executable profile IDs;
 2. immediately runs the claimed job in its owned slot;
 3. requires the claimed profile from the local registry;
-4. mints a request-scoped capability;
+4. requires the server-minted request-scoped capability;
 5. creates an API or CLI runner;
 6. applies a decision timeout;
 7. reports usage or failure metadata through MCP.
@@ -361,7 +367,7 @@ Deleting a faction removes it from the active registry but does not affect the c
 
 ### Shared infrastructure packages
 
-- [`internal/authn`](../../backend/internal/authn) provides the replaceable request authenticator, environment-configured administrator verification, signed HttpOnly sessions, login/session/logout routes, and `/v1` protection middleware.
+- [`internal/authn`](../../backend/internal/authn) provides Cloudflare JWT verification, explicit development login modes, role/ownership helpers, exact-origin mutations, a deny-by-default route permission registry, and mode-aware session/logout routes. `cloudflare_test.go` exercises signatures, key rotation, forged headers, legacy cookies and role removal.
 - [`internal/config/config.go`](../../backend/internal/config/config.go) strictly decodes one YAML document, rejects unknown fields, resolves environment variables, and provides process-specific loaders.
 - [`internal/postgres`](../../backend/internal/postgres) manages the `pgx` pool, embedded Goose migrations, startup retries, and `LISTEN/NOTIFY`.
 - [`internal/httpapi`](../../backend/internal/httpapi) provides bounded strict JSON, lifecycle/readiness routes, request IDs, routing, and access logging.
@@ -508,7 +514,7 @@ to reject unused local declarations and parameters alongside strict type checks.
 | [`deploy/base/infrastructure/configmap.yaml`](../../deploy/base/infrastructure/configmap.yaml) | Cluster configuration equivalent |
 | [`deploy/environments/database.env.example`](../../deploy/environments/database.env.example) | Database secret reference; preserve existing credentials |
 | [`deploy/environments/ai.env.example`](../../deploy/environments/ai.env.example) | Local Kubernetes AI secret template |
-| [`deploy/environments/auth.env.example`](../../deploy/environments/auth.env.example) | Optional local Kubernetes administrator-session secret template |
+| [`deploy/environments/auth.env.example`](../../deploy/environments/auth.env.example) | Development login template; production uses the private rendered Cloudflare configuration |
 
 Configuration is decoded with `yaml.KnownFields(true)`. Update the file-facing struct, parsed runtime struct, validation, examples, deployment ConfigMap, and tests together.
 
@@ -733,7 +739,7 @@ Battle setup selects generic profiles without blueprint compatibility filtering.
   the background textarea, Unicode counter and generator; the directory shows
   saved backgrounds.
 - Generation PostgreSQL tests exercise concurrent admission, quota days,
-  cooldown, expiry/refunds, account isolation and migration preservation. MCP
+  cooldown, expiry accounting, account isolation and migration preservation. MCP
   tests run both API and CLI stubs through the real generation tool transport;
   frontend tests cover preview state and unsaved text. Identity tests cover prompt
   escaping, delivery, hashing and opposing-profile isolation. Deterministic battle
@@ -812,3 +818,41 @@ for Langfuse, SeaweedFS and PostgreSQL, preserving the namespace security policy
 `deploy/overlays/local/gateway/langfuse-route.yaml` exposes the UI through the
 shared gateway. `battlefield_env_langfuse_enabled` in the environment helper detects
 the installed project for collector configuration and host CLI forwarding.
+
+## Friends-only deployment and agent containment
+
+`internal/authn/cloudflare.go` owns Access verification/key refresh;
+`authorization.go` owns role capabilities, ownership checks, mutation origin checks
+and explicit route assignments. Add new public routes to that registry deliberately.
+`config/access_test.go` covers production misconfiguration and the CLI verification
+gate. `battle/api/player_test.go` checks projections after shared cache reads.
+Faction/battle service tests cover every role for own, other and legacy content.
+
+Migration `00011_friends_access.sql` owns row ownership, atomic admission triggers,
+AI execution counts, the single CLI lease, runtime stop policy and private usage view.
+`generation/friends_integration_test.go` tests cross-connection admission, paused
+limits, UTC reset, shared CLI slots and execution budgets against PostgreSQL.
+Workers receive capabilities from MCP instead of signing them. `worker/policy.go`
+cancels execution on the private stop switch; `credentials_linux.go` blocks procfs/
+ptrace reads of the worker's credentials; `runner/process_linux.go` kills CLI process
+groups. Local credentials remain available only to the appropriate CLI login.
+
+`features/auth/SessionContext.tsx` exposes UI permissions from the session. The App
+handles Access reauthentication/logout; Player battle pages do not mount inspection
+panels or request decision history. Faction editing and battle controls reflect
+ownership, with backend enforcement independent of the UI.
+
+`scripts/ops/render-friends-launch.py` produces private auth configuration and a
+Tunnel deployment with origin-side Access validation and application ingress policies.
+`deploy/agent-vm/` contains the libvirt network/filter, proxy and worker configuration;
+`create-agent-vm.sh` provisions a fresh VM after capacity/image checks;
+`verify-agent-isolation.py` tests its guest boundary. `ai-policy.sh` is the private
+operator stop/status/usage interface. `verify-access-origin.py` checks real Access
+credentials during production smoke. `scripts/test/test-friends-launch.py` verifies
+rendered routing and isolation artifacts without modifying infrastructure.
+See [friends launch](../operations/friends-launch.md) for setup and live verification.
+
+Authentication configuration parsing separates mode selection, Cloudflare identity
+assignments and local session settings. Signing-key decoding is separate from
+JWKS fetching and refresh caching. Regression tests cover malformed signing keys,
+profile eligibility and the default-deny browser/route boundaries.

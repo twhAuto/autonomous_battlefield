@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
@@ -106,5 +107,41 @@ func TestRequestMetricsUseNormalizedRoutePattern(t *testing.T) {
 	metric := `battlefield_http_server_requests_total{code="200",method="GET",route="GET /v1/battles/{id}"}`
 	if !strings.Contains(response.Body.String(), metric) {
 		t.Fatalf("metrics do not contain normalized route %q", metric)
+	}
+}
+
+type auditAuthenticator struct {
+	allowed bool
+}
+
+func (a auditAuthenticator) Authenticate(*http.Request) (authn.Actor, bool) {
+	return authn.Actor{ID: "verified-issuer|subject", Role: authn.Player}, a.allowed
+}
+
+func TestRequestLoggingUsesVerifiedActorAcrossMiddleware(t *testing.T) {
+	for _, allowed := range []bool{false, true} {
+		var output bytes.Buffer
+		handler := requestLogging(authn.RequireAuthentication(true, auditAuthenticator{allowed}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// A denied ownership check must still identify the authenticated caller.
+			w.WriteHeader(http.StatusForbidden)
+		})), slog.New(slog.NewJSONHandler(&output, nil)))
+		request := httptest.NewRequest(http.MethodDelete, "/v1/factions/other", nil)
+		request.Header.Set("Cf-Access-Authenticated-User-Email", "forged@example.com")
+		request.Header.Set("X-Actor-ID", "forged-admin")
+		handler.ServeHTTP(httptest.NewRecorder(), request)
+		var entry map[string]any
+		if err := json.Unmarshal(output.Bytes(), &entry); err != nil {
+			t.Fatal(err)
+		}
+		wantID, wantRole, wantStatus := "", "", float64(http.StatusUnauthorized)
+		if allowed {
+			wantID, wantRole, wantStatus = "verified-issuer|subject", "player", float64(http.StatusForbidden)
+		}
+		if entry["actor_id"] != wantID || entry["actor_role"] != wantRole || entry["status"] != wantStatus {
+			t.Fatalf("allowed=%v: unexpected audit entry: %#v", allowed, entry)
+		}
+		if strings.Contains(output.String(), "forged") {
+			t.Fatal("unverified identity leaked into audit log")
+		}
 	}
 }

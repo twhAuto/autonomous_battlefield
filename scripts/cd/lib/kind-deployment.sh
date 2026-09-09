@@ -316,6 +316,7 @@ kind_deploy_prepare_ai_secret() {
 
   {
     printf 'BATTLEFIELD_MCP_CAPABILITY_SECRET=%s\n' "${capability_secret}"
+    printf 'BATTLEFIELD_AGENT_SECRET=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
     printf 'OPENAI_API_KEY=\nOPENAI_MODEL=\nOPENAI_PROFILE_AVAILABLE=false\n'
     printf 'GEMINI_API_KEY=\nGEMINI_MODEL=\nGEMINI_PROFILE_AVAILABLE=false\n'
     printf 'CODEX_CLI_PROFILE_AVAILABLE=false\nGEMINI_CLI_PROFILE_AVAILABLE=false\n'
@@ -350,6 +351,12 @@ kind_deploy_prepare_overlays() {
   if deployment_component_selected observability; then
     cp -R "${project_dir}/deploy/overlays/local/logging-collector" \
       "${runtime_dir}/deploy/overlays/local/"
+  fi
+  if deployment_component_selected application && [[ "${DEPLOY_ENV:-dev}" == dev ]]; then
+    sed -i 's/value: production/value: dev/' "${runtime_dir}/deploy/base/application/api-deployment.yaml"
+  fi
+  if deployment_component_selected migration && [[ "${DEPLOY_ENV:-dev}" == dev ]]; then
+    sed -i 's/value: production/value: dev/' "${runtime_dir}/deploy/base/migration/job.yaml"
   fi
   if deployment_component_selected application; then
     cp -R "${project_dir}/deploy/overlays/local/application" \
@@ -465,6 +472,22 @@ kind_deploy_infrastructure() {
 }
 
 kind_deploy_migration() {
+  if [[ "${DEPLOY_ENV:-dev}" == production ]]; then
+    # The ownership migration must never precede a durable, readable backup.
+    local backup_dir="${BATTLEFIELD_BACKUP_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/battlefield/backups}"
+    local backup_file
+    install -d -m 700 "${backup_dir}"
+    backup_file="$(mktemp "${backup_dir}/pre-migration-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX.dump")"
+    chmod 600 "${backup_file}"
+    if ! kind_deploy_kube exec --namespace "${namespace}" battlefield-postgres-0 -- sh -c 'exec pg_dump --format=custom --no-owner --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"' >"${backup_file}"; then
+      rm -f -- "${backup_file}"
+      echo 'Database backup failed; refusing migration.' >&2
+      return 1
+    fi
+    [[ -s "${backup_file}" ]] || { echo 'Database backup is empty; refusing migration.' >&2; return 1; }
+    kind_deploy_kube exec -i --namespace "${namespace}" battlefield-postgres-0 -- pg_restore --list <"${backup_file}" >/dev/null || return
+    echo "Database backup verified: ${backup_file}"
+  fi
   echo "Running the database migration gate..."
   kind_deploy_kube delete job battlefield-migrate \
     --namespace "${namespace}" \

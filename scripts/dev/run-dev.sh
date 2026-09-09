@@ -35,6 +35,24 @@ require_command() {
   fi
 }
 
+# Read only recognized literal environment values; never execute an env file as shell.
+if [[ -f "${backend_dir}/.env" ]]; then
+  while IFS='=' read -r key value; do
+    case "${key}" in
+      BATTLEFIELD_*|OPENAI_API_KEY|OPENAI_MODEL|GEMINI_API_KEY|GEMINI_MODEL|DATABASE_URL)
+        [[ "${key}" =~ ^[A-Z_][A-Z0-9_]*$ ]] || continue
+        if [[ ! -v "${key}" ]]; then export "${key}=${value%$'\r'}"; fi
+        ;;
+    esac
+  done <"${backend_dir}/.env"
+fi
+[[ "${BATTLEFIELD_ENV:-dev}" == dev ]] || { echo 'run-dev is a development-only launcher.' >&2; exit 1; }
+export BATTLEFIELD_ENV=dev
+if [[ -z "${BATTLEFIELD_AUTH_MODE:-}" && -z "${BATTLEFIELD_AUTH_ENABLED:-}" ]]; then
+  echo 'Set BATTLEFIELD_AUTH_MODE=local-password (with credentials) or explicitly disabled-development in backend/.env.' >&2
+  exit 1
+fi
+
 require_command go
 require_command npm
 

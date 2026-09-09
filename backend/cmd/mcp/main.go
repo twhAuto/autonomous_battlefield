@@ -58,7 +58,7 @@ func run(configuration config.Config) error {
 		return err
 	}
 	defer db.Close()
-	server := mcpserver.New(battlerepo.NewPostgres(db), configuration.AI.CapabilitySecret, configuration.AI.AllowedOrigins).WithGenerations(&generation.Postgres{DB: db})
+	server := mcpserver.New(battlerepo.NewPostgres(db), configuration.AI.CapabilitySecret, configuration.AI.AllowedOrigins).WithAgentSecret(configuration.AI.AgentSecret).WithGenerations(&generation.Postgres{DB: db})
 	notificationErrors := make(chan error, 1)
 	go func() {
 		notificationErrors <- postgres.ListenForNotifications(ctx, db, ai.DecisionReadyChannel, func(string) {

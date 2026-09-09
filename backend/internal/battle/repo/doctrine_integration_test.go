@@ -7,6 +7,7 @@ import (
 
 	"context"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	factions "github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	factionrepo "github.com/twh09/autonomous_battlefield/backend/internal/faction/repo"
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
@@ -18,6 +19,7 @@ import (
 
 func TestDoctrinePersistenceAndTickZeroAgainstPostgres(t *testing.T) {
 	ctx, db := integrationDatabase(t)
+	ctx = authn.WithActor(ctx, authn.Actor{ID: "test-admin", Role: authn.Admin})
 	id := randomUUID(t)
 	t.Cleanup(func() { _, _ = db.Exec(context.Background(), `DELETE FROM factions WHERE id=$1`, id) })
 	profiles := factionservice.NewService(factionrepo.NewPostgres(db))

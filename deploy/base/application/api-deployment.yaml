@@ -49,8 +49,15 @@ spec:
                 optional: true
             - secretRef:
                 name: battlefield-auth
-                optional: true
           env:
+            - name: BATTLEFIELD_ENV
+              value: production
+            - name: BATTLEFIELD_CLI_ISOLATION_VERIFIED
+              valueFrom:
+                secretKeyRef:
+                  name: battlefield-ai
+                  key: BATTLEFIELD_CLI_ISOLATION_VERIFIED
+                  optional: true
             - name: BATTLEFIELD_REDIS_URL
               valueFrom:
                 secretKeyRef:

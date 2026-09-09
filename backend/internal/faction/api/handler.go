@@ -5,6 +5,7 @@ package api
 
 import (
 	"errors"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"log/slog"
 	"net/http"
 
@@ -17,6 +18,8 @@ import (
 type Handler struct {
 	factionService factionservice.Service
 }
+
+const permissionDeniedMessage = "permission denied"
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/factions", h.ListFactions)
@@ -58,6 +61,10 @@ func (h *Handler) ListRulesets(w http.ResponseWriter, _ *http.Request) {
 
 func (h *Handler) GetFactionName(w http.ResponseWriter, r *http.Request) {
 	name, err := h.factionService.GetFactionName(r.Context(), r.PathValue("id"))
+	if errors.Is(err, authn.ErrForbidden) {
+		http.Error(w, permissionDeniedMessage, 403)
+		return
+	}
 	if errors.Is(err, factionservice.ErrFactionNotFound) {
 		http.Error(w, factionNotFoundMessage, http.StatusNotFound)
 		return
@@ -88,6 +95,10 @@ func (h *Handler) CreateFaction(w http.ResponseWriter, r *http.Request) {
 	err := h.factionService.CreateFaction(r.Context(), factionservice.CreateInput{
 		ID: request.ID, Name: request.Name, Doctrine: request.Doctrine, Background: request.Background,
 	})
+	if errors.Is(err, authn.ErrForbidden) {
+		http.Error(w, permissionDeniedMessage, 403)
+		return
+	}
 	if errors.Is(err, factionservice.ErrInvalidFaction) {
 		http.Error(w, "invalid faction", http.StatusBadRequest)
 		return
@@ -109,6 +120,10 @@ func (h *Handler) CreateFaction(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteFaction(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	err := h.factionService.DeleteFaction(r.Context(), id)
+	if errors.Is(err, authn.ErrForbidden) {
+		http.Error(w, permissionDeniedMessage, 403)
+		return
+	}
 	if errors.Is(err, factionservice.ErrInvalidFaction) {
 		http.Error(w, "invalid faction ID", http.StatusBadRequest)
 		return
@@ -149,6 +164,8 @@ func (h *Handler) UpdateFaction(w http.ResponseWriter, r *http.Request) {
 	}
 	err := updater.UpdateFaction(r.Context(), factionservice.CreateInput{ID: r.PathValue("id"), Name: request.Name, Doctrine: request.Doctrine, Background: request.Background})
 	switch {
+	case errors.Is(err, authn.ErrForbidden):
+		http.Error(w, permissionDeniedMessage, 403)
 	case errors.Is(err, factionservice.ErrInvalidFaction):
 		http.Error(w, "invalid faction", 400)
 	case errors.Is(err, factionservice.ErrFactionNotFound):

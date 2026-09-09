@@ -156,6 +156,7 @@ type SubmissionResult struct {
 }
 
 type DecisionRecord struct {
+	LeaseExpiresAt      *time.Time
 	ID                  string
 	BattleID            string
 	Attempt             int
@@ -187,21 +188,22 @@ type DecisionRecord struct {
 }
 
 type ModelProfile struct {
-	ID                              string `json:"id" yaml:"id"`
-	DisplayName                     string `json:"displayName" yaml:"displayName"`
-	Provider                        string `json:"provider" yaml:"provider"`
-	Runtime                         string `json:"runtime" yaml:"runtime"`
-	Model                           string `json:"-" yaml:"model,omitempty"`
-	ModelEnvironmentVariable        string `json:"-" yaml:"modelEnvironmentVariable"`
-	CredentialEnvironmentVariable   string `json:"-" yaml:"credentialEnvironmentVariable"`
-	AvailabilityEnvironmentVariable string `json:"-" yaml:"availabilityEnvironmentVariable"`
-	SupportedVersionPrefix          string `json:"-" yaml:"supportedVersionPrefix"`
-	Scope                           string `json:"scope" yaml:"scope"`
-	MaxOutputTokens                 int    `json:"-" yaml:"maxOutputTokens"`
-	MaxSteps                        int    `json:"-" yaml:"maxSteps"`
-	Enabled                         bool   `json:"-" yaml:"enabled"`
-	ModelLabel                      string `json:"modelLabel" yaml:"-"`
-	Available                       bool   `json:"available" yaml:"-"`
-	ToolCapability                  bool   `json:"toolCapability" yaml:"-"`
-	UnavailableReason               string `json:"unavailableReason,omitempty" yaml:"-"`
+	AllowedRoles                    []string `json:"-" yaml:"allowedRoles"`
+	ID                              string   `json:"id" yaml:"id"`
+	DisplayName                     string   `json:"displayName" yaml:"displayName"`
+	Provider                        string   `json:"provider" yaml:"provider"`
+	Runtime                         string   `json:"runtime" yaml:"runtime"`
+	Model                           string   `json:"-" yaml:"model,omitempty"`
+	ModelEnvironmentVariable        string   `json:"-" yaml:"modelEnvironmentVariable"`
+	CredentialEnvironmentVariable   string   `json:"-" yaml:"credentialEnvironmentVariable"`
+	AvailabilityEnvironmentVariable string   `json:"-" yaml:"availabilityEnvironmentVariable"`
+	SupportedVersionPrefix          string   `json:"-" yaml:"supportedVersionPrefix"`
+	Scope                           string   `json:"scope" yaml:"scope"`
+	MaxOutputTokens                 int      `json:"-" yaml:"maxOutputTokens"`
+	MaxSteps                        int      `json:"-" yaml:"maxSteps"`
+	Enabled                         bool     `json:"-" yaml:"enabled"`
+	ModelLabel                      string   `json:"modelLabel" yaml:"-"`
+	Available                       bool     `json:"available" yaml:"-"`
+	ToolCapability                  bool     `json:"toolCapability" yaml:"-"`
+	UnavailableReason               string   `json:"unavailableReason,omitempty" yaml:"-"`
 }

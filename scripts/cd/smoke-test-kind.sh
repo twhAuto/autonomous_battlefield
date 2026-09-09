@@ -163,6 +163,18 @@ prepare_application_session() {
   local login_payload="${runtime_dir}/login.json"
   local login_status=""
 
+  local auth_mode
+  auth_mode="$(read_auth_secret_value BATTLEFIELD_AUTH_MODE || true)"
+  if [[ "${auth_mode}" == cloudflare ]]; then
+    : "${BATTLEFIELD_ACCESS_TOKEN_FILE:?Production smoke requires a short-lived invited user Access JWT in a protected file; never disable authentication}"
+    BATTLEFIELD_SMOKE_ORIGIN="$(read_auth_secret_value BATTLEFIELD_PUBLIC_ORIGIN)" \
+      python3 "${project_dir}/scripts/ops/verify-access-origin.py" "http://127.0.0.1:${api_port}"
+    return
+  fi
+  if [[ "${DEPLOY_ENV}" == production ]]; then
+    echo 'Production smoke refuses a non-Cloudflare authentication mode.' >&2
+    return 1
+  fi
   auth_enabled="$(read_auth_secret_value BATTLEFIELD_AUTH_ENABLED || true)"
   case "${auth_enabled,,}" in
     "" | false)
@@ -228,16 +240,19 @@ prepare_application_session() {
   echo "Administrator login through Gateway API: OK"
 }
 
-wait_for_url \
-  "Frontend liveness through Gateway API" \
-  "${TARGET_URL}/livez"
+if [[ "${DEPLOY_ENV}" == production ]]; then
+  frontend_port="${SMOKE_TEST_FRONTEND_PORT:-18085}"
+  kube port-forward --namespace "${namespace}" service/battlefield-frontend "${frontend_port}:8080" >"${runtime_dir}/frontend-port-forward.log" 2>&1 &
+  pids+=("$!")
+  wait_for_url "Frontend liveness through private port forward" "http://127.0.0.1:${frontend_port}/livez"
+else
+  wait_for_url "Frontend liveness through Gateway API" "${TARGET_URL}/livez"
+fi
 wait_for_url "API readiness" "http://127.0.0.1:${api_port}/readyz"
 prepare_application_session
-wait_for_url \
-  "Gateway API application route" \
-  "${TARGET_URL}/v1/scenarios" \
-  "" \
-  "${application_cookie_file}"
+if [[ "${DEPLOY_ENV}" != production ]]; then
+  wait_for_url "Gateway API application route" "${TARGET_URL}/v1/scenarios" "" "${application_cookie_file}"
+fi
 wait_for_url "API metrics" "http://127.0.0.1:${api_port}/metrics"
 if [[ "${SMOKE_TEST_OBSERVABILITY}" != 1 ]]; then
   echo "${DEPLOY_ENV} application smoke test completed successfully."

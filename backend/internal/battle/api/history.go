@@ -5,6 +5,8 @@ package api
 
 import (
 	"errors"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -33,6 +35,14 @@ func (h *Handler) ListBattles(w http.ResponseWriter, r *http.Request) {
 		slog.ErrorContext(r.Context(), "battle_history_read_failed", "request_id", httpapi.RequestID(r.Context()), "error", err)
 		http.Error(w, "could not list battles", http.StatusInternalServerError)
 		return
+	}
+	if authn.IsPlayer(r.Context()) {
+		for i := range page.Battles {
+			for j := range page.Battles[i].Participants {
+				p := &page.Battles[i].Participants[j]
+				p.Controller = game.ControllerConfig{Type: p.Controller.Type}
+			}
+		}
 	}
 	_ = httpapi.WriteJSON(w, http.StatusOK, page)
 }

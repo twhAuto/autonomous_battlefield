@@ -1,12 +1,14 @@
 // Loads the faction registry with retry states, links to editing, and confirmed deletion
 // followed by a refreshed list.
 
+import { usePermissions } from '../../auth/SessionContext'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { deleteFaction, Faction, FactionApiError, listFactions } from '../api/factions'
 import { Emblem } from '../../../shared/components/Emblem'
 
 export function FactionsPage() {
+ const permissions = usePermissions()
   const [factions, setFactions] = useState<Faction[]>([])
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [message, setMessage] = useState('')
@@ -107,17 +109,17 @@ export function FactionsPage() {
                   <code title={faction.id}>{faction.id}</code>
                   <p style={{ whiteSpace: 'pre-wrap' }}>{faction.doctrine}</p>
                   {faction.background && <p style={{ whiteSpace: 'pre-wrap' }}>{faction.background}</p>}
-                  <Link to={`/factions/${faction.id}/edit`}>Edit faction</Link>
+                  {permissions.canManage(faction.ownerId) && <Link to={`/factions/${faction.id}/edit`}>Edit faction</Link>}
                 </div>
                 <div className="registry-card__status"><span className="status-dot" /> ACTIVE</div>
-                <button
+                {permissions.canManage(faction.ownerId) && <button
                   className="registry-card__delete"
                   type="button"
                   disabled={deletingId === faction.id}
                   onClick={() => void removeFaction(faction)}
                 >
                   {deletingId === faction.id ? 'DELETING…' : `DELETE ${faction.name}`}
-                </button>
+                </button>}
               </article>
             ))}
           </div>

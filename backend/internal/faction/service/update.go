@@ -22,6 +22,9 @@ func (s *service) UpdateFaction(ctx context.Context, input CreateInput) error {
 		return err
 	}
 
+	if err := s.authorize(ctx, stored.ID); err != nil {
+		return err
+	}
 	repository, ok := s.repository.(UpdateRepository)
 	if !ok {
 		return ErrInvalidFaction

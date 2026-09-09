@@ -16,6 +16,21 @@ an AWS overlay and account-specific provisioning and verification.
 The [deployment structure review](deployment-review.md) records the cleanup,
 remaining operational gaps, and optional simplifications.
 
+## Friends-only production
+
+For `play.ordinalfrontier.com`, follow [friends launch](friends-launch.md). Production
+requires Cloudflare mode and an Access application audience/issuer/origin and private
+role assignments. The API manifest fails startup on missing authentication config;
+development staging explicitly substitutes the dev environment. The tunnel exposes
+only frontend/API. CLI availability remains false until VM verification.
+
+Production migrations create and inspect a PostgreSQL backup before applying SQL.
+Production smoke requires `BATTLEFIELD_ACCESS_TOKEN_FILE` from an invited identity;
+it uses private origin port forwards and never logs in with a legacy password.
+Production rollback requires an exact previously verified Access-compatible backend
+digest in `BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST`, in addition to existing
+image signature/provenance checks. Failure keeps the application unavailable.
+
 ## Deployment direction
 
 Use the same application containers and core Kubernetes resources locally and
@@ -711,15 +726,14 @@ worker for the default subscription writer. Operators can select a supported
 OpenAI/Gemini API or Codex/Antigravity CLI profile independently of battle models.
 No player model selector or automatic fallback is used. An invalid/unavailable
 profile rejects admission before quota is reserved; a profile whose worker goes
-offline after admission leaves a queued job until expiry/refund. Disabled
+offline after admission leaves a queued job until expiry. Disabled
 generation still permits manually writing and saving backgrounds.
 
 Allowance is persisted per authenticated actor, with a UTC-day boundary; when
-authentication is disabled every client shares `local-development`. Failed jobs
-count once execution begins. Repeated successful submissions do not change the
+authentication is disabled every client shares `local-development`. All admitted jobs count, including expiry before execution. Repeated successful submissions do not change the
 result, and execution timeouts are not automatically retried. Queued reservations
-expire after five minutes by default and refund the original day; the admission
-cooldown remains in effect after a refund. Options/job reads and worker claims
+expire after five minutes by default and still count on the original day; the admission
+cooldown remains in effect after expiry. Options/job reads and worker claims
 perform expiry, so an idle expired row may remain until the next such operation.
 
 Check options availability, queue a draft, observe queued/running/succeeded, use

@@ -32,7 +32,7 @@ func TestCreateBattlePersistsSnapshotAndMapsErrors(t *testing.T) {
 		if err := NewPostgres(db).CreateBattle(context.Background(), params); err != nil {
 			t.Fatalf("CreateBattle() returned an error: %v", err)
 		}
-		if len(db.execArgs) != 8 || db.execArgs[0] != params.ID || db.execArgs[4] != params.RequestedTicks {
+		if len(db.execArgs) != 9 || db.execArgs[0] != params.ID || db.execArgs[4] != params.RequestedTicks {
 			t.Fatalf("Exec arguments = %#v", db.execArgs)
 		}
 		var stored battle.Scenario
@@ -73,7 +73,7 @@ func TestGetBattleDecodesStoredRun(t *testing.T) {
 	db := &battleDB{row: battleRow(func(destinations ...any) error {
 		values := []any{
 			"battle-1", "scenario-1", "digest", scenarioJSON, uint64(10), stateJSON, stateJSON, uint64(4),
-			"completed", false, 2, resultJSON, &errorCode, &errorMessage, now, &started, &completed,
+			"completed", false, 2, resultJSON, &errorCode, &errorMessage, now, &started, &completed, "legacy-admin",
 		}
 		return assignBattleValues(destinations, values)
 	})}
@@ -412,7 +412,7 @@ func storedBattleRow(snapshot, result []byte) battleRow {
 		state, _ := json.Marshal(battle.State{BattleID: "battle-1"})
 		return assignBattleValues(destinations, []any{
 			"battle-1", "scenario-1", "digest", snapshot, uint64(10), state, state, uint64(0),
-			"queued", false, 1, result, (*string)(nil), (*string)(nil), time.Now(), (*time.Time)(nil), (*time.Time)(nil),
+			"queued", false, 1, result, (*string)(nil), (*string)(nil), time.Now(), (*time.Time)(nil), (*time.Time)(nil), "legacy-admin",
 		})
 	}
 }

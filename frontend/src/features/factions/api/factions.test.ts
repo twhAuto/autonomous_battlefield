@@ -17,14 +17,14 @@ describe('faction API', () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ factions: [faction] }))
 
     await expect(listFactions()).resolves.toEqual([faction])
-    expect(fetch).toHaveBeenCalledWith('/v1/factions', { signal: undefined })
+    expect(fetch).toHaveBeenCalledWith('/v1/factions', { signal: undefined, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
   })
 
   it('discovers faction rulesets', async () => {
     const ruleset = { id: 'castle-siege-v1', version: '1', designBudget: 120, units: [], upgrades: [] }
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ rulesets: [ruleset] }))
     await expect(listFactionRulesets()).resolves.toEqual([ruleset])
-    expect(fetch).toHaveBeenCalledWith('/v1/faction-rulesets', { signal: undefined })
+    expect(fetch).toHaveBeenCalledWith('/v1/faction-rulesets', { signal: undefined, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
   })
 
   it('maps list HTTP and network failures', async () => {
@@ -59,7 +59,7 @@ describe('faction API', () => {
     const abort = new DOMException('aborted', 'AbortError')
     vi.mocked(fetch).mockRejectedValueOnce(abort)
     await expect(listFactionRulesets(controller.signal)).rejects.toBe(abort)
-    expect(fetch).toHaveBeenLastCalledWith('/v1/faction-rulesets', { signal: controller.signal })
+    expect(fetch).toHaveBeenLastCalledWith('/v1/faction-rulesets', { signal: controller.signal, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
   })
 
   it('creates a faction', async () => {
@@ -68,7 +68,7 @@ describe('faction API', () => {
     await expect(createFaction(faction)).resolves.toBeUndefined()
     expect(fetch).toHaveBeenCalledWith('/v1/factions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
       body: JSON.stringify(faction),
     })
   })
@@ -109,7 +109,7 @@ describe('faction API', () => {
   it('deletes a faction', async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 204 }))
     await expect(deleteFaction(faction.id)).resolves.toBeUndefined()
-    expect(fetch).toHaveBeenCalledWith(`/v1/factions/${faction.id}`, { method: 'DELETE' })
+    expect(fetch).toHaveBeenCalledWith(`/v1/factions/${faction.id}`, { method: 'DELETE', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
   })
 
   it.each([[404, 'no longer exists'], [400, 'identifier is invalid'], [500, 'could not be deleted']])(
@@ -128,6 +128,6 @@ describe('faction API', () => {
 function jsonResponse(value: unknown) {
   return new Response(JSON.stringify(value), {
     status: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
   })
 }

@@ -12,6 +12,7 @@ import { HomePage } from '../pages/HomePage'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { authenticationClient, type AuthenticationClient, type AuthSession } from '../features/auth/api/auth'
 import { authenticationRequiredEvent } from '../shared/api/request'
+import { SessionContext } from '../features/auth/SessionContext'
 import '../styles.css'
 
 function AppLayout({ actorID, onLogout }: Readonly<{ actorID: string; onLogout(): void }>) {
@@ -90,7 +91,7 @@ export default function App({ authentication = authenticationClient, initialSess
   }, [authentication, initialSession, sessionAttempt])
 
   useEffect(() => {
-    const requireAuthentication = () => setSession({ enabled: true, authenticated: false })
+    const requireAuthentication = () => setSession((previous) => ({ enabled: true, authenticated: false, mode: previous?.mode }))
     window.addEventListener(authenticationRequiredEvent, requireAuthentication)
     return () => window.removeEventListener(authenticationRequiredEvent, requireAuthentication)
   }, [])
@@ -99,7 +100,7 @@ export default function App({ authentication = authenticationClient, initialSess
     try {
       await authentication.logout()
     } finally {
-      setSession({ enabled: true, authenticated: false })
+      setSession(previous => ({ enabled: true, authenticated: false, mode: previous?.mode }))
     }
   }
 
@@ -121,11 +122,12 @@ export default function App({ authentication = authenticationClient, initialSess
     return <main className="login-page"><div className="loader" aria-label="Checking authentication" /></main>
   }
   if (!session.authenticated) {
+    if (session.mode === 'cloudflare') return <main className="login-page"><section className="login-card"><h1>Sign in to Battlefield</h1><p>Your session has expired or access is unavailable.</p><button type="button" onClick={() => window.location.assign('/')}>Sign in</button></section></main>
     return <LoginPage authentication={authentication} onAuthenticated={setSession} />
   }
 
   return (
-    <Routes>
+    <SessionContext.Provider value={session}><Routes>
       <Route element={<AppLayout actorID={session.actor?.id ?? 'local-development'} onLogout={logout} />}>
         <Route index element={<HomePage />} />
         <Route path="factions/new" element={<CreateFactionPage />} />
@@ -136,6 +138,6 @@ export default function App({ authentication = authenticationClient, initialSess
         <Route path="battles/:id" element={<BattlePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
-    </Routes>
+    </Routes></SessionContext.Provider>
   )
 }

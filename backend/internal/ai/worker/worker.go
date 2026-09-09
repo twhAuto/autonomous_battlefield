@@ -30,6 +30,7 @@ const bearerPrefix = "Bearer "
 var errNoAcceptedPlan = errors.New("decision has no accepted plan")
 
 type Worker struct {
+	PolicyPolling                            bool
 	MCPURL, Secret, WorkerID                 string
 	Profiles                                 *ai.ProfileRegistry
 	PollInterval, ClaimWait, DecisionTimeout time.Duration
@@ -43,8 +44,8 @@ type Worker struct {
 func (w *Worker) Ready() bool { return w.ready.Load() }
 
 func (w *Worker) Run(ctx context.Context) error {
-	if w.Concurrency < 2 {
-		return errors.New("agent concurrency must be at least two")
+	if w.Concurrency < 1 {
+		return errors.New("agent concurrency must be at least one")
 	}
 	if w.Client == nil {
 		w.Client = telemetry.HTTPClient(nil)
@@ -114,10 +115,12 @@ func waitFor(ctx context.Context, duration time.Duration) bool {
 }
 
 type job struct {
-	BattleID   string `json:"battleId"`
-	FactionID  string `json:"factionId"`
-	Attempt    int    `json:"attempt"`
-	TargetTick uint64 `json:"targetTick"`
+	ExecutionDeadline time.Time `json:"executionDeadline"`
+	CapabilityToken   string    `json:"capabilityToken"`
+	BattleID          string    `json:"battleId"`
+	FactionID         string    `json:"factionId"`
+	Attempt           int       `json:"attempt"`
+	TargetTick        uint64    `json:"targetTick"`
 
 	FactionName             string `json:"factionName"`
 	Background              string `json:"background"`
@@ -184,10 +187,12 @@ func (w *Worker) runJob(parent context.Context, job job) {
 		return
 	}
 	logger.InfoContext(parent, "decision_runner_started", "provider", profile.Provider, "runtime", profile.Runtime)
-	ctx, cancel := context.WithTimeout(parent, w.DecisionTimeout)
+	policy, stopPolicy := w.watchPolicy(parent)
+	defer stopPolicy()
+	ctx, cancel := w.executionContext(policy, job, w.DecisionTimeout)
 	defer cancel()
-	token, err := ai.MintCapability(w.Secret, job.RequestID, time.Now().Add(w.DecisionTimeout))
-	if err != nil {
+	token := job.CapabilityToken
+	if token == "" {
 		w.reportJobFailure(parent, logger, started, job.RequestID, "capability", "capability_error", ai.DecisionResult{})
 		return
 	}

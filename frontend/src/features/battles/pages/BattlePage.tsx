@@ -2,6 +2,7 @@
 // history, and pause/resume/stop controls.
 
 import { useCallback, useMemo, useState } from 'react'
+import { usePermissions } from '../../auth/SessionContext'
 import { useParams } from 'react-router-dom'
 import { BattleApiError, pauseBattle, resumeBattle, stopBattle } from '../api/battles'
 import { HexBattleMap } from '../components/HexBattleMap'
@@ -27,6 +28,7 @@ const battleControlRequests = {
 }
 
 export function BattlePage() {
+  const permissions = usePermissions()
   const { id = '' } = useParams()
   const { battle, connection, connectionMessage, retryConnection, applyBattle } = useBattleStatus(id)
   const {
@@ -41,7 +43,7 @@ export function BattlePage() {
   } = useBattleEventStream(id, battle?.attempt, battle?.status)
   const [perspective, setPerspective] = useState('spectator')
   const factionView = useFactionPerspective(id, battle, perspective)
-  const { decisions, decisionMessage } = useDecisionHistory(id, battle)
+  const { decisions, decisionMessage } = useDecisionHistory(id, battle, permissions.inspect)
   const [controlState, setControlState] = useState<BattleControlState>('idle')
   const [controlMessage, setControlMessage] = useState('')
 
@@ -102,7 +104,7 @@ export function BattlePage() {
         <aside className={`outcome-panel outcome-panel--${battle.paused ? 'paused' : battle.status}`}>
           <span className="outcome-panel__label">BATTLE CONTROL</span>
           <Outcome battle={battle} winnerName={winnerName} />
-          <BattleControls battle={battle} state={controlState} message={controlMessage} onControl={runBattleControl} />
+          {permissions.canManage(battle.ownerId) && <BattleControls battle={battle} state={controlState} message={controlMessage} onControl={runBattleControl} />}
         </aside>
       </section>
 
@@ -118,10 +120,10 @@ export function BattlePage() {
             />
           }
         </div>
-        <BattleInspector key={`${id}:${battle.attempt}`} battle={battle} decisions={decisions} decisionMessage={decisionMessage} events={{
+        {permissions.inspect && <BattleInspector key={`${id}:${battle.attempt}`} battle={battle} decisions={decisions} decisionMessage={decisionMessage} events={{
           battleAttempt: battle.attempt, selectedAttempt, setSelectedAttempt, events, participantNames,
           eventCursor, eventHasMore, eventState, eventMessage, loadEventPage,
-        }} />
+        }} />}
       </section>
 
       <BattleStatistics battle={battle} participantNames={participantNames} />

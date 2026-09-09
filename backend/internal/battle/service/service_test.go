@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"errors"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -36,7 +37,7 @@ func TestCreateBattleResolvesFactionsAndPersistsSnapshot(t *testing.T) {
 	catalog := &fakeScenarioCatalog{resolved: game.Scenario{ID: "castle-siege-v1"}, digest: "digest"}
 	service := NewService(battleRepo, factions, catalog, 10_000)
 
-	run, err := service.CreateBattle(context.Background(), CreateBattleInput{
+	run, err := service.CreateBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), CreateBattleInput{
 		ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1",
 		Participants: scriptedParticipants(), TickCount: 100,
 	})
@@ -73,7 +74,7 @@ func TestCreateBattleValidationAndDependencies(t *testing.T) {
 				input := valid
 				input.Participants = append([]ParticipantInput(nil), valid.Participants...)
 				tt.mutate(&input)
-				if _, err := service.CreateBattle(context.Background(), input); !errors.Is(err, ErrInvalidBattle) {
+				if _, err := service.CreateBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); !errors.Is(err, ErrInvalidBattle) {
 					t.Fatalf("error = %v, want ErrInvalidBattle", err)
 				}
 			})
@@ -88,13 +89,13 @@ func TestCreateBattleValidationAndDependencies(t *testing.T) {
 		service := NewService(&fakeBattleRepo{}, factions, catalog, 10_000)
 		input := valid
 		input.TickCount = 501
-		if _, err := service.CreateBattle(context.Background(), input); !errors.Is(err, ErrInvalidBattle) {
+		if _, err := service.CreateBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); !errors.Is(err, ErrInvalidBattle) {
 			t.Fatalf("error = %v, want ErrInvalidBattle", err)
 		}
 	})
 	t.Run("missing faction", func(t *testing.T) {
 		service := NewService(&fakeBattleRepo{}, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
-		if _, err := service.CreateBattle(context.Background(), valid); !errors.Is(err, ErrBattleFactionMissing) {
+		if _, err := service.CreateBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), valid); !errors.Is(err, ErrBattleFactionMissing) {
 			t.Fatalf("error = %v, want ErrBattleFactionMissing", err)
 		}
 	})
@@ -103,7 +104,7 @@ func TestCreateBattleValidationAndDependencies(t *testing.T) {
 			valid.Participants[0].FactionID: {ID: valid.Participants[0].FactionID, Name: "A"}, valid.Participants[1].FactionID: {ID: valid.Participants[1].FactionID, Name: "B"},
 		}}
 		service := NewService(&fakeBattleRepo{}, factions, &fakeScenarioCatalog{err: ErrScenarioNotFound}, 10_000)
-		if _, err := service.CreateBattle(context.Background(), valid); !errors.Is(err, ErrScenarioNotFound) {
+		if _, err := service.CreateBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), valid); !errors.Is(err, ErrScenarioNotFound) {
 			t.Fatalf("error = %v, want ErrScenarioNotFound", err)
 		}
 	})
@@ -116,7 +117,7 @@ func TestCreateBattlePersistsAllowedModelProfile(t *testing.T) {
 	registry := ai.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "gemini", DisplayName: "Gemini", Provider: "gemini", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 3, MaxOutputTokens: 100}})
 	repository := &fakeBattleRepo{}
 	service := NewService(repository, factions, &fakeScenarioCatalog{resolved: serviceTestScenario(identities)}, 10_000, registry)
-	_, err := service.CreateBattle(context.Background(), CreateBattleInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "castle-siege-v1", TickCount: 10, Participants: []ParticipantInput{{FactionID: ids[0], Controller: game.ControllerConfig{Type: "model", ProfileID: "gemini"}}, {FactionID: ids[1], Controller: game.ControllerConfig{Type: "scripted"}}}})
+	_, err := service.CreateBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), CreateBattleInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "castle-siege-v1", TickCount: 10, Participants: []ParticipantInput{{FactionID: ids[0], Controller: game.ControllerConfig{Type: "model", ProfileID: "gemini"}}, {FactionID: ids[1], Controller: game.ControllerConfig{Type: "scripted"}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +129,7 @@ func TestCreateBattlePersistsAllowedModelProfile(t *testing.T) {
 		t.Fatal("profile list missing")
 	}
 	bad := CreateBattleInput{ID: "8f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "castle-siege-v1", TickCount: 10, Participants: []ParticipantInput{{FactionID: ids[0], Controller: game.ControllerConfig{Type: "model", ProfileID: "unknown"}}, {FactionID: ids[1], Controller: game.ControllerConfig{Type: "scripted"}}}}
-	if _, err := service.CreateBattle(context.Background(), bad); !errors.Is(err, ErrModelProfileUnavailable) {
+	if _, err := service.CreateBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), bad); !errors.Is(err, ErrModelProfileUnavailable) {
 		t.Fatal(err)
 	}
 }
@@ -139,7 +140,7 @@ func TestListBattleEventsDefaultsToCurrentAttempt(t *testing.T) {
 		events: []StoredBattleEvent{{Attempt: 2, Sequence: 5}},
 	}
 	service := NewService(repo, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
-	page, err := service.ListBattleEvents(context.Background(), repo.run.ID, nil, 0, 100, true)
+	page, err := service.ListBattleEvents(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), repo.run.ID, nil, 0, 100, true)
 	if err != nil {
 		t.Fatalf("ListBattleEvents() returned an error: %v", err)
 	}
@@ -150,7 +151,7 @@ func TestListBattleEventsDefaultsToCurrentAttempt(t *testing.T) {
 
 func TestGetBattleRejectsMalformedID(t *testing.T) {
 	service := NewService(&fakeBattleRepo{}, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
-	if _, err := service.GetBattle(context.Background(), "not-a-uuid"); !errors.Is(err, ErrInvalidBattle) {
+	if _, err := service.GetBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), "not-a-uuid"); !errors.Is(err, ErrInvalidBattle) {
 		t.Fatalf("GetBattle() error = %v, want ErrInvalidBattle", err)
 	}
 }
@@ -163,13 +164,13 @@ func TestBattleServiceDelegatesCatalogAndRepositoryReads(t *testing.T) {
 	if summaries := service.ListScenarios(); len(summaries) != 1 || summaries[0].ID != "skirmish-v1" {
 		t.Fatalf("ListScenarios() = %#v", summaries)
 	}
-	run, err := service.GetBattle(context.Background(), validID)
+	run, err := service.GetBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), validID)
 	if err != nil || run.ID != validID {
 		t.Fatalf("GetBattle() = %#v, %v", run, err)
 	}
 
 	repository.getErr = errors.New("database unavailable")
-	if _, err := service.GetBattle(context.Background(), validID); err == nil {
+	if _, err := service.GetBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), validID); err == nil {
 		t.Fatal("GetBattle() returned no repository error")
 	}
 }
@@ -178,15 +179,15 @@ func TestStopBattleValidatesAndReturnsStoppedRun(t *testing.T) {
 	validID := "7f22e693-bacd-46bb-b942-64fa613cd388"
 	repository := &fakeBattleRepo{run: &BattleRun{ID: validID, Status: "stopped"}}
 	service := NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
-	run, err := service.StopBattle(context.Background(), validID)
+	run, err := service.StopBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), validID)
 	if err != nil || run.Status != "stopped" || repository.stoppedID != validID {
 		t.Fatalf("run=%#v stoppedID=%q err=%v", run, repository.stoppedID, err)
 	}
-	if _, err := service.StopBattle(context.Background(), "bad"); !errors.Is(err, ErrInvalidBattle) {
+	if _, err := service.StopBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), "bad"); !errors.Is(err, ErrInvalidBattle) {
 		t.Fatalf("malformed ID error = %v", err)
 	}
 	repository.stopErr = ErrBattleNotActive
-	if _, err := service.StopBattle(context.Background(), validID); !errors.Is(err, ErrBattleNotActive) {
+	if _, err := service.StopBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), validID); !errors.Is(err, ErrBattleNotActive) {
 		t.Fatalf("inactive error = %v", err)
 	}
 }
@@ -197,16 +198,16 @@ func TestPauseAndResumeBattleValidateAndReturnRun(t *testing.T) {
 	service := NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
 
 	repository.run.Paused = true
-	paused, err := service.PauseBattle(context.Background(), validID)
+	paused, err := service.PauseBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), validID)
 	if err != nil || !paused.Paused || repository.pausedID != validID || !repository.pausedValue {
 		t.Fatalf("paused=%#v repository=%#v err=%v", paused, repository, err)
 	}
 	repository.run.Paused = false
-	resumed, err := service.ResumeBattle(context.Background(), validID)
+	resumed, err := service.ResumeBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), validID)
 	if err != nil || resumed.Paused || repository.pausedValue {
 		t.Fatalf("resumed=%#v repository=%#v err=%v", resumed, repository, err)
 	}
-	if _, err := service.PauseBattle(context.Background(), "bad"); !errors.Is(err, ErrInvalidBattle) {
+	if _, err := service.PauseBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), "bad"); !errors.Is(err, ErrInvalidBattle) {
 		t.Fatalf("malformed ID error = %v", err)
 	}
 }
@@ -224,15 +225,15 @@ func (r *historyBattleRepo) ListBattleDecisions(context.Context, string, int) ([
 func TestDecisionHistoryIsSafeAndValidated(t *testing.T) {
 	repository := &historyBattleRepo{fakeBattleRepo: &fakeBattleRepo{}, records: []ai.DecisionRecord{{ID: "request", FactionID: "faction", TargetTick: 10, Status: "accepted", ProfileID: "profile", Provider: "openai", Runtime: "api", ModelIdentifier: "model", Usage: ai.Usage{Requests: 1}}}}
 	service := NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000).(DecisionHistoryService)
-	history, err := service.ListDecisionHistory(context.Background(), "7f22e693-bacd-46bb-b942-64fa613cd388", 1)
+	history, err := service.ListDecisionHistory(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), "7f22e693-bacd-46bb-b942-64fa613cd388", 1)
 	if err != nil || len(history) != 1 || history[0].ProfileID != "profile" || history[0].Usage.Requests != 1 {
 		t.Fatalf("history=%#v err=%v", history, err)
 	}
-	if _, err := service.ListDecisionHistory(context.Background(), "bad", 0); !errors.Is(err, ErrInvalidBattle) {
+	if _, err := service.ListDecisionHistory(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), "bad", 0); !errors.Is(err, ErrInvalidBattle) {
 		t.Fatal(err)
 	}
 	repository.historyErr = errors.New("database")
-	if _, err := service.ListDecisionHistory(context.Background(), "7f22e693-bacd-46bb-b942-64fa613cd388", 1); err == nil {
+	if _, err := service.ListDecisionHistory(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), "7f22e693-bacd-46bb-b942-64fa613cd388", 1); err == nil {
 		t.Fatal("history error ignored")
 	}
 }
@@ -242,14 +243,14 @@ func TestFactionViewFiltersPersistedState(t *testing.T) {
 	state := game.State{Factions: []game.FactionState{{FactionID: "a"}, {FactionID: "b"}}, Units: []game.Unit{{ID: "a-unit", FactionID: "a", Position: game.Position{X: 1, Y: 1}, Health: 10, Vision: 1}, {ID: "b-unit", FactionID: "b", Position: game.Position{X: 12, Y: 9}, Health: 10}}, Buildings: []game.Building{{ID: "b-castle", FactionID: "b", Type: game.BuildingCastle, Position: game.Position{X: 13, Y: 5}, Health: 300}}}
 	repository := &fakeBattleRepo{run: &BattleRun{ID: validID, ScenarioSnapshot: game.Scenario{Map: serviceTestScenario([2]FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}}).Map}, CurrentState: state}}
 	service := NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000).(*battleService)
-	view, err := service.GetFactionView(context.Background(), validID, "a")
+	view, err := service.GetFactionView(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), validID, "a")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(view.State.Units) != 1 || len(view.State.Buildings) != 1 {
 		t.Fatalf("view = %#v", view)
 	}
-	if _, err := service.GetFactionView(context.Background(), validID, "outsider"); !errors.Is(err, ErrInvalidPerspective) {
+	if _, err := service.GetFactionView(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), validID, "outsider"); !errors.Is(err, ErrInvalidPerspective) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -266,14 +267,14 @@ func TestCreateBattlePropagatesDependencyAndPersistenceErrors(t *testing.T) {
 
 	dependencyErr := errors.New("faction database unavailable")
 	service := NewService(&fakeBattleRepo{}, &battleFactionRepo{err: dependencyErr}, &fakeScenarioCatalog{}, 10_000)
-	if _, err := service.CreateBattle(context.Background(), valid); !errors.Is(err, dependencyErr) {
+	if _, err := service.CreateBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), valid); !errors.Is(err, dependencyErr) {
 		t.Fatalf("CreateBattle() error = %v, want dependency error", err)
 	}
 
 	for _, persistenceErr := range []error{ErrBattleAlreadyExists, errors.New("battle database unavailable")} {
 		repository := &fakeBattleRepo{createErr: persistenceErr}
 		service := NewService(repository, &battleFactionRepo{factions: factions}, &fakeScenarioCatalog{resolved: game.Scenario{ID: "castle-siege-v1"}}, 10_000)
-		if _, err := service.CreateBattle(context.Background(), valid); !errors.Is(err, persistenceErr) {
+		if _, err := service.CreateBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), valid); !errors.Is(err, persistenceErr) {
 			t.Fatalf("CreateBattle() error = %v, want %v", err, persistenceErr)
 		}
 	}
@@ -283,19 +284,19 @@ func TestListBattleEventsValidatesAndPropagatesErrors(t *testing.T) {
 	validID := "7f22e693-bacd-46bb-b942-64fa613cd388"
 	for _, limit := range []int{0, 501} {
 		service := NewService(&fakeBattleRepo{}, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
-		if _, err := service.ListBattleEvents(context.Background(), validID, nil, 0, limit, false); !errors.Is(err, ErrInvalidBattle) {
+		if _, err := service.ListBattleEvents(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), validID, nil, 0, limit, false); !errors.Is(err, ErrInvalidBattle) {
 			t.Fatalf("limit %d error = %v, want ErrInvalidBattle", limit, err)
 		}
 	}
 	service := NewService(&fakeBattleRepo{}, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
-	if _, err := service.ListBattleEvents(context.Background(), validID, nil, 1, 50, true); !errors.Is(err, ErrInvalidBattle) {
+	if _, err := service.ListBattleEvents(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), validID, nil, 1, 50, true); !errors.Is(err, ErrInvalidBattle) {
 		t.Fatalf("latest query with cursor error = %v, want ErrInvalidBattle", err)
 	}
 
 	for _, attempt := range []int{-1, 3} {
 		repository := &fakeBattleRepo{run: &BattleRun{ID: validID, Attempt: 2}}
 		service := NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
-		if _, err := service.ListBattleEvents(context.Background(), validID, &attempt, 0, 50, false); !errors.Is(err, ErrInvalidBattle) {
+		if _, err := service.ListBattleEvents(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), validID, &attempt, 0, 50, false); !errors.Is(err, ErrInvalidBattle) {
 			t.Fatalf("attempt %d error = %v, want ErrInvalidBattle", attempt, err)
 		}
 	}
@@ -303,7 +304,7 @@ func TestListBattleEventsValidatesAndPropagatesErrors(t *testing.T) {
 	repositoryErr := errors.New("events unavailable")
 	repository := &fakeBattleRepo{run: &BattleRun{ID: validID, Attempt: 1}, listErr: repositoryErr}
 	service = NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000)
-	if _, err := service.ListBattleEvents(context.Background(), validID, nil, 0, 50, false); !errors.Is(err, repositoryErr) {
+	if _, err := service.ListBattleEvents(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), validID, nil, 0, 50, false); !errors.Is(err, repositoryErr) {
 		t.Fatalf("ListBattleEvents() error = %v, want repository error", err)
 	}
 }
@@ -404,4 +405,37 @@ func serviceTestScenario(identities [2]FactionIdentity) game.Scenario {
 func (r *fakeBattleRepo) ListBattles(_ context.Context, query BattleHistoryQuery) ([]BattleSummary, error) {
 	r.historyQuery = query
 	return r.summaries, r.listErr
+}
+
+func TestBattleControlOwnershipAllRoles(t *testing.T) {
+	for _, role := range []authn.Role{authn.Player, authn.Developer, authn.Admin} {
+		for _, owner := range []string{"self", "other", authn.LegacyOwner} {
+			for _, operation := range []string{"stop", "pause", "resume"} {
+				t.Run(string(role)+owner+operation, func(t *testing.T) {
+					checkBattleOwnership(t, role, owner, operation)
+				})
+			}
+		}
+	}
+}
+
+func checkBattleOwnership(t *testing.T, role authn.Role, owner, operation string) {
+	t.Helper()
+	const id = "7f22e693-bacd-46bb-b942-64fa613cd388"
+	repo := &fakeBattleRepo{run: &BattleRun{ID: id, OwnerID: owner, Status: "running"}}
+	svc := NewService(repo, nil, nil, 100)
+	ctx := authn.WithActor(context.Background(), authn.Actor{ID: "self", Role: role})
+	var e error
+	switch operation {
+	case "stop":
+		_, e = svc.StopBattle(ctx, id)
+	case "pause":
+		_, e = svc.PauseBattle(ctx, id)
+	case "resume":
+		_, e = svc.ResumeBattle(ctx, id)
+	}
+	allowed := role == authn.Admin || owner == "self"
+	if (e == nil) != allowed || (!allowed && (repo.stoppedID != "" || repo.pausedID != "")) {
+		t.Fatalf("control %s: %v", operation, e)
+	}
 }

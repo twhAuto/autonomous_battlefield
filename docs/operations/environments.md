@@ -61,7 +61,7 @@ Registration refuses to overwrite an existing profile or dedicated kubeconfig.
 Dev secret preparation is repeatable: it preserves existing files and exports
 existing PostgreSQL credentials into a private file. For an empty cluster it
 creates new database credentials, but refuses to invent credentials if PVCs
-already exist. It generates independent dev login/session and MCP capability
+already exist. It generates independent dev login/session, worker-control and MCP capability
 secrets; API and CLI provider profiles initially remain disabled. Read the dev
 login locally from `~/.config/autonomous-battlefield/dev/auth.env`. Enable paid
 providers only by editing the private dev `ai.env` intentionally.
@@ -164,6 +164,12 @@ mark the normal dev data or production cluster disposable.
 
 ## Validation and recovery
 
+The migration job requires the `battlefield-auth` Secret because it validates
+server configuration before connecting to PostgreSQL. Dev staging sets its
+`BATTLEFIELD_ENV=dev`; production keeps `production`. CLI profiles are disabled
+in the migration job. If deployment waits at the migration gate, inspect its pods
+and logs using the dedicated kubeconfig/context before changing database credentials.
+
 Run `scripts/test/test-deployment-environment.sh` alongside deployment-component,
 Kind deployment, command-wrapper, runtime-assurance, and security-launcher tests.
 These cover guard failures, bootstrap behavior, render/staging behavior, and
@@ -176,3 +182,14 @@ original cluster or deliberately register a restored cluster after verifying
 its data. Keep the old profile until recovery is validated. A lost Kind node
 can mean a lost PostgreSQL volume; neither cluster recreation nor image rollback
 restores that data.
+
+## Friends-only production authentication
+
+Production API pods require Cloudflare Access. Use the private rendered `auth.env`
+as `BF_AUTH_FILE`; local password and disabled-development modes are rejected.
+`battlefield-ai` now needs an independent `BATTLEFIELD_AGENT_SECRET` in addition
+to the MCP capability-signing secret. Only the MCP service receives both. Developer
+CLI profiles additionally require the private API setting
+`BATTLEFIELD_CLI_ISOLATION_VERIFIED=true` after verified VM provisioning.
+See [friends launch](friends-launch.md) for the `play.ordinalfrontier.com` rollout,
+Google allowlist/MFA, migration backups, smoke-token setup and recovery gates.

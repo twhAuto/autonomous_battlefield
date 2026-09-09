@@ -1,0 +1,7 @@
+<network>
+  <name>battlefield-agent</name>
+  <!-- No forward element: no routed or NAT access to the home network/internet. -->
+  <bridge name='bf-agent0' stp='on' delay='0'/>
+  <dns enable='no'/>
+  <ip address='192.168.234.1' netmask='255.255.255.0'/>
+</network>

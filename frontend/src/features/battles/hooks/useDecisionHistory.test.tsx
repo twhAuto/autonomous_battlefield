@@ -20,3 +20,16 @@ it('clears the previous attempt and ignores its late response', async () => {
  rerender({ run: { ...battle, attempt: 0 } })
  expect(result.current.decisions).toEqual([])
 })
+
+it('never requests decision history when inspection is disabled and clears existing data', async () => {
+ vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ decisions: [{requestId:'secret'}] })))))
+ const battle = {attempt:1,status:'completed'} as BattleRun
+ const {result,rerender}=renderHook(({enabled})=>useDecisionHistory('battle',battle,enabled),{initialProps:{enabled:false}})
+ expect(fetch).not.toHaveBeenCalled()
+ expect(result.current.decisions).toEqual([])
+ rerender({enabled:true})
+ await waitFor(()=>expect(result.current.decisions).toHaveLength(1))
+ rerender({enabled:false})
+ expect(result.current.decisions).toEqual([])
+ expect(fetch).toHaveBeenCalledTimes(1)
+})

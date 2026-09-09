@@ -5,6 +5,7 @@ import { BackgroundGenerator } from '../components/BackgroundGenerator'
 import { useEffect, useState, type SubmitEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { createFaction, listFactions, updateFaction } from '../api/factions'
+import { usePermissions } from '../../auth/SessionContext'
 import { Emblem } from '../../../shared/components/Emblem'
 
 // Editable starting strategies; keep Balanced aligned with the backend's BalancedDoctrine.
@@ -18,6 +19,7 @@ export const doctrineTemplates = {
 /** Renders the profile form and optional background generator, loading the faction when editing. */
 export function CreateFactionPage() {
  const { id } = useParams()
+ const { canManage } = usePermissions()
  const editing = Boolean(id)
  const [factionId, setFactionId] = useState(() => crypto.randomUUID())
  const [name, setName] = useState('')
@@ -37,6 +39,7 @@ export function CreateFactionPage() {
  if (controller.signal.aborted) return
  const faction = factions.find(value => value.id === id)
  if (!faction) throw new Error('Faction not found.')
+ if (!canManage(faction.ownerId)) throw new Error('You can only edit your own factions.')
  setName(faction.name); setDoctrine(faction.doctrine); setBackground(faction.background ?? ''); setLoading(false)
  }).catch(error => {
  if (controller.signal.aborted) return

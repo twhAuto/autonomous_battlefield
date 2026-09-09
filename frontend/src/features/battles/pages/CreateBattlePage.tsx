@@ -1,3 +1,4 @@
+import { usePermissions } from '../../auth/SessionContext'
 // Loads faction, scenario, and model choices, validates the battle setup, and navigates to
 // the queued battle after creation.
 
@@ -241,14 +242,18 @@ function controllerInput(value: string): { type: 'scripted' } | { type: 'model';
 }
 
 function ControllerSelect({ id, value, onChange, profiles }: Readonly<{ id: string; value: string; onChange: (value: string) => void; profiles: ModelProfile[] }>) {
+ const {inspect}=usePermissions()
   return (
     <select id={id} value={value} onChange={(event) => onChange(event.target.value)}>
       <option value="scripted">Scripted · deterministic</option>
-      {profiles.map((profile) => (
+      {profiles.map((profile) => {
+        const availability = profile.available ? '' : ' · unavailable'
+        const label = inspect ? `${profile.displayName} · ${profile.provider} · ${profile.modelLabel || 'default model'} · ${profile.scope}${availability}` : profile.displayName
+        return (
         <option key={profile.id} value={profile.id} disabled={!profile.available}>
-          {profile.displayName} · {profile.provider} · {profile.modelLabel || 'default model'} · {profile.scope}{profile.available ? '' : ' · unavailable'}
+          {label}
         </option>
-      ))}
+      )})}
     </select>
   )
 }

@@ -56,6 +56,7 @@ type Server struct {
 	generations    generation.WorkerRepository
 	decisions      *ai.DecisionService
 	secret         string
+	agentSecret    string
 	allowedOrigins map[string]bool
 	wakeups        *decisionWakeups
 	logger         *slog.Logger
@@ -91,6 +92,24 @@ func (s *Server) NotifyDecisionAvailable() { s.wakeups.notify() }
 // report runner failures. It does not expose decision context or game state.
 func (s *Server) AgentHandler(repository ai.DecisionRepository) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /enabled", func(w http.ResponseWriter, r *http.Request) {
+		if !s.requireAgentAuthorization(w, r) {
+			return
+		}
+		policy, ok := repository.(interface {
+			AgentEnabled(context.Context) (bool, error)
+		})
+		if !ok {
+			http.Error(w, "policy unavailable", 503)
+			return
+		}
+		enabled, err := policy.AgentEnabled(r.Context())
+		if err != nil || !enabled {
+			http.Error(w, "AI disabled", 503)
+			return
+		}
+		w.WriteHeader(204)
+	})
 	mux.HandleFunc("POST /generation-finish", s.finishGeneration)
 	mux.HandleFunc("POST /claim", s.handleAgentClaim(repository))
 	mux.HandleFunc("POST /fail", s.handleAgentFailure(repository))
@@ -126,13 +145,27 @@ func (s *Server) handleAgentClaim(repository ai.DecisionRepository) http.Handler
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		s.logDecisionClaim(r.Context(), request.WorkerID, record)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"requestId": record.ID, "profileId": record.ProfileID, "doctrine": record.Observation.Doctrine, "factionName": record.Observation.FactionName, "background": record.Observation.Background,
-			"traceparent": record.Traceparent, "tracestate": record.Tracestate,
-			"battleId": record.BattleID, "factionId": record.FactionID, "attempt": record.Attempt, "targetTick": record.TargetTick,
-		})
+		s.writeDecisionClaim(w, r, request.WorkerID, record)
 	}
+}
+
+func (s *Server) writeDecisionClaim(w http.ResponseWriter, r *http.Request, workerID string, record ai.DecisionRecord) {
+	if record.LeaseExpiresAt == nil {
+		http.Error(w, "missing execution deadline", 503)
+		return
+	}
+	token, err := ai.MintCapability(s.secret, record.ID, *record.LeaseExpiresAt)
+	if err != nil {
+		http.Error(w, "capability unavailable", 503)
+		return
+	}
+	s.logDecisionClaim(r.Context(), workerID, record)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"capabilityToken": token, "executionDeadline": record.LeaseExpiresAt,
+		"requestId": record.ID, "profileId": record.ProfileID, "doctrine": record.Observation.Doctrine, "factionName": record.Observation.FactionName, "background": record.Observation.Background,
+		"traceparent": record.Traceparent, "tracestate": record.Tracestate,
+		"battleId": record.BattleID, "factionId": record.FactionID, "attempt": record.Attempt, "targetTick": record.TargetTick,
+	})
 }
 
 func decodeAgentClaimRequest(w http.ResponseWriter, r *http.Request) (agentClaimRequest, bool) {
@@ -149,6 +182,7 @@ func decodeAgentClaimRequest(w http.ResponseWriter, r *http.Request) (agentClaim
 			return request, false
 		}
 	}
+	request.LeaseSeconds = max(1, min(300, request.LeaseSeconds))
 	request.ProfileIDs = normalizedProfileIDs(request.ProfileIDs)
 	if len(request.ProfileIDs) == 0 {
 		http.Error(w, invalidRequestMessage, http.StatusBadRequest)
@@ -250,8 +284,11 @@ func (s *Server) requireAgentAuthorization(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) agentAuthorized(request *http.Request) bool {
+	if s.agentSecret == "" || s.agentSecret == s.secret {
+		return false
+	}
 	provided := []byte(strings.TrimSpace(request.Header.Get("Authorization")))
-	expected := []byte(bearerPrefix + s.secret)
+	expected := []byte(bearerPrefix + s.agentSecret)
 	return subtle.ConstantTimeCompare(provided, expected) == 1
 }
 
@@ -443,4 +480,10 @@ func (s *Server) claimAfterGeneration(w http.ResponseWriter, r *http.Request, re
 	}
 
 	return record, found, false
+}
+
+func (s *Server) WithAgentSecret(secret string) *Server { s.agentSecret = secret; return s }
+func (s *Server) mint(id string, ttl time.Duration) string {
+	token, _ := ai.MintCapability(s.secret, id, time.Now().Add(ttl))
+	return token
 }

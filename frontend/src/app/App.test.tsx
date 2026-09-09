@@ -139,7 +139,7 @@ describe('App', () => {
 
     expect(fetch).toHaveBeenCalledWith('/v1/factions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
 	  body: JSON.stringify({
 	    id: firstId, name: 'The Verdant Accord', doctrine: doctrineTemplates.Balanced, background: '',
 	  }),
@@ -186,7 +186,7 @@ describe('App', () => {
     vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ factions: [
       { id: firstId, name: 'Northwind' },
       { id: secondId, name: 'Verdant Accord' },
-    ] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    ] }), { status: 200, headers: { 'content-type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }))
 
     renderApp('/factions')
 
@@ -212,7 +212,7 @@ describe('App', () => {
     await user.click(await screen.findByRole('button', { name: 'DELETE Northwind' }))
 
     expect(confirm).toHaveBeenCalledWith('Delete Northwind? This removes it from the active faction registry.')
-    expect(fetch).toHaveBeenCalledWith(`/v1/factions/${firstId}`, { method: 'DELETE' })
+    expect(fetch).toHaveBeenCalledWith(`/v1/factions/${firstId}`, { method: 'DELETE', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
     expect(await screen.findByRole('heading', { name: 'The frontier is unclaimed' })).toBeInTheDocument()
     confirm.mockRestore()
   })
@@ -220,7 +220,7 @@ describe('App', () => {
   it('shows an empty registry with a create action', async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ factions: [] }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
     }))
 
     renderApp('/factions')
@@ -294,7 +294,7 @@ describe('App', () => {
 
     expect(fetch).toHaveBeenCalledWith('/v1/battles', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
       body: JSON.stringify({
         id: battleId,
         scenarioId: 'skirmish-v1',
@@ -487,7 +487,7 @@ describe('App', () => {
 
     await user.click(await screen.findByRole('button', { name: 'STOP' }))
 
-    expect(fetch).toHaveBeenCalledWith(`/v1/battles/${battleId}/stop`, { method: 'POST' })
+    expect(fetch).toHaveBeenCalledWith(`/v1/battles/${battleId}/stop`, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
     expect(await screen.findByRole('heading', { name: 'Battle stopped' })).toBeInTheDocument()
     expect(screen.getByText('Stopped by operator')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'STOP' })).toBeDisabled()
@@ -751,4 +751,19 @@ describe('battle history navigation', () => {
     renderApp('/battles')
     expect(await screen.findByRole('button', { name: /enter command post/i })).toBeInTheDocument()
   })
+})
+
+it('uses Access reauthentication without offering the local password form', async () => {
+ const authentication: AuthenticationClient={session:vi.fn(),login:vi.fn(),logout:vi.fn().mockResolvedValue(undefined)}
+ render(<MemoryRouter><App authentication={authentication} initialSession={{enabled:true,authenticated:false,mode:'cloudflare'}}/></MemoryRouter>)
+ expect(screen.getByRole('heading',{name:'Sign in to Battlefield'})).toBeInTheDocument()
+ expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument()
+ expect(authentication.login).not.toHaveBeenCalled()
+})
+
+it('prevents a Player from opening another person’s faction editor directly',async()=>{
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({factions:[{id:firstId,name:'Shared',doctrine:'Defend',ownerId:'someone-else'}]}))))
+ render(<MemoryRouter initialEntries={[`/factions/${firstId}/edit`]}><App initialSession={{enabled:true,authenticated:true,mode:'cloudflare',actor:{id:'friend',role:'player'}}}/></MemoryRouter>)
+ expect(await screen.findByText('You can only edit your own factions.')).toBeInTheDocument()
+ expect(screen.queryByRole('button',{name:'SAVE FACTION'})).not.toBeInTheDocument()
 })

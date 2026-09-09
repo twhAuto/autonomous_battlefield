@@ -27,8 +27,8 @@ export interface CreateBattleInput {
 export interface BattleController { type: 'scripted' | 'model'; profileId?: string; provider?: string; runtime?: string; modelIdentifier?: string }
 export interface BattleParticipantInput { factionId: string; controller: { type: 'scripted' } | { type: 'model'; profileId: string } }
 export interface ModelProfile {
-  id: string; displayName: string; provider: string; runtime: 'api' | 'cli'; scope: 'local' | 'cluster'
-  modelLabel: string; available: boolean; toolCapability: boolean; unavailableReason?: string
+  id: string; displayName: string; provider?: string; runtime: 'api' | 'cli'; scope?: 'local' | 'cluster'
+  modelLabel: string; available: boolean; toolCapability?: boolean; unavailableReason?: string
 }
 
 export type BattleStatus = 'queued' | 'running' | 'completed' | 'failed' | 'stopped'
@@ -109,6 +109,7 @@ export interface BattleResult {
 }
 
 export interface BattleRun {
+  ownerId?: string
   id: string
   scenarioId: string
   scenarioDigest: string

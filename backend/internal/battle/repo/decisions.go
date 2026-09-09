@@ -21,7 +21,7 @@ type decisionRow interface{ Scan(...any) error }
 const decisionColumns = `id, battle_id, attempt, faction_id, target_tick, version, status,
 controller_type, profile_id, provider, runtime, model_identifier, prompt_version, tool_schema_version,
 observation, observation_hash, resolved_plan, fallback_source, error_category, usage, provider_metadata,
-idempotency_key, traceparent, tracestate, created_at, resolved_at`
+idempotency_key, traceparent, tracestate, created_at, resolved_at, lease_expires_at`
 
 func (r *Postgres) CreateOrReuseDecision(ctx context.Context, params ai.CreateDecisionParams) (ai.DecisionRecord, error) {
 	ctx, span := telemetry.StartDatabaseSpan(ctx, "create_decision")
@@ -182,7 +182,7 @@ func (r *Postgres) ClaimModelDecision(ctx context.Context, owner string, profile
 		SELECT `+decisionColumns+` FROM claimed`,
 		owner, lease.String(), profileIDs)
 	record, err := scanDecision(row)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && record.Status != "running") {
 		return ai.DecisionRecord{}, ai.ErrNoDecision
 	}
 	return record, err
@@ -191,8 +191,8 @@ func (r *Postgres) ClaimModelDecision(ctx context.Context, owner string, profile
 func (r *Postgres) FinishDecisionFailure(ctx context.Context, id, category string, usage ai.Usage, metadata map[string]any) error {
 	usageJSON, _ := json.Marshal(usage)
 	metadataJSON, _ := json.Marshal(metadata)
-	_, err := r.db.Exec(ctx, `UPDATE battle_decisions SET status='failed', error_category=$2, usage=$3,
-		provider_metadata=provider_metadata || $4::jsonb, lease_owner=NULL, lease_expires_at=NULL WHERE id=$1 AND status='running'`, id, category, usageJSON, metadataJSON)
+	_, err := r.db.Exec(ctx, `UPDATE battle_decisions SET status=CASE WHEN status='running' THEN 'failed' ELSE status END, error_category=$2, usage=$3,
+		provider_metadata=provider_metadata || $4::jsonb, lease_owner=NULL, lease_expires_at=NULL WHERE id=$1 AND status IN ('running','accepted','fallback')`, id, category, usageJSON, metadataJSON)
 	return err
 }
 
@@ -219,7 +219,7 @@ func scanDecision(row decisionRow) (ai.DecisionRecord, error) {
 		&record.PromptVersion, &record.ToolSchemaVersion, &observation, &record.ObservationHash, &plan,
 		&record.FallbackSource, &record.ErrorCategory, &usage, &metadata, &record.IdempotencyKey,
 		&record.Traceparent, &record.Tracestate,
-		&record.CreatedAt, &record.ResolvedAt)
+		&record.CreatedAt, &record.ResolvedAt, &record.LeaseExpiresAt)
 	if err != nil {
 		return ai.DecisionRecord{}, err
 	}
@@ -265,4 +265,10 @@ func (r *Postgres) ListFactionMemory(ctx context.Context, battleID string, attem
 		return nil, err
 	}
 	return ai.BuildFactionMemory(records, battleID, attempt, factionID, beforeTick), nil
+}
+
+func (r *Postgres) AgentEnabled(ctx context.Context) (bool, error) {
+	var enabled bool
+	err := r.db.QueryRow(ctx, `SELECT ai_enabled FROM runtime_policy WHERE id`).Scan(&enabled)
+	return enabled, err
 }

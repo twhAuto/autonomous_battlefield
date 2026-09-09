@@ -1,4 +1,4 @@
-// Authentication API client for signed-cookie session checks, login, and logout; keeps
+// Authentication client for Access or development sessions, login, and logout; keeps
 // expected login failures local to the form.
 
 import { createApiClient } from '../../../shared/api/request'
@@ -6,7 +6,9 @@ import { createApiClient } from '../../../shared/api/request'
 export interface AuthSession {
   enabled: boolean
   authenticated: boolean
-  actor?: { id: string }
+  mode?: string
+  capabilities?: { inspect: boolean; cli: boolean; admin: boolean }
+  actor?: { id: string; email?: string; role?: 'player' | 'developer' | 'admin' }
 }
 
 export interface AuthenticationClient {
@@ -27,7 +29,7 @@ const authFetch = createApiClient(AuthenticationError, false)
 async function session(): Promise<AuthSession> {
   const response = await authFetch(`/v1/auth/session`, { credentials: 'same-origin' })
   if (response.status === 401) {
-    return { enabled: true, authenticated: false }
+    try { return await response.json() as AuthSession } catch { return { enabled: true, authenticated: false, mode: 'cloudflare' } }
   }
   if (!response.ok) {
     throw new AuthenticationError('Authentication status could not be checked.', response.status)
@@ -58,6 +60,7 @@ async function logout(): Promise<void> {
     credentials: 'same-origin',
   })
   if (!response.ok) throw new AuthenticationError('Logout could not be completed.', response.status)
+  if (response.headers.get('Content-Type')?.includes('application/json')) { const body = await response.json() as { logoutUrl?: string }; if (body.logoutUrl === '/cdn-cgi/access/logout') window.location.assign(body.logoutUrl) }
 }
 
 export const authenticationClient: AuthenticationClient = { session, login, logout }

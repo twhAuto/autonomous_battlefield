@@ -49,10 +49,13 @@ func (r *fakeRepository) ResolveDecisionFallback(context.Context, string, int64,
 }
 func (r *fakeRepository) ClaimModelDecision(_ context.Context, _ string, profiles []string, _ time.Duration) (ai.DecisionRecord, error) {
 	r.claimedProfiles = append([]string(nil), profiles...)
+	record, err := r.record, r.claimErr
 	if r.claimFn != nil {
-		return r.claimFn(profiles)
+		record, err = r.claimFn(profiles)
 	}
-	return r.record, r.claimErr
+	expiry := time.Now().Add(time.Minute)
+	record.LeaseExpiresAt = &expiry
+	return record, err
 }
 func (r *fakeRepository) FinishDecisionFailure(context.Context, string, string, ai.Usage, map[string]any) error {
 	r.failures++
@@ -179,14 +182,14 @@ func FuzzMCPRequestBody(f *testing.F) {
 
 func TestAgentControlPlaneAuthorizationAndEmptyQueue(t *testing.T) {
 	repository := &fakeRepository{claimErr: ai.ErrNoDecision}
-	handler := New(repository, "secret", nil).AgentHandler(repository)
+	handler := New(repository, "secret", nil).WithAgentSecret("worker-secret").AgentHandler(repository)
 	unauthorized := httptest.NewRecorder()
 	handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{}`)))
 	if unauthorized.Code != http.StatusUnauthorized {
 		t.Fatal(unauthorized.Code)
 	}
 	request := httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{"workerId":"agent","leaseSeconds":1,"profileIds":["profile"]}`))
-	request.Header.Set("Authorization", "Bearer secret")
+	request.Header.Set("Authorization", "Bearer worker-secret")
 	empty := httptest.NewRecorder()
 	handler.ServeHTTP(empty, request)
 	if empty.Code != http.StatusNoContent {
@@ -195,10 +198,10 @@ func TestAgentControlPlaneAuthorizationAndEmptyQueue(t *testing.T) {
 }
 
 func TestAgentControlPlaneRejectsMalformedBodies(t *testing.T) {
-	handler := New(&fakeRepository{}, "secret", nil).AgentHandler(&fakeRepository{})
+	handler := New(&fakeRepository{}, "secret", nil).WithAgentSecret("worker-secret").AgentHandler(&fakeRepository{})
 	for _, path := range []string{"/claim", "/fail", "/usage"} {
 		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader("bad"))
-		request.Header.Set("Authorization", "Bearer secret")
+		request.Header.Set("Authorization", "Bearer worker-secret")
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
 		if response.Code != http.StatusBadRequest {
@@ -210,9 +213,9 @@ func TestAgentControlPlaneRejectsMalformedBodies(t *testing.T) {
 func TestAgentControlPlane(t *testing.T) {
 	repository := &fakeRepository{record: ai.DecisionRecord{ID: "request", ProfileID: "profile", Status: "accepted"}}
 	var logs bytes.Buffer
-	handler := NewWithLogger(repository, "secret", nil, slog.New(slog.NewJSONHandler(&logs, nil))).AgentHandler(repository)
+	handler := NewWithLogger(repository, "secret", nil, slog.New(slog.NewJSONHandler(&logs, nil))).WithAgentSecret("worker-secret").AgentHandler(repository)
 	claim := httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{"workerId":"agent","leaseSeconds":5,"profileIds":["profile","profile","  "]}`))
-	claim.Header.Set("Authorization", "Bearer secret")
+	claim.Header.Set("Authorization", "Bearer worker-secret")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, claim)
 	if response.Code != http.StatusOK {
@@ -220,7 +223,7 @@ func TestAgentControlPlane(t *testing.T) {
 	}
 	for path, body := range map[string]string{"/fail": `{"requestId":"request","category":"provider","metadata":{"runnerOutcome":"deadline_exceeded"}}`, "/usage": `{"requestId":"request","usage":{"requests":1}}`} {
 		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
-		request.Header.Set("Authorization", "Bearer secret")
+		request.Header.Set("Authorization", "Bearer worker-secret")
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, request)
 		if recorder.Code != http.StatusNoContent {
@@ -255,11 +258,11 @@ func TestAgentClaimLongPollWakesWhenDecisionArrives(t *testing.T) {
 	}}
 	service := New(repository, "secret", nil)
 	request := httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{"workerId":"host-agent","leaseSeconds":5,"waitSeconds":2,"profileIds":["codex-subscription-local"]}`))
-	request.Header.Set("Authorization", "Bearer secret")
+	request.Header.Set("Authorization", "Bearer worker-secret")
 	response := httptest.NewRecorder()
 	done := make(chan struct{})
 	go func() {
-		service.AgentHandler(repository).ServeHTTP(response, request)
+		service.WithAgentSecret("worker-secret").AgentHandler(repository).ServeHTTP(response, request)
 		close(done)
 	}()
 	<-firstClaim
@@ -283,9 +286,9 @@ func TestAgentClaimLongPollWakesWhenDecisionArrives(t *testing.T) {
 
 func TestAgentClaimLongPollTimesOut(t *testing.T) {
 	repository := &fakeRepository{claimErr: ai.ErrNoDecision}
-	handler := New(repository, "secret", nil).AgentHandler(repository)
+	handler := New(repository, "secret", nil).WithAgentSecret("worker-secret").AgentHandler(repository)
 	request := httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{"workerId":"agent","leaseSeconds":5,"waitSeconds":1,"profileIds":["profile"]}`))
-	request.Header.Set("Authorization", "Bearer secret")
+	request.Header.Set("Authorization", "Bearer worker-secret")
 	response := httptest.NewRecorder()
 	started := time.Now()
 	handler.ServeHTTP(response, request)
@@ -298,9 +301,9 @@ func TestUsageRequiresAcceptedPlan(t *testing.T) {
 	for _, status := range []string{"running", "pending", "failed", "fallback", "accepted"} {
 		t.Run(status, func(t *testing.T) {
 			repository := &fakeRepository{record: ai.DecisionRecord{ID: "request", Status: status}}
-			handler := NewWithLogger(repository, "secret", nil, slog.Default()).AgentHandler(repository)
+			handler := NewWithLogger(repository, "secret", nil, slog.Default()).WithAgentSecret("worker-secret").AgentHandler(repository)
 			request := httptest.NewRequest(http.MethodPost, "/usage", strings.NewReader(`{"requestId":"request","usage":{"requests":1}}`))
-			request.Header.Set("Authorization", "Bearer secret")
+			request.Header.Set("Authorization", "Bearer worker-secret")
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
 			if status == "accepted" {
@@ -316,4 +319,27 @@ func TestUsageRequiresAcceptedPlan(t *testing.T) {
 
 func (r *fakeRepository) ListFactionMemory(context.Context, string, int, string, uint64) ([]ai.FactionMemoryEntry, error) {
 	return nil, nil
+}
+
+func TestWorkerAuthenticationNeverFallsBackToCapabilitySecret(t *testing.T) {
+	s := New(&fakeRepository{}, "signing-secret", nil)
+	r := httptest.NewRequest("POST", "/claim", nil)
+	for _, workerSecret := range []string{"", "signing-secret", "worker-secret"} {
+		s.WithAgentSecret(workerSecret)
+		for _, provided := range []string{"", "signing-secret", "worker-secret"} {
+			r.Header.Set("Authorization", "Bearer "+provided)
+			want := workerSecret == "worker-secret" && provided == workerSecret
+			if s.agentAuthorized(r) != want {
+				t.Fatalf("secret separation failed for configured %q provided %q", workerSecret, provided)
+			}
+		}
+	}
+	token := s.mint("request-one", time.Minute)
+	id, e := ai.VerifyCapability("signing-secret", token, time.Now())
+	if e != nil || id != "request-one" {
+		t.Fatal(id, e)
+	}
+	if _, e = ai.VerifyCapability("worker-secret", token, time.Now()); e == nil {
+		t.Fatal("worker key verified capability")
+	}
 }

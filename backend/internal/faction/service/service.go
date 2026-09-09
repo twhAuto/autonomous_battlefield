@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"errors"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -95,6 +96,9 @@ func (s *service) DeleteFaction(ctx context.Context, id string) error {
 	if !uuidPattern.MatchString(id) {
 		return ErrInvalidFaction
 	}
+	if err := s.authorize(ctx, id); err != nil {
+		return err
+	}
 	return s.repository.DeleteFaction(ctx, id)
 }
 
@@ -104,4 +108,19 @@ func NewService(repository Repository, catalogs ...RulesetCatalog) Service {
 		catalog = catalogs[0]
 	}
 	return &service{repository: repository, catalog: catalog}
+}
+
+func (s *service) authorize(ctx context.Context, id string) error {
+	a, ok := authn.ActorFromContext(ctx)
+	if !ok {
+		return authn.ErrForbidden
+	}
+	if a.Role == authn.Admin {
+		return nil
+	}
+	stored, err := s.repository.GetFaction(ctx, id)
+	if err != nil {
+		return err
+	}
+	return authn.AuthorizeOwner(ctx, stored.OwnerID)
 }

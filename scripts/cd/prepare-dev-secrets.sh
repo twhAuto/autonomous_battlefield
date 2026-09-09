@@ -37,9 +37,11 @@ node - "${BATTLEFIELD_AUTH_SECRET_FILE}" "${BATTLEFIELD_AI_SECRET_FILE}" <<'JS'
 const fs = require('fs'), crypto = require('crypto');
 const random = () => crypto.randomBytes(32).toString('hex');
 if (!fs.existsSync(process.argv[2])) fs.writeFileSync(process.argv[2],
-  `BATTLEFIELD_AUTH_ENABLED=true\nBATTLEFIELD_ADMIN_USERNAME=admin\nBATTLEFIELD_ADMIN_PASSWORD=${random()}\nBATTLEFIELD_SESSION_SECRET=${random()}\nBATTLEFIELD_AUTH_COOKIE_SECURE=false\n`, {mode:0o600, flag:'wx'});
+  `BATTLEFIELD_AUTH_MODE=local-password\nBATTLEFIELD_AUTH_ENABLED=true\nBATTLEFIELD_ADMIN_USERNAME=admin\nBATTLEFIELD_ADMIN_PASSWORD=${random()}\nBATTLEFIELD_SESSION_SECRET=${random()}\nBATTLEFIELD_AUTH_COOKIE_SECURE=false\n`, {mode:0o600, flag:'wx'});
 if (!fs.existsSync(process.argv[3])) fs.writeFileSync(process.argv[3],
-  `BATTLEFIELD_MCP_CAPABILITY_SECRET=${random()}\nOPENAI_API_KEY=\nOPENAI_MODEL=\nGEMINI_API_KEY=\nGEMINI_MODEL=\nOPENAI_PROFILE_AVAILABLE=false\nGEMINI_PROFILE_AVAILABLE=false\nCODEX_CLI_PROFILE_AVAILABLE=false\nGEMINI_CLI_PROFILE_AVAILABLE=false\n`, {mode:0o600, flag:'wx'});
+  `BATTLEFIELD_AGENT_SECRET=${random()}\nBATTLEFIELD_MCP_CAPABILITY_SECRET=${random()}\nOPENAI_API_KEY=\nOPENAI_MODEL=\nGEMINI_API_KEY=\nGEMINI_MODEL=\nOPENAI_PROFILE_AVAILABLE=false\nGEMINI_PROFILE_AVAILABLE=false\nCODEX_CLI_PROFILE_AVAILABLE=false\nGEMINI_CLI_PROFILE_AVAILABLE=false\n`, {mode:0o600, flag:'wx'});
+const existingAI = fs.readFileSync(process.argv[3], 'utf8');
+if (!/^BATTLEFIELD_AGENT_SECRET=.+$/m.test(existingAI)) fs.appendFileSync(process.argv[3], `\nBATTLEFIELD_AGENT_SECRET=${random()}\n`);
 JS
 chmod 600 "${BATTLEFIELD_SECRET_FILE}" "${BATTLEFIELD_AUTH_SECRET_FILE}" "${BATTLEFIELD_AI_SECRET_FILE}"
 echo 'Dev secret files are ready. Existing files and database credentials were preserved.'
