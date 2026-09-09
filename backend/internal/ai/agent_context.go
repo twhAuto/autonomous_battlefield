@@ -128,7 +128,7 @@ func unitOverview(stats game.UnitType, card *game.UnitCard) UnitOverview {
 func CompactContext(c DecisionContext) AgentContext {
 	result := AgentContext{
 		FactionName: c.FactionName, Background: c.Background, Doctrine: c.Doctrine,
-		Opening: c.Opening, OwnedUpgradeIDs: c.OwnedUpgradeIDs, SchemaVersion: c.SchemaVersion,
+		Opening: c.Opening, OwnedUpgradeIDs: c.OwnedUpgradeIDs, SchemaVersion: ContextSchema,
 		RequestID: c.RequestID, BattleID: c.BattleID, FactionID: c.FactionID,
 		TargetTick: c.TargetTick, ExpectedVersion: c.ExpectedVersion,
 		ObservationVersion: c.ObservationVersion, ObservationHash: c.ObservationHash,
@@ -168,13 +168,9 @@ func CompactContext(c DecisionContext) AgentContext {
 	return result
 }
 
-// Legacy decisions retain their original wire shape and are never synthesized from live data.
+// Project every saved observation into the current format without changing storage.
 func AgentObservation(c DecisionContext) any {
-	if c.SchemaVersion == ContextSchema {
-		return CompactContext(c)
-	}
-	c.UnitReference = nil
-	return c
+	return groupContextFactions(deduplicateContext(battlefieldContext{AgentContext: CompactContext(c), View: compactBattlefieldView(c.View)}))
 }
 
 // UnitDetailsMaxBytes leaves headroom below the observed CLI offload threshold.

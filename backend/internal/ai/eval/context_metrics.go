@@ -17,9 +17,6 @@ func countUnitDetailCalls(calls []string) int {
 }
 func evaluationContextBytes(value Case) int {
 	c := evaluationObservation(value)
-	if c.SchemaVersion != ai.ContextSchema {
-		return len(value.ContextJSON)
-	}
 	payload, _ := json.Marshal(map[string]any{"context": ai.AgentObservation(c)})
 	return len(payload)
 }

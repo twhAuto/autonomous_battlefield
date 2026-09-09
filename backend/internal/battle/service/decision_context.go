@@ -75,15 +75,10 @@ func (s *battleService) GetDecisionContext(ctx context.Context, battleID, reques
 		Economy: observation.Economy, View: observation.View, Legal: observation.Legal,
 		ActivePlan: observation.ActivePlan, Memory: observation.Memory,
 	}
-	if observation.Knowledge != nil {
-		result.Context.Knowledge = observation.Knowledge
-	}
-	if observation.SchemaVersion == ai.ContextSchema {
-		compact := ai.CompactContext(observation)
-		result.InitialContext = compact
-		result.AvailableUnitDetails = observation.UnitReference
-		result.Context.Legal = compact.Legal
-		result.Context.Knowledge = compact.Knowledge
-	}
+	compact := ai.CompactContext(observation)
+	result.InitialContext = ai.AgentObservation(observation)
+	result.AvailableUnitDetails = observation.UnitReference
+	result.Context.Legal = compact.Legal
+	result.Context.Knowledge = compact.Knowledge
 	return result, nil
 }

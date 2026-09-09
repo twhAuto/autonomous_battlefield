@@ -35,8 +35,8 @@ func TestCompactLookupEvaluation(t *testing.T) {
 	}
 }
 func TestComparisonCompactProjectionAndAblation(t *testing.T) {
-	c := ai.DecisionContext{SchemaVersion: ai.LegacyContextSchema, UnitReference: &ai.UnitReferenceSnapshot{Units: []ai.UnitDetail{{UnitID: "a", Card: &game.UnitCard{Guidance: "advice"}}}}}
-	got := comparisonObservation(c, ComparisonVariant{CompactUnitContext: true, WithoutKnowledge: true})
+	c := ai.DecisionContext{SchemaVersion: "battlefield.decision-context.v2", UnitReference: &ai.UnitReferenceSnapshot{Units: []ai.UnitDetail{{UnitID: "a", Card: &game.UnitCard{Guidance: "advice"}}}}}
+	got := comparisonObservation(c, ComparisonVariant{WithoutKnowledge: true})
 	if got.SchemaVersion != ai.ContextSchema || got.UnitReference.Units[0].Card != nil || c.UnitReference.Units[0].Card == nil {
 		t.Fatal("ablation changed original reference")
 	}
@@ -50,7 +50,7 @@ func TestComparisonCountsActualLookupCalls(t *testing.T) {
 	c.UnitReference = ai.FreezeUnitReference(rules, c)
 	payload, _ := json.Marshal(map[string]any{"context": c})
 	fixture.ContextJSON = string(payload)
-	variants := []ComparisonVariant{{ID: "compact", Runtime: "api", CompactUnitContext: true, NewRunner: func() ai.DecisionRunner { return sampleRunner{rename: "lookup", lookup: true} }}}
+	variants := []ComparisonVariant{{ID: "compact", Runtime: "api", NewRunner: func() ai.DecisionRunner { return sampleRunner{rename: "lookup", lookup: true} }}}
 	report, err := (Runner{}).Compare(context.Background(), []Case{fixture}, variants, ComparisonOptions{Repetitions: 1, MaxSteps: 4, MaxTokens: 100, Timeout: 5 * time.Second})
 	if err != nil || !report.Passed || report.Variants[0].Metrics.UnitDetailCalls != 1 || report.Variants[0].Metrics.LookupRate != 1 || report.Variants[0].Samples[0].ContextBytes == 0 {
 		t.Fatal(report, err)

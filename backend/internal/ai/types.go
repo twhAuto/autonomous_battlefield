@@ -12,12 +12,11 @@ import (
 )
 
 const (
-	ControllerScripted  = "scripted"
-	ControllerModel     = "model"
-	LegacyContextSchema = "battlefield.decision-context.v2"
-	ContextSchema       = "battlefield.decision-context.v3"
-	PlanSchema          = "battlefield.strategy-plan.v2"
-	ToolSchema          = "battlefield.mcp-tools.v7"
+	ControllerScripted = "scripted"
+	ControllerModel    = "model"
+	ContextSchema      = "battlefield.decision-context.v4"
+	PlanSchema         = "battlefield.strategy-plan.v2"
+	ToolSchema         = "battlefield.mcp-tools.v7"
 )
 
 type DecisionSession struct {

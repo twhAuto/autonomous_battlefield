@@ -15,7 +15,6 @@ import (
 )
 
 type Config struct {
-	CompactUnitContext bool
 	KnowledgeRetrieval ai.KnowledgeLimits
 	WorkerID           string
 	PollInterval       time.Duration

@@ -172,7 +172,7 @@ observation through the existing decision repository. The service checks battle,
 attempt, request, and observation scope. An explicit response projection exposes
 only historical identity, economy, faction-visible view, legal choices, prior
 plan, memory, and knowledge; internal provider metadata and capabilities are
-excluded. For v3 decisions, `initialContext` contains the initial agent projection
+excluded. For saved observations, `initialContext` contains the current reconstructed projection
 and `availableUnitDetails` holds the frozen reference snapshot, clearly labelled
 as optional in the inspector. Legacy rows without observations return `context: null`. No migration
 is needed. The browser loads on expansion, caches by battle/attempt/request, and
@@ -461,8 +461,7 @@ for authoring, configuration, and evaluation details.
 
 ### Compact unit context and exact lookup
 
-`engine.compactUnitContext` defaults to `false` for staged rollout. When enabled,
-new decisions use `battlefield.decision-context.v3`. Before hashing, the engine
+All new decisions use `battlefield.decision-context.v4`. Before hashing, the engine
 freezes all legal or visible unit definitions and available cards in the persisted
 observation's `unitReference` JSON field. This reference is independent of the
 legacy automatic card budget. Full observations continue to drive validation.
@@ -473,7 +472,7 @@ and weaknesses in `legal.units`, plus `referenceUnits` for visible types that ar
 not recruitable. It keeps knowledge mechanics and source identity but omits cards,
 base statistics, and the stored reference snapshot. Battlefield observations,
 including effective unit stats, remain intact. API delivery and CLI prefetch use
-the same projection. Older decision versions retain their original context fields.
+the same projection. Older saved observations are also projected into the current format without rewriting storage.
 MCP tools v7 delivers `get_decision_context` as one JSON text block with the
 existing `context` envelope, without a duplicate structured-content copy. API
 runners parse the same text. Agents are instructed to reuse a successful frozen
@@ -989,6 +988,39 @@ on the agent. Credentials are passed to Docker by environment-variable name,
 with shell tracing disabled. Explicit `ADMIN_USERNAME`/`ADMIN_PASSWORD` values
 remain supported. Failed login or missing session cookies stops setup; successful
 login cookies are converted to request-cookie string values for each virtual user.
+
+## Compact battlefield view
+
+The agent view groups units, buildings and statistics in `view.state.factions`:
+each group has `factionId`, optional `stats`, `units` and `buildings`. Entities
+inherit ownership from their group. Missing faction statistics are not invented
+when only entities are observed. Full entity IDs, targets and recruitment source
+references remain unchanged. `view.buildingProfiles` shares identical effective
+building properties only when the profile map and references reduce total size;
+health, location, readiness and combat observations remain individual. Unit
+profiles remain shared across groups. Persisted state and the game's regular
+view types retain flat entity arrays.
+
+The current projection also replaces an identical historical plan with
+`planRef: "#/activePlan"`, only when smaller. Repeated state battle ID/tick and
+own-faction gold/upgrades inherit their top-level values only when equal;
+differing historical/enemy facts stay explicit. The prompt documents these rules.
+API and Gemini CLI delivery omit exact copies of faction identity already present
+in the system prompt. They retain mismatches and all original identity wording.
+Direct MCP/Codex delivery and the inspector remain self-contained. Persistence
+and validation hashes are not changed by any projection.
+
+Decision context v4 additionally compresses the agent-facing battlefield view.
+`view.unitProfiles` stores identical effective-stat sets once; individual units
+reference a profile and retain health, positions, readiness, movement and combat
+observations. Profiles use observed modified stats, independently of catalog
+base-stat lookup. `view.visibleRowRanges` encodes visible cells with inclusive
+x ranges per y row, preserving visible empty cells and gaps. Each encoding is
+used only if it reduces serialized size; inline units and `visiblePositions`
+remain valid in v4. Persisted observations and validation remain unchanged.
+The inspector uses “Reconstructed agent context” and “Unit details available on
+demand” section labels without explanatory notices. Reconstruction can differ
+from original input. Evaluation and tool responses use the same projection.
 
 ## Optional Langfuse AI observability
 

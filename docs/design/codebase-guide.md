@@ -328,11 +328,11 @@ The MCP tools are:
 [`agent_context.go`](../../backend/internal/ai/agent_context.go) owns the explicit
 agent projection, frozen unit reference snapshot, and exact lookup. The full
 `DecisionContext` remains persisted for validation. New snapshots are captured by
-the battle worker before hashing when `engine.compactUnitContext` is enabled.
+the battle worker before hashing for every decision.
 [`unit_details.go`](../../backend/internal/ai/mcpserver/unit_details.go) serves the
 capability-scoped lookup. The saved-context service and frontend inspector show
-initial context separately from optional reference details. Evaluation variants
-can enable `compactUnitContext`, with lookup and total input-token metrics.
+reconstructed context separately from optional reference details. All evaluation
+variants use the current projection, with lookup and total input-token metrics.
 
 The server validates request scope before calling `DecisionService`. PostgreSQL notifications close an in-memory wake-up channel so long-polling claim requests promptly query durable state.
 
@@ -765,6 +765,26 @@ Run the Go coverage gate with disposable PostgreSQL integration coverage:
 ```
 
 ## Langfuse integration
+
+`ai/faction_groups.go` groups observed units/buildings with faction statistics
+after metadata deduplication, and conditionally shares effective building stats.
+Its reconstruction tests verify ownership, missing faction statistics, distinct
+effective profiles, stable full IDs and individual observations. The inspector
+renders grouped JSON through its existing reconstructed-context section.
+
+`ai/context_duplicates.go` removes equal plan/metadata copies from the current
+projection. `ai/session_context.go` removes identity text only when the exact
+value is supplied in the system prompt. API tool delivery and Gemini prefetch
+apply this helper; MCP's canonical response stays self-contained. Tests cover
+historical differences, faction scope, source immutability and both runner paths.
+
+`backend/internal/ai/battlefield_context.go` implements the v4 agent view:
+effective-stat profiles and inclusive visibility row ranges, with independent
+size checks to retain inline fields when smaller. Its tests reconstruct observed
+units and visibility, check version compatibility and measure opening/small/large
+views. To measure a local JSON context without adding private data to fixtures,
+run `BATTLEFIELD_CONTEXT_FIXTURE=/path/to/context.json go test ./internal/ai -run TestBattlefieldContextExternalFixture -v`
+from `backend`.
 
 - `backend/internal/telemetry/ai.go` provides decision correlation, explicit AI
   sampling and safe trace URLs alongside the existing infrastructure tracing.

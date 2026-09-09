@@ -10,7 +10,7 @@ import (
 )
 
 func TestContextTransportSingleJSONCopy(t *testing.T) {
-	for _, schema := range []string{ai.ContextSchema, "battlefield.decision-context.v2"} {
+	for _, schema := range []string{ai.ContextSchema, "battlefield.decision-context.v3", "battlefield.decision-context.v2"} {
 		t.Run(schema, func(t *testing.T) {
 			record := compactRecord()
 			record.Observation.SchemaVersion = schema

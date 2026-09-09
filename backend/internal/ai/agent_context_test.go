@@ -73,17 +73,8 @@ func TestUnitDetailsMissingKnowledgeAndInvalidBatches(t *testing.T) {
 }
 func TestLegacyContextAndLookup(t *testing.T) {
 	_, c := compactFixture()
-	c.SchemaVersion = LegacyContextSchema
+	c.SchemaVersion = "battlefield.decision-context.v2"
 	c.UnitReference = nil
-	got := AgentObservation(c)
-	if _, ok := got.(DecisionContext); !ok {
-		t.Fatal("legacy response changed")
-	}
-	payload, _ := json.Marshal(got)
-	original, _ := json.Marshal(c)
-	if string(payload) != string(original) {
-		t.Fatal("legacy wire differs")
-	}
 	details, err := LookupUnitDetails(c, []string{"unit-00", "unit-20", "unit-23"})
 	if err != nil || !details.Units[0].Available || !details.Units[1].Available || details.Units[2].Available {
 		t.Fatal(details, err)
@@ -121,7 +112,7 @@ func TestCompactContextSizeByBattleStage(t *testing.T) {
 			compact := CompactContext(c)
 			full := c
 			full.UnitReference = nil
-			full.SchemaVersion = LegacyContextSchema
+			full.SchemaVersion = "battlefield.decision-context.v2"
 			fullJSON, _ := json.Marshal(full)
 			compactJSON, _ := json.Marshal(compact)
 			catalogBefore, _ := json.Marshal(struct {

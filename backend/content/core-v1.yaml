@@ -16,24 +16,22 @@ buildings:
   - {id: economy, kind: economy, health: 60, defense: 2, vision: 2, income: 10, cost: 50}
 knowledge:
   mechanics: >-
-    Recruitment and construction follow the submitted spend order and reserve gold.
     Range limits attack distance; movement limits travel per movement action.
     Defense reduces damage subject to the minimum damage rule. Unit actions and targeting
     are executed by the engine; a plan sets faction priorities, not individual commands.
-    Knowledge guidance is advisory. Current observed stats include active modifications.
   cards:
     - unitId: vanguard
       role: Durable melee unit
-      strengths: High base health and defense relative to the other starter units.
-      weaknesses: Lower movement and attack than the starter Striker; costs more gold.
+      strengths: Higher base health and defense than other starters.
+      weaknesses: Less movement and attack than Striker; higher cost.
       guidance: Consider when durability matters, while accounting for travel time and budget.
     - unitId: striker
       role: Mobile melee attacker
-      strengths: Higher base attack and movement than the other starter units.
-      weaknesses: Less health and defense than the starter Vanguard; melee attack range.
+      strengths: Higher base attack and movement than other starters.
+      weaknesses: Less health and defense than Vanguard; melee range.
       guidance: Consider for mobile pressure, but assess exposure using visible enemy positions.
     - unitId: ranger
       role: Ranged attacker and observer
-      strengths: Greater base attack range and vision than the other starter units.
-      weaknesses: Lower health and defense than the other starter units.
+      strengths: Longer range and vision than other starters.
+      weaknesses: Lower health and defense than other starters.
       guidance: Consider reach and visibility; do not assume a guaranteed counter or manual positioning.

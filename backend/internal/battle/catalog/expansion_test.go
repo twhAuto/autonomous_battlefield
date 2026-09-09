@@ -14,12 +14,13 @@ import (
 )
 
 func TestLegacyBattleTraceUnchanged(t *testing.T) {
-	// These digests were captured from the pre-expansion HEAD in an isolated checkout.
+	// Content/snapshot digests include the shortened authored guidance. The
+	// simulation transition digest below remains the pre-expansion baseline.
 	c, err := LoadCatalog("../../../scenarios", "../../../rulesets")
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	s, digest, err := c.Resolve("castle-siege-v1", [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
-	testutil.Require(t, !(digest != "d757206a477a8ce8870cf4b732a0e684c464643f4c23fef5cf10837d61628170" || s.Ruleset.ContentSource.Digest != "49b6d45f8a78b78b61af307f758ea68919ecfd1111fadf99a64956bc7b464121"), func() { t.Fatal("legacy content/snapshot hash changed") })
+	testutil.Require(t, !(digest != "356a05c48256e0840499b2969648215e58726e7bbd48966605288ea90aa8fd24" || s.Ruleset.ContentSource.Digest != "2f1d5db379cb23dc35af710547520401c03fa5a36242237146df58b40948f6ad"), func() { t.Fatal("content/snapshot hash changed") })
 	m, err := game.NewMatch("compat", s, 200)
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	h := sha256.New()

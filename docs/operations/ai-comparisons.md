@@ -170,7 +170,7 @@ priority order and stops before a whole card would exceed either budget.
 
 Selection uses visible enemy types, own deployed types, explicit recruitment
 order types, legacy recruitment priorities, then other legal units by increasing cost, with unit ID breaking
-ties. It never uses hidden enemy state. With the default legacy response, all legal unit statistics remain present.
+ties. It never uses hidden enemy state. Legal unit base statistics are available through optional lookup from saved reference data.
 Selection is performed once before decision hashing; persisted contexts include
 source IDs, a ruleset-content digest, effective limits, serialized size, and
 truncation. MCP and inline CLI delivery use the same versioned projection of the stored context. Engine
@@ -238,18 +238,37 @@ from `legal.buildings` at `legal.economySites`. See
 
 ## Compact unit context
 
-The rollout gate `engine.compactUnitContext` defaults to `false` in
-`backend/config.yaml`. It controls newly prepared decisions; saved decisions and
-retries keep their recorded schema. No database migration is needed.
+The current agent format uses `view.state.factions[].units` and `.buildings`
+instead of flat state entity arrays. Ownership comes from the containing
+`factionId`; faction counters are under `stats`. Building profiles are optional
+and resolve through `view.buildingProfiles`; inline building stats remain valid.
+Consumers should not expect per-entity faction IDs in this agent projection.
+Full IDs still work for recruitment and combat references. Stored observations
+and spectator APIs keep their original structure. Deploy backend changes and
+restart host CLI agents for updated embedded instructions.
 
-1. Deploy the updated API/MCP server and frontend inspector with the gate off.
-2. Update every agent runner, including host CLI agents, to support tools v6.
-3. Run the checks below, then set `engine.compactUnitContext: true` in the engine's
-   YAML configuration (or its deployment ConfigMap) and restart the engine.
-4. Compare initial bytes, total input tokens across all turns, lookup frequency,
-   latency, accepted decisions, and fallback frequency. To stop creating compact
-   contexts, set the gate back to false; retain compatible readers/runners for
-   existing v3 decisions.
+Identical memory plans reference `#/activePlan`. Omitted state battle ID/tick and
+own-faction gold/upgrades inherit the matching root values described in the
+prompt. API/Gemini delivery removes identity text already supplied verbatim in
+the system prompt; direct MCP/Codex and inspector JSON retain it. The reviewed
+11,883-byte sample becomes 11,235 bytes, with another 704 bytes removed during
+API/Gemini delivery. These measure context bytes only, excluding the prompt's
+reference instructions and provider/CLI scaffolding; use reported total input
+tokens to measure net savings. Shortened authored guidance affects newly frozen
+snapshots; existing references never consult edited content.
+
+All decisions use one current compact format, identified as
+`battlefield.decision-context.v4` for diagnostics. There are no legacy response
+branches or format rollout flags. Deploy the backend and frontend normally and
+restart host CLI agents to pick up embedded prompt changes. Stored observations
+and validation hashes are never rewritten. The inspector reconstructs the current
+format from saved data under “Reconstructed agent context”; it is not a recording
+of original input. The inspector uses section labels without explanatory notices.
+
+The reviewed tick-200 sample measured 36,166 bytes before and 26,187 after these
+two encodings (9,979 bytes / 27.6% saved), excluding formatting whitespace. This
+does not establish token or decision-quality savings: compare complete reported
+input usage, latency, lookups, acceptance, fallback and existing quality metrics.
 
 Compact responses contain all recruitable unit overviews and a separate list for
 visible non-recruitable types. They retain mechanics and current battlefield
@@ -268,9 +287,8 @@ knowledge card count/byte limits. Those existing limits still govern stored
 legacy knowledge and mechanics selection. No vector database or external search
 service is involved.
 
-Comparison variants accept `compactUnitContext: true`; pair a variant with an
-otherwise identical legacy variant and use cases with `knowledgeRuleset` (or a
-saved unit reference). `withoutKnowledge` also strips optional card guidance from
+All comparison variants use the current projection. Use cases with
+`knowledgeRuleset` or a saved unit reference. `withoutKnowledge` also strips optional card guidance from
 the reference copy without mutating the baseline. Reports add `contextBytes` and
 `unitDetailCalls` per case; aggregates include `totalInputTokens`,
 `unitDetailCalls`, and `lookupRate` (fraction of cases that fetched details).

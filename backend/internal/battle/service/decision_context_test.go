@@ -42,7 +42,8 @@ func TestSavedDecisionContextProjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range []string{"private-marker", "providerMetadata", "capability", "traceparent", "idempotencyKey", "expectedVersion"} {
+	// Reconstructed context includes public submission metadata, never capabilities.
+	for _, field := range []string{"private-marker", "providerMetadata", "capability", "traceparent", "idempotencyKey"} {
 		if strings.Contains(string(data), field) {
 			t.Fatalf("private field %s exposed: %s", field, data)
 		}

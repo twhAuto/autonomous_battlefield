@@ -26,14 +26,13 @@ import (
 // ComparisonVariant creates a fresh runner per sample; conversation state cannot
 // leak between repetitions or variants. Disabling memory is an explicit ablation.
 type ComparisonVariant struct {
-	CompactUnitContext bool
-	ID                 string
-	Provider           string
-	Model              string
-	Runtime            string
-	WithoutMemory      bool
-	WithoutKnowledge   bool
-	NewRunner          func() ai.DecisionRunner
+	ID               string
+	Provider         string
+	Model            string
+	Runtime          string
+	WithoutMemory    bool
+	WithoutKnowledge bool
+	NewRunner        func() ai.DecisionRunner
 }
 
 type ComparisonOptions struct {
@@ -54,16 +53,15 @@ type ComparisonReport struct {
 }
 
 type VariantReport struct {
-	CompactUnitContext bool               `json:"compactUnitContext"`
-	WithoutKnowledge   bool               `json:"withoutKnowledge"`
-	ID                 string             `json:"id"`
-	Provider           string             `json:"provider"`
-	Model              string             `json:"model"`
-	Runtime            string             `json:"runtime"`
-	WithoutMemory      bool               `json:"withoutMemory"`
-	BudgetEnforcement  string             `json:"budgetEnforcement"`
-	Samples            []ComparisonSample `json:"samples"`
-	Metrics            ReportMetrics      `json:"metrics"`
+	WithoutKnowledge  bool               `json:"withoutKnowledge"`
+	ID                string             `json:"id"`
+	Provider          string             `json:"provider"`
+	Model             string             `json:"model"`
+	Runtime           string             `json:"runtime"`
+	WithoutMemory     bool               `json:"withoutMemory"`
+	BudgetEnforcement string             `json:"budgetEnforcement"`
+	Samples           []ComparisonSample `json:"samples"`
+	Metrics           ReportMetrics      `json:"metrics"`
 }
 
 type ComparisonSample struct {
@@ -120,7 +118,7 @@ func comparisonVariantReports(variants []ComparisonVariant) ([]VariantReport, er
 		if v.Runtime == "cli" {
 			enforcement = "per-sample deadline and three submission rejections; CLI internal turns/tokens are not host-enforced"
 		}
-		reports = append(reports, VariantReport{CompactUnitContext: v.CompactUnitContext, ID: v.ID, Provider: v.Provider, Model: v.Model, Runtime: v.Runtime, WithoutMemory: v.WithoutMemory, WithoutKnowledge: v.WithoutKnowledge, BudgetEnforcement: enforcement})
+		reports = append(reports, VariantReport{ID: v.ID, Provider: v.Provider, Model: v.Model, Runtime: v.Runtime, WithoutMemory: v.WithoutMemory, WithoutKnowledge: v.WithoutKnowledge, BudgetEnforcement: enforcement})
 	}
 	return reports, nil
 }
@@ -163,9 +161,6 @@ func (r Runner) compareRepetition(ctx context.Context, cases []Case, observation
 				return err
 			}
 			observation := comparisonObservation(observations[ci], variants[vi])
-			if variants[vi].CompactUnitContext && observation.UnitReference == nil {
-				return fmt.Errorf("compact variant %s requires a frozen unit reference or knowledgeRuleset in case %s", variants[vi].ID, c.ID)
-			}
 			sample, err := r.compareSample(ctx, c, observation, variants[vi], report.Options, repetition+1)
 			if err != nil {
 				return err
@@ -284,11 +279,7 @@ func (r *comparisonRepository) FinishDecisionFailure(_ context.Context, _ string
 }
 
 func comparisonObservation(observation ai.DecisionContext, variant ComparisonVariant) ai.DecisionContext {
-	if variant.CompactUnitContext {
-		observation.SchemaVersion = ai.ContextSchema
-	} else if observation.SchemaVersion == ai.ContextSchema {
-		observation.SchemaVersion = ai.LegacyContextSchema
-	}
+	observation.SchemaVersion = ai.ContextSchema
 	if variant.WithoutKnowledge {
 		observation.Knowledge = nil
 		if observation.UnitReference != nil {

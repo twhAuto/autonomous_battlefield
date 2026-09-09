@@ -28,7 +28,6 @@ auth:
   sessionTTL: 12h
 engine:
   # Enable only after the API and all agent runners support MCP tools v6.
-  compactUnitContext: false
   healthAddress: ":8081"
   pollInterval: 1s
   leaseDuration: 30s

@@ -71,7 +71,6 @@ describe('saved context loading', () => {
   vi.mocked(fetch).mockResolvedValueOnce(response(compact))
   render(<DecisionContextPanel battleId="battle" requestId="request" attempt={2} active cache={new Map()} />)
   await userEvent.click(screen.getByText('Saved decision context'))
-  expect(await screen.findByText('Initial agent context')).toBeInTheDocument()
+  expect(await screen.findByText('Reconstructed agent context')).toBeInTheDocument()
   expect(screen.getByText('Unit details available on demand')).toBeInTheDocument()
-  expect(screen.getByText(/does not mean the agent fetched them/)).toBeInTheDocument()
  })

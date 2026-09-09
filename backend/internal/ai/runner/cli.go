@@ -193,5 +193,5 @@ func (r CLIRunner) prefetchContext(ctx context.Context, session ai.DecisionSessi
 	if json.Unmarshal(payload, &result) != nil || result.Context.RequestID != session.RequestID || (session.JobType != "faction_background" && ((result.Context.TargetTick == 0 && !result.Context.Opening) || result.Context.ExpectedVersion < 1)) {
 		return nil, fmt.Errorf("invalid decision context metadata")
 	}
-	return payload, nil
+	return ai.SessionContextPayload(session, payload), nil
 }

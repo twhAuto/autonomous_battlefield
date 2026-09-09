@@ -257,8 +257,7 @@ migrations and exit. Normal startup does not run migrations.
 ## AI evaluation and authored content
 
 Agents support compact unit overviews with optional `get_unit_details` lookups.
-The `engine.compactUnitContext` rollout gate defaults to false until all runners
-are updated. See [compact context rollout](docs/operations/ai-comparisons.md#compact-unit-context).
+All decisions use the current compact format. See [compact context operations](docs/operations/ai-comparisons.md#compact-unit-context).
 
 
 See [AI comparisons](docs/operations/ai-comparisons.md) for the free scripted
@@ -287,3 +286,17 @@ amd64 when it is missing; no system installation is required.
 Once installed, open http://langfuse.localhost:8888 through the same gateway as
 Grafana and Kibana. Tracing is detected automatically by deployment and host CLI
 scripts, with no UI port-forward or per-shell enable flag required.
+## Compact battlefield observations
+
+Agent observations group units, buildings and statistics by faction, with shared
+building profiles when smaller. Full entity IDs and individual observations stay
+available; saved and spectator state retain their original structure.
+
+The current format also shares repeated plans and metadata. API/Gemini sessions
+send faction identity once when the system prompt already contains identical text.
+
+New compact AI contexts (v4) share identical current unit-stat profiles and encode
+visible cells as inclusive row ranges when smaller. Individual health, position,
+readiness and combat observations remain available upfront. See
+[context rollout and measurement](docs/operations/ai-comparisons.md#compact-unit-context)
+for compatibility and deployment order.

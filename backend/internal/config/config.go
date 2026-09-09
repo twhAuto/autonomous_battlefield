@@ -41,7 +41,6 @@ type API struct {
 }
 
 type Engine struct {
-	CompactUnitContext          bool
 	KnowledgeRetrieval          ai.KnowledgeLimits
 	HealthAddress               string
 	PollInterval                time.Duration
@@ -117,7 +116,6 @@ type fileConfig struct {
 		SessionTTL                       string `yaml:"sessionTTL"`
 	} `yaml:"auth"`
 	Engine struct {
-		CompactUnitContext bool `yaml:"compactUnitContext"`
 		KnowledgeRetrieval struct {
 			MaxUnitCards *int `yaml:"maxUnitCards"`
 			MaxBytes     *int `yaml:"maxBytes"`
@@ -477,7 +475,7 @@ func parseEngineConfig(raw fileConfig) (Engine, error) {
 	if err := limits.Validate(); err != nil {
 		return Engine{}, err
 	}
-	return Engine{CompactUnitContext: raw.Engine.CompactUnitContext, KnowledgeRetrieval: limits,
+	return Engine{KnowledgeRetrieval: limits,
 		HealthAddress: healthAddress, PollInterval: pollInterval, LeaseDuration: leaseDuration,
 		HeartbeatInterval: heartbeatInterval, ShutdownTimeout: shutdownTimeout,
 		MaxAttempts: maxAttempts, WorkerIDEnvironmentVariable: workerEnv,

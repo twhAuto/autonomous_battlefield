@@ -351,15 +351,8 @@ func (s *scriptedSession) Call(_ context.Context, call ai.ToolCall) (json.RawMes
 		return payload, false, err
 	}
 	if call.Name == "get_decision_context" {
-		if observation := evaluationObservation(s.value); observation.SchemaVersion == ai.ContextSchema {
-			payload, err := json.Marshal(map[string]any{"context": ai.AgentObservation(observation)})
-			return payload, false, err
-		}
-		contextJSON := s.value.ContextJSON
-		if contextJSON == "" {
-			contextJSON = `{}`
-		}
-		return json.RawMessage(contextJSON), false, nil
+		payload, err := json.Marshal(map[string]any{"context": ai.AgentObservation(evaluationObservation(s.value))})
+		return payload, false, err
 	}
 	fingerprint := sha256.Sum256(call.Arguments)
 	s.strategyFingerprint = fmt.Sprintf("%x", fingerprint[:])
@@ -384,7 +377,7 @@ func (p PriceBook) Estimate(model string, usage ai.Usage) (float64, bool) {
 
 func evaluationObservation(value Case) ai.DecisionContext {
 	c := caseIdentity(value)
-	if c.SchemaVersion == ai.ContextSchema && value.KnowledgeRuleset != nil {
+	if value.KnowledgeRuleset != nil {
 		c.UnitReference = ai.FreezeUnitReference(*value.KnowledgeRuleset, c)
 		c.Knowledge, _ = ai.RetrieveKnowledge(*value.KnowledgeRuleset, c, ai.DefaultKnowledgeLimits())
 	}
