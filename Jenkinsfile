@@ -395,7 +395,18 @@ pipeline {
 
                         stage('Verify deployment') {
                             steps {
-                                sh './scripts/cd/smoke-test-kind.sh'
+                                withCredentials([
+                                    file(
+                                        credentialsId: 'battlefield-production-access-token',
+                                        variable: 'BATTLEFIELD_ACCESS_TOKEN_FILE'
+                                    )
+                                ]) {
+                                    sh '''
+                                        set +x
+                                        chmod 600 "$BATTLEFIELD_ACCESS_TOKEN_FILE"
+                                        ./scripts/cd/smoke-test-kind.sh
+                                    '''
+                                }
                             }
                             post {
                                 failure {

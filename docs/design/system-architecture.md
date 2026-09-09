@@ -1089,3 +1089,8 @@ use that public address. Deployment and host-agent scripts detect the installed
 project ConfigMap to enable export automatically, with explicit 0/1 overrides.
 
 Production launch preparation validates the registered cluster identity and rendered Access/tunnel settings, preserves existing secrets, and optionally creates a database backup. It is separate from image delivery and public tunnel activation; the helper does not change live workloads or establish proof of network/MFA enforcement.
+
+Production Jenkins verification receives a short-lived invited-user Access JWT
+through the `battlefield-production-access-token` Secret file credential, scoped
+to the verification stage as `BATTLEFIELD_ACCESS_TOKEN_FILE`. Operators refresh
+this credential before delivery; missing or expired credentials fail verification.
