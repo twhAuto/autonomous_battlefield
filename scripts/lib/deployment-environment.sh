@@ -76,6 +76,21 @@ battlefield_env_preflight() {
   battlefield_env_verify || return
 }
 
+# An installed Langfuse project enables tracing without a per-shell export.
+# Explicit 0/1 overrides are supported; connection errors must not disable it silently.
+battlefield_env_langfuse_enabled() {
+  if [[ -n "${LANGFUSE_ENABLED:-}" ]]; then
+    case "${LANGFUSE_ENABLED}" in
+      0|1) printf '%s\n' "${LANGFUSE_ENABLED}"; return ;;
+      *) battlefield_env_error 'LANGFUSE_ENABLED must be 0 or 1.'; return 1 ;;
+    esac
+  fi
+  local installed
+  installed="$(kubectl --context "${KUBERNETES_CONTEXT}" --namespace "${KUBERNETES_NAMESPACE}" \
+    --request-timeout=10s get configmap battlefield-langfuse-links --ignore-not-found -o name)" || return
+  if [[ -n "${installed}" ]]; then printf '1\n'; else printf '0\n'; fi
+}
+
 battlefield_env_verify_docker() {
   docker info >/dev/null 2>&1 || { battlefield_env_error 'Docker is unavailable. Start the local Docker engine/WSL integration, then retry.'; return 1; }
   local config uid

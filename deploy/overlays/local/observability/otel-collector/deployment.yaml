@@ -33,9 +33,17 @@ spec:
         - name: collector
           image: otel/opentelemetry-collector-contrib:0.135.0
           args: [--config=/etc/otel/config.yaml]
+          env:
+            - name: LANGFUSE_AUTHORIZATION
+              valueFrom:
+                secretKeyRef:
+                  name: battlefield-langfuse-export
+                  key: authorization
+                  optional: true
           ports:
             - {name: otlp-grpc, containerPort: 4317}
             - {name: otlp-http, containerPort: 4318}
+            - {name: health, containerPort: 13133}
             - {name: health, containerPort: 13133}
           readinessProbe:
             httpGet: {path: /, port: health}

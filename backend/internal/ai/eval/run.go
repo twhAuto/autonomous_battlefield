@@ -59,7 +59,7 @@ func (r Runner) runCase(ctx context.Context, value Case, now func() time.Time) C
 		FactionName: caseIdentity(value).FactionName, Background: caseIdentity(value).Background, Doctrine: caseIdentity(value).Doctrine, RequestID: value.RequestID, CapabilityToken: token, MCPURL: "memory://evaluation",
 		Profile: ai.ModelProfile{ID: value.Profile, ModelLabel: value.Model, MaxSteps: value.MaxSteps, MaxOutputTokens: value.MaxTokens},
 	})
-	entry := CaseReport{
+	entry := CaseReport{Usage: &result.Usage,
 		ID: value.ID, Category: value.Category, Profile: value.Profile, Model: value.Model,
 		PromptVersion: ai.PromptVersion, ToolSchemaVersion: ai.ToolSchema, RulesVersion: value.RulesVersion,
 		Accepted: result.Accepted, ErrorCategory: result.ErrorCategory, DurationMS: max(0, now().Sub(started).Milliseconds()),
@@ -158,7 +158,7 @@ func (r Runner) runProviderCase(ctx context.Context, value Case, options provide
 		FactionName: caseIdentity(value).FactionName, Background: caseIdentity(value).Background, Doctrine: caseIdentity(value).Doctrine, RequestID: value.RequestID, CapabilityToken: token, MCPURL: "memory://evaluation",
 		Profile: ai.ModelProfile{ID: options.profile, ModelLabel: options.model, MaxSteps: options.maxSteps, MaxOutputTokens: options.maxTokens},
 	})
-	entry := CaseReport{ID: value.ID, Category: value.Category, Profile: options.profile, Model: options.model,
+	entry := CaseReport{Usage: &result.Usage, ID: value.ID, Category: value.Category, Profile: options.profile, Model: options.model,
 		PromptVersion: ai.PromptVersion, ToolSchemaVersion: ai.ToolSchema, RulesVersion: value.RulesVersion,
 		Accepted: result.Accepted, ErrorCategory: result.ErrorCategory, DurationMS: max(0, options.now().Sub(caseStarted).Milliseconds()),
 		InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests,

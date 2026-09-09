@@ -473,7 +473,12 @@ and weaknesses in `legal.units`, plus `referenceUnits` for visible types that ar
 not recruitable. It keeps knowledge mechanics and source identity but omits cards,
 base statistics, and the stored reference snapshot. Battlefield observations,
 including effective unit stats, remain intact. API delivery and CLI prefetch use
-the same projection. Older decision versions retain their original MCP response.
+the same projection. Older decision versions retain their original context fields.
+MCP tools v7 delivers `get_decision_context` as one JSON text block with the
+existing `context` envelope, without a duplicate structured-content copy. API
+runners parse the same text. Agents are instructed to reuse a successful frozen
+snapshot; retries remain available after failed or unreadable responses and
+existing step, timeout, and submission limits are unchanged.
 
 MCP tools v6 adds `get_unit_details(requestId, unitIds)`. The request capability
 and frozen legal/visible set scope every lookup. A batch contains 1–4 distinct
@@ -984,3 +989,36 @@ on the agent. Credentials are passed to Docker by environment-variable name,
 with shell tracing disabled. Explicit `ADMIN_USERNAME`/`ADMIN_PASSWORD` values
 remain supported. Failed login or missing session cookies stops setup; successful
 login cookies are converted to request-cookie string values for each virtual user.
+
+## Optional Langfuse AI observability
+
+The agent worker starts a separate, fully sampled trace for each decision request.
+Stable request-derived trace/root IDs let the capability-scoped MCP server attach
+server-side tool observations even when a CLI does not propagate trace headers.
+API runners emit one generation per model attempt; CLI runners emit one aggregate
+session generation. Decision roots carry no duplicate billable token usage.
+The worker stores a trace marker with existing provider metadata, and additive
+usage fields remain in the existing JSON usage payload. No database migration is
+required. Legacy history retains its original interpretation and no invented link.
+
+The collector keeps Tempo for infrastructure and optionally forwards only AI
+observations to a self-hosted Langfuse Helm release. Langfuse owns dedicated
+PostgreSQL, Valkey, ClickHouse/Keeper and SeaweedFS storage. Only the collector
+receives its ingestion credentials. The API reads an optional public URL/project
+ConfigMap for inspector links. Export is asynchronous and does not participate in
+decision acceptance or timeout enforcement. See [Langfuse operations](../operations/langfuse.md)
+for deployment order, sampling, privacy, persistence and token-accounting limits.
+
+The Langfuse deployment entry point bootstraps missing Helm in its private
+temporary workspace on Linux amd64, verifies a pinned release checksum before
+execution, and cleans it up on exit without changing system tools.
+
+Langfuse and SeaweedFS explicitly run with restricted Pod Security settings and
+non-root volume groups; PostgreSQL adds RuntimeDefault seccomp to its existing
+restricted container configuration. These settings are supplied through chart
+values rather than namespace-policy exceptions.
+
+Langfuse shares the Envoy gateway with Grafana and Kibana at
+`http://langfuse.localhost:8888`. The Helm login URL and API trace-link ConfigMap
+use that public address. Deployment and host-agent scripts detect the installed
+project ConfigMap to enable export automatically, with explicit 0/1 overrides.

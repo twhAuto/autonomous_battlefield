@@ -50,7 +50,8 @@ func ConfigureTracing(ctx context.Context, service string) (func(context.Context
 	}
 	provider := tracesdk.NewTracerProvider(
 		tracesdk.WithBatcher(exporter, tracesdk.WithBatchTimeout(time.Second)),
-		tracesdk.WithSampler(tracesdk.ParentBased(tracesdk.TraceIDRatioBased(ratio))),
+		tracesdk.WithSampler(decisionSampler{fallback: tracesdk.ParentBased(tracesdk.TraceIDRatioBased(ratio))}),
+		tracesdk.WithIDGenerator(decisionIDGenerator{}),
 		tracesdk.WithResource(serviceResource),
 	)
 	otel.SetTracerProvider(provider)

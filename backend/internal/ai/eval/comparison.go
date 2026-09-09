@@ -210,7 +210,7 @@ func (r Runner) compareSample(ctx context.Context, c Case, observation ai.Decisi
 		category = "missing_submission"
 	}
 	hash, _ := ai.ObservationHash(observation)
-	entry := CaseReport{ID: c.ID, Category: c.Category, Profile: variant.ID, Model: variant.Model, PromptVersion: ai.PromptVersion, ToolSchemaVersion: ai.ToolSchema, RulesVersion: c.RulesVersion, Passed: accepted && runErr == nil, Accepted: accepted, ErrorCategory: category, DurationMS: time.Since(started).Milliseconds(), InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests, ToolCalls: append([]string(nil), repository.calls...)}
+	entry := CaseReport{Usage: &result.Usage, ID: c.ID, Category: c.Category, Profile: variant.ID, Model: variant.Model, PromptVersion: ai.PromptVersion, ToolSchemaVersion: ai.ToolSchema, RulesVersion: c.RulesVersion, Passed: accepted && runErr == nil, Accepted: accepted, ErrorCategory: category, DurationMS: time.Since(started).Milliseconds(), InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests, ToolCalls: append([]string(nil), repository.calls...)}
 	entry.UnitDetailCalls = int(reads.calls.Load())
 	payload, _ := json.Marshal(map[string]any{"context": ai.AgentObservation(observation)})
 	entry.ContextBytes = len(payload)

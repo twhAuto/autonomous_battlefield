@@ -37,6 +37,7 @@ type backgroundOutput struct {
 
 func (s *Server) backgroundServer() *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "faction-background", Version: ai.GenerationPromptVersion}, nil)
+	server.AddReceivingMiddleware(s.logToolInputFailures)
 	mcp.AddTool(server, &mcp.Tool{Name: "get_background_context", Description: "Read the draft faction profile for this generation request."}, func(ctx context.Context, _ *mcp.CallToolRequest, input getContextInput) (*mcp.CallToolResult, backgroundOutput, error) {
 		if err := authorizedRequestID(ctx, input.RequestID); err != nil {
 			return nil, backgroundOutput{}, err

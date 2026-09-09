@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"go.opentelemetry.io/otel"
+	sdk "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -79,7 +83,7 @@ func (e compactCLI) Run(ctx context.Context, _ string, args, env []string, _ str
 		}
 		request.Messages = append(request.Messages, ai.Message{Role: "tool", Content: string(payload)})
 		if accepted {
-			return []byte(`{}`), nil
+			return []byte(`{"type":"turn.completed","usage":{"input_tokens":12,"output_tokens":4}}`), nil
 		}
 	}
 	return nil, errors.New("not submitted")
@@ -89,6 +93,11 @@ func TestCompactDecisionThroughAPIAndCLI(t *testing.T) {
 	for _, runtime := range []string{"api", "cli"} {
 		for _, lookup := range []bool{false, true} {
 			t.Run(runtime+map[bool]string{true: "-lookup", false: "-direct"}[lookup], func(t *testing.T) {
+				recorder := tracetest.NewSpanRecorder()
+				provider := sdk.NewTracerProvider(sdk.WithSpanProcessor(recorder))
+				previous := otel.GetTracerProvider()
+				otel.SetTracerProvider(provider)
+				t.Cleanup(func() { otel.SetTracerProvider(previous); _ = provider.Shutdown(context.Background()) })
 				repo := &fakeRepository{record: compactRecord()}
 				server := httptest.NewServer(New(repo, "secret", nil).Handler())
 				defer server.Close()
@@ -102,6 +111,47 @@ func TestCompactDecisionThroughAPIAndCLI(t *testing.T) {
 				if err != nil || !result.Accepted || repo.submitted.RequestID != "sample" {
 					t.Fatal(result, err)
 				}
+				count := 0
+				for _, span := range recorder.Ended() {
+					isTool := false
+					for _, a := range span.Attributes() {
+						if a.Key == "langfuse.observation.type" && a.Value.AsString() == "tool" {
+							isTool = true
+						}
+					}
+					if !isTool {
+						continue
+					}
+					if span.Name() == "get_decision_context" || span.Name() == "get_unit_details" {
+						sizes := map[string]int64{}
+						for _, a := range span.Attributes() {
+							sizes[string(a.Key)] = a.Value.AsInt64()
+						}
+						structured, present := sizes["battlefield.tool.structured_bytes"]
+						if !present || structured != 0 || sizes["battlefield.tool.text_bytes"] <= 0 || sizes["battlefield.tool.response_bytes"] <= sizes["battlefield.tool.text_bytes"] {
+							t.Fatal("single-copy byte measurements missing or inconsistent", sizes)
+						}
+					}
+					count++
+					if span.SpanContext().TraceID().String() != telemetry.DecisionTraceID("sample") {
+						t.Fatal("tool trace correlation lost")
+					}
+					encoded, _ := json.Marshal(span.Attributes())
+					if strings.Contains(string(encoded), token) || strings.Contains(string(encoded), "keep-distance-marker") {
+						t.Fatal("private payload exported")
+					}
+					if span.EndTime().Before(span.StartTime()) {
+						t.Fatal("invalid tool latency")
+					}
+				}
+				want := 2
+				if lookup {
+					want = 3
+				}
+				if count != want {
+					t.Fatalf("tool spans %d want %d", count, want)
+				}
+
 			})
 		}
 	}

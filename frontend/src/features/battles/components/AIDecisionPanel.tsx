@@ -93,8 +93,14 @@ function DecisionCard({ decision, participantNames, initiallyOpen, battleId, att
           <DecisionDetail label="Resolved" value={decision.resolvedAt || 'Not resolved'} />
           <DecisionDetail label="Fallback" value={decision.fallbackSource || 'None'} />
           <DecisionDetail label="Error" value={decision.errorCategory || 'None'} />
-          <DecisionDetail label="Tokens in / out" value={`${decision.usage.inputTokens ?? '—'} / ${decision.usage.outputTokens ?? '—'}`} />
-          <DecisionDetail label="Requests" value={String(decision.usage.requests ?? '—')} />
+          <DecisionDetail label="Tokens in / out" value={`${decision.usage.inputTokens ?? (decision.usage.tokensReported ? 0 : '—')} / ${decision.usage.outputTokens ?? (decision.usage.tokensReported ? 0 : '—')}`} />
+          <DecisionDetail label="Usage scope" value={decision.usage.scope === 'cli_session' ? 'CLI session total' : decision.usage.scope === 'api_calls' ? 'Sum of API calls' : 'Legacy / unspecified'} />
+          <DecisionDetail label="Cached input tokens" value={String(decision.usage.cachedInputTokens ?? '—')} />
+          <DecisionDetail label="Reasoning output tokens" value={String(decision.usage.reasoningOutputTokens ?? '—')} />
+          <DecisionDetail label="Model calls" value={String(decision.usage.modelCalls ?? '—')} />
+          <DecisionDetail label="CLI invocations" value={String(decision.usage.cliInvocations ?? '—')} />
+          {!decision.usage.scope && <DecisionDetail label="Requests (legacy)" value={String(decision.usage.requests ?? '—')} />}
+          {decision.traceUrl && <DecisionDetail label="Trace" value={<a href={decision.traceUrl} target="_blank" rel="noopener noreferrer">View in Langfuse</a>} />}
         </dl>
         {battleId && attempt !== undefined && attempt > 0 && <DecisionContextPanel battleId={battleId} requestId={decision.requestId} attempt={attempt} active={active && open} cache={cache} />}
       </details>

@@ -220,7 +220,7 @@ from a nonempty spend order also skips buying. Construction and income timing ar
 unchanged; recruits can act on the following tick. The decision panel displays
 requested quantities, while `unit_recruited` events record actual purchases.
 
-MCP tool schema is now `battlefield.mcp-tools.v6`; existing clients may omit the
+MCP tool schema is now `battlefield.mcp-tools.v7`; existing clients may omit the
 optional orders field. Both model providers share the updated purchasing prompt.
 Deploy API, MCP, engine, and agent together and restart the host CLI agent so tool
 schemas and prompts agree. Existing battle JSON requires no database migration.
@@ -304,3 +304,11 @@ verification word present only at the end of fetched guidance:
 The inspector's **Initial agent context** is the initial projection. **Unit details
 available on demand** shows stored reference data, not a history of actual tool
 reads. Legacy decisions retain their historical inspector presentation.
+
+New per-case reports also retain the runner's `usage` object: its scope, reported
+input/output, optional cached/reasoning subsets, model-call count and CLI-invocation
+count. Existing top-level totals remain compatible. A missing optional counter
+means unavailable, not zero. CLI totals aggregate the CLI session, while API
+counts sum reported model attempts; neither is an initial-context token count.
+Use [Langfuse](langfuse.md) for production model/tool timing and context section
+bytes alongside these isolated decision-quality comparisons.

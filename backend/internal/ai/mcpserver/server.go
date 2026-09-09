@@ -8,7 +8,9 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -128,6 +130,7 @@ func (s *Server) handleAgentClaim(repository ai.DecisionRepository) http.Handler
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"requestId": record.ID, "profileId": record.ProfileID, "doctrine": record.Observation.Doctrine, "factionName": record.Observation.FactionName, "background": record.Observation.Background,
 			"traceparent": record.Traceparent, "tracestate": record.Tracestate,
+			"battleId": record.BattleID, "factionId": record.FactionID, "attempt": record.Attempt, "targetTick": record.TargetTick,
 		})
 	}
 }
@@ -352,7 +355,7 @@ func authorizedRequestID(ctx context.Context, supplied string) error {
 	return nil
 }
 
-func (s *Server) getDecisionContext(ctx context.Context, _ *mcp.CallToolRequest, input getContextInput) (*mcp.CallToolResult, getContextOutput, error) {
+func (s *Server) getDecisionContext(ctx context.Context, _ *mcp.CallToolRequest, input getContextInput) (*mcp.CallToolResult, any, error) {
 	if err := authorizedRequestID(ctx, input.RequestID); err != nil {
 		s.logger.WarnContext(ctx, "decision_context_denied", "request_id", input.RequestID)
 		return nil, getContextOutput{}, err
@@ -366,14 +369,16 @@ func (s *Server) getDecisionContext(ctx context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		return nil, getContextOutput{}, err
 	}
+	recordContextSize(ctx, value)
 	payload, err := json.Marshal(getContextOutput{Context: ai.AgentObservation(value)})
 	if err != nil {
 		return nil, getContextOutput{}, err
 	}
 	s.logger.InfoContext(ctx, "decision_context_response", "request_id", input.RequestID, "target_tick", value.TargetTick, "expected_version", value.ExpectedVersion, "response_bytes", len(payload))
-	// Explicit text supports clients that do not expose structuredContent reliably.
-	text := fmt.Sprintf("Decision metadata: requestId=%s targetTick=%d expectedVersion=%d. Copy these values exactly; do not guess. Full faction-visible context JSON follows:\n%s", value.RequestID, value.TargetTick, value.ExpectedVersion, payload)
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, getContextOutput{Context: ai.AgentObservation(value)}, nil
+	// A single JSON text block is readable by both CLI clients and the API
+	// runner. Returning nil output prevents the SDK from duplicating this
+	// snapshot in structuredContent. Preserve the context envelope and schema.
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(payload)}}}, nil, nil
 }
 
 func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest, input submitPlanInput) (*mcp.CallToolResult, ai.SubmissionResult, error) {
@@ -400,6 +405,8 @@ func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest,
 			slog.String("request_id", input.RequestID), slog.Uint64("target_tick", input.TargetTick), slog.Bool("accepted", result.Accepted),
 			slog.String("decision_status", result.Status), slog.Int("validation_error_count", len(result.Errors)))
 	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("battlefield.submission.accepted", result.Accepted))
+	telemetry.AIOutcome(trace.SpanFromContext(ctx), err != nil || !result.Accepted, "submission_rejected")
 	return nil, result, err
 }
 

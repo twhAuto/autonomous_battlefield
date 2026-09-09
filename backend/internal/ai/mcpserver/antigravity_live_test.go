@@ -24,7 +24,7 @@ func TestAntigravityLiveDecision(t *testing.T) {
 	record := ai.DecisionRecord{ID: "synthetic-decision", Version: 1, TargetTick: 73, Status: "running", Observation: ai.DecisionContext{RequestID: "synthetic-decision", TargetTick: 73, ExpectedVersion: 1, Economy: ai.EconomyContext{Gold: 150}, Legal: ai.LegalChoices{ActionKinds: []string{"attack", "defend"}}}}
 	// A larger synthetic view checks that metadata remains usable with a
 	// realistically sized response; no recorded battle data is used.
-	for i := 0; i < 24; i++ {
+	for i := 0; i < 160; i++ {
 		record.Observation.View.State.Units = append(record.Observation.View.State.Units, game.Unit{ID: fmt.Sprintf("synthetic-%d", i), FactionID: "synthetic-faction", Type: "vanguard", Health: 100, MaxHealth: 100})
 	}
 	record.Runtime = "cli"

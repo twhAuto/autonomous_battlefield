@@ -108,6 +108,7 @@ type ModelProfileService interface {
 }
 
 type DecisionHistory struct {
+	TraceURL        string     `json:"traceUrl,omitempty"`
 	RequestID       string     `json:"requestId"`
 	FactionID       string     `json:"factionId"`
 	TargetTick      uint64     `json:"targetTick"`
@@ -179,7 +180,11 @@ func (s *battleService) ListDecisionHistory(ctx context.Context, battleID string
 	}
 	result := make([]DecisionHistory, 0, len(records))
 	for _, record := range records {
-		result = append(result, DecisionHistory{RequestID: record.ID, FactionID: record.FactionID, TargetTick: record.TargetTick, Status: record.Status, ControllerType: record.ControllerType, ProfileID: record.ProfileID, Provider: record.Provider, Runtime: record.Runtime, ModelIdentifier: record.ModelIdentifier, FallbackSource: record.FallbackSource, ErrorCategory: record.ErrorCategory, ResolvedPlan: record.ResolvedPlan, Usage: record.Usage, CreatedAt: record.CreatedAt, ResolvedAt: record.ResolvedAt})
+		traceURL := ""
+		if id, ok := record.ProviderMetadata["aiTraceId"].(string); ok && id == telemetry.DecisionTraceID(record.ID) {
+			traceURL = telemetry.DecisionTraceURL(record.ID)
+		}
+		result = append(result, DecisionHistory{TraceURL: traceURL, RequestID: record.ID, FactionID: record.FactionID, TargetTick: record.TargetTick, Status: record.Status, ControllerType: record.ControllerType, ProfileID: record.ProfileID, Provider: record.Provider, Runtime: record.Runtime, ModelIdentifier: record.ModelIdentifier, FallbackSource: record.FallbackSource, ErrorCategory: record.ErrorCategory, ResolvedPlan: record.ResolvedPlan, Usage: record.Usage, CreatedAt: record.CreatedAt, ResolvedAt: record.ResolvedAt})
 	}
 	return result, nil
 }

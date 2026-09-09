@@ -276,3 +276,14 @@ commanding voice. The writer uses an operator-configured API or local CLI profil
 a 30-second cooldown. Manual editing remains available when generation is off.
 See [generation configuration and rollout](docs/operations/deployment.md#faction-background-generation-rollout)
 and the [generation API](docs/reference/api.md#faction-background-generation).
+
+Optional [self-hosted Langfuse](docs/operations/langfuse.md) provides AI decision
+traces, MCP tool timing/response sizes, and scoped token usage for API and CLI
+agents. The deployment uses the existing Kubernetes environment and collector;
+see the guide for installation and enabling host CLI tracing.
+
+The Langfuse installer automatically bootstraps checksum-verified Helm on Linux
+amd64 when it is missing; no system installation is required.
+Once installed, open http://langfuse.localhost:8888 through the same gateway as
+Grafana and Kibana. Tracing is detected automatically by deployment and host CLI
+scripts, with no UI port-forward or per-shell enable flag required.

@@ -364,3 +364,17 @@ Engine readiness requires both a running worker and a successful database ping;
 worker shutdown or database failure makes readiness fail while liveness remains
 available. See the [codebase guide](../design/codebase-guide.md#process-health-ownership)
 for source ownership and lifecycle tests.
+
+## AI decision traces in Langfuse
+
+Open `http://langfuse.localhost:8888` through the shared gateway after installation.
+The installed project is detected automatically by observability deployments and
+host CLI launches; neither a UI port-forward nor a per-shell tracing flag is needed.
+
+The optional self-hosted [Langfuse deployment](langfuse.md) adds decision, model,
+and tool observations to the existing collector. AI spans are sampled at 100%;
+infrastructure retains its configured sampling ratio and Tempo pipeline. Codex
+JSONL and Antigravity envelopes provide explicitly scoped CLI usage totals.
+The decision inspector shows known cache/reasoning counts and a trace link for
+new recorded decisions. Raw prompts, tool payloads and reasoning are excluded.
+See the linked guide for installation, host CLI forwarding and measurement limits.

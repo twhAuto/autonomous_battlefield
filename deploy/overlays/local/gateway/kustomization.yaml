@@ -11,3 +11,4 @@ resources:
   - application-route.yaml
   - grafana-route.yaml
   - kibana-route.yaml
+  - langfuse-route.yaml

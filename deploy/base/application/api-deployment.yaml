@@ -44,6 +44,9 @@ spec:
             - -config
             - /etc/battlefield/config.yaml
           envFrom:
+            - configMapRef:
+                name: battlefield-langfuse-links
+                optional: true
             - secretRef:
                 name: battlefield-auth
                 optional: true

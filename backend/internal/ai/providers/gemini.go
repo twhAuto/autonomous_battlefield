@@ -52,15 +52,29 @@ func (p *Gemini) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	request.Header.Set("Content-Type", "application/json")
 	var decoded struct {
 		Candidates []geminiCandidate `json:"candidates"`
-		Usage      struct {
-			Prompt     int64 `json:"promptTokenCount"`
-			Candidates int64 `json:"candidatesTokenCount"`
+		Usage      *struct {
+			Prompt     int64  `json:"promptTokenCount"`
+			Candidates int64  `json:"candidatesTokenCount"`
+			Cached     *int64 `json:"cachedContentTokenCount"`
+			Thoughts   *int64 `json:"thoughtsTokenCount"`
 		} `json:"usageMetadata"`
 	}
 	if err := doJSON(p.Client, request, "Gemini", &decoded); err != nil {
 		return ai.ModelTurnResult{}, err
 	}
-	return geminiResult(decoded.Candidates, decoded.Usage.Prompt, decoded.Usage.Candidates)
+	if decoded.Usage == nil {
+		result, err := geminiResult(decoded.Candidates, 0, 0)
+		result.Usage.TokensReported = false
+		return result, err
+	}
+	result, err := geminiResult(decoded.Candidates, decoded.Usage.Prompt, decoded.Usage.Candidates)
+	result.Usage.CachedInputTokens = decoded.Usage.Cached
+	result.Usage.ReasoningOutputTokens = decoded.Usage.Thoughts
+	// Gemini candidates exclude thoughts; normalize output to include reasoning.
+	if decoded.Usage.Thoughts != nil {
+		result.Usage.OutputTokens += *decoded.Usage.Thoughts
+	}
+	return result, err
 }
 
 func geminiToolDeclarations(tools []ai.ToolDefinition) ([]map[string]any, error) {
@@ -76,10 +90,10 @@ func geminiToolDeclarations(tools []ai.ToolDefinition) ([]map[string]any, error)
 }
 
 func geminiResult(candidates []geminiCandidate, inputTokens, outputTokens int64) (ai.ModelTurnResult, error) {
-	result := ai.ModelTurnResult{Usage: ai.Usage{InputTokens: inputTokens, OutputTokens: outputTokens, Requests: 1}}
+	result := ai.ModelTurnResult{Usage: ai.Usage{InputTokens: inputTokens, OutputTokens: outputTokens, Requests: 1, TokensReported: true}}
 	for _, candidate := range candidates {
 		if candidate.FinishReason == "SAFETY" || candidate.FinishReason == "BLOCKLIST" || candidate.FinishReason == "PROHIBITED_CONTENT" {
-			return ai.ModelTurnResult{}, ErrRefusal
+			return result, ErrRefusal
 		}
 		for _, part := range candidate.Content.Parts {
 			result.Text += part.Text

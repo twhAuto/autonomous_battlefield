@@ -101,29 +101,30 @@ type ReportComparison struct {
 }
 
 type CaseReport struct {
-	UnitDetailCalls     int      `json:"unitDetailCalls"`
-	ContextBytes        int      `json:"contextBytes"`
-	ID                  string   `json:"id"`
-	Category            string   `json:"category"`
-	Profile             string   `json:"profile"`
-	Model               string   `json:"model"`
-	PromptVersion       string   `json:"promptVersion"`
-	ToolSchemaVersion   string   `json:"toolSchemaVersion"`
-	RulesVersion        string   `json:"rulesVersion"`
-	Passed              bool     `json:"passed"`
-	Outcome             string   `json:"outcome"`
-	Accepted            bool     `json:"accepted"`
-	ErrorCategory       string   `json:"errorCategory,omitempty"`
-	FallbackCategory    string   `json:"fallbackCategory,omitempty"`
-	DurationMS          int64    `json:"durationMs"`
-	InputTokens         int64    `json:"inputTokens"`
-	OutputTokens        int64    `json:"outputTokens"`
-	Requests            int64    `json:"requests"`
-	ToolCalls           []string `json:"toolCalls,omitempty"`
-	SafetyFailures      []string `json:"safetyFailures,omitempty"`
-	EstimatedCostUSD    *float64 `json:"estimatedCostUsd,omitempty"`
-	PricingVersion      string   `json:"pricingVersion,omitempty"`
-	StrategyFingerprint string   `json:"strategyFingerprintSha256,omitempty"`
+	Usage               *ai.Usage `json:"usage,omitempty"`
+	UnitDetailCalls     int       `json:"unitDetailCalls"`
+	ContextBytes        int       `json:"contextBytes"`
+	ID                  string    `json:"id"`
+	Category            string    `json:"category"`
+	Profile             string    `json:"profile"`
+	Model               string    `json:"model"`
+	PromptVersion       string    `json:"promptVersion"`
+	ToolSchemaVersion   string    `json:"toolSchemaVersion"`
+	RulesVersion        string    `json:"rulesVersion"`
+	Passed              bool      `json:"passed"`
+	Outcome             string    `json:"outcome"`
+	Accepted            bool      `json:"accepted"`
+	ErrorCategory       string    `json:"errorCategory,omitempty"`
+	FallbackCategory    string    `json:"fallbackCategory,omitempty"`
+	DurationMS          int64     `json:"durationMs"`
+	InputTokens         int64     `json:"inputTokens"`
+	OutputTokens        int64     `json:"outputTokens"`
+	Requests            int64     `json:"requests"`
+	ToolCalls           []string  `json:"toolCalls,omitempty"`
+	SafetyFailures      []string  `json:"safetyFailures,omitempty"`
+	EstimatedCostUSD    *float64  `json:"estimatedCostUsd,omitempty"`
+	PricingVersion      string    `json:"pricingVersion,omitempty"`
+	StrategyFingerprint string    `json:"strategyFingerprintSha256,omitempty"`
 }
 
 type PriceBook struct {

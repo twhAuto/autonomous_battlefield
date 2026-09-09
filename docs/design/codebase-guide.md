@@ -763,3 +763,32 @@ Run the Go coverage gate with disposable PostgreSQL integration coverage:
 (cd frontend && npm test -- --coverage)
 (cd frontend && npm run build)
 ```
+
+## Langfuse integration
+
+- `backend/internal/telemetry/ai.go` provides decision correlation, explicit AI
+  sampling and safe trace URLs alongside the existing infrastructure tracing.
+- `backend/internal/ai/runner/observability.go` emits generation observations;
+  `codex_usage.go` parses terminal JSONL usage without retaining model reasoning.
+  Provider adapters preserve cache/reasoning subsets and usage on refusals.
+- `backend/internal/ai/mcpserver/tool_logging.go` records server tool spans;
+  `context_telemetry.go` measures serialized initial-context sections in bytes.
+  Tool metrics distinguish serialized transport, text, and structured-content
+  bytes. `context_transport_test.go` checks single-copy JSON delivery, legacy
+  context fields, repeat-read compatibility, and reduced transport size.
+- Decision history exposes optional trace links and additive usage metadata;
+  `AIDecisionPanel` distinguishes API totals, CLI aggregates and legacy counters.
+- `deploy/langfuse/values.yaml` pins the self-hosted Helm configuration;
+  `collector-config.yaml` adds the filtered export pipeline. Run
+  `scripts/cd/deploy-langfuse.sh` using the registered environment and follow
+  [Langfuse operations](../operations/langfuse.md) to enable future deploys.
+
+`scripts/lib/ensure-helm.py` supplies the Langfuse installer with an existing
+Helm binary or a temporary checksum-pinned Linux amd64 download.
+
+`deploy/langfuse/values.yaml` also supplies explicit pod/container security contexts
+for Langfuse, SeaweedFS and PostgreSQL, preserving the namespace security policy.
+
+`deploy/overlays/local/gateway/langfuse-route.yaml` exposes the UI through the
+shared gateway. `battlefield_env_langfuse_enabled` in the environment helper detects
+the installed project for collector configuration and host CLI forwarding.

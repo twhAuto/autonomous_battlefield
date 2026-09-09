@@ -23,6 +23,10 @@ func TestCompactLookupEvaluation(t *testing.T) {
 	if !report.Passed || report.Metrics.TotalInputTokens != 60 || report.Metrics.LookupRate != 1 || report.Metrics.UnitDetailCalls != 1 || report.Cases[0].ContextBytes == 0 {
 		t.Fatalf("%+v", report)
 	}
+	usage := report.Cases[0].Usage
+	if usage == nil || usage.Scope != "api_calls" || usage.InputTokens != 60 || usage.ModelCalls == nil || *usage.ModelCalls != 3 {
+		t.Fatal("detailed report usage missing", usage)
+	}
 	session := scriptedSession{value: fixture}
 	for _, args := range []string{`{"requestId":"other","unitIds":["ranger"]}`, `{"requestId":"sample","unitIds":[]}`} {
 		if payload, _, err := session.Call(context.Background(), ai.ToolCall{Name: "get_unit_details", Arguments: []byte(args)}); err == nil && !strings.Contains(string(payload), `"error"`) {
