@@ -121,8 +121,23 @@ listing; skip that option when the pre-launch backup has already been taken.
 This is preparation, not launch certification. NetworkPolicy enforcement, direct
 origin isolation over IPv4/IPv6, and MFA still require live checks. Production
 smoke tests also require `BATTLEFIELD_ACCESS_TOKEN_FILE` pointing to a protected,
-fresh invited-user Access JWT. Arrange that input for the Jenkins agent before
-running delivery; the preparation script does not obtain or mint login tokens.
+fresh invited-user Access JWT. Before running delivery, create a Jenkins **Secret
+file** credential with ID `battlefield-production-access-token` in the credential
+store accessible to the production job. Upload a file containing only the
+application JWT obtained through an invited user's Access login and MFA, without
+quotes or a `Bearer` prefix. Never commit this file or paste its contents into logs.
+
+The `Verify deployment` stage binds that credential to
+`BATTLEFIELD_ACCESS_TOKEN_FILE`, disables shell tracing and sets file permissions
+to 600 before invoking the smoke test. The binding is scoped to verification.
+Missing credentials or an invalid/expired token fail verification; authentication
+is never disabled as a fallback. Provision the credential before triggering the
+pipeline, since verification runs after deployment.
+
+Refresh the uploaded token before each deployment and ensure verification finishes
+before its expiry (initially one hour). This manual user-token workflow does not
+provide unattended CI authentication. The preparation script does not obtain or
+mint login tokens.
 
 ## Tunnel startup, shutdown and credential rotation
 
