@@ -32,7 +32,15 @@ spec:
             - -config
             - /etc/battlefield/config.yaml
             - -migrate
+          envFrom:
+            - secretRef:
+                name: battlefield-auth
           env:
+            - name: BATTLEFIELD_ENV
+              value: production
+            # Migration validates API configuration but never executes AI jobs.
+            - {name: CODEX_CLI_PROFILE_AVAILABLE, value: "false"}
+            - {name: GEMINI_CLI_PROFILE_AVAILABLE, value: "false"}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

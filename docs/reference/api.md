@@ -304,9 +304,8 @@ Validation failures return `400`, unavailable/disabled profiles return `503`,
 and neither reserves quota. Limits return `429`, `Retry-After`, and the options
 object containing retry/reset information. Options and job reads use `no-store`.
 
-Queued jobs expire after five minutes and refund their reservation on the
-original admission day. Once execution starts, failures and two-minute execution
-timeouts count. Expired running jobs are never automatically rerun. Repeated
+Queued jobs expire after five minutes and retain their charge on the
+original admission day. Failures and two-minute execution timeouts also count. Expired running jobs are never automatically rerun. Repeated
 identical successful submissions are idempotent. Three invalid background
 submissions close the job with `invalid_output`.
 
@@ -337,3 +336,27 @@ Battle state optionally includes `unitDeaths: [{id, factionId, type, position}]`
 for confirmed unit deaths in the current tick, cleared at the next tick. Faction
 views include allied deaths and enemy deaths at currently visible positions.
 Older snapshots omit the field; clients must not infer death from disappearance.
+
+## Friends-only authentication and permissions
+
+Production uses Cloudflare Access JWTs on every `/v1` request and never accepts the
+legacy app cookie. `POST /v1/auth/login` returns 404 in Cloudflare mode.
+`GET /v1/auth/session` returns `mode`, `authenticated`, an actor containing `id`,
+`email`, `role`, and `capabilities`. `POST /v1/auth/logout` returns
+`{"logoutUrl":"/cdn-cgi/access/logout"}` for browser navigation. Unsafe browser
+requests require the configured Origin; bodies require `application/json`.
+Missing/invalid credentials return 401; missing roles and denied permissions do not
+grant access. See the [launch runbook](../operations/friends-launch.md).
+
+Faction and battle responses include `ownerId`. Ownership is server-assigned.
+Update/delete factions and stop/pause/resume battles require own content or Admin.
+Shared reads remain available to Players. Decision history and saved-context routes
+require Developer/Admin; Players receive gameplay-only battle/event/history/model
+responses. Unregistered application routes deny access until a permission is assigned.
+CLI model selection (including background generation) requires Developer/Admin and
+an enabled verified profile. Paid APIs require explicit role approval.
+
+Admission can return 429: 20 battles/person/day, 2 unfinished/person, 4 globally,
+10 background generations/person/day. Paused battles remain unfinished. Same request
+IDs reuse admitted work when inputs and identity match. Private worker APIs use a
+separate bearer credential and server-minted request capabilities, not Access cookies.

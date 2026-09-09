@@ -52,7 +52,7 @@ func NewAPIWithGeneration(db postgres.DBTX, catalog *catalog.Catalog, maxTicks u
 	battleHandler := battleapi.NewHandler(battleService)
 	authenticationManager := authn.NewManager(authentication)
 	authenticationMiddleware := func(next http.Handler) http.Handler {
-		return authn.RequireAuthentication(authentication.Enabled, authenticationManager, next)
+		return authn.BrowserProtection(authentication.Origin, authn.RequireAuthentication(authenticationManager.Enabled(), authenticationManager, authn.RoutePolicy(next)))
 	}
 	router := httpapi.NewRouterWithMiddleware(
 		[]httpapi.Middleware{authenticationMiddleware},

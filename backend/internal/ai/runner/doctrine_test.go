@@ -15,7 +15,7 @@ type doctrineProvider struct {
 }
 
 func (p *doctrineProvider) NextTurn(ctx context.Context, request ai.ModelTurnRequest) (ai.ModelTurnResult, error) {
-	if !strings.Contains(request.SystemPrompt, "BEGIN_FACTION_DOCTRINE\n\"Protect income\"") || !strings.HasPrefix(request.SystemPrompt, ai.SystemPrompt) {
+	if !strings.Contains(request.Messages[0].Content, `"doctrine":"Protect income"`) || request.SystemPrompt != ai.SystemPrompt {
 		p.t.Fatal("API doctrine missing")
 	}
 	return p.turnProvider.NextTurn(ctx, request)
@@ -30,7 +30,7 @@ func TestDoctrineReachesAPIRunner(t *testing.T) {
 type doctrineExecutor struct{ t *testing.T }
 
 func (e doctrineExecutor) Run(_ context.Context, _ string, args []string, _ []string, _ string) ([]byte, error) {
-	if !strings.Contains(strings.Join(args, " "), "BEGIN_FACTION_DOCTRINE\n\"Protect income\"") {
+	if !strings.Contains(strings.Join(args, " "), `"doctrine":"Protect income"`) {
 		e.t.Fatal("CLI doctrine missing")
 	}
 	return []byte(`{"type":"turn.completed"}`), nil
@@ -48,7 +48,7 @@ type identityProvider struct {
 }
 
 func (p *identityProvider) NextTurn(ctx context.Context, request ai.ModelTurnRequest) (ai.ModelTurnResult, error) {
-	if !strings.Contains(request.SystemPrompt, `"name":"Northwind"`) || !strings.Contains(request.SystemPrompt, `"background":"Old roots"`) || !strings.Contains(request.SystemPrompt, `"doctrine":"Protect income"`) {
+	if !strings.Contains(request.Messages[0].Content, `"name":"Northwind"`) || !strings.Contains(request.Messages[0].Content, `"background":"Old roots"`) || !strings.Contains(request.Messages[0].Content, `"doctrine":"Protect income"`) {
 		p.t.Fatal("API identity missing")
 	}
 	return p.turnProvider.NextTurn(ctx, request)

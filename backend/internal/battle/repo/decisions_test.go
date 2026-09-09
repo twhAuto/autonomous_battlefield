@@ -27,7 +27,7 @@ func decisionTestRow(status string, plan *controller.PlanProposal) battleRow {
 	metadata := []byte(`{"safe":true}`)
 	now := time.Now()
 	return func(destinations ...any) error {
-		return assignBattleValues(destinations, []any{"11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", 1, "33333333-3333-3333-3333-333333333333", uint64(10), int64(1), status, "model", "profile", "openai", "api", "model", "prompt-v1", ai.ToolSchema, observation, "hash", planJSON, "", "", usage, metadata, "", "00-test-trace", "test-state", now, (*time.Time)(nil)})
+		return assignBattleValues(destinations, []any{"11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", 1, "33333333-3333-3333-3333-333333333333", uint64(10), int64(1), status, "model", "profile", "openai", "api", "model", "prompt-v1", ai.ToolSchema, observation, "hash", planJSON, "", "", usage, metadata, "", "00-test-trace", "test-state", now, (*time.Time)(nil), &now})
 	}
 }
 

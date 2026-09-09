@@ -1,0 +1,10 @@
+# Exact provider endpoints. Add only destinations observed and approved during staging.
+# No wildcard suffixes, arbitrary HTTPS proxying, or private destination IPs.
+chatgpt.com
+auth.openai.com
+api.openai.com
+oauth2.googleapis.com
+generativelanguage.googleapis.com
+# HTTPS package updates (configure guest apt sources to HTTPS).
+archive.ubuntu.com
+security.ubuntu.com

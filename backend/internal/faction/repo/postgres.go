@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -24,10 +25,10 @@ func (r *Postgres) GetFaction(ctx context.Context, id string) (*faction.Faction,
 	var stored faction.Faction
 	var blueprint []byte
 	err := r.db.QueryRow(ctx, `
-		SELECT id, name, COALESCE(ruleset_id, ''), blueprint, doctrine, background
+		SELECT id, name, COALESCE(ruleset_id, ''), blueprint, doctrine, background, owner_id
 		FROM factions
 		WHERE id = $1
-	`, id).Scan(&stored.ID, &stored.Name, &stored.RulesetID, &blueprint, &stored.Doctrine, &stored.Background)
+	`, id).Scan(&stored.ID, &stored.Name, &stored.RulesetID, &blueprint, &stored.Doctrine, &stored.Background, &stored.OwnerID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, factionservice.ErrFactionNotFound
 	}
@@ -45,7 +46,7 @@ func (r *Postgres) GetFaction(ctx context.Context, id string) (*faction.Faction,
 
 func (r *Postgres) ListFactions(ctx context.Context) ([]faction.Faction, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, name, COALESCE(ruleset_id, ''), blueprint, doctrine, background
+		SELECT id, name, COALESCE(ruleset_id, ''), blueprint, doctrine, background, owner_id
 		FROM factions
 		ORDER BY created_at ASC, id ASC
 	`)
@@ -58,7 +59,7 @@ func (r *Postgres) ListFactions(ctx context.Context) ([]faction.Faction, error) 
 	for rows.Next() {
 		var stored faction.Faction
 		var blueprint []byte
-		if err := rows.Scan(&stored.ID, &stored.Name, &stored.RulesetID, &blueprint, &stored.Doctrine, &stored.Background); err != nil {
+		if err := rows.Scan(&stored.ID, &stored.Name, &stored.RulesetID, &blueprint, &stored.Doctrine, &stored.Background, &stored.OwnerID); err != nil {
 			return nil, fmt.Errorf("scan faction: %w", err)
 		}
 		if len(blueprint) > 0 {
@@ -77,8 +78,8 @@ func (r *Postgres) ListFactions(ctx context.Context) ([]faction.Faction, error) 
 
 func (r *Postgres) CreateFaction(ctx context.Context, stored faction.Faction) error {
 	_, err := r.db.Exec(ctx, `
-        INSERT INTO factions (id, name, doctrine, background) VALUES ($1, $2, $3, $4)
-    `, stored.ID, stored.Name, stored.Doctrine, stored.Background)
+        INSERT INTO factions (id, name, doctrine, background, owner_id) VALUES ($1, $2, $3, $4, $5)
+    `, stored.ID, stored.Name, stored.Doctrine, stored.Background, authn.Owner(ctx))
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {

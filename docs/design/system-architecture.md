@@ -1,5 +1,15 @@
 # Autonomous Battlefield System Architecture
 
+HTTP completion logs include `actor_id` and `actor_role` established by trusted
+authentication middleware, alongside method, resource path, status and request ID.
+An authentication observer carries identity to the outer request logger; rejected
+credentials leave identity empty. Tokens, cookies and email headers are not logged.
+These operational logs provide request attribution, not a tamper-proof audit store.
+
+The migration Job runs the server in migration-only mode and reads the required
+`battlefield-auth` Secret for configuration validation. Deployment supplies the
+same dev/production environment as the API; CLI profiles are disabled in this Job.
+
 | Field | Value |
 | --- | --- |
 | Status | Draft — describes the current working tree, including uncommitted changes |
@@ -208,7 +218,7 @@ AI observations rather than controlling these engine paths.
 
 ### Public application boundary
 
-The API optionally authenticates one configured administrator with a signed HttpOnly cookie before accepting application requests. Login and session discovery remain public; other `/v1` routes receive a trusted actor through a replaceable authenticator. The browser reads progress only through the API; it never connects to the engine or PostgreSQL.
+Production requires Cloudflare Access on the whole application hostname through a named Tunnel. The API independently verifies the Access JWT and maps issuer/subject identity and verified email to a configured role on every request. No legacy password/cookie fallback is accepted. Explicit local-password and disabled-development modes remain development-only. Exact-origin mutation checks and a deny-by-default route permission registry wrap every application API. The browser never connects to the engine, MCP or PostgreSQL. See [friends launch](../operations/friends-launch.md).
 
 ### Model boundary
 
@@ -338,7 +348,7 @@ At the decision deadline:
 
 ## 6. Model execution
 
-`internal/ai/worker` owns decision claims, concurrency, timeouts, and outcome reporting. It selects an `APIRunner` or `CLIRunner` from `internal/ai/runner`; both implement the same provider-neutral decision-runner contract.
+`internal/ai/worker` owns decision claims, concurrency, timeouts, and outcome reporting. Each deployed worker uses one execution slot; PostgreSQL serializes CLI claims globally across all workers and generation jobs. A completed submission retains the CLI lease until the worker reports completion or its execution deadline expires. Claim responses carry the database lease deadline, so network delays cannot extend a worker’s allotted execution time. Keep the database, MCP and VM clocks synchronized. It selects an `APIRunner` or `CLIRunner` from `internal/ai/runner`; both implement the same provider-neutral decision-runner contract.
 
 ### API runtime
 
@@ -365,7 +375,7 @@ The CLI runner starts Codex or Antigravity CLI in a new temporary directory with
 - the allowlisted profile model passed explicitly with `--model`;
 - a pre-validated CLI version family.
 
-Codex uses the existing host login without copying it. Antigravity uses the host OS keyring or a private temporary copy of its native `antigravity-oauth-token` login file, with a temporary HOME and XDG directories. Its environment excludes provider keys and personal CLI overrides. Generated permissions allow the two battlefield MCP tools and deny file, command, and URL operations; slash-command expansion is disabled. A headless account-usage probe must succeed before advertising the profile. JSON result envelopes must report SUCCESS with no denied actions. Explicit permission rules are used without strict mode, which overrides MCP allows in CLI 1.1.27. The MCP usage endpoint verifies that a plan is accepted before acknowledging completion; missing submissions trigger a worker failure and fallback. Usage counters are recorded for accepted plans. Subscription credentials are not placed in Kubernetes.
+In development Codex uses the existing host login without copying it; production uses only a dedicated VM login. Antigravity uses the host OS keyring or a private temporary copy of its native `antigravity-oauth-token` login file, with a temporary HOME and XDG directories. Both CLI subprocess environments exclude worker control credentials, provider keys and personal CLI overrides. Linux workers disable dumpability to block parent environment/memory reads from same-user children; CLI process groups are killed on cancellation and output capture is bounded at 4 MiB. Generated permissions allow the two battlefield MCP tools and deny file, command, and URL operations; slash-command expansion is disabled. A headless account-usage probe must succeed before advertising the profile. JSON result envelopes must report SUCCESS with no denied actions. Explicit permission rules are used without strict mode, which overrides MCP allows in CLI 1.1.27. The MCP usage endpoint verifies that a plan is accepted before acknowledging completion; missing submissions trigger a worker failure and fallback. Usage counters are recorded for accepted plans. Subscription credentials are not placed in Kubernetes.
 
 CLI context responses include explicit target-tick and version metadata alongside the full structured context. CLI prompts require copying those values and making a substantive tactical or production decision. Name-only CLI plans are rejected; after three invalid submissions the decision is failed so the battle can fall back. MCP logs record context byte counts and validation field/code pairs without dumping observations or credentials. Usage reporting retries transient failures up to three times.
 
@@ -378,7 +388,7 @@ Antigravity CLI offloads larger MCP tool responses to local files. Because battl
 API, Codex, and Antigravity use one embedded decision policy assembled by
 `internal/ai/prompts.go`. Only context delivery differs: tool fetch versus
 Antigravity host-prefetched JSON. The persisted `PromptVersion` includes a SHA-256
-digest covering the base, identity, doctrine, policy, and both delivery templates.
+digest covering the base, identity/context boundary, doctrine, policy, and both delivery templates. Version v7 moves faction-authored name/background/doctrine into JSON-escaped untrusted decision context; they never extend the system instructions.
 Each prompt purpose has one current `.txt` file; Git preserves previous revisions.
 The build manifest reads the runtime prompt version, bundle digest, and tool schema
 through `go run ./cmd/aieval -mode metadata`, requiring Go during manifest generation. Both API and CLI
@@ -532,6 +542,22 @@ An accepted submission is idempotent when it repeats the stored idempotency key.
 
 ## 8. Persistence and durability
 
+Migration `00011_friends_access.sql` persists faction/battle owners, the singleton
+`runtime_policy`, shared `agent_execution_leases`, per-battle execution counters,
+and the private `friend_ai_usage` view. PostgreSQL admission serializes across API
+replicas: 20 battles/person/UTC day, 2 unfinished/person and 4 globally. Queued and
+running rows remain unfinished while paused. Generation admission retains its
+account lock and idempotency, with 10/day including queued jobs that later expire.
+Same-identity request retries reuse admission. Admin has the same limits.
+
+A battle receives at most 100 model execution claims, including retries, then the
+existing fallback resolves new windows. Disabling AI prevents new generation
+admissions/claims and makes new model windows fall back. Production migrations
+first save and validate a PostgreSQL backup; recovery retains Access authentication.
+The legacy-owner quota exemption supports migrations/trusted internal fixtures;
+application identities (including local Admin) cannot select that owner ID.
+
+
 | Table or view | Purpose | Important behavior |
 | --- | --- | --- |
 | `factions` | Reusable faction identity and doctrine; archived legacy blueprint | Existing battle snapshots survive faction deletion |
@@ -619,40 +645,47 @@ A reclaimed battle starts a new deterministic attempt from `initial_state`; even
 
 ## 9. Security and trust boundaries
 
-### Administrator session
+### Access identity, roles and owners
 
-The starter application login is explicitly enabled through environment
-configuration. Credentials and HMAC session-signing material never belong in
-YAML, images, or Git. Password comparisons use fixed-size constant-time hashes;
-successful login issues an HttpOnly, SameSite=Strict cookie with a configured
-expiry. Every protected `/v1` request validates the signature and expiry before
-placing the actor in request context. Logout is itself authenticated.
+Production API manifests require `BATTLEFIELD_ENV=production`; startup accepts only
+`BATTLEFIELD_AUTH_MODE=cloudflare` with valid issuer, audience, HTTPS origin and
+nonconflicting email/role assignments. JWT verification uses RS256, a fixed issuer's
+JWKS with one-hour key cache and a 30-second refresh throttle, and required identity/
+time/audience checks. Missing or unverifiable credentials deny access. Access owns
+sessions and logout; the application issues no production auth cookie.
 
-Authentication-disabled local development remains backward compatible. Public
-HTTPS deployments must enable the Secure cookie flag and use the same signing
-secret across API replicas. This single administrator is a temporary perimeter
-inside the application; it does not implement player identity, ownership, or
-authorization, and Cloudflare Access remains an appropriate outer control for
-a developer-hosted public tunnel.
+Players, Developers and Admins share gameplay/faction reads. Mutation ownership is
+stored in PostgreSQL and taken from the authenticated request, never client JSON.
+Legacy rows belong to `legacy-admin`. Only Admin can manage another owner's rows.
+Decision history/context require Developer/Admin. Player gameplay projections run
+after shared cache retrieval and omit model diagnostics, raw prompts and internal
+errors. The frontend hides inspection panels and stops their requests for Players.
+Cloudflare Access admission and MFA are independent deployment requirements. User
+removal requires Access rule removal, session revocation, application role removal,
+and deployment to every replica; offline JWT verification alone cannot see revocation.
+
+The local password login retains signed HttpOnly/SameSite cookies for development.
+Missing auth mode and enable flags fail startup; explicit legacy enable flags remain
+supported only in development. Local cookie logout does not revoke copied tokens.
 
 ### Model-facing capability
 
-Each model session receives an HMAC-signed token containing one request ID and expiry. MCP verifies the signature, expiry, and equality between the authorized and supplied request IDs.
+The MCP server mints each model session an HMAC-signed token containing one request ID and expiry. Workers cannot mint capabilities and never receive the signing secret. MCP verifies the signature, expiry, and equality between the authorized and supplied request IDs.
 
 Tool bodies are bounded, plan fields are validated, and model-provided state is never authoritative.
 
 ### Agent control plane
 
-`/internal/agent/claim`, `/fail`, and `/usage` use a shared bearer secret. These routes do not expose decision context or game state. In Kubernetes, MCP is a `ClusterIP` with an ingress NetworkPolicy intended for agent access. A host CLI agent uses an explicit loopback-only port-forward bridge.
+`/internal/agent/claim`, `/fail`, `/usage`, `/generation-finish` and `/enabled` use a distinct worker bearer secret. Missing or equal worker/signing secrets deny worker authentication. Claims return a server-minted scoped capability. Kubernetes keeps MCP private; production CLI workers reach it through a host-side bridge on the isolated VM network. The development launcher keeps its bridge on loopback. Workers poll the durable operator AI switch and cancel on stop or loss of policy connectivity.
 
 ### Database privileges
 
-Migration `00004_battle_decisions.sql` creates a `battlefield_mcp` group role with decision-table and evaluation-view access, but without battle-run, event, unit, building, or resource-state grants. A deployment must give MCP a login that inherits only that intended role.
+Migration `00004_battle_decisions.sql` creates a `battlefield_mcp` group role with decision-table and evaluation-view access, with no event, unit, building, or resource-state grants. Migration 00011 adds narrowly scoped battle-run ID/counter access and execution-lease/policy access for atomic admission. A deployment must give MCP a login that inherits only that intended role.
 
 ### Deployment responsibilities
 
 - Replace the development capability secret with high-entropy secret-manager material.
-- Keep administrator credentials and session-signing material in a secret manager, enable Secure cookies for HTTPS, and rotate both independently.
+- Use Access for production sessions; keep role assignments and the independent worker/signing secrets in private operator configuration. Block direct-origin IPv4/IPv6 access and verify the CNI enforces NetworkPolicy.
 - Keep provider keys only in the agent workload.
 - Treat model rationale as untrusted display text even though its length is bounded.
 - Keep CLI versions pinned because isolation flags and behavior are version-sensitive.
@@ -690,7 +723,7 @@ The API catalog advertises profiles users may select. In cluster mode, an operat
 
 ### Kubernetes
 
-Kustomize deploys separate API, engine, agent, MCP, frontend, and migration workloads. The API optionally imports `battlefield-auth`, the API and agent read profile availability from `battlefield-ai`, MCP receives a distinct `MCP_DATABASE_URL`, and the processes mount a common non-secret ConfigMap. Post-deployment verification uses the optional administrator Secret to establish a temporary authenticated session before probing protected application routes; neither credentials nor the session cookie are retained after the smoke test.
+Kustomize deploys separate API, engine, agent, MCP, frontend, and migration workloads. The API requires `battlefield-auth`, the API and agent read profile availability from `battlefield-ai`, MCP receives a distinct `MCP_DATABASE_URL`, and the processes mount a common non-secret ConfigMap. Development smoke uses its local administrator Secret; production smoke requires a real invited Access JWT and uses private port forwards. Neither mode disables authentication for verification.
 
 Registry-backed Jenkins deployments use immutable GHCR digest references.
 Publication and admission rendering share validated repository settings. The
@@ -849,8 +882,8 @@ provenance uses a `faction-background-v2` digest covering the rendered system
 instructions (including the character limit) and embedded request instructions. Battle creation
 copies all three into its immutable scenario snapshot. Missing background in old
 snapshots decodes as empty. Only the owning profile enters each decision context,
-observation hash, durable decision provenance, and API/CLI system prompt.
-The shared `battlefield-agent-v5` identity template JSON-escapes profile fields and
+observation hash, durable decision provenance, and API/CLI untrusted decision context.
+The shared `battlefield-agent-v7` identity context JSON-escapes profile fields and
 asks the agent to act as the faction's commanding voice. Core rules take
 precedence over doctrine; background supplies perspective beneath doctrine.
 Scripted controllers do not interpret history or map keywords to tactical weights.
@@ -861,7 +894,7 @@ PostgreSQL serializes each actor's admissions by locking
 active jobs. `faction_background_generations` stores input, idempotency hash,
 profile, quota admission day via `created_at`, expiry, result, prompt version,
 usage, timing, and model metadata. Reads/admissions/claims expire stale rows.
-Queued expiry refunds the original day; running expiry records a counted failure.
+Queued and running expiry both consume the original admission day’s allowance.
 No in-memory counter or browser state is authoritative for allowance.
 
 Generation workers reuse the agent execution infrastructure with an advertised
@@ -1006,7 +1039,7 @@ The current projection also replaces an identical historical plan with
 own-faction gold/upgrades inherit their top-level values only when equal;
 differing historical/enemy facts stay explicit. The prompt documents these rules.
 API and Gemini CLI delivery omit exact copies of faction identity already present
-in the system prompt. They retain mismatches and all original identity wording.
+in the untrusted identity context. They retain mismatches and all original identity wording.
 Direct MCP/Codex delivery and the inspector remain self-contained. Persistence
 and validation hashes are not changed by any projection.
 

@@ -23,7 +23,9 @@ func (w *Worker) runGeneration(parent context.Context, job job) {
 	if duration <= 0 {
 		duration = 2 * time.Minute
 	}
-	ctx, cancel := context.WithTimeout(parent, duration)
+	policy, stopPolicy := w.watchPolicy(parent)
+	defer stopPolicy()
+	ctx, cancel := w.executionContext(policy, job, duration)
 	defer cancel()
 	result := ai.DecisionResult{}
 	category := ""
@@ -66,8 +68,8 @@ func (w *Worker) runGeneration(parent context.Context, job job) {
 }
 
 func (w *Worker) executeGeneration(ctx context.Context, job job, profile ai.ModelProfile, duration time.Duration) (ai.DecisionResult, string) {
-	token, err := ai.MintCapability(w.Secret, "generation:"+job.RequestID, time.Now().Add(duration))
-	if err != nil {
+	token := job.CapabilityToken
+	if token == "" {
 		return ai.DecisionResult{}, "capability"
 	}
 	factory := w.RunnerFactory

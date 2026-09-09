@@ -51,6 +51,7 @@ func (h *Handler) options(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, available := h.availability()
+	available = available && ai.ProfileAllowed(r.Context(), p)
 	o.Available = available
 	o.ModelLabel = p.ModelLabel
 	if o.ModelLabel == "" {
@@ -81,11 +82,14 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, available := h.availability()
+	available = available && ai.ProfileAllowed(r.Context(), p)
 	if !available {
 		http.Error(w, "background generation is unavailable", 503)
 		return
 	}
-	j, o, err := h.Repository.Admit(r.Context(), id, body.IdempotencyKey, input, h.Config, p.ModelLabel)
+	admission := h.Config
+	admission.Runtime = p.Runtime
+	j, o, err := h.Repository.Admit(r.Context(), id, body.IdempotencyKey, input, admission, p.ModelLabel)
 	switch {
 	case errors.Is(err, ErrLimited):
 		o.Available = true
@@ -99,7 +103,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		http.Error(w, "could not queue background generation", 500)
 	default:
-		_ = httpapi.WriteJSON(w, 202, j)
+		_ = httpapi.WriteJSON(w, 202, responseFor(r, j))
 	}
 }
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
@@ -117,5 +121,12 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	_ = httpapi.WriteJSON(w, 200, j)
+	_ = httpapi.WriteJSON(w, 200, responseFor(r, j))
+}
+
+func responseFor(r *http.Request, j Job) any {
+	if !authn.IsPlayer(r.Context()) {
+		return j
+	}
+	return map[string]any{"id": j.ID, "status": j.Status, "background": j.Background, "modelLabel": j.ModelLabel, "createdAt": j.CreatedAt, "expiresAt": j.ExpiresAt}
 }

@@ -119,7 +119,7 @@ func TestAdmissionConcurrencyIdempotencyAndIsolation(t *testing.T) {
 		testutil.Require(t, errors.Is(err, ErrInvalid), func() { t.Fatal(err) })
 	}
 }
-func TestLifecycleRefundsAndExecutionAccounting(t *testing.T) {
+func TestLifecycleExpiryAndExecutionAccounting(t *testing.T) {
 	p := database(t)
 	ctx := context.Background()
 	c := DefaultConfig()
@@ -132,10 +132,10 @@ func TestLifecycleRefundsAndExecutionAccounting(t *testing.T) {
 	expired, err := p.Get(ctx, "one", j.ID)
 	testutil.Require(t, !(err != nil || expired.Status != "expired" || expired.ErrorCategory != "queue_timeout"), func() { t.Fatalf("%+v %v", expired, err) })
 	o, err := p.Options(ctx, "one", c)
-	testutil.Require(t, !(err != nil || o.Remaining != 10 || o.ActiveJobID != ""), func() { t.Fatalf("refund %+v %v", o, err) })
+	testutil.Require(t, !(err != nil || o.Remaining != 9 || o.ActiveJobID != ""), func() { t.Fatalf("expiry accounting %+v %v", o, err) })
 	{
 		_, _, err = p.Admit(ctx, "one", "cooldown", draft, c, "")
-		testutil.Require(t, errors.Is(err, ErrLimited), func() { t.Fatal("refund must retain cooldown", err) })
+		testutil.Require(t, errors.Is(err, ErrLimited), func() { t.Fatal("expiry must retain cooldown", err) })
 	}
 	sqlExec(t, p, "UPDATE faction_generation_accounts SET last_admitted_at=now()-interval '31 seconds'")
 	j = admit(t, p, "one", "running", c)
@@ -161,7 +161,7 @@ func TestLifecycleRefundsAndExecutionAccounting(t *testing.T) {
 		testutil.Require(t, errors.Is(err, ErrNotFound), func() { t.Fatal(err) })
 	}
 	o, err = p.Options(ctx, "one", c)
-	testutil.Require(t, !(err != nil || o.Remaining != 9), func() { t.Fatal("started failure must count", o, err) })
+	testutil.Require(t, !(err != nil || o.Remaining != 8), func() { t.Fatal("started failure must count", o, err) })
 	{
 		_, err = p.Claim(ctx, "retry", []string{c.ProfileID})
 		testutil.Require(t, errors.Is(err, ErrNotFound), func() { t.Fatal("running timeout retried", err) })
@@ -226,26 +226,11 @@ func consumeGenerationAllowance(t *testing.T, p *Postgres, ctx context.Context, 
 		}
 		if i == 0 {
 			checkInvalidSubmissionLimit(t, p, ctx, j)
+			if _, err := p.Finish(ctx, j.ID, "invalid_output", ai.Usage{}, nil); err != nil {
+				t.Fatal(err)
+			}
 		} else {
-			value := strings.Repeat("界", 1000)
-			for range 2 {
-				{
-					ok, err := p.Submit(ctx, j.ID, " "+value+" ")
-					testutil.Require(t, !(err != nil || !ok), func() { t.Fatal(ok, err) })
-				}
-			}
-			{
-				ok, err := p.Submit(ctx, j.ID, "Changed")
-				testutil.Require(t, !(err != nil || ok), func() { t.Fatal("result changed", ok, err) })
-			}
-			for range 2 {
-				{
-					ok, err := p.Finish(ctx, j.ID, "", ai.Usage{}, map[string]any{"modelIdentifier": "actual-model"})
-					testutil.Require(t, !(err != nil || !ok), func() { t.Fatal(ok, err) })
-				}
-			}
-			v, err := p.Get(ctx, "one", j.ID)
-			testutil.Require(t, !(err != nil || v.Background != value || v.Status != "succeeded" || v.ModelLabel != "actual-model"), func() { t.Fatal(v, err) })
+			checkSuccessfulSubmission(t, p, ctx, j)
 		}
 	}
 
@@ -264,4 +249,27 @@ func checkInvalidSubmissionLimit(t *testing.T, p *Postgres, ctx context.Context,
 	}
 	v, err := p.Get(ctx, "one", j.ID)
 	testutil.Require(t, !(err != nil || v.ErrorCategory != "invalid_output"), func() { t.Fatal(v, err) })
+}
+
+func checkSuccessfulSubmission(t *testing.T, p *Postgres, ctx context.Context, j Job) {
+	t.Helper()
+	value := strings.Repeat("界", 1000)
+	for range 2 {
+		{
+			ok, err := p.Submit(ctx, j.ID, " "+value+" ")
+			testutil.Require(t, !(err != nil || !ok), func() { t.Fatal(ok, err) })
+		}
+	}
+	{
+		ok, err := p.Submit(ctx, j.ID, "Changed")
+		testutil.Require(t, !(err != nil || ok), func() { t.Fatal("result changed", ok, err) })
+	}
+	for range 2 {
+		{
+			ok, err := p.Finish(ctx, j.ID, "", ai.Usage{}, map[string]any{"modelIdentifier": "actual-model"})
+			testutil.Require(t, !(err != nil || !ok), func() { t.Fatal(ok, err) })
+		}
+	}
+	v, err := p.Get(ctx, "one", j.ID)
+	testutil.Require(t, !(err != nil || v.Background != value || v.Status != "succeeded" || v.ModelLabel != "actual-model"), func() { t.Fatal(v, err) })
 }

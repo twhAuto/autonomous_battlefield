@@ -22,6 +22,7 @@ var (
 )
 
 type Config struct {
+	Runtime          string        `yaml:"-"`
 	Enabled          bool          `yaml:"enabled"`
 	ProfileID        string        `yaml:"profileId"`
 	DailyAllowance   int           `yaml:"dailyAllowance"`

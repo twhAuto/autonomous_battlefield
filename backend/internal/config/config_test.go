@@ -289,6 +289,7 @@ func TestLoadAgentAndMCPRequireClusterCapability(t *testing.T) {
   environment: cluster
   capabilitySecretEnvironmentVariable: TEST_CAPABILITY_SECRET
 `)
+	t.Setenv("BATTLEFIELD_AGENT_SECRET", "")
 	t.Setenv("TEST_CAPABILITY_SECRET", "")
 	if _, err := LoadAgent(path); err == nil {
 		t.Fatal("agent accepted missing secret")
@@ -296,6 +297,7 @@ func TestLoadAgentAndMCPRequireClusterCapability(t *testing.T) {
 	if _, err := LoadMCP(path); err == nil {
 		t.Fatal("MCP accepted missing secret")
 	}
+	t.Setenv("BATTLEFIELD_AGENT_SECRET", strings.Repeat("w", 32))
 	t.Setenv("TEST_CAPABILITY_SECRET", "secret")
 	if _, err := LoadAgent(path); err != nil {
 		t.Fatal(err)
@@ -319,6 +321,12 @@ func TestDecodeRejectsMultipleDocumentsAndMissingFile(t *testing.T) {
 }
 
 func writeConfigFile(t *testing.T, contents string) string {
+	if _, ok := os.LookupEnv("BATTLEFIELD_AUTH_ENABLED"); !ok {
+		t.Setenv("BATTLEFIELD_AUTH_ENABLED", "false")
+	}
+	if _, ok := os.LookupEnv("BATTLEFIELD_AGENT_SECRET"); !ok {
+		t.Setenv("BATTLEFIELD_AGENT_SECRET", strings.Repeat("w", 32))
+	}
 	t.Helper()
 	t.Setenv("TEST_DATABASE_URL", "postgres://battlefield:secret@localhost:5432/battlefield")
 	contents += `

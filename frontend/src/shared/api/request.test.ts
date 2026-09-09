@@ -27,7 +27,7 @@ it('normalizes the base URL and forwards request options', async () => {
   const signal = new AbortController().signal
   try {
     await configuredFetch('/v1/battles', { method: 'POST', signal })
-    expect(fetch).toHaveBeenCalledWith('https://battlefield.example/v1/battles', { method: 'POST', signal })
+    expect(fetch).toHaveBeenCalledWith('https://battlefield.example/v1/battles', { method: 'POST', signal, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
   } finally {
     vi.unstubAllEnvs()
     vi.resetModules()

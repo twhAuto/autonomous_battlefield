@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
@@ -27,11 +28,14 @@ func (r *Postgres) CreateBattle(ctx context.Context, params battleservice.Create
 		return fmt.Errorf("marshal battle initial state: %w", err)
 	}
 	_, err = r.db.Exec(ctx, `
-		INSERT INTO battle_runs (id, scenario_id, scenario_digest, scenario_snapshot, requested_ticks, initial_state, current_state, traceparent, tracestate)
-		VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8)
-	`, params.ID, params.ScenarioID, params.ScenarioDigest, snapshot, params.RequestedTicks, initialState, params.Traceparent, params.Tracestate)
+		INSERT INTO battle_runs (id, scenario_id, scenario_digest, scenario_snapshot, requested_ticks, initial_state, current_state, traceparent, tracestate, owner_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9)
+	`, params.ID, params.ScenarioID, params.ScenarioDigest, snapshot, params.RequestedTicks, initialState, params.Traceparent, params.Tracestate, authn.Owner(ctx))
 	if err != nil {
 		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "P0429" {
+			return battleservice.ErrLimited
+		}
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return fmt.Errorf("%w: %q", battleservice.ErrBattleAlreadyExists, params.ID)
 		}
@@ -48,13 +52,13 @@ func (r *Postgres) GetBattle(ctx context.Context, id string) (*battleservice.Bat
 	err := r.db.QueryRow(ctx, `
 		SELECT id, scenario_id, scenario_digest, scenario_snapshot, requested_ticks,
 		       initial_state, current_state, current_tick, status, paused, attempt, result, error_code, error_message,
-		       created_at, started_at, completed_at
+		       created_at, started_at, completed_at, owner_id
 		FROM battle_runs
 		WHERE id = $1
 	`, id).Scan(
 		&run.ID, &run.ScenarioID, &run.ScenarioDigest, &snapshot, &run.RequestedTicks, &initialState, &currentState,
 		&run.CurrentTick, &run.Status, &run.Paused, &run.Attempt, &result, &run.ErrorCode, &run.ErrorMessage,
-		&run.CreatedAt, &run.StartedAt, &run.CompletedAt,
+		&run.CreatedAt, &run.StartedAt, &run.CompletedAt, &run.OwnerID,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, battleservice.ErrBattleNotFound

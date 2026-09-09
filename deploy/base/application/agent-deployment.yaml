@@ -24,7 +24,7 @@ spec:
             - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://battlefield-otel-collector:4318"}
             - {name: OTEL_TRACES_SAMPLER_ARG, value: "0.1"}
             - {name: BATTLEFIELD_ENVIRONMENT, value: local}
-            - {name: BATTLEFIELD_MCP_CAPABILITY_SECRET, valueFrom: {secretKeyRef: {name: battlefield-ai, key: BATTLEFIELD_MCP_CAPABILITY_SECRET}}}
+            - {name: BATTLEFIELD_AGENT_SECRET, valueFrom: {secretKeyRef: {name: battlefield-ai, key: BATTLEFIELD_AGENT_SECRET}}}
             - {name: OPENAI_API_KEY, valueFrom: {secretKeyRef: {name: battlefield-ai, key: OPENAI_API_KEY}}}
             - {name: OPENAI_MODEL, valueFrom: {secretKeyRef: {name: battlefield-ai, key: OPENAI_MODEL}}}
             - {name: OPENAI_PROFILE_AVAILABLE, valueFrom: {secretKeyRef: {name: battlefield-ai, key: OPENAI_PROFILE_AVAILABLE}}}

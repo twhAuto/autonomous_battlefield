@@ -3,7 +3,7 @@
 # variables.
 
 http:
-  address: ":8080"
+  address: "127.0.0.1:8080"
   readHeaderTimeout: 5s
   readTimeout: 10s
   writeTimeout: 10s
@@ -28,7 +28,7 @@ auth:
   sessionTTL: 12h
 engine:
   # Enable only after the API and all agent runners support MCP tools v6.
-  healthAddress: ":8081"
+  healthAddress: "127.0.0.1:8081"
   pollInterval: 1s
   leaseDuration: 30s
   heartbeatInterval: 10s
@@ -47,8 +47,8 @@ ai:
     queueTimeout: 5m
     executionTimeout: 2m
   environment: local
-  agentHealthAddress: ":8083"
-  mcpAddress: ":8084"
+  agentHealthAddress: "127.0.0.1:8083"
+  mcpAddress: "127.0.0.1:8084"
   mcpUrl: http://127.0.0.1:8084/mcp
   decisionTimeout: 2m
   capabilitySecretEnvironmentVariable: BATTLEFIELD_MCP_CAPABILITY_SECRET

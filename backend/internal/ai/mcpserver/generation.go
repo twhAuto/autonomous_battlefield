@@ -18,6 +18,8 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 )
 
+const generationLeasePrefix = "generation:"
+
 func (s *Server) WithGenerations(repo generation.WorkerRepository) *Server {
 	s.generations = repo
 	return s
@@ -73,11 +75,11 @@ func (s *Server) GenerationHandler() http.Handler {
 		}
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), bearerPrefix)
 		id, err := ai.VerifyCapability(s.secret, token, time.Now())
-		if err != nil || !strings.HasPrefix(id, "generation:") {
+		if err != nil || !strings.HasPrefix(id, generationLeasePrefix) {
 			http.Error(w, "invalid generation capability", 401)
 			return
 		}
-		id = strings.TrimPrefix(id, "generation:")
+		id = strings.TrimPrefix(id, generationLeasePrefix)
 		transport.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestIDKey{}, id)))
 	})
 }
@@ -93,7 +95,7 @@ func (s *Server) claimGeneration(w http.ResponseWriter, r *http.Request, request
 		http.Error(w, "generation claim failed", 500)
 		return true
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"jobType": generation.JobType, "requestId": job.ID, "profileId": job.ProfileID, "executionTimeoutSeconds": job.ExecutionSeconds})
+	_ = json.NewEncoder(w).Encode(map[string]any{"executionDeadline": job.ExpiresAt, "capabilityToken": s.mint(generationLeasePrefix+job.ID, time.Until(job.ExpiresAt)), "jobType": generation.JobType, "requestId": job.ID, "profileId": job.ProfileID, "executionTimeoutSeconds": job.ExecutionSeconds})
 	return true
 }
 func (s *Server) finishGeneration(w http.ResponseWriter, r *http.Request) {

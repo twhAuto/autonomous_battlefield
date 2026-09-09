@@ -39,7 +39,7 @@ describe('battle API', () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ scenarios: [{ id: 'skirmish-v1' }] }))
 
     await expect(listScenarios()).resolves.toEqual([{ id: 'skirmish-v1' }])
-    expect(fetch).toHaveBeenCalledWith('/v1/scenarios', { signal: undefined })
+    expect(fetch).toHaveBeenCalledWith('/v1/scenarios', { signal: undefined, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
   })
 
   it('lists safe model profiles and maps failures', async () => {
@@ -73,7 +73,7 @@ describe('battle API', () => {
     await expect(createBattle(input)).resolves.toEqual({ id: battleId, status: 'queued' })
     expect(fetch).toHaveBeenCalledWith('/v1/battles', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
       body: JSON.stringify(input),
     })
   })
@@ -94,7 +94,7 @@ describe('battle API', () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse(run))
 
     await expect(getBattle('battle/id')).resolves.toEqual(run)
-    expect(fetch).toHaveBeenCalledWith('/v1/battles/battle%2Fid', { signal: undefined })
+    expect(fetch).toHaveBeenCalledWith('/v1/battles/battle%2Fid', { signal: undefined, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
   })
 
   it.each([
@@ -109,7 +109,7 @@ describe('battle API', () => {
     const stopped = { id: battleId, status: 'stopped' } as BattleRun
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(stopped))
     await expect(stopBattle('battle/id')).resolves.toEqual(stopped)
-    expect(fetch).toHaveBeenLastCalledWith('/v1/battles/battle%2Fid/stop', { method: 'POST' })
+    expect(fetch).toHaveBeenLastCalledWith('/v1/battles/battle%2Fid/stop', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
 
     for (const [status, message] of [
       [400, 'identifier is invalid'],
@@ -128,16 +128,16 @@ describe('battle API', () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(paused)).mockResolvedValueOnce(jsonResponse(resumed))
 
     await expect(pauseBattle('battle/id')).resolves.toEqual(paused)
-    expect(fetch).toHaveBeenLastCalledWith('/v1/battles/battle%2Fid/pause', { method: 'POST' })
+    expect(fetch).toHaveBeenLastCalledWith('/v1/battles/battle%2Fid/pause', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
     await expect(resumeBattle('battle/id')).resolves.toEqual(resumed)
-    expect(fetch).toHaveBeenLastCalledWith('/v1/battles/battle%2Fid/resume', { method: 'POST' })
+    expect(fetch).toHaveBeenLastCalledWith('/v1/battles/battle%2Fid/resume', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
   })
 
   it('gets faction-filtered battle views', async () => {
     const view = { map: { width: 15 }, state: { tick: 3 }, visiblePositions: [] }
     vi.mocked(fetch).mockResolvedValue(jsonResponse(view))
     await expect(getBattleView('battle/id', 'faction/id')).resolves.toEqual(view)
-    expect(fetch).toHaveBeenCalledWith('/v1/battles/battle%2Fid/factions/faction%2Fid/view', { signal: undefined })
+    expect(fetch).toHaveBeenCalledWith('/v1/battles/battle%2Fid/factions/faction%2Fid/view', { signal: undefined, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
   })
 
   it.each([
@@ -156,7 +156,7 @@ describe('battle API', () => {
     await expect(listBattleEvents('battle/id', { attempt: 2 })).resolves.toEqual(page)
     expect(fetch).toHaveBeenCalledWith(
       '/v1/battles/battle%2Fid/events?attempt=2&after=0&limit=50',
-      { signal: undefined },
+      { signal: undefined, headers: { 'X-Requested-With': 'XMLHttpRequest' } },
     )
   })
 
@@ -167,7 +167,7 @@ describe('battle API', () => {
 		await expect(listBattleEvents('battle/id', { attempt: 2, latest: true })).resolves.toEqual(page)
 		expect(fetch).toHaveBeenCalledWith(
 			'/v1/battles/battle%2Fid/events?attempt=2&after=0&limit=50&latest=true',
-			{ signal: undefined },
+			{ signal: undefined, headers: { 'X-Requested-With': 'XMLHttpRequest' } },
 		)
 	})
 
@@ -188,7 +188,7 @@ describe('battle API', () => {
     const decisions = [{ requestId: 'request-1', factionId: input.participants[0].factionId, targetTick: 10, status: 'accepted', usage: {} }]
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ decisions }))
     await expect(listDecisionHistory('battle/id', 2)).resolves.toEqual(decisions)
-    expect(fetch).toHaveBeenLastCalledWith('/v1/battles/battle%2Fid/decisions?attempt=2', { signal: undefined })
+    expect(fetch).toHaveBeenLastCalledWith('/v1/battles/battle%2Fid/decisions?attempt=2', { signal: undefined, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
 
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 503 }))
     await expect(listDecisionHistory(battleId, 1)).rejects.toEqual(new BattleApiError('Decision history could not be loaded.', 503))
@@ -198,7 +198,7 @@ describe('battle API', () => {
 function jsonResponse(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
   })
 }
 
@@ -209,9 +209,9 @@ describe('battle history API', () => {
     vi.mocked(fetch).mockImplementation(async () => jsonResponse(page))
     const signal = new AbortController().signal
     await expect(listBattles({ status: 'paused', cursor: 'a+b', limit: 10 }, signal)).resolves.toEqual(page)
-    expect(fetch).toHaveBeenLastCalledWith('/v1/battles?status=paused&cursor=a%2Bb&limit=10', { signal })
+    expect(fetch).toHaveBeenLastCalledWith('/v1/battles?status=paused&cursor=a%2Bb&limit=10', { signal, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
     await listBattles({})
-    expect(fetch).toHaveBeenLastCalledWith('/v1/battles?limit=25', { signal: undefined })
+    expect(fetch).toHaveBeenLastCalledWith('/v1/battles?limit=25', { signal: undefined, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
   })
   it.each([400, 500])('maps HTTP %s', async (status) => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status }))

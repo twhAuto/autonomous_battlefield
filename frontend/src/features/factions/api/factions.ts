@@ -24,6 +24,7 @@ export interface FactionRuleset {
 }
 
 export interface Faction {
+  ownerId?: string
   id: string
   name: string
   doctrine: string

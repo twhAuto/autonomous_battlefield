@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/clienv"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -183,4 +184,24 @@ func evaluateLocalCLIProfile(profile ModelProfile) ModelProfile {
 	}
 	profile.Available = true
 	return profile
+}
+
+// ProfileAllowed is also enforced on submitted IDs, not just catalog visibility.
+func ProfileAllowed(ctx context.Context, p ModelProfile) bool {
+	a, ok := authn.ActorFromContext(ctx)
+	if !ok {
+		return false
+	}
+	if a.Role == authn.Player && p.Runtime == "cli" {
+		return false
+	}
+	if len(p.AllowedRoles) == 0 {
+		return a.CanInspect()
+	}
+	for _, role := range p.AllowedRoles {
+		if role == string(a.Role) {
+			return true
+		}
+	}
+	return false
 }

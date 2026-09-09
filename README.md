@@ -7,14 +7,14 @@ version-controlled configuration templates live in [`deploy/environments/`](depl
 
 Autonomous Battlefield is a Go backend for an auto-battler and expansion game. The long-term product will let human players and AI agents control factions that gather resources, expand territory, and fight on a continuously running battlefield.
 
-The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, editable faction doctrines and gold-funded opening armies, autonomous economies, fog-of-war views, production-window decisions, provider-neutral model controllers over MCP, an optional single-admin login, validated configuration, health endpoints, and graceful shutdown. Player commands, multi-user authorization, and seeded map generation remain planned work. The optional `frontier-siege-v2` scenario adds Catapults, Battering Rams, Pikemen, Herbalists, defense/watch towers, and forward Barracks on a 25×17 map. See [Frontier Siege](docs/design/frontier-siege.md) for the roster, construction limits, and play instructions.
+The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, editable faction doctrines and gold-funded opening armies, autonomous economies, fog-of-war views, production-window decisions, provider-neutral model controllers over MCP, Cloudflare Access authentication with Player/Developer/Admin roles and ownership, validated configuration, health endpoints, and graceful shutdown. Seeded map generation remains planned work. The optional `frontier-siege-v2` scenario adds Catapults, Battering Rams, Pikemen, Herbalists, defense/watch towers, and forward Barracks on a 25×17 map. See [Frontier Siege](docs/design/frontier-siege.md) for the roster, construction limits, and play instructions.
 
 The **Battle history** menu opens `/battles`: browse every run, filter by status
 (including paused battles), page through older engagements, and manually refresh
 the newest entries. Open a battle to inspect its existing map, results, events,
 and AI decisions. Saved participant names survive faction edits and deletion.
 
-The battle inspector combines a **System** event stream and player comparison
+For Developers and Admins, the battle inspector combines a **System** event stream and player comparison
 with an **Inspect** dropdown for selecting System or a player. Each player has **Overview**, **Decisions**, **Units**,
 and **Faction** sections, with current gold, living units, and castle health
 always visible. Decisions can load the saved observation used by that AI,
@@ -39,6 +39,7 @@ raw inspection views.
 | Build, deploy, inspect, or remove Kubernetes workloads | [Deployment](docs/operations/deployment.md) |
 | Configure CI/CD and SonarQube | [Jenkins](docs/operations/jenkins.md) |
 | Inspect metrics, traces, logs, and reliability objectives | [Observability](docs/operations/observability.md) |
+| Launch friends behind Access and provision the isolated CLI VM | [Friends-only launch](docs/operations/friends-launch.md) |
 | Configure subscription CLI authentication | [Antigravity](docs/operations/antigravity-cli.md) |
 | Compare controllers and author unit knowledge | [AI comparisons](docs/operations/ai-comparisons.md) |
 | Enable the optional completed-battle cache | [Redis](docs/operations/redis.md) |
@@ -48,6 +49,12 @@ raw inspection views.
 The architecture guide owns runtime explanations; the codebase guide owns source
 navigation. Operational guides own their setup and recovery commands. The root
 `DEPLOYMENT.md`, `JENKINS.md`, and `OBSERVABILITY.md` remain compatibility links.
+
+Production requires Cloudflare mode and rejects missing authentication settings. Players
+share gameplay and factions but control only their own content; diagnostics and CLI
+profiles require Developer/Admin. CLI access stays disabled until VM verification.
+See the [launch runbook](docs/operations/friends-launch.md) for limits, backups, and
+rollout to `play.ordinalfrontier.com`.
 
 ## Requirements
 
@@ -65,7 +72,7 @@ database password once before the first start:
 ```bash
 umask 077
 printf 'BATTLEFIELD_POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 24)" > backend/.env
-./run-dev.sh
+BATTLEFIELD_AUTH_MODE=disabled-development ./run-dev.sh
 ```
 
 PostgreSQL keeps the password that initialized an existing Compose volume.

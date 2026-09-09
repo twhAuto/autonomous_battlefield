@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"regexp"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ import (
 )
 
 var (
+	ErrLimited                 = errors.New("battle allowance exhausted")
 	ErrBattleNotFound          = errors.New("battle not found")
 	ErrBattleAlreadyExists     = errors.New("battle already exists")
 	ErrBattleNotActive         = errors.New("battle is not active")
@@ -58,6 +60,7 @@ type CreateBattleParams struct {
 }
 
 type BattleRun struct {
+	OwnerID          string        `json:"ownerId"`
 	ID               string        `json:"id"`
 	ScenarioID       string        `json:"scenarioId"`
 	ScenarioDigest   string        `json:"scenarioDigest"`
@@ -232,12 +235,17 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		Tracestate:       tracestate,
 	})
 	if errors.Is(err, ErrBattleAlreadyExists) {
+		existing, e := s.battles.GetBattle(ctx, input.ID)
+		if e == nil && existing.OwnerID == authn.Owner(ctx) && existing.ScenarioDigest == digest && existing.RequestedTicks == input.TickCount {
+			return existing, nil
+		}
 		return nil, ErrBattleAlreadyExists
 	}
 	if err != nil {
 		return nil, err
 	}
 	return &BattleRun{
+		OwnerID:          authn.Owner(ctx),
 		ID:               input.ID,
 		ScenarioID:       resolved.ID,
 		ScenarioDigest:   digest,
@@ -260,7 +268,13 @@ func (s *battleService) resolveParticipants(ctx context.Context, participants []
 	var identities [2]FactionIdentity
 	var controllers [2]game.ControllerConfig
 	for index, participant := range participants {
+		if err := s.authorizeController(ctx, participant.Controller); err != nil {
+			return identities, controllers, err
+		}
 		controller, err := s.resolveController(participant.Controller)
+		if err == nil && authn.IsPlayer(ctx) && controller.Runtime == "cli" {
+			return identities, controllers, authn.ErrForbidden
+		}
 		if err != nil {
 			return identities, controllers, err
 		}
@@ -275,6 +289,18 @@ func (s *battleService) resolveParticipants(ctx context.Context, participants []
 		identities[index] = FactionIdentity{ID: storedFaction.ID, Name: storedFaction.Name, Doctrine: storedFaction.Doctrine, Background: storedFaction.Background, RulesetID: storedFaction.RulesetID, Blueprint: game.CloneBlueprint(storedFaction.Blueprint)}
 	}
 	return identities, controllers, nil
+}
+
+func (s *battleService) authorizeController(ctx context.Context, controller game.ControllerConfig) error {
+	if controller.Type == ai.ControllerModel {
+		if _, hasActor := authn.ActorFromContext(ctx); hasActor {
+			p, e := s.profiles.Require(controller.ProfileID)
+			if e == nil && !ai.ProfileAllowed(ctx, p) {
+				return authn.ErrForbidden
+			}
+		}
+	}
+	return nil
 }
 
 func (s *battleService) resolveController(selected game.ControllerConfig) (game.ControllerConfig, error) {
@@ -329,6 +355,9 @@ func (s *battleService) StopBattle(ctx context.Context, id string) (*BattleRun, 
 	if !battleUUIDPattern.MatchString(id) {
 		return nil, ErrInvalidBattle
 	}
+	if err := s.authorize(ctx, id); err != nil {
+		return nil, err
+	}
 	if err := s.battles.StopBattle(ctx, id); err != nil {
 		return nil, err
 	}
@@ -346,6 +375,9 @@ func (s *battleService) ResumeBattle(ctx context.Context, id string) (*BattleRun
 func (s *battleService) setBattlePaused(ctx context.Context, id string, paused bool) (*BattleRun, error) {
 	if !battleUUIDPattern.MatchString(id) {
 		return nil, ErrInvalidBattle
+	}
+	if err := s.authorize(ctx, id); err != nil {
+		return nil, err
 	}
 	if err := s.battles.SetBattlePaused(ctx, id, paused); err != nil {
 		return nil, err
@@ -388,4 +420,19 @@ type ResultCache interface {
 
 func cacheableResult(run *BattleRun, id string) bool {
 	return run != nil && run.ID == id && run.Status == "completed" && run.Result != nil
+}
+
+func (s *battleService) authorize(ctx context.Context, id string) error {
+	a, ok := authn.ActorFromContext(ctx)
+	if !ok {
+		return authn.ErrForbidden
+	}
+	if a.Role == authn.Admin {
+		return nil
+	}
+	run, err := s.battles.GetBattle(ctx, id)
+	if err != nil {
+		return err
+	}
+	return authn.AuthorizeOwner(ctx, run.OwnerID)
 }

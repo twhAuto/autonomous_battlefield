@@ -67,7 +67,7 @@ func (transport usageReportingTransport) claimResponse(request *http.Request) *h
 	if transport.claims.Add(1) != 1 {
 		return agentResponse(http.StatusNoContent, "")
 	}
-	encoded, _ := json.Marshal(job{RequestID: "request", ProfileID: "profile"})
+	encoded, _ := json.Marshal(job{CapabilityToken: "server-issued-capability", RequestID: "request", ProfileID: "profile"})
 	return agentResponse(http.StatusOK, string(encoded))
 }
 
@@ -150,7 +150,7 @@ func TestWorkerDoesNotClaimBeyondAvailableConcurrency(t *testing.T) {
 	client := &http.Client{Transport: agentRoundTrip(func(request *http.Request) (*http.Response, error) {
 		if strings.HasSuffix(request.URL.Path, "/claim") {
 			id := claims.Add(1)
-			body, _ := json.Marshal(job{RequestID: fmt.Sprintf("request-%d", id), ProfileID: "profile"})
+			body, _ := json.Marshal(job{CapabilityToken: "server-issued-capability", RequestID: fmt.Sprintf("request-%d", id), ProfileID: "profile"})
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(string(body))), Header: make(http.Header)}, nil
 		}
 		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil
@@ -231,10 +231,10 @@ func TestRunJobReportsUnavailableAndRunnerFailures(t *testing.T) {
 	})}
 	profiles := ai.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
 	worker := &Worker{MCPURL: "http://mcp/mcp", Secret: "secret", Profiles: profiles, DecisionTimeout: time.Second, Client: client, Logger: slog.New(slog.NewJSONHandler(&logs, nil)), RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) { return fakeRunner{err: errors.New("provider")}, nil }}
-	worker.runJob(context.Background(), job{RequestID: "request", ProfileID: "missing"})
-	worker.runJob(context.Background(), job{RequestID: "request", ProfileID: "profile"})
+	worker.runJob(context.Background(), job{CapabilityToken: "server-issued-capability", RequestID: "request", ProfileID: "missing"})
+	worker.runJob(context.Background(), job{CapabilityToken: "server-issued-capability", RequestID: "request", ProfileID: "profile"})
 	worker.RunnerFactory = func(ai.ModelProfile) (ai.DecisionRunner, error) { return nil, errors.New("factory") }
-	worker.runJob(context.Background(), job{RequestID: "request", ProfileID: "profile"})
+	worker.runJob(context.Background(), job{CapabilityToken: "server-issued-capability", RequestID: "request", ProfileID: "profile"})
 	if failures.Load() != 3 {
 		t.Fatalf("failures=%d", failures.Load())
 	}

@@ -17,9 +17,17 @@ import (
 	"time"
 )
 
+// ModeCloudflare selects authentication through verified Cloudflare Access JWTs.
+const ModeCloudflare = "cloudflare"
+
 const sessionCookieName = "battlefield_session"
 
 type Config struct {
+	Mode          string
+	Origin        string
+	Issuer        string
+	Audience      string
+	Roles         map[string]Role
 	Enabled       bool
 	Username      string
 	Password      string
@@ -29,7 +37,9 @@ type Config struct {
 }
 
 type Actor struct {
-	ID string `json:"id"`
+	ID    string `json:"id"`
+	Email string `json:"email,omitempty"`
+	Role  Role   `json:"role"`
 }
 
 type actorContextKey struct{}
@@ -44,12 +54,16 @@ type Authenticator interface {
 }
 
 type Manager struct {
-	config Config
-	now    func() time.Time
+	config     Config
+	cloudflare *Cloudflare
+	now        func() time.Time
 }
 
 func NewManager(config Config) *Manager {
-	return &Manager{config: config, now: time.Now}
+	if config.Mode == ModeCloudflare {
+		config.Enabled = true
+	}
+	return &Manager{config: config, now: time.Now, cloudflare: &Cloudflare{Issuer: config.Issuer, Audience: config.Audience, Roles: config.Roles}}
 }
 
 func (m *Manager) Enabled() bool {
@@ -57,8 +71,11 @@ func (m *Manager) Enabled() bool {
 }
 
 func (m *Manager) Authenticate(request *http.Request) (Actor, bool) {
+	if m.config.Mode == ModeCloudflare {
+		return m.cloudflare.Authenticate(request)
+	}
 	if !m.config.Enabled {
-		return Actor{ID: localDevelopmentActor}, true
+		return Actor{ID: localDevelopmentActor, Role: Admin}, true
 	}
 	cookie, err := request.Cookie(sessionCookieName)
 	if err != nil {
@@ -137,7 +154,7 @@ func (m *Manager) parseToken(token string) (Actor, bool) {
 	if err != nil || len(actorID) == 0 {
 		return Actor{}, false
 	}
-	return Actor{ID: string(actorID)}, true
+	return Actor{ID: string(actorID), Role: Admin}, true
 }
 
 type Routes struct {
@@ -160,6 +177,10 @@ func (r *Routes) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (r *Routes) login(response http.ResponseWriter, request *http.Request) {
+	if r.manager.config.Mode == ModeCloudflare {
+		http.NotFound(response, request)
+		return
+	}
 	request.Body = http.MaxBytesReader(response, request.Body, 4096)
 	var credentials struct {
 		Username string `json:"username"`
@@ -180,7 +201,7 @@ func (r *Routes) login(response http.ResponseWriter, request *http.Request) {
 		http.Error(response, "invalid username or password", http.StatusUnauthorized)
 		return
 	}
-	actor := Actor{ID: r.manager.config.Username}
+	actor := Actor{ID: r.manager.config.Username, Role: Admin}
 	if !r.manager.Enabled() {
 		actor.ID = localDevelopmentActor
 	}
@@ -196,16 +217,23 @@ func (r *Routes) session(response http.ResponseWriter, request *http.Request) {
 	if !ok {
 		response.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(response).Encode(map[string]any{
-			"enabled": true, "authenticated": false,
+			"enabled": true, "authenticated": false, "mode": r.manager.config.Mode,
 		})
 		return
 	}
 	_ = json.NewEncoder(response).Encode(map[string]any{
-		"enabled": r.manager.Enabled(), "authenticated": true, "actor": actor,
+		"enabled": r.manager.Enabled(), "authenticated": true, "actor": actor, "mode": r.manager.config.Mode,
+		"capabilities": map[string]bool{"inspect": actor.CanInspect(), "cli": actor.CanInspect(), "admin": actor.Role == Admin},
 	})
 }
 
 func (r *Routes) logout(response http.ResponseWriter, _ *http.Request) {
+	if r.manager.config.Mode == ModeCloudflare {
+		response.Header().Set("Content-Type", "application/json")
+		response.Header().Set(cacheControlHeader, noStoreDirective)
+		_ = json.NewEncoder(response).Encode(map[string]string{"logoutUrl": "/cdn-cgi/access/logout"})
+		return
+	}
 	r.manager.clearSessionCookie(response)
 	response.Header().Set(cacheControlHeader, noStoreDirective)
 	response.WriteHeader(http.StatusNoContent)
@@ -214,7 +242,7 @@ func (r *Routes) logout(response http.ResponseWriter, _ *http.Request) {
 func RequireAuthentication(enabled bool, authenticator Authenticator, next http.Handler) http.Handler {
 	if !enabled {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorContextKey{}, Actor{ID: localDevelopmentActor})))
+			next.ServeHTTP(w, r.WithContext(WithActor(r.Context(), Actor{ID: localDevelopmentActor, Role: Admin})))
 		})
 	}
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -228,7 +256,7 @@ func RequireAuthentication(enabled bool, authenticator Authenticator, next http.
 			http.Error(response, "authentication required", http.StatusUnauthorized)
 			return
 		}
-		next.ServeHTTP(response, request.WithContext(context.WithValue(request.Context(), actorContextKey{}, actor)))
+		next.ServeHTTP(response, request.WithContext(WithActor(request.Context(), actor)))
 	})
 }
 

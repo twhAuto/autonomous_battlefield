@@ -14,6 +14,10 @@ if [[ "${DEPLOY_ENV}" == production ]]; then
   [[ "$#" == 2 && "$1" == *@sha256:* && "$2" == *@sha256:* ]] || {
     echo 'Production rollback requires both exact image digests.' >&2; exit 1;
   }
+  [[ "${BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST:-}" == "$1" ]] || {
+    echo 'Production rollback target has not been attested as Access-compatible. Keep the application unavailable; set BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST only after verifying that exact backend preserves Cloudflare authentication.' >&2
+    exit 1
+  }
   BACKEND_IMAGE_REVISION= FRONTEND_IMAGE_REVISION= \
     "${project_dir}/scripts/ci/with-ghcr-auth.sh" \
     "${project_dir}/scripts/cd/verify-registry-images.sh" "$1" "$2"

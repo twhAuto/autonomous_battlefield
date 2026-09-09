@@ -163,20 +163,20 @@ func TestGenerationCapabilityAndControlPlane(t *testing.T) {
 	battle := &fakeRepository{record: ai.DecisionRecord{ID: "battle", ProfileID: "writer"}}
 	for _, body := range []string{`{"workerId":"w","profileIds":["writer"],"jobTypes":["faction_background"]}`, `{"workerId":"w","profileIds":["writer"]}`, `{"workerId":"w","profileIds":["writer"],"jobTypes":["battle_decision","faction_background"]}`} {
 		req = httptest.NewRequest("POST", "/claim", strings.NewReader(body))
-		req.Header.Set("Authorization", "Bearer secret")
+		req.Header.Set("Authorization", "Bearer worker-secret")
 		w = httptest.NewRecorder()
-		service.AgentHandler(battle).ServeHTTP(w, req)
+		service.WithAgentSecret("worker-secret").AgentHandler(battle).ServeHTTP(w, req)
 		testutil.Require(t, w.Code == 200, func() { t.Fatal(w.Code, w.Body.String()) })
 	}
 	testutil.Require(t, repo.claimed == 1, func() { t.Fatal("legacy/mixed worker ignored battle priority", repo.claimed) })
 	for _, tc := range []struct {
 		body, auth string
 		status     int
-	}{{`{"requestId":"draft"}`, "Bearer secret", 204}, {`{"requestId":"other"}`, "Bearer secret", 409}, {`{`, "Bearer secret", 400}, {`{}`, "", 401}} {
+	}{{`{"requestId":"draft"}`, "Bearer worker-secret", 204}, {`{"requestId":"other"}`, "Bearer worker-secret", 409}, {`{`, "Bearer worker-secret", 400}, {`{}`, "", 401}} {
 		req = httptest.NewRequest("POST", "/generation-finish", strings.NewReader(tc.body))
 		req.Header.Set("Authorization", tc.auth)
 		w = httptest.NewRecorder()
-		service.AgentHandler(battle).ServeHTTP(w, req)
+		service.WithAgentSecret("worker-secret").AgentHandler(battle).ServeHTTP(w, req)
 		testutil.Require(t, w.Code == tc.status, func() { t.Fatal(w.Code, w.Body.String()) })
 	}
 }
@@ -186,10 +186,10 @@ func TestReadyGenerationDoesNotWaitBehindEmptyBattlePoll(t *testing.T) {
 	battles := &fakeRepository{claimErr: ai.ErrNoDecision}
 	service := New(battles, "secret", nil).WithGenerations(drafts)
 	req := httptest.NewRequest("POST", "/claim", strings.NewReader(`{"workerId":"w","profileIds":["writer"],"jobTypes":["battle_decision","faction_background"],"waitSeconds":20}`))
-	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set("Authorization", "Bearer worker-secret")
 	ctx, cancel := context.WithTimeout(req.Context(), time.Second)
 	defer cancel()
 	w := httptest.NewRecorder()
-	service.AgentHandler(battles).ServeHTTP(w, req.WithContext(ctx))
+	service.WithAgentSecret("worker-secret").AgentHandler(battles).ServeHTTP(w, req.WithContext(ctx))
 	testutil.Require(t, !(w.Code != 200 || ctx.Err() != nil || !strings.Contains(w.Body.String(), `"jobType":"faction_background"`)), func() { t.Fatal(w.Code, w.Body.String(), ctx.Err()) })
 }

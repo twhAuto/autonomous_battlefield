@@ -72,7 +72,7 @@ func TestCreateFaction(t *testing.T) {
 		t.Fatalf("CreateFaction() returned an error: %v", err)
 	}
 
-	wantArguments := []any{stored.ID, stored.Name, stored.Doctrine, stored.Background}
+	wantArguments := []any{stored.ID, stored.Name, stored.Doctrine, stored.Background, "legacy-admin"}
 	if !reflect.DeepEqual(db.execArguments, wantArguments) {
 		t.Fatalf("Exec arguments = %#v, want %#v", db.execArguments, wantArguments)
 	}

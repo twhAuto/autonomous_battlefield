@@ -4,10 +4,13 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"go.opentelemetry.io/otel/attribute"
+	"io"
+	"time"
 
 	"os"
 	"os/exec"
@@ -29,7 +32,12 @@ func (OSCommandExecutor) Run(ctx context.Context, name string, args, environment
 	command := exec.CommandContext(ctx, name, args...)
 	command.Env = environment
 	command.Dir = directory
-	return command.CombinedOutput()
+	isolateCommand(command)
+	command.WaitDelay = time.Second
+	var output limitedOutput
+	command.Stdout, command.Stderr = &output, &output
+	err := command.Run()
+	return output.Bytes(), err
 }
 
 type CLIRunner struct {
@@ -68,7 +76,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 			"-c", `mcp_servers.battlefield.enabled_tools=["` + strings.Join(ai.SessionToolNames(session), `","`) + `"]`,
 			"-c", `mcp_servers.battlefield.default_tools_approval_mode="approve"`, prompt}
 		args = withModel(args, r.Model)
-		environment = replaceEnvironment(os.Environ(), "CODEX_WORKSPACE", workspace)
+		environment = replaceEnvironment(cliEnvironment(), "CODEX_WORKSPACE", workspace)
 		environment = replaceEnvironment(environment, "BATTLEFIELD_MCP_AUTHORIZATION", "Bearer "+session.CapabilityToken)
 	case "antigravity-cli":
 		name = "agy"
@@ -194,4 +202,26 @@ func (r CLIRunner) prefetchContext(ctx context.Context, session ai.DecisionSessi
 		return nil, fmt.Errorf("invalid decision context metadata")
 	}
 	return ai.SessionContextPayload(session, payload), nil
+}
+
+// Only CLI login and transport settings cross the subprocess boundary.
+func cliEnvironment() []string {
+	env := []string{}
+	for _, key := range []string{"PATH", "HOME", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR", "LANG"} {
+		if value, ok := os.LookupEnv(key); ok {
+			env = append(env, key+"="+value)
+		}
+	}
+	return env
+}
+
+// Bound allocation during execution, including output from a compromised CLI.
+type limitedOutput struct{ bytes.Buffer }
+
+func (b *limitedOutput) Write(p []byte) (int, error) {
+	const limit = 4 << 20
+	if b.Len()+len(p) > limit {
+		return 0, io.ErrShortBuffer
+	}
+	return b.Buffer.Write(p)
 }

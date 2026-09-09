@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
@@ -29,6 +30,10 @@ func requestLogging(next http.Handler, logger *slog.Logger) http.Handler {
 		requestID := acceptedRequestID(r.Header.Get("X-Request-ID"))
 		w.Header().Set("X-Request-ID", requestID)
 		r = r.WithContext(context.WithValue(r.Context(), requestIDContextKey{}, requestID))
+		var authenticated atomic.Pointer[authn.Actor]
+		r = r.WithContext(authn.WithActorObserver(r.Context(), func(actor authn.Actor) {
+			authenticated.Store(&actor)
+		}))
 		response := &loggingResponseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(response, r)
 		duration := time.Since(started)
@@ -42,7 +47,13 @@ func requestLogging(next http.Handler, logger *slog.Logger) http.Handler {
 		} else if r.URL.Path == "/healthz" || r.URL.Path == "/livez" || r.URL.Path == "/readyz" || r.URL.Path == "/startupz" {
 			level = slog.LevelDebug
 		}
+		actor := authn.Actor{}
+		if verified := authenticated.Load(); verified != nil {
+			actor = *verified
+		}
 		logger.Log(r.Context(), level, "http_request_completed",
+			"actor_id", actor.ID,
+			"actor_role", actor.Role,
 			"request_id", requestID,
 			"method", r.Method,
 			"path", r.URL.Path,

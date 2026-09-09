@@ -1,5 +1,11 @@
 # Observability and reliability objectives
 
+HTTP completion logs include `actor_id` and `actor_role` established by trusted
+authentication middleware, alongside method, resource path, status and request ID.
+An authentication observer carries identity to the outer request logger; rejected
+credentials leave identity empty. Tokens, cookies and email headers are not logged.
+These operational logs provide request attribution, not a tamper-proof audit store.
+
 Autonomous Battlefield exposes Prometheus metrics from the API and engine and
 ships local metrics, tracing, and logging stacks for the `kind` deployment. Prometheus
 and Grafana provide metrics; Fluent Bit, Elasticsearch, and Kibana provide

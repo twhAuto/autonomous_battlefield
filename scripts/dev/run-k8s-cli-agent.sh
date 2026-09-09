@@ -58,7 +58,7 @@ cleanup() {
     fi
   done
   rm -rf -- "${runtime_dir}"
-  unset BATTLEFIELD_MCP_CAPABILITY_SECRET
+  unset BATTLEFIELD_AGENT_SECRET
   exit "${exit_code}"
 }
 
@@ -130,7 +130,6 @@ write_agent_config() {
     printf '  agentHealthAddress: "127.0.0.1:%s"\n' "${health_port}"
     printf '  mcpUrl: "http://127.0.0.1:%s/mcp"\n' "${mcp_port}"
     printf '  decisionTimeout: 2m\n'
-    printf '  capabilitySecretEnvironmentVariable: BATTLEFIELD_MCP_CAPABILITY_SECRET\n'
     printf '  profiles:\n'
     if [[ "${use_codex}" == "1" ]]; then
       printf '    - id: codex-subscription-local\n'
@@ -192,12 +191,12 @@ fi
 
 kube get deployment battlefield-api >/dev/null
 kube get deployment battlefield-mcp >/dev/null
-encoded_secret="$(kube get secret battlefield-ai -o 'jsonpath={.data.BATTLEFIELD_MCP_CAPABILITY_SECRET}')"
+encoded_secret="$(kube get secret battlefield-ai -o 'jsonpath={.data.BATTLEFIELD_AGENT_SECRET}')"
 if [[ -z "${encoded_secret}" ]]; then
   echo "The battlefield-ai capability secret is missing." >&2
   exit 1
 fi
-export BATTLEFIELD_MCP_CAPABILITY_SECRET="$(printf '%s' "${encoded_secret}" | base64 --decode)"
+export BATTLEFIELD_AGENT_SECRET="$(printf '%s' "${encoded_secret}" | base64 --decode)"
 unset encoded_secret
 
 write_agent_config

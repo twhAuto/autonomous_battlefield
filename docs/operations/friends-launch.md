@@ -1,0 +1,297 @@
+# Friends-only launch
+
+The chosen application hostname is **play.ordinalfrontier.com**, under Access team
+**ordinalfrontier-lab**. Start with the owner's Google identity only. Application
+roles are private operator configuration, never a committed email list. This
+runbook describes the implemented deployment path; it does not certify that a
+live tunnel, firewall, or VM has been provisioned.
+
+## Local development
+
+Local development stays on the workstation. `backend/config.yaml` binds the API,
+MCP and worker health listeners to IPv4 loopback. The Kubernetes ConfigMap retains
+pod listeners. The development launcher reads literal recognized values from
+`backend/.env`, with existing shell variables taking precedence. It never sources
+that file as executable shell.
+
+Set `BATTLEFIELD_ENV=dev` and explicitly choose `BATTLEFIELD_AUTH_MODE=local-password`
+with `BATTLEFIELD_ADMIN_USERNAME`, a strong `BATTLEFIELD_ADMIN_PASSWORD` (12+
+characters), and random `BATTLEFIELD_SESSION_SECRET` (32+ bytes). If retaining the
+legacy `BATTLEFIELD_AUTH_ENABLED` variable, it must agree with the selected mode.
+To deliberately skip login on localhost, use `disabled-development` and remove
+or set the legacy flag to `false`. Neither mode is accepted in production.
+
+For `START_AGENT=1 ./run-dev.sh`, generate two independent random secrets for
+`BATTLEFIELD_MCP_CAPABILITY_SECRET` and `BATTLEFIELD_AGENT_SECRET`. The MCP process
+needs both; workers need only the latter. The local Kubernetes CLI launcher reads
+the worker credential from `battlefield-ai` and keeps its bridge on loopback.
+Local CLI login stays on the workstation. Do not use that launcher to serve public
+CLI jobs from your personal home directory.
+
+## Owner-only Access
+
+1. Create a named Cloudflare Tunnel for the application. Route DNS for
+   `play.ordinalfrontier.com` to that tunnel. Create a self-hosted Access application
+   covering the **entire hostname**, with a one-hour application session.
+2. Configure Google as the identity provider. Add an Allow policy listing the
+   owner's exact email. Do not add a domain-wide allow, Bypass, Everyone, or public
+   service-token policy. Require MFA for Admin/Developer identities using an IdP
+   and Access policy that actually enforces it. Test the MFA challenge; a normal
+   Google login alone is not evidence of MFA. For the initial owner-only phase,
+   applying MFA to everyone is appropriate.
+3. Record the Access application AUD tag, the team name, tunnel UUID, and a verified
+   digest-pinned `cloudflare/cloudflared` image. Store tunnel credentials outside Git.
+   The local configuration uses the tunnel's credentials JSON, not an account-wide
+   API token. Obtain the tunnel-specific credentials through Cloudflare's supported
+   tunnel creation flow.
+4. Render configuration from the repository root (set `OWNER_EMAIL`, `ACCESS_AUD`,
+   `TUNNEL_ID`, and `CLOUDFLARED_IMAGE` privately):
+
+   ```bash
+   umask 077
+   python3 scripts/ops/render-friends-launch.py \
+     --hostname play.ordinalfrontier.com --team ordinalfrontier-lab \
+     --audience "$ACCESS_AUD" --tunnel-id "$TUNNEL_ID" \
+     --cloudflared-image "$CLOUDFLARED_IMAGE" --admin "$OWNER_EMAIL" \
+     --output "$HOME/.config/battlefield/friends"
+   ```
+
+   The renderer rejects duplicate identities and unpinned tunnel images. Add
+   `--player` or `--developer` for each explicitly invited email in later phases.
+   Rendered `auth.env` needs no application password or session-signing secret.
+5. Keep `CODEX_CLI_PROFILE_AVAILABLE=false`, `GEMINI_CLI_PROFILE_AVAILABLE=false`,
+   and paid API availability flags false in `battlefield-ai`. Create its independent
+   worker and capability-signing secrets. Set the production environment profile's
+   `BF_AUTH_FILE` to the rendered auth file and `BF_AI_FILE` to the private
+   AI file. Existing production Secrets are preserved if no file is supplied, but
+   missing Cloudflare settings now fail startup.
+6. Deploy the application with the normal verified image pipeline. Production
+   migration runs now take a custom-format `pg_dump`, check its archive listing,
+   and refuse migration on failure. Backups default to
+   `$XDG_STATE_HOME/battlefield/backups` (or `~/.local/state/battlefield/backups`);
+   override `BATTLEFIELD_BACKUP_DIR` with persistent protected storage. Copy backups
+   off the server and test restoration in a separate database before launch.
+7. Create the tunnel Secret and apply the rendered resources in the application
+   namespace:
+
+   ```bash
+   kubectl -n battlefield create secret generic battlefield-tunnel \
+     --from-file=credentials.json="$TUNNEL_CREDENTIALS_FILE" \
+     --dry-run=client -o yaml | kubectl apply -f -
+   kubectl -n battlefield apply -f "$HOME/.config/battlefield/friends/tunnel.json"
+   ```
+
+   Both tunnel ingress rules require Access token validation. The API independently
+   validates JWT signature, RS256 algorithm, issuer, application audience, expiry,
+   issue time, and subject/email claims. Missing keys or unknown roles deny access;
+   there is no password, cookie, or unsigned-header fallback.
+8. Remove public gateway/ingress routes and router port forwards to the origin.
+   Only the tunnel's outbound connection should expose the application. Block
+   inbound direct access on **both IPv4 and IPv6**, including forwarded container
+   ports. Keep SSH restricted to the operator's private management network.
+   MCP, databases, Kubernetes, Jenkins, SonarQube and monitoring stay private.
+
+The rendered NetworkPolicies allow the tunnel to reach frontend/API and frontend
+to reach API. **Kind's default networking must not be assumed to enforce these
+policies.** Use a CNI with verified NetworkPolicy enforcement before enabling this
+public deployment. From an unrelated test pod, prove frontend/API ingress is
+blocked. From a separate internet connection, try the server's public IPv4 and
+IPv6 directly on every published port. Record failure to connect; a DNS-only
+change or an Access login screen is not proof that the origin is private.
+
+## Tunnel startup, shutdown and credential rotation
+
+Start or stop both connectors with `kubectl -n battlefield scale deployment/battlefield-tunnel --replicas=2`
+or `--replicas=0`. Verify the public hostname becomes unavailable after stopping
+all connectors; Access/DNS must never fall back to a direct origin. Inspect connector
+readiness and logs privately when startup fails, without printing credentials.
+
+For a tunnel credential incident, stop its connectors, rotate or replace the
+named tunnel credentials using Cloudflare's supported management flow, update only
+the tunnel Secret from the new private credentials file, and restart its deployment.
+Revoke the old credential and verify the old connector can no longer establish a
+connection. Rotating worker credentials requires updating both MCP and all workers;
+rotating capability-signing material requires only MCP and invalidates active jobs.
+
+To retire the deployment, stop the connectors and worker first, remove the
+application DNS route and Access application/Allow policies, and delete the dedicated
+tunnel resources and Secret. Keep database backups and unrelated private services.
+Do not delete a shared domain, identity provider, or shared infrastructure.
+
+## Sessions, roles and removal
+
+The persistent identity is verified `issuer|subject`. Each request maps the
+verified normalized email to exactly one configured role. All roles share gameplay
+and faction reads. Editing/deletion and battle stop/pause/resume require ownership
+or Admin. Existing factions and battles become `legacy-admin`, manageable only by
+Admin. Owners never come from client JSON. Developers can inspect diagnostics and
+use enabled CLI profiles; this role grants no host or deployment access.
+
+Players receive explicit gameplay responses and cannot fetch decision history or
+saved context. CLI profiles never appear in their model catalog. To enable a paid
+API for Players, configure its provider credentials/model and availability flag,
+then explicitly list `allowedRoles: [player, developer, admin]` in the profile.
+Unlisted roles cannot select it. Background generation checks the same eligibility;
+its existing CLI default is unavailable to Players. All quotas also apply to Admin.
+
+Cloudflare mode issues no application auth cookie and ignores old application
+cookies. Logout returns the documented `/cdn-cgi/access/logout` destination and
+the browser navigates there. Expired API sessions prompt reauthentication. Mutation
+requests must carry the configured HTTPS Origin; missing/cross-origin values are
+rejected. Bodies must use `application/json`. Private worker routes use their own
+bearer authentication and do not use browser cookies.
+
+To remove someone: remove their Access Allow rule, revoke existing Access sessions,
+remove their application role assignment, and roll out the updated auth configuration
+to **every API replica**. Offline JWT signature checks do not detect Access revocation.
+Check denied access after rollout and allow for Cloudflare's documented revocation
+propagation. Do not restore anonymous/password mode during an authentication incident.
+
+## Limits and the stop switch
+
+PostgreSQL serializes admission across replicas: 20 battles per identity per UTC
+day, 2 unfinished per identity, 4 unfinished globally. Queued and running rows,
+including paused rows, are unfinished. A same-ID retry with identical scenario
+snapshot/ticks and owner returns the existing battle. Different inputs conflict.
+Background generations retain 10/day, cooldown, queue/execution timeout and their
+existing idempotency key. Expired queued jobs and failed executions both consume that day’s allowance.
+
+A global database lease admits only one CLI execution across decisions and
+background jobs. Submission alone does not release it: the worker must report
+completion, or the bounded execution lease must expire. Claims never wait in a
+worker's local execution queue. Workers use the database lease deadline rather than
+claim response arrival time; synchronize host/VM clocks and test delayed claims. Battles allow at most 100 model decision execution
+attempts across retries, then use the existing fallback. API token and step limits,
+CLI output capture (4 MiB), and execution timeouts remain enforced; subscription
+CLI internal token counts are reported when available, not guaranteed monetary caps.
+
+Use the existing private kubectl context and set `BATTLEFIELD_POSTGRES_POD` to
+`battlefield-postgres-0`, then run:
+
+```bash
+scripts/ops/ai-policy.sh status
+scripts/ops/ai-policy.sh stop
+scripts/ops/ai-policy.sh usage
+# Only after diagnosing the cause:
+scripts/ops/ai-policy.sh start
+```
+
+`stop` prevents new generation admission and new model claims. New model windows
+immediately fall back. Workers poll the private policy endpoint every second and
+cancel execution on stop or failed policy checks (HTTP timeout two seconds). Linux
+CLI cancellation kills the process group. Stopping the VM worker systemd unit also
+kills its entire control group. Previously accepted plans can still be simulated.
+Usage is queryable by identity/profile via `friend_ai_usage`; these figures bound
+work and record reported usage, not an exact financial bill.
+
+## Isolated CLI VM: enable only in the last phase
+
+Use Ubuntu's KVM/libvirt on the server. Docker containers share the host kernel;
+the public CLI worker belongs in a dedicated VM. Start with 2 vCPU, 4 GiB memory,
+24 GiB disk. Verify virtualization support, free memory/disk, and host headroom
+while the game, database, observability, and one CLI execute together. Leave CLI
+disabled if the host cannot sustain this.
+
+Install the Ubuntu host's `qemu-kvm`, `libvirt-daemon-system`, `libvirt-clients`,
+`cloud-image-utils`, and a dedicated Squid service. Review the files in
+`deploy/agent-vm/`. Supply a publisher-verified local Ubuntu 24.04 amd64 cloud image,
+its verified SHA256, and your public SSH key, then run as root on the server:
+
+```bash
+sudo --preserve-env=BATTLEFIELD_VM_IMAGE,BATTLEFIELD_VM_IMAGE_SHA256,BATTLEFIELD_VM_ADMIN_KEY \
+  scripts/ops/create-agent-vm.sh
+```
+
+The script refuses an existing VM/network/directory and checks KVM, at least 6 GiB
+available RAM, and 30 GiB disk before reserving the VM. It creates the disk,
+cloud-init seed, private libvirt network and host-enforced NIC filter, then boots
+the VM. It installs no CLI credentials and enables no public profile.
+
+The VM has **no default route, NAT, DNS server, host mounts or Docker socket**.
+`bf-agent0` is `192.168.234.1/24`; the guest is `192.168.234.2`. The external NIC
+filter permits only guest connections to the host proxy at 3128 and MCP bridge at
+18084, plus operator SSH from the host. IPv6 is dropped. The proxy resolves approved
+provider/update names; direct guest DNS and direct internet traffic are unnecessary.
+
+Provision a dedicated Squid instance using `squid.conf` and
+`provider-domains.txt`; use `squid -k parse -f /etc/battlefield-agent/squid.conf`
+before starting it. Keep its host listener on `192.168.234.1`, with a host firewall
+allowing 3128/18084 only from `bf-agent0` and the guest IP. The domain list is a
+starting allowlist: test actual provider login and inference, then add exact
+necessary destinations. Never broadly permit HTTPS or remove the private-IP deny.
+Use HTTPS apt sources through the proxy for updates.
+
+Create a supervised **host-side** private bridge, using the host's private kubeconfig:
+`kubectl -n battlefield port-forward --address 192.168.234.1 service/battlefield-mcp 18084:8084`.
+The kubeconfig and deployment credentials never enter the VM. Verify unauthenticated
+bridge requests return 401. Copy only the verified `cmd/agent` binary and pinned CLI
+packages into the VM, install them root-owned, and install the supplied worker
+configuration and systemd unit. Check the actual CLI versions match the pinned
+families before enabling them. Disable unused profiles.
+
+Create `/etc/battlefield-agent/worker.env` as **root:root 0400**, containing only
+`BATTLEFIELD_AGENT_SECRET`, `BATTLEFIELD_ENV=production`, and the isolation flag
+once verified. Never put the capability-signing secret, database URLs, API server
+passwords, personal files, SSH keys, or deployment credentials in the worker's home.
+Configure CLI login interactively as `battlefield-worker` inside the VM using its
+dedicated home `/var/lib/battlefield-worker`. Linux workers disable dumpability to
+block same-user subprocess reads of parent environment/memory; CLI children receive
+an explicit allowlist of transport/login settings and their scoped capability.
+
+Start the worker while the **API's CLI availability remains false**, then execute:
+
+```bash
+# Inside the VM, as battlefield-worker; use the real worker PID and real private IPs:
+python3 verify-agent-isolation.py --worker-pid "$WORKER_PID" \
+  --blocked-host "$HOME_ROUTER_IP" --blocked-host "$ADMIN_SERVICE_IP"
+```
+
+Also test actual provider requests through the proxy, inspect the attached libvirt
+filter, try private IPv6 destinations when present, and load-test a two-model-faction
+battle with the single slot. One faction can fall back if both cannot finish before
+the opening/window deadline; the battle must continue and the slot must never overlap.
+Existing bounded deadlines deliberately take precedence over waiting indefinitely.
+Test malicious faction text requesting extra tools, another request ID, files, and
+network destinations. The server must reject unrelated MCP contexts and the VM
+boundary must hold regardless of how the model responds.
+
+Only after recording these checks, set `BATTLEFIELD_CLI_ISOLATION_VERIFIED=true` in
+the API's private AI configuration and enable the desired CLI availability flag.
+Production startup rejects advertised CLI profiles without this flag. The flag is
+an operator attestation, not an automatic proof of isolation. Invite Developers
+only after these checks; invite Players earlier while CLI remains off.
+
+## Validation and recovery
+
+Run repository tests and the deployment artifact checks:
+
+```bash
+GOCACHE=/tmp/battlefield-go-cache scripts/test/with-test-postgres.sh scripts/test/test-go-coverage.sh
+(cd frontend && npm test -- --coverage)
+python3 scripts/test/test-friends-launch.py
+scripts/test/test-kind-deployment.sh
+scripts/test/test-security-launchers.sh
+```
+
+Production smoke uses an invited user's short-lived JWT from a private
+`BATTLEFIELD_ACCESS_TOKEN_FILE` (chmod 600), through an operator-only origin port
+forward. It validates missing/forged credentials, the real JWT session, and missing/
+cross-origin mutations. It never obtains a session by disabling authentication.
+Separately test the public hostname with allowed and denied Google identities,
+MFA, one-hour expiry, logout, account removal, and direct-origin IPv4/IPv6 probes.
+Delete the temporary smoke token file afterwards.
+
+If authentication fails, keep the application unavailable while repairing the
+Access configuration. Rollbacks must retain production Cloudflare mode and current
+role assignments. Production rollback additionally requires
+`BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST` to match the exact verified backend
+digest; leave it unset until an Access-compatible recovery version is available.
+Do not roll back to a pre-Access binary or restore a database over
+live new writes. Stop workloads, restore into a separate database, validate, and
+switch deliberately if database recovery is required. Keep unverified CLI profiles
+disabled throughout recovery.
+
+References: [Access JWT validation](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/),
+[Access sessions](https://developers.cloudflare.com/cloudflare-one/access-controls/access-settings/session-management/),
+[libvirt network filters](https://libvirt.org/formatnwfilter.html),
+[Linux process dumpability](https://man7.org/linux/man-pages/man2/PR_SET_DUMPABLE.2const.html).

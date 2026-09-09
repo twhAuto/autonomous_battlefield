@@ -53,7 +53,8 @@ func checkGenerationOutcome(t *testing.T, mode string) {
 			return ai.DecisionResult{Accepted: true, Usage: ai.Usage{Requests: 2}}, nil
 		}), nil
 	}
-	j := job{RequestID: "draft", ProfileID: "writer", JobType: "faction_background", ExecutionTimeoutSeconds: 120}
+	token, _ := ai.MintCapability("secret", "generation:draft", time.Now().Add(time.Minute))
+	j := job{CapabilityToken: token, RequestID: "draft", ProfileID: "writer", JobType: "faction_background", ExecutionTimeoutSeconds: 120}
 	if mode == "missing_profile" {
 		j.ProfileID = "unknown"
 	}

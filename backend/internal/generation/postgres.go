@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
@@ -74,7 +75,7 @@ func quota(ctx context.Context, tx postgres.DBTX, actor string, c Config) (Optio
 	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	o.ResetAt = day.Add(24 * time.Hour)
 	o.RetryAt = now
-	err = tx.QueryRow(ctx, `SELECT count(*) FROM faction_background_generations WHERE actor_id=$1 AND created_at >=$2 AND status<>'expired'`, actor, day).Scan(&count)
+	err = tx.QueryRow(ctx, `SELECT count(*) FROM faction_background_generations WHERE actor_id=$1 AND created_at >=$2`, actor, day).Scan(&count)
 	if err != nil {
 		return o, err
 	}
@@ -114,6 +115,9 @@ func (p *Postgres) Admit(ctx context.Context, actor, key string, input Input, c 
 	if err != nil || strings.TrimSpace(key) == "" || len(key) > 200 {
 		return Job{}, Options{}, ErrInvalid
 	}
+	if c.Runtime == "" {
+		c.Runtime = "cli"
+	}
 	raw, _ := json.Marshal(input)
 	hash := fmt.Sprintf("%x", sha256.Sum256(raw))
 	tx, err := p.begin(ctx, actor)
@@ -133,36 +137,59 @@ func (p *Postgres) Admit(ctx context.Context, actor, key string, input Input, c 
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, Options{}, err
 	}
-	o, err := quota(ctx, tx, actor, c)
+	o, err := admissionQuota(ctx, tx, actor, c)
 	if err != nil {
 		return Job{}, o, err
 	}
-	var now time.Time
-	if err = tx.QueryRow(ctx, `SELECT now()`).Scan(&now); err != nil {
-		return Job{}, o, err
-	}
-	if o.Remaining == 0 || o.ActiveJobID != "" || o.RetryAt.After(now) {
-		if err = tx.Commit(ctx); err != nil {
-			return Job{}, o, err
-		}
-		return Job{}, o, ErrLimited
-	}
-	bytes := make([]byte, 16)
-	if _, err = rand.Read(bytes); err != nil {
-		return Job{}, o, err
-	}
-	bytes[6] = (bytes[6] & 15) | 64
-	bytes[8] = (bytes[8] & 63) | 128
-	id = fmt.Sprintf("%x-%x-%x-%x-%x", bytes[:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:])
-	j, err := scan(tx.QueryRow(ctx, `INSERT INTO faction_background_generations(id,actor_id,idempotency_key,input_hash,input,profile_id,model_label,prompt_version,status,expires_at,execution_seconds) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',now()+$9::interval,$10) RETURNING `+columns, id, actor, key, hash, raw, c.ProfileID, label, ai.GenerationPromptVersion, c.QueueTimeout.String(), max(1, int(c.ExecutionTimeout.Seconds()))))
+	id, err = newGenerationID()
 	if err != nil {
-		return j, o, err
+		return Job{}, o, err
+	}
+	j, err := scan(tx.QueryRow(ctx, `INSERT INTO faction_background_generations(id,actor_id,idempotency_key,input_hash,input,profile_id,model_label,prompt_version,status,expires_at,execution_seconds,runtime) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',now()+$9::interval,$10,$11) RETURNING `+columns, id, actor, key, hash, raw, c.ProfileID, label, ai.GenerationPromptVersion, c.QueueTimeout.String(), max(1, int(c.ExecutionTimeout.Seconds())), c.Runtime))
+	if err != nil {
+		return j, o, admissionError(err)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE faction_generation_accounts SET last_admitted_at=now() WHERE actor_id=$1`, actor); err != nil {
 		return j, o, err
 	}
 	return j, o, tx.Commit(ctx)
 }
+func admissionQuota(ctx context.Context, tx pgx.Tx, actor string, c Config) (Options, error) {
+	o, err := quota(ctx, tx, actor, c)
+	if err != nil {
+		return o, err
+	}
+	var now time.Time
+	if err = tx.QueryRow(ctx, `SELECT now()`).Scan(&now); err != nil {
+		return o, err
+	}
+	if o.Remaining == 0 || o.ActiveJobID != "" || o.RetryAt.After(now) {
+		if err = tx.Commit(ctx); err != nil {
+			return o, err
+		}
+		return o, ErrLimited
+	}
+	return o, nil
+}
+
+func admissionError(err error) error {
+	var pgerr *pgconn.PgError
+	if errors.As(err, &pgerr) && pgerr.Code == "P0429" {
+		return ErrLimited
+	}
+	return err
+}
+
+func newGenerationID() (string, error) {
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	bytes[6] = (bytes[6] & 15) | 64
+	bytes[8] = (bytes[8] & 63) | 128
+	return fmt.Sprintf("%x-%x-%x-%x-%x", bytes[:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:]), nil
+}
+
 func (p *Postgres) Get(ctx context.Context, actor, id string) (Job, error) {
 	if err := expire(ctx, p.DB, actor); err != nil {
 		return Job{}, err
