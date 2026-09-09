@@ -221,14 +221,22 @@ Run the same Go lint and coverage work used by Jenkins:
 
 ```bash
 ./scripts/ci/lint-go.sh
-./scripts/test/test-go-coverage.sh
+./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
 (cd frontend && npm ci && npm test -- --coverage && npm run build)
 ```
 
+`with-test-postgres.sh` starts a throwaway PostgreSQL container and exports
+`TEST_DATABASE_URL` for the wrapped command; it requires Docker. Running
+`test-go-coverage.sh` directly without `TEST_DATABASE_URL` skips tests that
+require the database. It still fails on test failures or aggregate coverage
+below 80%, but that run does not verify the same coverage as Jenkins.
+
 Go coverage is written to `backend/coverage.out`; frontend LCOV coverage is
 written to `frontend/coverage/lcov.info`. Both are ignored by Git and imported
-by SonarQube. The test commands require at least 80% Go statement coverage and
-80% frontend statement, branch, function, and line coverage. See
+by SonarQube. The backend gate requires at least 80% Go statement coverage in
+aggregate across the module — a single repository-wide total rather than a
+per-package floor. The frontend gate requires at least 80% statement, branch,
+function, and line coverage. See
 [docs/operations/jenkins.md](docs/operations/jenkins.md#configure-local-sonarqube) for the local server and
 Jenkins quality-gate setup. SonarQube displays and evaluates these externally
 generated reports alongside static reliability, security, maintainability,

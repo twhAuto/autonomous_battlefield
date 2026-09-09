@@ -64,6 +64,13 @@ for FAIL_SCANNER_COMMAND in '' fs config test; do
     [[ "${status}" == 0 ]] || { cat "${test_dir}/security.log" >&2; exit 1; }
   else
     [[ "${status}" == 1 ]] || { cat "${test_dir}/security.log" >&2; exit 1; }
+    case "${FAIL_SCANNER_COMMAND}" in
+      fs) expected_report=trivy-filesystem.json ;;
+      config) expected_report=trivy-kubernetes.json ;;
+      test) expected_report=conftest.json ;;
+    esac
+    grep -Fq "failed; see ${SECURITY_ARTIFACT_DIR}/${expected_report}." "${test_dir}/security.log"
+
   fi
 done
 unset FAIL_SCANNER_COMMAND

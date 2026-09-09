@@ -25,6 +25,7 @@ done
 
 echo "Running reachable Go vulnerability analysis..."
 if ! (cd "${project_dir}/backend" && go run "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" -json ./... >"${artifact_dir}/govulncheck.json"); then
+  echo "Go vulnerability analysis failed; see ${artifact_dir}/govulncheck.json." >&2
   failure=1
 fi
 
@@ -75,6 +76,7 @@ done
 if [[ "${npm_audit_passed}" == "1" ]]; then
   printf '{"mode":"full"}\n' >"${artifact_dir}/npm-audit-mode.json"
 elif [[ "${npm_audit_definitive}" == "1" ]]; then
+  echo "npm audit failed; see ${npm_audit_report}." >&2
   failure=1
 else
   echo "Full npm audit endpoint unavailable; requiring Trivy coverage for all frontend dependencies, including unfixed vulnerabilities." >&2
@@ -94,6 +96,7 @@ if ! docker run --rm \
   --volume "${artifact_dir}:/reports" \
   --workdir /repo \
   "${GITLEAKS_IMAGE}" "${gitleaks_args[@]}"; then
+  echo "Git secret scan failed; see ${artifact_dir}/gitleaks.json." >&2
   failure=1
 fi
 
@@ -125,6 +128,7 @@ else
     --include-dev-deps "${trivy_ignore_unfixed[@]}" --skip-dirs artifacts --skip-dirs frontend/coverage --exit-code 1 \
     --format json --output /dev/stdout . \
     >"${artifact_dir}/trivy-filesystem.json"; then
+    echo "Trivy source scan failed; see ${artifact_dir}/trivy-filesystem.json." >&2
     failure=1
   fi
 
@@ -153,6 +157,7 @@ if ! docker run --rm \
   config --severity HIGH,CRITICAL --exit-code 1 \
   --format json --output /dev/stdout /reports/rendered-manifests.yaml \
   >"${artifact_dir}/trivy-kubernetes.json"; then
+  echo "Trivy Kubernetes scan failed; see ${artifact_dir}/trivy-kubernetes.json." >&2
   failure=1
 fi
 
@@ -160,6 +165,7 @@ echo "Validating rendered Kubernetes schemas..."
 if ! docker run --rm -i "${KUBECONFORM_IMAGE}" \
   -strict -summary -ignore-missing-schemas <"${manifest_file}" \
   >"${artifact_dir}/kubeconform.txt" 2>&1; then
+  echo "Kubernetes schema validation failed; see ${artifact_dir}/kubeconform.txt." >&2
   failure=1
 fi
 
@@ -170,6 +176,7 @@ if ! docker run --rm \
   "${CONFTEST_IMAGE}" test /reports/rendered-manifests.yaml \
   --policy /policy --all-namespaces --output json \
   >"${artifact_dir}/conftest.json"; then
+  echo "Kubernetes workload policy failed; see ${artifact_dir}/conftest.json." >&2
   failure=1
 fi
 

@@ -300,7 +300,7 @@ From the repository root:
 
 ```bash
 (cd backend && go test ./internal/ai -run TestCompactContextSizeByBattleStage -v)
-./scripts/test/test-go-coverage.sh
+./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
 (cd frontend && npm test -- --coverage)
 (cd frontend && npm run build)
 ```
