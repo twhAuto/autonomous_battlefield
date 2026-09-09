@@ -345,3 +345,8 @@ Production k6 smoke load uses the same Jenkins Access Secret file credential as
 origin verification, bound separately for its stage. The launcher requires
 Cloudflare mode and passes the JWT by environment variable to k6, which sends
 the Access assertion header on requests. Password login remains development-only.
+
+The image-verification admission webhook allows 30 seconds per request for
+registry signature and attestation retrieval (`webhookConfiguration.timeoutSeconds`).
+Verification remains enforced with `failurePolicy: Fail`; this timeout does not
+waive missing or invalid evidence.

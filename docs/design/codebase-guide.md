@@ -1,15 +1,9 @@
 # Autonomous Battlefield Codebase Guide
 
-HTTP completion logs include `actor_id` and `actor_role` established by trusted
-authentication middleware, alongside method, resource path, status and request ID.
-An authentication observer carries identity to the outer request logger; rejected
-credentials leave identity empty. Tokens, cookies and email headers are not logged.
-These operational logs provide request attribution, not a tamper-proof audit store.
-
 | Field | Value |
 | --- | --- |
 | Status | Draft — describes the current working tree, including uncommitted changes |
-| Last reviewed | 2026-09-09 |
+| Last reviewed | 2026-09-10 |
 | Audience | Contributors navigating or modifying the implementation |
 | Scope | Repository layout, entry points, packages, dependencies, tests, and reading paths |
 
@@ -651,7 +645,99 @@ to verify event-page draining without load-sensitive wall-clock deadlines.
 4. Update service/worker behavior.
 5. Add stale-owner, retry, and shutdown tests.
 
-## 12. Suggested reading order
+## 12. Langfuse integration
+
+`ai/faction_groups.go` groups observed units/buildings with faction statistics
+after metadata deduplication, and conditionally shares effective building stats.
+Its reconstruction tests verify ownership, missing faction statistics, distinct
+effective profiles, stable full IDs and individual observations. The inspector
+renders grouped JSON through its existing reconstructed-context section.
+
+`ai/context_duplicates.go` removes equal plan/metadata copies from the current
+projection. `ai/session_context.go` removes identity text only when the exact
+value is supplied in the system prompt. API tool delivery and Gemini prefetch
+apply this helper; MCP's canonical response stays self-contained. Tests cover
+historical differences, faction scope, source immutability and both runner paths.
+
+`backend/internal/ai/battlefield_context.go` implements the v4 agent view:
+effective-stat profiles and inclusive visibility row ranges, with independent
+size checks to retain inline fields when smaller. Its tests reconstruct observed
+units and visibility, check version compatibility and measure opening/small/large
+views. To measure a local JSON context without adding private data to fixtures,
+run `BATTLEFIELD_CONTEXT_FIXTURE=/path/to/context.json go test ./internal/ai -run TestBattlefieldContextExternalFixture -v`
+from `backend`.
+
+- `backend/internal/telemetry/ai.go` provides decision correlation, explicit AI
+  sampling and safe trace URLs alongside the existing infrastructure tracing.
+- `backend/internal/ai/runner/observability.go` emits generation observations;
+  `codex_usage.go` parses terminal JSONL usage without retaining model reasoning.
+  Provider adapters preserve cache/reasoning subsets and usage on refusals.
+- `backend/internal/ai/mcpserver/tool_logging.go` records server tool spans;
+  `context_telemetry.go` measures serialized initial-context sections in bytes.
+  Tool metrics distinguish serialized transport, text, and structured-content
+  bytes. `context_transport_test.go` checks single-copy JSON delivery, legacy
+  context fields, repeat-read compatibility, and reduced transport size.
+- Decision history exposes optional trace links and additive usage metadata;
+  `AIDecisionPanel` distinguishes API totals, CLI aggregates and legacy counters.
+- `deploy/langfuse/values.yaml` pins the self-hosted Helm configuration;
+  `collector-config.yaml` adds the filtered export pipeline. Run
+  `scripts/cd/deploy-langfuse.sh` using the registered environment and follow
+  [Langfuse operations](../operations/langfuse.md) to enable future deploys.
+
+`scripts/lib/ensure-helm.py` supplies the Langfuse installer with an existing
+Helm binary or a temporary checksum-pinned Linux amd64 download.
+
+`deploy/langfuse/values.yaml` also supplies explicit pod/container security contexts
+for Langfuse, SeaweedFS and PostgreSQL, preserving the namespace security policy.
+
+`deploy/overlays/local/gateway/langfuse-route.yaml` exposes the UI through the
+shared gateway. `battlefield_env_langfuse_enabled` in the environment helper detects
+the installed project for collector configuration and host CLI forwarding.
+
+## 13. Limited-access deployment and agent containment
+
+`internal/authn/cloudflare.go` owns Access verification/key refresh;
+`authorization.go` owns role capabilities, ownership checks, mutation origin checks
+and explicit route assignments. Add new public routes to that registry deliberately.
+`config/access_test.go` covers production misconfiguration and the CLI verification
+gate. `battle/api/player_test.go` checks projections after shared cache reads.
+Faction/battle service tests cover every role for own, other and legacy content.
+
+Migration `00011_friends_access.sql` owns row ownership, atomic admission triggers,
+AI execution counts, the single CLI lease, runtime stop policy and private usage view.
+`generation/friends_integration_test.go` tests cross-connection admission, paused
+limits, UTC reset, shared CLI slots and execution budgets against PostgreSQL.
+Workers receive capabilities from MCP instead of signing them. `worker/policy.go`
+cancels execution on the private stop switch; `credentials_linux.go` blocks procfs/
+ptrace reads of the worker's credentials; `runner/process_linux.go` kills CLI process
+groups. Local credentials remain available only to the appropriate CLI login.
+
+`features/auth/SessionContext.tsx` exposes UI permissions from the session. The App
+handles Access reauthentication/logout; Player battle pages do not mount inspection
+panels or request decision history. Faction editing and battle controls reflect
+ownership, with backend enforcement independent of the UI.
+
+`scripts/ops/render-limited-launch.py` produces private auth configuration and a
+Tunnel deployment with origin-side Access validation and application ingress policies.
+`deploy/agent-vm/` contains the libvirt network/filter, proxy and worker configuration;
+`create-agent-vm.sh` provisions a fresh VM after capacity/image checks;
+`verify-agent-isolation.py` tests its guest boundary. `ai-policy.sh` is the private
+operator stop/status/usage interface. `verify-access-origin.py` checks real Access
+credentials during production smoke. `scripts/test/test-limited-launch.py` verifies
+rendered routing and isolation artifacts without modifying infrastructure.
+See [limited-access launch](../operations/limited-launch.md) for setup and live verification.
+
+Authentication configuration parsing separates mode selection, Cloudflare identity
+assignments and local session settings. Signing-key decoding is separate from
+JWKS fetching and refresh caching. Regression tests cover malformed signing keys,
+profile eligibility and the default-deny browser/route boundaries.
+
+`scripts/ops/prepare-limited-production.sh` checks production cluster identity before invoking its Python helper to validate and prepare private launch files. Offline regression checks live in `scripts/test/test-production-preparation.py`.
+
+Production k6 smoke-load credential binding is described in the
+[launch runbook](../operations/limited-launch.md).
+
+## 14. Suggested reading order
 
 ### Learn the whole request-to-battle path
 
@@ -769,97 +855,3 @@ Run the Go coverage gate with disposable PostgreSQL integration coverage:
 (cd frontend && npm test -- --coverage)
 (cd frontend && npm run build)
 ```
-
-## Langfuse integration
-
-`ai/faction_groups.go` groups observed units/buildings with faction statistics
-after metadata deduplication, and conditionally shares effective building stats.
-Its reconstruction tests verify ownership, missing faction statistics, distinct
-effective profiles, stable full IDs and individual observations. The inspector
-renders grouped JSON through its existing reconstructed-context section.
-
-`ai/context_duplicates.go` removes equal plan/metadata copies from the current
-projection. `ai/session_context.go` removes identity text only when the exact
-value is supplied in the system prompt. API tool delivery and Gemini prefetch
-apply this helper; MCP's canonical response stays self-contained. Tests cover
-historical differences, faction scope, source immutability and both runner paths.
-
-`backend/internal/ai/battlefield_context.go` implements the v4 agent view:
-effective-stat profiles and inclusive visibility row ranges, with independent
-size checks to retain inline fields when smaller. Its tests reconstruct observed
-units and visibility, check version compatibility and measure opening/small/large
-views. To measure a local JSON context without adding private data to fixtures,
-run `BATTLEFIELD_CONTEXT_FIXTURE=/path/to/context.json go test ./internal/ai -run TestBattlefieldContextExternalFixture -v`
-from `backend`.
-
-- `backend/internal/telemetry/ai.go` provides decision correlation, explicit AI
-  sampling and safe trace URLs alongside the existing infrastructure tracing.
-- `backend/internal/ai/runner/observability.go` emits generation observations;
-  `codex_usage.go` parses terminal JSONL usage without retaining model reasoning.
-  Provider adapters preserve cache/reasoning subsets and usage on refusals.
-- `backend/internal/ai/mcpserver/tool_logging.go` records server tool spans;
-  `context_telemetry.go` measures serialized initial-context sections in bytes.
-  Tool metrics distinguish serialized transport, text, and structured-content
-  bytes. `context_transport_test.go` checks single-copy JSON delivery, legacy
-  context fields, repeat-read compatibility, and reduced transport size.
-- Decision history exposes optional trace links and additive usage metadata;
-  `AIDecisionPanel` distinguishes API totals, CLI aggregates and legacy counters.
-- `deploy/langfuse/values.yaml` pins the self-hosted Helm configuration;
-  `collector-config.yaml` adds the filtered export pipeline. Run
-  `scripts/cd/deploy-langfuse.sh` using the registered environment and follow
-  [Langfuse operations](../operations/langfuse.md) to enable future deploys.
-
-`scripts/lib/ensure-helm.py` supplies the Langfuse installer with an existing
-Helm binary or a temporary checksum-pinned Linux amd64 download.
-
-`deploy/langfuse/values.yaml` also supplies explicit pod/container security contexts
-for Langfuse, SeaweedFS and PostgreSQL, preserving the namespace security policy.
-
-`deploy/overlays/local/gateway/langfuse-route.yaml` exposes the UI through the
-shared gateway. `battlefield_env_langfuse_enabled` in the environment helper detects
-the installed project for collector configuration and host CLI forwarding.
-
-## Limited-access deployment and agent containment
-
-`internal/authn/cloudflare.go` owns Access verification/key refresh;
-`authorization.go` owns role capabilities, ownership checks, mutation origin checks
-and explicit route assignments. Add new public routes to that registry deliberately.
-`config/access_test.go` covers production misconfiguration and the CLI verification
-gate. `battle/api/player_test.go` checks projections after shared cache reads.
-Faction/battle service tests cover every role for own, other and legacy content.
-
-Migration `00011_friends_access.sql` owns row ownership, atomic admission triggers,
-AI execution counts, the single CLI lease, runtime stop policy and private usage view.
-`generation/friends_integration_test.go` tests cross-connection admission, paused
-limits, UTC reset, shared CLI slots and execution budgets against PostgreSQL.
-Workers receive capabilities from MCP instead of signing them. `worker/policy.go`
-cancels execution on the private stop switch; `credentials_linux.go` blocks procfs/
-ptrace reads of the worker's credentials; `runner/process_linux.go` kills CLI process
-groups. Local credentials remain available only to the appropriate CLI login.
-
-`features/auth/SessionContext.tsx` exposes UI permissions from the session. The App
-handles Access reauthentication/logout; Player battle pages do not mount inspection
-panels or request decision history. Faction editing and battle controls reflect
-ownership, with backend enforcement independent of the UI.
-
-`scripts/ops/render-limited-launch.py` produces private auth configuration and a
-Tunnel deployment with origin-side Access validation and application ingress policies.
-`deploy/agent-vm/` contains the libvirt network/filter, proxy and worker configuration;
-`create-agent-vm.sh` provisions a fresh VM after capacity/image checks;
-`verify-agent-isolation.py` tests its guest boundary. `ai-policy.sh` is the private
-operator stop/status/usage interface. `verify-access-origin.py` checks real Access
-credentials during production smoke. `scripts/test/test-limited-launch.py` verifies
-rendered routing and isolation artifacts without modifying infrastructure.
-See [limited-access launch](../operations/limited-launch.md) for setup and live verification.
-
-Authentication configuration parsing separates mode selection, Cloudflare identity
-assignments and local session settings. Signing-key decoding is separate from
-JWKS fetching and refresh caching. Regression tests cover malformed signing keys,
-profile eligibility and the default-deny browser/route boundaries.
-
-`scripts/ops/prepare-limited-production.sh` checks production cluster identity before invoking its Python helper to validate and prepare private launch files. Offline regression checks live in `scripts/test/test-production-preparation.py`.
-
-Production k6 smoke load uses the same Jenkins Access Secret file credential as
-origin verification, bound separately for its stage. The launcher requires
-Cloudflare mode and passes the JWT by environment variable to k6, which sends
-the Access assertion header on requests. Password login remains development-only.

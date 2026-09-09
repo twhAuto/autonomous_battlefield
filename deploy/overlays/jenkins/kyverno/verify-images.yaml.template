@@ -11,6 +11,7 @@ spec:
   validationFailureAction: Enforce
   webhookConfiguration:
     failurePolicy: Fail
+    timeoutSeconds: 30
   rules:
     - name: verify-battlefield-images
       match:
