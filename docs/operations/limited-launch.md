@@ -340,3 +340,8 @@ For existing installations, the preparation script retains the original
 `friends-launch` private directory as its default. Existing generated files remain
 valid; omit `--launch-dir` to use that directory. New installations should use the
 `limited-launch` directory shown above.
+
+Production k6 smoke load uses the same Jenkins Access Secret file credential as
+origin verification, bound separately for its stage. The launcher requires
+Cloudflare mode and passes the JWT by environment variable to k6, which sends
+the Access assertion header on requests. Password login remains development-only.

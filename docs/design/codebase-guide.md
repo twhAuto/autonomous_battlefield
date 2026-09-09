@@ -858,3 +858,8 @@ JWKS fetching and refresh caching. Regression tests cover malformed signing keys
 profile eligibility and the default-deny browser/route boundaries.
 
 `scripts/ops/prepare-limited-production.sh` checks production cluster identity before invoking its Python helper to validate and prepare private launch files. Offline regression checks live in `scripts/test/test-production-preparation.py`.
+
+Production k6 smoke load uses the same Jenkins Access Secret file credential as
+origin verification, bound separately for its stage. The launcher requires
+Cloudflare mode and passes the JWT by environment variable to k6, which sends
+the Access assertion header on requests. Password login remains development-only.

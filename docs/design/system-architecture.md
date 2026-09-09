@@ -1094,3 +1094,8 @@ Production Jenkins verification receives a short-lived invited-user Access JWT
 through the `battlefield-production-access-token` Secret file credential, scoped
 to the verification stage as `BATTLEFIELD_ACCESS_TOKEN_FILE`. Operators refresh
 this credential before delivery; missing or expired credentials fail verification.
+
+Production k6 smoke load uses the same Jenkins Access Secret file credential as
+origin verification, bound separately for its stage. The launcher requires
+Cloudflare mode and passes the JWT by environment variable to k6, which sends
+the Access assertion header on requests. Password login remains development-only.

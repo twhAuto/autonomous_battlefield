@@ -103,20 +103,19 @@ grep -q 'k6 test not found: missing.js' "${test_dir}/error"
 cat >"${test_dir}/bin/kubectl" <<'STUB'
 #!/usr/bin/env python3
 import base64, json, os
-values = {"BATTLEFIELD_AUTH_ENABLED": "true", "BATTLEFIELD_ADMIN_USERNAME": "test-admin",
-          "BATTLEFIELD_ADMIN_PASSWORD": "test-password"}
-if os.environ.get("MISSING_AUTH"):
-    values.pop("BATTLEFIELD_ADMIN_PASSWORD")
-print(json.dumps({"data": {k: base64.b64encode(v.encode()).decode() for k,v in values.items()}}))
+print(base64.b64encode(os.environ.get("TEST_AUTH_MODE", "cloudflare").encode()).decode())
 STUB
 chmod +x "${test_dir}/bin/kubectl"
+printf 'header.payload.signature' >"${test_dir}/access-token"
+chmod 600 "${test_dir}/access-token"
 DEPLOY_ENV=production KUBERNETES_CONTEXT=test KUBERNETES_NAMESPACE=battlefield \
+  BATTLEFIELD_ACCESS_TOKEN_FILE="${test_dir}/access-token" \
   bash "${fixture}/scripts/perf/run-k6.sh"
 status=0
-DEPLOY_ENV=production KUBERNETES_CONTEXT=test KUBERNETES_NAMESPACE=battlefield MISSING_AUTH=1 \
+DEPLOY_ENV=production KUBERNETES_CONTEXT=test KUBERNETES_NAMESPACE=battlefield TEST_AUTH_MODE=local-password \
   bash "${fixture}/scripts/perf/run-k6.sh" 2>"${test_dir}/error" || status=$?
 [[ "${status}" == 1 ]]
-grep -q 'requires deployed admin credentials' "${test_dir}/error"
+grep -q 'requires Cloudflare authentication' "${test_dir}/error"
 
 # Exercise the real k6 scenario with HTTP doubles without requiring k6 locally.
 node --input-type=module - "${project_dir}/tests/performance/k6-smoke.js" <<'JS'
@@ -133,7 +132,7 @@ const source = fs.readFileSync(process.argv[2], 'utf8')
 const context = vm.createContext({
   __ENV: {ADMIN_USERNAME:'test', ADMIN_PASSWORD:'test'},
   http: {post: () => ({status, cookies}), get: (url, params) => {
-    requests.push(params.cookies.session); return {status:200};
+    requests.push(params.headers ? params.headers['Cf-Access-Jwt-Assertion'] : params.cookies.session); return {status:200};
   }},
   check: (r, checks) => Object.values(checks).every(fn => fn(r)),
   sleep: () => {}, fail: message => {throw new Error(message);},
@@ -143,6 +142,11 @@ vm.runInContext('iteration(setup())', context);
 assert.deepEqual(requests, ['test-session','test-session']);
 status = 401;
 assert.throws(() => vm.runInContext('setup()', context), /Login failed with HTTP 401/);
+context.__ENV.ACCESS_JWT = 'test-jwt';
+requests.length = 0;
+vm.runInContext('iteration(setup())', context);
+assert.deepEqual(requests, ['test-jwt', 'test-jwt']);
+delete context.__ENV.ACCESS_JWT;
 status = 204; cookies = {};
 assert.throws(() => vm.runInContext('setup()', context), /no session cookies/);
 JS
