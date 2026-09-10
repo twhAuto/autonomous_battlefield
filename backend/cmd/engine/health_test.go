@@ -80,3 +80,5 @@ func (r *idleHealthRepository) ClaimBattle(ctx context.Context, _ string, _ time
 type healthDatabase struct{ err error }
 
 func (d *healthDatabase) Ping(context.Context) error { return d.err }
+
+func (r *idleHealthRepository) ExpireBattles(context.Context) error { return nil }

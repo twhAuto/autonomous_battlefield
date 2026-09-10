@@ -1103,3 +1103,12 @@ The image-verification admission webhook allows 30 seconds per request for
 registry signature and attestation retrieval (`webhookConfiguration.timeoutSeconds`).
 Verification remains enforced with `failurePolicy: Fail`; this timeout does not
 waive missing or invalid evidence.
+
+Unfinished battles expire one hour after creation, including queued and paused
+time. The engine sweeps at startup and every minute independently of active
+battle processing. It atomically marks expired battles failed with
+`battle_timeout`, clears their leases, and cancels pending/running decisions
+using the existing `battle_stopped` cancellation category. History and tick
+state remain available; active admission slots are released but daily usage is
+not refunded. Existing overdue battles expire on rollout. No migration or new
+configuration is required; while the engine is offline, expiry waits for restart.
