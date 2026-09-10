@@ -1,7 +1,8 @@
 // Renders an interactive SVG hex battlefield from supplied state, including fog of war,
 // entity selection, and map navigation.
 
-import { type PointerEvent, type ReactNode, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useMobile } from '../../../shared/hooks/useMobile'
 import type { BattleBuilding, BattleMap, BattleState, BattleUnit, HexPosition } from '../api/battles'
 import { entityIndex, entityName } from '../presentation/entities'
 import { EntityGlyph, EntityLegend } from './EntityIcon'
@@ -18,6 +19,11 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
   toolbarControls?: ReactNode
 }>) {
   const markerId = useId()
+  const mobile = useMobile()
+  const [expanded, setExpanded] = useState(false)
+  const dialog = useRef<HTMLDialogElement>(null)
+  const expandButton = useRef<HTMLButtonElement>(null)
+  const viewport = useRef<HTMLDivElement>(null)
   const entityNodes = useRef(new Map<string, SVGGElement>())
   const [scale, setScale] = useState(1)
   const [pan, setPan] = useState({ x: 24, y: 30 })
@@ -32,26 +38,65 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
   const width = root3 * size * (map.width + 0.5) + 48
   const height = size * (1.5 * (map.height - 1) + 2) + 48
 
+  function fit() { setScale(1); setPan({ x: 24, y: 30 }); setDrag(null) }
+  useEffect(() => {
+    fit()
+    if (typeof ResizeObserver === 'undefined' || !viewport.current) return
+    const observer = new ResizeObserver(fit)
+    observer.observe(viewport.current)
+    return () => observer.disconnect()
+  }, [expanded, width, height])
+  useEffect(() => {
+    if (!expanded || !dialog.current) return
+    const element = dialog.current
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    element.showModal()
+    return () => {
+      element.close()
+      document.body.style.overflow = previousOverflow
+      expandButton.current?.focus()
+    }
+  }, [expanded])
+
   function pointerMove(event: PointerEvent<SVGSVGElement>) {
     if (!drag) return
-    setPan((current) => ({ x: current.x + event.clientX - drag.x, y: current.y + event.clientY - drag.y }))
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const ratio = Math.min(bounds.width / width, bounds.height / height) || 1
+    setPan((current) => ({ x: current.x + (event.clientX - drag.x) / ratio, y: current.y + (event.clientY - drag.y) / ratio }))
     setDrag({ x: event.clientX, y: event.clientY })
   }
   function zoom(delta: number) { setScale((current) => Math.max(0.55, Math.min(2.4, current + delta))) }
 
-  return (
+  function trapFocus(event: KeyboardEvent<HTMLDialogElement>) {
+    if (event.key !== 'Tab') return
+    const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, summary, [tabindex]'))
+      .filter(node => node.tabIndex >= 0 && !node.matches(':disabled') && node.getClientRects().length > 0)
+    const first = controls[0]
+    const last = controls.at(-1)
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+  }
+
+  const content = (
     <section className="map-panel" aria-label="Castle siege map">
       <div className="map-toolbar">
         <span>HEX TACTICAL MAP · TICK {state.tick}</span>
         <div className="map-toolbar__controls">
           {toolbarControls}
-          <div className="map-zoom-controls"><button type="button" onClick={() => zoom(-0.15)} aria-label="Zoom out">−</button><button type="button" onClick={() => zoom(0.15)} aria-label="Zoom in">+</button><button type="button" onClick={() => { setScale(1); setPan({ x: 24, y: 30 }) }}>RESET</button></div>
+          <div className="map-zoom-controls"><button type="button" onClick={() => zoom(-0.15)} aria-label="Zoom out">−</button><button type="button" onClick={() => zoom(0.15)} aria-label="Zoom in">+</button><button type="button" onClick={fit}>Fit map</button>
+            {expanded ? <button type="button" autoFocus onClick={() => setExpanded(false)}>Close map</button> : <button ref={expandButton} type="button" onClick={() => setExpanded(true)}>Expand map</button>}
+          </div>
         </div>
       </div>
-      <div className="map-viewport">
+      <div ref={viewport} className={`map-viewport${mobile && !expanded ? ' map-viewport--overview' : ''}`} style={expanded ? undefined : { aspectRatio: `${width} / ${height}` }} tabIndex={0} aria-label="Map navigation" onKeyDown={event => {
+        if (event.target !== event.currentTarget) return
+        const offset: Record<string, [number, number]> = { ArrowLeft: [24, 0], ArrowRight: [-24, 0], ArrowUp: [0, 24], ArrowDown: [0, -24] }
+        if (offset[event.key]) { event.preventDefault(); const [x, y] = offset[event.key]; setPan(current => ({ x: current.x + x, y: current.y + y })) }
+      }}>
         <svg
           viewBox={`0 0 ${width} ${height}`}
-          onPointerDown={(event) => { event.currentTarget.setPointerCapture?.(event.pointerId); setDrag({ x: event.clientX, y: event.clientY }) }}
+          onPointerDown={(event) => { if (mobile && !expanded) return; event.currentTarget.setPointerCapture?.(event.pointerId); setDrag({ x: event.clientX, y: event.clientY }) }}
           onPointerMove={pointerMove}
           onPointerUp={() => setDrag(null)}
           onPointerCancel={() => setDrag(null)}
@@ -116,6 +161,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
       </div>
     </section>
   )
+  return <>{!expanded && content}<dialog ref={dialog} className="expanded-map" aria-label="Expanded battlefield map" onKeyDown={trapFocus} onCancel={event => { event.preventDefault(); setExpanded(false) }} onClose={() => setExpanded(false)}>{expanded && content}</dialog></>
 }
 
 // Animate only recorded, continuous updates; opening a snapshot never replays a move.

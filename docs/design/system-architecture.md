@@ -104,6 +104,21 @@ notify the application when authentication is required.
 
 ### Battle inspection
 
+The inline map fits its board aspect ratio. Expanding moves the same map state
+into a native modal dialog with focus containment, Escape dismissal, scroll
+locking, and focus restoration. Perspective and entity selection survive this
+transition. Opening or resizing fits the board; live tick updates preserve the
+camera. Pointer and keyboard panning remain local UI state. On mobile the inline
+overview permits page scrolling, with dragging enabled in the expanded map.
+
+Terminal battles display a result without inactive transport controls. Tick
+progress describes usage of the requested maximum, not completion percentage.
+Event presets and exact-type filtering operate on loaded history without changing
+cursor requests, attempt selection, or server records. Key events is the default;
+All events includes unknown types. Summaries are derived from existing payloads,
+with original fields and JSON inside Details. Mobile shows ten matching rows at
+a time and uses page scrolling. A separate polite status announces loaded counts.
+
 The SVG map uses compact directional arrows beneath entity icons, matching the
 acting faction's unit color. Movement remains dashed and subdued; attacks use solid
 lines with a subtle traveling highlight, and tower fire uses a thicker stroke. Endpoints clear entity outlines; paths too short to fit an

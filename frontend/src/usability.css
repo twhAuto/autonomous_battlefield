@@ -21,6 +21,28 @@
 .primary-nav a, .back-link, .menu-card p { color: #aeb6a9; }
 .map-zoom-controls button { min-width: 44px; }
 .back-link + .back-link { margin-left: 20px; }
+.map-viewport { height: auto; }
+.map-toolbar__controls, .map-zoom-controls { flex-wrap: wrap; }
+.map-viewport--overview { touch-action: pan-y; }
+.map-viewport--overview svg { cursor: default; }
+.expanded-map { width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; padding: 0; border: 0; color: #ecf0e5; background: var(--ink); }
+.expanded-map::backdrop { background: #111510; }
+.expanded-map .map-panel { min-height: 100%; display: flex; flex-direction: column; margin: 0; }
+.expanded-map .map-viewport { height: max(240px, 60dvh); flex: 1 0 240px; }
+.expanded-map .map-toolbar { flex-wrap: wrap; }
+.expanded-map .entity-details { flex-shrink: 0; }
+.event-payload pre { overflow: auto; max-width: 100%; font-size: 12px; }
+.identifier { min-width: 0; max-width: 100%; font-size: 12px; }
+.identifier__short { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.identifier button, .background-generator button, .integration-status button { color: var(--lime); border: 1px solid var(--line); background: var(--ink); padding: 8px 12px; }
+.identifier summary { cursor: pointer; display: flex; align-items: center; color: #aeb6a9; }
+.identifier__full { overflow-wrap: anywhere; user-select: text; }
+.identifier [role='status'] { display: block; overflow-wrap: anywhere; }
+.battle-preview__faction .identifier { grid-column: 2; }
+.danger-zone { border-top: 1px solid #b17768; margin-top: 32px; padding-top: 16px; }
+.danger-zone button { background: #211714; border: 1px solid #b17768; color: #ffb3a5; padding: 12px 20px; }
+.integration-status { margin-bottom: 24px; }
+.integration-status summary { cursor: pointer; padding-block: 12px; }
 @media (max-width: 780px) {
   .topbar { position: relative; padding: 12px 16px; min-height: 70px; }
   .primary-nav { width: 100%; flex-direction: column; align-items: stretch; gap: 4px; }

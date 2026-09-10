@@ -39,7 +39,7 @@ describe('HexBattleMap', () => {
     expect(screen.getByText(/HP 20\/30/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Zoom in' }))
     await user.click(screen.getByRole('button', { name: 'Zoom out' }))
-    await user.click(screen.getByRole('button', { name: 'RESET' }))
+    await user.click(screen.getByRole('button', { name: 'Fit map' }))
     const layer = container.querySelector('.map-layer')!
     const transformBeforeScroll = layer.getAttribute('transform')
     fireEvent.wheel(battlefield, { deltaY: -1 })
@@ -170,7 +170,7 @@ it('animates recorded bends once, preserves selection, and honors reduced motion
     await userEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
     expect(animate).toHaveBeenCalledTimes(1)
     preference.matches = true
-    preference.addEventListener.mock.calls[0][1]()
+    preference.addEventListener.mock.calls.forEach(([, callback]) => callback())
     expect(cancel).toHaveBeenCalled()
     rerender(<HexBattleMap {...props} state={{ ...snapshot, tick: 5, units: [{ ...snapshot.units[0], movedFrom: end, movementPath: [end, bend, start] }] }} />)
     expect(animate).toHaveBeenCalledTimes(1)

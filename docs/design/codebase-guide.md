@@ -492,7 +492,11 @@ owns the System/player dropdown, the shared inner tab, and the scoped context ca
 `InspectorTabs.tsx` implements inner-tab keyboard navigation. `AIDecisionPanel` keeps
 individual decision expansion stable, while `DecisionContextPanel.tsx` lazily
 loads and presents the historical observation. `EventConsole` preserves loaded
-event filtering and payload expansion. Player/decision sections remain mounted
+event filtering and payload expansion. `presentation/events.ts` owns readable
+summaries and Key events/Combat/Economy/All events categorization. Mobile initially
+shows ten matching events, with Show more revealing additional loaded rows.
+`shared/components/Identifier.tsx` provides short IDs, full-value disclosures,
+copy announcements, and selectable fallback text. Player/decision sections remain mounted
 when hidden; the inspector is reset for a different battle or attempt.
 
 The battle toolbar places compact tick progress on the left, faction summaries in
@@ -501,9 +505,11 @@ cards share available width with a 160px minimum before wrapping into equal-heig
 rows. Progress, faction summaries, and controls stretch to matching outer heights;
 the toolbar and map layout stack at 1000px. Controls and inspector share a 340px
 desktop column and a 14px gutter, aligning their left and right borders.
-The map and inspector have matching desktop
-heights and scroll together with the page; only the inspector's content scrolls
-internally. `components/FactionSummaries.tsx` shows each
+The inline map uses the board's aspect ratio and can expand into a native modal
+dialog. Camera fitting happens on opening and viewport resizing, not live ticks.
+The inspector's desktop content scrolls internally; mobile uses page scrolling.
+Terminal battles hide Play/Pause/Stop and label tick usage as a maximum rather
+than completion. `components/FactionSummaries.tsx` shows each
 participant's decision activity, gold, and living unit count using existing
 spectator state and current-attempt decision polling, independent of map
 perspective. Paused and terminal states override decision activity, polling errors

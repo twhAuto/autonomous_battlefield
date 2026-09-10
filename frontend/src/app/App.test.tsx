@@ -2,7 +2,7 @@
 // management, battle creation, and live battle controls.
 
 import { doctrineTemplates } from '../features/factions/pages/CreateFactionPage'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -490,7 +490,7 @@ describe('App', () => {
     expect(fetch).toHaveBeenCalledWith(`/v1/battles/${battleId}/stop`, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
     expect(await screen.findByRole('heading', { name: 'Battle stopped' })).toBeInTheDocument()
     expect(screen.getByText('Stopped by operator')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'STOP' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'STOP' })).not.toBeInTheDocument()
   })
 
   it('pauses and resumes an active battle from the battle control panel', async () => {
@@ -618,6 +618,7 @@ describe('App', () => {
     try {
       // Flush the initial status/latest-page requests before advancing polling.
       await act(async () => {})
+      fireEvent.change(screen.getByLabelText('Event group'), { target: { value: 'all' } })
       expect(screen.getByText('#0050')).toBeInTheDocument()
       await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
       expect(screen.getByText('#0100')).toBeInTheDocument()
@@ -720,6 +721,7 @@ describe('App', () => {
 
     expect(await screen.findByRole('heading', { name: 'Battle failed' })).toBeInTheDocument()
     expect(screen.getByText('engine_error')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Event group'), { target: { value: 'all' } })
     expect(await screen.findByText('{"phase":"advance"}')).toBeInTheDocument()
     expect(within(screen.getByRole('listitem')).getByText('—')).toBeInTheDocument()
     expect(screen.getByText('false')).toBeInTheDocument()

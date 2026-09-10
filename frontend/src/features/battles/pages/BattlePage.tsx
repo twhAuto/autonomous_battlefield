@@ -94,15 +94,15 @@ export function BattlePage() {
 
       <section className="battle-toolbar">
         <div className="battle-progress-panel">
-          <div className="section-label"><span>COMBAT PROGRESS</span><span>{progress}%</span></div>
-          <div className="battle-progress__numbers"><strong>{battle.currentTick}</strong><span>/ {battle.requestedTicks} TICKS</span></div>
-          <progress className="battle-progress" aria-label="Battle progress" max={battle.requestedTicks} value={battle.currentTick}>{progress}%</progress>
+          <div className="section-label"><span>Tick limit used</span></div>
+          <p>Tick <strong>{battle.currentTick}</strong> of {battle.requestedTicks} maximum</p>
+          <progress className="battle-progress" aria-label="Tick limit used" max={battle.requestedTicks} value={battle.currentTick}>{progress}%</progress>
         </div>
 
         <FactionSummaries battle={battle} decisions={decisions} decisionMessage={decisionMessage} />
 
         <aside className={`outcome-panel outcome-panel--${battle.paused ? 'paused' : battle.status}`}>
-          <span className="outcome-panel__label">BATTLE CONTROL</span>
+          <span className="outcome-panel__label">{['completed', 'stopped', 'failed'].includes(battle.status) ? 'Battle result' : 'Battle control'}</span>
           <Outcome battle={battle} winnerName={winnerName} />
           {permissions.canManage(battle.ownerId) && <BattleControls battle={battle} state={controlState} message={controlMessage} onControl={runBattleControl} />}
         </aside>
