@@ -470,7 +470,7 @@ The frontend is a React/Vite single-page application.
 | [`features/factions/api/factions.ts`](../../frontend/src/features/factions/api/factions.ts) | Typed faction and ruleset requests |
 | [`features/battles/api/battles.ts`](../../frontend/src/features/battles/api/battles.ts) | Typed scenario, profile, battle, history, event, view, control, and decision requests |
 | [`features/factions/pages/CreateFactionPage.tsx`](../../frontend/src/features/factions/pages/CreateFactionPage.tsx) | Faction profile editor and background generator |
-| [`features/factions/pages/FactionsPage.tsx`](../../frontend/src/features/factions/pages/FactionsPage.tsx) | Faction registry and deletion |
+| [`features/factions/pages/FactionsPage.tsx`](../../frontend/src/features/factions/pages/FactionsPage.tsx) | Faction registry and authorized edit links; deletion lives in the editor's Danger zone |
 | [`features/battles/pages/CreateBattlePage.tsx`](../../frontend/src/features/battles/pages/CreateBattlePage.tsx) | Scenario, participants, controllers, and tick-limit selection |
 | [`features/battles/pages/BattleHistoryPage.tsx`](../../frontend/src/features/battles/pages/BattleHistoryPage.tsx) | Status-filtered history table/cards, cursor navigation, refresh, and detail links |
 | [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx) | Route-level composition, selected perspective/panel, and control actions |
@@ -480,6 +480,19 @@ The frontend is a React/Vite single-page application.
 | [`shared/components/Emblem.tsx`](../../frontend/src/shared/components/Emblem.tsx) | Deterministic faction emblem |
 
 Feature-specific API clients live in `src/features/<feature>/api`; common HTTP transport lives in `src/shared/api`. Page components should consume typed client functions rather than duplicating `fetch` calls.
+
+`features/factions/presentation/availability.ts` derives background-writer status
+from existing availability, quota, cooldown, and active-job fields. Retrying status
+never configures a provider. `Identifier` is shared by creation metadata, faction
+cards, combatant previews, history, and battle headers; copy uses the full UUID.
+Ordinary creation forms generate identifiers internally without regeneration UI.
+
+`frontend/e2e/fixtures.ts` intercepts the complete API boundary for application
+Playwright tests. `e2e/usability.spec.ts` runs against a local Vite server in
+desktop and mobile Chromium, including destructive cases only against fixtures.
+See [frontend commands](../../frontend/README.md#commands) for browser setup,
+coverage, and reports. Jenkins archives failure screenshots, traces, and HTML
+reports alongside coverage without changing the 80% coverage thresholds.
 
 The battle feature's `hooks/` directory owns status, event, decision-history, and faction-perspective requests. Each hook preserves its own polling cadence, retries, cancellation, and terminal-state handling. `components/AIDecisionPanel.tsx`, `components/EventConsole.tsx`, and `components/BattlePresentation.tsx` own the panels and visual presentation; shared UI state types live in `types.ts`. There is no WebSocket or server-sent-event client.
 

@@ -161,16 +161,14 @@ describe('App', () => {
 	expect(await screen.findByText('invalid faction blueprint: recruitment priority is incomplete')).toBeInTheDocument()
   })
 
-  it('regenerates a faction identifier', async () => {
+  it('keeps the generated faction identifier stable and exposes its full value on demand', async () => {
 	vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify({ rulesets: [ruleset], scenarios: [] }), { status: 200 }))
     const user = userEvent.setup()
     renderApp('/factions/new')
 
-	expect(await screen.findByTitle(firstId)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Generate a new faction identifier' }))
-
-	expect(await screen.findByTitle(secondId)).toBeInTheDocument()
-    expect(screen.queryByTitle(firstId)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Generate a new faction identifier' })).not.toBeInTheDocument()
+    await user.click(screen.getByText('Faction identifier details'))
+    expect(screen.getByText(firstId)).toBeVisible()
   })
 
   it('uses editable doctrine templates', async () => {
@@ -197,18 +195,19 @@ describe('App', () => {
 
   it('deletes a faction from the registry after confirmation', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    let deleted = false
     vi.mocked(fetch).mockImplementation(async (input, init) => {
       if (String(input) === '/v1/factions' && !init?.method) {
-        return new Response(JSON.stringify({ factions: [{ id: firstId, name: 'Northwind' }] }), { status: 200 })
+        return new Response(JSON.stringify({ factions: deleted ? [] : [{ id: firstId, name: 'Northwind', doctrine: 'Defend' }] }), { status: 200 })
       }
       if (String(input) === `/v1/factions/${firstId}` && init?.method === 'DELETE') {
+        deleted = true
         return new Response(null, { status: 204 })
       }
       throw new Error(`Unexpected fetch: ${String(input)}`)
     })
     const user = userEvent.setup()
-    renderApp('/factions')
-
+    renderApp(`/factions/${firstId}/edit`)
     await user.click(await screen.findByRole('button', { name: 'DELETE Northwind' }))
 
     expect(confirm).toHaveBeenCalledWith('Delete Northwind? This removes it from the active faction registry.')
@@ -374,7 +373,9 @@ describe('App', () => {
 
     const controllers = await screen.findAllByLabelText('Controller')
     await user.selectOptions(controllers[0], 'gemini-api-balanced')
-    expect(screen.getAllByRole('option', { name: /Codex local.*unavailable/i })).toHaveLength(2)
+    expect(screen.queryByRole('option', { name: /Codex local/i })).not.toBeInTheDocument()
+    await user.click(screen.getByText('AI integration status'))
+    expect(screen.getByText('Codex local')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'DEPLOY COMBATANTS' }))
 
     expect(fetch).toHaveBeenCalledWith('/v1/battles', expect.objectContaining({

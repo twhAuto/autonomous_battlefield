@@ -119,6 +119,18 @@ All events includes unknown types. Summaries are derived from existing payloads,
 with original fields and JSON inside Details. Mobile shows ten matching rows at
 a time and uses page scrolling. A separate polite status announces loaded counts.
 
+Frontend identifier presentation abbreviates to eight characters while copy and
+Details retain the complete value. UUID generation and all HTTP contracts remain
+unchanged. Background generation availability distinguishes failed status reads,
+unavailable service, exhausted allowance, cooldown, and active work using existing
+fields. Quota/reset details appear only for an available service. Retry reads do
+not activate providers or configure credentials, and manual editing stays enabled.
+Controller menus show available profiles; unavailable integrations have a separate
+status disclosure. Existing inspection permissions govern model/execution details.
+Faction deletion is offered only in the authorized editor's Danger zone. It keeps
+the named registry-removal confirmation, disables repeat submissions, leaves failed
+deletions on the editor, and navigates to the directory after success.
+
 The SVG map uses compact directional arrows beneath entity icons, matching the
 acting faction's unit color. Movement remains dashed and subdued; attacks use solid
 lines with a subtle traveling highlight, and tower fire uses a thicker stroke. Endpoints clear entity outlines; paths too short to fit an
@@ -760,7 +772,8 @@ are not copied. Observability verification waits for completion of each new
 Deployment rollout concurrently and reports failures before setup verification.
 The source-security stage owns CI manifest rendering and policy validation;
 scanner versions are centralized in `scripts/ci/tool-versions.env`.
-Its Trivy filesystem scan excludes generated `artifacts` and `frontend/coverage`
+Its Trivy filesystem scan excludes generated `artifacts`, `frontend/coverage`,
+`frontend/playwright-report`, and `frontend/test-results`
 directories so parallel coverage cleanup cannot race with source analysis.
 Frontend source and dependency lockfiles remain in scan scope.
 Frontend tests use two Vitest workers and a 15-second per-test timeout to allow

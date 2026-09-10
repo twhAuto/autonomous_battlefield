@@ -173,7 +173,8 @@ npm debug logs from the disposable audit containers are archived under
 `artifacts/security/npm-logs/`; paths printed by npm refer to the container and
 are not paths on the Jenkins agent.
 
-The Trivy source scan skips generated `artifacts` and `frontend/coverage`
+The Trivy source scan skips generated `artifacts`, `frontend/coverage`,
+`frontend/playwright-report`, and `frontend/test-results`
 directories. Vitest creates and removes temporary coverage files during the
 parallel frontend stage; scanning those files can otherwise fail with a
 `stat frontend/coverage/.tmp/coverage-*.json: no such file or directory` error.
@@ -185,6 +186,16 @@ other CI branches share the agent; all assertions and 80% coverage gates apply.
 Testing Library's independent async-query deadline is five seconds, configured
 in `frontend/src/test/setup.ts`, so chained fetch/render effects can settle under
 the same shared-agent load.
+
+Both frontend validation stages install the lockfile-matched Chromium browser
+with `npx playwright install chromium` and run `npm run test:e2e` after coverage
+and build. Provision Linux browser libraries on the agent once using
+`npx playwright install-deps chromium`; CI does not attempt privileged package
+installation. The suite starts a local Vite server on port 4173, intercepts all
+API routes with deterministic fixtures, and covers desktop and mobile Chromium.
+It uses one worker in CI. No shared database or live AI is required. The always
+post step archives `frontend/playwright-report/**/*` and
+`frontend/test-results/**/*`, including failure screenshots and retained traces.
 
 Runtime k6 and ZAP containers use host networking on the Linux agent and map
 `battlefield.localhost` to `127.0.0.1`, matching kind's loopback-only gateway

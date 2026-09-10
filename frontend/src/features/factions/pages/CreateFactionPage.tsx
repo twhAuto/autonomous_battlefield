@@ -3,8 +3,9 @@
 import { maxBackgroundLength, maxDoctrineLength } from '../limits'
 import { BackgroundGenerator } from '../components/BackgroundGenerator'
 import { useEffect, useState, type SubmitEvent } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { createFaction, listFactions, updateFaction } from '../api/factions'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { createFaction, deleteFaction, listFactions, updateFaction } from '../api/factions'
+import { Identifier } from '../../../shared/components/Identifier'
 import { usePermissions } from '../../auth/SessionContext'
 import { Emblem } from '../../../shared/components/Emblem'
 import { ResponsivePreview } from '../../../shared/components/ResponsivePreview'
@@ -20,6 +21,10 @@ export const doctrineTemplates = {
 /** Renders the profile form and optional background generator, loading the faction when editing. */
 export function CreateFactionPage() {
  const { id } = useParams()
+ const navigate = useNavigate()
+ const [deleting, setDeleting] = useState(false)
+ const [deleteError, setDeleteError] = useState('')
+ const [savedName, setSavedName] = useState('')
  const { canManage } = usePermissions()
  const editing = Boolean(id)
  const [factionId, setFactionId] = useState(() => crypto.randomUUID())
@@ -41,7 +46,7 @@ export function CreateFactionPage() {
  const faction = factions.find(value => value.id === id)
  if (!faction) throw new Error('Faction not found.')
  if (!canManage(faction.ownerId)) throw new Error('You can only edit your own factions.')
- setName(faction.name); setDoctrine(faction.doctrine); setBackground(faction.background ?? ''); setLoading(false)
+ setSavedName(faction.name); setName(faction.name); setDoctrine(faction.doctrine); setBackground(faction.background ?? ''); setLoading(false)
  }).catch(error => {
  if (controller.signal.aborted) return
  setLoading(false); setLoadFailed(true); setStatus('error'); setMessage(error instanceof Error ? error.message : 'Faction could not be loaded.')
@@ -55,16 +60,24 @@ export function CreateFactionPage() {
  /** Saves a valid profile and reports the result; successful creation clears identity and background but keeps doctrine. */
  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
  event.preventDefault()
- if (!valid || status === 'submitting') return
+ if (!valid || status === 'submitting' || deleting) return
  setStatus('submitting'); setMessage('')
  try {
  const faction = { id: id ?? factionId, name: name.trim(), doctrine: doctrine.trim(), background: background.trim() }
  await (editing ? updateFaction(faction) : createFaction(faction))
+ if (editing) setSavedName(faction.name)
  setStatus('success'); setMessage(editing ? `${faction.name} has been updated. Changes apply to future battles.` : `${faction.name} has entered the battlefield.`)
  if (!editing) { setName(''); setBackground(''); setFactionId(crypto.randomUUID()) }
  } catch (error) { setStatus('error'); setMessage(error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.') }
  }
  const saveLabel = editing ? 'SAVE FACTION' : 'CREATE FACTION'
+ async function removeFaction() {
+   if (!id || deleting || loading || loadFailed || status === 'submitting') return
+   if (!window.confirm(`Delete ${savedName}? This removes it from the active faction registry.`)) return
+   setDeleting(true); setDeleteError('')
+   try { await deleteFaction(id); navigate('/factions') }
+   catch (error) { setDeleteError(error instanceof Error ? error.message : 'The faction could not be deleted.'); setDeleting(false) }
+ }
  return <>
  <section className="page-header">
  <Link className="back-link" to="/">← MAIN MENU</Link>
@@ -89,10 +102,11 @@ export function CreateFactionPage() {
  <p id="background-hint">Origins, history, and values. {backgroundCount} / {maxBackgroundLength.toLocaleString('en-US')} characters.</p>
  {backgroundCount > maxBackgroundLength && <p role="alert">Background must be at most {maxBackgroundLength.toLocaleString('en-US')} characters.</p>}
  <BackgroundGenerator key={id ?? factionId} input={{name:name.trim(),doctrine:doctrine.trim(),background:background.trim()}} valid={valid && status !== 'submitting'} onUse={value => {setBackground(value);setStatus('idle');setMessage('')}} />
- <div className="identity-block"><div><span className="identity-block__label">SYSTEM IDENTIFIER</span><code title={id ?? factionId}>{id ?? factionId}</code></div>{!editing && <button type="button" className="icon-button" onClick={() => setFactionId(crypto.randomUUID())} aria-label="Generate a new faction identifier">↻</button>}</div>
- <button className="submit-button" type="submit" disabled={!valid || status === 'submitting'}>{status === 'submitting' ? 'SAVING…' : saveLabel}</button>
+ <div className="identity-block"><Identifier value={id ?? factionId} label="Faction identifier" /></div>
+ <button className="submit-button" type="submit" disabled={!valid || status === 'submitting' || deleting}>{status === 'submitting' ? 'SAVING…' : saveLabel}</button>
  </form>}
  <div className="form-message" aria-live="polite">{message && <p className={`form-message--${status}`}>{message}</p>}{status === 'success' && <Link className="text-link" to="/factions">View faction registry →</Link>}</div>
+ {editing && !loading && !loadFailed && <section className="danger-zone" aria-label="Danger zone"><h2>Danger zone</h2><p>Delete this faction from the active registry. Saved battle history is retained.</p><button type="button" disabled={deleting || status === 'submitting'} onClick={() => void removeFaction()}>{deleting ? 'DELETING…' : `DELETE ${savedName}`}</button>{deleteError && <p role="alert">{deleteError}</p>}</section>}
  </div>
  <ResponsivePreview label="Preview faction"><aside className="preview-panel" aria-label="Faction doctrine preview"><div className="preview-panel__grid" /><div className="preview-panel__heading"><span>FACTION PREVIEW</span></div><div className="preview-panel__content"><Emblem seed={name.trim() || 'Your faction'} /><h3>{name.trim() || 'Your faction'}</h3><p style={{whiteSpace:'pre-wrap'}}>{doctrine}</p>{background && <p style={{whiteSpace:'pre-wrap'}}>{background}</p>}</div></aside></ResponsivePreview>
  </section>

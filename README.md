@@ -136,6 +136,7 @@ Run the same Go lint and coverage work used by Jenkins:
 ./scripts/ci/lint-go.sh
 ./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
 (cd frontend && npm ci && npm test -- --coverage && npm run build)
+(cd frontend && npx playwright install chromium && npm run test:e2e)
 ```
 
 `with-test-postgres.sh` starts a throwaway PostgreSQL container and exports

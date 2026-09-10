@@ -1,10 +1,10 @@
-// Loads the faction registry with retry states, links to editing, and confirmed deletion
-// followed by a refreshed list.
+// Loads the faction registry with retry states and links to the authorized editor.
 
 import { usePermissions } from '../../auth/SessionContext'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { deleteFaction, Faction, FactionApiError, listFactions } from '../api/factions'
+import { Faction, FactionApiError, listFactions } from '../api/factions'
+import { Identifier } from '../../../shared/components/Identifier'
 import { Emblem } from '../../../shared/components/Emblem'
 
 export function FactionsPage() {
@@ -13,8 +13,6 @@ export function FactionsPage() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [message, setMessage] = useState('')
   const [requestVersion, setRequestVersion] = useState(0)
-  const [deletingId, setDeletingId] = useState('')
-  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     const controller = new AbortController()
@@ -34,20 +32,6 @@ export function FactionsPage() {
       })
     return () => controller.abort()
   }, [requestVersion])
-
-  async function removeFaction(faction: Faction) {
-    if (!window.confirm(`Delete ${faction.name}? This removes it from the active faction registry.`)) return
-    setDeletingId(faction.id)
-    setDeleteError('')
-    try {
-      await deleteFaction(faction.id)
-      setFactions((current) => current.filter((item) => item.id !== faction.id))
-    } catch (error) {
-      setDeleteError(error instanceof FactionApiError ? error.message : 'The faction could not be deleted.')
-    } finally {
-      setDeletingId('')
-    }
-  }
 
   return (
     <>
@@ -69,7 +53,6 @@ export function FactionsPage() {
           <span>{status === 'success' ? factions.length.toString().padStart(2, '0') : '--'}</span>
         </div>
 
-        {deleteError && <p className="directory-inline-error" role="alert">{deleteError}</p>}
 
         {status === 'loading' && (
           <div className="directory-state">
@@ -106,20 +89,12 @@ export function FactionsPage() {
                 <div className="registry-card__body">
                   <span>REGISTERED FACTION</span>
                   <h2>{faction.name}</h2>
-                  <code title={faction.id}>{faction.id}</code>
+                  <Identifier value={faction.id} label="Faction identifier" />
                   <p style={{ whiteSpace: 'pre-wrap' }}>{faction.doctrine}</p>
                   {faction.background && <p style={{ whiteSpace: 'pre-wrap' }}>{faction.background}</p>}
                   {permissions.canManage(faction.ownerId) && <Link to={`/factions/${faction.id}/edit`}>Edit faction</Link>}
                 </div>
                 <div className="registry-card__status"><span className="status-dot" /> ACTIVE</div>
-                {permissions.canManage(faction.ownerId) && <button
-                  className="registry-card__delete"
-                  type="button"
-                  disabled={deletingId === faction.id}
-                  onClick={() => void removeFaction(faction)}
-                >
-                  {deletingId === faction.id ? 'DELETING…' : `DELETE ${faction.name}`}
-                </button>}
               </article>
             ))}
           </div>

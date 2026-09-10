@@ -22,6 +22,17 @@ const state = {
 }
 
 describe('HexBattleMap', () => {
+  it('preserves camera and selected entity across live tick updates', async () => {
+    const props = { map, state, visiblePositions: [], factionNames: new Map([['a', 'Northwind']]) }
+    const { container, rerender } = render(<HexBattleMap {...props} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    fireEvent.keyDown(screen.getByLabelText('Map navigation'), { key: 'ArrowRight' })
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Northwind · Castle' }), { key: ' ' })
+    const camera = container.querySelector('.map-layer')!.getAttribute('transform')
+    rerender(<HexBattleMap {...props} state={{ ...state, tick: 4 }} />)
+    expect(container.querySelector('.map-layer')).toHaveAttribute('transform', camera)
+    expect(screen.getByRole('button', { name: 'Northwind · Castle' })).toHaveAttribute('aria-pressed', 'true')
+  })
   it('renders terrain, accessible entities, selection, and map controls', async () => {
     const user = userEvent.setup()
     const { container } = render(<HexBattleMap map={map} state={state} visiblePositions={[{ x: 0, y: 0 }, { x: 0, y: 1 }]} factionNames={new Map([['a', 'Northwind']])} toolbarControls={<label htmlFor="test-perspective">Perspective<select id="test-perspective"><option>Spectator</option></select></label>} />)

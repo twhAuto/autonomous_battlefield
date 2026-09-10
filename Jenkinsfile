@@ -95,6 +95,8 @@ pipeline {
                                     sh 'npm ci'
                                     sh 'npm test -- --coverage'
                                     sh 'npm run build'
+                                    sh 'npx playwright install chromium'
+                                    sh 'npm run test:e2e'
                                 }
                             }
                         }
@@ -187,6 +189,8 @@ pipeline {
                                     sh 'npm ci'
                                     sh 'npm test -- --coverage'
                                     sh 'npm run build'
+                                    sh 'npx playwright install chromium'
+                                    sh 'npm run test:e2e'
                                 }
                             }
                         }
@@ -481,7 +485,7 @@ pipeline {
                 }
             }
             archiveArtifacts(
-                artifacts: 'artifacts/**/*,backend/coverage.out,backend/coverage-total.txt,frontend/coverage/**/*',
+                artifacts: 'artifacts/**/*,backend/coverage.out,backend/coverage-total.txt,frontend/coverage/**/*,frontend/playwright-report/**/*,frontend/test-results/**/*',
                 allowEmptyArchive: true,
                 fingerprint: true
             )
