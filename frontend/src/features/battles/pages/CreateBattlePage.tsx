@@ -15,7 +15,6 @@ import {
 import { Faction, FactionApiError, listFactions } from '../../factions/api/factions'
 import { Emblem } from '../../../shared/components/Emblem'
 import { ResponsivePreview } from '../../../shared/components/ResponsivePreview'
-import { Identifier } from '../../../shared/components/Identifier'
 
 type LoadState = 'loading' | 'ready' | 'empty' | 'error'
 
@@ -232,12 +231,6 @@ export function CreateBattlePage() {
                 {!validTicks && <p className="field-error" role="alert">Enter a whole number from 1 to {maximumTicks}.</p>}
               </div>
 
-              <div className="identity-block">
-                <div>
-                  <Identifier value={battleID} label="Battle identifier" />
-                </div>
-              </div>
-
               <button className="submit-button" type="submit" disabled={!canSubmit}>
                 <span>{submitState === 'submitting' ? 'QUEUING BATTLE…' : 'DEPLOY COMBATANTS'}</span>
                 <span aria-hidden="true">→</span>
@@ -289,7 +282,6 @@ function Combatant({ faction, slot }: Readonly<{ faction?: Faction; slot: string
       {faction && <Emblem seed={faction.name} />}
       <span>SLOT {slot}</span>
       <h2>{faction?.name ?? 'Unassigned'}</h2>
-      {faction && <Identifier value={faction.id} label={`Slot ${slot} faction identifier`} />}
     </div>
   )
 }

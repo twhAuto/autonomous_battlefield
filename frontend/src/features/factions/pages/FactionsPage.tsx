@@ -4,7 +4,6 @@ import { usePermissions } from '../../auth/SessionContext'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Faction, FactionApiError, listFactions } from '../api/factions'
-import { Identifier } from '../../../shared/components/Identifier'
 import { Emblem } from '../../../shared/components/Emblem'
 
 export function FactionsPage() {
@@ -40,7 +39,7 @@ export function FactionsPage() {
         <div className="hero__eyebrow"><span>02</span> ACTIVE REGISTRY</div>
         <div className="directory-title">
           <div>
-            <h1>All factions</h1>
+            <h1>Factions</h1>
             <p>Every banner registered in OrdinalFrontier.</p>
           </div>
           <Link className="compact-action" to="/factions/new">+ CREATE FACTION</Link>
@@ -89,7 +88,6 @@ export function FactionsPage() {
                 <div className="registry-card__body">
                   <span>REGISTERED FACTION</span>
                   <h2>{faction.name}</h2>
-                  <Identifier value={faction.id} label="Faction identifier" />
                   <p style={{ whiteSpace: 'pre-wrap' }}>{faction.doctrine}</p>
                   {faction.background && <p style={{ whiteSpace: 'pre-wrap' }}>{faction.background}</p>}
                   {permissions.canManage(faction.ownerId) && <Link to={`/factions/${faction.id}/edit`}>Edit faction</Link>}

@@ -126,9 +126,10 @@ All events includes unknown types. Summaries are derived from existing payloads,
 with original fields and JSON inside Details. Mobile shows ten matching rows at
 a time and uses page scrolling. A separate polite status announces loaded counts.
 
-Frontend identifier presentation abbreviates to eight characters while copy and
-Details retain the complete value. UUID generation and all HTTP contracts remain
-unchanged. Background generation availability distinguishes failed status reads,
+The frontend hides identifier displays and copy controls; UUID generation,
+API requests, and routes retain their existing identifiers. Navigation is Stage
+battle, Factions, then Battle history, with creation accessible from Factions.
+Background generation availability distinguishes failed status reads,
 unavailable service, exhausted allowance, cooldown, and active work using existing
 fields. Quota/reset details appear only for an available service. Retry reads do
 not activate providers or configure credentials, and manual editing stays enabled.

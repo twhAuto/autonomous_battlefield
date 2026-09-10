@@ -110,9 +110,8 @@ describe('App', () => {
     renderApp()
 	const menu = screen.getByRole('heading', { name: 'Main menu' }).closest('section')!
 
-    expect(within(menu).getByRole('link', { name: /create faction/i })).toHaveAttribute('href', '/factions/new')
-    expect(within(menu).getByRole('link', { name: /view all factions/i })).toHaveAttribute('href', '/factions')
-    expect(within(menu).getByRole('link', { name: /stage a battle/i })).toHaveAttribute('href', '/battles/new')
+    expect(within(menu).getByRole('heading', { name: 'Factions' }).closest('a')).toHaveAttribute('href', '/factions')
+    expect(within(menu).getByRole('link', { name: /stage battle/i })).toHaveAttribute('href', '/battles/new')
     expect(within(menu).getByRole('link', { name: /battle history/i })).toHaveAttribute('href', '/battles')
   })
 
@@ -121,7 +120,8 @@ describe('App', () => {
     renderApp()
 	const menu = screen.getByRole('heading', { name: 'Main menu' }).closest('section')!
 
-    await user.click(within(menu).getByRole('link', { name: /create faction/i }))
+    await user.click(within(menu).getByRole('heading', { name: 'Factions' }).closest('a')!)
+    await user.click(screen.getByRole('link', { name: '+ CREATE FACTION' }))
 
     expect(screen.getByRole('heading', { name: 'Create a faction' })).toBeInTheDocument()
     expect(screen.getByLabelText('Faction name')).toBeInTheDocument()
@@ -161,14 +161,13 @@ describe('App', () => {
 	expect(await screen.findByText('invalid faction blueprint: recruitment priority is incomplete')).toBeInTheDocument()
   })
 
-  it('keeps the generated faction identifier stable and exposes its full value on demand', async () => {
+  it('keeps faction identifiers out of the creation UI', async () => {
 	vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify({ rulesets: [ruleset], scenarios: [] }), { status: 200 }))
-    const user = userEvent.setup()
     renderApp('/factions/new')
 
     expect(screen.queryByRole('button', { name: 'Generate a new faction identifier' })).not.toBeInTheDocument()
-    await user.click(screen.getByText('Faction identifier details'))
-    expect(screen.getByText(firstId)).toBeVisible()
+    expect(screen.queryByText(firstId)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /copy.*identifier/i })).not.toBeInTheDocument()
   })
 
   it('uses editable doctrine templates', async () => {

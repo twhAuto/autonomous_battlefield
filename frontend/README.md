@@ -33,7 +33,7 @@ the TypeScript configuration.
 The application browser suite in `e2e/` starts its own local Vite server on
 `127.0.0.1:4173` and intercepts every `/v1` request. It exercises navigation,
 keyboard access, responsive forms, both board sizes, map expansion/selection,
-early results, event presets, clipboard failure, AI availability/quota/cooldown,
+early results, event presets, hidden identifiers, AI availability/quota/cooldown,
 and deletion cancellation/failure/success. It needs no credentials, live AI,
 backend, or shared database. Unexpected API requests fail the fixture assertion.
 On a fresh Linux machine, provision browser libraries once with
@@ -41,10 +41,12 @@ On a fresh Linux machine, provision browser libraries once with
 `npx playwright show-report` opens `playwright-report/`; failed tests retain
 screenshots and traces in `test-results/`. Both folders are ignored by Git.
 
+Navigation is Stage battle, Factions, then Battle history. The home page opens
+directly with these actions; Factions contains the Create faction action.
 Mobile navigation uses a Menu disclosure; creation forms precede collapsed
 previews. The inline map permits page scrolling on mobile; Expand map opens its
-interactive modal. Key events filters loaded history by default. Full identifiers
-and copy fallbacks live in Details disclosures. Faction deletion is in the edit
+interactive modal. Key events filters loaded history by default. Identifiers and
+copy controls are hidden from ordinary pages. Faction deletion is in the edit
 page's Danger zone, subject to existing ownership permissions.
 
 ## Container and Kubernetes behavior

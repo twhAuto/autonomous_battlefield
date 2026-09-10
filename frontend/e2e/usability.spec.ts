@@ -14,7 +14,9 @@ test('navigation, focus, responsive forms and logout', async ({ page, isMobile }
     await expect(page.getByRole('button', { name: 'Menu', exact: true })).toBeFocused()
     await page.getByRole('button', { name: 'Menu', exact: true }).click()
   }
-  await page.getByRole('navigation').getByRole('link', { name: 'Create faction', exact: true }).click()
+  await expect(page.getByRole('navigation').getByRole('link')).toHaveText(['Stage battle', 'Factions', 'Battle history'])
+  await page.getByRole('navigation').getByRole('link', { name: 'Factions', exact: true }).click()
+  await page.getByRole('link', { name: '+ CREATE FACTION' }).click()
   await expect(page.getByLabel('Faction name', { exact: true })).toBeInViewport()
   if (isMobile) {
     await expect(page.getByLabel('Faction doctrine preview')).not.toBeVisible()
@@ -93,15 +95,13 @@ test('key events, all events and details preserve loaded history', async ({ page
   await page.getByLabel('Event group').selectOption('combat')
   await expect(rows).toHaveCount(1)
 })
-test('availability and clipboard fallback keep manual editing possible', async ({ page, api }) => {
-  await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('denied')) } }))
+test('availability and hidden identifiers keep manual editing simple', async ({ page, api }) => {
   await page.goto('/factions/new')
   await expect(page.getByText('Disabled by operator')).toBeVisible()
   await expect(page.getByText(/generations left today/)).toHaveCount(0)
   await page.getByLabel('Background (optional)').fill('Manually written.')
-  await page.getByRole('button', { name: 'Copy faction identifier' }).click()
-  await expect(page.getByText('Copy unavailable. Select and copy the full identifier below.')).toBeVisible()
-  await expect(page.locator('.identifier__full')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Copy.*identifier/i })).toHaveCount(0)
+  await expect(page.locator('.identifier')).toHaveCount(0)
   api.generation = { ...api.generation, available: true, remaining: 0 }
   await page.getByRole('button', { name: 'Check availability', exact: true }).click()
   await expect(page.getByText("Today's generation allowance is exhausted.")).toBeVisible()

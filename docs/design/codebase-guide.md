@@ -488,9 +488,14 @@ Feature-specific API clients live in `src/features/<feature>/api`; common HTTP t
 
 `features/factions/presentation/availability.ts` derives background-writer status
 from existing availability, quota, cooldown, and active-job fields. Retrying status
-never configures a provider. `Identifier` is shared by creation metadata, faction
-cards, combatant previews, history, and battle headers; copy uses the full UUID.
-Ordinary creation forms generate identifiers internally without regeneration UI.
+never configures a provider. Identifiers are generated internally and retained in
+API requests and routes, but ordinary pages show no identifier or copy controls.
+The former shared `Identifier` component has been removed.
+
+Home and primary navigation share three destinations in order: Stage battle,
+Factions, Battle history. The compact home has no promotional hero. Factions
+combines directory access with its Create faction action; the existing creation
+and editing routes remain available and keep the Factions navigation item active.
 
 `frontend/e2e/fixtures.ts` intercepts the complete API boundary for application
 Playwright tests. `e2e/usability.spec.ts` runs against a local Vite server in
@@ -513,8 +518,7 @@ loads and presents the historical observation. `EventConsole` preserves loaded
 event filtering and payload expansion. `presentation/events.ts` owns readable
 summaries and Key events/Combat/Economy/All events categorization. Mobile initially
 shows ten matching events, with Show more revealing additional loaded rows.
-`shared/components/Identifier.tsx` provides short IDs, full-value disclosures,
-copy announcements, and selectable fallback text. Player/decision sections remain mounted
+Player/decision sections remain mounted
 when hidden; the inspector is reset for a different battle or attempt.
 
 The battle toolbar places compact tick progress on the left, faction summaries in

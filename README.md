@@ -5,6 +5,10 @@ images, Kubernetes resources, monitoring identifiers, and the local
 `battlefield.localhost` address retain their technical names for compatibility.
 The public play address is `https://play.ordinalfrontier.com`.
 
+The command menu starts with Stage battle, followed by Factions and Battle
+history. Create new factions from the Factions page. Technical identifiers are
+handled internally and are hidden from ordinary screens.
+
 Deployment environments are separate: **WSL dev** builds and loads local images;
 **server production** receives verified GHCR images from Jenkins `main` delivery.
 Start with the [environment setup guide](docs/operations/environments.md);

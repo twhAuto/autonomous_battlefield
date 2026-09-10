@@ -2,7 +2,6 @@
 // controls; data loading stays in the page and hooks.
 
 import { type ReactNode } from 'react'
-import { Identifier } from '../../../shared/components/Identifier'
 import { Link, useLocation } from 'react-router-dom'
 import { BattleRun } from '../api/battles'
 import { type ConnectionState, type BattleControlState, type BattleControlAction } from '../types'
@@ -38,7 +37,6 @@ export function BattleHeader({ battle, battleTitle, connection, connectionMessag
         <span>SCENARIO <strong>{battle.scenarioId}</strong></span>
         <span>ATTEMPT <strong>{battle.attempt}</strong></span>
         <span>STATUS <strong>{battle.status}</strong></span>
-        <Identifier value={battle.id} label="Battle identifier" />
       </div>
     </section>
   )

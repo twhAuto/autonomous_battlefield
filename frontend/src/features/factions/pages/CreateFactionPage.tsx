@@ -5,7 +5,6 @@ import { BackgroundGenerator } from '../components/BackgroundGenerator'
 import { useEffect, useState, type SubmitEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { createFaction, deleteFaction, listFactions, updateFaction } from '../api/factions'
-import { Identifier } from '../../../shared/components/Identifier'
 import { usePermissions } from '../../auth/SessionContext'
 import { Emblem } from '../../../shared/components/Emblem'
 import { ResponsivePreview } from '../../../shared/components/ResponsivePreview'
@@ -102,7 +101,6 @@ export function CreateFactionPage() {
  <p id="background-hint">Origins, history, and values. {backgroundCount} / {maxBackgroundLength.toLocaleString('en-US')} characters.</p>
  {backgroundCount > maxBackgroundLength && <p role="alert">Background must be at most {maxBackgroundLength.toLocaleString('en-US')} characters.</p>}
  <BackgroundGenerator key={id ?? factionId} input={{name:name.trim(),doctrine:doctrine.trim(),background:background.trim()}} valid={valid && status !== 'submitting'} onUse={value => {setBackground(value);setStatus('idle');setMessage('')}} />
- <div className="identity-block"><Identifier value={id ?? factionId} label="Faction identifier" /></div>
  <button className="submit-button" type="submit" disabled={!valid || status === 'submitting' || deleting}>{status === 'submitting' ? 'SAVING…' : saveLabel}</button>
  </form>}
  <div className="form-message" aria-live="polite">{message && <p className={`form-message--${status}`}>{message}</p>}{status === 'success' && <Link className="text-link" to="/factions">View faction registry →</Link>}</div>

@@ -45,10 +45,9 @@ function AppLayout({ actorID, onLogout }: Readonly<{ actorID: string; onLogout()
         </Link>
         {mobile && <button ref={menuButton} type="button" className="menu-toggle" aria-expanded={menuOpen} aria-controls="primary-navigation" onClick={() => setMenuOpen(value => !value)}>Menu</button>}
         <nav id="primary-navigation" className="primary-nav" aria-label="Primary navigation" hidden={mobile && !menuOpen} onClick={() => { if (mobile) { setMenuOpen(false); menuButton.current?.focus() } }}>
-          <NavLink to="/battles" end>Battle history</NavLink>
           <NavLink to="/battles/new">Stage battle</NavLink>
-          <NavLink to="/factions/new">Create faction</NavLink>
-          <NavLink to="/factions" end>All factions</NavLink>
+          <NavLink to="/factions">Factions</NavLink>
+          <NavLink to="/battles" end>Battle history</NavLink>
           {mobile && <div className="mobile-account"><span>Signed in as {actorID}</span><button type="button" onClick={onLogout} aria-label={`Log out ${actorID}`}>Log out</button></div>}
         </nav>
         <div className="topbar__status">
