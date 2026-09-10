@@ -8,6 +8,7 @@ project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${project_dir}/scripts/lib/deployment-environment.sh"
 battlefield_env_preflight
 [[ "${DEPLOY_ENV}" != dev ]] || battlefield_env_verify_docker
+node "${project_dir}/scripts/lib/application-env.cjs" validate "${BATTLEFIELD_SECRET_FILE}" "${DEPLOY_ENV}"
 
 deploy_command="$0"
 
@@ -34,8 +35,8 @@ image_tag="${1:-${IMAGE_TAG:-$(git -C "${project_dir}" rev-parse HEAD)}}"
 backend_image_tag="${BACKEND_IMAGE_TAG:-${image_tag}}"
 frontend_image_tag="${FRONTEND_IMAGE_TAG:-${image_tag}}"
 deploy_components="${DEPLOY_COMPONENTS:-all}"
-secret_file="${BATTLEFIELD_SECRET_FILE:-${project_dir}/deploy/overlays/local/infrastructure/secret.env}"
-ai_secret_file="${BATTLEFIELD_AI_SECRET_FILE:-${project_dir}/deploy/overlays/local/infrastructure/ai-secret.env}"
+secret_file="${BATTLEFIELD_SECRET_FILE}"
+ai_secret_file="${BATTLEFIELD_AI_SECRET_FILE}"
 
 runtime_dir=""
 rollback_overlay=""
@@ -56,6 +57,11 @@ declare -A previous_revisions=()
 rollout_pids=()
 
 deployment_components_select "${deploy_components}" deployment
+if deployment_component_selected application || deployment_component_selected infrastructure; then
+  # Apply the authoritative .env and refresh its consumers together.
+  deployment_components_add infrastructure
+  deployment_components_add application
+fi
 if ! deployment_components_any_selected; then
   echo "No deployable changes detected; skipping Kubernetes deployment."
   exit 0

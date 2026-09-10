@@ -232,20 +232,10 @@ kind_deploy_validate_artifacts() {
     return 1
   fi
 
-  if [[ "${DEPLOY_ENV:-dev}" == production ]] && deployment_component_selected infrastructure && [[ ! -f "${BATTLEFIELD_AUTH_SECRET_FILE:-}" ]]; then
-    kind_deploy_kube get secret battlefield-auth --namespace "${namespace}" >/dev/null || {
-      echo 'Production authentication Secret is missing; supply its server file before deploying.' >&2; return 1;
-    }
-  fi
   if deployment_component_selected infrastructure && [[ ! -f "${secret_file}" ]]; then
     echo "Database secret file not found: ${secret_file}" >&2
-    echo "See docs/operations/environments.md to prepare the private database file; deploy/environments/database.env.example is reference-only." >&2
+    echo "See docs/operations/environments.md to prepare the private database file; .env.example is reference-only." >&2
     return 1
-  fi
-  if deployment_component_selected infrastructure && [[ ! -f "${ai_secret_file}" ]]; then
-    for command in base64 od tr; do
-      kind_deploy_require_command "${command}"
-    done
   fi
 }
 
@@ -255,10 +245,8 @@ kind_deploy_prepare_database_secret() {
   local mcp_database_url=""
   local line
 
-  cp "${secret_file}" "${target_file}"
-  # Jenkins file credentials are intentionally read-only. The staged copy is
-  # private to this deployment, so make it owner-writable before adding the
-  # derived MCP connection string.
+  node "${project_dir}/scripts/lib/application-env.cjs" extract "${secret_file}" "${target_file}" database
+  # Only the private staged copy receives the derived MCP connection string.
   chmod 600 "${target_file}"
   while IFS= read -r line; do
     case "${line}" in
@@ -278,51 +266,7 @@ kind_deploy_prepare_database_secret() {
 }
 
 kind_deploy_prepare_ai_secret() {
-  local target_file="$1"
-  local capability_secret=""
-  local encoded_secret=""
-
-  if [[ -f "${ai_secret_file}" ]]; then
-    cp "${ai_secret_file}" "${target_file}"
-    chmod 600 "${target_file}"
-    return
-  fi
-
-  if [[ "${DEPLOY_ENV:-dev}" == production ]]; then
-    # Preserve all server AI settings, not just its capability key, when no file is supplied.
-    kind_deploy_kube get secret battlefield-ai --namespace "${namespace}" -o json | node -e '
-      const fs = require("fs");
-      const data = JSON.parse(fs.readFileSync(0, "utf8")).data || {};
-      if (!Object.keys(data).length) process.exit(1);
-      for (const [key, value] of Object.entries(data)) {
-        const decoded = Buffer.from(value, "base64").toString("utf8");
-        if (!/^[A-Z_][A-Z0-9_]*$/.test(key) || /[\r\n\0]/.test(decoded)) process.exit(1);
-        process.stdout.write(key + "=" + decoded + "\n");
-      }
-    ' >"${target_file}" || return
-    chmod 600 "${target_file}"
-    return
-  fi
-
-  encoded_secret="$(kind_deploy_kube get secret battlefield-ai \
-    --namespace "${namespace}" \
-    -o 'jsonpath={.data.BATTLEFIELD_MCP_CAPABILITY_SECRET}' 2>/dev/null || true)"
-  if [[ -n "${encoded_secret}" ]]; then
-    capability_secret="$(printf '%s' "${encoded_secret}" | base64 --decode)"
-  fi
-  if [[ -z "${capability_secret}" ]]; then
-    capability_secret="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
-  fi
-
-  {
-    printf 'BATTLEFIELD_MCP_CAPABILITY_SECRET=%s\n' "${capability_secret}"
-    printf 'BATTLEFIELD_AGENT_SECRET=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
-    printf 'OPENAI_API_KEY=\nOPENAI_MODEL=\nOPENAI_PROFILE_AVAILABLE=false\n'
-    printf 'GEMINI_API_KEY=\nGEMINI_MODEL=\nGEMINI_PROFILE_AVAILABLE=false\n'
-    printf 'CODEX_CLI_PROFILE_AVAILABLE=false\nGEMINI_CLI_PROFILE_AVAILABLE=false\n'
-  } >"${target_file}"
-  chmod 600 "${target_file}"
-  echo "No AI secret file supplied; using keyless scripted-only mode."
+  node "${project_dir}/scripts/lib/application-env.cjs" extract "${ai_secret_file}" "$1" ai
 }
 
 kind_deploy_prepare_overlays() {
@@ -368,6 +312,12 @@ kind_deploy_prepare_overlays() {
       "${runtime_dir}/deploy/overlays/local/infrastructure/secret.env"
     kind_deploy_prepare_ai_secret \
       "${runtime_dir}/deploy/overlays/local/infrastructure/ai-secret.env"
+    node "${project_dir}/scripts/lib/application-env.cjs" extract "${secret_file}" "${runtime_dir}/deploy/overlays/local/infrastructure/runtime.env" runtime
+    node "${project_dir}/scripts/lib/application-env.cjs" extract "${secret_file}" "${runtime_dir}/deploy/overlays/local/infrastructure/cache.env" cache
+    if [[ -f "${BATTLEFIELD_AUTH_SECRET_FILE:-}" ]]; then
+      node "${project_dir}/scripts/lib/application-env.cjs" extract "${BATTLEFIELD_AUTH_SECRET_FILE}" "${runtime_dir}/auth.env" auth
+      BATTLEFIELD_AUTH_SECRET_FILE="${runtime_dir}/auth.env"
+    fi
   fi
 
   if deployment_component_selected observability; then
@@ -463,8 +413,6 @@ kind_deploy_infrastructure() {
   if [[ -f "${BATTLEFIELD_AUTH_SECRET_FILE:-}" ]]; then
     kind_deploy_kube create secret generic battlefield-auth --namespace "${namespace}" \
       --from-env-file="${BATTLEFIELD_AUTH_SECRET_FILE}" --dry-run=client -o yaml | kind_deploy_kube apply -f -
-  elif [[ "${DEPLOY_ENV:-dev}" == production ]]; then
-    kind_deploy_kube get secret battlefield-auth --namespace "${namespace}" >/dev/null
   fi
   kind_deploy_kube rollout status statefulset/battlefield-postgres \
     --namespace "${namespace}" \
@@ -572,7 +520,7 @@ EOF
   application_update_started=1
   kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/application"
 
-  if [[ "${force_restart}" == "1" ]]; then
+  if [[ "${force_restart}" == "1" ]] || deployment_component_selected infrastructure; then
     kind_deploy_kube rollout restart \
       deployment/battlefield-api \
       deployment/battlefield-engine \

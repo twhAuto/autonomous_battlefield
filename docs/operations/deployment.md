@@ -179,25 +179,23 @@ current kubectl context. Both keep the physical Kind name `battlefield`.
 
 After registering dev, run `./scripts/cd/prepare-dev-secrets.sh`. It preserves
 existing PostgreSQL credentials and creates independent authentication and
-capability secrets under `~/.config/autonomous-battlefield/dev/`. Existing files
-are never overwritten. `./deploy-local.sh` applies these files to dev only.
-See [environment setup](environments.md) for fresh clusters and production.
+capability secrets in the project-root `.env`. An existing `.env` is never overwritten. `./deploy-local.sh`
+renders separate Kubernetes Secrets from `.env` and restarts application pods.
+Production uses the same application format in its private `.env`, beside
+`deployment.env`. See [environment setup](environments.md) for both layouts.
 
 Set `BATTLEFIELD_AUTH_COOKIE_SECURE=false` for the checked-in loopback HTTP
 gateway and `true` before publishing the application through an HTTPS tunnel.
-The API deployment treats `battlefield-auth` as optional, so its absence keeps
-the existing unauthenticated local workflow. Production must enable the login,
-store credentials in a managed secret system, and share one signing secret
-across every API replica. The single-admin login does not replace Cloudflare
-Access or future player-level authorization.
+Set `BATTLEFIELD_AUTH_MODE=local-password` for dev login. To disable dev login,
+explicitly select `disabled-development` and set `BATTLEFIELD_AUTH_ENABLED=false`.
+Production requires Cloudflare Access and rejects both development modes.
 
-`ai-secret.env` is optional for local deployments. When it is absent, the
-deployment helper generates or reuses an internal MCP capability secret and
-sets both API model profiles unavailable, so scripted battles can be tested
-without provider credentials. It also reuses `DATABASE_URL` for MCP when the
-local database file does not contain `MCP_DATABASE_URL`.
+The setup command generates or recovers MCP and worker secrets in `.env`.
+New provider profiles start unavailable, so scripted battles need no provider
+credentials. The deployment reuses `DATABASE_URL` for MCP when `.env` does not
+contain `MCP_DATABASE_URL`.
 
-To enable an API provider, edit the private dev `ai.env` using [`deploy/environments/ai.env.example`](../../deploy/environments/ai.env.example) as a reference, set
+To enable an API provider, edit the root `.env` using [`.env.example`](../../.env.example) as a reference, set
 a strong capability secret, add the provider key and model, and change that
 provider's `*_PROFILE_AVAILABLE` value to `true`. Production should always
 supply explicit secrets and point `MCP_DATABASE_URL` at a login granted only

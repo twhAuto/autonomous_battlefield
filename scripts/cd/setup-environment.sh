@@ -9,7 +9,7 @@ source_context="${2:-kind-battlefield}"
   echo 'Usage: setup-environment.sh dev|production [existing-context]' >&2; exit 1;
 }
 config_dir="${BATTLEFIELD_CONFIG_DIR:-${HOME}/.config/autonomous-battlefield/${environment}}"
-profile="${BATTLEFIELD_ENV_FILE:-${config_dir}/environment.env}"
+profile="${BATTLEFIELD_ENV_FILE:-${config_dir}/deployment.env}"
 [[ ! -e "${profile}" && ! -e "${config_dir}/kubeconfig" ]] || {
   echo "Registration already exists in ${config_dir}; refusing to overwrite cluster identity or credentials." >&2; exit 1;
 }
@@ -29,10 +29,10 @@ chmod 700 "${config_dir}"
 kubectl --context "${source_context}" config view --minify --flatten --raw >"${config_dir}/kubeconfig"
 KUBECONFIG="${config_dir}/kubeconfig" kubectl config rename-context "${source_context}" "battlefield-${environment}" >/dev/null
 {
-  printf 'BF_ENV=%q\nBF_CONTEXT=%q\nBF_CLUSTER=%q\nBF_UID=%q\n' "${environment}" "battlefield-${environment}" "${cluster}" "${uid}"
-  printf 'BF_DOCKER_HOST=%q\nBF_URL=%q\nBF_KUBECONFIG=%q\n' "${endpoint}" "${TARGET_URL:-http://battlefield.localhost:8888}" "${config_dir}/kubeconfig"
-  printf 'BF_DATABASE_FILE=%q\nBF_AI_FILE=%q\nBF_AUTH_FILE=%q\nBF_DISPOSABLE=0\n' "${config_dir}/database.env" "${config_dir}/ai.env" "${config_dir}/auth.env"
+  printf 'BF_ENV=%s\nBF_CONTEXT=%s\nBF_CLUSTER=%s\nBF_UID=%s\n' "${environment}" "battlefield-${environment}" "${cluster}" "${uid}"
+  printf 'BF_DOCKER_HOST=%s\nBF_URL=%s\nBF_KUBECONFIG=kubeconfig\nBF_DISPOSABLE=0\n' "${endpoint}" "${TARGET_URL:-http://battlefield.localhost:8888}"
 } >"${profile}"
+node "${project_dir}/scripts/lib/application-env.cjs" profile "${profile}" >/dev/null
 chmod 600 "${config_dir}/kubeconfig" "${profile}"
 echo "Registered ${environment}: context battlefield-${environment}, cluster UID ${uid}."
 echo "Configuration: ${profile}"

@@ -114,7 +114,7 @@ fi
 
 image_source=registry
 deploy_components=application
-ai_secret_file="${test_dir}/missing-ai-secret"
+ai_secret_file="${secret_file}"
 effective_backend_ref='ghcr.io/twh09/autonomous-battlefield-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 effective_frontend_ref='ghcr.io/twh09/autonomous-battlefield-frontend@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 deployment_components_select "${deploy_components}" deployment

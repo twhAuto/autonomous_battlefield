@@ -59,62 +59,35 @@ rollout to `play.ordinalfrontier.com`.
 
 - Go 1.26.5 or a compatible newer version.
 - Node.js 24 and npm for the frontend.
-- Docker with Docker Compose for the local PostgreSQL instance.
-- Bash, curl, and OpenSSL for the development launcher and setup below.
+- Docker, Kind, and kubectl for the local development cluster.
+- Bash, curl, and Node.js for deployment and environment setup.
 
 ## Run locally
 
-Start PostgreSQL, apply migrations, and run the API, battle engine, and frontend
-with one command from the project root. Create a persistent, Git-ignored local
-database password once before the first start:
+Use the local Kind Kubernetes deployment as the development workflow:
 
 ```bash
-umask 077
-printf 'BATTLEFIELD_POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 24)" > backend/.env
-BATTLEFIELD_AUTH_MODE=disabled-development ./run-dev.sh
+# Once, if this cluster has not been registered:
+./scripts/cd/setup-environment.sh dev kind-battlefield
+# Once: migrate existing dev credentials or initialize a fresh cluster:
+./scripts/cd/prepare-dev-secrets.sh
+# After code or .env changes:
+./deploy-local.sh
 ```
 
-PostgreSQL keeps the password that initialized an existing Compose volume.
-When upgrading an older checkout, put that volume's current password in
-`backend/.env` first; changing the file alone does not rotate the database role.
+Open `http://battlefield.localhost:8888`. Edit the project-root, Git-ignored
+`.env` for database, login, and AI settings. See [the template](.env.example).
+The preparation command preserves existing credentials and never overwrites an
+existing `.env`. Retired split files are not read by deployment.
+Values are literal `KEY=value`: no quotes, interpolation, or shell commands.
+Do not source this file. Shell credential exports do not override it.
 
-Open `http://localhost:5173`. Press Ctrl+C in the launcher terminal to stop the
-application processes. PostgreSQL remains running so its local data is
-preserved; stop it with `docker compose -f backend/compose.yaml stop postgres`.
-
-Authentication is disabled unless `BATTLEFIELD_AUTH_ENABLED=true`. To test the
-starter login locally without writing its secrets to Git, export them in the
-terminal that starts the application:
-
-```bash
-export BATTLEFIELD_AUTH_ENABLED=true
-export BATTLEFIELD_ADMIN_USERNAME=admin
-read -rsp 'Battlefield admin password: ' BATTLEFIELD_ADMIN_PASSWORD && echo
-export BATTLEFIELD_ADMIN_PASSWORD
-export BATTLEFIELD_SESSION_SECRET="$(openssl rand -hex 32)"
-export BATTLEFIELD_AUTH_COOKIE_SECURE=false
-./run-dev.sh
-```
-
-Use `BATTLEFIELD_AUTH_COOKIE_SECURE=true` for an HTTPS tunnel or deployment.
-The signing secret must be shared by every API replica and remain stable while
-sessions should remain valid. This single-admin control is suitable for a
-temporary private demo; it is not player identity or faction authorization.
-
-The script uses `DATABASE_URL` and `ENGINE_WORKER_ID` when they are already set.
-Set `START_POSTGRES=0` to use an existing PostgreSQL instance without starting
-the Compose service:
-
-```bash
-START_POSTGRES=0 DATABASE_URL='postgres://user:password@localhost:5432/battlefield?sslmode=disable' ./run-dev.sh
-```
-
-Set `START_AGENT=1` to also start the provider-neutral agent on port `8083`
-and the internal MCP decision service at `http://localhost:8084/mcp`:
-
-```bash
-START_AGENT=1 OPENAI_API_KEY='...' OPENAI_MODEL='gpt-5-mini' ./run-dev.sh
-```
+The deployment creates separate Kubernetes Secrets and restarts the application
+so configuration changes take effect. Changing a database password in `.env`
+does not rotate an existing PostgreSQL role; retain the current password.
+Cluster identity/kubeconfig remain in the registered machine profile. Production
+uses the same application schema in its private `.env`, beside `deployment.env`. The former host-process launcher has
+been removed.
 
 API profiles require a configured model and credentials. Subscription CLI profiles
 require a supported binary and an existing host login; the configured models and
@@ -127,72 +100,6 @@ For battles in local Kubernetes, keep `./run-k8s-cli-agent.sh codex` running in 
 second terminal. The helper also accepts `antigravity`, `both`, or `auto`;
 [deployment setup](docs/operations/deployment.md#1-prepare-private-dev-secret-files)
 explains profile availability and the host bridge.
-
-To start each component manually instead, run:
-
-```bash
-cd backend
-docker compose up -d postgres
-
-set -a
-source .env
-set +a
-export DATABASE_URL="postgres://battlefield:${BATTLEFIELD_POSTGRES_PASSWORD}@localhost:5432/battlefield?sslmode=disable"
-
-go run ./cmd/server -migrate
-
-go run ./cmd/server
-```
-
-The server listens on `http://localhost:8080` by default. Verify its liveness in
-another terminal:
-
-```bash
-curl http://localhost:8080/livez
-```
-
-The response is `ok` with HTTP status `200`.
-
-Check whether the API is ready to receive database-backed traffic with:
-
-```bash
-curl http://localhost:8080/readyz
-```
-
-The readiness endpoint returns `200 OK` when PostgreSQL responds within one
-second and `503 Service Unavailable` otherwise.
-
-Start the separate battle worker in another terminal with the same database URL:
-
-```bash
-cd backend
-set -a
-source .env
-set +a
-export DATABASE_URL="postgres://battlefield:${BATTLEFIELD_POSTGRES_PASSWORD}@localhost:5432/battlefield?sslmode=disable"
-export ENGINE_WORKER_ID='engine-local-1'
-go run ./cmd/engine
-```
-
-The engine does not expose gameplay routes. Its internal operational endpoint listens on `http://localhost:8081`; `/startupz` reports initialization, `/livez` checks the process, and `/readyz` checks worker readiness plus database connectivity. The API exposes the same three lifecycle endpoints on port 8080. Both processes retry transient PostgreSQL connection failures during startup and become unready before graceful shutdown.
-
-### Inspect the local database with DBHub
-
-DBHub is available as an opt-in development tool. Start it and its PostgreSQL
-dependency from the project root with:
-
-```bash
-docker compose -f backend/compose.yaml --profile tools up -d dbhub
-```
-
-Open `http://localhost:8082`. DBHub connects to the Compose PostgreSQL service
-with the Git-ignored password from `backend/.env`. It is bound to the
-host loopback interface because its HTTP endpoint does not provide application
-authentication. Stop it with:
-
-```bash
-docker compose -f backend/compose.yaml stop dbhub
-```
 
 Backend logs provide readable `msg` summaries, stable `event` fields, battle
 progress and decision-wait updates, and trace correlation. `LOG_LEVEL` defaults
@@ -257,7 +164,7 @@ profiles, battle creation and controls, results, views, and event pagination.
 ## Configuration
 
 [`backend/config.yaml`](backend/config.yaml) is the checked-in local configuration;
-[`backend/.env.example`](backend/.env.example) lists environment inputs.
+[`.env.example`](.env.example) lists environment inputs.
 Cluster settings live in the
 [deployment ConfigMap](deploy/base/infrastructure/configmap.yaml), with private
 inputs described in the [environment guide](docs/operations/environments.md).

@@ -682,7 +682,7 @@ Migration `00004_battle_decisions.sql` creates a `battlefield_mcp` group role wi
 
 ## 10. Configuration and profile availability
 
-The common YAML configuration defines HTTP, database, API, authentication, engine, and AI settings. Each process loads only the sections it needs. Authentication names the environment variables holding its enable flag, credentials, signing secret, and Secure-cookie flag; the API fails startup when enabled secrets are missing or too short. The development Compose database also requires `BATTLEFIELD_POSTGRES_PASSWORD`; its value belongs in the Git-ignored `backend/.env` or the launching shell and is shared with the local DBHub connection without being committed.
+The common YAML configuration defines HTTP, database, API, authentication, engine, and AI settings. Each process loads only the sections it needs. Authentication names the environment variables holding its enable flag, credentials, signing secret, and Secure-cookie flag; the API fails startup when enabled secrets are missing or too short. Development application settings live in the Git-ignored project-root `.env`; the deployer separates them into database, authentication, and AI Kubernetes Secrets. Production uses the same application schema in a private `.env` beside `deployment.env`.
 
 A model profile specifies:
 
@@ -700,7 +700,7 @@ The API catalog advertises profiles users may select. In cluster mode, an operat
 
 ### Local development
 
-`run-dev.sh` starts PostgreSQL, migrations, API, engine, and Vite. It reads only `BATTLEFIELD_POSTGRES_PASSWORD` from the Git-ignored `backend/.env` when the variable is absent from the shell, then constructs the local database URL. `START_AGENT=1` also starts MCP and the agent.
+`deploy-local.sh` builds images, deploys to the registered dev Kind cluster, and runs smoke checks. Dev reads the root `.env`; production reads `.env` beside its private `deployment.env`. Both files use the shared literal parser and explicit schemas. Application settings are filtered into database, auth, AI and optional-runtime Kubernetes Secrets; deployment identity never enters these Secrets. Application pods refresh on configuration-only deployments. Production tunnel settings remain in the deployment profile and its credential JSON stays separate; tunnel resources are rendered temporarily by the explicit tunnel deployment command. No legacy configuration fallback or persistent generated launch files remain.
 
 | Port | Process |
 | --- | --- |

@@ -1,0 +1,72 @@
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const {main, read, validate, profile, group} = require('../lib/application-env.cjs');
+
+test('migration preserves literal credentials and extraction isolates Secrets', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'battlefield-env-test-'));
+  try {
+    const database = path.join(dir,'database'); const auth = path.join(dir,'auth');
+    const ai = path.join(dir,'ai'); const target = path.join(dir,'.env');
+    fs.writeFileSync(database, 'POSTGRES_DB=battlefield\r\nPOSTGRES_USER=battlefield\r\nPOSTGRES_PASSWORD=p=a#ss$word\r\nDATABASE_URL=postgres://example\r\n');
+    fs.writeFileSync(auth, 'BATTLEFIELD_ADMIN_PASSWORD=a long $(literal) password\nBATTLEFIELD_AUTH_MODE=local-password\nBATTLEFIELD_ADMIN_USERNAME=admin\nBATTLEFIELD_SESSION_SECRET='+'a'.repeat(32)+'\n');
+    fs.writeFileSync(ai, 'OPENAI_API_KEY=key\nBATTLEFIELD_AGENT_SECRET='+ 'w'.repeat(32)+'\nBATTLEFIELD_MCP_CAPABILITY_SECRET='+ 'm'.repeat(32)+'\n');
+    main(['merge',target,database,auth,ai]);
+    main(['validate',target]);
+    assert.equal(read(target).get('POSTGRES_PASSWORD'), 'p=a#ss$word');
+    assert.equal(read(target).get('BATTLEFIELD_ADMIN_PASSWORD'), 'a long $(literal) password');
+    assert.equal(fs.statSync(target).mode & 0o777, 0o600);
+    const before = fs.readFileSync(target);
+    assert.throws(()=>main(['merge',target,database]), /already exists/);
+    assert.deepEqual(fs.readFileSync(target), before);
+    for (const [group, original] of [['database',database],['auth',auth],['ai',ai]]) {
+      const output=path.join(dir, group+'-out');
+      main(['extract',target,output,group]);
+      const actual=read(output);
+      for(const [key,value] of read(original)) assert.equal(actual.get(key),value);
+      for(const key of actual.keys()) assert.equal(require('../lib/application-env.cjs').group(key),group);
+      if(group==='ai') assert.equal(actual.get('GEMINI_PROFILE_AVAILABLE'),'false');
+      main(['extract',target,output,group]);
+      assert.equal(fs.statSync(output).mode & 0o777,0o600);
+    }
+    fs.writeFileSync(ai, 'POSTGRES_PASSWORD=different\n');
+    assert.throws(()=>main(['merge',path.join(dir,'conflict'),database,ai]), /Conflicting/);
+    assert.equal(fs.existsSync(path.join(dir,'conflict')),false);
+    fs.writeFileSync(ai,'KEY=one\nKEY=two\n');
+    assert.throws(()=>read(ai),/Duplicate/);
+    fs.writeFileSync(ai,'export KEY=value\n');
+    assert.throws(()=>read(ai),/Invalid/);
+    const live = path.join(dir,'live.json'); const recovered = path.join(dir,'recovered');
+    fs.writeFileSync(live,JSON.stringify({data:{BATTLEFIELD_ADMIN_PASSWORD:Buffer.from('existing login').toString('base64')}}));
+    main(['decode',live,recovered]);
+    assert.equal(read(recovered).get('BATTLEFIELD_ADMIN_PASSWORD'),'existing login');
+    fs.writeFileSync(live,JSON.stringify({data:{KEY:Buffer.from('bad\nentry').toString('base64')}}));
+    assert.throws(()=>main(['decode',live,path.join(dir,'bad')]),/cannot be represented/);
+  } finally { fs.rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('shared schema enforces production authentication and separates deployment fields', () => {
+  const values = new Map(Object.entries({POSTGRES_DB:'battlefield',POSTGRES_USER:'battlefield',POSTGRES_PASSWORD:'password',DATABASE_URL:'postgres://example',
+    BATTLEFIELD_AGENT_SECRET:'w'.repeat(32),BATTLEFIELD_MCP_CAPABILITY_SECRET:'m'.repeat(32),
+    BATTLEFIELD_AUTH_MODE:'cloudflare',BATTLEFIELD_ACCESS_ISSUER:'https://team.cloudflareaccess.com',
+    BATTLEFIELD_ACCESS_AUDIENCE:'a'.repeat(64),BATTLEFIELD_PUBLIC_ORIGIN:'https://play.example.com',
+    BATTLEFIELD_ACCESS_ROLES:'{"admin":["owner@example.com"]}'}));
+  validate(values,'production');
+  values.set('BATTLEFIELD_AUTH_MODE','disabled-development');
+  assert.throws(()=>validate(values,'production'),/Cloudflare/);
+  validate(values,'dev');
+  values.set('BATTLEFIELD_AUTH_ENABLED','true');
+  assert.throws(()=>validate(values,'dev'),/explicitly/);
+  assert.throws(()=>group('BF_TUNNEL_CREDENTIALS_FILE'),/Unknown application/);
+  assert.equal(group('BATTLEFIELD_REDIS_URL'),'cache');
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'battlefield-profile-'));
+  try {
+    const file=path.join(dir,'deployment.env');
+    fs.writeFileSync(file,'BF_ENV=dev\nBF_CONTEXT=dev\nBF_CLUSTER=battlefield\nBF_UID=uid\nBF_DOCKER_HOST=unix:///var/run/docker.sock\nBF_URL=http://localhost\nBF_KUBECONFIG=kubeconfig\n');
+    assert.equal(profile(file).get('BF_KUBECONFIG'),path.join(dir,'kubeconfig'));
+    fs.appendFileSync(file,'POSTGRES_PASSWORD=secret\n');
+    assert.throws(()=>profile(file),/Unknown deployment/);
+  } finally {fs.rmSync(dir,{recursive:true,force:true});}
+});

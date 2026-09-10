@@ -546,14 +546,11 @@ to reject unused local declarations and parameters alongside strict type checks.
 | Path | Purpose |
 | --- | --- |
 | [`backend/config.yaml`](../../backend/config.yaml) | Local process configuration and model-profile definitions |
-| [`backend/.env.example`](../../backend/.env.example) | Local environment variable template, including the required development PostgreSQL password |
+| [`.env.example`](../../.env.example) | Shared dev/production application settings schema |
 | [`backend/rulesets`](../../backend/rulesets) | Versioned unit, building, economy, and combat values |
 | [`backend/scenarios`](../../backend/scenarios) | Map layout, timing, scripted plans, and fallbacks |
 | [`deploy/base/infrastructure/configmap.yaml`](../../deploy/base/infrastructure/configmap.yaml) | Cluster configuration equivalent |
-| [`deploy/environments/database.env.example`](../../deploy/environments/database.env.example) | Database secret reference; preserve existing credentials |
-| [`deploy/environments/ai.env.example`](../../deploy/environments/ai.env.example) | Local Kubernetes AI secret template |
-| [`deploy/environments/auth.env.example`](../../deploy/environments/auth.env.example) | Development login template; production uses the private rendered Cloudflare configuration |
-| [`deploy/environments/environment.env.example`](../../deploy/environments/environment.env.example) | Deployment environment profile template consumed by the shared resolver |
+| [`deploy/environments/deployment.env.example`](../../deploy/environments/deployment.env.example) | Deployment environment profile template consumed by the shared resolver |
 
 Configuration is decoded with `yaml.KnownFields(true)`. Update the file-facing struct, parsed runtime struct, validation, examples, deployment ConfigMap, and tests together.
 
@@ -573,7 +570,7 @@ The key application manifests are:
 - `api-pdb.yaml` and `frontend-pdb.yaml` for disruption budgets;
 - migration overlay job.
 
-[`run-dev.sh`](../../scripts/dev/run-dev.sh) is the local multi-process launcher. It obtains the Compose PostgreSQL password from the shell or the Git-ignored `backend/.env`; `backend/compose.yaml` has no committed database credential. [`run-k8s-cli-agent.sh`](../../scripts/dev/run-k8s-cli-agent.sh) bridges authenticated host subscription CLIs to a Kubernetes MCP service. CI/CD helpers under `scripts` classify affected components, build images, apply migrations, deploy, smoke-test, and roll back.
+[`deploy-local.sh`](../../scripts/cd/deploy-local.sh) is the development entry point. It reads the Git-ignored project-root `.env`; `scripts/lib/application-env.cjs` parses both environments' literal settings, validates credentials, and separates Kubernetes Secret fields. [`run-k8s-cli-agent.sh`](../../scripts/dev/run-k8s-cli-agent.sh) bridges authenticated host subscription CLIs to a Kubernetes MCP service. CI/CD helpers under `scripts` classify affected components, build images, apply migrations, deploy, smoke-test, and roll back.
 
 [`scripts/ci/with-ghcr-auth.sh`](../../scripts/ci/with-ghcr-auth.sh) owns temporary
 GHCR login and command cleanup for both Jenkins pipelines and production rollback.

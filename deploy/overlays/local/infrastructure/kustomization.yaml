@@ -18,6 +18,12 @@ secretGenerator:
   - name: battlefield-ai
     envs:
       - ai-secret.env
+  - name: battlefield-runtime
+    envs:
+      - runtime.env
+  - name: battlefield-cache
+    envs:
+      - cache.env
 
 generatorOptions:
   disableNameSuffixHash: true

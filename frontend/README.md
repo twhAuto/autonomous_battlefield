@@ -4,23 +4,11 @@ React and TypeScript command interface for faction management and queued battles
 
 ## Run locally
 
-Follow the [project setup](../README.md#run-locally) to configure the database
-password and start all processes with `./run-dev.sh` from the project root.
-
-With the API and engine already running, start only the frontend from this directory:
-
-```bash
-npm ci
-npm run dev
-```
-
-Open `http://localhost:5173`. Vite proxies `/v1` requests to the backend during
-development, so no local CORS configuration is required. To use a backend on a
-different port, set `DEV_API_PROXY_TARGET=http://localhost:9080` in
-`frontend/.env.local` or in the environment before `npm run dev`. Restart Vite
-after changing it. This setting accepts only an HTTP(S) origin, without credentials,
-paths, queries, or fragments, and is not exposed to browser code. `VITE_API_URL`
-continues to control direct browser API requests separately.
+Follow the [project setup](../README.md#run-locally). Run `./deploy-local.sh`
+from the project root and open `http://battlefield.localhost:8888`. The project-root
+`.env` supplies development backend settings; frontend assets contain no secrets.
+Vite remains available for focused frontend work and tests, but is not a separate
+application deployment workflow.
 
 The **Stage battle** flow loads registered factions and server-defined
 scenarios, queues a battle, and navigates to a live status view. The view polls

@@ -1,74 +1,95 @@
-"""Offline checks for private production preparation and fail-closed rendering."""
-import argparse
+"""Offline checks for consolidated production configuration and tunnel rendering."""
 import importlib.util
 import json
-import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+import shlex
 
 ROOT = Path(__file__).resolve().parents[2]
-def module(name, file):
-    spec = importlib.util.spec_from_file_location(name, ROOT / 'scripts/ops' / file)
-    result = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(result)
-    return result
-
-prep = module('prep', 'prepare-limited-production.py')
-renderer = module('renderer', 'render-limited-launch.py')
+spec = importlib.util.spec_from_file_location('prep', ROOT/'scripts/ops/prepare-limited-production.py')
+prep = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(prep)
+spec = importlib.util.spec_from_file_location('consolidate', ROOT/'scripts/ops/consolidate-config.py')
+consolidate = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(consolidate)
 
 class PreparationTests(unittest.TestCase):
-    def test_rendered_access_and_credentials(self):
+    def fixture(self, directory):
+        app = directory/'.env'
+        profile = directory/'deployment.env'
+        credential = directory/'tunnel-credentials.json'
+        tunnel = '12345678-1234-1234-1234-123456789012'
+        values = dict(POSTGRES_DB='battlefield', POSTGRES_USER='battlefield', POSTGRES_PASSWORD='existing',
+            DATABASE_URL='postgres://battlefield:existing@battlefield-postgres/battlefield',
+            BATTLEFIELD_AGENT_SECRET='a'*64, BATTLEFIELD_MCP_CAPABILITY_SECRET='b'*64,
+            BATTLEFIELD_AUTH_MODE='cloudflare', BATTLEFIELD_ACCESS_ISSUER='https://team.cloudflareaccess.com',
+            BATTLEFIELD_ACCESS_AUDIENCE='c'*64, BATTLEFIELD_PUBLIC_ORIGIN='https://play.example.com',
+            BATTLEFIELD_ACCESS_ROLES='{"admin":["owner@example.com"]}')
+        app.write_text(''.join(f'{k}={v}\n' for k,v in values.items()))
+        profile.write_text(f'BF_ENV=production\nBF_TUNNEL_ID={tunnel}\nBF_TUNNEL_IMAGE=cloudflare/cloudflared@sha256:'+ 'd'*64+'\nBF_TUNNEL_CREDENTIALS_FILE=tunnel-credentials.json\n')
+        credential.write_text(json.dumps(dict(TunnelID=tunnel, TunnelSecret='private', AccountTag='account')))
+        credential.chmod(0o600)
+        return app, profile, credential
+
+    def test_renders_without_modifying_configuration_or_creating_auth_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
-            args = argparse.Namespace(hostname='play.example.com', team='test-team', audience='a'*64,
-                tunnel_id='12345678-1234-1234-1234-123456789012', cloudflared_image='cloudflare/cloudflared@sha256:'+'b'*64,
-                admin=['owner@example.com'], developer=[], player=[], output=tmp)
-            renderer.render(args)
-            credential = directory / (args.tunnel_id + '.json')
-            credential.write_text(json.dumps({'TunnelID': args.tunnel_id}))
+            app, profile, credential = self.fixture(directory)
+            before = [f.read_bytes() for f in (app,profile,credential)]
+            output = directory/'scratch'
+            prep.prepare(app,profile,output)
+            self.assertEqual(before,[f.read_bytes() for f in (app,profile,credential)])
+            self.assertFalse((output/'auth.env').exists())
+            rendered = json.loads((output/'tunnel.json').read_text())
+            self.assertEqual(len(rendered['items']),4)
+            self.assertNotIn('private',json.dumps(rendered))
+
+    def test_rejects_invalid_credentials_and_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp)
+            app,profile,credential=self.fixture(directory)
+            credential.chmod(0o644)
+            with self.assertRaises(ValueError): prep.prepare(app,profile,directory/'scratch')
             credential.chmod(0o600)
-            self.assertEqual(prep.validate_rendered(directory, directory)['BATTLEFIELD_AUTH_MODE'], 'cloudflare')
-            rendered = json.loads((directory / 'tunnel.json').read_text())
-            rendered['items'][1]['spec']['template']['spec']['containers'][0]['image'] = 'cloudflare/cloudflared:latest'
-            (directory / 'tunnel.json').write_text(json.dumps(rendered))
-            with self.assertRaises(ValueError):
-                prep.validate_rendered(directory, directory)
+            credential.write_text('{"TunnelID":"wrong"}')
+            with self.assertRaises(ValueError): prep.prepare(app,profile,directory/'scratch')
+            app,profile,credential=self.fixture(directory)
+            app.write_text(app.read_text().replace('cloudflare\n','local-password\n'))
+            with self.assertRaises(ValueError): prep.prepare(app,profile,directory/'scratch')
 
-    def test_duplicate_env_rejected(self):
+    def test_shared_parser_rejects_duplicate_keys(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp)/'auth.env'
-            path.write_text('BATTLEFIELD_AUTH_MODE=cloudflare\nBATTLEFIELD_AUTH_MODE=disabled-development\n')
-            with self.assertRaises(ValueError):
-                prep.read_env(path)
+            file=Path(tmp)/'.env'
+            file.write_text('KEY=one\nKEY=two\n')
+            with self.assertRaises(ValueError): prep.read_env(file)
 
-    def test_existing_credentials_preserved(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp)/'ai.env'
-            values = {'BATTLEFIELD_AGENT_SECRET':'a'*64, 'BATTLEFIELD_MCP_CAPABILITY_SECRET':'b'*64}
-            values.update({k:'false' for k in ('CODEX_CLI_PROFILE_AVAILABLE','GEMINI_CLI_PROFILE_AVAILABLE','OPENAI_PROFILE_AVAILABLE','GEMINI_PROFILE_AVAILABLE')})
-            prep.write_env(path, values)
-            original = path.read_bytes()
-            with patch.object(prep, 'kube', side_effect=AssertionError('existing file should be reused')):
-                prep.prepare_ai(path)
-            self.assertEqual(path.read_bytes(), original)
-            values['OPENAI_PROFILE_AVAILABLE'] = 'true'
-            with self.assertRaises(ValueError): prep.validate_ai(values)
-            values['OPENAI_PROFILE_AVAILABLE'] = 'false'
-            values['BATTLEFIELD_AGENT_SECRET'] = values['BATTLEFIELD_MCP_CAPABILITY_SECRET']
-            with self.assertRaises(ValueError): prep.validate_ai(values)
-
-    def test_missing_file_preserves_cluster_provider_key(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp)/'ai.env'
-            from types import SimpleNamespace
-            with patch.object(prep, 'kube', return_value=SimpleNamespace(stdout='{"data":{"OPENAI_API_KEY":"cHJpdmF0ZQ=="}}')):
-                prep.prepare_ai(path)
-            values = prep.read_env(path)
-            self.assertEqual(values['OPENAI_API_KEY'], 'private')
-            self.assertEqual(values['OPENAI_PROFILE_AVAILABLE'], 'false')
-            self.assertNotEqual(values['BATTLEFIELD_AGENT_SECRET'], values['BATTLEFIELD_MCP_CAPABILITY_SECRET'])
-            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+    def test_consolidation_preserves_values_and_removes_only_retired_files(self):
+        with tempfile.TemporaryDirectory(prefix='production config ') as tmp:
+            directory=Path(tmp)
+            app,profile,credential=self.fixture(directory)
+            expected=prep.read_env(app)
+            deployment=prep.read_env(profile)
+            profile.unlink(); app.unlink()
+            (directory/'kubeconfig').write_text('existing kubeconfig')
+            deployment.update(BF_CONTEXT='battlefield-production',BF_CLUSTER='battlefield',BF_UID='uid',
+                BF_DOCKER_HOST='unix:///var/run/docker.sock',BF_URL='https://play.example.com',BF_KUBECONFIG=str(directory/'kubeconfig'),BF_DISPOSABLE='0')
+            groups={name:{} for name in ('database','auth','ai')}
+            for key,value in expected.items():
+                name='database' if key.startswith('POSTGRES_') or key=='DATABASE_URL' else ('auth' if key.startswith(('BATTLEFIELD_AUTH','BATTLEFIELD_ACCESS','BATTLEFIELD_PUBLIC')) else 'ai')
+                groups[name][key]=value
+            for name,values in groups.items():
+                source=directory/(name+'.env')
+                source.write_text(''.join(f'{k}={v}\n' for k,v in values.items()))
+                deployment['BF_'+name.upper()+'_FILE']=str(source)
+            old=directory/'environment.env'
+            old.write_text(''.join(f'{k}={shlex.quote(v)}\n' for k,v in deployment.items()))
+            consolidate.convert(directory,'production')
+            self.assertTrue(old.exists()); self.assertFalse(app.exists())
+            consolidate.convert(directory,'production',True)
+            self.assertEqual(prep.read_env(app),expected)
+            self.assertEqual({p.name for p in directory.iterdir()},{'.env','deployment.env','kubeconfig','tunnel-credentials.json'})
+            self.assertEqual(app.stat().st_mode & 0o777,0o600)
+            self.assertEqual((directory/'kubeconfig').read_text(),'existing kubeconfig')
 
 if __name__ == '__main__': unittest.main()
