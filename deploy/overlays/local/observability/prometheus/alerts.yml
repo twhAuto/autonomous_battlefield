@@ -12,15 +12,17 @@ groups:
             /
             clamp_min(sum(rate(battlefield_http_server_requests_total{component="api"}[5m])), 0.000001)
           )
+      # Latency is measured over successfully served requests only. A fast 5xx is an
+      # availability failure and must not be counted as a fast success here.
       - record: battlefield:api_latency_under_500ms:ratio_rate5m
         expr: |
           1 - (
             (
-              sum(rate(battlefield_http_server_request_duration_seconds_count{component="api"}[5m]))
-              - sum(rate(battlefield_http_server_request_duration_seconds_bucket{component="api",le="0.5"}[5m]))
+              sum(rate(battlefield_http_server_request_duration_seconds_count{component="api",outcome="success"}[5m]))
+              - sum(rate(battlefield_http_server_request_duration_seconds_bucket{component="api",outcome="success",le="0.5"}[5m]))
             )
             /
-            clamp_min(sum(rate(battlefield_http_server_request_duration_seconds_count{component="api"}[5m])), 0.000001)
+            clamp_min(sum(rate(battlefield_http_server_request_duration_seconds_count{component="api",outcome="success"}[5m])), 0.000001)
           )
 
   - name: battlefield-alerts
@@ -32,7 +34,7 @@ groups:
           severity: warning
         annotations:
           summary: Battlefield metrics target is down
-          description: "Prometheus has been unable to scrape {{ $labels.component }} pod {{ $labels.pod }} for five minutes."
+          description: "Prometheus has been unable to scrape {{ $labels.component }} pod {{ $labels.scrape_pod }} for five minutes."
 
       - alert: BattlefieldAPIAvailabilityBudgetBurnFast
         expr: |

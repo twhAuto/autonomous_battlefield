@@ -23,9 +23,9 @@ var (
 		Namespace: "battlefield",
 		Subsystem: "http_server",
 		Name:      "request_duration_seconds",
-		Help:      "API HTTP request duration by method and normalized route.",
+		Help:      "API HTTP request duration by method, normalized route, and success/error outcome.",
 		Buckets:   []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5},
-	}, []string{"method", "route"})
+	}, []string{"method", "route", "outcome"})
 	engineClaims = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "battlefield",
 		Subsystem: "engine",
@@ -82,7 +82,17 @@ func ObserveHTTPRequest(method, route string, code int, duration time.Duration) 
 		route = "unmatched"
 	}
 	httpRequests.WithLabelValues(method, route, strconv.Itoa(code)).Inc()
-	httpRequestDuration.WithLabelValues(method, route).Observe(duration.Seconds())
+	httpRequestDuration.WithLabelValues(method, route, requestOutcome(code)).Observe(duration.Seconds())
+}
+
+// requestOutcome collapses a response code into a bounded success/error label so
+// latency can be measured over served requests without multiplying histogram
+// series by every status code. A fast 5xx must not read as a fast success.
+func requestOutcome(code int) string {
+	if code >= 500 {
+		return "error"
+	}
+	return "success"
 }
 
 func ObserveEngineClaim(reclaimed bool) {
