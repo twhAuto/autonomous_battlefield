@@ -31,6 +31,11 @@
 .map-viewport { height: auto; }
 .battle-live-layout .map-panel { height: auto; }
 .battle-live-layout .map-viewport { height: auto; flex: none; }
+.event-console > .field-hint { margin: 12px 20px; }
+@media (min-width: 1001px) {
+  .battle-live-layout:not(.battle-live-layout--events-only) { align-items: stretch; }
+  .battle-live-layout:not(.battle-live-layout--events-only) > .battle-inspector { height: auto; min-height: 0; contain: size; }
+}
 .map-toolbar__controls, .map-zoom-controls { flex-wrap: wrap; }
 .map-perspective-control select { color: #dce2d5; background: var(--ink); border: 1px solid #454d41; padding: 0 10px; }
 .map-viewport--overview { touch-action: pan-y; }

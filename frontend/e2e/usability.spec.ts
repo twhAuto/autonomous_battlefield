@@ -35,7 +35,7 @@ test('navigation, focus, responsive forms and logout', async ({ page, isMobile }
   await expect(page.locator('.login-card__eyebrow')).toHaveText('OrdinalFrontier')
 })
 for (const [width, height] of [[15, 11], [25, 17]]) {
-  test(`map ${width}x${height}, expansion, focus and result clarity`, async ({ page, api }) => {
+  test(`map ${width}x${height}, expansion, focus and result clarity`, async ({ page, api, isMobile }) => {
     api.width = width; api.height = height
     await page.goto(`/battles/${battleId}`)
     await expect(page.getByText('Tick 89 of 500 maximum', { exact: true })).toBeVisible()
@@ -78,6 +78,12 @@ for (const [width, height] of [[15, 11], [25, 17]]) {
     await expect(dialog).not.toBeVisible()
     await expect(page.getByRole('button', { name: 'Expand map' })).toBeFocused()
     await expect(page.getByLabel('Perspective')).toHaveValue(factionId)
+    if (!isMobile) {
+      const mapBounds = (await page.locator('.battle-map-column .map-panel').boundingBox())!
+      const inspectorBounds = (await page.locator('.battle-inspector').boundingBox())!
+      expect(inspectorBounds.y).toBeCloseTo(mapBounds.y, 0)
+      expect(inspectorBounds.y + inspectorBounds.height).toBeCloseTo(mapBounds.y + mapBounds.height, 0)
+    }
     expect(api.writes).toEqual([])
   })
 }

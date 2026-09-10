@@ -532,6 +532,9 @@ dialog. Camera fitting happens on opening and viewport resizing, not live ticks.
 `usability.css` overrides the legacy fixed map height at the battle-layout
 specificity; browser tests assert the rendered aspect ratio to prevent regression.
 The inspector's desktop content scrolls internally; mobile uses page scrolling.
+Above 1000px the inspector stretches to the map's grid-row height. Size
+containment prevents event content from enlarging that row; the map determines
+the shared height. Stacked and events-only layouts keep independent heights.
 Terminal battles hide Play/Pause/Stop and label tick usage as a maximum rather
 than completion. `components/FactionSummaries.tsx` shows each
 participant's decision activity, gold, and living unit count using existing
