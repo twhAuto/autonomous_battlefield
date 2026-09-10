@@ -26,6 +26,16 @@ server {
         proxy_set_header X-Request-ID $http_x_request_id;
     }
 
+    # Revalidate the entry document so navigation after a rollout cannot retain
+    # references to hashed assets removed by the new image.
+    location = /index.html {
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location /assets/ {
+        try_files $uri =404;
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }

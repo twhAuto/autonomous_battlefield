@@ -66,6 +66,24 @@ func NewWithLogger(repository Repository, config Config, logger *slog.Logger) (*
 }
 
 func (w *Worker) Run(ctx context.Context) error {
+	expiryCtx, cancelExpiry := context.WithCancel(ctx)
+	expiryDone := make(chan struct{})
+	go func() {
+		defer close(expiryDone)
+		for {
+			sweepCtx, cancelSweep := context.WithTimeout(expiryCtx, 10*time.Second)
+			err := w.repository.ExpireBattles(sweepCtx)
+			cancelSweep()
+			if err != nil && expiryCtx.Err() == nil {
+				w.logger.ErrorContext(expiryCtx, "battle_expiry_failed", "error", err)
+			}
+			if !wait(expiryCtx, time.Minute) {
+				return
+			}
+		}
+	}()
+	defer func() { cancelExpiry(); <-expiryDone }()
+
 	w.ready.Store(true)
 	telemetry.SetEngineReady(true)
 	w.logger.InfoContext(ctx, "battle_worker_ready",

@@ -1,21 +1,12 @@
 # Redis completed battle cache
 
-From the project root, after configuring `backend/.env` as described in the README:
+Redis is optional and is not provisioned by the default Kind deployment. To use an
+existing Redis service reachable from the API pods, set `BATTLEFIELD_REDIS_URL`
+in the project-root `.env` and run `./deploy-local.sh`. A host loopback URL does
+not refer to the workstation from inside a pod. Remove the setting and redeploy
+to disable caching. The cache is disposable.
 
-```bash
-docker compose -f backend/compose.yaml --profile cache up -d redis
-BATTLEFIELD_REDIS_URL=redis://127.0.0.1:6379/0 ./run-dev.sh
-```
-
-Compose exposes Redis only on loopback, caps its data memory at 128 MB, uses
-`allkeys-lru` eviction, and disables persistence. The cache is disposable. The
-launcher leaves Redis running, just as it leaves PostgreSQL running. Stop it with:
-
-```bash
-docker compose -f backend/compose.yaml stop redis
-```
-
-Unset `BATTLEFIELD_REDIS_URL` and restart the API to disable caching. The engine
+The engine
 and MCP service do not use this variable. The default configuration is:
 
 ```yaml
@@ -59,8 +50,8 @@ is absent. This change does not provision a Kubernetes Redis server; supply an
 instance reachable by API pods. Use a dedicated cache database per environment,
 authenticated access, and `rediss://` when the connection requires TLS.
 
-Create the Secret through your environment's secret-management process, using the
-key `BATTLEFIELD_REDIS_URL`, then roll out the API so it reads the new environment.
+Set `BATTLEFIELD_REDIS_URL` in the environment's application `.env`, then deploy.
+The deployer creates the API-only cache Secret from that field.
 Do not commit a credential-bearing Redis URL. To customize TTL/timeout in a cluster,
 add the `resultCache` block to its `battlefield-config` YAML and roll out the API.
 The same defaults apply when this block is omitted.

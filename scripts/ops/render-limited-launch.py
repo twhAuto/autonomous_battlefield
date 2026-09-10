@@ -53,10 +53,7 @@ def render(args):
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
     (out / 'tunnel.json').write_text(json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': [cm, deployment, *policies]}, indent=2) + '\n')
-    (out / 'auth.env').write_text('\n'.join(['BATTLEFIELD_AUTH_MODE=cloudflare', 'BATTLEFIELD_AUTH_ENABLED=true',
-        f'BATTLEFIELD_ACCESS_ISSUER=https://{args.team}.cloudflareaccess.com', f'BATTLEFIELD_ACCESS_AUDIENCE={args.audience}',
-        f'BATTLEFIELD_PUBLIC_ORIGIN=https://{args.hostname}', 'BATTLEFIELD_ACCESS_ROLES=' + json.dumps(roles, separators=(',', ':'))]) + '\n')
-    (out / 'auth.env').chmod(0o600)
+    (out / 'tunnel.json').chmod(0o600)
     # No password, signing key, tunnel credentials, or CLI credentials belong in these files.
     return config
 

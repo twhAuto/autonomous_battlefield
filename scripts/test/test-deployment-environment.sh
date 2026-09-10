@@ -4,6 +4,7 @@
 
 set -Eeuo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+node --test "${project_dir}/scripts/test/dev-env.test.cjs"
 python3 - "${project_dir}" <<'PY'
 import os, pathlib, shutil, subprocess, sys, tempfile
 root = pathlib.Path(sys.argv[1])
@@ -27,15 +28,13 @@ esac
     executable('kind', '''echo "kind $*" >>"$TEST_LOG"
 if [[ "$1 $2" == 'get kubeconfig' ]]; then echo fixture; fi
 ''')
-    config = tmp/'environment.env'; kube = tmp/'kubeconfig'; kube.touch()
+    config = tmp/'deployment.env'; kube = tmp/'kubeconfig'; kube.touch()
     def profile(env='dev', **overrides):
         fields = dict(BF_ENV=env, BF_CONTEXT='battlefield-'+env, BF_CLUSTER='battlefield', BF_UID='cluster-dev',
                       BF_DOCKER_HOST='unix:///var/run/docker.sock', BF_URL='http://battlefield.localhost:8888',
-                      BF_KUBECONFIG=str(kube), BF_DATABASE_FILE=str(tmp/'database.env'), BF_AI_FILE=str(tmp/'ai.env'),
-                      BF_AUTH_FILE=str(tmp/'auth.env'), BF_DISPOSABLE='0')
+                      BF_KUBECONFIG=str(kube), BF_DISPOSABLE='0')
         fields.update(overrides)
-        import shlex
-        config.write_text(''.join(f'{k}={shlex.quote(v)}\n' for k,v in fields.items()))
+        config.write_text(''.join(f'{k}={v}\n' for k,v in fields.items()))
     clean = {k:v for k,v in os.environ.items() if not k.startswith(('BF_', 'BATTLEFIELD_', 'DEPLOY_', 'KUBERNETES_', 'KIND_', 'DOCKER_', 'SMOKE_TEST_')) and k not in ['KUBECONFIG','IMAGE_SOURCE','ENFORCE_SUPPLY_CHAIN_POLICY','TARGET_URL','ZAP_TARGET_URL']}
     clean.update(PATH=str(bins)+':'+os.environ['PATH'], BATTLEFIELD_ENV_FILE=str(config), TEST_LOG=str(log))
     helper = root/'scripts/lib/deployment-environment.sh'
@@ -85,26 +84,22 @@ if [[ "$1 $2" == 'get kubeconfig' ]]; then echo fixture; fi
     run(['bash',str(root/'scripts/cd/setup-environment.sh'),'dev'],ok=False,no_mutation=True,BATTLEFIELD_CONFIG_DIR=str(tmp))
     # Provisioning must produce all required keyless provider fields and preserve files on rerun.
     profile()
-    provision=['bash',str(root/'scripts/cd/prepare-dev-secrets.sh')]
+    provision=['bash',str(fixture/'scripts/cd/prepare-dev-secrets.sh')]
     run(provision)
-    ai=dict(line.split('=',1) for line in (tmp/'ai.env').read_text().splitlines())
+    ai=dict(line.split('=',1) for line in (fixture/'.env').read_text().splitlines())
     assert all(key in ai for key in ['OPENAI_API_KEY','OPENAI_MODEL','GEMINI_API_KEY','GEMINI_MODEL','BATTLEFIELD_MCP_CAPABILITY_SECRET'])
     assert ai['OPENAI_PROFILE_AVAILABLE'] == 'false' and ai['GEMINI_PROFILE_AVAILABLE'] == 'false'
-    before={name:(tmp/name).read_bytes() for name in ['database.env','auth.env','ai.env']}
+    before=(fixture/'.env').read_bytes()
     run(provision)
-    assert all((tmp/name).read_bytes() == value for name,value in before.items())
+    assert (fixture/'.env').read_bytes() == before
     library=root/'scripts/cd/lib/kind-deployment.sh'
-    # Production must retain all existing Secret fields, including provider credentials.
-    preserve=['bash','-ec', r'''source "$1"
-DEPLOY_ENV=production; namespace=battlefield; ai_secret_file=/missing
-kind_deploy_kube() { printf '%s' '{"data":{"BATTLEFIELD_MCP_CAPABILITY_SECRET":"ZHVtbXk=","OPENAI_API_KEY":"ZHVtbXkta2V5","OPENAI_PROFILE_AVAILABLE":"dHJ1ZQ=="}}'; }
+    # Missing production configuration must fail, never fall back to live Secrets.
+    missing=['bash','-ec', r'''source "$1"
+project_dir="$3"; DEPLOY_ENV=production; namespace=battlefield; ai_secret_file=/missing
+kind_deploy_kube() { exit 90; }
 kind_deploy_prepare_ai_secret "$2"
-''','_',str(library),str(tmp/'retained.env')]
-    run(preserve)
-    assert 'OPENAI_API_KEY=dummy-key' in (tmp/'retained.env').read_text()
-    assert 'OPENAI_PROFILE_AVAILABLE=true' in (tmp/'retained.env').read_text()
-    failed=preserve.copy();failed[2]=failed[2].replace("printf '%s'", "return 1; printf '%s'")
-    run(failed,ok=False)
+''','_',str(library),str(tmp/'retained.env'),str(root)]
+    run(missing,ok=False,no_mutation=True)
     rollback=['bash','-ec', r'''source "$1"
 DEPLOY_ENV=production; current_backend_image=a; current_engine_image=b
 current_agent_image=a; current_mcp_image=a

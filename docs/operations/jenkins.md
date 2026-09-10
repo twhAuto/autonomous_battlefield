@@ -34,7 +34,7 @@ can still appear as skipped when the changed-component classifier determines
 that they are unnecessary; those skips are intentional and remain visible.
 
 Direct pushes to non-`main` branches do not run CI or CD stages. This keeps
-`dev` available as a local work branch: use `run-dev.sh` while developing, then
+`dev` available as a local work branch: use `./deploy-local.sh` while developing, then
 open a pull request when the change is ready for Jenkins CI. Only `main`
 receives the production `kind` deployment credential and can deploy.
 
@@ -173,7 +173,8 @@ npm debug logs from the disposable audit containers are archived under
 `artifacts/security/npm-logs/`; paths printed by npm refer to the container and
 are not paths on the Jenkins agent.
 
-The Trivy source scan skips generated `artifacts` and `frontend/coverage`
+The Trivy source scan skips generated `artifacts`, `frontend/coverage`,
+`frontend/playwright-report`, and `frontend/test-results`
 directories. Vitest creates and removes temporary coverage files during the
 parallel frontend stage; scanning those files can otherwise fail with a
 `stat frontend/coverage/.tmp/coverage-*.json: no such file or directory` error.
@@ -185,6 +186,16 @@ other CI branches share the agent; all assertions and 80% coverage gates apply.
 Testing Library's independent async-query deadline is five seconds, configured
 in `frontend/src/test/setup.ts`, so chained fetch/render effects can settle under
 the same shared-agent load.
+
+Both frontend validation stages install the lockfile-matched Chromium browser
+with `npx playwright install chromium` and run `npm run test:e2e` after coverage
+and build. Provision Linux browser libraries on the agent once using
+`npx playwright install-deps chromium`; CI does not attempt privileged package
+installation. The suite starts a local Vite server on port 4173, intercepts all
+API routes with deterministic fixtures, and covers desktop and mobile Chromium.
+It uses one worker in CI. No shared database or live AI is required. The always
+post step archives `frontend/playwright-report/**/*` and
+`frontend/test-results/**/*`, including failure screenshots and retained traces.
 
 Runtime k6 and ZAP containers use host networking on the Linux agent and map
 `battlefield.localhost` to `127.0.0.1`, matching kind's loopback-only gateway
@@ -435,27 +446,14 @@ should then contain both the normal Jenkins build result and `Coverage`. Do not
 make `Coverage` a required `main` branch check until one build has published it
 successfully; afterward it can be selected in the GitHub branch ruleset.
 
-## Add the local database credential
+## Production application configuration
 
-Create a local secret file using the same three-line format as
-`deploy/environments/database.env.example`:
-
-```text
-POSTGRES_USER=...
-POSTGRES_PASSWORD=...
-DATABASE_URL=...
-```
-
-In Jenkins, add it as a **Secret file** credential with this exact ID:
-
-```text
-battlefield-local-secret-env
-```
-
-The `main` deployment stage binds the credential to a temporary file. The
-deployment script copies it into a private temporary Kustomize overlay and
-removes that directory on exit. Jenkins must mask and manage the credential; do
-not commit the real file or print it in the pipeline.
+The production agent reads `~/.config/autonomous-battlefield/production/.env`
+for database, authentication, provider and integration settings. Its adjacent
+`deployment.env` identifies the cluster. Keep both private; the application file
+is parsed as literal data. Jenkins no longer binds a separate database credential.
+It retains registry, signing, production Access-token and kubeconfig credentials.
+Use the main pipeline's `APPLY_CONFIGURATION` parameter after editing only `.env`.
 
 ## Create the GitHub Multibranch Pipeline
 

@@ -1,26 +1,14 @@
-# Autonomous Battlefield frontend
+# OrdinalFrontier frontend
 
 React and TypeScript command interface for faction management and queued battles.
 
 ## Run locally
 
-Follow the [project setup](../README.md#run-locally) to configure the database
-password and start all processes with `./run-dev.sh` from the project root.
-
-With the API and engine already running, start only the frontend from this directory:
-
-```bash
-npm ci
-npm run dev
-```
-
-Open `http://localhost:5173`. Vite proxies `/v1` requests to the backend during
-development, so no local CORS configuration is required. To use a backend on a
-different port, set `DEV_API_PROXY_TARGET=http://localhost:9080` in
-`frontend/.env.local` or in the environment before `npm run dev`. Restart Vite
-after changing it. This setting accepts only an HTTP(S) origin, without credentials,
-paths, queries, or fragments, and is not exposed to browser code. `VITE_API_URL`
-continues to control direct browser API requests separately.
+Follow the [project setup](../README.md#run-locally). Run `./deploy-local.sh`
+from the project root and open `http://battlefield.localhost:8888`. The project-root
+`.env` supplies development backend settings; frontend assets contain no secrets.
+Vite remains available for focused frontend work and tests, but is not a separate
+application deployment workflow.
 
 The **Stage battle** flow loads registered factions and server-defined
 scenarios, queues a battle, and navigates to a live status view. The view polls
@@ -35,10 +23,31 @@ npm run dev       # start the development server
 npm run build     # type-check and create a production build
 npm test          # run the component tests once
 npm test -- --coverage  # generate text, JSON-summary, and LCOV coverage
+npx playwright install chromium  # install the matching browser after npm ci
+npm run test:e2e  # desktop and mobile Chromium with deterministic API fixtures
 ```
 
 `npm run build` also rejects unused local declarations and parameters through
 the TypeScript configuration.
+
+The application browser suite in `e2e/` starts its own local Vite server on
+`127.0.0.1:4173` and intercepts every `/v1` request. It exercises navigation,
+keyboard access, responsive forms, both board sizes, map expansion/selection,
+early results, event presets, hidden identifiers, AI availability/quota/cooldown,
+and deletion cancellation/failure/success. It needs no credentials, live AI,
+backend, or shared database. Unexpected API requests fail the fixture assertion.
+On a fresh Linux machine, provision browser libraries once with
+`npx playwright install-deps chromium` (requires system package permissions).
+`npx playwright show-report` opens `playwright-report/`; failed tests retain
+screenshots and traces in `test-results/`. Both folders are ignored by Git.
+
+Navigation is Stage battle, Factions, then Battle history. The home page opens
+directly with these actions; Factions contains the Create faction action.
+Mobile navigation uses a Menu disclosure; creation forms precede collapsed
+previews. The inline map permits page scrolling on mobile; Expand map opens its
+interactive modal. Key events filters loaded history by default. Identifiers and
+copy controls are hidden from ordinary pages. Faction deletion is in the edit
+page's Danger zone, subject to existing ownership permissions.
 
 ## Container and Kubernetes behavior
 
@@ -46,6 +55,8 @@ The production image serves the compiled frontend through unprivileged Nginx
 on port 8080. `/startupz`, `/livez`, and `/readyz` report the Nginx process
 health; the deployment smoke test separately calls `/v1/scenarios` to prove the
 reverse proxy can reach the API.
+The SPA entry document sends `Cache-Control: no-cache` so browsers revalidate
+asset references after a rollout. Missing hashed assets return 404 instead of HTML.
 
 For a deployed frontend, either set `VITE_API_URL` at build time to the API's
 public origin or route `/v1` through the same reverse proxy. The Kubernetes

@@ -11,7 +11,7 @@ export DEPLOY_ENV=dev
 battlefield_env_preflight
 battlefield_env_verify_docker
 [[ -f "${BATTLEFIELD_SECRET_FILE}" && -f "${BATTLEFIELD_AUTH_SECRET_FILE}" ]] || {
-  echo 'Dev database and authentication secret files must exist; see the environment setup guide.' >&2
+  echo 'Project .env is missing; run ./scripts/cd/prepare-dev-secrets.sh first.' >&2
   exit 1
 }
 cluster_name="${KIND_CLUSTER_NAME:-battlefield}"
@@ -23,6 +23,7 @@ dirty_worktree=0
 if [[ -n "$(git -C "${project_dir}" status --porcelain --untracked-files=normal)" ]]; then
   dirty_worktree=1
 fi
+node "${project_dir}/scripts/lib/application-env.cjs" validate "${BATTLEFIELD_SECRET_FILE}"
 
 echo "Building the backend and frontend from the current working tree..."
 ALLOW_DIRTY=1 \
@@ -40,7 +41,8 @@ fi
 
 echo
 echo "Deploying local configuration, backend, and frontend to kind cluster ${cluster_name}..."
-FORCE_RESTART="${dirty_worktree}" \
+# .env is ignored by Git; restart application pods to consume secret-only edits too.
+FORCE_RESTART=1 \
   DEPLOY_COMPONENTS="${DEPLOY_COMPONENTS:-infrastructure,backend,frontend,gateway}" \
   "${project_dir}/scripts/cd/deploy-kind.sh" "${image_tag}"
 

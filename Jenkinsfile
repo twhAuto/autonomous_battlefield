@@ -21,6 +21,11 @@ pipeline {
         PREVIOUS_FRONTEND_IMAGE_REF = ''
     }
 
+    parameters {
+        booleanParam(name: 'APPLY_CONFIGURATION', defaultValue: false,
+            description: 'Reapply production .env and restart application pods without requiring a source change.')
+    }
+
     stages {
         stage('Checkout') {
             when {
@@ -90,6 +95,8 @@ pipeline {
                                     sh 'npm ci'
                                     sh 'npm test -- --coverage'
                                     sh 'npm run build'
+                                    sh 'npx playwright install chromium'
+                                    sh 'npm run test:e2e'
                                 }
                             }
                         }
@@ -182,6 +189,8 @@ pipeline {
                                     sh 'npm ci'
                                     sh 'npm test -- --coverage'
                                     sh 'npm run build'
+                                    sh 'npx playwright install chromium'
+                                    sh 'npm run test:e2e'
                                 }
                             }
                         }
@@ -235,6 +244,10 @@ pipeline {
                                     ''',
                                     returnStdout: true
                                 ).trim()
+                            }
+                            if (params.APPLY_CONFIGURATION && env.DEPLOY_COMPONENTS != 'all') {
+                                def selected = env.DEPLOY_COMPONENTS == 'none' ? [] : env.DEPLOY_COMPONENTS.tokenize(',')
+                                env.DEPLOY_COMPONENTS = (selected + ['infrastructure', 'application']).unique().join(',')
                             }
                             echo "Deployment components: ${env.DEPLOY_COMPONENTS}"
                         }
@@ -367,10 +380,6 @@ pipeline {
                                     )
                                 }
                                 withCredentials([
-                                    file(
-                                        credentialsId: 'battlefield-local-secret-env',
-                                        variable: 'BATTLEFIELD_SECRET_FILE'
-                                    ),
                                     usernamePassword(
                                         credentialsId: 'battlefield-ghcr',
                                         usernameVariable: 'GHCR_USER',
@@ -476,7 +485,7 @@ pipeline {
                 }
             }
             archiveArtifacts(
-                artifacts: 'artifacts/**/*,backend/coverage.out,backend/coverage-total.txt,frontend/coverage/**/*',
+                artifacts: 'artifacts/**/*,backend/coverage.out,backend/coverage-total.txt,frontend/coverage/**/*,frontend/playwright-report/**/*,frontend/test-results/**/*',
                 allowEmptyArchive: true,
                 fingerprint: true
             )

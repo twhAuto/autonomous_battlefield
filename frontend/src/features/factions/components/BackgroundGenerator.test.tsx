@@ -59,6 +59,6 @@ it('displays server quota limits and refreshes at UTC reset', async () => {
  await act(async () => { await vi.advanceTimersByTimeAsync(2000) }); expect(screen.getByRole('button', { name: 'Generate background' })).toBeEnabled()
 })
 it('retries loading options and aborts polling on unmount', async () => {
- vi.mocked(generationOptions).mockRejectedValueOnce(new Error('Unavailable')); const view = show(); fireEvent.click(await screen.findByRole('button', { name: 'Retry generation availability' })); await screen.findByText('Generation model: Configured writer')
+ vi.mocked(generationOptions).mockRejectedValueOnce(new Error('Unavailable')); const view = show(); await screen.findByRole('alert'); fireEvent.click(screen.getByRole('button', { name: 'Check availability' })); await screen.findByText('Generation model: Configured writer')
  vi.mocked(backgroundJob).mockImplementation(() => new Promise(() => {})); fireEvent.click(screen.getByRole('button', { name: 'Generate background' })); await waitFor(() => expect(backgroundJob).toHaveBeenCalled()); const signal = vi.mocked(backgroundJob).mock.calls[0][1]; view.unmount(); expect(signal?.aborted).toBe(true)
 })

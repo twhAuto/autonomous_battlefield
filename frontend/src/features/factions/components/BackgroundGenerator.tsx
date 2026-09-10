@@ -2,6 +2,7 @@
 // user edit or apply a preview to the parent form.
 
 import { maxBackgroundLength } from '../limits'
+import { generationAvailability } from '../presentation/availability'
 import { useEffect, useRef, useState } from 'react'
 import { backgroundJob, generateBackground, generationOptions, GenerationError, type BackgroundInput, type GenerationOptions } from '../api/backgrounds'
 
@@ -15,16 +16,20 @@ export function BackgroundGenerator({ input, valid, onUse }: Readonly<{ input: B
  const [draftName, setDraftName] = useState('')
  const [now, setNow] = useState(Date.now)
  const [revision, setRevision] = useState(0)
+ const [availabilityLoading, setAvailabilityLoading] = useState(true)
+ const [availabilityError, setAvailabilityError] = useState(false)
  // Reuse the key after an uncertain network failure so retrying unchanged input cannot create a second job.
  const pending = useRef<{ input: string; key: string } | null>(null)
  const controller = useRef<AbortController | null>(null)
  useEffect(() => {
   const abort = new AbortController()
+  setAvailabilityLoading(true); setAvailabilityError(false)
   generationOptions(abort.signal).then(value => {
    if (abort.signal.aborted) return
    setOptions(value)
    if (value.activeJobId) { setActiveId(value.activeJobId); setPhase('queued') }
-  }).catch(error => { if (!abort.signal.aborted) setMessage(error instanceof Error ? error.message : 'Generation is unavailable.') })
+  }).catch(() => { if (!abort.signal.aborted) { setAvailabilityError(true); setOptions(undefined) } })
+  .finally(() => { if (!abort.signal.aborted) setAvailabilityLoading(false) })
   return () => abort.abort()
  }, [revision])
  useEffect(() => {
@@ -57,7 +62,8 @@ export function BackgroundGenerator({ input, valid, onUse }: Readonly<{ input: B
  useEffect(() => {
   if (options && Date.parse(options.resetAt) <= now) { setOptions(undefined); setRevision(value => value + 1) }
  }, [now, options])
- const blocked = !valid || !options?.available || options.remaining <= 0 || seconds > 0 || busy || Boolean(activeId)
+ const availability = generationAvailability(options, availabilityLoading, availabilityError, Boolean(activeId), now)
+ const blocked = availability !== 'available' || !valid || busy
  function applyGenerationError(error: unknown) {
   if (!(error instanceof GenerationError)) return
   if (error.status) pending.current = null
@@ -84,11 +90,14 @@ export function BackgroundGenerator({ input, valid, onUse }: Readonly<{ input: B
  const previewCount = Array.from(preview?.trim() ?? '').length
  return <section className="background-generator" aria-label="Background generation">
   <p>{options?.modelLabel ? `Generation model: ${options.modelLabel}` : 'AI background writer'}</p>
-  {options && <p>{options.remaining} generations left today · resets {new Date(options.resetAt).toLocaleString()} (00:00 UTC)</p>}
-  {seconds > 0 && <p>Available again in {seconds} seconds.</p>}
-  {!options?.available && options?.reason && <p>{options.reason}</p>}
+  {availabilityLoading && <p role="status">Checking AI availability…</p>}
+  {availabilityError && <p role="alert">Background writer availability could not be established. You can still write a background.</p>}
+  {!availabilityLoading && options?.available && <p>{options.remaining} generations left today · resets {new Date(options.resetAt).toLocaleString()} (00:00 UTC)</p>}
+  {availability === 'quota' && <p>Today's generation allowance is exhausted.</p>}
+  {availability === 'cooldown' && <p>Available again in {seconds} seconds.</p>}
+  {!availabilityLoading && options && !options.available && <p>{options.reason || 'Background writer availability could not be established. You can still write a background.'}</p>}
   <button type="button" disabled={blocked} onClick={generate}>{busy ? 'Queuing…' : 'Generate background'}</button>
-  {!options && message && <button type="button" onClick={() => setRevision(value => value + 1)}>Retry generation availability</button>}
+  <button type="button" disabled={availabilityLoading || busy || Boolean(activeId)} onClick={() => setRevision(value => value + 1)}>Check availability</button>
   <div aria-live="polite">{activeId && <p>{phase === 'running' ? 'Writing background…' : 'Waiting for an AI worker…'}</p>}{message && <p>{message}</p>}</div>
   {preview !== null && <div className="background-draft">
    <label htmlFor="background-draft">Generated draft for {draftName}</label>

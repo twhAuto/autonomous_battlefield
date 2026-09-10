@@ -1,7 +1,9 @@
 // Renders an attempt-selectable battle event log with paging controls and readable event
 // payload values.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useMobile } from '../../../shared/hooks/useMobile'
+import { eventSummary, matchesPreset, type EventPreset } from '../presentation/events'
 import { BattleEvent, JsonValue } from '../api/battles'
 import { eventPageSize } from '../hooks/constants'
 import { eventStringLabel, type EntityNaming } from '../presentation/entities'
@@ -21,11 +23,17 @@ export function EventConsole({ battleAttempt, selectedAttempt, setSelectedAttemp
   loadEventPage: (after: number, reset: boolean, signal?: AbortSignal) => Promise<void>
 }>) {
   const [eventType, setEventType] = useState('all')
+  const [preset, setPreset] = useState<EventPreset>('key')
+  const [limit, setLimit] = useState(10)
+  const mobile = useMobile()
+  useEffect(() => { setLimit(10) }, [eventType, preset, selectedAttempt])
   const eventTypes = [...new Set([...events.map((event) => event.type), ...(eventType === 'all' ? [] : [eventType])])].sort((a, b) => a.localeCompare(b))
-  const visibleEvents = events.filter((event) => eventType === 'all' || event.type === eventType)
+  const matchingEvents = events.filter((event) => matchesPreset(event, preset) && (eventType === 'all' || event.type === eventType))
+  const visibleEvents = [...matchingEvents].reverse().slice(0, mobile ? limit : undefined)
   const latestTick = events.reduce((latest, event) => Math.max(latest, event.tick), 0)
   return (
-    <section className="event-console" aria-live="polite">
+    <section className="event-console">
+      <p className="visually-hidden" role="status">{events.length} events loaded for this attempt.</p>
       <div className="event-console__header">
         <div>
           <span>BATTLE EVENT STREAM{latestTick > 0 ? ` · LATEST TICK ${latestTick}` : ''}</span>
@@ -38,7 +46,9 @@ export function EventConsole({ battleAttempt, selectedAttempt, setSelectedAttemp
           </select>
         </label>
       </div>
-      <label className="panel-filter" htmlFor="event-type">Event type<select id="event-type" value={eventType} onChange={(event) => setEventType(event.target.value)}><option value="all">All events</option>{eventTypes.map((type) => <option value={type} key={type}>{type.replaceAll('_', ' ')}</option>)}</select></label>
+      <label className="panel-filter" htmlFor="event-preset">Event group<select id="event-preset" value={preset} onChange={event => { setPreset(event.target.value as EventPreset); setEventType('all') }}><option value="key">Key events</option><option value="combat">Combat</option><option value="economy">Economy</option><option value="all">All events</option></select></label>
+      <label className="panel-filter" htmlFor="event-type">Event type<select id="event-type" value={eventType} onChange={(event) => { setEventType(event.target.value); if (event.target.value !== 'all') setPreset('all') }}><option value="all">All types</option>{eventTypes.map((type) => <option value={type} key={type}>{type.replaceAll('_', ' ')}</option>)}</select></label>
+      <p className="field-hint">Filters apply to loaded history.</p>
 
       {eventState === 'error' && <div className="event-console__error" role="alert">{eventMessage} <button type="button" onClick={() => void loadEventPage(eventCursor, false)}>Retry</button></div>}
       {events.length === 0 && eventState !== 'error' && (
@@ -46,11 +56,12 @@ export function EventConsole({ battleAttempt, selectedAttempt, setSelectedAttemp
       )}
       {events.length > 0 && (
         <ol className="event-list">
-          {[...visibleEvents].reverse().map((event) => <EventRow key={`${event.attempt}-${event.sequence}`} event={event} naming={{ factionNames: participantNames, entities: event.attempt === battleAttempt ? entities : undefined }} />)}
+          {visibleEvents.map((event) => <EventRow key={`${event.attempt}-${event.sequence}`} event={event} naming={{ factionNames: participantNames, entities: event.attempt === battleAttempt ? entities : undefined }} />)}
         </ol>
       )}
       {events.length > 0 && visibleEvents.length === 0 && <div className="event-console__empty">No matching events in the loaded history.</div>}
       <div className="event-console__actions">
+        {mobile && matchingEvents.length > limit && <button type="button" className="compact-action" onClick={() => setLimit(value => value + 10)}>Show more events</button>}
         {eventHasMore && <button className="compact-action" type="button" disabled={eventState === 'loading'} onClick={() => void loadEventPage(eventCursor, false)}>LOAD NEXT {eventPageSize}</button>}
         {!eventHasMore && events.length > 0 && <button className="text-button" type="button" disabled={eventState === 'loading'} onClick={() => void loadEventPage(eventCursor, false)}>REFRESH EVENTS</button>}
         <span>SHOWING {visibleEvents.length} OF {events.length} LOADED EVENTS</span>
@@ -65,12 +76,14 @@ function EventRow({ event, naming }: Readonly<{ event: BattleEvent; naming: Enti
       <div className="event-list__index">#{event.sequence.toString().padStart(4, '0')}</div>
       <div className="event-list__body">
         <div><strong>{event.type.replaceAll('_', ' ')}</strong><span>TICK {event.tick}</span></div>
+        <p>{eventSummary(event, naming)}</p>
+        <details className="event-payload"><summary>Details · Inspect event #{event.sequence}</summary>
         <dl>
           {Object.entries(event.data).map(([key, value]) => (
             <div key={key}><dt>{key}</dt><dd title={formatEventValue(value)}>{typeof value === 'string' ? eventStringLabel(key, value, naming) : formatEventValue(value)}</dd></div>
           ))}
         </dl>
-        <details className="event-payload"><summary>Inspect event #{event.sequence}</summary><pre>{JSON.stringify(event.data, null, 2)}</pre></details>
+        <pre>{JSON.stringify(event.data, null, 2)}</pre></details>
       </div>
     </li>
   )

@@ -126,7 +126,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "1 - ((sum(increase(battlefield_http_server_request_duration_seconds_count{component=\"api\"}[30d])) - sum(increase(battlefield_http_server_request_duration_seconds_bucket{component=\"api\",le=\"0.5\"}[30d]))) / clamp_min(sum(increase(battlefield_http_server_request_duration_seconds_count{component=\"api\"}[30d])), 1))",
+          "expr": "1 - ((sum(increase(battlefield_http_server_request_duration_seconds_count{component=\"api\",outcome=\"success\"}[30d])) - sum(increase(battlefield_http_server_request_duration_seconds_bucket{component=\"api\",outcome=\"success\",le=\"0.5\"}[30d]))) / clamp_min(sum(increase(battlefield_http_server_request_duration_seconds_count{component=\"api\",outcome=\"success\"}[30d])), 1))",
           "instant": true,
           "legendFormat": "Under 500 ms",
           "range": false,
@@ -134,7 +134,8 @@
         }
       ],
       "title": "API latency SLI (30d / 95%)",
-      "type": "stat"
+      "type": "stat",
+      "description": "Share of successfully served requests completing under 500 ms. Error responses are excluded so a fast 5xx cannot read as a fast success."
     },
     {
       "datasource": {
@@ -191,7 +192,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "1 - (sum(increase(battlefield_engine_battles_processed_total{component=\"engine\",outcome=~\"failed|error|lease_lost\"}[30d])) / clamp_min(sum(increase(battlefield_engine_battles_processed_total{component=\"engine\",outcome=~\"completed|failed|error|lease_lost\"}[30d])), 1))",
+          "expr": "1 - (sum(increase(battlefield_engine_battles_processed_total{component=\"engine\",outcome=~\"failed|error|lease_lost\"}[30d])) / clamp_min(sum(increase(battlefield_engine_battles_processed_total{component=\"engine\"}[30d])), 1))",
           "instant": true,
           "legendFormat": "Success",
           "range": false,
@@ -199,7 +200,8 @@
         }
       ],
       "title": "Battle processing SLI (30d / 99%)",
-      "type": "stat"
+      "type": "stat",
+      "description": "Share of battle processing attempts that did not fail. The denominator is every attempt, so graceful requeues during a deploy cannot inflate the ratio."
     },
     {
       "datasource": {
@@ -378,7 +380,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(battlefield_http_server_request_duration_seconds_bucket{component=\"api\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(battlefield_http_server_request_duration_seconds_bucket{component=\"api\",outcome=\"success\"}[$__rate_interval])))",
           "legendFormat": "{{route}}",
           "range": true,
           "refId": "A"
@@ -571,6 +573,211 @@
         }
       ],
       "title": "Engine processing duration p95",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "id": 20,
+      "panels": [],
+      "title": "Engine worker health",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "battlefield-prometheus"
+      },
+      "description": "Engine workers reporting ready to claim battles. A drop to zero means no worker is claiming, even while the pod stays up and its metrics target keeps reporting healthy.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "unit": "none",
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 22
+      },
+      "id": 21,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(battlefield_engine_worker_ready{component=\"engine\"})",
+          "legendFormat": "Ready workers",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Engine workers ready",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "battlefield-prometheus"
+      },
+      "description": "Battles claimed per second, split by whether the claim reclaimed an expired lease. A rising reclaimed rate means workers are dying mid-battle and leases are expiring, which leads the failure outcomes rather than trailing them.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 22
+      },
+      "id": 22,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (reclaimed) (rate(battlefield_engine_battle_claims_total{component=\"engine\"}[$__rate_interval]))",
+          "legendFormat": "reclaimed={{reclaimed}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Battle claim rate by reclaim",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "battlefield-prometheus"
+      },
+      "description": "Battle ticks advanced per second across the engine fleet. Sustained zero while battles are claimed indicates the simulation loop is stalled rather than idle.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "unit": "ops",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 22
+      },
+      "id": 23,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(battlefield_engine_ticks_total{component=\"engine\"}[$__rate_interval]))",
+          "legendFormat": "Ticks",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Simulation tick rate",
       "type": "timeseries"
     }
   ],

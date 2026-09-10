@@ -612,3 +612,38 @@ func TestFallbackPreservesRunnerFailureCategory(t *testing.T) {
 		})
 	}
 }
+
+func (r *fakeBattleRepository) ExpireBattles(context.Context) error { return nil }
+
+// Expiry must run even when claiming work is blocked, and stop with the worker.
+type expiryTestRepository struct {
+	*fakeBattleRepository
+	swept chan struct{}
+}
+
+func (r *expiryTestRepository) ExpireBattles(context.Context) error {
+	close(r.swept)
+	return errWorkerRepository
+}
+func (r *expiryTestRepository) ClaimBattle(ctx context.Context, _ string, _ time.Duration, _ int) (*BattleJob, error) {
+	select {
+	case <-r.swept:
+		return nil, errWorkerRepository
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+func TestWorkerSweepsIndependentlyOfClaims(t *testing.T) {
+	repository := &expiryTestRepository{fakeBattleRepository: &fakeBattleRepository{}, swept: make(chan struct{})}
+	worker, _ := New(repository, testWorkerConfig())
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := worker.Run(ctx); !errors.Is(err, errWorkerRepository) {
+		t.Fatalf("Run = %v", err)
+	}
+	select {
+	case <-repository.swept:
+	default:
+		t.Fatal("expiry did not run")
+	}
+}

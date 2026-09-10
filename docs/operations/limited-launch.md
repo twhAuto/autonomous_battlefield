@@ -8,20 +8,19 @@ live tunnel, firewall, or VM has been provisioned.
 
 ## Local development
 
-Local development stays on the workstation. `backend/config.yaml` binds the API,
-MCP and worker health listeners to IPv4 loopback. The Kubernetes ConfigMap retains
-pod listeners. The development launcher reads literal recognized values from
-`backend/.env`, with existing shell variables taking precedence. It never sources
-that file as executable shell.
+Local development uses `./deploy-local.sh` and the project-root `.env`.
+The deployer reads literal values and renders separate database, auth, and AI
+Kubernetes Secrets. It never sources `.env` as executable shell. The registered
+kubeconfig identifies the dev cluster; production uses separate private settings.
 
-Set `BATTLEFIELD_ENV=dev` and explicitly choose `BATTLEFIELD_AUTH_MODE=local-password`
+The deployment sets `BATTLEFIELD_ENV=dev`; in `.env`, explicitly choose `BATTLEFIELD_AUTH_MODE=local-password`
 with `BATTLEFIELD_ADMIN_USERNAME`, a strong `BATTLEFIELD_ADMIN_PASSWORD` (12+
 characters), and random `BATTLEFIELD_SESSION_SECRET` (32+ bytes). If retaining the
 legacy `BATTLEFIELD_AUTH_ENABLED` variable, it must agree with the selected mode.
 To deliberately skip login on localhost, use `disabled-development` and remove
 or set the legacy flag to `false`. Neither mode is accepted in production.
 
-For `START_AGENT=1 ./run-dev.sh`, generate two independent random secrets for
+The setup command generates two independent random secrets for
 `BATTLEFIELD_MCP_CAPABILITY_SECRET` and `BATTLEFIELD_AGENT_SECRET`. The MCP process
 needs both; workers need only the latter. The local Kubernetes CLI launcher reads
 the worker credential from `battlefield-ai` and keeps its bridge on loopback.
@@ -44,42 +43,18 @@ CLI jobs from your personal home directory.
    The local configuration uses the tunnel's credentials JSON, not an account-wide
    API token. Obtain the tunnel-specific credentials through Cloudflare's supported
    tunnel creation flow.
-4. Render configuration from the repository root (set `OWNER_EMAIL`, `ACCESS_AUD`,
-   `TUNNEL_ID`, and `CLOUDFLARED_IMAGE` privately):
-
-   ```bash
-   umask 077
-   python3 scripts/ops/render-limited-launch.py \
-     --hostname play.ordinalfrontier.com --team ordinalfrontier-lab \
-     --audience "$ACCESS_AUD" --tunnel-id "$TUNNEL_ID" \
-     --cloudflared-image "$CLOUDFLARED_IMAGE" --admin "$OWNER_EMAIL" \
-     --output "$HOME/.config/autonomous-battlefield/production/limited-launch"
-   ```
-
-   The renderer rejects duplicate identities and unpinned tunnel images. Add
-   `--player` or `--developer` for each explicitly invited email in later phases.
-   Rendered `auth.env` needs no application password or session-signing secret.
-5. Keep `CODEX_CLI_PROFILE_AVAILABLE=false`, `GEMINI_CLI_PROFILE_AVAILABLE=false`,
-   and paid API availability flags false in `battlefield-ai`. Create its independent
-   worker and capability-signing secrets. Set the production environment profile's
-   `BF_AUTH_FILE` to the rendered auth file and `BF_AI_FILE` to the private
-   AI file. Existing production Secrets are preserved if no file is supplied, but
-   missing Cloudflare settings now fail startup.
-6. Deploy the application with the normal verified image pipeline. Production
-   migration runs now take a custom-format `pg_dump`, check its archive listing,
-   and refuse migration on failure. Backups default to
-   `$XDG_STATE_HOME/battlefield/backups` (or `~/.local/state/battlefield/backups`);
-   override `BATTLEFIELD_BACKUP_DIR` with persistent protected storage. Copy backups
-   off the server and test restoration in a separate database before launch.
-7. Create the tunnel Secret and apply the rendered resources in the application
-   namespace:
-
-   ```bash
-   kubectl -n battlefield create secret generic battlefield-tunnel \
-     --from-file=credentials.json="$TUNNEL_CREDENTIALS_FILE" \
-     --dry-run=client -o yaml | kubectl apply -f -
-   kubectl -n battlefield apply -f "$HOME/.config/autonomous-battlefield/production/limited-launch/tunnel.json"
-   ```
+4. Put Access issuer, audience, public origin and role assignments in production
+   `.env`. Put `BF_TUNNEL_ID`, `BF_TUNNEL_IMAGE` (digest-pinned), and
+   `BF_TUNNEL_CREDENTIALS_FILE=tunnel-credentials.json` in its `deployment.env`.
+   Install the application's tunnel credentials beside those files (mode 600).
+5. Configure independent worker and MCP credentials in `.env`. Keep provider and
+   CLI availability false until intentionally enabled and verified.
+6. Validate with `./scripts/ops/prepare-limited-production.sh`, then use the normal
+   verified application pipeline. Production database migration backups remain
+   under the configured backup storage; changing configuration needs no database reset.
+7. When ready to activate public access, run `./scripts/cd/deploy-tunnel.sh`.
+   It generates manifests in private temporary storage, applies the tunnel Secret
+   and resources, and restarts the connector. No persistent generated files are needed.
 
    Both tunnel ingress rules require Access token validation. The API independently
    validates JWT signature, RS256 algorithm, issuer, application audience, expiry,
@@ -101,22 +76,16 @@ change or an Access login screen is not proof that the origin is private.
 
 ## Repeatable production preparation
 
-After generating `limited-launch/auth.env` and `limited-launch/tunnel.json` under
-`~/.config/autonomous-battlefield/production/`, run from the server checkout:
+From the production server checkout, run:
 
 ```bash
-./scripts/ops/prepare-limited-production.sh --launch-dir "$HOME/.config/autonomous-battlefield/production/limited-launch"
+./scripts/ops/prepare-limited-production.sh
 ```
 
-The command checks the registered production cluster UID, exact rendered template,
-tunnel credential UUID and permissions, role assignments and disabled AI profiles.
-It creates missing private files, recovering existing cluster AI credentials and
-adding independent missing worker/signing secrets. Existing files are preserved;
-conflicting auth settings or enabled AI profiles cause failure for operator review.
-It never starts a connector, modifies live Secrets, creates DNS, or deploys images.
-Use `--backup` to create a fresh custom-format PostgreSQL archive and validate its
-listing; skip that option when the pre-launch backup has already been taken.
-`--launch-dir` and `--credential-dir` select non-default private input directories.
+The command checks the registered cluster UID, shared application schema,
+Cloudflare roles, tunnel credential UUID and permissions, and pinned image.
+It renders into a temporary directory and removes that directory on exit.
+It does not edit configuration, deploy workloads, create DNS, or activate a tunnel.
 
 This is preparation, not launch certification. NetworkPolicy enforcement, direct
 origin isolation over IPv4/IPv6, and MFA still require live checks. Production
@@ -335,11 +304,6 @@ References: [Access JWT validation](https://developers.cloudflare.com/cloudflare
 [Access sessions](https://developers.cloudflare.com/cloudflare-one/access-controls/access-settings/session-management/),
 [libvirt network filters](https://libvirt.org/formatnwfilter.html),
 [Linux process dumpability](https://man7.org/linux/man-pages/man2/PR_SET_DUMPABLE.2const.html).
-
-For existing installations, the preparation script retains the original
-`friends-launch` private directory as its default. Existing generated files remain
-valid; omit `--launch-dir` to use that directory. New installations should use the
-`limited-launch` directory shown above.
 
 Production k6 smoke load uses the same Jenkins Access Secret file credential as
 origin verification, bound separately for its stage. The launcher requires

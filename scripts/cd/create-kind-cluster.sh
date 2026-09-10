@@ -7,7 +7,7 @@ source "${project_dir}/scripts/lib/deployment-environment.sh"
   echo 'Usage: create-kind-cluster.sh (dev only; recreation is not supported)' >&2; exit 1;
 }
 export DEPLOY_ENV=dev
-profile="${BATTLEFIELD_ENV_FILE:-${HOME}/.config/autonomous-battlefield/dev/environment.env}"
+profile="${BATTLEFIELD_ENV_FILE:-${HOME}/.config/autonomous-battlefield/dev/deployment.env}"
 if [[ -f "${profile}" ]]; then
   battlefield_env_load
 else

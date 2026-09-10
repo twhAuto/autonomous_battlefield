@@ -28,7 +28,7 @@ if (args.includes('--download-db-only') || args.includes('fs')) {
     // Vitest removes temporary coverage files while this scan runs in parallel.
     // Exclude only generated reports; frontend source and lockfiles stay in scope.
     const skippedDirs = args.flatMap((arg, i) => arg === '--skip-dirs' ? [args[i + 1]] : []);
-    assert.deepEqual(skippedDirs, ['artifacts', 'frontend/coverage']);
+    assert.deepEqual(skippedDirs, ['artifacts', 'frontend/coverage', 'frontend/playwright-report', 'frontend/test-results']);
     assert.equal(args.at(-1), '.');
     assert.ok(args.includes('--include-dev-deps'));
   }

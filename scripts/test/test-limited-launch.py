@@ -29,10 +29,8 @@ class LaunchTests(unittest.TestCase):
             for route in routes[:-1]:
                 self.assertEqual(route['hostname'], args.hostname)
                 self.assertEqual(route['originRequest']['access'], {'required': True, 'teamName': 'friends', 'audTag': ['a'*64]})
-            auth = (Path(out)/'auth.env').read_text()
-            self.assertNotIn('PASSWORD', auth)
-            self.assertNotIn('SESSION_SECRET', auth)
-            self.assertIn('AUTH_MODE=cloudflare', auth)
+            self.assertFalse((Path(out)/'auth.env').exists())
+            self.assertEqual((Path(out)/'tunnel.json').stat().st_mode & 0o777, 0o600)
             resources = json.loads((Path(out)/'tunnel.json').read_text())['items']
             self.assertEqual(sum(r['kind']=='NetworkPolicy' for r in resources), 2)
             args.player = ['OWNER@example.com']

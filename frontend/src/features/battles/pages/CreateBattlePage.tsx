@@ -2,7 +2,7 @@ import { usePermissions } from '../../auth/SessionContext'
 // Loads faction, scenario, and model choices, validates the battle setup, and navigates to
 // the queued battle after creation.
 
-import { type SubmitEvent, useEffect, useMemo, useState } from 'react'
+import { type SubmitEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   BattleApiError,
@@ -14,6 +14,7 @@ import {
 } from '../api/battles'
 import { Faction, FactionApiError, listFactions } from '../../factions/api/factions'
 import { Emblem } from '../../../shared/components/Emblem'
+import { ResponsivePreview } from '../../../shared/components/ResponsivePreview'
 
 type LoadState = 'loading' | 'ready' | 'empty' | 'error'
 
@@ -29,7 +30,11 @@ export function CreateBattlePage() {
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [loadMessage, setLoadMessage] = useState('')
   const [loadVersion, setLoadVersion] = useState(0)
-  const [battleID, setBattleID] = useState(newBattleID)
+  const [battleID] = useState(newBattleID)
+  const [profilesError, setProfilesError] = useState(false)
+  const [checkingProfiles, setCheckingProfiles] = useState(false)
+  const profileRead = useRef<AbortController | null>(null)
+  useEffect(() => () => profileRead.current?.abort(), [])
   const [scenarioID, setScenarioID] = useState('')
   const [firstFactionID, setFirstFactionID] = useState('')
   const [secondFactionID, setSecondFactionID] = useState('')
@@ -43,8 +48,10 @@ export function CreateBattlePage() {
     const controller = new AbortController()
     setLoadState('loading')
     setLoadMessage('')
-    Promise.all([listFactions(controller.signal), listScenarios(controller.signal), listModelProfiles(controller.signal).catch(() => [])])
+    setProfilesError(false)
+    Promise.all([listFactions(controller.signal), listScenarios(controller.signal), listModelProfiles(controller.signal).catch(() => { if (!controller.signal.aborted) setProfilesError(true); return [] })])
       .then(([loadedFactions, loadedScenarios, loadedProfiles]) => {
+        if (controller.signal.aborted) return
         setFactions(loadedFactions)
         setScenarios(loadedScenarios)
         setProfiles(loadedProfiles)
@@ -78,6 +85,7 @@ export function CreateBattlePage() {
   const maximumTicks = selectedScenario?.maximumTicks ?? 500
   const validTicks = typeof tickCount === 'number' && Number.isInteger(tickCount) && tickCount >= 1 && tickCount <= maximumTicks
   const canSubmit = loadState === 'ready'
+    && [firstController, secondController].every(value => value === 'scripted' || profiles.some(profile => profile.id === value && profile.available))
     && firstFactionID !== ''
     && secondFactionID !== ''
     && firstFactionID !== secondFactionID
@@ -117,6 +125,19 @@ export function CreateBattlePage() {
       setSubmitState('error')
       setSubmitMessage(error instanceof BattleApiError ? error.message : 'The battle could not be queued.')
     }
+  }
+
+  async function checkProfiles() {
+    profileRead.current?.abort()
+    const controller = new AbortController()
+    profileRead.current = controller
+    setCheckingProfiles(true)
+    try {
+      const availableProfiles = await listModelProfiles(controller.signal)
+      if (!controller.signal.aborted) { setProfiles(availableProfiles); setProfilesError(false) }
+    }
+    catch { if (!controller.signal.aborted) { setProfiles([]); setProfilesError(true) } }
+    finally { if (!controller.signal.aborted) setCheckingProfiles(false) }
   }
 
   return (
@@ -196,20 +217,18 @@ export function CreateBattlePage() {
               </div>
               {firstFactionID === secondFactionID && <p className="field-error" role="alert">Choose two different factions.</p>}
               {factions.length < 2 && <p className="field-error" role="alert">Create two factions before deployment.</p>}
+              <details className="integration-status"><summary>AI integration status</summary>
+                {profilesError && <p role="alert">AI controller availability could not be established.</p>}
+                {profiles.filter(profile => !profile.available).map(profile => <p key={profile.id}><strong>{profile.displayName}</strong>: {profile.unavailableReason || 'Availability could not be established.'}</p>)}
+                {!profilesError && profiles.every(profile => profile.available) && <p>{profiles.length ? 'All configured AI controllers are available.' : 'No AI controllers were returned.'}</p>}
+                <button type="button" disabled={checkingProfiles} onClick={() => void checkProfiles()}>{checkingProfiles ? 'Checking…' : 'Check availability'}</button>
+              </details>
 
               <div className="battle-form__field">
                 <label htmlFor="tick-count">Maximum ticks</label>
                 <input id="tick-count" type="number" min="1" max={maximumTicks} value={tickCount} onChange={(event) => setTickCount(event.currentTarget.value === '' ? '' : event.currentTarget.valueAsNumber)} aria-invalid={!validTicks} />
                 <p className="field-hint">The battle ends earlier if one faction is eliminated.</p>
                 {!validTicks && <p className="field-error" role="alert">Enter a whole number from 1 to {maximumTicks}.</p>}
-              </div>
-
-              <div className="identity-block">
-                <div>
-                  <span className="identity-block__label">BATTLE IDENTIFIER</span>
-                  <code title={battleID}>{battleID}</code>
-                </div>
-                <button type="button" className="icon-button" onClick={() => setBattleID(newBattleID())} aria-label="Generate a new battle identifier">↻</button>
               </div>
 
               <button className="submit-button" type="submit" disabled={!canSubmit}>
@@ -222,7 +241,7 @@ export function CreateBattlePage() {
             </form>
           </div>
 
-          <aside className="battle-preview" aria-label="Selected combatants">
+          <ResponsivePreview label="Preview combatants"><aside className="battle-preview" aria-label="Selected combatants">
             <div className="preview-panel__grid" />
             <div className="preview-panel__heading"><span>COMBATANT PREVIEW</span><span>ARMED</span></div>
             <div className="battle-preview__combatants">
@@ -230,7 +249,7 @@ export function CreateBattlePage() {
               <div className="battle-preview__axis"><span />VERSUS<span /></div>
               <Combatant faction={secondFaction} slot="02" />
             </div>
-          </aside>
+          </aside></ResponsivePreview>
         </section>
       )}
     </>
@@ -243,18 +262,17 @@ function controllerInput(value: string): { type: 'scripted' } | { type: 'model';
 
 function ControllerSelect({ id, value, onChange, profiles }: Readonly<{ id: string; value: string; onChange: (value: string) => void; profiles: ModelProfile[] }>) {
  const {inspect}=usePermissions()
+ const selected = profiles.find(profile => profile.id === value)
   return (
-    <select id={id} value={value} onChange={(event) => onChange(event.target.value)}>
+    <><select id={id} value={value} aria-describedby={`${id}-details`} onChange={(event) => onChange(event.target.value)}>
       <option value="scripted">Scripted · deterministic</option>
-      {profiles.map((profile) => {
-        const availability = profile.available ? '' : ' · unavailable'
-        const label = inspect ? `${profile.displayName} · ${profile.provider} · ${profile.modelLabel || 'default model'} · ${profile.scope}${availability}` : profile.displayName
+      {profiles.filter(profile => profile.available || profile.id === value).map((profile) => {
         return (
         <option key={profile.id} value={profile.id} disabled={!profile.available}>
-          {label}
+          {profile.displayName}{!profile.available ? ' · unavailable' : ''}
         </option>
       )})}
-    </select>
+    </select><p id={`${id}-details`} className="field-hint">{value === 'scripted' ? 'Deterministic scripted controller.' : selected?.available ? inspect ? `${selected.modelLabel || 'Default model'} · ${selected.provider || selected.runtime} · ${selected.scope || 'Execution location unspecified'}` : selected.displayName : 'Selected controller is unavailable. Choose an available controller.'}</p></>
   )
 }
 
@@ -264,7 +282,6 @@ function Combatant({ faction, slot }: Readonly<{ faction?: Faction; slot: string
       {faction && <Emblem seed={faction.name} />}
       <span>SLOT {slot}</span>
       <h2>{faction?.name ?? 'Unassigned'}</h2>
-      <code>{faction?.id ?? '—'}</code>
     </div>
   )
 }

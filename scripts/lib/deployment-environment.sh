@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Shared environment resolver: loads a registered profile, locks conflicting
 # overrides, and verifies Kubernetes/Docker identity before operational commands.
-# Trusted machine configuration lives outside the checkout; never source secrets.
+# Trusted cluster configuration lives outside the checkout; dev secrets use root .env.
+# Never source application secrets as shell code.
 
 battlefield_env_error() { echo "Deployment environment: $*" >&2; return 1; }
 
@@ -18,14 +19,18 @@ battlefield_env_load() {
   local requested="${DEPLOY_ENV:-dev}"
   case "${requested}" in dev|production) ;; *) battlefield_env_error 'DEPLOY_ENV must be dev or production.'; return 1 ;; esac
   export DEPLOY_ENV="${requested}"
-  local config="${BATTLEFIELD_ENV_FILE:-${HOME}/.config/autonomous-battlefield/${requested}/environment.env}"
+  local config="${BATTLEFIELD_ENV_FILE:-${HOME}/.config/autonomous-battlefield/${requested}/deployment.env}"
   [[ -f "${config}" ]] || { battlefield_env_error "Missing ${config}; run scripts/cd/setup-environment.sh ${requested} on the target machine."; return 1; }
-  unset BF_ENV BF_CONTEXT BF_CLUSTER BF_UID BF_DOCKER_HOST BF_URL BF_KUBECONFIG BF_DATABASE_FILE BF_AI_FILE BF_AUTH_FILE BF_DISPOSABLE
-  # shellcheck disable=SC1090
-  source "${config}" || return
+  unset BF_ENV BF_CONTEXT BF_CLUSTER BF_UID BF_DOCKER_HOST BF_URL BF_KUBECONFIG BF_DISPOSABLE BF_TUNNEL_ID BF_TUNNEL_IMAGE BF_TUNNEL_CREDENTIALS_FILE
+  local helper profile_values key value
+  helper="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/application-env.cjs"
+  profile_values="$(node "${helper}" profile "${config}")" || return
+  while IFS='=' read -r key value; do
+    [[ -z "${key}" ]] || export "${key}=${value}"
+  done <<<"${profile_values}"
   [[ "${BF_ENV:-}" == "${requested}" ]] || { battlefield_env_error 'Profile belongs to a different environment.'; return 1; }
   local field
-  for field in BF_CONTEXT BF_CLUSTER BF_UID BF_DOCKER_HOST BF_URL BF_KUBECONFIG BF_DATABASE_FILE BF_AI_FILE BF_AUTH_FILE; do
+  for field in BF_CONTEXT BF_CLUSTER BF_UID BF_DOCKER_HOST BF_URL BF_KUBECONFIG; do
     [[ -n "${!field:-}" ]] || { battlefield_env_error "Profile is missing ${field}."; return 1; }
   done
   battlefield_env_lock KUBERNETES_CONTEXT "${BF_CONTEXT}" || return
@@ -43,14 +48,15 @@ battlefield_env_load() {
   export KUBECONFIG="${KUBECONFIG:-${BF_KUBECONFIG}}"
   [[ -f "${KUBECONFIG}" ]] || { battlefield_env_error 'Dedicated kubeconfig is missing.'; return 1; }
   export BATTLEFIELD_ENV_FILE="${config}"
+  local application_file
   if [[ "${DEPLOY_ENV}" == dev ]]; then
-    battlefield_env_lock BATTLEFIELD_SECRET_FILE "${BF_DATABASE_FILE}" || return
-    battlefield_env_lock BATTLEFIELD_AI_SECRET_FILE "${BF_AI_FILE}" || return
-    battlefield_env_lock BATTLEFIELD_AUTH_SECRET_FILE "${BF_AUTH_FILE}" || return
+    application_file="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)/.env"
+  else
+    application_file="$(cd -- "$(dirname -- "${config}")" && pwd)/.env"
   fi
-  export BATTLEFIELD_SECRET_FILE="${BATTLEFIELD_SECRET_FILE:-${BF_DATABASE_FILE}}"
-  export BATTLEFIELD_AI_SECRET_FILE="${BATTLEFIELD_AI_SECRET_FILE:-${BF_AI_FILE}}"
-  export BATTLEFIELD_AUTH_SECRET_FILE="${BATTLEFIELD_AUTH_SECRET_FILE:-${BF_AUTH_FILE}}"
+  battlefield_env_lock BATTLEFIELD_SECRET_FILE "${application_file}" || return
+  battlefield_env_lock BATTLEFIELD_AI_SECRET_FILE "${application_file}" || return
+  battlefield_env_lock BATTLEFIELD_AUTH_SECRET_FILE "${application_file}" || return
   battlefield_env_lock TARGET_URL "${BF_URL}" || return
   battlefield_env_lock ZAP_TARGET_URL "${BF_URL}" || return
   if [[ "${DEPLOY_ENV}" == production ]]; then

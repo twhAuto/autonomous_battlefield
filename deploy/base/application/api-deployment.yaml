@@ -44,6 +44,8 @@ spec:
             - -config
             - /etc/battlefield/config.yaml
           envFrom:
+            - secretRef:
+                name: battlefield-runtime
             - configMapRef:
                 name: battlefield-langfuse-links
                 optional: true
@@ -58,18 +60,14 @@ spec:
                   name: battlefield-ai
                   key: BATTLEFIELD_CLI_ISOLATION_VERIFIED
                   optional: true
+            - name: BATTLEFIELD_ENVIRONMENT
+              value: local
             - name: BATTLEFIELD_REDIS_URL
               valueFrom:
                 secretKeyRef:
                   name: battlefield-cache
                   key: BATTLEFIELD_REDIS_URL
                   optional: true
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: http://battlefield-otel-collector:4318
-            - name: OTEL_TRACES_SAMPLER_ARG
-              value: "0.1"
-            - name: BATTLEFIELD_ENVIRONMENT
-              value: local
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

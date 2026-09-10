@@ -1,4 +1,9 @@
-# Autonomous Battlefield System Architecture
+# OrdinalFrontier System Architecture
+
+OrdinalFrontier is the public product brand. Existing `autonomous-battlefield`
+resource identifiers, `battlefield` service names, local hostnames, and repository
+paths remain operational identifiers; this branding change does not migrate
+resources, authentication, stored data, or API routes.
 
 | Field | Value |
 | --- | --- |
@@ -23,7 +28,7 @@ deployment credentials. Observability is optional for dev. See the
 
 ## 1. Purpose
 
-Autonomous Battlefield is a deterministic castle-siege auto-battler. Users create reusable faction doctrines, stage a finite battle between two factions, and watch a separate engine execute it. Each faction can use either deterministic scripted plans or a model-backed strategic controller.
+OrdinalFrontier is a deterministic castle-siege auto-battler. Users create reusable faction doctrines, stage a finite battle between two factions, and watch a separate engine execute it. Each faction can use either deterministic scripted plans or a model-backed strategic controller.
 
 The central architectural rule is:
 
@@ -96,6 +101,8 @@ boundaries, frontend ownership, and launcher locations.
 The Vite development proxy defaults to `http://localhost:8080` and accepts a
 server-only `DEV_API_PROXY_TARGET` override from the frontend env files or shell.
 Production/browser API routing continues to use `VITE_API_URL` and Nginx.
+Nginx requires revalidation of the SPA entry document after rollouts and returns
+404 for missing hashed assets instead of routing those requests to HTML.
 
 Frontend feature clients, including faction ruleset discovery, use the shared
 HTTP transport to report network failures consistently while preserving request
@@ -103,6 +110,34 @@ cancellation. Feature clients own HTTP status messages; protected requests also
 notify the application when authentication is required.
 
 ### Battle inspection
+
+The inline map fits its board aspect ratio. Expanding moves the same map state
+into a native modal dialog with focus containment, Escape dismissal, scroll
+locking, and focus restoration. Perspective and entity selection survive this
+transition. Opening or resizing fits the board; live tick updates preserve the
+camera. Pointer and keyboard panning remain local UI state. On mobile the inline
+overview permits page scrolling, with dragging enabled in the expanded map.
+
+Terminal battles display a result without inactive transport controls. Tick
+progress describes usage of the requested maximum, not completion percentage.
+Event presets and exact-type filtering operate on loaded history without changing
+cursor requests, attempt selection, or server records. Key events is the default;
+All events includes unknown types. Summaries are derived from existing payloads,
+with original fields and JSON inside Details. Mobile shows ten matching rows at
+a time and uses page scrolling. A separate polite status announces loaded counts.
+
+The frontend hides identifier displays and copy controls; UUID generation,
+API requests, and routes retain their existing identifiers. Navigation is Stage
+battle, Factions, then Battle history, with creation accessible from Factions.
+Background generation availability distinguishes failed status reads,
+unavailable service, exhausted allowance, cooldown, and active work using existing
+fields. Quota/reset details appear only for an available service. Retry reads do
+not activate providers or configure credentials, and manual editing stays enabled.
+Controller menus show available profiles; unavailable integrations have a separate
+status disclosure. Existing inspection permissions govern model/execution details.
+Faction deletion is offered only in the authorized editor's Danger zone. It keeps
+the named registry-removal confirmation, disables repeat submissions, leaves failed
+deletions on the editor, and navigates to the directory after success.
 
 The SVG map uses compact directional arrows beneath entity icons, matching the
 acting faction's unit color. Movement remains dashed and subdued; attacks use solid
@@ -682,7 +717,7 @@ Migration `00004_battle_decisions.sql` creates a `battlefield_mcp` group role wi
 
 ## 10. Configuration and profile availability
 
-The common YAML configuration defines HTTP, database, API, authentication, engine, and AI settings. Each process loads only the sections it needs. Authentication names the environment variables holding its enable flag, credentials, signing secret, and Secure-cookie flag; the API fails startup when enabled secrets are missing or too short. The development Compose database also requires `BATTLEFIELD_POSTGRES_PASSWORD`; its value belongs in the Git-ignored `backend/.env` or the launching shell and is shared with the local DBHub connection without being committed.
+The common YAML configuration defines HTTP, database, API, authentication, engine, and AI settings. Each process loads only the sections it needs. Authentication names the environment variables holding its enable flag, credentials, signing secret, and Secure-cookie flag; the API fails startup when enabled secrets are missing or too short. Development application settings live in the Git-ignored project-root `.env`; the deployer separates them into database, authentication, and AI Kubernetes Secrets. Production uses the same application schema in a private `.env` beside `deployment.env`.
 
 A model profile specifies:
 
@@ -700,7 +735,7 @@ The API catalog advertises profiles users may select. In cluster mode, an operat
 
 ### Local development
 
-`run-dev.sh` starts PostgreSQL, migrations, API, engine, and Vite. It reads only `BATTLEFIELD_POSTGRES_PASSWORD` from the Git-ignored `backend/.env` when the variable is absent from the shell, then constructs the local database URL. `START_AGENT=1` also starts MCP and the agent.
+`deploy-local.sh` builds images, deploys to the registered dev Kind cluster, and runs smoke checks. Dev reads the root `.env`; production reads `.env` beside its private `deployment.env`. Both files use the shared literal parser and explicit schemas. Application settings are filtered into database, auth, AI and optional-runtime Kubernetes Secrets; deployment identity never enters these Secrets. Application pods refresh on configuration-only deployments. Production tunnel settings remain in the deployment profile and its credential JSON stays separate; tunnel resources are rendered temporarily by the explicit tunnel deployment command. No legacy configuration fallback or persistent generated launch files remain.
 
 | Port | Process |
 | --- | --- |
@@ -745,7 +780,8 @@ are not copied. Observability verification waits for completion of each new
 Deployment rollout concurrently and reports failures before setup verification.
 The source-security stage owns CI manifest rendering and policy validation;
 scanner versions are centralized in `scripts/ci/tool-versions.env`.
-Its Trivy filesystem scan excludes generated `artifacts` and `frontend/coverage`
+Its Trivy filesystem scan excludes generated `artifacts`, `frontend/coverage`,
+`frontend/playwright-report`, and `frontend/test-results`
 directories so parallel coverage cleanup cannot race with source analysis.
 Frontend source and dependency lockfiles remain in scan scope.
 Frontend tests use two Vitest workers and a 15-second per-test timeout to allow
@@ -952,11 +988,13 @@ sites per side. Existing authored maps remain valid.
 Typed `constructionOrders` and optional recruitment `sourceBuildingId` flow
 through controller cloning/validation, frozen worker observations, MCP submissions,
 and persisted decisions. Missing construction orders preserve legacy defaults;
-explicit empty arrays disable construction. New fields are optional in tool schema
-`battlefield.mcp-tools.v5`. All capability data is serialized in existing scenario
-and state JSON, requiring no database migration. Faction projections strip hidden
-action targets; spectators retain the complete event stream. The frontend renders
-healing and tower actions and displays recruitment origins in decision history.
+explicit empty arrays disable construction. These fields were introduced as
+optional in tool schema `battlefield.mcp-tools.v5` and remain optional through
+the current `battlefield.mcp-tools.v7`. All capability data is serialized in
+existing scenario and state JSON, requiring no database migration. Faction
+projections strip hidden action targets; spectators retain the complete event
+stream. The frontend renders healing and tower actions and displays recruitment
+origins in decision history.
 A frontend presentation layer derives readable entity names from existing IDs and
 state metadata; it does not change API payloads, persistence, or engine identity.
 Generated IDs retain their embedded sequence in labels even after an entity dies
@@ -1065,3 +1103,12 @@ The image-verification admission webhook allows 30 seconds per request for
 registry signature and attestation retrieval (`webhookConfiguration.timeoutSeconds`).
 Verification remains enforced with `failurePolicy: Fail`; this timeout does not
 waive missing or invalid evidence.
+
+Unfinished battles expire one hour after creation, including queued and paused
+time. The engine sweeps at startup and every minute independently of active
+battle processing. It atomically marks expired battles failed with
+`battle_timeout`, clears their leases, and cancels pending/running decisions
+using the existing `battle_stopped` cancellation category. History and tick
+state remain available; active admission slots are released but daily usage is
+not refunded. Existing overdue battles expire on rollout. No migration or new
+configuration is required; while the engine is offline, expiry waits for restart.

@@ -7,3 +7,11 @@ regexTarget = "match"
 regexes = [
   '''Idempotency-Key:[[:space:]]+[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}''',
 ]
+
+[[allowlists]]
+description = "Example environment placeholders are instructions, not credentials"
+regexTarget = "secret"
+regexes = [
+  '''^replace-with-at-least-12-characters$''',
+  '''^replace-with-64-character-audience$''',
+]

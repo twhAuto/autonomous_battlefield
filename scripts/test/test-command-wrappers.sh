@@ -9,7 +9,7 @@ test_dir="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-wrapper-test.XXXXXX")"
 cleanup() { rm -rf -- "${test_dir}"; }
 trap cleanup EXIT
 
-wrappers=(run-dev.sh run-k8s-cli-agent.sh deploy-local.sh)
+wrappers=(run-k8s-cli-agent.sh deploy-local.sh)
 for name in test-backend test-go-coverage test-go-race with-test-postgres test-ai-evals fuzz-smoke test-deployment-components test-kind-deployment; do
   wrappers+=("scripts/ci/${name}.sh")
 done

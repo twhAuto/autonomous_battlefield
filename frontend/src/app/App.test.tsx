@@ -2,7 +2,7 @@
 // management, battle creation, and live battle controls.
 
 import { doctrineTemplates } from '../features/factions/pages/CreateFactionPage'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -110,9 +110,8 @@ describe('App', () => {
     renderApp()
 	const menu = screen.getByRole('heading', { name: 'Main menu' }).closest('section')!
 
-    expect(within(menu).getByRole('link', { name: /create faction/i })).toHaveAttribute('href', '/factions/new')
-    expect(within(menu).getByRole('link', { name: /view all factions/i })).toHaveAttribute('href', '/factions')
-    expect(within(menu).getByRole('link', { name: /stage a battle/i })).toHaveAttribute('href', '/battles/new')
+    expect(within(menu).getByRole('heading', { name: 'Factions' }).closest('a')).toHaveAttribute('href', '/factions')
+    expect(within(menu).getByRole('link', { name: /stage battle/i })).toHaveAttribute('href', '/battles/new')
     expect(within(menu).getByRole('link', { name: /battle history/i })).toHaveAttribute('href', '/battles')
   })
 
@@ -121,7 +120,8 @@ describe('App', () => {
     renderApp()
 	const menu = screen.getByRole('heading', { name: 'Main menu' }).closest('section')!
 
-    await user.click(within(menu).getByRole('link', { name: /create faction/i }))
+    await user.click(within(menu).getByRole('heading', { name: 'Factions' }).closest('a')!)
+    await user.click(screen.getByRole('link', { name: '+ CREATE FACTION' }))
 
     expect(screen.getByRole('heading', { name: 'Create a faction' })).toBeInTheDocument()
     expect(screen.getByLabelText('Faction name')).toBeInTheDocument()
@@ -161,16 +161,13 @@ describe('App', () => {
 	expect(await screen.findByText('invalid faction blueprint: recruitment priority is incomplete')).toBeInTheDocument()
   })
 
-  it('regenerates a faction identifier', async () => {
+  it('keeps faction identifiers out of the creation UI', async () => {
 	vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify({ rulesets: [ruleset], scenarios: [] }), { status: 200 }))
-    const user = userEvent.setup()
     renderApp('/factions/new')
 
-	expect(await screen.findByTitle(firstId)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Generate a new faction identifier' }))
-
-	expect(await screen.findByTitle(secondId)).toBeInTheDocument()
-    expect(screen.queryByTitle(firstId)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Generate a new faction identifier' })).not.toBeInTheDocument()
+    expect(screen.queryByText(firstId)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /copy.*identifier/i })).not.toBeInTheDocument()
   })
 
   it('uses editable doctrine templates', async () => {
@@ -197,18 +194,19 @@ describe('App', () => {
 
   it('deletes a faction from the registry after confirmation', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    let deleted = false
     vi.mocked(fetch).mockImplementation(async (input, init) => {
       if (String(input) === '/v1/factions' && !init?.method) {
-        return new Response(JSON.stringify({ factions: [{ id: firstId, name: 'Northwind' }] }), { status: 200 })
+        return new Response(JSON.stringify({ factions: deleted ? [] : [{ id: firstId, name: 'Northwind', doctrine: 'Defend' }] }), { status: 200 })
       }
       if (String(input) === `/v1/factions/${firstId}` && init?.method === 'DELETE') {
+        deleted = true
         return new Response(null, { status: 204 })
       }
       throw new Error(`Unexpected fetch: ${String(input)}`)
     })
     const user = userEvent.setup()
-    renderApp('/factions')
-
+    renderApp(`/factions/${firstId}/edit`)
     await user.click(await screen.findByRole('button', { name: 'DELETE Northwind' }))
 
     expect(confirm).toHaveBeenCalledWith('Delete Northwind? This removes it from the active faction registry.')
@@ -374,7 +372,9 @@ describe('App', () => {
 
     const controllers = await screen.findAllByLabelText('Controller')
     await user.selectOptions(controllers[0], 'gemini-api-balanced')
-    expect(screen.getAllByRole('option', { name: /Codex local.*unavailable/i })).toHaveLength(2)
+    expect(screen.queryByRole('option', { name: /Codex local/i })).not.toBeInTheDocument()
+    await user.click(screen.getByText('AI integration status'))
+    expect(screen.getByText('Codex local')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'DEPLOY COMBATANTS' }))
 
     expect(fetch).toHaveBeenCalledWith('/v1/battles', expect.objectContaining({
@@ -490,7 +490,7 @@ describe('App', () => {
     expect(fetch).toHaveBeenCalledWith(`/v1/battles/${battleId}/stop`, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
     expect(await screen.findByRole('heading', { name: 'Battle stopped' })).toBeInTheDocument()
     expect(screen.getByText('Stopped by operator')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'STOP' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'STOP' })).not.toBeInTheDocument()
   })
 
   it('pauses and resumes an active battle from the battle control panel', async () => {
@@ -618,6 +618,7 @@ describe('App', () => {
     try {
       // Flush the initial status/latest-page requests before advancing polling.
       await act(async () => {})
+      fireEvent.change(screen.getByLabelText('Event group'), { target: { value: 'all' } })
       expect(screen.getByText('#0050')).toBeInTheDocument()
       await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
       expect(screen.getByText('#0100')).toBeInTheDocument()
@@ -720,6 +721,7 @@ describe('App', () => {
 
     expect(await screen.findByRole('heading', { name: 'Battle failed' })).toBeInTheDocument()
     expect(screen.getByText('engine_error')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Event group'), { target: { value: 'all' } })
     expect(await screen.findByText('{"phase":"advance"}')).toBeInTheDocument()
     expect(within(screen.getByRole('listitem')).getByText('—')).toBeInTheDocument()
     expect(screen.getByText('false')).toBeInTheDocument()

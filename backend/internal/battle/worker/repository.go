@@ -32,6 +32,7 @@ type BattleJob struct {
 
 // Repository describes the durable queue operations required by the worker.
 type Repository interface {
+	ExpireBattles(context.Context) error
 	ClaimBattle(context.Context, string, time.Duration, int) (*BattleJob, error)
 	SaveTick(context.Context, BattleLease, game.Transition, time.Duration) error
 	HeartbeatBattle(context.Context, BattleLease, time.Duration) error

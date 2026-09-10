@@ -1,7 +1,8 @@
 // Application shell and route table. Checks the session, handles login/logout and API
 // authentication expiry, and wraps feature pages in shared navigation.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMobile } from '../shared/hooks/useMobile'
 import { Link, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { CreateFactionPage } from '../features/factions/pages/CreateFactionPage'
 import { CreateBattlePage } from '../features/battles/pages/CreateBattlePage'
@@ -14,9 +15,14 @@ import { authenticationClient, type AuthenticationClient, type AuthSession } fro
 import { authenticationRequiredEvent } from '../shared/api/request'
 import { SessionContext } from '../features/auth/SessionContext'
 import '../styles.css'
+import '../usability.css'
 
 function AppLayout({ actorID, onLogout }: Readonly<{ actorID: string; onLogout(): void }>) {
   const location = useLocation()
+  const mobile = useMobile()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => { setMenuOpen(false) }, [location.pathname, mobile])
   const isBattleDetail = /^\/battles\/[^/]+$/.test(location.pathname)
   const currentDate = useMemo(
     () => new Intl.DateTimeFormat('en', {
@@ -29,16 +35,20 @@ function AppLayout({ actorID, onLogout }: Readonly<{ actorID: string; onLogout()
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <Link className="brand" to="/" aria-label="Autonomous Battlefield home">
-          <span className="brand__glyph">A</span>
-          <span>AUTONOMOUS<br />BATTLEFIELD</span>
+      <a className="skip-link" href="#main-content">Skip to main content</a>
+      <header className="topbar" onKeyDown={event => {
+        if (event.key === 'Escape' && menuOpen) { setMenuOpen(false); menuButton.current?.focus() }
+      }}>
+        <Link className="brand" to="/" aria-label="OrdinalFrontier home">
+          <span className="brand__glyph" aria-hidden="true">O</span>
+          <span className="brand__name">OrdinalFrontier</span>
         </Link>
-        <nav className="primary-nav" aria-label="Primary navigation">
-          <NavLink to="/battles" end>Battle history</NavLink>
+        {mobile && <button ref={menuButton} type="button" className="menu-toggle" aria-expanded={menuOpen} aria-controls="primary-navigation" onClick={() => setMenuOpen(value => !value)}>Menu</button>}
+        <nav id="primary-navigation" className="primary-nav" aria-label="Primary navigation" hidden={mobile && !menuOpen} onClick={() => { if (mobile) { setMenuOpen(false); menuButton.current?.focus() } }}>
           <NavLink to="/battles/new">Stage battle</NavLink>
-          <NavLink to="/factions/new">Create faction</NavLink>
-          <NavLink to="/factions">All factions</NavLink>
+          <NavLink to="/factions">Factions</NavLink>
+          <NavLink to="/battles" end>Battle history</NavLink>
+          {mobile && <div className="mobile-account"><span>Signed in as {actorID}</span><button type="button" onClick={onLogout} aria-label={`Log out ${actorID}`}>Log out</button></div>}
         </nav>
         <div className="topbar__status">
           <span className="status-dot" />
@@ -49,10 +59,10 @@ function AppLayout({ actorID, onLogout }: Readonly<{ actorID: string; onLogout()
         </div>
       </header>
 
-      <main id="main-content" className={isBattleDetail ? 'main-content--battle' : undefined}><Outlet /></main>
+      <main id="main-content" tabIndex={-1} className={isBattleDetail ? 'main-content--battle' : undefined}><Outlet /></main>
 
       <footer>
-        <span>AUTONOMOUS BATTLEFIELD / COMMAND INTERFACE</span>
+        <span>OrdinalFrontier / COMMAND INTERFACE</span>
         <span>BUILD 0.3.0</span>
       </footer>
     </div>

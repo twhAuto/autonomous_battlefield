@@ -22,7 +22,7 @@ export function BattleHeader({ battle, battleTitle, connection, connectionMessag
       <Link className="back-link" to="/battles/new">← NEW BATTLE</Link>
       <div className="battle-status-heading">
         <div>
-          <div className="hero__eyebrow"><span>04</span> LIVE ENGAGEMENT</div>
+          <div className="hero__eyebrow"><span>04</span> {['completed', 'stopped', 'failed'].includes(battle.status) ? 'Battle result' : 'Live engagement'}</div>
           <h1>{battleTitle}</h1>
         </div>
         <ConnectionBadge state={connection} />
@@ -37,7 +37,6 @@ export function BattleHeader({ battle, battleTitle, connection, connectionMessag
         <span>SCENARIO <strong>{battle.scenarioId}</strong></span>
         <span>ATTEMPT <strong>{battle.attempt}</strong></span>
         <span>STATUS <strong>{battle.status}</strong></span>
-        <code title={battle.id}>{battle.id}</code>
       </div>
     </section>
   )
@@ -53,7 +52,7 @@ export function BattleStatistics({ battle, participantNames }: Readonly<{ battle
           <article key={stats.factionId} className="statistics-card">
             <h2>{participantNames.get(stats.factionId) ?? stats.factionId}</h2>
             <dl>
-              <Stat label="Units" value={`${stats.unitsRemaining} / ${stats.unitsStarted}`} />
+              <Stat label="Units remaining / started" value={`${stats.unitsRemaining} / ${stats.unitsStarted}`} />
               <Stat label="Castle health" value={stats.castleHealth ?? 0} />
               <Stat label="Recruited / lost" value={`${stats.unitsRecruited ?? 0} / ${stats.unitsLost ?? 0}`} />
               <Stat label="Damage dealt" value={stats.damageDealt} />
@@ -112,6 +111,7 @@ export function BattleControls({ battle, state, message, onControl }: Readonly<{
 }>) {
   const active = battle.status === 'queued' || battle.status === 'running'
   const busy = state === 'pausing' || state === 'resuming' || state === 'stopping'
+  if (!active) return null
   return (
     <div className="battle-controls">
       <fieldset aria-label="Battle controls">
