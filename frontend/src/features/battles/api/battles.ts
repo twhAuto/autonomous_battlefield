@@ -248,6 +248,9 @@ export async function createBattle(input: CreateBattleInput): Promise<{ id: stri
   if (response.status === 422) {
     throw new BattleApiError('Both factions must use the scenario ruleset.', 422)
   }
+  if (response.status === 429) {
+    throw new BattleApiError('Battle allowance reached. Queued, running, and paused battles count toward active limits. Check Battle history to resume or stop an unfinished battle, or try later if the daily allowance has been used.', 429)
+  }
   throw new BattleApiError('The battle could not be queued. Please try again.', response.status)
 }
 

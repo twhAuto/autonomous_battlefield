@@ -941,3 +941,8 @@ Run the Go coverage gate with disposable PostgreSQL integration coverage:
 (cd frontend && npm test -- --coverage)
 (cd frontend && npm run build)
 ```
+
+Battle creation maps HTTP 429 to an allowance explanation: queued, running, and
+paused battles count toward active limits. The message directs players to battle
+history or to retry later for daily limits; the API does not distinguish the
+exhausted limit in its response.

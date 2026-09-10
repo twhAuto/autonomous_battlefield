@@ -83,6 +83,7 @@ describe('battle API', () => {
     [404, 'A selected faction or scenario no longer exists'],
     [400, 'The battle configuration was rejected'],
     [422, 'Both factions must use the scenario ruleset'],
+    [429, 'Battle allowance reached. Queued, running, and paused battles count toward active limits.'],
     [500, 'The battle could not be queued'],
   ])('maps create status %d', async (status, message) => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status }))
