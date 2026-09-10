@@ -34,6 +34,13 @@ for (const [width, height] of [[15, 11], [25, 17]]) {
     await page.goto(`/battles/${battleId}`)
     await expect(page.getByText('Tick 89 of 500 maximum', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'PLAY', exact: true })).toHaveCount(0)
+    const inlineMap = page.getByLabel('Map navigation')
+    const dimensions = await inlineMap.evaluate(node => {
+      const bounds = node.getBoundingClientRect()
+      const [width, height] = getComputedStyle(node).aspectRatio.split('/').map(Number)
+      return { actual: bounds.width / bounds.height, expected: width / height }
+    })
+    expect(dimensions.actual).toBeCloseTo(dimensions.expected, 2)
     await page.getByRole('button', { name: 'Amber · Castle', exact: true }).click()
     await page.getByRole('button', { name: 'Expand map' }).click()
     const dialog = page.getByRole('dialog')

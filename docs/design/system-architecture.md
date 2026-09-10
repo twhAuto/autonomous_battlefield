@@ -96,6 +96,8 @@ boundaries, frontend ownership, and launcher locations.
 The Vite development proxy defaults to `http://localhost:8080` and accepts a
 server-only `DEV_API_PROXY_TARGET` override from the frontend env files or shell.
 Production/browser API routing continues to use `VITE_API_URL` and Nginx.
+Nginx requires revalidation of the SPA entry document after rollouts and returns
+404 for missing hashed assets instead of routing those requests to HTML.
 
 Frontend feature clients, including faction ruleset discovery, use the shared
 HTTP transport to report network failures consistently while preserving request

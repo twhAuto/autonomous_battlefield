@@ -520,6 +520,8 @@ the toolbar and map layout stack at 1000px. Controls and inspector share a 340px
 desktop column and a 14px gutter, aligning their left and right borders.
 The inline map uses the board's aspect ratio and can expand into a native modal
 dialog. Camera fitting happens on opening and viewport resizing, not live ticks.
+`usability.css` overrides the legacy fixed map height at the battle-layout
+specificity; browser tests assert the rendered aspect ratio to prevent regression.
 The inspector's desktop content scrolls internally; mobile uses page scrolling.
 Terminal battles hide Play/Pause/Stop and label tick usage as a maximum rather
 than completion. `components/FactionSummaries.tsx` shows each

@@ -53,6 +53,8 @@ The production image serves the compiled frontend through unprivileged Nginx
 on port 8080. `/startupz`, `/livez`, and `/readyz` report the Nginx process
 health; the deployment smoke test separately calls `/v1/scenarios` to prove the
 reverse proxy can reach the API.
+The SPA entry document sends `Cache-Control: no-cache` so browsers revalidate
+asset references after a rollout. Missing hashed assets return 404 instead of HTML.
 
 For a deployed frontend, either set `VITE_API_URL` at build time to the API's
 public origin or route `/v1` through the same reverse proxy. The Kubernetes

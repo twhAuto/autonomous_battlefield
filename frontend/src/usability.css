@@ -12,6 +12,7 @@
 .app-shell :is(p, td, th, dd), .battle-inspector :is(p, table, summary) { font-size: 14px; line-height: 1.6; }
 .app-shell :is(label, dt, code), .battle-inspector :is(dt, label) { font-size: 12px; }
 .app-shell :is(input, textarea, select), .login-card input { font-size: 16px; }
+.app-shell select { min-height: 44px; }
 .app-shell :is(button, summary), .primary-nav a { min-height: 44px; }
 .primary-nav a { display: flex; align-items: center; }
 .topbar { height: auto; min-height: 84px; gap: 20px; flex-wrap: wrap; padding-block: 12px; }
@@ -22,7 +23,10 @@
 .map-zoom-controls button { min-width: 44px; }
 .back-link + .back-link { margin-left: 20px; }
 .map-viewport { height: auto; }
+.battle-live-layout .map-panel { height: auto; }
+.battle-live-layout .map-viewport { height: auto; flex: none; }
 .map-toolbar__controls, .map-zoom-controls { flex-wrap: wrap; }
+.map-perspective-control select { color: #dce2d5; background: var(--ink); border: 1px solid #454d41; padding: 0 10px; }
 .map-viewport--overview { touch-action: pan-y; }
 .map-viewport--overview svg { cursor: default; }
 .expanded-map { width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; padding: 0; border: 0; color: #ecf0e5; background: var(--ink); }
@@ -36,6 +40,7 @@
 .identifier__short { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .identifier button, .background-generator button, .integration-status button { color: var(--lime); border: 1px solid var(--line); background: var(--ink); padding: 8px 12px; }
 .identifier summary { cursor: pointer; display: flex; align-items: center; color: #aeb6a9; }
+.registry-card a { color: var(--lime); }
 .identifier__full { overflow-wrap: anywhere; user-select: text; }
 .identifier [role='status'] { display: block; overflow-wrap: anywhere; }
 .battle-preview__faction .identifier { grid-column: 2; }
@@ -43,6 +48,8 @@
 .danger-zone button { background: #211714; border: 1px solid #b17768; color: #ffb3a5; padding: 12px 20px; }
 .integration-status { margin-bottom: 24px; }
 .integration-status summary { cursor: pointer; padding-block: 12px; }
+.form-panel fieldset { border: 1px solid var(--line); margin: 24px 0; padding: 16px; }
+.form-panel fieldset button { color: var(--lime); background: var(--ink); border: 1px solid var(--line); padding: 10px 12px; margin: 4px; }
 @media (max-width: 780px) {
   .topbar { position: relative; padding: 12px 16px; min-height: 70px; }
   .primary-nav { width: 100%; flex-direction: column; align-items: stretch; gap: 4px; }
