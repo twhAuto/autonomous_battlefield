@@ -33,9 +33,11 @@ autonomous_battlefield/
 │   │   ├── game/               # Deterministic state transitions
 │   │   │   └── controller/     # Infrastructure-free controller contracts
 │   │   ├── ai/                 # Decision execution, providers, MCP, evaluations
+│   │   ├── generation/         # Faction background generation jobs and quotas
 │   │   ├── testutil/           # Shared assertions with lazy failure diagnostics
 │   │   └── ...                 # app, authn, config, httpapi, postgres, logging, telemetry
 │   ├── migrations/             # Embedded SQL migrations
+│   ├── content/                # Shared versioned unit and building libraries
 │   ├── rulesets/               # Versioned game rules
 │   ├── scenarios/              # Authored battle templates
 │   └── evals/                  # Evaluation cases and pricing configuration
@@ -59,7 +61,7 @@ autonomous_battlefield/
 ├── tests/performance/          # k6 scenarios
 ├── quality/sonarqube/          # Local analysis service
 ├── policy/                     # Deployment policy
-└── docs/{design,operations,security}/
+└── docs/{design,operations,reference,security}/
 ```
 
 ## 2. Executable entry points
@@ -133,6 +135,8 @@ The package root contains types and interfaces shared across these subpackages, 
 | [`types.go`](../../backend/internal/game/types.go) | Maps, rulesets, factions, units, buildings, state, events, results, controller config, and faction views |
 | [`match.go`](../../backend/internal/game/match.go) | Runtime state, tick orchestration, events, and results |
 | [`initialization.go`](../../backend/internal/game/initialization.go) | Scenario validation and initial factions, castles, and units |
+| [`opening.go`](../../backend/internal/game/opening.go) | Tick-zero opening phase and deterministic fallback |
+| [`upgrades.go`](../../backend/internal/game/upgrades.go) | One-time gold purchases and bonus propagation |
 | [`decisions.go`](../../backend/internal/game/decisions.go) | Decision snapshots, plan validation, scripted plans, and tactics |
 | [`economy.go`](../../backend/internal/game/economy.go) | Income, construction, and recruitment |
 | [`structures.go`](../../backend/internal/game/structures.go) | Typed construction, building caps, tower turns, and forward recruitment |
@@ -248,13 +252,32 @@ SQL concurrency behavior is part of the application's correctness. Changes to st
 | [`types.go`](../../backend/internal/ai/types.go) | Decision sessions, contexts, submissions, records, model turns, tools, usage, and profiles |
 | [`repository.go`](../../backend/internal/ai/repository.go) | Durable decision repository contract and errors |
 | [`service.go`](../../backend/internal/ai/service.go) | Context reads, plan validation, observation hashes, and HMAC capabilities |
-| [`prompts.go`](../../backend/internal/ai/prompts.go) | Embedded shared instructions, context delivery, and complete prompt digest |
+| [`prompts.go`](../../backend/internal/ai/prompts.go) | Embedded shared instructions, context delivery, and separate battle and background-generation prompt digests |
 | [`knowledge.go`](../../backend/internal/ai/knowledge.go) | Bounded knowledge selection from frozen rules and faction-visible context |
 | [`memory.go`](../../backend/internal/ai/memory.go) | Scoped, chronological historical decision summaries with count/byte bounds |
 | [`profiles.go`](../../backend/internal/ai/profiles.go) | API/CLI profile validation and availability evaluation |
 
-Background writer instructions live in `prompts/background-generation.txt` and
-`prompts/background-decision.txt`. `GenerationPromptVersion` covers both instruction
+Prompt files are embedded through [`prompts.go`](../../backend/internal/ai/prompts.go).
+`PromptVersion` hashes the six battle prompt templates below and the inline
+`identityContextTemplate`; background writer prompts have a separate
+`GenerationPromptVersion`.
+
+| File | Role |
+| --- | --- |
+| `prompts/battlefield-agent.txt` | Battle session system prompt establishing tool-only authority and untrusted observations |
+| `prompts/decision.txt` | Main tactical and production decision instructions |
+| `prompts/tool-context.txt` | Short per-decision prompt when context is fetched through MCP |
+| `prompts/inline-context.txt` | Variant used when the host has already supplied the full context JSON |
+| `prompts/doctrine.txt` | Doctrine template embedded and included in `PromptVersion`, but currently not rendered |
+| `prompts/identity.txt` | Identity template embedded and included in `PromptVersion`, but currently not rendered |
+| `prompts/background-generation.txt` | Background writer system instructions |
+| `prompts/background-decision.txt` | Background writer per-job instructions |
+
+For battle sessions, `SessionSystemPrompt` returns the battlefield system prompt.
+`SessionDecisionPrompt` appends the faction name, background, and doctrine as JSON
+inside the untrusted-data delimiters defined by `identityContextTemplate`.
+
+`GenerationPromptVersion` covers both background writer instruction
 components and the rendered character limit. Faction limits are declared in
 `internal/faction/faction.go` and mirrored in frontend `features/factions/limits.ts`;
 update both when changing this API contract. Existing Unicode boundary tests cover
@@ -359,6 +382,26 @@ so whitespace normalization and Unicode length limits stay consistent. The
 
 Deleting a faction removes it from the active registry but does not affect the copied participant data inside existing battle snapshots.
 
+### `internal/generation`: faction background generation
+
+| File | Responsibility |
+| --- | --- |
+| [`types.go`](../../backend/internal/generation/types.go) | Configuration, normalized draft input, job state, quota options, and the repository contracts |
+| [`handler.go`](../../backend/internal/generation/handler.go) | Authenticated options, admission, and status routes under `/v1/faction-background-generations` |
+| [`postgres.go`](../../backend/internal/generation/postgres.go) | Transactional admission, account quotas, idempotency, durable claims, expiry, and result recording |
+
+This package runs background writing as durable asynchronous jobs rather than
+inline requests. `Admit` opens a transaction per actor, expires stale jobs,
+evaluates the account quota, and reuses an existing job when the idempotency key
+and input hash match. `Claim` hands a job to an agent worker by executable
+profile. `Submit` and `Finish` record the draft, category, usage, and metadata.
+
+The generation path never touches battle or simulation state. Its worker side
+lives in [`ai/worker/generation.go`](../../backend/internal/ai/worker/generation.go)
+and its tool surface in [`ai/mcpserver/generation.go`](../../backend/internal/ai/mcpserver/generation.go),
+which exposes draft-only tools and namespaced capabilities. Migration
+`00009_faction_background.sql` owns the jobs, account locks, and quota indexes.
+
 ### Shared infrastructure packages
 
 - [`internal/authn`](../../backend/internal/authn) provides Cloudflare JWT verification, explicit development login modes, role/ownership helpers, exact-origin mutations, a deny-by-default route permission registry, and mode-aware session/logout routes. `cloudflare_test.go` exercises signatures, key rotation, forged headers, legacy cookies and role removal.
@@ -411,6 +454,7 @@ Migrations under [`backend/migrations`](../../backend/migrations) are embedded i
 | `00008_faction_doctrine.sql` | Faction doctrine and versioned battle snapshots |
 | `00009_faction_background.sql` | Faction background and asynchronous generation jobs |
 | `00010_battle_history.sql` | Descending creation-time/ID index for battle history |
+| `00011_friends_access.sql` | Row ownership, atomic admission triggers, AI execution counts, single CLI lease, runtime stop policy, and private usage view |
 
 Schema changes should be made with a new migration, then reflected in repository scan/serialization logic and tests. Do not edit an already-applied migration to evolve a shared database.
 
@@ -509,6 +553,7 @@ to reject unused local declarations and parameters alongside strict type checks.
 | [`deploy/environments/database.env.example`](../../deploy/environments/database.env.example) | Database secret reference; preserve existing credentials |
 | [`deploy/environments/ai.env.example`](../../deploy/environments/ai.env.example) | Local Kubernetes AI secret template |
 | [`deploy/environments/auth.env.example`](../../deploy/environments/auth.env.example) | Development login template; production uses the private rendered Cloudflare configuration |
+| [`deploy/environments/environment.env.example`](../../deploy/environments/environment.env.example) | Deployment environment profile template consumed by the shared resolver |
 
 Configuration is decoded with `yaml.KnownFields(true)`. Update the file-facing struct, parsed runtime struct, validation, examples, deployment ConfigMap, and tests together.
 
@@ -523,6 +568,9 @@ The key application manifests are:
 - `agent-deployment.yaml`;
 - `mcp-deployment.yaml`, `mcp-service.yaml`, and `mcp-network-policy.yaml`;
 - frontend deployment and service;
+- `ingress.yaml` for external routing;
+- `api-hpa.yaml` for API horizontal autoscaling;
+- `api-pdb.yaml` and `frontend-pdb.yaml` for disruption budgets;
 - migration overlay job.
 
 [`run-dev.sh`](../../scripts/dev/run-dev.sh) is the local multi-process launcher. It obtains the Compose PostgreSQL password from the shell or the Git-ignored `backend/.env`; `backend/compose.yaml` has no committed database credential. [`run-k8s-cli-agent.sh`](../../scripts/dev/run-k8s-cli-agent.sh) bridges authenticated host subscription CLIs to a Kubernetes MCP service. CI/CD helpers under `scripts` classify affected components, build images, apply migrations, deploy, smoke-test, and roll back.

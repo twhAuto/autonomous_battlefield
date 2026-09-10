@@ -952,11 +952,13 @@ sites per side. Existing authored maps remain valid.
 Typed `constructionOrders` and optional recruitment `sourceBuildingId` flow
 through controller cloning/validation, frozen worker observations, MCP submissions,
 and persisted decisions. Missing construction orders preserve legacy defaults;
-explicit empty arrays disable construction. New fields are optional in tool schema
-`battlefield.mcp-tools.v5`. All capability data is serialized in existing scenario
-and state JSON, requiring no database migration. Faction projections strip hidden
-action targets; spectators retain the complete event stream. The frontend renders
-healing and tower actions and displays recruitment origins in decision history.
+explicit empty arrays disable construction. These fields were introduced as
+optional in tool schema `battlefield.mcp-tools.v5` and remain optional through
+the current `battlefield.mcp-tools.v7`. All capability data is serialized in
+existing scenario and state JSON, requiring no database migration. Faction
+projections strip hidden action targets; spectators retain the complete event
+stream. The frontend renders healing and tower actions and displays recruitment
+origins in decision history.
 A frontend presentation layer derives readable entity names from existing IDs and
 state metadata; it does not change API payloads, persistence, or engine identity.
 Generated IDs retain their embedded sequence in labels even after an entity dies
