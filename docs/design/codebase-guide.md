@@ -877,6 +877,14 @@ Battle setup selects generic profiles without blueprint compatibility filtering.
   evaluations carry profile identity in their context and session.
 
 
+### Responsive navigation and forms
+
+`AppLayout` owns the mobile menu, account actions, Escape/focus handling and skip
+link. `useMobile` shares the 780px breakpoint with CSS. `ResponsivePreview` keeps
+form previews after the controls and collapses them on mobile. The visual theme
+is followed by `usability.css` for accessible typography and interaction rules.
+Navigation and preview tests cover disclosure behavior and responsive changes.
+
 ### Battle history implementation and verification
 
 The battle API, service, and repository each contain a `history.go` adapter:

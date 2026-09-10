@@ -7,6 +7,7 @@ import { Link, useParams } from 'react-router-dom'
 import { createFaction, listFactions, updateFaction } from '../api/factions'
 import { usePermissions } from '../../auth/SessionContext'
 import { Emblem } from '../../../shared/components/Emblem'
+import { ResponsivePreview } from '../../../shared/components/ResponsivePreview'
 
 // Editable starting strategies; keep Balanced aligned with the backend's BalancedDoctrine.
 export const doctrineTemplates = {
@@ -93,7 +94,7 @@ export function CreateFactionPage() {
  </form>}
  <div className="form-message" aria-live="polite">{message && <p className={`form-message--${status}`}>{message}</p>}{status === 'success' && <Link className="text-link" to="/factions">View faction registry →</Link>}</div>
  </div>
- <aside className="preview-panel" aria-label="Faction doctrine preview"><div className="preview-panel__grid" /><div className="preview-panel__heading"><span>FACTION PREVIEW</span></div><div className="preview-panel__content"><Emblem seed={name.trim() || 'Your faction'} /><h3>{name.trim() || 'Your faction'}</h3><p style={{whiteSpace:'pre-wrap'}}>{doctrine}</p>{background && <p style={{whiteSpace:'pre-wrap'}}>{background}</p>}</div></aside>
+ <ResponsivePreview label="Preview faction"><aside className="preview-panel" aria-label="Faction doctrine preview"><div className="preview-panel__grid" /><div className="preview-panel__heading"><span>FACTION PREVIEW</span></div><div className="preview-panel__content"><Emblem seed={name.trim() || 'Your faction'} /><h3>{name.trim() || 'Your faction'}</h3><p style={{whiteSpace:'pre-wrap'}}>{doctrine}</p>{background && <p style={{whiteSpace:'pre-wrap'}}>{background}</p>}</div></aside></ResponsivePreview>
  </section>
  </>
 }

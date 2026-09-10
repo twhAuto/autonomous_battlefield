@@ -27,6 +27,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     test: {
+      include: ['src/**/*.test.{ts,tsx}', '*.test.ts'],
       environment: 'jsdom',
       setupFiles: './src/test/setup.ts',
       // Jenkins shares its agent with parallel Go, fuzz, and security checks.

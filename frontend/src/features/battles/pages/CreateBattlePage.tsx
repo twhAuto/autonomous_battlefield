@@ -14,6 +14,7 @@ import {
 } from '../api/battles'
 import { Faction, FactionApiError, listFactions } from '../../factions/api/factions'
 import { Emblem } from '../../../shared/components/Emblem'
+import { ResponsivePreview } from '../../../shared/components/ResponsivePreview'
 
 type LoadState = 'loading' | 'ready' | 'empty' | 'error'
 
@@ -222,7 +223,7 @@ export function CreateBattlePage() {
             </form>
           </div>
 
-          <aside className="battle-preview" aria-label="Selected combatants">
+          <ResponsivePreview label="Preview combatants"><aside className="battle-preview" aria-label="Selected combatants">
             <div className="preview-panel__grid" />
             <div className="preview-panel__heading"><span>COMBATANT PREVIEW</span><span>ARMED</span></div>
             <div className="battle-preview__combatants">
@@ -230,7 +231,7 @@ export function CreateBattlePage() {
               <div className="battle-preview__axis"><span />VERSUS<span /></div>
               <Combatant faction={secondFaction} slot="02" />
             </div>
-          </aside>
+          </aside></ResponsivePreview>
         </section>
       )}
     </>
