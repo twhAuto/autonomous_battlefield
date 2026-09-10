@@ -1,4 +1,9 @@
-# Autonomous Battlefield System Architecture
+# OrdinalFrontier System Architecture
+
+OrdinalFrontier is the public product brand. Existing `autonomous-battlefield`
+resource identifiers, `battlefield` service names, local hostnames, and repository
+paths remain operational identifiers; this branding change does not migrate
+resources, authentication, stored data, or API routes.
 
 | Field | Value |
 | --- | --- |
@@ -23,7 +28,7 @@ deployment credentials. Observability is optional for dev. See the
 
 ## 1. Purpose
 
-Autonomous Battlefield is a deterministic castle-siege auto-battler. Users create reusable faction doctrines, stage a finite battle between two factions, and watch a separate engine execute it. Each faction can use either deterministic scripted plans or a model-backed strategic controller.
+OrdinalFrontier is a deterministic castle-siege auto-battler. Users create reusable faction doctrines, stage a finite battle between two factions, and watch a separate engine execute it. Each faction can use either deterministic scripted plans or a model-backed strategic controller.
 
 The central architectural rule is:
 

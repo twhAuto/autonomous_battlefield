@@ -1,4 +1,4 @@
-# Autonomous Battlefield frontend
+# OrdinalFrontier frontend
 
 React and TypeScript command interface for faction management and queued battles.
 

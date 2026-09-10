@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>OrdinalFrontier</title>
+  <path fill="#111510" d="M0 0h64v64H0z"/>
+  <path fill="#d8ff68" d="m32 4 25 12-7 34-18 10-18-10-7-34z"/>
+  <path fill="none" stroke="#111510" stroke-width="5" d="M40 26a8 8 0 0 0-16 0v12a8 8 0 0 0 16 0z"/>
+</svg>

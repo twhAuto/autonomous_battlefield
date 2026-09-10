@@ -41,7 +41,7 @@ export function FactionsPage() {
         <div className="directory-title">
           <div>
             <h1>All factions</h1>
-            <p>Every banner registered on the Autonomous Battlefield.</p>
+            <p>Every banner registered in OrdinalFrontier.</p>
           </div>
           <Link className="compact-action" to="/factions/new">+ CREATE FACTION</Link>
         </div>

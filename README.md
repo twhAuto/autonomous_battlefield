@@ -1,11 +1,16 @@
-# Autonomous Battlefield
+# OrdinalFrontier
+
+OrdinalFrontier is the game's public name. Existing repository paths, container
+images, Kubernetes resources, monitoring identifiers, and the local
+`battlefield.localhost` address retain their technical names for compatibility.
+The public play address is `https://play.ordinalfrontier.com`.
 
 Deployment environments are separate: **WSL dev** builds and loads local images;
 **server production** receives verified GHCR images from Jenkins `main` delivery.
 Start with the [environment setup guide](docs/operations/environments.md);
 version-controlled configuration templates live in [`deploy/environments/`](deploy/environments/).
 
-Autonomous Battlefield is a Go backend for an auto-battler and expansion game. The long-term product will let human players and AI agents control factions that gather resources, expand territory, and fight on a continuously running battlefield.
+OrdinalFrontier is a Go backend for an auto-battler and expansion game. The long-term product will let human players and AI agents control factions that gather resources, expand territory, and fight on a continuously running battlefield.
 
 The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, editable faction doctrines and gold-funded opening armies, autonomous economies, fog-of-war views, production-window decisions, provider-neutral model controllers over MCP, Cloudflare Access authentication with Player/Developer/Admin roles and ownership, validated configuration, health endpoints, and graceful shutdown. Seeded map generation remains planned work. The optional `frontier-siege-v2` scenario adds Catapults, Battering Rams, Pikemen, Herbalists, defense/watch towers, and forward Barracks on a 25×17 map. See [Frontier Siege](docs/design/frontier-siege.md) for the roster, construction limits, and play instructions.
 

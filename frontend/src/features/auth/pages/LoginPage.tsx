@@ -31,10 +31,10 @@ export function LoginPage({ authentication, onAuthenticated }: Readonly<LoginPag
   return (
     <main className="login-page">
       <section className="login-card" aria-labelledby="login-title">
-        <div className="login-card__mark" aria-hidden="true">A</div>
-        <span className="login-card__eyebrow">RESTRICTED COMMAND INTERFACE</span>
+        <div className="login-card__mark" aria-hidden="true">O</div>
+        <span className="login-card__eyebrow">OrdinalFrontier</span>
         <h1 id="login-title">Identify commander.</h1>
-        <p>Authenticate before entering the autonomous battlefield control plane.</p>
+        <p>Authenticate before entering the OrdinalFrontier command interface.</p>
         <form onSubmit={submit}>
           <label htmlFor="login-username">Username</label>
           <input

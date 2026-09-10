@@ -39,9 +39,9 @@ function AppLayout({ actorID, onLogout }: Readonly<{ actorID: string; onLogout()
       <header className="topbar" onKeyDown={event => {
         if (event.key === 'Escape' && menuOpen) { setMenuOpen(false); menuButton.current?.focus() }
       }}>
-        <Link className="brand" to="/" aria-label="Autonomous Battlefield home">
-          <span className="brand__glyph">A</span>
-          <span>AUTONOMOUS<br />BATTLEFIELD</span>
+        <Link className="brand" to="/" aria-label="OrdinalFrontier home">
+          <span className="brand__glyph" aria-hidden="true">O</span>
+          <span className="brand__name">OrdinalFrontier</span>
         </Link>
         {mobile && <button ref={menuButton} type="button" className="menu-toggle" aria-expanded={menuOpen} aria-controls="primary-navigation" onClick={() => setMenuOpen(value => !value)}>Menu</button>}
         <nav id="primary-navigation" className="primary-nav" aria-label="Primary navigation" hidden={mobile && !menuOpen} onClick={() => { if (mobile) { setMenuOpen(false); menuButton.current?.focus() } }}>
@@ -63,7 +63,7 @@ function AppLayout({ actorID, onLogout }: Readonly<{ actorID: string; onLogout()
       <main id="main-content" tabIndex={-1} className={isBattleDetail ? 'main-content--battle' : undefined}><Outlet /></main>
 
       <footer>
-        <span>AUTONOMOUS BATTLEFIELD / COMMAND INTERFACE</span>
+        <span>OrdinalFrontier / COMMAND INTERFACE</span>
         <span>BUILD 0.3.0</span>
       </footer>
     </div>

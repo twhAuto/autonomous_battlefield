@@ -2,6 +2,9 @@ import { test, expect, battleId, factionId } from './fixtures'
 
 test('navigation, focus, responsive forms and logout', async ({ page, isMobile }) => {
   await page.goto('/')
+  await expect(page).toHaveTitle('OrdinalFrontier')
+  await expect(page.getByRole('link', { name: 'OrdinalFrontier home' })).toBeVisible()
+  await expect(page.locator('.brand__name')).toBeVisible()
   await page.keyboard.press('Tab')
   await expect(page.getByRole('link', { name: 'Skip to main content' })).toBeFocused()
   if (isMobile) {
@@ -27,6 +30,7 @@ test('navigation, focus, responsive forms and logout', async ({ page, isMobile }
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click()
   await page.getByRole('button', { name: 'Log out admin' }).click()
   await expect(page.getByRole('heading', { name: 'Identify commander.' })).toBeVisible()
+  await expect(page.locator('.login-card__eyebrow')).toHaveText('OrdinalFrontier')
 })
 for (const [width, height] of [[15, 11], [25, 17]]) {
   test(`map ${width}x${height}, expansion, focus and result clarity`, async ({ page, api }) => {

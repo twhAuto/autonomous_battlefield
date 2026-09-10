@@ -1,4 +1,9 @@
-# Autonomous Battlefield Codebase Guide
+# OrdinalFrontier Codebase Guide
+
+The public product name is OrdinalFrontier. Its wordmark and O emblem appear in
+the application shell and login page; `frontend/index.html` owns browser metadata
+and `frontend/public/ordinalfrontier.svg` is the matching favicon. Historical
+repository/package paths and deployment identifiers remain compatible.
 
 | Field | Value |
 | --- | --- |
