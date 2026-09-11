@@ -6,7 +6,11 @@ images, Kubernetes resources, monitoring identifiers, and the local
 The public play address is `https://play.ordinalfrontier.com`.
 
 The command menu starts with Stage battle, followed by Factions and Battle
-history. Create new factions from the Factions page. Technical identifiers are
+history. Administrators can open the Control center from the Admin navigation
+item to enable or disable providers and configured model profiles, set model access
+by role, and preview the app as a Player or Developer. Access settings persist in
+the database; credentials and model definitions remain deployment settings. Create
+new factions from the Factions page. Technical identifiers are
 handled internally and are hidden from ordinary screens.
 
 Deployment environments are separate: **WSL dev** builds and loads local images;

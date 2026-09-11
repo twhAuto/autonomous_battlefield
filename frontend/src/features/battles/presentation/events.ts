@@ -23,7 +23,10 @@ export function eventSummary(event: BattleEvent, naming: EntityNaming) {
     case 'unit_attack_missed': return `${label('attackerId', 'A unit')} missed its target.`
     case 'unit_healed': return `${label('healerId', 'A healer')} treated ${label('targetId', 'an ally')}.`
     case 'building_attacked': case 'tower_attacked': return `${label('attackerId', 'A building')} attacked ${label('targetId', 'its target')}.`
-    case 'unit_attacked': return `${label('attackerId', 'A unit')} ${event.data.outcome === 'miss' ? 'missed' : 'attacked'} ${label('targetId', 'its target')}${typeof event.data.damage === 'number' ? ` for ${event.data.damage} damage` : ''}.`
+    case 'unit_attacked': {
+      const damage = typeof event.data.damage === 'number' ? ` for ${event.data.damage} damage` : ''
+      return `${label('attackerId', 'A unit')} ${event.data.outcome === 'miss' ? 'missed' : 'attacked'} ${label('targetId', 'its target')}${damage}.`
+    }
     case 'unit_moved': return `${label('unitId', 'A unit')} moved.`
     case 'unit_recruited': return `${actor} recruited ${label('unitType', 'reinforcements')}.`
     case 'building_constructed': return `${actor} constructed ${label('buildingType', 'a building')}.`

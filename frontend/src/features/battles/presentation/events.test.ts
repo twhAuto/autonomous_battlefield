@@ -14,6 +14,10 @@ it('summarizes structured references without guessing unknown payloads', () => {
   const naming = { factionNames: new Map([['a', 'Amber']]) }
   expect(eventSummary(event('unit_attacked', { attackerId: 'a:ranger:1', targetId: 'b:castle', damage: 3 }), naming)).toContain('Amber · Ranger #1 attacked')
   expect(eventSummary(event('unit_attacked', { outcome: 'miss' }), naming)).toContain('missed')
+  expect(eventSummary(event('unit_attack_missed', { attackerId: 'a:ranger:1' }), naming)).toContain('missed its target')
+  expect(eventSummary(event('unit_healed', { healerId: 'a:ranger:1', targetId: 'ally' }), naming)).toContain('treated')
+  expect(eventSummary(event('building_attacked', { attackerId: 'tower', targetId: 'target' }), naming)).toContain('attacked')
+  expect(eventSummary(event('opening_completed'), naming)).toBe('The opening phase ended.')
   expect(eventSummary(event('battle_completed', { winnerFactionId: 'a' }), naming)).toBe('Amber won the battle.')
   expect(eventSummary(event('battle_completed'), naming)).toBe('The battle ended.')
   expect(eventSummary(event('upgrade_purchased', { factionId: 'a', upgradeId: 'steel_armor' }), naming)).toContain('Amber purchased')

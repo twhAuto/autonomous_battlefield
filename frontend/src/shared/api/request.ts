@@ -6,9 +6,14 @@ const unreachableMessage = 'The command post is unreachable. Check that the batt
 
 export const authenticationRequiredEvent = 'battlefield:authentication-required'
 
+class PreviewReadOnlyError extends Error {}
+let previewRole: 'developer' | 'player' | null = null
+export function setRequestPreviewRole(role: typeof previewRole) { previewRole = role }
+
 /** Sends an API request and optionally notifies the app of a 401; callers handle the response status. */
 export async function apiFetch(path: string, init?: RequestInit, notifyUnauthorized = true): Promise<Response> {
-  const response = await fetch(`${API_URL}${path}`, { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), 'X-Requested-With': 'XMLHttpRequest' } })
+  if (previewRole && init?.method && !['GET', 'HEAD'].includes(init.method.toUpperCase())) throw new PreviewReadOnlyError('Role preview is read-only. Exit preview to make changes.')
+  const response = await fetch(`${API_URL}${path}`, { ...init, headers: { ...(previewRole ? { 'X-Battlefield-Preview-Role': previewRole } : {}), ...Object.fromEntries(new Headers(init?.headers)), 'X-Requested-With': 'XMLHttpRequest' } })
   if (notifyUnauthorized && response.status === 401 && typeof window !== 'undefined') {
     window.dispatchEvent(new Event(authenticationRequiredEvent))
   }
@@ -21,6 +26,7 @@ export function createApiClient(ErrorType: new (message: string) => Error, notif
     try {
       return await apiFetch(path, init, notifyUnauthorized)
     } catch (error) {
+      if (error instanceof PreviewReadOnlyError) throw new ErrorType(error.message)
       if (error instanceof DOMException && error.name === 'AbortError') throw error
       throw new ErrorType(unreachableMessage)
     }

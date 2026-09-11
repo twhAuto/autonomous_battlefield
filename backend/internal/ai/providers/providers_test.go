@@ -18,7 +18,7 @@ import (
 )
 
 func providerRequest() ai.ModelTurnRequest {
-	return ai.ModelTurnRequest{SystemPrompt: "system", Messages: []ai.Message{{Role: "user", Content: "decide"}}, Tools: []ai.ToolDefinition{{Name: "get_decision_context", Description: "context", InputSchema: []byte(`{"type":"object"}`)}}, MaxTokens: 100}
+	return ai.ModelTurnRequest{SystemPrompt: "system", Messages: []ai.Message{{Role: "user", Content: "decide"}}, Tools: []ai.ToolDefinition{{Name: "get_decision_context", Description: "context", InputSchema: []byte(`{"type":"object","additionalProperties":false,"required":["requestId"],"properties":{"requestId":{"type":"string"},"guidanceOffset":{"type":"integer"}},"x-extension":"preserved"}`)}}, MaxTokens: 100}
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -37,6 +37,10 @@ func TestOpenAIParsesToolCallsAndUsage(t *testing.T) {
 	client := clientWith(http.StatusOK, `{"output":[{"type":"function_call","call_id":"call-1","name":"get_decision_context","arguments":"{\"requestId\":\"r\"}"}],"usage":{"input_tokens":12,"output_tokens":4}}`, func(request *http.Request) {
 		var body struct {
 			Input string `json:"input"`
+			Tools []struct {
+				Strict     *bool          `json:"strict"`
+				Parameters map[string]any `json:"parameters"`
+			} `json:"tools"`
 		}
 		{
 			err := json.NewDecoder(request.Body).Decode(&body)
@@ -44,6 +48,13 @@ func TestOpenAIParsesToolCallsAndUsage(t *testing.T) {
 		}
 		if request.Header.Get("Authorization") != "Bearer key" {
 			t.Error("missing authorization")
+		}
+		testutil.Require(t, len(body.Tools) == 1, func() { t.Fatalf("tools=%+v", body.Tools) })
+		if body.Tools[0].Strict != nil {
+			t.Fatal("MCP schema must not be advertised as strict")
+		}
+		if body.Tools[0].Parameters["x-extension"] != "preserved" {
+			t.Fatalf("parameters=%+v", body.Tools[0].Parameters)
 		}
 	})
 	result, err := (&OpenAI{APIKey: "key", Model: "model", Client: client}).NextTurn(context.Background(), providerRequest())
@@ -71,12 +82,34 @@ func TestGeminiParsesToolCallsAndErrors(t *testing.T) {
 					Text string `json:"text"`
 				} `json:"parts"`
 			} `json:"contents"`
+			Tools []struct {
+				FunctionDeclarations []struct {
+					Parameters           json.RawMessage `json:"parameters"`
+					ParametersJSONSchema map[string]any  `json:"parametersJsonSchema"`
+				} `json:"functionDeclarations"`
+			} `json:"tools"`
+			ToolConfig struct {
+				FunctionCallingConfig struct {
+					Mode string `json:"mode"`
+				} `json:"functionCallingConfig"`
+			} `json:"toolConfig"`
 		}
 		{
 			err := json.NewDecoder(request.Body).Decode(&body)
 			testutil.Require(t, err == nil, func() { t.Fatal(err) })
 		}
 		testutil.Require(t, !(len(body.Contents) != 1 || len(body.Contents[0].Parts) != 1 || body.Contents[0].Parts[0].Text != "system\nUSER: decide\n"), func() { t.Fatalf("unexpected transcript: %+v", body) })
+		testutil.Require(t, len(body.Tools) == 1 && len(body.Tools[0].FunctionDeclarations) == 1, func() { t.Fatalf("tools=%+v", body.Tools) })
+		declaration := body.Tools[0].FunctionDeclarations[0]
+		if len(declaration.Parameters) != 0 {
+			t.Fatal("Gemini typed parameters field must not receive arbitrary JSON Schema")
+		}
+		if declaration.ParametersJSONSchema["x-extension"] != "preserved" {
+			t.Fatalf("parametersJsonSchema=%+v", declaration.ParametersJSONSchema)
+		}
+		if body.ToolConfig.FunctionCallingConfig.Mode != "ANY" {
+			t.Fatalf("function calling mode=%q", body.ToolConfig.FunctionCallingConfig.Mode)
+		}
 		if request.Header.Get("x-goog-api-key") != "key" {
 			t.Error("missing key")
 		}

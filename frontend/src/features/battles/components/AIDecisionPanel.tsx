@@ -93,10 +93,13 @@ function DecisionCard({ decision, participantNames, initiallyOpen, battleId, att
           <DecisionDetail label="Resolved" value={decision.resolvedAt || 'Not resolved'} />
           <DecisionDetail label="Fallback" value={decision.fallbackSource || 'None'} />
           <DecisionDetail label="Error" value={decision.errorCategory || 'None'} />
-          <DecisionDetail label="Tokens in / out" value={`${decision.usage.inputTokens ?? (decision.usage.tokensReported ? 0 : '—')} / ${decision.usage.outputTokens ?? (decision.usage.tokensReported ? 0 : '—')}`} />
-          <DecisionDetail label="Usage scope" value={usageScopeLabel(decision.usage.scope)} />
-          <DecisionDetail label="Cached input tokens" value={String(decision.usage.cachedInputTokens ?? '—')} />
-          <DecisionDetail label="Reasoning output tokens" value={String(decision.usage.reasoningOutputTokens ?? '—')} />
+          <DecisionDetail label="Input total" value={reportedTokens(decision.usage.inputTokens, decision.usage.tokensReported)} />
+          <DecisionDetail label="Uncached input" value={uncachedInputTokens(decision.usage)} />
+          <DecisionDetail label="Cached input" value={String(decision.usage.cachedInputTokens ?? '—')} />
+          <DecisionDetail label="Output total" value={reportedTokens(decision.usage.outputTokens, decision.usage.tokensReported)} />
+          <DecisionDetail label="Reasoning output" value={String(decision.usage.reasoningOutputTokens ?? '—')} />
+          <DecisionDetail label="Cost basis" value={costBasisLabel(decision.usage.scope)} />
+          <DecisionDetail label="Aggregation" value={usageScopeLabel(decision.usage.scope)} />
           <DecisionDetail label="Model calls" value={String(decision.usage.modelCalls ?? '—')} />
           <DecisionDetail label="CLI invocations" value={String(decision.usage.cliInvocations ?? '—')} />
           {!decision.usage.scope && <DecisionDetail label="Requests (legacy)" value={String(decision.usage.requests ?? '—')} />}
@@ -143,4 +146,19 @@ function usageScopeLabel(scope: string | undefined) {
   if (scope === 'cli_session') return 'CLI session total'
   if (scope === 'api_calls') return 'Sum of API calls'
   return 'Legacy / unspecified'
+}
+
+function costBasisLabel(scope: string | undefined) {
+  if (scope === 'cli_session') return 'CLI account usage; not a direct API cost'
+  if (scope === 'api_calls') return 'Direct API usage; priced by model'
+  return 'Unknown'
+}
+
+function reportedTokens(value: number | undefined, tokensReported: boolean | undefined) {
+  return String(value ?? (tokensReported ? 0 : '—'))
+}
+
+function uncachedInputTokens(usage: DecisionHistory['usage']) {
+  if (!usage.tokensReported || usage.cachedInputTokens == null) return '—'
+  return String(Math.max(0, (usage.inputTokens ?? 0) - usage.cachedInputTokens))
 }

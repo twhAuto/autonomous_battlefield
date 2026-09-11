@@ -1,7 +1,7 @@
 // Application shell and route table. Checks the session, handles login/logout and API
 // authentication expiry, and wraps feature pages in shared navigation.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useMobile } from '../shared/hooks/useMobile'
 import { Link, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { CreateFactionPage } from '../features/factions/pages/CreateFactionPage'
@@ -11,18 +11,36 @@ import { BattlePage } from '../features/battles/pages/BattlePage'
 import { FactionsPage } from '../features/factions/pages/FactionsPage'
 import { HomePage } from '../pages/HomePage'
 import { LoginPage } from '../features/auth/pages/LoginPage'
+import { AdminSettingsPage } from '../features/admin/pages/AdminSettingsPage'
 import { authenticationClient, type AuthenticationClient, type AuthSession } from '../features/auth/api/auth'
-import { authenticationRequiredEvent } from '../shared/api/request'
+import { RolePreviewContext, type PreviewRole } from '../features/auth/RolePreviewContext'
+import { authenticationRequiredEvent, setRequestPreviewRole } from '../shared/api/request'
 import { SessionContext } from '../features/auth/SessionContext'
 import '../styles.css'
 import '../usability.css'
 
-function AppLayout({ actorID, onLogout }: Readonly<{ actorID: string; onLogout(): void }>) {
+function AppLayout({ actorID, admin, onLogout }: Readonly<{ actorID: string; admin: boolean; onLogout(): void }>) {
   const location = useLocation()
+  const preview = useContext(RolePreviewContext)
   const mobile = useMobile()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuButton = useRef<HTMLButtonElement>(null)
   useEffect(() => { setMenuOpen(false) }, [location.pathname, mobile])
+  useEffect(() => {
+    if (!menuOpen) return
+    function closeOnEscape(event: globalThis.KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      setMenuOpen(false)
+      menuButton.current?.focus()
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [menuOpen])
+  function closeMobileMenu() {
+    if (!mobile) return
+    setMenuOpen(false)
+    menuButton.current?.focus()
+  }
   const isBattleDetail = /^\/battles\/[^/]+$/.test(location.pathname)
   const currentDate = useMemo(
     () => new Intl.DateTimeFormat('en', {
@@ -36,18 +54,17 @@ function AppLayout({ actorID, onLogout }: Readonly<{ actorID: string; onLogout()
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Skip to main content</a>
-      <header className="topbar" onKeyDown={event => {
-        if (event.key === 'Escape' && menuOpen) { setMenuOpen(false); menuButton.current?.focus() }
-      }}>
+      <header className="topbar">
         <Link className="brand" to="/" aria-label="OrdinalFrontier home">
           <span className="brand__glyph" aria-hidden="true">O</span>
           <span className="brand__name">OrdinalFrontier</span>
         </Link>
         {mobile && <button ref={menuButton} type="button" className="menu-toggle" aria-expanded={menuOpen} aria-controls="primary-navigation" onClick={() => setMenuOpen(value => !value)}>Menu</button>}
-        <nav id="primary-navigation" className="primary-nav" aria-label="Primary navigation" hidden={mobile && !menuOpen} onClick={() => { if (mobile) { setMenuOpen(false); menuButton.current?.focus() } }}>
-          <NavLink to="/battles/new">Stage battle</NavLink>
-          <NavLink to="/factions">Factions</NavLink>
-          <NavLink to="/battles" end>Battle history</NavLink>
+        <nav id="primary-navigation" className="primary-nav" aria-label="Primary navigation" hidden={mobile && !menuOpen}>
+          <NavLink to="/battles/new" onClick={closeMobileMenu}>Stage battle</NavLink>
+          <NavLink to="/factions" onClick={closeMobileMenu}>Factions</NavLink>
+          <NavLink to="/battles" end onClick={closeMobileMenu}>Battle history</NavLink>
+          {admin && <NavLink to="/admin" onClick={closeMobileMenu}>Admin</NavLink>}
           {mobile && <div className="mobile-account"><span>Signed in as {actorID}</span><button type="button" onClick={onLogout} aria-label={`Log out ${actorID}`}>Log out</button></div>}
         </nav>
         <div className="topbar__status">
@@ -59,6 +76,7 @@ function AppLayout({ actorID, onLogout }: Readonly<{ actorID: string; onLogout()
         </div>
       </header>
 
+      {preview.role && <div className="role-preview-banner" role="status"><span>Viewing as {preview.role === 'player' ? 'Player' : 'Developer'} · Read-only preview using your own account. Your administrator permissions are unchanged.</span><button type="button" onClick={() => preview.setRole(null)}>Exit preview</button></div>}
       <main id="main-content" tabIndex={-1} className={isBattleDetail ? 'main-content--battle' : undefined}><Outlet /></main>
 
       <footer>
@@ -86,6 +104,9 @@ interface AppProps {
 
 export default function App({ authentication = authenticationClient, initialSession }: Readonly<AppProps>) {
   const [session, setSession] = useState<AuthSession | null>(initialSession ?? null)
+  const [previewRole, updatePreviewRole] = useState<PreviewRole | null>(null)
+  function setPreviewRole(role: PreviewRole | null) { setRequestPreviewRole(role); updatePreviewRole(role) }
+  useEffect(() => () => setRequestPreviewRole(null), [])
   const [sessionError, setSessionError] = useState('')
   const [sessionAttempt, setSessionAttempt] = useState(0)
 
@@ -101,12 +122,13 @@ export default function App({ authentication = authenticationClient, initialSess
   }, [authentication, initialSession, sessionAttempt])
 
   useEffect(() => {
-    const requireAuthentication = () => setSession((previous) => ({ enabled: true, authenticated: false, mode: previous?.mode }))
+    const requireAuthentication = () => { setPreviewRole(null); setSession((previous) => ({ enabled: true, authenticated: false, mode: previous?.mode })) }
     window.addEventListener(authenticationRequiredEvent, requireAuthentication)
     return () => window.removeEventListener(authenticationRequiredEvent, requireAuthentication)
   }, [])
 
   async function logout() {
+    setPreviewRole(null)
     try {
       await authentication.logout()
     } finally {
@@ -136,9 +158,12 @@ export default function App({ authentication = authenticationClient, initialSess
     return <LoginPage authentication={authentication} onAuthenticated={setSession} />
   }
 
+  const canAdmin = session.actor?.role === 'admin' || (!session.actor?.role && session.mode !== 'cloudflare')
+
+  const effectiveSession = canAdmin && previewRole ? { ...session, actor: { ...session.actor, id: session.actor?.id ?? 'local-development', role: previewRole }, capabilities: { inspect: previewRole === 'developer', cli: previewRole === 'developer', admin: false } } : session
   return (
-    <SessionContext.Provider value={session}><Routes>
-      <Route element={<AppLayout actorID={session.actor?.id ?? 'local-development'} onLogout={logout} />}>
+    <RolePreviewContext.Provider value={{ role: previewRole, setRole: setPreviewRole }}><SessionContext.Provider value={effectiveSession}><Routes key={previewRole ?? 'admin'}>
+      <Route element={<AppLayout actorID={session.actor?.id ?? 'local-development'} admin={canAdmin && !previewRole} onLogout={logout} />}>
         <Route index element={<HomePage />} />
         <Route path="factions/new" element={<CreateFactionPage />} />
  <Route path="factions/:id/edit" element={<CreateFactionPage />} />
@@ -146,8 +171,9 @@ export default function App({ authentication = authenticationClient, initialSess
         <Route path="battles" element={<BattleHistoryPage />} />
         <Route path="battles/new" element={<CreateBattlePage />} />
         <Route path="battles/:id" element={<BattlePage />} />
+        {canAdmin && !previewRole && <Route path="admin" element={<AdminSettingsPage />} />}
         <Route path="*" element={<NotFoundPage />} />
       </Route>
-    </Routes></SessionContext.Provider>
+    </Routes></SessionContext.Provider></RolePreviewContext.Provider>
   )
 }

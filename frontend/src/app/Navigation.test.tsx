@@ -15,7 +15,7 @@ it('exposes mobile navigation and logout, closes on Escape and restores focus', 
   await user.click(menu)
   expect(menu).toHaveAttribute('aria-expanded', 'true')
   const nav = screen.getByRole('navigation')
-  expect(within(nav).getAllByRole('link').map(link => link.textContent)).toEqual(['Stage battle', 'Factions', 'Battle history'])
+  expect(within(nav).getAllByRole('link').map(link => link.textContent)).toEqual(['Stage battle', 'Factions', 'Battle history', 'Admin'])
   await user.tab()
   await user.keyboard('{Escape}')
   expect(menu).toHaveFocus()

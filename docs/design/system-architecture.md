@@ -104,6 +104,28 @@ Production/browser API routing continues to use `VITE_API_URL` and Nginx.
 Nginx requires revalidation of the SPA entry document after rollouts and returns
 404 for missing hashed assets instead of routing those requests to HTML.
 
+The administrator-only `/admin` control center uses `GET /v1/admin/model-access` and
+`PUT /v1/admin/model-access` to manage provider and individual profile access, including
+allowed roles. Migration `00012_model_access.sql` adds a singleton PostgreSQL
+policy row. Version checks reject conflicting saves with HTTP 409. Each API
+selection reads the durable policy with a bounded timeout, so replicas and restarts
+share settings; read failures make models unavailable. The policy can restrict
+access but cannot activate missing credentials or deployment-disabled runtimes.
+Role overrides supersede configured `allowedRoles`; an explicit empty role list
+denies everyone, and Players remain barred from CLI profiles. Disables apply to
+new battle selection and background-generation admission; already accepted jobs
+and frozen controller snapshots continue unchanged. This is not an emergency stop.
+
+Role preview keeps the administrator's authenticated session and identity while
+applying Player or Developer read permissions. The browser sends
+`X-Battlefield-Preview-Role`; authentication validates the real administrator before
+preview middleware substitutes the effective role ahead of route authorization.
+Both transport and server reject mutations during preview. Navigation and inspection
+use the effective role, and switching roles remounts route content to clear privileged
+cached views. Exit preview restores the administrator view; logout/session expiry
+also clears preview. This previews the administrator's own ownership, not another
+person's account. There are no invitations, fabricated audit events, or budget controls.
+
 Frontend feature clients, including faction ruleset discovery, use the shared
 HTTP transport to report network failures consistently while preserving request
 cancellation. Feature clients own HTTP status messages; protected requests also

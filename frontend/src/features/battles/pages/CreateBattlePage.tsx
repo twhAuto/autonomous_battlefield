@@ -49,7 +49,16 @@ export function CreateBattlePage() {
     setLoadState('loading')
     setLoadMessage('')
     setProfilesError(false)
-    Promise.all([listFactions(controller.signal), listScenarios(controller.signal), listModelProfiles(controller.signal).catch(() => { if (!controller.signal.aborted) setProfilesError(true); return [] })])
+    Promise.all([
+      listFactions(controller.signal),
+      listScenarios(controller.signal),
+      listModelProfiles(controller.signal).catch(() => {
+        if (!controller.signal.aborted) {
+          setProfilesError(true)
+        }
+        return []
+      }),
+    ])
       .then(([loadedFactions, loadedScenarios, loadedProfiles]) => {
         if (controller.signal.aborted) return
         setFactions(loadedFactions)
@@ -134,10 +143,20 @@ export function CreateBattlePage() {
     setCheckingProfiles(true)
     try {
       const availableProfiles = await listModelProfiles(controller.signal)
-      if (!controller.signal.aborted) { setProfiles(availableProfiles); setProfilesError(false) }
+      if (!controller.signal.aborted) {
+        setProfiles(availableProfiles)
+        setProfilesError(false)
+      }
+    } catch {
+      if (!controller.signal.aborted) {
+        setProfiles([])
+        setProfilesError(true)
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setCheckingProfiles(false)
+      }
     }
-    catch { if (!controller.signal.aborted) { setProfiles([]); setProfilesError(true) } }
-    finally { if (!controller.signal.aborted) setCheckingProfiles(false) }
   }
 
   return (
@@ -261,8 +280,8 @@ function controllerInput(value: string): { type: 'scripted' } | { type: 'model';
 }
 
 function ControllerSelect({ id, value, onChange, profiles }: Readonly<{ id: string; value: string; onChange: (value: string) => void; profiles: ModelProfile[] }>) {
- const {inspect}=usePermissions()
- const selected = profiles.find(profile => profile.id === value)
+  const { inspect } = usePermissions()
+  const selected = profiles.find(profile => profile.id === value)
   return (
     <><select id={id} value={value} aria-describedby={`${id}-details`} onChange={(event) => onChange(event.target.value)}>
       <option value="scripted">Scripted · deterministic</option>
@@ -272,8 +291,15 @@ function ControllerSelect({ id, value, onChange, profiles }: Readonly<{ id: stri
           {profile.displayName}{!profile.available ? ' · unavailable' : ''}
         </option>
       )})}
-    </select><p id={`${id}-details`} className="field-hint">{value === 'scripted' ? 'Deterministic scripted controller.' : selected?.available ? inspect ? `${selected.modelLabel || 'Default model'} · ${selected.provider || selected.runtime} · ${selected.scope || 'Execution location unspecified'}` : selected.displayName : 'Selected controller is unavailable. Choose an available controller.'}</p></>
+    </select><p id={`${id}-details`} className="field-hint">{controllerDetails(value, selected, inspect)}</p></>
   )
+}
+
+function controllerDetails(value: string, selected: ModelProfile | undefined, inspect: boolean) {
+  if (value === 'scripted') return 'Deterministic scripted controller.'
+  if (!selected?.available) return 'Selected controller is unavailable. Choose an available controller.'
+  if (!inspect) return selected.displayName
+  return `${selected.modelLabel || 'Default model'} · ${selected.provider || selected.runtime} · ${selected.scope || 'Execution location unspecified'}`
 }
 
 function Combatant({ faction, slot }: Readonly<{ faction?: Faction; slot: string }>) {

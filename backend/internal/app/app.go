@@ -4,6 +4,7 @@
 package app
 
 import (
+	"github.com/twh09/autonomous_battlefield/backend/internal/admin"
 	"net/http"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -43,6 +44,12 @@ func NewAPIWithGeneration(db postgres.DBTX, catalog *catalog.Catalog, maxTicks u
 	if len(registries) > 0 {
 		profiles = registries[0]
 	}
+	if profiles == nil {
+		profiles = ai.NewProfileCatalog("local", nil)
+	}
+	adminHandler := &admin.Handler{DB: db, Profiles: profiles}
+	profiles = profiles.WithAccessPolicy(adminHandler.ReadPolicy)
+	registries = []*ai.ProfileRegistry{profiles}
 	generationHandler := &generation.Handler{Repository: &generation.Postgres{DB: db}, Config: generationConfig, Profiles: profiles}
 	factionRepository := factionrepo.NewPostgres(db)
 	factionService := factionservice.NewService(factionRepository, catalog)
@@ -52,11 +59,11 @@ func NewAPIWithGeneration(db postgres.DBTX, catalog *catalog.Catalog, maxTicks u
 	battleHandler := battleapi.NewHandler(battleService)
 	authenticationManager := authn.NewManager(authentication)
 	authenticationMiddleware := func(next http.Handler) http.Handler {
-		return authn.BrowserProtection(authentication.Origin, authn.RequireAuthentication(authenticationManager.Enabled(), authenticationManager, authn.RoutePolicy(next)))
+		return authn.BrowserProtection(authentication.Origin, authn.RequireAuthentication(authenticationManager.Enabled(), authenticationManager, authn.RolePreview(authn.RoutePolicy(next))))
 	}
 	router := httpapi.NewRouterWithMiddleware(
 		[]httpapi.Middleware{authenticationMiddleware},
-		authn.NewRoutes(authenticationManager), factionHandler, battleHandler, generationHandler,
+		authn.NewRoutes(authenticationManager), factionHandler, battleHandler, generationHandler, adminHandler,
 	)
 	// Tracing wraps access logging so completion logs share the request span.
 	return &App{httpHandler: telemetry.HTTPHandler("battlefield-api.http", router)}

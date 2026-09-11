@@ -30,7 +30,7 @@ export function DecisionContextPanel({ battleId, requestId, attempt, active, cac
   }, [active, open, key, cache, battleId, requestId, attempt, retry])
 
   return <details className="saved-context" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary>Saved decision context</summary>
+    <summary>Decision context snapshot</summary>
     {open && <div>
       {error && <p role="alert">{error} <button className="text-button" type="button" onClick={() => setRetry((value) => value + 1)}>Retry context</button></p>}
       {!error && !data && <output>Loading saved context…</output>}
@@ -42,26 +42,28 @@ export function DecisionContextPanel({ battleId, requestId, attempt, active, cac
 function Observation({ data, context }: Readonly<{ data: SavedDecisionContext; context: NonNullable<SavedDecisionContext['context']> }>) {
   const units = (context.view.state?.units ?? []).filter((unit) => unit.health > 0)
   const own = units.filter((unit) => unit.factionId === data.factionId).length
-  return <>
-    <h3>What this AI knew at tick {data.observationTick}</h3>
-    <p>Saved observation · plan for tick {data.targetTick}. Current player resources are shown in the header.</p>
-    <dl>
-      <div><dt>Gold then</dt><dd>{context.economy.gold}</dd></div>
+  return <section className="saved-context__snapshot" aria-label="Decision context details">
+    <header className="saved-context__header">
+      <h3>Observation snapshot</h3>
+      <p>Observed tick {data.observationTick} <span aria-hidden="true">·</span> Decision tick {data.targetTick}</p>
+    </header>
+    <dl className="saved-context__metrics">
+      <div><dt>Gold</dt><dd>{context.economy.gold}</dd></div>
       <div><dt>Projected income</dt><dd>{context.economy.projectedIncome}</dd></div>
-      <div><dt>Own living units</dt><dd>{own}</dd></div>
-      <div><dt>Visible enemy units</dt><dd>{units.length - own}</dd></div>
-      <div><dt>Actions</dt><dd>{context.legal.actionKinds?.join(', ') || 'None recorded'}</dd></div>
-      <div><dt>Available units</dt><dd>{context.legal.units?.map((unit) => `${typeLabel(unit.id)} (${unit.cost} gold)`).join(', ') || 'None recorded'}</dd></div>
+      <div><dt>Friendly units</dt><dd>{own}</dd></div>
+      <div><dt>Visible enemies</dt><dd>{units.length - own}</dd></div>
+      <div><dt>Permitted actions</dt><dd>{context.legal.actionKinds?.join(', ') || 'None recorded'}</dd></div>
+      <div><dt>Recruitment options</dt><dd>{context.legal.units?.map((unit) => `${typeLabel(unit.id)} (${unit.cost} gold)`).join(', ') || 'None recorded'}</dd></div>
     </dl>
-    {data.initialContext && <ContextDetail label="Reconstructed agent context" value={data.initialContext} />}
-    {data.availableUnitDetails && <ContextDetail label="Unit details available on demand" value={data.availableUnitDetails} />}
-    <ContextDetail label="Visible battlefield and positions" value={context.view} />
-    <ContextDetail label="Economy and available choices" value={{ economy: context.economy, legal: context.legal, ownedUpgradeIds: context.ownedUpgradeIds }} />
-    <ContextDetail label="Prior active plan" value={context.activePlan} />
-    <ContextDetail label="Saved faction instructions" value={{ background: context.background, doctrine: context.doctrine }} />
-    <ContextDetail label="Saved memory" value={context.memory} />
-    <ContextDetail label="Saved knowledge" value={context.knowledge} />
-  </>
+    {data.initialContext && <ContextDetail label="Agent context (reconstructed)" value={data.initialContext} />}
+    {data.availableUnitDetails && <ContextDetail label="On-demand unit reference" value={data.availableUnitDetails} />}
+    <ContextDetail label="Battlefield state" value={context.view} />
+    <ContextDetail label="Economy and legal actions" value={{ economy: context.economy, legal: context.legal, ownedUpgradeIds: context.ownedUpgradeIds }} />
+    <ContextDetail label="Active plan" value={context.activePlan} />
+    <ContextDetail label="Faction instructions" value={{ background: context.background, doctrine: context.doctrine }} />
+    <ContextDetail label="Memory" value={context.memory} />
+    <ContextDetail label="Knowledge" value={context.knowledge} />
+  </section>
 }
 
 function ContextDetail({ label, value }: Readonly<{ label: string; value: unknown }>) {

@@ -97,6 +97,9 @@ func RoutePolicy(next http.Handler) http.Handler {
 	for _, pattern := range []string{"GET /v1/battles/{id}/decisions", "GET /v1/battles/{id}/decisions/{requestId}/context"} {
 		mux.HandleFunc(pattern, Permit("inspect", next.ServeHTTP))
 	}
+	for _, pattern := range []string{"GET /v1/admin/model-access", "PUT /v1/admin/model-access"} {
+		mux.HandleFunc(pattern, Permit("admin", next.ServeHTTP))
+	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { http.Error(w, "permission denied", 403) })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/auth/login" || r.URL.Path == "/v1/auth/session" || r.URL.Path == "/v1/auth/logout" || !strings.HasPrefix(r.URL.Path, "/v1/") {

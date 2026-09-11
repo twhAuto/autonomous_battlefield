@@ -37,7 +37,8 @@ describe('player decision inspector', () => {
     expect(row.getByText('Protect the damaged castle.')).toBeVisible()
     expect(row.getByText('previous_plan')).toBeVisible()
     expect(row.getByText('timeout')).toBeVisible()
-    expect(row.getByText('100 / 20')).toBeVisible()
+    expect(row.getByText('Input total').nextElementSibling).toHaveTextContent('100')
+    expect(row.getByText('Output total').nextElementSibling).toHaveTextContent('20')
     expect(row.getByText('Castle 1200')).toBeVisible()
     expect(row.getByText('No construction')).toBeVisible()
     expect(screen.getByText('AI DECISION STREAM · ATTEMPT 2')).toBeInTheDocument()
@@ -79,9 +80,12 @@ it('uses metadata for opaque recruitment sources and leaves freeform rationale i
 it('shows CLI aggregate usage and a trace link without inventing model calls', () => {
   const traceUrl = 'http://localhost:13000/project/battlefield-agents/traces/abc'
   render(<AIDecisionPanel decisions={[{ requestId: 'r', factionId: 'a', targetTick: 10, status: 'accepted', controllerType: 'model', usage: { scope: 'cli_session', tokensReported: true, inputTokens: 30000, cachedInputTokens: 25000, reasoningOutputTokens: 100, cliInvocations: 1 }, traceUrl, createdAt: '' }]} participantNames={new Map()} message="" hasModelController />)
-  expect(screen.getByText('30000 / 0')).toBeVisible()
+  expect(screen.getByText('Input total').nextElementSibling).toHaveTextContent('30000')
+  expect(screen.getByText('Uncached input').nextElementSibling).toHaveTextContent('5000')
+  expect(screen.getByText('Output total').nextElementSibling).toHaveTextContent('0')
   expect(screen.getByText('CLI session total')).toBeVisible()
-  expect(screen.getByText('Cached input tokens').nextElementSibling).toHaveTextContent('25000')
+  expect(screen.getByText('Cached input').nextElementSibling).toHaveTextContent('25000')
+  expect(screen.getByText('Cost basis').nextElementSibling).toHaveTextContent('CLI account usage; not a direct API cost')
   expect(screen.getByText('Model calls').nextElementSibling).toHaveTextContent('—')
   expect(screen.getByRole('link', { name: 'View in Langfuse' })).toHaveAttribute('href', traceUrl)
   expect(screen.queryByText('Requests (legacy)')).not.toBeInTheDocument()
@@ -89,8 +93,11 @@ it('shows CLI aggregate usage and a trace link without inventing model calls', (
 
 it('labels API usage as summed model calls', () => {
   render(<AIDecisionPanel decisions={[{ requestId: 'r', factionId: 'a', targetTick: 10, status: 'accepted', controllerType: 'model', usage: { scope: 'api_calls', tokensReported: true, modelCalls: 3 }, createdAt: '' }]} participantNames={new Map()} message="" hasModelController />)
-  expect(screen.getByText('0 / 0')).toBeVisible()
+  expect(screen.getByText('Input total').nextElementSibling).toHaveTextContent('0')
+  expect(screen.getByText('Uncached input').nextElementSibling).toHaveTextContent('—')
+  expect(screen.getByText('Output total').nextElementSibling).toHaveTextContent('0')
   expect(screen.getByText('Sum of API calls')).toBeVisible()
+  expect(screen.getByText('Cost basis').nextElementSibling).toHaveTextContent('Direct API usage; priced by model')
   expect(screen.getByText('Model calls').nextElementSibling).toHaveTextContent('3')
   expect(screen.queryByRole('link', { name: 'View in Langfuse' })).not.toBeInTheDocument()
 })

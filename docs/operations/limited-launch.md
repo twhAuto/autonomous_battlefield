@@ -127,6 +127,38 @@ application DNS route and Access application/Allow policies, and delete the dedi
 tunnel resources and Secret. Keep database backups and unrelated private services.
 Do not delete a shared domain, identity provider, or shared infrastructure.
 
+## Model access and role preview
+
+Apply the embedded `00012_model_access.sql` migration through the normal migration
+Job before rolling out the new API and frontend. Standalone deployments can run
+`go run ./cmd/server -migrate` from `backend` with their existing configuration.
+
+Open **Admin → Models & access** to switch a whole provider or one configured
+model profile on/off and set its allowed roles. Click **Save changes** to persist
+the policy. Provider switches preserve individual profile choices. A profile still
+needs deployment-enabled configuration, credentials, and a working runtime; adding
+new model variants remains a deployment configuration task. CLI profiles cannot
+be granted to Players. An empty role selection grants access to nobody.
+
+Settings are shared across API replicas and survive restarts. HTTP 409 indicates
+another administrator saved first: discard the local edits, refresh, and reapply
+the intended changes. Settings read/save failures remain visible; the application
+does not claim an unsuccessful save worked. Back up `model_access_policy` with the
+application database. Overrides take precedence over configured role defaults;
+new profiles inherit their configured defaults, while removed profiles disappear
+from the settings page on refresh.
+
+Changes affect new battles and background-generation requests. Existing battles
+and accepted jobs keep their configuration. To halt AI execution, use the runtime
+stop procedure below rather than the model access switches.
+
+**View as Player** or **View as Developer** opens a read-only app preview with the
+selected role's actual API visibility and inspection permissions. Save or discard
+edits before entering it. The banner stays visible while navigating; **Exit preview**
+restores the administrator view. Preview uses your own identity and ownership and
+does not impersonate another user. It grants no privileges to non-admin callers.
+Member invitations and identity/role assignment remain outside this page.
+
 ## Sessions, roles and removal
 
 The persistent identity is verified `issuer|subject`. Each request maps the
@@ -139,7 +171,9 @@ use enabled CLI profiles; this role grants no host or deployment access.
 Players receive explicit gameplay responses and cannot fetch decision history or
 saved context. CLI profiles never appear in their model catalog. To enable a paid
 API for Players, configure its provider credentials/model and availability flag,
-then explicitly list `allowedRoles: [player, developer, admin]` in the profile.
+then select Player in the profile’s allowed roles under Admin → Models & access
+and save. Without an admin policy override, configured `allowedRoles` supplies the
+default (for example `[player, developer, admin]`).
 Unlisted roles cannot select it. Background generation checks the same eligibility;
 its existing CLI default is unavailable to Players. All quotas also apply to Admin.
 

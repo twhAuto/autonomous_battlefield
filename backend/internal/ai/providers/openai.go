@@ -81,7 +81,10 @@ func openAITools(definitions []ai.ToolDefinition) ([]map[string]any, error) {
 		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
 			return nil, err
 		}
-		tools = append(tools, map[string]any{"type": "function", "name": tool.Name, "description": tool.Description, "parameters": schema, "strict": true})
+		// MCP tools may contain optional fields and JSON Schema keywords that do not
+		// satisfy the Responses API's strict-schema subset. Keep the source schema
+		// intact and let the MCP server perform authoritative input validation.
+		tools = append(tools, map[string]any{"type": "function", "name": tool.Name, "description": tool.Description, "parameters": schema})
 	}
 	return tools, nil
 }
