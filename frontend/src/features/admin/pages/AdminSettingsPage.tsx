@@ -2,11 +2,45 @@ import { useContext, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SessionContext } from '../../auth/SessionContext'
 import { RolePreviewContext, type PreviewRole } from '../../auth/RolePreviewContext'
-import { getModelSettings, saveModelSettings, type AccessPolicy, type AccessRole, type ModelSettings } from '../api/settings'
+import { getModelSettings, saveModelSettings, type AccessPolicy, type AccessRole, type ModelAccess, type ModelSettings } from '../api/settings'
+
+type ModelProfile = ModelSettings['models'][number]
 
 const roleNames: Record<AccessRole, string> = { admin: 'Administrator', developer: 'Developer', player: 'Player' }
 function Switch({ checked, label, disabled, onChange }: Readonly<{ checked: boolean; label: string; disabled: boolean; onChange(): void }>) {
   return <button className="admin-switch" type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={onChange}>{checked ? 'On' : 'Off'}</button>
+}
+
+function availabilityLabel(model: ModelProfile, access: ModelAccess, providerEnabled: boolean) {
+  if (!providerEnabled || !access.enabled) return 'Access disabled'
+  if (access.allowedRoles.length === 0) return 'No roles allowed'
+  if (model.available) return 'Ready to use'
+  return model.unavailableReason || 'Runtime unavailable'
+}
+function saveStatus(saving: boolean, saved: boolean, dirty: boolean) {
+  if (saving) return 'Saving…'
+  if (saved) return 'Changes saved'
+  if (dirty) return 'You have unsaved changes'
+  return 'Settings are up to date'
+}
+function ModelAccessCard({ model, access, providerEnabled, saving, onChange }: Readonly<{
+  model: ModelProfile; access: ModelAccess; providerEnabled: boolean; saving: boolean; onChange(access: ModelAccess): void
+}>) {
+  function toggleRole(role: AccessRole) {
+    const allowedRoles = access.allowedRoles.includes(role)
+      ? access.allowedRoles.filter(value => value !== role)
+      : [...access.allowedRoles, role]
+    onChange({ ...access, allowedRoles })
+  }
+  return <article className="admin-model">
+    <div className="admin-model-heading"><h4>{model.displayName}</h4><Switch label={`${model.displayName} model access`} checked={access.enabled} disabled={saving || !providerEnabled} onChange={() => onChange({ ...access, enabled: !access.enabled })} /></div>
+    <p>{model.modelLabel || 'Default model'} · {model.runtime === 'cli' ? 'CLI subscription' : 'API'}</p>
+    <p className={model.available ? 'admin-available' : 'admin-unavailable'}>{availabilityLabel(model, access, providerEnabled)}</p>
+    <fieldset disabled={saving || !access.enabled || !providerEnabled} className="admin-roles"><legend>Allowed roles</legend>
+      {(Object.keys(roleNames) as AccessRole[]).map(role => <label key={role}><input type="checkbox" checked={access.allowedRoles.includes(role)} disabled={role === 'player' && model.runtime === 'cli'} onChange={() => toggleRole(role)} />{roleNames[role]}</label>)}
+    </fieldset>
+    {model.runtime === 'cli' && <p className="admin-note">CLI subscriptions are limited to administrators and developers.</p>}
+  </article>
 }
 
 export function AdminSettingsPage() {
@@ -35,7 +69,7 @@ export function AdminSettingsPage() {
 
   useEffect(() => {
     if (!dirty) return
-    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault() }
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
@@ -64,29 +98,21 @@ export function AdminSettingsPage() {
         <div><span className="admin-kicker">MODEL ACCESS</span><h2 id="admin-models-title">Models & access</h2><p>Turn a provider or an individual model profile on or off. Changes apply to new battles and background requests; existing battles keep their configuration.</p></div>
         <button className="admin-refresh" type="button" disabled={loading || saving || dirty} onClick={() => setRefresh(value => value + 1)}>Refresh</button>
       </div>
-      {loading && <p role="status">Loading model access settings…</p>}
+      {loading && <output>Loading model access settings…</output>}
       {error && <p role="alert">{error}</p>}
       {!loading && settings && draft && <>
         {settings.models.length === 0 && <p>No AI model profiles are configured.</p>}
         {Object.keys(draft.providers).map(provider => <section className="admin-provider" key={provider} aria-label={`${provider} access`}>
           <div className="admin-model-heading"><h3>{provider}</h3><Switch label={`${provider} provider access`} checked={draft.providers[provider]} disabled={saving} onChange={() => edit({ ...draft, providers: { ...draft.providers, [provider]: !draft.providers[provider] } })} /></div>
           <div className="admin-model-list">
-            {settings.models.filter(model => model.provider === provider).map(model => {
-              const access = draft.profiles[model.id]
-              return <article className="admin-model" key={model.id}>
-                <div className="admin-model-heading"><h4>{model.displayName}</h4><Switch label={`${model.displayName} model access`} checked={access.enabled} disabled={saving || !draft.providers[provider]} onChange={() => edit({ ...draft, profiles: { ...draft.profiles, [model.id]: { ...access, enabled: !access.enabled } } })} /></div>
-                <p>{model.modelLabel || 'Default model'} · {model.runtime === 'cli' ? 'CLI subscription' : 'API'}</p>
-                <p className={model.available ? 'admin-available' : 'admin-unavailable'}>{!draft.providers[provider] || !access.enabled ? 'Access disabled' : access.allowedRoles.length === 0 ? 'No roles allowed' : model.available ? 'Ready to use' : model.unavailableReason || 'Runtime unavailable'}</p>
-                <fieldset disabled={saving || !access.enabled || !draft.providers[provider]} className="admin-roles"><legend>Allowed roles</legend>
-                  {(Object.keys(roleNames) as AccessRole[]).map(role => <label key={role}><input type="checkbox" checked={access.allowedRoles.includes(role)} disabled={role === 'player' && model.runtime === 'cli'} onChange={() => edit({ ...draft, profiles: { ...draft.profiles, [model.id]: { ...access, allowedRoles: access.allowedRoles.includes(role) ? access.allowedRoles.filter(value => value !== role) : [...access.allowedRoles, role] } } })} />{roleNames[role]}</label>)}
-                </fieldset>
-                {model.runtime === 'cli' && <p className="admin-note">CLI subscriptions are limited to administrators and developers.</p>}
-              </article>
-            })}
+            {settings.models.filter(model => model.provider === provider).map(model => <ModelAccessCard
+              key={model.id} model={model} access={draft.profiles[model.id]} providerEnabled={draft.providers[provider]} saving={saving}
+              onChange={access => edit({ ...draft, profiles: { ...draft.profiles, [model.id]: access } })}
+            />)}
           </div>
         </section>)}
         <div className="admin-savebar">
-          <span role="status">{saving ? 'Saving…' : saved ? 'Changes saved' : dirty ? 'You have unsaved changes' : 'Settings are up to date'}</span>
+          <output>{saveStatus(saving, saved, dirty)}</output>
           <button type="button" disabled={!dirty || saving} onClick={() => { setDraft(settings.policy); setError(''); setSaved(false) }}>Discard changes</button>
           <button type="button" disabled={!dirty || saving} onClick={() => void save()}>Save changes</button>
         </div>
