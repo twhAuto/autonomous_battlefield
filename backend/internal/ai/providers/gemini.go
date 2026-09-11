@@ -36,7 +36,12 @@ func (p *Gemini) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 		return ai.ModelTurnResult{}, err
 	}
 	transcript := modelTranscript(turn)
-	body, err := json.Marshal(map[string]any{"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": transcript}}}}, "tools": []any{map[string]any{"functionDeclarations": declarations}}, "generationConfig": map[string]any{"maxOutputTokens": turn.MaxTokens}})
+	body, err := json.Marshal(map[string]any{
+		"contents":         []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": transcript}}}},
+		"tools":            []any{map[string]any{"functionDeclarations": declarations}},
+		"toolConfig":       map[string]any{"functionCallingConfig": map[string]any{"mode": "ANY"}},
+		"generationConfig": map[string]any{"maxOutputTokens": turn.MaxTokens},
+	})
 	if err != nil {
 		return ai.ModelTurnResult{}, err
 	}
@@ -84,7 +89,10 @@ func geminiToolDeclarations(tools []ai.ToolDefinition) ([]map[string]any, error)
 		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
 			return nil, err
 		}
-		declarations = append(declarations, map[string]any{"name": tool.Name, "description": tool.Description, "parameters": schema})
+		// MCP exposes JSON Schema, which can contain fields outside Gemini's typed
+		// OpenAPI Schema object. parametersJsonSchema accepts that schema without
+		// lossy provider-specific rewriting.
+		declarations = append(declarations, map[string]any{"name": tool.Name, "description": tool.Description, "parametersJsonSchema": schema})
 	}
 	return declarations, nil
 }

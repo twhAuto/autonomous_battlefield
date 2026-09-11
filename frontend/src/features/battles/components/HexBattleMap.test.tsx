@@ -22,6 +22,46 @@ const state = {
 }
 
 describe('HexBattleMap', () => {
+  it('opens the map dialog, observes viewport changes, and restores page state on close', async () => {
+    const disconnect = vi.fn()
+    const observe = vi.fn()
+    class ResizeObserverMock {
+      observe = observe
+      disconnect = disconnect
+    }
+    const showModal = vi.fn(function (this: HTMLDialogElement) { this.setAttribute('open', '') })
+    const close = vi.fn(function (this: HTMLDialogElement) { this.removeAttribute('open') })
+    const originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'showModal')
+    const originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'close')
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+    Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: showModal })
+    Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: close })
+    try {
+      document.body.style.overflow = 'scroll'
+      const { unmount } = render(<HexBattleMap map={map} state={state} visiblePositions={[]} factionNames={new Map()} />)
+
+      const expand = screen.getByRole('button', { name: 'Expand map' })
+      await userEvent.click(expand)
+      expect(showModal).toHaveBeenCalledOnce()
+      expect(observe).toHaveBeenCalled()
+      expect(document.body.style.overflow).toBe('hidden')
+      await userEvent.click(screen.getByRole('button', { name: 'Close map' }))
+      expect(close).toHaveBeenCalled()
+      expect(document.body.style.overflow).toBe('scroll')
+      expect(screen.getByRole('button', { name: 'Expand map' })).toHaveFocus()
+
+      unmount()
+      expect(disconnect).toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+      if (originalShowModal) Object.defineProperty(HTMLDialogElement.prototype, 'showModal', originalShowModal)
+      else delete (HTMLDialogElement.prototype as { showModal?: unknown }).showModal
+      if (originalClose) Object.defineProperty(HTMLDialogElement.prototype, 'close', originalClose)
+      else delete (HTMLDialogElement.prototype as { close?: unknown }).close
+      document.body.style.overflow = ''
+    }
+  })
+
   it('preserves camera and selected entity across live tick updates', async () => {
     const props = { map, state, visiblePositions: [], factionNames: new Map([['a', 'Northwind']]) }
     const { container, rerender } = render(<HexBattleMap {...props} />)

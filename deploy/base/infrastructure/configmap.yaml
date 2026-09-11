@@ -77,7 +77,9 @@ data:
           credentialEnvironmentVariable: GEMINI_API_KEY
           availabilityEnvironmentVariable: GEMINI_PROFILE_AVAILABLE
           scope: cluster
-          maxOutputTokens: 1200
+          # Gemini reasoning tokens count against this ceiling; 1200 can be
+          # exhausted before a required function call is emitted.
+          maxOutputTokens: 4096
           maxSteps: 3
           enabled: true
         - id: codex-subscription-local

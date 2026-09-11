@@ -443,6 +443,19 @@ When introducing a new field, identify its authority:
 - model-only context belongs in `ai` types;
 - transport-specific request/response shapes should stay inside handlers or frontend clients.
 
+Administrator model access is implemented in [`internal/admin`](../../backend/internal/admin):
+its handler validates settings and stores a versioned policy in PostgreSQL.
+[`internal/ai/access.go`](../../backend/internal/ai/access.go) overlays that policy
+on the API profile registry for catalog reads and new selections. The API composition
+root wires the same effective registry into battle and background-generation handlers.
+[`internal/authn/preview.go`](../../backend/internal/authn/preview.go) enforces
+administrator-only, read-only role preview before route permission checks.
+Frontend [`admin/api/settings.ts`](../../frontend/src/features/admin/api/settings.ts)
+handles settings reads/saves; [`RolePreviewContext.ts`](../../frontend/src/features/auth/RolePreviewContext.ts)
+and the shared request transport coordinate effective roles and mutation blocking.
+Tests cover durable cross-instance saves, conflicts, selection restrictions, preview
+permissions, frontend save/reload, and preview navigation.
+
 ## 6. Database migrations and adapters
 
 Migrations under [`backend/migrations`](../../backend/migrations) are embedded into the server binary.
@@ -460,6 +473,7 @@ Migrations under [`backend/migrations`](../../backend/migrations) are embedded i
 | `00009_faction_background.sql` | Faction background and asynchronous generation jobs |
 | `00010_battle_history.sql` | Descending creation-time/ID index for battle history |
 | `00011_friends_access.sql` | Row ownership, atomic admission triggers, AI execution counts, single CLI lease, runtime stop policy, and private usage view |
+| `00012_model_access.sql` | Versioned administrator model access policy and last editor metadata |
 
 Schema changes should be made with a new migration, then reflected in repository scan/serialization logic and tests. Do not edit an already-applied migration to evolve a shared database.
 
@@ -480,6 +494,7 @@ The frontend is a React/Vite single-page application.
 | [`features/battles/pages/BattleHistoryPage.tsx`](../../frontend/src/features/battles/pages/BattleHistoryPage.tsx) | Status-filtered history table/cards, cursor navigation, refresh, and detail links |
 | [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx) | Route-level composition, selected perspective/panel, and control actions |
 | [`features/auth/pages/LoginPage.tsx`](../../frontend/src/features/auth/pages/LoginPage.tsx) | Single-administrator credential form and error state |
+| [`features/admin/pages/AdminSettingsPage.tsx`](../../frontend/src/features/admin/pages/AdminSettingsPage.tsx) | Persistent provider/profile switches, allowed roles, save/conflict states, and entry to read-only role preview |
 | [`features/battles/components/HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx) | Hex-map visualization, movement routes, tracking arrows, attack outcomes, and accessible unit animation |
 | [`features/battles/components/PlayerStatusPanel.tsx`](../../frontend/src/features/battles/components/PlayerStatusPanel.tsx) | Null-safe spectator summaries, economy/building overview, and grouped living units |
 | [`shared/components/Emblem.tsx`](../../frontend/src/shared/components/Emblem.tsx) | Deterministic faction emblem |

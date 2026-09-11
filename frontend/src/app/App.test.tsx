@@ -115,6 +115,24 @@ describe('App', () => {
     expect(within(menu).getByRole('link', { name: /battle history/i })).toHaveAttribute('href', '/battles')
   })
 
+  it('restricts the admin route to administrators', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({
+      version: 1,
+      policy: { providers: {}, profiles: {} },
+      models: [],
+    })))
+    const playerSession: AuthSession = { enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'player', role: 'player' } }
+    const { unmount } = render(<MemoryRouter initialEntries={['/admin']}><App initialSession={playerSession} /></MemoryRouter>)
+    expect(screen.getByRole('heading', { name: 'This route is outside the mapped frontier.' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
+    unmount()
+
+    renderApp('/admin')
+    expect(screen.getByRole('heading', { name: 'Control center' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Admin' })).toBeInTheDocument()
+    expect(await screen.findByText('No AI model profiles are configured.')).toBeInTheDocument()
+  })
+
   it('navigates from the main menu to faction creation', async () => {
     const user = userEvent.setup()
     renderApp()
@@ -375,6 +393,9 @@ describe('App', () => {
     expect(screen.queryByRole('option', { name: /Codex local/i })).not.toBeInTheDocument()
     await user.click(screen.getByText('AI integration status'))
     expect(screen.getByText('Codex local')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Check availability' }))
+    expect(fetch).toHaveBeenCalledTimes(4)
+    expect(screen.getByRole('button', { name: 'Check availability' })).toBeEnabled()
     await user.click(screen.getByRole('button', { name: 'DEPLOY COMBATANTS' }))
 
     expect(fetch).toHaveBeenCalledWith('/v1/battles', expect.objectContaining({

@@ -19,7 +19,8 @@ import (
 var ErrProfileUnavailable = errors.New("model profile unavailable")
 
 type ProfileRegistry struct {
-	profiles map[string]ModelProfile
+	profiles     map[string]ModelProfile
+	accessPolicy func() (AccessPolicy, error)
 }
 
 type profileRegistryPurpose uint8
@@ -53,6 +54,10 @@ func newProfileRegistry(environment string, configured []ModelProfile, purpose p
 
 func (r *ProfileRegistry) Get(id string) (ModelProfile, bool) {
 	profile, ok := r.profiles[id]
+	if ok && r.accessPolicy != nil {
+		policy, err := r.accessPolicy()
+		profile = applyAccess(profile, policy, err)
+	}
 	return profile, ok
 }
 
@@ -66,7 +71,15 @@ func (r *ProfileRegistry) Require(id string) (ModelProfile, error) {
 
 func (r *ProfileRegistry) List() []ModelProfile {
 	result := make([]ModelProfile, 0, len(r.profiles))
+	var policy AccessPolicy
+	var err error
+	if r.accessPolicy != nil {
+		policy, err = r.accessPolicy()
+	}
 	for _, profile := range r.profiles {
+		if r.accessPolicy != nil {
+			profile = applyAccess(profile, policy, err)
+		}
 		result = append(result, profile)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })

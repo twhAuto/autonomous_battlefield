@@ -33,7 +33,7 @@ export function EventConsole({ battleAttempt, selectedAttempt, setSelectedAttemp
   const latestTick = events.reduce((latest, event) => Math.max(latest, event.tick), 0)
   return (
     <section className="event-console">
-      <p className="visually-hidden" role="status">{events.length} events loaded for this attempt.</p>
+      <output className="visually-hidden">{events.length} events loaded for this attempt.</output>
       <div className="event-console__header">
         <div>
           <span>BATTLE EVENT STREAM{latestTick > 0 ? ` · LATEST TICK ${latestTick}` : ''}</span>

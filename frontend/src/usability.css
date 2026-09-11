@@ -56,6 +56,8 @@
 .form-panel fieldset { border: 1px solid var(--line); margin: 24px 0; padding: 16px; }
 .form-panel fieldset button { color: var(--lime); background: var(--ink); border: 1px solid var(--line); padding: 10px 12px; margin: 4px; }
 @media (max-width: 780px) {
+  .admin-section-heading, .admin-model-heading { align-items: flex-start; flex-direction: column; }
+  .admin-details { grid-template-columns: 1fr; }
   .command-menu--compact .menu-grid { grid-template-columns: 1fr; }
   .command-menu--compact .menu-card { min-height: 180px; }
   .brand > .brand__name:last-child { display: inline; font-size: 14px; }

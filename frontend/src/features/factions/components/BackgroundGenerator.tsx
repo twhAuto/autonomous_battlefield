@@ -90,7 +90,7 @@ export function BackgroundGenerator({ input, valid, onUse }: Readonly<{ input: B
  const previewCount = Array.from(preview?.trim() ?? '').length
  return <section className="background-generator" aria-label="Background generation">
   <p>{options?.modelLabel ? `Generation model: ${options.modelLabel}` : 'AI background writer'}</p>
-  {availabilityLoading && <p role="status">Checking AI availability…</p>}
+  {availabilityLoading && <output>Checking AI availability…</output>}
   {availabilityError && <p role="alert">Background writer availability could not be established. You can still write a background.</p>}
   {!availabilityLoading && options?.available && <p>{options.remaining} generations left today · resets {new Date(options.resetAt).toLocaleString()} (00:00 UTC)</p>}
   {availability === 'quota' && <p>Today's generation allowance is exhausted.</p>}

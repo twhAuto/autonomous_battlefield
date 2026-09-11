@@ -4,7 +4,7 @@
 import { type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useMobile } from '../../../shared/hooks/useMobile'
 import type { BattleBuilding, BattleMap, BattleState, BattleUnit, HexPosition } from '../api/battles'
-import { entityIndex, entityName } from '../presentation/entities'
+import { entityIndex, entityName, type EntityNaming } from '../presentation/entities'
 import { EntityGlyph, EntityLegend } from './EntityIcon'
 
 type Entity = BattleUnit | BattleBuilding
@@ -89,14 +89,22 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
           </div>
         </div>
       </div>
-      <div ref={viewport} className={`map-viewport${mobile && !expanded ? ' map-viewport--overview' : ''}`} style={expanded ? undefined : { aspectRatio: `${width} / ${height}` }} tabIndex={0} aria-label="Map navigation" onKeyDown={event => {
+      <div ref={viewport} className={`map-viewport${mobile && !expanded ? ' map-viewport--overview' : ''}`} style={expanded ? undefined : { aspectRatio: `${width} / ${height}` }} role="application" tabIndex={0} aria-label="Map navigation" onKeyDown={event => {
         if (event.target !== event.currentTarget) return
         const offset: Record<string, [number, number]> = { ArrowLeft: [24, 0], ArrowRight: [-24, 0], ArrowUp: [0, 24], ArrowDown: [0, -24] }
-        if (offset[event.key]) { event.preventDefault(); const [x, y] = offset[event.key]; setPan(current => ({ x: current.x + x, y: current.y + y })) }
+        if (offset[event.key]) {
+          event.preventDefault()
+          const [x, y] = offset[event.key]
+          setPan(current => ({ x: current.x + x, y: current.y + y }))
+        }
       }}>
         <svg
           viewBox={`0 0 ${width} ${height}`}
-          onPointerDown={(event) => { if (mobile && !expanded) return; event.currentTarget.setPointerCapture?.(event.pointerId); setDrag({ x: event.clientX, y: event.clientY }) }}
+          onPointerDown={(event) => {
+            if (mobile && !expanded) return
+            event.currentTarget.setPointerCapture?.(event.pointerId)
+            setDrag({ x: event.clientX, y: event.clientY })
+          }}
           onPointerMove={pointerMove}
           onPointerUp={() => setDrag(null)}
           onPointerCancel={() => setDrag(null)}
@@ -156,12 +164,30 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
       </div>
       <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-site" /> Build site</span><span><i className="legend-fog" /> Outside vision</span><span><i className="legend-movement" /> Movement (faction color)</span><span><i className="legend-attack" /> Attack (faction color)</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
       <EntityLegend types={entities.map((entity) => entity.type)} />
-      <div className="entity-details" aria-live="polite">
-        {selected ? <><strong title={selected.id}>{entityName(selected.id, naming)}</strong><span title={[selected.attackTargetId, 'healTargetId' in selected ? selected.healTargetId : undefined].filter(Boolean).join(' · ')}>HP {selected.health}/{selected.maxHealth} · ({selected.position.x}, {selected.position.y}){'movedFrom' in selected && selected.movedFrom ? ` · moved from (${selected.movedFrom.x}, ${selected.movedFrom.y})` : ''}{'attackTargetId' in selected && selected.attackTargetId ? ` · attacking ${entityName(selected.attackTargetId, naming)}` : ''}{'healTargetId' in selected && selected.healTargetId ? ` · treating ${entityName(selected.healTargetId, naming)}` : ''} · {entityStats(selected)}</span></> : <span>Select a castle, building, or unit for details.</span>}
-      </div>
+      <EntityDetails selected={selected} naming={naming} />
     </section>
   )
   return <>{!expanded && content}<dialog ref={dialog} className="expanded-map" aria-label="Expanded battlefield map" onKeyDown={trapFocus} onCancel={event => { event.preventDefault(); setExpanded(false) }} onClose={() => setExpanded(false)}>{expanded && content}</dialog></>
+}
+
+function EntityDetails({ selected, naming }: Readonly<{ selected?: Entity; naming: EntityNaming }>) {
+  if (!selected) {
+    return <div className="entity-details" aria-live="polite"><span>Select a castle, building, or unit for details.</span></div>
+  }
+  const targetIDs = [selected.attackTargetId, 'healTargetId' in selected ? selected.healTargetId : undefined]
+    .filter(Boolean)
+    .join(' · ')
+  const moved = 'movedFrom' in selected && selected.movedFrom
+    ? ` · moved from (${selected.movedFrom.x}, ${selected.movedFrom.y})`
+    : ''
+  const attacking = selected.attackTargetId ? ` · attacking ${entityName(selected.attackTargetId, naming)}` : ''
+  const treating = 'healTargetId' in selected && selected.healTargetId
+    ? ` · treating ${entityName(selected.healTargetId, naming)}`
+    : ''
+  return <div className="entity-details" aria-live="polite">
+    <strong title={selected.id}>{entityName(selected.id, naming)}</strong>
+    <span title={targetIDs}>HP {selected.health}/{selected.maxHealth} · ({selected.position.x}, {selected.position.y}){moved}{attacking}{treating} · {entityStats(selected)}</span>
+  </div>
 }
 
 // Animate only recorded, continuous updates; opening a snapshot never replays a move.

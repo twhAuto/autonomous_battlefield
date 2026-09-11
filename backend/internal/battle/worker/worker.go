@@ -68,20 +68,7 @@ func NewWithLogger(repository Repository, config Config, logger *slog.Logger) (*
 func (w *Worker) Run(ctx context.Context) error {
 	expiryCtx, cancelExpiry := context.WithCancel(ctx)
 	expiryDone := make(chan struct{})
-	go func() {
-		defer close(expiryDone)
-		for {
-			sweepCtx, cancelSweep := context.WithTimeout(expiryCtx, 10*time.Second)
-			err := w.repository.ExpireBattles(sweepCtx)
-			cancelSweep()
-			if err != nil && expiryCtx.Err() == nil {
-				w.logger.ErrorContext(expiryCtx, "battle_expiry_failed", "error", err)
-			}
-			if !wait(expiryCtx, time.Minute) {
-				return
-			}
-		}
-	}()
+	go w.sweepExpiredBattles(expiryCtx, expiryDone)
 	defer func() { cancelExpiry(); <-expiryDone }()
 
 	w.ready.Store(true)
@@ -96,6 +83,25 @@ func (w *Worker) Run(ctx context.Context) error {
 		telemetry.SetEngineReady(false)
 		w.logger.Info("battle_worker_stopped")
 	}()
+	return w.claimBattles(ctx)
+}
+
+func (w *Worker) sweepExpiredBattles(ctx context.Context, done chan<- struct{}) {
+	defer close(done)
+	for {
+		sweepCtx, cancelSweep := context.WithTimeout(ctx, 10*time.Second)
+		err := w.repository.ExpireBattles(sweepCtx)
+		cancelSweep()
+		if err != nil && ctx.Err() == nil {
+			w.logger.ErrorContext(ctx, "battle_expiry_failed", "error", err)
+		}
+		if !wait(ctx, time.Minute) {
+			return
+		}
+	}
+}
+
+func (w *Worker) claimBattles(ctx context.Context) error {
 	for {
 		if err := ctx.Err(); err != nil {
 			w.shuttingDown.Store(true)
@@ -112,33 +118,38 @@ func (w *Worker) Run(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("claim battle: %w", err)
 		}
-		telemetry.ObserveEngineClaim(job.Lease.Attempt > 1)
-		jobContext := telemetry.ContextWithTrace(ctx, job.Traceparent, job.Tracestate)
-		jobContext, span := telemetry.StartConsumerSpan(jobContext, "battlefield.engine.process",
-			attribute.String("battlefield.battle_id", job.Lease.BattleID),
-			attribute.Int("battlefield.attempt", job.Lease.Attempt),
-		)
-		w.logger.InfoContext(jobContext, "battle_claimed",
-			"battle_id", job.Lease.BattleID,
-			"attempt", job.Lease.Attempt,
-			"reclaimed", job.Lease.Attempt > 1,
-			"scenario_id", job.Scenario.ID,
-			"requested_ticks", job.RequestedTicks,
-		)
-		processErr := w.process(jobContext, job)
-		if processErr != nil {
-			span.RecordError(processErr)
-			attributes := []any{"battle_id", job.Lease.BattleID, "attempt", job.Lease.Attempt, "error", processErr}
-			switch {
-			case errors.Is(processErr, context.Canceled):
-				// Graceful requeue paths log their successful handoff directly.
-			case errors.Is(processErr, ErrBattleLeaseLost):
-				w.logger.WarnContext(jobContext, "battle_lease_lost", attributes...)
-			default:
-				w.logger.ErrorContext(jobContext, "battle_processing_stopped", attributes...)
-			}
-		}
-		span.End()
+		w.processClaimedBattle(ctx, job)
+	}
+}
+
+func (w *Worker) processClaimedBattle(ctx context.Context, job *BattleJob) {
+	telemetry.ObserveEngineClaim(job.Lease.Attempt > 1)
+	jobContext := telemetry.ContextWithTrace(ctx, job.Traceparent, job.Tracestate)
+	jobContext, span := telemetry.StartConsumerSpan(jobContext, "battlefield.engine.process",
+		attribute.String("battlefield.battle_id", job.Lease.BattleID),
+		attribute.Int("battlefield.attempt", job.Lease.Attempt),
+	)
+	defer span.End()
+	w.logger.InfoContext(jobContext, "battle_claimed",
+		"battle_id", job.Lease.BattleID,
+		"attempt", job.Lease.Attempt,
+		"reclaimed", job.Lease.Attempt > 1,
+		"scenario_id", job.Scenario.ID,
+		"requested_ticks", job.RequestedTicks,
+	)
+	processErr := w.process(jobContext, job)
+	if processErr == nil {
+		return
+	}
+	span.RecordError(processErr)
+	attributes := []any{"battle_id", job.Lease.BattleID, "attempt", job.Lease.Attempt, "error", processErr}
+	switch {
+	case errors.Is(processErr, context.Canceled):
+		// Graceful requeue paths log their successful handoff directly.
+	case errors.Is(processErr, ErrBattleLeaseLost):
+		w.logger.WarnContext(jobContext, "battle_lease_lost", attributes...)
+	default:
+		w.logger.ErrorContext(jobContext, "battle_processing_stopped", attributes...)
 	}
 }
 
