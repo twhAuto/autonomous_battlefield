@@ -1104,13 +1104,23 @@ project ConfigMap to enable export automatically, with explicit 0/1 overrides.
 
 Production launch preparation validates the registered cluster identity and rendered Access/tunnel settings, preserves existing secrets, and optionally creates a database backup. It is separate from image delivery and public tunnel activation; the helper does not change live workloads or establish proof of network/MFA enforcement.
 
-Production Jenkins verification receives a short-lived invited-user Access JWT
-through the `battlefield-production-access-token` Secret file credential, scoped
-to the verification stage as `BATTLEFIELD_ACCESS_TOKEN_FILE`. Operators refresh
-this credential before delivery; missing or expired credentials fail verification.
+Production Jenkins verification and k6 use the private
+`battlefield-production-access-service-token` JSON Secret file. Preflight checks
+its destination, client ID and expiry against the registered application config
+before rollout. The client secret is sent only to the configured public HTTPS
+origin; HTTP redirects are refused. Cloudflare authenticates the service and
+forwards a signed JWT. The API enrolls exactly `BATTLEFIELD_ACCESS_CI_CLIENT_ID`
+via the signed `common_name`, with a separate `ci` actor restricted to GET session
+and scenario catalog. User role mappings, signing-key validation and direct-origin
+denial remain enforced. CI cannot manage battles or use admin/inspection routes.
+Private port forwards still check readiness and rejection of forged identities.
+A fresh human JWT is only needed for optional operator user-session checks.
 
-Production k6 smoke-load credential binding is described in the
-[launch runbook](../operations/limited-launch.md).
+Credential files carry operator-maintained Cloudflare expiry metadata: builds warn
+within 30 days and stop below one hour. Cloudflare expiry notifications and
+scheduled operator rotation cover idle periods; Jenkins has no Cloudflare
+management token. Activation and rotation are in the
+[launch runbook](../operations/limited-launch.md#ci-service-authentication).
 
 ## 19. Current limitations and follow-up questions
 

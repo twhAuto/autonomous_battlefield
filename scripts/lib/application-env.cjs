@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const fields = {
   database: 'POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL MCP_DATABASE_URL',
-  auth: 'BATTLEFIELD_AUTH_MODE BATTLEFIELD_AUTH_ENABLED BATTLEFIELD_ADMIN_USERNAME BATTLEFIELD_ADMIN_PASSWORD BATTLEFIELD_SESSION_SECRET BATTLEFIELD_AUTH_COOKIE_SECURE BATTLEFIELD_ACCESS_ISSUER BATTLEFIELD_ACCESS_AUDIENCE BATTLEFIELD_ACCESS_ROLES BATTLEFIELD_PUBLIC_ORIGIN',
+  auth: 'BATTLEFIELD_AUTH_MODE BATTLEFIELD_AUTH_ENABLED BATTLEFIELD_ADMIN_USERNAME BATTLEFIELD_ADMIN_PASSWORD BATTLEFIELD_SESSION_SECRET BATTLEFIELD_AUTH_COOKIE_SECURE BATTLEFIELD_ACCESS_ISSUER BATTLEFIELD_ACCESS_AUDIENCE BATTLEFIELD_ACCESS_ROLES BATTLEFIELD_ACCESS_CI_CLIENT_ID BATTLEFIELD_PUBLIC_ORIGIN',
   ai: 'BATTLEFIELD_AGENT_SECRET BATTLEFIELD_MCP_CAPABILITY_SECRET BATTLEFIELD_CLI_ISOLATION_VERIFIED OPENAI_API_KEY OPENAI_MODEL OPENAI_PROFILE_AVAILABLE GEMINI_API_KEY GEMINI_MODEL GEMINI_PROFILE_AVAILABLE CODEX_CLI_PROFILE_AVAILABLE GEMINI_CLI_PROFILE_AVAILABLE',
   cache: 'BATTLEFIELD_REDIS_URL',
   runtime: 'LOG_LEVEL OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT OTEL_TRACES_SAMPLER_ARG LANGFUSE_BASE_URL LANGFUSE_PROJECT_ID',
@@ -56,6 +56,8 @@ function validate(values, environment) {
     if (mode !== 'cloudflare' || (enabled && enabled !== 'true')) throw new Error('Production requires Cloudflare authentication.');
     if (!/^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com\/?$/.test(values.get('BATTLEFIELD_ACCESS_ISSUER') || '')) throw new Error('Invalid Access issuer.');
     if (!/^[a-fA-F0-9]{64}$/.test(values.get('BATTLEFIELD_ACCESS_AUDIENCE') || '')) throw new Error('Invalid Access audience.');
+    const ciClientID = values.get('BATTLEFIELD_ACCESS_CI_CLIENT_ID');
+    if (ciClientID && !/^[a-f0-9]{32}\.access$/.test(ciClientID)) throw new Error('Invalid Access CI client ID.');
     let origin, roles;
     try { origin = new URL(values.get('BATTLEFIELD_PUBLIC_ORIGIN')); roles = JSON.parse(values.get('BATTLEFIELD_ACCESS_ROLES')); } catch { throw new Error('Invalid Access origin or roles.'); }
     if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error('Invalid Access origin.');

@@ -11,6 +11,7 @@ type Role string
 
 const (
 	Player      Role = "player"
+	CI          Role = "ci"
 	Developer   Role = "developer"
 	Admin       Role = "admin"
 	LegacyOwner      = "legacy-admin"
@@ -33,8 +34,10 @@ type actorObserverKey struct{}
 func WithActorObserver(ctx context.Context, observe func(Actor)) context.Context {
 	return context.WithValue(ctx, actorObserverKey{}, observe)
 }
-func (a Actor) CanInspect() bool            { return a.Role == Admin || a.Role == Developer }
-func (a Actor) CanManage(owner string) bool { return a.ID != "" && (a.Role == Admin || a.ID == owner) }
+func (a Actor) CanInspect() bool { return a.Role == Admin || a.Role == Developer }
+func (a Actor) CanManage(owner string) bool {
+	return a.Role != CI && a.ID != "" && (a.Role == Admin || a.ID == owner)
+}
 func Owner(ctx context.Context) string {
 	a, ok := ActorFromContext(ctx)
 	if !ok {
@@ -102,6 +105,14 @@ func RoutePolicy(next http.Handler) http.Handler {
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { http.Error(w, "permission denied", 403) })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if actor, ok := ActorFromContext(r.Context()); ok && actor.Role == CI {
+			if r.Method == http.MethodGet && (r.URL.Path == "/v1/auth/session" || r.URL.Path == "/v1/scenarios") {
+				next.ServeHTTP(w, r)
+			} else {
+				http.Error(w, "permission denied", http.StatusForbidden)
+			}
+			return
+		}
 		if r.URL.Path == "/v1/auth/login" || r.URL.Path == "/v1/auth/session" || r.URL.Path == "/v1/auth/logout" || !strings.HasPrefix(r.URL.Path, "/v1/") {
 			next.ServeHTTP(w, r)
 			return
