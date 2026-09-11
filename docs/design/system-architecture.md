@@ -800,7 +800,9 @@ authenticated command, including rollback, and cleans up on cancellation.
 
 Deployment staging copies only selected overlays and their base dependencies.
 Infrastructure secret inputs are staged explicitly; unrelated local credentials
-are not copied. Observability verification waits for completion of each new
+are not copied. Auth-only extraction uses a separate staging path; the exported
+registered `.env` path remains unchanged for child deployment preflight checks.
+Observability verification waits for completion of each new
 Deployment rollout concurrently and reports failures before setup verification.
 The source-security stage owns CI manifest rendering and policy validation;
 scanner versions are centralized in `scripts/ci/tool-versions.env`.

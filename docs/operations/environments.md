@@ -86,6 +86,9 @@ profile on its agent, and the private production `.env`. Jenkins retains registr
 signing, smoke-test Access-token and stage-scoped kubeconfig credentials; it no
 longer binds a separate database file. For a change only to production `.env`,
 run the main pipeline with `APPLY_CONFIGURATION=true`.
+Deployment extracts auth settings into a private temporary file while keeping
+`BATTLEFIELD_AUTH_SECRET_FILE` pointed at the registered production `.env`, so
+child policy-installation commands can repeat environment identity checks.
 
 ## Runtime configuration
 
