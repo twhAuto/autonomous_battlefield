@@ -270,6 +270,7 @@ kind_deploy_prepare_ai_secret() {
 }
 
 kind_deploy_prepare_overlays() {
+  staged_auth_secret_file=""
   runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/autonomous-battlefield-kustomize.XXXXXX")"
   mkdir -p \
     "${runtime_dir}/deploy/base" \
@@ -316,7 +317,7 @@ kind_deploy_prepare_overlays() {
     node "${project_dir}/scripts/lib/application-env.cjs" extract "${secret_file}" "${runtime_dir}/deploy/overlays/local/infrastructure/cache.env" cache
     if [[ -f "${BATTLEFIELD_AUTH_SECRET_FILE:-}" ]]; then
       node "${project_dir}/scripts/lib/application-env.cjs" extract "${BATTLEFIELD_AUTH_SECRET_FILE}" "${runtime_dir}/auth.env" auth
-      BATTLEFIELD_AUTH_SECRET_FILE="${runtime_dir}/auth.env"
+      staged_auth_secret_file="${runtime_dir}/auth.env"
     fi
   fi
 
@@ -410,9 +411,9 @@ kind_deploy_registry_credentials() {
 kind_deploy_infrastructure() {
   echo "Applying ${DEPLOY_ENV:-dev} infrastructure..."
   kind_deploy_kube apply -k "${runtime_dir}/deploy/overlays/local/infrastructure"
-  if [[ -f "${BATTLEFIELD_AUTH_SECRET_FILE:-}" ]]; then
+  if [[ -f "${staged_auth_secret_file:-}" ]]; then
     kind_deploy_kube create secret generic battlefield-auth --namespace "${namespace}" \
-      --from-env-file="${BATTLEFIELD_AUTH_SECRET_FILE}" --dry-run=client -o yaml | kind_deploy_kube apply -f -
+      --from-env-file="${staged_auth_secret_file}" --dry-run=client -o yaml | kind_deploy_kube apply -f -
   fi
   kind_deploy_kube rollout status statefulset/battlefield-postgres \
     --namespace "${namespace}" \

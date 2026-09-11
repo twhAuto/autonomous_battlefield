@@ -167,6 +167,53 @@ for selection in application migration gateway observability infrastructure all;
   runtime_dir=""
 done
 
+# Production staging must preserve the registered environment for child commands.
+(
+  unset BATTLEFIELD_SECRET_FILE BATTLEFIELD_AI_SECRET_FILE BATTLEFIELD_AUTH_SECRET_FILE
+  unset KUBERNETES_CONTEXT KIND_CLUSTER_NAME KUBERNETES_NAMESPACE DOCKER_HOST DOCKER_CONTEXT
+  unset TARGET_URL ZAP_TARGET_URL IMAGE_SOURCE ENFORCE_SUPPLY_CHAIN_POLICY
+  registration="${test_dir}/production"
+  mkdir -p "${registration}"
+  printf 'DATABASE_URL=%s\nBATTLEFIELD_AUTH_MODE=cloudflare\nBATTLEFIELD_AUTH_ENABLED=true\n' "${database_url}" >"${registration}/.env"
+  cp "${registration}/.env" "${registration}/original.env"
+  touch "${registration}/kubeconfig"
+  cat >"${registration}/deployment.env" <<PROFILE
+BF_ENV=production
+BF_CONTEXT=battlefield-production
+BF_CLUSTER=battlefield
+BF_UID=test-production-uid
+BF_DOCKER_HOST=unix:///test/docker.sock
+BF_URL=https://production.example.com
+BF_KUBECONFIG=kubeconfig
+BF_DISPOSABLE=0
+PROFILE
+  export DEPLOY_ENV=production BATTLEFIELD_ENV_FILE="${registration}/deployment.env"
+  export KUBECONFIG="${registration}/kubeconfig"
+  # Stub only the live identity read; profile loading and extraction remain real.
+  kubectl() { printf '%s' test-production-uid; }
+  export -f kubectl
+  battlefield_env_preflight
+  secret_file="${BATTLEFIELD_SECRET_FILE}"
+  ai_secret_file="${BATTLEFIELD_AI_SECRET_FILE}"
+  deployment_components_select infrastructure deployment
+  kind_deploy_prepare_overlays >"${test_dir}/auth-staging.log"
+  trap 'rm -rf -- "${runtime_dir}"' EXIT
+  bash -c 'source "$1"; battlefield_env_preflight' _ "${project_dir}/scripts/lib/deployment-environment.sh"
+  [[ "${BATTLEFIELD_AUTH_SECRET_FILE}" == "${registration}/.env" ]]
+  cmp "${registration}/original.env" "${registration}/.env"
+  [[ "$(stat -c '%a' "${runtime_dir}/auth.env")" == 600 ]]
+  printf 'BATTLEFIELD_AUTH_MODE=cloudflare\nBATTLEFIELD_AUTH_ENABLED=true\n' >"${test_dir}/expected-auth.env"
+  cmp "${test_dir}/expected-auth.env" "${runtime_dir}/auth.env"
+  kind_deploy_kube() { printf '%s\n' "$*" >>"${test_dir}/auth-kube-calls"; }
+  rollout_timeout=30s
+  kind_deploy_infrastructure >"${test_dir}/auth-apply.log"
+  grep -Fq -- "--from-env-file=${runtime_dir}/auth.env" "${test_dir}/auth-kube-calls"
+  rm -rf -- "${runtime_dir}"
+  deployment_components_select gateway deployment
+  kind_deploy_prepare_overlays >"${test_dir}/auth-gateway.log"
+  [[ -z "${staged_auth_secret_file}" ]]
+)
+
 # Langfuse selection must stage the matching collector configuration in either mode.
 for langfuse_enabled in 0 1; do
   LANGFUSE_ENABLED="${langfuse_enabled}"
