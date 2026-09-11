@@ -137,7 +137,9 @@ The inline map fits its board aspect ratio. Expanding moves the same map state
 into a native modal dialog with focus containment, Escape dismissal, scroll
 locking, and focus restoration. Perspective and entity selection survive this
 transition. Opening or resizing fits the board; live tick updates preserve the
-camera. Pointer and keyboard panning remain local UI state. On mobile the inline
+camera. Pointer and keyboard panning remain local UI state. A native “Pan with
+arrow keys” toolbar button provides keyboard panning without making the map container
+an application landmark. On mobile the inline
 overview permits page scrolling, with dragging enabled in the expanded map.
 
 Terminal battles display a result without inactive transport controls. Tick

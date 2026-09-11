@@ -66,7 +66,7 @@ describe('HexBattleMap', () => {
     const props = { map, state, visiblePositions: [], factionNames: new Map([['a', 'Northwind']]) }
     const { container, rerender } = render(<HexBattleMap {...props} />)
     await userEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
-    fireEvent.keyDown(screen.getByLabelText('Map navigation'), { key: 'ArrowRight' })
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Pan map with arrow keys' }), { key: 'ArrowRight' })
     fireEvent.keyDown(screen.getByRole('button', { name: 'Northwind · Castle' }), { key: ' ' })
     const camera = container.querySelector('.map-layer')!.getAttribute('transform')
     rerender(<HexBattleMap {...props} state={{ ...state, tick: 4 }} />)

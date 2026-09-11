@@ -65,24 +65,37 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 			s.Policy.Providers[p.Provider] = true
 		}
 		if _, ok := s.Policy.Profiles[p.ID]; !ok {
-			roles := p.AllowedRoles
-			if len(roles) == 0 {
-				roles = []string{"admin", "developer"}
-			}
-			if p.Runtime == "cli" {
-				filtered := []string{}
-				for _, role := range roles {
-					if role != "player" {
-						filtered = append(filtered, role)
-					}
-				}
-				roles = filtered
-			}
-			s.Policy.Profiles[p.ID] = ai.ProfileAccess{Enabled: true, AllowedRoles: roles}
+			s.Policy.Profiles[p.ID] = defaultProfileAccess(p)
 		}
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	_ = httpapi.WriteJSON(w, 200, map[string]any{"version": s.Version, "policy": s.Policy, "models": models})
+}
+func defaultProfileAccess(p ai.ModelProfile) ai.ProfileAccess {
+	roles := p.AllowedRoles
+	if len(roles) == 0 {
+		roles = []string{"admin", "developer"}
+	}
+	filtered := []string{}
+	for _, role := range roles {
+		if p.Runtime != "cli" || role != "player" {
+			filtered = append(filtered, role)
+		}
+	}
+	return ai.ProfileAccess{Enabled: true, AllowedRoles: filtered}
+}
+func validRoles(roles []string, runtime string) bool {
+	if roles == nil {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, role := range roles {
+		if (role != "admin" && role != "developer" && role != "player") || (role == "player" && runtime == "cli") || seen[role] {
+			return false
+		}
+		seen[role] = true
+	}
+	return true
 }
 func (h *Handler) valid(s Settings) bool {
 	models := h.Profiles.List()
@@ -93,15 +106,8 @@ func (h *Handler) valid(s Settings) bool {
 	for _, p := range models {
 		providers[p.Provider] = true
 		rule, ok := s.Policy.Profiles[p.ID]
-		if !ok || rule.AllowedRoles == nil {
+		if !ok || !validRoles(rule.AllowedRoles, p.Runtime) {
 			return false
-		}
-		seen := map[string]bool{}
-		for _, role := range rule.AllowedRoles {
-			if (role != "admin" && role != "developer" && role != "player") || (role == "player" && p.Runtime == "cli") || seen[role] {
-				return false
-			}
-			seen[role] = true
 		}
 		if _, ok := s.Policy.Providers[p.Provider]; !ok {
 			return false

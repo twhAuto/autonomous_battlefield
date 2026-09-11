@@ -1,7 +1,7 @@
 // Application shell and route table. Checks the session, handles login/logout and API
 // authentication expiry, and wraps feature pages in shared navigation.
 
-import { useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useMobile } from '../shared/hooks/useMobile'
 import { Link, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { CreateFactionPage } from '../features/factions/pages/CreateFactionPage'
@@ -76,7 +76,7 @@ function AppLayout({ actorID, admin, onLogout }: Readonly<{ actorID: string; adm
         </div>
       </header>
 
-      {preview.role && <div className="role-preview-banner" role="status"><span>Viewing as {preview.role === 'player' ? 'Player' : 'Developer'} · Read-only preview using your own account. Your administrator permissions are unchanged.</span><button type="button" onClick={() => preview.setRole(null)}>Exit preview</button></div>}
+      {preview.role && <output className="role-preview-banner"><span>Viewing as {preview.role === 'player' ? 'Player' : 'Developer'} · Read-only preview using your own account. Your administrator permissions are unchanged.</span><button type="button" onClick={() => preview.setRole(null)}>Exit preview</button></output>}
       <main id="main-content" tabIndex={-1} className={isBattleDetail ? 'main-content--battle' : undefined}><Outlet /></main>
 
       <footer>
@@ -104,8 +104,8 @@ interface AppProps {
 
 export default function App({ authentication = authenticationClient, initialSession }: Readonly<AppProps>) {
   const [session, setSession] = useState<AuthSession | null>(initialSession ?? null)
-  const [previewRole, updatePreviewRole] = useState<PreviewRole | null>(null)
-  function setPreviewRole(role: PreviewRole | null) { setRequestPreviewRole(role); updatePreviewRole(role) }
+  const [previewRole, setPreviewRole] = useState<PreviewRole | null>(null)
+  const changePreviewRole = useCallback((role: PreviewRole | null) => { setRequestPreviewRole(role); setPreviewRole(role) }, [])
   useEffect(() => () => setRequestPreviewRole(null), [])
   const [sessionError, setSessionError] = useState('')
   const [sessionAttempt, setSessionAttempt] = useState(0)
@@ -122,19 +122,24 @@ export default function App({ authentication = authenticationClient, initialSess
   }, [authentication, initialSession, sessionAttempt])
 
   useEffect(() => {
-    const requireAuthentication = () => { setPreviewRole(null); setSession((previous) => ({ enabled: true, authenticated: false, mode: previous?.mode })) }
+    const requireAuthentication = () => { changePreviewRole(null); setSession((previous) => ({ enabled: true, authenticated: false, mode: previous?.mode })) }
     window.addEventListener(authenticationRequiredEvent, requireAuthentication)
     return () => window.removeEventListener(authenticationRequiredEvent, requireAuthentication)
-  }, [])
+  }, [changePreviewRole])
 
   async function logout() {
-    setPreviewRole(null)
+    changePreviewRole(null)
     try {
       await authentication.logout()
     } finally {
       setSession(previous => ({ enabled: true, authenticated: false, mode: previous?.mode }))
     }
   }
+
+  const canAdmin = session?.actor?.role === 'admin' || (!session?.actor?.role && session?.mode !== 'cloudflare')
+
+  const effectiveSession = useMemo(() => session && canAdmin && previewRole ? { ...session, actor: { ...session?.actor, id: session?.actor?.id ?? 'local-development', role: previewRole }, capabilities: { inspect: previewRole === 'developer', cli: previewRole === 'developer', admin: false } } : session, [session, canAdmin, previewRole])
+  const previewContext = useMemo(() => ({ role: previewRole, setRole: changePreviewRole }), [previewRole, changePreviewRole])
 
   if (sessionError) {
     return (
@@ -158,11 +163,8 @@ export default function App({ authentication = authenticationClient, initialSess
     return <LoginPage authentication={authentication} onAuthenticated={setSession} />
   }
 
-  const canAdmin = session.actor?.role === 'admin' || (!session.actor?.role && session.mode !== 'cloudflare')
-
-  const effectiveSession = canAdmin && previewRole ? { ...session, actor: { ...session.actor, id: session.actor?.id ?? 'local-development', role: previewRole }, capabilities: { inspect: previewRole === 'developer', cli: previewRole === 'developer', admin: false } } : session
   return (
-    <RolePreviewContext.Provider value={{ role: previewRole, setRole: setPreviewRole }}><SessionContext.Provider value={effectiveSession}><Routes key={previewRole ?? 'admin'}>
+    <RolePreviewContext.Provider value={previewContext}><SessionContext.Provider value={effectiveSession ?? session}><Routes key={previewRole ?? 'admin'}>
       <Route element={<AppLayout actorID={session.actor?.id ?? 'local-development'} admin={canAdmin && !previewRole} onLogout={logout} />}>
         <Route index element={<HomePage />} />
         <Route path="factions/new" element={<CreateFactionPage />} />
