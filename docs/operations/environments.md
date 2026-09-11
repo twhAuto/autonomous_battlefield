@@ -130,7 +130,9 @@ configuration and are not relocated.
 Run environment, deployment-component, Kind deployment, production-preparation,
 tunnel, command-wrapper and runtime-assurance regression checks. Dev smoke checks
 cover readiness, authentication and scenario access; production smoke checks use
-an invited user's Access token. Database migration backups and verified image
+an enrolled Access service identity with read-only permissions. Keep only its
+`BATTLEFIELD_ACCESS_CI_CLIENT_ID` in the application `.env`; the Client Secret stays
+in the Jenkins service credential. See the [CI service runbook](limited-launch.md#ci-service-authentication). Database migration backups and verified image
 rollback remain operational features, independent of this configuration cleanup.
 Failure drills still require a separately registered disposable dev cluster,
 matching UID and explicit acknowledgement; production is forbidden.

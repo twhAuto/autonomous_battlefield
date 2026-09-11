@@ -54,6 +54,12 @@ test('shared schema enforces production authentication and separates deployment 
     BATTLEFIELD_ACCESS_AUDIENCE:'a'.repeat(64),BATTLEFIELD_PUBLIC_ORIGIN:'https://play.example.com',
     BATTLEFIELD_ACCESS_ROLES:'{"admin":["owner@example.com"]}'}));
   validate(values,'production');
+  values.set('BATTLEFIELD_ACCESS_CI_CLIENT_ID', 'a'.repeat(32)+'.access');
+  validate(values,'production');
+  assert.equal(group('BATTLEFIELD_ACCESS_CI_CLIENT_ID'), 'auth');
+  values.set('BATTLEFIELD_ACCESS_CI_CLIENT_ID', 'owner@example.com');
+  assert.throws(()=>validate(values,'production'),/CI client ID/);
+  values.delete('BATTLEFIELD_ACCESS_CI_CLIENT_ID');
   values.set('BATTLEFIELD_AUTH_MODE','disabled-development');
   assert.throws(()=>validate(values,'production'),/Cloudflare/);
   validate(values,'dev');
