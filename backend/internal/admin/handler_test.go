@@ -86,6 +86,15 @@ func TestSettingsValidationPersistenceAndFailures(t *testing.T) {
 	if w = request(h, "PUT", s, authn.Admin); w.Code != 503 {
 		t.Fatal(w.Code)
 	}
+}
+func TestSettingsValidationAndAuthorization(t *testing.T) {
+	db := &fakeDB{raw: []byte(`{"providers":{},"profiles":{}}`)}
+	h := &Handler{DB: db, Profiles: registry()}
+	var s Settings
+	w := request(h, "GET", nil, authn.Admin)
+	if err := json.Unmarshal(w.Body.Bytes(), &s); err != nil {
+		t.Fatal(err)
+	}
 	for _, role := range []authn.Role{authn.Player, authn.Developer} {
 		if request(h, "PUT", s, role).Code != 403 || request(h, "GET", nil, role).Code != 403 {
 			t.Fatal("unauthorized settings access")
@@ -115,6 +124,10 @@ func TestSettingsValidationPersistenceAndFailures(t *testing.T) {
 	if h.valid(s) {
 		t.Fatal("missing profile")
 	}
+}
+func TestSettingsReadFailures(t *testing.T) {
+	db := &fakeDB{}
+	h := &Handler{DB: db, Profiles: registry()}
 	db.readError = errors.New("offline")
 	if request(h, "GET", nil, authn.Admin).Code != 503 {
 		t.Fatal("read failure hidden")

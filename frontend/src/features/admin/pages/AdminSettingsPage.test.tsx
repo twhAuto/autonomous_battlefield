@@ -102,6 +102,26 @@ describe('AdminSettingsPage', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
+  it('warns before leaving only while edits are unsaved', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetch).mockResolvedValue(json(settings()))
+    const { unmount } = renderPage()
+    await screen.findByText('Configured GPT · API')
+    const leave = () => {
+      const event = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+    expect(leave()).toBe(false)
+    await user.click(screen.getByRole('switch', { name: 'openai provider access' }))
+    expect(leave()).toBe(true)
+    await user.click(screen.getByRole('button', { name: 'Discard changes' }))
+    expect(leave()).toBe(false)
+    await user.click(screen.getByRole('switch', { name: 'openai provider access' }))
+    unmount()
+    expect(leave()).toBe(false)
+  })
+
   it('aborts pending reads on unmount', async () => {
     let finish!: (value: Response) => void
     vi.mocked(fetch).mockImplementation(() => new Promise(resolve => { finish = resolve }))

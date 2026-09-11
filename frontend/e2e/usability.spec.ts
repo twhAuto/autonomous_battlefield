@@ -59,7 +59,7 @@ for (const [width, height] of [[15, 11], [25, 17]]) {
     await expect(dialog.getByRole('button', { name: 'Amber · Castle', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await dialog.getByLabel('Perspective').selectOption(factionId)
     await dialog.getByRole('button', { name: 'Zoom in' }).click()
-    await dialog.getByLabel('Map navigation').focus()
+    await dialog.getByRole('button', { name: 'Pan map with arrow keys' }).focus()
     const layer = dialog.locator('.map-layer')
     const before = await layer.getAttribute('transform')
     await page.keyboard.press('ArrowRight')

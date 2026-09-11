@@ -508,13 +508,16 @@ API requests and routes, but ordinary pages show no identifier or copy controls.
 The former shared `Identifier` component has been removed.
 
 Home and primary navigation share three destinations in order: Stage battle,
-Factions, Battle history. The compact home has no promotional hero. Factions
+Factions, Battle history. Administrator navigation also includes Admin. The compact home has no promotional hero. Factions
 combines directory access with its Create faction action; the existing creation
 and editing routes remain available and keep the Factions navigation item active.
 
 `frontend/e2e/fixtures.ts` intercepts the complete API boundary for application
 Playwright tests. `e2e/usability.spec.ts` runs against a local Vite server in
 desktop and mobile Chromium, including destructive cases only against fixtures.
+Map keyboard tests focus the native “Pan with arrow keys” button; pointer panning
+continues through the map viewport. Admin settings split per-model access controls
+into `ModelAccessCard` and use native outputs for loading and save status.
 See [frontend commands](../../frontend/README.md#commands) for browser setup,
 coverage, and reports. Jenkins archives failure screenshots, traces, and HTML
 reports alongside coverage without changing the 80% coverage thresholds.
