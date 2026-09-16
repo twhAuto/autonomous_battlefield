@@ -1,5 +1,26 @@
 # Autonomous Battlefield agent guidance
 
+## Branches and pull requests
+
+`dev` is the integration branch for AI-assisted work.
+
+- Unless the user explicitly requests a different base or target, create every
+  new AI work branch (features, fixes, refactors, documentation, and maintenance)
+  from the latest fetched `origin/dev`, and target its pull request to `dev`.
+- Fetch `origin` before branching and inspect the working tree. Preserve existing
+  work; do not reset or discard changes to establish the branch base. Use an
+  isolated worktree when needed. If fetching fails, report the limitation rather
+  than silently treating a stale local `dev` as current.
+- Do not base new work on `main`, the current feature branch, or another work
+  branch by default. Specify the PR base explicitly (for example, `gh pr create
+  --base dev`) rather than relying on the repository's default branch.
+- Promotion from `dev` to `main` is a separate release action. Create a PR to
+  `main` only when the user requests that promotion or explicitly chooses it as
+  the target.
+- Run the applicable checks below before opening a PR. Jenkins currently runs
+  PR verification only for PRs targeting `main`; a PR into `dev` does not yet
+  receive those checks. Do not treat skipped Jenkins stages as verification.
+
 ## Project tracking
 
 The authoritative project backlog is maintained in Notion:

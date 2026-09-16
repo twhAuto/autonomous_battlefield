@@ -507,7 +507,13 @@ only after GitHub creates the final `main` commit. Direct pushes to `dev` remain
 available for local iteration, but Jenkins CI begins when a pull request targets
 `main`.
 
-After merging a pull request, synchronize the long-lived local branches before
+AI-created feature and fix branches start from the latest fetched `origin/dev`
+and open pull requests into `dev`, unless the user explicitly requests otherwise.
+See [agent branch guidance](../../AGENTS.md#branches-and-pull-requests). Jenkins
+currently skips verification for PRs targeting `dev`, so run the applicable local
+checks before opening them. A `dev`-to-`main` promotion is a separate release PR.
+
+After merging a release pull request into `main`, synchronize the long-lived local branches before
 starting the next change:
 
 ```bash
@@ -518,10 +524,9 @@ git merge main
 git push origin dev
 ```
 
-This keeps the next `dev`-to-`main` pull request focused on new work. Use a
-short-lived feature branch instead when several changes need independent
-review; the pipeline behavior is the same for any pull request targeting
-`main`.
+This keeps the next `dev`-to-`main` pull request focused on new work. Short-lived
+AI work branches use `dev` as their base and PR target; the release PR into
+`main` receives the configured Jenkins PR checks.
 
 ## Retain pull-request build history
 

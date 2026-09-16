@@ -14,6 +14,13 @@ repository/package paths and deployment identifiers remain compatible.
 
 For runtime boundaries, data flows, durability, and security decisions, see the [system architecture](system-architecture.md).
 
+AI-created work branches start from the latest fetched `origin/dev` and target
+`dev` in pull requests, unless the user explicitly requests otherwise. Promotion
+to `main` is separate. See [agent branch guidance](../../AGENTS.md#branches-and-pull-requests)
+and the [Jenkins workflow](../operations/jenkins.md#configure-github-main-protection).
+PRs into `dev` currently require local verification because Jenkins PR checks
+run only for a `main` target.
+
 ## Environment tooling
 
 `scripts/lib/deployment-environment.sh` owns profile loading, conflicting-override
