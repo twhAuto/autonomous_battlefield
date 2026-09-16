@@ -274,34 +274,7 @@ wait_for_url \
   "http://127.0.0.1:${elasticsearch_port}/_cluster/health"
 wait_for_url "Tempo readiness" "http://127.0.0.1:${tempo_port}/ready"
 
-wait_for_prometheus_query() {
-  local name="$1"
-  local query="$2"
-  local minimum="$3"
-  local output_file="${runtime_dir}/prometheus-query.json"
-
-  for _ in {1..30}; do
-    if curl --fail --silent --max-time 2 \
-      --get \
-      --data-urlencode "query=${query}" \
-      --output "${output_file}" \
-      "http://127.0.0.1:${prometheus_port}/api/v1/query" \
-      && node -e '
-        const fs = require("fs");
-        const response = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-        const value = Number(response.data?.result?.[0]?.value?.[1]);
-        process.exit(Number.isFinite(value) && value >= Number(process.argv[2]) ? 0 : 1);
-      ' "${output_file}" "${minimum}"; then
-      echo "${name}: OK"
-      return 0
-    fi
-    sleep 1
-  done
-
-  echo "${name} did not reach ${minimum} healthy target(s): ${query}" >&2
-  sed -n '1,120p' "${output_file}" >&2
-  return 1
-}
+source "${project_dir}/scripts/lib/prometheus-smoke.sh"
 
 wait_for_prometheus_query \
   "Prometheus API discovery" \
