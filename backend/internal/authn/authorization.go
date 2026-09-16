@@ -17,7 +17,9 @@ const (
 	LegacyOwner      = "legacy-admin"
 )
 
-var ErrForbidden = errors.New("permission denied")
+const permissionDeniedMessage = "permission denied"
+
+var ErrForbidden = errors.New(permissionDeniedMessage)
 
 // WithActor is for trusted authentication adapters and tests, never client input.
 func WithActor(ctx context.Context, actor Actor) context.Context {
@@ -84,7 +86,7 @@ func Permit(permission string, next http.HandlerFunc) http.HandlerFunc {
 		}
 		allowed := (permission == "play" && (a.Role == Player || a.CanInspect())) || (permission == "inspect" && a.CanInspect()) || (permission == "admin" && a.Role == Admin)
 		if !allowed {
-			http.Error(w, "permission denied", 403)
+			http.Error(w, permissionDeniedMessage, 403)
 			return
 		}
 		next(w, r)
@@ -103,13 +105,13 @@ func RoutePolicy(next http.Handler) http.Handler {
 	for _, pattern := range []string{"GET /v1/admin/model-access", "PUT /v1/admin/model-access"} {
 		mux.HandleFunc(pattern, Permit("admin", next.ServeHTTP))
 	}
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { http.Error(w, "permission denied", 403) })
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { http.Error(w, permissionDeniedMessage, 403) })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if actor, ok := ActorFromContext(r.Context()); ok && actor.Role == CI {
 			if r.Method == http.MethodGet && (r.URL.Path == "/v1/auth/session" || r.URL.Path == "/v1/scenarios") {
 				next.ServeHTTP(w, r)
 			} else {
-				http.Error(w, "permission denied", http.StatusForbidden)
+				http.Error(w, permissionDeniedMessage, http.StatusForbidden)
 			}
 			return
 		}
