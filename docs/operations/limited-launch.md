@@ -421,3 +421,40 @@ unchanged. Record the next review date and owner in your operational calendar.
 
 References: [service tokens, rotation and expiry notifications](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/),
 [service-token application JWT claims](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/application-token/).
+
+### Diagnose an origin authentication 401
+
+After deploying the authentication diagnostics, repeat the production session
+smoke request and inspect API request logs in the registered production context:
+
+```bash
+kubectl --context "$KUBERNETES_CONTEXT" -n battlefield logs \
+  -l app.kubernetes.io/component=api -c api --since=10m --prefix=true \
+  --tail=200 | rg 'auth_failure'
+```
+
+Match `request_id` to the response's `X-Request-ID`. An empty `auth_failure`
+means no Cloudflare verifier rejection was observed on that request; it is not
+proof of authentication. The HTTP response deliberately remains a generic 401.
+No JWT, cookie, client secret, claim value or raw upstream error is logged.
+
+- `assertion_missing`, `assertion_duplicate`, `assertion_oversized`,
+  `token_format_invalid`, `token_header_invalid`: inspect assertion forwarding.
+- `jwks_tls_verification_failed`, `jwks_dns_failed`, `jwks_timeout`,
+  `jwks_request_canceled`, `jwks_transport_failed`: inspect the API runtime's
+  trust, DNS and outbound connection. The transport code also covers redirects.
+- `jwks_http_<status>`, `jwks_json_invalid`, `jwks_keys_invalid`,
+  `jwks_request_invalid`: inspect the fixed issuer's certs endpoint/configuration.
+- `jwks_kid_unknown`, `jwks_refresh_throttled`: check signing-key rotation;
+  refresh attempts remain limited to once per 30 seconds. A failed refresh keeps
+  its specific failure code during that interval.
+- `signature_invalid`, `claims_json_invalid`: inspect token integrity/format.
+- `issuer_mismatch`, `audience_mismatch`, `token_expired`,
+  `issued_at_missing_or_invalid`, `issued_at_in_future`, `token_not_yet_valid`,
+  `token_type_invalid`: compare configuration and clocks without sharing JWTs.
+- `service_identity_not_configured`, `service_client_id_mismatch`,
+  `service_token_type_invalid`, `service_user_identity_present`,
+  `user_identity_or_role_invalid`: inspect service enrollment or human roles.
+
+API containers have a read-only root filesystem; do not copy diagnostic binaries
+into `/tmp` or weaken that setting. Use these server logs for verifier failures.
