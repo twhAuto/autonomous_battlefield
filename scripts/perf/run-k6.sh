@@ -19,10 +19,11 @@ if [[ ! -f "${project_dir}/${test_file}" ]]; then
 fi
 
 # Resolve production credentials from the same deployed Secret as smoke verification.
-# Disable tracing before reading credentials; Docker inherits them by name so they
-# are not exposed in its command-line arguments.
+# Disable tracing before handling credentials; mount the private file read-only
+# instead of exposing secret values in Docker arguments or environment variables.
 set +x
-export ACCESS_JWT=""
+service_mount=()
+export BATTLEFIELD_K6_SERVICE_FILE=""
 if [[ "${DEPLOY_ENV:-dev}" == production ]]; then
   auth_mode="$(kubectl --context "${KUBERNETES_CONTEXT}" --namespace "${KUBERNETES_NAMESPACE}" \
     --request-timeout=10s get secret "${SMOKE_TEST_AUTH_SECRET_NAME:-battlefield-auth}" \
@@ -31,19 +32,13 @@ if [[ "${DEPLOY_ENV:-dev}" == production ]]; then
     echo 'Production k6 requires Cloudflare authentication.' >&2
     exit 1
   }
-  : "${BATTLEFIELD_ACCESS_TOKEN_FILE:?Production k6 requires an Access JWT file}"
-  ACCESS_JWT="$(python3 - <<'TOKEN'
-import os
-from pathlib import Path
-p = Path(os.environ['BATTLEFIELD_ACCESS_TOKEN_FILE'])
-if p.stat().st_mode & 0o077:
-    raise SystemExit('Access token file must be private (chmod 600)')
-token = p.read_text().strip()
-if len(token.split('.')) != 3 or any(c.isspace() for c in token):
-    raise SystemExit('Invalid Access token file format')
-print(token)
-TOKEN
-)"
+  : "${BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE:?Production k6 requires a CI service credential file}"
+  ci_client_id="$(kubectl --context "${KUBERNETES_CONTEXT}" --namespace "${KUBERNETES_NAMESPACE}" \
+    --request-timeout=10s get secret "${SMOKE_TEST_AUTH_SECRET_NAME:-battlefield-auth}" \
+    -o 'jsonpath={.data.BATTLEFIELD_ACCESS_CI_CLIENT_ID}' | base64 --decode)"
+  python3 "${project_dir}/scripts/lib/access_service.py" --origin "$TARGET_URL" --client-id "$ci_client_id"
+  service_mount=(-v "$(realpath -- "$BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE"):/run/battlefield-access.json:ro")
+  export BATTLEFIELD_K6_SERVICE_FILE=/run/battlefield-access.json
   unset ADMIN_USERNAME ADMIN_PASSWORD
 fi
 export ADMIN_USERNAME="${ADMIN_USERNAME:-}" ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
@@ -64,6 +59,7 @@ docker run --rm --network host --add-host battlefield.localhost:127.0.0.1 \
   -e SSL_CERT_FILE=/certs/ca-bundle.crt \
   -e TARGET_URL="${TARGET_URL:-http://battlefield.localhost:8888}" \
   -e K6_VUS="${K6_VUS:-3}" -e K6_DURATION="${K6_DURATION:-30s}" \
-  -e ADMIN_USERNAME -e ADMIN_PASSWORD -e ACCESS_JWT \
+  -e ADMIN_USERNAME -e ADMIN_PASSWORD -e BATTLEFIELD_K6_SERVICE_FILE \
+  "${service_mount[@]}" \
   -v "${project_dir}:/work:ro" -v "${report_dir}:/reports" \
   "${K6_IMAGE}" run --summary-export=/reports/k6-summary.json "/work/${test_file}"

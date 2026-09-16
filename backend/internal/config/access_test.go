@@ -13,8 +13,9 @@ func TestProductionAccessConfiguration(t *testing.T) {
 	t.Setenv("BATTLEFIELD_ACCESS_AUDIENCE", "application-audience")
 	t.Setenv("BATTLEFIELD_PUBLIC_ORIGIN", "https://battle.example.com")
 	t.Setenv("BATTLEFIELD_ACCESS_ROLES", `{"admin":["owner@example.com"],"player":["friend@example.com"]}`)
+	t.Setenv("BATTLEFIELD_ACCESS_CI_CLIENT_ID", "0123456789abcdef0123456789abcdef.access")
 	cfg, e := parseAuthConfig(fileConfig{})
-	if e != nil || !cfg.Enabled || cfg.SessionSecret != "" {
+	if e != nil || !cfg.Enabled || cfg.SessionSecret != "" || cfg.CIClientID != "0123456789abcdef0123456789abcdef.access" {
 		t.Fatal(cfg, e)
 	}
 	for _, tt := range []struct{ key, value string }{
@@ -22,6 +23,7 @@ func TestProductionAccessConfiguration(t *testing.T) {
 		{"BATTLEFIELD_AUTH_ENABLED", "false"}, {"BATTLEFIELD_ACCESS_ISSUER", "http://friends.cloudflareaccess.com"},
 		{"BATTLEFIELD_ACCESS_ISSUER", "https://attacker.example.com"}, {"BATTLEFIELD_ACCESS_ISSUER", "https://friends.cloudflareaccess.com/path"},
 		{"BATTLEFIELD_ACCESS_AUDIENCE", ""}, {"BATTLEFIELD_PUBLIC_ORIGIN", "http://battle.example.com"},
+		{"BATTLEFIELD_ACCESS_CI_CLIENT_ID", "admin@example.com"},
 		{"BATTLEFIELD_ACCESS_ROLES", `{}`}, {"BATTLEFIELD_ACCESS_ROLES", `{"admin":["A@example.com"],"player":["a@example.com"]}`},
 		{"BATTLEFIELD_ACCESS_ROLES", `{"root":["a@example.com"]}`},
 	} {

@@ -23,7 +23,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
   const [expanded, setExpanded] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
   const expandButton = useRef<HTMLButtonElement>(null)
-  const viewport = useRef<HTMLDivElement>(null)
+  const viewport = useRef<HTMLElement>(null)
   const entityNodes = useRef(new Map<string, SVGGElement>())
   const [scale, setScale] = useState(1)
   const [pan, setPan] = useState({ x: 24, y: 30 })
@@ -84,20 +84,20 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
         <span>HEX TACTICAL MAP · TICK {state.tick}</span>
         <div className="map-toolbar__controls">
           {toolbarControls}
-          <div className="map-zoom-controls"><button type="button" onClick={() => zoom(-0.15)} aria-label="Zoom out">−</button><button type="button" onClick={() => zoom(0.15)} aria-label="Zoom in">+</button><button type="button" onClick={fit}>Fit map</button>
+          <div className="map-zoom-controls"><button type="button" aria-label="Pan map with arrow keys" onKeyDown={event => {
+              if (event.target !== event.currentTarget) return
+              const offset: Record<string, [number, number]> = { ArrowLeft: [24, 0], ArrowRight: [-24, 0], ArrowUp: [0, 24], ArrowDown: [0, -24] }
+              if (offset[event.key]) {
+                event.preventDefault()
+                const [x, y] = offset[event.key]
+                setPan(current => ({ x: current.x + x, y: current.y + y }))
+              }
+            }}>Pan with arrow keys</button><button type="button" onClick={() => zoom(-0.15)} aria-label="Zoom out">−</button><button type="button" onClick={() => zoom(0.15)} aria-label="Zoom in">+</button><button type="button" onClick={fit}>Fit map</button>
             {expanded ? <button type="button" autoFocus onClick={() => setExpanded(false)}>Close map</button> : <button ref={expandButton} type="button" onClick={() => setExpanded(true)}>Expand map</button>}
           </div>
         </div>
       </div>
-      <div ref={viewport} className={`map-viewport${mobile && !expanded ? ' map-viewport--overview' : ''}`} style={expanded ? undefined : { aspectRatio: `${width} / ${height}` }} role="application" tabIndex={0} aria-label="Map navigation" onKeyDown={event => {
-        if (event.target !== event.currentTarget) return
-        const offset: Record<string, [number, number]> = { ArrowLeft: [24, 0], ArrowRight: [-24, 0], ArrowUp: [0, 24], ArrowDown: [0, -24] }
-        if (offset[event.key]) {
-          event.preventDefault()
-          const [x, y] = offset[event.key]
-          setPan(current => ({ x: current.x + x, y: current.y + y }))
-        }
-      }}>
+      <section ref={viewport} className={`map-viewport${mobile && !expanded ? ' map-viewport--overview' : ''}`} style={expanded ? undefined : { aspectRatio: `${width} / ${height}` }} aria-label="Map navigation">
         <svg
           viewBox={`0 0 ${width} ${height}`}
           onPointerDown={(event) => {
@@ -161,7 +161,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
             })}
           </g>
         </svg>
-      </div>
+      </section>
       <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-site" /> Build site</span><span><i className="legend-fog" /> Outside vision</span><span><i className="legend-movement" /> Movement (faction color)</span><span><i className="legend-attack" /> Attack (faction color)</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
       <EntityLegend types={entities.map((entity) => entity.type)} />
       <EntityDetails selected={selected} naming={naming} />

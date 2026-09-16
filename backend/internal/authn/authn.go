@@ -27,6 +27,7 @@ type Config struct {
 	Origin        string
 	Issuer        string
 	Audience      string
+	CIClientID    string
 	Roles         map[string]Role
 	Enabled       bool
 	Username      string
@@ -63,7 +64,7 @@ func NewManager(config Config) *Manager {
 	if config.Mode == ModeCloudflare {
 		config.Enabled = true
 	}
-	return &Manager{config: config, now: time.Now, cloudflare: &Cloudflare{Issuer: config.Issuer, Audience: config.Audience, Roles: config.Roles}}
+	return &Manager{config: config, now: time.Now, cloudflare: &Cloudflare{Issuer: config.Issuer, Audience: config.Audience, Roles: config.Roles, CIClientID: config.CIClientID}}
 }
 
 func (m *Manager) Enabled() bool {

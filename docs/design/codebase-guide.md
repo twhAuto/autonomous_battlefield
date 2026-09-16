@@ -409,7 +409,7 @@ which exposes draft-only tools and namespaced capabilities. Migration
 
 ### Shared infrastructure packages
 
-- [`internal/authn`](../../backend/internal/authn) provides Cloudflare JWT verification, explicit development login modes, role/ownership helpers, exact-origin mutations, a deny-by-default route permission registry, and mode-aware session/logout routes. `cloudflare_test.go` exercises signatures, key rotation, forged headers, legacy cookies and role removal.
+- [`internal/authn`](../../backend/internal/authn) provides Cloudflare JWT verification, explicit development login modes, role/ownership helpers, exact-origin mutations, a deny-by-default route permission registry, and mode-aware session/logout routes. `cloudflare_test.go` exercises signatures, key rotation, forged headers, legacy cookies and role removal. `service_test.go` covers enrolled CI service JWTs, invalid claims, disabled enrollment and the read-only route boundary. CI uses a separate `ci` actor, never a human role.
 - [`internal/config/config.go`](../../backend/internal/config/config.go) strictly decodes one YAML document, rejects unknown fields, resolves environment variables, and provides process-specific loaders.
 - [`internal/postgres`](../../backend/internal/postgres) manages the `pgx` pool, embedded Goose migrations, startup retries, and `LISTEN/NOTIFY`.
 - [`internal/httpapi`](../../backend/internal/httpapi) provides bounded strict JSON, lifecycle/readiness routes, request IDs, routing, and access logging.
@@ -508,13 +508,16 @@ API requests and routes, but ordinary pages show no identifier or copy controls.
 The former shared `Identifier` component has been removed.
 
 Home and primary navigation share three destinations in order: Stage battle,
-Factions, Battle history. The compact home has no promotional hero. Factions
+Factions, Battle history. Administrator navigation also includes Admin. The compact home has no promotional hero. Factions
 combines directory access with its Create faction action; the existing creation
 and editing routes remain available and keep the Factions navigation item active.
 
 `frontend/e2e/fixtures.ts` intercepts the complete API boundary for application
 Playwright tests. `e2e/usability.spec.ts` runs against a local Vite server in
 desktop and mobile Chromium, including destructive cases only against fixtures.
+Map keyboard tests focus the native “Pan with arrow keys” button; pointer panning
+continues through the map viewport. Admin settings split per-model access controls
+into `ModelAccessCard` and use native outputs for loading and save status.
 See [frontend commands](../../frontend/README.md#commands) for browser setup,
 coverage, and reports. Jenkins archives failure screenshots, traces, and HTML
 reports alongside coverage without changing the 80% coverage thresholds.
@@ -658,7 +661,7 @@ Battle inspector regions use labelled sections, and asynchronous loading message
 use native `output` elements. Component tests verify the resulting accessibility
 roles rather than requiring redundant explicit role attributes.
 
-Package-specific PostgreSQL integration tests remain beside their adapters and require `TEST_DATABASE_URL`; the isolated PostgreSQL harness supplies it. `scripts/test` contains reusable test runners and deployment script tests. Old `scripts/ci` test commands forward to those runners. `scripts/test/test-command-wrappers.sh` verifies argument, environment, working-directory, exit-status, and signal forwarding without launching the application. `scripts/test/test-kind-deployment.sh` checks selected-overlay staging, collector configuration with Langfuse enabled and disabled, real Kustomize renders, and rollout failure handling. It loads the deployment environment helpers with explicit Langfuse overrides so overlay tests do not query a live cluster. `scripts/test/test-security-launchers.sh` checks scanner artifact paths, failure propagation, and the shared Trivy pin using scanner stubs. Performance scenarios live in `tests/performance`; AI cases remain in `backend/evals`. Add an end-to-end folder only when whole-application tests exist.
+Package-specific PostgreSQL integration tests remain beside their adapters and require `TEST_DATABASE_URL`; the isolated PostgreSQL harness supplies it. `scripts/test` contains reusable test runners and deployment script tests. Old `scripts/ci` test commands forward to those runners. `scripts/test/test-command-wrappers.sh` verifies argument, environment, working-directory, exit-status, and signal forwarding without launching the application. `scripts/test/test-kind-deployment.sh` checks selected-overlay staging, preservation of registered auth paths across child preflight checks, auth-only Secret inputs, collector configuration with Langfuse enabled and disabled, real Kustomize renders, and rollout failure handling. It loads the deployment environment helpers with explicit Langfuse overrides so overlay tests do not query a live cluster. `scripts/test/test-security-launchers.sh` checks scanner artifact paths, failure propagation, and the shared Trivy pin using scanner stubs. `scripts/lib/access_service.py` validates private CI credentials, destination binding and expiry; `scripts/ops/verify-access-service.py` verifies private denial and public service authentication without redirects. `scripts/test/test-access-service.py` tests those boundaries, and `test-runtime-assurance.sh` exercises service credential mounting and k6 requests. Performance scenarios live in `tests/performance`; AI cases remain in `backend/evals`. Add an end-to-end folder only when whole-application tests exist.
 
 Merge-blocking gates require at least 80% Go statement coverage in aggregate across the module — one repository-wide total from `go tool cover`, not a per-package floor, so thin wiring in `cmd/*` and `internal/postgres` may sit below 80% while the module passes — and at least 80% frontend statements, branches, functions, and lines. Measure through the PostgreSQL harness; a coverage run without `TEST_DATABASE_URL` skips tests that require the database and omits the code exercised only by those tests:
 

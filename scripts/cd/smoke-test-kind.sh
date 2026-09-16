@@ -166,9 +166,11 @@ prepare_application_session() {
   local auth_mode
   auth_mode="$(read_auth_secret_value BATTLEFIELD_AUTH_MODE || true)"
   if [[ "${auth_mode}" == cloudflare ]]; then
-    : "${BATTLEFIELD_ACCESS_TOKEN_FILE:?Production smoke requires a short-lived invited user Access JWT in a protected file; never disable authentication}"
+    : "${BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE:?Production smoke requires a private CI service credential file}"
     BATTLEFIELD_SMOKE_ORIGIN="$(read_auth_secret_value BATTLEFIELD_PUBLIC_ORIGIN)" \
-      python3 "${project_dir}/scripts/ops/verify-access-origin.py" "http://127.0.0.1:${api_port}"
+    BATTLEFIELD_SMOKE_CI_CLIENT_ID="$(read_auth_secret_value BATTLEFIELD_ACCESS_CI_CLIENT_ID)" \
+    BATTLEFIELD_SMOKE_ISSUER="$(read_auth_secret_value BATTLEFIELD_ACCESS_ISSUER)" \
+      python3 "${project_dir}/scripts/ops/verify-access-service.py" "http://127.0.0.1:${api_port}"
     return
   fi
   if [[ "${DEPLOY_ENV}" == production ]]; then

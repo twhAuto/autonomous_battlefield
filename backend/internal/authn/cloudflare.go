@@ -20,6 +20,7 @@ import (
 // Keys expire after an hour; refresh attempts (including unknown kids) are bounded.
 type Cloudflare struct {
 	Issuer, Audience   string
+	CIClientID         string
 	Roles              map[string]Role
 	Client             *http.Client
 	mu                 sync.Mutex
@@ -116,11 +117,7 @@ func (c *Cloudflare) Authenticate(r *http.Request) (Actor, bool) {
 	if rsa.VerifyPKCS1v15(key, crypto.SHA256, digest[:], decode(parts[2])) != nil {
 		return Actor{}, false
 	}
-	var claims struct {
-		Iss, Sub, Email, Type string
-		Aud                   []string
-		Exp, Iat, Nbf         int64
-	}
+	var claims accessClaims
 	if json.Unmarshal(decode(parts[1]), &claims) != nil {
 		return Actor{}, false
 	}
@@ -132,9 +129,30 @@ func (c *Cloudflare) Authenticate(r *http.Request) (Actor, bool) {
 	for _, a := range claims.Aud {
 		audience = audience || a == c.Audience
 	}
+	if claims.Iss != c.Issuer || !audience || claims.Exp <= now.Unix() || claims.Iat <= 0 || claims.Iat > now.Unix()+30 || claims.Nbf > now.Unix()+30 || (claims.Type != "" && claims.Type != "app") {
+		return Actor{}, false
+	}
+	return c.actor(claims)
+}
+
+type accessClaims struct {
+	Iss, Sub, Email, Type string
+	CommonName            string `json:"common_name"`
+	Aud                   []string
+	Exp, Iat, Nbf         int64
+}
+
+// Service identities are explicitly enrolled and never inherit a human role.
+func (c *Cloudflare) actor(claims accessClaims) (Actor, bool) {
+	if claims.CommonName != "" {
+		if c.CIClientID == "" || claims.CommonName != c.CIClientID || claims.Type != "app" || claims.Sub != "" || claims.Email != "" {
+			return Actor{}, false
+		}
+		return Actor{ID: c.Issuer + "|service:" + claims.CommonName, Role: CI}, true
+	}
 	email := strings.ToLower(strings.TrimSpace(claims.Email))
 	role := c.Roles[email]
-	if claims.Iss != c.Issuer || claims.Sub == "" || email == "" || !audience || claims.Exp <= now.Unix() || claims.Iat <= 0 || claims.Iat > now.Unix()+30 || claims.Nbf > now.Unix()+30 || (role != Player && role != Developer && role != Admin) || (claims.Type != "" && claims.Type != "app") {
+	if claims.Sub == "" || email == "" || (role != Player && role != Developer && role != Admin) {
 		return Actor{}, false
 	}
 	return Actor{ID: c.Issuer + "|" + claims.Sub, Email: email, Role: role}, true

@@ -86,6 +86,9 @@ profile on its agent, and the private production `.env`. Jenkins retains registr
 signing, smoke-test Access-token and stage-scoped kubeconfig credentials; it no
 longer binds a separate database file. For a change only to production `.env`,
 run the main pipeline with `APPLY_CONFIGURATION=true`.
+Deployment extracts auth settings into a private temporary file while keeping
+`BATTLEFIELD_AUTH_SECRET_FILE` pointed at the registered production `.env`, so
+child policy-installation commands can repeat environment identity checks.
 
 ## Runtime configuration
 
@@ -127,7 +130,9 @@ configuration and are not relocated.
 Run environment, deployment-component, Kind deployment, production-preparation,
 tunnel, command-wrapper and runtime-assurance regression checks. Dev smoke checks
 cover readiness, authentication and scenario access; production smoke checks use
-an invited user's Access token. Database migration backups and verified image
+an enrolled Access service identity with read-only permissions. Keep only its
+`BATTLEFIELD_ACCESS_CI_CLIENT_ID` in the application `.env`; the Client Secret stays
+in the Jenkins service credential. See the [CI service runbook](limited-launch.md#ci-service-authentication). Database migration backups and verified image
 rollback remain operational features, independent of this configuration cleanup.
 Failure drills still require a separately registered disposable dev cluster,
 matching UID and explicit acknowledgement; production is forbidden.

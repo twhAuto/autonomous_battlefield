@@ -25,8 +25,10 @@ development staging explicitly substitutes the dev environment. The tunnel expos
 only frontend/API. CLI availability remains false until VM verification.
 
 Production migrations create and inspect a PostgreSQL backup before applying SQL.
-Production smoke requires `BATTLEFIELD_ACCESS_TOKEN_FILE` from an invited identity;
-it uses private origin port forwards and never logs in with a legacy password.
+Production smoke requires `BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE` with dedicated CI
+service credentials. It checks private readiness/identity denial and authenticates
+through the public hostname. Provision the credential and CI client ID using the
+[CI service runbook](limited-launch.md#ci-service-authentication) before delivery.
 Production rollback requires an exact previously verified Access-compatible backend
 digest in `BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST`, in addition to existing
 image signature/provenance checks. Failure keeps the application unavailable.
