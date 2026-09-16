@@ -984,3 +984,8 @@ using the existing `battle_stopped` cancellation category. History and tick
 state remain available; active admission slots are released but daily usage is
 not refunded. Existing overdue battles expire on rollout. No migration or new
 configuration is required; while the engine is offline, expiry waits for restart.
+
+`scripts/lib/prometheus-smoke.sh` supplies the bounded Prometheus query wait and
+timeout target diagnostics used by `scripts/cd/smoke-test-kind.sh`. Run
+`bash scripts/test/test-prometheus-smoke.sh` to verify delayed recovery, persistent
+failure, unavailable/malformed diagnostics and timeout validation without a cluster.
