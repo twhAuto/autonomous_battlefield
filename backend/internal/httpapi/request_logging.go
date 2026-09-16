@@ -30,6 +30,8 @@ func requestLogging(next http.Handler, logger *slog.Logger) http.Handler {
 		requestID := acceptedRequestID(r.Header.Get("X-Request-ID"))
 		w.Header().Set("X-Request-ID", requestID)
 		r = r.WithContext(context.WithValue(r.Context(), requestIDContextKey{}, requestID))
+		var authFailure atomic.Pointer[string]
+		r = r.WithContext(authn.WithAuthFailureObserver(r.Context(), func(reason string) { authFailure.Store(&reason) }))
 		var authenticated atomic.Pointer[authn.Actor]
 		r = r.WithContext(authn.WithActorObserver(r.Context(), func(actor authn.Actor) {
 			authenticated.Store(&actor)
@@ -51,7 +53,12 @@ func requestLogging(next http.Handler, logger *slog.Logger) http.Handler {
 		if verified := authenticated.Load(); verified != nil {
 			actor = *verified
 		}
+		reason := ""
+		if failure := authFailure.Load(); failure != nil {
+			reason = *failure
+		}
 		logger.Log(r.Context(), level, "http_request_completed",
+			"auth_failure", reason,
 			"actor_id", actor.ID,
 			"actor_role", actor.Role,
 			"request_id", requestID,

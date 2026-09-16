@@ -696,6 +696,13 @@ A reclaimed battle starts a new deterministic attempt from `initial_state`; even
 
 ### Access identity, roles and owners
 
+Access verification failures attach a bounded `auth_failure` reason code to the
+existing `http_request_completed` server log, correlated by `request_id`. Codes
+distinguish assertion, JWKS retrieval, signature, claim and identity failures;
+raw tokens, claims, cookies, secrets and upstream error messages are excluded.
+HTTP responses remain generic. Failed key refresh reasons persist through the
+existing 30-second retry throttle; authentication and cache policy are unchanged.
+
 Production API manifests require `BATTLEFIELD_ENV=production`; startup accepts only
 `BATTLEFIELD_AUTH_MODE=cloudflare` with valid issuer, audience, HTTPS origin and
 nonconflicting email/role assignments. JWT verification uses RS256, a fixed issuer's
