@@ -800,6 +800,8 @@ the installed project for collector configuration and host CLI forwarding.
 ## 13. Limited-access deployment and agent containment
 
 `internal/authn/cloudflare.go` owns Access verification/key refresh;
+`internal/authn/diagnostics.go` classifies failures and exposes a context observer
+consumed by `internal/httpapi/request_logging.go` for safe request-correlated diagnostics;
 `authorization.go` owns role capabilities, ownership checks, mutation origin checks
 and explicit route assignments. Add new public routes to that registry deliberately.
 `config/access_test.go` covers production misconfiguration and the CLI verification

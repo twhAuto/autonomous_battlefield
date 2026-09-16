@@ -145,3 +145,36 @@ func TestRequestLoggingUsesVerifiedActorAcrossMiddleware(t *testing.T) {
 		}
 	}
 }
+
+func TestCloudflareFailureLogDoesNotExposeCredentials(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	manager := authn.NewManager(authn.Config{Mode: authn.ModeCloudflare})
+	mux := http.NewServeMux()
+	authn.NewRoutes(manager).RegisterRoutes(mux)
+	request := httptest.NewRequest("GET", "/v1/auth/session", nil)
+	request.Header.Set("X-Request-ID", "auth-diagnostic-test")
+	request.Header.Set("Cf-Access-Jwt-Assertion", "secret-token")
+	request.Header.Set("Cf-Access-Client-Secret", "secret-client-secret")
+	request.AddCookie(&http.Cookie{Name: "CF_Authorization", Value: "secret-cookie"})
+	response := httptest.NewRecorder()
+	requestLogging(mux, logger).ServeHTTP(response, request)
+	if response.Code != 401 {
+		t.Fatal(response.Code)
+	}
+	var event map[string]any
+	if err := json.Unmarshal(output.Bytes(), &event); err != nil {
+		t.Fatal(err)
+	}
+	if event["auth_failure"] != "token_format_invalid" || event["request_id"] != "auth-diagnostic-test" {
+		t.Fatal(event)
+	}
+	for _, secret := range []string{"secret-token", "secret-client-secret", "secret-cookie"} {
+		if strings.Contains(output.String(), secret) || strings.Contains(response.Body.String(), secret) {
+			t.Fatal("credential leaked")
+		}
+	}
+	if strings.Contains(response.Body.String(), "token_format_invalid") {
+		t.Fatal("reason leaked to HTTP response")
+	}
+}
