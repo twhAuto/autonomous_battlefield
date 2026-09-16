@@ -42,7 +42,7 @@ func TestAuthenticationFailureReasons(t *testing.T) {
 		{"service_token_type_invalid", func(c map[string]any, _ *Cloudflare) { delete(c, "type") }},
 		{"service_user_identity_present", func(c map[string]any, _ *Cloudflare) { c["email"] = "private@example.com" }},
 		{"user_identity_or_role_invalid", func(c map[string]any, _ *Cloudflare) { delete(c, "common_name") }},
-		{"claims_json_invalid", func(c map[string]any, _ *Cloudflare) { c["aud"] = "wrong-type" }},
+		{"claims_json_invalid", func(c map[string]any, _ *Cloudflare) { c["aud"] = 42 }},
 		{"", func(_ map[string]any, _ *Cloudflare) {}},
 	} {
 		t.Run(tc.reason, func(t *testing.T) {

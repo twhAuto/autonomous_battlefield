@@ -449,6 +449,11 @@ No JWT, cookie, client secret, claim value or raw upstream error is logged.
   refresh attempts remain limited to once per 30 seconds. A failed refresh keeps
   its specific failure code during that interval.
 - `signature_invalid`, `claims_json_invalid`: inspect token integrity/format.
+  JWT `aud` may be a single string or an array of strings; both are supported
+  with exact audience matching. Older deployments accepted only arrays and
+  rejected valid service tokens with a string audience as `claims_json_invalid`.
+  Deploy the audience-parser fix for that case; no credential rotation or
+  Cloudflare policy change is required. See [RFC 7519 section 4.1.3](https://www.rfc-editor.org/rfc/rfc7519.html#section-4.1.3).
 - `issuer_mismatch`, `audience_mismatch`, `token_expired`,
   `issued_at_missing_or_invalid`, `issued_at_in_future`, `token_not_yet_valid`,
   `token_type_invalid`: compare configuration and clocks without sharing JWTs.

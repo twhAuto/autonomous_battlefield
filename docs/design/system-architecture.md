@@ -707,7 +707,10 @@ Production API manifests require `BATTLEFIELD_ENV=production`; startup accepts o
 `BATTLEFIELD_AUTH_MODE=cloudflare` with valid issuer, audience, HTTPS origin and
 nonconflicting email/role assignments. JWT verification uses RS256, a fixed issuer's
 JWKS with one-hour key cache and a 30-second refresh throttle, and required identity/
-time/audience checks. Missing or unverifiable credentials deny access. Access owns
+time/audience checks. The audience claim accepts a single string or an array of
+strings (RFC 7519 section 4.1.3), matched exactly and case-sensitively to the
+configured audience. Invalid types and arrays with non-string entries are rejected.
+Missing or unverifiable credentials deny access. Access owns
 sessions and logout; the application issues no production auth cookie.
 
 Players, Developers and Admins share gameplay/faction reads. Mutation ownership is
