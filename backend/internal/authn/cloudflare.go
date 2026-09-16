@@ -155,7 +155,7 @@ func (c *Cloudflare) Authenticate(r *http.Request) (Actor, bool) {
 type accessClaims struct {
 	Iss, Sub, Email, Type string
 	CommonName            string `json:"common_name"`
-	Aud                   []string
+	Aud                   accessAudience
 	Exp, Iat, Nbf         int64
 }
 

@@ -800,6 +800,8 @@ the installed project for collector configuration and host CLI forwarding.
 ## 13. Limited-access deployment and agent containment
 
 `internal/authn/cloudflare.go` owns Access verification/key refresh;
+`internal/authn/audience.go` decodes string and string-array JWT audiences, with
+signed human/service session regression tests in `audience_test.go`;
 `internal/authn/diagnostics.go` classifies failures and exposes a context observer
 consumed by `internal/httpapi/request_logging.go` for safe request-correlated diagnostics;
 `authorization.go` owns role capabilities, ownership checks, mutation origin checks
