@@ -108,6 +108,7 @@ pipeline {
                                     ./scripts/test/test-kind-deployment.sh
                                     ./scripts/test/test-command-wrappers.sh
                                     ./scripts/test/test-runtime-assurance.sh
+                                    python3 scripts/test/test-access-service.py
                                     ./scripts/test/test-deployment-environment.sh
                                     ./scripts/test/test-security-launchers.sh
                                     ./scripts/test/test-registry-auth.sh
@@ -227,6 +228,7 @@ pipeline {
                             ./scripts/test/test-kind-deployment.sh
                             ./scripts/test/test-command-wrappers.sh
                             ./scripts/test/test-runtime-assurance.sh
+                            python3 scripts/test/test-access-service.py
                             ./scripts/test/test-deployment-environment.sh
                             ./scripts/test/test-security-launchers.sh
                             ./scripts/test/test-registry-auth.sh
@@ -339,6 +341,20 @@ pipeline {
                         KUBECONFIG = credentials('battlefield-production-kubeconfig')
                     }
                     stages {
+                        stage('Validate CI credentials') {
+                            steps {
+                                withCredentials([file(credentialsId: 'battlefield-production-access-service-token', variable: 'BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE')]) {
+                                    sh '''#!/usr/bin/env bash
+                                        set -Eeuo pipefail
+                                        set +x
+                                        chmod 600 "$BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE"
+                                        . ./scripts/lib/deployment-environment.sh
+                                        battlefield_env_preflight
+                                        python3 scripts/lib/access_service.py --origin "$TARGET_URL" --application "$BATTLEFIELD_AUTH_SECRET_FILE"
+                                    '''
+                                }
+                            }
+                        }
                         stage('Deploy production') {
                             steps {
                                 script {
@@ -406,13 +422,13 @@ pipeline {
                             steps {
                                 withCredentials([
                                     file(
-                                        credentialsId: 'battlefield-production-access-token',
-                                        variable: 'BATTLEFIELD_ACCESS_TOKEN_FILE'
+                                        credentialsId: 'battlefield-production-access-service-token',
+                                        variable: 'BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE'
                                     )
                                 ]) {
                                     sh '''
                                         set +x
-                                        chmod 600 "$BATTLEFIELD_ACCESS_TOKEN_FILE"
+                                        chmod 600 "$BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE"
                                         ./scripts/cd/smoke-test-kind.sh
                                     '''
                                 }
@@ -453,10 +469,10 @@ pipeline {
                             parallel {
                                 stage('Smoke load') {
                                     steps {
-                                        withCredentials([file(credentialsId: 'battlefield-production-access-token', variable: 'BATTLEFIELD_ACCESS_TOKEN_FILE')]) {
+                                        withCredentials([file(credentialsId: 'battlefield-production-access-service-token', variable: 'BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE')]) {
                                             sh '''
                                                 set +x
-                                                chmod 600 "$BATTLEFIELD_ACCESS_TOKEN_FILE"
+                                                chmod 600 "$BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE"
                                                 K6_VUS=3 K6_DURATION=30s ./scripts/perf/run-k6.sh
                                             '''
                                         }

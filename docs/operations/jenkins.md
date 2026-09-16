@@ -682,3 +682,13 @@ on the agent. Credentials are passed to Docker by environment-variable name,
 with shell tracing disabled. Explicit `ADMIN_USERNAME`/`ADMIN_PASSWORD` values
 remain supported. Failed login or missing session cookies stops setup; successful
 login cookies are converted to request-cookie string values for each virtual user.
+
+## Production smoke credentials
+
+Provision the `battlefield-production-access-service-token` Secret file and the
+production `BATTLEFIELD_ACCESS_CI_CLIENT_ID` before delivering the CI service-auth
+change. See [activation and rotation](limited-launch.md#ci-service-authentication)
+for the JSON schema, Cloudflare Service Auth policy, expiry alerts and first rollout
+with `APPLY_CONFIGURATION=true`. Jenkins validates local credential metadata before
+rollout, then tests actual read-only service access through the public hostname.
+It no longer needs a copied browser session cookie.

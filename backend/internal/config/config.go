@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -223,7 +224,11 @@ func parseCloudflareConfig() (authn.Config, error) {
 	if v := os.Getenv("BATTLEFIELD_AUTH_ENABLED"); v != "" && v != "true" {
 		return authn.Config{}, fmt.Errorf("conflicting authentication settings")
 	}
-	return authn.Config{Mode: authn.ModeCloudflare, Enabled: true, Issuer: issuer, Audience: audience, Origin: origin, Roles: roles}, nil
+	ciClientID := os.Getenv("BATTLEFIELD_ACCESS_CI_CLIENT_ID")
+	if ciClientID != "" && !regexp.MustCompile(`^[a-f0-9]{32}\.access$`).MatchString(ciClientID) {
+		return authn.Config{}, fmt.Errorf("invalid Access CI client ID")
+	}
+	return authn.Config{Mode: authn.ModeCloudflare, Enabled: true, Issuer: issuer, Audience: audience, Origin: origin, Roles: roles, CIClientID: ciClientID}, nil
 }
 
 func cloudflareRoles() (map[string]authn.Role, error) {

@@ -11,6 +11,7 @@ trap 'rm -rf -- "${test_dir}"' EXIT
 # Exercise the real launchers in an isolated workspace, including paths with spaces.
 fixture="${test_dir}/project with spaces"
 mkdir -p "${fixture}/scripts/"{perf,security,ci,lib} "${fixture}/tests/performance" "${test_dir}/bin"
+cp "${project_dir}/scripts/lib/access_service.py" "${fixture}/scripts/lib/"
 cp "${project_dir}/scripts/perf/run-k6.sh" "${fixture}/scripts/perf/"
 cp "${project_dir}/scripts/security/zap-baseline.sh" "${fixture}/scripts/security/"
 cp "${project_dir}/scripts/ci/tool-versions.env" "${fixture}/scripts/ci/"
@@ -49,6 +50,12 @@ if ('TARGET_URL' in env) {
   assert.equal(env.SSL_CERT_FILE, '/certs/ca-bundle.crt');
   assert.ok(mounts.includes(`${fs.realpathSync(expected('K6_CA_BUNDLE', '/etc/ssl/certs/ca-certificates.crt'))}:/certs/ca-bundle.crt:ro`));
   assert.ok(!args.includes('--insecure-skip-tls-verify'));
+  if (process.env.DEPLOY_ENV === 'production') {
+    assert.equal(env.BATTLEFIELD_K6_SERVICE_FILE, '/run/battlefield-access.json');
+    const credential = process.env.BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE;
+    assert.ok(mounts.includes(`${fs.realpathSync(credential)}:/run/battlefield-access.json:ro`));
+    assert.ok(!JSON.stringify(args).includes(JSON.parse(fs.readFileSync(credential)).client_secret));
+  }
   reports = ['k6-summary.json'];
 } else {
   assert.equal(value('-t'), expected('ZAP_TARGET_URL', 'http://battlefield.localhost:8888'));
@@ -103,13 +110,22 @@ grep -q 'k6 test not found: missing.js' "${test_dir}/error"
 cat >"${test_dir}/bin/kubectl" <<'STUB'
 #!/usr/bin/env python3
 import base64, json, os
-print(base64.b64encode(os.environ.get("TEST_AUTH_MODE", "cloudflare").encode()).decode())
+import sys
+value = 'a'*32+'.access' if 'BATTLEFIELD_ACCESS_CI_CLIENT_ID' in sys.argv[-1] else os.environ.get("TEST_AUTH_MODE", "cloudflare")
+print(base64.b64encode(value.encode()).decode())
 STUB
 chmod +x "${test_dir}/bin/kubectl"
-printf 'header.payload.signature' >"${test_dir}/access-token"
-chmod 600 "${test_dir}/access-token"
+python3 - "${test_dir}/access-token" <<'TOKEN'
+import json, sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+p=Path(sys.argv[1])
+p.write_text(json.dumps(dict(client_id='a'*32+'.access',client_secret='b'*64,origin='https://play.example.com',
+    expires_at=(datetime.now(timezone.utc)+timedelta(days=90)).strftime('%Y-%m-%dT%H:%M:%SZ'))))
+p.chmod(0o600)
+TOKEN
 DEPLOY_ENV=production KUBERNETES_CONTEXT=test KUBERNETES_NAMESPACE=battlefield \
-  BATTLEFIELD_ACCESS_TOKEN_FILE="${test_dir}/access-token" \
+  BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE="${test_dir}/access-token" TARGET_URL=https://play.example.com \
   bash "${fixture}/scripts/perf/run-k6.sh"
 status=0
 DEPLOY_ENV=production KUBERNETES_CONTEXT=test KUBERNETES_NAMESPACE=battlefield TEST_AUTH_MODE=local-password \
@@ -129,24 +145,37 @@ const source = fs.readFileSync(process.argv[2], 'utf8')
   .replace(/^import .*;$/gm, '')
   .replace('export default function', 'function iteration')
   .replaceAll('export ', '');
-const context = vm.createContext({
-  __ENV: {ADMIN_USERNAME:'test', ADMIN_PASSWORD:'test'},
-  http: {post: () => ({status, cookies}), get: (url, params) => {
-    requests.push(params.headers ? params.headers['Cf-Access-Jwt-Assertion'] : params.cookies.session); return {status:200};
-  }},
-  check: (r, checks) => Object.values(checks).every(fn => fn(r)),
-  sleep: () => {}, fail: message => {throw new Error(message);},
-});
-vm.runInContext(source, context);
+function scenario(env) {
+  const context = vm.createContext({
+    __ENV: env,
+    open: () => JSON.stringify({client_id:'test-id',client_secret:'test-secret',origin:'https://play.example.com'}),
+    http: {post: () => ({status, cookies}), get: (url, params) => {
+      requests.push({url, params}); return {status:200};
+    }},
+    check: (r, checks) => Object.values(checks).every(fn => fn(r)),
+    sleep: () => {}, fail: message => {throw new Error(message);},
+  });
+  vm.runInContext(source, context);
+  return context;
+}
+const context = scenario({ADMIN_USERNAME:'test', ADMIN_PASSWORD:'test'});
 vm.runInContext('iteration(setup())', context);
-assert.deepEqual(requests, ['test-session','test-session']);
+assert.deepEqual(requests.map(r => r.params.cookies.session), ['test-session','test-session']);
 status = 401;
 assert.throws(() => vm.runInContext('setup()', context), /Login failed with HTTP 401/);
-context.__ENV.ACCESS_JWT = 'test-jwt';
 requests.length = 0;
-vm.runInContext('iteration(setup())', context);
-assert.deepEqual(requests, ['test-jwt', 'test-jwt']);
-delete context.__ENV.ACCESS_JWT;
+const service = scenario({BATTLEFIELD_K6_SERVICE_FILE:'/run/credential.json', TARGET_URL:'https://play.example.com'});
+vm.runInContext('iteration(setup())', service);
+assert.equal(requests.length, 2);
+for (const {url, params} of requests) {
+  assert.ok(url.startsWith('https://play.example.com/'));
+  assert.equal(params.headers['CF-Access-Client-Id'], 'test-id');
+  assert.equal(params.headers['CF-Access-Client-Secret'], 'test-secret');
+  assert.equal(params.redirects, 0);
+  assert.equal(params.headers['Cf-Access-Jwt-Assertion'], undefined);
+}
+const wrongTarget = scenario({BATTLEFIELD_K6_SERVICE_FILE:'/run/credential.json', TARGET_URL:'https://attacker.invalid'});
+assert.throws(() => vm.runInContext('setup()', wrongTarget), /destination mismatch/);
 status = 204; cookies = {};
 assert.throws(() => vm.runInContext('setup()', context), /no session cookies/);
 JS

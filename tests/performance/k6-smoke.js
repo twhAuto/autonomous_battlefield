@@ -4,6 +4,7 @@
 import http from 'k6/http';
 import { check, sleep, fail } from 'k6';
 
+const service = __ENV.BATTLEFIELD_K6_SERVICE_FILE ? JSON.parse(open(__ENV.BATTLEFIELD_K6_SERVICE_FILE)) : null;
 const baseURL = __ENV.TARGET_URL || 'http://battlefield.localhost:8888';
 
 export const options = {
@@ -17,7 +18,10 @@ export const options = {
 };
 
 export function setup() {
-  if (__ENV.ACCESS_JWT) return null;
+  if (service) {
+    if (!baseURL.startsWith('https://') || baseURL.replace(/\/$/, '') !== service.origin.replace(/\/$/, '')) fail('Service credential destination mismatch');
+    return null;
+  }
   if (!__ENV.ADMIN_USERNAME || !__ENV.ADMIN_PASSWORD) return null;
   const response = http.post(`${baseURL}/v1/auth/login`, JSON.stringify({
     username: __ENV.ADMIN_USERNAME,
@@ -36,8 +40,8 @@ export function setup() {
 }
 
 export default function (cookies) {
-  const parameters = __ENV.ACCESS_JWT
-    ? { headers: { 'Cf-Access-Jwt-Assertion': __ENV.ACCESS_JWT } }
+  const parameters = service
+    ? { redirects: 0, headers: { 'CF-Access-Client-Id': service.client_id, 'CF-Access-Client-Secret': service.client_secret } }
     : (cookies ? { cookies } : {});
   const liveness = http.get(`${baseURL}/livez`, parameters);
   check(liveness, { 'frontend is live': (r) => r.status === 200 });
