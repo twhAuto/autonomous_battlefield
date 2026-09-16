@@ -111,7 +111,7 @@ func RoutePolicy(next http.Handler) http.Handler {
 			if r.Method == http.MethodGet && (r.URL.Path == "/v1/auth/session" || r.URL.Path == "/v1/scenarios") {
 				next.ServeHTTP(w, r)
 			} else {
-				http.Error(w, "permission denied", http.StatusForbidden)
+				http.Error(w, permissionDeniedMessage, http.StatusForbidden)
 			}
 			return
 		}
