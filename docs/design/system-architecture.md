@@ -1158,3 +1158,8 @@ using the existing `battle_stopped` cancellation category. History and tick
 state remain available; active admission slots are released but daily usage is
 not refunded. Existing overdue battles expire on rollout. No migration or new
 configuration is required; while the engine is offline, expiry waits for restart.
+
+Prometheus deployment smoke queries allow a bounded 120-second discovery/scrape
+settling window per query, configurable from 1 to 600 seconds. Timeout reports
+application/node target health and scrape errors before failing the deployment;
+it does not waive target-health requirements. See the [deployment smoke guide](../operations/deployment.md).

@@ -306,3 +306,6 @@ if kill -0 "$(cat "${test_dir}/rollout-pid")" 2>/dev/null; then
 fi
 
 echo "Kind deployment staging, rendering, and rollout checks passed."
+
+# Keep startup convergence regressions in the Jenkins deployment-check suite.
+bash "${project_dir}/scripts/test/test-prometheus-smoke.sh"

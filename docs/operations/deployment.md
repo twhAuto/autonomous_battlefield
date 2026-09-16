@@ -508,7 +508,12 @@ Run the same non-interactive verification used by Jenkins at any time:
 
 It verifies frontend access and API readiness, authentication, and scenario
 responses. With `SMOKE_TEST_OBSERVABILITY=1` (the production default), it also
-checks Grafana, Kibana, metrics, and log ingestion. Temporary diagnostic
+checks Grafana, Kibana, metrics, and log ingestion. Each Prometheus query gets
+a 120-second startup window (set `SMOKE_TEST_PROMETHEUS_TIMEOUT_SECONDS` to
+an integer from 1 to 600 to override). Failed queries remain failures; on timeout,
+the check prints up to 50 application/node scrape targets with health, last scrape
+time and bounded scrape errors. Fetching those diagnostics takes at most five
+additional seconds. Temporary diagnostic
 port-forwards are removed automatically. When
 the optional `battlefield-auth` Secret enables authentication, the smoke test
 reads its administrator credentials without printing them, logs in through the
