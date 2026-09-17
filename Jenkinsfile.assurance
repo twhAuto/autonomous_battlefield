@@ -2,8 +2,8 @@
 // failure drills, bounded provider evaluations, and verified AWS image promotion.
 
 pipeline {
-    // Credential-bearing assurance must not share the untrusted PR execution host.
-    agent { label "${params.MODE in ['load', 'provider-eval', 'aws-promotion'] ? 'battlefield-production' : 'battlefield-ci'}" }
+    // Shares the existing agent with CI and delivery for this owner-operated project.
+    agent { label 'battlefield-production' }
 
     parameters {
         choice(name: 'MODE', choices: ['nightly', 'load', 'failure-drills', 'provider-eval', 'aws-promotion'], description: 'Assurance workflow to run')

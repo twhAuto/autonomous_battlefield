@@ -33,15 +33,13 @@ nested stages. Within an active `Main delivery` run, image and deployment stages
 can still appear as skipped when the changed-component classifier determines
 that they are unnecessary; those skips are intentional and remain visible.
 
-PRs targeting `dev` or `main` run verification on `battlefield-ci`. Direct pushes
-to non-`main` branches skip delivery. Main uses `battlefield-production` and the
-production credentials. These labels require separate hosts/VMs and Docker daemons;
-a second executor or label on the production host is not isolation. Restrict the
-production node/job to trusted main builds in Jenkins administration, and scope
-production/signing credentials to the delivery job/folder. A PR-editable Jenkinsfile
-is not itself an access-control boundary. Keep the assurance job pinned to trusted
-main; its offline/drill modes use CI, while credential-bearing load/provider/promotion
-modes use production.
+PRs targeting `dev` or `main`, main delivery and assurance use the existing
+`battlefield-production` agent. Direct pushes to non-`main` branches skip delivery.
+The owner accepts a shared host and Docker daemon for this small, trusted project;
+no separate CI VM or new agent label is required. Keep the assurance job pinned to
+trusted main. Delivery stays main-only and production credentials are bound only
+in the stages that need them, but these controls do not isolate PR code from the
+shared host. See the [shared-agent tradeoff](#production-hardening-rollout).
 
 The `main` branch must require pull requests and disallow direct pushes. Jenkins
 sees a `main` update rather than a distinct "PR merged" pipeline condition, so
@@ -292,9 +290,8 @@ Use a separate agent so builds do not execute on the Jenkins controller:
 
 1. Open **Manage Jenkins > Nodes > New Node**.
 2. Name it `battlefield-local`, choose **Permanent Agent**, and use one executor.
-3. Add the label `battlefield-production` for trusted main delivery and
-   load/provider/promotion assurance. PR verification requires a separate
-   `battlefield-ci` agent on its own host/daemon; do not put both labels here.
+3. Add the label `battlefield-production`, shared by PR verification, main
+   delivery and assurance for this owner-operated deployment.
    Set the remote root directory to the agent account’s `~/jenkins-agent`.
 4. Choose **Launch agent by connecting it to the controller** and enable the
    WebSocket launch option.
@@ -520,7 +517,7 @@ available for local iteration, but Jenkins CI begins when a pull request targets
 AI-created feature and fix branches start from the latest fetched `origin/dev`
 and open pull requests into `dev`, unless the user explicitly requests otherwise.
 See [agent branch guidance](../../AGENTS.md#branches-and-pull-requests). Jenkins
-verifies PRs targeting both branches on the isolated CI agent. Run applicable local
+verifies PRs targeting both branches on the shared agent. Run applicable local
 checks before opening them. A `dev`-to-`main` promotion is a separate release PR.
 
 After merging a release pull request into `main`, synchronize the long-lived local branches before
@@ -713,39 +710,32 @@ It no longer needs a copied browser session cookie.
 
 ## Production hardening rollout
 
-Before promoting this pipeline, provision an isolated `battlefield-ci` agent with
-Go, Node, Python, Docker, kubectl and the CI tool prerequisites. Give it no production
-profile, kubeconfig, tunnel/service credentials, signing key, or production Docker
-socket. Configure controller-side node/job restrictions and credential scope; do
-not rely solely on branch conditions in a repository-controlled Jenkinsfile.
-Until that agent exists, PR checks queue rather than falling back to production.
+Both Jenkinsfiles use the existing `battlefield-production` agent. The owner has
+chosen to share CI and production infrastructure for this small project with
+trusted build authors. Keep the existing agent online with its current label and
+CI tools; a separate VM and `battlefield-ci` label are not rollout prerequisites.
 
-Use separate credential boundaries for untrusted PRs and trusted delivery. A
-standard Multibranch folder's credentials are inherited by its PR child jobs;
-changing the node label does not stop a modified PR Jenkinsfile from requesting
-those credentials. One supported layout is:
+This is an accepted tradeoff: PR scripts and dependency installers execute with
+access to the shared host and Docker daemon, so mistakes or malicious code can
+affect production. Stage-scoped credentials and main-only delivery still apply,
+but a PR-editable Jenkinsfile and inherited Multibranch credentials are not a
+security boundary. Limit automatic PR builds to trusted repository authors and
+keep builds on the agent rather than the controller's built-in node.
 
-1. A CI Multibranch project discovers PRs and excludes direct `main` builds. Its
-   folder has only read-only checkout and CI reporting access.
-2. A delivery Multibranch project discovers only `main`, with all PR discovery
-   disabled. Store production kubeconfig, service-token, registry-write and
-   signing credentials in this trusted folder, not global or shared parent scope.
-   Put the trusted-main assurance job here too, with operator-only triggers for
-   credential-bearing modes.
-3. Enforce production-node access in Jenkins administration for only the trusted
-   delivery/assurance jobs. Ensure a PR cannot request that node by changing its
-   Jenkinsfile label. Keep the CI host/daemon unable to reach production private
-   control endpoints or read its filesystem. Disable controller executors.
+Revisit isolation before accepting untrusted contributors or builds. A future
+setup can use a separate CI VM/daemon, trusted delivery credential scope, and
+controller-enforced node access. A second label or executor on this host would
+not provide that isolation.
 
-Before enabling delivery, verify the CI job cannot resolve production credential
-IDs or schedule work on the production node. Repository changes cannot enforce
-this controller configuration; completing it is a promotion prerequisite.
+If an older build is already waiting for the retired `battlefield-ci` label,
+abort that build and run the updated PR revision. Running builds retain the
+Jenkinsfile loaded at their start, and the job disables concurrent builds.
 
 All deployment regression suites run through `./scripts/test/test-deployment.sh`
 on both PR and main builds. This includes tunnel preparation, policy boundaries,
 recovery approval, authenticated capture and per-replica scrape checks. Source
 security additionally renders synthetic tunnel policies and production TLS config.
-No production secrets are needed on the CI agent.
+The regression checks use fixtures and require no production secrets.
 
 Production passive ZAP scanning captures authenticated GET responses for
 `/v1/auth/session`, `/v1/scenarios`, and `/livez`, verifies the CI identity and

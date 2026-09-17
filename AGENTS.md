@@ -18,8 +18,10 @@
   `main` only when the user requests that promotion or explicitly chooses it as
   the target.
 - Run the applicable checks below before opening a PR. Jenkins runs PR
-  verification for targets `dev` and `main` on the isolated
-  `battlefield-ci` agent. Run `./scripts/test/test-deployment.sh` for deployment
+  verification for targets `dev` and `main` on the existing shared
+  `battlefield-production` agent. The owner accepts shared-host CI for this small,
+  trusted project; do not introduce a separate-agent/VM prerequisite without a
+  requested infrastructure change. Run `./scripts/test/test-deployment.sh` for deployment
   changes. Do not treat skipped or queued Jenkins stages as verification.
 
 ## Project tracking

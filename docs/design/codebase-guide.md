@@ -18,8 +18,8 @@ AI-created work branches start from the latest fetched `origin/dev` and target
 `dev` in pull requests, unless the user explicitly requests otherwise. Promotion
 to `main` is separate. See [agent branch guidance](../../AGENTS.md#branches-and-pull-requests)
 and the [Jenkins workflow](../operations/jenkins.md#configure-github-main-protection).
-PRs into `dev` currently require local verification because Jenkins PR checks
-run for `dev` and `main` targets on the isolated `battlefield-ci` agent.
+Run applicable local checks before opening a PR. Jenkins verifies both `dev` and
+`main` PR targets on the existing shared `battlefield-production` agent.
 
 ## Environment tooling
 

@@ -1170,10 +1170,13 @@ labels from its deployment. This enables private metrics scraping while API
 authentication still protects application routes on the shared listener; the
 frontend policy remains tunnel-only. See the [limited-launch policy](../operations/limited-launch.md).
 
-PR verification for `dev` and `main` uses an isolated CI agent and Docker daemon.
-Only trusted main delivery uses the production agent; controller-side scheduling
-and credential restrictions must enforce this boundary beyond repository branch
-conditions. Production policy reconciliation precedes application rollout without
+PR verification for `dev` and `main`, main delivery and assurance share the existing
+`battlefield-production` agent and Docker daemon. The owner accepts this setup for
+the small, trusted project; build code can affect production through shared host
+access. Main-only delivery stages and scoped credential bindings prevent routine
+PR deployment but do not isolate malicious build code. Separate agents, daemons
+and controller-enforced credential boundaries remain a future infrastructure option.
+Production policy reconciliation precedes application rollout without
 activating the tunnel. Tunnel config/credential checksum changes trigger rollouts;
 policy-only changes do not. Prometheus requires approved kubelet serving trust in
 production and retains narrow node-metrics RBAC. API scrape verification covers

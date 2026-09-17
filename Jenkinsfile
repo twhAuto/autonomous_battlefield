@@ -2,8 +2,8 @@
 // deliver changed components to production on main. Other branches skip these stages.
 // Scripts under scripts/ci, scripts/test, and scripts/cd implement the individual steps.
 pipeline {
-    // The CI node must use a different host/daemon and have no production files.
-    agent { label "${env.BRANCH_NAME == 'main' ? 'battlefield-production' : 'battlefield-ci'}" }
+    // Owner-approved shared agent for this small, trusted project; no host isolation.
+    agent { label 'battlefield-production' }
 
     options {
         buildDiscarder(logRotator(numToKeepStr: '20'))

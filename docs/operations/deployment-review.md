@@ -51,12 +51,11 @@ that they are unused.
 
 ## Earlier findings superseded by the current code
 
-- Main delivery and load/provider/promotion use `battlefield-production`;
-  PR verification and offline/drill assurance use the isolated
-  `battlefield-ci` agent. Failure drills require a separately registered
+- Both Jenkinsfiles use the existing shared `battlefield-production` agent for
+  this small, owner-operated project. Failure drills require a separately registered
   disposable dev profile and reject production. See the subsequent
   [production hardening rollout](jenkins.md#production-hardening-rollout) for
-  controller restrictions and prerequisites; this does not resolve the separate
+  the accepted shared-host tradeoff and prerequisites; this does not resolve the separate
   assurance findings above.
 - PostgreSQL uses a 1 GiB PVC, not `emptyDir`. Pod replacement preserves that
   claim; losing the Kind cluster can still lose its data.
