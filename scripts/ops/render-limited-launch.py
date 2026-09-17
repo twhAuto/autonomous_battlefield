@@ -2,6 +2,7 @@
 """Render a fail-closed Tunnel deployment and application auth config; never call Cloudflare."""
 import argparse
 import json
+import hashlib
 from pathlib import Path
 import re
 
@@ -31,7 +32,9 @@ def render(args):
     cm = {'apiVersion': 'v1', 'kind': 'ConfigMap', 'metadata': {'name': 'battlefield-tunnel'}, 'data': {'config.yml': json.dumps(config)}}
     deployment = {'apiVersion': 'apps/v1', 'kind': 'Deployment', 'metadata': {'name': 'battlefield-tunnel'}, 'spec': {
         'replicas': 2, 'selector': {'matchLabels': {'app': 'battlefield-tunnel'}},
-        'template': {'metadata': {'labels': {'app': 'battlefield-tunnel'}}, 'spec': {
+        'template': {'metadata': {'labels': {'app': 'battlefield-tunnel'}, 'annotations': {
+            'checksum/config': hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest(),
+            'checksum/credentials': getattr(args, 'credential_checksum', '')}}, 'spec': {
             'automountServiceAccountToken': False,
             'securityContext': {'runAsNonRoot': True, 'runAsUser': 65532, 'runAsGroup': 65532, 'fsGroup': 65532, 'seccompProfile': {'type': 'RuntimeDefault'}},
             'containers': [{'name': 'cloudflared', 'image': args.cloudflared_image,
@@ -42,6 +45,16 @@ def render(args):
                 'volumeMounts': [{'name': 'config', 'mountPath': '/etc/cloudflared', 'readOnly': True}, {'name': 'credentials', 'mountPath': '/etc/tunnel', 'readOnly': True}]}],
             'volumes': [{'name': 'config', 'configMap': {'name': 'battlefield-tunnel'}},
                         {'name': 'credentials', 'secret': {'secretName': 'battlefield-tunnel', 'defaultMode': 288}}]}}}}
+    out = Path(args.output)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / 'tunnel.json').write_text(json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': [cm, deployment]}, indent=2) + '\n')
+    (out / 'tunnel.json').chmod(0o600)
+    write_policies(out)
+    # No password, signing key, tunnel credentials, or CLI credentials belong in these files.
+    return config
+
+
+def network_policies():
     policies = []
     for component in ('api', 'frontend'):
         peers = [{'podSelector': {'matchLabels': {'app': 'battlefield-tunnel'}}}]
@@ -55,21 +68,31 @@ def render(args):
         policies.append({'apiVersion': 'networking.k8s.io/v1', 'kind': 'NetworkPolicy', 'metadata': {'name': f'battlefield-{component}-tunnel-only'}, 'spec': {
             'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'autonomous-battlefield', 'app.kubernetes.io/component': component}},
             'policyTypes': ['Ingress'], 'ingress': [{'from': peers, 'ports': [{'protocol': 'TCP', 'port': 8080}]}]}})
-    out = Path(args.output)
+    return policies
+
+
+def write_policies(out):
     out.mkdir(parents=True, exist_ok=True)
-    (out / 'tunnel.json').write_text(json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': [cm, deployment, *policies]}, indent=2) + '\n')
-    (out / 'tunnel.json').chmod(0o600)
-    # No password, signing key, tunnel credentials, or CLI credentials belong in these files.
-    return config
+    path = out / 'network-policies.json'
+    path.write_text(json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': network_policies()}, indent=2) + '\n')
+    path.chmod(0o600)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ('hostname', 'team', 'audience', 'tunnel-id', 'cloudflared-image', 'output'):
-        parser.add_argument('--' + name, required=True)
+    parser.add_argument('--output', required=True)
+    parser.add_argument('--policies-only', action='store_true')
+    for name in ('hostname', 'team', 'audience', 'tunnel-id', 'cloudflared-image'):
+        parser.add_argument('--' + name)
     for role in ('admin', 'developer', 'player'):
         parser.add_argument('--' + role, action='append', default=[])
     try:
-        render(parser.parse_args())
+        args = parser.parse_args()
+        if args.policies_only:
+            write_policies(Path(args.output))
+        else:
+            if not all(getattr(args, name) for name in ('hostname', 'team', 'audience', 'tunnel_id', 'cloudflared_image')):
+                parser.error('Full tunnel rendering requires hostname, team, audience, tunnel-id and cloudflared-image')
+            render(args)
     except ValueError as e:
         parser.error(str(e))

@@ -322,6 +322,11 @@ kind_deploy_prepare_overlays() {
   fi
 
   if deployment_component_selected observability; then
+    if [[ "${DEPLOY_ENV:-dev}" == production ]]; then
+      : "${BF_KUBELET_CA_FILE:?Production monitoring requires a trusted kubelet CA bundle}"
+      python3 "${project_dir}/scripts/ops/configure-production-prometheus.py" \
+        "${runtime_dir}/deploy/overlays/local/observability/prometheus" "${BF_KUBELET_CA_FILE}" || return
+    fi
     LANGFUSE_ENABLED="$(battlefield_env_langfuse_enabled)" || return
     if [[ "${LANGFUSE_ENABLED}" == 1 ]]; then
       cp "${project_dir}/deploy/langfuse/collector-config.yaml" "${runtime_dir}/deploy/overlays/local/observability/otel-collector/config.yaml"

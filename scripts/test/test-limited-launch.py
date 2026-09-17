@@ -32,8 +32,10 @@ class LaunchTests(unittest.TestCase):
             self.assertFalse((Path(out)/'auth.env').exists())
             self.assertEqual((Path(out)/'tunnel.json').stat().st_mode & 0o777, 0o600)
             resources = json.loads((Path(out)/'tunnel.json').read_text())['items']
-            self.assertEqual(sum(r['kind']=='NetworkPolicy' for r in resources), 2)
-            self.assert_scrape_policy_boundaries(resources)
+            self.assertEqual([r['kind'] for r in resources], ['ConfigMap', 'Deployment'])
+            policies = json.loads((Path(out)/'network-policies.json').read_text())['items']
+            self.assertEqual(len(policies), 2)
+            self.assert_scrape_policy_boundaries(policies)
             args.player = ['OWNER@example.com']
             with self.assertRaises(ValueError): launch.render(args)
             args.player = []

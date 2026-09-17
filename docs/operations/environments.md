@@ -104,7 +104,8 @@ Tunnel activation is a separate, explicit operation:
 ./scripts/cd/deploy-tunnel.sh
 ```
 It validates production settings, generates resources temporarily, updates the
-tunnel Secret, and restarts the tunnel. Normal application deployments do not
+tunnel Secret, and rolls the connector only when its config, credentials, or image
+changes. NetworkPolicies reconcile independently during production CD. Normal application deployments do not
 activate public access. See [limited launch](limited-launch.md) for network and
 Access requirements.
 
@@ -136,3 +137,9 @@ in the Jenkins service credential. See the [CI service runbook](limited-launch.m
 rollback remain operational features, independent of this configuration cleanup.
 Failure drills still require a separately registered disposable dev cluster,
 matching UID and explicit acknowledgement; production is forbidden.
+
+Production monitoring requires `BF_KUBELET_CA_FILE` in `deployment.env`; see
+[trusted kubelet certificates](observability.md#production-kubelet-tls). Successful
+Jenkins deployments maintain a private `recovery.json` beside that profile. It is
+bound to the registered cluster UID and exact verified image pair, and is not an
+application Secret or a credential to copy into Git.

@@ -384,3 +384,43 @@ JSONL and Antigravity envelopes provide explicitly scoped CLI usage totals.
 The decision inspector shows known cache/reasoning counts and a trace link for
 new recorded decisions. Raw prompts, tool payloads and reasoning are excluded.
 See the linked guide for installation, host CLI forwarding and measurement limits.
+
+## Production kubelet TLS
+
+Production Prometheus no longer reuses the development-only
+`insecure_skip_verify: true` cAdvisor setting. Its staged overlay requires
+`BF_KUBELET_CA_FILE` in the private production `deployment.env`; relative paths
+resolve beside that file. The bundle is mounted at `/etc/prometheus/kubelet-ca.crt`
+through the generated Prometheus ConfigMap. Normal CA and node-IP SAN verification
+remain enabled; missing or invalid trust stops staging before workload changes.
+Prometheus keeps only `nodes/metrics` permission, never broad `nodes/proxy` access.
+
+For this registered Kind server, collect the current public serving certificates
+through the trusted Docker daemon, after environment and cluster UID validation:
+
+```bash
+./scripts/ops/export-kind-kubelet-ca.sh
+```
+
+The helper reads only `/var/lib/kubelet/pki/kubelet.crt` from the registered Kind
+nodes, rejects private keys and certificates expiring within seven days, and writes
+`kubelet-ca.crt` beside production `deployment.env`. Add:
+
+```dotenv
+BF_KUBELET_CA_FILE=kubelet-ca.crt
+```
+
+Review the exported certificates and ensure they cover the node IPs used by
+Prometheus discovery. For a cluster with CA-issued kubelet certificates, provision
+that approved CA bundle instead. Do not copy a certificate from an unauthenticated
+network handshake or use the public system root bundle as a production default.
+After adding nodes or rotating serving certificates, refresh the approved bundle
+and redeploy observability. A trust failure is a deployment failure, not a reason
+to disable certificate verification.
+
+API scrape verification now checks every nonterminating API pod against its
+actual IP and current readiness, the deployment generation and desired replica
+count, and a successful scrape within 60 seconds. Missing discovery, a failed
+replica, stale results, or incomplete HPA rollout cannot pass on another pod's
+healthy metric. The bounded 120-second wait still accommodates discovery after
+rollout and returns immediately when every expected target is healthy.

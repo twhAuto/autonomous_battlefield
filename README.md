@@ -220,3 +220,9 @@ on the registered server after rendering its private launch files; see the
 [launch runbook](docs/operations/limited-launch.md). Unattended production checks
 require the dedicated Cloudflare CI service identity and Jenkins credential described
 in [CI service authentication](docs/operations/limited-launch.md#ci-service-authentication).
+
+CI and delivery share the existing `battlefield-production` agent for this small,
+trusted project. The [hardening rollout guide](docs/operations/jenkins.md#production-hardening-rollout)
+documents that tradeoff and the required production kubelet TLS trust. Validate
+deployment changes locally with `./scripts/test/test-deployment.sh`; PR verification
+runs for both `dev` and `main` targets.

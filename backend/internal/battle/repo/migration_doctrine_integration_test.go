@@ -7,9 +7,8 @@ import (
 	"context"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
-	"github.com/twh09/autonomous_battlefield/backend/migrations"
+	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 	"os"
 	"strings"
 	"testing"
@@ -35,7 +34,7 @@ func TestDoctrineMigrationBackfillsWithoutRewritingHistory(t *testing.T) {
 	config.RuntimeParams["search_path"] = schema
 	db := stdlib.OpenDB(*config)
 	defer db.Close()
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.Files)
+	provider, err := postgres.NewMigrationProvider(db)
 	if err != nil {
 		t.Fatal(err)
 	}

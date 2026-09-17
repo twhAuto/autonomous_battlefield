@@ -30,8 +30,9 @@ service credentials. It checks private readiness/identity denial and authenticat
 through the public hostname. Provision the credential and CI client ID using the
 [CI service runbook](limited-launch.md#ci-service-authentication) before delivery.
 Production rollback requires an exact previously verified Access-compatible backend
-digest in `BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST`, in addition to existing
-image signature/provenance checks. Failure keeps the application unavailable.
+digest in `BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST`, loaded from a private
+cluster-bound record of a previous successful verification, in addition to image
+signature/provenance checks. Missing approval requires operator recovery.
 
 ## Deployment direction
 
@@ -375,7 +376,8 @@ folder rule. Multiple changed paths contribute the union of their components;
 | `deploy/overlays/local/gateway/**` | `gateway` | None |
 | `VERSION` | `migration,backend,frontend,application` | Both application images |
 | CI image build or scan scripts | `all` | Both application images |
-| Anything under `scripts/cd/**` or `scripts/lib/**` | `all` | Both application images |
+| `scripts/ops/render-limited-launch.py` or `scripts/cd/reconcile-network-policies.sh` | `network-policy` | None |
+| Other paths under `scripts/cd/**` or `scripts/lib/**` | `all` | Both application images |
 | `deploy/kind.yaml` | `all` | Both application images |
 | Any other or newly introduced path | `all`, with a warning | Both application images |
 | Missing or invalid previous-successful revision | `all` | Both application images |
@@ -391,8 +393,13 @@ The selected components have these deployment effects:
 | `application` | Apply API, engine, agent, internal MCP, frontend, Services, network policy, autoscaling, and disruption-budget resources; wait for application rollouts. |
 | `observability` | Apply Prometheus, kube-state-metrics, Grafana, Fluent Bit, Elasticsearch, Kibana, dashboards, data views, recording rules, and alerts; wait for readiness. |
 | `gateway` | Apply Envoy Gateway routes and wait for the local Gateway to become programmed. |
+| `network-policy` | Reconcile production API/frontend ingress policies without image builds or a tunnel restart. |
 | `all` | Execute every action above. |
 | `none` | Build, scan, and deployment commands exit without changing Kubernetes. |
+
+Every nonempty production deployment reconciles ingress policies before application rollout;
+explicit `network-policy` selection performs that reconciliation without application
+rollouts. The tunnel itself is activated separately.
 
 Only the existing named CI test wrappers are exempt; new CI scripts still use
 the unknown-path fallback until explicitly classified.
@@ -779,3 +786,8 @@ using the existing `battle_stopped` cancellation category. History and tick
 state remain available; active admission slots are released but daily usage is
 not refunded. Existing overdue battles expire on rollout. No migration or new
 configuration is required; while the engine is offline, expiry waits for restart.
+
+Before the first hardened production delivery, complete the
+[Jenkins agent isolation and recovery setup](jenkins.md#production-hardening-rollout)
+and [trusted kubelet monitoring setup](observability.md#production-kubelet-tls).
+Run `./scripts/test/test-deployment.sh` before opening a deployment PR.
