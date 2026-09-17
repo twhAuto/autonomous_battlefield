@@ -484,6 +484,14 @@ Migrations under [`backend/migrations`](../../backend/migrations) are embedded i
 
 Schema changes should be made with a new migration, then reflected in repository scan/serialization logic and tests. Do not edit an already-applied migration to evolve a shared database.
 
+`internal/postgres.NewMigrationProvider` configures embedded Goose migrations with
+the same database-wide advisory session lock for application startup and tests
+that run `Up`, `UpTo`, or `Down`. Separate test schemas still share the MCP role
+and public-schema permissions; constructing an unlocked provider can cause
+`tuple concurrently updated` failures across parallel packages. The PostgreSQL
+integration regression holds the lock from another schema, verifies migration
+cancellation without application DDL, then verifies successful migration after release.
+
 ## 7. Frontend organization
 
 The frontend is a React/Vite single-page application.

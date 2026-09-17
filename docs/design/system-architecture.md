@@ -787,6 +787,9 @@ Kustomize deploys separate API, engine, agent, MCP, frontend, and migration work
 The migration Job runs the server in migration-only mode and reads the required
 `battlefield-auth` Secret for configuration validation. Deployment supplies the
 same dev/production environment as the API; CLI profiles are disabled in this Job.
+Startup and migration tests construct providers through the same PostgreSQL
+advisory-lock configuration. The lock spans schemas within the database because
+role and public-schema permission changes are shared across test fixtures.
 
 Registry-backed Jenkins deployments use immutable GHCR digest references.
 Publication and admission rendering share validated repository settings. The

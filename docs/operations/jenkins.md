@@ -588,6 +588,13 @@ For a pull request targeting `dev` or `main`, the pipeline performs:
 3. Publication of the GitHub `Coverage` check.
 4. Local image builds and vulnerability scans, without publication or production credentials.
 
+Backend integration packages run concurrently against the disposable PostgreSQL
+database. Migration fixtures use the same advisory lock as startup, including
+tests that upgrade or downgrade selected versions. Separate schemas alone do not
+isolate shared role/grant changes. A failed backend test stops the coverage run;
+the published `Unavailable` backend coverage result is not evidence of a low
+coverage percentage. Inspect the failing test before changing any coverage gate.
+
 For `main`, the pipeline performs:
 
 1. Clean checkout, Go lint, backend/frontend coverage, source security, and deterministic AI evaluation.

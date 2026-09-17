@@ -32,11 +32,7 @@ func Migrate(ctx context.Context, url string, connectTimeout time.Duration) (int
 		return 0, fmt.Errorf("ping PostgreSQL: %w", err)
 	}
 
-	locker, err := lock.NewPostgresSessionLocker()
-	if err != nil {
-		return 0, fmt.Errorf("create migration lock: %w", err)
-	}
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.Files, goose.WithSessionLocker(locker))
+	provider, err := NewMigrationProvider(db)
 	if err != nil {
 		return 0, fmt.Errorf("create migration provider: %w", err)
 	}
@@ -46,4 +42,14 @@ func Migrate(ctx context.Context, url string, connectTimeout time.Duration) (int
 		return 0, fmt.Errorf("apply migrations: %w", err)
 	}
 	return len(results), nil
+}
+
+// NewMigrationProvider uses the same database-wide lock for startup and migration
+// tests. Separate schemas still share roles and public-schema grants.
+func NewMigrationProvider(db *sql.DB) (*goose.Provider, error) {
+	locker, err := lock.NewPostgresSessionLocker()
+	if err != nil {
+		return nil, fmt.Errorf("create migration lock: %w", err)
+	}
+	return goose.NewProvider(goose.DialectPostgres, db, migrations.Files, goose.WithSessionLocker(locker))
 }
