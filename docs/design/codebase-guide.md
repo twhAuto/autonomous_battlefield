@@ -989,3 +989,7 @@ configuration is required; while the engine is offline, expiry waits for restart
 timeout target diagnostics used by `scripts/cd/smoke-test-kind.sh`. Run
 `bash scripts/test/test-prometheus-smoke.sh` to verify delayed recovery, persistent
 failure, unavailable/malformed diagnostics and timeout validation without a cluster.
+
+`scripts/ops/render-limited-launch.py` includes the same-namespace Prometheus
+scrape peer in the API ingress policy. `scripts/test/test-limited-launch.py`
+asserts exact API/frontend peer selectors and ports to prevent broadening access.

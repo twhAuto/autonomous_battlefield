@@ -47,6 +47,11 @@ def render(args):
         peers = [{'podSelector': {'matchLabels': {'app': 'battlefield-tunnel'}}}]
         if component == 'api':
             peers.append({'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'autonomous-battlefield', 'app.kubernetes.io/component': 'frontend'}}})
+            # Same-namespace monitoring reaches the private API metrics listener.
+            peers.append({'podSelector': {'matchLabels': {
+                'app.kubernetes.io/name': 'prometheus',
+                'app.kubernetes.io/component': 'observability',
+                'app.kubernetes.io/part-of': 'autonomous-battlefield'}}})
         policies.append({'apiVersion': 'networking.k8s.io/v1', 'kind': 'NetworkPolicy', 'metadata': {'name': f'battlefield-{component}-tunnel-only'}, 'spec': {
             'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'autonomous-battlefield', 'app.kubernetes.io/component': component}},
             'policyTypes': ['Ingress'], 'ingress': [{'from': peers, 'ports': [{'protocol': 'TCP', 'port': 8080}]}]}})
