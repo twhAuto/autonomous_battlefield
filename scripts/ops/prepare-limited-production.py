@@ -3,6 +3,7 @@
 import argparse
 import importlib.util
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -40,7 +41,8 @@ def prepare(application, deployment, output):
         team=app['BATTLEFIELD_ACCESS_ISSUER'].removeprefix('https://').rstrip('/').removesuffix('.cloudflareaccess.com'),
         audience=app['BATTLEFIELD_ACCESS_AUDIENCE'], tunnel_id=profile['BF_TUNNEL_ID'],
         cloudflared_image=profile['BF_TUNNEL_IMAGE'], admin=roles.get('admin',[]),
-        developer=roles.get('developer',[]), player=roles.get('player',[]), output=str(output))
+        developer=roles.get('developer',[]), player=roles.get('player',[]), output=str(output),
+        credential_checksum=hashlib.sha256(credential.read_bytes()).hexdigest())
     renderer.render(args)
 
 def main():

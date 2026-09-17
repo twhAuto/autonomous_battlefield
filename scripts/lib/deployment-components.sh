@@ -11,6 +11,7 @@ declare -ag DEPLOYMENT_COMPONENT_ORDER=(
   application
   observability
   gateway
+  network-policy
 )
 declare -Ag DEPLOYMENT_SELECTED_COMPONENTS=()
 
@@ -18,7 +19,7 @@ deployment_components_add() {
   local component="$1"
 
   case "${component}" in
-    infrastructure|migration|application|observability|gateway)
+    infrastructure|migration|application|observability|gateway|network-policy)
       DEPLOYMENT_SELECTED_COMPONENTS["${component}"]=1
       ;;
     backend)
@@ -44,7 +45,7 @@ deployment_components_select() {
 
   DEPLOYMENT_SELECTED_COMPONENTS=()
 
-  if [[ ! "${selection}" =~ ^[a-z]+(,[a-z]+)*$ ]]; then
+  if [[ ! "${selection}" =~ ^[a-z]+(-[a-z]+)*(,[a-z]+(-[a-z]+)*)*$ ]]; then
     echo "Invalid ${consumer} component list: ${selection}" >&2
     return 1
   fi

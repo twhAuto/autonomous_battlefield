@@ -54,7 +54,8 @@ CLI jobs from your personal home directory.
    under the configured backup storage; changing configuration needs no database reset.
 7. When ready to activate public access, run `./scripts/cd/deploy-tunnel.sh`.
    It generates manifests in private temporary storage, applies the tunnel Secret
-   and resources, and restarts the connector. No persistent generated files are needed.
+   and resources. Configuration/credential checksums roll the connector only when
+   its inputs change. No persistent generated files are needed.
 
    Both tunnel ingress rules require Access token validation. The API independently
    validates JWT signature, RS256 algorithm, issuer, application audience, expiry,
@@ -74,10 +75,11 @@ NetworkPolicy operates at the port level, so application authentication still
 protects `/v1` routes on that listener. No Prometheus allowance is added to the
 frontend policy. After deploying this policy change, verify API scrape targets
 are healthy in Prometheus; increasing the smoke timeout cannot fix blocked ingress.
-Normal application deployments do not apply these tunnel NetworkPolicies. To
-roll out a renderer change, run `./scripts/cd/deploy-tunnel.sh` from the updated
-production checkout with its production deployment settings. This reapplies the
-policies and also restarts the tunnel connector; schedule that restart accordingly.
+Production deployments reconcile these NetworkPolicies before application rollout.
+For a policy-only update, run `./scripts/cd/reconcile-network-policies.sh`; it reads
+no tunnel credentials and does not activate or restart the connector. Policy-only
+source changes select `network-policy`, avoiding application image rebuilds.
+`./scripts/cd/deploy-tunnel.sh` remains the explicit tunnel activation/update command.
 **Kind's default networking must not be assumed to enforce these
 policies.** Use a CNI with verified NetworkPolicy enforcement before enabling this
 public deployment. From an unrelated test pod, prove frontend/API ingress is
@@ -320,16 +322,23 @@ Checks also require denial of admin access, battle reads and logout mutations.
 Redirects are not followed and response bodies/credentials are not logged.
 Separately test the public hostname with allowed and denied Google identities,
 MFA, one-hour user-session expiry, logout, account removal, and direct-origin
-IPv4/IPv6 probes. The optional operator tool `scripts/ops/verify-access-origin.py`
-still accepts a private `BATTLEFIELD_ACCESS_TOKEN_FILE` containing a fresh invited
-user application JWT; this is a manual user-session check, not a Jenkins dependency.
-Delete that temporary user token file afterwards.
+IPv4/IPv6 probes. The old human-JWT `verify-access-origin.py` helper has been retired. Use real
+browser sessions for human-role checks; do not copy browser JWTs into scripts or
+Jenkins. Remove obsolete `battlefield-production-access-token` credentials after
+checking all Jenkins jobs for references. Keep the service-token credential and
+tunnel credentials, which serve different purposes.
 
 If authentication fails, keep the application unavailable while repairing the
 Access configuration. Rollbacks must retain production Cloudflare mode and current
 role assignments. Production rollback additionally requires
 `BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST` to match the exact verified backend
-digest; leave it unset until an Access-compatible recovery version is available.
+digest. After successful deployment verification and runtime assurance, Jenkins
+records cluster UID, both image digests and the verified revision in mode-600
+`recovery.json` beside production `deployment.env`. Before the next rollout, it
+loads approval only when the record matches that cluster and both current images.
+Missing or mismatched records disable automatic rollback; the first rollout with
+this feature requires operator recovery on failure. Corrupt records fail preflight.
+Never seed a recovery record from unverified images or edit it in the repository.
 Do not roll back to a pre-Access binary or restore a database over
 live new writes. Stop workloads, restore into a separate database, validate, and
 switch deliberately if database recovery is required. Keep unverified CLI profiles
@@ -474,3 +483,20 @@ No JWT, cookie, client secret, claim value or raw upstream error is logged.
 
 API containers have a read-only root filesystem; do not copy diagnostic binaries
 into `/tmp` or weaken that setting. Use these server logs for verifier failures.
+
+### Cloudflare Browser Integrity Check exception
+
+The production API clients previously received Cloudflare error 1010 before Access
+or the application could authenticate them. Under the zone's Configuration Rules,
+set **Browser Integrity Check: Off** only for this expression:
+
+```text
+(http.host eq "play.ordinalfrontier.com" and
+ (starts_with(http.request.uri.path, "/v1/") or http.request.uri.path eq "/livez"))
+```
+
+Leave Access and the specific Service Auth policy enabled. This exception does not
+authorize requests; valid Access credentials and application permissions are still
+required. Do not disable Browser Integrity Check across the zone or add an Access
+Bypass policy. Record any dashboard changes, then rerun authenticated smoke checks.
+See [Cloudflare's Browser Integrity Check documentation](https://developers.cloudflare.com/waf/tools/browser-integrity-check/).

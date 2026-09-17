@@ -136,17 +136,7 @@ else
 fi
 
 manifest_file="${artifact_dir}/rendered-manifests.yaml"
-: >"${manifest_file}"
-for overlay in \
-  deploy/base/infrastructure \
-  deploy/overlays/local/migration \
-  deploy/overlays/local/application \
-  deploy/overlays/local/observability \
-  deploy/overlays/local/logging-collector \
-  deploy/overlays/local/gateway; do
-  printf '%s\n' '---' >>"${manifest_file}"
-  kubectl kustomize "${project_dir}/${overlay}" >>"${manifest_file}"
-done
+"${project_dir}/scripts/ci/render-security-manifests.sh" >"${manifest_file}"
 
 echo "Scanning freshly rendered Kubernetes configuration with Trivy..."
 if ! docker run --rm \

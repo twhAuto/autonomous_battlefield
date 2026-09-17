@@ -2,6 +2,7 @@
 // failure drills, bounded provider evaluations, and verified AWS image promotion.
 
 pipeline {
+    // Shares the existing agent with CI and delivery for this owner-operated project.
     agent { label 'battlefield-production' }
 
     parameters {
@@ -66,7 +67,9 @@ pipeline {
                 KUBECONFIG = credentials('battlefield-production-kubeconfig')
             }
             steps {
-                sh 'K6_VUS="${LOAD_VUS}" K6_DURATION="${LOAD_DURATION}" ./scripts/perf/run-k6.sh'
+                withCredentials([file(credentialsId: 'battlefield-production-access-service-token', variable: 'BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE')]) {
+                    sh 'set +x; chmod 600 "$BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE"; K6_VUS="${LOAD_VUS}" K6_DURATION="${LOAD_DURATION}" ./scripts/perf/run-k6.sh'
+                }
             }
         }
 

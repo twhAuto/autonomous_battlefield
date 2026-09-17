@@ -12,9 +12,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	"github.com/twh09/autonomous_battlefield/backend/migrations"
+	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
 func TestBattleHistoryAgainstPostgres(t *testing.T) {
@@ -121,7 +120,7 @@ func TestBattleHistoryMigrationUpAndDown(t *testing.T) {
 	config.RuntimeParams["search_path"] = schema
 	db := stdlib.OpenDB(*config)
 	defer db.Close()
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.Files)
+	provider, err := postgres.NewMigrationProvider(db)
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	{
 		_, err := provider.UpTo(ctx, 9)

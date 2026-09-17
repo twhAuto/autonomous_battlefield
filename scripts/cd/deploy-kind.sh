@@ -85,6 +85,10 @@ kind_deploy_prepare_overlays
 kind_deploy_load_images
 
 deployment_component_selected infrastructure && kind_deploy_infrastructure
+if [[ "${DEPLOY_ENV}" == production ]]; then
+  # Keep security policy in sync on every rollout, independently of tunnel activation.
+  "${project_dir}/scripts/cd/reconcile-network-policies.sh"
+fi
 [[ "${image_source}" == "registry" ]] && kind_deploy_registry_credentials
 if [[ "${image_source}" == "registry" && "${enforce_supply_chain_policy}" == "1" ]]; then
   POLICY_BACKEND_IMAGE_REF="${effective_backend_ref:-${current_backend_image}}" \
