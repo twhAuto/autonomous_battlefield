@@ -1163,3 +1163,9 @@ Prometheus deployment smoke queries allow a bounded 120-second discovery/scrape
 settling window per query, configurable from 1 to 600 seconds. Timeout reports
 application/node target health and scrape errors before failing the deployment;
 it does not waive target-health requirements. See the [deployment smoke guide](../operations/deployment.md).
+
+Production API ingress permits the tunnel, frontend and same-namespace Prometheus
+pods on TCP 8080. Prometheus peers must match the name, component and part-of
+labels from its deployment. This enables private metrics scraping while API
+authentication still protects application routes on the shared listener; the
+frontend policy remains tunnel-only. See the [limited-launch policy](../operations/limited-launch.md).

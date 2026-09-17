@@ -67,7 +67,18 @@ CLI jobs from your personal home directory.
    MCP, databases, Kubernetes, Jenkins, SonarQube and monitoring stay private.
 
 The rendered NetworkPolicies allow the tunnel to reach frontend/API and frontend
-to reach API. **Kind's default networking must not be assumed to enforce these
+to reach API. The API policy also permits same-namespace Prometheus pods matching
+`app.kubernetes.io/name=prometheus`, `app.kubernetes.io/component=observability`,
+and `app.kubernetes.io/part-of=autonomous-battlefield` to reach TCP 8080 for scraping.
+NetworkPolicy operates at the port level, so application authentication still
+protects `/v1` routes on that listener. No Prometheus allowance is added to the
+frontend policy. After deploying this policy change, verify API scrape targets
+are healthy in Prometheus; increasing the smoke timeout cannot fix blocked ingress.
+Normal application deployments do not apply these tunnel NetworkPolicies. To
+roll out a renderer change, run `./scripts/cd/deploy-tunnel.sh` from the updated
+production checkout with its production deployment settings. This reapplies the
+policies and also restarts the tunnel connector; schedule that restart accordingly.
+**Kind's default networking must not be assumed to enforce these
 policies.** Use a CNI with verified NetworkPolicy enforcement before enabling this
 public deployment. From an unrelated test pod, prove frontend/API ingress is
 blocked. From a separate internet connection, try the server's public IPv4 and
