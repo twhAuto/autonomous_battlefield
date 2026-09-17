@@ -33,11 +33,32 @@ class LaunchTests(unittest.TestCase):
             self.assertEqual((Path(out)/'tunnel.json').stat().st_mode & 0o777, 0o600)
             resources = json.loads((Path(out)/'tunnel.json').read_text())['items']
             self.assertEqual(sum(r['kind']=='NetworkPolicy' for r in resources), 2)
+            self.assert_scrape_policy_boundaries(resources)
             args.player = ['OWNER@example.com']
             with self.assertRaises(ValueError): launch.render(args)
             args.player = []
             args.cloudflared_image = 'cloudflare/cloudflared:latest'
             with self.assertRaises(ValueError): launch.render(args)
+
+    def assert_scrape_policy_boundaries(self, resources):
+        policies = {r['metadata']['name']: r['spec'] for r in resources if r['kind'] == 'NetworkPolicy'}
+        tunnel = {'podSelector': {'matchLabels': {'app': 'battlefield-tunnel'}}}
+        frontend = {'podSelector': {'matchLabels': {
+            'app.kubernetes.io/name': 'autonomous-battlefield',
+            'app.kubernetes.io/component': 'frontend'}}}
+        prometheus = {'podSelector': {'matchLabels': {
+            'app.kubernetes.io/name': 'prometheus',
+            'app.kubernetes.io/component': 'observability',
+            'app.kubernetes.io/part-of': 'autonomous-battlefield'}}}
+        for component, allowed in [('api', [tunnel, frontend, prometheus]), ('frontend', [tunnel])]:
+            policy = policies[f'battlefield-{component}-tunnel-only']
+            self.assertEqual(policy['podSelector'], {'matchLabels': {
+                'app.kubernetes.io/name': 'autonomous-battlefield',
+                'app.kubernetes.io/component': component}})
+            self.assertEqual(policy['policyTypes'], ['Ingress'])
+            # Exact peers exclude namespace-wide, cross-namespace and IP-based allowances.
+            self.assertEqual(policy['ingress'], [{'from': allowed,
+                'ports': [{'protocol': 'TCP', 'port': 8080}]}])
 
     def test_vm_has_no_forwarding_and_explicit_egress(self):
         network = ET.parse(ROOT/'deploy/agent-vm/network.xml').getroot()
