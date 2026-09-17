@@ -51,8 +51,13 @@ that they are unused.
 
 ## Earlier findings superseded by the current code
 
-- Both Jenkinsfiles now select `battlefield-production`; failure drills require
-  a separately registered disposable dev profile and reject production.
+- Main delivery and load/provider/promotion use `battlefield-production`;
+  PR verification and offline/drill assurance use the isolated
+  `battlefield-ci` agent. Failure drills require a separately registered
+  disposable dev profile and reject production. See the subsequent
+  [production hardening rollout](jenkins.md#production-hardening-rollout) for
+  controller restrictions and prerequisites; this does not resolve the separate
+  assurance findings above.
 - PostgreSQL uses a 1 GiB PVC, not `emptyDir`. Pod replacement preserves that
   claim; losing the Kind cluster can still lose its data.
 - The environment resolver fixes the namespace to `battlefield` and rejects

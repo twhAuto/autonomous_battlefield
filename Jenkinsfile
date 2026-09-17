@@ -1,8 +1,9 @@
-// Jenkins CI/CD entry point: verify pull requests targeting main, then build and
+// Jenkins CI/CD entry point: verify pull requests targeting dev/main, then build and
 // deliver changed components to production on main. Other branches skip these stages.
 // Scripts under scripts/ci, scripts/test, and scripts/cd implement the individual steps.
 pipeline {
-    agent { label 'battlefield-production' }
+    // The CI node must use a different host/daemon and have no production files.
+    agent { label "${env.BRANCH_NAME == 'main' ? 'battlefield-production' : 'battlefield-ci'}" }
 
     options {
         buildDiscarder(logRotator(numToKeepStr: '20'))
@@ -16,9 +17,6 @@ pipeline {
         BACKEND_IMAGE = 'autonomous-battlefield-backend'
         FRONTEND_IMAGE = 'autonomous-battlefield-frontend'
         GO_COVERAGE_MIN = '80'
-        DEPLOY_COMPONENTS = 'all'
-        PREVIOUS_BACKEND_IMAGE_REF = ''
-        PREVIOUS_FRONTEND_IMAGE_REF = ''
     }
 
     parameters {
@@ -31,6 +29,7 @@ pipeline {
             when {
                 anyOf {
                     changeRequest target: 'main'
+                    changeRequest target: 'dev'
                     branch 'main'
                 }
             }
@@ -38,6 +37,11 @@ pipeline {
                 deleteDir()
                 checkout scm
                 script {
+                    // Mutable values must not be shadowed by Declarative environment bindings.
+                    env.DEPLOY_COMPONENTS = 'all'
+                    env.PREVIOUS_BACKEND_IMAGE_REF = ''
+                    env.PREVIOUS_FRONTEND_IMAGE_REF = ''
+                    env.BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST = ''
                     env.CI_WORK_ROOT = "${pwd(tmp: true)}/autonomous-battlefield"
                     env.GOCACHE = "${env.CI_WORK_ROOT}/cache/go-build"
                     env.GOTMPDIR = "${env.CI_WORK_ROOT}/tmp/go"
@@ -54,7 +58,10 @@ pipeline {
 
         stage('PR verification') {
             when {
-                changeRequest target: 'main'
+                anyOf {
+                    changeRequest target: 'main'
+                    changeRequest target: 'dev'
+                }
             }
             stages {
                 stage('PR continuous integration') {
@@ -104,15 +111,7 @@ pipeline {
                         stage('Deployment script checks') {
                             steps {
                                 sh '''
-                                    ./scripts/test/test-deployment-components.sh
-                                    ./scripts/test/test-kind-deployment.sh
-                                    ./scripts/test/test-command-wrappers.sh
-                                    ./scripts/test/test-runtime-assurance.sh
-                                    python3 scripts/test/test-access-service.py
-                                    ./scripts/test/test-deployment-environment.sh
-                                    ./scripts/test/test-security-launchers.sh
-                                    ./scripts/test/test-registry-auth.sh
-                                    ./scripts/test/test-image-metadata.sh
+                                    ./scripts/test/test-deployment.sh
                                 '''
                             }
                         }
@@ -224,15 +223,7 @@ pipeline {
                 stage('Determine deployment scope') {
                     steps {
                         sh '''
-                            ./scripts/test/test-deployment-components.sh
-                            ./scripts/test/test-kind-deployment.sh
-                            ./scripts/test/test-command-wrappers.sh
-                            ./scripts/test/test-runtime-assurance.sh
-                            python3 scripts/test/test-access-service.py
-                            ./scripts/test/test-deployment-environment.sh
-                            ./scripts/test/test-security-launchers.sh
-                            ./scripts/test/test-registry-auth.sh
-                            ./scripts/test/test-image-metadata.sh
+                            ./scripts/test/test-deployment.sh
                         '''
                         script {
                             // Compare with the last successful build so changes from failed builds are included.
@@ -387,6 +378,13 @@ pipeline {
                                     ).trim()
                                     env.PREVIOUS_BACKEND_IMAGE_REF = previousBackendImage
                                     env.PREVIOUS_FRONTEND_IMAGE_REF = previousFrontendImage
+                                    env.BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST = sh(
+                                        script: './scripts/cd/production-recovery.sh read "$PREVIOUS_BACKEND_IMAGE_REF" "$PREVIOUS_FRONTEND_IMAGE_REF"',
+                                        returnStdout: true
+                                    ).trim()
+                                    if (!env.BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST) {
+                                        echo 'No matching verified recovery record; automatic rollback remains disabled for this rollout.'
+                                    }
                                     echo "Previous backend image: ${env.PREVIOUS_BACKEND_IMAGE_REF ?: 'none'}"
                                     echo "Previous frontend image: ${env.PREVIOUS_FRONTEND_IMAGE_REF ?: 'none'}"
                                     sh 'mkdir -p artifacts/deployment'
@@ -480,11 +478,19 @@ pipeline {
                                 }
                                 stage('ZAP baseline') {
                                     steps {
-                                        sh './scripts/security/zap-baseline.sh'
+                                        withCredentials([file(credentialsId: 'battlefield-production-access-service-token', variable: 'BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE')]) {
+                                            sh 'set +x; chmod 600 "$BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE"; ./scripts/security/zap-baseline.sh'
+                                        }
                                     }
                                 }
                             }
                         }
+                        stage('Record verified recovery') {
+                            steps {
+                                sh './scripts/cd/production-recovery.sh record "$IMAGE_TAG"'
+                            }
+                        }
+
                     }
                 }
             }

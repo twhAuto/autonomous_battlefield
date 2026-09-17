@@ -33,6 +33,7 @@ frontend=0
 application=0
 observability=0
 gateway=0
+network_policy=0
 all=0
 unclassified_files=()
 
@@ -80,6 +81,9 @@ while IFS= read -r -d '' changed_file; do
       migration=1
       application=1
       ;;
+    scripts/ops/render-limited-launch.py|scripts/cd/reconcile-network-policies.sh)
+      network_policy=1
+      ;;
     scripts/ci/build-images.sh|scripts/ci/scan-images.sh|scripts/cd/*|scripts/lib/*)
       all=1
       ;;
@@ -113,6 +117,8 @@ for component in infrastructure migration backend frontend application observabi
     components+=("${component}")
   fi
 done
+
+if [[ "${network_policy}" == 1 ]]; then components+=(network-policy); fi
 
 if ((${#components[@]} == 0)); then
   echo "none"

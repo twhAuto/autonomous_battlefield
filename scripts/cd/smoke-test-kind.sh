@@ -276,10 +276,7 @@ wait_for_url "Tempo readiness" "http://127.0.0.1:${tempo_port}/ready"
 
 source "${project_dir}/scripts/lib/prometheus-smoke.sh"
 
-wait_for_prometheus_query \
-  "Prometheus API discovery" \
-  'sum(up{job="battlefield-pods",component="api"})' \
-  1
+wait_for_prometheus_api_targets
 wait_for_prometheus_query \
   "Prometheus engine discovery" \
   'sum(up{job="battlefield-pods",component="engine"})' \

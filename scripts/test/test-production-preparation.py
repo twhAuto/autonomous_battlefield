@@ -42,7 +42,8 @@ class PreparationTests(unittest.TestCase):
             self.assertEqual(before,[f.read_bytes() for f in (app,profile,credential)])
             self.assertFalse((output/'auth.env').exists())
             rendered = json.loads((output/'tunnel.json').read_text())
-            self.assertEqual(len(rendered['items']),4)
+            self.assertEqual(len(rendered['items']),2)
+            self.assertTrue((output/'network-policies.json').exists())
             self.assertNotIn('private',json.dumps(rendered))
 
     def test_rejects_invalid_credentials_and_mode(self):
@@ -57,6 +58,30 @@ class PreparationTests(unittest.TestCase):
             app,profile,credential=self.fixture(directory)
             app.write_text(app.read_text().replace('cloudflare\n','local-password\n'))
             with self.assertRaises(ValueError): prep.prepare(app,profile,directory/'scratch')
+
+    def test_tunnel_rolls_only_when_config_or_credentials_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            app, profile, credential = self.fixture(directory)
+            output = directory/'scratch'
+            def template():
+                prep.prepare(app, profile, output)
+                return json.loads((output/'tunnel.json').read_text())['items'][1]['spec']['template']
+            original = template()
+            self.assertEqual(template(), original)
+            data = json.loads(credential.read_text())
+            data['TunnelSecret'] = 'rotated-secret'
+            credential.write_text(json.dumps(data))
+            rotated = template()
+            first = original['metadata']['annotations']
+            second = rotated['metadata']['annotations']
+            self.assertEqual(first['checksum/config'], second['checksum/config'])
+            self.assertNotEqual(first['checksum/credentials'], second['checksum/credentials'])
+            self.assertNotIn('rotated-secret', json.dumps(rotated))
+            app.write_text(app.read_text().replace('play.example.com', 'new.example.com'))
+            third = template()['metadata']['annotations']
+            self.assertNotEqual(second['checksum/config'], third['checksum/config'])
+            self.assertEqual(second['checksum/credentials'], third['checksum/credentials'])
 
     def test_shared_parser_rejects_duplicate_keys(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -1169,3 +1169,24 @@ pods on TCP 8080. Prometheus peers must match the name, component and part-of
 labels from its deployment. This enables private metrics scraping while API
 authentication still protects application routes on the shared listener; the
 frontend policy remains tunnel-only. See the [limited-launch policy](../operations/limited-launch.md).
+
+PR verification for `dev` and `main` uses an isolated CI agent and Docker daemon.
+Only trusted main delivery uses the production agent; controller-side scheduling
+and credential restrictions must enforce this boundary beyond repository branch
+conditions. Production policy reconciliation precedes application rollout without
+activating the tunnel. Tunnel config/credential checksum changes trigger rollouts;
+policy-only changes do not. Prometheus requires approved kubelet serving trust in
+production and retains narrow node-metrics RBAC. API scrape verification covers
+all current ready replicas rather than an aggregate minimum of one.
+
+Successful authentication and runtime assurance establish a private recovery
+record bound to cluster UID and both deployed digests. Subsequent automatic image
+rollback requires an exact match plus existing signature/provenance verification.
+The record does not roll back database changes or replace current authentication
+configuration. An absent record leaves recovery under operator control.
+
+Production ZAP receives sanitized, authenticated read-only response captures and
+runs without network access or credentials. Its report explicitly covers session,
+scenario catalog and liveness responses only; broader role-specific application
+scanning requires staging. Human JWT copying is no longer part of operator tooling.
+See the [hardening rollout](../operations/jenkins.md#production-hardening-rollout).

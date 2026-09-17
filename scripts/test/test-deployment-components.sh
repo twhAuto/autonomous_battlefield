@@ -133,6 +133,8 @@ assert_rename() {
   git -C "${runtime_dir}" reset --hard --quiet "${base_revision}"
 }
 
+assert_detection network-policy scripts/ops/render-limited-launch.py
+assert_detection network-policy scripts/cd/reconcile-network-policies.sh
 assert_detection "frontend,application" "frontend/src/app/App.tsx"
 assert_detection "migration,backend,application" "backend/internal/app/app.go"
 assert_detection "observability" "deploy/overlays/local/observability/prometheus/prometheus.yml"

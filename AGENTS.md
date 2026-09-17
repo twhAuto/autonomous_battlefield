@@ -17,9 +17,10 @@
 - Promotion from `dev` to `main` is a separate release action. Create a PR to
   `main` only when the user requests that promotion or explicitly chooses it as
   the target.
-- Run the applicable checks below before opening a PR. Jenkins currently runs
-  PR verification only for PRs targeting `main`; a PR into `dev` does not yet
-  receive those checks. Do not treat skipped Jenkins stages as verification.
+- Run the applicable checks below before opening a PR. Jenkins runs PR
+  verification for targets `dev` and `main` on the isolated
+  `battlefield-ci` agent. Run `./scripts/test/test-deployment.sh` for deployment
+  changes. Do not treat skipped or queued Jenkins stages as verification.
 
 ## Project tracking
 

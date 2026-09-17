@@ -19,7 +19,7 @@ AI-created work branches start from the latest fetched `origin/dev` and target
 to `main` is separate. See [agent branch guidance](../../AGENTS.md#branches-and-pull-requests)
 and the [Jenkins workflow](../operations/jenkins.md#configure-github-main-protection).
 PRs into `dev` currently require local verification because Jenkins PR checks
-run only for a `main` target.
+run for `dev` and `main` targets on the isolated `battlefield-ci` agent.
 
 ## Environment tooling
 
@@ -829,8 +829,8 @@ Tunnel deployment with origin-side Access validation and application ingress pol
 `deploy/agent-vm/` contains the libvirt network/filter, proxy and worker configuration;
 `create-agent-vm.sh` provisions a fresh VM after capacity/image checks;
 `verify-agent-isolation.py` tests its guest boundary. `ai-policy.sh` is the private
-operator stop/status/usage interface. `verify-access-origin.py` checks real Access
-credentials during production smoke. `scripts/test/test-limited-launch.py` verifies
+operator stop/status/usage interface. `verify-access-service.py` checks the restricted CI service identity during production smoke;
+the former human-JWT helper has been retired. `scripts/test/test-limited-launch.py` verifies
 rendered routing and isolation artifacts without modifying infrastructure.
 See [limited-access launch](../operations/limited-launch.md) for setup and live verification.
 
@@ -993,3 +993,22 @@ failure, unavailable/malformed diagnostics and timeout validation without a clus
 `scripts/ops/render-limited-launch.py` includes the same-namespace Prometheus
 scrape peer in the API ingress policy. `scripts/test/test-limited-launch.py`
 asserts exact API/frontend peer selectors and ports to prevent broadening access.
+
+Production hardening entry points:
+
+- `scripts/test/test-deployment.sh` is the shared PR/main infrastructure regression gate.
+- `scripts/cd/reconcile-network-policies.sh` applies only the separately rendered
+  `network-policies.json`; `deploy-tunnel.sh` applies connector inputs with checksum
+  annotations instead of an unconditional restart.
+- `scripts/ops/configure-production-prometheus.py` stages verified kubelet TLS;
+  `export-kind-kubelet-ca.sh` obtains public trust material via the registered Docker
+  daemon. `scripts/ci/render-security-manifests.sh` includes synthetic production
+  TLS and tunnel/policy resources in schema and security scanning.
+- `scripts/lib/prometheus-targets.cjs` checks all live API replicas and fresh scrapes;
+  `scripts/test/prometheus-targets.test.cjs` covers missing, stale and wrong-IP targets.
+- `scripts/cd/production-recovery.sh` and `scripts/lib/production_recovery.py` maintain
+  the private cluster/image recovery approval after successful runtime assurance.
+- `scripts/security/capture-zap-traffic.py` verifies and sanitizes authenticated CI
+  reads for an offline ZAP passive scan. `test-production-hardening.py` covers
+  destination binding, redirect rejection, credential exclusion, TLS staging,
+  recovery mismatches, policy-only reconciliation and scanner failure propagation.

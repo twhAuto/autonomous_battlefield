@@ -11,7 +11,7 @@ periodic scans, checks out the exact commit, and executes the pipeline on an
 agent. A public Jenkins installation can use a GitHub webhook instead.
 
 ```text
-Pull request targeting main
+Pull request targeting dev or main
           |
           `--> lint, test with coverage, publish a GitHub Coverage check,
                render, build immutable images, and scan
@@ -33,10 +33,15 @@ nested stages. Within an active `Main delivery` run, image and deployment stages
 can still appear as skipped when the changed-component classifier determines
 that they are unnecessary; those skips are intentional and remain visible.
 
-Direct pushes to non-`main` branches do not run CI or CD stages. This keeps
-`dev` available as a local work branch: use `./deploy-local.sh` while developing, then
-open a pull request when the change is ready for Jenkins CI. Only `main`
-receives the production `kind` deployment credential and can deploy.
+PRs targeting `dev` or `main` run verification on `battlefield-ci`. Direct pushes
+to non-`main` branches skip delivery. Main uses `battlefield-production` and the
+production credentials. These labels require separate hosts/VMs and Docker daemons;
+a second executor or label on the production host is not isolation. Restrict the
+production node/job to trusted main builds in Jenkins administration, and scope
+production/signing credentials to the delivery job/folder. A PR-editable Jenkinsfile
+is not itself an access-control boundary. Keep the assurance job pinned to trusted
+main; its offline/drill modes use CI, while credential-bearing load/provider/promotion
+modes use production.
 
 The `main` branch must require pull requests and disallow direct pushes. Jenkins
 sees a `main` update rather than a distinct "PR merged" pipeline condition, so
@@ -197,7 +202,7 @@ It uses one worker in CI. No shared database or live AI is required. The always
 post step archives `frontend/playwright-report/**/*` and
 `frontend/test-results/**/*`, including failure screenshots and retained traces.
 
-Runtime k6 and ZAP containers use host networking on the Linux agent and map
+Development k6 and ZAP containers use host networking on the Linux agent and map
 `battlefield.localhost` to `127.0.0.1`, matching kind's loopback-only gateway
 publication. The Docker daemon must run on the same host as the agent. Both
 containers run with the invoking user's UID/GID so their bind-mounted reports
@@ -207,7 +212,9 @@ its Python/Java home and working directory. Target overrides (`TARGET_URL` and
 indicates an outdated launcher using the Docker bridge gateway.
 Run `./scripts/test/test-runtime-assurance.sh` to check launcher networking,
 report ownership settings, target overrides, and failure propagation without
-starting scanners or contacting a deployment.
+starting scanners or contacting a deployment. Production k6 contacts the registered
+HTTPS origin; production ZAP runs offline with no network using authenticated
+response captures, as described in the hardening rollout below.
 
 ## Delivery-assurance credentials
 
@@ -216,6 +223,7 @@ Create these narrowly scoped Jenkins credentials before enabling main delivery:
 | ID | Kind | Purpose |
 |---|---|---|
 | `battlefield-production-kubeconfig` | secret file | Dedicated production kubeconfig; bound only during rollout (or explicit assurance load) |
+| `battlefield-production-access-service-token` | secret file | Restricted CI service identity; bound only for production smoke, load and authenticated response capture |
 | `battlefield-ghcr` | username/password | GitHub Packages identity and token with only `read:packages` and `write:packages` |
 | `battlefield-cosign-key` | secret file | encrypted Cosign private key |
 | `battlefield-cosign-password` | secret text | password for the encrypted signing key |
@@ -284,7 +292,9 @@ Use a separate agent so builds do not execute on the Jenkins controller:
 
 1. Open **Manage Jenkins > Nodes > New Node**.
 2. Name it `battlefield-local`, choose **Permanent Agent**, and use one executor.
-3. Add the label `battlefield-production`, which both Jenkinsfiles require.
+3. Add the label `battlefield-production` for trusted main delivery and
+   load/provider/promotion assurance. PR verification requires a separate
+   `battlefield-ci` agent on its own host/daemon; do not put both labels here.
    Set the remote root directory to the agent account’s `~/jenkins-agent`.
 4. Choose **Launch agent by connecting it to the controller** and enable the
    WebSocket launch option.
@@ -505,12 +515,12 @@ ruleset targeting `main`:
 Do not require the merged-`main` CD result as a pre-merge check: that job exists
 only after GitHub creates the final `main` commit. Direct pushes to `dev` remain
 available for local iteration, but Jenkins CI begins when a pull request targets
-`main`.
+`dev` or `main`.
 
 AI-created feature and fix branches start from the latest fetched `origin/dev`
 and open pull requests into `dev`, unless the user explicitly requests otherwise.
 See [agent branch guidance](../../AGENTS.md#branches-and-pull-requests). Jenkins
-currently skips verification for PRs targeting `dev`, so run the applicable local
+verifies PRs targeting both branches on the isolated CI agent. Run applicable local
 checks before opening them. A `dev`-to-`main` promotion is a separate release PR.
 
 After merging a release pull request into `main`, synchronize the long-lived local branches before
@@ -566,13 +576,13 @@ local iteration; local Jenkins and SonarQube need not be started.
 | SonarQube analysis times out waiting for the quality gate | Confirm SonarQube is healthy with `curl --fail http://localhost:9000/api/system/status`, then inspect **Administration > Projects > Background Tasks** in SonarQube. The scanner polls the server for up to five minutes and does not require a webhook. |
 | `battlefield-local` is offline | Run `systemctl --user status jenkins-agent`, confirm the controller is active, and restart the user service after correcting the reported error. |
 | A new PR shows only build `#1` | Build numbering is local to that `PR-N` child job; this is not evidence that active history was deleted. Check the Orphaned Item Strategy for closed PR retention. |
-| A direct `dev` push has no stages | This is intentional. Run locally and open a pull request into `main` to trigger CI. |
+| A direct `dev` push has no stages | This is intentional. Run locally and open a feature-branch PR into `dev` to trigger CI. Promotion to `main` is a separate release. |
 | Frontend proxy returns `502` | Confirm `API_UPSTREAM` renders as `battlefield-api.battlefield.svc.cluster.local:8080`, then inspect frontend logs and the `battlefield-api` Service endpoints. |
 | `kind load docker-image` says the image is not present and is loading | This is normal informational output: kind is copying a host Docker image into the cluster node. |
 
 ## Pipeline behavior
 
-For a pull request targeting `main`, the pipeline performs:
+For a pull request targeting `dev` or `main`, the pipeline performs:
 
 1. Clean checkout of the exact GitHub commit.
 2. Parallel Go lint, isolated PostgreSQL-backed tests (coverage and race checks),
@@ -595,6 +605,8 @@ For `main`, the pipeline performs:
    and frontend digest references, migration gating, and Kyverno admission verification.
 6. Application and observability smoke verification, followed by parallel k6
    smoke load and ZAP baseline checks.
+7. An atomic update of the private, cluster-bound recovery image record after
+   all rollout and runtime checks pass.
 
 See [deployment component mapping](deployment.md#change-to-deployment-mapping)
 for the paths that select each rollout stage and
@@ -612,7 +624,10 @@ Deployment plus recent namespace events.
 the previous images if an application apply or rollout fails. Before deploying,
 Jenkins records the independently deployed backend and frontend digest references. If an
 application-related deployment later fails smoke testing,
-`scripts/cd/rollback-kind.sh` restores those two exact immutable revisions without
+`scripts/cd/rollback-kind.sh` restores those two exact immutable revisions only
+when the private cluster-bound recovery record approves the exact image pair.
+The record is written after all runtime assurance stages succeed; an absent or
+mismatched record requires operator recovery. The script operates without
 re-running migrations or changing observability. Image rollback is skipped for
 infrastructure-, migration-, observability-, or gateway-only changes. Database
 migrations are deliberately not reversed automatically, so migrations must
@@ -677,16 +692,14 @@ the agent's installed private CAs available to k6 while retaining TLS verificati
 `K6_CA_BUNDLE` can select another readable, nonempty PEM CA bundle; missing or
 empty bundles fail before starting k6. The Docker daemon must share the agent's
 filesystem, as required for the existing source and report mounts. Browser trust
-settings do not configure k6. Install the Caddy root CA into the agent's system
-trust store before running production performance verification.
+settings do not configure k6. Public Cloudflare endpoints use public trust roots;
+install an additional private CA only when an intended target actually requires it.
 
-Production k6 resolves missing admin credentials from the deployed `battlefield-auth`
-Secret (overridable with `SMOKE_TEST_AUTH_SECRET_NAME`), using the registered
-Kubernetes context and namespace. This requires Python 3 and Secret read access
-on the agent. Credentials are passed to Docker by environment-variable name,
-with shell tracing disabled. Explicit `ADMIN_USERNAME`/`ADMIN_PASSWORD` values
-remain supported. Failed login or missing session cookies stops setup; successful
-login cookies are converted to request-cookie string values for each virtual user.
+Production k6 reads the authentication mode and enrolled CI client ID from the
+deployed `battlefield-auth` Secret. It validates the private Jenkins service-token
+JSON and mounts it read-only; secret values are not Docker arguments. Production
+unsets admin-password inputs and refuses redirects. Username/password and cookie
+login remain dev-only behavior.
 
 ## Production smoke credentials
 
@@ -697,3 +710,56 @@ for the JSON schema, Cloudflare Service Auth policy, expiry alerts and first rol
 with `APPLY_CONFIGURATION=true`. Jenkins validates local credential metadata before
 rollout, then tests actual read-only service access through the public hostname.
 It no longer needs a copied browser session cookie.
+
+## Production hardening rollout
+
+Before promoting this pipeline, provision an isolated `battlefield-ci` agent with
+Go, Node, Python, Docker, kubectl and the CI tool prerequisites. Give it no production
+profile, kubeconfig, tunnel/service credentials, signing key, or production Docker
+socket. Configure controller-side node/job restrictions and credential scope; do
+not rely solely on branch conditions in a repository-controlled Jenkinsfile.
+Until that agent exists, PR checks queue rather than falling back to production.
+
+Use separate credential boundaries for untrusted PRs and trusted delivery. A
+standard Multibranch folder's credentials are inherited by its PR child jobs;
+changing the node label does not stop a modified PR Jenkinsfile from requesting
+those credentials. One supported layout is:
+
+1. A CI Multibranch project discovers PRs and excludes direct `main` builds. Its
+   folder has only read-only checkout and CI reporting access.
+2. A delivery Multibranch project discovers only `main`, with all PR discovery
+   disabled. Store production kubeconfig, service-token, registry-write and
+   signing credentials in this trusted folder, not global or shared parent scope.
+   Put the trusted-main assurance job here too, with operator-only triggers for
+   credential-bearing modes.
+3. Enforce production-node access in Jenkins administration for only the trusted
+   delivery/assurance jobs. Ensure a PR cannot request that node by changing its
+   Jenkinsfile label. Keep the CI host/daemon unable to reach production private
+   control endpoints or read its filesystem. Disable controller executors.
+
+Before enabling delivery, verify the CI job cannot resolve production credential
+IDs or schedule work on the production node. Repository changes cannot enforce
+this controller configuration; completing it is a promotion prerequisite.
+
+All deployment regression suites run through `./scripts/test/test-deployment.sh`
+on both PR and main builds. This includes tunnel preparation, policy boundaries,
+recovery approval, authenticated capture and per-replica scrape checks. Source
+security additionally renders synthetic tunnel policies and production TLS config.
+No production secrets are needed on the CI agent.
+
+Production passive ZAP scanning captures authenticated GET responses for
+`/v1/auth/session`, `/v1/scenarios`, and `/livez`, verifies the CI identity and
+catalog response, and removes credential/cookie headers before HAR export. The
+scanner receives no credentials and runs with `--network none`. It imports recorded
+responses without resending requests, fails on high-risk findings, and writes
+`artifacts/security/zap/coverage.json` explicitly identifying this limited coverage.
+It does not certify authenticated admin/player routes or the whole frontend.
+Broader crawling and role-specific security tests belong in staging. See
+[ZAP HAR import](https://www.zaproxy.org/docs/desktop/addons/import-export/automation/).
+
+Configure kubelet TLS trust using the [production monitoring setup](observability.md#production-kubelet-tls).
+Keep the first hardening rollout separate from unrelated application releases:
+there is no automatic recovery approval until a successful new pipeline records it.
+Mutable deployment selection and recovery values are initialized in Checkout,
+not in immutable Declarative environment bindings, so subsequent shell steps use
+the selected components and approved digests.
