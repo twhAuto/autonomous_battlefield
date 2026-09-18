@@ -172,7 +172,7 @@ confirmation is needed for those review comments.
 Follow [the cross-review guide](docs/operations/cross-review.md). Fetch the base,
 review the exact pushed head, read findings and verify them before fixing anything.
 Run the applicable tests after corrections. Claude reviewers use Opus; Codex
-reviewers use GPT-6 Astra with high reasoning effort. After each review, post an
+reviewers use GPT-6 Astra with medium reasoning effort. After each review, post an
 author response on the PR with `<!-- battlefield-author-response:codex -->` or
 `<!-- battlefield-author-response:claude -->` as its first line, the current head,
 and finding-by-finding acceptance, fixes, or disagreement with concrete evidence.

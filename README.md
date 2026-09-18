@@ -233,4 +233,4 @@ Agent-authored PR revisions use the [Codex/Claude cross-review workflow](docs/op
 before handoff. The opposite reviewer checks the committed change, and `--pr`
 publishes its advisory report with the exact reviewed commits. Authors respond
 on the PR; subsequent rounds read that exchange and reassess fixes/disagreements.
-Reviewers are Claude Opus and Codex GPT-6 Astra at high reasoning effort.
+Reviewers are Claude Opus and Codex GPT-6 Astra at medium reasoning effort.

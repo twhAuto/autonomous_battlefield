@@ -77,7 +77,7 @@ class CrossReviewTests(unittest.TestCase):
         self.assertIn('{"disableAllHooks":true}', claude)
         codex = review.command("codex", "/bin/codex", Path("/tmp/snapshot"), Path("/tmp/report"))
         self.assertEqual(codex[codex.index("--model") + 1], "gpt-6-astra")
-        self.assertIn('model_reasoning_effort="high"', codex)
+        self.assertIn('model_reasoning_effort="medium"', codex)
         self.assertNotIn("--sandbox", codex)
         self.assertTrue(any(arg.startswith('permissions.review.filesystem={":minimal"="read",":workspace_roots"="read",') for arg in codex))
         self.assertIn('permissions.review.network.enabled=false', codex)

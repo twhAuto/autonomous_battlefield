@@ -1208,7 +1208,7 @@ on the development machine, separately from production workers. It sends the
 selected committed source/diff to the reviewer's provider using existing CLI
 login, excludes untracked application secrets, and stores private reports outside
 the repository. Claude reviews explicitly select the `opus` model alias and use file-read tools
-only; Codex uses `gpt-6-astra` with high reasoning effort and a named read-only
+only; Codex uses `gpt-6-astra` with medium reasoning effort and a named read-only
 filesystem profile allowing the snapshot, minimal OS paths and installed CLI
 helpers, with sandbox command networking disabled. The runner enforces the
 minimum Codex version and strict configuration parsing. Personal auth files remain

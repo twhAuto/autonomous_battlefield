@@ -23,7 +23,7 @@ and enables strict config validation. 0.152.0 is rejected by the provider.
 Claude reviews explicitly use `--model opus`, regardless of the interactive IDE
 model selection. `opus` follows the provider's current Opus alias rather than
 pinning a specific version. The CLI's private JSON output records the models
-actually used. Codex reviews explicitly use `gpt-6-astra` with `model_reasoning_effort="high"`.
+actually used. Codex reviews explicitly use `gpt-6-astra` with `model_reasoning_effort="medium"`.
 
 The runner uses existing account login. It intentionally does not forward
 `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or arbitrary application credentials.
@@ -88,7 +88,7 @@ Missing tools, auth errors, empty results and timeouts must be investigated.
 4. Run the reviewer again with `--pr NUMBER` and a new output directory. It reads
    prior reports and author responses from the PR and reviews the current commit.
    This works with either `--author codex` (Opus reviewer) or `--author claude`
-   (Astra/high reviewer). Discussion-only rounds can use the same head.
+   (Astra/medium reviewer). Discussion-only rounds can use the same head.
 5. Continue until reviewer and author explicitly agree that no supported findings
    remain. The reviewer ends with AGREED, CHANGES_REQUESTED or NEEDS_USER_DECISION;
    these are model judgments, not machine-enforced approvals. The author must

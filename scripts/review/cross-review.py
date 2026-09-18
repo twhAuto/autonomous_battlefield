@@ -86,7 +86,7 @@ def command(reviewer, executable, snapshot, report):
     if Path(executable).resolve().suffix == ".js" and runtime.name == "bin":
         runtime = runtime.parent
     return [executable, "exec", "--model", "gpt-6-astra",
-            "-c", 'model_reasoning_effort="high"',
+            "-c", 'model_reasoning_effort="medium"',
             "-c", 'default_permissions="review"',
             "-c", 'permissions.review.filesystem={":minimal"="read",":workspace_roots"="read",'
                   + json.dumps(str(runtime)) + '="read"}',
@@ -282,7 +282,7 @@ def main():
     metadata = {"author": args.author, "reviewer": reviewer, "status": "preparing",
                 "working_tree_changes_excluded": dirty,
                 "model": "opus" if reviewer == "claude" else "gpt-6-astra",
-                "reasoning_effort": "provider default" if reviewer == "claude" else "high"}
+                "reasoning_effort": "provider default" if reviewer == "claude" else "medium"}
     try:
         with tempfile.TemporaryDirectory(prefix="battlefield-review-") as temporary:
             snapshot = Path(temporary) / "source"
