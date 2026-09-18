@@ -158,3 +158,14 @@ When asked to inspect or fix SonarQube findings:
 Preserve `~/.config/sonarqube/token` for future work. Remove task-created temporary
 credentials and truststores when no longer needed; do not delete the persistent
 token during cleanup.
+
+## Cross-review between Codex and Claude
+
+Use [the cross-review guide](docs/operations/cross-review.md) when the user asks
+for an independent review or a writer/reviewer workflow. After committing the
+intended change, `python3 scripts/review/cross-review.py --author codex ...`
+selects Claude; `--author claude` selects Codex. Record the exact reviewed commit,
+read the report, verify findings and run the applicable tests after corrections.
+Use at most one follow-up review before bringing unresolved disagreements to the
+user. Reviews are advisory and do not replace Jenkins, coverage or merge approval.
+When already acting as reviewer, never launch another reviewer or edit files.

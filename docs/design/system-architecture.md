@@ -1200,3 +1200,13 @@ runs without network access or credentials. Its report explicitly covers session
 scenario catalog and liveness responses only; broader role-specific application
 scanning requires staging. Human JWT copying is no longer part of operator tooling.
 See the [hardening rollout](../operations/jenkins.md#production-hardening-rollout).
+
+## Development cross-review boundary
+
+The optional [Codex/Claude review runner](../operations/cross-review.md) operates
+on the development machine, separately from production workers. It sends the
+selected committed source/diff to the reviewer's provider using existing CLI
+login, excludes untracked application secrets, and stores private reports outside
+the repository. Claude uses file-read tools only; Codex uses its read-only sandbox.
+No review result authorizes a merge or deployment, and the runner never posts or
+applies findings automatically.

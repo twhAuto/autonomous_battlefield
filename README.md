@@ -226,3 +226,6 @@ trusted project. The [hardening rollout guide](docs/operations/jenkins.md#produc
 documents that tradeoff and the required production kubelet TLS trust. Validate
 deployment changes locally with `./scripts/test/test-deployment.sh`; PR verification
 runs for both `dev` and `main` targets.
+
+For independent Codex/Claude feedback on committed changes, use the
+[cross-review workflow](docs/operations/cross-review.md).

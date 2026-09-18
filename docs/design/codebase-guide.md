@@ -1023,3 +1023,12 @@ Production hardening entry points:
   reads for an offline ZAP passive scan. `test-production-hardening.py` covers
   destination binding, redirect rejection, credential exclusion, TLS staging,
   recovery mismatches, policy-only reconciliation and scanner failure propagation.
+
+## Cross-review tooling
+
+`scripts/review/cross-review.py` resolves a committed diff and temporary source
+snapshot, invokes the opposite CLI reviewer and saves private reports outside the
+repository. `scripts/test/test-cross-review.py` checks snapshot boundaries,
+read-only CLI options, rejected responses and process timeouts. `CLAUDE.md` points
+Claude to the shared `AGENTS.md` rules. See the
+[cross-review workflow](../operations/cross-review.md).
