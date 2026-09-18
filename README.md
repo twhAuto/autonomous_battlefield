@@ -217,7 +217,9 @@ Tracing is detected automatically, with no port-forward or per-shell enable flag
 
 For the one-time limited-access launch, run `./scripts/ops/prepare-limited-production.sh`
 on the registered server after rendering its private launch files; see the
-[launch runbook](docs/operations/limited-launch.md). Unattended production checks
+[launch runbook](docs/operations/limited-launch.md). For CLI workers, use the
+[VM setup and recovery guide](docs/operations/agent-vm.md) and its host-service
+bundle generator instead of hand-writing proxy and systemd configuration. Unattended production checks
 require the dedicated Cloudflare CI service identity and Jenkins credential described
 in [CI service authentication](docs/operations/limited-launch.md#ci-service-authentication).
 
@@ -226,3 +228,11 @@ trusted project. The [hardening rollout guide](docs/operations/jenkins.md#produc
 documents that tradeoff and the required production kubelet TLS trust. Validate
 deployment changes locally with `./scripts/test/test-deployment.sh`; PR verification
 runs for both `dev` and `main` targets.
+
+Agent-authored PR revisions use the [Codex/Claude cross-review workflow](docs/operations/cross-review.md)
+before handoff. The opposite reviewer checks the committed change, and `--pr`
+publishes its advisory report with the exact reviewed commits. Authors respond
+on the PR. Run one full review and at most one focused follow-up on the new diff
+and unresolved findings; further rounds need user approval. Trivial wording and
+low-risk preference changes are exempt. Use short handoffs for fresh task chats.
+Reviewers are Claude Opus and Codex GPT-6 Astra at medium reasoning effort.

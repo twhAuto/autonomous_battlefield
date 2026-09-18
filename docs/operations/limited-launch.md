@@ -234,7 +234,7 @@ the public CLI worker belongs in a dedicated VM. Start with 2 vCPU, 4 GiB memory
 while the game, database, observability, and one CLI execute together. Leave CLI
 disabled if the host cannot sustain this.
 
-Install the Ubuntu host's `qemu-kvm`, `libvirt-daemon-system`, `libvirt-clients`,
+Install the Ubuntu host's `qemu-system-x86`, `libvirt-daemon-system`, `libvirt-clients`,
 `cloud-image-utils`, and a dedicated Squid service. Review the files in
 `deploy/agent-vm/`. Supply a publisher-verified local Ubuntu 24.04 amd64 cloud image,
 its verified SHA256, and your public SSH key, then run as root on the server:
@@ -256,20 +256,26 @@ filter permits only guest connections to the host proxy at 3128 and MCP bridge a
 provider/update names; direct guest DNS and direct internet traffic are unnecessary.
 
 Provision a dedicated Squid instance using `squid.conf` and
-`provider-domains.txt`; use `squid -k parse -f /etc/battlefield-agent/squid.conf`
+`provider-domains.txt`; use `squid -k parse -f /etc/squid/squid.conf`
 before starting it. Keep its host listener on `192.168.234.1`, with a host firewall
 allowing 3128/18084 only from `bf-agent0` and the guest IP. The domain list is a
 starting allowlist: test actual provider login and inference, then add exact
 necessary destinations. Never broadly permit HTTPS or remove the private-IP deny.
 Use HTTPS apt sources through the proxy for updates.
 
-Create a supervised **host-side** private bridge, using the host's private kubeconfig:
-`kubectl -n battlefield port-forward --address 192.168.234.1 service/battlefield-mcp 18084:8084`.
+Use the [repeatable VM setup guide](agent-vm.md) and
+`render-agent-vm-host.py` to generate the supervised **host-side** services. Caddy
+binds `192.168.234.1:18084` and forwards to a loopback-only kubectl forward at
+`127.0.0.1:18085`, setting upstream Host to `127.0.0.1:8084`. A direct guest-facing
+port-forward triggers the MCP SDK localhost Host protection. Preserve the narrow
+firewall exception for Jenkins smoke forwards on `127.0.0.1:18084`.
 The kubeconfig and deployment credentials never enter the VM. Verify unauthenticated
-bridge requests return 401. Copy only the verified `cmd/agent` binary and pinned CLI
+bridge requests return 401, then verify a real accepted plan: authentication runs
+before the SDK Host check, so 401 alone is insufficient. Copy only the verified `cmd/agent` binary and pinned CLI
 packages into the VM, install them root-owned, and install the supplied worker
 configuration and systemd unit. Check the actual CLI versions match the pinned
-families before enabling them. Disable unused profiles.
+families before enabling them. Install the version-matched `codex-code-mode-host`
+beside Codex; the main binary archive does not include it. Disable unused profiles.
 
 Create `/etc/battlefield-agent/worker.env` as **root:root 0400**, containing only
 `BATTLEFIELD_AGENT_SECRET`, `BATTLEFIELD_ENV=production`, and the isolation flag
@@ -280,7 +286,8 @@ dedicated home `/var/lib/battlefield-worker`. Linux workers disable dumpability 
 block same-user subprocess reads of parent environment/memory; CLI children receive
 an explicit allowlist of transport/login settings and their scoped capability.
 
-Start the worker while the **API's CLI availability remains false**, then execute:
+For initial boundary checks, keep **both VM profiles disabled** and the
+**API's CLI availability false**, then start the worker and execute:
 
 ```bash
 # Inside the VM, as battlefield-worker; use the real worker PID and real private IPs:
@@ -297,8 +304,10 @@ Test malicious faction text requesting extra tools, another request ID, files, a
 network destinations. The server must reject unrelated MCP contexts and the VM
 boundary must hold regardless of how the model responds.
 
-Only after recording these checks, set `BATTLEFIELD_CLI_ISOLATION_VERIFIED=true` in
-the API's private AI configuration and enable the desired CLI availability flag.
+After the initial boundary checks, set the VM isolation flag, enable only the
+intended VM profile and restart its worker as described in the setup guide.
+Only after recording the required checks, set `BATTLEFIELD_CLI_ISOLATION_VERIFIED=true`
+in the API's private AI configuration and enable the desired CLI availability flag.
 Production startup rejects advertised CLI profiles without this flag. The flag is
 an operator attestation, not an automatic proof of isolation. Invite Developers
 only after these checks; invite Players earlier while CLI remains off.

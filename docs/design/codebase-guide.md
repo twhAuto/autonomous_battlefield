@@ -838,6 +838,13 @@ ownership, with backend enforcement independent of the UI.
 `scripts/ops/render-limited-launch.py` produces private auth configuration and a
 Tunnel deployment with origin-side Access validation and application ingress policies.
 `deploy/agent-vm/` contains the libvirt network/filter, proxy and worker configuration;
+its `host/` templates include the dedicated firewall, Caddy proxy, loopback MCP
+forward and Squid service override. `scripts/ops/render-agent-vm-host.py` renders
+a credential-free bundle into a new directory without changing live services.
+`scripts/test/test-agent-vm-host.py` checks rendering, input rejection and private
+listener/Host-rewrite invariants through the deployment gate.
+[VM setup and recovery](../operations/agent-vm.md) explains host/guest commands,
+Codex helper installation and end-to-end verification;
 `create-agent-vm.sh` provisions a fresh VM after capacity/image checks;
 `verify-agent-isolation.py` tests its guest boundary. `ai-policy.sh` is the private
 operator stop/status/usage interface. `verify-access-service.py` checks the restricted CI service identity during production smoke;
@@ -1023,3 +1030,20 @@ Production hardening entry points:
   reads for an offline ZAP passive scan. `test-production-hardening.py` covers
   destination binding, redirect rejection, credential exclusion, TLS staging,
   recovery mismatches, policy-only reconciliation and scanner failure propagation.
+
+## Cross-review tooling
+
+`scripts/review/cross-review.py` resolves a committed diff and temporary source
+snapshot, invokes the opposite CLI reviewer and saves private reports outside the
+repository. `--pr` publishes a completed review after checking the live PR revisions;
+`--publish-only` retries publication without another model call. Marked PR
+review comments determine the prior reviewed head and enforce a two-round
+automatic limit. Follow-ups diff that head against the new commit and receive
+only the latest report/author summary in `discussion.json`. Full discussion
+fingerprints still prevent knowingly stale publication. An explicitly approved
+`--allow-extra-round` permits one more focused call. `scripts/test/test-cross-review.py` checks snapshot boundaries,
+read-only CLI options, version/argument checks, rejected responses, publication
+identity/body matching, delta-only follow-ups, compact context, round limits
+and process timeouts. `CLAUDE.md` points
+Claude to the shared `AGENTS.md` rules. See the
+[cross-review workflow](../operations/cross-review.md).

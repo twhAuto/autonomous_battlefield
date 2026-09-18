@@ -1,0 +1,23 @@
+[Unit]
+Description=Private HTTP proxy for Battlefield CLI VM
+Requires=battlefield-agent-firewall.service
+Wants=battlefield-mcp-bridge.service network-online.target libvirtd.service
+After=battlefield-agent-firewall.service battlefield-mcp-bridge.service network-online.target libvirtd.service
+StartLimitIntervalSec=0
+
+[Service]
+User=@USER@
+Environment=XDG_CONFIG_HOME=/run/battlefield-mcp-proxy
+RuntimeDirectory=battlefield-mcp-proxy
+RuntimeDirectoryMode=0700
+ExecStart=/usr/bin/caddy run --config /etc/battlefield-agent/mcp-proxy.Caddyfile --adapter caddyfile
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
