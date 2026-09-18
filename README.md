@@ -217,7 +217,9 @@ Tracing is detected automatically, with no port-forward or per-shell enable flag
 
 For the one-time limited-access launch, run `./scripts/ops/prepare-limited-production.sh`
 on the registered server after rendering its private launch files; see the
-[launch runbook](docs/operations/limited-launch.md). Unattended production checks
+[launch runbook](docs/operations/limited-launch.md). For CLI workers, use the
+[VM setup and recovery guide](docs/operations/agent-vm.md) and its host-service
+bundle generator instead of hand-writing proxy and systemd configuration. Unattended production checks
 require the dedicated Cloudflare CI service identity and Jenkins credential described
 in [CI service authentication](docs/operations/limited-launch.md#ci-service-authentication).
 

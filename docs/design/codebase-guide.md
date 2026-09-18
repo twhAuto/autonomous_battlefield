@@ -838,6 +838,13 @@ ownership, with backend enforcement independent of the UI.
 `scripts/ops/render-limited-launch.py` produces private auth configuration and a
 Tunnel deployment with origin-side Access validation and application ingress policies.
 `deploy/agent-vm/` contains the libvirt network/filter, proxy and worker configuration;
+its `host/` templates include the dedicated firewall, Caddy proxy, loopback MCP
+forward and Squid service override. `scripts/ops/render-agent-vm-host.py` renders
+a credential-free bundle into a new directory without changing live services.
+`scripts/test/test-agent-vm-host.py` checks rendering, input rejection and private
+listener/Host-rewrite invariants through the deployment gate.
+[VM setup and recovery](../operations/agent-vm.md) explains host/guest commands,
+Codex helper installation and end-to-end verification;
 `create-agent-vm.sh` provisions a fresh VM after capacity/image checks;
 `verify-agent-isolation.py` tests its guest boundary. `ai-policy.sh` is the private
 operator stop/status/usage interface. `verify-access-service.py` checks the restricted CI service identity during production smoke;
