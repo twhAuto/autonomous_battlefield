@@ -1207,7 +1207,8 @@ The [Codex/Claude review runner](../operations/cross-review.md) operates
 on the development machine, separately from production workers. It sends the
 selected committed source/diff to the reviewer's provider using existing CLI
 login, excludes untracked application secrets, and stores private reports outside
-the repository. Claude uses file-read tools only; Codex uses its read-only sandbox.
+the repository. Claude reviews explicitly select the `opus` model alias and use file-read tools
+only; Codex uses its default model in its read-only sandbox.
 No review result authorizes a merge or deployment. Agents invoke cross-review
 by default at the PR handoff; `--pr` publishes a completed advisory report through
 the host GitHub CLI after checking the live head/base. It never applies findings

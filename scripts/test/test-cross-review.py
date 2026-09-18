@@ -50,6 +50,7 @@ class CrossReviewTests(unittest.TestCase):
 
     def test_read_only_cli_policies(self):
         claude = review.command("claude", "/bin/claude", Path("/tmp/snapshot"), Path("/tmp/report"))
+        self.assertEqual(claude[claude.index("--model") + 1], "opus")
         self.assertIn("--restricted", claude)
         self.assertEqual(claude[claude.index("--tools") + 1], "Read,Glob,Grep")
         self.assertIn("--strict-mcp-config", claude)

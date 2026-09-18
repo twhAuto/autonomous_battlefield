@@ -64,7 +64,7 @@ def prepare(repo, base, head, destination):
 
 def command(reviewer, executable, snapshot, report):
     if reviewer == "claude":
-        return [executable, "-p", "--restricted", "--tools", "Read,Glob,Grep",
+        return [executable, "-p", "--model", "opus", "--restricted", "--tools", "Read,Glob,Grep",
                 "--allowedTools", "Read,Glob,Grep", "--permission-mode", "dontAsk",
                 "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
                 "--setting-sources", "", "--settings", '{"disableAllHooks":true}',

@@ -18,6 +18,11 @@ If needed, run `claude auth login` interactively; do not put login tokens into t
 repository or reports. Use compatible CLI versions with the options below; the
 initial Claude integration was checked with 2.1.267.
 
+Claude reviews explicitly use `--model opus`, regardless of the interactive IDE
+model selection. `opus` follows the provider's current Opus alias rather than
+pinning a specific version. The CLI's private JSON output records the models
+actually used. Codex retains its CLI default model.
+
 The runner uses existing account login. It intentionally does not forward
 `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or arbitrary application credentials.
 Non-interactive reviews consume provider usage; check your plan's automation
