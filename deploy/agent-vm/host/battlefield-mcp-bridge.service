@@ -1,0 +1,18 @@
+[Unit]
+Description=Loopback Kubernetes forward for Battlefield CLI VM
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=@USER@
+Environment=HOME=@HOME@
+ExecStart=/usr/bin/kubectl --kubeconfig=@KUBECONFIG@ --context=@CONTEXT@ -n battlefield port-forward --address=127.0.0.1 service/battlefield-mcp 18085:8084
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

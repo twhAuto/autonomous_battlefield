@@ -1,0 +1,12 @@
+# Reload only this dedicated table; never flush the host ruleset.
+add table inet battlefield_agent
+flush table inet battlefield_agent
+table inet battlefield_agent {
+    chain input {
+        type filter hook input priority -10; policy accept;
+        iifname "bf-agent0" ip saddr 192.168.234.2 ip daddr 192.168.234.1 tcp dport { 3128, 18084 } counter accept
+        # Jenkins creates a separate localhost-only smoke-test forward on 18084.
+        iifname "lo" ip daddr 127.0.0.1 tcp dport 18084 counter accept
+        tcp dport { 3128, 18084 } counter drop
+    }
+}
