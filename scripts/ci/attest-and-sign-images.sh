@@ -84,7 +84,9 @@ attest() {
   publish_cosign_evidence "${reference}" "${sbom}" "${provenance}" \
     --new-bundle-format=false --use-signing-config=false
 
-  cosign_run verify --key "/verification-key/$(basename -- "${cosign_public_key}")" \
+  # Cosign 3.0.2 bundle signatures omit revision annotations. Verify the
+  # separately published legacy signature to enforce the signed commit binding.
+  cosign_run verify --new-bundle-format=false --key "/verification-key/$(basename -- "${cosign_public_key}")" \
     --annotations "revision=${IMAGE_TAG}" "${reference}" >"${artifact_dir}/${component}-signature-verification.json"
   for type in cyclonedx slsaprovenance https://autonomous-battlefield.dev/attestations/ai-manifest/v1; do
     safe_type="$(printf '%s' "${type}" | tr '/:' '--')"

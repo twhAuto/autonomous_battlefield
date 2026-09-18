@@ -800,7 +800,11 @@ admission, Kyverno validates a Cosign signature plus CycloneDX, SLSA v0.2, and
 AI-manifest attestations with the reviewed public key. Cosign v3 OCI 1.1
 referrers remain the portable evidence copied during registry promotion. The
 CI publisher also writes legacy digest-tag mirrors of the same signed evidence
-because the pinned Kyverno 1.15 verifier discovers that layout. Registry access
+because the pinned Kyverno 1.15 verifier discovers that layout. Publication and
+GHCR deployment explicitly verify the legacy signature for the signed full-commit
+`revision` annotation: Cosign 3.0.2 bundle signatures and their verification
+summaries do not preserve that annotation. Attestation verification continues to
+use the modern evidence. Registry access
 uses short-lived Docker configuration in Jenkins and a namespace-local pull
 Secret for the admission controller; neither changes the cryptographic trust
 root.
