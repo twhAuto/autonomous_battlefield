@@ -1219,9 +1219,13 @@ the host GitHub CLI after checking the live head/base. It never applies findings
 automatically. Local metadata separates review completion from comment publication.
 Publication retries require a report prepared with PR discussion context.
 
-The review loop carries marked PR reports and author responses into each fresh
-reviewer session. Stable finding IDs support evidence-based disagreement and
-re-review after fixes; each publication identifies the commit and discussion round.
-The runner checks discussion IDs/content as well as PR revisions before posting.
-Both author directions use the same protocol. Agreement is advisory; stalled
-exchanges return to the user rather than forcing consensus or auto-merging.
+The first PR review inspects the merge-base diff. Follow-ups inspect only changes
+since the last reviewed head and unresolved findings, with the latest report and
+latest self-contained author response as context (32 KiB maximum). The full
+marked discussion is fingerprinted for stale-publication checks but is not sent
+to the model. Two published rounds exhaust the automatic allowance; further
+calls require explicit user authorization via `--allow-extra-round`. Failed calls
+stop rather than automatically retrying. Trivial low-risk edits are exempt by
+author judgment, not file-extension heuristics. Both author directions follow
+this policy. Agreement is advisory; unresolved issues return to the user at the
+limit. No usage accounting or automatic merge is added.

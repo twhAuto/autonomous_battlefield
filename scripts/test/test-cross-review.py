@@ -38,16 +38,31 @@ class CrossReviewTests(unittest.TestCase):
             (repo / "escape").symlink_to("/etc/passwd")
             git("add", ".")
             git("commit", "-m", "change")
+            previous = git("rev-parse", "HEAD")
+            file.write_text("follow-up fix\n")
+            git("add", "code.txt")
+            git("commit", "-m", "fix")
+            follow = Path(tmp) / "follow"
+            follow.mkdir()
+            details, delta = review.prepare(repo, base, "HEAD", follow, previous_head=previous)
+            self.assertEqual(details["review_scope"], "follow-up")
+            self.assertEqual(details["diff_base"], previous)
+            self.assertIn(b"+follow-up fix", delta)
+            self.assertNotIn(b"+committed", delta)
+            same, empty = review.prepare(repo, base, "HEAD", follow, previous_head="HEAD")
+            self.assertEqual(empty, b"")
+            with self.assertRaisesRegex(ValueError, "not an ancestor"):
+                review.prepare(repo, base, base, follow, previous_head="HEAD")
             file.write_text("uncommitted\n")
             (repo / ".env").write_text("PRIVATE_VALUE=not-for-review\n")
             snapshot = Path(tmp) / "snapshot"
             snapshot.mkdir()
             metadata, patch = review.prepare(repo, base, "HEAD", snapshot)
-            self.assertEqual((snapshot / "code.txt").read_text(), "committed\n")
+            self.assertEqual((snapshot / "code.txt").read_text(), "follow-up fix\n")
             self.assertFalse((snapshot / "escape").exists())
             self.assertFalse((snapshot / ".env").exists())
             self.assertEqual(metadata["head"], git("rev-parse", "HEAD"))
-            self.assertIn(b"+committed", patch)
+            self.assertIn(b"+follow-up fix", patch)
             with self.assertRaises(ValueError):
                 review.prepare(repo, "HEAD", "HEAD", snapshot)
             dry_output = Path(tmp) / "dry-output"
@@ -171,7 +186,7 @@ class CrossReviewTests(unittest.TestCase):
                     gh.assert_not_called()
 
     def test_discussion_is_never_silently_truncated(self):
-        with mock.patch.object(review, "pr_discussion", return_value=[{"body": "x" * (256 * 1024)}]):
+        with mock.patch.object(review, "pr_discussion", return_value=[{"body": "<!-- battlefield-cross-review:test -->" + "x" * (32 * 1024)}]):
             with self.assertRaisesRegex(RuntimeError, "exceeds"):
                 review.discussion_context(Path("."), 1)
 
@@ -248,8 +263,37 @@ class CrossReviewTests(unittest.TestCase):
                 self.assertIn("no PR discussion context", errors.getvalue())
             arguments = base_args + ["--output", str(Path(tmp) / "stale"), "--pr", "1"]
             revisions = {"head": "h", "base": "b", "merge_base": "m"}
-            with mock.patch.object(sys, "argv", arguments), mock.patch.object(review, "git", side_effect=[str(root).encode(), b""]), mock.patch.object(review.shutil, "which", return_value="claude"), mock.patch.object(review, "prepare", return_value=(revisions, b"diff")), mock.patch.object(review, "pr_state", return_value={"state": "open", "head": "changed", "base": "b"}), mock.patch.object(review, "run_process") as run:
+            with mock.patch.object(sys, "argv", arguments), mock.patch.object(review, "git", side_effect=[str(root).encode(), b""]), mock.patch.object(review.shutil, "which", return_value="claude"), mock.patch.object(review, "prepare", return_value=(revisions, b"diff")), mock.patch.object(review, "discussion_context", return_value=([], "[]", 1)), mock.patch.object(review, "pr_state", return_value={"state": "open", "head": "changed", "base": "b"}), mock.patch.object(review, "run_process") as run:
                 with self.assertRaisesRegex(RuntimeError, "differs"):
+                    review.main()
+                run.assert_not_called()
+
+    def test_follow_up_context_excludes_older_exchange_and_caps_rounds(self):
+        head = "a" * 40
+        old = {"id": 1, "body": "<!-- battlefield-cross-review:old --> old resolved finding"}
+        latest = {"id": 2, "body": f"<!-- battlefield-cross-review:new -->\nReviewed commit: `{head}`\nF2 unresolved"}
+        superseded = {"id": 3, "body": "<!-- battlefield-author-response:codex --> superseded reply"}
+        reply = {"id": 4, "body": "<!-- battlefield-author-response:codex --> F2 fixed with evidence"}
+        with mock.patch.object(review, "pr_discussion", return_value=[old, latest, superseded, reply]):
+            comments, text, number = review.discussion_context(Path("."), 75)
+        self.assertEqual(number, 3)
+        self.assertEqual(len(comments), 4)  # Full fingerprint still guards edits.
+        self.assertEqual([c["id"] for c in json.loads(text)], [2, 4])
+        with self.assertRaisesRegex(RuntimeError, "Two automatic"):
+            review.previous_review_head(comments, number)
+        self.assertEqual(review.previous_review_head(comments, number, True), head)
+        self.assertEqual(review.previous_review_head([latest], 2), head)
+        self.assertIsNone(review.previous_review_head([], 1))
+        with self.assertRaisesRegex(RuntimeError, "no valid head"):
+            review.previous_review_head([old], 2)
+
+    def test_round_limit_stops_before_model_call(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            args = ["review", "--author", "codex", "--repo", str(root), "--output", str(Path(tmp)/"report"), "--pr", "75"]
+            with mock.patch.object(sys, "argv", args), mock.patch.object(review, "git", side_effect=[str(root).encode(), b""]), mock.patch.object(review.shutil, "which", return_value="claude"), mock.patch.object(review, "discussion_context", return_value=([], "[]", 3)), mock.patch.object(review, "run_process") as run:
+                with self.assertRaisesRegex(RuntimeError, "Two automatic"):
                     review.main()
                 run.assert_not_called()
 

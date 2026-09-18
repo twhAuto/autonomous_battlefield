@@ -161,31 +161,40 @@ token during cleanup.
 
 ## Cross-review between Codex and Claude
 
-Cross-review is the default for agent-authored PR changes. After committing and
-pushing a revision, create or update its draft PR, then run the other reviewer
-before declaring the work ready. Do not run on every file save or intermediate
-commit. `python3 scripts/review/cross-review.py --author codex --pr NUMBER ...`
-selects Claude; `--author claude` selects Codex. The user authorizes posting the
-completed advisory report as a PR comment through this workflow. No additional
-confirmation is needed for those review comments.
+Use [the cross-review guide](docs/operations/cross-review.md) for meaningful
+agent-authored PR changes. Batch implementation and tests before review: one
+full review when the PR is ready, then at most one focused follow-up. Do not run
+reviews on every save or intermediate commit. Use `--author codex --pr NUMBER`
+for Claude Opus review, or `--author claude --pr NUMBER` for Codex GPT-6 Astra
+with medium reasoning effort. Automated handoffs must use `--pr` so the runner
+can scope follow-ups and enforce the round limit.
 
-Follow [the cross-review guide](docs/operations/cross-review.md). Fetch the base,
-review the exact pushed head, read findings and verify them before fixing anything.
-Run the applicable tests after corrections. Claude reviewers use Opus; Codex
-reviewers use GPT-6 Astra with medium reasoning effort. After each review, post an
-author response on the PR with `<!-- battlefield-author-response:codex -->` or
-`<!-- battlefield-author-response:claude -->` as its first line, the current head,
-and finding-by-finding acceptance, fixes, or disagreement with concrete evidence.
-The user authorizes these discussion comments as well as the review reports.
+Skip model review for trivial wording, formatting, or low-risk preference changes
+(such as reviewer reasoning effort); still run applicable checks and state the
+exemption in the handoff. Do not infer low risk from file extension or line count:
+authentication, permissions, deployment behavior, and substantive logic still
+need review.
 
-For disputed findings, invoke the reviewer again with `--pr` so it receives the
-saved PR exchange and can reply. If code changes, commit/push first and review the
-new head. Continue until both sides explicitly agree that supported findings are
-resolved; do not impose the old one-follow-up limit. Never manufacture agreement:
-if repeated exchanges add no evidence, a decision depends on user preferences,
-or tools/quota block progress, summarize the remaining disagreement for the user
-and leave the PR draft. An active author agent drives this loop; it is not a
-background GitHub listener. If the CLI, login, network or review
-fails, report the limitation and leave the PR draft rather than claiming approval.
-Reviews supplement Jenkins and coverage; they never authorize merging/deployment.
-When already acting as reviewer, never launch another reviewer or edit files.
+The user authorizes advisory review and author-response comments on the PR.
+After a review, verify findings before changing code. Post a concise response with
+`<!-- battlefield-author-response:codex -->` or
+`<!-- battlefield-author-response:claude -->`, the current head, and all unresolved
+finding IDs with fixes or evidence-backed disagreements. Keep the latest response
+self-contained: the next round receives only the latest review and latest author
+response, not the entire discussion. Commit/push fixes and run applicable tests
+before the follow-up. Inspect only the new diff and unresolved findings; do not
+repeat a full review or reopen resolved points without a new regression.
+
+After two review rounds, stop automatic calls and ask the user before another.
+The runner's `--allow-extra-round` flag is only for a specifically authorized extra
+round; never set it automatically, omit `--pr`, or delete comments to bypass the
+limit. Failed review calls also stop for user input rather than automatic retries.
+Retrying publication of an already completed report requires no new model call.
+If agreement is not reached within the limit, summarize remaining findings; do
+not claim approval or manufacture consensus. Reviews supplement CI and never
+permit merging or deployment. Reviewers must not edit or invoke another reviewer.
+
+At completed task boundaries, use a short handoff for a fresh implementation chat:
+repository/worktree, branch/PR/head, goal, verified checks, unresolved findings and
+next step. Prefer that handoff and repository state over replaying the full old
+conversation. Do not add usage ledgers, token accounting or cost-report comments.

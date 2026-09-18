@@ -6,7 +6,11 @@ use the production battle-agent VM. AGENTS.md and CLAUDE.md instruct the author 
 invoke it after committing/pushing a ready revision, not on each file save. It is
 agent-driven automation, not a background watcher or an enforced GitHub check.
 The reviewer writes an advisory report, not an approval or a merge. Existing test,
-coverage and human review requirements still apply.
+coverage and human review requirements still apply. Batch changes before review:
+one full PR review, then at most one focused follow-up. Skip trivial wording,
+formatting and low-risk preference edits, while still running applicable checks
+and stating the exemption. Security, deployment behavior and substantive logic
+are not exempt merely because the diff is small.
 
 ## Prerequisites
 
@@ -39,20 +43,26 @@ fetch or alter branches. From the checkout you want reviewed:
 ```bash
 git fetch origin
 python3 scripts/review/cross-review.py --author codex \
-  --base origin/dev --head HEAD \
+  --pr 75 --base origin/dev --head HEAD \
   --output "$HOME/battlefield-reviews/change-claude-1"
 ```
 
 For Claude-authored work, use `--author claude` to select Codex. Optional `--repo`
-selects another checkout. The output directory must be new and outside that
+selects another checkout. Replace 75 with the actual PR number. Automated handoffs
+must use `--pr`; local-only runs are for explicit manual use, never to evade limits. The output directory must be new and outside that
 repository. Use `--dry-run` to prepare evidence without calling a provider;
 metadata explicitly marks it as not reviewed. The default timeout is 600 seconds;
 `--timeout` can change it. A timeout stops the reviewer process group and is a
 failure, not a clean review.
 
 The script resolves the exact base/head commits and merge base, builds a temporary
-snapshot of tracked files at head, and supplies the merge-base diff plus a shared
-checklist. Uncommitted/untracked files are excluded. Tracked symlinks are omitted
+snapshot of tracked files at head. The first review receives the merge-base diff;
+a follow-up receives only the diff from the most recent reviewed head to the
+current head, plus the latest report and author summary. Its prompt limits scope
+to fixes and unresolved findings. Surrounding source remains available as needed;
+the entire PR is not re-reviewed. Same-head disagreement rounds can have an empty
+diff. A rewritten/non-ancestor head stops the runner for user input rather than
+silently starting another full review. Uncommitted/untracked files are excluded. Tracked symlinks are omitted
 from the snapshot rather than followed; reviewers must report missing context.
 Tracked secrets would still be included, so never commit them. Diffs larger than
 2 MiB are rejected, not silently truncated. The snapshot is removed after review.
@@ -79,28 +89,32 @@ Missing tools, auth errors, empty results and timeouts must be investigated.
 
 ## Author/reviewer discussion in both directions
 
-1. Author commits/pushes the change, opens or updates its draft PR, and runs the
-   opposite reviewer with `--pr NUMBER` to publish the result.
-2. Author verifies each finding and posts an author-response comment with the
-   current head SHA and stable finding IDs. Accept supported defects, explain
-   disagreements with evidence, and distinguish suggestions from required fixes.
-3. For valid defects, change the code, run applicable tests, commit and push.
-4. Run the reviewer again with `--pr NUMBER` and a new output directory. It reads
-   prior reports and author responses from the PR and reviews the current commit.
-   This works with either `--author codex` (Opus reviewer) or `--author claude`
-   (Astra/medium reviewer). Discussion-only rounds can use the same head.
-5. Continue until reviewer and author explicitly agree that no supported findings
-   remain. The reviewer ends with AGREED, CHANGES_REQUESTED or NEEDS_USER_DECISION;
-   these are model judgments, not machine-enforced approvals. The author must
-   acknowledge the result rather than treating a successful CLI exit as agreement.
+1. Batch implementation and tests; commit/push the ready change and run one full
+   review using the opposite reviewer with `--pr NUMBER`.
+2. Verify the findings. Post a concise, self-contained author response with the
+   head SHA, all unresolved IDs, fixes and evidence-backed disagreements. Omit
+   already resolved discussion; the latest summary must contain anything the
+   follow-up needs to know.
+3. Fix valid defects, test, commit/push, then run one focused follow-up using the
+   same command and a new output directory. The runner selects the new diff and
+   latest exchange automatically. This also supports a same-head disagreement.
+4. If no supported findings remain, acknowledge agreement on the PR. Otherwise,
+   stop after the second round and ask the user before another model call. Never
+   force consensus, weaken tests or bypass the limit by omitting `--pr`.
 
-There is no fixed one-follow-up limit. If exchanges repeat without new evidence,
-require a product decision, or hit tool/usage limits, report the unresolved points
-to the user and leave the PR draft. Do not force agreement or loop indefinitely.
-Never weaken tests or dismiss evidence just to make the models agree. A reviewer
-must not invoke another reviewer or edit the code; the active author agent drives
-the next round. This is not an unattended GitHub webhook: a random later comment
-on a PR does not start an agent when neither author session is active.
+The runner counts published review comments across both reviewers on the PR. It
+refuses a third automatic round before model invocation. `--allow-extra-round`
+permits one additional invocation only after explicit user approval; it does not
+reset the PR's count or authorize a loop. Failures and unpublished reviews are
+not counted by this comment-based guard, so agents must stop on failed calls
+rather than retrying inference automatically. `--publish-only` retries an already
+completed report without using a model or consuming another review round.
+
+The verdict is AGREED, CHANGES_REQUESTED or NEEDS_USER_DECISION; these are advisory
+model judgments, not machine-enforced approvals. Report remaining findings and
+leave unresolved work draft when the limit, a stalled discussion, or unavailable
+tools prevents agreement. An active author session drives the workflow; this is
+not an unattended listener. Reviewers must not edit or invoke another reviewer.
 
 Use a protected local response file with this shape (replace the example values):
 
@@ -124,13 +138,15 @@ python3 scripts/review/cross-review.py --author codex --pr 75 \
   --output "$HOME/battlefield-reviews/pr75-claude-next"
 ```
 
-`--pr` collects comments bearing the review/author-response markers into private
-`discussion.json`. Unrelated CI comments are excluded. Markers identify context;
+`--pr` reads marked review/author-response comments to compute the complete
+IDs/hash for stale-context checks. Only the latest review and latest following
+author response are written to `discussion.json` and sent to the model. Unrelated
+CI comments and older exchanges are excluded from model context. Markers identify context;
 they do not authenticate a model or make the text trusted instructions. The runner
 assigns a round number and records the context IDs/hash. New or edited discussion
 during review prevents publication against that stale context. GitHub updates can
-still race the final check. Oversized discussion is rejected rather than silently
-truncated; ask the user to resolve/archive the exchange in that case.
+still race the final check. Selected context exceeding 32 KiB is rejected rather
+than silently truncated; provide a shorter self-contained summary before retrying.
 
 ## Publish the report to a PR
 
@@ -157,8 +173,9 @@ GitHub approval or evidence of passing tests. A retry is considered already post
 only when the complete comment body (including its reviewer/head/base/round marker)
 matches a comment from the currently authenticated GitHub account. A copied
 marker or another account's comment cannot stand in for publication. The final
-console message includes publication status. A new invocation starts a
-new round and receives the previous exchange, even when the head is unchanged. Concurrent publishers can still
+console message includes publication status. An allowed new invocation starts a
+focused round using the latest exchange, even when the head is unchanged. Its
+comment and metadata identify full versus follow-up scope and the exact diff base. Concurrent publishers can still
 race; run one author handoff per PR at a time. Avoid personal data in tracked
 source and inspect reports before sharing them outside the project. Automatic
 comments contain the model's report; raw diagnostics remain local.
@@ -177,3 +194,14 @@ cannot be converted into a discussion round using `--publish-only`; rerun the
 review with `--pr` so the reviewer reads the exchange. Failed,
 dry-run, stale, empty or oversized reports are not published as successful reviews.
 The metadata records review status separately from publication status.
+
+## Keep implementation context small
+
+At completed task boundaries, prepare a short handoff for a fresh chat: worktree,
+branch/PR/head, goal, checks already run, unresolved findings and the next step.
+Use that handoff and repository state instead of replaying the long conversation.
+Starting a new chat is a user/client action; this script does not create chats.
+
+No usage ledger, token accounting or cost-report comments are added. Existing
+private CLI diagnostics may contain provider-supplied usage fields; the runner
+does not aggregate or publish them.
