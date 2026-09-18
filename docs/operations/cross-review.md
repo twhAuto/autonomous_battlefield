@@ -171,6 +171,9 @@ python3 scripts/review/cross-review.py --author codex --pr 75 \
   --publish-only --output "$HOME/battlefield-reviews/pr75-claude-1"
 ```
 
-This requires a completed report and rechecks the live PR commits. Failed,
+This requires a completed report originally generated with `--pr`, including its
+saved discussion context, and rechecks the live PR commits. A local-only report
+cannot be converted into a discussion round using `--publish-only`; rerun the
+review with `--pr` so the reviewer reads the exchange. Failed,
 dry-run, stale, empty or oversized reports are not published as successful reviews.
 The metadata records review status separately from publication status.

@@ -108,7 +108,6 @@ class CrossReviewTests(unittest.TestCase):
                 self.assertIn("Reviewed commit: `h`", body)
                 self.assertIn("Finding at source.py:4", body)
                 self.assertNotIn("@person", body)
-            marker = "<!-- battlefield-cross-review:claude:h:b -->"
             with mock.patch.object(review, "pr_state", return_value=state), mock.patch.object(review, "pr_discussion", return_value=[{"id": 1, "body": body, "user_login": "publisher"}]), mock.patch.object(review, "gh", return_value="publisher\n") as gh:
                 review.publish(output, 1, output, metadata)
                 self.assertEqual(metadata["publication_status"], "already_posted")
@@ -144,12 +143,13 @@ class CrossReviewTests(unittest.TestCase):
             self.assertEqual(saved["publication_status"], "failed")
 
     def test_discussion_includes_both_sides_and_rounds(self):
-        pages = [[{"id": 1, "html_url": "url1", "body": "<!-- battlefield-cross-review:claude:h:b --> F1"},
+        pages = [[{"id": 1, "html_url": "url1", "user": None, "body": "<!-- battlefield-cross-review:claude:h:b --> F1"},
                   {"id": 2, "html_url": "url2", "body": "CI build output"}],
                  [{"id": 3, "html_url": "url3", "body": "<!-- battlefield-author-response:codex --> F1 disputed with evidence"}]]
         with mock.patch.object(review, "gh", return_value="\n".join(json.dumps(c) for page in pages for c in page)):
             comments, text, number = review.discussion_context(Path("."), 1)
         self.assertEqual([c["id"] for c in comments], [1, 3])
+        self.assertEqual(comments[0]["user_login"], "")
         self.assertIn("disputed with evidence", text)
         self.assertEqual(number, 2)
         changed = [dict(c) for c in comments]
@@ -241,6 +241,11 @@ class CrossReviewTests(unittest.TestCase):
             with mock.patch.object(sys, "argv", base_args + ["--pr", "1", "--publish-only"]), mock.patch.object(review, "git", return_value=str(root).encode()), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit):
                     review.main()
+            (output / "metadata.json").write_text(json.dumps({"author": "codex"}))
+            with mock.patch.object(sys, "argv", base_args + ["--pr", "1", "--publish-only"]), mock.patch.object(review, "git", return_value=str(root).encode()), contextlib.redirect_stderr(io.StringIO()) as errors:
+                with self.assertRaises(SystemExit):
+                    review.main()
+                self.assertIn("no PR discussion context", errors.getvalue())
             arguments = base_args + ["--output", str(Path(tmp) / "stale"), "--pr", "1"]
             revisions = {"head": "h", "base": "b", "merge_base": "m"}
             with mock.patch.object(sys, "argv", arguments), mock.patch.object(review, "git", side_effect=[str(root).encode(), b""]), mock.patch.object(review.shutil, "which", return_value="claude"), mock.patch.object(review, "prepare", return_value=(revisions, b"diff")), mock.patch.object(review, "pr_state", return_value={"state": "open", "head": "changed", "base": "b"}), mock.patch.object(review, "run_process") as run:

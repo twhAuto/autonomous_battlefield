@@ -1217,6 +1217,7 @@ No review result authorizes a merge or deployment. Agents invoke cross-review
 by default at the PR handoff; `--pr` publishes a completed advisory report through
 the host GitHub CLI after checking the live head/base. It never applies findings
 automatically. Local metadata separates review completion from comment publication.
+Publication retries require a report prepared with PR discussion context.
 
 The review loop carries marked PR reports and author responses into each fresh
 reviewer session. Stable finding IDs support evidence-based disagreement and

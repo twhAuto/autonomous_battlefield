@@ -173,7 +173,7 @@ def pr_discussion(repo, number):
     # Only the review exchange, not unrelated CI output. A marker identifies
     # context, not a trusted instruction source or authenticated model identity.
     return [{"id": c["id"], "url": c["html_url"], "body": c.get("body", ""),
-             "user_login": c.get("user", {}).get("login", "")}
+             "user_login": (c.get("user") or {}).get("login", "")}
             for c in comments if any(marker in c.get("body", "") for marker in
                 ("<!-- battlefield-cross-review:", "<!-- battlefield-author-response:"))]
 
@@ -266,6 +266,8 @@ def main():
         metadata = json.loads((output / "metadata.json").read_text(encoding="utf-8"))
         if metadata.get("author") != args.author:
             parser.error("Author differs from the saved review")
+        if not all(key in metadata for key in ("review_round", "discussion_ids", "discussion_sha256")):
+            parser.error("Saved review has no PR discussion context; rerun the review with --pr")
         publish_and_record(root, args.pr, output, metadata)
         print(f"{metadata['publication_status']}: {metadata['pr_url']}")
         return
