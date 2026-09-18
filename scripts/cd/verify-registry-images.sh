@@ -40,7 +40,9 @@ verify_ref() {
     fi
     annotation_args=(--annotations "revision=${expected_revision}")
   fi
-  cosign_run verify --key "/verification-key/$(basename -- "${public_key}")" \
+  # Cosign 3.0.2 bundle signatures omit revision annotations. Verify the
+  # separately published legacy signature to enforce the signed commit binding.
+  cosign_run verify --new-bundle-format=false --key "/verification-key/$(basename -- "${public_key}")" \
     "${annotation_args[@]}" "${reference}" >"${signature_report}"
   if [[ -z "${expected_revision}" ]] && ! grep -Eq '"revision"[[:space:]]*:[[:space:]]*"[0-9a-f]{40}"' "${signature_report}"; then
     echo "${component} signature has no full commit revision annotation." >&2

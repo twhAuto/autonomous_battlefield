@@ -648,7 +648,10 @@ CI compatibility wrappers, mixed changes, and production-to-test renames.
 [`scripts/lib/image-metadata.sh`](../../scripts/lib/image-metadata.sh) owns published
 repository defaults, policy reference validation, and source-URL normalization.
 [`scripts/test/test-image-metadata.sh`](../../scripts/test/test-image-metadata.sh)
-checks publishing and admission rendering with stub external commands. The Vite
+checks publishing and admission rendering with stub external commands.
+[`scripts/test/test-registry-verification.sh`](../../scripts/test/test-registry-verification.sh)
+exercises publication and deployment signature checks, including Cosign 3 bundle
+summaries without annotations, retained legacy revisions, and rejected evidence. The Vite
 configuration and `frontend/vite.config.test.ts` cover development proxy overrides.
 
 Root launch scripts remain compatibility entry points that `exec` their implementations under `scripts/dev` and `scripts/cd`. `deploy/` owns Kubernetes configuration; `infra/aws/` provisions cloud resources. Operational instructions live under `docs/operations`.
