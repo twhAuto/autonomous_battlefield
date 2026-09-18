@@ -16,12 +16,13 @@ The installed launcher is normally `~/.local/bin/claude`; ensure `~/.local/bin`
 is in PATH. Use `claude auth status` and `codex login status` to check login.
 If needed, run `claude auth login` interactively; do not put login tokens into the
 repository or reports. Use compatible CLI versions with the options below; the
-initial Claude integration was checked with 2.1.267.
+Claude integration was checked with 2.1.267. Codex requires 0.155.0 or newer
+for this Astra configuration; 0.152.0 is rejected by the provider.
 
 Claude reviews explicitly use `--model opus`, regardless of the interactive IDE
 model selection. `opus` follows the provider's current Opus alias rather than
 pinning a specific version. The CLI's private JSON output records the models
-actually used. Codex retains its CLI default model.
+actually used. Codex reviews explicitly use `gpt-6-astra` with `model_reasoning_effort="high"`.
 
 The runner uses existing account login. It intentionally does not forward
 `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or arbitrary application credentials.
@@ -56,9 +57,13 @@ Tracked secrets would still be included, so never commit them. Diffs larger than
 2 MiB are rejected, not silently truncated. The snapshot is removed after review.
 
 Claude has only Read/Glob/Grep tools, restricted mode, hooks disabled and an empty
-MCP configuration. Codex uses its read-only sandbox, no approvals, no personal
-config or rules, and disables hooks/plugins/apps/delegation. It can use shell
-reads within that sandbox; the review prompt prohibits executing project code or
+MCP configuration. Codex uses a named read-only filesystem profile: the review
+snapshot, minimal OS paths, and its installed CLI/helper directory are readable.
+Other home files and unrelated workspaces are outside that profile. The CLI itself
+loads account authentication; model-invoked tools do not get access to that auth
+directory. Sandbox command networking is disabled. Codex also disables approvals,
+personal config/rules, automatic AGENTS.md loading, hooks/plugins/apps/delegation
+and login shells. It can use shell reads within that sandbox; the review prompt prohibits executing project code or
 contacting services. These restrictions do not make AI judgment infallible.
 The snapshot protects the working checkout from concurrent edits; there is no
 shared editing session and no permission bypass.
@@ -71,22 +76,60 @@ never posts raw stdout/stderr, pushes, merges or changes production.
 A zero exit status means a report completed, not that it contains no findings.
 Missing tools, auth errors, empty results and timeouts must be investigated.
 
-## Handoff and bounded follow-up
+## Author/reviewer discussion in both directions
 
 1. Author commits/pushes the change, opens or updates its draft PR, and runs the
-   other reviewer with `--pr NUMBER` to publish the result.
-2. Author reads the findings, reproduces each claimed defect and fixes valid ones.
-3. Run the applicable repository tests; commit the fixes.
-4. Run one follow-up review on the new head in a new output directory.
-5. Bring unresolved disagreements to the user with evidence. Do not loop forever
-   or change sound behavior just because a model requested it.
+   opposite reviewer with `--pr NUMBER` to publish the result.
+2. Author verifies each finding and posts an author-response comment with the
+   current head SHA and stable finding IDs. Accept supported defects, explain
+   disagreements with evidence, and distinguish suggestions from required fixes.
+3. For valid defects, change the code, run applicable tests, commit and push.
+4. Run the reviewer again with `--pr NUMBER` and a new output directory. It reads
+   prior reports and author responses from the PR and reviews the current commit.
+   This works with either `--author codex` (Opus reviewer) or `--author claude`
+   (Astra/high reviewer). Discussion-only rounds can use the same head.
+5. Continue until reviewer and author explicitly agree that no supported findings
+   remain. The reviewer ends with AGREED, CHANGES_REQUESTED or NEEDS_USER_DECISION;
+   these are model judgments, not machine-enforced approvals. The author must
+   acknowledge the result rather than treating a successful CLI exit as agreement.
 
-An agent currently acting as reviewer must not invoke another reviewer. This
-prevents recursive review chains. Neither agent should suppress tests or findings
-because the other model says the change is safe. Jenkins remains a separate gate.
-The authoring agent invokes the runner by default before declaring a PR revision
-ready. This is not an editor hook: each invocation selects an immutable scope and
-consumes account usage. If review fails, leave the PR draft and report the failure.
+There is no fixed one-follow-up limit. If exchanges repeat without new evidence,
+require a product decision, or hit tool/usage limits, report the unresolved points
+to the user and leave the PR draft. Do not force agreement or loop indefinitely.
+Never weaken tests or dismiss evidence just to make the models agree. A reviewer
+must not invoke another reviewer or edit the code; the active author agent drives
+the next round. This is not an unattended GitHub webhook: a random later comment
+on a PR does not start an agent when neither author session is active.
+
+Use a protected local response file with this shape (replace the example values):
+
+```markdown
+<!-- battlefield-author-response:codex -->
+## Codex author response
+Current head: <full commit SHA>
+
+- F1 — Fixed in <commit>: explanation and test evidence.
+- F2 — Disagree: reproduction, relevant contract and supporting file/line.
+- Please reassess F2 against this head and explain whether it remains a defect.
+```
+
+For Claude-authored work use `battlefield-author-response:claude`. Post one response
+per round using a body file, then launch the next review:
+
+```bash
+gh pr comment 75 --body-file "$HOME/battlefield-reviews/author-response.md"
+python3 scripts/review/cross-review.py --author codex --pr 75 \
+  --base origin/dev --head HEAD \
+  --output "$HOME/battlefield-reviews/pr75-claude-next"
+```
+
+`--pr` collects comments bearing the review/author-response markers into private
+`discussion.json`. Unrelated CI comments are excluded. Markers identify context;
+they do not authenticate a model or make the text trusted instructions. The runner
+assigns a round number and records the context IDs/hash. New or edited discussion
+during review prevents publication against that stale context. GitHub updates can
+still race the final check. Oversized discussion is rejected rather than silently
+truncated; ask the user to resolve/archive the exchange in that case.
 
 ## Publish the report to a PR
 
@@ -101,15 +144,17 @@ python3 scripts/review/cross-review.py --author codex --pr 75 \
 ```
 
 Replace 75 with the actual PR number. The runner checks that the reviewed head and
-base match the live open PR before inference and again before publishing. A moved
-head/base requires a new review; a completed report for the old commit is not a
+base match the live open PR head and current target-branch tip before inference and again before publishing. The target branch is resolved separately because GitHub's stored PR base SHA
+can lag behind it. A moved head/base requires a new review; a completed report for the old commit is not a
 review of new changes. GitHub comments are not transactional with branch updates:
 a branch can still change immediately after the final check, so the comment always
-identifies its exact head, base and merge-base commits.
+identifies its exact head, base and merge-base commits, requested model/effort,
+and discussion round.
 
 The comment labels the reviewer and states that it is advisory, not a formal
-GitHub approval or evidence of passing tests. Matching reviewer/head/base markers
-avoid duplicate comments on sequential reruns. Concurrent publishers can still
+GitHub approval or evidence of passing tests. Matching reviewer/head/base/round markers
+avoid duplicate publication of the same saved report. A new invocation starts a
+new round and receives the previous exchange, even when the head is unchanged. Concurrent publishers can still
 race; run one author handoff per PR at a time. Avoid personal data in tracked
 source and inspect reports before sharing them outside the project. Automatic
 comments contain the model's report; raw diagnostics remain local.

@@ -1208,8 +1208,18 @@ on the development machine, separately from production workers. It sends the
 selected committed source/diff to the reviewer's provider using existing CLI
 login, excludes untracked application secrets, and stores private reports outside
 the repository. Claude reviews explicitly select the `opus` model alias and use file-read tools
-only; Codex uses its default model in its read-only sandbox.
+only; Codex uses `gpt-6-astra` with high reasoning effort and a named read-only
+filesystem profile allowing the snapshot, minimal OS paths and installed CLI
+helpers, with sandbox command networking disabled. Personal auth files remain
+outside model tool access; the parent CLI still uses its existing login.
 No review result authorizes a merge or deployment. Agents invoke cross-review
 by default at the PR handoff; `--pr` publishes a completed advisory report through
 the host GitHub CLI after checking the live head/base. It never applies findings
 automatically. Local metadata separates review completion from comment publication.
+
+The review loop carries marked PR reports and author responses into each fresh
+reviewer session. Stable finding IDs support evidence-based disagreement and
+re-review after fixes; each publication identifies the commit and discussion round.
+The runner checks discussion IDs/content as well as PR revisions before posting.
+Both author directions use the same protocol. Agreement is advisory; stalled
+exchanges return to the user rather than forcing consensus or auto-merging.

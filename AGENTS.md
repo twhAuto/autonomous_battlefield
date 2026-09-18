@@ -171,8 +171,21 @@ confirmation is needed for those review comments.
 
 Follow [the cross-review guide](docs/operations/cross-review.md). Fetch the base,
 review the exact pushed head, read findings and verify them before fixing anything.
-Run the applicable tests after corrections. Use at most one follow-up review;
-bring unresolved disagreements to the user. If the CLI, login, network or review
+Run the applicable tests after corrections. Claude reviewers use Opus; Codex
+reviewers use GPT-6 Astra with high reasoning effort. After each review, post an
+author response on the PR with `<!-- battlefield-author-response:codex -->` or
+`<!-- battlefield-author-response:claude -->` as its first line, the current head,
+and finding-by-finding acceptance, fixes, or disagreement with concrete evidence.
+The user authorizes these discussion comments as well as the review reports.
+
+For disputed findings, invoke the reviewer again with `--pr` so it receives the
+saved PR exchange and can reply. If code changes, commit/push first and review the
+new head. Continue until both sides explicitly agree that supported findings are
+resolved; do not impose the old one-follow-up limit. Never manufacture agreement:
+if repeated exchanges add no evidence, a decision depends on user preferences,
+or tools/quota block progress, summarize the remaining disagreement for the user
+and leave the PR draft. An active author agent drives this loop; it is not a
+background GitHub listener. If the CLI, login, network or review
 fails, report the limitation and leave the PR draft rather than claiming approval.
 Reviews supplement Jenkins and coverage; they never authorize merging/deployment.
 When already acting as reviewer, never launch another reviewer or edit files.
