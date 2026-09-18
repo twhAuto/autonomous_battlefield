@@ -157,9 +157,10 @@ def check_pr(metadata, state):
 
 
 def pr_discussion(repo, number):
-    pages = json.loads(gh(repo, "api", "--paginate", "--slurp",
-                         f"repos/{{owner}}/{{repo}}/issues/{number}/comments"))
-    comments = [comment for page in pages for comment in page]
+    # One JSON object per line works with gh versions predating --slurp.
+    raw = gh(repo, "api", "--paginate", "--jq", ".[] | @json",
+             f"repos/{{owner}}/{{repo}}/issues/{number}/comments")
+    comments = [json.loads(line) for line in raw.splitlines() if line.strip()]
     # Only the review exchange, not unrelated CI output. A marker identifies
     # context, not a trusted instruction source or authenticated model identity.
     return [{"id": c["id"], "url": c["html_url"], "body": c.get("body", "")}

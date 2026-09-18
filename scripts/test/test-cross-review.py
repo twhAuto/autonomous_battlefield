@@ -141,7 +141,7 @@ class CrossReviewTests(unittest.TestCase):
         pages = [[{"id": 1, "html_url": "url1", "body": "<!-- battlefield-cross-review:claude:h:b --> F1"},
                   {"id": 2, "html_url": "url2", "body": "CI build output"}],
                  [{"id": 3, "html_url": "url3", "body": "<!-- battlefield-author-response:codex --> F1 disputed with evidence"}]]
-        with mock.patch.object(review, "gh", return_value=json.dumps(pages)):
+        with mock.patch.object(review, "gh", return_value="\n".join(json.dumps(c) for page in pages for c in page)):
             comments, text, number = review.discussion_context(Path("."), 1)
         self.assertEqual([c["id"] for c in comments], [1, 3])
         self.assertIn("disputed with evidence", text)
