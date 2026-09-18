@@ -1210,7 +1210,8 @@ login, excludes untracked application secrets, and stores private reports outsid
 the repository. Claude reviews explicitly select the `opus` model alias and use file-read tools
 only; Codex uses `gpt-6-astra` with high reasoning effort and a named read-only
 filesystem profile allowing the snapshot, minimal OS paths and installed CLI
-helpers, with sandbox command networking disabled. Personal auth files remain
+helpers, with sandbox command networking disabled. The runner enforces the
+minimum Codex version and strict configuration parsing. Personal auth files remain
 outside model tool access; the parent CLI still uses its existing login.
 No review result authorizes a merge or deployment. Agents invoke cross-review
 by default at the PR handoff; `--pr` publishes a completed advisory report through

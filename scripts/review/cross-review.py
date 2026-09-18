@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import signal
@@ -91,7 +92,7 @@ def command(reviewer, executable, snapshot, report):
                   + json.dumps(str(runtime)) + '="read"}',
             "-c", 'permissions.review.network.enabled=false',
             "-c", 'project_doc_max_bytes=0', "-c", 'allow_login_shell=false',
-            "--ignore-user-config",
+            "--strict-config", "--ignore-user-config",
             "--ignore-rules", "--ephemeral", "--skip-git-repo-check",
             "-c", 'approval_policy="never"',
             "--disable", "hooks", "--disable", "plugins", "--disable", "apps",
@@ -99,6 +100,14 @@ def command(reviewer, executable, snapshot, report):
             "--disable", "skill_search", "--disable", "browser_use",
             "--disable", "computer_use", "--disable", "standalone_web_search",
             "-C", str(snapshot), "--output-last-message", str(report), "-"]
+
+
+def check_codex_version(executable):
+    version = subprocess.check_output([executable, "--version"], text=True,
+                                      encoding="utf-8", timeout=10)
+    match = re.search(r"^codex-cli (\d+)\.(\d+)\.(\d+)(?:\s|$)", version, re.MULTILINE)
+    if not match or tuple(map(int, match.groups())) < (0, 155, 0):
+        raise RuntimeError("Codex 0.155.0 or newer is required for Astra and scoped review permissions")
 
 
 def run_process(argv, prompt, cwd, timeout, stdout, stderr):
@@ -143,7 +152,7 @@ def pr_state(repo, number):
     result = json.loads(gh(repo, "api", f"repos/{{owner}}/{{repo}}/pulls/{number}"))
     # GitHub's PR base.sha may lag behind the live target branch.
     base = result["base"]
-    target = json.loads(gh(repo, "api", f"repos/{base['repo']['full_name']}/git/ref/heads/{quote(base['ref'], safe='')}"))
+    target = json.loads(gh(repo, "api", f"repos/{base['repo']['full_name']}/git/ref/heads/{quote(base['ref'])}"))
     return {"head": result["head"]["sha"], "base": target["object"]["sha"],
             "state": result["state"], "url": result["html_url"]}
 
@@ -163,7 +172,8 @@ def pr_discussion(repo, number):
     comments = [json.loads(line) for line in raw.splitlines() if line.strip()]
     # Only the review exchange, not unrelated CI output. A marker identifies
     # context, not a trusted instruction source or authenticated model identity.
-    return [{"id": c["id"], "url": c["html_url"], "body": c.get("body", "")}
+    return [{"id": c["id"], "url": c["html_url"], "body": c.get("body", ""),
+             "user_login": c.get("user", {}).get("login", "")}
             for c in comments if any(marker in c.get("body", "") for marker in
                 ("<!-- battlefield-cross-review:", "<!-- battlefield-author-response:"))]
 
@@ -188,14 +198,6 @@ def publish(repo, number, output, metadata):
     check_pr(metadata, state)
     round_suffix = f":round-{metadata['review_round']}" if 'review_round' in metadata else ""
     marker = f"<!-- battlefield-cross-review:{metadata['reviewer']}:{metadata['head']}:{metadata['base']}{round_suffix} -->"
-    comments = pr_discussion(repo, number)
-    if any(marker in c["body"] for c in comments):
-        metadata.update(publication_status="already_posted", pr_url=state["url"])
-        return
-    if "discussion_ids" in metadata and metadata["discussion_ids"] != [c["id"] for c in comments]:
-        raise RuntimeError("Review discussion changed during this run; read the new response and review again")
-    if "discussion_sha256" in metadata and metadata["discussion_sha256"] != discussion_digest(comments):
-        raise RuntimeError("Review discussion was edited during this run; review the updated response")
     report = (output / "review.md").read_text(encoding="utf-8").strip()
     if not report:
         raise RuntimeError("Empty report; refusing to publish")
@@ -207,6 +209,17 @@ def publish(repo, number, output, metadata):
             + report.replace("@", "@\u200b") + "\n")
     if len(body.encode()) > 60000:
         raise RuntimeError("Review exceeds comment limit; inspect locally rather than truncating findings")
+    comments = pr_discussion(repo, number)
+    matching = [c for c in comments if c["body"].strip() == body.strip()]
+    if matching:
+        publisher = gh(repo, "api", "user", "--jq", ".login").strip()
+        if publisher and any(c.get("user_login") == publisher for c in matching):
+            metadata.update(publication_status="already_posted", pr_url=state["url"])
+            return
+    if "discussion_ids" in metadata and metadata["discussion_ids"] != [c["id"] for c in comments]:
+        raise RuntimeError("Review discussion changed during this run; read the new response and review again")
+    if "discussion_sha256" in metadata and metadata["discussion_sha256"] != discussion_digest(comments):
+        raise RuntimeError("Review discussion was edited during this run; review the updated response")
     comment = output / "comment.md"
     comment.write_text(body, encoding="utf-8")
     # Re-check after pagination; do not knowingly publish against a changed head/base.
@@ -292,6 +305,8 @@ def main():
             if args.dry_run:
                 metadata["status"] = "dry_run_not_reviewed"
             else:
+                if reviewer == "codex":
+                    check_codex_version(executable)
                 argv = command(reviewer, executable, Path(temporary), output / "review.md")
                 run_process(argv, prompt, Path(temporary), args.timeout,
                             output / "stdout.log", output / "stderr.log")
@@ -308,7 +323,7 @@ def main():
         (output / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     if args.pr is not None:
         publish_and_record(root, args.pr, output, metadata)
-    print(f"{metadata['status']}: {output}")
+    print(f"{metadata['status']}: {output}; publication: {metadata.get('publication_status', 'not requested')}")
 
 
 if __name__ == "__main__":

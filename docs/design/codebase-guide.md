@@ -1039,6 +1039,7 @@ repository. `--pr` publishes a completed review after checking the live PR revis
 `--publish-only` retries publication without another model call. Marked PR
 review/author-response comments become the next round's `discussion.json`; round
 numbers and content hashes prevent duplicate or knowingly stale discussion reports. `scripts/test/test-cross-review.py` checks snapshot boundaries,
-read-only CLI options, rejected responses and process timeouts. `CLAUDE.md` points
+read-only CLI options, version/argument checks, rejected responses, publication
+identity/body matching and process timeouts. `CLAUDE.md` points
 Claude to the shared `AGENTS.md` rules. See the
 [cross-review workflow](../operations/cross-review.md).

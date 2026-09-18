@@ -17,7 +17,8 @@ is in PATH. Use `claude auth status` and `codex login status` to check login.
 If needed, run `claude auth login` interactively; do not put login tokens into the
 repository or reports. Use compatible CLI versions with the options below; the
 Claude integration was checked with 2.1.267. Codex requires 0.155.0 or newer
-for this Astra configuration; 0.152.0 is rejected by the provider.
+for this Astra configuration; the runner rejects older or unrecognized versions
+and enables strict config validation. 0.152.0 is rejected by the provider.
 
 Claude reviews explicitly use `--model opus`, regardless of the interactive IDE
 model selection. `opus` follows the provider's current Opus alias rather than
@@ -152,8 +153,11 @@ identifies its exact head, base and merge-base commits, requested model/effort,
 and discussion round.
 
 The comment labels the reviewer and states that it is advisory, not a formal
-GitHub approval or evidence of passing tests. Matching reviewer/head/base/round markers
-avoid duplicate publication of the same saved report. A new invocation starts a
+GitHub approval or evidence of passing tests. A retry is considered already posted
+only when the complete comment body (including its reviewer/head/base/round marker)
+matches a comment from the currently authenticated GitHub account. A copied
+marker or another account's comment cannot stand in for publication. The final
+console message includes publication status. A new invocation starts a
 new round and receives the previous exchange, even when the head is unchanged. Concurrent publishers can still
 race; run one author handoff per PR at a time. Avoid personal data in tracked
 source and inspect reports before sharing them outside the project. Automatic

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise immutable review inputs, rejected results, and read-only CLI settings."""
 import importlib.util
+import contextlib
 import io
 import tarfile
 import json
@@ -61,7 +62,7 @@ class CrossReviewTests(unittest.TestCase):
             missing_output = Path(tmp) / "missing-report"
             arguments = ["cross-review", "--author", "claude", "--repo", str(repo),
                          "--base", base, "--output", str(missing_output)]
-            with mock.patch.object(sys, "argv", arguments), mock.patch("builtins.print"), mock.patch.object(review.shutil, "which", return_value="/bin/codex"), mock.patch.object(review, "run_process"):
+            with mock.patch.object(sys, "argv", arguments), mock.patch("builtins.print"), mock.patch.object(review.shutil, "which", return_value="/bin/codex"), mock.patch.object(review, "run_process"), mock.patch.object(review, "check_codex_version"):
                 with self.assertRaisesRegex(RuntimeError, "returned no review"):
                     review.main()
             saved = json.loads((missing_output / "metadata.json").read_text())
@@ -108,10 +109,15 @@ class CrossReviewTests(unittest.TestCase):
                 self.assertIn("Finding at source.py:4", body)
                 self.assertNotIn("@person", body)
             marker = "<!-- battlefield-cross-review:claude:h:b -->"
-            with mock.patch.object(review, "pr_state", return_value=state), mock.patch.object(review, "pr_discussion", return_value=[{"id": 1, "body": marker}]), mock.patch.object(review, "gh") as gh:
+            with mock.patch.object(review, "pr_state", return_value=state), mock.patch.object(review, "pr_discussion", return_value=[{"id": 1, "body": body, "user_login": "publisher"}]), mock.patch.object(review, "gh", return_value="publisher\n") as gh:
                 review.publish(output, 1, output, metadata)
                 self.assertEqual(metadata["publication_status"], "already_posted")
-                gh.assert_not_called()
+                self.assertEqual(gh.call_args.args[1:], ("api", "user", "--jq", ".login"))
+            # A copied exact report from another account is not our publication.
+            with mock.patch.object(review, "pr_state", return_value=state), mock.patch.object(review, "pr_discussion", return_value=[{"id": 2, "body": body, "user_login": "other"}]), mock.patch.object(review, "gh", return_value="publisher\n") as gh:
+                review.publish(output, 1, output, metadata)
+                self.assertEqual(metadata["publication_status"], "posted")
+                self.assertEqual(gh.call_args.args[1:3], ("pr", "comment"))
 
     def test_publication_rejects_stale_failed_or_closed_review(self):
         metadata = {"status": "completed_advisory_review", "reviewer": "claude",
@@ -156,10 +162,13 @@ class CrossReviewTests(unittest.TestCase):
                     "discussion_ids": [1], "discussion_sha256": review.discussion_digest([{"id": 1, "body": "old"}])}
         state = {"state": "open", "head": "h", "base": "b", "url": "url"}
         for comments in ([{"id": 1, "body": "edited"}], [{"id": 1, "body": "old"}, {"id": 2, "body": "new"}]):
-            with mock.patch.object(review, "pr_state", return_value=state), mock.patch.object(review, "pr_discussion", return_value=comments), mock.patch.object(review, "gh") as gh:
-                with self.assertRaises(RuntimeError):
-                    review.publish(Path("."), 1, Path("."), metadata)
-                gh.assert_not_called()
+            with tempfile.TemporaryDirectory() as tmp:
+                output = Path(tmp)
+                (output / "review.md").write_text("Review")
+                with mock.patch.object(review, "pr_state", return_value=state), mock.patch.object(review, "pr_discussion", return_value=comments), mock.patch.object(review, "gh") as gh:
+                    with self.assertRaises(RuntimeError):
+                        review.publish(output, 1, output, metadata)
+                    gh.assert_not_called()
 
     def test_discussion_is_never_silently_truncated(self):
         with mock.patch.object(review, "pr_discussion", return_value=[{"body": "x" * (256 * 1024)}]):
@@ -167,12 +176,12 @@ class CrossReviewTests(unittest.TestCase):
                 review.discussion_context(Path("."), 1)
 
     def test_live_base_ref_overrides_stale_pr_base_sha(self):
-        pr = {"head": {"sha": "h"}, "base": {"sha": "stale", "ref": "dev",
+        pr = {"head": {"sha": "h"}, "base": {"sha": "stale", "ref": "release/1.2",
               "repo": {"full_name": "owner/repo"}}, "state": "open", "html_url": "url"}
         with mock.patch.object(review, "gh", side_effect=[json.dumps(pr), json.dumps({"object": {"sha": "live"}})]) as gh:
             state = review.pr_state(Path("."), 75)
         self.assertEqual(state["base"], "live")
-        self.assertEqual(gh.call_args.args[-1], "repos/owner/repo/git/ref/heads/dev")
+        self.assertEqual(gh.call_args.args[-1], "repos/owner/repo/git/ref/heads/release/1.2")
         review.check_pr({"head": "h", "base": "live"}, state)
 
     def test_oversized_patch_and_archive_escape_are_rejected(self):
@@ -207,6 +216,37 @@ class CrossReviewTests(unittest.TestCase):
             with mock.patch.object(review.subprocess, "Popen", return_value=child), mock.patch.object(review.os, "killpg", side_effect=ProcessLookupError):
                 with self.assertRaisesRegex(RuntimeError, "timed out"):
                     review.run_process(["review"], "", Path(tmp), 1, Path(tmp)/"out", Path(tmp)/"err")
+
+    def test_codex_version_requirement(self):
+        for version in ("codex-cli 0.155.0\n", "codex-cli 0.156.1\n"):
+            with mock.patch.object(review.subprocess, "check_output", return_value=version):
+                review.check_codex_version("codex")
+        for version in ("codex-cli 0.152.0\n", "unknown", "codex-cli 0.155.0-beta"):
+            with mock.patch.object(review.subprocess, "check_output", return_value=version), self.assertRaisesRegex(RuntimeError, "0.155.0"):
+                review.check_codex_version("codex")
+
+    def test_argument_validation_and_pre_inference_pr_guard(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            output = Path(tmp) / "report"
+            base_args = ["review", "--author", "codex", "--repo", str(root), "--output", str(output)]
+            cases = (["--output", str(root / "report")], ["--pr", "1", "--dry-run"], ["--publish-only"])
+            for extra in cases:
+                with self.subTest(extra=extra), mock.patch.object(sys, "argv", base_args + extra), mock.patch.object(review, "git", return_value=str(root).encode()), contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit):
+                        review.main()
+            output.mkdir()
+            (output / "metadata.json").write_text(json.dumps({"author": "claude"}))
+            with mock.patch.object(sys, "argv", base_args + ["--pr", "1", "--publish-only"]), mock.patch.object(review, "git", return_value=str(root).encode()), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    review.main()
+            arguments = base_args + ["--output", str(Path(tmp) / "stale"), "--pr", "1"]
+            revisions = {"head": "h", "base": "b", "merge_base": "m"}
+            with mock.patch.object(sys, "argv", arguments), mock.patch.object(review, "git", side_effect=[str(root).encode(), b""]), mock.patch.object(review.shutil, "which", return_value="claude"), mock.patch.object(review, "prepare", return_value=(revisions, b"diff")), mock.patch.object(review, "pr_state", return_value={"state": "open", "head": "changed", "base": "b"}), mock.patch.object(review, "run_process") as run:
+                with self.assertRaisesRegex(RuntimeError, "differs"):
+                    review.main()
+                run.assert_not_called()
 
     def test_timeout_and_failure_are_reported(self):
         with tempfile.TemporaryDirectory() as tmp:
