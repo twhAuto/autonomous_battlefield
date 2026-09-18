@@ -1200,3 +1200,32 @@ runs without network access or credentials. Its report explicitly covers session
 scenario catalog and liveness responses only; broader role-specific application
 scanning requires staging. Human JWT copying is no longer part of operator tooling.
 See the [hardening rollout](../operations/jenkins.md#production-hardening-rollout).
+
+## Development cross-review boundary
+
+The [Codex/Claude review runner](../operations/cross-review.md) operates
+on the development machine, separately from production workers. It sends the
+selected committed source/diff to the reviewer's provider using existing CLI
+login, excludes untracked application secrets, and stores private reports outside
+the repository. Claude reviews explicitly select the `opus` model alias and use file-read tools
+only; Codex uses `gpt-6-astra` with medium reasoning effort and a named read-only
+filesystem profile allowing the snapshot, minimal OS paths and installed CLI
+helpers, with sandbox command networking disabled. The runner enforces the
+minimum Codex version and strict configuration parsing. Personal auth files remain
+outside model tool access; the parent CLI still uses its existing login.
+No review result authorizes a merge or deployment. Agents invoke cross-review
+by default at the PR handoff; `--pr` publishes a completed advisory report through
+the host GitHub CLI after checking the live head/base. It never applies findings
+automatically. Local metadata separates review completion from comment publication.
+Publication retries require a report prepared with PR discussion context.
+
+The first PR review inspects the merge-base diff. Follow-ups inspect only changes
+since the last reviewed head and unresolved findings, with the latest report and
+latest self-contained author response as context (32 KiB maximum). The full
+marked discussion is fingerprinted for stale-publication checks but is not sent
+to the model. Two published rounds exhaust the automatic allowance; further
+calls require explicit user authorization via `--allow-extra-round`. Failed calls
+stop rather than automatically retrying. Trivial low-risk edits are exempt by
+author judgment, not file-extension heuristics. Both author directions follow
+this policy. Agreement is advisory; unresolved issues return to the user at the
+limit. No usage accounting or automatic merge is added.

@@ -228,3 +228,11 @@ trusted project. The [hardening rollout guide](docs/operations/jenkins.md#produc
 documents that tradeoff and the required production kubelet TLS trust. Validate
 deployment changes locally with `./scripts/test/test-deployment.sh`; PR verification
 runs for both `dev` and `main` targets.
+
+Agent-authored PR revisions use the [Codex/Claude cross-review workflow](docs/operations/cross-review.md)
+before handoff. The opposite reviewer checks the committed change, and `--pr`
+publishes its advisory report with the exact reviewed commits. Authors respond
+on the PR. Run one full review and at most one focused follow-up on the new diff
+and unresolved findings; further rounds need user approval. Trivial wording and
+low-risk preference changes are exempt. Use short handoffs for fresh task chats.
+Reviewers are Claude Opus and Codex GPT-6 Astra at medium reasoning effort.
