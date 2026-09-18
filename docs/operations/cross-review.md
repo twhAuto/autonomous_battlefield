@@ -1,7 +1,10 @@
 # Codex and Claude cross-review
 
 Use one agent to implement and the other to review the committed result. This is
-a development-machine workflow; it does not use the production battle-agent VM.
+the default agent handoff for PR changes on the development machine; it does not
+use the production battle-agent VM. AGENTS.md and CLAUDE.md instruct the author to
+invoke it after committing/pushing a ready revision, not on each file save. It is
+agent-driven automation, not a background watcher or an enforced GitHub check.
 The reviewer writes an advisory report, not an approval or a merge. Existing test,
 coverage and human review requirements still apply.
 
@@ -57,13 +60,16 @@ shared editing session and no permission bypass.
 
 Read `review.md` together with `metadata.json` (which identifies the reviewed
 commits). Private stdout/stderr are diagnostic evidence; inspect/redact before
-sharing. The script never posts comments, pushes, merges or changes production.
+sharing. Without `--pr`, the script keeps the report local. With `--pr`, it posts only the
+completed review as an ordinary PR comment using the current `gh` account. It
+never posts raw stdout/stderr, pushes, merges or changes production.
 A zero exit status means a report completed, not that it contains no findings.
 Missing tools, auth errors, empty results and timeouts must be investigated.
 
 ## Handoff and bounded follow-up
 
-1. Author commits the change and runs the other reviewer.
+1. Author commits/pushes the change, opens or updates its draft PR, and runs the
+   other reviewer with `--pr NUMBER` to publish the result.
 2. Author reads the findings, reproduces each claimed defect and fixes valid ones.
 3. Run the applicable repository tests; commit the fixes.
 4. Run one follow-up review on the new head in a new output directory.
@@ -73,5 +79,44 @@ Missing tools, auth errors, empty results and timeouts must be investigated.
 An agent currently acting as reviewer must not invoke another reviewer. This
 prevents recursive review chains. Neither agent should suppress tests or findings
 because the other model says the change is safe. Jenkins remains a separate gate.
-The runner is explicit, not an automatic editor hook: each invocation selects an
-immutable scope and consumes account usage deliberately.
+The authoring agent invokes the runner by default before declaring a PR revision
+ready. This is not an editor hook: each invocation selects an immutable scope and
+consumes account usage. If review fails, leave the PR draft and report the failure.
+
+## Publish the report to a PR
+
+Authenticate GitHub CLI with the account that should own the comments (`gh auth
+status`; use `gh auth login` if needed). For a pushed Codex-authored draft PR:
+
+```bash
+git fetch origin
+python3 scripts/review/cross-review.py --author codex --pr 75 \
+  --base origin/dev --head HEAD \
+  --output "$HOME/battlefield-reviews/pr75-claude-1"
+```
+
+Replace 75 with the actual PR number. The runner checks that the reviewed head and
+base match the live open PR before inference and again before publishing. A moved
+head/base requires a new review; a completed report for the old commit is not a
+review of new changes. GitHub comments are not transactional with branch updates:
+a branch can still change immediately after the final check, so the comment always
+identifies its exact head, base and merge-base commits.
+
+The comment labels the reviewer and states that it is advisory, not a formal
+GitHub approval or evidence of passing tests. Matching reviewer/head/base markers
+avoid duplicate comments on sequential reruns. Concurrent publishers can still
+race; run one author handoff per PR at a time. Avoid personal data in tracked
+source and inspect reports before sharing them outside the project. Automatic
+comments contain the model's report; raw diagnostics remain local.
+
+If publication fails after a successful review, fix GitHub access and retry only
+publication (no additional model call):
+
+```bash
+python3 scripts/review/cross-review.py --author codex --pr 75 \
+  --publish-only --output "$HOME/battlefield-reviews/pr75-claude-1"
+```
+
+This requires a completed report and rechecks the live PR commits. Failed,
+dry-run, stale, empty or oversized reports are not published as successful reviews.
+The metadata records review status separately from publication status.

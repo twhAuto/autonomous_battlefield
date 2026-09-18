@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Review a committed change with the other CLI; save evidence locally, never post/merge."""
+"""Review a committed change with the other CLI; save evidence and optionally comment on a PR; never merge."""
 import argparse
 import io
 import json
@@ -22,6 +22,8 @@ Check correctness, security, operational reliability, tests and documentation.
 Distinguish confirmed defects from questions. If there are no actionable findings,
 say so. List any limitations and checks you could not perform. Do not claim tests
 passed unless supplied evidence establishes it. Your review is advisory, not approval.
+The report may be published to the PR: omit credentials, personal data, account
+details and raw logs. Use relative source paths and avoid user mentions.
 """
 
 
@@ -107,6 +109,64 @@ def claude_report(raw):
     return text
 
 
+
+def gh(repo, *args):
+    return subprocess.check_output(["gh", *args], cwd=repo, text=True, timeout=60)
+
+
+def pr_state(repo, number):
+    result = json.loads(gh(repo, "api", f"repos/{{owner}}/{{repo}}/pulls/{number}"))
+    return {"head": result["head"]["sha"], "base": result["base"]["sha"],
+            "state": result["state"], "url": result["html_url"]}
+
+
+def check_pr(metadata, state):
+    if state["state"] != "open":
+        raise RuntimeError("PR is not open; refusing to publish")
+    if metadata["head"] != state["head"] or metadata["base"] != state["base"]:
+        raise RuntimeError("PR head/base differs from review; fetch and review the current revision")
+
+
+def publish(repo, number, output, metadata):
+    if metadata.get("status") != "completed_advisory_review":
+        raise RuntimeError("Only a completed review can be published")
+    state = pr_state(repo, number)
+    check_pr(metadata, state)
+    marker = f"<!-- battlefield-cross-review:{metadata['reviewer']}:{metadata['head']}:{metadata['base']} -->"
+    comments = gh(repo, "api", "--paginate", f"repos/{{owner}}/{{repo}}/issues/{number}/comments",
+                  "--jq", ".[].body")
+    if marker in comments:
+        metadata.update(publication_status="already_posted", pr_url=state["url"])
+        return
+    report = (output / "review.md").read_text().strip()
+    if not report:
+        raise RuntimeError("Empty report; refusing to publish")
+    body = (f"{marker}\n## {metadata['reviewer'].title()} cross-review\n\n"
+            f"Reviewed commit: `{metadata['head']}`\n\n"
+            f"Base commit: `{metadata['base']}`; merge base: `{metadata['merge_base']}`.\n\n"
+            "Automated advisory review. This is not a GitHub approval or a test result.\n\n"
+            + report.replace("@", "@\u200b") + "\n")
+    if len(body.encode()) > 60000:
+        raise RuntimeError("Review exceeds comment limit; inspect locally rather than truncating findings")
+    comment = output / "comment.md"
+    comment.write_text(body)
+    # Re-check after pagination; do not knowingly publish against a changed head/base.
+    check_pr(metadata, pr_state(repo, number))
+    gh(repo, "pr", "comment", str(number), "--body-file", str(comment))
+    metadata.update(publication_status="posted", pr_url=state["url"])
+
+
+def publish_and_record(repo, number, output, metadata):
+    try:
+        publish(repo, number, output, metadata)
+        metadata.pop("publication_error", None)
+    except Exception as error:
+        metadata.update(publication_status="failed", publication_error=str(error))
+        raise
+    finally:
+        (output / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--author", choices=("codex", "claude"), required=True)
@@ -116,6 +176,8 @@ def main():
     parser.add_argument("--output", type=Path, required=True, help="New private report directory outside the repository")
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--dry-run", action="store_true", help="Prepare evidence without calling a model")
+    parser.add_argument("--pr", type=int, help="Publish the completed report to this PR using gh")
+    parser.add_argument("--publish-only", action="store_true", help="Publish an existing completed report without rerunning the model")
     args = parser.parse_args()
     os.umask(0o077)
     root = Path(git(args.repo, "rev-parse", "--show-toplevel").decode().strip())
@@ -124,6 +186,17 @@ def main():
         parser.error("Keep reports outside the repository")
     if args.timeout < 1:
         parser.error("Timeout must be positive")
+    if args.pr is not None and (args.pr < 1 or args.dry_run):
+        parser.error("--pr must be positive and cannot be combined with --dry-run")
+    if args.publish_only:
+        if args.pr is None:
+            parser.error("--publish-only requires --pr")
+        metadata = json.loads((output / "metadata.json").read_text())
+        if metadata.get("author") != args.author:
+            parser.error("Author differs from the saved review")
+        publish_and_record(root, args.pr, output, metadata)
+        print(f"{metadata['publication_status']}: {metadata['pr_url']}")
+        return
     dirty = bool(git(root, "status", "--porcelain"))
     if dirty:
         print("Reviewing committed files only; working-tree changes are excluded.")
@@ -140,6 +213,8 @@ def main():
             snapshot.mkdir()
             revisions, patch = prepare(root, args.base, args.head, snapshot)
             metadata.update(revisions)
+            if args.pr is not None:
+                check_pr(metadata, pr_state(root, args.pr))
             patch_file = Path(temporary) / "review.patch"
             patch_file.write_bytes(patch)
             (output / "review.patch").write_bytes(patch)
@@ -162,6 +237,8 @@ def main():
         raise
     finally:
         (output / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
+    if args.pr is not None:
+        publish_and_record(root, args.pr, output, metadata)
     print(f"{metadata['status']}: {output}")
 
 

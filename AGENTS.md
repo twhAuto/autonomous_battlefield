@@ -161,11 +161,18 @@ token during cleanup.
 
 ## Cross-review between Codex and Claude
 
-Use [the cross-review guide](docs/operations/cross-review.md) when the user asks
-for an independent review or a writer/reviewer workflow. After committing the
-intended change, `python3 scripts/review/cross-review.py --author codex ...`
-selects Claude; `--author claude` selects Codex. Record the exact reviewed commit,
-read the report, verify findings and run the applicable tests after corrections.
-Use at most one follow-up review before bringing unresolved disagreements to the
-user. Reviews are advisory and do not replace Jenkins, coverage or merge approval.
+Cross-review is the default for agent-authored PR changes. After committing and
+pushing a revision, create or update its draft PR, then run the other reviewer
+before declaring the work ready. Do not run on every file save or intermediate
+commit. `python3 scripts/review/cross-review.py --author codex --pr NUMBER ...`
+selects Claude; `--author claude` selects Codex. The user authorizes posting the
+completed advisory report as a PR comment through this workflow. No additional
+confirmation is needed for those review comments.
+
+Follow [the cross-review guide](docs/operations/cross-review.md). Fetch the base,
+review the exact pushed head, read findings and verify them before fixing anything.
+Run the applicable tests after corrections. Use at most one follow-up review;
+bring unresolved disagreements to the user. If the CLI, login, network or review
+fails, report the limitation and leave the PR draft rather than claiming approval.
+Reviews supplement Jenkins and coverage; they never authorize merging/deployment.
 When already acting as reviewer, never launch another reviewer or edit files.

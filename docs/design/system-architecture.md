@@ -1203,10 +1203,12 @@ See the [hardening rollout](../operations/jenkins.md#production-hardening-rollou
 
 ## Development cross-review boundary
 
-The optional [Codex/Claude review runner](../operations/cross-review.md) operates
+The [Codex/Claude review runner](../operations/cross-review.md) operates
 on the development machine, separately from production workers. It sends the
 selected committed source/diff to the reviewer's provider using existing CLI
 login, excludes untracked application secrets, and stores private reports outside
 the repository. Claude uses file-read tools only; Codex uses its read-only sandbox.
-No review result authorizes a merge or deployment, and the runner never posts or
-applies findings automatically.
+No review result authorizes a merge or deployment. Agents invoke cross-review
+by default at the PR handoff; `--pr` publishes a completed advisory report through
+the host GitHub CLI after checking the live head/base. It never applies findings
+automatically. Local metadata separates review completion from comment publication.

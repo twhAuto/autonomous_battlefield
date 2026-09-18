@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
@@ -66,6 +67,51 @@ class CrossReviewTests(unittest.TestCase):
             with self.subTest(result=result), self.assertRaises(RuntimeError):
                 review.claude_report(json.dumps(result))
         self.assertEqual(review.claude_report(json.dumps({"subtype": "success", "result": "No findings."})), "No findings.")
+
+    def test_publication_checks_scope_and_posts_body_file(self):
+        metadata = {"status": "completed_advisory_review", "reviewer": "claude",
+                    "head": "h", "base": "b", "merge_base": "m"}
+        state = {"state": "open", "head": "h", "base": "b", "url": "https://example.invalid/pr/1"}
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp)
+            (output / "review.md").write_text("Finding at source.py:4. @person")
+            with mock.patch.object(review, "pr_state", return_value=state), mock.patch.object(review, "gh", return_value="") as gh:
+                review.publish(output, 1, output, metadata)
+                self.assertEqual(metadata["publication_status"], "posted")
+                self.assertIn("--body-file", gh.call_args.args)
+                body = (output / "comment.md").read_text()
+                self.assertIn("Reviewed commit: `h`", body)
+                self.assertIn("Finding at source.py:4", body)
+                self.assertNotIn("@person", body)
+            marker = "<!-- battlefield-cross-review:claude:h:b -->"
+            with mock.patch.object(review, "pr_state", return_value=state), mock.patch.object(review, "gh", return_value=marker) as gh:
+                review.publish(output, 1, output, metadata)
+                self.assertEqual(metadata["publication_status"], "already_posted")
+                self.assertEqual(gh.call_count, 1)
+
+    def test_publication_rejects_stale_failed_or_closed_review(self):
+        metadata = {"status": "completed_advisory_review", "reviewer": "claude",
+                    "head": "h", "base": "b", "merge_base": "m"}
+        state = {"state": "open", "head": "h", "base": "b", "url": "url"}
+        for key, value in (("head", "new"), ("base", "new"), ("state", "closed")):
+            with self.subTest(key=key), mock.patch.object(review, "pr_state", return_value={**state, key: value}), mock.patch.object(review, "gh") as gh:
+                with self.assertRaises(RuntimeError):
+                    review.publish(Path("."), 1, Path("."), metadata)
+                gh.assert_not_called()
+        for status in ("failed", "dry_run_not_reviewed"):
+            with self.subTest(status=status), self.assertRaises(RuntimeError):
+                review.publish(Path("."), 1, Path("."), {**metadata, "status": status})
+
+    def test_publication_failure_retains_completed_review_for_retry(self):
+        metadata = {"status": "completed_advisory_review"}
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp)
+            with mock.patch.object(review, "publish", side_effect=RuntimeError("network")):
+                with self.assertRaises(RuntimeError):
+                    review.publish_and_record(output, 1, output, metadata)
+            saved = json.loads((output / "metadata.json").read_text())
+            self.assertEqual(saved["status"], "completed_advisory_review")
+            self.assertEqual(saved["publication_status"], "failed")
 
     def test_timeout_and_failure_are_reported(self):
         with tempfile.TemporaryDirectory() as tmp:
