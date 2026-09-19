@@ -105,6 +105,12 @@ spec:
                   name: battlefield-ai
                   key: GEMINI_CLI_PROFILE_AVAILABLE
                   optional: true
+            - name: CLAUDE_CLI_PROFILE_AVAILABLE
+              valueFrom:
+                secretKeyRef:
+                  name: battlefield-ai
+                  key: CLAUDE_CLI_PROFILE_AVAILABLE
+                  optional: true
           ports:
             - name: http
               containerPort: 8080

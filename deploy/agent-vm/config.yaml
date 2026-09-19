@@ -13,6 +13,15 @@ ai:
       supportedVersionPrefix: codex-cli 0.152.
       maxSteps: 3
       enabled: true
+    - id: claude-subscription-local
+      displayName: Claude subscription
+      provider: claude-cli
+      runtime: cli
+      model: sonnet
+      scope: local
+      supportedVersionPrefix: "2.1.267 "
+      maxSteps: 3
+      enabled: false
     - id: gemini-subscription-local
       displayName: Antigravity subscription
       provider: antigravity-cli

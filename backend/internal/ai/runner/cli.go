@@ -36,6 +36,11 @@ func (OSCommandExecutor) Run(ctx context.Context, name string, args, environment
 	command.WaitDelay = time.Second
 	var output limitedOutput
 	command.Stdout, command.Stderr = &output, &output
+	if name == "claude" {
+		// Claude JSON is one document. Never interleave stderr diagnostics
+		// with that document, even when they have no trailing newline.
+		command.Stderr = io.Discard
+	}
 	err := command.Run()
 	return output.Bytes(), err
 }
@@ -78,6 +83,13 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 		args = withModel(args, r.Model)
 		environment = replaceEnvironment(cliEnvironment(), "CODEX_WORKSPACE", workspace)
 		environment = replaceEnvironment(environment, "BATTLEFIELD_MCP_AUTHORIZATION", "Bearer "+session.CapabilityToken)
+	case "claude-cli":
+		name = "claude"
+		args, err = claudeArguments(temporary, prompt, r.Model, session)
+		if err != nil {
+			return ai.DecisionResult{ErrorCategory: "cli_isolation"}, err
+		}
+		environment = clienv.ClaudeEnvironment()
 	case "antigravity-cli":
 		name = "agy"
 		payload, contextErr := r.prefetchContext(ctx, session)
@@ -99,6 +111,8 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 	output, err := executor.Run(ctx, name, args, environment, workspace)
 	if r.Provider == "antigravity-cli" {
 		result, runErr = antigravityResult(output)
+	} else if r.Provider == "claude-cli" {
+		result, runErr = claudeResult(output)
 	} else {
 		result, runErr = codexResult(output)
 	}

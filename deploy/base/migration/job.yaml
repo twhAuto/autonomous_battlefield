@@ -41,6 +41,7 @@ spec:
             # Migration validates API configuration but never executes AI jobs.
             - {name: CODEX_CLI_PROFILE_AVAILABLE, value: "false"}
             - {name: GEMINI_CLI_PROFILE_AVAILABLE, value: "false"}
+            - {name: CLAUDE_CLI_PROFILE_AVAILABLE, value: "false"}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

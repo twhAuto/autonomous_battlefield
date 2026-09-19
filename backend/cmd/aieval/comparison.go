@@ -120,7 +120,7 @@ func makeComparisonVariant(v comparisonVariantConfig, prices aieval.PriceBook) (
 			}
 			return runner.APIRunner{Provider: provider}
 		}
-	case "codex-cli", "antigravity-cli":
+	case "codex-cli", "antigravity-cli", "claude-cli":
 		result.Runtime = "cli"
 		result.NewRunner = func() ai.DecisionRunner { return runner.CLIRunner{Provider: v.Provider, Model: v.Model} }
 	default:
