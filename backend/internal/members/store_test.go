@@ -77,7 +77,7 @@ func member(t *testing.T, s *Store, email string) Member {
 	return Member{}
 }
 
-func TestMembershipLifecycleAndRestart(t *testing.T) {
+func TestMembershipGrantRemoveAndReinvite(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	if s.Allowed(ctx, "seed@example.com") {
@@ -104,31 +104,9 @@ func TestMembershipLifecycleAndRestart(t *testing.T) {
 	if s.Allowed(ctx, m.Email) {
 		t.Fatal("removal failed before remote update")
 	}
-	s.Writer = groupFunc(func(context.Context, []string) error { return errors.New("Cloudflare returned HTTP 429") })
-	if s.Reconcile(ctx) == nil {
-		t.Fatal("expected remote failure")
-	}
-	_, last, err := s.List(ctx)
-	must(t, err)
-	if last == "" {
-		t.Fatal("missing visible error")
-	}
-	var attempts int
-	var delayed bool
-	must(t, s.DB.QueryRow(ctx, "SELECT attempts,next_attempt>now() FROM player_membership_sync WHERE id").Scan(&attempts, &delayed))
-	if attempts != 1 || !delayed {
-		t.Fatal("no persisted backoff", attempts, delayed)
-	}
-	must(t, s.Reconcile(ctx)) // Not due; no second remote call.
-	s.Roles[m.Email] = authn.Player
-	must(t, s.Initialize(ctx))
-	if member(t, s, m.Email).Desired {
-		t.Fatal("restart resurrected removal")
-	}
-	must(t, s.Retry(ctx, "owner"))
 	s.Writer = groupFunc(func(_ context.Context, emails []string) error { sent = emails; return nil })
 	must(t, s.Reconcile(ctx))
-	if reflect.DeepEqual(sent, []string{m.Email, "seed@example.com"}) {
+	if !reflect.DeepEqual(sent, []string{"seed@example.com"}) {
 		t.Fatal("removed member still in group")
 	}
 	must(t, s.Change(ctx, "owner", m.Email, "", true))
@@ -144,8 +122,55 @@ func TestMembershipLifecycleAndRestart(t *testing.T) {
 	if grants != 2 || removes != 1 {
 		t.Fatal("audit not idempotent", grants, removes)
 	}
+}
+
+func TestMembershipSyncFailurePersistsBackoff(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	calls := 0
+	s.Writer = groupFunc(func(context.Context, []string) error {
+		calls++
+		return errors.New("Cloudflare returned HTTP 429")
+	})
+	if s.Reconcile(ctx) == nil {
+		t.Fatal("expected remote failure")
+	}
+	_, last, err := s.List(ctx)
+	must(t, err)
+	if last == "" {
+		t.Fatal("missing visible error")
+	}
+	var attempts int
+	var delayed bool
+	must(t, s.DB.QueryRow(ctx, "SELECT attempts,next_attempt>now() FROM player_membership_sync WHERE id").Scan(&attempts, &delayed))
+	if attempts != 1 || !delayed {
+		t.Fatal("no persisted backoff", attempts, delayed)
+	}
+	must(t, s.Reconcile(ctx))
+	if calls != 1 {
+		t.Fatal("backoff permitted another remote call", calls)
+	}
+}
+
+func TestMembershipRestartKeepsRemovalTombstone(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	must(t, s.Change(ctx, "owner", "friend@example.com", "", true))
+	m := member(t, s, "friend@example.com")
+	must(t, s.Change(ctx, "owner", "", m.ID, false))
+	s.Roles[m.Email] = authn.Player
+	must(t, s.Initialize(ctx))
+	if member(t, s, m.Email).Desired {
+		t.Fatal("restart resurrected removal")
+	}
+}
+
+func TestMembershipDatabaseFailureDeniesAccess(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	must(t, s.Reconcile(ctx))
 	s.DB.Close()
-	if s.Allowed(ctx, m.Email) {
+	if s.Allowed(ctx, "seed@example.com") {
 		t.Fatal("database failure allowed access")
 	}
 }
