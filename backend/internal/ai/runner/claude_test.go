@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -89,7 +90,7 @@ func (e *claudeExecutor) Run(_ context.Context, name string, args, environment [
 	if e.fail {
 		return []byte(`{"type":"result","subtype":"success"}`), errors.New("exit")
 	}
-	return []byte("diagnostic\n" + `{"type":"result","subtype":"success"}`), nil
+	return []byte(`{"type":"result","subtype":"success"}`), nil
 }
 func TestClaudeRunnerIsolationAndCleanup(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "private-api-key")
@@ -122,4 +123,21 @@ func TestClaudeGenerationTools(t *testing.T) {
 		}
 	}
 	t.Fatal("no tool allowlist")
+}
+
+func TestClaudePrettyJSONAndSeparatedDiagnostics(t *testing.T) {
+	bin := t.TempDir()
+	t.Setenv("PATH", bin)
+	script := "#!/bin/sh\nprintf 'diagnostic without newline' >&2\nprintf '{\\n  \"type\": \"result\",\\n  \"subtype\": \"success\"\\n}\\n'\n"
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	output, err := (OSCommandExecutor{}).Run(context.Background(), "claude", nil, os.Environ(), bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := claudeResult(output)
+	if err != nil || !result.Accepted || strings.Contains(string(output), "diagnostic") {
+		t.Fatalf("result=%+v error=%v output=%s", result, err, output)
+	}
 }

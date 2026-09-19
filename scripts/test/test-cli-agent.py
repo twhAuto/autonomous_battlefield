@@ -112,6 +112,18 @@ wait_for_endpoint http://127.0.0.1:18084/healthz 123 'MCP port-forward'
 """
         subprocess.run(['bash', '-ec', script], check=True)
 
+    def test_host_wait_allows_both_serial_auth_probes(self):
+        self.assertIn('"${agent_pid}" "Host agent" "" 300', SOURCE)
+        script = FUNCTIONS + r"""
+kill() { return 0; }
+sleep() { :; }
+probes=0
+curl() { probes=$((probes+1)); [[ "$probes" -ge 160 ]]; }
+wait_for_endpoint http://127.0.0.1:18083/healthz 123 'Host agent' "" 300
+[[ "$probes" == 160 ]]
+"""
+        subprocess.run(['bash', '-ec', script], check=True)
+
     def test_unavailable_and_invalid_rejected(self):
         for mode, available in [('claude', ''), ('all', 'codex gemini'), ('auto', ''), ('unknown', 'claude')]:
             self.assertNotEqual(self.run_profile(mode, available).returncode, 0)

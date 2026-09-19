@@ -23,7 +23,7 @@ func TestClaudeAuth(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			bin := t.TempDir()
 			t.Setenv("PATH", bin)
-			script := "#!/bin/sh\n[ \"$1 $2\" = 'auth status' ] || exit 2\nprintf '%s' '" + tc.output + "'\n"
+			script := "#!/bin/sh\n[ \"$1 $2 $3\" = 'auth status --json' ] || exit 2\nprintf '%s' '" + tc.output + "'\n"
 			if tc.exit != 0 {
 				script += "exit 1\n"
 			}

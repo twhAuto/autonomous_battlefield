@@ -87,7 +87,7 @@ antigravity_available() {
 
 claude_available() {
   command -v claude >/dev/null 2>&1 \
-    && [[ "$(claude --version 2>/dev/null || true)" == '2.1.267 (Claude Code)' ]] \
+    && [[ "$(claude --version 2>/dev/null || true)" == '2.1.267 '* ]] \
     && "${runtime_dir}/agent" -check-claude-auth >/dev/null 2>&1
 }
 
@@ -208,8 +208,10 @@ wait_for_endpoint() {
   local process_id="$2"
   local label="$3"
   local log_file="${4:-}"
-  # Allow the bounded subscription authentication probe to finish at startup.
-  for _ in {1..150}; do
+  local attempts="${5:-150}"
+  local attempt
+  # Host startup may run two serial 15-second subscription auth checks.
+  for ((attempt=0; attempt<attempts; attempt++)); do
     # A different listener must not make a failed port-forward appear healthy.
     if ! kill -0 "${process_id}" 2>/dev/null; then
       echo "${label} exited before becoming ready." >&2
@@ -273,7 +275,7 @@ fi
 echo "Starting the authenticated host decision agent..."
 (cd "${backend_dir}" && exec "${runtime_dir}/agent" -config "${runtime_dir}/config.yaml") &
 agent_pid=$!
-wait_for_endpoint "http://127.0.0.1:${health_port}/healthz" "${agent_pid}" "Host agent"
+wait_for_endpoint "http://127.0.0.1:${health_port}/healthz" "${agent_pid}" "Host agent" "" 300
 
 codex_flag=false
 gemini_flag=false

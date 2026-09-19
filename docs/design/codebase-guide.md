@@ -788,7 +788,8 @@ from `backend`.
   `runner/claude.go` constructs the restricted Claude invocation and parses its
   terminal result and cache-aware usage. `clienv/claude.go` filters environment
   variables and checks the native subscription login without model inference.
-  Their tests cover tool restrictions, credential handling, cleanup and failures;
+  Their tests cover tool restrictions, credential handling, cleanup, multiline JSON
+  with separated stderr diagnostics, and failures;
   `mcpserver/claude_live_test.go` is an opt-in synthetic MCP submission test.
   `scripts/test/test-cli-agent.py` checks launcher profile selection, generated
   configuration, availability flags, forwarding diagnostics and health-probe

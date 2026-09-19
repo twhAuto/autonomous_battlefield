@@ -36,47 +36,44 @@ func claudeArguments(directory, prompt, model string, session ai.DecisionSession
 // the worker independently verifies that the scoped MCP submission was accepted.
 func claudeResult(output []byte) (ai.DecisionResult, error) {
 	result := ai.DecisionResult{Usage: ai.Usage{Scope: "cli_session", CLIInvocations: 1, Requests: 1}}
-	for _, line := range strings.Split(string(output), "\n") {
-		var event struct {
-			Type    string            `json:"type"`
-			Subtype string            `json:"subtype"`
-			IsError bool              `json:"is_error"`
-			Denials []json.RawMessage `json:"permission_denials"`
-			Usage   struct {
-				Input    *int64 `json:"input_tokens"`
-				Output   *int64 `json:"output_tokens"`
-				Read     *int64 `json:"cache_read_input_tokens"`
-				Creation *int64 `json:"cache_creation_input_tokens"`
-			} `json:"usage"`
-		}
-		if json.Unmarshal([]byte(line), &event) != nil || event.Type != "result" {
-			continue
-		}
-		u := event.Usage
-		if u.Input != nil && u.Output != nil && *u.Input >= 0 && *u.Output >= 0 {
-			result.Usage.InputTokens, result.Usage.OutputTokens = *u.Input, *u.Output
-			result.Usage.TokensReported = true
-			// Anthropic input_tokens excludes cache reads and writes; normalize to total input.
-			for _, count := range []*int64{u.Read, u.Creation} {
-				if count != nil && *count >= 0 {
-					result.Usage.InputTokens += *count
-				}
-			}
-			if u.Read != nil && *u.Read >= 0 {
-				result.Usage.CachedInputTokens = u.Read
-			}
-		}
-		if len(event.Denials) > 0 {
-			result.ErrorCategory = "cli_permission"
-			return result, fmt.Errorf("Claude denied a required tool action")
-		}
-		if event.IsError || event.Subtype != "success" {
-			result.ErrorCategory = "cli"
-			return result, fmt.Errorf("Claude returned an unsuccessful terminal result")
-		}
-		result.Accepted = true
-		return result, nil
+	var event struct {
+		Type    string            `json:"type"`
+		Subtype string            `json:"subtype"`
+		IsError bool              `json:"is_error"`
+		Denials []json.RawMessage `json:"permission_denials"`
+		Usage   struct {
+			Input    *int64 `json:"input_tokens"`
+			Output   *int64 `json:"output_tokens"`
+			Read     *int64 `json:"cache_read_input_tokens"`
+			Creation *int64 `json:"cache_creation_input_tokens"`
+		} `json:"usage"`
 	}
-	result.ErrorCategory = "cli"
-	return result, fmt.Errorf("Claude returned no terminal result")
+	if json.Unmarshal(output, &event) != nil || event.Type != "result" {
+		result.ErrorCategory = "cli"
+		return result, fmt.Errorf("Claude returned no terminal result")
+	}
+	u := event.Usage
+	if u.Input != nil && u.Output != nil && *u.Input >= 0 && *u.Output >= 0 {
+		result.Usage.InputTokens, result.Usage.OutputTokens = *u.Input, *u.Output
+		result.Usage.TokensReported = true
+		// Anthropic input_tokens excludes cache reads and writes; normalize to total input.
+		for _, count := range []*int64{u.Read, u.Creation} {
+			if count != nil && *count >= 0 {
+				result.Usage.InputTokens += *count
+			}
+		}
+		if u.Read != nil && *u.Read >= 0 {
+			result.Usage.CachedInputTokens = u.Read
+		}
+	}
+	if len(event.Denials) > 0 {
+		result.ErrorCategory = "cli_permission"
+		return result, fmt.Errorf("Claude denied a required tool action")
+	}
+	if event.IsError || event.Subtype != "success" {
+		result.ErrorCategory = "cli"
+		return result, fmt.Errorf("Claude returned an unsuccessful terminal result")
+	}
+	result.Accepted = true
+	return result, nil
 }

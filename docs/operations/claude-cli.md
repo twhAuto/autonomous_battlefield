@@ -6,7 +6,7 @@ the same model catalog as Codex and Antigravity, with existing role restrictions
 
 1. Install Claude Code 2.1.267 using the [official installation instructions](https://code.claude.com/docs/en/setup).
 2. Run `claude auth login` and sign in with a Claude subscription. The worker checks
-   `claude auth status` for a saved `claude.ai` login. API-key and Console logins do
+   `claude auth status --json` for a saved `claude.ai` login. API-key and Console logins do
    not satisfy this profile. Authentication stays on the host in its native location.
 3. Start the dev bridge with `./run-k8s-cli-agent.sh claude`. Keep it running while
    battles or faction-generation jobs use the profile. `auto` detects all available
@@ -58,3 +58,18 @@ a distinct `HOST_AGENT_HEALTH_PORT`. When tracing is enabled, set distinct
 `kubectl -n battlefield get pods -l app.kubernetes.io/component=mcp` using the
 registered dev kubeconfig and context. Health probes bypass HTTP proxies and
 check that the forwarding process is still alive.
+
+The pinned CLI's `auth status --help` confirms JSON is the default; the worker
+requests `--json` explicitly. A live synthetic check on 2.1.267 verified both
+subscription authentication and MCP submission with `--tools ""` (which removes
+built-in tools, not MCP tools). Claude stdout is parsed as one JSON document,
+including multiline output; stderr is discarded so diagnostics cannot corrupt it.
+The host-agent health wait allows 60 seconds of retry delays for both serial
+15-second subscription login probes, with individually bounded HTTP probes.
+
+Personal instruction isolation is a separate concern from tool permissions:
+the native login retains `HOME`, and this integration does not explicitly disable
+user-level `~/.claude/CLAUDE.md` memory. Do not assume personal instructions are
+excluded by the settings flags. Use a dedicated host account without personal
+memory for reproducible comparisons. The supplied agent-VM configuration leaves
+Claude disabled until an operator deliberately enables it after isolation checks.

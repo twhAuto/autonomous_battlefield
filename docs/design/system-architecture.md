@@ -857,11 +857,14 @@ startup failure; bounded loopback health probes bypass proxies and require a liv
 forwarding process.
 The API advertises the profile only while `CLAUDE_CLI_PROFILE_AVAILABLE=true`;
 production additionally requires the existing VM isolation verification flag.
+Claude stdout is parsed as a complete JSON document with stderr excluded. The
+host wait accommodates both serial auth checks; the VM profile defaults to disabled.
+Native HOME is retained: user-level instruction memory is not explicitly disabled,
+so reproducible comparisons need a dedicated account without personal memory.
 Claude terminal results report aggregate CLI usage, including cache reads/writes
 in total input tokens; errors and permission denials fail the decision. The
 `sonnet` alias follows the subscription's default Sonnet model, so operators need
 an explicit model ID for reproducible comparisons. See [Claude operations](../operations/claude-cli.md).
-
 
 ## 12. Observability
 

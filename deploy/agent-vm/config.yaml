@@ -20,9 +20,8 @@ ai:
       model: sonnet
       scope: local
       supportedVersionPrefix: "2.1.267 "
-      availabilityEnvironmentVariable: CLAUDE_CLI_PROFILE_AVAILABLE
       maxSteps: 3
-      enabled: true
+      enabled: false
     - id: gemini-subscription-local
       displayName: Antigravity subscription
       provider: antigravity-cli

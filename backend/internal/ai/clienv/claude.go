@@ -23,7 +23,7 @@ func ClaudeEnvironment() []string {
 
 // CheckClaudeAuth checks the saved subscription login without model inference.
 func CheckClaudeAuth(ctx context.Context) error {
-	command := exec.CommandContext(ctx, "claude", "auth", "status")
+	command := exec.CommandContext(ctx, "claude", "auth", "status", "--json")
 	command.Env = ClaudeEnvironment()
 	var status struct {
 		LoggedIn   bool   `json:"loggedIn"`

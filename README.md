@@ -53,7 +53,7 @@ raw inspection views.
 | Configure CI/CD and SonarQube | [Jenkins](docs/operations/jenkins.md) |
 | Inspect metrics, traces, logs, and reliability objectives | [Observability](docs/operations/observability.md) |
 | Launch for invited testers behind Access and provision the isolated CLI VM | [Limited-access launch](docs/operations/limited-launch.md) |
-| Configure subscription CLI authentication | [Antigravity](docs/operations/antigravity-cli.md) |
+| Configure subscription CLI authentication | [Antigravity](docs/operations/antigravity-cli.md), [Claude](docs/operations/claude-cli.md) |
 | Compare controllers and author unit knowledge | [AI comparisons](docs/operations/ai-comparisons.md) |
 | Enable the optional completed-battle cache | [Redis](docs/operations/redis.md) |
 | Review AI development and artifact assurance | [AI policy](docs/security/ai-development-policy.md), [supply-chain runbook](docs/operations/supply-chain-runbook.md) |

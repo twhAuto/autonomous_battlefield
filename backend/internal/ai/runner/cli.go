@@ -36,6 +36,11 @@ func (OSCommandExecutor) Run(ctx context.Context, name string, args, environment
 	command.WaitDelay = time.Second
 	var output limitedOutput
 	command.Stdout, command.Stderr = &output, &output
+	if name == "claude" {
+		// Claude JSON is one document. Never interleave stderr diagnostics
+		// with that document, even when they have no trailing newline.
+		command.Stderr = io.Discard
+	}
 	err := command.Run()
 	return output.Bytes(), err
 }
