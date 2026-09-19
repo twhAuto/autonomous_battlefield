@@ -6,6 +6,7 @@ package ai
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -127,5 +128,34 @@ func TestAntigravityProfileRequiresWorkingIsolatedLogin(t *testing.T) {
 	profile.Provider = "gemini-cli"
 	if _, err := NewProfileRegistry("local", []ModelProfile{profile}).Require(profile.ID); err == nil {
 		t.Fatal("retired CLI still advertised")
+	}
+}
+
+func TestClaudeProfileAvailability(t *testing.T) {
+	bin := t.TempDir()
+	t.Setenv("PATH", bin)
+	profile := ModelProfile{ID: "claude", DisplayName: "Claude", Provider: "claude-cli", Runtime: "cli", Scope: "local", Model: "sonnet", SupportedVersionPrefix: "2.1.267 ", Enabled: true, AvailabilityEnvironmentVariable: "TEST_CLAUDE_AVAILABLE"}
+	if p := NewProfileRegistry("local", []ModelProfile{profile}).List()[0]; p.Available {
+		t.Fatal("missing executable accepted")
+	}
+	script := "#!/bin/sh\nif [ \"$1\" = '--version' ]; then echo '2.1.267 (Claude Code)'; else echo '{\"loggedIn\":true,\"authMethod\":\"claude.ai\"}'; fi\n"
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if p := NewProfileRegistry("local", []ModelProfile{profile}).List()[0]; !p.Available || p.ModelLabel != "sonnet" {
+		t.Fatal(p)
+	}
+	t.Setenv("TEST_CLAUDE_AVAILABLE", "true")
+	if p := NewProfileCatalog("cluster", []ModelProfile{profile}).List()[0]; !p.Available {
+		t.Fatal(p)
+	}
+	if p := NewProfileRegistry("cluster", []ModelProfile{profile}).List()[0]; p.Available {
+		t.Fatal("cluster executor accepted host profile")
+	}
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte("#!/bin/sh\nif [ \"$1\" = '--version' ]; then echo '2.1.267 (Claude Code)'; else exit 1; fi\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if p := NewProfileRegistry("local", []ModelProfile{profile}).List()[0]; p.Available || !strings.Contains(p.UnavailableReason, "login unavailable") {
+		t.Fatal(p)
 	}
 }

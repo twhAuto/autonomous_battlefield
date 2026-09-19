@@ -324,7 +324,7 @@ sudo systemctl is-active battlefield-agent-firewall battlefield-mcp-bridge battl
 Complete the remaining isolation gates in the limited-launch guide. Then set
 `BATTLEFIELD_CLI_ISOLATION_VERIFIED=true` in the VM worker environment, enable
 only the Codex profile in the VM configuration, and restart the worker. In the host's private production `.env`, set that flag and
-`CODEX_CLI_PROFILE_AVAILABLE=true`, leaving Gemini false. Run
+`CODEX_CLI_PROFILE_AVAILABLE=true`, leaving Gemini and Claude false. Run
 `./scripts/ops/prepare-limited-production.sh`, then use the normal production
 configuration deployment (`APPLY_CONFIGURATION=true`). Preparation alone explicitly
 makes no live workload changes. Keep initial profile access limited to administrators.

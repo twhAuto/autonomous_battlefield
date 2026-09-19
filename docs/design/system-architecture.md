@@ -844,6 +844,28 @@ assurance launchers.
 
 The in-cluster agent is intended for API providers. `run-k8s-cli-agent.sh` bridges host subscription CLIs by validating the local binary and login, forwarding MCP to loopback, running a local agent, advertising availability to the API, and removing that availability on exit.
 
+The `claude-cli` provider exposes `claude-subscription-local` using Claude Code
+2.1.267 and the `sonnet` alias. The host retains its native subscription login;
+only allowlisted transport environment variables reach the subprocess. Restricted
+mode, empty built-in tools, disabled hooks and settings discovery, strict MCP
+configuration, and `dontAsk` permissions constrain it to explicitly approved
+battlefield tools. A private temporary MCP file holds the request capability and
+is removed on exit. Session persistence is disabled. Server-side capabilities and
+submission validation remain authoritative for battle and faction-generation jobs.
+The host bridge waits for MCP rollout readiness and surfaces forwarding logs on
+startup failure; bounded loopback health probes bypass proxies and require a live
+forwarding process.
+The API advertises the profile only while `CLAUDE_CLI_PROFILE_AVAILABLE=true`;
+production additionally requires the existing VM isolation verification flag.
+Claude stdout is parsed as a complete JSON document with stderr excluded. The
+host wait accommodates both serial auth checks; the VM profile defaults to disabled.
+Native HOME is retained: user-level instruction memory is not explicitly disabled,
+so reproducible comparisons need a dedicated account without personal memory.
+Claude terminal results report aggregate CLI usage, including cache reads/writes
+in total input tokens; errors and permission denials fail the decision. The
+`sonnet` alias follows the subscription's default Sonnet model, so operators need
+an explicit model ID for reproducible comparisons. See [Claude operations](../operations/claude-cli.md).
+
 ## 12. Observability
 
 - Processes emit structured JSON logs with stable `event` identifiers and readable

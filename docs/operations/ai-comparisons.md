@@ -73,8 +73,8 @@ variants:
     model: YOUR_INSTALLED_ANTIGRAVITY_MODEL
 ```
 
-Supported providers are `scripted`, `openai`, `gemini`, `codex-cli`, and
-`antigravity-cli`. Set `withoutMemory: true` on a variant for a controlled memory
+Supported providers are `scripted`, `openai`, `gemini`, `codex-cli`,
+`antigravity-cli`, and `claude-cli`. Set `withoutMemory: true` on a variant for a controlled memory
 ablation. Use explicit model identifiers. API models must appear in the reviewed
 `evals/pricing.yaml` snapshot and their provider credentials must be available.
 CLI variants use the existing host login and the production runner's isolation.

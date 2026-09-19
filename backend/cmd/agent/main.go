@@ -28,7 +28,17 @@ func main() {
 	slog.SetDefault(logger)
 	configPath := flag.String("config", "config.yaml", "path to YAML configuration")
 	checkAuth := flag.Bool("check-antigravity-auth", false, "check isolated Antigravity keyring login without model inference")
+	checkClaudeAuth := flag.Bool("check-claude-auth", false, "check Claude subscription login without model inference")
 	flag.Parse()
+	if *checkClaudeAuth {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := clienv.CheckClaudeAuth(ctx); err != nil {
+			logger.Error("claude_auth_unavailable", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *checkAuth {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
