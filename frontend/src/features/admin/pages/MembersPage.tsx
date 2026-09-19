@@ -58,10 +58,10 @@ export function MembersPage() {
       <p>No invitation email is sent. Admin and Developer access remains managed separately.</p>
     </section>
     {(error || loadError) && <p role="alert">{error || loadError}</p>}
-    {notice && <p role="status">{notice}</p>}
+    {notice && <output className="admin-status">{notice}</output>}
     <section className="admin-models" aria-labelledby="members-title">
       <div className="admin-section-heading"><h2 id="members-title">Players</h2><button type="button" disabled={busy} onClick={() => setRefresh(value => value + 1)}>Refresh</button></div>
-      {!data && !loadError && <p role="status">Loading members…</p>}
+      {!data && !loadError && <output className="admin-status">Loading members…</output>}
       {data?.syncError && <div role="alert"><p>Cloudflare synchronization needs attention: {data.syncError}</p><button type="button" disabled={busy} onClick={() => { void change(retryMembers, 'Synchronization retry requested.') }}>Retry synchronization</button></div>}
       {data?.members.length === 0 && <p>No Players have been invited yet.</p>}
       <ul className="member-list">{data?.members.map(member => <li key={member.id} className="admin-model">

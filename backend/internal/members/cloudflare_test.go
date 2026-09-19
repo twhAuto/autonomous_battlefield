@@ -5,51 +5,65 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 )
 
 type transport func(*http.Request) (*http.Response, error)
 
 func (f transport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-func TestCloudflareGroupPayloadAndFailures(t *testing.T) {
-	for _, emails := range [][]string{{"one@example.com", "two@example.com"}, {}} {
-		c := &Cloudflare{Config: Config{AccountID: "account", GroupID: "group", Token: "private"}, Client: &http.Client{Transport: transport(func(r *http.Request) (*http.Response, error) {
-			if r.URL.String() != "https://api.cloudflare.com/client/v4/accounts/account/access/groups/group" || r.Method != "PUT" || r.Header.Get("Authorization") != "Bearer private" {
-				t.Fatal("wrong request")
-			}
-			var payload struct{ Include, Exclude, Require []map[string]any }
-			if json.NewDecoder(r.Body).Decode(&payload) != nil {
-				t.Fatal("invalid payload")
-			}
-			if len(emails) == 0 {
-				if len(payload.Include) != 1 || payload.Include[0]["everyone"] == nil || len(payload.Exclude) != 1 || payload.Exclude[0]["everyone"] == nil {
-					t.Fatal("empty group not deny-all", payload)
-				}
-			} else {
-				if len(payload.Include) != len(emails) || len(payload.Exclude) != 0 {
-					t.Fatal(payload)
-				}
-				for i, email := range emails {
-					if payload.Include[i]["email"].(map[string]any)["email"] != email {
-						t.Fatal(payload)
-					}
-				}
-			}
-			if len(payload.Require) != 0 {
-				t.Fatal(payload)
-			}
-			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"success":true}`))}, nil
-		})}}
-		if err := c.Replace(context.Background(), emails); err != nil {
-			t.Fatal(err)
+
+type cloudflarePayload struct {
+	Include []map[string]any
+	Exclude []map[string]any
+	Require []map[string]any
+}
+
+func captureCloudflarePayload(t *testing.T, emails []string) cloudflarePayload {
+	t.Helper()
+	var payload cloudflarePayload
+	c := &Cloudflare{Config: Config{AccountID: "account", GroupID: "group", Token: "private"}, Client: &http.Client{Transport: transport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.String() != "https://api.cloudflare.com/client/v4/accounts/account/access/groups/group" || r.Method != "PUT" || r.Header.Get("Authorization") != "Bearer private" {
+			t.Fatal("wrong request")
+		}
+		if json.NewDecoder(r.Body).Decode(&payload) != nil {
+			t.Fatal("invalid payload")
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"success":true}`))}, nil
+	})}}
+	if err := c.Replace(context.Background(), emails); err != nil {
+		t.Fatal(err)
+	}
+	return payload
+}
+
+func TestCloudflareGroupPayload(t *testing.T) {
+	emails := []string{"one@example.com", "two@example.com"}
+	payload := captureCloudflarePayload(t, emails)
+	if len(payload.Include) != len(emails) || len(payload.Exclude) != 0 || len(payload.Require) != 0 {
+		t.Fatal(payload)
+	}
+	for i, email := range emails {
+		if payload.Include[i]["email"].(map[string]any)["email"] != email {
+			t.Fatal(payload)
 		}
 	}
+}
+
+func TestCloudflareEmptyGroupIsDenyAll(t *testing.T) {
+	payload := captureCloudflarePayload(t, nil)
+	if len(payload.Include) != 1 || payload.Include[0]["everyone"] == nil || len(payload.Exclude) != 1 || payload.Exclude[0]["everyone"] == nil || len(payload.Require) != 0 {
+		t.Fatal("empty group not deny-all", payload)
+	}
+}
+
+func TestCloudflareFailuresAreSanitized(t *testing.T) {
 	for _, tt := range []struct {
 		status int
 		body   string
