@@ -23,6 +23,7 @@ const ModeCloudflare = "cloudflare"
 const sessionCookieName = "battlefield_session"
 
 type Config struct {
+	ResolvePlayer func(context.Context, string) bool
 	Mode          string
 	Origin        string
 	Issuer        string
@@ -64,7 +65,7 @@ func NewManager(config Config) *Manager {
 	if config.Mode == ModeCloudflare {
 		config.Enabled = true
 	}
-	return &Manager{config: config, now: time.Now, cloudflare: &Cloudflare{Issuer: config.Issuer, Audience: config.Audience, Roles: config.Roles, CIClientID: config.CIClientID}}
+	return &Manager{config: config, now: time.Now, cloudflare: &Cloudflare{Issuer: config.Issuer, Audience: config.Audience, Roles: config.Roles, CIClientID: config.CIClientID, ResolvePlayer: config.ResolvePlayer}}
 }
 
 func (m *Manager) Enabled() bool {

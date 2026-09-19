@@ -5,6 +5,7 @@ const fields = {
   database: 'POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL MCP_DATABASE_URL',
   auth: 'BATTLEFIELD_AUTH_MODE BATTLEFIELD_AUTH_ENABLED BATTLEFIELD_ADMIN_USERNAME BATTLEFIELD_ADMIN_PASSWORD BATTLEFIELD_SESSION_SECRET BATTLEFIELD_AUTH_COOKIE_SECURE BATTLEFIELD_ACCESS_ISSUER BATTLEFIELD_ACCESS_AUDIENCE BATTLEFIELD_ACCESS_ROLES BATTLEFIELD_ACCESS_CI_CLIENT_ID BATTLEFIELD_PUBLIC_ORIGIN',
   ai: 'BATTLEFIELD_AGENT_SECRET BATTLEFIELD_MCP_CAPABILITY_SECRET BATTLEFIELD_CLI_ISOLATION_VERIFIED OPENAI_API_KEY OPENAI_MODEL OPENAI_PROFILE_AVAILABLE GEMINI_API_KEY GEMINI_MODEL GEMINI_PROFILE_AVAILABLE CODEX_CLI_PROFILE_AVAILABLE GEMINI_CLI_PROFILE_AVAILABLE CLAUDE_CLI_PROFILE_AVAILABLE',
+  members: 'BATTLEFIELD_MANAGED_PLAYERS BATTLEFIELD_MEMBERS_ACCOUNT_ID BATTLEFIELD_MEMBERS_GROUP_ID BATTLEFIELD_MEMBERS_API_TOKEN',
   cache: 'BATTLEFIELD_REDIS_URL',
   runtime: 'LOG_LEVEL OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT OTEL_TRACES_SAMPLER_ARG LANGFUSE_BASE_URL LANGFUSE_PROJECT_ID',
 };
@@ -49,6 +50,11 @@ function validate(values, environment) {
     if (values.get(`${provider}_PROFILE_AVAILABLE`) === 'true') {
       requireLength(`${provider}_API_KEY`); requireLength(`${provider}_MODEL`);
     }
+  }
+  const managedPlayers = values.get('BATTLEFIELD_MANAGED_PLAYERS');
+  if (managedPlayers && !['true','false'].includes(managedPlayers)) throw new Error('Invalid managed Players boolean.');
+  if (managedPlayers === 'true') {
+    if (values.get('BATTLEFIELD_AUTH_MODE') !== 'cloudflare' || !/^[a-f0-9]{32}$/.test(values.get('BATTLEFIELD_MEMBERS_ACCOUNT_ID') || '') || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(values.get('BATTLEFIELD_MEMBERS_GROUP_ID') || '') || !(values.get('BATTLEFIELD_MEMBERS_API_TOKEN') || '').trim()) throw new Error('Managed Players require Cloudflare authentication, account ID, group UUID and API token.');
   }
   const mode = values.get('BATTLEFIELD_AUTH_MODE');
   const enabled = values.get('BATTLEFIELD_AUTH_ENABLED');
@@ -120,6 +126,7 @@ function main([command, source, target, ...inputs]) {
     if (source === target) throw new Error('Extraction must not overwrite its source.');
     if (!Object.keys(fields).includes(inputs[0])) throw new Error('Unknown Secret group.');
     const defaults = {
+      members: [['BATTLEFIELD_MANAGED_PLAYERS','false']],
       runtime: [['OTEL_EXPORTER_OTLP_ENDPOINT','http://battlefield-otel-collector:4318'],['OTEL_TRACES_SAMPLER_ARG','0.1']],
       ai: [['OPENAI_API_KEY',''],['OPENAI_MODEL',''],['GEMINI_API_KEY',''],['GEMINI_MODEL',''],
         ['OPENAI_PROFILE_AVAILABLE','false'],['GEMINI_PROFILE_AVAILABLE','false'],

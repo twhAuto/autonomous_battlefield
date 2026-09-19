@@ -68,6 +68,10 @@ profiles require Developer/Admin. CLI access stays disabled until VM verificatio
 See the [launch runbook](docs/operations/limited-launch.md) for limits, backups, and
 rollout to `play.ordinalfrontier.com`.
 
+Admin → Members optionally manages Player invitations through Cloudflare email codes,
+without a deployment per invitation. See [Player invitations](docs/operations/player-invitations.md)
+for the one-time configuration and activation checks.
+
 ## Requirements
 
 - Go 1.26.5 or a compatible newer version.

@@ -315,6 +315,7 @@ kind_deploy_prepare_overlays() {
       "${runtime_dir}/deploy/overlays/local/infrastructure/ai-secret.env"
     node "${project_dir}/scripts/lib/application-env.cjs" extract "${secret_file}" "${runtime_dir}/deploy/overlays/local/infrastructure/runtime.env" runtime
     node "${project_dir}/scripts/lib/application-env.cjs" extract "${secret_file}" "${runtime_dir}/deploy/overlays/local/infrastructure/cache.env" cache
+    node "${project_dir}/scripts/lib/application-env.cjs" extract "${secret_file}" "${runtime_dir}/members.env" members
     if [[ -f "${BATTLEFIELD_AUTH_SECRET_FILE:-}" ]]; then
       node "${project_dir}/scripts/lib/application-env.cjs" extract "${BATTLEFIELD_AUTH_SECRET_FILE}" "${runtime_dir}/auth.env" auth
       staged_auth_secret_file="${runtime_dir}/auth.env"
@@ -420,6 +421,8 @@ kind_deploy_infrastructure() {
     kind_deploy_kube create secret generic battlefield-auth --namespace "${namespace}" \
       --from-env-file="${staged_auth_secret_file}" --dry-run=client -o yaml | kind_deploy_kube apply -f -
   fi
+  kind_deploy_kube create secret generic battlefield-members --namespace "${namespace}" \
+    --from-env-file="${runtime_dir}/members.env" --dry-run=client -o yaml | kind_deploy_kube apply -f -
   kind_deploy_kube rollout status statefulset/battlefield-postgres \
     --namespace "${namespace}" \
     --timeout="${rollout_timeout}"
