@@ -143,3 +143,12 @@ Production monitoring requires `BF_KUBELET_CA_FILE` in `deployment.env`; see
 Jenkins deployments maintain a private `recovery.json` beside that profile. It is
 bound to the registered cluster UID and exact verified image pair, and is not an
 application Secret or a credential to copy into Git.
+
+### Optional managed Players
+
+`BATTLEFIELD_MANAGED_PLAYERS` and `BATTLEFIELD_MEMBERS_ACCOUNT_ID`,
+`BATTLEFIELD_MEMBERS_GROUP_ID`, `BATTLEFIELD_MEMBERS_API_TOKEN` live in the private
+application `.env`. Environment extraction stages them in the separate
+`battlefield-members` Secret consumed only by API pods. Configuration delivery
+restarts the API; invitation changes after activation are stored in PostgreSQL
+and need no deployment. See [Player invitations](player-invitations.md).

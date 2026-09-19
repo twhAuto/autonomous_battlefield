@@ -360,3 +360,31 @@ Admission can return 429: 20 battles/person/day, 2 unfinished/person, 4 globally
 10 background generations/person/day. Paused battles remain unfinished. Same request
 IDs reuse admitted work when inputs and identity match. Private worker APIs use a
 separate bearer credential and server-minted request capabilities, not Access cookies.
+
+## Player membership administration
+
+The session endpoint advertises `capabilities.members` only for Admins when managed
+Players are enabled. All routes require Admin authentication and are unavailable
+in role preview.
+Mutations require the configured exact Origin and JSON for nonempty bodies.
+Managed Players must be configured; otherwise these endpoints return 503.
+Responses use `Cache-Control: no-store`.
+
+| Route | Contract |
+| --- | --- |
+| `GET /v1/admin/members` | Returns `{ members, syncError, gameUrl }`. Each member has `id`, `email`, `desiredAccess`, `version`, `syncedVersion`, `updatedAt`. |
+| `POST /v1/admin/members` | Accepts `{ "email": "friend@example.com" }`; grants/reinvites a Player, returning 202. Unknown fields are rejected. |
+| `DELETE /v1/admin/members/{id}` | Removes desired access immediately and queues Cloudflare synchronization; returns 202. |
+| `POST /v1/admin/members/retry` | Requests a retry of the dedicated group's complete desired membership; returns 202. |
+
+A 202 confirms persisted intent, not Cloudflare admission. A Player is active only
+when `desiredAccess` is true and `version == syncedVersion`; false desired access
+always denies subsequent API requests. Grants/removals with unchanged intent are
+idempotent. Email normalization trims whitespace and lowercases the address. Addresses must
+use dotted DNS domains (no address literals), a local part of at most 64 bytes,
+and a total length of at most 254 bytes.
+Malformed email/body returns 400; a configured Admin/Developer email returns 409;
+a missing member ID returns 404; persistence/configuration failures return 503.
+`syncError` is a sanitized group-level failure; automatic retries continue with
+bounded backoff. No endpoint accepts a role or returns Cloudflare credentials.
+See [Player invitations](../operations/player-invitations.md) for lifecycle and setup.

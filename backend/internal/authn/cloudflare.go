@@ -20,6 +20,7 @@ import (
 // Cloudflare verifies Access application JWTs against a fixed issuer's public keys.
 // Keys expire after an hour; refresh attempts (including unknown kids) are bounded.
 type Cloudflare struct {
+	ResolvePlayer      func(context.Context, string) bool
 	Issuer, Audience   string
 	CIClientID         string
 	Roles              map[string]Role
@@ -145,7 +146,7 @@ func (c *Cloudflare) Authenticate(r *http.Request) (Actor, bool) {
 	if reason := c.claimsFailure(claims, now); reason != "" {
 		return reject(reason)
 	}
-	actor, ok := c.actor(claims)
+	actor, ok := c.actorWithContext(r.Context(), claims)
 	if !ok {
 		return reject(c.identityFailure(claims))
 	}
@@ -160,7 +161,7 @@ type accessClaims struct {
 }
 
 // Service identities are explicitly enrolled and never inherit a human role.
-func (c *Cloudflare) actor(claims accessClaims) (Actor, bool) {
+func (c *Cloudflare) actorWithContext(ctx context.Context, claims accessClaims) (Actor, bool) {
 	if claims.CommonName != "" {
 		if c.CIClientID == "" || claims.CommonName != c.CIClientID || claims.Type != "app" || claims.Sub != "" || claims.Email != "" {
 			return Actor{}, false
@@ -169,6 +170,12 @@ func (c *Cloudflare) actor(claims accessClaims) (Actor, bool) {
 	}
 	email := strings.ToLower(strings.TrimSpace(claims.Email))
 	role := c.Roles[email]
+	if claims.Sub != "" && email != "" && c.ResolvePlayer != nil && role != Admin && role != Developer {
+		role = ""
+		if c.ResolvePlayer(ctx, email) {
+			role = Player
+		}
+	}
 	if claims.Sub == "" || email == "" || (role != Player && role != Developer && role != Admin) {
 		return Actor{}, false
 	}

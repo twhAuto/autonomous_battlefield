@@ -131,3 +131,13 @@ describe('AdminSettingsPage', () => {
     await act(async () => { finish(json(settings())) })
   })
 })
+
+it('shows Members navigation only when the session enables it', async () => {
+  vi.mocked(fetch).mockResolvedValue(json(settings()))
+  const first = renderPage()
+  await screen.findByText('Configured GPT · API')
+  expect(screen.queryByRole('link', { name: 'Members' })).not.toBeInTheDocument()
+  first.unmount()
+  render(<MemoryRouter><SessionContext.Provider value={{ enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: 'admin', role: 'admin' }, capabilities: { inspect: true, cli: true, admin: true, members: true } }}><AdminSettingsPage /></SessionContext.Provider></MemoryRouter>)
+  expect(await screen.findByRole('link', { name: 'Members' })).toHaveAttribute('href', '/admin/members')
+})

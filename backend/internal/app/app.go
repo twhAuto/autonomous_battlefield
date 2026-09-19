@@ -5,6 +5,7 @@ package app
 
 import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/admin"
+	"github.com/twh09/autonomous_battlefield/backend/internal/members"
 	"net/http"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -40,6 +41,10 @@ func NewAPIWithResultCache(db postgres.DBTX, catalog *catalog.Catalog, maxTicks 
 	return NewAPIWithGeneration(db, catalog, maxTicks, authentication, cache, generation.DefaultConfig(), registries...)
 }
 func NewAPIWithGeneration(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, generationConfig generation.Config, registries ...*ai.ProfileRegistry) *App {
+	return NewAPIWithMembers(db, catalog, maxTicks, authentication, cache, generationConfig, nil, registries...)
+}
+
+func NewAPIWithMembers(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, generationConfig generation.Config, memberStore members.Repository, registries ...*ai.ProfileRegistry) *App {
 	var profiles *ai.ProfileRegistry
 	if len(registries) > 0 {
 		profiles = registries[0]
@@ -63,7 +68,7 @@ func NewAPIWithGeneration(db postgres.DBTX, catalog *catalog.Catalog, maxTicks u
 	}
 	router := httpapi.NewRouterWithMiddleware(
 		[]httpapi.Middleware{authenticationMiddleware},
-		authn.NewRoutes(authenticationManager), factionHandler, battleHandler, generationHandler, adminHandler,
+		authn.NewRoutes(authenticationManager), factionHandler, battleHandler, generationHandler, adminHandler, &members.Handler{Store: memberStore, Origin: authentication.Origin},
 	)
 	// Tracing wraps access logging so completion logs share the request span.
 	return &App{httpHandler: telemetry.HTTPHandler("battlefield-api.http", router)}
