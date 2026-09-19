@@ -82,6 +82,7 @@ button { cursor: pointer; }
 .admin-heading h1 { margin: 14px 0 10px; font-size: clamp(46px, 6vw, 76px); line-height: 1; letter-spacing: -.055em; font-weight: 500; }
 .admin-heading p, .admin-section-heading p, .admin-model p, .admin-note { color: var(--muted); line-height: 1.6; }
 .admin-models { padding-top: 36px; }
+.admin-status { display: block; margin: 1em 0; }
 .admin-section-heading, .admin-model-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .admin-kicker { color: var(--lime); font: 500 10px 'DM Mono', monospace; letter-spacing: .17em; }
 .admin-page h2 { margin: 8px 0; font-size: 30px; font-weight: 500; }

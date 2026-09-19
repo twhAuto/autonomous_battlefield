@@ -153,15 +153,9 @@ func (s *Store) List(ctx context.Context) ([]Member, string, error) {
 // Change serializes desired-state writes on the singleton row. Remote calls never
 // hold that row lock, so removing a member does not wait on Cloudflare.
 func (s *Store) Change(ctx context.Context, actor, email, id string, grant bool) error {
-	var err error
-	if grant {
-		email, err = normalize(email)
-		if err != nil {
-			return err
-		}
-		if s.protected(email) {
-			return ErrProtected
-		}
+	email, err := s.changeEmail(email, grant)
+	if err != nil {
+		return err
 	}
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
@@ -171,7 +165,48 @@ func (s *Store) Change(ctx context.Context, actor, email, id string, grant bool)
 	if _, err = tx.Exec(ctx, "SELECT id FROM player_membership_sync WHERE id FOR UPDATE"); err != nil {
 		return err
 	}
+	change, err := s.prepareChange(ctx, tx, email, id, grant)
+	if err != nil {
+		return err
+	}
+	if !change.changed {
+		return tx.Commit(ctx)
+	}
+	action := "remove"
+	if grant {
+		action = "grant"
+	}
+	if _, err = tx.Exec(ctx, "INSERT INTO player_membership_audit(member_id,actor_id,action) VALUES($1,$2,$3)", change.id, actor, action); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, "UPDATE player_membership_sync SET version=version+1,attempts=0,next_attempt=now(),last_error='' WHERE id"); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+type preparedChange struct {
+	id      string
+	changed bool
+}
+
+func (s *Store) changeEmail(email string, grant bool) (string, error) {
+	if !grant {
+		return email, nil
+	}
+	email, err := normalize(email)
+	if err != nil {
+		return "", err
+	}
+	if s.protected(email) {
+		return "", ErrProtected
+	}
+	return email, nil
+}
+
+func (s *Store) prepareChange(ctx context.Context, tx pgx.Tx, email, id string, grant bool) (preparedChange, error) {
 	var desired bool
+	var err error
 	if grant {
 		err = tx.QueryRow(ctx, "SELECT id,desired_access FROM player_members WHERE email=$1", email).Scan(&id, &desired)
 	} else {
@@ -179,32 +214,22 @@ func (s *Store) Change(ctx context.Context, actor, email, id string, grant bool)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		if !grant {
-			return ErrNotFound
+			return preparedChange{}, ErrNotFound
 		}
 		err = tx.QueryRow(ctx, "INSERT INTO player_members(email,desired_access) VALUES($1,true) RETURNING id", email).Scan(&id)
-	} else if err == nil {
-		if s.protected(email) {
-			return ErrProtected
-		}
-		if desired == grant {
-			return tx.Commit(ctx)
-		}
-		_, err = tx.Exec(ctx, "UPDATE player_members SET desired_access=$2,version=version+1,updated_at=now() WHERE id=$1", id, grant)
+		return preparedChange{id: id, changed: true}, err
 	}
 	if err != nil {
-		return err
+		return preparedChange{}, err
 	}
-	action := "remove"
-	if grant {
-		action = "grant"
+	if s.protected(email) {
+		return preparedChange{}, ErrProtected
 	}
-	if _, err = tx.Exec(ctx, "INSERT INTO player_membership_audit(member_id,actor_id,action) VALUES($1,$2,$3)", id, actor, action); err != nil {
-		return err
+	if desired == grant {
+		return preparedChange{id: id}, nil
 	}
-	if _, err = tx.Exec(ctx, "UPDATE player_membership_sync SET version=version+1,attempts=0,next_attempt=now(),last_error='' WHERE id"); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	_, err = tx.Exec(ctx, "UPDATE player_members SET desired_access=$2,version=version+1,updated_at=now() WHERE id=$1", id, grant)
+	return preparedChange{id: id, changed: true}, err
 }
 func (s *Store) Retry(ctx context.Context, actor string) error {
 	tx, err := s.DB.Begin(ctx)

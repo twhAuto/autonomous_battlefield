@@ -4,10 +4,9 @@
 package app
 
 import (
-	"github.com/twh09/autonomous_battlefield/backend/internal/admin"
-	"github.com/twh09/autonomous_battlefield/backend/internal/members"
 	"net/http"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/admin"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	battleapi "github.com/twh09/autonomous_battlefield/backend/internal/battle/api"
@@ -19,6 +18,7 @@ import (
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
+	"github.com/twh09/autonomous_battlefield/backend/internal/members"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
@@ -27,6 +27,11 @@ import (
 // repositories, services, and handlers used by the process.
 type App struct {
 	httpHandler http.Handler
+}
+
+type MemberOptions struct {
+	Store    members.Repository
+	Profiles []*ai.ProfileRegistry
 }
 
 func NewAPI(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, registries ...*ai.ProfileRegistry) *App {
@@ -41,10 +46,11 @@ func NewAPIWithResultCache(db postgres.DBTX, catalog *catalog.Catalog, maxTicks 
 	return NewAPIWithGeneration(db, catalog, maxTicks, authentication, cache, generation.DefaultConfig(), registries...)
 }
 func NewAPIWithGeneration(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, generationConfig generation.Config, registries ...*ai.ProfileRegistry) *App {
-	return NewAPIWithMembers(db, catalog, maxTicks, authentication, cache, generationConfig, nil, registries...)
+	return NewAPIWithMembers(db, catalog, maxTicks, authentication, cache, generationConfig, MemberOptions{Profiles: registries})
 }
 
-func NewAPIWithMembers(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, generationConfig generation.Config, memberStore members.Repository, registries ...*ai.ProfileRegistry) *App {
+func NewAPIWithMembers(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, generationConfig generation.Config, options MemberOptions) *App {
+	registries := options.Profiles
 	var profiles *ai.ProfileRegistry
 	if len(registries) > 0 {
 		profiles = registries[0]
@@ -68,7 +74,7 @@ func NewAPIWithMembers(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint
 	}
 	router := httpapi.NewRouterWithMiddleware(
 		[]httpapi.Middleware{authenticationMiddleware},
-		authn.NewRoutes(authenticationManager), factionHandler, battleHandler, generationHandler, adminHandler, &members.Handler{Store: memberStore, Origin: authentication.Origin},
+		authn.NewRoutes(authenticationManager), factionHandler, battleHandler, generationHandler, adminHandler, &members.Handler{Store: options.Store, Origin: authentication.Origin},
 	)
 	// Tracing wraps access logging so completion logs share the request span.
 	return &App{httpHandler: telemetry.HTTPHandler("battlefield-api.http", router)}

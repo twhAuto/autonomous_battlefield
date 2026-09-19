@@ -12,84 +12,116 @@ import (
 	"time"
 )
 
-func TestManagedPlayersRequireVerifiedJWTAndCurrentMembership(t *testing.T) {
+type managedPlayerFixture struct {
+	t       *testing.T
+	key     *rsa.PrivateKey
+	now     time.Time
+	allowed bool
+	calls   int
+	cfg     Config
+	manager *Manager
+}
+
+func newManagedPlayerFixture(t *testing.T) *managedPlayerFixture {
+	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Now()
-	allowed := true
-	calls := 0
-	resolve := func(ctx context.Context, email string) bool {
-		calls++
-		return ctx.Err() == nil && email == "friend@example.com" && allowed
+	f := &managedPlayerFixture{t: t, key: key, now: time.Now(), allowed: true}
+	f.cfg = Config{
+		Mode: ModeCloudflare, Issuer: "https://team.cloudflareaccess.com", Audience: "game",
+		Roles: map[string]Role{"owner@example.com": Admin, "dev@example.com": Developer, "old@example.com": Player},
+		ResolvePlayer: func(ctx context.Context, email string) bool {
+			f.calls++
+			return ctx.Err() == nil && email == "friend@example.com" && f.allowed
+		},
 	}
-	cfg := Config{Mode: ModeCloudflare, Issuer: "https://team.cloudflareaccess.com", Audience: "game", Roles: map[string]Role{"owner@example.com": Admin, "dev@example.com": Developer, "old@example.com": Player}, ResolvePlayer: resolve}
-	manager := NewManager(cfg)
-	manager.cloudflare.keys = map[string]*rsa.PublicKey{"key": &key.PublicKey}
-	manager.cloudflare.fetched = now
+	f.manager = NewManager(f.cfg)
+	f.manager.cloudflare.keys = map[string]*rsa.PublicKey{"key": &key.PublicKey}
+	f.manager.cloudflare.fetched = f.now
+	return f
+}
+
+func (f *managedPlayerFixture) token(email, audience, subject string) string {
 	encode := func(v any) string { raw, _ := json.Marshal(v); return base64.RawURLEncoding.EncodeToString(raw) }
-	token := func(email, audience, subject string) string {
-		content := encode(map[string]string{"alg": "RS256", "kid": "key"}) + "." + encode(map[string]any{"iss": cfg.Issuer, "aud": audience, "sub": subject, "email": email, "iat": now.Unix(), "exp": now.Add(time.Hour).Unix()})
-		digest := sha256.Sum256([]byte(content))
-		return content + "." + signTestDigest(t, key, digest[:])
-	}
-	authenticate := func(jwt string) (Actor, bool) {
-		r := httptest.NewRequest("GET", "/v1/auth/session", nil)
-		r.Header.Set("Cf-Access-Jwt-Assertion", jwt)
-		return manager.Authenticate(r)
-	}
-	jwt := token("Friend@example.com", "game", "stable-subject")
-	actor, ok := authenticate(jwt)
-	if !ok || actor.Role != Player || actor.ID != cfg.Issuer+"|stable-subject" {
+	content := encode(map[string]string{"alg": "RS256", "kid": "key"}) + "." + encode(map[string]any{"iss": f.cfg.Issuer, "aud": audience, "sub": subject, "email": email, "iat": f.now.Unix(), "exp": f.now.Add(time.Hour).Unix()})
+	digest := sha256.Sum256([]byte(content))
+	return content + "." + signTestDigest(f.t, f.key, digest[:])
+}
+
+func (f *managedPlayerFixture) authenticate(jwt string) (Actor, bool) {
+	r := httptest.NewRequest("GET", "/v1/auth/session", nil)
+	r.Header.Set("Cf-Access-Jwt-Assertion", jwt)
+	return f.manager.Authenticate(r)
+}
+
+func TestManagedPlayersRequireCurrentMembership(t *testing.T) {
+	f := newManagedPlayerFixture(t)
+	jwt := f.token("Friend@example.com", "game", "stable-subject")
+	actor, ok := f.authenticate(jwt)
+	if !ok || actor.Role != Player || actor.ID != f.cfg.Issuer+"|stable-subject" {
 		t.Fatal(actor, ok)
 	}
-	allowed = false
-	if _, ok = authenticate(jwt); ok {
+	f.allowed = false
+	if _, ok = f.authenticate(jwt); ok {
 		t.Fatal("cached membership allowed removed player")
 	}
-	if _, ok = authenticate(token("old@example.com", "game", "old")); ok {
+	if _, ok = f.authenticate(f.token("old@example.com", "game", "old")); ok {
 		t.Fatal("static Player fallback")
 	}
-	before := calls
-	for _, bad := range []string{jwt + "x", token("friend@example.com", "other", "subject"), token("friend@example.com", "game", "")} {
-		if _, ok = authenticate(bad); ok {
+}
+
+func TestManagedPlayersVerifyJWTBeforeMembershipLookup(t *testing.T) {
+	f := newManagedPlayerFixture(t)
+	jwt := f.token("friend@example.com", "game", "stable-subject")
+	for _, bad := range []string{jwt + "x", f.token("friend@example.com", "other", "subject"), f.token("friend@example.com", "game", "")} {
+		if _, ok := f.authenticate(bad); ok {
 			t.Fatal("invalid token accepted")
 		}
 	}
-	if calls != before {
+	if f.calls != 0 {
 		t.Fatal("membership queried before verification")
 	}
+}
+
+func TestManagedPlayersPreservePrivilegedAndCIAuthentication(t *testing.T) {
+	f := newManagedPlayerFixture(t)
 	for email, role := range map[string]Role{"owner@example.com": Admin, "dev@example.com": Developer} {
-		a, ok := authenticate(token(email, "game", "privileged"))
+		a, ok := f.authenticate(f.token(email, "game", "privileged"))
 		if !ok || a.Role != role {
 			t.Fatal("privileged role changed", a)
 		}
 	}
-	if calls != before {
+	if f.calls != 0 {
 		t.Fatal("privileged auth depends on membership database")
 	}
-	manager.cloudflare.CIClientID = "service"
-	if a, ok := manager.cloudflare.actorWithContext(context.Background(), accessClaims{CommonName: "service", Type: "app"}); !ok || a.Role != CI {
+	f.manager.cloudflare.CIClientID = "service"
+	if a, ok := f.manager.cloudflare.actorWithContext(context.Background(), accessClaims{CommonName: "service", Type: "app"}); !ok || a.Role != CI {
 		t.Fatal("CI broken", a)
 	}
-	if calls != before {
+	if f.calls != 0 {
 		t.Fatal("CI queried member database")
 	}
-	for _, enabled := range []bool{true, false} {
-		if !enabled {
-			manager.config.ResolvePlayer = nil
-		}
-		r := httptest.NewRequest("GET", "/v1/auth/session", nil)
-		r.Header.Set("Cf-Access-Jwt-Assertion", token("owner@example.com", "game", "admin"))
-		w := httptest.NewRecorder()
-		NewRoutes(manager).session(w, r)
-		var session struct {
-			Capabilities map[string]bool `json:"capabilities"`
-		}
-		if json.Unmarshal(w.Body.Bytes(), &session) != nil || session.Capabilities["members"] != enabled {
-			t.Fatal("incorrect members capability", w.Body.String())
-		}
-	}
+}
 
+func TestManagedPlayerSessionCapability(t *testing.T) {
+	f := newManagedPlayerFixture(t)
+	f.assertMembersCapability(true)
+	f.manager.config.ResolvePlayer = nil
+	f.assertMembersCapability(false)
+}
+
+func (f *managedPlayerFixture) assertMembersCapability(want bool) {
+	f.t.Helper()
+	r := httptest.NewRequest("GET", "/v1/auth/session", nil)
+	r.Header.Set("Cf-Access-Jwt-Assertion", f.token("owner@example.com", "game", "admin"))
+	w := httptest.NewRecorder()
+	NewRoutes(f.manager).session(w, r)
+	var session struct {
+		Capabilities map[string]bool `json:"capabilities"`
+	}
+	if json.Unmarshal(w.Body.Bytes(), &session) != nil || session.Capabilities["members"] != want {
+		f.t.Fatal("incorrect members capability", w.Body.String())
+	}
 }
