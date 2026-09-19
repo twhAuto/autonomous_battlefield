@@ -105,7 +105,7 @@ func TestWorkerValidationAndDefaultProvider(t *testing.T) {
 	if _, err := defaultRunner(ai.ModelProfile{Runtime: "api", Provider: "unknown"}); err == nil {
 		t.Fatal("unknown provider accepted")
 	}
-	for _, profile := range []ai.ModelProfile{{Runtime: "cli", Provider: "codex-cli"}, {Runtime: "api", Provider: "openai"}, {Runtime: "api", Provider: "gemini"}} {
+	for _, profile := range []ai.ModelProfile{{Runtime: "cli", Provider: "claude-cli"}, {Runtime: "cli", Provider: "codex-cli"}, {Runtime: "api", Provider: "openai"}, {Runtime: "api", Provider: "gemini"}} {
 		if decisionRunner, err := defaultRunner(profile); err != nil || decisionRunner == nil {
 			t.Fatalf("profile=%#v err=%v", profile, err)
 		}

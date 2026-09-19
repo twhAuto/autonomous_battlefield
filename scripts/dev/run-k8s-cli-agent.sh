@@ -25,6 +25,7 @@ otel_forward_pid=""
 profiles_enabled=0
 use_codex=0
 use_gemini=0
+use_claude=0
 
 kube() {
   kubectl --context "${kube_context}" --namespace "${namespace}" "$@"
@@ -33,8 +34,9 @@ kube() {
 set_profile_flags() {
   local codex_value="$1"
   local gemini_value="$2"
+  local claude_value="$3"
   local patch
-  patch="$(printf '{"stringData":{"CODEX_CLI_PROFILE_AVAILABLE":"%s","GEMINI_CLI_PROFILE_AVAILABLE":"%s"}}' "${codex_value}" "${gemini_value}")"
+  patch="$(printf '{"stringData":{"CODEX_CLI_PROFILE_AVAILABLE":"%s","GEMINI_CLI_PROFILE_AVAILABLE":"%s","CLAUDE_CLI_PROFILE_AVAILABLE":"%s"}}' "${codex_value}" "${gemini_value}" "${claude_value}")"
   kube patch secret battlefield-ai --type merge --patch "${patch}" >/dev/null
 }
 
@@ -44,7 +46,7 @@ cleanup() {
 
   if [[ "${profiles_enabled}" == "1" ]]; then
     echo "Disabling host CLI profiles in the Kubernetes battle form..."
-    set_profile_flags false false || true
+    set_profile_flags false false false || true
     kube rollout restart deployment/battlefield-api >/dev/null 2>&1 || true
   fi
   for process_id in "${agent_pid}" "${port_forward_pid}" "${otel_forward_pid}"; do
@@ -83,11 +85,18 @@ antigravity_available() {
     && "${runtime_dir}/agent" -check-antigravity-auth >/dev/null 2>&1
 }
 
+claude_available() {
+  command -v claude >/dev/null 2>&1 \
+    && [[ "$(claude --version 2>/dev/null || true)" == '2.1.267 (Claude Code)' ]] \
+    && "${runtime_dir}/agent" -check-claude-auth >/dev/null 2>&1
+}
+
 select_profiles() {
   case "${requested_provider}" in
     auto)
       codex_available && use_codex=1
       antigravity_available && use_gemini=1
+      claude_available && use_claude=1
       ;;
     codex)
       if ! codex_available; then
@@ -103,6 +112,22 @@ select_profiles() {
       fi
       use_gemini=1
       ;;
+    claude)
+      if ! claude_available; then
+        echo "Claude Code 2.1.267 with a saved subscription login is required. Run claude auth login." >&2
+        exit 1
+      fi
+      use_claude=1
+      ;;
+    all)
+      if ! codex_available || ! antigravity_available || ! claude_available; then
+        echo "All three supported and authenticated CLIs are required." >&2
+        exit 1
+      fi
+      use_codex=1
+      use_gemini=1
+      use_claude=1
+      ;;
     both)
       if ! codex_available || ! antigravity_available; then
         echo "Both supported and authenticated Codex and Antigravity CLIs are required." >&2
@@ -112,13 +137,13 @@ select_profiles() {
       use_gemini=1
       ;;
     *)
-      echo "Usage: $0 [auto|codex|antigravity|both]" >&2
+      echo "Usage: $0 [auto|codex|antigravity|claude|both|all]" >&2
       exit 2
       ;;
   esac
-  if [[ "${use_codex}" != "1" && "${use_gemini}" != "1" ]]; then
+  if [[ "${use_codex}" != "1" && "${use_gemini}" != "1" && "${use_claude}" != "1" ]]; then
     echo "No supported authenticated subscription CLI was found." >&2
-    echo "Run 'codex login' or start 'agy' and complete Google sign-in." >&2
+    echo "Run 'codex login', 'claude auth login', or start 'agy' and complete Google sign-in." >&2
     exit 1
   fi
 }
@@ -142,6 +167,17 @@ write_agent_config() {
       printf '      maxSteps: 3\n'
       printf '      enabled: true\n'
     fi
+    if [[ "${use_claude}" == "1" ]]; then
+      printf '    - id: claude-subscription-local\n'
+      printf '      displayName: Claude subscription\n'
+      printf '      provider: claude-cli\n'
+      printf '      runtime: cli\n'
+      printf '      model: sonnet\n'
+      printf '      scope: local\n'
+      printf '      supportedVersionPrefix: "2.1.267 "\n'
+      printf '      maxSteps: 3\n'
+      printf '      enabled: true\n'
+    fi
     if [[ "${use_gemini}" == "1" ]]; then
       printf '    - id: gemini-subscription-local\n'
       printf '      displayName: Antigravity / Google subscription\n'
@@ -157,22 +193,38 @@ write_agent_config() {
   chmod 600 "${runtime_dir}/config.yaml"
 }
 
+show_forward_error() {
+  local log_file="$1"
+  if [[ -n "${log_file}" && -s "${log_file}" ]]; then
+    tail -n 30 -- "${log_file}" >&2
+    if grep -Fq 'address already in use' "${log_file}"; then
+      echo "A local port is already occupied. Stop the existing bridge or set HOST_MCP_PORT (and HOST_AGENT_HEALTH_PORT for another agent). Collector ports use HOST_OTEL_PORT and HOST_OTEL_HEALTH_PORT." >&2
+    fi
+  fi
+}
+
 wait_for_endpoint() {
   local url="$1"
   local process_id="$2"
   local label="$3"
+  local log_file="${4:-}"
   # Allow the bounded subscription authentication probe to finish at startup.
   for _ in {1..150}; do
-    if curl --fail --silent --show-error --output /dev/null "${url}" 2>/dev/null; then
-      return
-    fi
+    # A different listener must not make a failed port-forward appear healthy.
     if ! kill -0 "${process_id}" 2>/dev/null; then
       echo "${label} exited before becoming ready." >&2
+      show_forward_error "${log_file}"
       return 1
+    fi
+    if curl --noproxy '*' --connect-timeout 1 --max-time 1 --fail --silent --show-error --output /dev/null "${url}" 2>/dev/null; then
+      if kill -0 "${process_id}" 2>/dev/null; then
+        return
+      fi
     fi
     sleep 0.2
   done
   echo "${label} did not become ready." >&2
+  show_forward_error "${log_file}"
   return 1
 }
 
@@ -190,7 +242,8 @@ if [[ ! "${mcp_port}" =~ ^[0-9]+$ || ! "${health_port}" =~ ^[0-9]+$ ]]; then
 fi
 
 kube get deployment battlefield-api >/dev/null
-kube get deployment battlefield-mcp >/dev/null
+echo "Waiting for the Kubernetes MCP deployment to become ready..."
+kube rollout status deployment/battlefield-mcp --timeout=120s
 encoded_secret="$(kube get secret battlefield-ai -o 'jsonpath={.data.BATTLEFIELD_AGENT_SECRET}')"
 if [[ -z "${encoded_secret}" ]]; then
   echo "The battlefield-ai capability secret is missing." >&2
@@ -205,7 +258,7 @@ write_agent_config
 echo "Forwarding Kubernetes MCP to http://127.0.0.1:${mcp_port}/mcp..."
 kube port-forward --address 127.0.0.1 service/battlefield-mcp "${mcp_port}:8084" >"${runtime_dir}/port-forward.log" 2>&1 &
 port_forward_pid=$!
-wait_for_endpoint "http://127.0.0.1:${mcp_port}/healthz" "${port_forward_pid}" "MCP port-forward"
+wait_for_endpoint "http://127.0.0.1:${mcp_port}/healthz" "${port_forward_pid}" "MCP port-forward" "${runtime_dir}/port-forward.log"
 
 LANGFUSE_ENABLED="$(battlefield_env_langfuse_enabled)"
 if [[ "${LANGFUSE_ENABLED}" == 1 ]]; then
@@ -213,7 +266,7 @@ if [[ "${LANGFUSE_ENABLED}" == 1 ]]; then
   otel_health_port="${HOST_OTEL_HEALTH_PORT:-14333}"
   kube port-forward --address 127.0.0.1 service/battlefield-otel-collector "${otel_port}:4318" "${otel_health_port}:13133" >"${runtime_dir}/otel-forward.log" 2>&1 &
   otel_forward_pid=$!
-  wait_for_endpoint "http://127.0.0.1:${otel_health_port}/" "${otel_forward_pid}" "Collector port-forward"
+  wait_for_endpoint "http://127.0.0.1:${otel_health_port}/" "${otel_forward_pid}" "Collector port-forward" "${runtime_dir}/otel-forward.log"
   export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:${otel_port}"
 fi
 
@@ -224,9 +277,11 @@ wait_for_endpoint "http://127.0.0.1:${health_port}/healthz" "${agent_pid}" "Host
 
 codex_flag=false
 gemini_flag=false
+claude_flag=false
 [[ "${use_codex}" == "1" ]] && codex_flag=true
 [[ "${use_gemini}" == "1" ]] && gemini_flag=true
-set_profile_flags "${codex_flag}" "${gemini_flag}"
+[[ "${use_claude}" == "1" ]] && claude_flag=true
+set_profile_flags "${codex_flag}" "${gemini_flag}" "${claude_flag}"
 profiles_enabled=1
 kube rollout restart deployment/battlefield-api >/dev/null
 kube rollout status deployment/battlefield-api --timeout=120s

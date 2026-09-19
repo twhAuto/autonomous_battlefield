@@ -207,7 +207,8 @@ The production migration principal therefore needs `CREATEROLE` for the first
 application of migration `00004`; the MCP workload login itself must not have
 that privilege.
 
-The `CODEX_CLI_PROFILE_AVAILABLE` and `GEMINI_CLI_PROFILE_AVAILABLE` values
+The `CODEX_CLI_PROFILE_AVAILABLE`, `GEMINI_CLI_PROFILE_AVAILABLE`, and
+`CLAUDE_CLI_PROFILE_AVAILABLE` values
 should normally remain `false` in the secret file. For a local kind battle,
 `run-k8s-cli-agent.sh` manages these flags while an authenticated host worker is
 connected:
@@ -216,7 +217,10 @@ connected:
 ./run-k8s-cli-agent.sh codex
 ```
 
-The helper supports `auto`, `codex`, `antigravity`, and `both` (`gemini` is a compatibility alias).
+The helper supports `auto`, `codex`, `antigravity`, `claude`, `both`, and `all`
+(`gemini` is a compatibility alias). `both` retains Codex plus Antigravity;
+`all` requires all three CLIs. `auto` selects all available authenticated CLIs.
+Follow [Claude setup](claude-cli.md) for `./run-k8s-cli-agent.sh claude`.
 The retained `GEMINI_CLI_PROFILE_AVAILABLE` flag now controls Antigravity.
 Follow [Antigravity setup](antigravity-cli.md) to install and authenticate it. It verifies the
 tested CLI version and existing host login, forwards only the internal MCP
@@ -225,7 +229,8 @@ the connected profiles selectable through the API. No CLI authentication
 directory or provider credential is mounted into the cluster. Keep the helper
 running for the duration of the battle and press Ctrl+C afterward. The generated
 host-agent profile passes `--model gpt-5.6-luna` to Codex or `--model gemini-3.7-flash-medium` to
-Antigravity, matching the allowlisted profile metadata deployed to the API.
+Antigravity, or `--model sonnet` to Claude, matching the allowlisted profile
+metadata deployed to the API.
 
 Do not reuse these credentials outside the disposable local cluster.
 

@@ -92,6 +92,16 @@ data:
           scope: local
           maxSteps: 3
           enabled: true
+        - id: claude-subscription-local
+          displayName: Claude subscription
+          provider: claude-cli
+          runtime: cli
+          model: sonnet
+          scope: local
+          supportedVersionPrefix: "2.1.267 "
+          availabilityEnvironmentVariable: CLAUDE_CLI_PROFILE_AVAILABLE
+          maxSteps: 3
+          enabled: true
         - id: gemini-subscription-local
           displayName: Antigravity / Google subscription
           provider: antigravity-cli

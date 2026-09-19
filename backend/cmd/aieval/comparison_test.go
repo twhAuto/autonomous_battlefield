@@ -45,7 +45,7 @@ func TestComparisonLiveGatesAndFactories(t *testing.T) {
 	}
 	t.Setenv("OPENAI_API_KEY", "synthetic")
 	t.Setenv("GEMINI_API_KEY", "synthetic")
-	for _, provider := range []string{"openai", "gemini", "codex-cli", "antigravity-cli", "scripted"} {
+	for _, provider := range []string{"openai", "gemini", "codex-cli", "antigravity-cli", "claude-cli", "scripted"} {
 		v.Provider = provider
 		got, err := makeComparisonVariant(v, prices)
 		testutil.Require(t, !(err != nil || got.NewRunner() == nil), func() { t.Fatalf("factory %s: %v", provider, err) })

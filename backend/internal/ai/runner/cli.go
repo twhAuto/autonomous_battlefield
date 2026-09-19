@@ -78,6 +78,13 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 		args = withModel(args, r.Model)
 		environment = replaceEnvironment(cliEnvironment(), "CODEX_WORKSPACE", workspace)
 		environment = replaceEnvironment(environment, "BATTLEFIELD_MCP_AUTHORIZATION", "Bearer "+session.CapabilityToken)
+	case "claude-cli":
+		name = "claude"
+		args, err = claudeArguments(temporary, prompt, r.Model, session)
+		if err != nil {
+			return ai.DecisionResult{ErrorCategory: "cli_isolation"}, err
+		}
+		environment = clienv.ClaudeEnvironment()
 	case "antigravity-cli":
 		name = "agy"
 		payload, contextErr := r.prefetchContext(ctx, session)
@@ -99,6 +106,8 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 	output, err := executor.Run(ctx, name, args, environment, workspace)
 	if r.Provider == "antigravity-cli" {
 		result, runErr = antigravityResult(output)
+	} else if r.Provider == "claude-cli" {
+		result, runErr = claudeResult(output)
 	} else {
 		result, runErr = codexResult(output)
 	}

@@ -109,6 +109,10 @@ See [model execution](docs/design/system-architecture.md#6-model-execution) for
 the execution contract and isolation, and [Antigravity setup](docs/operations/antigravity-cli.md)
 for its authentication checks.
 
+Claude Code is also available as a subscription CLI controller. Follow
+[Claude CLI setup](docs/operations/claude-cli.md), then run
+`./run-k8s-cli-agent.sh claude` (or `auto` to select all available CLIs).
+
 For battles in local Kubernetes, keep `./run-k8s-cli-agent.sh codex` running in a
 second terminal. The helper also accepts `antigravity`, `both`, or `auto`;
 [deployment setup](docs/operations/deployment.md#1-prepare-private-dev-secret-files)

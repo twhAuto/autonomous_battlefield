@@ -28,6 +28,7 @@ type profileRegistryPurpose uint8
 const (
 	profileExecutor profileRegistryPurpose = iota
 	profileCatalog
+	claudeCLIProvider      = "claude-cli"
 	codexCLIProvider       = "codex-cli"
 	antigravityCLIProvider = "antigravity-cli"
 )
@@ -129,7 +130,7 @@ func evaluateExternalCLIProfile(profile ModelProfile, purpose profileRegistryPur
 		profile.UnavailableReason = "host CLI agent is not connected"
 		return profile
 	}
-	if profile.Runtime != "cli" || (profile.Provider != codexCLIProvider && profile.Provider != antigravityCLIProvider) || strings.TrimSpace(profile.SupportedVersionPrefix) == "" {
+	if profile.Runtime != "cli" || (profile.Provider != codexCLIProvider && profile.Provider != antigravityCLIProvider && profile.Provider != claudeCLIProvider) || strings.TrimSpace(profile.SupportedVersionPrefix) == "" {
 		profile.UnavailableReason = "invalid external CLI profile configuration"
 		return profile
 	}
@@ -164,7 +165,7 @@ func evaluateAPIProfile(environment string, profile ModelProfile) ModelProfile {
 }
 
 func evaluateLocalCLIProfile(profile ModelProfile) ModelProfile {
-	binary := map[string]string{codexCLIProvider: "codex", antigravityCLIProvider: "agy"}[profile.Provider]
+	binary := map[string]string{claudeCLIProvider: "claude", codexCLIProvider: "codex", antigravityCLIProvider: "agy"}[profile.Provider]
 	if binary == "" {
 		profile.UnavailableReason = "unsupported CLI provider"
 		return profile
@@ -182,6 +183,13 @@ func evaluateLocalCLIProfile(profile ModelProfile) ModelProfile {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if err := clienv.CheckAntigravityAuth(ctx); err != nil {
+			profile.UnavailableReason = err.Error()
+			return profile
+		}
+	} else if profile.Provider == claudeCLIProvider {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := clienv.CheckClaudeAuth(ctx); err != nil {
 			profile.UnavailableReason = err.Error()
 			return profile
 		}
