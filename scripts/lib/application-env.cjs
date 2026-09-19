@@ -73,6 +73,11 @@ function validate(values, environment) {
       if (!['admin','developer','player'].includes(role) || !Array.isArray(emails)) throw new Error('Invalid Access role assignment.');
       for (const email of emails) {
         if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || seen.has(email.toLowerCase())) throw new Error('Invalid or duplicate Access identity.');
+        if (managedPlayers === 'true' && role === 'player') {
+          const at = email.lastIndexOf('@');
+          const domain = email.slice(at + 1).toLowerCase();
+          if (email.length > 254 || at > 64 || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(domain)) throw new Error('Invalid managed Player email.');
+        }
         seen.add(email.toLowerCase());
       }
     }

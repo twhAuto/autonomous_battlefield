@@ -7,7 +7,7 @@ export interface AuthSession {
   enabled: boolean
   authenticated: boolean
   mode?: string
-  capabilities?: { inspect: boolean; cli: boolean; admin: boolean }
+  capabilities?: { inspect: boolean; cli: boolean; admin: boolean; members?: boolean }
   actor?: { id: string; email?: string; role?: 'player' | 'developer' | 'admin' }
 }
 

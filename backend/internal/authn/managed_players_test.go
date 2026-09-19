@@ -76,4 +76,20 @@ func TestManagedPlayersRequireVerifiedJWTAndCurrentMembership(t *testing.T) {
 	if calls != before {
 		t.Fatal("CI queried member database")
 	}
+	for _, enabled := range []bool{true, false} {
+		if !enabled {
+			manager.config.ResolvePlayer = nil
+		}
+		r := httptest.NewRequest("GET", "/v1/auth/session", nil)
+		r.Header.Set("Cf-Access-Jwt-Assertion", token("owner@example.com", "game", "admin"))
+		w := httptest.NewRecorder()
+		NewRoutes(manager).session(w, r)
+		var session struct {
+			Capabilities map[string]bool `json:"capabilities"`
+		}
+		if json.Unmarshal(w.Body.Bytes(), &session) != nil || session.Capabilities["members"] != enabled {
+			t.Fatal("incorrect members capability", w.Body.String())
+		}
+	}
+
 }

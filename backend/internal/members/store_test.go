@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -273,4 +274,59 @@ func TestSyncRecoveryAfterAmbiguousResponse(t *testing.T) {
 	runCtx, cancel := context.WithCancel(ctx)
 	cancel()
 	s.Run(runCtx)
+}
+
+func TestPrivilegePromotionCannotRestoreOldInvitation(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	must(t, s.Reconcile(ctx))
+	seed := member(t, s, "seed@example.com")
+	// A new replica loads the promoted role, even if the operator missed the
+	// documented remove-before-promotion step. Initialization tombstones it.
+	promoted := &Store{DB: s.DB, Roles: map[string]authn.Role{seed.Email: authn.Admin}, Writer: s.Writer}
+	must(t, promoted.Initialize(ctx))
+	must(t, promoted.Initialize(ctx))
+	var desired bool
+	var audits int
+	must(t, s.DB.QueryRow(ctx, "SELECT desired_access FROM player_members WHERE id=$1", seed.ID).Scan(&desired))
+	must(t, s.DB.QueryRow(ctx, "SELECT count(*) FROM player_membership_audit WHERE member_id=$1 AND action='remove' AND actor_id='configuration'", seed.ID).Scan(&audits))
+	if desired || audits != 1 {
+		t.Fatal("promotion did not durably retire Player invitation", desired, audits)
+	}
+	// Another old replica or later offboarding must never resurrect it.
+	must(t, s.Initialize(ctx))
+	if s.Allowed(ctx, seed.Email) {
+		t.Fatal("role removal restored player")
+	}
+	promoted.Writer = groupFunc(func(_ context.Context, emails []string) error {
+		if len(emails) != 0 {
+			t.Error("promoted member in group", emails)
+		}
+		return nil
+	})
+	must(t, promoted.Reconcile(ctx))
+	offboarded := &Store{DB: s.DB, Roles: map[string]authn.Role{}, Writer: promoted.Writer}
+	must(t, offboarded.Initialize(ctx))
+	must(t, offboarded.Retry(ctx, "admin"))
+	must(t, offboarded.Reconcile(ctx))
+	if offboarded.Allowed(ctx, seed.Email) || member(t, offboarded, seed.Email).Desired {
+		t.Fatal("offboarding restored invitation")
+	}
+	must(t, offboarded.Change(ctx, "admin", seed.Email, "", true))
+	if offboarded.Allowed(ctx, seed.Email) {
+		t.Fatal("explicit reinvite bypassed synchronization")
+	}
+}
+
+func TestRejectNonConventionalEmailDomains(t *testing.T) {
+	for _, email := range []string{"user@[10.0.0.1]", "user@-bad.example", "user@bad-.example", "user@bad..example", "user@" + strings.Repeat("a", 64) + ".com", strings.Repeat("a", 65) + "@example.com"} {
+		if _, err := normalize(email); !errors.Is(err, ErrInvalid) {
+			t.Fatal("unsupported email accepted", email)
+		}
+	}
+	for _, email := range []string{"friend+game@example.com", "player@sub.example.co.uk"} {
+		if got, err := normalize(email); err != nil || got != email {
+			t.Fatal(got, err)
+		}
+	}
 }

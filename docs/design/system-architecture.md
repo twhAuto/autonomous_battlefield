@@ -1260,7 +1260,9 @@ limit. No usage accounting or automatic merge is added.
 Optional Admin → Members routes persist Player grants/removals and audit events in
 PostgreSQL. Migration 00013 adds `player_members`, `player_membership_sync`, and
 `player_membership_audit`. The singleton imports configured Players once, retaining
-removed-member tombstones across restarts. Admin/Developer roles and CI identities
+removed-member tombstones across restarts. Every initialization also durably
+revokes and audits prior Player invitations for configured privileged identities,
+so subsequent privileged-role removal cannot resurrect Player access. Admin/Developer roles and CI identities
 continue through their existing authentication paths; membership cannot elevate roles.
 After signature/issuer/audience/time validation, Player authentication reads current
 desired access and confirmed membership version with a two-second deadline and no

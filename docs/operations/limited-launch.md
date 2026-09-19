@@ -2,7 +2,8 @@
 
 The chosen application hostname is **play.ordinalfrontier.com**, under Access team
 **ordinalfrontier-lab**. Start with the owner's Google identity only. Application
-roles are private operator configuration, never a committed email list. This
+privileged roles are private operator configuration; optional managed Player
+invitations live in PostgreSQL. No email list is committed to Git. This
 runbook describes the implemented deployment path; it does not certify that a
 live tunnel, firewall, or VM has been provisioned.
 

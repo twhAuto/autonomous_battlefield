@@ -55,7 +55,8 @@ Cloudflare references: [OTP setup](https://developers.cloudflare.com/cloudflare-
 
 ## Everyday use
 
-Open **Admin → Members**, enter an email and select **Grant access**. Once the row
+The Members link appears only when the authenticated Admin session reports managed
+Players enabled. Open **Admin → Members**, enter an email and select **Grant access**. Once the row
 says **Ready to play · Cloudflare synchronized**, copy and share the game link.
 The invitee requests a code when visiting; no password or application signup is
 required. Only Players can be managed here. Repeating an unchanged grant or
@@ -69,7 +70,11 @@ may finish; accepted battles and generation jobs continue. Ownership and game
 history are retained. Reinviting the same email waits for fresh synchronization;
 ownership still follows the verified Cloudflare `issuer|subject`, not the email.
 
-Admin/Developer emails cannot be invited, removed, or assigned a role here. Before
+Admin/Developer emails cannot be invited, removed, or assigned a role here. On
+every managed API startup, any prior active Player invitation for a configured
+Admin/Developer is permanently revoked and audited before readiness. Removing
+that privileged role later does not restore its old Player access; a new explicit
+invitation is required. Before
 promoting a former Player through operator configuration, remove their invitation
 and wait for Cloudflare synchronization, then configure the privileged MFA policy
 and role. Do not give privileged identities the email-code-only Player policy.
@@ -89,10 +94,15 @@ Removed Players remain denied during outages; new Players remain pending.
 
 For errors, check the configured account/group IDs, token expiry/permissions, and
 API network access to `https://api.cloudflare.com`. API logs emit
-`player_members_sync_failed` without credentials or Cloudflare response bodies.
+`player_members_sync_failed` with a sanitized HTTP status or transport/database/timeout
+category, without credentials or Cloudflare response bodies. Expected concurrent-edit
+serialization retries use debug-level `player_members_sync_retry`.
 Admin/Developer authentication remains available independently of the membership
 lookup. Player lookup failures deny access; they never fall back to static roles.
-Restarting recovers pending work and never repeats the initial import or deletes
+Managed configuration, including imported Player email syntax/length, is validated
+before opening the API database pool; invalid configuration fails startup with a
+setting-level error and does not log an address. Domains must use dotted DNS names,
+not address literals. Restarting recovers pending work and never repeats the initial import or deletes
 removed-member records. A request timeout may have updated Cloudflare remotely;
 the next attempt repairs the complete list before activating pending members.
 

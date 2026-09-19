@@ -88,6 +88,11 @@ test('managed Player settings require complete Cloudflare config and isolate its
   values.set('BATTLEFIELD_MEMBERS_GROUP_ID','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
   values.set('BATTLEFIELD_MEMBERS_API_TOKEN','private-token');
   validate(values,'production');
+  for (const email of ['user@[10.0.0.1]', 'a'.repeat(65)+'@example.com']) {
+    values.set('BATTLEFIELD_ACCESS_ROLES',JSON.stringify({admin:['owner@example.com'],player:[email]}));
+    assert.throws(()=>validate(values,'production'),/managed Player email/);
+  }
+  values.set('BATTLEFIELD_ACCESS_ROLES','{"admin":["owner@example.com"]}');
   values.set('BATTLEFIELD_MANAGED_PLAYERS','yes');
   assert.throws(()=>validate(values,'production'),/boolean/);
   values.set('BATTLEFIELD_MANAGED_PLAYERS','true');

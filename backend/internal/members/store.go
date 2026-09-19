@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/mail"
+	"regexp"
 	"strings"
 	"time"
 
@@ -33,14 +34,22 @@ type Member struct {
 func (s *Store) protected(email string) bool {
 	return s.Roles[email] == authn.Admin || s.Roles[email] == authn.Developer
 }
+
+var emailDomain = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$`)
+
 func normalize(email string) (string, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	parsed, err := mail.ParseAddress(email)
-	if err != nil || parsed.Address != email || len(email) > 254 || strings.ContainsAny(email, "\r\n") || !strings.Contains(strings.SplitN(email, "@", 2)[1], ".") {
+	if err != nil || parsed.Address != email || len(email) > 254 || strings.ContainsAny(email, "\r\n") {
+		return "", ErrInvalid
+	}
+	at := strings.LastIndexByte(email, '@')
+	if at < 1 || at > 64 || !emailDomain.MatchString(email[at+1:]) {
 		return "", ErrInvalid
 	}
 	return email, nil
 }
+
 func rollback(tx pgx.Tx) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -56,6 +65,11 @@ func (s *Store) Initialize(ctx context.Context) error {
 	defer rollback(tx)
 	var initialized bool
 	if err = tx.QueryRow(ctx, "SELECT initialized FROM player_membership_sync WHERE id FOR UPDATE").Scan(&initialized); err != nil {
+		return err
+	}
+	// Configured privileged identities must leave a durable revocation behind.
+	// Filtering alone would restore an old invitation when a role is removed later.
+	if err = s.retirePrivileged(ctx, tx); err != nil {
 		return err
 	}
 	if initialized {
@@ -82,6 +96,27 @@ func (s *Store) Initialize(ctx context.Context) error {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func (s *Store) retirePrivileged(ctx context.Context, tx pgx.Tx) error {
+	emails := []string{}
+	for email := range s.Roles {
+		if s.protected(email) {
+			emails = append(emails, email)
+		}
+	}
+	result, err := tx.Exec(ctx, `WITH removed AS (
+ UPDATE player_members SET desired_access=false,version=version+1,updated_at=now()
+ WHERE email=ANY($1::text[]) AND desired_access RETURNING id)
+ INSERT INTO player_membership_audit(member_id,actor_id,action)
+ SELECT id,'configuration','remove' FROM removed`, emails)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() > 0 {
+		_, err = tx.Exec(ctx, "UPDATE player_membership_sync SET version=version+1,next_attempt=now(),attempts=0,last_error='' WHERE id")
+	}
+	return err
 }
 
 func (s *Store) Allowed(ctx context.Context, email string) bool {

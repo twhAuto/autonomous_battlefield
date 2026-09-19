@@ -1062,7 +1062,8 @@ Claude to the shared `AGENTS.md` rules. See the
 `backend/internal/members` contains the PostgreSQL membership/audit store, bounded
 Cloudflare group client, background reconciler and Admin-only HTTP routes. Its
 integration tests use isolated schemas through `TEST_DATABASE_URL` and exercise
-replica contention, concurrent removal/reinvitation, one-time import and recovery.
+replica contention, concurrent removal/reinvitation, one-time import, promotion/
+offboarding and recovery.
 Migration 00013 persists membership versions, removed records and synchronization
 backoff. API startup initializes the store before readiness and cancels its worker
 before closing the pool. The authentication package accepts a Player resolver only
@@ -1070,7 +1071,7 @@ after verifying the Access JWT; privileged and CI identities keep their existing
 
 `frontend/src/features/admin/pages/MembersPage.tsx` provides email invitations,
 removal, retry and a copyable game link with five-second status polling. App routing
-exposes it only to Admins outside preview; the backend permission registry independently
+exposes it only to Admins with the session members capability, outside preview; the backend permission registry independently
 enforces every endpoint. Feature API and component tests cover the full flow.
 The shared application environment parser extracts a separate members Secret consumed
 only by API pods. See [Player invitations](../operations/player-invitations.md).

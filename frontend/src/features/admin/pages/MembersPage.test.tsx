@@ -95,9 +95,9 @@ it('polls synchronization without overlapping requests and stops after unmount',
 
 it('exposes the members route to Admins and never loads it for Players or Developers', async () => {
   vi.mocked(fetch).mockResolvedValue(json({ members: [], gameUrl: 'https://game.example', syncError: '' }))
-  const view = render(<MemoryRouter initialEntries={['/admin/members']}><App initialSession={{ authenticated: true, enabled: true, mode: 'cloudflare', actor: { id: 'owner', role: 'admin' } }} /></MemoryRouter>)
+  const view = render(<MemoryRouter initialEntries={['/admin/members']}><App initialSession={{ authenticated: true, enabled: true, mode: 'cloudflare', actor: { id: 'owner', role: 'admin' }, capabilities: { inspect: true, cli: true, admin: true, members: true } }} /></MemoryRouter>)
   await screen.findByRole('heading', { name: 'Members' }); view.unmount()
-  for (const role of ['player', 'developer'] as const) {
+  for (const role of ['player', 'developer', 'admin'] as const) {
     vi.mocked(fetch).mockClear()
     const other = render(<MemoryRouter initialEntries={['/admin/members']}><App initialSession={{ authenticated: true, enabled: true, mode: 'cloudflare', actor: { id: 'someone', role } }} /></MemoryRouter>)
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Members' })).not.toBeInTheDocument())

@@ -94,6 +94,10 @@ func parseOptions(arguments []string) (cliOptions, error) {
 }
 
 func startServer(configuration config.Config) error {
+	memberConfig, err := members.LoadConfig(configuration.Auth.Roles)
+	if err != nil {
+		return err
+	}
 	shutdownSignal, stop := signal.NotifyContext(
 		context.Background(),
 		syscall.SIGINT,
@@ -158,10 +162,6 @@ func startServer(configuration config.Config) error {
 		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
 	}
 	defer cache.Close()
-	memberConfig, err := members.LoadConfig()
-	if err != nil {
-		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
-	}
 	var memberStore members.Repository
 	if memberConfig.Enabled {
 		store := &members.Store{DB: db, Roles: configuration.Auth.Roles, Writer: &members.Cloudflare{Config: memberConfig}}

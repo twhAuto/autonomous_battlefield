@@ -18,6 +18,26 @@ type Cloudflare struct {
 	Client *http.Client
 }
 
+// remoteError contains only fixed categories and an HTTP status, never a URL,
+// credential, response body or underlying transport error.
+type remoteError struct {
+	category string
+	status   int
+}
+
+func (e *remoteError) Error() string {
+	switch e.category {
+	case "http":
+		return fmt.Sprintf("Cloudflare returned HTTP %d", e.status)
+	case "transport":
+		return "Cloudflare request failed; retry pending"
+	case "request":
+		return "Cloudflare request configuration invalid"
+	default:
+		return "Cloudflare did not confirm the group update"
+	}
+}
+
 // Replace touches only the configured dedicated group, never Access policies or sessions.
 func (c *Cloudflare) Replace(ctx context.Context, emails []string) error {
 	include := []any{}
@@ -32,7 +52,7 @@ func (c *Cloudflare) Replace(ctx context.Context, emails []string) error {
 	raw, _ := json.Marshal(map[string]any{"name": "Battlefield managed Players", "include": include, "exclude": exclude, "require": []any{}})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, "https://api.cloudflare.com/client/v4/accounts/"+c.Config.AccountID+"/access/groups/"+c.Config.GroupID, bytes.NewReader(raw))
 	if err != nil {
-		return fmt.Errorf("Cloudflare request configuration invalid")
+		return &remoteError{category: "request"}
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Config.Token)
 	req.Header.Set("Content-Type", "application/json")
@@ -40,21 +60,24 @@ func (c *Cloudflare) Replace(ctx context.Context, emails []string) error {
 	if c.Client != nil {
 		*client = *c.Client
 	}
+	if client.Timeout <= 0 || client.Timeout > 10*time.Second {
+		client.Timeout = 10 * time.Second
+	}
 	// Never forward the credential through a redirect, including same-host redirects.
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("Cloudflare request failed; retry pending")
+		return &remoteError{category: "transport"}
 	}
 	defer resp.Body.Close()
 	var result struct {
 		Success bool `json:"success"`
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Cloudflare returned HTTP %d", resp.StatusCode)
+		return &remoteError{category: "http", status: resp.StatusCode}
 	}
 	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result) != nil || !result.Success {
-		return fmt.Errorf("Cloudflare did not confirm the group update")
+		return &remoteError{category: "response"}
 	}
 	return nil
 }

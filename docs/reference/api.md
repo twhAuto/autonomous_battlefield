@@ -363,7 +363,9 @@ separate bearer credential and server-minted request capabilities, not Access co
 
 ## Player membership administration
 
-All routes require Admin authentication and are unavailable in role preview.
+The session endpoint advertises `capabilities.members` only for Admins when managed
+Players are enabled. All routes require Admin authentication and are unavailable
+in role preview.
 Mutations require the configured exact Origin and JSON for nonempty bodies.
 Managed Players must be configured; otherwise these endpoints return 503.
 Responses use `Cache-Control: no-store`.
@@ -378,7 +380,9 @@ Responses use `Cache-Control: no-store`.
 A 202 confirms persisted intent, not Cloudflare admission. A Player is active only
 when `desiredAccess` is true and `version == syncedVersion`; false desired access
 always denies subsequent API requests. Grants/removals with unchanged intent are
-idempotent. Email normalization trims whitespace and lowercases the address.
+idempotent. Email normalization trims whitespace and lowercases the address. Addresses must
+use dotted DNS domains (no address literals), a local part of at most 64 bytes,
+and a total length of at most 254 bytes.
 Malformed email/body returns 400; a configured Admin/Developer email returns 409;
 a missing member ID returns 404; persistence/configuration failures return 503.
 `syncError` is a sanitized group-level failure; automatic retries continue with

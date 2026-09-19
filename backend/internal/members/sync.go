@@ -2,11 +2,12 @@ package members
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Reconcile uses a transaction advisory lock across API replicas. Repeatable-read
@@ -88,12 +89,27 @@ func (s *Store) Run(ctx context.Context) {
 			return
 		}
 		if err := s.Reconcile(ctx); err != nil && ctx.Err() == nil {
-			slog.Warn("player_members_sync_failed", "reason", fmt.Sprintf("%T", err))
+			logSyncFailure(err)
 		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
+	}
+}
+
+func logSyncFailure(err error) {
+	var remote *remoteError
+	var database *pgconn.PgError
+	switch {
+	case errors.As(err, &remote):
+		slog.Warn("player_members_sync_failed", "reason", remote.category, "http_status", remote.status, "detail", remote.Error())
+	case errors.As(err, &database) && database.Code == "40001":
+		slog.Debug("player_members_sync_retry", "reason", "concurrent_membership_change")
+	case errors.Is(err, context.DeadlineExceeded):
+		slog.Warn("player_members_sync_failed", "reason", "deadline_exceeded")
+	default:
+		slog.Warn("player_members_sync_failed", "reason", "database_unavailable")
 	}
 }

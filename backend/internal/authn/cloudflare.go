@@ -161,9 +161,6 @@ type accessClaims struct {
 }
 
 // Service identities are explicitly enrolled and never inherit a human role.
-func (c *Cloudflare) actor(claims accessClaims) (Actor, bool) {
-	return c.actorWithContext(context.Background(), claims)
-}
 func (c *Cloudflare) actorWithContext(ctx context.Context, claims accessClaims) (Actor, bool) {
 	if claims.CommonName != "" {
 		if c.CIClientID == "" || claims.CommonName != c.CIClientID || claims.Type != "app" || claims.Sub != "" || claims.Email != "" {
