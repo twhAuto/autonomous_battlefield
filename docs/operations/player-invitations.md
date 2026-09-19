@@ -71,10 +71,13 @@ history are retained. Reinviting the same email waits for fresh synchronization;
 ownership still follows the verified Cloudflare `issuer|subject`, not the email.
 
 Admin/Developer emails cannot be invited, removed, or assigned a role here. On
-every managed API startup, any prior active Player invitation for a configured
+every managed API startup while the feature is enabled, any prior active Player
+invitation for a configured
 Admin/Developer is permanently revoked and audited before readiness. Removing
 that privileged role later does not restore its old Player access; a new explicit
-invitation is required. Before
+invitation is required. Role changes performed entirely while managed Players are
+disabled cannot be inferred later; reconcile invitations before restoring Player
+admission. Before
 promoting a former Player through operator configuration, remove their invitation
 and wait for Cloudflare synchronization, then configure the privileged MFA policy
 and role. Do not give privileged identities the email-code-only Player policy.
