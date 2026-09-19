@@ -11,6 +11,7 @@ import { BattlePage } from '../features/battles/pages/BattlePage'
 import { FactionsPage } from '../features/factions/pages/FactionsPage'
 import { HomePage } from '../pages/HomePage'
 import { LoginPage } from '../features/auth/pages/LoginPage'
+import { MembersPage } from '../features/admin/pages/MembersPage'
 import { AdminSettingsPage } from '../features/admin/pages/AdminSettingsPage'
 import { authenticationClient, type AuthenticationClient, type AuthSession } from '../features/auth/api/auth'
 import { RolePreviewContext, type PreviewRole } from '../features/auth/RolePreviewContext'
@@ -173,7 +174,7 @@ export default function App({ authentication = authenticationClient, initialSess
         <Route path="battles" element={<BattleHistoryPage />} />
         <Route path="battles/new" element={<CreateBattlePage />} />
         <Route path="battles/:id" element={<BattlePage />} />
-        {canAdmin && !previewRole && <Route path="admin" element={<AdminSettingsPage />} />}
+        {canAdmin && !previewRole && <><Route path="admin" element={<AdminSettingsPage />} />{session.capabilities?.members && <Route path="admin/members" element={<MembersPage />} />}</>}
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes></SessionContext.Provider></RolePreviewContext.Provider>

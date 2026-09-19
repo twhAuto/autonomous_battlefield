@@ -102,7 +102,7 @@ func RoutePolicy(next http.Handler) http.Handler {
 	for _, pattern := range []string{"GET /v1/battles/{id}/decisions", "GET /v1/battles/{id}/decisions/{requestId}/context"} {
 		mux.HandleFunc(pattern, Permit("inspect", next.ServeHTTP))
 	}
-	for _, pattern := range []string{"GET /v1/admin/model-access", "PUT /v1/admin/model-access"} {
+	for _, pattern := range []string{"GET /v1/admin/model-access", "PUT /v1/admin/model-access", "GET /v1/admin/members", "POST /v1/admin/members", "DELETE /v1/admin/members/{id}", "POST /v1/admin/members/retry"} {
 		mux.HandleFunc(pattern, Permit("admin", next.ServeHTTP))
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { http.Error(w, permissionDeniedMessage, 403) })

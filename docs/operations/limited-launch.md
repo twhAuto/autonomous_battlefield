@@ -2,7 +2,8 @@
 
 The chosen application hostname is **play.ordinalfrontier.com**, under Access team
 **ordinalfrontier-lab**. Start with the owner's Google identity only. Application
-roles are private operator configuration, never a committed email list. This
+privileged roles are private operator configuration; optional managed Player
+invitations live in PostgreSQL. No email list is committed to Git. This
 runbook describes the implemented deployment path; it does not certify that a
 live tunnel, firewall, or VM has been provisioned.
 
@@ -156,12 +157,17 @@ selected role's actual API visibility and inspection permissions. Save or discar
 edits before entering it. The banner stays visible while navigating; **Exit preview**
 restores the administrator view. Preview uses your own identity and ownership and
 does not impersonate another user. It grants no privileges to non-admin callers.
-Member invitations and identity/role assignment remain outside this page.
+Player invitations are available separately at **Admin → Members** when managed
+Players are enabled. See [Player invitations](player-invitations.md) for setup,
+removal and recovery. Admin/Developer assignments remain operator-managed.
 
 ## Sessions, roles and removal
 
 The persistent identity is verified `issuer|subject`. Each request maps the
-verified normalized email to exactly one configured role. All roles share gameplay
+verified normalized email to exactly one role. With managed Players enabled,
+Admin/Developer roles remain configured and Player eligibility comes from the
+database on every request; new grants require confirmed Cloudflare synchronization.
+Without managed Players, all roles use the configured assignments. All roles share gameplay
 and faction reads. Editing/deletion and battle stop/pause/resume require ownership
 or Admin. Existing factions and battles become `legacy-admin`, manageable only by
 Admin. Owners never come from client JSON. Developers can inspect diagnostics and
@@ -183,7 +189,9 @@ requests must carry the configured HTTPS Origin; missing/cross-origin values are
 rejected. Bodies must use `application/json`. Private worker routes use their own
 bearer authentication and do not use browser cookies.
 
-To remove someone: remove their Access Allow rule, revoke existing Access sessions,
+For a managed Player, use Admin → Members as described in the
+[invitation runbook](player-invitations.md); it blocks new API requests immediately.
+For a static-role identity: remove their Access Allow rule, revoke existing Access sessions,
 remove their application role assignment, and roll out the updated auth configuration
 to **every API replica**. Offline JWT signature checks do not detect Access revocation.
 Check denied access after rollout and allow for Cloudflare's documented revocation

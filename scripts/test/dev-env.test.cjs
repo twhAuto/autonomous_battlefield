@@ -76,3 +76,33 @@ test('shared schema enforces production authentication and separates deployment 
     assert.throws(()=>profile(file),/Unknown deployment/);
   } finally {fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('managed Player settings require complete Cloudflare config and isolate its token', () => {
+  const values = new Map(Object.entries({POSTGRES_DB:'battlefield',POSTGRES_USER:'battlefield',POSTGRES_PASSWORD:'password',DATABASE_URL:'postgres://example',
+    BATTLEFIELD_AGENT_SECRET:'w'.repeat(32),BATTLEFIELD_MCP_CAPABILITY_SECRET:'m'.repeat(32),
+    BATTLEFIELD_AUTH_MODE:'cloudflare',BATTLEFIELD_ACCESS_ISSUER:'https://team.cloudflareaccess.com',
+    BATTLEFIELD_ACCESS_AUDIENCE:'a'.repeat(64),BATTLEFIELD_PUBLIC_ORIGIN:'https://play.example.com',
+    BATTLEFIELD_ACCESS_ROLES:'{"admin":["owner@example.com"]}', BATTLEFIELD_MANAGED_PLAYERS:'true'}));
+  assert.throws(()=>validate(values,'production'),/Managed Players/);
+  values.set('BATTLEFIELD_MEMBERS_ACCOUNT_ID','a'.repeat(32));
+  values.set('BATTLEFIELD_MEMBERS_GROUP_ID','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  values.set('BATTLEFIELD_MEMBERS_API_TOKEN','private-token');
+  validate(values,'production');
+  for (const email of ['user@[10.0.0.1]', 'a'.repeat(65)+'@example.com']) {
+    values.set('BATTLEFIELD_ACCESS_ROLES',JSON.stringify({admin:['owner@example.com'],player:[email]}));
+    assert.throws(()=>validate(values,'production'),/managed Player email/);
+  }
+  values.set('BATTLEFIELD_ACCESS_ROLES','{"admin":["owner@example.com"]}');
+  values.set('BATTLEFIELD_MANAGED_PLAYERS','yes');
+  assert.throws(()=>validate(values,'production'),/boolean/);
+  values.set('BATTLEFIELD_MANAGED_PLAYERS','true');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'battlefield-members-env-'));
+  try {
+    const source=path.join(dir,'.env'); fs.writeFileSync(source,[...values].map(([k,v])=>`${k}=${v}\n`).join(''));
+    for(const name of ['auth','members','ai','runtime','database']) {
+      const out=path.join(dir,name); main(['extract',source,out,name]);
+      assert.equal(read(out).has('BATTLEFIELD_MEMBERS_API_TOKEN'),name==='members');
+      assert.equal(fs.statSync(out).mode & 0o777,0o600);
+    }
+  } finally { fs.rmSync(dir,{recursive:true,force:true}); }
+});

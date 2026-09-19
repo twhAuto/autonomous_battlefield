@@ -22,6 +22,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
+	"github.com/twh09/autonomous_battlefield/backend/internal/members"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
@@ -93,6 +94,10 @@ func parseOptions(arguments []string) (cliOptions, error) {
 }
 
 func startServer(configuration config.Config) error {
+	memberConfig, err := members.LoadConfig(configuration.Auth.Roles)
+	if err != nil {
+		return err
+	}
 	shutdownSignal, stop := signal.NotifyContext(
 		context.Background(),
 		syscall.SIGINT,
@@ -157,7 +162,23 @@ func startServer(configuration config.Config) error {
 		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
 	}
 	defer cache.Close()
-	application := app.NewAPIWithGeneration(db, catalog, configuration.API.MaxTicks, configuration.Auth, cache, configuration.AI.BackgroundGeneration, profiles)
+	var memberStore members.Repository
+	if memberConfig.Enabled {
+		store := &members.Store{DB: db, Roles: configuration.Auth.Roles, Writer: &members.Cloudflare{Config: memberConfig}}
+		initCtx, stopInit := context.WithTimeout(processContext, 10*time.Second)
+		err = store.Initialize(initCtx)
+		stopInit()
+		if err != nil {
+			return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
+		}
+		configuration.Auth.ResolvePlayer = store.Allowed
+		memberStore = store
+		syncCtx, stopSync := context.WithCancel(processContext)
+		syncDone := make(chan struct{})
+		go func() { defer close(syncDone); store.Run(syncCtx) }()
+		defer func() { stopSync(); <-syncDone }()
+	}
+	application := app.NewAPIWithMembers(db, catalog, configuration.API.MaxTicks, configuration.Auth, cache, configuration.AI.BackgroundGeneration, memberStore, profiles)
 	lifecycle.Activate(application.HTTPHandler(), db, nil)
 	slog.Info("api_ready", "address", server.Addr)
 

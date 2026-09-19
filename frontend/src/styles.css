@@ -666,3 +666,9 @@ footer { display: flex; justify-content: space-between; padding: 28px clamp(24px
 .admin-savebar button, .admin-preview-actions button, .role-preview-banner button { padding: 8px 16px; background: #151a14; color: var(--lime); border: 1px solid var(--line); }
 .admin-page button:disabled { opacity: .5; cursor: not-allowed; }
 .role-preview-banner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 16px 24px; color: var(--ink); background: var(--lime); }
+
+/* Player invitations reuse the administration cards and form controls. */
+.member-invite { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+.member-invite input { flex: 1 1 16rem; min-width: 0; padding: 0.7rem; }
+.member-list { list-style: none; padding: 0; display: grid; gap: 1rem; }
+.member-list h3 { overflow-wrap: anywhere; }

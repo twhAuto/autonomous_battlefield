@@ -267,7 +267,7 @@ AI observations rather than controlling these engine paths.
 
 ### Public application boundary
 
-Production requires Cloudflare Access on the whole application hostname through a named Tunnel. The API independently verifies the Access JWT and maps issuer/subject identity and verified email to a configured role on every request. No legacy password/cookie fallback is accepted. Explicit local-password and disabled-development modes remain development-only. Exact-origin mutation checks and a deny-by-default route permission registry wrap every application API. The browser never connects to the engine, MCP or PostgreSQL. See [limited-access launch](../operations/limited-launch.md).
+Production requires Cloudflare Access on the whole application hostname through a named Tunnel. The API independently verifies the Access JWT and maps issuer/subject identity and verified email to a role on every request. Privileged roles remain configured; optionally managed Player membership is read from PostgreSQL. No legacy password/cookie fallback is accepted. Explicit local-password and disabled-development modes remain development-only. Exact-origin mutation checks and a deny-by-default route permission registry wrap every application API. The browser never connects to the engine, MCP or PostgreSQL. See [limited-access launch](../operations/limited-launch.md).
 
 ### Model boundary
 
@@ -719,9 +719,12 @@ Legacy rows belong to `legacy-admin`. Only Admin can manage another owner's rows
 Decision history/context require Developer/Admin. Player gameplay projections run
 after shared cache retrieval and omit model diagnostics, raw prompts and internal
 errors. The frontend hides inspection panels and stops their requests for Players.
-Cloudflare Access admission and MFA are independent deployment requirements. User
+Cloudflare Access admission and MFA are independent deployment requirements. For static roles, user
 removal requires Access rule removal, session revocation, application role removal,
 and deployment to every replica; offline JWT verification alone cannot see revocation.
+Managed Player removal instead denies each new API request from PostgreSQL immediately
+and asynchronously removes the email from a dedicated Access group. It does not
+revoke sessions in unrelated Cloudflare applications.
 
 The local password login retains signed HttpOnly/SameSite cookies for development.
 Missing auth mode and enable flags fail startup; explicit legacy enable flags remain
@@ -1251,3 +1254,33 @@ stop rather than automatically retrying. Trivial low-risk edits are exempt by
 author judgment, not file-extension heuristics. Both author directions follow
 this policy. Agreement is advisory; unresolved issues return to the user at the
 limit. No usage accounting or automatic merge is added.
+
+## Managed Player invitations
+
+Optional Admin → Members routes persist Player grants/removals and audit events in
+PostgreSQL. Migration 00013 adds `player_members`, `player_membership_sync`, and
+`player_membership_audit`. The singleton imports configured Players once, retaining
+removed-member tombstones across restarts. Every initialization also durably
+revokes and audits prior Player invitations for configured privileged identities,
+so subsequent privileged-role removal cannot resurrect Player access. Admin/Developer roles and CI identities
+continue through their existing authentication paths; membership cannot elevate roles.
+After signature/issuer/audience/time validation, Player authentication reads current
+desired access and confirmed membership version with a two-second deadline and no
+positive cache. Lookup failure denies access; `issuer|subject` ownership is unchanged.
+
+The API process starts a cancellable reconciler when `BATTLEFIELD_MANAGED_PLAYERS`
+is enabled. A transaction advisory lock serializes remote writes across replicas;
+repeatable-read transactions reject concurrent edits before confirming a grant.
+Mutations lock only the singleton desired-state row, not the remote worker lock,
+so removals commit while a Cloudflare call is in flight. A successful PUT confirms
+current versions; failures persist bounded retry backoff. Restart recovery and
+one-minute full-list reconciliation repair ambiguous writes and dedicated-group drift.
+
+The API alone receives `battlefield-members`; its token can manage Access groups
+within the configured account, while code only calls the configured group endpoint.
+The browser sees emails, access/sync status and a game URL, never the token. Empty
+membership sends an explicitly deny-all group. No policy edits or account-wide
+session revocation are automated. New grants stay inactive until confirmed; removals
+block subsequent API requests immediately, without cancelling already accepted work.
+See [Player invitations](../operations/player-invitations.md) for activation, policy
+separation, credential rotation, rollback limitations and live acceptance checks.

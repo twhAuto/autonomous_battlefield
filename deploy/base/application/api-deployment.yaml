@@ -45,6 +45,9 @@ spec:
             - /etc/battlefield/config.yaml
           envFrom:
             - secretRef:
+                name: battlefield-members
+                optional: true
+            - secretRef:
                 name: battlefield-runtime
             - configMapRef:
                 name: battlefield-langfuse-links

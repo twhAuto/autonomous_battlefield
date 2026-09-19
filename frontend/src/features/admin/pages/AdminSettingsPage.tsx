@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { SessionContext } from '../../auth/SessionContext'
 import { RolePreviewContext, type PreviewRole } from '../../auth/RolePreviewContext'
 import { getModelSettings, saveModelSettings, type AccessPolicy, type AccessRole, type ModelAccess, type ModelSettings } from '../api/settings'
@@ -91,7 +91,7 @@ export function AdminSettingsPage() {
 
   return <div className="admin-page">
     <header className="admin-heading">
-      <span className="hero__eyebrow">SYSTEM / ADMINISTRATION</span><h1>Control center</h1><p>Choose which configured models can be used and who can use them.</p>
+      <span className="hero__eyebrow">SYSTEM / ADMINISTRATION</span><h1>Control center</h1><nav aria-label="Administration"><Link to="/admin" aria-current="page">Models &amp; access</Link>{session?.capabilities?.members && <> · <Link to="/admin/members">Members</Link></>}</nav><p>Choose which configured models can be used and who can use them.</p>
     </header>
     <section className="admin-models" aria-labelledby="admin-models-title">
       <div className="admin-section-heading">
