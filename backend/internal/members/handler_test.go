@@ -79,15 +79,21 @@ func TestMemberRoutesServeAdmin(t *testing.T) {
 		if w.Header().Get("Cache-Control") != "no-store" {
 			t.Fatal("cacheable members")
 		}
+		if tt.method != "GET" && f.actor != "verified-admin" {
+			t.Fatal("write did not use verified administrator", tt.method, tt.path, f.actor)
+		}
 	}
-	if f.calls != 3 || f.actor != "verified-admin" {
-		t.Fatal("write did not use verified administrator", f.calls, f.actor)
+	if f.calls != 3 {
+		t.Fatal("unexpected write count", f.calls)
 	}
 }
 
 func TestMemberRouteWritesEnforceOrigin(t *testing.T) {
 	h := &Handler{Store: &fakeRepository{}, Origin: "https://game.example"}
-	for _, tt := range memberRoutes()[1:] {
+	for _, tt := range memberRoutes() {
+		if tt.method == "GET" {
+			continue
+		}
 		if request(h, tt.method, tt.path, tt.body, authn.Admin, "https://evil.example", "").Code != 403 {
 			t.Fatal("origin bypass", tt.method, tt.path)
 		}

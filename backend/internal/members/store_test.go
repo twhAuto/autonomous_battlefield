@@ -104,7 +104,6 @@ func TestMembershipGrantRemoveAndReinvite(t *testing.T) {
 	if s.Allowed(ctx, m.Email) {
 		t.Fatal("removal failed before remote update")
 	}
-	s.Writer = groupFunc(func(_ context.Context, emails []string) error { sent = emails; return nil })
 	must(t, s.Reconcile(ctx))
 	if !reflect.DeepEqual(sent, []string{"seed@example.com"}) {
 		t.Fatal("removed member still in group")
@@ -169,6 +168,9 @@ func TestMembershipDatabaseFailureDeniesAccess(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	must(t, s.Reconcile(ctx))
+	if !s.Allowed(ctx, "seed@example.com") {
+		t.Fatal("seed not allowed before database failure")
+	}
 	s.DB.Close()
 	if s.Allowed(ctx, "seed@example.com") {
 		t.Fatal("database failure allowed access")
