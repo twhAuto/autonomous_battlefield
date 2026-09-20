@@ -112,7 +112,8 @@ selection reads the durable policy with a bounded timeout, so replicas and resta
 share settings; read failures make models unavailable. The policy can restrict
 access but cannot activate missing credentials or deployment-disabled runtimes.
 Role overrides supersede configured `allowedRoles`; an explicit empty role list
-denies everyone, and Players remain barred from CLI profiles. Disables apply to
+denies everyone. Players can select API or CLI profiles only when explicitly included
+in the profile’s allowed roles; default roles remain Admin and Developer. Disables apply to
 new battle selection and background-generation admission; already accepted jobs
 and frozen controller snapshots continue unchanged. This is not an emergency stop.
 

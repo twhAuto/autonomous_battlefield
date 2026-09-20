@@ -31,3 +31,16 @@ func TestPlayerProjectionAfterSharedCachedRead(t *testing.T) {
 		t.Fatal(string(raw), e)
 	}
 }
+
+func TestPlayerCatalogIncludesOnlyApprovedAvailableCLI(t *testing.T) {
+	r := httptest.NewRequest("GET", "/v1/models", nil).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "friend", Role: authn.Player}))
+	profiles := []ai.ModelProfile{
+		{ID: "approved-cli", Runtime: "cli", Available: true, AllowedRoles: []string{"player"}},
+		{ID: "unapproved-cli", Runtime: "cli", Available: true},
+		{ID: "offline-cli", Runtime: "cli", Available: false, AllowedRoles: []string{"player"}},
+	}
+	raw, err := json.Marshal(visibleProfiles(r, profiles))
+	if err != nil || !strings.Contains(string(raw), "approved-cli") || strings.Contains(string(raw), "unapproved-cli") || strings.Contains(string(raw), "offline-cli") {
+		t.Fatalf("catalog: %s %v", raw, err)
+	}
+}

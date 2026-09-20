@@ -353,8 +353,9 @@ Update/delete factions and stop/pause/resume battles require own content or Admi
 Shared reads remain available to Players. Decision history and saved-context routes
 require Developer/Admin; Players receive gameplay-only battle/event/history/model
 responses. Unregistered application routes deny access until a permission is assigned.
-CLI model selection (including background generation) requires Developer/Admin and
-an enabled verified profile. Paid APIs require explicit role approval.
+CLI model selection (including background generation) requires an enabled verified
+profile and a role allowed by the model access policy. Players require explicit
+approval for both API and CLI profiles; Admin can grant or revoke it per profile.
 
 Admission can return 429: 20 battles/person/day, 2 unfinished/person, 4 globally,
 10 background generations/person/day. Paused battles remain unfinished. Same request

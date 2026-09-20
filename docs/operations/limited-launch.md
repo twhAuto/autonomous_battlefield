@@ -137,8 +137,10 @@ Open **Admin → Models & access** to switch a whole provider or one configured
 model profile on/off and set its allowed roles. Click **Save changes** to persist
 the policy. Provider switches preserve individual profile choices. A profile still
 needs deployment-enabled configuration, credentials, and a working runtime; adding
-new model variants remains a deployment configuration task. CLI profiles cannot
-be granted to Players. An empty role selection grants access to nobody.
+new model variants remains a deployment configuration task. To grant or revoke
+Player access to a CLI subscription, check or uncheck **Player** on that profile
+and save. CLI access is off for Players by default. An empty role selection grants
+access to nobody.
 
 Settings are shared across API replicas and survive restarts. HTTP 409 indicates
 another administrator saved first: discard the local edits, refresh, and reapply
@@ -174,13 +176,14 @@ Admin. Owners never come from client JSON. Developers can inspect diagnostics an
 use enabled CLI profiles; this role grants no host or deployment access.
 
 Players receive explicit gameplay responses and cannot fetch decision history or
-saved context. CLI profiles never appear in their model catalog. To enable a paid
-API for Players, configure its provider credentials/model and availability flag,
+saved context. Their model catalog includes only available profiles explicitly
+allowed for Players. To enable an API or CLI profile for Players, configure its
+credentials/model and runtime availability,
 then select Player in the profile’s allowed roles under Admin → Models & access
 and save. Without an admin policy override, configured `allowedRoles` supplies the
 default (for example `[player, developer, admin]`).
 Unlisted roles cannot select it. Background generation checks the same eligibility;
-its existing CLI default is unavailable to Players. All quotas also apply to Admin.
+its CLI profile is unavailable to Players unless explicitly allowed. All quotas also apply to Admin.
 
 Cloudflare mode issues no application auth cookie and ignores old application
 cookies. Logout returns the documented `/cdn-cgi/access/logout` destination and

@@ -93,7 +93,7 @@ func validateAIProfiles(profiles []ai.ModelProfile) error {
 func validateProfileRoles(profile ai.ModelProfile) error {
 	seen := map[string]bool{}
 	for _, role := range profile.AllowedRoles {
-		if seen[role] || (role != "player" && role != "developer" && role != "admin") || (role == "player" && profile.Runtime == "cli") {
+		if seen[role] || (role != "player" && role != "developer" && role != "admin") {
 			return fmt.Errorf("invalid allowedRoles for profile %q", profile.ID)
 		}
 		seen[role] = true

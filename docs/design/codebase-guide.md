@@ -106,6 +106,14 @@ The backend has five commands in one Go module: four runtime processes and the o
 5. Update scenario YAML if scripted/fallback values need it.
 6. Update decision persistence, API/frontend types, display, and tests.
 
+### Change model role access
+
+Admin model-access role validation applies equally to API and CLI profiles.
+`backend/internal/admin/service_test.go` covers saving and revoking Player CLI
+access through the durable policy; the admin page tests cover the Player checkbox
+and persistence across reloads. Player catalog tests retain gameplay-only projection
+while exposing explicitly approved, available CLI profiles.
+
 ### Add a model provider
 
 1. Add a provider adapter implementing `ai.TurnProvider`, or a CLI branch implementing `DecisionRunner` behavior.

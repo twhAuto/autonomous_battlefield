@@ -62,7 +62,11 @@ func TestCLIProductionGateAndProfileRoles(t *testing.T) {
 	if e := validateAIProfile(p); e != nil {
 		t.Fatal(e)
 	}
-	for _, roles := range [][]string{{"player"}, {"root"}, {"admin", "admin"}} {
+	p.AllowedRoles = []string{"player"}
+	if e := validateAIProfile(p); e != nil {
+		t.Fatal("explicit player CLI access rejected", e)
+	}
+	for _, roles := range [][]string{{"root"}, {"admin", "admin"}} {
 		p.AllowedRoles = roles
 		if e := validateAIProfile(p); e == nil {
 			t.Fatal(roles)

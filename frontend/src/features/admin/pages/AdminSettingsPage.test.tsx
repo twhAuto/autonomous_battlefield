@@ -18,7 +18,7 @@ function renderPage(setRole = vi.fn()) {
 beforeEach(() => vi.stubGlobal('fetch', vi.fn()))
 
 describe('AdminSettingsPage', () => {
-  it('loads configured models, prevents player CLI access, and previews a real role', async () => {
+  it('loads configured models, allows configuring player CLI access, and previews a real role', async () => {
     const user = userEvent.setup(), setRole = vi.fn()
     vi.mocked(fetch).mockResolvedValue(json(settings()))
     renderPage(setRole)
@@ -27,7 +27,8 @@ describe('AdminSettingsPage', () => {
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/v1/admin/model-access'), expect.objectContaining({ signal: expect.any(AbortSignal) }))
     const cli = within(screen.getByText('Codex subscription').closest('article')!)
     expect(cli.getByText('Local runtime is offline.')).toBeInTheDocument()
-    expect(cli.getByRole('checkbox', { name: 'Player' })).toBeDisabled()
+    expect(cli.getByRole('checkbox', { name: 'Player' })).toBeEnabled()
+    expect(cli.getByRole('checkbox', { name: 'Player' })).not.toBeChecked()
     expect(screen.getByText('actual-admin · Administrator')).toBeInTheDocument()
     expect(screen.queryByText(/invite member|audit log|monthly budget/i)).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'View as Player' }))
@@ -61,6 +62,34 @@ describe('AdminSettingsPage', () => {
     unmount(); renderPage()
     expect(await screen.findByRole('switch', { name: 'openai provider access' })).not.toBeChecked()
     expect(screen.getByRole('switch', { name: 'Codex subscription model access' })).not.toBeChecked()
+  })
+
+  it('persists granting and revoking Player access to a CLI profile', async () => {
+    const user = userEvent.setup()
+    let persisted = settings()
+    vi.mocked(fetch).mockImplementation(async (_url, init) => {
+      if (init?.method === 'PUT') {
+        persisted = { ...persisted, ...JSON.parse(String(init.body)), version: persisted.version + 1 }
+      }
+      return json(persisted)
+    })
+    const first = renderPage()
+    await screen.findByText('Codex subscription')
+    const checkbox = () => within(screen.getByText('Codex subscription').closest('article')!).getByRole('checkbox', { name: 'Player' })
+    await user.click(checkbox())
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    await screen.findByText('Changes saved')
+    expect(persisted.policy.profiles.cli.allowedRoles).toContain('player')
+    first.unmount(); renderPage()
+    await screen.findByText('Codex subscription')
+    expect(checkbox()).toBeChecked()
+    await user.click(checkbox())
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    await screen.findByText('Changes saved')
+    expect(persisted.policy.profiles.cli.allowedRoles).not.toContain('player')
+    await user.click(screen.getByRole('button', { name: 'Refresh' }))
+    await screen.findByText('Codex subscription')
+    expect(checkbox()).not.toBeChecked()
   })
 
   it('preserves edits on save failure and handles conflicts with discard and refresh', async () => {
