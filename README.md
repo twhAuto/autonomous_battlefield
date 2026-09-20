@@ -67,8 +67,9 @@ The architecture guide owns runtime explanations; the codebase guide owns source
 navigation. Operational guides own their setup and recovery commands.
 
 Production requires Cloudflare mode and rejects missing authentication settings. Players
-share gameplay and factions but control only their own content; diagnostics and CLI
-profiles require Developer/Admin. CLI access stays disabled until VM verification.
+share gameplay and factions but control only their own content; diagnostics require
+Developer/Admin. Admin → Models & access can grant or revoke Player access to
+individual API and CLI profiles (off by default). CLI access stays disabled until VM verification.
 See the [launch runbook](docs/operations/limited-launch.md) for limits, backups, and
 rollout to `play.ordinalfrontier.com`.
 

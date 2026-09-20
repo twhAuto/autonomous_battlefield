@@ -101,8 +101,8 @@ func TestSettingsValidationAndAuthorization(t *testing.T) {
 		}
 	}
 	s.Policy.Profiles["cli"] = ai.ProfileAccess{Enabled: true, AllowedRoles: []string{"player"}}
-	if request(h, "PUT", s, authn.Admin).Code != 400 {
-		t.Fatal("player CLI allowed")
+	if request(h, "PUT", s, authn.Admin).Code != 200 {
+		t.Fatal("explicit player CLI access rejected")
 	}
 	s.Policy.Profiles["cli"] = ai.ProfileAccess{Enabled: true, AllowedRoles: []string{"root"}}
 	if h.Service.valid(s) {

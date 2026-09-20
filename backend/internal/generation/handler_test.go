@@ -120,3 +120,34 @@ func TestPlayerCannotIndirectlyTriggerCLI(t *testing.T) {
 		t.Fatal(w.Code, repo.calls)
 	}
 }
+
+func TestPlayerCLIGenerationFollowsAdminPolicy(t *testing.T) {
+	t.Setenv("CLI_AVAILABLE", "true")
+	base := ai.NewProfileCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Runtime: "cli", Provider: "codex-cli", Scope: "local", Enabled: true, AvailabilityEnvironmentVariable: "CLI_AVAILABLE", SupportedVersionPrefix: "1."}})
+	policy := ai.AccessPolicy{Profiles: map[string]ai.ProfileAccess{}}
+	profiles := base.WithAccessPolicy(func() (ai.AccessPolicy, error) { return policy, nil })
+	repo := &httpRepo{}
+	c := DefaultConfig()
+	c.Enabled = true
+	c.ProfileID = "cli"
+	mux := http.NewServeMux()
+	(&Handler{Repository: repo, Config: c, Profiles: profiles}).RegisterRoutes(mux)
+	for _, allow := range []bool{false, true, false} {
+		roles := []string{"admin", "developer"}
+		if allow {
+			roles = append(roles, "player")
+		}
+		policy.Profiles["cli"] = ai.ProfileAccess{Enabled: true, AllowedRoles: roles}
+		before := repo.calls
+		r := httptest.NewRequest("POST", "/v1/faction-background-generations", strings.NewReader(`{"name":"A","doctrine":"d","idempotencyKey":"one"}`)).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "friend", Role: authn.Player}))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		if allow {
+			if w.Code != 202 || repo.calls != before+1 {
+				t.Fatalf("approved CLI not admitted: %d %s", w.Code, w.Body.String())
+			}
+		} else if w.Code != 503 || repo.calls != before {
+			t.Fatalf("unapproved CLI admitted: %d %s", w.Code, w.Body.String())
+		}
+	}
+}

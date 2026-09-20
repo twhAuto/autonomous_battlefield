@@ -138,7 +138,7 @@ export default function App({ authentication = authenticationClient, initialSess
 
   const canAdmin = session?.actor?.role === 'admin' || (!session?.actor?.role && session?.mode !== 'cloudflare')
 
-  const effectiveSession = useMemo(() => session && canAdmin && previewRole ? { ...session, actor: { ...session?.actor, id: session?.actor?.id ?? 'local-development', role: previewRole }, capabilities: { inspect: previewRole === 'developer', cli: previewRole === 'developer', admin: false } } : session, [session, canAdmin, previewRole])
+  const effectiveSession = useMemo(() => session && canAdmin && previewRole ? { ...session, actor: { ...session?.actor, id: session?.actor?.id ?? 'local-development', role: previewRole }, capabilities: { inspect: previewRole === 'developer', admin: false } } : session, [session, canAdmin, previewRole])
   const previewContext = useMemo(() => ({ role: previewRole, setRole: changePreviewRole }), [previewRole, changePreviewRole])
 
   if (sessionError) {

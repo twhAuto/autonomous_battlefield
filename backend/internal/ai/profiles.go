@@ -213,9 +213,6 @@ func ProfileAllowed(ctx context.Context, p ModelProfile) bool {
 	if !ok {
 		return false
 	}
-	if a.Role == authn.Player && p.Runtime == "cli" {
-		return false
-	}
 	if len(p.AllowedRoles) == 0 {
 		return a.CanInspect()
 	}
