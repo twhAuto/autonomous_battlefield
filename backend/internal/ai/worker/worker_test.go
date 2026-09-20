@@ -297,3 +297,61 @@ func TestUsageRetriesTransientEOF(t *testing.T) {
 		t.Fatalf("retry failed %d %v", attempts, err)
 	}
 }
+
+func TestTransientClaimFailureDoesNotCancelSibling(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan context.Context, 1)
+	retried := make(chan struct{})
+	var claims atomic.Int32
+	client := &http.Client{Transport: agentRoundTrip(func(req *http.Request) (*http.Response, error) {
+		switch claims.Add(1) {
+		case 1:
+			b, _ := json.Marshal(job{CapabilityToken: "capability", RequestID: "one", ProfileID: "profile"})
+			return agentResponse(200, string(b)), nil
+		case 2:
+			return agentResponse(503, ""), nil
+		default:
+			select {
+			case <-retried:
+			default:
+				close(retried)
+			}
+			<-req.Context().Done()
+			return nil, req.Context().Err()
+		}
+	})}
+	profiles := ai.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
+	w := &Worker{MCPURL: "http://mcp/mcp", Profiles: profiles, Concurrency: 2, Client: client, PollInterval: time.Millisecond, DecisionTimeout: time.Minute, RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
+		return runnerFunc(func(ctx context.Context, _ ai.DecisionSession) (ai.DecisionResult, error) {
+			started <- ctx
+			<-ctx.Done()
+			return ai.DecisionResult{}, ctx.Err()
+		}), nil
+	}}
+	done := make(chan error, 1)
+	go func() { done <- w.Run(ctx) }()
+	var running context.Context
+	select {
+	case running = <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runner did not start")
+	}
+	select {
+	case <-retried:
+	case <-time.After(2 * time.Second):
+		t.Fatal("claim not retried")
+	}
+	if running.Err() != nil {
+		t.Fatal("transient claim cancelled sibling")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("worker failed to stop")
+	}
+}

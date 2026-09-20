@@ -27,6 +27,8 @@ import (
 
 const bearerPrefix = "Bearer "
 
+var errTransientClaim = errors.New("transient agent claim failure")
+
 var errNoAcceptedPlan = errors.New("decision has no accepted plan")
 
 type Worker struct {
@@ -91,6 +93,12 @@ func (w *Worker) runClaimLoop(ctx context.Context, profileIDs []string) error {
 				return nil
 			}
 			w.logger().ErrorContext(ctx, "decision_claim_failed", "worker_id", w.WorkerID, "error", err)
+			if errors.Is(err, errTransientClaim) {
+				if !waitFor(ctx, w.PollInterval) {
+					return nil
+				}
+				continue
+			}
 			return err
 		}
 		if !ok {
@@ -152,11 +160,14 @@ func (w *Worker) claim(ctx context.Context, profileIDs []string) (job, bool, err
 	request.Header.Set("Authorization", bearerPrefix+w.Secret)
 	response, err := w.Client.Do(request)
 	if err != nil {
-		return job{}, false, err
+		return job{}, false, fmt.Errorf("%w: %w", errTransientClaim, err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode == http.StatusNoContent {
 		return job{}, false, nil
+	}
+	if response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500 {
+		return job{}, false, fmt.Errorf("%w: HTTP %d", errTransientClaim, response.StatusCode)
 	}
 	if response.StatusCode/100 != 2 {
 		return job{}, false, fmt.Errorf("agent claim status %d", response.StatusCode)

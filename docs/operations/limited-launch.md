@@ -208,7 +208,7 @@ existing idempotency key. Expired queued jobs and failed executions both consume
 
 A shared database limit admits up to four CLI executions across decisions and
 background jobs (`runtime_policy.cli_concurrency`, range 1–4). Workers separately
-limit their active jobs with `ai.agentConcurrency` (default 1; VM template 4).
+limit their active jobs with `ai.agentConcurrency` (default 1; explicitly select 4 after validation).
 Submission alone does not release a slot: the worker must report
 completion, or the bounded execution lease must expire. Claims never wait in a
 worker's local execution queue. Workers use the database lease deadline rather than
@@ -241,8 +241,10 @@ work and record reported usage, not an exact financial bill.
 Use Ubuntu's KVM/libvirt on the server. Docker containers share the host kernel;
 the public CLI worker belongs in a dedicated VM. Start with 2 vCPU, 4 GiB memory,
 24 GiB disk. Verify virtualization support, free memory/disk, and host headroom
-while the game, database, observability, and one CLI execute together. Leave CLI
-disabled if the host cannot sustain this.
+while the game, database, observability, and one CLI execute together. This is
+a one-slot starting size, not validated four-CLI capacity. Before selecting four
+slots, test four processes together and increase guest/service limits if measured
+headroom is insufficient. Leave CLI disabled if the host cannot sustain this.
 
 Install the Ubuntu host's `qemu-system-x86`, `libvirt-daemon-system`, `libvirt-clients`,
 `cloud-image-utils`, and a dedicated Squid service. Review the files in
