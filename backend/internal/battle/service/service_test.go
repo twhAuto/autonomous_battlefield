@@ -134,6 +134,46 @@ func TestCreateBattlePersistsAllowedModelProfile(t *testing.T) {
 	}
 }
 
+func TestPlayerCLIBattleSelectionFollowsAdminPolicy(t *testing.T) {
+	t.Setenv("CLI_AVAILABLE", "true")
+	ids := serviceParticipantIDs
+	identities := [2]FactionIdentity{{ID: ids[0], Name: "A"}, {ID: ids[1], Name: "B"}}
+	factions := &battleFactionRepo{factions: map[string]*faction.Faction{
+		ids[0]: {ID: ids[0], Name: "A"},
+		ids[1]: {ID: ids[1], Name: "B"},
+	}}
+	policy := ai.AccessPolicy{Profiles: map[string]ai.ProfileAccess{
+		"cli": {Enabled: true, AllowedRoles: []string{"admin", "developer", "player"}},
+	}}
+	base := ai.NewProfileCatalog("cluster", []ai.ModelProfile{{
+		ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true,
+		AvailabilityEnvironmentVariable: "CLI_AVAILABLE", SupportedVersionPrefix: "1.",
+	}})
+	profiles := base.WithAccessPolicy(func() (ai.AccessPolicy, error) { return policy, nil })
+	repository := &fakeBattleRepo{}
+	service := NewService(repository, factions, &fakeScenarioCatalog{resolved: serviceTestScenario(identities)}, 10_000, profiles)
+	ctx := authn.WithActor(context.Background(), authn.Actor{ID: "friend", Role: authn.Player})
+	input := CreateBattleInput{
+		ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "castle-siege-v1", TickCount: 10,
+		Participants: []ParticipantInput{
+			{FactionID: ids[0], Controller: game.ControllerConfig{Type: ai.ControllerModel, ProfileID: "cli"}},
+			{FactionID: ids[1], Controller: game.ControllerConfig{Type: ai.ControllerScripted}},
+		},
+	}
+	if _, err := service.CreateBattle(ctx, input); err != nil {
+		t.Fatalf("approved Player CLI battle rejected: %v", err)
+	}
+	if selected := repository.created.ScenarioSnapshot.Factions[0].Controller; selected.ProfileID != "cli" || selected.Runtime != "cli" {
+		t.Fatalf("controller=%#v", selected)
+	}
+
+	policy.Profiles["cli"] = ai.ProfileAccess{Enabled: true, AllowedRoles: []string{"admin", "developer"}}
+	input.ID = "8f22e693-bacd-46bb-b942-64fa613cd388"
+	if _, err := service.CreateBattle(ctx, input); !errors.Is(err, authn.ErrForbidden) {
+		t.Fatalf("revoked Player CLI battle error = %v, want permission denied", err)
+	}
+}
+
 func TestListBattleEventsDefaultsToCurrentAttempt(t *testing.T) {
 	repo := &fakeBattleRepo{
 		run:    &BattleRun{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Attempt: 2},

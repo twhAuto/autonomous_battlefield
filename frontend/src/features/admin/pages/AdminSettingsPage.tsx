@@ -39,7 +39,7 @@ function ModelAccessCard({ model, access, providerEnabled, saving, onChange }: R
     <fieldset disabled={saving || !access.enabled || !providerEnabled} className="admin-roles"><legend>Allowed roles</legend>
       {(Object.keys(roleNames) as AccessRole[]).map(role => <label key={role}><input type="checkbox" checked={access.allowedRoles.includes(role)} onChange={() => toggleRole(role)} />{roleNames[role]}</label>)}
     </fieldset>
-    {model.runtime === 'cli' && <p className="admin-note">Select Player to allow players to use this CLI subscription.</p>}
+    {model.runtime === 'cli' && <p className="admin-note">Selecting Player allows players to start AI work on the CLI host. Usage quotas and runtime availability still apply.</p>}
   </article>
 }
 

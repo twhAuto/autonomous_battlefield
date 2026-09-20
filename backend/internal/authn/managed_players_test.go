@@ -121,7 +121,11 @@ func (f *managedPlayerFixture) assertMembersCapability(want bool) {
 	var session struct {
 		Capabilities map[string]bool `json:"capabilities"`
 	}
-	if json.Unmarshal(w.Body.Bytes(), &session) != nil || session.Capabilities["members"] != want {
+	if json.Unmarshal(w.Body.Bytes(), &session) != nil {
+		f.t.Fatal("invalid session response", w.Body.String())
+	}
+	_, hasCLI := session.Capabilities["cli"]
+	if session.Capabilities["members"] != want || hasCLI {
 		f.t.Fatal("incorrect members capability", w.Body.String())
 	}
 }
