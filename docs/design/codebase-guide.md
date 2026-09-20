@@ -1027,6 +1027,9 @@ asserts exact API/frontend peer selectors and ports to prevent broadening access
 Production hardening entry points:
 
 - `scripts/test/test-deployment.sh` is the shared PR/main infrastructure regression gate.
+- `scripts/ci/run-sonarqube-gate.sh` serializes Community Build scans across
+  Jenkins jobs and waits for the quality-gate result; `test-sonarqube-gate.sh`
+  verifies the lock and scanner arguments without contacting SonarQube.
 - `scripts/cd/reconcile-network-policies.sh` applies only the separately rendered
   `network-policies.json`; `deploy-tunnel.sh` applies connector inputs with checksum
   annotations instead of an unconditional restart.

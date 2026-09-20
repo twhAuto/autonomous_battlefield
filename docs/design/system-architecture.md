@@ -812,7 +812,13 @@ uses short-lived Docker configuration in Jenkins and a namespace-local pull
 Secret for the admission controller; neither changes the cryptographic trust
 root.
 
-Main delivery classifies changes after the CI quality gates. Application-test-only
+PR verification generates backend and frontend coverage, then runs the shared
+SonarQube Community Build project with quality-gate polling before image builds.
+A host-wide file lock serializes PR and `main` analyses because this installation
+has one analysis branch; the Jenkins result records the outcome for the exact
+checked-out commit even though the dashboard displays the most recent analysis.
+Main delivery repeats the analysis before deployment and classifies changes
+after the CI quality gates. Application-test-only
 changes and known CI test wrappers skip image publication and rollout; production
 file removals and unknown paths still select deployment. The shared
 `scripts/ci/with-ghcr-auth.sh` wrapper isolates registry credentials for each

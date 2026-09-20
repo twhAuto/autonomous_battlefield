@@ -144,6 +144,20 @@ pipeline {
                     }
                 }
 
+                // Community Build has one project branch, so all analyses share a host lock.
+                stage('PR SonarQube analysis and quality gate') {
+                    steps {
+                        script {
+                            def scannerHome = tool 'SonarScanner'
+                            withSonarQubeEnv('battlefield-sonarqube') {
+                                withEnv(["SONAR_SCANNER_HOME=${scannerHome}"]) {
+                                    sh './scripts/ci/run-sonarqube-gate.sh "${IMAGE_TAG}"'
+                                }
+                            }
+                        }
+                    }
+                }
+
                 stage('Build PR images') {
                     steps {
                         sh './scripts/ci/build-images.sh'
@@ -209,12 +223,9 @@ pipeline {
                         script {
                             def scannerHome = tool 'SonarScanner'
                             withSonarQubeEnv('battlefield-sonarqube') {
-                                sh """
-                                    "${scannerHome}/bin/sonar-scanner" \
-                                        -Dsonar.projectVersion="${env.IMAGE_TAG}" \
-                                        -Dsonar.qualitygate.wait=true \
-                                        -Dsonar.qualitygate.timeout=300
-                                """
+                                withEnv(["SONAR_SCANNER_HOME=${scannerHome}"]) {
+                                    sh './scripts/ci/run-sonarqube-gate.sh "${IMAGE_TAG}"'
+                                }
                             }
                         }
                     }
