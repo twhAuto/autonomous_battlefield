@@ -57,6 +57,7 @@ type Engine struct {
 type AI struct {
 	BackgroundGeneration generation.Config
 	Environment          string
+	AgentConcurrency     int
 	AgentHealthAddress   string
 	MCPAddress           string
 	MCPURL               string
@@ -142,6 +143,7 @@ type fileConfig struct {
 			ExecutionTimeout string `yaml:"executionTimeout"`
 		} `yaml:"backgroundGeneration"`
 		Environment                         string            `yaml:"environment"`
+		AgentConcurrency                    *int              `yaml:"agentConcurrency"`
 		AgentHealthAddress                  string            `yaml:"agentHealthAddress"`
 		MCPAddress                          string            `yaml:"mcpAddress"`
 		MCPURL                              string            `yaml:"mcpUrl"`
@@ -411,6 +413,13 @@ func parseAIConfig(raw fileConfig) (AI, error) {
 	if err != nil {
 		return AI{}, err
 	}
+	concurrency := 1
+	if raw.AI.AgentConcurrency != nil {
+		concurrency = *raw.AI.AgentConcurrency
+	}
+	if concurrency < 1 || concurrency > 4 {
+		return AI{}, fmt.Errorf("ai.agentConcurrency must be between 1 and 4")
+	}
 	health := stringOrDefault(raw.AI.AgentHealthAddress, ":8083")
 	mcpAddress := stringOrDefault(raw.AI.MCPAddress, ":8084")
 	mcpURL := stringOrDefault(raw.AI.MCPURL, "http://127.0.0.1:8084/mcp")
@@ -426,7 +435,7 @@ func parseAIConfig(raw fileConfig) (AI, error) {
 	if err != nil {
 		return AI{}, err
 	}
-	return AI{BackgroundGeneration: gen, Environment: environment, AgentHealthAddress: health, MCPAddress: mcpAddress, MCPURL: mcpURL,
+	return AI{AgentConcurrency: concurrency, BackgroundGeneration: gen, Environment: environment, AgentHealthAddress: health, MCPAddress: mcpAddress, MCPURL: mcpURL,
 		DecisionTimeout: timeout, CapabilitySecret: secret, CapabilitySecretEnv: secretEnv,
 		AllowedOrigins: append([]string(nil), raw.AI.AllowedOrigins...), Profiles: append([]ai.ModelProfile(nil), raw.AI.Profiles...)}, nil
 }
