@@ -815,8 +815,10 @@ root.
 PR verification generates backend and frontend coverage, then runs the shared
 SonarQube Community Build service with quality-gate polling before image builds.
 Each PR is the main branch of its own preview project and keeps one stable project
-version across retries, so its New Code baseline cannot be moved by another PR.
-The production project remains dedicated to `main` analyses.
+identity across retries. Jenkins seeds the preview with the target merge-base as
+one version before scanning the head as the next version, so New Code is relative
+to that PR's target and cannot be moved by another PR. The production project
+remains dedicated to `main` analyses.
 Main delivery repeats the analysis before deployment and classifies changes
 after the CI quality gates. Application-test-only
 changes and known CI test wrappers skip image publication and rollout; production

@@ -140,8 +140,11 @@ When asked to inspect or fix SonarQube findings:
    coverage commands above. Generate both coverage reports before a full scan.
 6. Run SonarScanner from the repository root with `SONAR_TOKEN` in the
    environment, `-Dsonar.host.url=https://sonarqube.home.arpa`, and
-   `-Dsonar.qualitygate.wait=true`. If the scanner is absent from `PATH`, check
-   `~/jenkins-agent/tools/hudson.plugins.sonar.SonarRunnerInstallation/SonarScanner/bin/sonar-scanner`.
+   `-Dsonar.qualitygate.wait=true`. Never upload unmerged code to the production
+   `autonomous-battlefield` project. For an open PR, set `SONAR_SCANNER_HOME` and
+   use `scripts/ci/run-sonarqube-pr-gate.sh PR_NUMBER origin/dev`; it seeds and
+   scans that PR's isolated preview project. If the scanner is absent from
+   `PATH`, check `~/jenkins-agent/tools/hudson.plugins.sonar.SonarRunnerInstallation/SonarScanner/bin/sonar-scanner`.
    For a private CA, configure `sonar.scanner.truststorePath` and
    `sonar.scanner.truststorePassword` for a temporary PKCS12 truststore outside
    the repository. Do not pass the token through `-Dsonar.token`.
@@ -150,7 +153,9 @@ When asked to inspect or fix SonarQube findings:
    same authorized task. If automatic approval review rejects it, explain the
    rejection and obtain the explicit authorization it requires before retrying.
 7. Query unresolved issues again after the analysis completes and compare the
-   result with the original issue set. Confirm the quality-gate status separately.
+   result with the original issue set. Query the PR preview key for unmerged work
+   and the production key for merged `main`. Confirm the quality-gate status
+   separately.
    Report remaining issues, failed conditions, or an inability to run the scanner
    instead of claiming SonarQube is clean. Passing local tests alone does not
    verify the SonarQube gate.

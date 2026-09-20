@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 runner="${project_dir}/scripts/ci/run-sonarqube-gate.sh"
+pr_runner="${project_dir}/scripts/ci/run-sonarqube-pr-gate.sh"
 temp_dir="$(mktemp -d)"
 cleanup() {
   rm -rf -- "${temp_dir}"
@@ -35,14 +36,17 @@ export GIT_BRANCH=origin/PR-123
 SONAR_PROJECT_KEY=autonomous-battlefield-pr-123 \
 SONAR_PROJECT_NAME='Autonomous Battlefield PR 123' \
   "${runner}" pr-123
+"${pr_runner}" 456 HEAD
 
 [[ ! -e "${SONAR_TEST_STATE}/multibranch-metadata" ]] || {
   echo "Jenkins multibranch metadata reached the Community Build scanner" >&2
   exit 1
 }
-[[ "$(wc -l <"${SONAR_TEST_STATE}/calls")" -eq 2 ]]
+[[ "$(wc -l <"${SONAR_TEST_STATE}/calls")" -eq 4 ]]
 grep -Fx -- '-Dsonar.projectVersion=main-revision -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=17' "${SONAR_TEST_STATE}/calls" >/dev/null
 grep -Fx -- '-Dsonar.projectVersion=pr-123 -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=17 -Dsonar.projectKey=autonomous-battlefield-pr-123 -Dsonar.projectName=Autonomous Battlefield PR 123' "${SONAR_TEST_STATE}/calls" >/dev/null
+grep -E -- '^-Dsonar.projectVersion=base-[0-9a-f]{40} -Dsonar.qualitygate.wait=false -Dsonar.qualitygate.timeout=17 -Dsonar.projectBaseDir=.+ -Dsonar.projectKey=autonomous-battlefield-pr-456 -Dsonar.projectName=Autonomous Battlefield PR 456$' "${SONAR_TEST_STATE}/calls" >/dev/null
+grep -Fx -- '-Dsonar.projectVersion=pr-456 -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=17 -Dsonar.projectKey=autonomous-battlefield-pr-456 -Dsonar.projectName=Autonomous Battlefield PR 456' "${SONAR_TEST_STATE}/calls" >/dev/null
 
 if SONAR_PROJECT_KEY=12345 "${runner}" invalid-key >/dev/null 2>&1; then
   echo "A numeric-only SonarQube project key was accepted" >&2

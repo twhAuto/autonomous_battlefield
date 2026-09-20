@@ -395,15 +395,23 @@ SonarQube imports `backend/coverage.out` and `frontend/coverage/lcov.info` using
 `sonar-project.properties`. It does not generate those reports itself. Because
 Community Build cannot analyze the repository's `dev` branch, each GitHub PR is
 an isolated SonarQube project named `autonomous-battlefield-pr-<number>`. Its
-checked-out code is that preview project's main branch, and all retries use the
-stable `pr-<number>` project version. This preserves the inherited **Previous
-version** New Code baseline within one PR and prevents another PR from changing
-it. The default **Sonar way** gate applies to preview projects. The production
-`autonomous-battlefield` project remains dedicated to merged `main`, which is
-scanned again before deployment. Jenkins requires at least 80% Go statement
-coverage and 80% for each frontend metric: statements, branches, functions, and
-lines. Delete preview projects for closed PRs periodically from the SonarQube
-Projects page; they contain analysis history, not runtime data.
+checked-out code is that preview project's main branch. Before every gated head
+scan, `scripts/ci/run-sonarqube-pr-gate.sh` uploads the PR target's merge-base
+tree as version `base-<commit>` and then uploads the head as version
+`pr-<number>`. SonarQube processes the baseline first, so the inherited
+**Previous version** New Code period measures the PR against its own target and
+cannot be moved by another PR. The baseline upload does not wait on its gate;
+the head upload waits and fails Jenkins when red.
+
+The server was verified with the default **Sonar way** gate assigned to the
+production project, so newly created preview projects inherit the same gate.
+Keep the production project on the default gate, or update preview provisioning
+before changing that assignment. The `autonomous-battlefield` project remains
+dedicated to merged `main`, which is scanned again before deployment. Jenkins
+requires at least 80% Go statement coverage and 80% for each frontend metric:
+statements, branches, functions, and lines. Delete preview projects for closed
+PRs periodically from the SonarQube Projects page; they contain analysis history,
+not runtime data.
 
 The SonarQube data is stored in named Docker volumes and survives restarts. Stop
 it without deleting its data with:
