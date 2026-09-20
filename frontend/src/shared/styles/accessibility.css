@@ -1,0 +1,25 @@
+/* Cross-feature accessibility and mobile defaults; loaded after feature styles. */
+[hidden] { display: none !important; }
+:is(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--lime) !important;
+  outline-offset: 3px !important;
+}
+.app-shell :is(p, td, th, dd) { font-size: 14px; line-height: 1.6; }
+.app-shell :is(label, dt, code) { font-size: 12px; }
+.app-shell :is(input, textarea, select) { font-size: 16px; }
+.app-shell select { min-height: 44px; }
+.app-shell :is(button, summary) { min-height: 44px; }
+.back-link { color: #aeb6a9; }
+.back-link + .back-link { margin-left: 20px; }
+.form-panel fieldset { border: 1px solid var(--line); margin: 24px 0; padding: 16px; }
+.form-panel fieldset button { color: var(--lime); background: var(--ink); border: 1px solid var(--line); padding: 10px 12px; margin: 4px; }
+@media (max-width: 780px) {
+  .page-header { padding: 24px 0; }
+  .page-header .back-link { margin-bottom: 24px; }
+  .page-header h1 { font-size: 38px; }
+  .creation-layout { margin: 20px 0 40px; }
+  .form-panel { padding: 24px 18px; min-width: 0; }
+  .form-panel h2 { margin: 24px 0; font-size: 28px; }
+  .preview-panel__content { padding: 24px; }
+  .preview-panel .emblem--large { width: 100px; height: 100px; }
+}

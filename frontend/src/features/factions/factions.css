@@ -1,0 +1,39 @@
+/* Faction directory, doctrine, background generation, and deletion controls. */
+.recent h2 { margin: 42px 0 12px; font-size: clamp(32px, 4vw, 52px); line-height: 1; letter-spacing: -.04em; font-weight: 500; }
+.faction-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 30px; }
+.registry-card { position: relative; min-width: 0; display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: 24px; min-height: 220px; padding: 30px; overflow: hidden; background: #151a14; border: 1px solid var(--line); }
+.registry-card .emblem--large { width: 110px; height: 110px; margin: 0; }
+.registry-card__index { position: absolute; top: 18px; right: 20px; color: var(--muted); font: 12px 'DM Mono', monospace; }
+.registry-card__body { min-width: 0; }
+.registry-card__body > span { color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .16em; }
+.registry-card h2 { margin: 9px 0 12px; overflow: hidden; font-size: 24px; font-weight: 500; letter-spacing: -.03em; text-overflow: ellipsis; white-space: nowrap; }
+.registry-card code { display: block; overflow: hidden; color: var(--muted); font: 12px 'DM Mono', monospace; text-overflow: ellipsis; }
+.registry-card__status { position: absolute; right: 20px; bottom: 18px; display: flex; align-items: center; gap: 7px; color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .1em; }
+.registry-card__delete { position: absolute; left: 30px; bottom: 16px; border: 0; background: transparent; color: #a96c63; cursor: pointer; font: 12px 'DM Mono', monospace; letter-spacing: .1em; }
+.registry-card__delete:hover:not(:disabled) { color: #ef8d7f; }
+.registry-card__delete:disabled { cursor: wait; opacity: .55; }
+
+.recent { margin: 0 0 100px; }
+.recent h2 { margin-top: 30px; }
+.recent__list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 28px; }
+.faction-card { display: flex; align-items: center; gap: 16px; padding: 18px; background: #151a14; border: 1px solid var(--line); }
+.faction-card > div:nth-child(2) { min-width: 0; flex: 1; }
+.faction-card h3 { margin: 0 0 5px; overflow: hidden; font-size: 15px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.faction-card p, .faction-card time { margin: 0; color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .08em; }
+
+@media (max-width: 780px) {
+  .faction-grid { grid-template-columns: 1fr; }
+  .recent__list { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 460px) {
+  .registry-card { grid-template-columns: 76px minmax(0, 1fr); gap: 16px; padding: 24px 18px; }
+  .registry-card .emblem--large { width: 72px; height: 72px; }
+  .registry-card h2 { font-size: 20px; }
+}
+.registry-card p { overflow-wrap: anywhere; }
+.faction-prose { white-space: pre-wrap; }
+.background-generator button { color: var(--lime); border: 1px solid var(--line); background: var(--ink); padding: 8px 12px; }
+.registry-card a { color: var(--lime); }
+.danger-zone { border-top: 1px solid #b17768; margin-top: 32px; padding-top: 16px; }
+.danger-zone button { background: #211714; border: 1px solid #b17768; color: #ffb3a5; padding: 12px 20px; }

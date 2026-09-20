@@ -796,3 +796,14 @@ Before the first hardened production delivery, complete the
 [Jenkins agent isolation and recovery setup](jenkins.md#production-hardening-rollout)
 and [trusted kubelet monitoring setup](observability.md#production-kubelet-tls).
 Run `./scripts/test/test-deployment.sh` before opening a deployment PR.
+
+## Docker context exclusions
+
+Backend and frontend images are built from their component directories, each
+with its own `.dockerignore`. The root `.dockerignore` does not govern those
+contexts. Component exclusions keep `.env`, `.env.*`, and nested equivalents
+out of build contexts and builder layers while retaining `.env.example` files.
+Pass intentional frontend build settings through build arguments; local Vite
+settings must not silently change an image build. Verify ignore behavior with
+`./scripts/test/test-docker-context.sh` on a Docker-enabled host. It uses synthetic
+credentials and scratch builds, without pulling images or accessing a registry.

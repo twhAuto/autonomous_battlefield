@@ -58,8 +58,9 @@ func NewAPIWithMembers(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint
 	if profiles == nil {
 		profiles = ai.NewProfileCatalog("local", nil)
 	}
-	adminHandler := &admin.Handler{DB: db, Profiles: profiles}
-	profiles = profiles.WithAccessPolicy(adminHandler.ReadPolicy)
+	adminService := &admin.Service{Repository: &admin.Postgres{DB: db}, Profiles: profiles}
+	adminHandler := &admin.Handler{Service: adminService}
+	profiles = profiles.WithAccessPolicy(adminService.ReadPolicy)
 	registries = []*ai.ProfileRegistry{profiles}
 	generationHandler := &generation.Handler{Repository: &generation.Postgres{DB: db}, Config: generationConfig, Profiles: profiles}
 	factionRepository := factionrepo.NewPostgres(db)

@@ -2,7 +2,7 @@
 
 Production now runs on the server at `192.168.1.104` (Jenkins port `8080`).
 For initial setup or migration of an existing server, complete the
-[server registration](environments.md#server-registration-and-migration).
+[server registration](environments.md#production-setup).
 The following installation commands are server administration instructions.
 
 The repository owns its pipeline in `Jenkinsfile`. GitHub stores the source;
@@ -167,6 +167,11 @@ an origin omit the label.
 scripts with stub Docker/Kubernetes commands, including repository overrides,
 preserved images, source metadata, and invalid-input rejection. Both PR and main
 run this check.
+
+The PR deployment-script stage and main deployment-scope stage also run
+`./scripts/test/test-docker-context.sh`. It builds synthetic scratch contexts to
+verify that each component excludes local environment files while retaining
+source and examples, using the existing Docker-enabled Jenkins agent.
 
 The source-security stage first requests a full npm audit from a digest-pinned
 Node container. If the npm advisory endpoint remains unavailable after its

@@ -65,7 +65,7 @@ func request(h *Handler, method string, body any, role authn.Role) *httptest.Res
 }
 func TestSettingsValidationPersistenceAndFailures(t *testing.T) {
 	db := &fakeDB{raw: []byte(`{"providers":{"obsolete":false},"profiles":{"obsolete":{"enabled":false,"allowedRoles":[]}}}`)}
-	h := &Handler{DB: db, Profiles: registry()}
+	h := &Handler{Service: &Service{Repository: &Postgres{DB: db}, Profiles: registry()}}
 	w := request(h, "GET", nil, authn.Admin)
 	var s Settings
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &s) != nil || len(s.Policy.Profiles) != 2 || len(s.Policy.Providers) != 2 {
@@ -89,7 +89,7 @@ func TestSettingsValidationPersistenceAndFailures(t *testing.T) {
 }
 func TestSettingsValidationAndAuthorization(t *testing.T) {
 	db := &fakeDB{raw: []byte(`{"providers":{},"profiles":{}}`)}
-	h := &Handler{DB: db, Profiles: registry()}
+	h := &Handler{Service: &Service{Repository: &Postgres{DB: db}, Profiles: registry()}}
 	var s Settings
 	w := request(h, "GET", nil, authn.Admin)
 	if err := json.Unmarshal(w.Body.Bytes(), &s); err != nil {
@@ -105,34 +105,34 @@ func TestSettingsValidationAndAuthorization(t *testing.T) {
 		t.Fatal("player CLI allowed")
 	}
 	s.Policy.Profiles["cli"] = ai.ProfileAccess{Enabled: true, AllowedRoles: []string{"root"}}
-	if h.valid(s) {
+	if h.Service.valid(s) {
 		t.Fatal("unknown role")
 	}
 	s.Policy.Profiles["cli"] = ai.ProfileAccess{Enabled: true, AllowedRoles: []string{"admin", "admin"}}
-	if h.valid(s) {
+	if h.Service.valid(s) {
 		t.Fatal("duplicate role")
 	}
 	s.Policy.Profiles["cli"] = ai.ProfileAccess{Enabled: true, AllowedRoles: []string{}}
-	if !h.valid(s) {
+	if !h.Service.valid(s) {
 		t.Fatal("empty explicit role list rejected")
 	}
 	delete(s.Policy.Providers, "openai")
-	if h.valid(s) {
+	if h.Service.valid(s) {
 		t.Fatal("missing provider")
 	}
 	delete(s.Policy.Profiles, "api")
-	if h.valid(s) {
+	if h.Service.valid(s) {
 		t.Fatal("missing profile")
 	}
 }
 func TestSettingsReadFailures(t *testing.T) {
 	db := &fakeDB{}
-	h := &Handler{DB: db, Profiles: registry()}
+	h := &Handler{Service: &Service{Repository: &Postgres{DB: db}, Profiles: registry()}}
 	db.readError = errors.New("offline")
 	if request(h, "GET", nil, authn.Admin).Code != 503 {
 		t.Fatal("read failure hidden")
 	}
-	if _, err := h.ReadPolicy(); err == nil {
+	if _, err := h.Service.ReadPolicy(); err == nil {
 		t.Fatal("policy failure hidden")
 	}
 	db.readError = nil

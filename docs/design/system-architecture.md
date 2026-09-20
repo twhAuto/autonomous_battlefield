@@ -95,7 +95,7 @@ The API and engine entry points compose `httpapi.LifecycleHandler` around applic
 
 ### Source ownership
 
-See the [codebase guide](codebase-guide.md#3-backend-organization) for package
+See the [backend guide](backend-guide.md#backend-organization) for package
 boundaries, frontend ownership, and launcher locations.
 
 The Vite development proxy defaults to `http://localhost:8080` and accepts a
@@ -1182,7 +1182,7 @@ management token. Activation and rotation are in the
 - Agent concurrency is hardcoded to one in `cmd/agent` rather than configured in YAML.
 - API adapters build text transcripts instead of preserving provider-native structured tool history.
 - One shared secret authorizes the agent control plane and capability minting. Separate keys or server-minted capabilities would reduce agent signing authority.
-- The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [codebase guide](codebase-guide.md#internalgamecontroller-deterministic-policy-abstractions).
+- The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [backend guide](backend-guide.md#internalgamecontroller-deterministic-policy-abstractions).
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
 
 The image-verification admission webhook allows 30 seconds per request for
@@ -1292,3 +1292,23 @@ session revocation are automated. New grants stay inactive until confirmed; remo
 block subsequent API requests immediately, without cancelling already accepted work.
 See [Player invitations](../operations/player-invitations.md) for activation, policy
 separation, credential rotation, rollback limitations and live acceptance checks.
+
+## Policy and build ownership
+
+Administrator model-access routes depend on `internal/admin.Service`; its
+repository contract is implemented by `admin.Postgres`. The service owns policy
+normalization and validation and supplies the three-second bounded `ReadPolicy`
+callback directly to the AI profile registry. HTTP delivery no longer owns the
+registry's database access. Optimistic versions, actor attribution, deny behavior,
+and response contracts are unchanged.
+
+Process configuration stays within `internal/config`, with parsers separated by
+concern. Frontend features share unit capabilities and model-profile contracts
+through `shared/domain`; feature API clients retain their request logic. Styles
+are owned by the shell, features, and shared components and assembled through
+`src/styles.css`. See the [codebase index](codebase-guide.md) for the focused guides.
+
+Docker image builds use the backend and frontend directories as separate
+contexts. Each context excludes local environment files, including nested files,
+while preserving `.env.example`. This keeps local settings and credentials out
+of builder layers; the root ignore file is not the boundary for component builds.
