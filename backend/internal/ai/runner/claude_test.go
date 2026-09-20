@@ -12,12 +12,14 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 )
 
+type claudeResultCase struct {
+	name, output       string
+	accepted, reported bool
+	category           string
+}
+
 func TestClaudeResults(t *testing.T) {
-	for _, tc := range []struct {
-		name, output       string
-		accepted, reported bool
-		category           string
-	}{
+	for _, tc := range []claudeResultCase{
 		{"success", `{"type":"result","subtype":"success","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":20,"cache_creation_input_tokens":3}}`, true, true, ""},
 		{"missing usage", `{"type":"result","subtype":"success"}`, true, false, ""},
 		{"zero usage", `{"type":"result","subtype":"success","usage":{"input_tokens":0,"output_tokens":0}}`, true, true, ""},
@@ -29,17 +31,22 @@ func TestClaudeResults(t *testing.T) {
 		{"assistant text", `{"type":"assistant","subtype":"success"}`, false, false, "cli"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := claudeResult([]byte(tc.output))
-			if result.Accepted != tc.accepted || (err == nil) != tc.accepted || result.Usage.TokensReported != tc.reported || result.ErrorCategory != tc.category {
-				t.Fatalf("result=%+v err=%v", result, err)
-			}
-			if result.Usage.CLIInvocations != 1 || result.Usage.Scope != "cli_session" {
-				t.Fatal(result.Usage)
-			}
-			if tc.name == "success" && (result.Usage.InputTokens != 33 || result.Usage.OutputTokens != 5 || result.Usage.CachedInputTokens == nil || *result.Usage.CachedInputTokens != 20) {
-				t.Fatal(result.Usage)
-			}
+			assertClaudeResult(t, tc)
 		})
+	}
+}
+
+func assertClaudeResult(t *testing.T, tc claudeResultCase) {
+	t.Helper()
+	result, err := claudeResult([]byte(tc.output))
+	if result.Accepted != tc.accepted || (err == nil) != tc.accepted || result.Usage.TokensReported != tc.reported || result.ErrorCategory != tc.category {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	if result.Usage.CLIInvocations != 1 || result.Usage.Scope != "cli_session" {
+		t.Fatal(result.Usage)
+	}
+	if tc.name == "success" && (result.Usage.InputTokens != 33 || result.Usage.OutputTokens != 5 || result.Usage.CachedInputTokens == nil || *result.Usage.CachedInputTokens != 20) {
+		t.Fatal(result.Usage)
 	}
 }
 
@@ -50,6 +57,17 @@ type claudeExecutor struct {
 }
 
 func (e *claudeExecutor) Run(_ context.Context, name string, args, environment []string, directory string) ([]byte, error) {
+	e.t.Helper()
+	flags := e.requireArguments(name, args, environment)
+	e.configPath = flags["--mcp-config"]
+	e.requireMCPConfig()
+	if e.fail {
+		return []byte(`{"type":"result","subtype":"success"}`), errors.New("exit")
+	}
+	return []byte(`{"type":"result","subtype":"success"}`), nil
+}
+
+func (e *claudeExecutor) requireArguments(name string, args, environment []string) map[string]string {
 	e.t.Helper()
 	if name != "claude" {
 		e.t.Fatal(name)
@@ -74,7 +92,11 @@ func (e *claudeExecutor) Run(_ context.Context, name string, args, environment [
 	if !strings.Contains(flags["--allowedTools"], "mcp__battlefield__submit_strategy_plan") {
 		e.t.Fatal(flags)
 	}
-	e.configPath = flags["--mcp-config"]
+	return flags
+}
+
+func (e *claudeExecutor) requireMCPConfig() {
+	e.t.Helper()
 	data, err := os.ReadFile(e.configPath)
 	if err != nil {
 		e.t.Fatal(err)
@@ -87,11 +109,8 @@ func (e *claudeExecutor) Run(_ context.Context, name string, args, environment [
 	if info.Mode().Perm() != 0o600 {
 		e.t.Fatal(info.Mode())
 	}
-	if e.fail {
-		return []byte(`{"type":"result","subtype":"success"}`), errors.New("exit")
-	}
-	return []byte(`{"type":"result","subtype":"success"}`), nil
 }
+
 func TestClaudeRunnerIsolationAndCleanup(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "private-api-key")
 	for _, fail := range []bool{false, true} {
