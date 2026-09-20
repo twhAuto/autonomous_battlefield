@@ -385,3 +385,25 @@ and all four host services are enabled. Follow the limited-launch cancellation a
 two-player tests before broader access. Keep durable configuration, release digests
 and the host bundle in operator records; keep secrets in private stores. This guide
 and the generator replace ad hoc unit-file editing, not the verification gates.
+
+## Concurrent decisions
+
+The VM template sets `ai.agentConcurrency: 4`, allowing four independent jobs
+across all enabled CLI providers, not four per provider. Omitted configuration
+keeps the worker at one slot; explicit values outside 1–4 are rejected.
+Migration `00014_cli_concurrency.sql` raises the shared database CLI capacity to
+four. Both the migration and updated worker binary are required. The database
+limit also includes faction background jobs and other worker instances.
+
+For an existing VM, deploy the release containing the migration through the normal
+pipeline, copy its `/app/agent` binary as described above, and add
+`agentConcurrency: 4` under `ai:` in `/etc/battlefield-agent/config.yaml`.
+Preserve the existing provider profiles and credentials. Restart
+`battlefield-worker.service` while no CLI jobs are running and verify the
+`agent_worker_ready` log reports `concurrency: 4` and health returns HTTP 204.
+Use independent queued decisions to verify overlap; a single decision remains
+sequential. Slots remain occupied until execution completes, even after a plan
+is accepted. The existing VM memory and systemd limits remain in force: monitor
+`systemctl status battlefield-worker.service` and the journal for OOM failures
+when testing four CLI processes. To reduce load, set `agentConcurrency: 1` and
+restart after active work completes; a database downgrade is unnecessary.

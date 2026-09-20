@@ -74,7 +74,7 @@ func run(configuration config.Config) error {
 		defer cancel()
 		_ = shutdownTracing(shutdown)
 	}()
-	worker := &aiworker.Worker{PolicyPolling: true, MCPURL: configuration.AI.MCPURL, Secret: configuration.AI.AgentSecret, WorkerID: hostname(), Profiles: ai.NewProfileRegistry(configuration.AI.Environment, configuration.AI.Profiles), PollInterval: time.Second, DecisionTimeout: configuration.AI.DecisionTimeout, Concurrency: 1}
+	worker := &aiworker.Worker{PolicyPolling: true, MCPURL: configuration.AI.MCPURL, Secret: configuration.AI.AgentSecret, WorkerID: hostname(), Profiles: ai.NewProfileRegistry(configuration.AI.Environment, configuration.AI.Profiles), PollInterval: time.Second, DecisionTimeout: configuration.AI.DecisionTimeout, Concurrency: configuration.AI.AgentConcurrency}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		if !worker.Ready() {

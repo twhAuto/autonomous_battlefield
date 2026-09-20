@@ -155,26 +155,35 @@ func TestWorkerDoesNotClaimBeyondAvailableConcurrency(t *testing.T) {
 		}
 		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil
 	})}
-	started := make(chan struct{}, 2)
+	started := make(chan struct{}, 4)
 	release := make(chan struct{})
+	defer close(release)
+
 	profiles := ai.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
-	worker := &Worker{MCPURL: "http://mcp/mcp", Secret: "secret", WorkerID: "agent", Profiles: profiles, DecisionTimeout: time.Second, Concurrency: 2, Client: client, RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
-		return runnerFunc(func(context.Context, ai.DecisionSession) (ai.DecisionResult, error) {
+	worker := &Worker{MCPURL: "http://mcp/mcp", Secret: "secret", WorkerID: "agent", Profiles: profiles, DecisionTimeout: time.Second, Concurrency: 4, Client: client, RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
+		return runnerFunc(func(ctx context.Context, _ ai.DecisionSession) (ai.DecisionResult, error) {
 			started <- struct{}{}
-			<-release
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
 			return ai.DecisionResult{Accepted: true}, nil
 		}), nil
 	}}
 	done := make(chan error, 1)
 	go func() { done <- worker.Run(ctx) }()
-	<-started
-	<-started
+	for range 4 {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatal("four runners did not start concurrently")
+		}
+	}
 	time.Sleep(10 * time.Millisecond)
-	if claims.Load() != 2 {
-		t.Fatalf("claimed %d jobs for two execution slots", claims.Load())
+	if claims.Load() != 4 {
+		t.Fatalf("claimed %d jobs for four execution slots", claims.Load())
 	}
 	cancel()
-	close(release)
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}

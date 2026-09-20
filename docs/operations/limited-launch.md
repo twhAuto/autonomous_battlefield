@@ -206,8 +206,10 @@ snapshot/ticks and owner returns the existing battle. Different inputs conflict.
 Background generations retain 10/day, cooldown, queue/execution timeout and their
 existing idempotency key. Expired queued jobs and failed executions both consume that day’s allowance.
 
-A global database lease admits only one CLI execution across decisions and
-background jobs. Submission alone does not release it: the worker must report
+A shared database limit admits up to four CLI executions across decisions and
+background jobs (`runtime_policy.cli_concurrency`, range 1–4). Workers separately
+limit their active jobs with `ai.agentConcurrency` (default 1; VM template 4).
+Submission alone does not release a slot: the worker must report
 completion, or the bounded execution lease must expire. Claims never wait in a
 worker's local execution queue. Workers use the database lease deadline rather than
 claim response arrival time; synchronize host/VM clocks and test delayed claims. Battles allow at most 100 model decision execution

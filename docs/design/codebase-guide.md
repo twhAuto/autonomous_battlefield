@@ -831,7 +831,8 @@ gate. `battle/api/player_test.go` checks projections after shared cache reads.
 Faction/battle service tests cover every role for own, other and legacy content.
 
 Migration `00011_friends_access.sql` owns row ownership, atomic admission triggers,
-AI execution counts, the single CLI lease, runtime stop policy and private usage view.
+AI execution counts, the original CLI lease, runtime stop policy and private usage view.
+Migration `00014_cli_concurrency.sql` expands that lease admission to four shared slots.
 `generation/friends_integration_test.go` tests cross-connection admission, paused
 limits, UTC reset, shared CLI slots and execution budgets against PostgreSQL.
 Workers receive capabilities from MCP instead of signing them. `worker/policy.go`
@@ -1075,3 +1076,9 @@ exposes it only to Admins with the session members capability, outside preview; 
 enforces every endpoint. Feature API and component tests cover the full flow.
 The shared application environment parser extracts a separate members Secret consumed
 only by API pods. See [Player invitations](../operations/player-invitations.md).
+
+Worker capacity is configured by `ai.agentConcurrency` in
+`backend/internal/config/config.go` and passed by `backend/cmd/agent/main.go`.
+Migration `backend/migrations/00014_cli_concurrency.sql` sets the shared CLI lease
+capacity; `backend/internal/generation/friends_integration_test.go` verifies
+concurrent admission across battle and generation jobs.

@@ -387,3 +387,31 @@ func TestBackgroundGenerationConfiguration(t *testing.T) {
 		}
 	}
 }
+
+func TestAgentConcurrencyConfiguration(t *testing.T) {
+	for _, tc := range []struct {
+		name, yaml string
+		want       int
+		invalid    bool
+	}{
+		{"default", "ai: {}", 1, false},
+		{"four", "ai: {agentConcurrency: 4}", 4, false},
+		{"zero", "ai: {agentConcurrency: 0}", 0, true},
+		{"negative", "ai: {agentConcurrency: -1}", 0, true},
+		{"too many", "ai: {agentConcurrency: 5}", 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("BATTLEFIELD_AGENT_SECRET", strings.Repeat("a", 32))
+			cfg, err := LoadAgent(writeConfigFile(t, tc.yaml))
+			if tc.invalid {
+				if err == nil {
+					t.Fatal("invalid concurrency accepted")
+				}
+				return
+			}
+			if err != nil || cfg.AI.AgentConcurrency != tc.want {
+				t.Fatalf("concurrency=%d error=%v", cfg.AI.AgentConcurrency, err)
+			}
+		})
+	}
+}

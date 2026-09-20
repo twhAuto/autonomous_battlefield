@@ -10,7 +10,7 @@ import (
 )
 
 func TestRunRejectsInvalidListenOrMCPAddress(t *testing.T) {
-	configuration := config.Config{AI: config.AI{Environment: "cluster", AgentHealthAddress: "bad address", MCPURL: "://bad", DecisionTimeout: time.Millisecond, CapabilitySecret: "secret"}}
+	configuration := config.Config{AI: config.AI{Environment: "cluster", AgentConcurrency: 1, AgentHealthAddress: "bad address", MCPURL: "://bad", DecisionTimeout: time.Millisecond, CapabilitySecret: "secret"}}
 	if err := run(configuration); err == nil {
 		t.Fatal("invalid runtime addresses accepted")
 	}

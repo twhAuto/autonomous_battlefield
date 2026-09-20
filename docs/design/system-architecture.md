@@ -397,7 +397,7 @@ At the decision deadline:
 
 ## 6. Model execution
 
-`internal/ai/worker` owns decision claims, concurrency, timeouts, and outcome reporting. Each deployed worker uses one execution slot; PostgreSQL serializes CLI claims globally across all workers and generation jobs. A completed submission retains the CLI lease until the worker reports completion or its execution deadline expires. Claim responses carry the database lease deadline, so network delays cannot extend a worker’s allotted execution time. Keep the database, MCP and VM clocks synchronized. It selects an `APIRunner` or `CLIRunner` from `internal/ai/runner`; both implement the same provider-neutral decision-runner contract.
+`internal/ai/worker` owns decision claims, concurrency, timeouts, and outcome reporting. Workers use `ai.agentConcurrency` execution slots (1–4, default 1); the VM template selects 4. PostgreSQL serializes admission on the policy row and caps active CLI leases at `runtime_policy.cli_concurrency` (1–4, default 4), shared across all workers, battle decisions and generation jobs. API jobs do not consume CLI leases. A completed submission retains the CLI lease until the worker reports completion or its execution deadline expires. Claim responses carry the database lease deadline, so network delays cannot extend a worker’s allotted execution time. Keep the database, MCP and VM clocks synchronized. It selects an `APIRunner` or `CLIRunner` from `internal/ai/runner`; both implement the same provider-neutral decision-runner contract.
 
 ### API runtime
 

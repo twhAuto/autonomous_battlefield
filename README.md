@@ -244,3 +244,6 @@ on the PR. Run one full review and at most one focused follow-up on the new diff
 and unresolved findings; further rounds need user approval. Trivial wording and
 low-risk preference changes are exempt. Use short handoffs for fresh task chats.
 Reviewers are Claude Opus and Codex GPT-6 Astra at medium reasoning effort.
+
+The isolated CLI VM supports up to four concurrent jobs shared by its enabled
+providers; see [worker concurrency setup](docs/operations/agent-vm.md#concurrent-decisions).
