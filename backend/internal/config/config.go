@@ -1,23 +1,17 @@
-// Strictly decodes YAML and environment-backed settings, applying defaults and validation
-// for each backend process.
-
+// Loads shared configuration and coordinates process-specific validation.
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -31,59 +25,10 @@ type Config struct {
 	AI          AI
 }
 
-type ResultCache struct {
-	URL     string
-	TTL     time.Duration
-	Timeout time.Duration
-}
-
 type API struct {
 	ScenarioCatalogPath string
 	RulesetCatalogPath  string
 	MaxTicks            uint64
-}
-
-type Engine struct {
-	KnowledgeRetrieval          ai.KnowledgeLimits
-	HealthAddress               string
-	PollInterval                time.Duration
-	LeaseDuration               time.Duration
-	HeartbeatInterval           time.Duration
-	ShutdownTimeout             time.Duration
-	MaxAttempts                 int
-	WorkerIDEnvironmentVariable string
-}
-
-type AI struct {
-	BackgroundGeneration generation.Config
-	Environment          string
-	AgentConcurrency     int
-	AgentHealthAddress   string
-	MCPAddress           string
-	MCPURL               string
-	DecisionTimeout      time.Duration
-	AgentSecret          string
-	CapabilitySecret     string
-	CapabilitySecretEnv  string
-	AllowedOrigins       []string
-	Profiles             []ai.ModelProfile
-}
-
-type Database struct {
-	URL                   string
-	ConnectTimeout        time.Duration
-	MaxConnections        int32
-	MinConnections        int32
-	MaxConnectionLifetime time.Duration
-}
-
-type HTTPServer struct {
-	Address           string
-	ReadHeaderTimeout time.Duration
-	ReadTimeout       time.Duration
-	WriteTimeout      time.Duration
-	IdleTimeout       time.Duration
-	ShutdownTimeout   time.Duration
 }
 
 type fileConfig struct {
@@ -191,148 +136,11 @@ func LoadAPI(path string) (Config, error) {
 	return Config{ResultCache: cache, HTTP: httpConfig, Database: databaseConfig, API: apiConfig, Auth: authConfig, AI: aiConfig}, nil
 }
 
-const localPasswordMode = "local-password"
-
-const disabledDevelopmentMode = "disabled-development"
-
-func parseAuthConfig(raw fileConfig) (authn.Config, error) {
-	mode := strings.TrimSpace(os.Getenv("BATTLEFIELD_AUTH_MODE"))
-	environment := strings.TrimSpace(os.Getenv("BATTLEFIELD_ENV"))
-	if environment != "" && environment != "dev" && environment != "production" {
-		return authn.Config{}, fmt.Errorf("unknown runtime environment")
-	}
-	if environment == "production" && mode != authn.ModeCloudflare {
-		return authn.Config{}, fmt.Errorf("production requires Cloudflare authentication")
-	}
-	if mode == authn.ModeCloudflare {
-		return parseCloudflareConfig()
-	}
-	return parseLocalAuthConfig(raw, mode)
-}
-
-func parseCloudflareConfig() (authn.Config, error) {
-	issuer := strings.TrimRight(os.Getenv("BATTLEFIELD_ACCESS_ISSUER"), "/")
-	audience := strings.TrimSpace(os.Getenv("BATTLEFIELD_ACCESS_AUDIENCE"))
-	origin := strings.TrimRight(os.Getenv("BATTLEFIELD_PUBLIC_ORIGIN"), "/")
-	u, e := url.Parse(issuer)
-	o, oe := url.Parse(origin)
-	if e != nil || u.Scheme != "https" || !strings.HasSuffix(u.Hostname(), ".cloudflareaccess.com") || u.Port() != "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil || audience == "" || oe != nil || o.Scheme != "https" || o.Host == "" || o.Path != "" || o.RawQuery != "" || o.Fragment != "" || o.User != nil {
-		return authn.Config{}, fmt.Errorf("invalid Cloudflare issuer, audience or public origin")
-	}
-	roles, err := cloudflareRoles()
-	if err != nil {
-		return authn.Config{}, err
-	}
-	if v := os.Getenv("BATTLEFIELD_AUTH_ENABLED"); v != "" && v != "true" {
-		return authn.Config{}, fmt.Errorf("conflicting authentication settings")
-	}
-	ciClientID := os.Getenv("BATTLEFIELD_ACCESS_CI_CLIENT_ID")
-	if ciClientID != "" && !regexp.MustCompile(`^[a-f0-9]{32}\.access$`).MatchString(ciClientID) {
-		return authn.Config{}, fmt.Errorf("invalid Access CI client ID")
-	}
-	return authn.Config{Mode: authn.ModeCloudflare, Enabled: true, Issuer: issuer, Audience: audience, Origin: origin, Roles: roles, CIClientID: ciClientID}, nil
-}
-
-func cloudflareRoles() (map[string]authn.Role, error) {
-	assignments, err := parseRoleAssignments(os.Getenv("BATTLEFIELD_ACCESS_ROLES"))
-	if err != nil {
-		return nil, fmt.Errorf("invalid Access role assignments")
-	}
-	roles := map[string]authn.Role{}
-	for role, emails := range assignments {
-		if role != "admin" && role != "developer" && role != "player" {
-			return nil, fmt.Errorf("unknown Access role")
-		}
-		for _, email := range emails {
-			email = strings.ToLower(strings.TrimSpace(email))
-			if !strings.Contains(email, "@") || roles[email] != "" {
-				return nil, fmt.Errorf("invalid or duplicate Access identity")
-			}
-			roles[email] = authn.Role(role)
-		}
-	}
-	if len(roles) == 0 {
-		return nil, fmt.Errorf("Access requires assigned identities")
-	}
-	return roles, nil
-}
-
-func parseLocalAuthConfig(raw fileConfig, mode string) (authn.Config, error) {
-	if mode != "" && mode != localPasswordMode && mode != disabledDevelopmentMode {
-		return authn.Config{}, fmt.Errorf("unknown authentication mode")
-	}
-	enabled, err := localAuthEnabled(raw, mode)
-	if err != nil {
-		return authn.Config{}, err
-	}
-	ttl, err := parseOptionalDuration("auth.sessionTTL", raw.Auth.SessionTTL, 12*time.Hour, false)
-	if err != nil {
-		return authn.Config{}, err
-	}
-	secureEnv := environmentVariableName(raw.Auth.CookieSecureEnvironmentVariable, "BATTLEFIELD_AUTH_COOKIE_SECURE")
-	cookieSecure, err := parseBooleanEnvironmentVariable(secureEnv, false)
-	if err != nil {
-		return authn.Config{}, err
-	}
-	if !enabled {
-		return authn.Config{Mode: disabledDevelopmentMode, SessionTTL: ttl, CookieSecure: cookieSecure}, nil
-	}
-	usernameEnv := environmentVariableName(raw.Auth.UsernameEnvironmentVariable, "BATTLEFIELD_ADMIN_USERNAME")
-	passwordEnv := environmentVariableName(raw.Auth.PasswordEnvironmentVariable, "BATTLEFIELD_ADMIN_PASSWORD")
-	secretEnv := environmentVariableName(raw.Auth.SessionSecretEnvironmentVariable, "BATTLEFIELD_SESSION_SECRET")
-	result, err := loadAuthenticationSecrets(usernameEnv, passwordEnv, secretEnv, ttl, cookieSecure)
-	result.Mode = localPasswordMode
-	return result, err
-}
-
-func localAuthEnabled(raw fileConfig, mode string) (bool, error) {
-	enabledEnv := environmentVariableName(raw.Auth.EnabledEnvironmentVariable, "BATTLEFIELD_AUTH_ENABLED")
-	enabled, err := parseBooleanEnvironmentVariable(enabledEnv, false)
-	if mode == localPasswordMode {
-		if v := os.Getenv(enabledEnv); v != "" && v != "true" {
-			return false, fmt.Errorf("conflicting authentication settings")
-		}
-		enabled = true
-	}
-	if mode == disabledDevelopmentMode {
-		if v := os.Getenv(enabledEnv); v != "" && v != "false" {
-			return false, fmt.Errorf("conflicting authentication settings")
-		}
-		enabled = false
-	}
-	if mode == "" && os.Getenv(enabledEnv) == "" {
-		return false, fmt.Errorf("authentication mode must be explicitly configured")
-	}
-	if err != nil {
-		return false, err
-	}
-	return enabled, nil
-}
-
 func environmentVariableName(configured, fallback string) string {
 	if name := strings.TrimSpace(configured); name != "" {
 		return name
 	}
 	return fallback
-}
-
-func loadAuthenticationSecrets(usernameEnv, passwordEnv, secretEnv string, ttl time.Duration, cookieSecure bool) (authn.Config, error) {
-	username := strings.TrimSpace(os.Getenv(usernameEnv))
-	password := os.Getenv(passwordEnv)
-	secret := os.Getenv(secretEnv)
-	if username == "" {
-		return authn.Config{}, fmt.Errorf("authentication username environment variable %q must not be empty", usernameEnv)
-	}
-	if len(password) < 12 {
-		return authn.Config{}, fmt.Errorf("authentication password environment variable %q must contain at least 12 characters", passwordEnv)
-	}
-	if len(secret) < 32 {
-		return authn.Config{}, fmt.Errorf("authentication session secret environment variable %q must contain at least 32 characters", secretEnv)
-	}
-	return authn.Config{
-		Enabled: true, Username: username, Password: password, SessionSecret: secret,
-		SessionTTL: ttl, CookieSecure: cookieSecure,
-	}, nil
 }
 
 func parseBooleanEnvironmentVariable(name string, defaultValue bool) (bool, error) {
@@ -408,109 +216,11 @@ func LoadMCP(path string) (Config, error) {
 	return Config{Database: databaseConfig, AI: aiConfig}, nil
 }
 
-func parseAIConfig(raw fileConfig) (AI, error) {
-	environment, err := parseAIEnvironment(raw.AI.Environment)
-	if err != nil {
-		return AI{}, err
-	}
-	concurrency := 1
-	if raw.AI.AgentConcurrency != nil {
-		concurrency = *raw.AI.AgentConcurrency
-	}
-	if concurrency < 1 || concurrency > 4 {
-		return AI{}, fmt.Errorf("ai.agentConcurrency must be between 1 and 4")
-	}
-	health := stringOrDefault(raw.AI.AgentHealthAddress, ":8083")
-	mcpAddress := stringOrDefault(raw.AI.MCPAddress, ":8084")
-	mcpURL := stringOrDefault(raw.AI.MCPURL, "http://127.0.0.1:8084/mcp")
-	timeout, err := parseOptionalDuration("ai.decisionTimeout", raw.AI.DecisionTimeout, 2*time.Minute, false)
-	if err != nil {
-		return AI{}, err
-	}
-	secret, secretEnv := aiCapabilitySecret(raw.AI.CapabilitySecretEnvironmentVariable, environment)
-	if err := validateAIProfiles(raw.AI.Profiles); err != nil {
-		return AI{}, err
-	}
-	gen, err := parseBackgroundGeneration(raw)
-	if err != nil {
-		return AI{}, err
-	}
-	return AI{AgentConcurrency: concurrency, BackgroundGeneration: gen, Environment: environment, AgentHealthAddress: health, MCPAddress: mcpAddress, MCPURL: mcpURL,
-		DecisionTimeout: timeout, CapabilitySecret: secret, CapabilitySecretEnv: secretEnv,
-		AllowedOrigins: append([]string(nil), raw.AI.AllowedOrigins...), Profiles: append([]ai.ModelProfile(nil), raw.AI.Profiles...)}, nil
-}
-
-func parseAIEnvironment(value string) (string, error) {
-	environment := stringOrDefault(value, "local")
-	if environment != "local" && environment != "cluster" {
-		return "", fmt.Errorf("ai.environment must be local or cluster")
-	}
-	return environment, nil
-}
-
 func stringOrDefault(value, fallback string) string {
 	if trimmed := strings.TrimSpace(value); trimmed != "" {
 		return trimmed
 	}
 	return fallback
-}
-
-func aiCapabilitySecret(configuredEnvironmentVariable, environment string) (string, string) {
-	secretEnv := stringOrDefault(configuredEnvironmentVariable, "BATTLEFIELD_MCP_CAPABILITY_SECRET")
-	secret := strings.TrimSpace(os.Getenv(secretEnv))
-	if secret == "" && environment == "local" {
-		secret = "local-development-capability-secret-change-me"
-	}
-	return secret, secretEnv
-}
-
-func validateAIProfiles(profiles []ai.ModelProfile) error {
-	seen := make(map[string]bool, len(profiles))
-	for _, profile := range profiles {
-		id := strings.TrimSpace(profile.ID)
-		if id == "" || seen[id] {
-			return fmt.Errorf("ai profile IDs must be unique and non-empty")
-		}
-		seen[id] = true
-		if err := validateAIProfile(profile); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func validateProfileRoles(profile ai.ModelProfile) error {
-	seen := map[string]bool{}
-	for _, role := range profile.AllowedRoles {
-		if seen[role] || (role != "player" && role != "developer" && role != "admin") || (role == "player" && profile.Runtime == "cli") {
-			return fmt.Errorf("invalid allowedRoles for profile %q", profile.ID)
-		}
-		seen[role] = true
-	}
-	return nil
-}
-
-func validateAIProfile(profile ai.ModelProfile) error {
-	if err := validateProfileRoles(profile); err != nil {
-		return err
-	}
-	if os.Getenv("BATTLEFIELD_ENV") == "production" && profile.Enabled && profile.Runtime == "cli" && (profile.AvailabilityEnvironmentVariable == "" || strings.EqualFold(os.Getenv(profile.AvailabilityEnvironmentVariable), "true")) && os.Getenv("BATTLEFIELD_CLI_ISOLATION_VERIFIED") != "true" {
-		return fmt.Errorf("CLI profiles require verified VM isolation in production")
-	}
-
-	if profile.MaxSteps < 1 || profile.MaxSteps > 10 {
-		return fmt.Errorf("ai profile %q maxSteps must be between 1 and 10", profile.ID)
-	}
-	if profile.Runtime == "api" && profile.MaxOutputTokens < 1 {
-		return fmt.Errorf("ai profile %q maxOutputTokens must be positive", profile.ID)
-	}
-	if profile.Runtime == "cli" && strings.TrimSpace(profile.SupportedVersionPrefix) == "" {
-		return fmt.Errorf("ai profile %q supportedVersionPrefix is required", profile.ID)
-	}
-	if profile.Runtime == "cli" && strings.TrimSpace(profile.Model) == "" {
-		return fmt.Errorf("ai profile %q model is required", profile.ID)
-	}
-	return nil
 }
 
 func decode(path string) (fileConfig, error) {
@@ -562,58 +272,6 @@ func parseAPIConfig(raw fileConfig, path string) (API, error) {
 	return API{ScenarioCatalogPath: catalogPath, RulesetCatalogPath: rulesetPath, MaxTicks: maxTicks}, nil
 }
 
-func parseEngineConfig(raw fileConfig) (Engine, error) {
-	healthAddress := strings.TrimSpace(raw.Engine.HealthAddress)
-	if healthAddress == "" {
-		healthAddress = ":8081"
-	}
-	pollInterval, err := parseOptionalDuration("engine.pollInterval", raw.Engine.PollInterval, time.Second, false)
-	if err != nil {
-		return Engine{}, err
-	}
-	leaseDuration, err := parseOptionalDuration("engine.leaseDuration", raw.Engine.LeaseDuration, 30*time.Second, false)
-	if err != nil {
-		return Engine{}, err
-	}
-	heartbeatInterval, err := parseOptionalDuration("engine.heartbeatInterval", raw.Engine.HeartbeatInterval, 10*time.Second, false)
-	if err != nil {
-		return Engine{}, err
-	}
-	shutdownTimeout, err := parseOptionalDuration("engine.shutdownTimeout", raw.Engine.ShutdownTimeout, 10*time.Second, false)
-	if err != nil {
-		return Engine{}, err
-	}
-	if heartbeatInterval >= leaseDuration {
-		return Engine{}, fmt.Errorf("engine.heartbeatInterval must be less than engine.leaseDuration")
-	}
-	maxAttempts := raw.Engine.MaxAttempts
-	if maxAttempts == 0 {
-		maxAttempts = 3
-	}
-	if maxAttempts < 1 {
-		return Engine{}, fmt.Errorf("engine.maxAttempts must be positive")
-	}
-	workerEnv := strings.TrimSpace(raw.Engine.WorkerIDEnvironmentVariable)
-	if workerEnv == "" {
-		workerEnv = "ENGINE_WORKER_ID"
-	}
-	limits := ai.DefaultKnowledgeLimits()
-	if raw.Engine.KnowledgeRetrieval.MaxUnitCards != nil {
-		limits.MaxUnitCards = *raw.Engine.KnowledgeRetrieval.MaxUnitCards
-	}
-	if raw.Engine.KnowledgeRetrieval.MaxBytes != nil {
-		limits.MaxBytes = *raw.Engine.KnowledgeRetrieval.MaxBytes
-	}
-	if err := limits.Validate(); err != nil {
-		return Engine{}, err
-	}
-	return Engine{KnowledgeRetrieval: limits,
-		HealthAddress: healthAddress, PollInterval: pollInterval, LeaseDuration: leaseDuration,
-		HeartbeatInterval: heartbeatInterval, ShutdownTimeout: shutdownTimeout,
-		MaxAttempts: maxAttempts, WorkerIDEnvironmentVariable: workerEnv,
-	}, nil
-}
-
 func parseOptionalDuration(field, value string, fallback time.Duration, allowZero bool) (time.Duration, error) {
 	if strings.TrimSpace(value) == "" {
 		return fallback, nil
@@ -626,81 +284,6 @@ func parseOptionalDuration(field, value string, fallback time.Duration, allowZer
 		return 0, fmt.Errorf("%s must be greater than zero", field)
 	}
 	return duration, nil
-}
-
-func parseDatabaseConfig(raw fileConfig) (Database, error) {
-	urlEnvironmentVariable := strings.TrimSpace(raw.Database.URLEnvironmentVariable)
-	if urlEnvironmentVariable == "" {
-		return Database{}, fmt.Errorf("database.urlEnvironmentVariable must not be empty")
-	}
-
-	url := strings.TrimSpace(os.Getenv(urlEnvironmentVariable))
-	if url == "" {
-		return Database{}, fmt.Errorf("database connection URL environment variable %q must not be empty", urlEnvironmentVariable)
-	}
-
-	connectTimeout, err := parseDuration("database.connectTimeout", raw.Database.ConnectTimeout)
-	if err != nil {
-		return Database{}, err
-	}
-	maxConnectionLifetime, err := parseDuration("database.maxConnectionLifetime", raw.Database.MaxConnectionLifetime)
-	if err != nil {
-		return Database{}, err
-	}
-	if raw.Database.MaxConnections <= 0 {
-		return Database{}, fmt.Errorf("database.maxConnections must be greater than zero")
-	}
-	if raw.Database.MinConnections < 0 {
-		return Database{}, fmt.Errorf("database.minConnections must not be negative")
-	}
-	if raw.Database.MinConnections > raw.Database.MaxConnections {
-		return Database{}, fmt.Errorf("database.minConnections must not exceed database.maxConnections")
-	}
-
-	return Database{
-		URL:                   url,
-		ConnectTimeout:        connectTimeout,
-		MaxConnections:        raw.Database.MaxConnections,
-		MinConnections:        raw.Database.MinConnections,
-		MaxConnectionLifetime: maxConnectionLifetime,
-	}, nil
-}
-
-func parseHTTPConfig(raw fileConfig) (HTTPServer, error) {
-	address := strings.TrimSpace(raw.HTTP.Address)
-	if address == "" {
-		return HTTPServer{}, fmt.Errorf("http.address must not be empty")
-	}
-
-	readHeaderTimeout, err := parseDuration("http.readHeaderTimeout", raw.HTTP.ReadHeaderTimeout)
-	if err != nil {
-		return HTTPServer{}, err
-	}
-	readTimeout, err := parseDuration("http.readTimeout", raw.HTTP.ReadTimeout)
-	if err != nil {
-		return HTTPServer{}, err
-	}
-	writeTimeout, err := parseDuration("http.writeTimeout", raw.HTTP.WriteTimeout)
-	if err != nil {
-		return HTTPServer{}, err
-	}
-	idleTimeout, err := parseDuration("http.idleTimeout", raw.HTTP.IdleTimeout)
-	if err != nil {
-		return HTTPServer{}, err
-	}
-	shutdownTimeout, err := parseDuration("http.shutdownTimeout", raw.HTTP.ShutdownTimeout)
-	if err != nil {
-		return HTTPServer{}, err
-	}
-
-	return HTTPServer{
-		Address:           address,
-		ReadHeaderTimeout: readHeaderTimeout,
-		ReadTimeout:       readTimeout,
-		WriteTimeout:      writeTimeout,
-		IdleTimeout:       idleTimeout,
-		ShutdownTimeout:   shutdownTimeout,
-	}, nil
 }
 
 func parseDuration(field, value string) (time.Duration, error) {
@@ -718,80 +301,4 @@ func parseDuration(field, value string) (time.Duration, error) {
 	}
 
 	return duration, nil
-}
-
-func parseResultCacheConfig(raw fileConfig) (ResultCache, error) {
-	ttl, err := parseOptionalDuration("resultCache.ttl", raw.ResultCache.TTL, time.Hour, false)
-	if err != nil {
-		return ResultCache{}, err
-	}
-	timeout, err := parseOptionalDuration("resultCache.timeout", raw.ResultCache.Timeout, 100*time.Millisecond, false)
-	if err != nil {
-		return ResultCache{}, err
-	}
-	return ResultCache{URL: strings.TrimSpace(os.Getenv(environmentVariableName(raw.ResultCache.URLEnvironmentVariable, "BATTLEFIELD_REDIS_URL"))), TTL: ttl, Timeout: timeout}, nil
-}
-
-func parseBackgroundGeneration(raw fileConfig) (generation.Config, error) {
-	c := generation.DefaultConfig()
-	v := raw.AI.BackgroundGeneration
-	if v.Enabled != nil {
-		c.Enabled = *v.Enabled
-	}
-	if v.ProfileID != "" {
-		c.ProfileID = v.ProfileID
-	}
-	if v.DailyAllowance != nil {
-		c.DailyAllowance = *v.DailyAllowance
-	}
-	var err error
-	c.Cooldown, err = parseOptionalDuration("ai.backgroundGeneration.cooldown", v.Cooldown, c.Cooldown, false)
-	if err != nil {
-		return c, err
-	}
-	c.QueueTimeout, err = parseOptionalDuration("ai.backgroundGeneration.queueTimeout", v.QueueTimeout, c.QueueTimeout, false)
-	if err != nil {
-		return c, err
-	}
-	c.ExecutionTimeout, err = parseOptionalDuration("ai.backgroundGeneration.executionTimeout", v.ExecutionTimeout, c.ExecutionTimeout, false)
-	if err != nil {
-		return c, err
-	}
-	return c, c.Validate()
-}
-
-// Reject repeated JSON role keys rather than silently accepting the last assignment.
-func parseRoleAssignments(raw string) (map[string][]string, error) {
-	d := json.NewDecoder(strings.NewReader(raw))
-	first, e := d.Token()
-	if e != nil || first != json.Delim('{') {
-		return nil, fmt.Errorf("expected role object")
-	}
-	result := map[string][]string{}
-	for d.More() {
-		token, e := d.Token()
-		if e != nil {
-			return nil, e
-		}
-		key, ok := token.(string)
-		if !ok {
-			return nil, fmt.Errorf("invalid role key")
-		}
-		if _, exists := result[key]; exists {
-			return nil, fmt.Errorf("duplicate role key")
-		}
-		var values []string
-		if e = d.Decode(&values); e != nil {
-			return nil, e
-		}
-		result[key] = values
-	}
-	if _, e = d.Token(); e != nil {
-		return nil, e
-	}
-	var extra any
-	if d.Decode(&extra) != io.EOF {
-		return nil, fmt.Errorf("trailing role data")
-	}
-	return result, nil
 }

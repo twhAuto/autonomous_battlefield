@@ -16,6 +16,17 @@ digest tags are evidence belonging to their subject; retention must preserve or
 remove them as one unit and must never orphan a deployable subject from either
 verification layout.
 
+### Run a retention inventory
+
+Run `./scripts/ops/ghcr-retention-report.sh` from the repository root with a
+registered deployment environment and `GH_TOKEN` carrying `read:packages` access.
+The shared environment resolver verifies the selected cluster. The script writes
+package-version inventories and protected running/rollback digests under
+`artifacts/retention/` (`REPORT_DIR` overrides the destination; `GHCR_OWNER`
+overrides the package owner). It does not delete registry versions. Treat missing
+cluster or rollback evidence as incomplete inventory before making any deletion
+decision; the report is advisory, not an automated retention policy.
+
 ## Signing-key rotation
 
 1. Open a reviewed security ticket and record the old public-key fingerprint.
@@ -36,7 +47,7 @@ Application rollout or smoke-test failure can restore that verified pair with
 [Jenkins pipeline behavior](jenkins.md#pipeline-behavior).
 
 A lost registered cluster requires explicit recovery. Follow
-[environment validation and recovery](environments.md#validation-and-recovery)
+[environment validation and recovery](environments.md#other-managed-credentials-and-validation)
 to restore the database and verify the replacement cluster before registration.
 Then authenticate to GHCR and deploy the verified stored digest pair. Restoring
 images does not restore PostgreSQL data; normal bootstrap refuses to recreate a

@@ -112,6 +112,7 @@ pipeline {
                             steps {
                                 sh '''
                                     ./scripts/test/test-deployment.sh
+                                    ./scripts/test/test-docker-context.sh
                                 '''
                             }
                         }
@@ -235,6 +236,7 @@ pipeline {
                     steps {
                         sh '''
                             ./scripts/test/test-deployment.sh
+                            ./scripts/test/test-docker-context.sh
                         '''
                         script {
                             // Compare with the last successful build so changes from failed builds are included.

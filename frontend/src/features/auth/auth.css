@@ -1,0 +1,25 @@
+/* Authentication page and credential form. */
+.login-page {
+  min-height: 100vh;
+  width: 100%;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background:
+    radial-gradient(circle at 70% 20%, rgba(216,255,104,.12), transparent 28rem),
+    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px),
+    #111510;
+  background-size: auto, 42px 42px, 42px 42px, auto;
+}
+.login-card { width: min(470px, 100%); padding: clamp(32px, 6vw, 58px); background: #151a14; border: 1px solid var(--line); box-shadow: 0 28px 90px rgba(0,0,0,.35); }
+.login-card__mark { display: grid; place-items: center; width: 42px; height: 48px; margin-bottom: 34px; color: var(--ink); background: var(--lime); clip-path: polygon(50% 0, 100% 24%, 87% 100%, 13% 100%, 0 24%); font-size: 23px; font-weight: 700; }
+.login-card__eyebrow { color: var(--lime); font: 500 12px 'DM Mono', monospace; letter-spacing: .18em; }
+.login-card h1 { margin: 16px 0 12px; font-size: clamp(40px, 7vw, 62px); line-height: .98; letter-spacing: -.05em; font-weight: 500; }
+.login-card > p { margin: 0 0 36px; color: var(--muted); line-height: 1.65; }
+.login-card label { margin-top: 22px; }
+.login-card input { width: 100%; margin-bottom: 8px; padding: 15px 14px; outline: 0; color: #fff; background: #111510; border: 1px solid #454d41; }
+.login-card input:focus { border-color: var(--lime); }
+.login-card .submit-button { margin-top: 28px; }
+.login-card__error { margin: 18px 0 0; color: #ff9e85; font-size: 12px; }
+.login-card input { font-size: 16px; }

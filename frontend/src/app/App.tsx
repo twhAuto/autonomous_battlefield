@@ -18,7 +18,6 @@ import { RolePreviewContext, type PreviewRole } from '../features/auth/RolePrevi
 import { authenticationRequiredEvent, setRequestPreviewRole } from '../shared/api/request'
 import { SessionContext } from '../features/auth/SessionContext'
 import '../styles.css'
-import '../usability.css'
 
 function AppLayout({ actorID, admin, onLogout }: Readonly<{ actorID: string; admin: boolean; onLogout(): void }>) {
   const location = useLocation()
