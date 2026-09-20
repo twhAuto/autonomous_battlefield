@@ -17,7 +17,7 @@ For runtime boundaries, data flows, durability, and security decisions, see the 
 AI-created work branches start from the latest fetched `origin/dev` and target
 `dev` in pull requests, unless the user explicitly requests otherwise. Promotion
 to `main` is separate. See [agent branch guidance](../../AGENTS.md#branches-and-pull-requests)
-and the [Jenkins workflow](../operations/jenkins.md#configure-github-main-protection).
+and the [Jenkins workflow](../operations/jenkins.md#configure-github-integration-branch-protection).
 Run applicable local checks before opening a PR. Jenkins verifies both `dev` and
 `main` PR targets on the existing shared `battlefield-production` agent.
 
@@ -1027,6 +1027,10 @@ asserts exact API/frontend peer selectors and ports to prevent broadening access
 Production hardening entry points:
 
 - `scripts/test/test-deployment.sh` is the shared PR/main infrastructure regression gate.
+- `scripts/ci/run-sonarqube-pr-gate.sh` seeds a PR preview project from its target
+  merge base before the gated head scan; `run-sonarqube-gate.sh` owns one scanner
+  invocation. `test-sonarqube-gate.sh` verifies preview-project selection,
+  baseline ordering and scanner arguments without contacting SonarQube.
 - `scripts/cd/reconcile-network-policies.sh` applies only the separately rendered
   `network-policies.json`; `deploy-tunnel.sh` applies connector inputs with checksum
   annotations instead of an unconditional restart.

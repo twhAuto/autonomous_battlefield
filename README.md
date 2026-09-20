@@ -176,7 +176,8 @@ function, and line coverage. See
 Jenkins quality-gate setup. SonarQube displays and evaluates these externally
 generated reports alongside static reliability, security, maintainability,
 complexity, and duplication findings; it does not run the tests that produce
-coverage.
+coverage. Pull requests to `dev` and `main` run the gate before merge, and the
+merged `main` commit is checked again before deployment.
 
 ## API
 

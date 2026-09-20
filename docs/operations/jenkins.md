@@ -14,7 +14,8 @@ agent. A public Jenkins installation can use a GitHub webhook instead.
 Pull request targeting dev or main
           |
           `--> lint, test with coverage, publish a GitHub Coverage check,
-               render, build immutable images, and scan
+               pass the SonarQube quality gate, render, build immutable
+               images, and scan
 
 Merge into main
           |
@@ -41,9 +42,10 @@ trusted main. Delivery stays main-only and production credentials are bound only
 in the stages that need them, but these controls do not isolate PR code from the
 shared host. See the [shared-agent tradeoff](#production-hardening-rollout).
 
-The `main` branch must require pull requests and disallow direct pushes. Jenkins
-sees a `main` update rather than a distinct "PR merged" pipeline condition, so
-the branch rule is what makes a `main` update equivalent to an approved merge.
+The `dev` and `main` branches must require pull requests, the Jenkins and
+Coverage checks, and disallow direct pushes. Jenkins sees a `main` update rather
+than a distinct "PR merged" pipeline condition, so the branch rule is what makes
+a `main` update equivalent to an approved merge.
 
 ## Install the Jenkins controller on Ubuntu or WSL
 
@@ -385,16 +387,31 @@ Configure Jenkins as follows:
 The scanner polls SonarQube for the quality-gate result for up to five minutes
 and fails the build when the gate fails. No SonarQube webhook is required. This
 avoids requiring the SonarQube Docker container to connect back to the Jenkins
-controller on the server.
+controller on the server. `scripts/ci/run-sonarqube-gate.sh` removes Jenkins
+multibranch metadata before invoking the scanner and can override the project
+identity used by `sonar-project.properties`.
 
 SonarQube imports `backend/coverage.out` and `frontend/coverage/lcov.info` using
-`sonar-project.properties`. It does not generate those reports itself. The
-Community Build is analyzed only for merged `main`; PR CI still runs Go lint and
-publishes both backend and frontend coverage in a GitHub `Coverage` check before
-merge. Jenkins requires at least 80% Go statement coverage and 80% for each
-frontend metric: statements, branches, functions, and lines. This avoids
-unsupported Community Build pull-request analysis while keeping the deployment
-behind the quality gate.
+`sonar-project.properties`. It does not generate those reports itself. Because
+Community Build cannot analyze the repository's `dev` branch, each GitHub PR is
+an isolated SonarQube project named `autonomous-battlefield-pr-<number>`. Its
+checked-out code is that preview project's main branch. Before every gated head
+scan, `scripts/ci/run-sonarqube-pr-gate.sh` uploads the PR target's merge-base
+tree as version `base-<commit>` and then uploads the head as version
+`pr-<number>`. SonarQube processes the baseline first, so the inherited
+**Previous version** New Code period measures the PR against its own target and
+cannot be moved by another PR. The baseline upload does not wait on its gate;
+the head upload waits and fails Jenkins when red.
+
+The server was verified with the default **Sonar way** gate assigned to the
+production project, so newly created preview projects inherit the same gate.
+Keep the production project on the default gate, or update preview provisioning
+before changing that assignment. The `autonomous-battlefield` project remains
+dedicated to merged `main`, which is scanned again before deployment. Jenkins
+requires at least 80% Go statement coverage and 80% for each frontend metric:
+statements, branches, functions, and lines. Delete preview projects for closed
+PRs periodically from the SonarQube Projects page; they contain analysis history,
+not runtime data.
 
 The SonarQube data is stored in named Docker volumes and survives restarts. Stop
 it without deleting its data with:
@@ -412,8 +429,8 @@ The PR pipeline uses Jenkins `publishChecks` to add a separate `Coverage` check
 to the pull request. Its summary contains the Go statement percentage and the
 frontend statement, branch, function, and line percentages. The check fails if
 Go statement coverage or any frontend metric is below 80%. **Details** opens the
-Jenkins console for the complete test output. SonarQube remains the richer
-report for merged `main` because Community Build does not analyze pull requests.
+Jenkins console for the complete test output. The Jenkins build also runs the
+PR's SonarQube preview-project analysis and fails when its quality gate is red.
 
 GitHub permits only GitHub Apps, not personal access tokens, to create Check
 Runs. Configure this once:
@@ -491,28 +508,26 @@ open `autonomous-battlefield`, select **Configure**, change **Scan Multibranch
 Pipeline Triggers**, and save. A shorter interval discovers pull requests more
 quickly but makes more GitHub API calls.
 
-## Configure GitHub `main` protection
+## Configure GitHub integration-branch protection
 
-GitHub Free does not enforce rulesets or protected branches on a private
-organization repository. The Jenkins checks still report failures, but blocking
-the merge requires GitHub Team, a public repository, or another plan that
-supports protection for private repositories.
+Ruleset enforcement depends on the repository visibility and GitHub plan. The
+current repository uses active rulesets; if its visibility or plan changes,
+confirm that GitHub still reports the rulesets as active rather than treating
+the Jenkins checks as advisory.
 
-In the repository, open **Settings > Rules > Rulesets** and create or update a
-ruleset targeting `main`:
+In the repository, open **Settings > Rules > Rulesets** and create or update
+rulesets targeting `dev` and `main`:
 
 1. Require a pull request before merging and block direct pushes.
-2. Require the Jenkins PR result
-   `continuous-integration/jenkins/pr-merge`.
-3. After one successful publication, also require the separate `Coverage`
-   check if coverage reporting should block merges.
+2. Require the Jenkins PR result named `Jenkins`. It includes the SonarQube
+   quality gate, so a red gate blocks the merge.
+3. Require the separate `Coverage` check.
 4. Require the branch to be current before merging when that fits the selected
    merge strategy.
 
 Do not require the merged-`main` CD result as a pre-merge check: that job exists
-only after GitHub creates the final `main` commit. Direct pushes to `dev` remain
-available for local iteration, but Jenkins CI begins when a pull request targets
-`dev` or `main`.
+only after GitHub creates the final `main` commit. Jenkins CI begins when a pull
+request targets `dev` or `main`.
 
 AI-created feature and fix branches start from the latest fetched `origin/dev`
 and open pull requests into `dev`, unless the user explicitly requests otherwise.
@@ -573,7 +588,7 @@ local iteration; local Jenkins and SonarQube need not be started.
 | SonarQube analysis times out waiting for the quality gate | Confirm SonarQube is healthy with `curl --fail http://localhost:9000/api/system/status`, then inspect **Administration > Projects > Background Tasks** in SonarQube. The scanner polls the server for up to five minutes and does not require a webhook. |
 | `battlefield-local` is offline | Run `systemctl --user status jenkins-agent`, confirm the controller is active, and restart the user service after correcting the reported error. |
 | A new PR shows only build `#1` | Build numbering is local to that `PR-N` child job; this is not evidence that active history was deleted. Check the Orphaned Item Strategy for closed PR retention. |
-| A direct `dev` push has no stages | This is intentional. Run locally and open a feature-branch PR into `dev` to trigger CI. Promotion to `main` is a separate release. |
+| A feature-branch push has no stages | This is intentional. Open a pull request into `dev` to trigger CI. Promotion to `main` is a separate release. |
 | Frontend proxy returns `502` | Confirm `API_UPSTREAM` renders as `battlefield-api.battlefield.svc.cluster.local:8080`, then inspect frontend logs and the `battlefield-api` Service endpoints. |
 | `kind load docker-image` says the image is not present and is loading | This is normal informational output: kind is copying a host Docker image into the cluster node. |
 
@@ -586,7 +601,9 @@ For a pull request targeting `dev` or `main`, the pipeline performs:
    frontend coverage/build, source security and policy validation, fuzz smoke,
    deterministic AI evaluation, and deployment-script checks.
 3. Publication of the GitHub `Coverage` check.
-4. Local image builds and vulnerability scans, without publication or production credentials.
+4. SonarQube preview-project analysis and quality-gate enforcement for the exact
+   PR checkout.
+5. Local image builds and vulnerability scans, without publication or production credentials.
 
 Backend integration packages run concurrently against the disposable PostgreSQL
 database. Migration fixtures use the same advisory lock as startup, including

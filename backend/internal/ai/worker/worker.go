@@ -77,10 +77,7 @@ func (w *Worker) Run(ctx context.Context) error {
 }
 
 func (w *Worker) runClaimLoop(ctx context.Context, profileIDs []string) error {
-	for {
-		if ctx.Err() != nil {
-			return nil
-		}
+	for ctx.Err() == nil {
 		if len(profileIDs) == 0 {
 			if !waitFor(ctx, w.PollInterval) {
 				return nil
@@ -89,17 +86,10 @@ func (w *Worker) runClaimLoop(ctx context.Context, profileIDs []string) error {
 		}
 		job, ok, err := w.claim(ctx, profileIDs)
 		if err != nil {
-			if ctx.Err() != nil {
-				return nil
+			if err := w.handleClaimError(ctx, err); err != nil {
+				return err
 			}
-			w.logger().ErrorContext(ctx, "decision_claim_failed", "worker_id", w.WorkerID, "error", err)
-			if errors.Is(err, errTransientClaim) {
-				if !waitFor(ctx, w.PollInterval) {
-					return nil
-				}
-				continue
-			}
-			return err
+			continue
 		}
 		if !ok {
 			continue
@@ -109,6 +99,19 @@ func (w *Worker) runClaimLoop(ctx context.Context, profileIDs []string) error {
 		// always executed immediately instead of waiting behind another job.
 		w.runClaimedJob(ctx, job)
 	}
+	return nil
+}
+
+func (w *Worker) handleClaimError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return nil
+	}
+	w.logger().ErrorContext(ctx, "decision_claim_failed", "worker_id", w.WorkerID, "error", err)
+	if !errors.Is(err, errTransientClaim) {
+		return err
+	}
+	waitFor(ctx, w.PollInterval)
+	return nil
 }
 
 func waitFor(ctx context.Context, duration time.Duration) bool {
