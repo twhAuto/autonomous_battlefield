@@ -58,6 +58,17 @@ type claudeExecutor struct {
 
 func (e *claudeExecutor) Run(_ context.Context, name string, args, environment []string, directory string) ([]byte, error) {
 	e.t.Helper()
+	flags := e.requireArguments(name, args, environment)
+	e.configPath = flags["--mcp-config"]
+	e.requireMCPConfig()
+	if e.fail {
+		return []byte(`{"type":"result","subtype":"success"}`), errors.New("exit")
+	}
+	return []byte(`{"type":"result","subtype":"success"}`), nil
+}
+
+func (e *claudeExecutor) requireArguments(name string, args, environment []string) map[string]string {
+	e.t.Helper()
 	if name != "claude" {
 		e.t.Fatal(name)
 	}
@@ -81,7 +92,11 @@ func (e *claudeExecutor) Run(_ context.Context, name string, args, environment [
 	if !strings.Contains(flags["--allowedTools"], "mcp__battlefield__submit_strategy_plan") {
 		e.t.Fatal(flags)
 	}
-	e.configPath = flags["--mcp-config"]
+	return flags
+}
+
+func (e *claudeExecutor) requireMCPConfig() {
+	e.t.Helper()
 	data, err := os.ReadFile(e.configPath)
 	if err != nil {
 		e.t.Fatal(err)
@@ -94,11 +109,8 @@ func (e *claudeExecutor) Run(_ context.Context, name string, args, environment [
 	if info.Mode().Perm() != 0o600 {
 		e.t.Fatal(info.Mode())
 	}
-	if e.fail {
-		return []byte(`{"type":"result","subtype":"success"}`), errors.New("exit")
-	}
-	return []byte(`{"type":"result","subtype":"success"}`), nil
 }
+
 func TestClaudeRunnerIsolationAndCleanup(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "private-api-key")
 	for _, fail := range []bool{false, true} {
