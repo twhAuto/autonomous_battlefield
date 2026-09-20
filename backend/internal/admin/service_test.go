@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 )
 
 type policyRepository struct {
@@ -56,7 +57,7 @@ func TestSaveValidatesBeforePersistenceAndPreservesActor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	view.Policy.Profiles["cli"] = ai.ProfileAccess{Enabled: true, AllowedRoles: []string{"player"}}
+	view.Policy.Profiles["cli"] = ai.ProfileAccess{Enabled: true, AllowedRoles: []string{"root"}}
 	if _, err := service.Save(context.Background(), view.Settings, "administrator"); !errors.Is(err, ErrInvalid) || repo.saves != 0 {
 		t.Fatalf("invalid policy persisted: saves=%d err=%v", repo.saves, err)
 	}
@@ -68,5 +69,46 @@ func TestSaveValidatesBeforePersistenceAndPreservesActor(t *testing.T) {
 	repo.err = ErrConflict
 	if _, err := service.Save(context.Background(), view.Settings, "administrator"); !errors.Is(err, ErrConflict) {
 		t.Fatalf("write conflict lost: %v", err)
+	}
+}
+
+func TestPlayerCLIAccessGrantAndRevocation(t *testing.T) {
+	t.Setenv("TEST_CLI_AVAILABLE", "true")
+	base := ai.NewProfileCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true, AvailabilityEnvironmentVariable: "TEST_CLI_AVAILABLE", SupportedVersionPrefix: "1."}})
+	repo := &policyRepository{}
+	service := &Service{Repository: repo, Profiles: base}
+	profiles := base.WithAccessPolicy(service.ReadPolicy)
+	ctx := authn.WithActor(context.Background(), authn.Actor{ID: "friend", Role: authn.Player})
+	check := func(want bool) {
+		t.Helper()
+		p, err := profiles.Require("cli")
+		if err != nil || ai.ProfileAllowed(ctx, p) != want {
+			t.Fatalf("CLI permission want %v: %+v %v", want, p, err)
+		}
+	}
+	check(false)
+	for _, allow := range []bool{true, false} {
+		view, err := service.Get(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		roles := []string{"admin", "developer"}
+		if allow {
+			roles = append(roles, "player")
+		}
+		view.Policy.Profiles["cli"] = ai.ProfileAccess{Enabled: true, AllowedRoles: roles}
+		if _, err := service.Save(ctx, view.Settings, "administrator"); err != nil {
+			t.Fatal(err)
+		}
+		check(allow)
+		reloaded, err := service.Get(ctx)
+		if err != nil || len(reloaded.Policy.Profiles["cli"].AllowedRoles) != len(roles) {
+			t.Fatalf("roles not persisted: %+v %v", reloaded, err)
+		}
+	}
+	// Explicit deployment defaults must be presented faithfully in Admin.
+	defaults := defaultProfileAccess(ai.ModelProfile{Runtime: "cli", AllowedRoles: []string{"player"}})
+	if len(defaults.AllowedRoles) != 1 || defaults.AllowedRoles[0] != "player" {
+		t.Fatal(defaults)
 	}
 }

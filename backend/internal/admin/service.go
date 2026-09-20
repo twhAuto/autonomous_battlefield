@@ -78,21 +78,15 @@ func defaultProfileAccess(p ai.ModelProfile) ai.ProfileAccess {
 	if len(roles) == 0 {
 		roles = []string{"admin", "developer"}
 	}
-	filtered := []string{}
-	for _, role := range roles {
-		if p.Runtime != "cli" || role != "player" {
-			filtered = append(filtered, role)
-		}
-	}
-	return ai.ProfileAccess{Enabled: true, AllowedRoles: filtered}
+	return ai.ProfileAccess{Enabled: true, AllowedRoles: roles}
 }
-func validRoles(roles []string, runtime string) bool {
+func validRoles(roles []string) bool {
 	if roles == nil {
 		return false
 	}
 	seen := map[string]bool{}
 	for _, role := range roles {
-		if (role != "admin" && role != "developer" && role != "player") || (role == "player" && runtime == "cli") || seen[role] {
+		if (role != "admin" && role != "developer" && role != "player") || seen[role] {
 			return false
 		}
 		seen[role] = true
@@ -108,7 +102,7 @@ func (s *Service) valid(settings Settings) bool {
 	for _, p := range models {
 		providers[p.Provider] = true
 		rule, ok := settings.Policy.Profiles[p.ID]
-		if !ok || !validRoles(rule.AllowedRoles, p.Runtime) {
+		if !ok || !validRoles(rule.AllowedRoles) {
 			return false
 		}
 		if _, ok := settings.Policy.Providers[p.Provider]; !ok {

@@ -272,9 +272,6 @@ func (s *battleService) resolveParticipants(ctx context.Context, participants []
 			return identities, controllers, err
 		}
 		controller, err := s.resolveController(participant.Controller)
-		if err == nil && authn.IsPlayer(ctx) && controller.Runtime == "cli" {
-			return identities, controllers, authn.ErrForbidden
-		}
 		if err != nil {
 			return identities, controllers, err
 		}

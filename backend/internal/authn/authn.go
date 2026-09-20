@@ -225,7 +225,7 @@ func (r *Routes) session(response http.ResponseWriter, request *http.Request) {
 	}
 	_ = json.NewEncoder(response).Encode(map[string]any{
 		"enabled": r.manager.Enabled(), "authenticated": true, "actor": actor, "mode": r.manager.config.Mode,
-		"capabilities": map[string]bool{"inspect": actor.CanInspect(), "cli": actor.CanInspect(), "admin": actor.Role == Admin, "members": actor.Role == Admin && r.manager.config.Mode == ModeCloudflare && r.manager.config.ResolvePlayer != nil},
+		"capabilities": map[string]bool{"inspect": actor.CanInspect(), "admin": actor.Role == Admin, "members": actor.Role == Admin && r.manager.config.Mode == ModeCloudflare && r.manager.config.ResolvePlayer != nil},
 	})
 }
 
