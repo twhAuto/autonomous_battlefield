@@ -385,3 +385,41 @@ and all four host services are enabled. Follow the limited-launch cancellation a
 two-player tests before broader access. Keep durable configuration, release digests
 and the host bundle in operator records; keep secrets in private stores. This guide
 and the generator replace ad hoc unit-file editing, not the verification gates.
+
+## Concurrent decisions
+
+Set `ai.agentConcurrency: 4` to allow four independent jobs
+across all enabled CLI providers, not four per provider. The template defaults to
+one until resource validation; omitted configuration
+keeps the worker at one slot; explicit values outside 1–4 are rejected.
+Migration `00014_cli_concurrency.sql` raises the shared database CLI capacity to
+four. Both the migration and updated worker binary are required. The database
+limit also includes faction background jobs and other worker instances.
+
+For an existing VM, deploy the release containing the migration through the normal
+pipeline, copy its `/app/agent` binary as described above, and add
+`agentConcurrency: 4` under `ai:` in `/etc/battlefield-agent/config.yaml`.
+Preserve the existing provider profiles and credentials. Restart
+`battlefield-worker.service` while no CLI jobs are running and verify the
+`agent_worker_ready` log reports `"concurrency":4` and health returns HTTP 204.
+Use independent queued decisions to verify overlap; a single decision remains
+sequential. Slots remain occupied until execution completes, even after a plan
+is accepted. The existing VM memory and systemd limits remain in force: monitor
+`systemctl status battlefield-worker.service` and the journal for OOM failures
+when testing four CLI processes. To reduce load, set `agentConcurrency: 1` and
+restart after active work completes; a database downgrade is unnecessary.
+
+For a fleet-wide reduction, a database administrator can run
+`UPDATE runtime_policy SET cli_concurrency = 1 WHERE id;` through the existing
+private database administration connection. Values 1–4 are supported. Restore
+four with `UPDATE runtime_policy SET cli_concurrency = 4 WHERE id;`. Reducing the
+limit prevents new claims until capacity frees; it does not cancel active jobs.
+
+Before enabling four slots, exercise four concurrent CLI sessions on the target
+VM and verify memory/task headroom, saved logins remain valid after concurrent
+refresh, and provider throttling does not cause repeated fallbacks. A successful
+single CLI session does not establish this. Keep the default one slot until that
+check; increase VM resources separately if the existing limits cannot sustain
+four. Transport errors, HTTP 429 and server errors during claiming retry after
+`PollInterval` without cancelling sibling jobs. Authentication/protocol errors
+remain fatal, and execution policy checks still fail closed.
