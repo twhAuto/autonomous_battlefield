@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the shared Community Build analysis serially and fail on a red quality gate.
+# Run a Community Build analysis and fail on a red quality gate.
 set -Eeuo pipefail
 
 revision="${1:-}"
@@ -14,25 +14,26 @@ if [[ ! -x "${scanner}" ]]; then
   echo "SonarScanner is not executable: ${scanner}" >&2
   exit 1
 fi
-if ! command -v flock >/dev/null 2>&1; then
-  echo "flock is required to serialize Community Build analysis" >&2
-  exit 1
-fi
-
-lock_timeout="${SONAR_LOCK_TIMEOUT_SECONDS:-600}"
 gate_timeout="${SONAR_QUALITY_GATE_TIMEOUT_SECONDS:-300}"
-if [[ ! "${lock_timeout}" =~ ^[0-9]+$ || ! "${gate_timeout}" =~ ^[1-9][0-9]*$ ]]; then
-  echo "SonarQube lock and quality-gate timeouts must be whole seconds" >&2
+if [[ ! "${gate_timeout}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "The SonarQube quality-gate timeout must be a positive whole number of seconds" >&2
   exit 2
 fi
 
-lock_file="${SONAR_ANALYSIS_LOCK_FILE:-${HOME}/.cache/autonomous-battlefield/sonarqube-analysis.lock}"
-umask 077
-mkdir -p -- "$(dirname -- "${lock_file}")"
-exec 9>"${lock_file}"
-if ! flock --exclusive --timeout "${lock_timeout}" 9; then
-  echo "Timed out waiting for the shared SonarQube analysis lock: ${lock_file}" >&2
-  exit 1
+scanner_arguments=(
+  -Dsonar.projectVersion="${revision}"
+  -Dsonar.qualitygate.wait=true
+  -Dsonar.qualitygate.timeout="${gate_timeout}"
+)
+if [[ -n "${SONAR_PROJECT_KEY:-}" ]]; then
+  if [[ ! "${SONAR_PROJECT_KEY}" =~ ^[A-Za-z0-9_.:-]*[A-Za-z_.:-][A-Za-z0-9_.:-]*$ ]]; then
+    echo "SONAR_PROJECT_KEY contains unsupported characters or only digits" >&2
+    exit 2
+  fi
+  scanner_arguments+=(
+    -Dsonar.projectKey="${SONAR_PROJECT_KEY}"
+    -Dsonar.projectName="${SONAR_PROJECT_NAME:-${SONAR_PROJECT_KEY}}"
+  )
 fi
 
 # Analyze the checked-out files as the one Community Build project branch. Jenkins
@@ -44,6 +45,4 @@ env \
   -u CHANGE_TARGET \
   -u GIT_BRANCH \
   "${scanner}" \
-  -Dsonar.projectVersion="${revision}" \
-  -Dsonar.qualitygate.wait=true \
-  -Dsonar.qualitygate.timeout="${gate_timeout}"
+  "${scanner_arguments[@]}"

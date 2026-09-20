@@ -144,14 +144,18 @@ pipeline {
                     }
                 }
 
-                // Community Build has one project branch, so all analyses share a host lock.
+                // Community Build has no dev-branch analysis, so each PR gets a preview project.
                 stage('PR SonarQube analysis and quality gate') {
                     steps {
                         script {
                             def scannerHome = tool 'SonarScanner'
                             withSonarQubeEnv('battlefield-sonarqube') {
-                                withEnv(["SONAR_SCANNER_HOME=${scannerHome}"]) {
-                                    sh './scripts/ci/run-sonarqube-gate.sh "${IMAGE_TAG}"'
+                                withEnv([
+                                    "SONAR_SCANNER_HOME=${scannerHome}",
+                                    "SONAR_PROJECT_KEY=autonomous-battlefield-pr-${env.CHANGE_ID}",
+                                    "SONAR_PROJECT_NAME=Autonomous Battlefield PR ${env.CHANGE_ID}"
+                                ]) {
+                                    sh './scripts/ci/run-sonarqube-gate.sh "pr-${CHANGE_ID}"'
                                 }
                             }
                         }

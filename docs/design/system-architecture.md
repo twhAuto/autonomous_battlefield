@@ -813,10 +813,10 @@ Secret for the admission controller; neither changes the cryptographic trust
 root.
 
 PR verification generates backend and frontend coverage, then runs the shared
-SonarQube Community Build project with quality-gate polling before image builds.
-A host-wide file lock serializes PR and `main` analyses because this installation
-has one analysis branch; the Jenkins result records the outcome for the exact
-checked-out commit even though the dashboard displays the most recent analysis.
+SonarQube Community Build service with quality-gate polling before image builds.
+Each PR is the main branch of its own preview project and keeps one stable project
+version across retries, so its New Code baseline cannot be moved by another PR.
+The production project remains dedicated to `main` analyses.
 Main delivery repeats the analysis before deployment and classifies changes
 after the CI quality gates. Application-test-only
 changes and known CI test wrappers skip image publication and rollout; production

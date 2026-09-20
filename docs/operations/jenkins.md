@@ -387,20 +387,23 @@ Configure Jenkins as follows:
 The scanner polls SonarQube for the quality-gate result for up to five minutes
 and fails the build when the gate fails. No SonarQube webhook is required. This
 avoids requiring the SonarQube Docker container to connect back to the Jenkins
-controller on the server. `scripts/ci/run-sonarqube-gate.sh` also holds a shared
-host lock while it scans and waits for the result. Community Build stores one
-analysis branch for this project, so the lock prevents concurrent PR and `main`
-jobs from overwriting the analysis whose result another job is polling.
+controller on the server. `scripts/ci/run-sonarqube-gate.sh` removes Jenkins
+multibranch metadata before invoking the scanner and can override the project
+identity used by `sonar-project.properties`.
 
 SonarQube imports `backend/coverage.out` and `frontend/coverage/lcov.info` using
-`sonar-project.properties`. It does not generate those reports itself. PR jobs
-scan the exact Jenkins checkout as the project's single Community Build branch,
-without passing unsupported pull-request analysis parameters. This means the
-dashboard shows whichever serialized PR or `main` analysis completed most
-recently; the Jenkins result remains attached to the exact commit it checked.
-Merged `main` is scanned again before deployment. Jenkins requires at least 80%
-Go statement coverage and 80% for each frontend metric: statements, branches,
-functions, and lines.
+`sonar-project.properties`. It does not generate those reports itself. Because
+Community Build cannot analyze the repository's `dev` branch, each GitHub PR is
+an isolated SonarQube project named `autonomous-battlefield-pr-<number>`. Its
+checked-out code is that preview project's main branch, and all retries use the
+stable `pr-<number>` project version. This preserves the inherited **Previous
+version** New Code baseline within one PR and prevents another PR from changing
+it. The default **Sonar way** gate applies to preview projects. The production
+`autonomous-battlefield` project remains dedicated to merged `main`, which is
+scanned again before deployment. Jenkins requires at least 80% Go statement
+coverage and 80% for each frontend metric: statements, branches, functions, and
+lines. Delete preview projects for closed PRs periodically from the SonarQube
+Projects page; they contain analysis history, not runtime data.
 
 The SonarQube data is stored in named Docker volumes and survives restarts. Stop
 it without deleting its data with:
@@ -419,7 +422,7 @@ to the pull request. Its summary contains the Go statement percentage and the
 frontend statement, branch, function, and line percentages. The check fails if
 Go statement coverage or any frontend metric is below 80%. **Details** opens the
 Jenkins console for the complete test output. The Jenkins build also runs the
-shared SonarQube project analysis and fails when its quality gate is red.
+PR's SonarQube preview-project analysis and fails when its quality gate is red.
 
 GitHub permits only GitHub Apps, not personal access tokens, to create Check
 Runs. Configure this once:
@@ -575,10 +578,9 @@ local iteration; local Jenkins and SonarQube need not be started.
 | --- | --- |
 | `No tool named SonarScanner found` | Install **SonarQube Scanner for Jenkins**, restart Jenkins if requested, then add a tool named exactly `SonarScanner` under **Manage Jenkins > Tools**. |
 | SonarQube analysis times out waiting for the quality gate | Confirm SonarQube is healthy with `curl --fail http://localhost:9000/api/system/status`, then inspect **Administration > Projects > Background Tasks** in SonarQube. The scanner polls the server for up to five minutes and does not require a webhook. |
-| SonarQube analysis times out waiting for the shared lock | Another PR or `main` job is still analyzing the Community Build project. Inspect that Jenkins job; increase `SONAR_LOCK_TIMEOUT_SECONDS` only when valid analyses routinely need more than ten minutes. |
 | `battlefield-local` is offline | Run `systemctl --user status jenkins-agent`, confirm the controller is active, and restart the user service after correcting the reported error. |
 | A new PR shows only build `#1` | Build numbering is local to that `PR-N` child job; this is not evidence that active history was deleted. Check the Orphaned Item Strategy for closed PR retention. |
-| A direct `dev` push has no stages | This is intentional. Run locally and open a feature-branch PR into `dev` to trigger CI. Promotion to `main` is a separate release. |
+| A feature-branch push has no stages | This is intentional. Open a pull request into `dev` to trigger CI. Promotion to `main` is a separate release. |
 | Frontend proxy returns `502` | Confirm `API_UPSTREAM` renders as `battlefield-api.battlefield.svc.cluster.local:8080`, then inspect frontend logs and the `battlefield-api` Service endpoints. |
 | `kind load docker-image` says the image is not present and is loading | This is normal informational output: kind is copying a host Docker image into the cluster node. |
 
@@ -591,8 +593,8 @@ For a pull request targeting `dev` or `main`, the pipeline performs:
    frontend coverage/build, source security and policy validation, fuzz smoke,
    deterministic AI evaluation, and deployment-script checks.
 3. Publication of the GitHub `Coverage` check.
-4. Serialized SonarQube analysis and quality-gate enforcement for the exact PR
-   checkout.
+4. SonarQube preview-project analysis and quality-gate enforcement for the exact
+   PR checkout.
 5. Local image builds and vulnerability scans, without publication or production credentials.
 
 Backend integration packages run concurrently against the disposable PostgreSQL
