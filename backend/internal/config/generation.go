@@ -32,5 +32,3 @@ func parseBackgroundGeneration(raw fileConfig) (generation.Config, error) {
 	}
 	return c, c.Validate()
 }
-
-// Reject repeated JSON role keys rather than silently accepting the last assignment.

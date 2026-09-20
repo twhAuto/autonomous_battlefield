@@ -151,6 +151,7 @@ func loadAuthenticationSecrets(usernameEnv, passwordEnv, secretEnv string, ttl t
 	}, nil
 }
 
+// Reject repeated JSON role keys rather than silently accepting the last assignment.
 func parseRoleAssignments(raw string) (map[string][]string, error) {
 	d := json.NewDecoder(strings.NewReader(raw))
 	first, e := d.Token()

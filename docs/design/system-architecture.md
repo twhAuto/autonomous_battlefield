@@ -95,7 +95,7 @@ The API and engine entry points compose `httpapi.LifecycleHandler` around applic
 
 ### Source ownership
 
-See the [codebase guide](backend-guide.md#backend-organization) for package
+See the [backend guide](backend-guide.md#backend-organization) for package
 boundaries, frontend ownership, and launcher locations.
 
 The Vite development proxy defaults to `http://localhost:8080` and accepts a
@@ -1182,7 +1182,7 @@ management token. Activation and rotation are in the
 - Agent concurrency is hardcoded to one in `cmd/agent` rather than configured in YAML.
 - API adapters build text transcripts instead of preserving provider-native structured tool history.
 - One shared secret authorizes the agent control plane and capability minting. Separate keys or server-minted capabilities would reduce agent signing authority.
-- The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [codebase guide](backend-guide.md#internalgamecontroller-deterministic-policy-abstractions).
+- The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [backend guide](backend-guide.md#internalgamecontroller-deterministic-policy-abstractions).
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
 
 The image-verification admission webhook allows 30 seconds per request for

@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # Verify actual Docker ignore behavior using synthetic files, without registry pulls.
 set -Eeuo pipefail
+export DOCKER_BUILDKIT=1
+
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 test_dir="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-docker-context.XXXXXX")"
 trap 'rm -rf -- "${test_dir}"' EXIT
+
+command -v docker >/dev/null || { echo "Docker is required for this check." >&2; exit 1; }
+docker buildx version >/dev/null 2>&1 || { echo "Docker BuildKit is required for this check." >&2; exit 1; }
 
 for component in backend frontend; do
   context="${test_dir}/${component}"
