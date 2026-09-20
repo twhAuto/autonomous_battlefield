@@ -42,6 +42,10 @@ raw inspection views.
 
 ## Documentation
 
+Implementation navigation starts at the [codebase index](docs/design/codebase-guide.md),
+with focused [backend](docs/design/backend-guide.md),
+[frontend](docs/design/frontend-guide.md), and [tooling](docs/design/tooling-guide.md) guides.
+
 | Task | Guide |
 | --- | --- |
 | Start the application | [Run locally](#run-locally) |

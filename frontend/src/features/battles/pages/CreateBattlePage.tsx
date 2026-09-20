@@ -4,14 +4,8 @@ import { usePermissions } from '../../auth/SessionContext'
 
 import { type SubmitEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import {
-  BattleApiError,
-  createBattle,
-  listScenarios,
-  listModelProfiles,
-  ModelProfile,
-  ScenarioSummary,
-} from '../api/battles'
+import { BattleApiError, createBattle, listScenarios, listModelProfiles, type ScenarioSummary } from '../api/battles'
+import type { ModelProfile } from '../../../shared/domain/model-profile'
 import { Faction, FactionApiError, listFactions } from '../../factions/api/factions'
 import { Emblem } from '../../../shared/components/Emblem'
 import { ResponsivePreview } from '../../../shared/components/ResponsivePreview'

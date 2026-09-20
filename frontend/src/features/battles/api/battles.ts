@@ -1,6 +1,8 @@
 // Defines battle API payloads and requests for scenarios, model profiles, battle
 // creation/history, live state, events, decisions, and controls.
 
+import type { UnitCapabilities } from '../../../shared/domain/units'
+import type { ModelProfile } from '../../../shared/domain/model-profile'
 import { createApiClient } from '../../../shared/api/request'
 
 export interface ScenarioSummary {
@@ -26,10 +28,6 @@ export interface CreateBattleInput {
 
 export interface BattleController { type: 'scripted' | 'model'; profileId?: string; provider?: string; runtime?: string; modelIdentifier?: string }
 export interface BattleParticipantInput { factionId: string; controller: { type: 'scripted' } | { type: 'model'; profileId: string } }
-export interface ModelProfile {
-  id: string; displayName: string; provider?: string; runtime: 'api' | 'cli'; scope?: 'local' | 'cluster'
-  modelLabel: string; available: boolean; toolCapability?: boolean; unavailableReason?: string
-}
 
 export type BattleStatus = 'queued' | 'running' | 'completed' | 'failed' | 'stopped'
 
@@ -64,11 +62,6 @@ export interface BattleMap {
   kind: 'authored'; width: number; height: number; rows: string[]
   castleSpawns: [HexPosition, HexPosition]
   economySites: [HexPosition[], HexPosition[]]
-}
-export interface UnitCapabilities {
-  attackMode?: 'tracking' | 'position'
-  class?: string; minimumRange?: number; buildingPriority?: boolean
-  buildingDamageBonus?: number; bonusAgainstClass?: string; classDamageBonus?: number; healAmount?: number
 }
 export interface BattleUnit extends UnitCapabilities {
   id: string; factionId: string; type: string; position: HexPosition

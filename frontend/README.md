@@ -51,6 +51,9 @@ page's Danger zone, subject to existing ownership permissions.
 
 ## Container and Kubernetes behavior
 
+The component `.dockerignore` excludes local `.env` variants while retaining
+`.env.example`; use explicit build arguments for intentional image settings.
+
 The production image serves the compiled frontend through unprivileged Nginx
 on port 8080. `/startupz`, `/livez`, and `/readyz` report the Nginx process
 health; the deployment smoke test separately calls `/v1/scenarios` to prove the
@@ -73,5 +76,5 @@ also update `API_UPSTREAM`.
 
 ## Source layout
 
-See [frontend organization](../docs/design/codebase-guide.md#7-frontend-organization)
+See [frontend organization](../docs/design/frontend-guide.md#frontend-organization)
 for feature ownership, shared transport, polling hooks, and test placement.

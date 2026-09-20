@@ -56,8 +56,8 @@ func TestDurableModelAccessAcrossAPIInstances(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer second.Close()
-	h := &Handler{DB: first, Profiles: registry()}
-	other := &Handler{DB: second, Profiles: registry()}
+	h := &Handler{Service: &Service{Repository: &Postgres{DB: first}, Profiles: registry()}}
+	other := &Handler{Service: &Service{Repository: &Postgres{DB: second}, Profiles: registry()}}
 	w := request(h, "GET", nil, authn.Admin)
 	var settings Settings
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &settings) != nil {
@@ -67,13 +67,13 @@ func TestDurableModelAccessAcrossAPIInstances(t *testing.T) {
 	if w = request(h, "PUT", settings, authn.Admin); w.Code != 200 {
 		t.Fatalf("save: %d %s", w.Code, w.Body.String())
 	}
-	if _, err = other.Profiles.WithAccessPolicy(other.ReadPolicy).Require("api"); err == nil {
+	if _, err = other.Service.Profiles.WithAccessPolicy(other.Service.ReadPolicy).Require("api"); err == nil {
 		t.Fatal("second replica ignored persisted disable")
 	}
 	if w = request(other, "PUT", settings, authn.Admin); w.Code != 409 {
 		t.Fatalf("stale write=%d", w.Code)
 	}
-	settings, err = other.read(ctx)
+	settings, err = other.Service.Repository.Read(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestDurableModelAccessAcrossAPIInstances(t *testing.T) {
 	if w = request(other, "PUT", settings, authn.Admin); w.Code != 200 {
 		t.Fatalf("enable=%d %s", w.Code, w.Body.String())
 	}
-	if _, err = h.Profiles.WithAccessPolicy(h.ReadPolicy).Require("api"); err != nil {
+	if _, err = h.Service.Profiles.WithAccessPolicy(h.Service.ReadPolicy).Require("api"); err != nil {
 		t.Fatal("first replica did not see re-enable", err)
 	}
 	var updatedBy string

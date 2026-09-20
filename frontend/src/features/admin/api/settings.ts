@@ -1,5 +1,5 @@
 import { createApiClient } from '../../../shared/api/request'
-import type { ModelProfile } from '../../battles/api/battles'
+import type { ModelProfile } from '../../../shared/domain/model-profile'
 export type AccessRole = 'admin' | 'developer' | 'player'
 export interface ModelAccess { enabled: boolean; allowedRoles: AccessRole[] }
 export interface AccessPolicy { providers: Record<string, boolean>; profiles: Record<string, ModelAccess> }

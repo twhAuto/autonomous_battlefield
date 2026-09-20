@@ -1,0 +1,7 @@
+/* Responsive disclosure for form previews. */
+.responsive-preview { min-width: 0; background: #151a14; }
+.responsive-preview > summary { display: none; padding: 16px; color: var(--lime); cursor: pointer; }
+.responsive-preview > aside { height: 100%; }
+@media (max-width: 780px) {
+  .responsive-preview > summary { display: list-item; }
+}
