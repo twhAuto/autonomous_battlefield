@@ -569,7 +569,21 @@ only the authenticated request ID, allowlisted missing field names, and a
 nested-plan flag; argument values and raw SDK errors are excluded.
 
 When a runner fails before the deadline, the engine carries its error category
-into the fallback record instead of replacing it with `timeout`. Unresolved
+into the fallback record instead of replacing it with `timeout`.
+
+| Error category | Raised by | Meaning |
+| --- | --- | --- |
+| `timeout`, `refusal`, `rate_limit`, `provider` | API runner | Provider deadline, safety refusal, HTTP 429, or other provider failure |
+| `mcp_connect`, `mcp_discovery`, `mcp_tool`, `mcp_context` | API/CLI runner | MCP session, tool-list, tool-call, or Antigravity context-prefetch failure |
+| `unauthorized_tool`, `no_progress`, `step_limit` | API runner | Model requested a tool outside the session set, returned no tool call, or exceeded the profile's step limit |
+| `cli`, `cli_permission`, `cli_isolation`, `cli_provider` | CLI runner | Non-success CLI result, denied tool action, sandbox setup failure, or unsupported CLI provider |
+| `validation_limit` | Decision service | Third rejected API/CLI submission for the same request |
+| `plan_not_submitted` | Agent worker | Runner reported success but MCP holds no accepted plan |
+| `runner` | Agent worker | Runner failed without a more specific category |
+| `decision_budget` | PostgreSQL admission trigger | The battle's model execution budget is exhausted at claim time |
+| `battle_stopped` | Battle stop route / expiry sweep | Battle stopped or expired while the decision was open |
+
+Background-generation jobs additionally use `profile_unavailable` and `timeout`. Unresolved
 requests that reach the deadline retain the timeout category. CLI terminal
 success remains subject to the worker's accepted-plan check.
 
@@ -700,6 +714,17 @@ Every mutating battle write includes battle ID, attempt, and lease owner. A mism
 
 A reclaimed battle starts a new deterministic attempt from `initial_state`; events from earlier attempts remain available by attempt number. When an observation hash matches a previously resolved decision for the same faction and target tick, the decision repository can reuse that plan.
 
+Each claim increments `attempt`. Once a queued or lease-expired battle has used
+`engine.maxAttempts` (default 3), the next claim pass marks it `failed` with
+`attempts_exhausted` instead of starting another attempt. A stored scenario that
+cannot construct a match fails immediately with `invalid_scenario` and is not
+retried. Together with `battle_timeout` (see
+[current limitations](#19-current-limitations-and-follow-up-questions)), these are
+the engine's terminal battle error codes.
+
+Decision wake-ups use the `battlefield_decision_ready` PostgreSQL channel, with the
+profile ID as payload.
+
 ## 9. Security and trust boundaries
 
 ### Access identity, roles and owners
@@ -712,8 +737,9 @@ HTTP responses remain generic. Failed key refresh reasons persist through the
 existing 30-second retry throttle; authentication and cache policy are unchanged.
 
 Production API manifests require `BATTLEFIELD_ENV=production`; startup accepts only
-`BATTLEFIELD_AUTH_MODE=cloudflare` with valid issuer, audience, HTTPS origin and
-nonconflicting email/role assignments. JWT verification uses RS256, a fixed issuer's
+`BATTLEFIELD_AUTH_MODE=cloudflare` with valid issuer (`BATTLEFIELD_ACCESS_ISSUER`),
+audience (`BATTLEFIELD_ACCESS_AUDIENCE`), HTTPS origin (`BATTLEFIELD_PUBLIC_ORIGIN`)
+and nonconflicting email/role assignments (`BATTLEFIELD_ACCESS_ROLES`). JWT verification uses RS256, a fixed issuer's
 JWKS with one-hour key cache and a 30-second refresh throttle, and required identity/
 time/audience checks. The audience claim accepts a single string or an array of
 strings (RFC 7519 section 4.1.3), matched exactly and case-sensitively to the
@@ -773,6 +799,22 @@ A model profile specifies:
 - optional external-agent availability environment variable;
 - token and step limits;
 - enabled state and supported CLI version prefix.
+
+Key runtime settings and their defaults:
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `api.maxTicks` | 10000 (maximum) | Upper bound for a battle's requested tick limit |
+| `engine.pollInterval` | 1s | Delay between empty battle-queue claims |
+| `engine.leaseDuration` | 30s | Battle lease length; an expired lease lets another engine reclaim the battle |
+| `engine.heartbeatInterval` | 10s | Lease renewal cadence; must be shorter than `leaseDuration` |
+| `engine.maxAttempts` | 3 | Claims per battle before `attempts_exhausted` |
+| `engine.shutdownTimeout` | 10s | Bound for final writes and requeue during shutdown |
+| `ai.decisionTimeout` | 2m | Engine decision deadline and agent execution timeout |
+| `ai.agentConcurrency` | 1 | Execution slots per agent process (1–4) |
+| `resultCache.ttl` / `resultCache.timeout` | 1h / 100ms | Completed-battle cache entry lifetime and per-operation deadline |
+
+`backend/config.yaml` is the reference for all keys; unknown keys fail startup.
 
 The API catalog advertises profiles users may select. In cluster mode, an operator flag can advertise a host-connected CLI even though the API pod cannot execute it. An agent advertises only profiles it can execute; claims include those IDs so heterogeneous agents do not lease incompatible work.
 
