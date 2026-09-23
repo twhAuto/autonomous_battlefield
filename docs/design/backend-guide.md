@@ -231,9 +231,15 @@ The default runner factory is the only place that chooses concrete provider impl
 | --- | --- |
 | [`api.go`](../../backend/internal/ai/runner/api.go) | Shared bounded tool loop for API providers |
 | [`mcp.go`](../../backend/internal/ai/runner/mcp.go) | Authenticated streamable HTTP MCP client and normalized tool calls |
-| [`cli.go`](../../backend/internal/ai/runner/cli.go) | Isolated Codex/Antigravity CLI execution and result parsing |
+| [`cli.go`](../../backend/internal/ai/runner/cli.go) | Isolated Codex/Antigravity/Claude CLI execution, Antigravity context prefetch, and result parsing |
+| [`claude.go`](../../backend/internal/ai/runner/claude.go) | Restricted Claude Code arguments, MCP configuration, and terminal-result parsing |
+| [`codex_usage.go`](../../backend/internal/ai/runner/codex_usage.go) | Codex JSONL usage parsing |
+| [`observability.go`](../../backend/internal/ai/runner/observability.go) | Langfuse generation observations for API and CLI runs |
+| [`process_linux.go`](../../backend/internal/ai/runner/process_linux.go) | CLI process-group isolation and cancellation (no-op fallback in `process_other.go`) |
 
-The API loop discovers exactly two MCP tools and accepts only those names. It appends tool calls and results to the neutral message transcript and accumulates usage over turns.
+The API loop accepts only a known MCP tool set: the three battle tools (or the
+legacy two-tool pair during rollout) or the two background-generation tools. It
+rejects any other tool name a provider requests. It appends tool calls and results to the neutral message transcript and accumulates usage over turns.
 
 The CLI runner creates a temporary directory, passes the profile's allowlisted model explicitly with `--model`, and constructs provider-specific command-line restrictions. Tests use the `CommandExecutor` interface to inspect the selected model and execution restrictions without starting a real CLI.
 
@@ -432,7 +438,7 @@ helpers, and process loaders. Parsers and their concern-specific types live in
 
 Configuration is decoded with `yaml.KnownFields(true)`. Update the file-facing struct, parsed runtime struct, validation, examples, deployment ConfigMap, and tests together.
 
-## Langfuse integration
+## Agent context compaction
 
 `ai/faction_groups.go` groups observed units/buildings with faction statistics
 after metadata deduplication, and conditionally shares effective building stats.
@@ -453,6 +459,8 @@ units and visibility, check version compatibility and measure opening/small/larg
 views. To measure a local JSON context without adding private data to fixtures,
 run `BATTLEFIELD_CONTEXT_FIXTURE=/path/to/context.json go test ./internal/ai -run TestBattlefieldContextExternalFixture -v`
 from `backend`.
+
+## Langfuse integration
 
 - `backend/internal/telemetry/ai.go` provides decision correlation, explicit AI
   sampling and safe trace URLs alongside the existing infrastructure tracing.
@@ -594,7 +602,8 @@ Battle setup selects generic profiles without blueprint compatibility filtering.
   are preserved. `internal/postgres/migrations.go` serializes migration runners
   with a PostgreSQL advisory session lock, including concurrent fresh schemas.
 - Faction API/service/repository and battle catalog/worker copy background with
-  name/doctrine; `ai.SessionSystemPrompt` uses `identity.txt`. Observation
+  name/doctrine; `ai.SessionDecisionPrompt` embeds that identity through
+  `identityContextTemplate` (`identity.txt` is hashed but not rendered). Observation
   hashing includes owning identity. Prompt history lives in Git; filenames identify purpose without version suffixes.
 - `backend/internal/ai/mcpserver/generation.go` provides draft-only tools and
   namespaced capabilities; `internal/ai/worker/generation.go` executes and reports
