@@ -6,6 +6,7 @@ verification requirements, and review limits. For PR preparation use
 [triage-ci](.agents/skills/triage-ci/SKILL.md); for promotion or recovery use
 [release-and-recover](.agents/skills/release-and-recover/SKILL.md); for major
 documentation work use
-[write-project-docs](.agents/skills/write-project-docs/SKILL.md).
+[write-project-docs](.agents/skills/write-project-docs/SKILL.md); for Notion
+backlog tickets use [track-backlog](.agents/skills/track-backlog/SKILL.md).
 Follow [the cross-review guide](docs/operations/cross-review.md) for the
 actual reviewer invocation and author-response protocol.

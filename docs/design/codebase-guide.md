@@ -21,9 +21,10 @@ and the [Jenkins workflow](../operations/jenkins.md#configure-github-integration
 Run applicable local checks before opening a PR. The repo's
 [raise-pr](../../.agents/skills/raise-pr/SKILL.md),
 [triage-ci](../../.agents/skills/triage-ci/SKILL.md),
-[release-and-recover](../../.agents/skills/release-and-recover/SKILL.md), and
-[write-project-docs](../../.agents/skills/write-project-docs/SKILL.md) skills
-cover those focused workflows. Jenkins verifies both `dev` and `main` PR
+[release-and-recover](../../.agents/skills/release-and-recover/SKILL.md),
+[write-project-docs](../../.agents/skills/write-project-docs/SKILL.md), and
+[track-backlog](../../.agents/skills/track-backlog/SKILL.md) skills cover those
+focused workflows. Jenkins verifies both `dev` and `main` PR
 targets on the existing shared `battlefield-production` agent.
 
 Use the focused guides for implementation details:
@@ -36,7 +37,7 @@ Use the focused guides for implementation details:
 
 ```text
 autonomous_battlefield/
-├── .agents/skills/             # PR, CI, release, and documentation workflows
+├── .agents/skills/             # PR, CI, release, docs, and backlog workflows
 ├── backend/
 │   ├── cmd/{server,engine,mcp,agent,aieval}/ # Startup and command wiring
 │   ├── internal/
