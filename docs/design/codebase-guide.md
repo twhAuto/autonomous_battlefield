@@ -8,7 +8,7 @@ repository/package paths and deployment identifiers remain compatible.
 | Field | Value |
 | --- | --- |
 | Status | Current |
-| Last reviewed | 2026-09-20 |
+| Last reviewed | 2026-09-23 |
 | Audience | Contributors navigating or modifying the implementation |
 | Scope | Repository layout, entry points, packages, dependencies, tests, and reading paths |
 
@@ -72,6 +72,7 @@ autonomous_battlefield/
 │   ├── perf/                   # Performance-test launcher
 │   ├── security/               # Security-test launcher
 │   ├── ops/                    # Operational reports and failure drills
+│   ├── review/                 # Codex/Claude cross-review runner
 │   └── lib/                    # Shared script functions
 ├── tests/performance/          # k6 scenarios
 ├── quality/sonarqube/          # Local analysis service
