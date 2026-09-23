@@ -18,8 +18,13 @@ AI-created work branches start from the latest fetched `origin/dev` and target
 `dev` in pull requests, unless the user explicitly requests otherwise. Promotion
 to `main` is separate. See [agent branch guidance](../../AGENTS.md#branches-and-pull-requests)
 and the [Jenkins workflow](../operations/jenkins.md#configure-github-integration-branch-protection).
-Run applicable local checks before opening a PR. Jenkins verifies both `dev` and
-`main` PR targets on the existing shared `battlefield-production` agent.
+Run applicable local checks before opening a PR. The repo's
+[raise-pr](../../.agents/skills/raise-pr/SKILL.md),
+[triage-ci](../../.agents/skills/triage-ci/SKILL.md),
+[release-and-recover](../../.agents/skills/release-and-recover/SKILL.md), and
+[write-project-docs](../../.agents/skills/write-project-docs/SKILL.md) skills
+cover those focused workflows. Jenkins verifies both `dev` and `main` PR
+targets on the existing shared `battlefield-production` agent.
 
 Use the focused guides for implementation details:
 
@@ -31,6 +36,7 @@ Use the focused guides for implementation details:
 
 ```text
 autonomous_battlefield/
+├── .agents/skills/             # PR, CI, release, and documentation workflows
 ├── backend/
 │   ├── cmd/{server,engine,mcp,agent,aieval}/ # Startup and command wiring
 │   ├── internal/
@@ -58,6 +64,7 @@ autonomous_battlefield/
 ├── deploy/                     # Kubernetes bases, overlays, supply-chain assets
 ├── infra/aws/                  # AWS provisioning with Terraform
 ├── scripts/
+│   ├── review/                 # Bounded Codex/Claude cross-review runner
 │   ├── dev/                    # Local application and host-agent launchers
 │   ├── test/                   # Test runners, deployment and runtime assurance script tests
 │   ├── ci/                     # Lint, builds, coverage summaries, image assurance
