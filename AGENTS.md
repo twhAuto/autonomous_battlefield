@@ -166,14 +166,21 @@ For meaningful agent-authored PR changes, follow
 [raise-pr skill](.agents/skills/raise-pr/SKILL.md). Batch implementation and
 checks before one full PR review, then at most one focused follow-up. Use the
 existing `scripts/review/cross-review.py` with `--pr NUMBER` so it enforces the
-round limit. Stop and ask the user before any extra round; never omit `--pr`,
-delete comments, or retry failed model calls to evade the limit.
+round limit. Stop and ask the user before any extra round; never set `--allow-extra-round`
+automatically, omit `--pr`, delete comments, or retry failed model calls to
+evade the limit.
 
 Trivial wording, formatting, and low-risk preference edits may skip model
 review with the reason recorded in the handoff. Do not infer low risk from file
 extension or line count: authentication, permissions, deployment behavior, and
 substantive logic still need review. Honor an explicit user request to skip
 cross-review for a particular PR and state that it was skipped.
+
+The user authorizes advisory review and author-response comments on the PR.
+Author responses must carry the `battlefield-author-response:codex` or
+`battlefield-author-response:claude` marker, the current head SHA, and all
+unresolved finding IDs with fixes or evidence-backed disagreements. See the
+cross-review guide for the format and publication procedure.
 
 Verify findings before fixes, test fixes, and leave unresolved findings visible.
 Review is advisory and does not replace CI, authorize merging, or authorize

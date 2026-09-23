@@ -23,9 +23,10 @@ Run applicable local checks before opening a PR. The repo's
 [triage-ci](../../.agents/skills/triage-ci/SKILL.md),
 [release-and-recover](../../.agents/skills/release-and-recover/SKILL.md),
 [write-project-docs](../../.agents/skills/write-project-docs/SKILL.md), and
-[track-backlog](../../.agents/skills/track-backlog/SKILL.md) skills cover those
-focused workflows. Jenkins verifies both `dev` and `main` PR
-targets on the existing shared `battlefield-production` agent.
+[track-backlog](../../.agents/skills/track-backlog/SKILL.md) skills cover
+PRs, CI, releases, docs, and backlog work. Claude Code discovers the same
+skills through `.claude/skills/` symlinks. Jenkins verifies both `dev` and `main`
+PR targets on the existing shared `battlefield-production` agent.
 
 Use the focused guides for implementation details:
 
@@ -37,7 +38,8 @@ Use the focused guides for implementation details:
 
 ```text
 autonomous_battlefield/
-├── .agents/skills/             # PR, CI, release, docs, and backlog workflows
+├── .agents/skills/             # Canonical PR, CI, release, docs, and backlog skills
+├── .claude/skills/             # Links to the canonical skills for Claude Code
 ├── backend/
 │   ├── cmd/{server,engine,mcp,agent,aieval}/ # Startup and command wiring
 │   ├── internal/
@@ -65,7 +67,6 @@ autonomous_battlefield/
 ├── deploy/                     # Kubernetes bases, overlays, supply-chain assets
 ├── infra/aws/                  # AWS provisioning with Terraform
 ├── scripts/
-│   ├── review/                 # Bounded Codex/Claude cross-review runner
 │   ├── dev/                    # Local application and host-agent launchers
 │   ├── test/                   # Test runners, deployment and runtime assurance script tests
 │   ├── ci/                     # Lint, builds, coverage summaries, image assurance
