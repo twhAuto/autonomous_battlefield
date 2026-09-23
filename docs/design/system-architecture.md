@@ -579,11 +579,21 @@ into the fallback record instead of replacing it with `timeout`.
 | `cli`, `cli_permission`, `cli_isolation`, `cli_provider` | CLI runner | Non-success CLI result, denied tool action, sandbox setup failure, or unsupported CLI provider |
 | `validation_limit` | Decision service | Third rejected API/CLI submission for the same request |
 | `plan_not_submitted` | Agent worker | Runner reported success but MCP holds no accepted plan |
+| `profile_unavailable`, `capability`, `provider_unavailable` | Agent worker | Claimed profile is not executable locally, the claim carried no capability, or no runner could be built for the profile |
 | `runner` | Agent worker | Runner failed without a more specific category |
 | `decision_budget` | PostgreSQL admission trigger | The battle's model execution budget is exhausted at claim time |
 | `battle_stopped` | Battle stop route / expiry sweep | Battle stopped or expired while the decision was open |
 
-Background-generation jobs additionally use `profile_unavailable` and `timeout`. Unresolved
+Background-generation jobs share the worker and runner categories above except
+`validation_limit`, `plan_not_submitted`, `runner`, `decision_budget` and
+`battle_stopped`, and add their own:
+
+| Error category | Meaning |
+| --- | --- |
+| `execution_error` | Runner failed or did not submit, without a more specific category |
+| `invalid_output` | Third empty or over-length background submission |
+| `timeout` | Execution deadline passed while the job was running |
+| `queue_timeout` | Job expired before any worker claimed it (status `expired`) | Unresolved
 requests that reach the deadline retain the timeout category. CLI terminal
 success remains subject to the worker's accepted-plan check.
 
