@@ -103,6 +103,10 @@ server-only `DEV_API_PROXY_TARGET` override from the frontend env files or shell
 Production/browser API routing continues to use `VITE_API_URL` and Nginx.
 Nginx requires revalidation of the SPA entry document after rollouts and returns
 404 for missing hashed assets instead of routing those requests to HTML.
+Every Nginx response carries `frame-ancestors 'none'` CSP, `X-Frame-Options: DENY`,
+`nosniff`, a strict-origin referrer policy and HSTS, so the admin and gameplay UI
+cannot be framed for clickjacking. The CSP deliberately leaves script and connect
+sources open because `VITE_API_URL` may name a separate API origin.
 
 The administrator-only `/admin` control center uses `GET /v1/admin/model-access` and
 `PUT /v1/admin/model-access` to manage provider and individual profile access, including
@@ -790,7 +794,7 @@ Migration `00004_battle_decisions.sql` creates a `battlefield_mcp` group role wi
 
 ### Deployment responsibilities
 
-- Replace the development capability secret with high-entropy secret-manager material.
+- Replace the development capability secret with high-entropy secret-manager material. MCP refuses to start with a capability secret shorter than 32 bytes or equal to the built-in local-development placeholder.
 - Use Access for production sessions; keep role assignments and the independent worker/signing secrets in private operator configuration. Block direct-origin IPv4/IPv6 access and verify the CNI enforces NetworkPolicy.
 - Keep provider keys only in the agent workload.
 - Treat model rationale as untrusted display text even though its length is bounded.
