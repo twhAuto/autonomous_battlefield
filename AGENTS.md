@@ -30,18 +30,13 @@ The authoritative project backlog is maintained in Notion:
 
 - Project: [Autonomous Battlefield](https://app.notion.com/p/3c1b7a19f8f780aea86efbe505e504a7)
 - Backlog: [Autonomous Battlefield Backlog](https://app.notion.com/p/5198cc5bdacf44e08a7393a5040e2e3e)
-- Workflow: `Not Started` -> `In Progress` -> `Completed`
-- Use `Blocked` only when work cannot continue.
 
-When the user asks to plan, select, or implement tracked project work:
-
-1. Use Notion MCP to read the relevant backlog tickets and their acceptance criteria.
-2. Treat Notion as the source of truth for task status; do not duplicate the backlog in `README.md`.
-3. When beginning a specific tracked ticket, move it to `In Progress`.
-4. Mark a ticket `Completed` only after its acceptance criteria have been satisfied and the implementation has been verified.
-5. Record newly discovered project work in the Notion backlog when the user asks to track it.
-
-If Notion MCP is unavailable, continue with safe repository work when possible and tell the user that task statuses could not be synchronized.
+Notion is the source of truth for task status; do not duplicate the backlog in
+`README.md`. When the user asks to plan, select, implement, or track project
+work, follow the [track-backlog skill](.agents/skills/track-backlog/SKILL.md)
+for the status workflow, completion evidence, and new-ticket fields. If Notion
+MCP is unavailable, continue with safe repository work when possible and tell
+the user that task statuses could not be synchronized.
 
 ## Documentation maintenance
 
@@ -166,40 +161,29 @@ token during cleanup.
 
 ## Cross-review between Codex and Claude
 
-Use [the cross-review guide](docs/operations/cross-review.md) for meaningful
-agent-authored PR changes. Batch implementation and tests before review: one
-full review when the PR is ready, then at most one focused follow-up. Do not run
-reviews on every save or intermediate commit. Use `--author codex --pr NUMBER`
-for Claude Opus review, or `--author claude --pr NUMBER` for Codex GPT-6 Astra
-with medium reasoning effort. Automated handoffs must use `--pr` so the runner
-can scope follow-ups and enforce the round limit.
+For meaningful agent-authored PR changes, follow
+[the cross-review guide](docs/operations/cross-review.md) and the
+[raise-pr skill](.agents/skills/raise-pr/SKILL.md). Batch implementation and
+checks before one full PR review, then at most one focused follow-up. Use the
+existing `scripts/review/cross-review.py` with `--pr NUMBER` so it enforces the
+round limit. Stop and ask the user before any extra round; never set `--allow-extra-round`
+automatically, omit `--pr`, delete comments, or retry failed model calls to
+evade the limit.
 
-Skip model review for trivial wording, formatting, or low-risk preference changes
-(such as reviewer reasoning effort); still run applicable checks and state the
-exemption in the handoff. Do not infer low risk from file extension or line count:
-authentication, permissions, deployment behavior, and substantive logic still
-need review.
+Trivial wording, formatting, and low-risk preference edits may skip model
+review with the reason recorded in the handoff. Do not infer low risk from file
+extension or line count: authentication, permissions, deployment behavior, and
+substantive logic still need review. Honor an explicit user request to skip
+cross-review for a particular PR and state that it was skipped.
 
 The user authorizes advisory review and author-response comments on the PR.
-After a review, verify findings before changing code. Post a concise response with
-`<!-- battlefield-author-response:codex -->` or
-`<!-- battlefield-author-response:claude -->`, the current head, and all unresolved
-finding IDs with fixes or evidence-backed disagreements. Keep the latest response
-self-contained: the next round receives only the latest review and latest author
-response, not the entire discussion. Commit/push fixes and run applicable tests
-before the follow-up. Inspect only the new diff and unresolved findings; do not
-repeat a full review or reopen resolved points without a new regression.
+Author responses must carry the `battlefield-author-response:codex` or
+`battlefield-author-response:claude` marker, the current head SHA, and all
+unresolved finding IDs with fixes or evidence-backed disagreements. See the
+cross-review guide for the format and publication procedure.
 
-After two review rounds, stop automatic calls and ask the user before another.
-The runner's `--allow-extra-round` flag is only for a specifically authorized extra
-round; never set it automatically, omit `--pr`, or delete comments to bypass the
-limit. Failed review calls also stop for user input rather than automatic retries.
-Retrying publication of an already completed report requires no new model call.
-If agreement is not reached within the limit, summarize remaining findings; do
-not claim approval or manufacture consensus. Reviews supplement CI and never
-permit merging or deployment. Reviewers must not edit or invoke another reviewer.
-
-At completed task boundaries, use a short handoff for a fresh implementation chat:
-repository/worktree, branch/PR/head, goal, verified checks, unresolved findings and
-next step. Prefer that handoff and repository state over replaying the full old
-conversation. Do not add usage ledgers, token accounting or cost-report comments.
+Verify findings before fixes, test fixes, and leave unresolved findings visible.
+Review is advisory and does not replace CI, authorize merging, or authorize
+deployment. Reviewers must not edit the change or invoke another reviewer.
+At completed task boundaries, report branch/PR/head, goal, checks, unresolved
+findings, and next step. Do not add usage ledgers or cost-report comments.
