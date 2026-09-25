@@ -23,7 +23,6 @@ type Config struct {
 	ShutdownTimeout    time.Duration
 	MaxAttempts        int
 	DecisionTimeout    time.Duration
-	CapabilitySecret   string
 }
 
 type Worker struct {
@@ -48,9 +47,6 @@ func NewWithLogger(repository Repository, config Config, logger *slog.Logger) (*
 	}
 	if config.DecisionTimeout == 0 {
 		config.DecisionTimeout = 2 * time.Minute
-	}
-	if config.CapabilitySecret == "" {
-		config.CapabilitySecret = "local-development-capability-secret-change-me"
 	}
 	if config.WorkerID == "" || config.PollInterval <= 0 || config.LeaseDuration <= 0 || config.HeartbeatInterval <= 0 || config.HeartbeatInterval >= config.LeaseDuration || config.ShutdownTimeout <= 0 || config.MaxAttempts <= 0 {
 		return nil, errors.New("invalid worker configuration")

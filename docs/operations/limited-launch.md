@@ -23,7 +23,7 @@ or set the legacy flag to `false`. Neither mode is accepted in production.
 
 The setup command generates two independent random secrets for
 `BATTLEFIELD_MCP_CAPABILITY_SECRET` and `BATTLEFIELD_AGENT_SECRET`. The MCP process
-needs both; workers need only the latter. The local Kubernetes CLI launcher reads
+needs both, each at least 32 bytes, and refuses to start otherwise; workers need only the latter. The local Kubernetes CLI launcher reads
 the worker credential from `battlefield-ai` and keeps its bridge on loopback.
 Local CLI login stays on the workstation. Do not use that launcher to serve public
 CLI jobs from your personal home directory.

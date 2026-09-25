@@ -206,8 +206,8 @@ func LoadMCP(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
 	}
-	if aiConfig.CapabilitySecret == "" {
-		return Config{}, fmt.Errorf("capability secret environment variable %q must not be empty", aiConfig.CapabilitySecretEnv)
+	if len(aiConfig.CapabilitySecret) < 32 || aiConfig.CapabilitySecret == localDevelopmentCapabilitySecret {
+		return Config{}, fmt.Errorf("capability secret environment variable %q must contain an independent secret of at least 32 bytes", aiConfig.CapabilitySecretEnv)
 	}
 	aiConfig.AgentSecret = os.Getenv("BATTLEFIELD_AGENT_SECRET")
 	if len(aiConfig.AgentSecret) < 32 || aiConfig.AgentSecret == aiConfig.CapabilitySecret {

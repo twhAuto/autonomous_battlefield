@@ -66,11 +66,15 @@ func parseAIEnvironment(value string) (string, error) {
 	return environment, nil
 }
 
+// localDevelopmentCapabilitySecret lets local processes that never mint or verify
+// capabilities parse configuration. It is public, so LoadMCP rejects it.
+const localDevelopmentCapabilitySecret = "local-development-capability-secret-change-me"
+
 func aiCapabilitySecret(configuredEnvironmentVariable, environment string) (string, string) {
 	secretEnv := stringOrDefault(configuredEnvironmentVariable, "BATTLEFIELD_MCP_CAPABILITY_SECRET")
 	secret := strings.TrimSpace(os.Getenv(secretEnv))
 	if secret == "" && environment == "local" {
-		secret = "local-development-capability-secret-change-me"
+		secret = localDevelopmentCapabilitySecret
 	}
 	return secret, secretEnv
 }

@@ -10,6 +10,14 @@ server {
 
     resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
 
+    # Browser hardening for every response. Nginx drops inherited add_header
+    # directives in any location that declares its own, so repeat them there.
+    add_header Content-Security-Policy "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
     location ~ ^/(startupz|livez|readyz|healthz)$ {
         access_log off;
         default_type text/plain;
@@ -30,6 +38,11 @@ server {
     # references to hashed assets removed by the new image.
     location = /index.html {
         add_header Cache-Control "no-cache" always;
+        add_header Content-Security-Policy "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000" always;
     }
 
     location /assets/ {
