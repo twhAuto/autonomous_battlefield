@@ -46,12 +46,17 @@ and editing routes remain available and keep the Factions navigation item active
 `frontend/e2e/fixtures.ts` intercepts the complete API boundary for application
 Playwright tests. `e2e/usability.spec.ts` runs against a local Vite server in
 desktop and mobile Chromium, including destructive cases only against fixtures.
+`e2e/staging.spec.ts` submits the battle setup form end to end: the fixture serves
+`POST /v1/battles`, records the request body, and then serves the new battle as
+queued under its own generated identifier, so the journey continues into the live
+battle view. It also covers a rejected creation and a retry after recovery.
 Map keyboard tests focus the native “Pan with arrow keys” button; pointer panning
 continues through the map viewport. Admin settings split per-model access controls
 into `ModelAccessCard` and use native outputs for loading and save status.
 See [frontend commands](../../frontend/README.md#commands) for browser setup,
 coverage, and reports. Jenkins archives failure screenshots, traces, and HTML
-reports alongside coverage without changing the 80% coverage thresholds.
+reports alongside coverage without changing the 80% coverage thresholds; the
+HTML report is archived by a step that fails rather than archiving nothing.
 
 The battle feature's `hooks/` directory owns status, event, decision-history, and faction-perspective requests. Each hook preserves its own polling cadence, retries, cancellation, and terminal-state handling. `components/AIDecisionPanel.tsx`, `components/EventConsole.tsx`, and `components/BattlePresentation.tsx` own the panels and visual presentation; shared UI state types live in `types.ts`. There is no WebSocket or server-sent-event client.
 
