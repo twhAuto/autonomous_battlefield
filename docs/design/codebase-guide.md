@@ -8,7 +8,7 @@ repository/package paths and deployment identifiers remain compatible.
 | Field | Value |
 | --- | --- |
 | Status | Current |
-| Last reviewed | 2026-09-20 |
+| Last reviewed | 2026-09-23 |
 | Audience | Contributors navigating or modifying the implementation |
 | Scope | Repository layout, entry points, packages, dependencies, tests, and reading paths |
 
@@ -18,8 +18,15 @@ AI-created work branches start from the latest fetched `origin/dev` and target
 `dev` in pull requests, unless the user explicitly requests otherwise. Promotion
 to `main` is separate. See [agent branch guidance](../../AGENTS.md#branches-and-pull-requests)
 and the [Jenkins workflow](../operations/jenkins.md#configure-github-integration-branch-protection).
-Run applicable local checks before opening a PR. Jenkins verifies both `dev` and
-`main` PR targets on the existing shared `battlefield-production` agent.
+Run applicable local checks before opening a PR. The repo's
+[raise-pr](../../.agents/skills/raise-pr/SKILL.md),
+[triage-ci](../../.agents/skills/triage-ci/SKILL.md),
+[release-and-recover](../../.agents/skills/release-and-recover/SKILL.md),
+[write-project-docs](../../.agents/skills/write-project-docs/SKILL.md), and
+[track-backlog](../../.agents/skills/track-backlog/SKILL.md) skills cover
+PRs, CI, releases, docs, and backlog work. Claude Code discovers the same
+skills through `.claude/skills/` symlinks. Jenkins verifies both `dev` and `main`
+PR targets on the existing shared `battlefield-production` agent.
 
 Use the focused guides for implementation details:
 
@@ -31,6 +38,8 @@ Use the focused guides for implementation details:
 
 ```text
 autonomous_battlefield/
+├── .agents/skills/             # Canonical PR, CI, release, docs, and backlog skills
+├── .claude/skills/             # Links to the canonical skills for Claude Code
 ├── backend/
 │   ├── cmd/{server,engine,mcp,agent,aieval}/ # Startup and command wiring
 │   ├── internal/
@@ -65,6 +74,7 @@ autonomous_battlefield/
 │   ├── perf/                   # Performance-test launcher
 │   ├── security/               # Security-test launcher
 │   ├── ops/                    # Operational reports and failure drills
+│   ├── review/                 # Codex/Claude cross-review runner
 │   └── lib/                    # Shared script functions
 ├── tests/performance/          # k6 scenarios
 ├── quality/sonarqube/          # Local analysis service

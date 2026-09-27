@@ -302,8 +302,26 @@ func TestLoadAgentAndMCPRequireClusterCapability(t *testing.T) {
 	if _, err := LoadAgent(path); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := LoadMCP(path); err == nil {
+		t.Fatal("MCP accepted a short capability secret")
+	}
+	t.Setenv("TEST_CAPABILITY_SECRET", strings.Repeat("m", 32))
 	if _, err := LoadMCP(path); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLoadMCPRejectsLocalDevelopmentCapabilitySecret(t *testing.T) {
+	path := writeEngineConfigFile(t, `ai:
+  environment: local
+  capabilitySecretEnvironmentVariable: TEST_CAPABILITY_SECRET
+`)
+	t.Setenv("BATTLEFIELD_AGENT_SECRET", strings.Repeat("w", 32))
+	for _, secret := range []string{"", localDevelopmentCapabilitySecret} {
+		t.Setenv("TEST_CAPABILITY_SECRET", secret)
+		if _, err := LoadMCP(path); err == nil {
+			t.Fatalf("MCP accepted capability secret %q", secret)
+		}
 	}
 }
 

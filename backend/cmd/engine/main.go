@@ -114,7 +114,7 @@ func startEngine(configuration config.Config) error {
 		WorkerID: engineWorkerID, PollInterval: engineConfig.PollInterval,
 		LeaseDuration: engineConfig.LeaseDuration, HeartbeatInterval: engineConfig.HeartbeatInterval, ShutdownTimeout: engineConfig.ShutdownTimeout,
 		MaxAttempts:     engineConfig.MaxAttempts,
-		DecisionTimeout: configuration.AI.DecisionTimeout, CapabilitySecret: configuration.AI.CapabilitySecret,
+		DecisionTimeout: configuration.AI.DecisionTimeout,
 	})
 	if err != nil {
 		return stopEngineInitialization(healthServer, lifecycle, healthErrors, signalContext, engineConfig.ShutdownTimeout, err)

@@ -22,7 +22,13 @@ The frontend is a React/Vite single-page application.
 | [`features/admin/pages/AdminSettingsPage.tsx`](../../frontend/src/features/admin/pages/AdminSettingsPage.tsx) | Persistent provider/profile switches, allowed roles, save/conflict states, and entry to read-only role preview |
 | [`features/battles/components/HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx) | Hex-map visualization, movement routes, tracking arrows, attack outcomes, and accessible unit animation |
 | [`features/battles/components/PlayerStatusPanel.tsx`](../../frontend/src/features/battles/components/PlayerStatusPanel.tsx) | Null-safe spectator summaries, economy/building overview, and grouped living units |
+| [`features/admin/pages/MembersPage.tsx`](../../frontend/src/features/admin/pages/MembersPage.tsx) | Managed Player invitations, removal, sync retry, and game link (Admins only, when enabled) |
 | [`shared/components/Emblem.tsx`](../../frontend/src/shared/components/Emblem.tsx) | Deterministic faction emblem |
+
+Routes: `/` (Home), `/battles/new`, `/battles`, `/battles/:id`, `/factions`,
+`/factions/new`, `/factions/:id/edit`, `/admin`, and `/admin/members`. Admin routes
+mount only for Admins outside role preview; `/admin/members` also requires the
+session's `members` capability. Unknown paths render a not-found page.
 
 Feature-specific API clients live in `src/features/<feature>/api`; common HTTP transport lives in `src/shared/api`. Page components should consume typed client functions rather than duplicating `fetch` calls.
 

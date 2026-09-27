@@ -7,8 +7,8 @@ resources, authentication, stored data, or API routes.
 
 | Field | Value |
 | --- | --- |
-| Status | Draft — describes the current working tree, including uncommitted changes |
-| Last reviewed | 2026-09-10 |
+| Status | Current |
+| Last reviewed | 2026-09-23 |
 | Audience | Contributors reviewing or extending system behavior |
 | Scope | Runtime components, data flows, durability, security, and deployment |
 
@@ -48,7 +48,7 @@ flowchart LR
     Cache[(Optional Redis)]
     MCP[MCP decision service<br/>cmd/mcp]
     Agent[Decision agent<br/>cmd/agent]
-    Provider[OpenAI / Gemini API<br/>or Codex / Antigravity CLI]
+    Provider[OpenAI / Gemini API<br/>or Codex / Antigravity / Claude CLI]
 
     User --> UI
     UI -->|HTTP /v1| API
@@ -68,10 +68,10 @@ PostgreSQL is the durable coordination point. The API and engine do not call eac
 
 | Component | Responsibility | Direct dependencies |
 | --- | --- | --- |
-| React frontend | Administrator login, faction creation, battle staging and history, map display, controls, event stream, and AI decision history | Public API |
-| Public API | Administrator sessions, HTTP validation, scenario resolution, faction and battle persistence, and selectable model-profile catalog | PostgreSQL, scenario/ruleset YAML, optional Redis |
+| React frontend | Session-aware navigation (Cloudflare Access in production, development login locally), faction creation, battle staging and history, map display, controls, event stream, and AI decision history | Public API |
+| Public API | Access identity verification, role/ownership authorization, managed Player membership, HTTP validation, scenario resolution, faction and battle persistence, and selectable model-profile catalog | PostgreSQL, scenario/ruleset YAML, optional Redis, optional Cloudflare Access group API |
 | Battle engine | Battle queue claims, deterministic ticks, strategy windows, state/event persistence | PostgreSQL |
-| MCP decision service | Two request-scoped model tools and an internal agent control plane | PostgreSQL |
+| MCP decision service | Request-scoped battle tools (`get_decision_context`, `get_unit_details`, `submit_strategy_plan`), background-generation tools, and an internal agent control plane | PostgreSQL |
 | Decision agent | Model-decision claims and API or CLI model execution | MCP service, model provider |
 | Redis (optional) | Disposable completed battle read cache; no engine or readiness dependency | Memory, API-only connection |
 | PostgreSQL | Factions, battle queue, event history, snapshots, leases, and model decisions | Persistent storage |
@@ -103,6 +103,10 @@ server-only `DEV_API_PROXY_TARGET` override from the frontend env files or shell
 Production/browser API routing continues to use `VITE_API_URL` and Nginx.
 Nginx requires revalidation of the SPA entry document after rollouts and returns
 404 for missing hashed assets instead of routing those requests to HTML.
+Every Nginx response carries `frame-ancestors 'none'` CSP, `X-Frame-Options: DENY`,
+`nosniff`, a strict-origin referrer policy and HSTS, so the admin and gameplay UI
+cannot be framed for clickjacking. The CSP deliberately leaves script and connect
+sources open because `VITE_API_URL` may name a separate API origin.
 
 The administrator-only `/admin` control center uses `GET /v1/admin/model-access` and
 `PUT /v1/admin/model-access` to manage provider and individual profile access, including
@@ -275,7 +279,8 @@ Production requires Cloudflare Access on the whole application hostname through 
 The model never receives a repository, global game state, or mutation function. It can only:
 
 1. read one authorized faction-visible decision context;
-2. submit one validated strategy plan for that decision.
+2. look up frozen reference details for units in that context;
+3. submit one validated strategy plan for that decision.
 
 ### Durable coordination boundary
 
@@ -415,17 +420,18 @@ OpenAI Responses and Gemini GenerateContent adapters normalize provider tool cal
 
 ### CLI runtime
 
-The CLI runner starts Codex or Antigravity CLI in a new temporary directory with:
+The CLI runner starts Codex or Antigravity CLI in a new temporary directory with the
+settings below; the Claude Code CLI runner is described under [Deployment topology](#kubernetes).
 
 - an empty workspace;
 - a request-scoped MCP bearer token;
-- only the two battlefield tools enabled;
+- only the session's battlefield tools enabled (three for battle decisions, two for background generation);
 - shell, file, browser, app, image, plugin, skill, and multi-agent capabilities disabled where supported;
 - no approval prompts;
 - the allowlisted profile model passed explicitly with `--model`;
 - a pre-validated CLI version family.
 
-In development Codex uses the existing host login without copying it; production uses only a dedicated VM login. Antigravity uses the host OS keyring or a private temporary copy of its native `antigravity-oauth-token` login file, with a temporary HOME and XDG directories. Both CLI subprocess environments exclude worker control credentials, provider keys and personal CLI overrides. Linux workers disable dumpability to block parent environment/memory reads from same-user children; CLI process groups are killed on cancellation and output capture is bounded at 4 MiB. Generated permissions allow the two battlefield MCP tools and deny file, command, and URL operations; slash-command expansion is disabled. A headless account-usage probe must succeed before advertising the profile. JSON result envelopes must report SUCCESS with no denied actions. Explicit permission rules are used without strict mode, which overrides MCP allows in CLI 1.1.27. The MCP usage endpoint verifies that a plan is accepted before acknowledging completion; missing submissions trigger a worker failure and fallback. Usage counters are recorded for accepted plans. Subscription credentials are not placed in Kubernetes.
+In development Codex uses the existing host login without copying it; production uses only a dedicated VM login. Antigravity uses the host OS keyring or a private temporary copy of its native `antigravity-oauth-token` login file, with a temporary HOME and XDG directories. Both CLI subprocess environments exclude worker control credentials, provider keys and personal CLI overrides. Linux workers disable dumpability to block parent environment/memory reads from same-user children; CLI process groups are killed on cancellation and output capture is bounded at 4 MiB. Generated permissions allow the session's battlefield MCP tools and deny file, command, and URL operations; slash-command expansion is disabled. A headless account-usage probe must succeed before advertising the profile. JSON result envelopes must report SUCCESS with no denied actions. Explicit permission rules are used without strict mode, which overrides MCP allows in CLI 1.1.27. The MCP usage endpoint verifies that a plan is accepted before acknowledging completion; missing submissions trigger a worker failure and fallback. Usage counters are recorded for accepted plans. Subscription credentials are not placed in Kubernetes.
 
 CLI context responses include explicit target-tick and version metadata alongside the full structured context. CLI prompts require copying those values and making a substantive tactical or production decision. Name-only CLI plans are rejected; after three invalid submissions the decision is failed so the battle can fall back. MCP logs record context byte counts and validation field/code pairs without dumping observations or credentials. Usage reporting retries transient failures up to three times.
 
@@ -435,7 +441,7 @@ Antigravity CLI offloads larger MCP tool responses to local files. Because battl
 
 ### Shared prompt provenance and faction memory
 
-API, Codex, and Antigravity use one embedded decision policy assembled by
+API, Codex, Antigravity, and Claude CLI use one embedded decision policy assembled by
 `internal/ai/prompts.go`. Only context delivery differs: tool fetch versus
 Antigravity host-prefetched JSON. The persisted `PromptVersion` includes a SHA-256
 digest covering the base, identity/context boundary, doctrine, policy, and both delivery templates. Version v7 moves faction-authored name/background/doctrine into JSON-escaped untrusted decision context; they never extend the system instructions.
@@ -567,7 +573,31 @@ only the authenticated request ID, allowlisted missing field names, and a
 nested-plan flag; argument values and raw SDK errors are excluded.
 
 When a runner fails before the deadline, the engine carries its error category
-into the fallback record instead of replacing it with `timeout`. Unresolved
+into the fallback record instead of replacing it with `timeout`.
+
+| Error category | Raised by | Meaning |
+| --- | --- | --- |
+| `timeout`, `refusal`, `rate_limit`, `provider` | API runner | Provider deadline, safety refusal, HTTP 429, or other provider failure |
+| `mcp_connect`, `mcp_discovery`, `mcp_tool`, `mcp_context` | API/CLI runner | MCP session, tool-list, tool-call, or Antigravity context-prefetch failure |
+| `unauthorized_tool`, `no_progress`, `step_limit` | API runner | Model requested a tool outside the session set, returned no tool call, or exceeded the profile's step limit |
+| `cli`, `cli_permission`, `cli_isolation`, `cli_provider` | CLI runner | Non-success CLI result, denied tool action, sandbox setup failure, or unsupported CLI provider |
+| `validation_limit` | Decision service | Third rejected API/CLI submission for the same request |
+| `plan_not_submitted` | Agent worker | Runner reported success but MCP holds no accepted plan |
+| `profile_unavailable`, `capability`, `provider_unavailable` | Agent worker | Claimed profile is not executable locally, the claim carried no capability, or no runner could be built for the profile |
+| `runner` | Agent worker | Runner failed without a more specific category |
+| `decision_budget` | PostgreSQL admission trigger | The battle's model execution budget is exhausted at claim time |
+| `battle_stopped` | Battle stop route / expiry sweep | Battle stopped or expired while the decision was open |
+
+Background-generation jobs share the worker and runner categories above except
+`validation_limit`, `plan_not_submitted`, `runner`, `decision_budget` and
+`battle_stopped`, and add their own:
+
+| Error category | Meaning |
+| --- | --- |
+| `execution_error` | Runner failed or did not submit, without a more specific category |
+| `invalid_output` | Third empty or over-length background submission |
+| `timeout` | Execution deadline passed while the job was running |
+| `queue_timeout` | Job expired before any worker claimed it (status `expired`) | Unresolved
 requests that reach the deadline retain the timeout category. CLI terminal
 success remains subject to the worker's accepted-plan check.
 
@@ -615,6 +645,11 @@ application identities (including local Admin) cannot select that owner ID.
 | `battle_events` | Replayable per-attempt event stream | Primary key and conflict handling make insertion idempotent |
 | `battle_decisions` | Observations, provenance, leases, plans, fallbacks, errors, and usage | Unique per battle/attempt/faction/tick; versioned resolution |
 | `battle_controller_evaluation` | Aggregated controller comparison | Latency, fallback/invalid rates, token use, plan diversity, and win rate |
+| `runtime_policy` | Singleton admission limits, AI stop switch, and CLI concurrency | Row lock serializes battle, decision, and generation admission |
+| `agent_execution_leases` | Active CLI execution slots | Capped by `runtime_policy.cli_concurrency`; expired rows are pruned on admission |
+| `faction_generation_accounts` / `faction_background_generations` | Per-actor generation lock and durable background draft jobs | Account row lock plus partial unique index allow one active job |
+| `model_access_policy` | Singleton administrator model-access policy | Optimistic version rejects conflicting saves |
+| `player_members` / `player_membership_sync` / `player_membership_audit` | Managed Player grants, Access-group synchronization, and audit history | Removal takes effect on the next API request |
 
 ```mermaid
 erDiagram
@@ -693,6 +728,17 @@ Every mutating battle write includes battle ID, attempt, and lease owner. A mism
 
 A reclaimed battle starts a new deterministic attempt from `initial_state`; events from earlier attempts remain available by attempt number. When an observation hash matches a previously resolved decision for the same faction and target tick, the decision repository can reuse that plan.
 
+Each claim increments `attempt`. Once a queued or lease-expired battle has used
+`engine.maxAttempts` (default 3), the next claim pass marks it `failed` with
+`attempts_exhausted` instead of starting another attempt. A stored scenario that
+cannot construct a match fails immediately with `invalid_scenario` and is not
+retried. Together with `battle_timeout` (see
+[current limitations](#19-current-limitations-and-follow-up-questions)), these are
+the engine's terminal battle error codes.
+
+Decision wake-ups use the `battlefield_decision_ready` PostgreSQL channel, with the
+profile ID as payload.
+
 ## 9. Security and trust boundaries
 
 ### Access identity, roles and owners
@@ -705,8 +751,9 @@ HTTP responses remain generic. Failed key refresh reasons persist through the
 existing 30-second retry throttle; authentication and cache policy are unchanged.
 
 Production API manifests require `BATTLEFIELD_ENV=production`; startup accepts only
-`BATTLEFIELD_AUTH_MODE=cloudflare` with valid issuer, audience, HTTPS origin and
-nonconflicting email/role assignments. JWT verification uses RS256, a fixed issuer's
+`BATTLEFIELD_AUTH_MODE=cloudflare` with valid issuer (`BATTLEFIELD_ACCESS_ISSUER`),
+audience (`BATTLEFIELD_ACCESS_AUDIENCE`), HTTPS origin (`BATTLEFIELD_PUBLIC_ORIGIN`)
+and nonconflicting email/role assignments (`BATTLEFIELD_ACCESS_ROLES`). JWT verification uses RS256, a fixed issuer's
 JWKS with one-hour key cache and a 30-second refresh throttle, and required identity/
 time/audience checks. The audience claim accepts a single string or an array of
 strings (RFC 7519 section 4.1.3), matched exactly and case-sensitively to the
@@ -747,7 +794,7 @@ Migration `00004_battle_decisions.sql` creates a `battlefield_mcp` group role wi
 
 ### Deployment responsibilities
 
-- Replace the development capability secret with high-entropy secret-manager material.
+- Replace the development capability secret with high-entropy secret-manager material. MCP refuses to start with a capability secret shorter than 32 bytes or equal to the built-in local-development placeholder.
 - Use Access for production sessions; keep role assignments and the independent worker/signing secrets in private operator configuration. Block direct-origin IPv4/IPv6 access and verify the CNI enforces NetworkPolicy.
 - Keep provider keys only in the agent workload.
 - Treat model rationale as untrusted display text even though its length is bounded.
@@ -766,6 +813,22 @@ A model profile specifies:
 - optional external-agent availability environment variable;
 - token and step limits;
 - enabled state and supported CLI version prefix.
+
+Key runtime settings and their defaults:
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `api.maxTicks` | 10000 (maximum) | Upper bound for a battle's requested tick limit |
+| `engine.pollInterval` | 1s | Delay between empty battle-queue claims |
+| `engine.leaseDuration` | 30s | Battle lease length; an expired lease lets another engine reclaim the battle |
+| `engine.heartbeatInterval` | 10s | Lease renewal cadence; must be shorter than `leaseDuration` |
+| `engine.maxAttempts` | 3 | Claims per battle before `attempts_exhausted` |
+| `engine.shutdownTimeout` | 10s | Bound for final writes and requeue during shutdown |
+| `ai.decisionTimeout` | 2m | Engine decision deadline and agent execution timeout |
+| `ai.agentConcurrency` | 1 | Execution slots per agent process (1–4) |
+| `resultCache.ttl` / `resultCache.timeout` | 1h / 100ms | Completed-battle cache entry lifetime and per-operation deadline |
+
+`backend/config.yaml` is the reference for all keys; unknown keys fail startup.
 
 The API catalog advertises profiles users may select. In cluster mode, an operator flag can advertise a host-connected CLI even though the API pod cannot execute it. An agent advertises only profiles it can execute; claims include those IDs so heterogeneous agents do not lease incompatible work.
 
@@ -1027,8 +1090,9 @@ The authenticated `GET /v1/battles` route passes through the battle API,
 service, and PostgreSQL repository. A single query projects participant
 identities/controllers from the immutable scenario snapshot and reads lifecycle
 timestamps, progress, status, and a compact outcome. It does not load simulation
-states or use the terminal-result cache. History is service-wide under the
-existing administrator authentication model.
+states or use the terminal-result cache. History is service-wide: every
+authenticated Player, Developer, or Admin sees all battles, and ownership only
+restricts mutations.
 
 The `battle_runs_history_idx` index orders `created_at DESC, id DESC`.
 Migration `00010_battle_history.sql` adds it without rewriting existing data;
@@ -1103,7 +1167,7 @@ The current projection also replaces an identical historical plan with
 `planRef: "#/activePlan"`, only when smaller. Repeated state battle ID/tick and
 own-faction gold/upgrades inherit their top-level values only when equal;
 differing historical/enemy facts stay explicit. The prompt documents these rules.
-API and Gemini CLI delivery omit exact copies of faction identity already present
+API and Antigravity CLI delivery omit exact copies of faction identity already present
 in the untrusted identity context. They retain mismatches and all original identity wording.
 Direct MCP/Codex delivery and the inspector remain self-contained. Persistence
 and validation hashes are not changed by any projection.
@@ -1180,9 +1244,7 @@ management token. Activation and rotation are in the
   A terminal battle-control response cancels status polling and invalidates
   in-flight responses so stale running status cannot overwrite an operator stop.
 - Load and failover behavior needs testing before increasing engine, MCP, or agent replicas.
-- Agent concurrency is hardcoded to one in `cmd/agent` rather than configured in YAML.
 - API adapters build text transcripts instead of preserving provider-native structured tool history.
-- One shared secret authorizes the agent control plane and capability minting. Separate keys or server-minted capabilities would reduce agent signing authority.
 - The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [backend guide](backend-guide.md#internalgamecontroller-deterministic-policy-abstractions).
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
 

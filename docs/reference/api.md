@@ -389,3 +389,21 @@ a missing member ID returns 404; persistence/configuration failures return 503.
 `syncError` is a sanitized group-level failure; automatic retries continue with
 bounded backoff. No endpoint accepts a role or returns Cloudflare credentials.
 See [Player invitations](../operations/player-invitations.md) for lifecycle and setup.
+
+## Model access administration
+
+Both routes require Admin authentication and are unavailable in role preview.
+`PUT` requires the configured exact Origin. Responses use `Cache-Control: no-store`.
+
+| Route | Contract |
+| --- | --- |
+| `GET /v1/admin/model-access` | Returns `{ version, policy, models }`. `policy.providers` maps each configured provider to an enabled flag; `policy.profiles` maps every configured profile ID to `{ enabled, allowedRoles }`. Missing stored entries default to enabled with the profile's configured roles. `models` lists the configured profiles. |
+| `PUT /v1/admin/model-access` | Accepts `{ version, policy }` and returns the saved `{ version, policy }`. |
+
+A `PUT` must include every configured provider and profile, no extras, and roles
+drawn once each from `admin`, `developer`, and `player`. An empty `allowedRoles`
+list denies everyone. Invalid bodies return 400, a stale `version` returns 409, and
+persistence failures return 503. The policy restricts only new battle selections
+and background-generation admission; it cannot enable a profile whose credentials
+or runtime are unavailable. See
+[system architecture](../design/system-architecture.md#source-ownership).
