@@ -104,6 +104,8 @@ pipeline {
                                     sh 'npm run build'
                                     sh 'npx playwright install chromium'
                                     sh 'npm run test:e2e'
+                                    // Browser-test evidence must survive the run; an empty archive would hide it.
+                                    sh 'test -s playwright-report/index.html'
                                 }
                             }
                         }
@@ -206,6 +208,8 @@ pipeline {
                                     sh 'npm run build'
                                     sh 'npx playwright install chromium'
                                     sh 'npm run test:e2e'
+                                    // Browser-test evidence must survive the run; an empty archive would hide it.
+                                    sh 'test -s playwright-report/index.html'
                                 }
                             }
                         }
@@ -520,10 +524,23 @@ pipeline {
                 }
             }
             archiveArtifacts(
-                artifacts: 'artifacts/**/*,backend/coverage.out,backend/coverage-total.txt,frontend/coverage/**/*,frontend/playwright-report/**/*,frontend/test-results/**/*',
+                artifacts: 'artifacts/**/*,backend/coverage.out,backend/coverage-total.txt,frontend/coverage/**/*,frontend/test-results/**/*',
                 allowEmptyArchive: true,
                 fingerprint: true
             )
+            // Archived separately: when the browser tests ran, their report must not go missing
+            // unnoticed, so this archive is not allowed to come back empty.
+            script {
+                if (fileExists('frontend/playwright-report/index.html')) {
+                    archiveArtifacts(
+                        artifacts: 'frontend/playwright-report/**/*',
+                        allowEmptyArchive: false,
+                        fingerprint: true
+                    )
+                } else {
+                    echo 'No Playwright report was produced; browser-test evidence is unavailable for this build.'
+                }
+            }
         }
         success {
             script {
