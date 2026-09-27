@@ -32,7 +32,10 @@ CLI jobs from your personal home directory.
 
 1. Create a named Cloudflare Tunnel for the application. Route DNS for
    `play.ordinalfrontier.com` to that tunnel. Create a self-hosted Access application
-   covering the **entire hostname**, with a one-hour application session.
+   covering the **entire hostname**, with a six-hour application session.
+   The owner confirmed this duration on 2026-09-27. The privileged MFA challenge
+   duration remains one hour; it is separate from the application session.
+   Keep policy session durations inherited from the application.
 2. Configure Google as the identity provider. Add an Allow policy listing the
    owner's exact email. Do not add a domain-wide allow, Bypass, Everyone, or public
    service-token policy. Require MFA for Admin/Developer identities using an IdP
@@ -345,7 +348,7 @@ run through the public hostname with CI service credentials on each request.
 Checks also require denial of admin access, battle reads and logout mutations.
 Redirects are not followed and response bodies/credentials are not logged.
 Separately test the public hostname with allowed and denied Google identities,
-MFA, one-hour user-session expiry, logout, account removal, and direct-origin
+MFA, six-hour user-session expiry, logout, account removal, and direct-origin
 IPv4/IPv6 probes. The old human-JWT `verify-access-origin.py` helper has been retired. Use real
 browser sessions for human-role checks; do not copy browser JWTs into scripts or
 Jenkins. Remove obsolete `battlefield-production-access-token` credentials after

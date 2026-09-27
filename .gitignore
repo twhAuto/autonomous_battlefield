@@ -26,3 +26,6 @@ deploy/environments/*/*.env
 # Generated Python bytecode
 __pycache__/
 *.py[cod]
+
+# Local Playwright MCP logs and browser snapshots
+/.playwright-mcp/
