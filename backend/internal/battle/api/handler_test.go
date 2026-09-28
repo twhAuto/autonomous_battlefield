@@ -234,6 +234,17 @@ func TestListBattleEventsParsesCursor(t *testing.T) {
 	}
 }
 
+func envelopeOf(t *testing.T, response *httptest.ResponseRecorder) apierror.ErrorBody {
+	t.Helper()
+	var envelope struct {
+		Error apierror.ErrorBody `json:"error"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("response is not a JSON error envelope: %v (%q)", err, response.Body.String())
+	}
+	return envelope.Error
+}
+
 func TestBattleHandlerMapsErrors(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -257,16 +268,11 @@ func TestBattleHandlerMapsErrors(t *testing.T) {
 			if response.Code != tt.status {
 				t.Fatalf("status = %d, want %d", response.Code, tt.status)
 			}
-			var envelope struct {
-				Error apierror.ErrorBody `json:"error"`
+			body := envelopeOf(t, response)
+			if body.Code != tt.code {
+				t.Fatalf("code = %q, want %q", body.Code, tt.code)
 			}
-			if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
-				t.Fatalf("response is not a JSON error envelope: %v (%q)", err, response.Body.String())
-			}
-			if envelope.Error.Code != tt.code {
-				t.Fatalf("code = %q, want %q", envelope.Error.Code, tt.code)
-			}
-			if envelope.Error.Message == "" {
+			if body.Message == "" {
 				t.Fatal("envelope message is empty")
 			}
 			// Internal failures report a generic message, never the underlying cause.
