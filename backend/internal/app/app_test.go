@@ -7,18 +7,22 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/propagation"
-	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
+	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/catalog"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
@@ -47,6 +51,52 @@ func TestNewAPIWithAuthenticationProtectsApplicationRoutes(t *testing.T) {
 	if response.Code != http.StatusUnauthorized || response.Header().Get("X-Request-ID") == "" {
 		t.Fatalf("status=%d request ID=%q", response.Code, response.Header().Get("X-Request-ID"))
 	}
+	body := assembledError(t, response)
+	if body.Code != apierror.CodeAuthenticationRequired || body.RequestID != response.Header().Get("X-Request-ID") {
+		t.Fatalf("error = %+v, want authentication_required with the X-Request-ID header value", body)
+	}
+}
+
+// Every unmatched /v1 request must still produce the envelope. Unregistered routes are
+// denied by RoutePolicy rather than reported missing, so their existence is not
+// revealed; the auth routes bypass that policy, so a wrong method on them reaches
+// ServeMux, whose plain-text 405 the router replaces.
+func TestAssembledAPIReturnsTheEnvelopeForUnmatchedRequests(t *testing.T) {
+	handler := NewAPI(appDatabase{}, &catalog.Catalog{}, 10_000).HTTPHandler()
+
+	for _, denied := range [][2]string{{http.MethodGet, "/v1/no-such-route"}, {http.MethodPatch, "/v1/factions"}, {http.MethodGet, "/v1/auth/no-such-route"}} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(denied[0], denied[1], nil))
+		if body := assembledError(t, response); response.Code != http.StatusForbidden || body.Code != apierror.CodePermissionDenied || body.RequestID == "" {
+			t.Fatalf("%s %s = %d %+v, want default-deny 403 permission_denied with a request ID", denied[0], denied[1], response.Code, body)
+		}
+	}
+
+	for _, wrong := range []struct{ method, path, allow string }{
+		{http.MethodGet, "/v1/auth/login", "POST"},
+		{http.MethodDelete, "/v1/auth/session", "GET, HEAD"},
+		{http.MethodPut, "/v1/auth/logout", "POST"},
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(wrong.method, wrong.path, nil))
+		if body := assembledError(t, response); response.Code != http.StatusMethodNotAllowed || body.Code != apierror.CodeMethodNotAllowed {
+			t.Fatalf("%s %s = %d %+v, want 405 method_not_allowed", wrong.method, wrong.path, response.Code, body)
+		}
+		if allow := response.Header().Get("Allow"); allow != wrong.allow {
+			t.Fatalf("%s %s Allow = %q, want %q", wrong.method, wrong.path, allow, wrong.allow)
+		}
+	}
+}
+
+func assembledError(t *testing.T, response *httptest.ResponseRecorder) apierror.ErrorBody {
+	t.Helper()
+	var envelope struct {
+		Error apierror.ErrorBody `json:"error"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("response is not a JSON error envelope: %v (%q)", err, response.Body.String())
+	}
+	return envelope.Error
 }
 
 type appDatabase struct{}

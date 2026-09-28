@@ -9,6 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 )
 
 // LifecycleHandler exposes process lifecycle probes before the application is
@@ -56,7 +58,7 @@ func (h *LifecycleHandler) ServeHTTP(w http.ResponseWriter, request *http.Reques
 	switch request.URL.Path {
 	case "/startupz":
 		if !h.started.Load() {
-			http.Error(w, "starting", http.StatusServiceUnavailable)
+			apierror.Write(w, request, http.StatusServiceUnavailable, "starting")
 			return
 		}
 		writeOK(w)
@@ -77,7 +79,7 @@ func (h *LifecycleHandler) ServeHTTP(w http.ResponseWriter, request *http.Reques
 
 func (h *LifecycleHandler) serveReadiness(w http.ResponseWriter, request *http.Request) {
 	if !h.accepting.Load() {
-		http.Error(w, "not ready", http.StatusServiceUnavailable)
+		apierror.Write(w, request, http.StatusServiceUnavailable, "not ready")
 		return
 	}
 
@@ -86,14 +88,14 @@ func (h *LifecycleHandler) serveReadiness(w http.ResponseWriter, request *http.R
 	ready := h.ready
 	h.mu.RUnlock()
 	if pinger == nil || (ready != nil && !ready()) {
-		http.Error(w, "not ready", http.StatusServiceUnavailable)
+		apierror.Write(w, request, http.StatusServiceUnavailable, "not ready")
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(request.Context(), h.timeout)
 	defer cancel()
 	if err := pinger.Ping(ctx); err != nil {
-		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+		apierror.Write(w, request, http.StatusServiceUnavailable, "database unavailable")
 		return
 	}
 	writeOK(w)
@@ -101,14 +103,14 @@ func (h *LifecycleHandler) serveReadiness(w http.ResponseWriter, request *http.R
 
 func (h *LifecycleHandler) serveApplication(w http.ResponseWriter, request *http.Request) {
 	if !h.accepting.Load() {
-		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+		apierror.Write(w, request, http.StatusServiceUnavailable, "service unavailable")
 		return
 	}
 	h.mu.RLock()
 	handler := h.handler
 	h.mu.RUnlock()
 	if handler == nil {
-		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+		apierror.Write(w, request, http.StatusServiceUnavailable, "service unavailable")
 		return
 	}
 	handler.ServeHTTP(w, request)

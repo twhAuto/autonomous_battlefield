@@ -949,6 +949,12 @@ an explicit model ID for reproducible comparisons. See [Claude operations](../op
   those fields into user attribute groups. `LOG_LEVEL` defaults to INFO.
 - API logs carry or generate `X-Request-ID`. Tracing wraps access logging so
   completion logs, including authentication rejections, share the request span.
+- Every `/v1` error uses one JSON envelope, `{"error":{"code","message","requestId"}}`,
+  written by `internal/apierror`. `requestId` equals the `X-Request-ID` header and
+  the `request_id` log field, so a client-reported failure maps to one log line.
+  The identifier lives in the leaf `internal/requestid` package because `httpapi`
+  imports `authn`, which also writes errors. Codes are listed in the
+  [API reference](../reference/api.md#errors).
 - HTTP completion logs carry `actor_id` and `actor_role` from authentication
   middleware, providing request attribution rather than a tamper-proof audit
   store. Tokens, cookies and email headers are not logged. See

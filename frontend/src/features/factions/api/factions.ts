@@ -2,7 +2,7 @@
 // specific error messages.
 
 import type { UnitCapabilities } from '../../../shared/domain/units'
-import { createApiClient } from '../../../shared/api/request'
+import { createApiClient, errorMessage } from '../../../shared/api/request'
 
 export interface CreateFactionInput {
   id: string
@@ -90,7 +90,7 @@ export async function createFaction(
   }
 
   if (response.status === 422) {
-    const detail = (await response.text()).trim()
+    const detail = await errorMessage(response)
     throw new FactionApiError(
       detail || 'These faction details are invalid.',
       response.status,

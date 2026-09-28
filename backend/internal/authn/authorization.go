@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 )
 
 type Role string
@@ -64,11 +66,11 @@ func BrowserProtection(origin string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin != "" && strings.HasPrefix(r.URL.Path, "/v1/") && r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
 			if r.Header.Get("Origin") != origin {
-				http.Error(w, "origin not permitted", http.StatusForbidden)
+				apierror.Write(w, r, http.StatusForbidden, "origin not permitted")
 				return
 			}
 			if r.ContentLength != 0 && strings.Split(r.Header.Get("Content-Type"), ";")[0] != "application/json" {
-				http.Error(w, "JSON required", http.StatusUnsupportedMediaType)
+				apierror.Write(w, r, http.StatusUnsupportedMediaType, "JSON required")
 				return
 			}
 		}
@@ -81,12 +83,12 @@ func Permit(permission string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		a, ok := ActorFromContext(r.Context())
 		if !ok {
-			http.Error(w, "authentication required", 401)
+			apierror.Write(w, r, 401, "authentication required")
 			return
 		}
 		allowed := (permission == "play" && (a.Role == Player || a.CanInspect())) || (permission == "inspect" && a.CanInspect()) || (permission == "admin" && a.Role == Admin)
 		if !allowed {
-			http.Error(w, permissionDeniedMessage, 403)
+			apierror.Write(w, r, 403, permissionDeniedMessage)
 			return
 		}
 		next(w, r)
@@ -105,13 +107,13 @@ func RoutePolicy(next http.Handler) http.Handler {
 	for _, pattern := range []string{"GET /v1/admin/model-access", "PUT /v1/admin/model-access", "GET /v1/admin/members", "POST /v1/admin/members", "DELETE /v1/admin/members/{id}", "POST /v1/admin/members/retry"} {
 		mux.HandleFunc(pattern, Permit("admin", next.ServeHTTP))
 	}
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { http.Error(w, permissionDeniedMessage, 403) })
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { apierror.Write(w, r, 403, permissionDeniedMessage) })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if actor, ok := ActorFromContext(r.Context()); ok && actor.Role == CI {
 			if r.Method == http.MethodGet && (r.URL.Path == "/v1/auth/session" || r.URL.Path == "/v1/scenarios") {
 				next.ServeHTTP(w, r)
 			} else {
-				http.Error(w, permissionDeniedMessage, http.StatusForbidden)
+				apierror.Write(w, r, http.StatusForbidden, permissionDeniedMessage)
 			}
 			return
 		}

@@ -14,10 +14,9 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
+	"github.com/twh09/autonomous_battlefield/backend/internal/requestid"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
-
-type requestIDContextKey struct{}
 
 var fallbackRequestID atomic.Uint64
 
@@ -29,7 +28,7 @@ func requestLogging(next http.Handler, logger *slog.Logger) http.Handler {
 		started := time.Now()
 		requestID := acceptedRequestID(r.Header.Get("X-Request-ID"))
 		w.Header().Set("X-Request-ID", requestID)
-		r = r.WithContext(context.WithValue(r.Context(), requestIDContextKey{}, requestID))
+		r = r.WithContext(requestid.With(r.Context(), requestID))
 		var authFailure atomic.Pointer[string]
 		r = r.WithContext(authn.WithAuthFailureObserver(r.Context(), func(reason string) { authFailure.Store(&reason) }))
 		var authenticated atomic.Pointer[authn.Actor]
@@ -127,7 +126,7 @@ func stringID(value uint64) string {
 	}
 }
 
+// RequestID reports the correlation identifier the logging middleware attached.
 func RequestID(ctx context.Context) string {
-	value, _ := ctx.Value(requestIDContextKey{}).(string)
-	return value
+	return requestid.From(ctx)
 }

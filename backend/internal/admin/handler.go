@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 )
@@ -19,7 +20,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 	settings, err := h.Service.Get(r.Context())
 	if err != nil {
-		http.Error(w, "could not load model access settings", 503)
+		apierror.Write(w, r, 503, "could not load model access settings")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -29,18 +30,18 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) save(w http.ResponseWriter, r *http.Request) {
 	var settings Settings
 	if httpapi.ReadJSON(w, r, &settings) != nil {
-		http.Error(w, "invalid model access settings", 400)
+		apierror.Write(w, r, 400, "invalid model access settings")
 		return
 	}
 	actor, _ := authn.ActorFromContext(r.Context())
 	saved, err := h.Service.Save(r.Context(), settings, actor.ID)
 	switch {
 	case errors.Is(err, ErrInvalid):
-		http.Error(w, "invalid model access settings", 400)
+		apierror.Write(w, r, 400, "invalid model access settings")
 	case errors.Is(err, ErrConflict):
-		http.Error(w, "settings changed; refresh before saving again", 409)
+		apierror.Write(w, r, 409, "settings changed; refresh before saving again")
 	case err != nil:
-		http.Error(w, "could not save model access settings", 503)
+		apierror.Write(w, r, 503, "could not save model access settings")
 	default:
 		w.Header().Set("Cache-Control", "no-store")
 		_ = httpapi.WriteJSON(w, 200, saved)

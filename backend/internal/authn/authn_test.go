@@ -5,11 +5,14 @@ package authn
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 )
 
 func TestLoginSessionAndLogout(t *testing.T) {
@@ -47,16 +50,18 @@ func TestLoginRejectsInvalidAndMalformedCredentials(t *testing.T) {
 	router := http.NewServeMux()
 	NewRoutes(manager).RegisterRoutes(router)
 
+	bodies := map[string]string{}
 	for _, test := range []struct {
 		name string
 		body string
 		want int
+		code apierror.ErrorCode
 	}{
-		{name: "wrong password", body: `{"username":"admin","password":"wrong"}`, want: http.StatusUnauthorized},
-		{name: "wrong username", body: `{"username":"other","password":"correct-password"}`, want: http.StatusUnauthorized},
-		{name: "malformed", body: `{`, want: http.StatusBadRequest},
-		{name: "unknown field", body: `{"username":"admin","password":"correct-password","extra":true}`, want: http.StatusBadRequest},
-		{name: "trailing document", body: `{"username":"admin","password":"correct-password"}{}`, want: http.StatusBadRequest},
+		{name: "wrong password", body: `{"username":"admin","password":"wrong"}`, want: http.StatusUnauthorized, code: apierror.CodeAuthenticationRequired},
+		{name: "wrong username", body: `{"username":"other","password":"correct-password"}`, want: http.StatusUnauthorized, code: apierror.CodeAuthenticationRequired},
+		{name: "malformed", body: `{`, want: http.StatusBadRequest, code: apierror.CodeInvalidRequest},
+		{name: "unknown field", body: `{"username":"admin","password":"correct-password","extra":true}`, want: http.StatusBadRequest, code: apierror.CodeInvalidRequest},
+		{name: "trailing document", body: `{"username":"admin","password":"correct-password"}{}`, want: http.StatusBadRequest, code: apierror.CodeInvalidRequest},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			response := httptest.NewRecorder()
@@ -64,7 +69,22 @@ func TestLoginRejectsInvalidAndMalformedCredentials(t *testing.T) {
 			if response.Code != test.want {
 				t.Fatalf("status=%d want=%d", response.Code, test.want)
 			}
+			var envelope struct {
+				Error apierror.ErrorBody `json:"error"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+				t.Fatalf("response is not a JSON error envelope: %v (%q)", err, response.Body.String())
+			}
+			if envelope.Error.Code != test.code {
+				t.Fatalf("code=%q want=%q", envelope.Error.Code, test.code)
+			}
+			bodies[test.name] = response.Body.String()
 		})
+	}
+	// Distinct bodies for an unknown user and a wrong password would let a caller
+	// enumerate valid usernames, so the two failures must be indistinguishable.
+	if bodies["wrong username"] != bodies["wrong password"] {
+		t.Fatalf("login failures are distinguishable:\n wrong username: %s\n wrong password: %s", bodies["wrong username"], bodies["wrong password"])
 	}
 }
 

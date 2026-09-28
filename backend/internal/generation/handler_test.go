@@ -4,6 +4,7 @@
 package generation
 
 import (
+	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
 
 	"context"
@@ -76,8 +77,22 @@ func TestGenerationEndpoints(t *testing.T) {
 		h.ServeHTTP(w, req)
 		testutil.Require(t, w.Code == tt.status, func() { t.Fatalf("%s %s: %d %s", tt.method, tt.path, w.Code, w.Body.String()) })
 		if w.Code == 429 {
+			// The cooldown fields clients already read must survive alongside the envelope.
 			var o Options
 			testutil.Require(t, !(json.Unmarshal(w.Body.Bytes(), &o) != nil || !o.Available || w.Header().Get("Retry-After") == ""), func() { t.Fatal(w.Body.String()) })
+		}
+		if w.Code >= 400 {
+			var envelope struct {
+				Error apierror.ErrorBody `json:"error"`
+			}
+			err := json.Unmarshal(w.Body.Bytes(), &envelope)
+			testutil.Require(t, err == nil && envelope.Error.Code == apierror.DefaultCode(w.Code) && envelope.Error.Message != "", func() {
+				t.Fatalf("%s %s: error envelope = %s (%v)", tt.method, tt.path, w.Body.String(), err)
+			})
+			// Internal failures must not echo the underlying cause.
+			testutil.Require(t, w.Code != 500 || !strings.Contains(envelope.Error.Message, "database"), func() {
+				t.Fatalf("%s %s: leaked cause: %s", tt.method, tt.path, w.Body.String())
+			})
 		}
 	}
 	testutil.Require(t, r.actor == "local-development", func() { t.Fatal(r.actor) })

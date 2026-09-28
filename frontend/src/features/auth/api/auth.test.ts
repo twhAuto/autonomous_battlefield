@@ -18,6 +18,14 @@ describe('authenticationClient', () => {
 
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 401 }))
     await expect(authenticationClient.session()).resolves.toEqual({ enabled: true, authenticated: false, mode: 'cloudflare' })
+
+    // The server's own unauthenticated session body is used as-is.
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ enabled: true, authenticated: false, mode: 'local' }), { status: 401 }))
+    await expect(authenticationClient.session()).resolves.toEqual({ enabled: true, authenticated: false, mode: 'local' })
+
+    // An error envelope is not a session and must not be mistaken for one.
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 'authentication_required', message: 'authentication required' } }), { status: 401 }))
+    await expect(authenticationClient.session()).resolves.toEqual({ enabled: true, authenticated: false, mode: 'cloudflare' })
   })
 
   it('logs in and re-reads the signed-cookie session', async () => {

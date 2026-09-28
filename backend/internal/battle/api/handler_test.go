@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
@@ -238,12 +239,14 @@ func TestBattleHandlerMapsErrors(t *testing.T) {
 		name   string
 		err    error
 		status int
+		code   apierror.ErrorCode
 	}{
-		{name: "invalid", err: battleservice.ErrInvalidBattle, status: http.StatusBadRequest},
-		{name: "missing", err: battleservice.ErrBattleFactionMissing, status: http.StatusNotFound},
-		{name: "incompatible", err: battleservice.ErrIncompatibleFaction, status: http.StatusUnprocessableEntity},
-		{name: "duplicate", err: battleservice.ErrBattleAlreadyExists, status: http.StatusConflict},
-		{name: "internal", err: errors.New("database unavailable"), status: http.StatusInternalServerError},
+		{name: "invalid", err: battleservice.ErrInvalidBattle, status: http.StatusBadRequest, code: apierror.CodeInvalidRequest},
+		{name: "missing", err: battleservice.ErrBattleFactionMissing, status: http.StatusNotFound, code: apierror.CodeNotFound},
+		{name: "incompatible", err: battleservice.ErrIncompatibleFaction, status: http.StatusUnprocessableEntity, code: apierror.CodeValidationFailed},
+		// A duplicate identifier is distinguishable from other conflicts by its code.
+		{name: "duplicate", err: battleservice.ErrBattleAlreadyExists, status: http.StatusConflict, code: apierror.CodeAlreadyExists},
+		{name: "internal", err: errors.New("database unavailable"), status: http.StatusInternalServerError, code: apierror.CodeInternal},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -253,6 +256,22 @@ func TestBattleHandlerMapsErrors(t *testing.T) {
 			handler.CreateBattle(response, request)
 			if response.Code != tt.status {
 				t.Fatalf("status = %d, want %d", response.Code, tt.status)
+			}
+			var envelope struct {
+				Error apierror.ErrorBody `json:"error"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+				t.Fatalf("response is not a JSON error envelope: %v (%q)", err, response.Body.String())
+			}
+			if envelope.Error.Code != tt.code {
+				t.Fatalf("code = %q, want %q", envelope.Error.Code, tt.code)
+			}
+			if envelope.Error.Message == "" {
+				t.Fatal("envelope message is empty")
+			}
+			// Internal failures report a generic message, never the underlying cause.
+			if strings.Contains(response.Body.String(), "database unavailable") {
+				t.Fatalf("response leaked the underlying cause: %q", response.Body.String())
 			}
 		})
 	}

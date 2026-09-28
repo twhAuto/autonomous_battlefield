@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 )
 
 // ModeCloudflare selects authentication through verified Cloudflare Access JWTs.
@@ -180,7 +182,8 @@ func (r *Routes) RegisterRoutes(mux *http.ServeMux) {
 
 func (r *Routes) login(response http.ResponseWriter, request *http.Request) {
 	if r.manager.config.Mode == ModeCloudflare {
-		http.NotFound(response, request)
+		// Access owns sign-in in this mode, so the local login route does not exist.
+		apierror.Write(response, request, http.StatusNotFound, "route not found")
 		return
 	}
 	request.Body = http.MaxBytesReader(response, request.Body, 4096)
@@ -191,16 +194,16 @@ func (r *Routes) login(response http.ResponseWriter, request *http.Request) {
 	decoder := json.NewDecoder(request.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&credentials); err != nil {
-		http.Error(response, "invalid login request", http.StatusBadRequest)
+		apierror.Write(response, request, http.StatusBadRequest, "invalid login request")
 		return
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		http.Error(response, "invalid login request", http.StatusBadRequest)
+		apierror.Write(response, request, http.StatusBadRequest, "invalid login request")
 		return
 	}
 	if !r.manager.credentialsMatch(credentials.Username, credentials.Password) {
 		response.Header().Set(cacheControlHeader, noStoreDirective)
-		http.Error(response, "invalid username or password", http.StatusUnauthorized)
+		apierror.Write(response, request, http.StatusUnauthorized, "invalid username or password")
 		return
 	}
 	actor := Actor{ID: r.manager.config.Username, Role: Admin}
@@ -255,7 +258,7 @@ func RequireAuthentication(enabled bool, authenticator Authenticator, next http.
 		actor, ok := authenticator.Authenticate(request)
 		if !ok {
 			response.Header().Set(cacheControlHeader, noStoreDirective)
-			http.Error(response, "authentication required", http.StatusUnauthorized)
+			apierror.Write(response, request, http.StatusUnauthorized, "authentication required")
 			return
 		}
 		next.ServeHTTP(response, request.WithContext(WithActor(request.Context(), actor)))

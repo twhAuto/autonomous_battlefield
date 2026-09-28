@@ -5,9 +5,11 @@ package api
 
 import (
 	"errors"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"log/slog"
 	"net/http"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
@@ -34,7 +36,7 @@ func (h *Handler) ListFactions(w http.ResponseWriter, r *http.Request) {
 	factions, err := h.factionService.ListFactions(r.Context())
 	if err != nil {
 		slog.ErrorContext(r.Context(), "faction_list_failed", "request_id", httpapi.RequestID(r.Context()), "error", err)
-		http.Error(w, "could not list factions", http.StatusInternalServerError)
+		apierror.Write(w, r, http.StatusInternalServerError, "could not list factions")
 		return
 	}
 	if factions == nil {
@@ -62,16 +64,16 @@ func (h *Handler) ListRulesets(w http.ResponseWriter, _ *http.Request) {
 func (h *Handler) GetFactionName(w http.ResponseWriter, r *http.Request) {
 	name, err := h.factionService.GetFactionName(r.Context(), r.PathValue("id"))
 	if errors.Is(err, authn.ErrForbidden) {
-		http.Error(w, permissionDeniedMessage, 403)
+		apierror.Write(w, r, 403, permissionDeniedMessage)
 		return
 	}
 	if errors.Is(err, factionservice.ErrFactionNotFound) {
-		http.Error(w, factionNotFoundMessage, http.StatusNotFound)
+		apierror.Write(w, r, http.StatusNotFound, factionNotFoundMessage)
 		return
 	}
 	if err != nil {
 		slog.ErrorContext(r.Context(), "faction_read_failed", "request_id", httpapi.RequestID(r.Context()), "faction_id", r.PathValue("id"), "error", err)
-		http.Error(w, "could not get faction", http.StatusInternalServerError)
+		apierror.Write(w, r, http.StatusInternalServerError, "could not get faction")
 		return
 	}
 
@@ -88,7 +90,7 @@ func (h *Handler) CreateFaction(w http.ResponseWriter, r *http.Request) {
 		Background string `json:"background"`
 	}
 	if err := httpapi.ReadJSON(w, r, &request); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		apierror.Write(w, r, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
@@ -96,20 +98,20 @@ func (h *Handler) CreateFaction(w http.ResponseWriter, r *http.Request) {
 		ID: request.ID, Name: request.Name, Doctrine: request.Doctrine, Background: request.Background,
 	})
 	if errors.Is(err, authn.ErrForbidden) {
-		http.Error(w, permissionDeniedMessage, 403)
+		apierror.Write(w, r, 403, permissionDeniedMessage)
 		return
 	}
 	if errors.Is(err, factionservice.ErrInvalidFaction) {
-		http.Error(w, "invalid faction", http.StatusBadRequest)
+		apierror.Write(w, r, http.StatusBadRequest, "invalid faction")
 		return
 	}
 	if errors.Is(err, factionservice.ErrFactionAlreadyExists) {
-		http.Error(w, "faction already exists", http.StatusConflict)
+		apierror.WriteCode(w, r, http.StatusConflict, apierror.CodeAlreadyExists, "faction already exists")
 		return
 	}
 	if err != nil {
 		slog.ErrorContext(r.Context(), "faction_create_failed", "request_id", httpapi.RequestID(r.Context()), "faction_id", request.ID, "error", err)
-		http.Error(w, "could not create faction", http.StatusInternalServerError)
+		apierror.Write(w, r, http.StatusInternalServerError, "could not create faction")
 		return
 	}
 
@@ -121,20 +123,20 @@ func (h *Handler) DeleteFaction(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	err := h.factionService.DeleteFaction(r.Context(), id)
 	if errors.Is(err, authn.ErrForbidden) {
-		http.Error(w, permissionDeniedMessage, 403)
+		apierror.Write(w, r, 403, permissionDeniedMessage)
 		return
 	}
 	if errors.Is(err, factionservice.ErrInvalidFaction) {
-		http.Error(w, "invalid faction ID", http.StatusBadRequest)
+		apierror.Write(w, r, http.StatusBadRequest, "invalid faction ID")
 		return
 	}
 	if errors.Is(err, factionservice.ErrFactionNotFound) {
-		http.Error(w, factionNotFoundMessage, http.StatusNotFound)
+		apierror.Write(w, r, http.StatusNotFound, factionNotFoundMessage)
 		return
 	}
 	if err != nil {
 		slog.ErrorContext(r.Context(), "faction_delete_failed", "request_id", httpapi.RequestID(r.Context()), "faction_id", id, "error", err)
-		http.Error(w, "could not delete faction", http.StatusInternalServerError)
+		apierror.Write(w, r, http.StatusInternalServerError, "could not delete faction")
 		return
 	}
 	slog.InfoContext(r.Context(), "faction_deleted", "request_id", httpapi.RequestID(r.Context()), "faction_id", id)
@@ -154,24 +156,24 @@ func (h *Handler) UpdateFaction(w http.ResponseWriter, r *http.Request) {
 		Background string `json:"background"`
 	}
 	if err := httpapi.ReadJSON(w, r, &request); err != nil {
-		http.Error(w, "invalid request body", 400)
+		apierror.Write(w, r, 400, "invalid request body")
 		return
 	}
 	updater, ok := h.factionService.(factionservice.Updater)
 	if !ok {
-		http.Error(w, "could not update faction", 500)
+		apierror.Write(w, r, 500, "could not update faction")
 		return
 	}
 	err := updater.UpdateFaction(r.Context(), factionservice.CreateInput{ID: r.PathValue("id"), Name: request.Name, Doctrine: request.Doctrine, Background: request.Background})
 	switch {
 	case errors.Is(err, authn.ErrForbidden):
-		http.Error(w, permissionDeniedMessage, 403)
+		apierror.Write(w, r, 403, permissionDeniedMessage)
 	case errors.Is(err, factionservice.ErrInvalidFaction):
-		http.Error(w, "invalid faction", 400)
+		apierror.Write(w, r, 400, "invalid faction")
 	case errors.Is(err, factionservice.ErrFactionNotFound):
-		http.Error(w, factionNotFoundMessage, 404)
+		apierror.Write(w, r, 404, factionNotFoundMessage)
 	case err != nil:
-		http.Error(w, "could not update faction", 500)
+		apierror.Write(w, r, 500, "could not update faction")
 	default:
 		w.WriteHeader(http.StatusNoContent)
 	}

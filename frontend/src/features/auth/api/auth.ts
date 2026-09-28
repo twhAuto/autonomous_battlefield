@@ -29,7 +29,12 @@ const authFetch = createApiClient(AuthenticationError, false)
 async function session(): Promise<AuthSession> {
   const response = await authFetch(`/v1/auth/session`, { credentials: 'same-origin' })
   if (response.status === 401) {
-    try { return await response.json() as AuthSession } catch { return { enabled: true, authenticated: false, mode: 'cloudflare' } }
+    const signedOut: AuthSession = { enabled: true, authenticated: false, mode: 'cloudflare' }
+    try {
+      const body: unknown = await response.json()
+      // Only a session-shaped body describes the session; an error envelope does not.
+      return typeof body === 'object' && body !== null && 'authenticated' in body ? body as AuthSession : signedOut
+    } catch { return signedOut }
   }
   if (!response.ok) {
     throw new AuthenticationError('Authentication status could not be checked.', response.status)
