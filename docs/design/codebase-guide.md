@@ -70,7 +70,7 @@ autonomous_battlefield/
 ├── scripts/
 │   ├── dev/                    # Local application and host-agent launchers
 │   ├── test/                   # Test runners, deployment and runtime assurance script tests
-│   ├── ci/                     # Lint, builds, coverage, image assurance, OpenAPI lint
+│   ├── ci/                     # Lint, builds, coverage summaries, image assurance
 │   ├── cd/                     # Deployment, smoke checks, rollback
 │   ├── perf/                   # Performance-test launcher
 │   ├── security/               # Security-test launcher

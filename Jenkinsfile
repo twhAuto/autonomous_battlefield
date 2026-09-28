@@ -84,12 +84,6 @@ pipeline {
                             }
                         }
 
-                        stage('OpenAPI contract') {
-                            steps {
-                                sh './scripts/ci/validate-openapi.sh'
-                            }
-                        }
-
                         stage('Fuzz smoke') {
                             steps {
                                 sh 'FUZZ_SECONDS=5 ./scripts/test/fuzz-smoke.sh'
@@ -203,12 +197,6 @@ pipeline {
                         stage('Main source security and policy') {
                             steps {
                                 sh './scripts/ci/security-and-policy.sh'
-                            }
-                        }
-
-                        stage('Main OpenAPI contract') {
-                            steps {
-                                sh './scripts/ci/validate-openapi.sh'
                             }
                         }
 

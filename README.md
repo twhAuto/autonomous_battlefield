@@ -52,7 +52,7 @@ with focused [backend](docs/design/backend-guide.md),
 | Understand components and runtime behavior | [System architecture](docs/design/system-architecture.md) |
 | Find packages, tests, and change paths | [Codebase guide](docs/design/codebase-guide.md) |
 | Use the HTTP API | [API reference](docs/reference/api.md) |
-| Generate clients or validate requests | [OpenAPI contract](docs/reference/openapi.yaml) |
+| Read the machine-readable API spec | [OpenAPI contract](docs/reference/openapi.yaml) |
 | Register dev or production and resume a stopped cluster | [Environments](docs/operations/environments.md) |
 | Build, deploy, inspect, or remove Kubernetes workloads | [Deployment](docs/operations/deployment.md) |
 | Configure CI/CD and SonarQube | [Jenkins](docs/operations/jenkins.md) |
