@@ -1,6 +1,10 @@
 package authn
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
+)
 
 // RolePreview applies real read permissions using the administrator's own identity.
 // Preview never permits mutations and never elevates a non-administrator.
@@ -13,15 +17,15 @@ func RolePreview(next http.Handler) http.Handler {
 		}
 		actor, ok := ActorFromContext(r.Context())
 		if !ok || actor.Role != Admin {
-			http.Error(w, "administrator preview required", 403)
+			apierror.Write(w, r, 403, "administrator preview required")
 			return
 		}
 		if role != "player" && role != "developer" {
-			http.Error(w, "invalid preview role", 400)
+			apierror.Write(w, r, 400, "invalid preview role")
 			return
 		}
 		if r.Method != "GET" && r.Method != "HEAD" {
-			http.Error(w, "role preview is read-only", 403)
+			apierror.Write(w, r, 403, "role preview is read-only")
 			return
 		}
 		actor.Role = Role(role)

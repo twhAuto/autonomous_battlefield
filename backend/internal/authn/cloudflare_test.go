@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 )
 
 type roundTrip func(*http.Request) (*http.Response, error)
@@ -114,6 +116,13 @@ func TestProductionNeverUsesLegacyCredentials(t *testing.T) {
 	router.ServeHTTP(w, httptest.NewRequest("POST", "/v1/auth/login", strings.NewReader(`{"username":"admin","password":"password"}`)))
 	if w.Code != 404 || w.Header().Get("Set-Cookie") != "" {
 		t.Fatal(w.Code)
+	}
+	// The disabled login route must look like any other absent route.
+	var envelope struct {
+		Error apierror.ErrorBody `json:"error"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &envelope); err != nil || envelope.Error.Code != apierror.CodeNotFound || envelope.Error.Message != "route not found" {
+		t.Fatalf("login in Cloudflare mode = %q (%v), want not_found / route not found", w.Body.String(), err)
 	}
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest("POST", "/v1/auth/logout", nil))

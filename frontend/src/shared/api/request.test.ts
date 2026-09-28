@@ -2,7 +2,7 @@
 // and preservation of cancellation errors.
 
 import { describe, expect, it, vi } from 'vitest'
-import { apiFetch, authenticationRequiredEvent } from './request'
+import { apiFetch, authenticationRequiredEvent, errorMessage } from './request'
 
 describe('apiFetch', () => {
   it('announces unauthorized API responses without changing the response', async () => {
@@ -57,4 +57,25 @@ it('preserves cancellation and maps network errors to the feature error type', a
   await expect(client('/v1/battles')).rejects.toBe(aborted)
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')))
   await expect(client('/v1/battles')).rejects.toBeInstanceOf(FeatureError)
+})
+
+describe('errorMessage', () => {
+  it('reads the message from the JSON error envelope', async () => {
+    const response = new Response(JSON.stringify({ error: { code: 'validation_failed', message: ' Unknown ruleset ', requestId: 'req-1' } }), { status: 422 })
+    await expect(errorMessage(response)).resolves.toBe('Unknown ruleset')
+  })
+
+  it('accepts a plain-text body from an older server or an intermediary', async () => {
+    await expect(errorMessage(new Response('gateway timeout\n', { status: 504 }))).resolves.toBe('gateway timeout')
+  })
+
+  it('returns nothing for an empty body', async () => {
+    await expect(errorMessage(new Response(null, { status: 500 }))).resolves.toBe('')
+  })
+
+  it('never surfaces raw JSON that is not an error envelope', async () => {
+    await expect(errorMessage(new Response(JSON.stringify({ unexpected: true }), { status: 500 }))).resolves.toBe('')
+    await expect(errorMessage(new Response(JSON.stringify({ error: { message: 42 } }), { status: 500 }))).resolves.toBe('')
+    await expect(errorMessage(new Response('null', { status: 500 }))).resolves.toBe('')
+  })
 })

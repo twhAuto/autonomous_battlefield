@@ -5,11 +5,15 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 )
 
 func TestReadinessReturnsOKWhenDatabaseResponds(t *testing.T) {
@@ -41,8 +45,18 @@ func TestReadinessReturnsUnavailableWhenDatabasePingFails(t *testing.T) {
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
 	}
-	if body := response.Body.String(); body != "database unavailable\n" {
-		t.Fatalf("body = %q, want %q", body, "database unavailable\\n")
+	var envelope struct {
+		Error apierror.ErrorBody `json:"error"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("response is not a JSON error envelope: %v (%q)", err, response.Body.String())
+	}
+	if envelope.Error.Code != apierror.CodeUnavailable || envelope.Error.Message != "database unavailable" {
+		t.Fatalf("error = %+v, want service_unavailable / database unavailable", envelope.Error)
+	}
+	// Kubernetes probes read only the status; the underlying ping error must not leak.
+	if strings.Contains(response.Body.String(), "database is unavailable") {
+		t.Fatalf("response leaked the underlying ping error: %q", response.Body.String())
 	}
 }
 
