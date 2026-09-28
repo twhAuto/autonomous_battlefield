@@ -1,0 +1,4 @@
+# Lint configuration for openapi.yaml. The strict ruleset reports every
+# recommended-rule finding as an error, so warnings cannot accumulate unnoticed.
+extends:
+  - recommended-strict

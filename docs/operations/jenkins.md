@@ -130,6 +130,15 @@ and policy checks on both PR and main builds. The deployment-script checks
 exercise staging, component selection, scanner launchers, and compatibility
 wrappers separately. `SECURITY_ARTIFACT_DIR` can relocate security reports,
 including the rendered manifest consumed by Trivy and Conftest.
+
+The `OpenAPI contract` stage (PR) and `Main OpenAPI contract` stage run
+`scripts/ci/validate-openapi.sh`, which lints `docs/reference/openapi.yaml` with the
+pinned `REDOCLY_IMAGE` under the `recommended-strict` ruleset in
+`docs/reference/redocly.yaml`, so warnings fail the stage too. The report is archived
+as `artifacts/contract/openapi-lint.txt`; `CONTRACT_ARTIFACT_DIR` relocates it.
+Telemetry and update checks are disabled, so the stage needs no network beyond the
+image pull. Route parity between the spec and the served API is a separate Go test,
+`backend/internal/apicontract`, which runs in the backend test stage.
 Main builds require
 private GHCR packages named `autonomous-battlefield-backend` and
 `autonomous-battlefield-frontend` with inherited repository access.

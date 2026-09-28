@@ -1,5 +1,9 @@
 # HTTP API reference
 
+The machine-readable contract is [`openapi.yaml`](openapi.yaml): it lists every `/v1`
+route, request body, response shape, and error code, and CI checks it against the
+routes the API actually serves. This guide explains behavior in more depth.
+
 Run the application using the [local setup](../../README.md#run-locally).
 Paths below are relative to the API origin (`http://localhost:8080` locally).
 Examples assume authentication is disabled; when enabled, log in and send the
