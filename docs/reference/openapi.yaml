@@ -29,9 +29,10 @@ info:
 
     **Idempotency.** Two mechanisms exist today, documented on their operations:
     `POST /v1/faction-background-generations` replays a repeated `idempotencyKey`,
-    and `POST /v1/battles` rejects a reused battle identifier with
-    `409 already_exists`. A general replay contract for every write endpoint is not
-    implemented and is tracked separately; clients must not assume it.
+    and `POST /v1/battles` replays a retry that reuses the battle `id` with matching
+    parameters (a mismatched reuse returns `409 already_exists`). A general replay
+    contract for every other write endpoint is not implemented; clients must not
+    assume it.
   license:
     name: Proprietary
     identifier: LicenseRef-Proprietary
@@ -99,6 +100,8 @@ paths:
       tags: [Authentication]
       operationId: login
       summary: Sign in with the local administrator account
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
       security: []
       description: |
         Local mode only. In Cloudflare mode Access owns sign-in and this route returns
@@ -127,6 +130,8 @@ paths:
       tags: [Authentication]
       operationId: logout
       summary: End the session
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
       security: []
       responses:
         '200':
@@ -166,6 +171,8 @@ paths:
       tags: [Factions]
       operationId: createFaction
       summary: Create a faction
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
       requestBody:
         required: true
         content:
@@ -193,6 +200,8 @@ paths:
       tags: [Factions]
       operationId: updateFaction
       summary: Update a faction's profile
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
       description: Changes apply only to future battles. Requires ownership or Admin.
       requestBody:
         required: true
@@ -213,6 +222,8 @@ paths:
       tags: [Factions]
       operationId: deleteFaction
       summary: Delete a faction
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
       description: |
         Removes the faction from the active registry. Battle history remains readable
         because each battle stores an immutable snapshot. Requires ownership or Admin.
@@ -347,12 +358,19 @@ paths:
       tags: [Battles]
       operationId: createBattle
       summary: Queue a battle
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
       description: |
         Both factions must exist. The API snapshots faction names, backgrounds and
         doctrines, the map, ruleset, and controller plans.
 
-        **Idempotency:** the client supplies the battle `id`. Reusing an identifier
-        returns `409 already_exists`; it does not replay the original result.
+        **Idempotency:** the client supplies the battle `id`, which makes retries safe.
+        Repeating a request with the same `id` returns `202` and the **existing**
+        battle when the caller, the resolved scenario, and `tickCount` all match the
+        original, so a retried request never queues a second battle. The `status` in
+        that response is the existing battle's current status, not necessarily
+        `queued`. Reusing an `id` with a different caller, scenario, or `tickCount`
+        returns `409 already_exists`.
       requestBody:
         required: true
         content:
@@ -369,7 +387,7 @@ paths:
               tickCount: 100
       responses:
         '202':
-          description: Queued.
+          description: Queued, or the existing battle for a matching retry.
           headers:
             Location:
               description: '`/v1/battles/{id}` for the new battle.'
@@ -420,6 +438,8 @@ paths:
       tags: [Battles]
       operationId: stopBattle
       summary: Stop a queued or running battle
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
       description: |
         Releases the engine lease and marks unresolved model decisions as failed.
         Requires ownership or Admin.
@@ -440,6 +460,8 @@ paths:
       tags: [Battles]
       operationId: pauseBattle
       summary: Pause an active battle
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
       description: Preserves the current attempt. Requires ownership or Admin.
       responses:
         '200': {$ref: '#/components/responses/BattleResponse'}
@@ -458,6 +480,8 @@ paths:
       tags: [Battles]
       operationId: resumeBattle
       summary: Resume a paused battle
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
       description: Requires ownership or Admin.
       responses:
         '200': {$ref: '#/components/responses/BattleResponse'}
@@ -614,6 +638,8 @@ paths:
       tags: [Background generation]
       operationId: createGeneration
       summary: Queue a background generation job
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
       description: |
         Allows 10 requests per actor per UTC day, at least 30 seconds apart, and one
         queued or running job.
@@ -705,6 +731,8 @@ paths:
       tags: [Administration]
       operationId: saveModelAccess
       summary: Replace the model access policy
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
       description: |
         Must include every configured provider and profile with no extras. A stale
         `version` returns `409`. The policy restricts only new selections; it cannot
@@ -760,6 +788,8 @@ paths:
       tags: [Administration]
       operationId: grantMember
       summary: Grant or reinvite a Player
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
       description: |
         `202` confirms persisted intent, not Cloudflare admission. Granting an
         unchanged intent is idempotent. A configured Admin or Developer email
@@ -795,6 +825,8 @@ paths:
       tags: [Administration]
       operationId: removeMember
       summary: Remove a Player's access
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
       description: Removes desired access immediately and queues synchronization.
       responses:
         '202':
@@ -810,6 +842,8 @@ paths:
       tags: [Administration]
       operationId: retryMemberSync
       summary: Retry synchronizing the complete desired membership
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
       responses:
         '202':
           description: Retry requested.
@@ -838,6 +872,17 @@ components:
       schema: {type: string, const: no-store}
 
   parameters:
+    Origin:
+      name: Origin
+      in: header
+      description: |
+        Required on every mutating `/v1` request when the server is configured with a
+        browser origin, as it is in production: the value must equal that origin
+        exactly, or the request is rejected with `403 permission_denied`. Browsers
+        send it automatically; other clients must set it. A non-empty body must also
+        be `application/json`, or the request is rejected with `415`.
+      required: false
+      schema: {type: string, format: uri, examples: ['https://battlefield.example.org']}
     BattleId:
       name: id
       in: path
@@ -1108,7 +1153,9 @@ components:
       required: [id, scenarioId, participants, tickCount]
       properties:
         id:
-          description: Client-generated; reusing it returns `409 already_exists`.
+          description: |
+            Client-generated. A matching retry returns the existing battle; reuse with
+            different parameters returns `409 already_exists`.
           type: string
           format: uuid
         scenarioId: {type: string}
@@ -1167,13 +1214,16 @@ components:
         Simulation state at `tick`. Units and buildings carry many optional fields
         (attack mode and outcome, movement paths, heal targets, and so on); absent
         fields retain legacy behavior. See api.md for the full field list.
+
+        The arrays are `null`, not `[]`, when empty — for example a newly queued
+        battle whose units have not yet been recruited. Treat `null` as empty.
       type: object
       required: [battleId, tick, factions, units, buildings]
       properties:
         battleId: {type: string}
         tick: {type: integer}
         factions:
-          type: array
+          type: [array, 'null']
           items:
             type: object
             required: [factionId, gold]
@@ -1185,7 +1235,7 @@ components:
               goldLooted: {type: integer}
             additionalProperties: true
         units:
-          type: array
+          type: [array, 'null']
           items:
             type: object
             required: [id, factionId, type, position]
@@ -1196,7 +1246,7 @@ components:
               position: {$ref: '#/components/schemas/Position'}
             additionalProperties: true
         buildings:
-          type: array
+          type: [array, 'null']
           items:
             type: object
             required: [id, factionId, type, position]
@@ -1208,7 +1258,7 @@ components:
             additionalProperties: true
         unitDeaths:
           description: Confirmed deaths in the current tick. Clients must not infer death from disappearance.
-          type: array
+          type: [array, 'null']
           items: {type: object, additionalProperties: true}
       additionalProperties: true
 
@@ -1240,7 +1290,10 @@ components:
         currentTick: {type: integer}
         status: {$ref: '#/components/schemas/BattleStatus'}
         paused: {type: boolean}
-        attempt: {type: integer, minimum: 1}
+        attempt:
+          description: '`0` until a worker first admits the battle, then 1 or higher.'
+          type: integer
+          minimum: 0
         participants:
           type: array
           items:
@@ -1429,9 +1482,12 @@ components:
         activeJobId: {type: string}
 
     GenerationJob:
-      description: A succeeded job is an editable draft, not a saved faction.
+      description: |
+        A succeeded job is an editable draft, not a saved faction. Players receive only
+        `id`, `status`, `background`, `modelLabel`, `createdAt`, and `expiresAt`; the
+        remaining fields are returned to Developers and Admins.
       type: object
-      required: [id, input, profileId, modelLabel, promptVersion, status, background, createdAt, expiresAt, executionTimeoutSeconds]
+      required: [id, status, background, modelLabel, createdAt, expiresAt]
       properties:
         id: {type: string}
         input: {$ref: '#/components/schemas/GenerationInput'}

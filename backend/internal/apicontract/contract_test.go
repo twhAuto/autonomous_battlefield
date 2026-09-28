@@ -252,3 +252,26 @@ func TestRequestBodiesRejectUnknownFields(t *testing.T) {
 		}
 	}
 }
+
+// BrowserProtection rejects a mutation without the configured Origin, so every
+// mutating operation must tell clients to send it.
+func TestMutationsDeclareTheOriginHeader(t *testing.T) {
+	document := loadSpecification(t)
+	operations := document.operations()
+	for _, route := range sortedKeys(operations) {
+		if strings.HasPrefix(route, "GET ") {
+			continue
+		}
+		declared := false
+		parameters, _ := operations[route]["parameters"].([]any)
+		for _, entry := range parameters {
+			parameter := document.resolve(t, asMap(entry))
+			if parameter["in"] == "header" && parameter["name"] == "Origin" {
+				declared = true
+			}
+		}
+		if !declared {
+			t.Errorf("%s: mutating operation does not declare the Origin header", route)
+		}
+	}
+}
