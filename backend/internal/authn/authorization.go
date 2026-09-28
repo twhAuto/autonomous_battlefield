@@ -95,17 +95,38 @@ func Permit(permission string, next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// routePermissions is the complete public API permission registry. RoutePolicy denies
+// any /v1 route not listed here, and the OpenAPI contract test checks the published
+// specification against it, so the two cannot drift apart.
+var routePermissions = []struct {
+	permission string
+	patterns   []string
+}{
+	{permission: "play", patterns: []string{"GET /v1/factions", "GET /v1/faction-rulesets", "GET /v1/factions/{id}/name", "POST /v1/factions", "PUT /v1/factions/{id}", "DELETE /v1/factions/{id}", "GET /v1/scenarios", "GET /v1/model-profiles", "POST /v1/battles", "GET /v1/battles", "GET /v1/battles/{id}", "POST /v1/battles/{id}/stop", "POST /v1/battles/{id}/pause", "POST /v1/battles/{id}/resume", "GET /v1/battles/{id}/factions/{factionId}/view", "GET /v1/battles/{id}/events", "GET /v1/faction-background-generations/options", "POST /v1/faction-background-generations", "GET /v1/faction-background-generations/{id}"}},
+	{permission: "inspect", patterns: []string{"GET /v1/battles/{id}/decisions", "GET /v1/battles/{id}/decisions/{requestId}/context"}},
+	{permission: "admin", patterns: []string{"GET /v1/admin/model-access", "PUT /v1/admin/model-access", "GET /v1/admin/members", "POST /v1/admin/members", "DELETE /v1/admin/members/{id}", "POST /v1/admin/members/retry"}},
+}
+
+// authenticationRoutes bypass RoutePolicy: they establish or describe identity.
+var authenticationRoutes = []string{"GET /v1/auth/session", "POST /v1/auth/login", "POST /v1/auth/logout"}
+
+// PublicAPIRoutes lists every "METHOD /path" pattern the public API serves: the
+// permission registry plus the authentication routes that bypass it.
+func PublicAPIRoutes() []string {
+	routes := append([]string{}, authenticationRoutes...)
+	for _, group := range routePermissions {
+		routes = append(routes, group.patterns...)
+	}
+	return routes
+}
+
 // RoutePolicy is the complete public API permission registry. Unregistered routes deny.
 func RoutePolicy(next http.Handler) http.Handler {
 	mux := http.NewServeMux()
-	for _, pattern := range []string{"GET /v1/factions", "GET /v1/faction-rulesets", "GET /v1/factions/{id}/name", "POST /v1/factions", "PUT /v1/factions/{id}", "DELETE /v1/factions/{id}", "GET /v1/scenarios", "GET /v1/model-profiles", "POST /v1/battles", "GET /v1/battles", "GET /v1/battles/{id}", "POST /v1/battles/{id}/stop", "POST /v1/battles/{id}/pause", "POST /v1/battles/{id}/resume", "GET /v1/battles/{id}/factions/{factionId}/view", "GET /v1/battles/{id}/events", "GET /v1/faction-background-generations/options", "POST /v1/faction-background-generations", "GET /v1/faction-background-generations/{id}"} {
-		mux.HandleFunc(pattern, Permit("play", next.ServeHTTP))
-	}
-	for _, pattern := range []string{"GET /v1/battles/{id}/decisions", "GET /v1/battles/{id}/decisions/{requestId}/context"} {
-		mux.HandleFunc(pattern, Permit("inspect", next.ServeHTTP))
-	}
-	for _, pattern := range []string{"GET /v1/admin/model-access", "PUT /v1/admin/model-access", "GET /v1/admin/members", "POST /v1/admin/members", "DELETE /v1/admin/members/{id}", "POST /v1/admin/members/retry"} {
-		mux.HandleFunc(pattern, Permit("admin", next.ServeHTTP))
+	for _, group := range routePermissions {
+		for _, pattern := range group.patterns {
+			mux.HandleFunc(pattern, Permit(group.permission, next.ServeHTTP))
+		}
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { apierror.Write(w, r, 403, permissionDeniedMessage) })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

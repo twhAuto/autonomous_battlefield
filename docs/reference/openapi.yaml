@@ -1,0 +1,1557 @@
+openapi: 3.1.0
+info:
+  title: Autonomous Battlefield API
+  version: 1.0.0
+  summary: Public /v1 API for factions, battles, background generation, and administration.
+  description: |
+    Machine-readable contract for the public `/v1` API. The prose guide in
+    [api.md](./api.md) explains behavior in more depth; this document is the
+    authoritative list of routes, request bodies, response shapes, and error codes.
+
+    **Scope.** Every `/v1` route the API serves is listed here. The process probes
+    (`/startupz`, `/livez`, `/healthz`, `/readyz`) and `/metrics` are infrastructure
+    endpoints outside this contract, as is the internal worker plane served by the
+    separate `cmd/mcp` binary.
+
+    **Drift protection.** `backend/internal/apicontract` fails the build if the set of
+    operations here differs from `authn.PublicAPIRoutes()`, the permission registry
+    that `RoutePolicy` enforces. Add a route to both, or neither.
+
+    **Request bodies.** The server decodes JSON strictly: one value per body, at most
+    64 KiB, and unknown fields are rejected. Every request schema therefore sets
+    `additionalProperties: false`.
+
+    **Errors.** Every error uses the `ErrorEnvelope` schema. Branch on `error.code`,
+    which is stable; `error.message` is human-readable and may change. Unregistered
+    `/v1` routes, and registered paths called with an unregistered method, return
+    `403 permission_denied` rather than `404`, so responses do not reveal whether a
+    route exists.
+
+    **Idempotency.** Two mechanisms exist today, documented on their operations:
+    `POST /v1/faction-background-generations` replays a repeated `idempotencyKey`,
+    and `POST /v1/battles` replays a retry that reuses the battle `id` with matching
+    parameters (a mismatched reuse returns `409 already_exists`). A general replay
+    contract for every other write endpoint is not implemented; clients must not
+    assume it.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+
+servers:
+  - url: /
+    description: |
+      The API is served on the same origin as the web application. Locally that is
+      `http://localhost:8080`.
+
+security:
+  - cloudflareAccess: []
+  - sessionCookie: []
+
+tags:
+  - name: Authentication
+    description: Session discovery, and sign-in for the local administrator account.
+  - name: Factions
+    description: Faction profiles that battles snapshot when they are queued.
+  - name: Battles
+    description: Queueing, observing, and controlling battles, and reading their history.
+  - name: Catalog
+    description: Read-only scenario, ruleset, and AI controller profile data.
+  - name: Background generation
+    description: AI-drafted faction backgrounds, subject to a per-actor allowance.
+  - name: Administration
+    description: Admin-only model access policy and managed Player membership.
+
+paths:
+  /v1/auth/session:
+    get:
+      tags: [Authentication]
+      operationId: getSession
+      summary: Describe the current session and authentication mode
+      security: []
+      description: |
+        Always reachable without credentials so clients can learn the authentication
+        mode. An unauthenticated caller receives `401` with a **session** body, not an
+        error envelope.
+      responses:
+        '200':
+          description: Authenticated session.
+          headers:
+            Cache-Control: {$ref: '#/components/headers/NoStore'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Session'}
+              example:
+                enabled: true
+                authenticated: true
+                mode: cloudflare
+                actor: {id: 3f2a…, email: friend@example.com, role: player}
+                capabilities: {inspect: false, admin: false, members: false}
+        '401':
+          description: Not authenticated. The body is a session, not an error.
+          headers:
+            Cache-Control: {$ref: '#/components/headers/NoStore'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Session'}
+              example: {enabled: true, authenticated: false, mode: local-password}
+
+  /v1/auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Sign in with the local administrator account
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      security: []
+      description: |
+        Local mode only. In Cloudflare mode Access owns sign-in and this route returns
+        `404 not_found`. Wrong usernames and wrong passwords produce identical
+        responses so the endpoint cannot be used to discover valid usernames.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LoginRequest'}
+            example: {username: admin, password: '...'}
+      responses:
+        '204':
+          description: Signed in. Sets an HttpOnly, SameSite=Strict session cookie.
+          headers:
+            Set-Cookie:
+              description: The `battlefield_session` cookie.
+              schema: {type: string}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+
+  /v1/auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logout
+      summary: End the session
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      security: []
+      responses:
+        '200':
+          description: Cloudflare mode. Navigate the browser to `logoutUrl`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [logoutUrl]
+                properties:
+                  logoutUrl: {type: string, const: /cdn-cgi/access/logout}
+        '204':
+          description: Local mode. The session cookie is cleared.
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+
+  /v1/factions:
+    get:
+      tags: [Factions]
+      operationId: listFactions
+      summary: List factions in stable creation order
+      responses:
+        '200':
+          description: All factions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [factions]
+                properties:
+                  factions:
+                    type: array
+                    items: {$ref: '#/components/schemas/Faction'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '500': {$ref: '#/components/responses/Internal'}
+    post:
+      tags: [Factions]
+      operationId: createFaction
+      summary: Create a faction
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateFactionRequest'}
+            example:
+              id: 4db8d152-1e04-4d10-8824-859c6ed72878
+              name: Northern Alliance
+              doctrine: Protect income, scout before committing, and adapt purchases to visible threats.
+              background: Descendants of the northern watch, sworn to shelter displaced families.
+      responses:
+        '201':
+          description: Created. The response has no body.
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '409': {$ref: '#/components/responses/AlreadyExists'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/factions/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/FactionId'}
+    put:
+      tags: [Factions]
+      operationId: updateFaction
+      summary: Update a faction's profile
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: Changes apply only to future battles. Requires ownership or Admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UpdateFactionRequest'}
+            example: {name: Northern Alliance, doctrine: Protect income.}
+      responses:
+        '204':
+          description: Updated.
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '500': {$ref: '#/components/responses/Internal'}
+    delete:
+      tags: [Factions]
+      operationId: deleteFaction
+      summary: Delete a faction
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: |
+        Removes the faction from the active registry. Battle history remains readable
+        because each battle stores an immutable snapshot. Requires ownership or Admin.
+      responses:
+        '204':
+          description: Deleted.
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/factions/{id}/name:
+    parameters:
+      - {$ref: '#/components/parameters/FactionId'}
+    get:
+      tags: [Factions]
+      operationId: getFactionName
+      summary: Get a faction's display name
+      responses:
+        '200':
+          description: The name.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name]
+                properties:
+                  name: {type: string}
+              example: {name: Northern Alliance}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/faction-rulesets:
+    get:
+      tags: [Catalog]
+      operationId: listFactionRulesets
+      summary: List ruleset catalog data
+      description: Starting gold, unit statistics, upgrades, structures, and costs.
+      responses:
+        '200':
+          description: Rulesets.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rulesets]
+                properties:
+                  rulesets:
+                    type: array
+                    items: {$ref: '#/components/schemas/Ruleset'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+
+  /v1/scenarios:
+    get:
+      tags: [Catalog]
+      operationId: listScenarios
+      summary: List authored battle scenarios
+      responses:
+        '200':
+          description: Scenarios.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scenarios]
+                properties:
+                  scenarios:
+                    type: array
+                    items: {$ref: '#/components/schemas/ScenarioSummary'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+
+  /v1/model-profiles:
+    get:
+      tags: [Catalog]
+      operationId: listModelProfiles
+      summary: List AI controller profiles the caller may use
+      description: |
+        Never returns credential values or credential environment-variable names.
+        Players see only available profiles they are approved for, with a reduced set
+        of fields.
+      responses:
+        '200':
+          description: Profiles visible to the caller.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profiles]
+                properties:
+                  profiles:
+                    type: array
+                    items: {$ref: '#/components/schemas/ModelProfile'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+
+  /v1/battles:
+    get:
+      tags: [Battles]
+      operationId: listBattles
+      summary: Browse battle history
+      description: |
+        Ordered by creation time descending, then ID descending. Newer insertions do
+        not shift later pages; restart without a cursor to see them.
+      parameters:
+        - name: status
+          in: query
+          description: Omit for all battles. `paused` means an active battle with its pause flag set.
+          schema: {type: string, enum: [queued, running, paused, completed, failed, stopped]}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+        - name: cursor
+          in: query
+          description: Opaque `nextCursor` from a previous page with the same filter.
+          schema: {type: string}
+      responses:
+        '200':
+          description: One page of battle summaries.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BattleHistoryPage'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '500': {$ref: '#/components/responses/Internal'}
+    post:
+      tags: [Battles]
+      operationId: createBattle
+      summary: Queue a battle
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: |
+        Both factions must exist. The API snapshots faction names, backgrounds and
+        doctrines, the map, ruleset, and controller plans.
+
+        **Idempotency:** the client supplies the battle `id`, which makes retries safe.
+        Repeating a request with the same `id` returns `202` and the **existing**
+        battle when the caller, the resolved scenario, and `tickCount` all match the
+        original, so a retried request never queues a second battle. The `status` in
+        that response is the existing battle's current status, not necessarily
+        `queued`. Reusing an `id` with a different caller, scenario, or `tickCount`
+        returns `409 already_exists`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateBattleRequest'}
+            example:
+              id: 7f22e693-bacd-46bb-b942-64fa613cd388
+              scenarioId: castle-siege-v1
+              participants:
+                - factionId: 4db8d152-1e04-4d10-8824-859c6ed72878
+                  controller: {type: model, profileId: gemini-api-balanced}
+                - factionId: 41ac3a2f-3371-4de1-b0f6-70600fcd9052
+                  controller: {type: scripted}
+              tickCount: 100
+      responses:
+        '202':
+          description: Queued, or the existing battle for a matching retry.
+          headers:
+            Location:
+              description: '`/v1/battles/{id}` for the new battle.'
+              schema: {type: string}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id: {type: string, format: uuid}
+                  status: {$ref: '#/components/schemas/BattleStatus'}
+              example: {id: 7f22e693-bacd-46bb-b942-64fa613cd388, status: queued}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/AlreadyExists'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/battles/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/BattleId'}
+    get:
+      tags: [Battles]
+      operationId: getBattle
+      summary: Get battle status, map, state, and results
+      responses:
+        '200':
+          description: The battle.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Battle'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/battles/{id}/stop:
+    parameters:
+      - {$ref: '#/components/parameters/BattleId'}
+    post:
+      tags: [Battles]
+      operationId: stopBattle
+      summary: Stop a queued or running battle
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: |
+        Releases the engine lease and marks unresolved model decisions as failed.
+        Requires ownership or Admin.
+      responses:
+        '200': {$ref: '#/components/responses/BattleResponse'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/battles/{id}/pause:
+    parameters:
+      - {$ref: '#/components/parameters/BattleId'}
+    post:
+      tags: [Battles]
+      operationId: pauseBattle
+      summary: Pause an active battle
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: Preserves the current attempt. Requires ownership or Admin.
+      responses:
+        '200': {$ref: '#/components/responses/BattleResponse'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/battles/{id}/resume:
+    parameters:
+      - {$ref: '#/components/parameters/BattleId'}
+    post:
+      tags: [Battles]
+      operationId: resumeBattle
+      summary: Resume a paused battle
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: Requires ownership or Admin.
+      responses:
+        '200': {$ref: '#/components/responses/BattleResponse'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/battles/{id}/events:
+    parameters:
+      - {$ref: '#/components/parameters/BattleId'}
+    get:
+      tags: [Battles]
+      operationId: listBattleEvents
+      summary: Page through battle events
+      parameters:
+        - name: attempt
+          in: query
+          description: Defaults to the battle's current attempt.
+          schema: {type: integer, minimum: 1}
+        - name: after
+          in: query
+          description: The last event sequence already observed.
+          schema: {type: integer, minimum: 0, default: 0}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 500, default: 100}
+      responses:
+        '200':
+          description: Events ordered by sequence.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BattleEventPage'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/battles/{id}/decisions:
+    parameters:
+      - {$ref: '#/components/parameters/BattleId'}
+    get:
+      tags: [Battles]
+      operationId: listBattleDecisions
+      summary: List AI decision history for an attempt
+      description: Requires the Developer or Admin role.
+      parameters:
+        - name: attempt
+          in: query
+          required: true
+          schema: {type: integer, minimum: 1}
+      responses:
+        '200':
+          description: Decisions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [decisions]
+                properties:
+                  decisions:
+                    type: array
+                    items: {$ref: '#/components/schemas/DecisionHistory'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/battles/{id}/decisions/{requestId}/context:
+    parameters:
+      - {$ref: '#/components/parameters/BattleId'}
+      - name: requestId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      tags: [Battles]
+      operationId: getDecisionContext
+      summary: Get the saved observation for one decision
+      description: |
+        Requires the Developer or Admin role. A request belonging to another battle or
+        attempt returns `404`. Provider metadata, trace state, submission capabilities,
+        and credentials are excluded.
+      parameters:
+        - name: attempt
+          in: query
+          required: true
+          schema: {type: integer, minimum: 1}
+      responses:
+        '200':
+          description: The saved decision context.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SavedDecisionContext'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/battles/{id}/factions/{factionId}/view:
+    parameters:
+      - {$ref: '#/components/parameters/BattleId'}
+      - name: factionId
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      tags: [Battles]
+      operationId: getFactionView
+      summary: Get the battlefield with one faction's fog of war
+      description: |
+        Owned entities and both castles are always present; other hostile entities
+        appear only inside current friendly vision.
+      responses:
+        '200':
+          description: The faction-visible battlefield.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BattleView'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '501': {$ref: '#/components/responses/NotImplemented'}
+
+  /v1/faction-background-generations/options:
+    get:
+      tags: [Background generation]
+      operationId: getGenerationOptions
+      summary: Get the caller's generation availability and allowance
+      responses:
+        '200':
+          description: Availability.
+          headers:
+            Cache-Control: {$ref: '#/components/headers/NoStore'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GenerationOptions'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/faction-background-generations:
+    post:
+      tags: [Background generation]
+      operationId: createGeneration
+      summary: Queue a background generation job
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: |
+        Allows 10 requests per actor per UTC day, at least 30 seconds apart, and one
+        queued or running job.
+
+        **Idempotency:** a repeated `idempotencyKey` with the same normalized input
+        returns the original job without another charge. The same key with different
+        input returns `409 conflict`. Validation failures (`400`) and unavailable
+        profiles (`503`) do not reserve quota.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateGenerationRequest'}
+            example:
+              name: Northwind
+              doctrine: Protect income.
+              background: Optional inspiration
+              idempotencyKey: 6f1c2d8e-client-generated
+      responses:
+        '202':
+          description: Queued, or the original job for a replayed key.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GenerationJob'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '429':
+          description: |
+            Allowance exhausted or another job is active. The body carries the
+            availability fields clients use for the cooldown **and** the error envelope.
+          headers:
+            Retry-After:
+              description: Seconds until another request may be admitted.
+              schema: {type: integer, minimum: 1}
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: '#/components/schemas/GenerationOptions'}
+                  - {$ref: '#/components/schemas/ErrorEnvelope'}
+        '500': {$ref: '#/components/responses/Internal'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /v1/faction-background-generations/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      tags: [Background generation]
+      operationId: getGeneration
+      summary: Get one of the caller's generation jobs
+      description: Another actor's job identifier returns `404`.
+      responses:
+        '200':
+          description: The job.
+          headers:
+            Cache-Control: {$ref: '#/components/headers/NoStore'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GenerationJob'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/admin/model-access:
+    get:
+      tags: [Administration]
+      operationId: getModelAccess
+      summary: Read the model access policy
+      description: Admin only; unavailable in role preview.
+      responses:
+        '200':
+          description: The policy and configured models.
+          headers:
+            Cache-Control: {$ref: '#/components/headers/NoStore'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ModelAccessView'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+    put:
+      tags: [Administration]
+      operationId: saveModelAccess
+      summary: Replace the model access policy
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: |
+        Must include every configured provider and profile with no extras. A stale
+        `version` returns `409`. The policy restricts only new selections; it cannot
+        enable a profile whose credentials or runtime are unavailable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ModelAccessSettings'}
+      responses:
+        '200':
+          description: The saved policy.
+          headers:
+            Cache-Control: {$ref: '#/components/headers/NoStore'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ModelAccessSettings'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /v1/admin/members:
+    get:
+      tags: [Administration]
+      operationId: listMembers
+      summary: List managed Players
+      description: Admin only. Returns `503` when managed Players are not configured.
+      responses:
+        '200':
+          description: Members and synchronization state.
+          headers:
+            Cache-Control: {$ref: '#/components/headers/NoStore'}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [members, syncError, gameUrl]
+                properties:
+                  members:
+                    type: array
+                    items: {$ref: '#/components/schemas/Member'}
+                  syncError:
+                    description: Sanitized group-level synchronization failure.
+                    type: string
+                  gameUrl: {type: string}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+    post:
+      tags: [Administration]
+      operationId: grantMember
+      summary: Grant or reinvite a Player
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: |
+        `202` confirms persisted intent, not Cloudflare admission. Granting an
+        unchanged intent is idempotent. A configured Admin or Developer email
+        returns `409`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties:
+                email: {type: string, format: email, maxLength: 254}
+            example: {email: friend@example.com}
+      responses:
+        '202':
+          description: Intent persisted; synchronization queued.
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /v1/admin/members/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+    delete:
+      tags: [Administration]
+      operationId: removeMember
+      summary: Remove a Player's access
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: Removes desired access immediately and queues synchronization.
+      responses:
+        '202':
+          description: Removal persisted.
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /v1/admin/members/retry:
+    post:
+      tags: [Administration]
+      operationId: retryMemberSync
+      summary: Retry synchronizing the complete desired membership
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      responses:
+        '202':
+          description: Retry requested.
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+components:
+  securitySchemes:
+    cloudflareAccess:
+      type: apiKey
+      in: header
+      name: Cf-Access-Jwt-Assertion
+      description: |
+        Production. Cloudflare Access supplies this JWT on every `/v1` request; the
+        legacy session cookie is never accepted in this mode.
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: battlefield_session
+      description: Local development. Issued by `POST /v1/auth/login`.
+
+  headers:
+    NoStore:
+      description: Responses are not cached.
+      schema: {type: string, const: no-store}
+
+  parameters:
+    Origin:
+      name: Origin
+      in: header
+      description: |
+        Required on every mutating `/v1` request when the server is configured with a
+        browser origin, as it is in production: the value must equal that origin
+        exactly, or the request is rejected with `403 permission_denied`. Browsers
+        send it automatically; other clients must set it. A non-empty body must also
+        be `application/json`, or the request is rejected with `415`.
+      required: false
+      schema: {type: string, format: uri, examples: ['https://battlefield.example.org']}
+    BattleId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    FactionId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+
+  responses:
+    BattleResponse:
+      description: The battle after the control was applied.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Battle'}
+    InvalidRequest:
+      description: Malformed input, `invalid_request`.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+          example: {error: {code: invalid_request, message: invalid request body, requestId: 4f0c1e…}}
+    AuthenticationRequired:
+      description: Missing or invalid credentials, `authentication_required`.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+          example: {error: {code: authentication_required, message: authentication required, requestId: 4f0c1e…}}
+    PermissionDenied:
+      description: |
+        The caller lacks permission, `permission_denied`. Also returned for
+        unregistered routes so that route existence is not revealed.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+          example: {error: {code: permission_denied, message: permission denied, requestId: 4f0c1e…}}
+    NotFound:
+      description: The resource does not exist, `not_found`.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+          example: {error: {code: not_found, message: battle not found, requestId: 4f0c1e…}}
+    MethodNotAllowed:
+      description: Wrong method on an authentication route, `method_not_allowed`.
+      headers:
+        Allow:
+          description: The methods the route supports.
+          schema: {type: string}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    Conflict:
+      description: The resource's state forbids the change, `conflict`.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+          example: {error: {code: conflict, message: battle is not active, requestId: 4f0c1e…}}
+    AlreadyExists:
+      description: The client-supplied identifier is already in use, `already_exists`.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+          example: {error: {code: already_exists, message: battle already exists, requestId: 4f0c1e…}}
+    UnsupportedMediaType:
+      description: A non-empty body was not `application/json`, `unsupported_media_type`.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    ValidationFailed:
+      description: Well-formed input that the rules reject, `validation_failed`.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    RateLimited:
+      description: An allowance is exhausted, `rate_limited`.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    Internal:
+      description: |
+        The server failed, `internal_error`. The message is generic and never includes
+        the underlying cause; quote `requestId` when reporting it.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    NotImplemented:
+      description: The capability is not available in this deployment, `not_implemented`.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    Unavailable:
+      description: A dependency or configuration is unavailable, `service_unavailable`.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {$ref: '#/components/schemas/ErrorCode'}
+            message:
+              type: string
+              description: Human-readable; may change between releases.
+            requestId:
+              type: string
+              description: |
+                Equals the `X-Request-ID` response header and the server's `request_id`
+                log field. Omitted when no request identifier is in scope.
+
+    ErrorCode:
+      description: Stable. Add new values rather than renaming existing ones.
+      type: string
+      enum:
+        - invalid_request
+        - validation_failed
+        - unsupported_media_type
+        - method_not_allowed
+        - authentication_required
+        - permission_denied
+        - not_found
+        - conflict
+        - already_exists
+        - rate_limited
+        - internal_error
+        - service_unavailable
+        - not_implemented
+
+    Role:
+      type: string
+      enum: [admin, developer, player]
+
+    Session:
+      type: object
+      required: [enabled, authenticated, mode]
+      properties:
+        enabled: {type: boolean}
+        authenticated: {type: boolean}
+        mode:
+          description: |
+            `cloudflare` in production, `local-password` for the local administrator
+            login, and `disabled-development` when authentication is off.
+          type: string
+          enum: [cloudflare, local-password, disabled-development]
+        actor:
+          type: object
+          required: [id, role]
+          properties:
+            id: {type: string}
+            email: {type: string}
+            role: {$ref: '#/components/schemas/Role'}
+        capabilities:
+          type: object
+          properties:
+            inspect: {type: boolean}
+            admin: {type: boolean}
+            members: {type: boolean}
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username: {type: string}
+        password: {type: string, format: password}
+
+    Faction:
+      type: object
+      required: [id, name, doctrine, ownerId]
+      properties:
+        id: {type: string, format: uuid}
+        ownerId: {type: string}
+        name: {type: string}
+        doctrine: {type: string}
+        background:
+          description: Omitted when empty.
+          type: string
+
+    CreateFactionRequest:
+      type: object
+      additionalProperties: false
+      required: [id, name, doctrine]
+      properties:
+        id: {type: string, format: uuid}
+        name:
+          description: Trimmed before storage; must be non-empty.
+          type: string
+        doctrine:
+          description: Trimmed; non-empty and at most 4,000 Unicode characters.
+          type: string
+        background:
+          description: Optional; at most 1,000 Unicode characters.
+          type: string
+
+    UpdateFactionRequest:
+      type: object
+      additionalProperties: false
+      required: [name, doctrine]
+      properties:
+        name: {type: string}
+        doctrine: {type: string}
+        background: {type: string}
+
+    Ruleset:
+      description: |
+        Catalog data: starting gold, units, upgrades, optional `structures`, and the
+        shared `buildings.maximumBuildingCount` limit. Fields vary by ruleset version.
+      type: object
+      required: [id]
+      properties:
+        id: {type: string}
+      additionalProperties: true
+
+    ScenarioSummary:
+      type: object
+      required: [id, rulesVersion, rulesetId, tickDuration, decisionIntervalTicks, maximumTicks, mapWidth, mapHeight]
+      properties:
+        id: {type: string, examples: [castle-siege-v1]}
+        rulesVersion: {type: string}
+        rulesetId: {type: string}
+        tickDuration: {type: string, examples: [1s]}
+        decisionIntervalTicks: {type: integer}
+        maximumTicks: {type: integer}
+        mapWidth: {type: integer}
+        mapHeight: {type: integer}
+        allowedUnits: {type: [array, 'null'], items: {type: string}}
+        allowedUpgrades: {type: [array, 'null'], items: {type: string}}
+        allowedBuildings: {type: [array, 'null'], items: {type: string}}
+
+    ModelProfile:
+      description: Players receive only `id`, `displayName`, `modelLabel`, `runtime`, and `available`.
+      type: object
+      required: [id, displayName, runtime, available]
+      properties:
+        id: {type: string}
+        displayName: {type: string}
+        provider: {type: string}
+        runtime: {type: string}
+        scope: {type: string}
+        modelLabel: {type: string}
+        available: {type: boolean}
+        toolCapability: {type: boolean}
+        unavailableReason: {type: string}
+
+    BattleStatus:
+      type: string
+      enum: [queued, running, completed, failed, stopped]
+
+    Controller:
+      type: object
+      required: [type]
+      properties:
+        type: {type: string, enum: [scripted, model]}
+        profileId: {type: string}
+        provider: {type: string}
+        runtime: {type: string}
+        modelIdentifier: {type: string}
+
+    CreateBattleRequest:
+      type: object
+      additionalProperties: false
+      required: [id, scenarioId, participants, tickCount]
+      properties:
+        id:
+          description: |
+            Client-generated. A matching retry returns the existing battle; reuse with
+            different parameters returns `409 already_exists`.
+          type: string
+          format: uuid
+        scenarioId: {type: string}
+        participants:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required: [factionId, controller]
+            properties:
+              factionId: {type: string, format: uuid}
+              controller:
+                type: object
+                additionalProperties: false
+                required: [type]
+                properties:
+                  type: {type: string, enum: [scripted, model]}
+                  profileId:
+                    description: Required when `type` is `model`.
+                    type: string
+        tickCount:
+          description: At most the scenario's `maximumTicks`.
+          type: integer
+          minimum: 1
+
+    Position:
+      type: object
+      required: [x, y]
+      properties:
+        x: {type: integer}
+        y: {type: integer}
+
+    BattleMap:
+      type: object
+      required: [kind, width, height, rows, castleSpawns, economySites]
+      properties:
+        kind: {type: string, examples: [authored]}
+        width: {type: integer}
+        height: {type: integer}
+        rows: {type: array, items: {type: string}}
+        castleSpawns:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: {$ref: '#/components/schemas/Position'}
+        economySites:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: {type: array, items: {$ref: '#/components/schemas/Position'}}
+
+    BattleState:
+      description: |
+        Simulation state at `tick`. Units and buildings carry many optional fields
+        (attack mode and outcome, movement paths, heal targets, and so on); absent
+        fields retain legacy behavior. See api.md for the full field list.
+
+        The arrays are `null`, not `[]`, when empty — for example a newly queued
+        battle whose units have not yet been recruited. Treat `null` as empty.
+      type: object
+      required: [battleId, tick, factions, units, buildings]
+      properties:
+        battleId: {type: string}
+        tick: {type: integer}
+        factions:
+          type: [array, 'null']
+          items:
+            type: object
+            required: [factionId, gold]
+            properties:
+              factionId: {type: string}
+              gold: {type: integer}
+              goldEarned: {type: integer}
+              goldSpent: {type: integer}
+              goldLooted: {type: integer}
+            additionalProperties: true
+        units:
+          type: [array, 'null']
+          items:
+            type: object
+            required: [id, factionId, type, position]
+            properties:
+              id: {type: string}
+              factionId: {type: string}
+              type: {type: string}
+              position: {$ref: '#/components/schemas/Position'}
+            additionalProperties: true
+        buildings:
+          type: [array, 'null']
+          items:
+            type: object
+            required: [id, factionId, type, position]
+            properties:
+              id: {type: string}
+              factionId: {type: string}
+              type: {type: string}
+              position: {$ref: '#/components/schemas/Position'}
+            additionalProperties: true
+        unitDeaths:
+          description: Confirmed deaths in the current tick. Clients must not infer death from disappearance.
+          type: [array, 'null']
+          items: {type: object, additionalProperties: true}
+      additionalProperties: true
+
+    BattleResult:
+      type: object
+      required: [winnerFactionId, reason, ticksRun, factions]
+      properties:
+        winnerFactionId:
+          description: Null for a draw.
+          type: [string, 'null']
+        reason: {type: string, examples: [castle_destroyed, tick_limit]}
+        ticksRun: {type: integer}
+        factions:
+          type: array
+          items: {type: object, required: [factionId], additionalProperties: true, properties: {factionId: {type: string}}}
+
+    Battle:
+      description: |
+        Players receive the same shape without `scenarioDigest` and `errorCode`, and
+        their participant `controller` contains only `type`.
+      type: object
+      required: [id, ownerId, scenarioId, requestedTicks, currentTick, status, paused, attempt, participants, result, map, state]
+      properties:
+        id: {type: string, format: uuid}
+        ownerId: {type: string}
+        scenarioId: {type: string}
+        scenarioDigest: {type: string}
+        requestedTicks: {type: integer}
+        currentTick: {type: integer}
+        status: {$ref: '#/components/schemas/BattleStatus'}
+        paused: {type: boolean}
+        attempt:
+          description: '`0` until a worker first admits the battle, then 1 or higher.'
+          type: integer
+          minimum: 0
+        participants:
+          type: array
+          items:
+            type: object
+            required: [id, name, controller]
+            properties:
+              id: {type: string}
+              name: {type: string}
+              background: {type: string}
+              doctrine: {type: string}
+              controller: {$ref: '#/components/schemas/Controller'}
+        result:
+          oneOf:
+            - {$ref: '#/components/schemas/BattleResult'}
+            - {type: 'null'}
+        map: {$ref: '#/components/schemas/BattleMap'}
+        state: {$ref: '#/components/schemas/BattleState'}
+        errorCode: {type: string}
+        errorMessage: {type: string}
+
+    BattleView:
+      type: object
+      required: [map, state, visiblePositions]
+      properties:
+        map: {$ref: '#/components/schemas/BattleMap'}
+        state: {$ref: '#/components/schemas/BattleState'}
+        visiblePositions:
+          type: array
+          items: {$ref: '#/components/schemas/Position'}
+
+    BattleSummary:
+      type: object
+      required: [id, scenarioId, participants, status, paused, requestedTicks, currentTick, createdAt, startedAt, completedAt, outcome]
+      properties:
+        id: {type: string, format: uuid}
+        scenarioId: {type: string}
+        participants:
+          type: array
+          items:
+            type: object
+            required: [id, name, controller]
+            properties:
+              id: {type: string}
+              name: {type: string}
+              controller: {$ref: '#/components/schemas/Controller'}
+        status: {$ref: '#/components/schemas/BattleStatus'}
+        paused: {type: boolean}
+        requestedTicks: {type: integer}
+        currentTick: {type: integer}
+        createdAt: {type: string, format: date-time}
+        startedAt: {type: [string, 'null'], format: date-time}
+        completedAt: {type: [string, 'null'], format: date-time}
+        outcome:
+          description: Only a completed battle with an outcome and no winner is a draw.
+          oneOf:
+            - type: object
+              required: [winnerFactionId, reason]
+              properties:
+                winnerFactionId: {type: [string, 'null']}
+                reason: {type: string}
+            - {type: 'null'}
+
+    BattleHistoryPage:
+      type: object
+      required: [battles, nextCursor]
+      properties:
+        battles:
+          type: array
+          items: {$ref: '#/components/schemas/BattleSummary'}
+        nextCursor:
+          description: Opaque; null when no more rows exist.
+          type: [string, 'null']
+
+    BattleEvent:
+      type: object
+      required: [attempt, sequence, tick, type, data, createdAt]
+      properties:
+        attempt: {type: integer}
+        sequence: {type: integer}
+        tick: {type: integer}
+        type: {type: string, examples: [unit_moved, unit_recruited, unit_attacked, unit_healed]}
+        data:
+          description: Event-type-specific payload.
+          type: object
+          additionalProperties: true
+        createdAt: {type: string, format: date-time}
+
+    BattleEventPage:
+      type: object
+      required: [attempt, events, nextCursor]
+      properties:
+        attempt: {type: integer}
+        events:
+          type: array
+          items: {$ref: '#/components/schemas/BattleEvent'}
+        nextCursor: {type: [integer, 'null']}
+
+    Usage:
+      type: object
+      properties:
+        inputTokens: {type: integer}
+        outputTokens: {type: integer}
+        requests: {type: integer}
+        cachedInputTokens: {type: [integer, 'null']}
+        reasoningOutputTokens: {type: [integer, 'null']}
+        modelCalls: {type: [integer, 'null']}
+        cliInvocations: {type: integer}
+        scope: {type: string}
+        tokensReported: {type: boolean}
+
+    DecisionHistory:
+      type: object
+      required: [requestId, factionId, targetTick, status, controllerType, usage, createdAt]
+      properties:
+        requestId: {type: string, format: uuid}
+        factionId: {type: string}
+        targetTick: {type: integer}
+        status: {type: string}
+        controllerType: {type: string}
+        profileId: {type: string}
+        provider: {type: string}
+        runtime: {type: string}
+        modelIdentifier: {type: string}
+        fallbackSource: {type: string}
+        errorCategory: {type: string}
+        resolvedPlan:
+          description: The plan the engine applied.
+          type: object
+          additionalProperties: true
+        usage: {$ref: '#/components/schemas/Usage'}
+        traceUrl: {type: string}
+        createdAt: {type: string, format: date-time}
+        resolvedAt: {type: string, format: date-time}
+
+    SavedDecisionContext:
+      type: object
+      required: [requestId, battleId, factionId, attempt, targetTick, observationTick, context]
+      properties:
+        requestId: {type: string, format: uuid}
+        battleId: {type: string, format: uuid}
+        factionId: {type: string}
+        attempt: {type: integer}
+        targetTick: {type: integer}
+        observationTick: {type: integer}
+        context:
+          description: |
+            Null for legacy records without a saved observation. Otherwise includes
+            `factionName`, `background`, `doctrine`, `opening`, `ownedUpgradeIds`,
+            `economy`, `view`, `legal`, `activePlan`, and optional `memory`/`knowledge`.
+          oneOf:
+            - {type: object, additionalProperties: true}
+            - {type: 'null'}
+
+    GenerationInput:
+      type: object
+      required: [name, doctrine, background]
+      properties:
+        name: {type: string}
+        doctrine: {type: string}
+        background: {type: string}
+
+    CreateGenerationRequest:
+      type: object
+      additionalProperties: false
+      required: [name, doctrine]
+      properties:
+        name: {type: string}
+        doctrine: {type: string}
+        background:
+          description: Optional inspiration.
+          type: string
+        idempotencyKey:
+          description: Client-generated. A repeat with the same input replays the original job.
+          type: string
+
+    GenerationOptions:
+      type: object
+      required: [available, modelLabel, remaining, resetAt, retryAt]
+      properties:
+        available: {type: boolean}
+        modelLabel: {type: string}
+        reason: {type: string}
+        remaining: {type: integer, minimum: 0}
+        resetAt: {type: string, format: date-time}
+        retryAt: {type: string, format: date-time}
+        activeJobId: {type: string}
+
+    GenerationJob:
+      description: |
+        A succeeded job is an editable draft, not a saved faction. Players receive only
+        `id`, `status`, `background`, `modelLabel`, `createdAt`, and `expiresAt`; the
+        remaining fields are returned to Developers and Admins.
+      type: object
+      required: [id, status, background, modelLabel, createdAt, expiresAt]
+      properties:
+        id: {type: string}
+        input: {$ref: '#/components/schemas/GenerationInput'}
+        profileId: {type: string}
+        modelLabel: {type: string}
+        promptVersion: {type: string}
+        status: {type: string, enum: [queued, running, succeeded, failed, expired]}
+        background: {type: string}
+        errorCategory: {type: string}
+        createdAt: {type: string, format: date-time}
+        startedAt: {type: string, format: date-time}
+        finishedAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time}
+        executionTimeoutSeconds: {type: integer}
+
+    AccessPolicy:
+      type: object
+      required: [providers, profiles]
+      properties:
+        providers:
+          description: Each configured provider mapped to an enabled flag.
+          type: object
+          additionalProperties: {type: boolean}
+        profiles:
+          description: Every configured profile. An empty `allowedRoles` denies everyone.
+          type: object
+          additionalProperties:
+            type: object
+            required: [enabled, allowedRoles]
+            properties:
+              enabled: {type: boolean}
+              allowedRoles:
+                type: array
+                uniqueItems: true
+                items: {$ref: '#/components/schemas/Role'}
+
+    ModelAccessSettings:
+      type: object
+      additionalProperties: false
+      required: [version, policy]
+      properties:
+        version:
+          description: Optimistic-concurrency token; a stale value returns `409`.
+          type: integer
+        policy: {$ref: '#/components/schemas/AccessPolicy'}
+
+    ModelAccessView:
+      type: object
+      required: [version, policy, models]
+      properties:
+        version: {type: integer}
+        policy: {$ref: '#/components/schemas/AccessPolicy'}
+        models:
+          type: array
+          items: {$ref: '#/components/schemas/ModelProfile'}
+
+    Member:
+      description: Active only when `desiredAccess` is true and `version` equals `syncedVersion`.
+      type: object
+      required: [id, email, desiredAccess, version, syncedVersion, updatedAt]
+      properties:
+        id: {type: string}
+        email: {type: string}
+        desiredAccess: {type: boolean}
+        version: {type: integer}
+        syncedVersion: {type: integer}
+        updatedAt: {type: string, format: date-time}
