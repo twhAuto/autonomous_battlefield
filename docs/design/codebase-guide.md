@@ -77,7 +77,7 @@ autonomous_battlefield/
 │   ├── test/                   # Test runners, deployment and runtime assurance script tests
 │   ├── ci/                     # Lint, builds, coverage summaries, image assurance
 │   ├── cd/                     # Deployment, smoke checks, rollback
-│   ├── perf/                   # Performance-test launcher
+│   ├── perf/                   # k6 launcher and PostgreSQL query-plan measurement
 │   ├── security/               # Security-test launcher
 │   ├── ops/                    # Operational reports and failure drills
 │   ├── review/                 # Codex/Claude cross-review runner

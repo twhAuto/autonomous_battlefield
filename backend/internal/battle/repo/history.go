@@ -11,13 +11,9 @@ import (
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 )
 
-func (r *Postgres) ListBattles(ctx context.Context, query battleservice.BattleHistoryQuery) ([]battleservice.BattleSummary, error) {
-	var beforeTime, beforeID any
-	if query.Before != nil {
-		beforeTime = query.Before.CreatedAt
-		beforeID = query.Before.ID
-	}
-	rows, err := r.db.Query(ctx, `
+// listBattlesSQL returns one history page. $1 status filter (” for all), $2/$3
+// cursor (NULL for the first page), $4 limit.
+const listBattlesSQL = `
   SELECT id, scenario_id,
    COALESCE((SELECT jsonb_agg(jsonb_build_object('id', f->'id', 'name', f->'name', 'controller', f->'controller') ORDER BY ordinal)
      FROM jsonb_array_elements(scenario_snapshot->'factions') WITH ORDINALITY AS factions(f, ordinal)), '[]'::jsonb),
@@ -28,10 +24,21 @@ func (r *Postgres) ListBattles(ctx context.Context, query battleservice.BattleHi
     ($1 = 'paused' AND paused AND status IN ('queued', 'running')) OR
     ($1 IN ('queued', 'running') AND status = $1 AND NOT paused) OR
     ($1 IN ('completed', 'failed', 'stopped') AND status = $1))
-   AND ($2::timestamptz IS NULL OR (created_at, id) < ($2::timestamptz, $3::uuid))
+   -- One row comparison with first-page sentinels stays an index condition even in
+   -- the generic plans that cached prepared statements switch to; an "IS NULL OR"
+   -- cursor becomes a filter there and scans every newer row.
+   AND (created_at, id) < (COALESCE($2::timestamptz, 'infinity'), COALESCE($3::uuid, 'ffffffff-ffff-ffff-ffff-ffffffffffff'))
   ORDER BY created_at DESC, id DESC
   LIMIT $4
- `, query.Status, beforeTime, beforeID, query.Limit)
+`
+
+func (r *Postgres) ListBattles(ctx context.Context, query battleservice.BattleHistoryQuery) ([]battleservice.BattleSummary, error) {
+	var beforeTime, beforeID any
+	if query.Before != nil {
+		beforeTime = query.Before.CreatedAt
+		beforeID = query.Before.ID
+	}
+	rows, err := r.db.Query(ctx, listBattlesSQL, query.Status, beforeTime, beforeID, query.Limit)
 	if err != nil {
 		return nil, fmt.Errorf("list battles: %w", err)
 	}

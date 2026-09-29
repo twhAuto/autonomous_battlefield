@@ -158,3 +158,36 @@ func TestBattleHistoryMigrationUpAndDown(t *testing.T) {
 		testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	}
 }
+
+// Cached prepared statements switch to generic plans, where an "IS NULL OR" cursor
+// becomes a filter and deep pages scan every newer row. With sequential scans and
+// sorts disabled, the history index is chosen regardless of table size, so the test
+// checks only where the cursor predicate lands.
+func TestBattleHistoryCursorStaysIndexConditionInGenericPlans(t *testing.T) {
+	ctx, db := integrationDatabase(t)
+	tx, err := db.Begin(ctx)
+	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	defer tx.Rollback(context.Background())
+	for _, statement := range []string{
+		"SET LOCAL plan_cache_mode = force_generic_plan",
+		"SET LOCAL enable_seqscan = off",
+		"SET LOCAL enable_sort = off",
+		"PREPARE history_plan(text, timestamptz, uuid, int) AS " + listBattlesSQL,
+	} {
+		_, err := tx.Exec(ctx, statement)
+		testutil.Require(t, err == nil, func() { t.Fatal(statement, err) })
+	}
+	rows, err := tx.Query(ctx, "EXPLAIN (COSTS OFF) EXECUTE history_plan('', now(), gen_random_uuid(), 26)")
+	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	var plan strings.Builder
+	for rows.Next() {
+		var line string
+		testutil.Require(t, rows.Scan(&line) == nil, func() { t.Fatal("scan plan line") })
+		plan.WriteString(line + "\n")
+	}
+	rows.Close()
+	text := plan.String()
+	if !strings.Contains(text, "battle_runs_history_idx") || !strings.Contains(text, "Index Cond: (ROW(created_at, id) <") {
+		t.Fatalf("history cursor is not an index condition in the generic plan:\n%s", text)
+	}
+}
