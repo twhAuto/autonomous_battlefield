@@ -198,8 +198,11 @@ Prompt files are embedded through [`prompts.go`](../../backend/internal/ai/promp
 | `prompts/background-decision.txt` | Background writer per-job instructions |
 
 For battle sessions, `SessionSystemPrompt` returns the battlefield system prompt.
-`SessionDecisionPrompt` appends the faction name, background, and doctrine as JSON
-inside the untrusted-data delimiters defined by `identityContextTemplate`.
+`SessionDecisionPrompt` renders the shared decision instructions, then the faction
+name, background, and doctrine as JSON inside the untrusted-data delimiters defined
+by `identityContextTemplate`, then the request-specific delivery (request ID, and
+inline context when prefetched). Keep request-specific text last: content ahead of
+it is the prefix providers can cache across a faction's decisions.
 
 `GenerationPromptVersion` covers both background writer instruction
 components and the rendered character limit. Faction limits are declared in
