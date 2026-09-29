@@ -235,11 +235,7 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		Tracestate:       tracestate,
 	})
 	if errors.Is(err, ErrBattleAlreadyExists) {
-		existing, e := s.battles.GetBattle(ctx, input.ID)
-		if e == nil && existing.OwnerID == authn.Owner(ctx) && existing.ScenarioDigest == digest && existing.RequestedTicks == input.TickCount {
-			return existing, nil
-		}
-		return nil, ErrBattleAlreadyExists
+		return s.replayCreate(ctx, input, digest)
 	}
 	if err != nil {
 		return nil, err
@@ -254,6 +250,20 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		RequestedTicks: input.TickCount,
 		Status:         "queued",
 	}, nil
+}
+
+// replayCreate returns the stored battle when a create retry repeats the same
+// caller's request, and a conflict for any other reuse of the client ID.
+func (s *battleService) replayCreate(ctx context.Context, input CreateBattleInput, digest string) (*BattleRun, error) {
+	existing, err := s.battles.GetBattle(ctx, input.ID)
+	if err != nil && !errors.Is(err, ErrBattleNotFound) {
+		// An unverified retry must surface as a server error, not a conflict.
+		return nil, err
+	}
+	if err == nil && existing != nil && existing.OwnerID == authn.Owner(ctx) && existing.ScenarioDigest == digest && existing.RequestedTicks == input.TickCount {
+		return existing, nil
+	}
+	return nil, ErrBattleAlreadyExists
 }
 
 func validCreateBattleInput(input CreateBattleInput, maxTicks uint64) bool {

@@ -203,7 +203,7 @@ Content-Type: application/json
 
 A valid request returns `202 Accepted`, a queued status, and `Location: /v1/battles/{id}`. Invalid input returns `400` and a missing scenario or faction returns `404`.
 
-The client-supplied `id` makes retries safe. Repeating a request with the same `id` returns `202` and the existing battle when the caller, resolved scenario, and `tickCount` all match the original; its `status` is then the battle's current status. Reusing an `id` with a different caller, scenario, or `tickCount` returns `409`.
+The client-supplied `id` makes retries safe. Repeating a request with the same `id` returns `202` and the existing battle when the caller, resolved scenario, and `tickCount` all match the original; its `status` is then the battle's current status. Reusing an `id` with a different caller, scenario, or `tickCount` returns `409`. If the existing battle cannot be read to verify a retry, the request fails with `500` rather than `409`, so a client does not abandon an ID that may already hold its battle.
 
 `GET /v1/model-profiles` returns the operator allowlist with safe availability,
 provider, runtime, scope, model-label, and tool-capability fields. It never
