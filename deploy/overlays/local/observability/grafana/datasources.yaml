@@ -17,3 +17,9 @@ datasources:
     access: proxy
     url: http://battlefield-tempo:3200
     editable: false
+    jsonData:
+      # Tempo serves gRPC streaming on a separate port that is not exposed; query over
+      # HTTP instead of retrying a stream that can never connect.
+      streamingEnabled:
+        search: false
+        metrics: false
