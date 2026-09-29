@@ -4,7 +4,7 @@ The Google subscription profile uses `agy` (Antigravity CLI), replacing the reti
 
 ## WSL setup
 
-1. Install Antigravity CLI using the [official installation instructions](https://antigravity.google/docs/cli/install/). The configured release family is 1.1.x; this migration was developed against 1.1.27. Check `agy --version`. The host launcher includes `~/.local/bin` on PATH.
+1. Install Antigravity CLI using the [official installation instructions](https://antigravity.google/docs/cli/install/). The configured release family is 1.2.x (verified with 1.2.0 by the live decision test below on 2026-09-29; the integration was originally developed against 1.1.27). Check `agy --version`. The host launcher includes `~/.local/bin` on PATH.
 2. Run `agy` interactively and complete Google sign-in. The worker supports the host OS keyring (with an accessible Linux secret service/session D-Bus connection) and Antigravity’s native `~/.gemini/antigravity-cli/antigravity-oauth-token` fallback file. An API key or the old Gemini OAuth file does not satisfy this check.
 3. Run `./deploy-local.sh` to update the dev backend and profile configuration.
 4. In another terminal run `./run-k8s-cli-agent.sh antigravity`, or use `both` for Codex and Antigravity. Keep this terminal open during battles.

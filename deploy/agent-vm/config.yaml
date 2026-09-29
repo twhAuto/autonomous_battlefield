@@ -11,7 +11,7 @@ ai:
       runtime: cli
       model: gpt-5.6-luna
       scope: local
-      supportedVersionPrefix: codex-cli 0.152.
+      supportedVersionPrefix: codex-cli 0.155.
       maxSteps: 3
       enabled: true
     - id: claude-subscription-local
@@ -29,6 +29,6 @@ ai:
       runtime: cli
       model: gemini-3.7-flash-medium
       scope: local
-      supportedVersionPrefix: 1.1.
+      supportedVersionPrefix: 1.2.
       maxSteps: 3
       enabled: false
