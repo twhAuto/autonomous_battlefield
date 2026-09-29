@@ -1280,7 +1280,7 @@ components:
         Players receive the same shape without `scenarioDigest` and `errorCode`, and
         their participant `controller` contains only `type`.
       type: object
-      required: [id, ownerId, scenarioId, requestedTicks, currentTick, decisionIntervalTicks, status, paused, attempt, participants, result, map, state]
+      required: [id, ownerId, scenarioId, requestedTicks, currentTick, production, status, paused, attempt, participants, result, map, state]
       properties:
         id: {type: string, format: uuid}
         ownerId: {type: string}
@@ -1288,13 +1288,15 @@ components:
         scenarioDigest: {type: string}
         requestedTicks: {type: integer}
         currentTick: {type: integer}
-        decisionIntervalTicks:
+        production:
           description: |
-            Production and strategy window spacing from the battle's immutable
-            scenario snapshot. Windows run on the transition into each tick that is
-            a multiple of this value; all recruitment for a window happens then.
-          type: integer
-          minimum: 1
+            The next point at which factions spend gold, derived by the engine from
+            the battle's scenario snapshot and current state. `null` when the battle
+            is not queued or running, or when no window remains before
+            `requestedTicks`.
+          oneOf:
+            - {$ref: '#/components/schemas/ProductionSchedule'}
+            - {type: 'null'}
         status: {$ref: '#/components/schemas/BattleStatus'}
         paused: {type: boolean}
         attempt:
@@ -1320,6 +1322,18 @@ components:
         state: {$ref: '#/components/schemas/BattleState'}
         errorCode: {type: string}
         errorMessage: {type: string}
+
+    ProductionSchedule:
+      description: |
+        All purchases for a window happen at once; nothing is queued between
+        windows. `opening` marks the one-time opening purchase before tick 1
+        (`nextTick` is then `0`); otherwise `nextTick` is the tick whose
+        transition runs the next regular window.
+      type: object
+      required: [nextTick, opening]
+      properties:
+        nextTick: {type: integer, minimum: 0}
+        opening: {type: boolean}
 
     BattleView:
       type: object

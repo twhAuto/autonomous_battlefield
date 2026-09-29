@@ -392,7 +392,7 @@ func battleResponse(run *battleservice.BattleRun) any {
 		ScenarioDigest string  `json:"scenarioDigest"`
 		RequestedTicks uint64  `json:"requestedTicks"`
 		CurrentTick    uint64  `json:"currentTick"`
-		DecisionTicks  uint64  `json:"decisionIntervalTicks"`
+		Production     any     `json:"production"`
 		Status         string  `json:"status"`
 		Paused         bool    `json:"paused"`
 		Attempt        int     `json:"attempt"`
@@ -405,8 +405,8 @@ func battleResponse(run *battleservice.BattleRun) any {
 	}{
 		OwnerID: run.OwnerID, ID: run.ID, ScenarioID: run.ScenarioID, ScenarioDigest: run.ScenarioDigest,
 		RequestedTicks: run.RequestedTicks, CurrentTick: run.CurrentTick, Status: run.Status, Paused: run.Paused,
-		DecisionTicks: uint64(run.ScenarioSnapshot.DecisionIntervalTicks),
-		Attempt:       run.Attempt, Participants: participants, Result: run.Result,
+		Production: productionFor(run),
+		Attempt:    run.Attempt, Participants: participants, Result: run.Result,
 		Map: run.ScenarioSnapshot.Map, State: run.CurrentState,
 		ErrorCode: run.ErrorCode, ErrorMessage: run.ErrorMessage,
 	}
@@ -434,6 +434,19 @@ func visibleProfiles(r *http.Request, profiles []ai.ModelProfile) any {
 	return result
 }
 
+// productionFor reports the next spending point of an active battle, or nil when the
+// battle is settled or no window remains before its tick limit.
+func productionFor(run *battleservice.BattleRun) *game.ProductionSchedule {
+	if run.Status != "queued" && run.Status != "running" {
+		return nil
+	}
+	schedule, ok := game.NextProduction(run.ScenarioSnapshot, run.CurrentState, run.RequestedTicks)
+	if !ok {
+		return nil
+	}
+	return &schedule
+}
+
 func battleResponseFor(r *http.Request, run *battleservice.BattleRun) any {
 	if !authn.IsPlayer(r.Context()) {
 		return battleResponse(run)
@@ -442,7 +455,7 @@ func battleResponseFor(r *http.Request, run *battleservice.BattleRun) any {
 	for _, f := range run.ScenarioSnapshot.Factions {
 		participants = append(participants, map[string]any{"id": f.ID, "name": f.Name, "background": f.Background, "doctrine": f.Doctrine, "controller": map[string]string{"type": f.Controller.Type}})
 	}
-	response := map[string]any{"id": run.ID, "ownerId": run.OwnerID, "scenarioId": run.ScenarioID, "requestedTicks": run.RequestedTicks, "currentTick": run.CurrentTick, "decisionIntervalTicks": uint64(run.ScenarioSnapshot.DecisionIntervalTicks), "status": run.Status, "paused": run.Paused, "attempt": run.Attempt, "participants": participants, "result": run.Result, "map": run.ScenarioSnapshot.Map, "state": run.CurrentState}
+	response := map[string]any{"id": run.ID, "ownerId": run.OwnerID, "scenarioId": run.ScenarioID, "requestedTicks": run.RequestedTicks, "currentTick": run.CurrentTick, "production": productionFor(run), "status": run.Status, "paused": run.Paused, "attempt": run.Attempt, "participants": participants, "result": run.Result, "map": run.ScenarioSnapshot.Map, "state": run.CurrentState}
 	if run.Status == "failed" {
 		response["errorMessage"] = "The battle could not complete."
 	}

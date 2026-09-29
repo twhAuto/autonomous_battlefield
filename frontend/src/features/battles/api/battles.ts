@@ -101,6 +101,9 @@ export interface BattleResult {
   factions: FactionStatistics[]
 }
 
+/** `opening` marks the one-time purchase before tick 1 (nextTick 0). */
+export interface ProductionSchedule { nextTick: number; opening: boolean }
+
 export interface BattleRun {
   ownerId?: string
   id: string
@@ -108,8 +111,8 @@ export interface BattleRun {
   scenarioDigest: string
   requestedTicks: number
   currentTick: number
-  /** Production/strategy window spacing from the battle's scenario snapshot. */
-  decisionIntervalTicks?: number
+  /** Next spending point computed by the engine; null when settled or none remains. */
+  production?: ProductionSchedule | null
   status: BattleStatus
   paused: boolean
   attempt: number
