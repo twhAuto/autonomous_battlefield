@@ -5,10 +5,12 @@ groups:
   - name: battlefield-sli-recording
     interval: 30s
     rules:
+      # "or vector(0)" keeps the SLI at 1 when no 5xx series exists yet; without it the
+      # ratio is an empty vector and the SLI shows no data while the API is healthy.
       - record: battlefield:api_availability:ratio_rate5m
         expr: |
           1 - (
-            sum(rate(battlefield_http_server_requests_total{component="api",code=~"5.."}[5m]))
+            (sum(rate(battlefield_http_server_requests_total{component="api",code=~"5.."}[5m])) or vector(0))
             /
             clamp_min(sum(rate(battlefield_http_server_requests_total{component="api"}[5m])), 0.000001)
           )
