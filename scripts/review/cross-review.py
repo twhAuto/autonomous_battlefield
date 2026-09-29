@@ -215,7 +215,8 @@ def usage_rows(directory):
                                     "total": 0, "reported": 0, "total_only": 0,
                                     "unknown": 0, "cost": 0.0})
         row["reviews"] += 1
-        row["prs"].add(metadata.get("pr_url", "").rsplit("/", 1)[-1] or path.parent.name)
+        if metadata.get("pr_url"):
+            row["prs"].add(metadata["pr_url"])
         if "input_tokens" in usage:
             row["input"] += usage["input_tokens"]
             row["cached"] += usage.get("cached_input_tokens", 0)
@@ -438,7 +439,10 @@ def main():
             revisions, patch = prepare(root, args.base, args.head, snapshot, previous_head=previous_head)
             metadata.update(revisions)
             if args.pr is not None:
-                check_pr(metadata, pr_state(root, args.pr))
+                state = pr_state(root, args.pr)
+                check_pr(metadata, state)
+                # Saved before inference so failed runs still count toward their PR.
+                metadata["pr_url"] = state["url"]
             scope_prompt = ("\nFOLLOW-UP ONLY: inspect fixes since the previous reviewed head and unresolved findings. "
                             "Do not repeat a full PR review or reopen resolved findings without a new regression. "
                             "An empty diff means this is a discussion-only reassessment.\n" if previous_head else

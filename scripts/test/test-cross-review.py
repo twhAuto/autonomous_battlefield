@@ -153,6 +153,7 @@ class CrossReviewTests(unittest.TestCase):
                                           "usage": {"input_tokens": 50, "output_tokens": 3}})
             saved("pr2-codex-1", codex | {"status": "completed_advisory_review"}, "tokens used\n1,000\n")
             saved("pr3-codex-1", codex | {"status": "completed_advisory_review"})
+            saved("other-repo", codex | {"status": "completed_advisory_review", "pr_url": "https://y/pull/1"})
             saved("dry", codex | {"status": "dry_run_not_reviewed", "usage": {"input_tokens": 999}})
             saved("claude", {"reviewer": "claude", "model": "opus", "reasoning_effort": "provider default",
                              "started_at": "2026-09-30T00:00:00+00:00", "status": "completed_advisory_review",
@@ -164,8 +165,8 @@ class CrossReviewTests(unittest.TestCase):
                                          ("2026-09", "claude", "opus", "provider default")})
             astra = rows[("2026-10", "codex", "gpt-6-astra", "medium")]
             self.assertEqual((astra["reviews"], len(astra["prs"]), astra["input"], astra["cached"], astra["output"]),
-                             (4, 3, 150, 60, 10))
-            self.assertEqual((astra["total"], astra["reported"], astra["total_only"], astra["unknown"]), (160, 1000, 1, 1))
+                             (5, 2, 150, 60, 10))  # Retries share a PR; local runs are not PRs.
+            self.assertEqual((astra["total"], astra["reported"], astra["total_only"], astra["unknown"]), (160, 1000, 1, 2))
             self.assertEqual(rows[("2026-09", "claude", "opus", "provider default")]["cost"], 0.5)
             printed = io.StringIO()
             with mock.patch.object(sys, "argv", ["review", "--usage", str(reviews)]), contextlib.redirect_stdout(printed):
@@ -358,6 +359,12 @@ class CrossReviewTests(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     review.main()
                 self.assertIn("no PR discussion context", errors.getvalue())
+            arguments = base_args + ["--output", str(Path(tmp) / "failed-pr"), "--pr", "1"]
+            live = {"state": "open", "head": "h", "base": "b", "url": "https://github.test/pull/1"}
+            with mock.patch.object(sys, "argv", arguments), mock.patch.object(review, "git", side_effect=[str(root).encode(), b""]), mock.patch.object(review.shutil, "which", return_value="claude"), mock.patch.object(review, "prepare", return_value=({"head": "h", "base": "b", "merge_base": "m"}, b"diff")), mock.patch.object(review, "discussion_context", return_value=([], "[]", 1)), mock.patch.object(review, "pr_state", return_value=live), mock.patch.object(review, "run_process", side_effect=RuntimeError("Reviewer exited 1")):
+                with self.assertRaisesRegex(RuntimeError, "exited 1"):
+                    review.main()
+            self.assertEqual(json.loads((Path(tmp) / "failed-pr" / "metadata.json").read_text())["pr_url"], live["url"])
             arguments = base_args + ["--output", str(Path(tmp) / "stale"), "--pr", "1"]
             revisions = {"head": "h", "base": "b", "merge_base": "m"}
             with mock.patch.object(sys, "argv", arguments), mock.patch.object(review, "git", side_effect=[str(root).encode(), b""]), mock.patch.object(review.shutil, "which", return_value="claude"), mock.patch.object(review, "prepare", return_value=(revisions, b"diff")), mock.patch.object(review, "discussion_context", return_value=([], "[]", 1)), mock.patch.object(review, "pr_state", return_value={"state": "open", "head": "changed", "base": "b"}), mock.patch.object(review, "run_process") as run:
