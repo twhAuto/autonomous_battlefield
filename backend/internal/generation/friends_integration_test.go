@@ -56,7 +56,7 @@ func TestFriendsBattleAdmissionAcrossConnections(t *testing.T) {
 	if e := insertFriendBattle(p, 24, "owner"); e != nil {
 		t.Fatal(e)
 	}
-	// A lower operator allowance is durable and applies to any identity, including Admin.
+	// A lower operator allowance is durable and applies to every non-exempt identity.
 	sqlExec(t, p, "UPDATE runtime_policy SET daily_battles=3")
 	if e := insertFriendBattle(p, 25, "owner"); !limited(e) {
 		t.Fatalf("daily limit: %v", e)
@@ -199,5 +199,33 @@ func TestFourSharedCLISlotsAcrossConcurrentClaims(t *testing.T) {
 	sqlExec(t, p, `UPDATE runtime_policy SET ai_enabled=false`)
 	if _, err := p.Claim(ctx, "vm", []string{c.ProfileID}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("disabled AI admitted work: %v", err)
+	}
+}
+
+func insertExemptBattle(p *Postgres, n int, owner string) error {
+	_, err := p.DB.Exec(context.Background(), `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state,admission_exempt) VALUES($1,'s','d','{}',10,$2,'{}','{}',true)`, fmt.Sprintf("00000000-0000-4000-8000-%012d", n), owner)
+	return err
+}
+
+func TestAdminBattlesSkipAllowancesButCountGlobally(t *testing.T) {
+	p := database(t)
+	sqlExec(t, p, "UPDATE runtime_policy SET daily_battles=1")
+	// Exempt rows pass the daily, per-person and global limits.
+	for n := range 5 {
+		if e := insertExemptBattle(p, n, "admin"); e != nil {
+			t.Fatalf("exempt battle %d: %v", n, e)
+		}
+	}
+	// They still occupy the engine, so other identities meet the global cap.
+	if e := insertFriendBattle(p, 10, "player"); !limited(e) {
+		t.Fatalf("player admitted beside five unfinished exempt battles: %v", e)
+	}
+	sqlExec(t, p, "UPDATE battle_runs SET status='completed'")
+	if e := insertFriendBattle(p, 11, "player"); e != nil {
+		t.Fatal(e)
+	}
+	// The flag, not the owner name, grants the exemption.
+	if e := insertFriendBattle(p, 12, "admin"); !limited(e) {
+		t.Fatalf("non-exempt row evaded the daily limit: %v", e)
 	}
 }
