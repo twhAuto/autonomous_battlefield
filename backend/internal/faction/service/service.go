@@ -74,7 +74,17 @@ func (s *service) CreateFaction(ctx context.Context, input CreateInput) error {
 	if err != nil {
 		return err
 	}
-	return s.repository.CreateFaction(ctx, stored)
+	err = s.repository.CreateFaction(ctx, stored)
+	if errors.Is(err, ErrFactionAlreadyExists) {
+		// A retry of the same caller's identical request succeeds, matching battle
+		// creation; any other reuse of the client-generated ID remains a conflict.
+		existing, getErr := s.repository.GetFaction(ctx, stored.ID)
+		if getErr == nil && existing != nil && existing.OwnerID == authn.Owner(ctx) && existing.Name == stored.Name &&
+			existing.Doctrine == stored.Doctrine && existing.Background == stored.Background {
+			return nil
+		}
+	}
+	return err
 }
 
 // normalizeFaction keeps creation and editing subject to the same profile rules.

@@ -126,7 +126,7 @@ Responses:
 | --- | --- |
 | `201 Created` | The faction was created. The response has no body. |
 | `400 Bad Request` | The JSON is invalid, the ID is not UUID-shaped, or the trimmed name/doctrine is empty, or doctrine exceeds 4,000 Unicode characters, or background exceeds 1,000. |
-| `409 Conflict` | A faction with the same ID already exists. |
+| `409 Conflict` | The ID is already used by another caller's faction or with different content. An identical retry by the same caller returns `201` again. |
 | `500 Internal Server Error` | The faction could not be persisted. |
 
 Request bodies are limited to 64 KiB and must contain exactly one JSON value. Names, doctrines, and backgrounds are trimmed before storage. Background is optional and limited to 1,000 Unicode characters. Obsolete blueprint/ruleset request fields are rejected.
@@ -286,6 +286,10 @@ responses expose the pause flag.
 Stop a queued or running battle with `POST /v1/battles/{id}/stop`. The operation
 releases the engine lease and marks unresolved model decisions as failed so a
 host subscription agent cannot continue the stopped run.
+
+All three controls are safe to retry. Repeating a pause or resume, or stopping an
+already stopped battle, returns `200` with the current battle. Controlling a
+completed or failed battle, or pausing or resuming a stopped one, returns `409`.
 
 `GET /v1/battles/{battleId}/factions/{factionId}/view` returns the same terrain with faction fog-of-war applied. Owned entities and both castles are always present; other hostile entities appear only inside current friendly vision.
 

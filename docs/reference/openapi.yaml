@@ -27,12 +27,13 @@ info:
     `403 permission_denied` rather than `404`, so responses do not reveal whether a
     route exists.
 
-    **Idempotency.** Two mechanisms exist today, documented on their operations:
-    `POST /v1/faction-background-generations` replays a repeated `idempotencyKey`,
-    and `POST /v1/battles` replays a retry that reuses the battle `id` with matching
-    parameters (a mismatched reuse returns `409 already_exists`). A general replay
-    contract for every other write endpoint is not implemented; clients must not
-    assume it.
+    **Idempotency.** Retries are safe through client-generated identifiers and
+    state-based controls, documented on their operations:
+    `POST /v1/faction-background-generations` replays a repeated `idempotencyKey`;
+    `POST /v1/battles` and `POST /v1/factions` replay a retry that reuses the `id`
+    with the same caller and parameters (a mismatched reuse returns
+    `409 already_exists`); and repeating `stop`, `pause`, or `resume` on a battle
+    already in that state succeeds. There is no generic `Idempotency-Key` header.
   license:
     name: Proprietary
     identifier: LicenseRef-Proprietary
@@ -171,6 +172,11 @@ paths:
       tags: [Factions]
       operationId: createFaction
       summary: Create a faction
+      description: |
+        **Idempotency:** the client supplies the faction `id`, which makes retries
+        safe. Repeating the request with the same `id`, caller, and trimmed name,
+        doctrine, and background returns `201` again without another write. Reusing
+        the `id` with a different caller or content returns `409 already_exists`.
       parameters:
         - {$ref: '#/components/parameters/Origin'}
       requestBody:
@@ -442,7 +448,9 @@ paths:
         - {$ref: '#/components/parameters/Origin'}
       description: |
         Releases the engine lease and marks unresolved model decisions as failed.
-        Requires ownership or Admin.
+        Requires ownership or Admin. Repeating the call on an already stopped battle
+        returns `200` with the current battle, so a retried stop is safe. A battle
+        that completed or failed returns `409 conflict`.
       responses:
         '200': {$ref: '#/components/responses/BattleResponse'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
@@ -462,7 +470,10 @@ paths:
       summary: Pause an active battle
       parameters:
         - {$ref: '#/components/parameters/Origin'}
-      description: Preserves the current attempt. Requires ownership or Admin.
+      description: |
+        Preserves the current attempt. Requires ownership or Admin. Pausing an
+        already paused active battle returns `200` unchanged. A completed, failed,
+        or stopped battle returns `409 conflict`.
       responses:
         '200': {$ref: '#/components/responses/BattleResponse'}
         '400': {$ref: '#/components/responses/InvalidRequest'}
@@ -482,7 +493,10 @@ paths:
       summary: Resume a paused battle
       parameters:
         - {$ref: '#/components/parameters/Origin'}
-      description: Requires ownership or Admin.
+      description: |
+        Requires ownership or Admin. Resuming an active battle that is not paused
+        returns `200` unchanged. A completed, failed, or stopped battle returns
+        `409 conflict`.
       responses:
         '200': {$ref: '#/components/responses/BattleResponse'}
         '400': {$ref: '#/components/responses/InvalidRequest'}

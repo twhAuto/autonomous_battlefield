@@ -76,6 +76,37 @@ func TestCreateFactionReturnsAlreadyExists(t *testing.T) {
 	}
 }
 
+func TestCreateFactionReplaysIdenticalRetry(t *testing.T) {
+	const id = "7f22e693-bacd-46bb-b942-64fa613cd388"
+	original := faction.Faction{ID: id, Name: "Northwind", Doctrine: "Hold the line.", Background: "Frost clans.", OwnerID: "self"}
+	retry := CreateInput{ID: id, Name: " Northwind ", Doctrine: "Hold the line.", Background: "Frost clans."}
+	tests := []struct {
+		name    string
+		stored  faction.Faction
+		caller  string
+		input   CreateInput
+		getErr  error
+		wantErr error
+	}{
+		{name: "identical retry replays", stored: original, caller: "self", input: retry},
+		{name: "other caller conflicts", stored: original, caller: "other", input: retry, wantErr: ErrFactionAlreadyExists},
+		{name: "changed name conflicts", stored: original, caller: "self", input: CreateInput{ID: id, Name: "Southreach", Doctrine: retry.Doctrine, Background: retry.Background}, wantErr: ErrFactionAlreadyExists},
+		{name: "changed doctrine conflicts", stored: original, caller: "self", input: CreateInput{ID: id, Name: retry.Name, Doctrine: "Attack.", Background: retry.Background}, wantErr: ErrFactionAlreadyExists},
+		{name: "changed background conflicts", stored: original, caller: "self", input: CreateInput{ID: id, Name: retry.Name, Doctrine: retry.Doctrine}, wantErr: ErrFactionAlreadyExists},
+		{name: "lookup failure conflicts", stored: original, caller: "self", input: retry, getErr: errors.New("database unavailable"), wantErr: ErrFactionAlreadyExists},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stored := tt.stored
+			repo := &fakeFactionRepository{createErr: ErrFactionAlreadyExists, storedFaction: &stored, getErr: tt.getErr}
+			ctx := authn.WithActor(context.Background(), authn.Actor{ID: tt.caller, Role: authn.Player})
+			if err := NewService(repo).CreateFaction(ctx, tt.input); !errors.Is(err, tt.wantErr) {
+				t.Fatalf("CreateFaction() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestDoctrineValidationAndUpdate(t *testing.T) {
 	repo := &fakeFactionRepository{}
 	service := NewService(repo)
