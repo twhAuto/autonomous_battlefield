@@ -37,6 +37,13 @@ if [[ -n "${SONAR_PROJECT_BASE_DIR:-}" ]]; then
   fi
   scanner_arguments+=(-Dsonar.projectBaseDir="${SONAR_PROJECT_BASE_DIR}")
 fi
+if [[ -n "${SONAR_PROJECT_DATE:-}" ]]; then
+  if [[ ! "${SONAR_PROJECT_DATE}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{4}$ ]]; then
+    echo "SONAR_PROJECT_DATE must look like 2026-01-31T12:00:00+0000" >&2
+    exit 2
+  fi
+  scanner_arguments+=(-Dsonar.projectDate="${SONAR_PROJECT_DATE}")
+fi
 if [[ -n "${SONAR_PROJECT_KEY:-}" ]]; then
   if [[ ! "${SONAR_PROJECT_KEY}" =~ ^[A-Za-z0-9_.:-]*[A-Za-z_.:-][A-Za-z0-9_.:-]*$ ]]; then
     echo "SONAR_PROJECT_KEY contains unsupported characters or only digits" >&2

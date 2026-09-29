@@ -137,8 +137,10 @@ When asked to inspect or fix SonarQube findings:
    environment, `-Dsonar.host.url=https://sonarqube.home.arpa`, and
    `-Dsonar.qualitygate.wait=true`. Never upload unmerged code to the production
    `autonomous-battlefield` project. For an open PR, set `SONAR_SCANNER_HOME` and
-   use `scripts/ci/run-sonarqube-pr-gate.sh PR_NUMBER origin/dev`; it seeds and
-   scans that PR's isolated preview project. If the scanner is absent from
+   `SONAR_HOST_URL` and use
+   `scripts/ci/run-sonarqube-pr-gate.sh PR_NUMBER origin/dev`; it deletes, seeds,
+   and scans that PR's isolated preview project. Its reset call uses `curl`, so
+   point `CURL_CA_BUNDLE` at the server's CA certificate. If the scanner is absent from
    `PATH`, check `~/jenkins-agent/tools/hudson.plugins.sonar.SonarRunnerInstallation/SonarScanner/bin/sonar-scanner`.
    For a private CA, configure `sonar.scanner.truststorePath` and
    `sonar.scanner.truststorePassword` for a temporary PKCS12 truststore outside

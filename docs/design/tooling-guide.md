@@ -130,10 +130,11 @@ asserts exact API/frontend peer selectors and ports to prevent broadening access
 Production hardening entry points:
 
 - `scripts/test/test-deployment.sh` is the shared PR/main infrastructure regression gate.
-- `scripts/ci/run-sonarqube-pr-gate.sh` seeds a PR preview project from its target
-  merge base before the gated head scan; `run-sonarqube-gate.sh` owns one scanner
-  invocation. `test-sonarqube-gate.sh` verifies preview-project selection,
-  baseline ordering and scanner arguments without contacting SonarQube.
+- `scripts/ci/run-sonarqube-pr-gate.sh` resets a PR preview project and seeds it
+  from its target merge base, dated at that commit, before the gated head scan;
+  `run-sonarqube-gate.sh` owns one scanner invocation. `test-sonarqube-gate.sh`
+  verifies preview-project selection, the reset, baseline dating and ordering, and
+  scanner arguments without contacting SonarQube.
 - `scripts/cd/reconcile-network-policies.sh` applies only the separately rendered
   `network-policies.json`; `deploy-tunnel.sh` applies connector inputs with checksum
   annotations instead of an unconditional restart.
