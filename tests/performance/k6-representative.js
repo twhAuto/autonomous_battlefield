@@ -3,7 +3,7 @@
 
 import http from 'k6/http';
 import { check, sleep, fail } from 'k6';
-import { Trend, Counter } from 'k6/metrics';
+import { Trend, Counter, Rate } from 'k6/metrics';
 
 const baseURL = __ENV.TARGET_URL || 'http://battlefield.localhost:8888';
 // Admission allows two unfinished battles per person, so one identity drives two battles.
@@ -19,6 +19,8 @@ const queueWait = new Trend('battle_queue_wait_seconds');
 // Wall-clock run time divided by requested ticks; 1.0 means exactly one tick per second.
 const paceRatio = new Trend('battle_pace_ratio');
 const eventsRead = new Counter('battle_events_read');
+// Its own threshold: one failed battle would barely move the shared checks rate.
+const battlesCompleted = new Rate('battles_completed');
 
 export const options = {
   vus: Number(__ENV.K6_VUS || 20),
@@ -31,6 +33,7 @@ export const options = {
     'http_req_duration{expected_response:true}': ['p(95)<500'],
     checks: ['rate>0.99'],
     battle_pace_ratio: ['max<1.1'],
+    battles_completed: ['rate==1'],
   },
 };
 
@@ -139,7 +142,7 @@ export function teardown(data) {
   for (const battleId of data.battles) {
     const battle = summaries.find((summary) => summary.id === battleId) || {};
     console.log(`battle ${battleId}: status=${battle.status} tick=${battle.currentTick}/${battleTicks} created=${battle.createdAt} started=${battle.startedAt} completed=${battle.completedAt}`);
-    check(battle, { 'battle completed within the run': (b) => b.status === 'completed' });
+    battlesCompleted.add(battle.status === 'completed');
     if (battle.startedAt) queueWait.add((Date.parse(battle.startedAt) - Date.parse(battle.createdAt)) / 1000);
     if (battle.status === 'completed' && battle.completedAt) {
       paceRatio.add((Date.parse(battle.completedAt) - Date.parse(battle.startedAt)) / 1000 / battle.currentTick);

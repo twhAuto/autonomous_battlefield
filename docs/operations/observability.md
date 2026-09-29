@@ -173,7 +173,8 @@ and results here so the SLO targets above stay tied to evidence.
 
 ```bash
 # Representative load: 20 viewers for 10 minutes against two scripted battles.
-ADMIN_USERNAME=... ADMIN_PASSWORD=... DEPLOY_ENV=dev \
+# Set the load explicitly; run-k6.sh otherwise applies its 3-viewer, 30 s smoke defaults.
+ADMIN_USERNAME=... ADMIN_PASSWORD=... DEPLOY_ENV=dev K6_VUS=20 K6_DURATION=10m \
   ./scripts/perf/run-k6.sh tests/performance/k6-representative.js
 
 # Saturation: K6_STAGES replaces the fixed viewer count and duration.
@@ -197,6 +198,8 @@ polls status, the next event page, and decision history once a second, and
 browses history once the battle settles. It records two battle metrics from
 server timestamps: `battle_queue_wait_seconds` (queued to started) and
 `battle_pace_ratio` (run time divided by ticks; 1.0 is one tick per second).
+`battles_completed` must be 100%, so one failed or unfinished battle fails the
+run even when thousands of polling checks pass.
 Run the drills while the representative load runs, so the drill shows its
 effect on viewers and on a live battle.
 
