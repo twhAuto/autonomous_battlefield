@@ -47,6 +47,11 @@ Coverage checks, and disallow direct pushes. Jenkins sees a `main` update rather
 than a distinct "PR merged" pipeline condition, so the branch rule is what makes
 a `main` update equivalent to an approved merge.
 
+For the repeatable Ubuntu host foundation and credential import, start with the
+[server bootstrap](server-bootstrap.md). It can run from WSL before Jenkins exists.
+Jenkins controller/agent configuration below remains the current service setup;
+the foundation playbook does not yet recreate it.
+
 ## Install the Jenkins controller on Ubuntu or WSL
 
 This project currently uses the Jenkins LTS Debian package as a system service

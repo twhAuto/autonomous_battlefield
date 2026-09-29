@@ -1,0 +1,9 @@
+---
+- name: Apply managed sysctl
+  ansible.builtin.command:
+    argv: [sysctl, --load=/etc/sysctl.d/90-battlefield-bootstrap.conf]
+  changed_when: true
+- name: Refresh system CA trust
+  ansible.builtin.command:
+    argv: [update-ca-certificates]
+  changed_when: true

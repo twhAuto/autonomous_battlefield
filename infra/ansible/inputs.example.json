@@ -1,0 +1,14 @@
+{
+  "cloudflare_api_token": {
+    "source": "controller",
+    "path": "/home/operator/.config/autonomous-battlefield/bootstrap/cloudflare-api-token"
+  },
+  "application_env": {
+    "source": "host",
+    "path": "/home/operator/.config/autonomous-battlefield/production/.env"
+  },
+  "tunnel_credentials": {
+    "source": "host",
+    "path": "/home/operator/.config/autonomous-battlefield/production/tunnel-credentials.json"
+  }
+}

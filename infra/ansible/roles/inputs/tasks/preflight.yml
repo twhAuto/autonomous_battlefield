@@ -1,0 +1,64 @@
+---
+- name: Load encrypted inputs without emitting values or diffs
+  ansible.builtin.include_vars:
+    file: "{{ bootstrap_vault_file }}"
+    name: bootstrap_vault
+  no_log: true
+- name: Validate the encrypted bundle schema
+  ansible.builtin.assert:
+    that:
+      - bootstrap_vault.keys() | list == ['bootstrap_inputs']
+      - bootstrap_vault.bootstrap_inputs is mapping
+      - bootstrap_vault.bootstrap_inputs | length > 0
+      - bootstrap_vault.bootstrap_inputs | length <= 32
+  no_log: true
+- name: Inspect the input directory before traversing it
+  ansible.builtin.stat:
+    path: "{{ bootstrap_config_dir }}/inputs"
+    follow: false
+  register: inputs_directory
+- name: Refuse redirected input directories
+  ansible.builtin.assert:
+    that:
+      - not inputs_directory.stat.exists or (inputs_directory.stat.isdir and not inputs_directory.stat.islnk)
+- name: Enumerate imported input names without contents
+  ansible.builtin.find:
+    paths: "{{ bootstrap_config_dir }}/inputs"
+    file_type: any
+    hidden: true
+  register: inputs_names
+  when: inputs_directory.stat.exists
+  no_log: true
+- name: Require every previously imported credential in the recovery bundle
+  ansible.builtin.assert:
+    that:
+      - (inputs_names.files | map(attribute='path') | map('basename') | difference(bootstrap_vault.bootstrap_inputs.keys())) | length == 0
+    fail_msg: The bundle omits previously imported credentials; recover them rather than dropping them.
+  when: inputs_directory.stat.exists
+  no_log: true
+- name: Validate named input values
+  ansible.builtin.assert:
+    that:
+      - item.key is match('^[a-z][a-z0-9_-]{0,63}$')
+      - item.value is string
+      - item.value | length > 0
+      - item.value is match('^[A-Za-z0-9+/]+={0,2}$')
+      - (item.value | b64decode | b64encode) == item.value
+  loop: "{{ bootstrap_vault.bootstrap_inputs | dict2items }}"
+  no_log: true
+- name: Inspect existing imported inputs without showing fingerprints
+  ansible.builtin.stat:
+    path: "{{ bootstrap_config_dir }}/inputs/{{ item.key }}"
+    checksum_algorithm: sha256
+    follow: false
+  loop: "{{ bootstrap_vault.bootstrap_inputs | dict2items }}"
+  register: inputs_existing
+  no_log: true
+- name: Refuse implicit credential replacement and symbolic links
+  ansible.builtin.assert:
+    that:
+      - not item.stat.exists or (item.stat.isreg and not item.stat.islnk)
+      - not item.stat.exists or item.stat.checksum == (item.item.value | b64decode | hash('sha256'))
+    fail_msg: Existing credential differs from the supplied bundle; reconcile it explicitly, never regenerate it.
+  loop: "{{ inputs_existing.results }}"
+  no_log: true

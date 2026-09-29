@@ -1,0 +1,92 @@
+---
+- name: Bootstrap the Ubuntu host foundation
+  hosts: bootstrap
+  become: true
+  gather_facts: true
+  vars:
+    bootstrap_config_dir: /etc/battlefield-bootstrap
+    bootstrap_state_dir: /var/lib/battlefield-platform
+    bootstrap_file_owner: root
+    bootstrap_file_group: root
+  pre_tasks:
+    - name: Read the target identity again before configuring anything
+      ansible.builtin.slurp:
+        src: /etc/machine-id
+      register: bootstrap_identity
+    - name: Require the registered Ubuntu host and an explicit action
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['distribution_version'] in ['24.04', '26.04']
+          - (bootstrap_identity.content | b64decode | trim) == bootstrap_machine_id
+          - bootstrap_action in ['plan', 'apply', 'verify']
+          - bootstrap_operator is match('^[a-z_][a-z0-9_-]*$')
+        fail_msg: Inventory does not identify this supported Ubuntu server.
+    - name: Read existing service ownership
+      ansible.builtin.service_facts:
+    - name: Inspect bootstrap configuration directory
+      ansible.builtin.stat:
+        path: "{{ bootstrap_config_dir }}"
+        follow: false
+      register: bootstrap_directory
+    - name: Inspect bootstrap ownership marker
+      ansible.builtin.stat:
+        path: "{{ bootstrap_config_dir }}/machine-id"
+        follow: false
+      register: bootstrap_marker
+    - name: Check an interrupted empty directory before resuming ownership registration
+      ansible.builtin.find:
+        paths: "{{ bootstrap_config_dir }}"
+        hidden: true
+        file_type: any
+      register: bootstrap_unowned_files
+      when: bootstrap_directory.stat.exists and not bootstrap_marker.stat.exists and bootstrap_directory.stat.isdir and not bootstrap_directory.stat.islnk
+    - name: Reject unknown existing bootstrap configuration
+      ansible.builtin.assert:
+        that:
+          - >-
+            not bootstrap_directory.stat.exists or (bootstrap_directory.stat.isdir and not bootstrap_directory.stat.islnk and
+            (bootstrap_marker.stat.exists or (bootstrap_directory.stat.uid == 0 and bootstrap_unowned_files.matched == 0)))
+          - not bootstrap_marker.stat.exists or (bootstrap_marker.stat.isreg and not bootstrap_marker.stat.islnk)
+        fail_msg: Existing bootstrap directory is unowned or unsafe; inspect it before adoption.
+    - name: Read existing ownership marker
+      ansible.builtin.slurp:
+        src: "{{ bootstrap_config_dir }}/machine-id"
+      register: bootstrap_owned_identity
+      when: bootstrap_marker.stat.exists
+    - name: Reject configuration owned by a different machine
+      ansible.builtin.assert:
+        that:
+          - (bootstrap_owned_identity.content | b64decode | trim) == bootstrap_machine_id
+      when: bootstrap_marker.stat.exists
+    - name: Inspect candidate backup filesystem metadata without mounting it
+      ansible.builtin.command:
+        argv: [lsblk, --json, --output, 'NAME,TYPE,SIZE,FSTYPE,UUID,MOUNTPOINTS']
+      changed_when: false
+      check_mode: false
+      register: bootstrap_disks
+    - name: Report backup scope
+      ansible.builtin.debug:
+        msg: >-
+          Second-drive backups only; 100 GB initial budget. Candidate UUID:
+          {{ bootstrap_backup_uuid | default('') or 'not selected' }}.
+          No filesystem is mounted, formatted or resized by this foundation playbook.
+          Backup scheduling is a later recovery role; whole-server-loss recovery is deferred.
+  tasks:
+    - name: Validate encrypted inputs before any configuration change
+      ansible.builtin.import_role:
+        name: inputs
+        tasks_from: preflight
+      when: bootstrap_action in ['plan', 'apply']
+    - name: Configure the foundation
+      ansible.builtin.import_role:
+        name: foundation
+      when: bootstrap_action in ['plan', 'apply']
+    - name: Install the private recovery inputs
+      ansible.builtin.import_role:
+        name: inputs
+      when: bootstrap_action in ['plan', 'apply']
+    - name: Verify the installed foundation
+      ansible.builtin.import_role:
+        name: verify
+      when: bootstrap_action == 'verify'
