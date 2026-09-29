@@ -53,10 +53,30 @@ outside the configured input path.
 ## Distributed traces
 
 The API, engine, MCP, and agent use OpenTelemetry. W3C trace context is stored on
-battle and decision rows so workers can continue it after queue claims. The
+battle and decision rows so workers can connect their spans after queue claims. The
 collector accepts OTLP and exports traces to Tempo. In Grafana Explore, select
 **Tempo** and search for the relevant service or trace ID. Host agents need an
 OTLP endpoint reachable from the host to export their own spans.
+
+A battle is traced as three linked parts, all always sampled; other spans use
+`OTEL_TRACES_SAMPLER_ARG` (10% by default):
+
+1. **Creation:** the API server span for `POST /v1/battles`, including its
+   database insert.
+2. **Processing:** `battlefield.engine.process`, a new root per battle attempt
+   with a span link to the creating request. It contains one
+   `battlefield.engine.decision_window` span per production window and the
+   engine's database operations. A battle outlives its request, so the attempt is
+   its own trace rather than a child.
+3. **Decisions:** `battlefield.agent.decision`, a new root per model decision
+   (with a stable ID for Langfuse) linked to its decision window. It contains the
+   provider calls (`battlefield.model.api_call`) and the MCP tool spans.
+
+To follow a battle end to end, search TraceQL for
+`{ span."battlefield.battle_id" = "<battle ID>" }` to find the engine trace, then
+open the span links: back to the creating request, and from each decision
+window to its decisions (`{ span."langfuse.trace.metadata.battle_id" = "<battle ID>" }`
+lists them directly).
 
 See [`internal/telemetry/tracing.go`](../../backend/internal/telemetry/tracing.go)
 for environment configuration and instrumentation, and the
