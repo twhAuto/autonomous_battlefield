@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Review a committed change with the other CLI; save evidence and optionally comment on a PR; never merge."""
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import io
 import json
@@ -36,6 +37,11 @@ IDs (F1, F2, etc.) and preserve prior IDs. End with one of: AGREED (no unresolve
 supported findings), CHANGES_REQUESTED, or NEEDS_USER_DECISION. Explain your choice;
 do not agree merely to end the discussion. Agreement is advisory, not approval.
 """
+
+
+# Change reviewer models here; commands, metadata and usage accounting follow.
+REVIEWERS = {"claude": {"model": "opus", "reasoning_effort": "provider default"},
+             "codex": {"model": "gpt-6-astra", "reasoning_effort": "medium"}}
 
 
 def git(repo, *args):
@@ -79,7 +85,7 @@ def prepare(repo, base, head, destination, previous_head=None):
 
 def command(reviewer, executable, snapshot, report):
     if reviewer == "claude":
-        return [executable, "-p", "--model", "opus", "--restricted", "--tools", "Read,Glob,Grep",
+        return [executable, "-p", "--model", REVIEWERS["claude"]["model"], "--restricted", "--tools", "Read,Glob,Grep",
                 "--allowedTools", "Read,Glob,Grep", "--permission-mode", "dontAsk",
                 "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
                 "--setting-sources", "", "--settings", '{"disableAllHooks":true}',
@@ -89,8 +95,9 @@ def command(reviewer, executable, snapshot, report):
     runtime = Path(executable).resolve().parent
     if Path(executable).resolve().suffix == ".js" and runtime.name == "bin":
         runtime = runtime.parent
-    return [executable, "exec", "--model", "gpt-6-astra",
-            "-c", 'model_reasoning_effort="medium"',
+    codex = REVIEWERS["codex"]
+    return [executable, "exec", "--json", "--model", codex["model"],
+            "-c", f'model_reasoning_effort="{codex["reasoning_effort"]}"',
             "-c", 'default_permissions="review"',
             "-c", 'permissions.review.filesystem={":minimal"="read",":workspace_roots"="read",'
                   + json.dumps(str(runtime)) + '="read"}',
@@ -146,6 +153,99 @@ def claude_report(raw):
         raise RuntimeError("Claude returned no review")
     return text
 
+def claude_usage(raw):
+    # Anthropic counts cache reads/writes apart from input; fold them in so
+    # input_tokens means all prompt tokens for both reviewers.
+    result = json.loads(raw)
+    usage = result.get("usage") or {}
+    cached = usage.get("cache_read_input_tokens", 0)
+    counts = {"input_tokens": usage.get("input_tokens", 0) + usage.get("cache_creation_input_tokens", 0) + cached,
+              "cached_input_tokens": cached, "output_tokens": usage.get("output_tokens", 0),
+              "source": "claude result"}
+    if isinstance(result.get("total_cost_usd"), (int, float)):
+        counts["cost_usd"] = result["total_cost_usd"]
+    if result.get("modelUsage"):
+        counts["models"] = sorted(result["modelUsage"])
+    return counts
+
+
+def codex_usage(stdout, stderr):
+    counts = {}
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict) and event.get("type") == "turn.completed" and isinstance(event.get("usage"), dict):
+            for key in ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens"):
+                counts[key] = counts.get(key, 0) + event["usage"].get(key, 0)
+    if counts:
+        return counts | {"source": "codex events"}
+    # Runs before --json only printed Codex's own total to stderr.
+    match = re.search(r"^tokens used\n([\d,]+)\s*$", stderr, re.MULTILINE)
+    return {"total_tokens": int(match.group(1).replace(",", "")), "source": "codex stderr total"} if match else None
+
+
+def reviewer_usage(reviewer, output):
+    """Token usage from the reviewer's own logs, or None when it reported none."""
+    def read(name):
+        path = output / name
+        return path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+    try:
+        if reviewer == "claude":
+            return claude_usage(read("stdout.log"))
+        return codex_usage(read("stdout.log"), read("stderr.log"))
+    except ValueError:
+        return None
+
+
+def usage_rows(directory):
+    rows = {}
+    for path in sorted(directory.glob("*/metadata.json")):
+        try:
+            metadata = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if metadata.get("status") not in ("completed_advisory_review", "failed"):
+            continue
+        usage = metadata.get("usage") or reviewer_usage(metadata.get("reviewer"), path.parent) or {}
+        started = metadata.get("started_at") or datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
+        key = (started[:7], metadata.get("reviewer", "?"), metadata.get("model", "?"), metadata.get("reasoning_effort", "?"))
+        row = rows.setdefault(key, {"reviews": 0, "prs": set(), "input": 0, "cached": 0, "output": 0,
+                                    "total": 0, "reported": 0, "total_only": 0,
+                                    "unknown": 0, "cost": 0.0})
+        row["reviews"] += 1
+        row["prs"].add(metadata.get("pr_url", "").rsplit("/", 1)[-1] or path.parent.name)
+        if "input_tokens" in usage:
+            row["input"] += usage["input_tokens"]
+            row["cached"] += usage.get("cached_input_tokens", 0)
+            row["output"] += usage.get("output_tokens", 0)
+            row["total"] += usage["input_tokens"] + usage.get("output_tokens", 0)
+        elif "total_tokens" in usage:
+            row["reported"] += usage["total_tokens"]
+            row["total_only"] += 1
+        else:
+            row["unknown"] += 1
+        row["cost"] += usage.get("cost_usd", 0)
+    return rows
+
+
+def print_usage(directory):
+    rows = usage_rows(directory)
+    print(f"{'month':<8} {'reviewer':<8} {'model / effort':<30} {'reviews':>7} {'PRs':>4} "
+          f"{'input':>12} {'cached':>12} {'output':>10} {'total':>12} {'old total*':>11} {'cost':>8}")
+    for (month, reviewer, model, effort), row in sorted(rows.items()):
+        cost = f"${row['cost']:.2f}" if row["cost"] else "-"
+        print(f"{month:<8} {reviewer:<8} {model + ' / ' + effort:<30} {row['reviews']:>7} {len(row['prs']):>4} "
+              f"{row['input']:>12,} {row['cached']:>12,} {row['output']:>10,} {row['total']:>12,} {row['reported']:>11,} {cost:>8}")
+    total_only = sum(row["total_only"] for row in rows.values())
+    unknown = sum(row["unknown"] for row in rows.values())
+    if total_only:
+        print(f"* {total_only} older Codex review(s) saved only Codex's printed total, which may exclude cached input; "
+              "it is kept apart from total (input + output).")
+    if unknown:
+        print(f"{unknown} review(s) recorded no usage.")
+    print("Cost is shown only where the CLI reports it (Claude); subscription use is not billed per token.")
 
 
 def gh(repo, *args):
@@ -269,18 +369,25 @@ def publish_and_record(repo, number, output, metadata):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--author", choices=("codex", "claude"), required=True)
+    parser.add_argument("--author", choices=("codex", "claude"))
     parser.add_argument("--base", default="origin/dev")
     parser.add_argument("--head", default="HEAD")
     parser.add_argument("--repo", type=Path, default=Path.cwd())
-    parser.add_argument("--output", type=Path, required=True, help="New private report directory outside the repository")
+    parser.add_argument("--output", type=Path, help="New private report directory outside the repository")
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--dry-run", action="store_true", help="Prepare evidence without calling a model")
     parser.add_argument("--pr", type=int, help="Publish the completed report to this PR using gh")
     parser.add_argument("--publish-only", action="store_true", help="Publish an existing completed report without rerunning the model")
     parser.add_argument("--allow-extra-round", action="store_true",
                         help="Run one extra PR round only after explicit user approval")
+    parser.add_argument("--usage", type=Path, metavar="REVIEWS_DIR",
+                        help="Summarize token usage of the reviews saved under this directory, then exit")
     args = parser.parse_args()
+    if args.usage:
+        print_usage(args.usage)
+        return
+    if not args.author or not args.output:
+        parser.error("--author and --output are required")
     os.umask(0o077)
     root = Path(git(args.repo, "rev-parse", "--show-toplevel").decode().strip())
     output = args.output.resolve()
@@ -311,8 +418,8 @@ def main():
     output.mkdir(parents=True, exist_ok=False, mode=0o700)
     metadata = {"author": args.author, "reviewer": reviewer, "status": "preparing",
                 "working_tree_changes_excluded": dirty,
-                "model": "opus" if reviewer == "claude" else "gpt-6-astra",
-                "reasoning_effort": "provider default" if reviewer == "claude" else "medium"}
+                "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                **REVIEWERS[reviewer]}
     try:
         with tempfile.TemporaryDirectory(prefix="battlefield-review-") as temporary:
             snapshot = Path(temporary) / "source"
@@ -359,6 +466,9 @@ def main():
         metadata["error"] = str(error)
         raise
     finally:
+        # A failed or timed-out run still spent tokens; record what the CLI reported.
+        if (output / "stdout.log").exists():
+            metadata["usage"] = reviewer_usage(reviewer, output)
         (output / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     if args.pr is not None:
         publish_and_record(root, args.pr, output, metadata)

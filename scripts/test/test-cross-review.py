@@ -100,6 +100,98 @@ class CrossReviewTests(unittest.TestCase):
         self.assertIn("--ignore-user-config", codex)
         self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", codex)
 
+    def test_reviewer_settings_drive_commands(self):
+        settings = {"claude": {"model": "sonnet", "reasoning_effort": "provider default"},
+                    "codex": {"model": "gpt-next", "reasoning_effort": "high"}}
+        with mock.patch.dict(review.REVIEWERS, settings):
+            claude = review.command("claude", "/bin/claude", Path("/tmp/snapshot"), Path("/tmp/report"))
+            codex = review.command("codex", "/bin/codex", Path("/tmp/snapshot"), Path("/tmp/report"))
+        self.assertEqual(claude[claude.index("--model") + 1], "sonnet")
+        self.assertEqual(codex[codex.index("--model") + 1], "gpt-next")
+        self.assertIn('model_reasoning_effort="high"', codex)
+        self.assertIn("--json", codex)  # Usage comes from Codex's turn.completed events.
+
+    def test_usage_is_read_from_each_reviewer_log(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp)
+            events = [{"type": "thread.started"}, "not json",
+                      {"type": "turn.completed", "usage": {"input_tokens": 100, "cached_input_tokens": 60,
+                                                          "output_tokens": 7, "reasoning_output_tokens": 3}}]
+            (output / "stdout.log").write_text("\n".join(e if isinstance(e, str) else json.dumps(e) for e in events))
+            self.assertEqual(review.reviewer_usage("codex", output),
+                             {"input_tokens": 100, "cached_input_tokens": 60, "output_tokens": 7,
+                              "reasoning_output_tokens": 3, "source": "codex events"})
+            (output / "stdout.log").write_text("plain report\n")
+            (output / "stderr.log").write_text("thinking\ntokens used\n63,528\n")
+            self.assertEqual(review.reviewer_usage("codex", output),
+                             {"total_tokens": 63528, "source": "codex stderr total"})
+            (output / "stderr.log").write_text("")
+            self.assertIsNone(review.reviewer_usage("codex", output))
+            (output / "stdout.log").write_text(json.dumps({
+                "subtype": "success", "result": "ok", "total_cost_usd": 0.42,
+                "usage": {"input_tokens": 5, "cache_creation_input_tokens": 20, "cache_read_input_tokens": 300,
+                          "output_tokens": 40},
+                "modelUsage": {"claude-opus-5-5": {}}}))
+            self.assertEqual(review.reviewer_usage("claude", output),
+                             {"input_tokens": 325, "cached_input_tokens": 300, "output_tokens": 40,
+                              "source": "claude result", "cost_usd": 0.42, "models": ["claude-opus-5-5"]})
+            (output / "stdout.log").write_text("not json")
+            self.assertIsNone(review.reviewer_usage("claude", output))
+
+    def test_usage_summary_groups_by_month_and_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            reviews = Path(tmp)
+            def saved(name, metadata, stderr=""):
+                (reviews / name).mkdir()
+                (reviews / name / "metadata.json").write_text(json.dumps(metadata))
+                (reviews / name / "stderr.log").write_text(stderr)
+            codex = {"reviewer": "codex", "model": "gpt-6-astra", "reasoning_effort": "medium",
+                     "started_at": "2026-10-01T00:00:00+00:00"}
+            saved("pr1-codex-1", codex | {"status": "completed_advisory_review", "pr_url": "https://x/pull/1",
+                                          "usage": {"input_tokens": 100, "cached_input_tokens": 60, "output_tokens": 7}})
+            saved("pr1-codex-2", codex | {"status": "failed", "pr_url": "https://x/pull/1",
+                                          "usage": {"input_tokens": 50, "output_tokens": 3}})
+            saved("pr2-codex-1", codex | {"status": "completed_advisory_review"}, "tokens used\n1,000\n")
+            saved("pr3-codex-1", codex | {"status": "completed_advisory_review"})
+            saved("dry", codex | {"status": "dry_run_not_reviewed", "usage": {"input_tokens": 999}})
+            saved("claude", {"reviewer": "claude", "model": "opus", "reasoning_effort": "provider default",
+                             "started_at": "2026-09-30T00:00:00+00:00", "status": "completed_advisory_review",
+                             "usage": {"input_tokens": 10, "output_tokens": 2, "cost_usd": 0.5}})
+            (reviews / "broken").mkdir()
+            (reviews / "broken" / "metadata.json").write_text("{")
+            rows = review.usage_rows(reviews)
+            self.assertEqual(set(rows), {("2026-10", "codex", "gpt-6-astra", "medium"),
+                                         ("2026-09", "claude", "opus", "provider default")})
+            astra = rows[("2026-10", "codex", "gpt-6-astra", "medium")]
+            self.assertEqual((astra["reviews"], len(astra["prs"]), astra["input"], astra["cached"], astra["output"]),
+                             (4, 3, 150, 60, 10))
+            self.assertEqual((astra["total"], astra["reported"], astra["total_only"], astra["unknown"]), (160, 1000, 1, 1))
+            self.assertEqual(rows[("2026-09", "claude", "opus", "provider default")]["cost"], 0.5)
+            printed = io.StringIO()
+            with mock.patch.object(sys, "argv", ["review", "--usage", str(reviews)]), contextlib.redirect_stdout(printed):
+                review.main()
+            self.assertIn("gpt-6-astra / medium", printed.getvalue())
+            self.assertIn("$0.50", printed.getvalue())
+
+    def test_usage_is_recorded_even_when_the_review_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            output = Path(tmp) / "report"
+            def reviewer_ran(argv, prompt, cwd, timeout, stdout, stderr):
+                stdout.write_text(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 9, "output_tokens": 1}}))
+                raise RuntimeError("Reviewer exited 1; inspect private stderr.log")
+            arguments = ["review", "--author", "claude", "--repo", str(root), "--output", str(output)]
+            revisions = {"head": "h", "base": "b", "merge_base": "m"}
+            with mock.patch.object(sys, "argv", arguments), mock.patch.object(review, "git", side_effect=[str(root).encode(), b""]), mock.patch.object(review.shutil, "which", return_value="/bin/codex"), mock.patch.object(review, "prepare", return_value=(revisions, b"diff")), mock.patch.object(review, "check_codex_version"), mock.patch.object(review, "run_process", side_effect=reviewer_ran):
+                with self.assertRaisesRegex(RuntimeError, "exited 1"):
+                    review.main()
+            saved = json.loads((output / "metadata.json").read_text())
+            self.assertEqual(saved["status"], "failed")
+            self.assertEqual((saved["model"], saved["reasoning_effort"]), ("gpt-6-astra", "medium"))
+            self.assertRegex(saved["started_at"], r"^\d{4}-\d{2}-\d{2}T")
+            self.assertEqual(saved["usage"]["input_tokens"], 9)
+
     def test_failed_or_empty_claude_result_is_not_a_pass(self):
         for result in ({"is_error": True, "subtype": "success", "result": "oops"},
                        {"subtype": "error_max_turns", "result": "partial"},
@@ -251,6 +343,11 @@ class CrossReviewTests(unittest.TestCase):
                 with self.subTest(extra=extra), mock.patch.object(sys, "argv", base_args + extra), mock.patch.object(review, "git", return_value=str(root).encode()), contextlib.redirect_stderr(io.StringIO()):
                     with self.assertRaises(SystemExit):
                         review.main()
+            for missing in (base_args[:1] + base_args[3:], base_args[:5]):  # No --author; no --output.
+                with self.subTest(missing=missing), mock.patch.object(sys, "argv", missing), contextlib.redirect_stderr(io.StringIO()) as errors:
+                    with self.assertRaises(SystemExit):
+                        review.main()
+                    self.assertIn("--author and --output are required", errors.getvalue())
             output.mkdir()
             (output / "metadata.json").write_text(json.dumps({"author": "claude"}))
             with mock.patch.object(sys, "argv", base_args + ["--pr", "1", "--publish-only"]), mock.patch.object(review, "git", return_value=str(root).encode()), contextlib.redirect_stderr(io.StringIO()):
