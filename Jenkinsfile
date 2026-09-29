@@ -103,7 +103,8 @@ pipeline {
                                     sh 'npm test -- --coverage'
                                     sh 'npm run build'
                                     sh 'npx playwright install chromium'
-                                    sh 'npm run test:e2e'
+                                    // Executors share the host: serve Playwright on a free port, retrying only a lost port race.
+                                    sh '../scripts/test/run-e2e.sh'
                                     // Browser-test evidence must survive the run; an empty archive would hide it.
                                     sh 'test -s playwright-report/index.html'
                                 }
@@ -207,7 +208,8 @@ pipeline {
                                     sh 'npm test -- --coverage'
                                     sh 'npm run build'
                                     sh 'npx playwright install chromium'
-                                    sh 'npm run test:e2e'
+                                    // Executors share the host: serve Playwright on a free port, retrying only a lost port race.
+                                    sh '../scripts/test/run-e2e.sh'
                                     // Browser-test evidence must survive the run; an empty archive would hide it.
                                     sh 'test -s playwright-report/index.html'
                                 }
