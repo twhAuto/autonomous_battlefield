@@ -52,13 +52,20 @@ if [[ ! -f "${ca_bundle}" || ! -r "${ca_bundle}" || ! -s "${ca_bundle}" ]]; then
 fi
 ca_bundle="$(realpath -- "${ca_bundle}")"
 
+# k6 rejects duration combined with stages, so a ramp replaces the fixed VU count.
+if [[ -n "${K6_STAGES:-}" ]]; then
+  load_shape=(-e K6_STAGES)
+else
+  load_shape=(-e K6_VUS="${K6_VUS:-3}" -e K6_DURATION="${K6_DURATION:-30s}")
+fi
+
 # The kind gateway is published on host loopback, not the Docker bridge.
 docker run --rm --network host --add-host battlefield.localhost:127.0.0.1 \
   --user "$(id -u):$(id -g)" \
   -v "${ca_bundle}:/certs/ca-bundle.crt:ro" \
   -e SSL_CERT_FILE=/certs/ca-bundle.crt \
   -e TARGET_URL="${TARGET_URL:-http://battlefield.localhost:8888}" \
-  -e K6_VUS="${K6_VUS:-3}" -e K6_DURATION="${K6_DURATION:-30s}" \
+  "${load_shape[@]}" -e K6_BATTLES -e K6_BATTLE_TICKS \
   -e ADMIN_USERNAME -e ADMIN_PASSWORD -e BATTLEFIELD_K6_SERVICE_FILE \
   "${service_mount[@]}" \
   -v "${project_dir}:/work:ro" -v "${report_dir}:/reports" \

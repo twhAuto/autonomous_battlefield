@@ -41,9 +41,18 @@ const mounts = values('-v');
 let reportDir, reports;
 if ('TARGET_URL' in env) {
   for (const [name, fallback] of Object.entries({
-    TARGET_URL: 'http://battlefield.localhost:8888', K6_VUS: '3', K6_DURATION: '30s',
-    ADMIN_USERNAME: '', ADMIN_PASSWORD: '',
+    TARGET_URL: 'http://battlefield.localhost:8888',
+    ADMIN_USERNAME: '', ADMIN_PASSWORD: '', K6_BATTLES: '', K6_BATTLE_TICKS: '',
   })) assert.equal(env[name], expected(name, fallback));
+  // k6 rejects duration combined with stages.
+  if (process.env.K6_STAGES) {
+    assert.equal(env.K6_STAGES, process.env.K6_STAGES);
+    assert.ok(!('K6_VUS' in env) && !('K6_DURATION' in env));
+  } else {
+    assert.equal(env.K6_VUS, expected('K6_VUS', '3'));
+    assert.equal(env.K6_DURATION, expected('K6_DURATION', '30s'));
+    assert.ok(!('K6_STAGES' in env));
+  }
   assert.ok(args.includes('--summary-export=/reports/k6-summary.json'));
   assert.equal(args.at(-1), '/work/' + expected('EXPECTED_SCENARIO', 'tests/performance/k6-smoke.js'));
   reportDir = mounts.find((m) => m.endsWith(':/reports')).slice(0, -':/reports'.length);
@@ -72,7 +81,7 @@ process.exit(Number(expected('SCANNER_EXIT', '0')));
 STUB
 chmod +x "${test_dir}/bin/docker"
 export PATH="${test_dir}/bin:${PATH}"
-unset TARGET_URL ZAP_TARGET_URL K6_VUS K6_DURATION ADMIN_USERNAME ADMIN_PASSWORD ZAP_SPIDER_MINUTES SCANNER_EXIT EXPECTED_SCENARIO
+unset TARGET_URL ZAP_TARGET_URL K6_VUS K6_DURATION K6_STAGES K6_BATTLES K6_BATTLE_TICKS ADMIN_USERNAME ADMIN_PASSWORD ZAP_SPIDER_MINUTES SCANNER_EXIT EXPECTED_SCENARIO
 
 unset K6_CA_BUNDLE
 bash "${fixture}/scripts/perf/run-k6.sh"
@@ -90,10 +99,11 @@ bash "${fixture}/scripts/security/zap-baseline.sh"
 for report in json md html; do
   [[ -s "${fixture}/artifacts/security/zap/zap-report.${report}" ]]
 done
-TARGET_URL=http://custom.example:9000 K6_VUS=5 K6_DURATION=2s \
+TARGET_URL=http://custom.example:9000 K6_VUS=5 K6_DURATION=2s K6_BATTLES=1 K6_BATTLE_TICKS=90 \
   ADMIN_USERNAME=test ADMIN_PASSWORD='dummy password' \
   EXPECTED_SCENARIO='tests/performance/custom scenario.js' \
   bash "${fixture}/scripts/perf/run-k6.sh" 'tests/performance/custom scenario.js'
+K6_STAGES=10s:5,10s:0 K6_DURATION=2s bash "${fixture}/scripts/perf/run-k6.sh"
 ZAP_TARGET_URL=http://custom.example:9000 ZAP_SPIDER_MINUTES=1 \
   bash "${fixture}/scripts/security/zap-baseline.sh"
 
