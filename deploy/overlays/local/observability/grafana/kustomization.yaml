@@ -17,3 +17,4 @@ configMapGenerator:
     files:
       - battlefield-overview.json
       - kubernetes-workloads.json
+      - battle-traces.json

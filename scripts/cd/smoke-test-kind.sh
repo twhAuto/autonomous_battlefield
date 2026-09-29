@@ -356,6 +356,19 @@ fi
 
 curl --fail --silent --max-time 2 \
   --noproxy '*' \
+  --resolve "${grafana_host}:${gateway_port}:127.0.0.1" \
+  --get \
+  --data-urlencode 'query=Battle Traces' \
+  --output "${runtime_dir}/grafana-traces-search.json" \
+  "http://${grafana_host}:${gateway_port}/api/search"
+if ! grep -q '"uid":"battle-traces"' \
+  "${runtime_dir}/grafana-traces-search.json"; then
+  echo "Grafana did not provision the Battle Traces dashboard." >&2
+  exit 1
+fi
+
+curl --fail --silent --max-time 2 \
+  --noproxy '*' \
   --resolve "${kibana_host}:${gateway_port}:127.0.0.1" \
   --output "${runtime_dir}/kibana-data-views.json" \
   "http://${kibana_host}:${gateway_port}/api/data_views"

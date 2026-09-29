@@ -53,10 +53,36 @@ outside the configured input path.
 ## Distributed traces
 
 The API, engine, MCP, and agent use OpenTelemetry. W3C trace context is stored on
-battle and decision rows so workers can continue it after queue claims. The
+battle and decision rows so workers can connect their spans after queue claims. The
 collector accepts OTLP and exports traces to Tempo. In Grafana Explore, select
 **Tempo** and search for the relevant service or trace ID. Host agents need an
 OTLP endpoint reachable from the host to export their own spans.
+
+A battle is traced as three linked parts, all always sampled; other spans use
+`OTEL_TRACES_SAMPLER_ARG` (10% by default):
+
+1. **Creation:** the API server span for `POST /v1/battles`, including its
+   database insert.
+2. **Processing:** `battlefield.engine.process`, a new root per battle attempt
+   with a span link to the creating request. It contains one
+   `battlefield.engine.decision_window` span per production window and the
+   engine's database operations. A battle outlives its request, so the attempt is
+   its own trace rather than a child.
+3. **Decisions:** `battlefield.agent.decision`, a new root per model decision
+   (with a stable ID for Langfuse) linked to its decision window. It contains the
+   provider calls (`battlefield.model.api_call`) and the MCP tool spans.
+
+Links point from the later trace to the earlier one: the engine trace links to
+the creating request, and each decision links to its decision window. To follow a
+battle end to end in TraceQL:
+
+- `{ span."battlefield.battle_id" = "<battle ID>" }` finds the engine trace; its
+  root's link opens the creating request.
+- `{ span."langfuse.trace.metadata.battle_id" = "<battle ID>" }` lists the
+  decision traces; each root's link opens its decision window in the engine trace.
+
+Tempo's search results can omit leading zeros from trace IDs; pad them to 32 hex
+characters before comparing them with link targets.
 
 See [`internal/telemetry/tracing.go`](../../backend/internal/telemetry/tracing.go)
 for environment configuration and instrumentation, and the
@@ -157,6 +183,110 @@ The multi-window availability alerts reduce noise from a brief bad sample while
 still detecting both acute and sustained failures. Their thresholds are based
 on the proposed 99.9% objective (`1 - 0.999 = 0.001`).
 
+The availability recording rule treats a missing 5xx series as zero
+(`or vector(0)`). Without it, a healthy API that has never returned a 5xx has no
+error series, the ratio is an empty vector, and the SLI shows no data.
+`scripts/test/test-prometheus-rules.sh` runs `promtool` unit tests for both the
+healthy and the failing case.
+
+## Load and failure evidence
+
+Load tests and failure drills run on demand against the dev Kind cluster, not on
+a schedule; production is not kept running. Record each run's date, revision,
+and results here so the SLO targets above stay tied to evidence.
+
+### How to run
+
+```bash
+# Representative load: 20 viewers for 10 minutes against two scripted battles.
+# Set the load explicitly; run-k6.sh otherwise applies its 3-viewer, 30 s smoke defaults.
+ADMIN_USERNAME=... ADMIN_PASSWORD=... DEPLOY_ENV=dev K6_VUS=20 K6_DURATION=10m \
+  ./scripts/perf/run-k6.sh tests/performance/k6-representative.js
+
+# Saturation: K6_STAGES replaces the fixed viewer count and duration.
+ADMIN_USERNAME=... ADMIN_PASSWORD=... DEPLOY_ENV=dev \
+  K6_STAGES=30s:100,60s:100,30s:300,60s:300,30s:600,60s:600,20s:0 \
+  ./scripts/perf/run-k6.sh tests/performance/k6-representative.js
+
+# Failure drills: requires BF_DISPOSABLE=1 in the dev profile; restore it afterwards.
+DEPLOY_ENV=dev RUN_DESTRUCTIVE_KIND_DRILLS=I_UNDERSTAND_THIS_RESTARTS_DISPOSABLE_KIND_WORKLOADS \
+  ./scripts/ops/run-kind-failure-drills.sh
+```
+
+For an AI outage, set `runtime_policy.ai_enabled` to `false` in the dev
+database, run a battle with one model controller, and restore it to `true`.
+New model decisions are stored as `failed` with `ai_disabled_or_budget` and are
+never claimed, so no provider is called even for an API profile.
+
+`tests/performance/k6-representative.js` queues the admitted number of
+scripted battles (two per person) and replays the battle page: each viewer
+polls status, the next event page, and decision history once a second, and
+browses history once the battle settles. It records two battle metrics from
+server timestamps: `battle_queue_wait_seconds` (queued to started) and
+`battle_pace_ratio` (run time divided by ticks; 1.0 is one tick per second).
+`battles_completed` must be 100%, so one failed or unfinished battle fails the
+run even when thousands of polling checks pass.
+Run the drills while the representative load runs, so the drill shows its
+effect on viewers and on a live battle.
+
+The drill script deletes each workload's pods and fails unless replacement pods
+with new UIDs become Ready, so a selector that matches nothing cannot report a
+passed drill. Its `artifacts/failure-drills/summary.json` records the recovery
+seconds for each drill.
+
+### 2026-09-29 results (dev Kind, `8cc7c07`)
+
+Single-node Kind on one workstation; k6 ran on the same host, so saturation
+figures are a lower bound.
+
+| Run | Load | Result |
+| --- | --- | --- |
+| Representative | 20 viewers, 10 min, about 57 req/s | 34,138 requests, 0 failed. k6 p95 7.9 ms; server p95 9.3 ms, p99 10 ms. API pods about 0.09 cores each, PostgreSQL 0.12. |
+| Saturation, 100 viewers | 204 req/s | Server p95 5 ms, 100% under 500 ms. |
+| Saturation, 300 viewers | 408 req/s | Server p95 787 ms, 88.5% under 500 ms. PostgreSQL CPU-throttled at its 500m limit. |
+| Saturation, 600 viewers | 516 req/s | Server p95 975 ms, 0.3% under 500 ms. 0 failed requests out of 108,441. |
+| Engine pod restart | Live battle | Replacement Ready in 3 s. The battle was requeued and resumed as a new attempt. |
+| Engine process crash (SIGKILL) | Live battle, second battle queued | Process restarted in 1 s, but the orphaned battle was reclaimed after 91.5 s: the worker first claimed the queued battle and ran it to completion. |
+| PostgreSQL restart | Live battle and 6 viewers | Replacement Ready in 1 s. 9 of 6,627 viewer requests failed (0.13%). The engine process exited on the lost connection and restarted; the battle, already on its third attempt after the two engine drills, failed with `attempts_exhausted`. |
+| MCP outage | 30 s at zero replicas | Recovered in 1 s. Scripted battles do not use MCP. |
+| AI outage (`runtime_policy.ai_enabled=false`) | Model-vs-scripted battle, 60 ticks | Completed in 60 s with no agent executions. All 7 model windows fell back: scripted baseline for the opening and first window, then the previous plan. |
+
+### Capacity findings
+
+- **One battle at a time per engine.** The worker runs a claimed battle to
+  completion before claiming another, and the engine runs one replica. Admitted
+  battles queue: in the runs above the second battle waited 45 to 125 s. With
+  admission at four unfinished battles globally and 800-tick battles, the
+  fourth battle can wait about 40 minutes, inside the one-hour expiry. Adding
+  engine concurrency needs its own load and failover test first.
+- **Crash recovery waits for the current battle.** An orphaned battle is
+  reclaimable only after its 30 s lease expires, and only when the worker next
+  claims. A queued battle claimed first delays it by a full battle.
+- **Reclaimed battles replay from tick 0.** Each reclaim restarts the
+  simulation, so a disrupted battle took 1.38 times its tick count to finish.
+- **Graceful handoffs consume attempts.** Every claim increments the attempt,
+  including a requeue after a clean shutdown, and `maxAttempts` is 3. Three
+  engine restarts during one battle (for example, rolling deploys) fail it with
+  `attempts_exhausted`, as the drills above did.
+- **A PostgreSQL restart restarts the engine.** The claim loop treats a lost
+  connection as fatal, so the engine exits and Kubernetes restarts it; the
+  running battle is then reclaimed as a new attempt.
+- **PostgreSQL CPU is the API bottleneck.** API pods stayed under 0.3 cores
+  while PostgreSQL reached its 500m limit at about 400 req/s. Raise its limit
+  before adding API replicas.
+- **The API HPA cannot scale in Kind.** The cluster has no metrics-server, so
+  the HPA reports `cpu: <unknown>` and stays at two replicas.
+
+### Calibrated targets
+
+The measured API latency (p99 10 ms at 57 req/s, 100% under 500 ms up to about
+200 req/s) leaves the proposed 95%-under-500-ms objective with wide headroom.
+The objectives stay as proposed until real traffic accumulates, but the
+following capacity assumptions now come from measurement: about 100 concurrent
+viewers (200 req/s) within the latency objective on one Kind node, one running
+battle per engine replica, and battle pace within 1.1 of its tick count when
+undisturbed (measured 1.001 to 1.018, including under 600 viewers).
+
 ## Run the local stack
 
 After [dev environment registration and secret preparation](environments.md#wsl-setup-and-normal-use),
@@ -167,8 +297,12 @@ DEPLOY_COMPONENTS=all SMOKE_TEST_OBSERVABILITY=1 ./deploy-local.sh
 ```
 
 Visit `http://grafana.localhost:8888` and open **Autonomous Battlefield /
-Autonomous Battlefield Overview** for application SLIs or **Autonomous
-Battlefield / Kubernetes Workloads** for pod state and resource usage. Visit
+Autonomous Battlefield Overview** for application SLIs, **Autonomous
+Battlefield / Kubernetes Workloads** for pod state and resource usage, or
+**Autonomous Battlefield / Battle Traces** to follow one battle's traces. The
+anonymous local user is a Viewer, which Grafana does not allow into Explore; the
+Battle Traces dashboard lists a battle's engine and decision traces and draws the
+selected trace, so no Editor access is needed. Visit
 `http://kibana.localhost:8888`, open **Discover**, and select **Autonomous
 Battlefield Logs** for logs. The deployment job creates that data view before
 the observability stage is considered complete.

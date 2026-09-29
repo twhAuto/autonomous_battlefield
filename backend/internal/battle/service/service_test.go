@@ -52,6 +52,31 @@ func TestCreateBattleResolvesFactionsAndPersistsSnapshot(t *testing.T) {
 	}
 }
 
+func TestCreateBattleExemptsOnlyAdminFromAllowances(t *testing.T) {
+	for _, tc := range []struct {
+		role authn.Role
+		want bool
+	}{{authn.Admin, true}, {authn.Developer, false}, {authn.Player, false}, {authn.CI, false}} {
+		battleRepo := &fakeBattleRepo{}
+		factions := &battleFactionRepo{factions: map[string]*faction.Faction{
+			"4db8d152-1e04-4d10-8824-859c6ed72878": {ID: "4db8d152-1e04-4d10-8824-859c6ed72878", Name: "Northwind"},
+			"41ac3a2f-3371-4de1-b0f6-70600fcd9052": {ID: "41ac3a2f-3371-4de1-b0f6-70600fcd9052", Name: "Verdant"},
+		}}
+		catalog := &fakeScenarioCatalog{resolved: game.Scenario{ID: "castle-siege-v1"}, digest: "digest"}
+		service := NewService(battleRepo, factions, catalog, 10_000)
+		ctx := authn.WithActor(context.Background(), authn.Actor{ID: "actor", Role: tc.role})
+		if _, err := service.CreateBattle(ctx, CreateBattleInput{
+			ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1",
+			Participants: scriptedParticipants(), TickCount: 100,
+		}); err != nil {
+			t.Fatalf("%s: CreateBattle() returned an error: %v", tc.role, err)
+		}
+		if battleRepo.created.AdmissionExempt != tc.want {
+			t.Fatalf("%s: AdmissionExempt = %v; want %v", tc.role, battleRepo.created.AdmissionExempt, tc.want)
+		}
+	}
+}
+
 func TestCreateBattleValidationAndDependencies(t *testing.T) {
 	valid := CreateBattleInput{
 		ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1",

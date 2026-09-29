@@ -628,7 +628,10 @@ and the private `friend_ai_usage` view. PostgreSQL admission serializes across A
 replicas: 20 battles/person/UTC day, 2 unfinished/person and 4 globally. Queued and
 running rows remain unfinished while paused. Generation admission retains its
 account lock and idempotency, with 10/day including queued jobs that later expire.
-Same-identity request retries reuse admission. Admin has the same limits.
+Same-identity request retries reuse admission. Admin battles are exempt from the
+battle allowances (migration `00016`: the API sets `admission_exempt` only for an
+Admin actor), but still count as unfinished for other identities because they use
+the same engine. Players, Developers and CI keep every limit.
 
 A battle receives at most 100 model execution claims, including retries, then the
 existing fallback resolves new windows. Disabling AI prevents new generation
@@ -1192,7 +1195,10 @@ from original input. Evaluation and tool responses use the same projection.
 
 ## 18. Optional Langfuse AI observability
 
-The agent worker starts a separate, fully sampled trace for each decision request.
+The agent worker starts a separate, fully sampled trace for each decision request,
+linked to the engine's `battlefield.engine.decision_window` span; battle creation
+and engine processing are also always sampled (see
+[distributed traces](../operations/observability.md#distributed-traces)).
 Stable request-derived trace/root IDs let the capability-scoped MCP server attach
 server-side tool observations even when a CLI does not propagate trace headers.
 API runners emit one generation per model attempt; CLI runners emit one aggregate

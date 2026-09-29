@@ -417,7 +417,8 @@ profile and a role allowed by the model access policy. Players require explicit
 approval for both API and CLI profiles; Admin can grant or revoke it per profile.
 
 Admission can return 429: 20 battles/person/day, 2 unfinished/person, 4 globally,
-10 background generations/person/day. Paused battles remain unfinished. Same request
+10 background generations/person/day. Admin battles skip the battle allowances but
+still count toward the global unfinished total for everyone else. Paused battles remain unfinished. Same request
 IDs reuse admitted work when inputs and identity match. Private worker APIs use a
 separate bearer credential and server-minted request capabilities, not Access cookies.
 

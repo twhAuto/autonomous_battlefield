@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -87,8 +88,32 @@ func ContextWithTrace(ctx context.Context, traceparent, tracestate string) conte
 	return otel.GetTextMapPropagator().Extract(ctx, carrier)
 }
 
-func StartConsumerSpan(ctx context.Context, name string, attributes ...attribute.KeyValue) (context.Context, trace.Span) {
-	return otel.Tracer(instrumentationName).Start(ctx, name, trace.WithSpanKind(trace.SpanKindConsumer), trace.WithAttributes(attributes...))
+// EngineProcessSpan names the root span of one battle attempt in the engine.
+const EngineProcessSpan = "battlefield.engine.process"
+
+// StartBattleProcess starts a battle attempt's engine trace as a new root linked to
+// the request that queued the battle. A battle outlives that request, and the sampler
+// keeps every battle trace even when the queuing request was not sampled.
+func StartBattleProcess(ctx context.Context, traceparent, tracestate string, attributes ...attribute.KeyValue) (context.Context, trace.Span) {
+	options := []trace.SpanStartOption{trace.WithNewRoot(), trace.WithSpanKind(trace.SpanKindConsumer), trace.WithAttributes(attributes...)}
+	if queued := trace.SpanContextFromContext(ContextWithTrace(ctx, traceparent, tracestate)); queued.IsValid() {
+		options = append(options, trace.WithLinks(trace.Link{SpanContext: queued}))
+	}
+	return otel.Tracer(instrumentationName).Start(ctx, EngineProcessSpan, options...)
+}
+
+// StartSpan starts an internal span under the current span.
+func StartSpan(ctx context.Context, name string, attributes ...attribute.KeyValue) (context.Context, trace.Span) {
+	return otel.Tracer(instrumentationName).Start(ctx, name, trace.WithAttributes(attributes...))
+}
+
+// EndSpan marks the span failed when err is non-nil, then ends it.
+func EndSpan(span trace.Span, err error) {
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	span.End()
 }
 
 // StartDatabaseSpan records the operation name without capturing SQL text,

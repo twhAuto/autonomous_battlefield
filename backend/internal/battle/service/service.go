@@ -57,6 +57,9 @@ type CreateBattleParams struct {
 	RequestedTicks   uint64
 	Traceparent      string
 	Tracestate       string
+	// AdmissionExempt skips the per-person and global battle allowances; only an
+	// Admin actor sets it.
+	AdmissionExempt bool
 }
 
 type BattleRun struct {
@@ -233,6 +236,7 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		RequestedTicks:   input.TickCount,
 		Traceparent:      traceparent,
 		Tracestate:       tracestate,
+		AdmissionExempt:  isAdmin(ctx),
 	})
 	if errors.Is(err, ErrBattleAlreadyExists) {
 		return s.replayCreate(ctx, input, digest)
@@ -427,6 +431,11 @@ type ResultCache interface {
 
 func cacheableResult(run *BattleRun, id string) bool {
 	return run != nil && run.ID == id && run.Status == "completed" && run.Result != nil
+}
+
+func isAdmin(ctx context.Context) bool {
+	a, ok := authn.ActorFromContext(ctx)
+	return ok && a.Role == authn.Admin
 }
 
 func (s *battleService) authorize(ctx context.Context, id string) error {

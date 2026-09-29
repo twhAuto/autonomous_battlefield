@@ -43,7 +43,13 @@ func DecisionContext(ctx context.Context, requestID string) context.Context {
 func StartDecision(ctx context.Context, requestID string) (context.Context, trace.Span) {
 	ctx = context.WithValue(ctx, decisionKey{}, requestID)
 	ctx = context.WithValue(ctx, decisionRootKey{}, true)
-	ctx, span := otel.Tracer(instrumentationName).Start(ctx, "battlefield.agent.decision", trace.WithNewRoot(), trace.WithAttributes(aiAttributes(ctx, "agent")...))
+	options := []trace.SpanStartOption{trace.WithNewRoot(), trace.WithAttributes(aiAttributes(ctx, "agent")...)}
+	// The decision keeps its own deterministic trace for Langfuse; a link leads back to
+	// the engine decision window that requested it.
+	if window := trace.SpanContextFromContext(ctx); window.IsValid() {
+		options = append(options, trace.WithLinks(trace.Link{SpanContext: window}))
+	}
+	ctx, span := otel.Tracer(instrumentationName).Start(ctx, "battlefield.agent.decision", options...)
 	return context.WithValue(ctx, decisionRootKey{}, false), span
 }
 
@@ -88,7 +94,13 @@ func DecisionTraceURL(requestID string) string {
 
 type decisionSampler struct{ fallback sdk.Sampler }
 
+// ShouldSample keeps every AI decision, battle-creation request, and battle attempt:
+// together they are low volume and form the end-to-end battle trace. Other spans use
+// the fallback ratio.
 func (s decisionSampler) ShouldSample(p sdk.SamplingParameters) sdk.SamplingResult {
+	if p.Name == EngineProcessSpan || battleCreation(p) {
+		return sdk.SamplingResult{Decision: sdk.RecordAndSample}
+	}
 	for _, a := range p.Attributes {
 		if a.Key == "langfuse.observation.type" {
 			return sdk.SamplingResult{Decision: sdk.RecordAndSample}
@@ -97,7 +109,25 @@ func (s decisionSampler) ShouldSample(p sdk.SamplingParameters) sdk.SamplingResu
 	return s.fallback.ShouldSample(p)
 }
 func (s decisionSampler) Description() string {
-	return "AI decisions always; " + s.fallback.Description()
+	return "AI decisions and battles always; " + s.fallback.Description()
+}
+
+// battleCreation matches the API server span for POST /v1/battles by the attributes
+// otelhttp sets when the span starts.
+func battleCreation(p sdk.SamplingParameters) bool {
+	if p.Kind != trace.SpanKindServer {
+		return false
+	}
+	var method, path string
+	for _, a := range p.Attributes {
+		switch a.Key {
+		case "http.request.method":
+			method = a.Value.AsString()
+		case "url.path":
+			path = a.Value.AsString()
+		}
+	}
+	return method == "POST" && path == "/v1/battles"
 }
 
 type decisionIDGenerator struct{}
