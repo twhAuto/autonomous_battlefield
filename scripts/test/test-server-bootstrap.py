@@ -9,6 +9,10 @@ import json
 import os
 from pathlib import Path
 import pwd
+import pty
+import select
+import signal
+import time
 import subprocess
 import sys
 import tempfile
@@ -56,6 +60,14 @@ class BootstrapTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             bootstrap.backup_candidate({'backup_uuid': 'backup-uuid'}, report)
 
+    def test_jenkins_temporary_paths_are_supported_without_shell_syntax(self):
+        path = '/tmp/build@tmp/secretFiles/credential'
+        self.assertEqual(bootstrap.safe_path(path), Path(path))
+        for invalid in ['/tmp/build@tmp/../secret', '/tmp/build@tmp/$(id)',
+                        '/tmp/build@tmp/`id`', '/tmp/build@tmp/{{secret}}']:
+            with self.subTest(path=invalid), self.assertRaises(ValueError):
+                bootstrap.safe_path(invalid)
+
     def test_private_files_and_publication_do_not_follow_links_or_overwrite(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'input'
@@ -87,6 +99,46 @@ class BootstrapTests(unittest.TestCase):
         with patch.object(bootstrap, 'remote_python', return_value=json.dumps(report).encode()):
             with self.assertRaisesRegex(ValueError, 'operator account'):
                 bootstrap.inspect_host(self.inventory(), local=True)
+
+    def test_unattended_vault_prompt_fails_before_import_or_install(self):
+        args = argparse.Namespace(vault_password_file=None, vault='/tmp/unused.vault')
+        with patch.object(bootstrap.sys.stdin, 'isatty', return_value=False), \
+                patch.object(bootstrap, 'private_file') as private, \
+                patch.object(bootstrap, 'tools_bin') as tools:
+            with self.assertRaisesRegex(ValueError, 'Vault prompt'):
+                bootstrap.seal(args, {})
+            with self.assertRaisesRegex(ValueError, 'Vault prompt'):
+                bootstrap.playbook(args, {}, {})
+        private.assert_not_called()
+        tools.assert_not_called()
+
+    def test_missing_backup_disk_is_reported_without_blocking_foundation_inspection(self):
+        report = {'machine_id': 'a' * 32, 'user': 'operator', 'os': 'ubuntu', 'version': '26.04',
+                  'disks': {'available': False}}
+        with patch.object(bootstrap, 'remote_python', return_value=json.dumps(report).encode()):
+            result = bootstrap.inspect_host(self.inventory(backup_uuid='12345678'))
+        self.assertFalse(result['backup_candidate']['usable'])
+        self.assertIn('lsblk', result['backup_candidate']['error'])
+
+    def test_registration_rejects_unsupported_target_and_rolls_back_partial_publication(self):
+        with self.assertRaisesRegex(ValueError, 'Ubuntu'):
+            bootstrap.validate_target(self.inventory(), {'user': 'operator', 'os': 'debian', 'version': '13'})
+        with tempfile.TemporaryDirectory() as directory:
+            inventory = Path(directory) / 'inventory.json'
+            manifest = Path(directory) / 'inputs.json'
+            original = bootstrap.write_new
+            def fail_manifest(path, content):
+                if path == manifest:
+                    raise PermissionError('fixture failure')
+                return original(path, content)
+            with patch.object(bootstrap, 'write_new', side_effect=fail_manifest):
+                with self.assertRaises(PermissionError):
+                    bootstrap.publish_registration(inventory, self.inventory(), manifest, {})
+            self.assertFalse(inventory.exists())
+            self.assertFalse(manifest.exists())
+            bootstrap.publish_registration(inventory, self.inventory(), manifest, {})
+            self.assertTrue(inventory.exists())
+            self.assertTrue(manifest.exists())
 
     def test_ssh_preserves_trust_and_never_copies_the_key(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -185,6 +237,10 @@ class AnsibleInputTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         credential = self.directory / 'config/inputs/application_env'
         self.assertEqual(credential.read_text(), self.secret)
+        recovered = (self.directory / 'state/bootstrap-inputs.vault').read_bytes()
+        self.assertEqual(recovered, self.vault.read_bytes())
+        self.assertTrue(recovered.startswith(b'$ANSIBLE_VAULT;'))
+        self.assertNotIn(self.secret.encode(), recovered)
         self.assertEqual(credential.stat().st_mode & 0o777, 0o600)
         self.assertFalse(Path('/tmp/ab125-must-not-execute').exists())
         result = self.run_play('--diff')
@@ -202,7 +258,62 @@ class AnsibleInputTests(unittest.TestCase):
         result = self.run_play('--diff')
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn('changed-secret', result.stdout + result.stderr)
+        self.assertIn('Conflicting imported inputs: application_env', result.stdout)
         self.assertEqual(credential.read_text(), self.secret)
+
+    def test_actual_ansible_vault_and_become_prompts_do_not_echo(self):
+        playbook = self.directory / 'prompt-test.json'
+        playbook.write_text(json.dumps([{'hosts': 'all', 'gather_facts': False, 'tasks': [
+            {'name': 'Load synthetic encrypted inputs', 'ansible.builtin.include_vars': {'file': str(self.vault)}, 'no_log': True},
+            {'name': 'Complete prompt check', 'ansible.builtin.debug': {'msg': 'PROMPTS_OK'}},
+        ]}]))
+        command = [str(self.binary / 'ansible-playbook'), '-i', 'localhost,', '-c', 'local',
+                   str(playbook), '--ask-vault-pass', '--ask-become-pass']
+        child, fd = pty.fork()
+        if child == 0:
+            class Lock:
+                @staticmethod
+                def poll(): return None
+            try:
+                bootstrap.run_playbook(command, Lock())
+                os._exit(0)
+            except BaseException:
+                os._exit(1)
+        output = b''
+        prompts = [b'BECOME password:', b'Vault password:']
+        answered = set()
+        status = None
+        deadline = time.monotonic() + 30
+        try:
+            while time.monotonic() < deadline:
+                ready, _, _ = select.select([fd], [], [], 0.2)
+                if ready:
+                    try:
+                        block = os.read(fd, 65536)
+                    except OSError:
+                        break
+                    if not block:
+                        break
+                    output += block
+                    for prompt in prompts:
+                        if prompt in output and prompt not in answered:
+                            os.write(fd, b'fixture-password-only\n')
+                            answered.add(prompt)
+                finished, status = os.waitpid(child, os.WNOHANG)
+                if finished:
+                    break
+            if len(answered) != 2 or b'PROMPTS_OK' not in output:
+                self.fail('Actual Ansible prompts did not complete: ' + output.decode(errors='replace'))
+            self.assertNotIn(b'fixture-password-only', output)
+        finally:
+            os.close(fd)
+            try:
+                finished, _ = os.waitpid(child, os.WNOHANG)
+                if not finished:
+                    os.kill(child, signal.SIGTERM)
+                    os.waitpid(child, 0)
+            except ChildProcessError:
+                pass
 
     def test_seal_imports_controller_and_host_files_and_refuses_overwrite(self):
         local = self.directory / 'local-secret'

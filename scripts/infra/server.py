@@ -23,7 +23,7 @@ def safe_path(value):
     if not isinstance(value, (str, Path)) or not str(value):
         raise ValueError('Expected a nonempty filesystem path')
     path = Path(value).expanduser().absolute()
-    if not re.fullmatch(r'/[A-Za-z0-9_./-]+', str(path)) or '..' in path.parts:
+    if not re.fullmatch(r'/[A-Za-z0-9_./@-]+', str(path)) or '..' in path.parts:
         raise ValueError('Paths must be absolute without spaces, escapes or parent traversals')
     return path
 
@@ -54,6 +54,22 @@ def write_new(path, content):
         os.link(temporary, path)
     finally:
         os.unlink(temporary)
+
+
+def publish_registration(inventory, data, manifest_path, manifest):
+    write_new(inventory, (json.dumps(data, indent=2) + '\n').encode())
+    created = inventory.lstat()
+    try:
+        write_new(manifest_path, (json.dumps(manifest, indent=2) + '\n').encode())
+    except OSError:
+        # Remove only the inventory this attempt created; preserve a concurrently replaced file.
+        try:
+            current = inventory.lstat()
+            if (current.st_dev, current.st_ino) == (created.st_dev, created.st_ino):
+                inventory.unlink()
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def validate_inventory(data):
@@ -134,15 +150,23 @@ def backup_candidate(data, report):
             'mountpoints': node.get('mountpoints'), 'contents_verified': False}
 
 
-def inspect_host(data, local=False):
-    report = json.loads(remote_python(data, (ROOT / 'scripts/infra/inspect-host.py').read_text(), local=local))
-    if data['machine_id'] != report['machine_id']:
-        raise ValueError('Host machine-id differs from inventory; inspect the replacement before registering it')
+def validate_target(data, report):
     if report['user'] != data['user']:
         raise ValueError('Run local mode as the registered operator account')
     if report['os'] != 'ubuntu' or report['version'] not in ('24.04', '26.04'):
         raise ValueError('This bootstrap targets Ubuntu 24.04 or 26.04 only')
-    report['backup_candidate'] = backup_candidate(data, report)
+
+
+def inspect_host(data, local=False):
+    report = json.loads(remote_python(data, (ROOT / 'scripts/infra/inspect-host.py').read_text(), local=local))
+    if data['machine_id'] != report['machine_id']:
+        raise ValueError('Host machine-id differs from inventory; inspect the replacement before registering it')
+    validate_target(data, report)
+    try:
+        report['backup_candidate'] = backup_candidate(data, report)
+    except ValueError as error:
+        # Foundation operations do not consume this disk. Preserve diagnostics during recovery.
+        report['backup_candidate'] = {'error': str(error), 'usable': False}
     return report
 
 
@@ -160,10 +184,13 @@ def clean_ansible_env():
 
 
 def password_args(path):
+    if not path and not sys.stdin.isatty():
+        raise ValueError('Use a terminal for the Vault prompt, or supply a private --vault-password-file')
     return ['--vault-password-file', str(private_file(path))] if path else ['--ask-vault-pass']
 
 
 def seal(args, data):
+    vault_password_args = password_args(args.vault_password_file)
     manifest_path = args.files or args.inventory.parent / 'inputs.json'
     manifest = json.loads(private_file(manifest_path).read_text())
     if not isinstance(manifest, dict) or not manifest or len(manifest) > 32:
@@ -206,7 +233,7 @@ print(json.dumps(result))
     # Ask for the password through the terminal; plaintext JSON travels only over stdin.
     with tempfile.TemporaryDirectory(prefix='battlefield-vault-') as directory:
         encrypted = Path(directory) / 'inputs.vault'
-        subprocess.run([str(binary), 'encrypt', '--output', str(encrypted), *password_args(args.vault_password_file)],
+        subprocess.run([str(binary), 'encrypt', '--output', str(encrypted), *vault_password_args],
                        input=json.dumps({'bootstrap_inputs': result}).encode(), check=True,
                        env=clean_ansible_env())
         write_new(output, encrypted.read_bytes())
@@ -269,6 +296,7 @@ def ansible_inventory(data, local):
 
 
 def playbook(args, data, report):
+    vault_password_args = password_args(args.vault_password_file) if args.vault else []
     binary = tools_bin() / 'ansible-playbook'
     if args.command in ('apply', 'plan') and not args.vault:
         raise ValueError('plan/apply require an encrypted --vault; run seal first')
@@ -284,7 +312,7 @@ def playbook(args, data, report):
                 raise ValueError('Expected an Ansible Vault encrypted file, not plaintext')
             # include_vars with no_log protects even malformed decrypted data.
             command += ['-e', json.dumps({'bootstrap_vault_file': str(vault)}),
-                        *password_args(args.vault_password_file)]
+                        *vault_password_args]
         if args.command == 'plan':
             command += ['--check', '--diff']
         if not report['sudo_noninteractive'] and not (args.local and os.geteuid() == 0):
@@ -325,7 +353,7 @@ def parser():
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument('command', choices=['init', 'inspect', 'seal', 'plan', 'apply', 'verify', 'tools'])
     default = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'autonomous-battlefield/server/inventory.json'
-    result.add_argument('--inventory', type=safe_path, default=default)
+    result.add_argument('--inventory', type=safe_path, default=str(default))
     result.add_argument('--host')
     result.add_argument('--user')
     result.add_argument('--identity-file')
@@ -344,12 +372,12 @@ def main():
         return
     if args.command == 'init':
         data = validate_inventory({'schema': 1, 'host': args.host, 'user': args.user,
-                                   'identity_file': args.identity_file or '', 'machine_id': '0' * 32})
+                                   'identity_file': args.identity_file or '', 'machine_id': '0' * 32,
+                                   'backup_uuid': '', 'ca_files': []})
         report = json.loads(remote_python(data, (ROOT / 'scripts/infra/inspect-host.py').read_text(), local=args.local))
         data['machine_id'] = report['machine_id']
         validate_inventory(data)
-        if report['user'] != data['user']:
-            raise ValueError('Register the account used to connect to the host')
+        validate_target(data, report)
         manifest_path = args.inventory.parent / 'inputs.json'
         if args.inventory.exists() or args.inventory.is_symlink() or manifest_path.exists() or manifest_path.is_symlink():
             raise ValueError('Inventory or input manifest already exists; inspect it instead of registering again')
@@ -357,8 +385,7 @@ def main():
         token = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'autonomous-battlefield/bootstrap/cloudflare-api-token'
         if token.is_file():
             manifest['cloudflare_api_token'] = {'source': 'controller', 'path': str(token.absolute())}
-        write_new(args.inventory, (json.dumps(data, indent=2) + '\n').encode())
-        write_new(manifest_path, (json.dumps(manifest, indent=2) + '\n').encode())
+        publish_registration(args.inventory, data, manifest_path, manifest)
         print(f'Registered {report["hostname"]}. Inventory created at {args.inventory}. No server configuration changed.')
         return
     data = load_inventory(args.inventory)

@@ -35,7 +35,6 @@
       - (inputs_names.files | map(attribute='path') | map('basename') | difference(bootstrap_vault.bootstrap_inputs.keys())) | length == 0
     fail_msg: The bundle omits previously imported credentials; recover them rather than dropping them.
   when: inputs_directory.stat.exists
-  no_log: true
 - name: Validate named input values
   ansible.builtin.assert:
     that:
@@ -54,11 +53,22 @@
   loop: "{{ bootstrap_vault.bootstrap_inputs | dict2items }}"
   register: inputs_existing
   no_log: true
-- name: Refuse implicit credential replacement and symbolic links
-  ansible.builtin.assert:
-    that:
-      - not item.stat.exists or (item.stat.isreg and not item.stat.islnk)
-      - not item.stat.exists or item.stat.checksum == (item.item.value | b64decode | hash('sha256'))
-    fail_msg: Existing credential differs from the supplied bundle; reconcile it explicitly, never regenerate it.
-  loop: "{{ inputs_existing.results }}"
+- name: Initialize conflict names without exposing credential data
+  ansible.builtin.set_fact:
+    inputs_conflicts: []
   no_log: true
+- name: Identify redirected or differing inputs privately
+  ansible.builtin.set_fact:
+    inputs_conflicts: "{{ inputs_conflicts + [item.item.key] }}"
+  loop: "{{ inputs_existing.results }}"
+  when: >-
+    item.stat.exists and
+    (not item.stat.isreg or item.stat.islnk or
+     item.stat.checksum | default('') != (item.item.value | b64decode | hash('sha256')))
+  no_log: true
+- name: Refuse credential replacement with safe input names only
+  ansible.builtin.assert:
+    that: inputs_conflicts | length == 0
+    fail_msg: >-
+      Conflicting imported inputs: {{ inputs_conflicts | join(', ') }}.
+      Recover the matching original bundle or reconcile explicitly; never regenerate credentials.

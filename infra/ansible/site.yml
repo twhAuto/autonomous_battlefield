@@ -59,12 +59,6 @@
         that:
           - (bootstrap_owned_identity.content | b64decode | trim) == bootstrap_machine_id
       when: bootstrap_marker.stat.exists
-    - name: Inspect candidate backup filesystem metadata without mounting it
-      ansible.builtin.command:
-        argv: [lsblk, --json, --output, 'NAME,TYPE,SIZE,FSTYPE,UUID,MOUNTPOINTS']
-      changed_when: false
-      check_mode: false
-      register: bootstrap_disks
     - name: Report backup scope
       ansible.builtin.debug:
         msg: >-

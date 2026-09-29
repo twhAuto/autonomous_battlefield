@@ -45,8 +45,10 @@
       - item.isreg
       - item.mode == '0600'
       - item.uid == 0
+    fail_msg: Managed input must be a root-owned regular file with mode 0600; run apply to repair permissions.
   loop: "{{ verify_input_files.files }}"
-  no_log: true
+  loop_control:
+    label: "{{ item.path | basename }}"
 - name: Require inputs to be present
   ansible.builtin.assert:
     that: verify_input_files.matched > 0

@@ -47,6 +47,14 @@ Coverage checks, and disallow direct pushes. Jenkins sees a `main` update rather
 than a distinct "PR merged" pipeline condition, so the branch rule is what makes
 a `main` update equivalent to an approved merge.
 
+The deployment regression gate includes real Ansible input tests. Agents need
+Python 3.12–3.14 and access to PyPI on the first run of each pinned runtime/Python
+minor version. The entry point installs and caches checksum-verified dependencies;
+`./scripts/infra/server.sh tools` can prewarm that cache during agent provisioning.
+Keep the agent cache persistent. An unavailable uncached runtime fails the gate;
+the pipeline does not silently skip these checks when downloads fail. Subsequent
+runs with the completed cache do not contact PyPI for this runtime.
+
 For the repeatable Ubuntu host foundation and credential import, start with the
 [server bootstrap](server-bootstrap.md). It can run from WSL before Jenkins exists.
 Jenkins controller/agent configuration below remains the current service setup;

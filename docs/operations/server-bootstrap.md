@@ -49,6 +49,8 @@ SSH; later operations reject a different machine ID or operator. Replacing a hos
 requires inspecting and deliberately registering its new identity, not blindly
 reusing its former IP. `--inventory /absolute/path/inventory.json` selects another
 private inventory outside the checkout; `inputs.json` lives alongside it.
+Jenkins `@tmp` paths are supported; whitespace, shell/template syntax and parent
+traversals remain invalid.
 
 Inspection reports OS, CPU/memory/disk metadata, network addresses, libvirt
 resources, selected service states, and whether passwordless sudo is already
@@ -76,7 +78,8 @@ private_dir="${XDG_CONFIG_HOME:-$HOME/.config}/autonomous-battlefield/server"
 ./scripts/infra/server.sh verify
 ```
 
-`seal` imports the manifest's files directly over SSH or from local private files,
+`seal` requires a terminal or an explicit private `--vault-password-file` before
+importing anything. It imports the manifest's files over SSH or from local private files,
 then encrypts them in memory/stdin without a plaintext staging file. It prompts
 for a Vault passphrase and refuses to replace an existing bundle. Retain the
 passphrase independently of the primary disk; an encrypted bundle alone cannot
@@ -120,7 +123,8 @@ bootstrap lock does not yet coordinate application delivery or recovery jobs;
 those jobs need the later shared platform-operation integration.
 
 Reruns repair managed permissions/settings and preserve unrelated files. If a run
-stops after creating an empty ownership directory, it can resume. An unknown
+stops after creating an empty ownership directory, it can resume. Registration also rolls back its newly created inventory if
+publishing the input manifest fails. An unknown
 nonempty directory, mismatched marker, or redirected managed input path requires
 inspection. Do not delete an ownership marker to force adoption. A fresh-host plan
 skips group changes and starting not-yet-installed services; it is not evidence of
@@ -135,9 +139,11 @@ points, adjusted to measured sizes, plus checkpoints around infrastructure chang
 Nightly backups and retention are not active in this foundation slice.
 
 Leave `backup_uuid` empty until the intended filesystem is inspected. Once set,
-the wrapper requires a unique existing ext4 filesystem on a different physical
-disk from `/`. It rejects the primary disk even if a different partition has free
-space. Inspection does not establish that the filesystem is empty or that it has
+inspection reports whether it identifies a unique existing ext4 filesystem on a
+different physical disk from `/`. A primary-disk partition, missing disk or
+ambiguous UUID is reported as unusable. Foundation inspection, credential import
+and configuration remain available when the backup disk is unavailable; a future
+backup operation must reject that selection before writing. Inspection does not establish that the filesystem is empty or that it has
 100 GB free. No command here mounts, formats, partitions or expands it. The future
 backup role must verify the expected mounted UUID before writing, preserve other
 data, and fail visibly when the disk is absent.
@@ -164,13 +170,15 @@ protected; the unprivileged import manifest cannot collect it automatically.
 The first command installs the pinned tools, checks playbook syntax, and runs
 real Vault/Ansible tests against synthetic files under a private temporary
 directory. It verifies first/second apply, check mode, permission drift repair,
-credential conflict/omission rejection, literal secret content and secret-safe
-output. Wrapper tests cover inventory/SSH injection, machine identity, disk
+credential conflict/omission rejection, preserved encrypted recovery bundles,
+literal secret content and secret-safe output. A pseudo-terminal check runs the
+actual Ansible Vault/sudo prompts through the apply process launcher and verifies
+that the synthetic password is not echoed. It does not execute privileged tasks. Wrapper tests cover inventory/SSH injection, machine identity, disk
 selection, private file handling and concurrent lock exclusion. The deployment
 suite invokes the complete bootstrap check, so Jenkins exercises real input
 reconciliation too. Running the Python test file directly without
 `BATTLEFIELD_TEST_ANSIBLE_BIN` runs only wrapper tests and explicitly skips the
-four Ansible checks.
+five Ansible checks.
 
 A complete disposable Ubuntu host apply/interruption/reboot and package/service
 adoption rehearsal remains required before production apply. The 2026-09-30 live
