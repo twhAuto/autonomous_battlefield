@@ -378,9 +378,11 @@ type decisionBattleRepository struct {
 	failModels         bool
 	modelErrorCategory string
 	memoryErr          error
+	traceparents       []string
 }
 
 func (r *decisionBattleRepository) CreateOrReuseDecision(_ context.Context, p ai.CreateDecisionParams) (ai.DecisionRecord, error) {
+	r.traceparents = append(r.traceparents, p.Traceparent)
 	record := ai.DecisionRecord{ID: p.ID, BattleID: p.BattleID, Attempt: p.Attempt, FactionID: p.FactionID, TargetTick: p.TargetTick, Version: 1, Status: "pending", ControllerType: p.ControllerType, ProfileID: p.ProfileID, Provider: p.Provider, Runtime: p.Runtime, Observation: p.Observation, CreatedAt: time.Now()}
 	if p.ControllerType == ai.ControllerModel && r.failModels {
 		record.Status = "failed"

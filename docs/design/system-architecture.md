@@ -1195,7 +1195,10 @@ from original input. Evaluation and tool responses use the same projection.
 
 ## 18. Optional Langfuse AI observability
 
-The agent worker starts a separate, fully sampled trace for each decision request.
+The agent worker starts a separate, fully sampled trace for each decision request,
+linked to the engine's `battlefield.engine.decision_window` span; battle creation
+and engine processing are also always sampled (see
+[distributed traces](../operations/observability.md#distributed-traces)).
 Stable request-derived trace/root IDs let the capability-scoped MCP server attach
 server-side tool observations even when a CLI does not propagate trace headers.
 API runners emit one generation per model attempt; CLI runners emit one aggregate

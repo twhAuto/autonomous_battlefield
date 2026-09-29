@@ -120,8 +120,7 @@ func (w *Worker) claimBattles(ctx context.Context) error {
 
 func (w *Worker) processClaimedBattle(ctx context.Context, job *BattleJob) {
 	telemetry.ObserveEngineClaim(job.Lease.Attempt > 1)
-	jobContext := telemetry.ContextWithTrace(ctx, job.Traceparent, job.Tracestate)
-	jobContext, span := telemetry.StartConsumerSpan(jobContext, "battlefield.engine.process",
+	jobContext, span := telemetry.StartBattleProcess(ctx, job.Traceparent, job.Tracestate,
 		attribute.String("battlefield.battle_id", job.Lease.BattleID),
 		attribute.Int("battlefield.attempt", job.Lease.Attempt),
 	)

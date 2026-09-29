@@ -11,12 +11,20 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
 	"log/slog"
 	"time"
 )
 
-func (w *Worker) resolveDecisionWindow(ctx context.Context, lease BattleLease, simulation *game.Match) (map[string]controller.PlanProposal, error) {
+func (w *Worker) resolveDecisionWindow(ctx context.Context, lease BattleLease, simulation *game.Match) (plans map[string]controller.PlanProposal, err error) {
 	targetTick := simulation.DecisionTargetTick()
+	// Decisions store this span's context, so each agent decision trace links here.
+	ctx, span := telemetry.StartSpan(ctx, "battlefield.engine.decision_window",
+		attribute.String("battlefield.battle_id", lease.BattleID),
+		attribute.Int("battlefield.attempt", lease.Attempt),
+		attribute.Int64("battlefield.target_tick", int64(targetTick)),
+	)
+	defer func() { telemetry.EndSpan(span, err) }()
 	baselines := simulation.ScriptedPlans()
 	service := ai.NewDecisionService(w.decisions)
 	w.logger.InfoContext(ctx, "decision_window_started",

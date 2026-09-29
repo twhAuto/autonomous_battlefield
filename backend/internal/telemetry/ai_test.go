@@ -52,7 +52,7 @@ func TestDecisionCorrelationAndSampling(t *testing.T) {
 	if sampler.ShouldSample(sdk.SamplingParameters{Attributes: []attribute.KeyValue{}}).Decision != sdk.Drop {
 		t.Fatal("infra sampling changed")
 	}
-	if !strings.Contains(sampler.Description(), "AI decisions") {
+	if !strings.Contains(sampler.Description(), "AI decisions and battles") {
 		t.Fatal("sampler description")
 	}
 	// Non-AI root IDs remain random.
@@ -60,6 +60,26 @@ func TestDecisionCorrelationAndSampling(t *testing.T) {
 	b, _ := (decisionIDGenerator{}).NewIDs(context.Background())
 	if a == b || !a.IsValid() {
 		t.Fatal("invalid infrastructure IDs")
+	}
+}
+
+func TestDecisionRootLinksToEngineWindow(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdk.NewTracerProvider(sdk.WithSpanProcessor(recorder), sdk.WithSampler(decisionSampler{fallback: sdk.NeverSample()}), sdk.WithIDGenerator(decisionIDGenerator{}))
+	old := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() { otel.SetTracerProvider(old); _ = provider.Shutdown(context.Background()) })
+	window := trace.ContextWithRemoteSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID{2}, SpanID: trace.SpanID{3}, Remote: true}))
+	_, linked := StartDecision(window, "request-linked")
+	linked.End()
+	_, unlinked := StartDecision(context.Background(), "request-unlinked")
+	unlinked.End()
+	spans := recorder.Ended()
+	if links := spans[0].Links(); len(links) != 1 || links[0].SpanContext.SpanID() != (trace.SpanID{3}) || spans[0].Parent().IsValid() {
+		t.Fatalf("decision links = %#v parent = %v", links, spans[0].Parent())
+	}
+	if len(spans[1].Links()) != 0 {
+		t.Fatal("decision without an engine window has a link")
 	}
 }
 
