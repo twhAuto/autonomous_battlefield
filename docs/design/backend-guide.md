@@ -647,6 +647,43 @@ Run the Go coverage gate with disposable PostgreSQL integration coverage:
 (cd frontend && npm run build)
 ```
 
+#### Pagination query plans
+
+pgx caches prepared statements, and after five executions PostgreSQL may reuse a
+**generic plan** that cannot see parameter values. The history cursor is therefore
+one row comparison with first-page sentinels,
+`(created_at, id) < (COALESCE($2, 'infinity'), COALESCE($3, max-uuid))`, which
+stays an index condition in both plan types. The earlier
+`$2 IS NULL OR (created_at, id) < ($2, $3)` form became a filter in generic plans,
+so a deep page walked every newer row. `TestBattleHistoryCursorStaysIndexConditionInGenericPlans`
+guards this. Keep `listBattlesSQL` and the copy in
+`scripts/perf/query-plans/explain.sql` in sync.
+
+Re-measure with the disposable database (10k battles over ~90 days, 120k events):
+
+```bash
+./scripts/test/with-test-postgres.sh ./scripts/perf/query-plans/run-query-plans.sh
+```
+
+Results on PostgreSQL 17.6, 2026-09-29, limit 26 (page size 25 plus one):
+
+| Query | Plan | Shared buffers | Time |
+| --- | --- | --- | --- |
+| History, all statuses, first page | `battle_runs_history_idx` scan | 5 | 0.27 ms |
+| History, all statuses, cursor at offset 5,000 (generic plan) | index cond on cursor | 5 (was 470, 5,001 rows filtered) | 0.23 ms (was 0.82 ms) |
+| History, `queued` (5% of rows), first page | index scan, status filter | 67 (669 rows filtered) | 0.50 ms |
+| History, `paused` (1.4%), first page | bitmap scan on `battle_runs_claim_idx` | — | 0.81 ms |
+| History, `paused`, cursor at offset 5,000 (generic plan) | index cond on cursor | 170 (was 635) | 0.61 ms (was 1.29 ms) |
+| Events after sequence 10,000 (20k-event battle) | `battle_events_cursor_idx` range scan | 8 | 0.05 ms |
+| Latest 200 events (20k-event battle) | backward index scan, then sort of 200 rows | 11 | 0.08 ms |
+
+Rare status filters still scan the history index and discard non-matching rows,
+which grows with how far the matching rows are spread. At this scale it stays
+under 1 ms; add a `(status, created_at DESC, id DESC)` index only if measurements
+at a larger history show it matters. `battle_events_cursor_idx` duplicates the
+`battle_events` primary key `(battle_id, attempt, sequence)`: both are 9.8 MB at
+120k events, and either serves the event queries.
+
 Battle creation maps HTTP 429 to an allowance explanation: queued, running, and
 paused battles count toward active limits. The message directs players to battle
 history or to retry later for daily limits; the API does not distinguish the
