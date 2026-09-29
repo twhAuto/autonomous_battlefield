@@ -304,7 +304,18 @@ New pipeline runs no longer create those project caches in `/tmp`.
 Use a separate agent so builds do not execute on the Jenkins controller:
 
 1. Open **Manage Jenkins > Nodes > New Node**.
-2. Name it `battlefield-local`, choose **Permanent Agent**, and use one executor.
+2. Name it `battlefield-local` and choose **Permanent Agent**. It currently runs
+   **four executors**, so PR builds for different branches run in parallel. Builds
+   stay safe to overlap because test databases, Playwright dev servers, and image
+   tags are per build: `with-test-postgres.sh` publishes a random port and names the
+   container by build tag, the frontend stages run `scripts/test/run-e2e.sh`, which serves Playwright on a
+   free `E2E_PORT` and retries only a lost port race, and images are
+   tagged by commit. `main` delivery still runs one build at a time
+   (`disableConcurrentBuilds()`), which is what serializes production rollouts.
+   Size executors to the host: each frontend stage runs Chromium, and backend stages
+   run PostgreSQL containers. Before adding a job that deploys or drills outside
+   `main` delivery (such as `Jenkinsfile.assurance`), serialize it with main
+   delivery, for example with the Lockable Resources plugin.
 3. Add the label `battlefield-production`, shared by PR verification, main
    delivery and assurance for this owner-operated deployment.
    Set the remote root directory to the agent account’s `~/jenkins-agent`.
@@ -539,7 +550,10 @@ confirm that GitHub still reports the rulesets as active rather than treating
 the Jenkins checks as advisory.
 
 In the repository, open **Settings > Rules > Rulesets** and create or update
-rulesets targeting `dev` and `main`:
+the ruleset targeting `main`. `dev` is intentionally left without a ruleset so
+the owner can work on it directly when needed; Jenkins and SonarQube still run
+on pull requests into `dev`, but their results there are advisory. The `main`
+ruleset should:
 
 1. Require a pull request before merging and block direct pushes.
 2. Require the Jenkins PR result named `Jenkins`. It includes the SonarQube

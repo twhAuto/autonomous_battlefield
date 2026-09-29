@@ -6,11 +6,12 @@ import { Link, useLocation } from 'react-router-dom'
 import { BattleRun } from '../api/battles'
 import { type ConnectionState, type BattleControlState, type BattleControlAction } from '../types'
 
-export function BattleHeader({ battle, battleTitle, connection, connectionMessage, retryConnection }: Readonly<{
+export function BattleHeader({ battle, battleTitle, connection, connectionMessage, lastUpdated, retryConnection }: Readonly<{
   battle: BattleRun
   battleTitle: string
   connection: ConnectionState
   connectionMessage: string
+  lastUpdated?: Date | null
   retryConnection: () => void
 }>) {
   const location = useLocation()
@@ -37,6 +38,7 @@ export function BattleHeader({ battle, battleTitle, connection, connectionMessag
         <span>SCENARIO <strong>{battle.scenarioId}</strong></span>
         <span>ATTEMPT <strong>{battle.attempt}</strong></span>
         <span>STATUS <strong>{battle.status}</strong></span>
+        {lastUpdated && <span>UPDATED <strong><time dateTime={lastUpdated.toISOString()}>{lastUpdated.toLocaleTimeString()}</time></strong></span>}
       </div>
     </section>
   )

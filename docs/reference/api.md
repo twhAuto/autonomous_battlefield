@@ -126,7 +126,7 @@ Responses:
 | --- | --- |
 | `201 Created` | The faction was created. The response has no body. |
 | `400 Bad Request` | The JSON is invalid, the ID is not UUID-shaped, or the trimmed name/doctrine is empty, or doctrine exceeds 4,000 Unicode characters, or background exceeds 1,000. |
-| `409 Conflict` | A faction with the same ID already exists. |
+| `409 Conflict` | The ID is already used by another caller's faction or with different content. An identical retry by the same caller returns `201` again. |
 | `500 Internal Server Error` | The faction could not be persisted. |
 
 Request bodies are limited to 64 KiB and must contain exactly one JSON value. Names, doctrines, and backgrounds are trimmed before storage. Background is optional and limited to 1,000 Unicode characters. Obsolete blueprint/ruleset request fields are rejected.
@@ -203,7 +203,7 @@ Content-Type: application/json
 
 A valid request returns `202 Accepted`, a queued status, and `Location: /v1/battles/{id}`. Invalid input returns `400` and a missing scenario or faction returns `404`.
 
-The client-supplied `id` makes retries safe. Repeating a request with the same `id` returns `202` and the existing battle when the caller, resolved scenario, and `tickCount` all match the original; its `status` is then the battle's current status. Reusing an `id` with a different caller, scenario, or `tickCount` returns `409`.
+The client-supplied `id` makes retries safe. Repeating a request with the same `id` returns `202` and the existing battle when the caller, resolved scenario, and `tickCount` all match the original; its `status` is then the battle's current status. Reusing an `id` with a different caller, scenario, or `tickCount` returns `409`. If the existing battle cannot be read to verify a retry, the request fails with `500` rather than `409`, so a client does not abandon an ID that may already hold its battle.
 
 `GET /v1/model-profiles` returns the operator allowlist with safe availability,
 provider, runtime, scope, model-label, and tool-capability fields. It never
@@ -277,7 +277,7 @@ Invalid limits, statuses, or cursors return `400`; persistence failures return
 GET /v1/battles/{id}
 ```
 
-The response reports `queued`, `running`, `completed`, `failed`, or `stopped`, along with the authored map and current units, buildings, treasuries, tick, and attempt. Completed battles include castle health plus unit, economy, loot, damage, and posture statistics.
+The response reports `queued`, `running`, `completed`, `failed`, or `stopped`, along with the authored map and current units, buildings, treasuries, tick, and attempt. For a queued or running battle, `production` gives the next point at which factions spend gold: `{"nextTick": 20, "opening": false}` for the next regular window, or `{"nextTick": 0, "opening": true}` while the opening purchase is pending. It is `null` for settled battles and when no window remains before `requestedTicks`. All purchases for a window happen at once; nothing is queued between windows. Completed battles include castle health plus unit, economy, loot, damage, and posture statistics.
 
 Pause or resume an active battle with `POST /v1/battles/{id}/pause` or
 `POST /v1/battles/{id}/resume`. Pausing preserves the current attempt; status
@@ -286,6 +286,10 @@ responses expose the pause flag.
 Stop a queued or running battle with `POST /v1/battles/{id}/stop`. The operation
 releases the engine lease and marks unresolved model decisions as failed so a
 host subscription agent cannot continue the stopped run.
+
+All three controls are safe to retry. Repeating a pause or resume, or stopping an
+already stopped battle, returns `200` with the current battle. Controlling a
+completed or failed battle, or pausing or resuming a stopped one, returns `409`.
 
 `GET /v1/battles/{battleId}/factions/{factionId}/view` returns the same terrain with faction fog-of-war applied. Owned entities and both castles are always present; other hostile entities appear only inside current friendly vision.
 

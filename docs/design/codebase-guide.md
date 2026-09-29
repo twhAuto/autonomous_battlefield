@@ -18,7 +18,9 @@ AI-created work branches start from the latest fetched `origin/dev` and target
 `dev` in pull requests, unless the user explicitly requests otherwise. Promotion
 to `main` is separate. See [agent branch guidance](../../AGENTS.md#branches-and-pull-requests)
 and the [Jenkins workflow](../operations/jenkins.md#configure-github-integration-branch-protection).
-Run applicable local checks before opening a PR. The repo's
+Run applicable local checks before opening a PR, and complete the PR template's
+AI-assistance section required by the
+[AI development policy](../security/ai-development-policy.md). The repo's
 [raise-pr](../../.agents/skills/raise-pr/SKILL.md),
 [triage-ci](../../.agents/skills/triage-ci/SKILL.md),
 [release-and-recover](../../.agents/skills/release-and-recover/SKILL.md),
@@ -40,6 +42,7 @@ Use the focused guides for implementation details:
 autonomous_battlefield/
 ├── .agents/skills/             # Canonical PR, CI, release, docs, and backlog skills
 ├── .claude/skills/             # Links to the canonical skills for Claude Code
+├── .github/pull_request_template.md # PR sections, including the required AI-assistance record
 ├── backend/
 │   ├── cmd/{server,engine,mcp,agent,aieval}/ # Startup and command wiring
 │   ├── internal/
@@ -74,7 +77,7 @@ autonomous_battlefield/
 │   ├── test/                   # Test runners, deployment and runtime assurance script tests
 │   ├── ci/                     # Lint, builds, coverage summaries, image assurance
 │   ├── cd/                     # Deployment, smoke checks, rollback
-│   ├── perf/                   # Performance-test launcher
+│   ├── perf/                   # k6 launcher and PostgreSQL query-plan measurement
 │   ├── security/               # Security-test launcher
 │   ├── ops/                    # Operational reports and failure drills
 │   ├── review/                 # Codex/Claude cross-review runner

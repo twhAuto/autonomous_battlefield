@@ -18,6 +18,17 @@ kube_context="${KUBERNETES_CONTEXT:-kind-${cluster_name}}"
 namespace="${KUBERNETES_NAMESPACE:-battlefield}"
 mcp_port="${HOST_MCP_PORT:-18084}"
 health_port="${HOST_AGENT_HEALTH_PORT:-18083}"
+# Concurrent decision slots across all enabled CLIs. Two lets both factions of a
+# model-vs-model battle decide at once; the worker accepts 1-4, and the database
+# runtime_policy.cli_concurrency still caps executions across all workers.
+agent_concurrency="${HOST_AGENT_CONCURRENCY:-2}"
+validate_agent_concurrency() {
+  if [[ ! "${agent_concurrency}" =~ ^[1-4]$ ]]; then
+    echo "HOST_AGENT_CONCURRENCY must be 1, 2, 3, or 4." >&2
+    exit 2
+  fi
+}
+validate_agent_concurrency
 runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-host-agent.XXXXXX")"
 port_forward_pid=""
 agent_pid=""
@@ -75,13 +86,13 @@ require_command() {
 
 codex_available() {
   command -v codex >/dev/null 2>&1 \
-    && [[ "$(codex --version 2>/dev/null || true)" == codex-cli\ 0.152.* ]] \
+    && [[ "$(codex --version 2>/dev/null || true)" == codex-cli\ 0.155.* ]] \
     && [[ -s "${HOME}/.codex/auth.json" ]]
 }
 
 antigravity_available() {
   command -v agy >/dev/null 2>&1 \
-    && [[ "$(agy --version 2>/dev/null || true)" == 1.1.* ]] \
+    && [[ "$(agy --version 2>/dev/null || true)" == 1.2.* ]] \
     && "${runtime_dir}/agent" -check-antigravity-auth >/dev/null 2>&1
 }
 
@@ -100,14 +111,14 @@ select_profiles() {
       ;;
     codex)
       if ! codex_available; then
-        echo "Codex CLI 0.152.x with an existing 'codex login' is required." >&2
+        echo "Codex CLI 0.155.x with an existing 'codex login' is required." >&2
         exit 1
       fi
       use_codex=1
       ;;
     antigravity|gemini)
       if ! antigravity_available; then
-        echo "Antigravity CLI 1.1.x with a working saved login is required. Run agy to sign in." >&2
+        echo "Antigravity CLI 1.2.x with a working saved login is required. Run agy to sign in." >&2
         exit 1
       fi
       use_gemini=1
@@ -155,6 +166,7 @@ write_agent_config() {
     printf '  agentHealthAddress: "127.0.0.1:%s"\n' "${health_port}"
     printf '  mcpUrl: "http://127.0.0.1:%s/mcp"\n' "${mcp_port}"
     printf '  decisionTimeout: 2m\n'
+    printf '  agentConcurrency: %s\n' "${agent_concurrency}"
     printf '  profiles:\n'
     if [[ "${use_codex}" == "1" ]]; then
       printf '    - id: codex-subscription-local\n'
@@ -163,7 +175,7 @@ write_agent_config() {
       printf '      runtime: cli\n'
       printf '      model: gpt-5.6-luna\n'
       printf '      scope: local\n'
-      printf '      supportedVersionPrefix: codex-cli 0.152.\n'
+      printf '      supportedVersionPrefix: codex-cli 0.155.\n'
       printf '      maxSteps: 3\n'
       printf '      enabled: true\n'
     fi
@@ -185,7 +197,7 @@ write_agent_config() {
       printf '      runtime: cli\n'
       printf '      model: gemini-3.7-flash-medium\n'
       printf '      scope: local\n'
-      printf '      supportedVersionPrefix: 1.1.\n'
+      printf '      supportedVersionPrefix: 1.2.\n'
       printf '      maxSteps: 3\n'
       printf '      enabled: true\n'
     fi
@@ -289,7 +301,7 @@ kube rollout restart deployment/battlefield-api >/dev/null
 kube rollout status deployment/battlefield-api --timeout=120s
 
 echo
-echo "Host subscription agent is ready. Keep this terminal open during the battle."
+echo "Host subscription agent is ready with ${agent_concurrency} concurrent decision slot(s). Keep this terminal open during the battle."
 echo "Open http://battlefield.localhost:8888 and select an enabled subscription controller."
 echo "Decisions occur at ticks 10, 20, 30, ...; use at least 20 maximum ticks for a useful smoke test."
 echo "Press Ctrl+C after the battle to disconnect the host agent and hide its profiles."

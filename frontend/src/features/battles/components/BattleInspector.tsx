@@ -5,6 +5,12 @@ import { EventConsole } from './EventConsole'
 import { entityIndex } from '../presentation/entities'
 import { InspectorTabs } from './InspectorTabs'
 import { playerStatus, PlayerMetrics, PlayerOverview, PlayerUnits } from './PlayerStatusPanel'
+import { productionSummary } from '../presentation/production'
+
+function ProductionSchedule({ battle }: Readonly<{ battle: BattleRun }>) {
+  const summary = productionSummary(battle)
+  return summary && <p className="production-schedule" aria-label="Production schedule">{summary}</p>
+}
 
 const sections = ['overview', 'decisions', 'units', 'faction'] as const
 const sectionTabs = sections.map((id) => ({ id, label: id[0].toUpperCase() + id.slice(1) }))
@@ -36,6 +42,7 @@ export function BattleInspector({ battle, decisions, decisionMessage, events }: 
     })}
     <div id="inspector-content" className="inspector-scroll">
       <section id="inspector-panel-system" aria-label="System information" hidden={selected !== 'system'}>
+        <ProductionSchedule battle={battle} />
         <table className="player-comparison"><caption>Current player comparison{battle.state ? ` · tick ${battle.state.tick}` : ' · awaiting state'}</caption><thead><tr><th>Player</th><th>Gold</th><th>Units</th><th>Castle HP</th></tr></thead><tbody>
           {battle.participants.map((player) => {
             const status = playerStatus(battle.state, player.id)

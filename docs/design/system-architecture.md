@@ -444,7 +444,7 @@ Antigravity CLI offloads larger MCP tool responses to local files. Because battl
 API, Codex, Antigravity, and Claude CLI use one embedded decision policy assembled by
 `internal/ai/prompts.go`. Only context delivery differs: tool fetch versus
 Antigravity host-prefetched JSON. The persisted `PromptVersion` includes a SHA-256
-digest covering the base, identity/context boundary, doctrine, policy, and both delivery templates. Version v7 moves faction-authored name/background/doctrine into JSON-escaped untrusted decision context; they never extend the system instructions.
+digest covering the base, identity/context boundary, doctrine, policy, and both delivery templates. Version v7 moved faction-authored name/background/doctrine into JSON-escaped untrusted decision context; they never extend the system instructions. Version v8 orders the decision prompt from most to least stable (shared policy, then the faction identity block, then the per-request ID and any inline context), so the prefix repeated across one faction's decisions includes its identity and stays eligible for provider prompt caching. Bump the major version whenever assembly order changes, because the digest covers only template text.
 Each prompt purpose has one current `.txt` file; Git preserves previous revisions.
 The build manifest reads the runtime prompt version, bundle digest, and tool schema
 through `go run ./cmd/aieval -mode metadata`, requiring Go during manifest generation. Both API and CLI
@@ -1051,7 +1051,7 @@ instructions (including the character limit) and embedded request instructions. 
 copies all three into its immutable scenario snapshot. Missing background in old
 snapshots decodes as empty. Only the owning profile enters each decision context,
 observation hash, durable decision provenance, and API/CLI untrusted decision context.
-The shared `battlefield-agent-v7` identity context JSON-escapes profile fields and
+The shared `battlefield-agent` identity context (introduced in v7) JSON-escapes profile fields and
 asks the agent to act as the faction's commanding voice. Core rules take
 precedence over doctrine; background supplies perspective beneath doctrine.
 Scripted controllers do not interpret history or map keywords to tactical weights.
@@ -1150,7 +1150,7 @@ from that attempt. The map uses its displayed perspective's entity metadata and
 local SVG unit/building icons; roster, event fields, and decision recruitment
 sources share naming helpers. Full IDs remain available through tooltips and raw
 inspection views, and freeform model text is preserved.
-See [Frontier Siege](frontier-siege.md) for gameplay and balance probes.
+See [Game rules](game-rules.md) for the consolidated battle rules and [Frontier Siege](frontier-siege.md) for the roster, map, and balance probes.
 
 These operational recovery procedures are owned by the operations guides:
 the [Elasticsearch and Kibana rollout recovery](../operations/deployment.md#elasticsearch-and-kibana-rollout-recovery)

@@ -44,3 +44,26 @@ func TestPlayerCatalogIncludesOnlyApprovedAvailableCLI(t *testing.T) {
 		t.Fatalf("catalog: %s %v", raw, err)
 	}
 }
+
+func TestBattleResponsesExposeNextProduction(t *testing.T) {
+	scenario := game.Scenario{DecisionIntervalTicks: 10}
+	cases := []struct {
+		name string
+		run  battleservice.BattleRun
+		want string
+	}{
+		{name: "running", run: battleservice.BattleRun{Status: "running", RequestedTicks: 100, ScenarioSnapshot: scenario, CurrentState: game.State{Tick: 12}}, want: `"production":{"nextTick":20,"opening":false}`},
+		{name: "opening pending", run: battleservice.BattleRun{Status: "queued", RequestedTicks: 100, ScenarioSnapshot: game.Scenario{DecisionIntervalTicks: 10, SnapshotVersion: game.DoctrineSnapshotVersion}}, want: `"production":{"nextTick":0,"opening":true}`},
+		{name: "no window before limit", run: battleservice.BattleRun{Status: "running", RequestedTicks: 25, ScenarioSnapshot: scenario, CurrentState: game.State{Tick: 21}}, want: `"production":null`},
+		{name: "settled", run: battleservice.BattleRun{Status: "completed", RequestedTicks: 100, ScenarioSnapshot: scenario, CurrentState: game.State{Tick: 12}}, want: `"production":null`},
+	}
+	for _, tt := range cases {
+		for _, role := range []authn.Role{authn.Player, authn.Developer} {
+			request := httptest.NewRequest("GET", "/v1/battles/battle", nil).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "caller", Role: role}))
+			raw, err := json.Marshal(battleResponseFor(request, &tt.run))
+			if err != nil || !strings.Contains(string(raw), tt.want) {
+				t.Fatalf("%s as %s: %s %v", tt.name, role, raw, err)
+			}
+		}
+	}
+}

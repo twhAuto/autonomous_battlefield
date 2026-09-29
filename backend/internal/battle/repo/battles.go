@@ -115,7 +115,9 @@ func (r *Postgres) StopBattle(ctx context.Context, id string) error {
 	if previousStatus == "" {
 		return battleservice.ErrBattleNotFound
 	}
-	if stoppedStatus == "" {
+	if stoppedStatus == "" && previousStatus != "stopped" {
+		// An already-stopped battle is the desired outcome, so a retried stop
+		// succeeds; stopping a battle that completed or failed stays a conflict.
 		return fmt.Errorf("%w: battle %q is %s", battleservice.ErrBattleNotActive, id, previousStatus)
 	}
 	return nil
