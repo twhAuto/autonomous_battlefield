@@ -320,6 +320,52 @@ func TestCreateBattlePropagatesDependencyAndPersistenceErrors(t *testing.T) {
 	}
 }
 
+func TestCreateBattleRetryReplaysOrConflicts(t *testing.T) {
+	input := CreateBattleInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1", Participants: scriptedParticipants(), TickCount: 100}
+	factions := map[string]*faction.Faction{
+		input.Participants[0].FactionID: {ID: input.Participants[0].FactionID, Name: "A"},
+		input.Participants[1].FactionID: {ID: input.Participants[1].FactionID, Name: "B"},
+	}
+	catalog := &fakeScenarioCatalog{resolved: game.Scenario{ID: "castle-siege-v1"}}
+	ctx := authn.WithActor(context.Background(), authn.Actor{ID: "owner", Role: authn.Player})
+	first := &fakeBattleRepo{}
+	if _, err := NewService(first, &battleFactionRepo{factions: factions}, catalog, 10_000).CreateBattle(ctx, input); err != nil {
+		t.Fatal(err)
+	}
+	stored := BattleRun{ID: input.ID, OwnerID: "owner", ScenarioDigest: first.created.ScenarioDigest, RequestedTicks: 100, Status: "running"}
+	lookupErr := errors.New("battle database unavailable")
+	tests := []struct {
+		name    string
+		run     *BattleRun
+		getErr  error
+		mutate  func(*BattleRun)
+		wantErr error
+	}{
+		{name: "identical retry replays", run: &stored},
+		{name: "other caller conflicts", run: &stored, mutate: func(r *BattleRun) { r.OwnerID = "other" }, wantErr: ErrBattleAlreadyExists},
+		{name: "different tick count conflicts", run: &stored, mutate: func(r *BattleRun) { r.RequestedTicks = 50 }, wantErr: ErrBattleAlreadyExists},
+		{name: "different scenario conflicts", run: &stored, mutate: func(r *BattleRun) { r.ScenarioDigest = "other" }, wantErr: ErrBattleAlreadyExists},
+		{name: "deleted before lookup conflicts", wantErr: ErrBattleAlreadyExists},
+		{name: "lookup failure surfaces", getErr: lookupErr, wantErr: lookupErr},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repository := &fakeBattleRepo{createErr: ErrBattleAlreadyExists, getErr: tt.getErr}
+			if tt.run != nil {
+				run := *tt.run
+				if tt.mutate != nil {
+					tt.mutate(&run)
+				}
+				repository.run = &run
+			}
+			got, err := NewService(repository, &battleFactionRepo{factions: factions}, catalog, 10_000).CreateBattle(ctx, input)
+			if !errors.Is(err, tt.wantErr) || (tt.wantErr == nil && (got == nil || got.ID != input.ID)) {
+				t.Fatalf("CreateBattle() = %v, %v; want error %v", got, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestListBattleEventsValidatesAndPropagatesErrors(t *testing.T) {
 	validID := "7f22e693-bacd-46bb-b942-64fa613cd388"
 	for _, limit := range []int{0, 501} {
