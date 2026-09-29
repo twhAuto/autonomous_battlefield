@@ -19,6 +19,7 @@ calls="$(wc -l <"${NPM_CALLS}")"
 case "${NPM_SCRIPT:-}" in
   bind-once) ((calls > 1)) || { echo "Error: http://127.0.0.1:${E2E_PORT} is already used"; exit 1; } ;;
   bind-always) echo "Error: http://127.0.0.1:${E2E_PORT} is already used"; exit 1 ;;
+  vite-bind-once) ((calls > 1)) || { echo "Error: Port ${E2E_PORT} is already in use"; exit 1; } ;;
   test-failure) echo "1 failed"; exit 7 ;;
 esac
 STUB
@@ -27,7 +28,7 @@ chmod +x "${test_dir}/bin/npm"
 run() {
   : >"${test_dir}/calls"
   (cd "${test_dir}" && PATH="${test_dir}/bin:${PATH}" NPM_CALLS="${test_dir}/calls" NPM_SCRIPT="$1" \
-    "${project_dir}/scripts/test/run-e2e.sh" --grep 'two words' >/dev/null 2>&1)
+    E2E_PORT_ATTEMPTS="${ATTEMPTS:-3}" "${project_dir}/scripts/test/run-e2e.sh" --grep 'two words' >/dev/null 2>&1)
 }
 calls() { wc -l <"${test_dir}/calls"; }
 
@@ -40,6 +41,14 @@ run bind-once
 
 status=0; run bind-always || status=$?
 [[ "${status}" == 1 && "$(calls)" == 3 ]] || { echo "bind retries must stop at three (status ${status}, calls $(calls))" >&2; exit 1; }
+
+run vite-bind-once
+[[ "$(calls)" == 2 ]] || { echo "a Vite strict-port failure should retry once" >&2; exit 1; }
+
+for invalid in 0 -1 x; do
+  status=0; ATTEMPTS="${invalid}" run success || status=$?
+  [[ "${status}" == 2 && "$(calls)" == 0 ]] || { echo "E2E_PORT_ATTEMPTS=${invalid} must fail without running (status ${status}, calls $(calls))" >&2; exit 1; }
+done
 
 status=0; run test-failure || status=$?
 [[ "${status}" == 7 && "$(calls)" == 1 ]] || { echo "a test failure must not retry (status ${status}, calls $(calls))" >&2; exit 1; }

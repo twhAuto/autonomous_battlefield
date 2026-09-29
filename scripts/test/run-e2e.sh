@@ -9,6 +9,8 @@
 set -Eeuo pipefail
 
 attempts="${E2E_PORT_ATTEMPTS:-3}"
+# Zero or a non-number would skip the loop and report success without testing.
+[[ "${attempts}" =~ ^[1-9][0-9]*$ ]] || { echo "E2E_PORT_ATTEMPTS must be a positive integer." >&2; exit 2; }
 log="$(mktemp "${TMPDIR:-/tmp}/battlefield-e2e.XXXXXX")"
 trap 'rm -f -- "${log}"' EXIT
 
@@ -24,7 +26,9 @@ for ((attempt = 1; attempt <= attempts; attempt++)); do
   if ((status == 0)); then
     exit 0
   fi
-  if ! grep -q 'is already used' "${log}" || ((attempt == attempts)); then
+  # Playwright's pre-start check reports "is already used"; Vite's strict bind, if the
+  # port is taken after that check, reports "is already in use".
+  if ! grep -Eq 'is already (used|in use)' "${log}" || ((attempt == attempts)); then
     exit "${status}"
   fi
   echo "E2E port ${E2E_PORT} was taken before the dev server bound it; retrying on a new port (${attempt}/${attempts})." >&2
