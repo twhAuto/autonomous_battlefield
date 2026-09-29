@@ -36,13 +36,17 @@ spec:
           ports:
             - {name: http, containerPort: 3200}
             - {name: otlp-grpc, containerPort: 4317}
+          env:
+            # Keep Go's heap below the container limit so the collector frees memory
+            # before the kernel kills Tempo (512Mi caused OOM restart loops).
+            - {name: GOMEMLIMIT, value: 900MiB}
           readinessProbe:
             httpGet: {path: /ready, port: http}
           livenessProbe:
             httpGet: {path: /ready, port: http}
           resources:
-            requests: {cpu: 25m, memory: 64Mi}
-            limits: {cpu: 500m, memory: 512Mi}
+            requests: {cpu: 25m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 1Gi}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
