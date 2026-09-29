@@ -1,5 +1,9 @@
 # Frontier Siege
 
+For the battle loop, tick order, production windows, and win conditions in one
+place, see [Game rules](game-rules.md). This page owns the Frontier roster,
+structures, map, and balance probes.
+
 Choose `frontier-siege-v2` in **Stage a battle → Combat scenario**. It uses
 `castle-siege-v2` and `core` content version `2`; existing v1 scenarios remain
 available with their original three-unit roster. Both scripted and model

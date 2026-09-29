@@ -1150,7 +1150,7 @@ from that attempt. The map uses its displayed perspective's entity metadata and
 local SVG unit/building icons; roster, event fields, and decision recruitment
 sources share naming helpers. Full IDs remain available through tooltips and raw
 inspection views, and freeform model text is preserved.
-See [Frontier Siege](frontier-siege.md) for gameplay and balance probes.
+See [Game rules](game-rules.md) for the consolidated battle rules and [Frontier Siege](frontier-siege.md) for the roster, map, and balance probes.
 
 These operational recovery procedures are owned by the operations guides:
 the [Elasticsearch and Kibana rollout recovery](../operations/deployment.md#elasticsearch-and-kibana-rollout-recovery)
