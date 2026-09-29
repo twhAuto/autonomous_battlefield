@@ -29,3 +29,9 @@ __pycache__/
 
 # Local Playwright MCP logs and browser snapshots
 /.playwright-mcp/
+
+# Local editor and OS artifacts
+.vscode/
+.idea/
+*.swp
+.DS_Store
