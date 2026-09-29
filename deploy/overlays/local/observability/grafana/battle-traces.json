@@ -52,7 +52,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Pick a battle from **Recent battles** (or paste a **Battle ID** above), then click a **Trace ID** to draw it in **Trace view**. In the engine trace, the root span's links open the creating request; in a decision trace, the root's link opens its decision window. Traces are kept for 24 hours."
+        "content": "Pick a battle from **Recent battles** (or paste a **Battle ID** above). Click a trace ID and choose **Show this trace below** (the other entry opens Explore, which the local Viewer role cannot use), or copy it into the **Trace ID** box. In the engine trace, the root span's links open the creating request; in a decision trace, the root's link opens its decision window. Traces are kept for 24 hours."
       }
     },
     {
@@ -90,23 +90,6 @@
             "matcher": {
               "id": "byName",
               "options": "traceID"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Show this trace below",
-                    "url": "/d/battle-traces/battle-traces?var-battle_id=${battle_id}&var-trace_id=${__value.raw}&${__url_time_range}"
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Trace ID"
             },
             "properties": [
               {
@@ -173,23 +156,6 @@
                 ]
               }
             ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Trace ID"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Show this trace below",
-                    "url": "/d/battle-traces/battle-traces?var-battle_id=${battle_id}&var-trace_id=${__value.raw}&${__url_time_range}"
-                  }
-                ]
-              }
-            ]
           }
         ]
       },
@@ -232,23 +198,6 @@
             "matcher": {
               "id": "byName",
               "options": "traceID"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Show this trace below",
-                    "url": "/d/battle-traces/battle-traces?var-battle_id=${battle_id}&var-trace_id=${__value.raw}&${__url_time_range}"
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Trace ID"
             },
             "properties": [
               {
