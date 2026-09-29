@@ -63,10 +63,16 @@ The battle feature's `hooks/` directory owns status, event, decision-history, an
 `useBattleStatus` cancels polling when a control returns a terminal status.
 `useBattleStatus.test.ts` verifies that a late in-flight response cannot overwrite
 an operator stop or schedule further polls.
+It also returns `lastUpdated`, the time of the most recent successful status response
+or control result; `BattleHeader` shows it beside the connection badge, which already
+reports reconnecting and error states.
 
 `BattlePage` owns map perspective and controls. `components/BattleInspector.tsx`
 owns the System/player dropdown, the shared inner tab, and the scoped context cache;
-`InspectorTabs.tsx` implements inner-tab keyboard navigation. `AIDecisionPanel` keeps
+`InspectorTabs.tsx` implements inner-tab keyboard navigation. For an active battle, the
+System panel shows the next production window (or pending opening purchase) and the
+per-faction recruit limit. The engine computes the schedule (`production` in the battle
+response); `presentation/production.ts` only formats it. `AIDecisionPanel` keeps
 individual decision expansion stable, while `DecisionContextPanel.tsx` lazily
 loads and presents the historical observation. `EventConsole` preserves loaded
 event filtering and payload expansion. `presentation/events.ts` owns readable

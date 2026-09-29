@@ -30,7 +30,7 @@ const battleControlRequests = {
 export function BattlePage() {
   const permissions = usePermissions()
   const { id = '' } = useParams()
-  const { battle, connection, connectionMessage, retryConnection, applyBattle } = useBattleStatus(id)
+  const { battle, connection, connectionMessage, lastUpdated, retryConnection, applyBattle } = useBattleStatus(id)
   const {
     selectedAttempt,
     setSelectedAttempt,
@@ -90,7 +90,7 @@ export function BattlePage() {
 
   return (
     <>
-      <BattleHeader battle={battle} battleTitle={battleTitle} connection={connection} connectionMessage={connectionMessage} retryConnection={retryConnection} />
+      <BattleHeader battle={battle} battleTitle={battleTitle} connection={connection} connectionMessage={connectionMessage} lastUpdated={lastUpdated} retryConnection={retryConnection} />
 
       <section className="battle-toolbar">
         <div className="battle-progress-panel">

@@ -246,6 +246,7 @@ main.main-content--battle { --battle-sidebar-width: 340px; --battle-column-gap: 
 .battle-inspector th, .battle-inspector td { text-align: left; padding: 10px 6px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .battle-inspector caption { padding: 14px 6px; text-align: left; color: #aeb6a9; }
 .player-comparison .text-button { text-align: left; overflow-wrap: anywhere; }
+.production-schedule { margin: 14px 6px 0; color: #aeb6a9; font: 12px/1.6 'DM Mono', monospace; overflow-wrap: anywhere; }
 .saved-context { margin: 12px 0; }
 .battle-inspector summary { cursor: pointer; }
 .saved-context { padding-top: 12px; border-top: 1px solid var(--line); }

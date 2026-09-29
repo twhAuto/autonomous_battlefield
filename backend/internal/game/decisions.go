@@ -233,3 +233,28 @@ func validateProductionSites(scenario Scenario, setup FactionSetup, plan control
 	}
 	return nil
 }
+
+// ProductionSchedule is the next point at which factions spend gold, for presentation.
+type ProductionSchedule struct {
+	NextTick uint64 `json:"nextTick"`
+	Opening  bool   `json:"opening"`
+}
+
+// NextProduction derives the next spending point from a persisted snapshot using the
+// same rules as OpeningDue and DecisionWindowDue: a pending opening purchase at tick
+// 0, otherwise the next interval multiple. It reports false when no window remains
+// before maxTicks.
+func NextProduction(scenario Scenario, state State, maxTicks uint64) (ProductionSchedule, bool) {
+	if scenario.SnapshotVersion >= DoctrineSnapshotVersion && !state.OpeningComplete {
+		return ProductionSchedule{NextTick: 0, Opening: true}, true
+	}
+	interval := uint64(scenario.DecisionIntervalTicks)
+	if interval == 0 {
+		return ProductionSchedule{}, false
+	}
+	next := (state.Tick/interval + 1) * interval
+	if next > maxTicks {
+		return ProductionSchedule{}, false
+	}
+	return ProductionSchedule{NextTick: next}, true
+}
