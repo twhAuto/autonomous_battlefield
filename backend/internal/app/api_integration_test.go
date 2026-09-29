@@ -67,9 +67,8 @@ func TestAPIIntegrationAgainstPostgres(t *testing.T) {
 	battleID := randomID(t)
 	t.Run("create and retry", func(t *testing.T) { checkBattleCreationRetries(t, api, alice, bob, battleID, blue, red) })
 	t.Run("poll to completion and view", func(t *testing.T) { checkCompletedBattle(t, api, bob, battleID, blue) })
-	t.Run("authorization", func(t *testing.T) {
-		checkAuthorization(t, api, alice, bob, api.as(issuer.user("dev")), api.as(issuer.user("admin")), battleID, blue, red)
-	})
+	users := integrationUsers{alice: alice, bob: bob, developer: api.as(issuer.user("dev")), admin: api.as(issuer.user("admin"))}
+	t.Run("authorization", func(t *testing.T) { checkAuthorization(t, api, users, battleID, blue, red) })
 }
 
 // isolatedAPIDatabase migrates a private schema so the in-process engine only claims
@@ -306,7 +305,11 @@ func checkCompletedBattle(t *testing.T, api *integrationAPI, viewer *integration
 	}
 }
 
-func checkAuthorization(t *testing.T, api *integrationAPI, alice, bob, developer, admin *integrationClient, completed, blue, red string) {
+// integrationUsers holds one signed-in client per role: two Players, a Developer and an Admin.
+type integrationUsers struct{ alice, bob, developer, admin *integrationClient }
+
+func checkAuthorization(t *testing.T, api *integrationAPI, users integrationUsers, completed, blue, red string) {
+	alice, bob, developer, admin := users.alice, users.bob, users.developer, users.admin
 	decisions := "/v1/battles/" + completed + "/decisions?attempt=1"
 	api.expectError(t, bob.get(decisions), http.StatusForbidden, apierror.CodePermissionDenied)
 	api.expect(t, developer.get(decisions), http.StatusOK)
