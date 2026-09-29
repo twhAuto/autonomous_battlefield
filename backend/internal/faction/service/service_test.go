@@ -76,6 +76,8 @@ func TestCreateFactionReturnsAlreadyExists(t *testing.T) {
 	}
 }
 
+var errLookup = errors.New("database unavailable")
+
 func TestCreateFactionReplaysIdenticalRetry(t *testing.T) {
 	const id = "7f22e693-bacd-46bb-b942-64fa613cd388"
 	original := faction.Faction{ID: id, Name: "Northwind", Doctrine: "Hold the line.", Background: "Frost clans.", OwnerID: "self"}
@@ -93,7 +95,8 @@ func TestCreateFactionReplaysIdenticalRetry(t *testing.T) {
 		{name: "changed name conflicts", stored: original, caller: "self", input: CreateInput{ID: id, Name: "Southreach", Doctrine: retry.Doctrine, Background: retry.Background}, wantErr: ErrFactionAlreadyExists},
 		{name: "changed doctrine conflicts", stored: original, caller: "self", input: CreateInput{ID: id, Name: retry.Name, Doctrine: "Attack.", Background: retry.Background}, wantErr: ErrFactionAlreadyExists},
 		{name: "changed background conflicts", stored: original, caller: "self", input: CreateInput{ID: id, Name: retry.Name, Doctrine: retry.Doctrine}, wantErr: ErrFactionAlreadyExists},
-		{name: "lookup failure conflicts", stored: original, caller: "self", input: retry, getErr: errors.New("database unavailable"), wantErr: ErrFactionAlreadyExists},
+		{name: "lookup failure surfaces", stored: original, caller: "self", input: retry, getErr: errLookup, wantErr: errLookup},
+		{name: "deleted before lookup conflicts", stored: original, caller: "self", input: retry, getErr: ErrFactionNotFound, wantErr: ErrFactionAlreadyExists},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

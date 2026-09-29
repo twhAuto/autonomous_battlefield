@@ -79,6 +79,10 @@ func (s *service) CreateFaction(ctx context.Context, input CreateInput) error {
 		// A retry of the same caller's identical request succeeds, matching battle
 		// creation; any other reuse of the client-generated ID remains a conflict.
 		existing, getErr := s.repository.GetFaction(ctx, stored.ID)
+		if getErr != nil && !errors.Is(getErr, ErrFactionNotFound) {
+			// An unverified retry must surface as a server error, not a conflict.
+			return getErr
+		}
 		if getErr == nil && existing != nil && existing.OwnerID == authn.Owner(ctx) && existing.Name == stored.Name &&
 			existing.Doctrine == stored.Doctrine && existing.Background == stored.Background {
 			return nil
