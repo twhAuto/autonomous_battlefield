@@ -61,7 +61,7 @@ def publish_registration(inventory, data, manifest_path, manifest):
     created = inventory.lstat()
     try:
         write_new(manifest_path, (json.dumps(manifest, indent=2) + '\n').encode())
-    except OSError:
+    except BaseException:
         # Remove only the inventory this attempt created; preserve a concurrently replaced file.
         try:
             current = inventory.lstat()
@@ -147,7 +147,7 @@ def backup_candidate(data, report):
     if disk is None or disk in root_disks or node.get('fstype') != 'ext4':
         raise ValueError('Backup must be an existing ext4 filesystem on a separate physical disk')
     return {'device': node['name'], 'uuid': uuid, 'disk': disk,
-            'mountpoints': node.get('mountpoints'), 'contents_verified': False}
+            'mountpoints': node.get('mountpoints'), 'contents_verified': False, 'usable': True}
 
 
 def validate_target(data, report):
@@ -353,7 +353,7 @@ def parser():
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument('command', choices=['init', 'inspect', 'seal', 'plan', 'apply', 'verify', 'tools'])
     default = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'autonomous-battlefield/server/inventory.json'
-    result.add_argument('--inventory', type=safe_path, default=str(default))
+    result.add_argument('--inventory', type=safe_path, default=default)
     result.add_argument('--host')
     result.add_argument('--user')
     result.add_argument('--identity-file')
@@ -370,6 +370,7 @@ def main():
     if args.command == 'tools':
         print(tools_bin())
         return
+    args.inventory = safe_path(args.inventory)
     if args.command == 'init':
         data = validate_inventory({'schema': 1, 'host': args.host, 'user': args.user,
                                    'identity_file': args.identity_file or '', 'machine_id': '0' * 32,

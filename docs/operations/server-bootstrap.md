@@ -123,9 +123,9 @@ bootstrap lock does not yet coordinate application delivery or recovery jobs;
 those jobs need the later shared platform-operation integration.
 
 Reruns repair managed permissions/settings and preserve unrelated files. If a run
-stops after creating an empty ownership directory, it can resume. Registration also rolls back its newly created inventory if
-publishing the input manifest fails. An unknown
-nonempty directory, mismatched marker, or redirected managed input path requires
+stops after creating an empty ownership directory, it can resume. Registration also
+rolls back its newly created inventory if publishing the input manifest fails or
+is interrupted. An unknown nonempty directory, mismatched marker, or redirected managed input path requires
 inspection. Do not delete an ownership marker to force adoption. A fresh-host plan
 skips group changes and starting not-yet-installed services; it is not evidence of
 a successful apply/reboot. `verify` checks installed services, Buildx, KVM and
@@ -141,10 +141,11 @@ Nightly backups and retention are not active in this foundation slice.
 Leave `backup_uuid` empty until the intended filesystem is inspected. Once set,
 inspection reports whether it identifies a unique existing ext4 filesystem on a
 different physical disk from `/`. A primary-disk partition, missing disk or
-ambiguous UUID is reported as unusable. Foundation inspection, credential import
-and configuration remain available when the backup disk is unavailable; a future
-backup operation must reject that selection before writing. Inspection does not establish that the filesystem is empty or that it has
-100 GB free. No command here mounts, formats, partitions or expands it. The future
+ambiguous UUID is reported with `usable: false`; a valid candidate has `usable: true`,
+and no configured UUID produces `null`. This flag confirms disk identity only.
+Foundation inspection, credential import and configuration remain available when the backup disk is unavailable; a future
+backup operation must reject that selection before writing. Inspection does not
+establish that the filesystem is empty or that it has 100 GB free. No command here mounts, formats, partitions or expands it. The future
 backup role must verify the expected mounted UUID before writing, preserve other
 data, and fail visibly when the disk is absent.
 
@@ -170,8 +171,8 @@ protected; the unprivileged import manifest cannot collect it automatically.
 The first command installs the pinned tools, checks playbook syntax, and runs
 real Vault/Ansible tests against synthetic files under a private temporary
 directory. It verifies first/second apply, check mode, permission drift repair,
-credential conflict/omission rejection, preserved encrypted recovery bundles,
-literal secret content and secret-safe output. A pseudo-terminal check runs the
+credential conflict/omission rejection with the affected input names, preserved
+encrypted recovery bundles, literal secret content and secret-safe output. A pseudo-terminal check runs the
 actual Ansible Vault/sudo prompts through the apply process launcher and verifies
 that the synthetic password is not echoed. It does not execute privileged tasks. Wrapper tests cover inventory/SSH injection, machine identity, disk
 selection, private file handling and concurrent lock exclusion. The deployment

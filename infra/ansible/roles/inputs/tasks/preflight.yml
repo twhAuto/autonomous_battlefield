@@ -29,11 +29,19 @@
   register: inputs_names
   when: inputs_directory.stat.exists
   no_log: true
+- name: Identify omitted credential names without exposing values
+  ansible.builtin.set_fact:
+    inputs_missing: >-
+      {{ inputs_names.files | map(attribute='path') | map('basename') |
+         difference(bootstrap_vault.bootstrap_inputs.keys()) | sort }}
+  when: inputs_directory.stat.exists
+  no_log: true
 - name: Require every previously imported credential in the recovery bundle
   ansible.builtin.assert:
-    that:
-      - (inputs_names.files | map(attribute='path') | map('basename') | difference(bootstrap_vault.bootstrap_inputs.keys())) | length == 0
-    fail_msg: The bundle omits previously imported credentials; recover them rather than dropping them.
+    that: inputs_missing | length == 0
+    fail_msg: >-
+      Missing imported inputs: {{ inputs_missing | join(', ') }}.
+      Recover them rather than dropping them from the bundle.
   when: inputs_directory.stat.exists
 - name: Validate named input values
   ansible.builtin.assert:

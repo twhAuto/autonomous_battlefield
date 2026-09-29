@@ -51,6 +51,8 @@ class BootstrapTests(unittest.TestCase):
         report = {'disks': {'rc': 0, 'output': json.dumps({'blockdevices': disks})}}
         candidate = bootstrap.backup_candidate({'backup_uuid': 'backup-uuid'}, report)
         self.assertEqual(candidate['disk'], 'sda')
+        self.assertTrue(candidate['usable'])
+        self.assertIsNone(bootstrap.backup_candidate({}, report))
         self.assertFalse(candidate['contents_verified'])
         for uuid in ['root-uuid', 'same-disk', 'absent']:
             with self.subTest(uuid=uuid), self.assertRaises(ValueError):
@@ -136,9 +138,38 @@ class BootstrapTests(unittest.TestCase):
                     bootstrap.publish_registration(inventory, self.inventory(), manifest, {})
             self.assertFalse(inventory.exists())
             self.assertFalse(manifest.exists())
+            # Serialization, path validation and interruption failures must also undo this registration.
+            for failure in (ValueError('fixture path rejection'), KeyboardInterrupt()):
+                def fail_manifest_again(path, content):
+                    if path == manifest:
+                        raise failure
+                    return original(path, content)
+                with self.subTest(failure=type(failure).__name__), \
+                        patch.object(bootstrap, 'write_new', side_effect=fail_manifest_again), \
+                        self.assertRaises(type(failure)):
+                    bootstrap.publish_registration(inventory, self.inventory(), manifest, {})
+                self.assertFalse(inventory.exists())
+            with self.assertRaises(TypeError):
+                bootstrap.publish_registration(inventory, self.inventory(), manifest, {'invalid': object()})
+            self.assertFalse(inventory.exists())
             bootstrap.publish_registration(inventory, self.inventory(), manifest, {})
             self.assertTrue(inventory.exists())
             self.assertTrue(manifest.exists())
+
+    def test_tools_does_not_require_a_valid_machine_inventory_path(self):
+        with patch.dict(os.environ, {'XDG_CONFIG_HOME': '/tmp/config with spaces'}), \
+                patch.object(sys, 'argv', ['server.py', 'tools']), \
+                patch.object(bootstrap, 'tools_bin', return_value=Path('/tmp/tools')) as tools, \
+                redirect_stdout(io.StringIO()) as output:
+            bootstrap.main()
+        tools.assert_called_once()
+        self.assertEqual(output.getvalue().strip(), '/tmp/tools')
+        with patch.dict(os.environ, {'XDG_CONFIG_HOME': '/tmp/config with spaces'}), \
+                patch.object(sys, 'argv', ['server.py', 'inspect']), \
+                patch.object(bootstrap, 'load_inventory') as load, \
+                self.assertRaisesRegex(ValueError, 'Paths must'):
+            bootstrap.main()
+        load.assert_not_called()
 
     def test_ssh_preserves_trust_and_never_copies_the_key(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -282,7 +313,6 @@ class AnsibleInputTests(unittest.TestCase):
         output = b''
         prompts = [b'BECOME password:', b'Vault password:']
         answered = set()
-        status = None
         deadline = time.monotonic() + 30
         try:
             while time.monotonic() < deadline:
@@ -299,9 +329,7 @@ class AnsibleInputTests(unittest.TestCase):
                         if prompt in output and prompt not in answered:
                             os.write(fd, b'fixture-password-only\n')
                             answered.add(prompt)
-                finished, status = os.waitpid(child, os.WNOHANG)
-                if finished:
-                    break
+                # Drain through EOF even if the child has exited; its final output may still be queued.
             if len(answered) != 2 or b'PROMPTS_OK' not in output:
                 self.fail('Actual Ansible prompts did not complete: ' + output.decode(errors='replace'))
             self.assertNotIn(b'fixture-password-only', output)
@@ -365,6 +393,7 @@ class AnsibleInputTests(unittest.TestCase):
         self.bundle({'different_input': base64.b64encode(b'different').decode()})
         result = self.run_play()
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Missing imported inputs: application_env', result.stdout)
         self.assertFalse((credential.parent / 'different_input').exists())
         self.assertEqual(credential.read_text(), self.secret)
 
