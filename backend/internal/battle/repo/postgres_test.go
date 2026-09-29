@@ -127,6 +127,8 @@ func TestStopBattleMapsStateAndDatabaseResults(t *testing.T) {
 		{name: "queued", row: stopRow("stopped", "queued", 0)},
 		{name: "missing", row: stopRow("", "", 0), want: battleservice.ErrBattleNotFound},
 		{name: "settled", row: stopRow("", "completed", 0), want: battleservice.ErrBattleNotActive},
+		{name: "failed", row: stopRow("", "failed", 0), want: battleservice.ErrBattleNotActive},
+		{name: "already stopped retry", row: stopRow("", "stopped", 0)},
 		{name: "database", row: battleRow(func(...any) error { return errDatabase }), want: errDatabase},
 	} {
 		t.Run(test.name, func(t *testing.T) {
