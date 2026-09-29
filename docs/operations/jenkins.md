@@ -308,7 +308,8 @@ Use a separate agent so builds do not execute on the Jenkins controller:
    **four executors**, so PR builds for different branches run in parallel. Builds
    stay safe to overlap because test databases, Playwright dev servers, and image
    tags are per build: `with-test-postgres.sh` publishes a random port and names the
-   container by build tag, the frontend stages pass a free `E2E_PORT`, and images are
+   container by build tag, the frontend stages run `scripts/test/run-e2e.sh`, which serves Playwright on a
+   free `E2E_PORT` and retries only a lost port race, and images are
    tagged by commit. `main` delivery still runs one build at a time
    (`disableConcurrentBuilds()`), which is what serializes production rollouts.
    Size executors to the host: each frontend stage runs Chromium, and backend stages

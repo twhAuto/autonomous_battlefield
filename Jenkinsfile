@@ -103,12 +103,8 @@ pipeline {
                                     sh 'npm test -- --coverage'
                                     sh 'npm run build'
                                     sh 'npx playwright install chromium'
-                                    // Executors share the host, so each build serves Playwright on its own free port.
-                                    sh '''
-                                        E2E_PORT="$(node -e "const s=require('net').createServer();s.listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")"
-                                        export E2E_PORT
-                                        npm run test:e2e
-                                    '''
+                                    // Executors share the host: serve Playwright on a free port, retrying only a lost port race.
+                                    sh '../scripts/test/run-e2e.sh'
                                     // Browser-test evidence must survive the run; an empty archive would hide it.
                                     sh 'test -s playwright-report/index.html'
                                 }
@@ -212,12 +208,8 @@ pipeline {
                                     sh 'npm test -- --coverage'
                                     sh 'npm run build'
                                     sh 'npx playwright install chromium'
-                                    // Executors share the host, so each build serves Playwright on its own free port.
-                                    sh '''
-                                        E2E_PORT="$(node -e "const s=require('net').createServer();s.listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")"
-                                        export E2E_PORT
-                                        npm run test:e2e
-                                    '''
+                                    // Executors share the host: serve Playwright on a free port, retrying only a lost port race.
+                                    sh '../scripts/test/run-e2e.sh'
                                     // Browser-test evidence must survive the run; an empty archive would hide it.
                                     sh 'test -s playwright-report/index.html'
                                 }
