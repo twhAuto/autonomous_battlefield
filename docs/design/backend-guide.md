@@ -700,6 +700,33 @@ state remain available; active admission slots are released but daily usage is
 not refunded. Existing overdue battles expire on rollout. No migration or new
 configuration is required; while the engine is offline, expiry waits for restart.
 
+## End-to-end API integration test
+
+`backend/internal/app/api_integration_test.go` runs the assembled API, including
+the lifecycle handler, behind a real HTTP server. It uses a PostgreSQL schema of
+its own through `TEST_DATABASE_URL`, and skips when that variable is unset. It
+uses the production Cloudflare Access verifier. A local test issuer publishes a
+signing key at `/cdn-cgi/access/certs`, and the test sends signed tokens for
+Player, Developer, Admin and CI identities. An in-process engine worker processes
+queued battles, so a scripted `ranged-skirmish-v1` battle actually runs to
+completion.
+
+The test covers:
+
+- **Authentication:** missing, expired, wrong-audience, wrong-issuer and
+  role-less tokens; the session body; the 404 legacy login; and CI-only routes.
+- **Factions:** faction creation and its retry and conflict responses.
+- **Malformed input:** Origin and media-type checks, invalid or duplicate JSON,
+  unknown fields, oversized bodies, invalid IDs and tick counts, and missing
+  scenarios or factions.
+- **Battle retries:** the 202 retry and both 409 cases.
+- **A full run:** polling until complete, events, the faction view and history.
+- **Authorization:** owner and role checks on inspect, admin and control routes,
+  and control retries.
+
+The private schema keeps the worker from claiming battles that other packages'
+tests create in the shared database at the same time.
+
 ## Managed Player membership
 
 `backend/internal/members` contains the PostgreSQL membership/audit store, bounded
