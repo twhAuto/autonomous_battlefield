@@ -239,7 +239,7 @@
             "type": "tempo",
             "uid": "battlefield-tempo"
           },
-          "queryType": "traceId",
+          "queryType": "traceql",
           "query": "$trace_id"
         }
       ]
