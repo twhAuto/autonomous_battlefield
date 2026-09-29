@@ -206,7 +206,9 @@ propagation. Do not restore anonymous/password mode during an authentication inc
 ## Limits and the stop switch
 
 PostgreSQL serializes admission across replicas: 20 battles per identity per UTC
-day, 2 unfinished per identity, 4 unfinished globally. Queued and running rows,
+day, 2 unfinished per identity, 4 unfinished globally. Admin battles skip these
+battle limits but count toward the global unfinished total, so a busy Admin can
+still delay Player battles. Queued and running rows,
 including paused rows, are unfinished. A same-ID retry with identical scenario
 snapshot/ticks and owner returns the existing battle. Different inputs conflict.
 Background generations retain 10/day, cooldown, queue/execution timeout and their
