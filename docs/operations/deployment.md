@@ -234,6 +234,17 @@ PATH="$HOME/.local/bin:$PATH" BATTLEFIELD_LIVE_CODEX=1 go test ./internal/ai/mcp
 
 Antigravity and Claude use `BATTLEFIELD_LIVE_AGY` and `BATTLEFIELD_LIVE_CLAUDE`
 with `TestAntigravityLiveDecision` and `TestClaudeLiveDecision`.
+
+The host agent runs `HOST_AGENT_CONCURRENCY` decision slots (default `2`, range
+1–4) shared across the enabled CLIs, so both factions of a model-vs-model battle
+decide at the same time instead of taking turns. Use `4` for two concurrent
+battles, or `1` to reduce load; the database `runtime_policy.cli_concurrency`
+(4 by default) still caps executions across all workers:
+
+```bash
+HOST_AGENT_CONCURRENCY=4 ./run-k8s-cli-agent.sh auto
+```
+
 Follow [Claude setup](claude-cli.md) for `./run-k8s-cli-agent.sh claude`.
 The retained `GEMINI_CLI_PROFILE_AVAILABLE` flag now controls Antigravity.
 Follow [Antigravity setup](antigravity-cli.md) to install and authenticate it. It verifies the
