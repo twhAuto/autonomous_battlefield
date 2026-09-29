@@ -82,6 +82,12 @@ it('renders tick progress and faction names once the battle settles', async () =
   expect(screen.getAllByText('North').length).toBeGreaterThan(0)
 })
 
+it('shows when the battle data was last updated', async () => {
+  renderBattle()
+  const updated = await screen.findByText('UPDATED')
+  expect(updated.querySelector('time')).toHaveAttribute('dateTime', expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/))
+})
+
 it('offers a manual retry after the status link fails, then recovers', async () => {
   vi.useFakeTimers()
   vi.mocked(getBattle).mockRejectedValue(new BattleApiError('Engine unreachable', 503))

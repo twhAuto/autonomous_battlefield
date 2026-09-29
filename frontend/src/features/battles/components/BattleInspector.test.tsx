@@ -60,6 +60,17 @@ describe('battle inspector navigation', () => {
   expect(screen.getByText('Protect our opening economy')).toBeVisible()
  })
 
+ it('shows the next production window for an active battle only', () => {
+  const { rerender } = render(<BattleInspector {...props} battle={{ ...battle, decisionIntervalTicks: 10 }} />)
+  expect(screen.getByLabelText('Production schedule')).toHaveTextContent('Next production window: tick 20 (in 8 ticks) · up to 6 units per faction')
+  rerender(<BattleInspector {...props} battle={{ ...battle, decisionIntervalTicks: 10, paused: true }} />)
+  expect(screen.getByLabelText('Production schedule')).toHaveTextContent('(in 8 ticks, paused)')
+  rerender(<BattleInspector {...props} battle={{ ...battle, decisionIntervalTicks: 10, status: 'completed' }} />)
+  expect(screen.queryByLabelText('Production schedule')).toBeNull()
+  rerender(<BattleInspector {...props} />)
+  expect(screen.queryByLabelText('Production schedule')).toBeNull()
+ })
+
  it('keeps the selector and inner tabs keyboard accessible', async () => {
   const user = userEvent.setup()
   render(<BattleInspector {...props} />)

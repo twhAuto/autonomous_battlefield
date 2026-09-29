@@ -108,6 +108,8 @@ export interface BattleRun {
   scenarioDigest: string
   requestedTicks: number
   currentTick: number
+  /** Production/strategy window spacing from the battle's scenario snapshot. */
+  decisionIntervalTicks?: number
   status: BattleStatus
   paused: boolean
   attempt: number

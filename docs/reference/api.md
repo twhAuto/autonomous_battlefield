@@ -277,7 +277,7 @@ Invalid limits, statuses, or cursors return `400`; persistence failures return
 GET /v1/battles/{id}
 ```
 
-The response reports `queued`, `running`, `completed`, `failed`, or `stopped`, along with the authored map and current units, buildings, treasuries, tick, and attempt. Completed battles include castle health plus unit, economy, loot, damage, and posture statistics.
+The response reports `queued`, `running`, `completed`, `failed`, or `stopped`, along with the authored map and current units, buildings, treasuries, tick, and attempt. `decisionIntervalTicks` gives the production-window spacing from the battle's scenario snapshot: all purchases for a window happen on the transition into each tick that is a multiple of it. Completed battles include castle health plus unit, economy, loot, damage, and posture statistics.
 
 Pause or resume an active battle with `POST /v1/battles/{id}/pause` or
 `POST /v1/battles/{id}/resume`. Pausing preserves the current attempt; status

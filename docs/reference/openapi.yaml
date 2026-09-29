@@ -1280,7 +1280,7 @@ components:
         Players receive the same shape without `scenarioDigest` and `errorCode`, and
         their participant `controller` contains only `type`.
       type: object
-      required: [id, ownerId, scenarioId, requestedTicks, currentTick, status, paused, attempt, participants, result, map, state]
+      required: [id, ownerId, scenarioId, requestedTicks, currentTick, decisionIntervalTicks, status, paused, attempt, participants, result, map, state]
       properties:
         id: {type: string, format: uuid}
         ownerId: {type: string}
@@ -1288,6 +1288,13 @@ components:
         scenarioDigest: {type: string}
         requestedTicks: {type: integer}
         currentTick: {type: integer}
+        decisionIntervalTicks:
+          description: |
+            Production and strategy window spacing from the battle's immutable
+            scenario snapshot. Windows run on the transition into each tick that is
+            a multiple of this value; all recruitment for a window happens then.
+          type: integer
+          minimum: 1
         status: {$ref: '#/components/schemas/BattleStatus'}
         paused: {type: boolean}
         attempt:

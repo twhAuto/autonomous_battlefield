@@ -5,6 +5,17 @@ import { EventConsole } from './EventConsole'
 import { entityIndex } from '../presentation/entities'
 import { InspectorTabs } from './InspectorTabs'
 import { playerStatus, PlayerMetrics, PlayerOverview, PlayerUnits } from './PlayerStatusPanel'
+import { MAX_RECRUITS_PER_WINDOW, nextProductionWindow } from '../presentation/production'
+
+/** Production happens all at once on each window tick; nothing is queued between windows. */
+function ProductionSchedule({ battle }: Readonly<{ battle: BattleRun }>) {
+  if (battle.status !== 'queued' && battle.status !== 'running') return null
+  const next = nextProductionWindow(battle.state?.tick ?? battle.currentTick, battle.decisionIntervalTicks)
+  if (!next) return null
+  return <p className="production-schedule" aria-label="Production schedule">
+    Next production window: tick {next.nextTick} (in {next.ticksAway} {next.ticksAway === 1 ? 'tick' : 'ticks'}{battle.paused ? ', paused' : ''}) · up to {MAX_RECRUITS_PER_WINDOW} units per faction
+  </p>
+}
 
 const sections = ['overview', 'decisions', 'units', 'faction'] as const
 const sectionTabs = sections.map((id) => ({ id, label: id[0].toUpperCase() + id.slice(1) }))
@@ -36,6 +47,7 @@ export function BattleInspector({ battle, decisions, decisionMessage, events }: 
     })}
     <div id="inspector-content" className="inspector-scroll">
       <section id="inspector-panel-system" aria-label="System information" hidden={selected !== 'system'}>
+        <ProductionSchedule battle={battle} />
         <table className="player-comparison"><caption>Current player comparison{battle.state ? ` · tick ${battle.state.tick}` : ' · awaiting state'}</caption><thead><tr><th>Player</th><th>Gold</th><th>Units</th><th>Castle HP</th></tr></thead><tbody>
           {battle.participants.map((player) => {
             const status = playerStatus(battle.state, player.id)

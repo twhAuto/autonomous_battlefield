@@ -44,3 +44,14 @@ func TestPlayerCatalogIncludesOnlyApprovedAvailableCLI(t *testing.T) {
 		t.Fatalf("catalog: %s %v", raw, err)
 	}
 }
+
+func TestBattleResponsesExposeDecisionInterval(t *testing.T) {
+	run := &battleservice.BattleRun{ID: "battle", ScenarioSnapshot: game.Scenario{DecisionIntervalTicks: 10}}
+	for _, role := range []authn.Role{authn.Player, authn.Developer} {
+		request := httptest.NewRequest("GET", "/v1/battles/battle", nil).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "caller", Role: role}))
+		raw, err := json.Marshal(battleResponseFor(request, run))
+		if err != nil || !strings.Contains(string(raw), `"decisionIntervalTicks":10`) {
+			t.Fatalf("%s response: %s %v", role, raw, err)
+		}
+	}
+}

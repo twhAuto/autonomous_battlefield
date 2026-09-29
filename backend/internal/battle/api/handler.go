@@ -392,6 +392,7 @@ func battleResponse(run *battleservice.BattleRun) any {
 		ScenarioDigest string  `json:"scenarioDigest"`
 		RequestedTicks uint64  `json:"requestedTicks"`
 		CurrentTick    uint64  `json:"currentTick"`
+		DecisionTicks  uint64  `json:"decisionIntervalTicks"`
 		Status         string  `json:"status"`
 		Paused         bool    `json:"paused"`
 		Attempt        int     `json:"attempt"`
@@ -404,7 +405,8 @@ func battleResponse(run *battleservice.BattleRun) any {
 	}{
 		OwnerID: run.OwnerID, ID: run.ID, ScenarioID: run.ScenarioID, ScenarioDigest: run.ScenarioDigest,
 		RequestedTicks: run.RequestedTicks, CurrentTick: run.CurrentTick, Status: run.Status, Paused: run.Paused,
-		Attempt: run.Attempt, Participants: participants, Result: run.Result,
+		DecisionTicks: uint64(run.ScenarioSnapshot.DecisionIntervalTicks),
+		Attempt:       run.Attempt, Participants: participants, Result: run.Result,
 		Map: run.ScenarioSnapshot.Map, State: run.CurrentState,
 		ErrorCode: run.ErrorCode, ErrorMessage: run.ErrorMessage,
 	}
@@ -440,7 +442,7 @@ func battleResponseFor(r *http.Request, run *battleservice.BattleRun) any {
 	for _, f := range run.ScenarioSnapshot.Factions {
 		participants = append(participants, map[string]any{"id": f.ID, "name": f.Name, "background": f.Background, "doctrine": f.Doctrine, "controller": map[string]string{"type": f.Controller.Type}})
 	}
-	response := map[string]any{"id": run.ID, "ownerId": run.OwnerID, "scenarioId": run.ScenarioID, "requestedTicks": run.RequestedTicks, "currentTick": run.CurrentTick, "status": run.Status, "paused": run.Paused, "attempt": run.Attempt, "participants": participants, "result": run.Result, "map": run.ScenarioSnapshot.Map, "state": run.CurrentState}
+	response := map[string]any{"id": run.ID, "ownerId": run.OwnerID, "scenarioId": run.ScenarioID, "requestedTicks": run.RequestedTicks, "currentTick": run.CurrentTick, "decisionIntervalTicks": uint64(run.ScenarioSnapshot.DecisionIntervalTicks), "status": run.Status, "paused": run.Paused, "attempt": run.Attempt, "participants": participants, "result": run.Result, "map": run.ScenarioSnapshot.Map, "state": run.CurrentState}
 	if run.Status == "failed" {
 		response["errorMessage"] = "The battle could not complete."
 	}
