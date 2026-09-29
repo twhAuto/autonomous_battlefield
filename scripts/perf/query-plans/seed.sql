@@ -26,4 +26,4 @@ SET session_replication_role = origin;
 ANALYZE battle_runs; ANALYZE battle_events;
 SELECT status, paused, count(*) FROM battle_runs GROUP BY 1,2 ORDER BY 1,2;
 SELECT count(*) AS events FROM battle_events;
-SELECT pg_size_pretty(pg_relation_size('battle_events_pkey')) AS pkey, pg_size_pretty(pg_relation_size('battle_events_cursor_idx')) AS dup_idx;
+SELECT pg_size_pretty(pg_relation_size('battle_events_pkey')) AS events_pkey;

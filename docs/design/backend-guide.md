@@ -674,15 +674,16 @@ Results on PostgreSQL 17.6, 2026-09-29, limit 26 (page size 25 plus one):
 | History, `queued` (5% of rows), first page | index scan, status filter | 67 (669 rows filtered) | 0.50 ms |
 | History, `paused` (1.4%), first page | bitmap scan on `battle_runs_claim_idx` | — | 0.81 ms |
 | History, `paused`, cursor at offset 5,000 (generic plan) | index cond on cursor | 170 (was 635) | 0.61 ms (was 1.29 ms) |
-| Events after sequence 10,000 (20k-event battle) | `battle_events_cursor_idx` range scan | 8 | 0.05 ms |
-| Latest 200 events (20k-event battle) | backward index scan, then sort of 200 rows | 11 | 0.08 ms |
+| Events after sequence 10,000 (20k-event battle) | events index range scan | 8 | 0.05 ms |
+| Latest 200 events (20k-event battle) | backward events index scan, then sort of 200 rows | 11 | 0.08 ms |
 
 Rare status filters still scan the history index and discard non-matching rows,
 which grows with how far the matching rows are spread. At this scale it stays
 under 1 ms; add a `(status, created_at DESC, id DESC)` index only if measurements
-at a larger history show it matters. `battle_events_cursor_idx` duplicates the
-`battle_events` primary key `(battle_id, attempt, sequence)`: both are 9.8 MB at
-120k events, and either serves the event queries.
+at a larger history show it matters. `battle_events_cursor_idx` duplicated the
+`battle_events` primary key `(battle_id, attempt, sequence)` (9.8 MB each at 120k
+events); migration `00015_drop_duplicate_event_index.sql` removes it, and the event
+queries use `battle_events_pkey` with the same buffers and timings.
 
 Battle creation maps HTTP 429 to an allowance explanation: queued, running, and
 paused battles count toward active limits. The message directs players to battle
