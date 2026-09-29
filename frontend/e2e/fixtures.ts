@@ -1,4 +1,4 @@
-import { test as base, expect } from '@playwright/test'
+import { test as base, expect, type Route } from '@playwright/test'
 
 export const factionId = '11111111-1111-4111-8111-111111111111'
 export const rivalId = '22222222-2222-4222-8222-222222222222'
@@ -9,32 +9,57 @@ export function battleFixture(width = 15, height = 11) {
   const state = { battleId, tick: 89, factions: factions.map(faction => ({ factionId: faction.id, gold: 100, goldEarned: 100, goldSpent: 0, goldLooted: 0 })), units: [], buildings: factions.map((faction, index) => ({ id: `${faction.id}:castle`, factionId: faction.id, type: 'castle', position: map.castleSpawns[index], health: index ? 0 : 300, maxHealth: 300, defense: 8, vision: 4, income: 10 })) }
   return { id: battleId, ownerId: 'admin', scenarioId: 'castle-siege-v1', scenarioDigest: 'fixture', status: 'completed', paused: false, currentTick: 89, requestedTicks: 500, attempt: 1, participants: factions, map, state, result: { winnerFactionId: factionId, reason: 'castle_destroyed', ticksRun: 89, factions: [] } }
 }
-type FixtureState = { deleteFails: boolean; deleted: boolean; generation: Record<string, unknown>; writes: string[]; unexpected: string[]; width: number; height: number }
+type CreatedBattle = { id: string; scenarioId: string; participants: { factionId: string; controller: { type: string; profileId?: string } }[]; tickCount: number }
+type FixtureState = { deleteFails: boolean; deleted: boolean; createFails: boolean; created: CreatedBattle | null; generation: Record<string, unknown>; writes: string[]; unexpected: string[]; width: number; height: number }
+
+// Battle reads, kept out of the main router so each handler stays simple to read.
+function battleRoute(api: FixtureState, pathname: string): unknown {
+  const battle = battleFixture(api.width, api.height)
+  if (pathname === '/v1/battles') return { battles: [{ ...battle, createdAt: '2026-09-10T00:00:00Z', outcome: { winnerFactionId: factionId, reason: 'castle_destroyed' } }], nextCursor: '' }
+  if (pathname.endsWith('/view')) return { map: battle.map, state: battle.state, visiblePositions: battle.map.rows.flatMap((row, y) => [...row].map((_, x) => ({ x, y }))) }
+  if (pathname === `/v1/battles/${battleId}`) return battle
+  // A freshly staged battle is served as queued under its own generated identifier.
+  if (api.created && pathname === `/v1/battles/${api.created.id}`) {
+    return { ...battle, id: api.created.id, status: 'queued', paused: false, currentTick: 0, requestedTicks: api.created.tickCount, result: null }
+  }
+  if (pathname.endsWith('/decisions')) return { decisions: [] }
+  if (pathname.endsWith('/events')) return { attempt: 1, nextCursor: 14, events: Array.from({ length: 14 }, (_, index) => ({ attempt: 1, sequence: index + 1, tick: 89, type: index === 0 ? 'future_event' : index === 1 ? 'unit_moved' : 'unit_recruited', data: { factionId, unitType: 'ranger' }, createdAt: '2026-09-10T00:00:00Z' })) }
+  return null
+}
 export const test = base.extend<{ api: FixtureState }>({
   api: [async ({ page }, use) => {
-    const api: FixtureState = { deleteFails: false, deleted: false, generation: { available: false, reason: 'Disabled by operator', remaining: 10, modelLabel: '', resetAt: '2099-01-01T00:00:00Z', retryAt: '' }, writes: [], unexpected: [], width: 15, height: 11 }
-    await page.route('**/v1/**', async route => {
-      const { pathname } = new URL(route.request().url())
-      const method = route.request().method()
-      const reply = (json: unknown) => route.fulfill({ json })
-      if (method !== 'GET') api.writes.push(`${method} ${pathname}`)
-      if (pathname === '/v1/auth/session') return reply({ enabled: true, authenticated: true, actor: { id: 'admin', role: 'admin' } })
+    const api: FixtureState = { deleteFails: false, deleted: false, createFails: false, created: null, generation: { available: false, reason: 'Disabled by operator', remaining: 10, modelLabel: '', resetAt: '2099-01-01T00:00:00Z', retryAt: '' }, writes: [], unexpected: [], width: 15, height: 11 }
+    // Mutating routes are kept separate so each handler stays simple to read.
+    const writeRoute = async (route: Route, pathname: string, method: string) => {
       if (pathname === '/v1/auth/logout') return route.fulfill({ status: 204 })
       if (pathname === `/v1/factions/${factionId}` && method === 'DELETE') {
         if (api.deleteFails) return route.fulfill({ status: 500, body: 'Failed' })
         api.deleted = true
         return route.fulfill({ status: 204 })
       }
+      if (pathname === '/v1/battles' && method === 'POST') {
+        if (api.createFails) return route.fulfill({ status: 422, body: 'Ruleset mismatch' })
+        api.created = route.request().postDataJSON() as CreatedBattle
+        return route.fulfill({ status: 201, json: { id: api.created.id, status: 'queued' } })
+      }
+      return null
+    }
+    await page.route('**/v1/**', async route => {
+      const { pathname } = new URL(route.request().url())
+      const method = route.request().method()
+      const reply = (json: unknown) => route.fulfill({ json })
+      if (method !== 'GET') {
+        api.writes.push(`${method} ${pathname}`)
+        const handled = await writeRoute(route, pathname, method)
+        if (handled !== null) return handled
+      }
+      if (pathname === '/v1/auth/session') return reply({ enabled: true, authenticated: true, actor: { id: 'admin', role: 'admin' } })
       if (pathname === '/v1/factions') return reply({ factions: api.deleted ? [factions[1]] : factions })
       if (pathname === '/v1/faction-background-generations/options') return reply(api.generation)
       if (pathname === '/v1/scenarios') return reply({ scenarios: [{ id: 'castle-siege-v1', rulesVersion: '1', rulesetId: 'castle-siege-v1', mapWidth: 15, mapHeight: 11, maximumTicks: 500, tickDuration: '1s', decisionIntervalTicks: 10 }] })
       if (pathname === '/v1/model-profiles') return reply({ profiles: [{ id: 'offline', displayName: 'Offline AI', available: false, runtime: 'api', modelLabel: '', unavailableReason: 'Disabled by operator' }] })
-      const battle = battleFixture(api.width, api.height)
-      if (pathname === '/v1/battles') return reply({ battles: [{ ...battle, createdAt: '2026-09-10T00:00:00Z', outcome: { winnerFactionId: factionId, reason: 'castle_destroyed' } }], nextCursor: '' })
-      if (pathname.endsWith('/view')) return reply({ map: battle.map, state: battle.state, visiblePositions: battle.map.rows.flatMap((row, y) => [...row].map((_, x) => ({ x, y }))) })
-      if (pathname === `/v1/battles/${battleId}`) return reply(battle)
-      if (pathname.endsWith('/decisions')) return reply({ decisions: [] })
-      if (pathname.endsWith('/events')) return reply({ attempt: 1, nextCursor: 14, events: Array.from({ length: 14 }, (_, index) => ({ attempt: 1, sequence: index + 1, tick: 89, type: index === 0 ? 'future_event' : index === 1 ? 'unit_moved' : 'unit_recruited', data: { factionId, unitType: 'ranger' }, createdAt: '2026-09-10T00:00:00Z' })) })
+      const battleReply = battleRoute(api, pathname)
+      if (battleReply !== null) return reply(battleReply)
       api.unexpected.push(`${method} ${pathname}`)
       return route.fulfill({ status: 404, body: 'Unexpected test request' })
     })

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
@@ -149,12 +150,13 @@ func TestCreateFactionErrors(t *testing.T) {
 		body       string
 		serviceErr error
 		wantStatus int
+		wantCode   apierror.ErrorCode
 	}{
-		{name: "malformed body", body: `{`, wantStatus: http.StatusBadRequest},
-		{name: "trailing JSON", body: `{}` + `{}`, wantStatus: http.StatusBadRequest},
-		{name: "invalid faction", body: `{}`, serviceErr: factionservice.ErrInvalidFaction, wantStatus: http.StatusBadRequest},
-		{name: "duplicate faction", body: `{}`, serviceErr: factionservice.ErrFactionAlreadyExists, wantStatus: http.StatusConflict},
-		{name: "repository failure", body: `{}`, serviceErr: errors.New("database unavailable"), wantStatus: http.StatusInternalServerError},
+		{name: "malformed body", body: `{`, wantStatus: http.StatusBadRequest, wantCode: apierror.CodeInvalidRequest},
+		{name: "trailing JSON", body: `{}` + `{}`, wantStatus: http.StatusBadRequest, wantCode: apierror.CodeInvalidRequest},
+		{name: "invalid faction", body: `{}`, serviceErr: factionservice.ErrInvalidFaction, wantStatus: http.StatusBadRequest, wantCode: apierror.CodeInvalidRequest},
+		{name: "duplicate faction", body: `{}`, serviceErr: factionservice.ErrFactionAlreadyExists, wantStatus: http.StatusConflict, wantCode: apierror.CodeAlreadyExists},
+		{name: "repository failure", body: `{}`, serviceErr: errors.New("database unavailable"), wantStatus: http.StatusInternalServerError, wantCode: apierror.CodeInternal},
 	}
 
 	for _, tt := range tests {
@@ -168,6 +170,15 @@ func TestCreateFactionErrors(t *testing.T) {
 
 			if response.Code != tt.wantStatus {
 				t.Fatalf("status = %d, want %d", response.Code, tt.wantStatus)
+			}
+			var envelope struct {
+				Error apierror.ErrorBody `json:"error"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+				t.Fatalf("response is not a JSON error envelope: %v (%q)", err, response.Body.String())
+			}
+			if envelope.Error.Code != tt.wantCode {
+				t.Fatalf("code = %q, want %q", envelope.Error.Code, tt.wantCode)
 			}
 		})
 	}

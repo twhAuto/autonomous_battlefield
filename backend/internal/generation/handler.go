@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 )
@@ -28,7 +29,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 func actor(w http.ResponseWriter, r *http.Request) (string, bool) {
 	a, ok := authn.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, "authentication required", 401)
+		apierror.Write(w, r, 401, "authentication required")
 		return "", false
 	}
 	return a.ID, true
@@ -47,7 +48,7 @@ func (h *Handler) options(w http.ResponseWriter, r *http.Request) {
 	}
 	o, err := h.Repository.Options(r.Context(), id, h.Config)
 	if err != nil {
-		http.Error(w, "could not load generation allowance", 500)
+		apierror.Write(w, r, 500, "could not load generation allowance")
 		return
 	}
 	p, available := h.availability()
@@ -73,18 +74,18 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		IdempotencyKey string `json:"idempotencyKey"`
 	}
 	if httpapi.ReadJSON(w, r, &body) != nil {
-		http.Error(w, "invalid request body", 400)
+		apierror.Write(w, r, 400, "invalid request body")
 		return
 	}
 	input, err := body.Input.Normalized()
 	if err != nil {
-		http.Error(w, "invalid name, doctrine, or background", 400)
+		apierror.Write(w, r, 400, "invalid name, doctrine, or background")
 		return
 	}
 	p, available := h.availability()
 	available = available && ai.ProfileAllowed(r.Context(), p)
 	if !available {
-		http.Error(w, "background generation is unavailable", 503)
+		apierror.Write(w, r, 503, "background generation is unavailable")
 		return
 	}
 	admission := h.Config
@@ -95,13 +96,19 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		o.Available = true
 		o.ModelLabel = p.ModelLabel
 		w.Header().Set("Retry-After", strconv.Itoa(max(1, int(time.Until(o.RetryAt).Seconds())+1)))
-		_ = httpapi.WriteJSON(w, 429, o)
+		// Clients read the cooldown fields from this body, so the envelope is added
+		// alongside them rather than replacing them.
+		_ = httpapi.WriteJSON(w, 429, struct {
+			Options
+			Error apierror.ErrorBody `json:"error"`
+		}{o, apierror.Body(r, 429, ErrLimited.Error())})
 	case errors.Is(err, ErrConflict):
-		http.Error(w, err.Error(), 409)
+		// Echo the sentinel, not err: a wrapped error would carry internal context.
+		apierror.Write(w, r, 409, ErrConflict.Error())
 	case errors.Is(err, ErrInvalid):
-		http.Error(w, err.Error(), 400)
+		apierror.Write(w, r, 400, ErrInvalid.Error())
 	case err != nil:
-		http.Error(w, "could not queue background generation", 500)
+		apierror.Write(w, r, 500, "could not queue background generation")
 	default:
 		_ = httpapi.WriteJSON(w, 202, responseFor(r, j))
 	}
@@ -113,11 +120,11 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 	}
 	j, err := h.Repository.Get(r.Context(), id, r.PathValue("id"))
 	if errors.Is(err, ErrNotFound) {
-		http.Error(w, "generation not found", 404)
+		apierror.Write(w, r, 404, "generation not found")
 		return
 	}
 	if err != nil {
-		http.Error(w, "could not load generation", 500)
+		apierror.Write(w, r, 500, "could not load generation")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")

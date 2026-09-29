@@ -49,9 +49,12 @@ autonomous_battlefield/
 │   │   │   └── controller/     # Infrastructure-free controller contracts
 │   │   ├── ai/                 # Decision execution, providers, MCP, evaluations
 │   │   ├── admin/              # Model-access handler, service, and repository
+│   │   ├── apicontract/        # Tests keeping openapi.yaml in step with served routes
 │   │   ├── members/            # Player membership and reconciliation
 │   │   ├── generation/         # Faction background generation jobs and quotas
 │   │   ├── testutil/           # Shared assertions with lazy failure diagnostics
+│   │   ├── apierror/           # Stable JSON error envelope and codes for /v1
+│   │   ├── requestid/          # Request correlation ID carried in the context
 │   │   └── ...                 # app, authn, config, httpapi, postgres, logging, telemetry
 │   ├── migrations/             # Embedded SQL migrations
 │   ├── content/                # Shared versioned unit and building libraries

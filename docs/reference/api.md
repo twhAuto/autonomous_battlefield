@@ -1,5 +1,9 @@
 # HTTP API reference
 
+The machine-readable contract is [`openapi.yaml`](openapi.yaml): it lists every `/v1`
+route, request body, response shape, and error code, and CI checks it against the
+routes the API actually serves. This guide explains behavior in more depth.
+
 Run the application using the [local setup](../../README.md#run-locally).
 Paths below are relative to the API origin (`http://localhost:8080` locally).
 Examples assume authentication is disabled; when enabled, log in and send the
@@ -9,6 +13,55 @@ returned session cookie with protected requests.
 When authentication is enabled, all `/v1` routes except login and session
 discovery require the signed session cookie. Lifecycle and metrics endpoints
 remain public for infrastructure probes.
+
+## Errors
+
+Every `/v1` error response uses one JSON envelope, whatever the status:
+
+```json
+{"error":{"code":"not_found","message":"battle not found","requestId":"4f0c…"}}
+```
+
+- `code` is stable and part of the contract. Branch on it, not on `message`.
+- `message` is human-readable and may change between releases.
+- `requestId` matches the `X-Request-ID` response header and the server's
+  `request_id` log field. It is omitted when no request identifier is in scope.
+
+The code follows the status, with one exception: a duplicate identifier returns
+`409` with `already_exists` rather than `conflict`.
+
+| Status | Code |
+| --- | --- |
+| 400 | `invalid_request` |
+| 401 | `authentication_required` |
+| 403 | `permission_denied` |
+| 404 | `not_found` |
+| 405 | `method_not_allowed`, with an `Allow` header listing supported methods |
+| 409 | `conflict`, or `already_exists` for a duplicate battle or faction identifier |
+| 415 | `unsupported_media_type` |
+| 422 | `validation_failed` |
+| 429 | `rate_limited` |
+| 500 | `internal_error` |
+| 501 | `not_implemented` |
+| 503 | `service_unavailable` |
+
+Unregistered `/v1` routes, and registered paths called with an unregistered
+method, return `403` with `permission_denied`. This is deliberate: the route
+permission registry denies anything it does not list, so the response does not
+reveal whether a route exists. The exception is the three `/v1/auth/*` routes,
+which sit outside that registry; calling one with the wrong method returns `405`
+with `method_not_allowed`. Both cases use the envelope.
+Internal failures report a generic message and never include the underlying
+cause. When background generation returns `429`, the envelope is added beside the
+existing availability fields (`retryAt`, `remaining`, and so on) rather than
+replacing them.
+
+Two responses are deliberately not errors in this sense. An unauthenticated
+`GET /v1/auth/session` returns `401` with a session body
+(`{"enabled":true,"authenticated":false,"mode":…}`) so clients can learn the
+authentication mode. Lifecycle endpoints (`/startupz`, `/livez`, `/healthz`,
+`/readyz`) also use the envelope for failures, but probes rely on the status
+alone; `/metrics` is outside the API contract.
 
 ## Administrator session
 
@@ -148,7 +201,9 @@ Content-Type: application/json
 }
 ```
 
-A valid request returns `202 Accepted`, a queued status, and `Location: /v1/battles/{id}`. Invalid input returns `400`, a missing scenario or faction returns `404`, and a duplicate battle ID returns `409`.
+A valid request returns `202 Accepted`, a queued status, and `Location: /v1/battles/{id}`. Invalid input returns `400` and a missing scenario or faction returns `404`.
+
+The client-supplied `id` makes retries safe. Repeating a request with the same `id` returns `202` and the existing battle when the caller, resolved scenario, and `tickCount` all match the original; its `status` is then the battle's current status. Reusing an `id` with a different caller, scenario, or `tickCount` returns `409`.
 
 `GET /v1/model-profiles` returns the operator allowlist with safe availability,
 provider, runtime, scope, model-label, and tool-capability fields. It never

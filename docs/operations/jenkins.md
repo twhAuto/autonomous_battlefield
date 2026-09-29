@@ -203,9 +203,17 @@ and build. Provision Linux browser libraries on the agent once using
 `npx playwright install-deps chromium`; CI does not attempt privileged package
 installation. The suite starts a local Vite server on port 4173, intercepts all
 API routes with deterministic fixtures, and covers desktop and mobile Chromium.
-It uses one worker in CI. No shared database or live AI is required. The always
-post step archives `frontend/playwright-report/**/*` and
-`frontend/test-results/**/*`, including failure screenshots and retained traces.
+It uses one worker in CI. No shared database or live AI is required. Each frontend
+stage then asserts `test -s playwright-report/index.html`, so a run that produces
+no browser-test report fails in the stage rather than archiving nothing.
+
+The always post step archives `frontend/test-results/**/*`, including failure
+screenshots and retained traces, with `allowEmptyArchive` enabled because those
+paths depend on which stages ran. `frontend/playwright-report/**/*` is archived by
+a separate step that runs only when `frontend/playwright-report/index.html` exists
+and does not allow an empty archive, so a missing browser-test report cannot pass
+unnoticed. Builds that never reach the frontend stages log that no report was
+produced instead of failing.
 
 Development k6 and ZAP containers use host networking on the Linux agent and map
 `battlefield.localhost` to `127.0.0.1`, matching kind's loopback-only gateway

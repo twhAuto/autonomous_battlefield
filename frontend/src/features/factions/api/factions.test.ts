@@ -99,6 +99,18 @@ describe('faction API', () => {
     })
   })
 
+  it('shows the envelope message rather than raw JSON for a 422', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(
+      JSON.stringify({ error: { code: 'validation_failed', message: 'invalid faction blueprint: unknown ruleset ""', requestId: 'req-9' } }),
+      { status: 422, headers: { 'Content-Type': 'application/json' } },
+    ))
+
+    await expect(createFaction(faction)).rejects.toMatchObject({
+      status: 422,
+      message: 'invalid faction blueprint: unknown ruleset ""',
+    })
+  })
+
   it('maps create network failures', async () => {
     vi.mocked(fetch).mockRejectedValue(new TypeError('offline'))
     await expect(createFaction(faction)).rejects.toEqual(new FactionApiError(
