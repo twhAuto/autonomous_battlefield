@@ -271,8 +271,12 @@ DEPLOY_COMPONENTS=all SMOKE_TEST_OBSERVABILITY=1 ./deploy-local.sh
 ```
 
 Visit `http://grafana.localhost:8888` and open **Autonomous Battlefield /
-Autonomous Battlefield Overview** for application SLIs or **Autonomous
-Battlefield / Kubernetes Workloads** for pod state and resource usage. Visit
+Autonomous Battlefield Overview** for application SLIs, **Autonomous
+Battlefield / Kubernetes Workloads** for pod state and resource usage, or
+**Autonomous Battlefield / Battle Traces** to follow one battle's traces. The
+anonymous local user is a Viewer, which Grafana does not allow into Explore; the
+Battle Traces dashboard lists a battle's engine and decision traces and draws the
+selected trace, so no Editor access is needed. Visit
 `http://kibana.localhost:8888`, open **Discover**, and select **Autonomous
 Battlefield Logs** for logs. The deployment job creates that data view before
 the observability stage is considered complete.

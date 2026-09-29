@@ -1,0 +1,299 @@
+{
+  "uid": "battle-traces",
+  "title": "Battle Traces",
+  "description": "Follow one battle end to end: the creating request, the engine attempt with its decision windows, and each AI decision (see docs/operations/observability.md#distributed-traces).",
+  "tags": [
+    "autonomous-battlefield",
+    "traces"
+  ],
+  "editable": false,
+  "schemaVersion": 41,
+  "version": 1,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timezone": "",
+  "refresh": "",
+  "templating": {
+    "list": [
+      {
+        "name": "battle_id",
+        "label": "Battle ID",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        }
+      },
+      {
+        "name": "trace_id",
+        "label": "Trace ID",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "How to use",
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Pick a battle from **Recent battles** (or paste a **Battle ID** above), then click a **Trace ID** to draw it in **Trace view**. In the engine trace, the root span's links open the creating request; in a decision trace, the root's link opens its decision window. Traces are kept for 24 hours."
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Recent battles",
+      "description": "Engine attempts in the time range; the battle ID is in the span set.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "battlefield-tempo"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "battlefield-tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"battlefield.engine.process\" } | select(span.\"battlefield.battle_id\", span.\"battlefield.attempt\")",
+          "limit": 20,
+          "tableType": "traces"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "traceID"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show this trace below",
+                    "url": "/d/battle-traces/battle-traces?var-battle_id=${battle_id}&var-trace_id=${__value.raw}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Trace ID"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show this trace below",
+                    "url": "/d/battle-traces/battle-traces?var-battle_id=${battle_id}&var-trace_id=${__value.raw}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Engine trace for this battle",
+      "description": "One trace per battle attempt: decision windows and database operations.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "battlefield-tempo"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "battlefield-tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"battlefield.engine.process\" && span.\"battlefield.battle_id\" = \"$battle_id\" }",
+          "limit": 20,
+          "tableType": "traces"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "traceID"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show this trace below",
+                    "url": "/d/battle-traces/battle-traces?var-battle_id=${battle_id}&var-trace_id=${__value.raw}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Trace ID"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show this trace below",
+                    "url": "/d/battle-traces/battle-traces?var-battle_id=${battle_id}&var-trace_id=${__value.raw}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "AI decision traces for this battle",
+      "description": "One trace per model decision: provider calls and MCP tools.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "battlefield-tempo"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "battlefield-tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"battlefield.agent.decision\" && span.\"langfuse.trace.metadata.battle_id\" = \"$battle_id\" } | select(span.\"langfuse.trace.metadata.target_tick\", span.\"battlefield.failed\")",
+          "limit": 20,
+          "tableType": "traces"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "traceID"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show this trace below",
+                    "url": "/d/battle-traces/battle-traces?var-battle_id=${battle_id}&var-trace_id=${__value.raw}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Trace ID"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show this trace below",
+                    "url": "/d/battle-traces/battle-traces?var-battle_id=${battle_id}&var-trace_id=${__value.raw}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 5,
+      "type": "traces",
+      "title": "Trace view",
+      "description": "The trace selected in the Trace ID box.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "battlefield-tempo"
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "battlefield-tempo"
+          },
+          "queryType": "traceId",
+          "query": "$trace_id"
+        }
+      ]
+    }
+  ]
+}
