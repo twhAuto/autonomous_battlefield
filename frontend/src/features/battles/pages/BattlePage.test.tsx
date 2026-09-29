@@ -48,6 +48,15 @@ function runningBattle(overrides: Partial<BattleRun> = {}): BattleRun {
   } as BattleRun
 }
 
+// Serves `initial` from status polls until the control call resolves, then serves its
+// result, as the server would. Keeps a poll that lands after the control from reverting
+// the page to the pre-control state on slow runners.
+function serveControlledBattle(control: typeof pauseBattle, initial: BattleRun, result: BattleRun) {
+  let current = initial
+  vi.mocked(getBattle).mockImplementation(async () => current)
+  vi.mocked(control).mockImplementation(async () => { current = result; return result })
+}
+
 function renderBattle(role: 'admin' | 'player' = 'admin', actorID = 'admin') {
   return render(<MemoryRouter initialEntries={[`/battles/${battleID}`]}>
     <SessionContext.Provider value={{ enabled: true, authenticated: true, actor: { id: actorID, role } }}>
@@ -115,8 +124,7 @@ it('reports a reconnecting link without offering manual retry', async () => {
 
 it('lets an owner pause a running battle and reflects the returned state', async () => {
   const user = userEvent.setup()
-  vi.mocked(getBattle).mockResolvedValue(runningBattle())
-  vi.mocked(pauseBattle).mockResolvedValue(runningBattle({ paused: true }))
+  serveControlledBattle(pauseBattle, runningBattle(), runningBattle({ paused: true }))
   renderBattle()
   await user.click(await screen.findByRole('button', { name: 'PAUSE' }))
   await waitFor(() => expect(pauseBattle).toHaveBeenCalledWith(battleID))
@@ -125,8 +133,7 @@ it('lets an owner pause a running battle and reflects the returned state', async
 
 it('resumes a paused battle', async () => {
   const user = userEvent.setup()
-  vi.mocked(getBattle).mockResolvedValue(runningBattle({ paused: true }))
-  vi.mocked(resumeBattle).mockResolvedValue(runningBattle({ paused: false }))
+  serveControlledBattle(resumeBattle, runningBattle({ paused: true }), runningBattle({ paused: false }))
   renderBattle()
   await user.click(await screen.findByRole('button', { name: 'PLAY' }))
   await waitFor(() => expect(resumeBattle).toHaveBeenCalledWith(battleID))
@@ -135,8 +142,7 @@ it('resumes a paused battle', async () => {
 
 it('stops a battle and settles on the terminal status', async () => {
   const user = userEvent.setup()
-  vi.mocked(getBattle).mockResolvedValue(runningBattle())
-  vi.mocked(stopBattle).mockResolvedValue(runningBattle({ status: 'stopped' }))
+  serveControlledBattle(stopBattle, runningBattle(), runningBattle({ status: 'stopped' }))
   renderBattle()
   await user.click(await screen.findByRole('button', { name: 'STOP' }))
   await waitFor(() => expect(stopBattle).toHaveBeenCalledWith(battleID))
