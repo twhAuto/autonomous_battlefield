@@ -219,7 +219,21 @@ connected:
 
 The helper supports `auto`, `codex`, `antigravity`, `claude`, `both`, and `all`
 (`gemini` is a compatibility alias). `both` retains Codex plus Antigravity;
-`all` requires all three CLIs. `auto` selects all available authenticated CLIs.
+`all` requires all three CLIs. `auto` selects all available authenticated CLIs,
+and silently skips a CLI whose version is outside its pinned family
+(`codex-cli 0.155.`, Antigravity `1.2.`, Claude `2.1.267`). Name the CLI explicitly
+to see why it was rejected. Pins are kept identical in `backend/config.yaml`,
+`deploy/base/infrastructure/configmap.yaml`, `deploy/agent-vm/config.yaml`, and
+`scripts/dev/run-k8s-cli-agent.sh`. Before raising a pin, run the opt-in live
+decision test for that CLI (it uses its subscription allowance, synthetic data only):
+
+```bash
+cd backend
+PATH="$HOME/.local/bin:$PATH" BATTLEFIELD_LIVE_CODEX=1 go test ./internal/ai/mcpserver -run '^TestCodexLiveDecision$' -count=1 -v
+```
+
+Antigravity and Claude use `BATTLEFIELD_LIVE_AGY` and `BATTLEFIELD_LIVE_CLAUDE`
+with `TestAntigravityLiveDecision` and `TestClaudeLiveDecision`.
 Follow [Claude setup](claude-cli.md) for `./run-k8s-cli-agent.sh claude`.
 The retained `GEMINI_CLI_PROFILE_AVAILABLE` flag now controls Antigravity.
 Follow [Antigravity setup](antigravity-cli.md) to install and authenticate it. It verifies the
