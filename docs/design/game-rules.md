@@ -95,17 +95,18 @@ Each tick transition runs these steps in order (`AdvanceWithPlans` in
 
 1. **Apply plans** if this transition is a production window.
 2. **Advance the tick** and clear the previous tick's action markers.
-3. **Economy**, per faction in faction-ID order: collect income; at a window, also
-   spend in the plan's `spendOrder`.
+3. **Economy**, per faction in scenario faction order: collect income; at a
+   window, also spend in the plan's `spendOrder`.
 4. **Tactics**, per faction: attack or defend, comparing weighted projected power
    (the sum of attack of living non-support units) for each side, plus target bonuses.
 5. **Aim position attacks:** Catapults fix their target hex before anyone moves.
 6. **Towers** act in stable building-ID order.
 7. **Units** act one at a time, fastest first, ties broken by unit ID. Speed sets
    turn order, not distance or attacks per tick. Units recruited this tick wait
-   until the next. Each unit either treats (Herbalist), retreats (siege when
-   enemies are adjacent), fires at its aimed hex, attacks a target in range, or
-   moves toward its objective.
+   until the next. Each unit either treats (Herbalist), retreats (units with a
+   minimum range, i.e. Catapults, when an enemy is adjacent and an escape route
+   exists), fires at its aimed hex, attacks a target in range, or moves toward
+   its objective.
 8. **Completion check** (see Winning).
 
 ## Combat
