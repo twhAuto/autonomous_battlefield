@@ -539,7 +539,10 @@ confirm that GitHub still reports the rulesets as active rather than treating
 the Jenkins checks as advisory.
 
 In the repository, open **Settings > Rules > Rulesets** and create or update
-rulesets targeting `dev` and `main`:
+the ruleset targeting `main`. `dev` is intentionally left without a ruleset so
+the owner can work on it directly when needed; Jenkins and SonarQube still run
+on pull requests into `dev`, but their results there are advisory. The `main`
+ruleset should:
 
 1. Require a pull request before merging and block direct pushes.
 2. Require the Jenkins PR result named `Jenkins`. It includes the SonarQube
