@@ -75,13 +75,13 @@ require_command() {
 
 codex_available() {
   command -v codex >/dev/null 2>&1 \
-    && [[ "$(codex --version 2>/dev/null || true)" == codex-cli\ 0.152.* ]] \
+    && [[ "$(codex --version 2>/dev/null || true)" == codex-cli\ 0.155.* ]] \
     && [[ -s "${HOME}/.codex/auth.json" ]]
 }
 
 antigravity_available() {
   command -v agy >/dev/null 2>&1 \
-    && [[ "$(agy --version 2>/dev/null || true)" == 1.1.* ]] \
+    && [[ "$(agy --version 2>/dev/null || true)" == 1.2.* ]] \
     && "${runtime_dir}/agent" -check-antigravity-auth >/dev/null 2>&1
 }
 
@@ -100,14 +100,14 @@ select_profiles() {
       ;;
     codex)
       if ! codex_available; then
-        echo "Codex CLI 0.152.x with an existing 'codex login' is required." >&2
+        echo "Codex CLI 0.155.x with an existing 'codex login' is required." >&2
         exit 1
       fi
       use_codex=1
       ;;
     antigravity|gemini)
       if ! antigravity_available; then
-        echo "Antigravity CLI 1.1.x with a working saved login is required. Run agy to sign in." >&2
+        echo "Antigravity CLI 1.2.x with a working saved login is required. Run agy to sign in." >&2
         exit 1
       fi
       use_gemini=1
@@ -163,7 +163,7 @@ write_agent_config() {
       printf '      runtime: cli\n'
       printf '      model: gpt-5.6-luna\n'
       printf '      scope: local\n'
-      printf '      supportedVersionPrefix: codex-cli 0.152.\n'
+      printf '      supportedVersionPrefix: codex-cli 0.155.\n'
       printf '      maxSteps: 3\n'
       printf '      enabled: true\n'
     fi
@@ -185,7 +185,7 @@ write_agent_config() {
       printf '      runtime: cli\n'
       printf '      model: gemini-3.7-flash-medium\n'
       printf '      scope: local\n'
-      printf '      supportedVersionPrefix: 1.1.\n'
+      printf '      supportedVersionPrefix: 1.2.\n'
       printf '      maxSteps: 3\n'
       printf '      enabled: true\n'
     fi

@@ -201,8 +201,8 @@ MCP container into a private staging directory; check the command succeeds befor
 transferring the file. Record its checksum and verify it again in the VM. Install
 it root-owned at `/usr/local/bin/battlefield-agent`, mode 0755.
 
-The working Codex release was **0.152.0**; the supplied profile requires the
-`codex-cli 0.152.` version family. Download **both** version-matched Linux amd64
+The supported Codex release is **0.155.0**; the supplied profile requires the
+`codex-cli 0.155.` version family (0.152 is rejected by the provider). Download **both** version-matched Linux amd64
 musl assets from the official `openai/codex` release on the host:
 
 - `codex-x86_64-unknown-linux-musl.tar.gz`
@@ -210,9 +210,10 @@ musl assets from the official `openai/codex` release on the host:
 
 Use the release's published digests/provenance to verify each asset. A versioned
 URL alone is not checksum verification. The helper archive's release SHA256 for
-0.152.0 was `449cefe35b9f347e3fdbf121e816339b37825eb0bfee7de8298a0a61b6687cba`.
-The main archive's release SHA256 was
-`05f942d3d3c5b5acd9edad56ce2797b6fe72dbb1462b24e5c9bf7dcec9a28a11`.
+0.155.0 is `328c1bebe09fc727053794576efea353d3b18381ee8883f5283b37ae4a7854d4`.
+The main archive's release SHA256 is
+`e415cc3adb94ade16e8d44b4dd58a9201cc34b2ee51a5d6eddf2a3a00aecb6c0`
+(GitHub release digests, re-verified by download on 2026-09-29).
 Retain both expected digests with your release inventory. For this exact release,
 on the host (do not reuse these hashes for another version):
 
@@ -221,14 +222,14 @@ on the host (do not reuse these hashes for another version):
 set -eu
 mkdir -p "$HOME/battlefield-cli-install"
 cd "$HOME/battlefield-cli-install"
-base=https://github.com/openai/codex/releases/download/rust-v0.152.0
+base=https://github.com/openai/codex/releases/download/rust-v0.155.0
 for name in codex codex-code-mode-host; do
   curl --fail --location --output "$name-x86_64-unknown-linux-musl.tar.gz" \
     "$base/$name-x86_64-unknown-linux-musl.tar.gz"
 done
 sha256sum --check <<'SUMS'
-05f942d3d3c5b5acd9edad56ce2797b6fe72dbb1462b24e5c9bf7dcec9a28a11  codex-x86_64-unknown-linux-musl.tar.gz
-449cefe35b9f347e3fdbf121e816339b37825eb0bfee7de8298a0a61b6687cba  codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz
+e415cc3adb94ade16e8d44b4dd58a9201cc34b2ee51a5d6eddf2a3a00aecb6c0  codex-x86_64-unknown-linux-musl.tar.gz
+328c1bebe09fc727053794576efea353d3b18381ee8883f5283b37ae4a7854d4  codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz
 SUMS
 for name in codex codex-code-mode-host; do
   tar -xzf "$name-x86_64-unknown-linux-musl.tar.gz"
