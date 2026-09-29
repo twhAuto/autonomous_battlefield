@@ -120,10 +120,12 @@ func productionSampler(t *testing.T) *tracetest.SpanRecorder {
 	recorder := tracetest.NewSpanRecorder()
 	provider := tracesdk.NewTracerProvider(tracesdk.WithSpanProcessor(recorder),
 		tracesdk.WithSampler(decisionSampler{fallback: tracesdk.ParentBased(tracesdk.NeverSample())}))
-	previous := otel.GetTracerProvider()
+	previous, previousPropagator := otel.GetTracerProvider(), otel.GetTextMapPropagator()
 	otel.SetTracerProvider(provider)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
 	t.Cleanup(func() {
 		otel.SetTracerProvider(previous)
+		otel.SetTextMapPropagator(previousPropagator)
 		_ = provider.Shutdown(context.Background())
 	})
 	return recorder

@@ -72,11 +72,17 @@ A battle is traced as three linked parts, all always sampled; other spans use
    (with a stable ID for Langfuse) linked to its decision window. It contains the
    provider calls (`battlefield.model.api_call`) and the MCP tool spans.
 
-To follow a battle end to end, search TraceQL for
-`{ span."battlefield.battle_id" = "<battle ID>" }` to find the engine trace, then
-open the span links: back to the creating request, and from each decision
-window to its decisions (`{ span."langfuse.trace.metadata.battle_id" = "<battle ID>" }`
-lists them directly).
+Links point from the later trace to the earlier one: the engine trace links to
+the creating request, and each decision links to its decision window. To follow a
+battle end to end in TraceQL:
+
+- `{ span."battlefield.battle_id" = "<battle ID>" }` finds the engine trace; its
+  root's link opens the creating request.
+- `{ span."langfuse.trace.metadata.battle_id" = "<battle ID>" }` lists the
+  decision traces; each root's link opens its decision window in the engine trace.
+
+Tempo's search results can omit leading zeros from trace IDs; pad them to 32 hex
+characters before comparing them with link targets.
 
 See [`internal/telemetry/tracing.go`](../../backend/internal/telemetry/tracing.go)
 for environment configuration and instrumentation, and the
