@@ -163,8 +163,8 @@ only the latest report/author summary in `discussion.json`. Full discussion
 fingerprints still prevent knowingly stale publication. An explicitly approved
 `--allow-extra-round` permits one more focused call. `scripts/test/test-cross-review.py` checks snapshot boundaries,
 read-only CLI options, version/argument checks, rejected responses, publication
-identity/body matching, delta-only follow-ups, compact context, round limits
-and process timeouts. `CLAUDE.md` points
+identity/body matching, delta-only follow-ups, compact context, round limits,
+process timeouts, and per-review token usage accounting (`--usage`). `CLAUDE.md` points
 Claude to the shared `AGENTS.md` rules. See the
 [cross-review workflow](../operations/cross-review.md).
 

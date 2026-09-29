@@ -28,6 +28,8 @@ Claude reviews explicitly use `--model opus`, regardless of the interactive IDE
 model selection. `opus` follows the provider's current Opus alias rather than
 pinning a specific version. The CLI's private JSON output records the models
 actually used. Codex reviews explicitly use `gpt-6-astra` with `model_reasoning_effort="medium"`.
+Both settings live in `REVIEWERS` at the top of `scripts/review/cross-review.py`;
+change a model there, and the command, metadata and usage accounting follow.
 
 The runner uses existing account login. It intentionally does not forward
 `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or arbitrary application credentials.
@@ -86,6 +88,31 @@ completed review as an ordinary PR comment using the current `gh` account. It
 never posts raw stdout/stderr, pushes, merges or changes production.
 A zero exit status means a report completed, not that it contains no findings.
 Missing tools, auth errors, empty results and timeouts must be investigated.
+
+## Usage accounting
+
+Reviews run with `--ephemeral` (Codex) or `--no-session-persistence` (Claude),
+so they never appear in the CLIs' own session history or in local usage
+dashboards built on it. Instead, each review's `metadata.json` records
+`started_at`, the requested model and effort, and a `usage` object read from the
+reviewer's own log. That object is written for failed or timed-out runs too,
+because they still spent tokens. `input_tokens` counts all prompt tokens,
+including `cached_input_tokens`. Codex totals come from its `turn.completed`
+events (`--json`). Claude totals come from its JSON result, which also reports
+the models it actually used and an API-equivalent `cost_usd`.
+
+To summarize every saved review by month, reviewer, and model/effort:
+
+```bash
+python3 scripts/review/cross-review.py --usage "$HOME/battlefield-reviews"
+```
+
+Only completed and failed runs are counted. Dry runs are not. Reviews saved
+before this accounting existed are included from their logs. For Codex runs,
+that is only the total Codex printed to stderr, which may exclude cached input,
+so the summary shows it in a separate `old total*` column. Cost appears only
+where the CLI reports it. For subscription logins it is an API-equivalent
+estimate, not a bill.
 
 ## Author/reviewer discussion in both directions
 
