@@ -129,16 +129,7 @@ func TestPathParametersAreDeclared(t *testing.T) {
 			if operation == nil {
 				continue
 			}
-			declared := map[string]bool{}
-			for _, source := range []any{item["parameters"], operation["parameters"]} {
-				list, _ := source.([]any)
-				for _, entry := range list {
-					parameter := document.resolve(t, asMap(entry))
-					if parameter["in"] == "path" {
-						declared[parameter["name"].(string)] = true
-					}
-				}
-			}
+			declared := document.declaredPathParameters(t, item, operation)
 			for _, match := range placeholder.FindAllStringSubmatch(path, -1) {
 				if !declared[match[1]] {
 					t.Errorf("%s %s: path parameter {%s} is not declared", strings.ToUpper(method), path, match[1])
@@ -146,6 +137,23 @@ func TestPathParametersAreDeclared(t *testing.T) {
 			}
 		}
 	}
+}
+
+// declaredPathParameters names the path parameters declared on the path item or the
+// operation, following references.
+func (s specification) declaredPathParameters(t *testing.T, item, operation map[string]any) map[string]bool {
+	t.Helper()
+	declared := map[string]bool{}
+	for _, source := range []any{item["parameters"], operation["parameters"]} {
+		list, _ := source.([]any)
+		for _, entry := range list {
+			parameter := s.resolve(t, asMap(entry))
+			if parameter["in"] == "path" {
+				declared[parameter["name"].(string)] = true
+			}
+		}
+	}
+	return declared
 }
 
 // resolve follows a local $ref, failing the test when the target does not exist.

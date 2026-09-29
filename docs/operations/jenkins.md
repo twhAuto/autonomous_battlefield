@@ -409,12 +409,22 @@ SonarQube imports `backend/coverage.out` and `frontend/coverage/lcov.info` using
 Community Build cannot analyze the repository's `dev` branch, each GitHub PR is
 an isolated SonarQube project named `autonomous-battlefield-pr-<number>`. Its
 checked-out code is that preview project's main branch. Before every gated head
-scan, `scripts/ci/run-sonarqube-pr-gate.sh` uploads the PR target's merge-base
-tree as version `base-<commit>` and then uploads the head as version
+scan, `scripts/ci/run-sonarqube-pr-gate.sh` deletes the preview project, uploads
+the PR target's merge-base tree as version `base-<commit>` dated at that commit's
+committer time (`sonar.projectDate`), and then uploads the head as version
 `pr-<number>`. SonarQube processes the baseline first, so the inherited
 **Previous version** New Code period measures the PR against its own target and
 cannot be moved by another PR. The baseline upload does not wait on its gate;
 the head upload waits and fails Jenkins when red.
+
+The baseline date matters because SonarQube backdates issues in newly added files
+to the line's commit date. A baseline dated at scan time would put every PR commit
+before the New Code period, so issues in new files and new-code coverage would
+escape the PR gate and surface only in the main gate. SonarQube rejects an
+analysis dated before the project's latest one, which is why each gated scan
+starts from a fresh preview project. Deletion needs **Administer** on the preview
+project; the Jenkins token's user is a SonarQube administrator. The preview
+project therefore holds only the latest head's analysis.
 
 The server was verified with the default **Sonar way** gate assigned to the
 production project, so newly created preview projects inherit the same gate.
