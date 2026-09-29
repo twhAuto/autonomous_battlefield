@@ -13,11 +13,11 @@ FUNCTIONS = '\n'.join(re.findall(r'^\w+\(\) \{\n.*?^\}', SOURCE, re.M | re.S))
 
 
 class CLIProfiles(unittest.TestCase):
-    def run_profile(self, mode, available):
+    def run_profile(self, mode, available, concurrency=None):
         with tempfile.TemporaryDirectory() as runtime:
             script = FUNCTIONS + '''
 use_codex=0; use_gemini=0; use_claude=0
-health_port=18083; mcp_port=18084
+health_port=18083; mcp_port=18084; agent_concurrency="${agent_concurrency:-2}"
 codex_available() { [[ "$available" == *codex* ]]; }
 antigravity_available() { [[ "$available" == *gemini* ]]; }
 claude_available() { [[ "$available" == *claude* ]]; }
@@ -30,7 +30,8 @@ set_profile_flags false false false
 '''
             return subprocess.run(['bash', '-ec', script], capture_output=True, text=True,
                                   env={**os.environ, 'requested_provider': mode,
-                                       'available': available, 'runtime_dir': runtime})
+                                       'available': available, 'runtime_dir': runtime,
+                                       **({'agent_concurrency': concurrency} if concurrency else {})})
 
     def test_claude_selection_config_and_flags(self):
         result = self.run_profile('claude', 'claude')
@@ -48,6 +49,20 @@ set_profile_flags false false false
                 result = self.run_profile(mode, available)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout.count('provider:'), count)
+
+    def test_agent_concurrency_default_and_override(self):
+        # Two slots by default so both factions of a model battle decide at once.
+        self.assertIn('agentConcurrency: 2', self.run_profile('claude', 'claude').stdout)
+        self.assertIn('agentConcurrency: 4', self.run_profile('claude', 'claude', '4').stdout)
+
+    def test_agent_concurrency_rejects_invalid_values(self):
+        for value, valid in [('1', True), ('4', True), ('0', False), ('5', False), ('two', False), ('', False)]:
+            with self.subTest(value=value):
+                result = subprocess.run(['bash', '-ec', FUNCTIONS + '\nvalidate_agent_concurrency'],
+                                        capture_output=True, text=True, env={**os.environ, 'agent_concurrency': value})
+                self.assertEqual(result.returncode, 0 if valid else 2, result.stderr)
+                if not valid:
+                    self.assertIn('HOST_AGENT_CONCURRENCY must be 1, 2, 3, or 4.', result.stderr)
 
     def test_production_claude_requires_isolation(self):
         script = r"""
