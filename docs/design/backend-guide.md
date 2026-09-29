@@ -412,6 +412,7 @@ Migrations under [`backend/migrations`](../../backend/migrations) are embedded i
 | `00012_model_access.sql` | Versioned administrator model access policy and last editor metadata |
 | `00013_player_members.sql` | Durable player membership and access synchronization |
 | `00014_cli_concurrency.sql` | Four shared CLI lease slots with serialized admission |
+| `00015_drop_duplicate_event_index.sql` | Drops `battle_events_cursor_idx`, which duplicated the `battle_events` primary key; event pages use `battle_events_pkey` |
 
 Schema changes should be made with a new migration, then reflected in repository scan/serialization logic and tests. Do not edit an already-applied migration to evolve a shared database.
 
