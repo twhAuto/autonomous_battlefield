@@ -247,8 +247,13 @@ func checkBattleCreationRetries(t *testing.T, api *integrationAPI, alice, bob *i
 		}
 		var created struct{ ID, Status string }
 		api.decode(t, response, http.StatusAccepted, &created)
-		// A retry reports the battle's current status, which the engine may have advanced.
-		if created.ID != battleID || (created.Status != "queued" && created.Status != "running") {
+		// A new battle is queued; a retry reports its current status, which the
+		// concurrent engine may have advanced as far as completion.
+		want := map[string]bool{"queued": true}
+		if attempt > 1 {
+			want = map[string]bool{"queued": true, "running": true, "completed": true}
+		}
+		if created.ID != battleID || !want[created.Status] {
 			t.Fatalf("attempt %d battle = %+v", attempt, created)
 		}
 	}
