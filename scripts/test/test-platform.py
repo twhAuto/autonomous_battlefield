@@ -89,10 +89,13 @@ with m.acquire() as fd:
             finally:
                 if child.poll() is None: child.kill(); child.wait()
 
+    @patch.dict(os.environ, {'CHANGE_ID': '', 'CHANGE_TARGET': ''})
     def test_revision_guard_rejects_pr_dirty_and_other_branch(self):
+        # Each case owns its PR context even when the suite runs inside Jenkins.
         revision='a'*40
-        with patch.dict(os.environ, {'CHANGE_ID':'1'}), self.assertRaisesRegex(ValueError,'PR'):
-            platform.trusted_revision(revision)
+        for marker, value in [('CHANGE_ID', '131'), ('CHANGE_TARGET', 'dev')]:
+            with self.subTest(marker=marker), patch.dict(os.environ, {marker:value}), self.assertRaisesRegex(ValueError,'PR'):
+                platform.trusted_revision(revision)
         with patch.object(platform,'git',side_effect=[revision,'b'*40]), self.assertRaisesRegex(ValueError,'origin/main'):
             platform.trusted_revision(revision)
         with patch.object(platform,'git',side_effect=[revision,revision,' M scripts/infra/server.py']), self.assertRaisesRegex(ValueError,'clean'):
