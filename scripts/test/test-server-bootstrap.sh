@@ -8,3 +8,5 @@ ANSIBLE_CONFIG="${project_dir}/infra/ansible/ansible.cfg" "${BATTLEFIELD_TEST_AN
   -i "${project_dir}/infra/ansible/syntax-inventory.ini" \
   "${project_dir}/infra/ansible/site.yml" --syntax-check
 python3 "${project_dir}/scripts/test/test-server-bootstrap.py"
+
+python3 "${project_dir}/scripts/test/test-data-storage.py"

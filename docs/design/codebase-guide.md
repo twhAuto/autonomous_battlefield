@@ -108,7 +108,12 @@ Host bootstrap enters through [`scripts/infra/server.sh`](../../scripts/infra/se
 Its Python wrapper validates private inventory, SSH/machine identity, secret imports
 and the host lock; `control-tools.py` installs the hash-locked Ansible environment.
 `infra/ansible/site.yml` separates foundation setup, private input reconciliation
-and verification. `scripts/test/test-server-bootstrap.sh` exercises real Ansible
+and verification. The optional `data_storage` role owns the existing ext4 mount,
+scoped directories and future K3s libvirt guard; its standalone `files/storage.py`
+handles mount identity, fstab preservation and the immutable storage contract.
+`test-data-storage.py` covers negative paths; `rehearse-data-storage.py` verifies
+privileged behavior only in an owned disposable guest.
+`scripts/test/test-server-bootstrap.sh` exercises real Ansible
 with synthetic inputs; see the [bootstrap guide](../operations/server-bootstrap.md).
 
 ## Common change paths

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Managed by battlefield bootstrap. Preserve unrelated guests and lifecycle events.
+case "$1:$2:$3" in
+  battlefield-k3s:prepare:begin|battlefield-k3s:start:begin|battlefield-k3s:restore:begin|battlefield-k3s:migrate:begin)
+    exec /usr/bin/python3 /usr/local/libexec/battlefield-data-storage guard {{ bootstrap_data_uuid | quote }} {{ bootstrap_data_mount | quote }} {{ bootstrap_operator | quote }}
+    ;;
+esac
+exit 0

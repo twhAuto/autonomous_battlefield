@@ -62,9 +62,9 @@
     - name: Report backup scope
       ansible.builtin.debug:
         msg: >-
-          Second-drive backups only; 100 GB initial budget. Candidate UUID:
+          Scheduled backups are deferred. Optional second-drive candidate UUID:
           {{ bootstrap_backup_uuid | default('') or 'not selected' }}.
-          No filesystem is mounted, formatted or resized by this foundation playbook.
+          The optional data role mounts only its separately selected data_uuid; no filesystem is formatted or resized.
           Backup scheduling is a later recovery role; whole-server-loss recovery is deferred.
   tasks:
     - name: Validate encrypted inputs before any configuration change
@@ -72,10 +72,19 @@
         name: inputs
         tasks_from: preflight
       when: bootstrap_action in ['plan', 'apply']
+    - name: Preflight optional host data storage
+      ansible.builtin.import_role:
+        name: data_storage
+        tasks_from: preflight
+      when: bootstrap_data_uuid | default('') | length > 0
     - name: Configure the foundation
       ansible.builtin.import_role:
         name: foundation
       when: bootstrap_action in ['plan', 'apply']
+    - name: Configure or verify optional host data storage
+      ansible.builtin.import_role:
+        name: data_storage
+      when: bootstrap_data_uuid | default('') | length > 0
     - name: Install the private recovery inputs
       ansible.builtin.import_role:
         name: inputs

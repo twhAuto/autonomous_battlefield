@@ -74,7 +74,7 @@ def publish_registration(inventory, data, manifest_path, manifest):
 
 def validate_inventory(data):
     required = {'schema', 'host', 'user', 'identity_file', 'machine_id'}
-    optional = {'backup_uuid', 'ca_files'}
+    optional = {'backup_uuid', 'ca_files', 'data_uuid', 'data_mount'}
     if not isinstance(data, dict) or not required <= data.keys() or data.keys() - required - optional:
         raise ValueError('Inventory has missing or unknown fields; use the example schema')
     patterns = {'host': r'[A-Za-z0-9][A-Za-z0-9.-]*', 'user': r'[a-z_][a-z0-9_-]*',
@@ -87,6 +87,14 @@ def validate_inventory(data):
             continue
         if not isinstance(value, str) or not re.fullmatch(pattern, value):
             raise ValueError(f'Invalid inventory field: {key}')
+    data_uuid = data.get('data_uuid', '')
+    data_mount = data.get('data_mount', '/srv/battlefield-data')
+    if not isinstance(data_uuid, str) or (data_uuid and not re.fullmatch(r'[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}', data_uuid)):
+        raise ValueError('data_uuid must be an empty string or complete filesystem UUID')
+    if not isinstance(data_mount, str) or not re.fullmatch(r'/srv/[a-z][a-z0-9-]{0,62}', data_mount):
+        raise ValueError('data_mount must be a direct /srv child with a simple lowercase name')
+    if data_uuid and data_uuid.lower() == data.get('backup_uuid', '').lower():
+        raise ValueError('Data and backup UUIDs must differ')
     safe_path(data['identity_file'])
     if not isinstance(data.get('ca_files', []), list):
         raise ValueError('ca_files must be a list of public certificate paths')
@@ -288,6 +296,8 @@ def ansible_inventory(data, local):
                  'ansible_python_interpreter': '/usr/bin/python3',
                  'bootstrap_machine_id': data['machine_id'], 'bootstrap_operator': data['user'],
                  'bootstrap_backup_uuid': data.get('backup_uuid', ''),
+                 'bootstrap_data_uuid': data.get('data_uuid', ''),
+                 'bootstrap_data_mount': data.get('data_mount', '/srv/battlefield-data'),
                  'bootstrap_ca_files': public_ca_paths(data)}
     if not local:
         variables['ansible_ssh_private_key_file'] = str(private_file(data['identity_file']))
