@@ -1392,9 +1392,12 @@ of builder layers; the root ignore file is not the boundary for component builds
 
 The [server bootstrap](../operations/server-bootstrap.md) adds an explicit
 workstation/server administration entry point under `scripts/infra/`, backed by
-`infra/ansible/`. It validates trusted SSH and a registered machine ID before
-configuration, imports existing file credentials into an external Ansible Vault
-bundle, and reconciles the Ubuntu host foundation. Imported inputs are staged
+`infra/ansible/`. It validates trusted SSH, Ubuntu release, x86-64 architecture
+and a registered machine ID before configuration, imports existing file credentials into an external Ansible Vault
+bundle, and reconciles the x86-64 Ubuntu host foundation using concrete QEMU packages
+so unattended installation does not depend on virtual-package provider selection;
+an existing QEMU/libvirt HWE stack is rejected before package changes, and apt
+operations refuse dependency removals. Imported inputs are staged
 root-only; application/Jenkins/Cloudflare credentials are not rotated or activated
 by staging. Unknown configuration ownership and differing credentials fail closed.
 Applies share an operator-owned host lock; this lock is not yet integrated with
@@ -1420,3 +1423,19 @@ Terraform/K3s provisioning, CI-service rebuilds, Cloudflare adoption and full
 restore verification are subsequent work. Losing the whole server is outside the
 initial recovery scope. Host bootstrap files select no application deployment
 components; normal Jenkins application delivery never invokes the bootstrap.
+
+The opt-in `scripts/infra/rehearse-server.py` runs on an existing libvirt host.
+It creates a temporary 2-vCPU/3-GiB Ubuntu guest and its own storage pool, using
+the existing NAT network without changing it. Pinned image checksums, generated
+SSH host keys and a matching VM UUID/guest marker bind the destructive fixture
+to that guest. Synthetic credentials exercise the actual local bootstrap entry
+point, including a clean Ansible controller install, interruption/resume, repeat
+apply, drift and reboot. A guest-only temporary callback holds the completed
+ownership-marker boundary until the fixture signals the real controller; it is
+removed before resume. Reboot readiness requires a changed boot ID, not a fixed
+delay. Evidence contains configuration fingerprints and secret-checked logs;
+host diagnostics omit captured child output. Cleanup checks UUIDs before deleting
+its resources. The ordinary deployment gate runs the real package-profile guard
+against synthetic facts and offline harness checks, never this VM drill. A
+successful matching-release drill on the intended source revision is required
+before first production foundation apply.

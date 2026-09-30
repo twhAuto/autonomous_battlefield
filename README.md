@@ -55,7 +55,7 @@ with focused [backend](docs/design/backend-guide.md),
 | Read the machine-readable API spec | [OpenAPI contract](docs/reference/openapi.yaml) |
 | Register dev or production and resume a stopped cluster | [Environments](docs/operations/environments.md) |
 | Build, deploy, inspect, or remove Kubernetes workloads | [Deployment](docs/operations/deployment.md) |
-| Inspect/bootstrap Ubuntu and optionally manage its data partition | [Server bootstrap](docs/operations/server-bootstrap.md) |
+| Inspect, bootstrap and rehearse Ubuntu; optionally manage its data partition | [Server bootstrap](docs/operations/server-bootstrap.md) |
 | Configure CI/CD and SonarQube | [Jenkins](docs/operations/jenkins.md) |
 | Inspect metrics, traces, logs, and reliability objectives | [Observability](docs/operations/observability.md) |
 | Launch for invited testers behind Access and provision the isolated CLI VM | [Limited-access launch](docs/operations/limited-launch.md) |
