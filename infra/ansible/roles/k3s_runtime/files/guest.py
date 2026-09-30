@@ -76,6 +76,9 @@ def inspect(c):
         raise ValueError('Unregistered K3s runtime exists; refusing adoption')
     if installed and old is None:
         raise ValueError('Installed K3s has no managed configuration')
+    node_config = Path('/etc/rancher/node')
+    if installed and (not node_config.is_symlink() or node_config.resolve() != ROOT / 'node'):
+        raise ValueError('K3s node registration must use the retained directory')
     for binary in ('kind', 'kubeadm'):
         if any((Path(directory) / binary).exists() for directory in ('/usr/local/bin', '/usr/bin')):
             raise ValueError('Guest already contains an incompatible Kubernetes bootstrap')
@@ -84,6 +87,9 @@ def inspect(c):
         token = ROOT / 'k3s/server/token'
         if not state.exists() or not token.exists():
             raise ValueError('Registered SQLite state/token is missing; restore it before starting K3s')
+        password = ROOT / 'node/password'
+        if not password.is_file() or hashlib.sha256(password.read_bytes()).hexdigest() != identity.get('node_password_sha256'):
+            raise ValueError('Retained node registration password changed or is missing')
         if hashlib.sha256(token.read_bytes()).hexdigest() != identity['token_sha256']:
             raise ValueError('Registered server token changed; restore it before starting K3s')
     running = installed and run('systemctl', 'is-active', 'k3s', allowed=(0, 3, 4)) == 'active'
@@ -96,7 +102,8 @@ def inspect(c):
 def live_identity():
     token = ROOT / 'k3s/server/token'
     return {'cluster_uid': get('namespace', 'kube-system')['metadata']['uid'],
-            'token_sha256': hashlib.sha256(token.read_bytes()).hexdigest()}
+            'token_sha256': hashlib.sha256(token.read_bytes()).hexdigest(),
+            'node_password_sha256': hashlib.sha256((ROOT / 'node/password').read_bytes()).hexdigest()}
 
 
 def register(c):

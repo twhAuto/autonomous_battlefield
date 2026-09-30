@@ -31,6 +31,18 @@
         - /srv/battlefield/storage
         - /srv/battlefield/kubelet
         - /srv/battlefield/platform
+        - /srv/battlefield/node
+      when: k3s_action != 'verify'
+
+    - name: Keep the K3s node registration password on retained storage
+      ansible.builtin.file:
+        src: /srv/battlefield/node
+        dest: /etc/rancher/node
+        state: link
+        owner: root
+        group: root
+        follow: false
+      notify: Restart managed K3s
       when: k3s_action != 'verify'
 
     - name: Install the retained storage startup guard

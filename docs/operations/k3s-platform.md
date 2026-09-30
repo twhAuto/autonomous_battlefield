@@ -57,6 +57,7 @@ Ansible inspection helpers; they do not install the guest runtime.
 | Guest `/srv/battlefield/k3s` | K3s SQLite datastore, certificates, token and container images |
 | Guest `/srv/battlefield/storage` | Persistent volume directories |
 | Guest `/srv/battlefield/kubelet` | Kubelet state and mounted workload volumes |
+| Guest `/srv/battlefield/node` | Retained node registration password, linked from `/etc/rancher/node` |
 | Guest `/srv/battlefield/platform` | Cluster/PVC ownership records |
 | Guest OS disk | Ubuntu, packages and managed configuration |
 
@@ -71,7 +72,9 @@ checks guest UUID, disk serial, capacity, filesystem UUID, ownership marker and
 mount. First formatting requires an unpartitioned disk with no signatures and
 all bytes zero; unrelated filesystems are rejected. The retained filesystem
 identity derives from host storage and volume path, so replacing only the VM OS
-preserves its identity. An interrupted initial format can resume only with its
+preserves its identity. The [node registration password](https://docs.k3s.io/architecture)
+also stays on retained storage, preventing a replacement OS from generating a
+different password for the existing Kubernetes node. An interrupted initial format can resume only with its
 matching ownership intent. Existing mounts and fstab conflicts are rejected.
 
 K3s requires the registered mount through systemd dependencies and startup
@@ -168,7 +171,8 @@ runs the actual roles using an authenticated TLS registry fixture with synthetic
 credentials, checks stable initial plans, refuses nonzero unformatted data, and
 checks fresh registry authentication (including revoked access), apply/reapply,
 zero drift, unchanged secret identity and K3s start time, reboot persistence,
-reviewed restoration of a stopped service, and absent/wrong-mount guard refusal. Cleanup addresses
+reviewed restoration of a stopped service and missing OS node-registration link,
+and absent/wrong-mount guard refusal. Cleanup addresses
 only the generated domain/pool identities and compares existing domain/network
 inventories. Reports remain private outside Git; failed guest journal evidence
 may contain operational information. The production CLI still requires clean

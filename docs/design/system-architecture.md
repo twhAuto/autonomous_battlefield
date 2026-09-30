@@ -1466,9 +1466,9 @@ Terraform inventory. Its manually triggered `battlefield-platform/k3s` job runs
 Ansible with the shared locks and a revision/input-bound owner approval. First
 installation formats only the exact, all-zero retained guest disk; subsequent
 operations require its filesystem UUID and ownership marker. The guest mounts it
-at `/srv/battlefield`; SQLite/container state, kubelet state and local-path volumes
-remain there. Systemd mount dependencies and startup guards reject missing or
-mismatched storage and prevent silently replacing registered cluster state.
+at `/srv/battlefield`; SQLite/container state, kubelet state, local-path volumes
+and the node registration password remain there. Systemd mount dependencies and
+startup guards reject missing or mismatched storage and prevent silently replacing registered cluster state.
 
 K3s runs a pinned compatible Kubernetes release with Flannel, enforcing network
 policies, CoreDNS and metrics-server. Traefik and ServiceLB are disabled from the
