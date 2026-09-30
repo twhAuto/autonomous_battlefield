@@ -71,8 +71,10 @@ autonomous_battlefield/
 │   ├── pages/                  # General pages, including Home
 │   └── test/                   # Shared test setup
 ├── deploy/                     # Kubernetes bases, overlays, supply-chain assets
+├── infra/ansible/              # Ubuntu host foundation, Vault inputs, pinned control dependencies
 ├── infra/aws/                  # AWS provisioning with Terraform
 ├── scripts/
+│   ├── infra/                  # Server registration, inspection and Ansible entry point
 │   ├── dev/                    # Local application and host-agent launchers
 │   ├── test/                   # Test runners, deployment and runtime assurance script tests
 │   ├── ci/                     # Lint, builds, coverage summaries, image assurance
@@ -101,6 +103,13 @@ The backend has five commands in one Go module: four runtime processes and the o
 | AI evaluation | [`backend/cmd/aieval/main.go`](../../backend/cmd/aieval/main.go) | Evaluation case execution, pricing inputs, reports, and runtime provenance via `-mode metadata` |
 
 `cmd` packages should remain thin. Domain and use-case behavior belongs under `internal`; entry points should focus on composition and process lifecycle.
+
+Host bootstrap enters through [`scripts/infra/server.sh`](../../scripts/infra/server.sh).
+Its Python wrapper validates private inventory, SSH/machine identity, secret imports
+and the host lock; `control-tools.py` installs the hash-locked Ansible environment.
+`infra/ansible/site.yml` separates foundation setup, private input reconciliation
+and verification. `scripts/test/test-server-bootstrap.sh` exercises real Ansible
+with synthetic inputs; see the [bootstrap guide](../operations/server-bootstrap.md).
 
 ## Common change paths
 

@@ -1,0 +1,94 @@
+---
+- name: Inspect existing state directory
+  ansible.builtin.stat:
+    path: "{{ bootstrap_state_dir }}"
+    follow: false
+  register: foundation_state_directory
+- name: Require explicit ownership before adopting platform state
+  ansible.builtin.assert:
+    that:
+      - >-
+        not foundation_state_directory.stat.exists or (bootstrap_marker.stat.exists and foundation_state_directory.stat.isdir and not
+        foundation_state_directory.stat.islnk)
+    fail_msg: Unowned platform state directory; inspect it before proceeding.
+- name: Ensure the operator already exists
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ bootstrap_operator }}"
+- name: Verify an existing Docker installation has Buildx
+  ansible.builtin.command:
+    argv: [docker, buildx, version]
+  changed_when: false
+  check_mode: false
+  when: "'docker.service' in ansible_facts.services"
+- name: Install host foundation packages from the configured Ubuntu repositories
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - git
+      - python3
+      - python3-venv
+      - rsync
+      - jq
+      - qemu-kvm
+      - libvirt-daemon-system
+      - libvirt-clients
+      - cloud-image-utils
+    state: present
+    update_cache: "{{ not ansible_check_mode }}"
+    cache_valid_time: 3600
+- name: Install Ubuntu Docker only when no Docker service exists
+  ansible.builtin.apt:
+    name: [docker.io, docker-buildx]
+    state: present
+  when: "'docker.service' not in ansible_facts.services"
+- name: Add the operator to virtualization and Docker groups without removing existing groups
+  ansible.builtin.user:
+    name: "{{ bootstrap_operator }}"
+    groups: [docker, libvirt, kvm]
+    append: true
+  when: not ansible_check_mode
+- name: Explain fresh-host check limitations
+  ansible.builtin.debug:
+    msg: Check mode does not create groups or start newly installed services; validate with apply and verify on a disposable host.
+  when: ansible_check_mode
+- name: Read current mmap limit
+  ansible.builtin.command:
+    argv: [sysctl, -n, vm.max_map_count]
+  changed_when: foundation_mmap.stdout | int < 1048576
+  check_mode: false
+  register: foundation_mmap
+  notify: Apply managed sysctl
+- name: Persist sufficient mmap capacity without lowering an existing higher limit
+  ansible.builtin.copy:
+    content: "vm.max_map_count = {{ [1048576, foundation_mmap.stdout | int] | max }}\n"
+    dest: /etc/sysctl.d/90-battlefield-bootstrap.conf
+    owner: "{{ bootstrap_file_owner }}"
+    group: "{{ bootstrap_file_group }}"
+    mode: '0644'
+  notify: Apply managed sysctl
+- name: Install declared public CA certificates
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/share/ca-certificates/battlefield-{{ item | basename }}"
+    owner: "{{ bootstrap_file_owner }}"
+    group: "{{ bootstrap_file_group }}"
+    mode: '0644'
+    validate: /usr/bin/openssl x509 -in %s -noout
+  loop: "{{ bootstrap_ca_files }}"
+  notify: Refresh system CA trust
+- name: Enable host services without restarting healthy services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [docker, libvirtd]
+  when: not ansible_check_mode or (item + '.service') in ansible_facts.services
+- name: Explain preserved service boundaries
+  ansible.builtin.debug:
+    msg: >-
+      Host foundation configured. Existing Jenkins, SonarQube, application profiles,
+      libvirt domains/networks and CLI proxy/firewall configuration were preserved.
+      This role does not enable CLI profiles, provision a VM, configure Cloudflare,
+      or activate backups. Input files are staged privately for subsequent service roles.

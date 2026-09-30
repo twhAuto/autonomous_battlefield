@@ -393,6 +393,7 @@ folder rule. Multiple changed paths contribute the union of their components;
 | Changed path | Selected components | Image build and scan |
 | --- | --- | --- |
 | Any `*.md`, `LICENSE`, `LICENSE.*`, or root `.gitignore` | `none` | None |
+| `infra/ansible/**` or `scripts/infra/**` (explicit host provisioning) | `none` | None |
 | `quality/**` or `sonar-project.properties` | `none` | None |
 | `scripts/test/**` and `tests/**` | `none` | None |
 | Go `backend/**/*_test.go`, frontend `src/**/*.test.ts`, `src/**/*.test.tsx`, or `src/test/**` | `none` | None |

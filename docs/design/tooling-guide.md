@@ -48,7 +48,9 @@ exercises publication and deployment signature checks, including Cosign 3 bundle
 summaries without annotations, retained legacy revisions, and rejected evidence. The Vite
 configuration and `frontend/vite.config.test.ts` cover development proxy overrides.
 
-Root launch scripts remain compatibility entry points that `exec` their implementations under `scripts/dev` and `scripts/cd`. `deploy/` owns Kubernetes configuration; `infra/aws/` provisions cloud resources. Operational instructions live under `docs/operations`.
+Root launch scripts remain compatibility entry points that `exec` their implementations under `scripts/dev` and `scripts/cd`. `deploy/` owns Kubernetes configuration; `infra/aws/` provisions cloud resources.
+`infra/ansible/` owns the Ubuntu host foundation through `scripts/infra/server.sh`;
+see the [server bootstrap guide](../operations/server-bootstrap.md). Operational instructions live under `docs/operations`.
 
 ## Testing layout and expectations
 

@@ -9,3 +9,5 @@ for suite in access-service limited-launch production-preparation production-har
   python3 "${project_dir}/scripts/test/test-${suite}.py"
 done
 node --test "${project_dir}/scripts/test/prometheus-targets.test.cjs"
+
+bash "${project_dir}/scripts/test/test-server-bootstrap.sh"
