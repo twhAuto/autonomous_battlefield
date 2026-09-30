@@ -83,6 +83,63 @@ class RehearsalTests(unittest.TestCase):
                 host.network_details(xml)
         self.assertEqual(str(host.network_details('<network><forward mode="nat"/><ip address="192.0.2.1" prefix="24"><dhcp><range start="192.0.2.2" end="192.0.2.254"/></dhcp></ip></network>')), '192.0.2.0/24')
 
+    def test_dual_stack_network_uses_ipv4_and_lease_parser_ignores_other_fields(self):
+        ipv4 = '<ip address="192.0.2.1" prefix="24"><dhcp><range start="192.0.2.2" end="192.0.2.254"/></dhcp></ip>'
+        ipv6 = '<ip family="ipv6" address="fd00::1" prefix="64"><dhcp><range start="fd00::2" end="fd00::ff"/></dhcp></ip>'
+        self.assertEqual(str(host.network_details('<network><forward mode="nat"/>' + ipv6 + ipv4 + '</network>')), '192.0.2.0/24')
+        for entries in [ipv6, ipv4 + ipv4]:
+            with self.assertRaisesRegex(ValueError, 'one IPv4'):
+                host.network_details('<network><forward mode="nat"/>' + entries + '</network>')
+        instance = host.Rehearsal(Path('/tmp'), Path('/tmp'), 'default')
+        instance.subnet = host.ipaddress.ip_network('192.0.2.0/24')
+        with patch.object(host, 'virsh', return_value=instance.mac + ' weird/field fd00::2/64 192.0.2.10/24'):
+            self.assertEqual(instance.lease(), '192.0.2.10')
+
+    def test_malformed_xml_is_reported_without_raw_traceback_or_cleanup(self):
+        with self.assertRaisesRegex(ValueError, 'Invalid libvirt XML'):
+            host.network_details('<network')
+        instance = host.Rehearsal(Path('/tmp'), Path('/tmp'), 'default')
+        instance.domain_defined = True
+        with patch.object(host, 'virsh', return_value='<domain') as virsh:
+            with self.assertRaisesRegex(ValueError, 'Invalid libvirt XML'):
+                instance.cleanup()
+            self.assertEqual(virsh.call_count, 1)
+
+    def test_reboot_waits_past_old_boot_and_expected_ssh_disconnect(self):
+        old, new = '11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'
+        instance = host.Rehearsal(Path('/tmp'), Path('/tmp'), 'default')
+        lost = subprocess.CalledProcessError(255, 'ssh')
+        for reboot_result in ['', lost]:
+            with self.subTest(disconnect=bool(reboot_result)), \
+                    patch.object(instance, 'ssh', side_effect=[old, reboot_result, old, lost, new]) as ssh, \
+                    patch.object(host.time, 'sleep'):
+                instance.reboot()
+                self.assertEqual(ssh.call_count, 5)
+                self.assertEqual(ssh.call_args_list[1].args, ('sudo systemctl --no-block reboot',))
+
+    def test_reboot_rejects_command_failure_or_unchanged_boot(self):
+        old = '11111111-1111-4111-8111-111111111111'
+        instance = host.Rehearsal(Path('/tmp'), Path('/tmp'), 'default')
+        with patch.object(instance, 'ssh', side_effect=[old, subprocess.CalledProcessError(1, 'ssh')]), \
+                self.assertRaises(subprocess.CalledProcessError):
+            instance.reboot()
+        with patch.object(instance, 'ssh', side_effect=[old, '', old]), \
+                patch.object(host.time, 'sleep'), patch.object(host.time, 'monotonic', side_effect=[0, 0, 301]), \
+                self.assertRaisesRegex(ValueError, 'new boot ID'):
+            instance.reboot()
+
+    def test_host_failures_report_operation_without_captured_output(self):
+        for error in [subprocess.TimeoutExpired(['qemu-img', 'convert'], 600, output='private-output'),
+                      subprocess.CalledProcessError(1, ['qemu-img', 'convert'], stderr='private-output')]:
+            with patch.object(host.subprocess, 'run', side_effect=error), self.assertRaisesRegex(ValueError, 'qemu-img convert') as failure:
+                host.run('qemu-img', 'convert')
+            self.assertNotIn('private-output', str(failure.exception))
+        instance = host.Rehearsal(Path('/tmp'), Path('/tmp'), 'default')
+        with patch.object(instance, 'ssh', side_effect=subprocess.CalledProcessError(2, 'ssh', output='private-output')), \
+                self.assertRaisesRegex(ValueError, 'degraded') as failure:
+            instance.wait_cloud_init()
+        self.assertNotIn('private-output', str(failure.exception))
+
     def test_ssh_binary_transfer_preserves_trailing_bytes(self):
         result = subprocess.CompletedProcess([], 0, stdout=b'archive\n\t ', stderr=b'')
         with patch.object(host.subprocess, 'run', return_value=result):

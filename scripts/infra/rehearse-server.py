@@ -25,9 +25,12 @@ def run(*args, **kwargs):
     try:
         output = subprocess.run(args, check=True, text=kwargs.pop('text', True), capture_output=True,
                                 timeout=kwargs.pop('timeout', 120), **kwargs).stdout
-    except subprocess.CalledProcessError as error:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
         if args[0] in ('virsh', 'qemu-img', 'cloud-localds'):
-            raise ValueError(args[0] + ': ' + error.stderr.strip()[-2000:]) from error
+            # Never copy captured child output into result.json or console diagnostics.
+            operation = args[3] if args[0] == 'virsh' else (args[1] if args[0] == 'qemu-img' else 'seed creation')
+            reason = 'timed out' if isinstance(error, subprocess.TimeoutExpired) else f'exited {error.returncode}'
+            raise ValueError(f'{args[0]} {operation}: {reason}') from error
         raise
     return output.strip() if isinstance(output, str) else output
 
@@ -49,17 +52,26 @@ def checked_image(path, expected):
         raise ValueError('Expected a standalone qcow2 cloud image')
 
 
+def parse_xml(xml):
+    try:
+        return ET.fromstring(xml)
+    except ET.ParseError as error:
+        raise ValueError('Invalid libvirt XML; inspect the selected resource') from error
+
+
 def owned_xml(xml, identity, kind):
-    element = ET.fromstring(xml)
+    element = parse_xml(xml)
     if element.tag != kind or element.findtext('uuid') != identity:
         raise ValueError('Resource identity changed; refusing cleanup')
     return element
 
 
 def network_details(xml):
-    element = ET.fromstring(xml)
+    element = parse_xml(xml)
     forward = element.find('forward')
-    addresses = [node for node in element.findall('ip') if node.find('dhcp/range') is not None]
+    addresses = [node for node in element.findall('ip')
+                 if node.find('dhcp/range') is not None
+                 and ipaddress.ip_address(node.get('address')).version == 4]
     if forward is None or forward.get('mode') != 'nat' or len(addresses) != 1:
         raise ValueError('Rehearsal needs an existing active NAT network with one IPv4 DHCP range')
     node = addresses[0]
@@ -94,6 +106,7 @@ class Rehearsal:
         self.domain_defined = False
         self.volumes = []
         self.ip = None
+        self.subnet = None
         self.mac = '52:54:00:' + ':'.join(self.identity.replace('-', '')[i:i+2] for i in (0, 2, 4))
 
     def prepare(self, image):
@@ -121,7 +134,7 @@ class Rehearsal:
         (self.work / 'meta-data').write_text(json.dumps({'instance-id': self.identity}))
         run('cloud-localds', str(self.work / 'seed.iso'), str(self.work / 'user-data'),
             str(self.work / 'meta-data'))
-        run('qemu-img', 'convert', '-O', 'qcow2', str(image), str(self.work / 'root.qcow2'))
+        run('qemu-img', 'convert', '-O', 'qcow2', str(image), str(self.work / 'root.qcow2'), timeout=600)
         run('qemu-img', 'resize', str(self.work / 'root.qcow2'), '16G')
         pool = f"<pool type='dir'><name>{self.name}</name><uuid>{self.identity}</uuid><target><path>{self.pool_path}</path></target></pool>"
         (self.work / 'pool.xml').write_text(pool)
@@ -158,7 +171,7 @@ class Rehearsal:
         self.ip = wait_for(self.lease, 'Guest did not receive an IPv4 DHCP lease')
         (self.work / 'known_hosts').write_text(self.ip + ' ' + (self.work / 'host.pub').read_text())
         wait_for(lambda: self.ssh('true') or True, 'Guest SSH did not become ready')
-        self.ssh('sudo cloud-init status --wait', timeout=600)
+        self.wait_cloud_init()
         self.ssh('test "$(cat /etc/battlefield-rehearsal)" = ' + shlex.quote(self.identity))
 
     def lease(self):
@@ -168,8 +181,11 @@ class Rehearsal:
             if self.mac in fields:
                 for field in fields:
                     if '/' in field:
-                        address = ipaddress.ip_interface(field).ip
-                        if address in self.subnet:
+                        try:
+                            address = ipaddress.ip_interface(field).ip
+                        except ValueError:
+                            continue
+                        if self.subnet is not None and address in self.subnet:
                             return str(address)
         return None
 
@@ -179,6 +195,28 @@ class Rehearsal:
                    '-o', 'UserKnownHostsFile=' + str(self.work / 'known_hosts'),
                    '-o', 'ConnectTimeout=5', '-o', 'ServerAliveInterval=15',
                    '-o', 'ServerAliveCountMax=2', 'rehearsal@' + self.ip, command, **kwargs)
+
+    def wait_cloud_init(self):
+        try:
+            self.ssh('sudo cloud-init status --wait', timeout=600)
+        except subprocess.CalledProcessError as error:
+            reason = 'completed with errors (degraded)' if error.returncode == 2 else f'exited {error.returncode}'
+            raise ValueError('Guest cloud-init ' + reason + '; inspect guest initialization and network egress') from error
+        except subprocess.TimeoutExpired as error:
+            raise ValueError('Guest cloud-init timed out; inspect guest initialization and network egress') from error
+
+    def boot_id(self):
+        return str(uuid.UUID(self.ssh('cat /proc/sys/kernel/random/boot_id')))
+
+    def reboot(self):
+        previous = self.boot_id()
+        try:
+            self.ssh('sudo systemctl --no-block reboot')
+        except subprocess.CalledProcessError as error:
+            # SSH may disconnect before returning status; other command failures are not expected.
+            if error.returncode != 255:
+                raise
+        wait_for(lambda: self.boot_id() != previous, 'Guest did not return with a new boot ID after reboot')
 
     def exercise(self):
         with tarfile.open(self.work / 'source.tar', 'w') as archive:
@@ -190,9 +228,7 @@ class Rehearsal:
         try:
             self.ssh(command + ' before-reboot', timeout=2400)
             print('Initial checks passed; rebooting only the disposable guest.', flush=True)
-            self.ssh('sudo systemctl reboot')
-            time.sleep(5)
-            wait_for(lambda: self.ssh('true') or True, 'Guest did not return after reboot')
+            self.reboot()
             self.ssh(command + ' after-reboot', timeout=900)
         finally:
             # Only public test evidence; the guest keeps private fixtures in a separate directory.
@@ -244,6 +280,8 @@ def main():
     memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
     if int(memory['MemAvailable'].split()[0]) < 5 * 1024 * 1024:
         raise ValueError('Need at least 5 GiB available RAM before allocating the 3 GiB guest')
+    if not Path('/var/lib/libvirt/images').is_dir():
+        raise ValueError('Missing /var/lib/libvirt/images; prepare libvirt storage before running the rehearsal')
     if shutil.disk_usage('/var/lib/libvirt/images').free < 20 * 1024**3 or shutil.disk_usage(tempfile.gettempdir()).free < 8 * 1024**3:
         raise ValueError('Need 20 GiB free in libvirt storage and 8 GiB in temporary storage')
     args.evidence_dir.mkdir(mode=0o700)
@@ -274,7 +312,7 @@ def main():
         checked_image(image, specification['sha256'])
         rehearsal = Rehearsal(work, args.evidence_dir, args.network)
         metadata = {'identity': rehearsal.identity, 'name': rehearsal.name, 'image': specification,
-                    'source_sha256': {}, 'passed': False, 'cleaned_up': False}
+                    'source_sha256': {}, 'passed': False, 'cleaned_up': False, 'phase': 'prepare'}
         for directory_name in ('infra/ansible', 'scripts/infra'):
             for source in sorted((ROOT / directory_name).rglob('*')):
                 if source.is_file() and '__pycache__' not in source.parts:
@@ -285,10 +323,11 @@ def main():
         print('Creating disposable VM ' + rehearsal.name, flush=True)
         try:
             rehearsal.prepare(image)
+            metadata['phase'] = 'guest checks and reboot'
             metadata['guest'] = rehearsal.exercise()
             metadata['passed'] = True
         except (ValueError, OSError, subprocess.SubprocessError) as error:
-            metadata['failure'] = str(error) if isinstance(error, ValueError) else type(error).__name__
+            metadata['failure'] = metadata['phase'] + ': ' + (str(error) if isinstance(error, ValueError) else type(error).__name__)
             raise
         finally:
             try:

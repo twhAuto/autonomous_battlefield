@@ -92,7 +92,7 @@ class BootstrapTests(unittest.TestCase):
                 bootstrap.write_new(ROOT / 'test-secret', b'secret')
 
     def test_identity_mismatch_fails_before_tools_or_playbooks(self):
-        report = {'machine_id': 'b' * 32, 'user': 'operator', 'os': 'ubuntu', 'version': '26.04'}
+        report = {'machine_id': 'b' * 32, 'user': 'operator', 'os': 'ubuntu', 'version': '26.04', 'architecture': 'x86_64'}
         with patch.object(bootstrap, 'remote_python', return_value=json.dumps(report).encode()):
             with self.assertRaisesRegex(ValueError, 'machine-id'):
                 bootstrap.inspect_host(self.inventory())
@@ -101,6 +101,17 @@ class BootstrapTests(unittest.TestCase):
         with patch.object(bootstrap, 'remote_python', return_value=json.dumps(report).encode()):
             with self.assertRaisesRegex(ValueError, 'operator account'):
                 bootstrap.inspect_host(self.inventory(), local=True)
+
+    def test_target_architecture_is_checked_during_registration_and_inspection(self):
+        report = {'machine_id': 'a' * 32, 'user': 'operator', 'os': 'ubuntu',
+                  'version': '26.04', 'architecture': 'aarch64'}
+        with self.assertRaisesRegex(ValueError, 'x86_64'):
+            bootstrap.validate_target(self.inventory(), report)
+        with patch.object(bootstrap, 'remote_python', return_value=json.dumps(report).encode()), \
+                self.assertRaisesRegex(ValueError, 'x86_64'):
+            bootstrap.inspect_host(self.inventory())
+        report['architecture'] = 'x86_64'
+        bootstrap.validate_target(self.inventory(), report)
 
     def test_unattended_vault_prompt_fails_before_import_or_install(self):
         args = argparse.Namespace(vault_password_file=None, vault='/tmp/unused.vault')
@@ -115,7 +126,7 @@ class BootstrapTests(unittest.TestCase):
         tools.assert_not_called()
 
     def test_missing_backup_disk_is_reported_without_blocking_foundation_inspection(self):
-        report = {'machine_id': 'a' * 32, 'user': 'operator', 'os': 'ubuntu', 'version': '26.04',
+        report = {'machine_id': 'a' * 32, 'user': 'operator', 'os': 'ubuntu', 'version': '26.04', 'architecture': 'x86_64',
                   'disks': {'available': False}}
         with patch.object(bootstrap, 'remote_python', return_value=json.dumps(report).encode()):
             result = bootstrap.inspect_host(self.inventory(backup_uuid='12345678'))
@@ -262,6 +273,68 @@ class AnsibleInputTests(unittest.TestCase):
         self.assertNotIn(self.secret.strip(), result.stdout + result.stderr)
         self.assertNotIn(base64.b64encode(self.secret.encode()).decode(), result.stdout + result.stderr)
         return result
+
+    def test_real_virtualization_guard_accepts_standard_and_rejects_hwe_profiles(self):
+        guard = ROOT / 'infra/ansible/roles/foundation/tasks/virtualization-preflight.yml'
+        profiles = [({'qemu-system-x86': [], 'libvirt-daemon-system': [], 'linux-generic-hwe-24.04': []}, True),
+                    ({'qemu-system-x86-hwe': []}, False), ({'libvirt-daemon-system-hwe': []}, False),
+                    ({'qemu-system-x86-hwe-26.04': []}, False)]
+        for packages, accepted in profiles:
+            with self.subTest(packages=packages):
+                self.playbook.write_text(json.dumps([{'hosts': 'all', 'gather_facts': False,
+                    'vars': {'ansible_facts': {'packages': packages}},
+                    'tasks': [{'ansible.builtin.import_tasks': str(guard)}]}]))
+                result = self.run_play()
+                self.assertEqual(result.returncode == 0, accepted, result.stdout + result.stderr)
+                self.assertRegex(result.stdout, r'changed=0\s')
+                if not accepted:
+                    self.assertIn('Existing HWE virtualization stack detected', result.stdout)
+
+    def test_interruption_callback_holds_real_ansible_until_wrapper_is_interrupted(self):
+        guest_spec = importlib.util.spec_from_file_location('guest_fixture', ROOT / 'scripts/test/rehearse-server-guest.py')
+        guest = importlib.util.module_from_spec(guest_spec)
+        guest_spec.loader.exec_module(guest)
+        marker, next_task = self.directory / 'marker', self.directory / 'must-not-exist'
+        self.playbook.write_text(json.dumps([{'hosts': 'all', 'connection': 'local', 'gather_facts': False,
+            'tasks': [{'name': 'Record machine ownership before creating managed children',
+                       'ansible.builtin.copy': {'content': 'owned', 'dest': str(marker)}},
+                      {'name': 'Must remain unreachable before interruption',
+                       'ansible.builtin.copy': {'content': 'unexpected', 'dest': str(next_task)}}]}]))
+        code = """import importlib.util,sys
+spec=importlib.util.spec_from_file_location('bootstrap',sys.argv[1])
+m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+class Lock:
+    def poll(self): return None
+m.run_playbook(sys.argv[2:],Lock())
+"""
+        command = [sys.executable, '-c', code, str(ROOT / 'scripts/infra/server.py'),
+                   str(self.binary / 'ansible-playbook'), '-i', 'localhost,', str(self.playbook),
+                   '-e', 'ansible_python_interpreter=' + sys.executable]
+        with guest.interruption_callback(self.directory / 'callback_plugins'), \
+                subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True) as process:
+            output = b''
+            try:
+                deadline = time.monotonic() + 30
+                while guest.INTERRUPT_READY.encode() not in output and time.monotonic() < deadline:
+                    ready, _, _ = select.select([process.stdout], [], [], 0.2)
+                    if ready:
+                        block = os.read(process.stdout.fileno(), 65536)
+                        if not block:
+                            break
+                        output += block
+                self.assertIn(guest.INTERRUPT_READY.encode(), output, output.decode(errors='replace'))
+                # Deliberately delay the signal: the following task must remain blocked.
+                time.sleep(0.3)
+                self.assertIsNone(process.poll())
+                self.assertEqual(marker.read_text(), 'owned')
+                self.assertFalse(next_task.exists())
+            finally:
+                if process.poll() is None:
+                    process.send_signal(signal.SIGINT)
+                process.communicate(timeout=20)
+            self.assertEqual(process.returncode, -signal.SIGINT)
+            self.assertFalse(next_task.exists())
+        self.assertFalse((self.directory / 'callback_plugins/battlefield_rehearsal_interrupt.py').exists())
 
     def test_apply_repeat_check_drift_and_changed_secret(self):
         result = self.run_play('--diff')

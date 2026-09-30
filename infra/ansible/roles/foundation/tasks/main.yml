@@ -24,13 +24,8 @@
 - name: Inspect installed packages before selecting the virtualization stack
   ansible.builtin.package_facts:
     manager: apt
-- name: Reject an unsupported HWE virtualization stack before package changes
-  ansible.builtin.assert:
-    that:
-      - ansible_facts.packages.keys() | select('match', '^(qemu|libvirt).*[-]hwe$') | list | length == 0
-    fail_msg: >-
-      Existing HWE virtualization stack detected. Preserve it and review a compatible
-      package profile before applying this standard Ubuntu foundation; no package changes were made.
+- name: Validate the installed virtualization package profile
+  ansible.builtin.import_tasks: virtualization-preflight.yml
 - name: Install host foundation packages from the configured Ubuntu repositories
   ansible.builtin.apt:
     name:

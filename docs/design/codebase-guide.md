@@ -109,10 +109,13 @@ Its Python wrapper validates private inventory, SSH/machine identity, secret imp
 and the host lock; `control-tools.py` installs the hash-locked Ansible environment.
 `infra/ansible/site.yml` separates foundation setup, private input reconciliation
 and verification. `scripts/test/test-server-bootstrap.sh` exercises real Ansible
-with synthetic inputs and offline rehearsal safety tests. The opt-in
+with synthetic inputs, the shared `foundation/tasks/virtualization-preflight.yml`
+package guard, the interruption checkpoint and offline rehearsal safety tests. The opt-in
 `scripts/infra/rehearse-server.py` owns disposable VM creation/cleanup;
 `scripts/test/rehearse-server-guest.py` runs the privileged fixture only inside
-its UUID-matched guest. The pinned Ubuntu image is in
+its UUID-matched guest and temporarily installs its embedded Ansible interruption
+callback there. The host runner waits for a changed boot ID before resuming checks.
+The pinned Ubuntu image is in
 `infra/ansible/rehearsal-image.json`. See the
 [bootstrap guide](../operations/server-bootstrap.md) for the rehearsal command.
 

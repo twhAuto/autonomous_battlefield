@@ -2,6 +2,7 @@
 """Destructive test fixture: refuses every machine except its marked disposable VM."""
 import argparse
 import base64
+from contextlib import contextmanager, nullcontext
 import hashlib
 import json
 import os
@@ -58,19 +59,55 @@ def reject_secrets(output):
             raise ValueError('Synthetic secret appeared in captured output; refusing to archive it')
 
 
+INTERRUPT_READY = 'BATTLEFIELD_REHEARSAL_INTERRUPT_READY'
+INTERRUPTION_CALLBACK = """from ansible.plugins.callback import CallbackBase
+import os
+import time
+
+class CallbackModule(CallbackBase):
+    CALLBACK_VERSION = 2.0
+    CALLBACK_TYPE = 'aggregate'
+    CALLBACK_NAME = 'battlefield_rehearsal_interrupt'
+    CALLBACK_NEEDS_ENABLED = False
+
+    def v2_runner_on_ok(self, result):
+        if result._task.get_name().endswith('Record machine ownership before creating managed children'):
+            print('BATTLEFIELD_REHEARSAL_INTERRUPT_READY', flush=True)
+            # The controller cannot execute the next task while this callback waits.
+            # If the fixture fails to signal it, exit unsuccessfully without resuming.
+            time.sleep(120)
+            os._exit(97)
+"""
+
+
+@contextmanager
+def interruption_callback(directory):
+    # Installed only after require_guest() in the disposable operator's callback path.
+    # No production role, controller entry point or Ansible configuration is modified.
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path = directory / 'battlefield_rehearsal_interrupt.py'
+    with path.open('x') as stream:
+        stream.write(INTERRUPTION_CALLBACK)
+    try:
+        yield
+    finally:
+        path.unlink()
+
+
 def bootstrap(action, label, interrupt=False, changed=None, expected_failure=None):
     command = [str(ROOT / 'scripts/infra/server.sh'), action, '--local',
                '--inventory', str(PRIVATE / 'inventory.json')]
     if action in ('plan', 'apply', 'seal'):
         command += ['--vault', str(PRIVATE / 'inputs.vault'),
                     '--vault-password-file', str(PRIVATE / 'password')]
-    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    checkpoint = interruption_callback(Path.home() / '.ansible/plugins/callback') if interrupt else nullcontext()
+    with checkpoint, subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                           text=True, start_new_session=True) as process:
         lines, interrupted = [], False
         for line in process.stdout:
             lines.append(line)
-            if interrupt and not interrupted and line.startswith('TASK [inputs : Create private input directory]'):
-                # The previous ownership-marker task completed. SIGINT unwinds the wrapper,
+            if interrupt and not interrupted and line.strip() == INTERRUPT_READY:
+                # The callback holds Ansible after the ownership marker. SIGINT unwinds the wrapper,
                 # terminates its Ansible process group and releases the host lock.
                 process.send_signal(signal.SIGINT)
                 interrupted = True
@@ -79,7 +116,7 @@ def bootstrap(action, label, interrupt=False, changed=None, expected_failure=Non
     reject_secrets(output)
     (EVIDENCE / (label + '.log')).write_text(output)
     if interrupt:
-        if not interrupted or code == 0:
+        if not interrupted or code != -signal.SIGINT:
             raise ValueError('Did not interrupt the real initial apply at the intended boundary')
         if run('sudo', '-n', 'cat', '/etc/battlefield-bootstrap/machine-id') != Path('/etc/machine-id').read_text().strip():
             raise ValueError('Interrupted installation did not persist its ownership marker')
@@ -139,7 +176,10 @@ def before_reboot():
     same_state(first, snapshot())
     bootstrap('plan', 'check-diff', changed=0)
     same_state(first, snapshot())
-    run('sudo', '-n', 'sysctl', '-w', 'vm.max_map_count=262144')
+    # Exercise live-limit repair only when it has the pinned baseline. Higher custom
+    # limits are preserved during ordinary apply but are not a stored desired value.
+    if first['mmap'] == 1048576:
+        run('sudo', '-n', 'sysctl', '-w', 'vm.max_map_count=262144')
     run('sudo', '-n', 'chmod', '0644', '/etc/battlefield-bootstrap/inputs/rehearsal_secret')
     bootstrap('apply', 'repair-drift')
     same_state(first, snapshot())
@@ -175,6 +215,7 @@ def after_reboot():
         'hwe_profile_rejected_without_changes': True if provider.endswith('-hwe') else None,
         'passed': True, 'os': Path('/etc/os-release').read_text(),
         'before_reboot': before, 'after_reboot': after,
+        'mmap_drift_exercised': before['mmap'] == 1048576,
         'checks': ['interrupted_initial_apply', 'resume', 'verify', 'repeat_zero_changes',
                    'no_service_restart', 'check_diff_no_changes', 'secret_safe_logs',
                    'credential_fingerprints', 'unchanged_encrypted_recovery_copy',

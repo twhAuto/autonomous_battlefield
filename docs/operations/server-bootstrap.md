@@ -185,9 +185,14 @@ selection, private file handling and concurrent lock exclusion. The deployment
 suite invokes the complete bootstrap check, so Jenkins exercises real input
 reconciliation too. Running the Python test file directly without
 `BATTLEFIELD_TEST_ANSIBLE_BIN` runs only wrapper tests and explicitly skips the
-five Ansible checks.
+real Ansible checks.
 
 ## Disposable full-host rehearsal
+
+Before the first production foundation apply, require a recorded successful
+rehearsal of the matching Ubuntu release using the exact source revision being
+applied. Repeat it after changes to the foundation, controller, fixture or image
+pin. A green ordinary CI run alone does not satisfy this prerequisite.
 
 On a Linux libvirt host with `virsh`, `qemu-img`, `cloud-localds`, OpenSSH and
 Python 3.12 or newer already available, run from this checkout:
@@ -203,7 +208,12 @@ requires an existing active IPv4 NAT/DHCP network (default `default`; select
 another with `--network NAME`), nested virtualization, 5 GiB available RAM,
 20 GiB free in `/var/lib/libvirt/images` and 8 GiB in temporary storage. It adds
 no host packages, network rules or persistent services. Run it when those
-resources are available alongside existing workloads.
+resources are available alongside existing workloads. The guest needs working
+DNS and outbound access to its configured Ubuntu package archives and to PyPI
+(including its package download hosts) for the pinned controller dependencies.
+Dual-stack NAT networks work when exactly one IPv4 DHCP subnet is available.
+Degraded cloud-init completion is a failed rehearsal with an initialization
+error; inspect guest networking and initialization rather than accepting it.
 
 The runner defaults to a checksum-pinned Ubuntu 26.04 cloud image from the
 [official dated image directory](https://cloud-images.ubuntu.com/resolute/20260927/).
@@ -212,7 +222,26 @@ Use `--ubuntu 24.04` to rehearse the other supported host release, using its
 The verified image is cached under
 `${XDG_CACHE_HOME:-$HOME/.cache}/autonomous-battlefield/rehearsal/`; every run
 checks it again. An optional `--image /path/to/downloaded.img` reuses another local copy only when its
-SHA-256 matches `infra/ansible/rehearsal-image.json`. The VM uses 2 vCPUs, 3 GiB
+SHA-256 matches `infra/ansible/rehearsal-image.json`.
+
+Dated upstream URLs may become unavailable. An existing verified cache entry or
+`--image` copy can still be used with its exact pinned digest; no permanent
+upstream archive is assumed. To refresh a pin:
+
+1. Select a dated amd64 `.img` build for the same supported release from the
+   official Ubuntu cloud-image listing. Download that image and its `SHA256SUMS`
+   and `SHA256SUMS.gpg` files outside Git.
+2. Authenticate the checksum manifest and verify the image following
+   [Ubuntu's cloud-image verification procedure](https://ubuntu.com/docs/public-images/public-images-how-to/verify-image-checksum/).
+   Update that release's URL and SHA-256 together in
+   `infra/ansible/rehearsal-image.json`; preserve the release field. Update the
+   dated runbook link above. Never substitute a floating URL or disable verification.
+3. Run `./scripts/test/test-deployment.sh` and the complete VM rehearsal with
+   `--ubuntu RELEASE --image /path/to/verified.img` and a new evidence directory.
+   Require actual boot, reboot, apply/resume/repeat and cleanup success. Commit
+   the manifest/runbook changes together and retain matching source-hash evidence.
+
+The VM uses 2 vCPUs, 3 GiB
 RAM and a sparse 16 GiB disk. It has temporary SSH client/host keys, a synthetic
 Vault password and synthetic input; no production inventory or credentials are
 copied. Host keys are pinned before the first SSH connection. The fixture checks
@@ -220,13 +249,21 @@ both its root-owned marker and hardware UUID before privileged operations.
 Passwordless sudo is granted only to this disposable guest's test account.
 
 Inside the guest, the real `server.sh --local` entry point installs its pinned
-controller tools without Jenkins. The fixture interrupts the initial apply after
-its ownership marker is written, resumes with an ordinary apply, verifies the
-foundation, and requires zero Ansible changes on the next apply and check/diff.
+controller tools without Jenkins. A temporary callback in the disposable
+operator's Ansible plugin directory holds execution after the ownership marker
+is written. The fixture then interrupts the real wrapper; a missed signal causes
+the callback to exit unsuccessfully, never to continue into later tasks. The
+callback is removed before ordinary resume. Production roles and controller
+configuration receive no interruption hook. The fixture verifies the foundation
+and requires zero Ansible changes on the next apply and check/diff.
 It compares credential/ciphertext hashes, permissions, unrelated configuration
 and service invocation IDs. Lowering the live mmap limit and changing an input's
-mode must be repaired without restarting healthy services. After a real guest
-reboot, verification and another zero-change apply must pass. This is a host
+mode must be repaired without restarting healthy services. Live mmap drift is
+exercised when the initial value is the pinned-image baseline of 1048576; a
+higher initial value is preserved and the result records that mmap drift was
+skipped. Input-permission drift is always exercised. The host runner tolerates
+an SSH disconnect during reboot and waits for a changed boot ID before starting
+verification and another zero-change apply. This is a host
 foundation drill; it does not exercise application or database recovery. The
 26.04 fixture also installs the alternative QEMU HWE provider in its disposable
 guest and requires an actionable refusal before any package/configuration changes.
