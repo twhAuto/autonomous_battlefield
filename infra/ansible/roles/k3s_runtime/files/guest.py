@@ -140,7 +140,10 @@ def gateway():
                 and service['metadata'].get('labels', {}).get('gateway.envoyproxy.io/owning-gateway-namespace') == NS]
     if len(selected) != 1 or selected[0]['spec']['type'] != 'NodePort':
         raise ValueError('Expected exactly one private validation gateway service')
-    return selected[0]['spec']['ports'][0]['nodePort']
+    ports = [port for port in selected[0]['spec']['ports'] if port.get('port') == 8080 and port.get('protocol', 'TCP') == 'TCP']
+    if len(ports) != 1 or not ports[0].get('nodePort'):
+        raise ValueError('Expected one private HTTP validation listener')
+    return ports[0]['nodePort']
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):

@@ -28,6 +28,8 @@ storage = module('storage', 'infra/ansible/roles/k3s_storage/files/storage.py')
 guest = module('guest', 'infra/ansible/roles/k3s_runtime/files/guest.py')
 firewall = module('firewall', 'infra/ansible/roles/k3s_runtime/files/firewall.py')
 seed = module('seed', 'scripts/infra/seed-platform.py')
+rehearsal = module('rehearsal', 'scripts/infra/rehearse-k3s.py')
+fixture = module('fixture', 'scripts/test/k3s-registry-fixture.py')
 
 
 class StorageTests(unittest.TestCase):
@@ -55,6 +57,11 @@ class StorageTests(unittest.TestCase):
                 child.wait(timeout=5)
             with storage.operation_lock(path):
                 self.assertTrue(storage._LOCK_FDS)
+
+    def test_failed_atomic_temporary_creation_preserves_original_error(self):
+        with patch.object(storage, 'plain'), patch.object(storage.tempfile, 'mkstemp', side_effect=OSError('disk full')):
+            with self.assertRaisesRegex(OSError, 'disk full'):
+                storage.atomic(Path('/unused/owner'), b'fixture')
 
     def test_only_blank_unowned_disk_initializes(self):
         self.assertTrue(storage.decide(self.empty, self.expected)['initialize'])
@@ -159,7 +166,7 @@ class ConfigurationTests(unittest.TestCase):
                 k3s.config.registry(dict(value, probe_image=image))
         secret = k3s.config.secrets(value)
         self.assertNotIn('synthetic', json.dumps(secret))
-        self.assertEqual(len(secret['items']), 3)
+        self.assertEqual({x['metadata']['namespace'] for x in secret['items']}, {'battlefield', 'battlefield-platform-checks'})
 
     def test_controller_job_lifecycle_is_stable_and_changes_with_immutable_spec(self):
         import subprocess
@@ -176,10 +183,20 @@ if a!=b or 'ttlSecondsAfterFinished' in a['spec']:raise ValueError('Job did not 
 doc['spec']['template']['spec']['containers'][0]['image']='official:v2'
 c=m.controller_manifest(json.dumps(doc))['items'][0]
 if a['metadata']['name']==c['metadata']['name']:raise ValueError('Upgrade would patch immutable job')
+doc['spec'].pop('ttlSecondsAfterFinished')
+if m.controller_manifest(json.dumps(doc))['items'][0]!=c:raise ValueError('TTL-free known job changed identity')
 doc['metadata']['name']='unreviewed-new-hook'
-try:m.controller_manifest(json.dumps(doc))
-except ValueError:pass
-else:raise ValueError('Unknown lifecycle silently adopted')
+for ttl in (False,True):
+ if ttl:doc['spec']['ttlSecondsAfterFinished']=30
+ try:m.controller_manifest(json.dumps(doc))
+ except ValueError:pass
+ else:raise ValueError('Unknown job lifecycle silently adopted')
+s=importlib.util.spec_from_file_location('manifest','infra/ansible/library/battlefield_k3s_manifest.py')
+m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+def diff(root):
+ return 'diff -u -N '+root+'/live '+root+'/merged\n--- '+root+'/live\n+++ '+root+'/merged\n@@ -1 +1 @@\n--- preserve payload\n+new value'
+a=m.stable_diff(diff('/tmp/one'));b=m.stable_diff(diff('/var/private/two'))
+if a!=b or '--- preserve payload' not in a:raise ValueError('Diff paths leak or payload was stripped')
 """
         subprocess.run([str(binary), '-c', code], cwd=ROOT, check=True)
 
@@ -202,6 +219,33 @@ else:raise ValueError('Unknown lifecycle silently adopted')
         self.assertEqual(job.findtext('.//scriptPath'), 'Jenkinsfile.k3s')
         self.assertEqual(job.findtext('.//hudson.plugins.git.BranchSpec/name'), '*/main')
         self.assertFalse(list(job.find('triggers')))
+
+
+class RehearsalTests(unittest.TestCase):
+    def test_diagnostics_accept_pty_combined_and_separate_stderr(self):
+        for field in ('stdout', 'stderr'):
+            self.assertIn('expected refusal', rehearsal.diagnostic_output({field: 'expected refusal', 'rc': 1}))
+        self.assertEqual(rehearsal.diagnostic_output({'stdout': None, 'stderr': None}), '')
+
+    def test_registry_uses_the_supplied_image_pin_and_rejects_indexes(self):
+        self.assertEqual(fixture.image_digest(k3s.config.BUSYBOX), k3s.config.BUSYBOX.split('@')[1])
+        self.assertEqual(fixture.image_digest('docker.io/library/busybox@sha256:' + 'b' * 64), 'sha256:' + 'b' * 64)
+        with self.assertRaisesRegex(ValueError, 'immutable BusyBox'):
+            fixture.image_digest('docker.io/library/busybox:latest')
+        manifest = {'schemaVersion': 2, 'config': {'digest': 'config'}, 'layers': [{'digest': 'layer'}]}
+        self.assertEqual(fixture.manifest_blobs(json.dumps(manifest)), [manifest['config'], *manifest['layers']])
+        with self.assertRaisesRegex(ValueError, 'single-platform'):
+            fixture.manifest_blobs('{"schemaVersion":2,"manifests":[]}')
+
+    def test_gateway_selects_the_http_listener_instead_of_first_port(self):
+        service = {'metadata': {'labels': {'gateway.envoyproxy.io/owning-gateway-name': 'platform',
+                   'gateway.envoyproxy.io/owning-gateway-namespace': guest.NS}},
+                   'spec': {'type': 'NodePort', 'ports': [{'port': 443, 'nodePort': 30443}, {'port': 8080, 'nodePort': 30080}]}}
+        with patch.object(guest, 'get', return_value={'items': [service]}):
+            self.assertEqual(guest.gateway(), 30080)
+            service['spec']['ports'].pop()
+            with self.assertRaisesRegex(ValueError, 'HTTP validation listener'):
+                guest.gateway()
 
 
 class RegistryTests(unittest.TestCase):
@@ -262,6 +306,37 @@ class RegistryTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_recovery_record_errors_are_safe_and_actionable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'recovery.json'
+            bodies = [None, 'invalid private json', '{}', '[]', '{"backend":"private invalid value"}']
+            for body in bodies:
+                if body is not None:
+                    path.write_text(body)
+                    path.chmod(0o600)
+                with self.assertRaisesRegex(ValueError, 'successful main delivery') as raised:
+                    k3s.registry_from_recovery(path, 'fixture', 'synthetic-private')
+                self.assertNotIn('synthetic-private', str(raised.exception))
+                self.assertNotIn('invalid value', str(raised.exception))
+            image = 'ghcr.io/twh09/autonomous-battlefield-backend@sha256:' + 'a' * 64
+            path.write_text(json.dumps({'backend': image}))
+            self.assertEqual(k3s.registry_from_recovery(path, 'fixture', 'synthetic-private')['probe_image'], image)
+
+    def test_private_variables_are_removed_after_environment_or_write_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            with patch.object(k3s.bootstrap, 'clean_ansible_env', side_effect=ValueError('environment failed')):
+                with self.assertRaisesRegex(ValueError, 'environment failed'):
+                    k3s.run_action('plan', directory / 'inventory', {'secret': 'synthetic'}, directory, 9)
+            self.assertEqual(list(directory.glob('variables-*')), [])
+            def failed_write(path, value):
+                path.write_bytes(value)
+                raise OSError('write failed')
+            with patch.object(k3s.tools, 'atomic', side_effect=failed_write):
+                with self.assertRaisesRegex(OSError, 'write failed'):
+                    k3s.run_action('plan', directory / 'inventory', {'secret': 'synthetic'}, directory, 9)
+            self.assertEqual(list(directory.glob('variables-*')), [])
+
     def test_apply_consumes_receipt_before_mutation_and_rejects_drift(self):
         for drift in (False, True):
             with self.subTest(drift=drift), tempfile.TemporaryDirectory() as tmp:

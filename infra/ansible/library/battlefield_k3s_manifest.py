@@ -4,8 +4,17 @@ from ansible.module_utils.basic import AnsibleModule
 
 
 def stable_diff(text):
-    return '\n'.join(line for line in text.splitlines()
-                     if not line.startswith(('diff -u ', '--- /tmp/', '+++ /tmp/')))
+    lines, headers = [], 0
+    for line in text.splitlines():
+        if line.startswith('diff -u '):
+            headers = 2
+            continue
+        if headers and line.startswith(('--- ', '+++ ')):
+            headers -= 1
+            continue
+        headers = 0
+        lines.append(line)
+    return '\n'.join(lines)
 
 
 def main():

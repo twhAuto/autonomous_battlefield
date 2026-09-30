@@ -45,6 +45,13 @@ pipelines and preserves credentials; it starts no builds. Then open
 The job holds the same Jenkins resource and operator lock as host/VM operations
 and production delivery. It therefore queues behind a deployment, or temporarily
 queues delivery while awaiting review. An expired approval releases the lock.
+The job has a 90-minute overall limit, including the approval wait. First install
+reads the entire 250 GiB retained disk to prove it is empty before formatting;
+that scan has a 30-minute limit, so allow substantially longer than a repeat
+apply. Duration depends on storage throughput and image downloads. If a run
+is interrupted, review a new plan; ownership markers preserve completed storage
+initialization rather than formatting it again.
+
 Plans may download verified assets into private controller caches and transfer
 Ansible inspection helpers; they do not install the guest runtime.
 
@@ -111,7 +118,7 @@ enforcement, CoreDNS and metrics-server. Traefik and ServiceLB are disabled on
 first start. Kind is not installed inside the guest.
 
 The guest firewall owns one nftables table and service. Host/operator access and
-pod traffic can reach private API, SSH, kubelet and NodePort ports; other sources
+pod traffic can reach private API, SSH, kubelet, kube-proxy health and NodePort ports; other sources
 are blocked, including NodePort checks before kube-proxy destination translation.
 Verification compares the live owned rules with their recorded applied state.
 Runtime drift fails verification and appears as a reload in the next plan; the
@@ -128,8 +135,9 @@ and [Kyverno's supported range](https://kyverno.io/docs/installation/releases/).
 The Envoy certificate setup Job is retained after completion and named by its
 specification hash, so reruns do not recreate it and upgrades do not patch an
 immutable Job. Old completed versions can be removed after reviewed upgrades.
-These roles own controller installation; application CD owns routes and signature
-policies. AB-129 must use the managed versions instead of installing the existing
+Any new controller Job requires explicit lifecycle review, including Jobs without
+a cleanup TTL. These roles own controller installation; application CD owns routes
+and signature policies. AB-129 must use the managed versions instead of installing the existing
 Kind pipeline's older Kyverno pin over this cluster.
 
 Observability prerequisites default on: kernel memory-map limit, the metrics API,
@@ -157,12 +165,16 @@ Successful apply/verify writes separate private files under
 Kind profile is preserved. AB-129 can consume these after an explicit registered
 K3s delivery profile is available. Jenkins artifacts contain task outcomes and
 version/storage declarations, never kubeconfig, credentials or raw diffs.
-Registry inputs live in a temporary mode-0600 file and a no-log Ansible task.
+Registry inputs live in a temporary mode-0600 file and a no-log Ansible task. Pull
+secrets are created only in the application and validation namespaces. AB-129
+owns Kyverno image-verification credentials alongside the admission policy; this
+platform job does not pre-create an incompatible pull secret in that namespace.
 
 ## Disposable acceptance test
 
 The opt-in rehearsal needs libvirt access, 10 GiB available RAM, an existing
-`default` NAT network and the checksum-pinned Ubuntu 24.04 image from
+`default` NAT network, 44 GiB free in `/var/lib/libvirt/images`, a new (not yet
+existing) private evidence directory, and the checksum-pinned Ubuntu 24.04 image from
 [`rehearsal-image.json`](../../infra/ansible/rehearsal-image.json):
 
 ```bash
@@ -173,9 +185,9 @@ python3 scripts/infra/rehearse-k3s.py \
 
 It creates an owned 8 GiB RAM guest with a separate empty 8 GiB virtual data disk,
 runs the actual roles using an authenticated TLS registry fixture with synthetic
-credentials, checks stable initial plans, refuses nonzero unformatted data, detects
-and repairs live firewall drift, and
-checks fresh registry authentication (including revoked access), apply/reapply,
+credentials and the same single-platform BusyBox pin as the platform probes. It
+checks stable initial plans, refuses nonzero unformatted data, detects and repairs
+live firewall drift, and checks fresh registry authentication (including revoked access), apply/reapply,
 zero drift, unchanged secret identity and K3s start time, reboot persistence,
 reviewed restoration of a stopped service and missing OS node-registration link,
 and absent/wrong-mount guard refusal. Cleanup addresses

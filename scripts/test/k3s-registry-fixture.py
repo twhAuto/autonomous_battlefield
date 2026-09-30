@@ -4,17 +4,29 @@ import base64
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import re
 from pathlib import Path
 import ssl
 import subprocess
 import threading
 import urllib.request
 
-DIGEST = 'sha256:dc88b80842580654294472735332ec7c7789a4010ec9a68b69f9b88c19abede6'
+def image_digest(image):
+    if not re.fullmatch(r'docker.io/library/busybox@sha256:[0-9a-f]{64}', image):
+        raise ValueError('Registry fixture requires the declared immutable BusyBox image')
+    return image.split('@')[1]
+
+
+def manifest_blobs(manifest):
+    info = json.loads(manifest)
+    if 'manifests' in info or not isinstance(info.get('config'), dict) or not isinstance(info.get('layers'), list):
+        raise ValueError('Registry fixture requires a single-platform manifest, not an image index')
+    return [info['config'], *info['layers']]
 
 
 class Registry:
-    def __init__(self, directory, address):
+    def __init__(self, directory, address, image):
+        digest = image_digest(image)
         self.directory = Path(directory)
         token_url = 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/busybox:pull'
         with urllib.request.urlopen(token_url, timeout=30) as response:
@@ -28,9 +40,8 @@ class Registry:
             if hashlib.sha256(data).hexdigest() != digest.split(':')[1]:
                 raise ValueError('Registry fixture source checksum mismatch')
             return data
-        self.manifest = fetch('manifests', DIGEST)
-        info = json.loads(self.manifest)
-        for blob in [info['config'], *info['layers']]:
+        self.manifest = fetch('manifests', digest)
+        for blob in manifest_blobs(self.manifest):
             self.blobs[blob['digest']] = fetch('blobs', blob['digest'])
         self.username, self.password = 'rehearsal', 'synthetic-registry-only'
         self.reject_auth = False
@@ -53,7 +64,7 @@ class Registry:
                 content, kind = None, 'application/octet-stream'
                 if path == '/v2/':
                     content, kind = b'{}', 'application/json'
-                elif path == '/v2/probe/manifests/' + DIGEST:
+                elif path == '/v2/probe/manifests/' + digest:
                     content, kind = registry.manifest, 'application/vnd.oci.image.manifest.v1+json'
                 elif path.startswith('/v2/probe/blobs/'):
                     content = registry.blobs.get(path.rsplit('/', 1)[1])
@@ -80,7 +91,7 @@ class Registry:
         self.server.socket = context.wrap_socket(self.server.socket, server_side=True)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
-        self.image = address + ':' + str(self.server.server_port) + '/probe@' + DIGEST
+        self.image = address + ':' + str(self.server.server_port) + '/probe@' + digest
 
     def close(self):
         self.server.shutdown()

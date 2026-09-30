@@ -164,7 +164,8 @@ firewall, pinned controllers and readiness/identity probes). Its firewall helper
 records the applied table and detects live rule drift without relying on service
 activity alone. The custom
 `battlefield_k3s_manifest` module uses server-side Kubernetes diff/apply, including
-check-mode drift detection. Its controller filter retains the Envoy certificate
+check-mode drift detection and temporary-path-independent diff headers. Its
+controller filter rejects unknown Jobs and retains the Envoy certificate
 Job under a specification-derived name for convergence and safe Job upgrades. Registry tasks are opaque and marked no-log.
 
 `test-k3s.py` tests destructive-operation guards, network validation and review

@@ -15,9 +15,11 @@ import json, os, sys
 from pathlib import Path
 sys.path.insert(0, 'scripts/infra')
 import k3s
-record = k3s.bootstrap.private_file(Path.home() / '.config/autonomous-battlefield/production/recovery.json')
-value = k3s.config.registry({'username': os.environ['GHCR_USER'], 'password': os.environ['GHCR_TOKEN'],
-                           'probe_image': json.loads(record.read_text())['backend']})
+try:
+    value = k3s.registry_from_recovery(Path.home() / '.config/autonomous-battlefield/production/recovery.json',
+                                       os.environ['GHCR_USER'], os.environ['GHCR_TOKEN'])
+except ValueError as error:
+    raise SystemExit(str(error))
 k3s.tools.atomic(Path(os.environ['PLATFORM_PRIVATE']) / 'registry.json', k3s.vm.json_bytes(value))
 PY
 python3 scripts/infra/k3s.py "$PLATFORM_ACTION" \

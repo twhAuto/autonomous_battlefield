@@ -26,6 +26,10 @@ base = load('base', 'scripts/infra/rehearse-server.py')
 fixture = load('registry_fixture', 'scripts/test/k3s-registry-fixture.py')
 
 
+def diagnostic_output(result):
+    return (result.get('stdout') or '') + (result.get('stderr') or '')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--image', type=Path, required=True)
@@ -70,7 +74,7 @@ def main():
             base.virsh('attach-disk', guest.identity, guest.pool_path + '/data.qcow2', 'vdb', '--serial', 'battlefield-k3s-data',
                        '--subdriver', 'qcow2', '--targetbus', 'virtio', '--live', '--config')
             host_ip = str(guest.subnet.network_address + 1)
-            registry = fixture.Registry(work, host_ip)
+            registry = fixture.Registry(work, host_ip, k3s.config.BUSYBOX)
             guest.ssh('sudo tee /usr/local/share/ca-certificates/battlefield-rehearsal.crt >/dev/null', input=registry.cert.read_text())
             guest.ssh('sudo update-ca-certificates >/dev/null')
             credentials = {'username': registry.username, 'password': registry.password, 'probe_image': registry.image}
@@ -114,7 +118,7 @@ def main():
                     action('verify')
                 except ValueError:
                     diagnostic = json.loads((args.evidence_dir / 'failure-private.jsonl').read_text().splitlines()[-1])
-                    if 'Managed firewall has runtime drift' not in diagnostic['result'].get('stdout', ''):
+                    if 'Managed firewall has runtime drift' not in diagnostic_output(diagnostic['result']):
                         raise
                 else:
                     raise ValueError('Removed firewall rules were not detected')
@@ -131,7 +135,7 @@ def main():
                     action('verify')
                 except ValueError:
                     diagnostic = json.loads((args.evidence_dir / 'failure-private.jsonl').read_text().splitlines()[-1])
-                    if 'Authenticated registry manifest retrieval failed' not in diagnostic['result'].get('stdout', ''):
+                    if 'Authenticated registry manifest retrieval failed' not in diagnostic_output(diagnostic['result']):
                         raise
                 else:
                     raise ValueError('Revoked registry authentication was not detected')
@@ -142,8 +146,8 @@ def main():
                     data = json.loads(guest.ssh('sudo /usr/local/bin/k3s kubectl get secrets -A --field-selector metadata.name=battlefield-ghcr -o json'))
                     selected = sorted([{'namespace': x['metadata']['namespace'], 'uid': x['metadata']['uid'], 'data': x['data']}
                                        for x in data['items'] if x['metadata']['name'] == 'battlefield-ghcr'], key=lambda x: x['namespace'])
-                    if len(selected) != 3:
-                        raise ValueError('Expected three private pull secrets')
+                    if len(selected) != 2:
+                        raise ValueError('Expected two private pull secrets')
                     return hashlib.sha256(json.dumps(selected, sort_keys=True).encode()).hexdigest()
                 original_secrets = registry_identity()
                 before_pid = guest.ssh('sudo systemctl show k3s -p ExecMainStartTimestampMonotonic --value')

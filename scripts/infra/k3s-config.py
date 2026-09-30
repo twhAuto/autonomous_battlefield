@@ -74,7 +74,7 @@ def secrets(credentials):
     auth = base64.b64encode((credentials['username'] + ':' + credentials['password']).encode()).decode()
     payload = base64.b64encode(json.dumps({'auths': {credentials['probe_image'].split('/')[0]: {'auth': auth}}}).encode()).decode()
     return items([resource('v1', 'Secret', 'battlefield-ghcr', namespace, type='kubernetes.io/dockerconfigjson',
-                           data={'.dockerconfigjson': payload}) for namespace in (NS, 'battlefield', 'kyverno')])
+                           data={'.dockerconfigjson': payload}) for namespace in (NS, 'battlefield')])
 
 
 def deployment(name, container, **pod):

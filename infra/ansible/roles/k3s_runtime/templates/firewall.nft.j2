@@ -5,7 +5,7 @@ table inet battlefield_k3s {
  chain private_ports {
   type filter hook prerouting priority -110; policy accept;
   # Check NodePorts before kube-proxy DNAT moves packets to the forward hook.
-  ip daddr {{ k3s_contract.guest_ip }} ip saddr != { {{ k3s_contract.host_ip }}, {{ k3s_contract.guest_ip }}, {{ k3s_contract.pod_cidr }} } tcp dport { 22, 6443, 10250, 30000-32767 } drop
+  ip daddr {{ k3s_contract.guest_ip }} ip saddr != { {{ k3s_contract.host_ip }}, {{ k3s_contract.guest_ip }}, {{ k3s_contract.pod_cidr }} } tcp dport { 22, 6443, 10250, 10256, 30000-32767 } drop
   ip daddr {{ k3s_contract.guest_ip }} ip saddr != { {{ k3s_contract.host_ip }}, {{ k3s_contract.guest_ip }}, {{ k3s_contract.pod_cidr }} } udp dport { 8472, 30000-32767 } drop
  }
  chain input {
@@ -13,7 +13,7 @@ table inet battlefield_k3s {
   iifname "lo" accept
   ct state established,related accept
   ip saddr { {{ k3s_contract.host_ip }}, {{ k3s_contract.guest_ip }}, {{ k3s_contract.pod_cidr }} } accept
-  tcp dport { 22, 6443, 10250, 30000-32767 } drop
+  tcp dport { 22, 6443, 10250, 10256, 30000-32767 } drop
   udp dport { 8472, 30000-32767 } drop
  }
 }

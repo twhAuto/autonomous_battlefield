@@ -119,7 +119,7 @@
       ansible.builtin.script: firewall.py check
       check_mode: false
       register: k3s_firewall_probe
-      changed_when: (k3s_firewall_probe.stdout | from_json).changed
+      changed_when: k3s_firewall_probe.rc == 0 and (k3s_firewall_probe.stdout | from_json).changed
       notify: Reload guest firewall
       when: k3s_action != 'verify'
 

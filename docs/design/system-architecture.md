@@ -1474,12 +1474,14 @@ K3s runs a pinned compatible Kubernetes release with Flannel, enforcing network
 policies, CoreDNS and metrics-server. Traefik and ServiceLB are disabled from the
 first start. Pinned Envoy Gateway/Gateway API and Kyverno provide platform
 controllers; application manifests and admission policies remain CD-owned. A
-dedicated guest nftables table restricts private API/kubelet/NodePort access,
+dedicated guest nftables table restricts private API/kubelet/kube-proxy health/NodePort access,
 including checks before NodePort translation. Verification compares live rules
 with their recorded applied state; a reviewed reload repairs drift without
 restarting K3s. The host and CLI VM networks are
 preserved. A validation namespace tests private registry pulls, retained PVC
-identity, DNS, allowed/denied traffic and private gateway routing. Trusted kubelet
+identity, DNS, allowed/denied traffic and private gateway routing. Pull credentials
+live in the application and validation namespaces; application delivery owns the
+separate Kyverno admission credential contract. Trusted kubelet
 metrics use the real serving CA and IP SAN; optional observability prerequisites
 are prepared and Langfuse remains explicitly disabled.
 

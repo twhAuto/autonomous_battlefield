@@ -20,6 +20,14 @@ config = vm.load('k3s-config')
 bootstrap, lock, platform, tools = vm.bootstrap, vm.lock, vm.platform, vm.tools
 
 
+def registry_from_recovery(path, username, password):
+    try:
+        record = json.loads(bootstrap.private_file(path).read_text())
+        return config.registry({'username': username, 'password': password, 'probe_image': record['backend']})
+    except (OSError, ValueError, KeyError, TypeError):
+        raise ValueError('K3s requires private GHCR credentials and a successful main delivery with a verified backend recovery record; see docs/operations/k3s-platform.md') from None
+
+
 def pins_and_assets(directory):
     pins = json.loads((ROOT / 'infra/k3s/pins.json').read_text())
     if set(pins) != {'schema', 'k3s', 'envoy', 'kyverno'} or pins['schema'] != 1:
@@ -43,18 +51,18 @@ def variables(contract, pins, assets, credentials):
 def run_action(action, inventory, values, directory, fd):
     report = directory / (action + '-' + str(time.time_ns()) + '.json')
     extra = directory / ('variables-' + str(time.time_ns()) + '.json')
-    tools.atomic(extra, vm.json_bytes(dict(values, k3s_action=action)))
     command = [str(bootstrap.tools_bin() / 'ansible-playbook'), str(ROOT / 'infra/ansible/k3s.yml'),
                '-i', str(inventory), '--extra-vars', '@' + str(extra)]
     if action == 'plan':
         command += ['--check', '--diff']
-    environment = bootstrap.clean_ansible_env(report)
-    environment[lock.ENV] = str(fd)
     try:
+        tools.atomic(extra, vm.json_bytes(dict(values, k3s_action=action)))
+        environment = bootstrap.clean_ansible_env(report)
+        environment[lock.ENV] = str(fd)
         with lock.supervised(command, env=environment, pass_fds=(fd,), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as child:
             code = child.wait(timeout=3000)
     finally:
-        extra.unlink()
+        extra.unlink(missing_ok=True)
     value = platform.read_action_report(report)
     if code or not value or value['failed']:
         tasks = ', '.join(task['task'] for task in value.get('tasks', []) if task['status'] in ('failed', 'unreachable'))
