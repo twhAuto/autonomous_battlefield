@@ -155,6 +155,8 @@ def validate_target(data, report):
         raise ValueError('Run local mode as the registered operator account')
     if report['os'] != 'ubuntu' or report['version'] not in ('24.04', '26.04'):
         raise ValueError('This bootstrap targets Ubuntu 24.04 or 26.04 only')
+    if report.get('architecture') != 'x86_64':
+        raise ValueError('This bootstrap requires x86_64 architecture')
 
 
 def inspect_host(data, local=False):

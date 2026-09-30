@@ -1,0 +1,8 @@
+---
+- name: Reject an unsupported HWE virtualization stack before package changes
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.packages.keys() | select('match', '^(qemu|libvirt).*[-]hwe($|-)') | list | length == 0
+    fail_msg: >-
+      Existing HWE virtualization stack detected. Preserve it and review a compatible
+      package profile before applying this standard Ubuntu foundation; no package changes were made.

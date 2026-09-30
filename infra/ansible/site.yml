@@ -17,11 +17,12 @@
       ansible.builtin.assert:
         that:
           - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['architecture'] == 'x86_64'
           - ansible_facts['distribution_version'] in ['24.04', '26.04']
           - (bootstrap_identity.content | b64decode | trim) == bootstrap_machine_id
           - bootstrap_action in ['plan', 'apply', 'verify']
           - bootstrap_operator is match('^[a-z_][a-z0-9_-]*$')
-        fail_msg: Inventory does not identify this supported Ubuntu server.
+        fail_msg: Inventory must identify this Ubuntu 24.04/26.04 x86_64 server and a valid operator/action.
     - name: Read existing service ownership
       ansible.builtin.service_facts:
     - name: Inspect bootstrap configuration directory
