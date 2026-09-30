@@ -2,6 +2,7 @@
 """Review-bound host Ansible operations for the dedicated Jenkins job and operator."""
 import argparse
 import hashlib
+import hmac
 import importlib.util
 import json
 import os
@@ -111,7 +112,9 @@ def execute(args):
         else:
             report = run_action(args, 'verify', directory, fd)
         report.update(action=args.action, revision=args.revision, target={
-            key: inventory.get(key, '') for key in ('host', 'user', 'machine_id', 'data_uuid', 'data_mount')})
+            key: inventory.get(key, '') for key in ('host', 'user', 'data_uuid', 'data_mount')})
+        report['target']['machine_fingerprint'] = hmac.new(
+            b'battlefield-platform-report', bytes.fromhex(inventory['machine_id']), hashlib.sha256).hexdigest()
         write_new(bootstrap.safe_path(args.report), report)
     print(f'{args.action} completed; secret-safe report written')
 

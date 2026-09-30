@@ -89,6 +89,116 @@ with m.acquire() as fd:
             finally:
                 if child.poll() is None: child.kill(); child.wait()
 
+    def test_ansible_child_keeps_lock_after_controller_group_is_killed(self):
+        worker = '''import importlib.util,os,pathlib,sys
+spec=importlib.util.spec_from_file_location('bootstrap',sys.argv[1]); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+directory=pathlib.Path(sys.argv[2]); m.operation_lock.Path.home=lambda:directory
+os.environ.pop(m.operation_lock.ENV,None)
+m.LOCK_CODE='import pathlib; pathlib.Path.home=lambda:pathlib.Path('+repr(str(directory))+')\\n'+m.LOCK_CODE
+command=[sys.executable,'-c','import os,pathlib,sys,time; pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(60)',str(directory/'started')]
+if sys.argv[3]=='inherited':
+ with m.operation_lock.acquire() as fd:
+  os.environ[m.operation_lock.ENV]=str(fd)
+  with m.host_lock({},True) as held: m.run_playbook(command,held)
+else:
+ with m.host_lock({},True) as held:
+  (directory/'helper').write_text(str(held.pid))
+  m.run_playbook(command,held)
+'''
+        for mode in ('inherited', 'proxy'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
+                directory = Path(tmp)
+                controller = subprocess.Popen(
+                    [sys.executable, '-c', worker, str(ROOT/'scripts/infra/server.py'), tmp, mode],
+                    start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                try:
+                    for _ in range(150):
+                        if (directory/'started').exists():
+                            break
+                        time.sleep(.02)
+                    self.assertTrue((directory/'started').exists(), 'Operation child did not start')
+                    operation = int((directory/'started').read_text())
+                    os.killpg(controller.pid, signal.SIGKILL)
+                    controller.wait(timeout=5)
+                    os.kill(operation, 0)
+                    with patch.object(lock.Path, 'home', return_value=directory):
+                        with self.assertRaises(ValueError), lock.acquire():
+                            pass
+                        os.killpg(operation, signal.SIGTERM)
+                        # The proxy exits on EOF once the operation closes its writer.
+                        for _ in range(150):
+                            try:
+                                with lock.acquire():
+                                    break
+                            except ValueError:
+                                time.sleep(.02)
+                        else:
+                            self.fail('Lock remained held after the operation stopped')
+                finally:
+                    if controller.poll() is None:
+                        os.killpg(controller.pid, signal.SIGKILL)
+                        controller.wait(timeout=5)
+                    for marker in ('started', 'helper'):
+                        if (directory/marker).exists():
+                            try:
+                                os.kill(int((directory/marker).read_text()), signal.SIGKILL)
+                            except ProcessLookupError:
+                                pass
+
+    def test_cancellation_during_spawn_reaps_child_and_restores_handlers(self):
+        original = subprocess.Popen
+        for runner in ('operation', 'ansible'):
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                with self.subTest(runner=runner, signal=sig), tempfile.TemporaryDirectory() as tmp, \
+                        patch.object(lock.Path, 'home', return_value=Path(tmp)):
+                    children = []
+                    handlers = {number: signal.getsignal(number) for number in (signal.SIGINT, signal.SIGTERM)}
+                    def interrupt_before_return(*args, **kwargs):
+                        child = original(*args, **kwargs)
+                        children.append(child)
+                        os.kill(os.getpid(), sig)
+                        return child
+                    try:
+                        with lock.acquire() as fd, patch.dict(os.environ, {lock.ENV: str(fd)}), \
+                                patch.object(subprocess, 'Popen', side_effect=interrupt_before_return), \
+                                self.assertRaises(KeyboardInterrupt):
+                            command = [sys.executable, '-c', 'import time; time.sleep(60)']
+                            if runner == 'operation':
+                                lock.run(command, fd, quiet=True)
+                            else:
+                                platform.bootstrap.run_playbook(command, None)
+                        self.assertEqual(len(children), 1)
+                        self.assertIsNotNone(children[0].poll())
+                        self.assertEqual(handlers, {number: signal.getsignal(number) for number in handlers})
+                    finally:
+                        for child in children:
+                            if child.poll() is None:
+                                os.killpg(child.pid, signal.SIGKILL)
+                                child.wait()
+
+    def test_signalled_command_returns_conventional_status(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(lock.Path, 'home', return_value=Path(tmp)), \
+                lock.acquire() as fd:
+            self.assertEqual(lock.run([sys.executable, '-c',
+                'import os,signal; os.kill(os.getpid(),signal.SIGTERM)'], fd), 143)
+
+    def test_lock_check_rejects_forged_descriptors_without_traceback(self):
+        code = '''import pathlib,runpy,sys
+directory=pathlib.Path(sys.argv.pop(1)); pathlib.Path.home=lambda:directory
+runpy.run_path(sys.argv.pop(1),run_name='__main__')
+'''
+        with tempfile.TemporaryDirectory() as tmp, patch.object(lock.Path, 'home', return_value=Path(tmp)):
+            command = [sys.executable, '-c', code, tmp, str(ROOT/'scripts/infra/operation-lock.py'), '--check']
+            for value in ('', '999999'):
+                result = subprocess.run(command, env=dict(os.environ, **{lock.ENV:value}), capture_output=True, text=True)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn('Operation lock:', result.stderr)
+                self.assertNotIn('Traceback', result.stderr)
+            with lock.acquire() as fd:
+                result = subprocess.run(command, env=dict(os.environ, **{lock.ENV:str(fd)}),
+                                        pass_fds=(fd,), capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
     @patch.dict(os.environ, {'CHANGE_ID': '', 'CHANGE_TARGET': ''})
     def test_revision_guard_rejects_pr_dirty_and_other_branch(self):
         # Each case owns its PR context even when the suite runs inside Jenkins.
@@ -120,16 +230,20 @@ with m.acquire() as fd:
                 calls.append(name)
                 if name=='apply': self.assertFalse(args.receipt.exists())
                 return {'schema':1,'change_digest':'plan','tasks':[{'task':'test','status':'ok','changed':False}]}
-            with patch.object(platform,'trusted_revision'), patch.object(platform,'check_inputs',return_value={}), patch.object(platform,'fingerprint',return_value='identity'), patch.object(platform,'run_action',side_effect=action), redirect_stdout(io.StringIO()):
+            with patch.object(platform,'trusted_revision'), patch.object(platform,'check_inputs',return_value={'machine_id':'c'*32}), patch.object(platform,'fingerprint',return_value='identity'), patch.object(platform,'run_action',side_effect=action), redirect_stdout(io.StringIO()):
                 platform.execute(args)
             self.assertEqual(calls,['plan','apply','verify'])
-            self.assertEqual(json.loads(args.report.read_text())['action'],'apply')
+            report=json.loads(args.report.read_text())
+            self.assertEqual(report['action'],'apply')
+            self.assertNotIn('machine_id',report['target'])
+            self.assertNotIn('c'*32,args.report.read_text())
+            self.assertRegex(report['target']['machine_fingerprint'],r'^[a-f0-9]{64}$')
 
     def test_drift_never_reaches_apply(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(lock.Path,'home',return_value=Path(tmp)):
             args=argparse.Namespace(action='apply',receipt=Path(tmp)/'receipt',report=Path(tmp)/'report',revision='a'*40)
             platform.write_new(args.receipt,{'schema':1,'revision':args.revision,'inputs':'identity','created':time.time(),'change_digest':'old'})
-            with patch.object(platform,'trusted_revision'), patch.object(platform,'check_inputs',return_value={}), patch.object(platform,'fingerprint',return_value='identity'), patch.object(platform,'run_action',return_value={'change_digest':'new'}) as action:
+            with patch.object(platform,'trusted_revision'), patch.object(platform,'check_inputs',return_value={'machine_id':'c'*32}), patch.object(platform,'fingerprint',return_value='identity'), patch.object(platform,'run_action',return_value={'change_digest':'new'}) as action:
                 with self.assertRaisesRegex(ValueError,'drift'): platform.execute(args)
                 self.assertEqual(action.call_count,1)
                 self.assertFalse(args.report.exists())
@@ -269,8 +383,11 @@ with m.acquire() as fd:
             (directory/'fixture.j2').write_text('public deterministic {{ 1 + 1 }}')
             with play.open('a') as output:
                 output.write('    - name: Template preview\n      ansible.builtin.template:\n        src: '+str(directory/'fixture.j2')+'\n        dest: '+str(directory/'template-destination')+'\n')
+                output.write('    - name: Loop preview\n      ansible.builtin.copy:\n        content: loop-desired\n        dest: '+str(directory)+'/{{ item }}\n      loop: [first, second]\n')
             reports=[]
-            for i in range(2):
+            for i in range(3):
+                if i == 2:
+                    (directory/'first').write_text('loop-desired')
                 report=directory/f'report{i}.json'
                 env=platform.bootstrap.clean_ansible_env(report)
                 result=subprocess.run([os.environ['BATTLEFIELD_TEST_ANSIBLE_BIN']+'/ansible-playbook','-i','localhost,','-c','local',str(play),'--check','--diff'],env=env,capture_output=True,text=True)
@@ -280,8 +397,32 @@ with m.acquire() as fd:
                 self.assertNotIn('hidden-diff-content',output)
                 reports.append(json.loads(report.read_text()))
             self.assertEqual(reports[0]['change_digest'],reports[1]['change_digest'])
+            self.assertEqual(reports[1]['tasks'],reports[2]['tasks'])
+            self.assertNotEqual(reports[1]['change_digest'],reports[2]['change_digest'])
             self.assertFalse((directory/'destination').exists())
             self.assertTrue(any(t['changed'] for t in reports[0]['tasks']))
+
+    @unittest.skipUnless(os.environ.get('BATTLEFIELD_TEST_ANSIBLE_BIN'),'run through test-server-bootstrap.sh for real Ansible')
+    def test_real_ansible_reports_recovered_and_unrecovered_failures(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            play = directory/'failures.json'
+            recoverable = [
+                {'name':'Ignored failure', 'ansible.builtin.fail':{'msg':'synthetic ignored error'}, 'ignore_errors':True},
+                {'block':[{'name':'Rescued failure', 'ansible.builtin.fail':{'msg':'synthetic rescued error'}}],
+                 'rescue':[{'name':'Recovery', 'ansible.builtin.debug':{'msg':'recovered'}}]}]
+            for fatal in (False, True):
+                tasks = recoverable + ([{'name':'Fatal failure', 'ansible.builtin.fail':{'msg':'synthetic fatal error'}}] if fatal else [])
+                play.write_text(json.dumps([{'hosts':'all','gather_facts':False,'tasks':tasks}]))
+                report = directory/('fatal.json' if fatal else 'recovered.json')
+                result = subprocess.run([os.environ['BATTLEFIELD_TEST_ANSIBLE_BIN']+'/ansible-playbook',
+                    '-i','localhost,','-c','local',str(play)], env=platform.bootstrap.clean_ansible_env(report),
+                    capture_output=True, text=True)
+                self.assertEqual(result.returncode == 0, not fatal, result.stderr)
+                data = json.loads(report.read_text())
+                self.assertEqual(data['failed'], fatal)
+                self.assertIn({'task':'Ignored failure','status':'ignored','changed':False}, data['tasks'])
+                self.assertNotIn('synthetic', result.stdout + report.read_text())
 
 
 if __name__=='__main__':unittest.main()

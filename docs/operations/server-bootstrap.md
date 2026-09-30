@@ -129,7 +129,11 @@ Applies from WSL and the server share an exclusive host lock in the registered
 operator's `~/.local/state/battlefield/bootstrap.lock`. Run host-side commands as
 that same operator with `--local`; they do not need an SSH private key. The
 workstation retains a connection for the lock lifetime; losing it aborts the local
-Ansible process. Plans are advisory and do not acquire this mutation lock. The reviewed
+Ansible process while its controller is running. The Ansible child inherits the
+lock or the proxy's keepalive pipe, so killing the controller's process group does
+not release the lock while that child is still running. If the entire workstation
+or its SSH connection fails, remote tasks may finish after the connection closes;
+inspect the host before retrying. Plans are advisory and do not acquire this mutation lock. The reviewed
 Jenkins runner locks plan/apply/verify and uses this same lock for individual
 production deployment, tunnel and rollback commands. Jenkins also serializes its
 whole rollout and platform job with a shared resource. External CLI applies must

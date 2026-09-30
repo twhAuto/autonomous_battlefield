@@ -73,8 +73,9 @@ Required plugin versions tested on Jenkins 2.568.3 are recorded in
 `--install-plugins` installs missing plugins using those pins and Jenkins dependency
 resolution; it preserves installed versions. Setup also calls the Jenkins
 Declarative validator. Install **Lockable Resources before publishing the updated
-application Jenkinsfile**, since its rollout stage declares a lock. Missing or
-incompatible plugins are a setup failure, not a reason to bypass serialization.
+application Jenkinsfile**, since its rollout stage declares a lock. Missing/inactive
+plugins or Declarative validation errors stop setup. Existing versions and the
+running core are not compared with the recorded test versions.
 The pin list is not a complete controller rebuild or dependency lockfile.
 
 ## Credentials and trust
@@ -115,8 +116,15 @@ Choose **Build with Parameters**:
 - **verify**: checks the installed host foundation and data contract without
   applying changes, then archives the verification report.
 
-The callback emits task names/statuses and an opaque change digest. It does not
-publish raw diffs, decrypted inputs, module output, or credentials. This is a
+The callback emits task names/statuses and an opaque change digest. The digest
+binds task outcomes and available module diffs, including loop-item diffs; it is
+not a complete snapshot of host state. Secret (`no_log`) tasks contribute only
+outcomes, and modules without diffs cannot bind unseen changes such as exact
+package-resolution results. Final failure follows Ansible's recap, so ignored or
+rescued failures remain visible without incorrectly failing a successful run.
+Reports publish an application-specific HMAC fingerprint in place of the raw
+machine ID, following [systemd's guidance](https://www.freedesktop.org/software/systemd/man/latest/machine-id.html).
+They do not publish raw diffs, decrypted inputs, module output, or credentials. This is a
 bounded task-level preview; use the interactive bootstrap on a trusted terminal
 when detailed diagnostics are needed. A successful verify covers current host
 roles, not complete service/application reconstruction. The receipt expires after
@@ -130,8 +138,11 @@ recovery. Separate jobs can queue while approval is pending.
 A second, OS-level lock at the registered operator's
 `~/.local/state/battlefield/bootstrap.lock` coordinates workstation Ansible applies,
 the host runner, and individual production deploy/tunnel/rollback commands.
-Descendants inherit the held descriptor; cancellation stops their process group
-before releasing it. This lock is scoped to the same host/operator. An operator
+The Ansible child inherits the held lock descriptor or the pipe that keeps the
+workstation's lock proxy alive. A forced controller/process-group stop therefore
+retains the lock while that child runs; normal cancellation stops its process
+group before releasing the lock. The Jenkins agent must run as the registered operator, so its home resolves the
+same lock as workstation applies. This lock is scoped to that host/operator. An operator
 CLI apply can start between separate application pipeline commands; use the
 Jenkins job for coordinated operations, and do not run external bootstrap applies
 during application delivery. Commands from another user or direct `kubectl`
@@ -139,7 +150,8 @@ operations are outside this lock contract.
 
 ## Acceptance and recovery
 
-Local tests cover lock contention/cancellation, revision and plan-drift rejection,
+Local tests cover lock contention, startup cancellation and controller crashes,
+revision and plan-drift rejection (including loops),
 secret-free real Ansible reports, and safe setup. Disposable Jenkins validation
 covers pipeline compilation and repeated job/credential creation without starting
 builds. Before marking the host slice complete, record live evidence in AB-131:

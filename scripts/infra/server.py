@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 import re
 import shlex
-import signal
 import stat
 import subprocess
 import sys
@@ -279,7 +278,9 @@ def host_lock(data, local):
         yield None
         return
     args = [sys.executable, '-c', LOCK_CODE] if local else ssh(data) + ['python3 -c ' + shlex.quote(LOCK_CODE)]
-    process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    # A controller process-group crash must not also kill the lock proxy.
+    process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, start_new_session=True)
     try:
         if process.stdout.readline().strip() != b'LOCKED':
             raise ValueError('Another bootstrap owns the host lock, or the lock connection failed')
@@ -362,11 +363,12 @@ def playbook(args, data, report):
 
 
 def run_playbook(command, lock, environment=None):
-    process = subprocess.Popen(command, env=environment or clean_ansible_env(), start_new_session=True)
-    def interrupted(signum, frame):
-        raise KeyboardInterrupt
-    previous = {sig: signal.signal(sig, interrupted) for sig in (signal.SIGINT, signal.SIGTERM)}
-    try:
+    # Inherit either the lock itself or the writer keeping the SSH/local proxy alive.
+    # The operation must retain exclusion if its controller is killed unexpectedly.
+    fd = operation_lock.inherited() if lock is None else lock.stdin.fileno()
+    if fd is None:
+        raise ValueError('Apply requires an active host lock')
+    with operation_lock.supervised(command, env=environment or clean_ansible_env(), pass_fds=(fd,)) as process:
         while True:
             if lock is not None and lock.poll() is not None:
                 raise ValueError('Host lock connection lost; stopped configuration')
@@ -377,16 +379,6 @@ def run_playbook(command, lock, environment=None):
                 return
             except subprocess.TimeoutExpired:
                 pass
-    finally:
-        if process.poll() is None:
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
-        for sig, handler in previous.items():
-            signal.signal(sig, handler)
 
 
 def parser():

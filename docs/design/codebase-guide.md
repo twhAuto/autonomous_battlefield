@@ -127,8 +127,11 @@ before resuming checks. The pinned Ubuntu image is in
 `Jenkinsfile.platform` and `scripts/ci/run-platform.sh` enter the reviewed host
 workflow in `scripts/infra/platform.py`. It binds a private plan receipt to the
 trusted revision and inputs and uses `operation-lock.py` for exclusion and child
-cancellation. `infra/ansible/callback_plugins/battlefield_report.py` emits task
-outcomes without module output. `setup-platform.py` registers/seals inputs and
+cancellation through a shared supervisor that defers startup signals until the
+child can be reaped. Deployment scripts validate inherited locks with its `--check`
+mode. `infra/ansible/callback_plugins/battlefield_report.py` emits task outcomes
+without module output and hashes available task/loop diffs. Reports use an
+application-specific machine fingerprint. `setup-platform.py` registers/seals inputs and
 opens the SSH tunnel; `seed-platform.py` validates plugins/pipeline and reconciles
 owned folder/job/file credentials without triggering a build. Plugin pins live in
 `infra/jenkins/platform-plugins.json`; `test-platform.py` exercises lock, receipt,

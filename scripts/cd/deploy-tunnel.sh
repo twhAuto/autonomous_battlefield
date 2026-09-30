@@ -12,7 +12,7 @@ if [[ "${DEPLOY_ENV}" == production && -z "${BATTLEFIELD_OPERATION_LOCK_FD:-}" ]
   exec python3 "${project_dir}/scripts/infra/operation-lock.py" -- "$0" "$@"
 fi
 if [[ "${DEPLOY_ENV}" == production ]]; then
-  python3 -c 'import importlib.util,sys; s=importlib.util.spec_from_file_location("lock",sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); m.inherited() is not None or sys.exit("Missing inherited operation lock")' "${project_dir}/scripts/infra/operation-lock.py"
+  python3 "${project_dir}/scripts/infra/operation-lock.py" --check
 fi
 runtime_dir="$(mktemp -d)"
 trap 'rm -rf -- "${runtime_dir}"' EXIT

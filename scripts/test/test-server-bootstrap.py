@@ -300,20 +300,21 @@ class AnsibleInputTests(unittest.TestCase):
                        'ansible.builtin.copy': {'content': 'owned', 'dest': str(marker)}},
                       {'name': 'Must remain unreachable before interruption',
                        'ansible.builtin.copy': {'content': 'unexpected', 'dest': str(next_task)}}]}]))
-        code = """import importlib.util,signal,sys
+        code = """import importlib.util,os,pathlib,signal,sys
 # Background CI launchers may preserve SIGINT=SIG_IGN across exec.
 signal.signal(signal.SIGINT, signal.default_int_handler)
 spec=importlib.util.spec_from_file_location('bootstrap',sys.argv[1])
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
-class Lock:
-    def poll(self): return None
-m.run_playbook(sys.argv[2:],Lock())
+m.operation_lock.Path.home=lambda:pathlib.Path(sys.argv[2])
+with m.operation_lock.acquire() as fd:
+    os.environ[m.operation_lock.ENV]=str(fd)
+    m.run_playbook(sys.argv[3:],None)
 """
         # Reproduce an ignored SIGINT inherited from a background Jenkins launcher.
         launcher = ('import os,signal,sys; signal.signal(signal.SIGINT,signal.SIG_IGN); '
                     'os.execv(sys.executable,[sys.executable,*sys.argv[1:]])')
         command = [sys.executable, '-c', launcher, '-c', code, str(ROOT / 'scripts/infra/server.py'),
-                   str(self.binary / 'ansible-playbook'), '-i', 'localhost,', str(self.playbook),
+                   str(self.directory), str(self.binary / 'ansible-playbook'), '-i', 'localhost,', str(self.playbook),
                    '-e', 'ansible_python_interpreter=' + sys.executable]
         with guest.interruption_callback(self.directory / 'callback_plugins'), \
                 subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True) as process:
@@ -380,11 +381,11 @@ m.run_playbook(sys.argv[2:],Lock())
                    str(playbook), '--ask-vault-pass', '--ask-become-pass']
         child, fd = pty.fork()
         if child == 0:
-            class Lock:
-                @staticmethod
-                def poll(): return None
             try:
-                bootstrap.run_playbook(command, Lock())
+                with patch.object(bootstrap.operation_lock.Path, 'home', return_value=self.directory), \
+                        bootstrap.operation_lock.acquire() as held, \
+                        patch.dict(os.environ, {bootstrap.operation_lock.ENV: str(held)}):
+                    bootstrap.run_playbook(command, None)
                 os._exit(0)
             except BaseException:
                 os._exit(1)

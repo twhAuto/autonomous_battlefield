@@ -1401,7 +1401,10 @@ operations refuse dependency removals. Imported inputs are staged
 root-only; application/Jenkins/Cloudflare credentials are not rotated or activated
 by staging. Unknown configuration ownership and differing credentials fail closed.
 Applies and individual production deploy/tunnel/rollback commands share an
-operator-owned host lock. Jenkins additionally holds one shared resource for the
+operator-owned host lock. Ansible inherits the lock descriptor or a pipe keeping
+its detached lock proxy alive, preserving exclusion when its controller is killed
+while the child continues. This does not protect remote tasks after total loss of
+the workstation/SSH connection. Jenkins additionally holds one shared resource for the
 whole production rollout or reviewed host operation. External operator applies
 must not run between separate application pipeline commands. Package/service setup uses the existing Ubuntu host;
 production Kind and the isolated CLI VM remain the deployed boundaries.
@@ -1421,8 +1424,12 @@ The dedicated [Jenkins host job](../operations/platform-jobs.md) reads trusted
 `main`, binds folder-scoped inventory/Vault/sudo files outside its checkout, and
 executes the local bootstrap as the registered operator. Apply requires an owner
 approval of a fresh plan, rechecks revision/input fingerprints and host change
-digest, consumes its private receipt before mutation, and then verifies. Reports
-contain only task outcomes and target identity, never module output or raw diffs.
+digest, consumes its private receipt before mutation, and then verifies. The digest
+includes available loop-item diffs, but only outcomes for secret tasks or modules
+without diffs; it cannot prove a complete host-state snapshot. Reports contain
+only task outcomes and target identity (an application-specific fingerprint for
+the machine ID), never module output or raw diffs. Ansible's final recap determines
+failure after ignored errors or rescue tasks.
 The one-time workstation installer uses a strict SSH tunnel and authenticated API
 to create owned job/credential objects without starting builds or restarting the
 controller. Its plugin pins cover this existing-controller slice; complete

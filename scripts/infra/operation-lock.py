@@ -57,32 +57,65 @@ def acquire():
         os.close(fd)
 
 
-def run(command, fd, quiet=False):
-    env = dict(os.environ, **{ENV: str(fd)})
-    child = subprocess.Popen(command, env=env, pass_fds=(fd,), start_new_session=True,
-                             stdout=subprocess.DEVNULL if quiet else None,
-                             stderr=subprocess.DEVNULL if quiet else None)
+@contextmanager
+def supervised(command, **kwargs):
+    """Install cancellation before spawn, deferring a signal until Popen returns."""
+    child = None
+    ready = False
+    cancelled = False
+
     def interrupted(signum, frame):
-        raise KeyboardInterrupt
+        nonlocal cancelled
+        cancelled = True
+        if ready:
+            raise KeyboardInterrupt
+
     previous = {sig: signal.signal(sig, interrupted) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
-        return child.wait()
+        child = subprocess.Popen(command, start_new_session=True, **kwargs)
+        ready = True
+        if cancelled:
+            raise KeyboardInterrupt
+        yield child
     finally:
-        if child.poll() is None:
-            os.killpg(child.pid, signal.SIGTERM)
-            try:
-                child.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                os.killpg(child.pid, signal.SIGKILL)
-                child.wait()
-        for sig, handler in previous.items():
-            signal.signal(sig, handler)
+        # A second cancellation must not interrupt cleanup or leave the lock owner alive.
+        ready = False
+        try:
+            if child is not None and child.poll() is None:
+                try:
+                    os.killpg(child.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    child.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    os.killpg(child.pid, signal.SIGKILL)
+                    child.wait()
+        finally:
+            for sig, handler in previous.items():
+                signal.signal(sig, handler)
+
+
+def run(command, fd, quiet=False):
+    env = dict(os.environ, **{ENV: str(fd)})
+    with supervised(command, env=env, pass_fds=(fd,),
+                    stdout=subprocess.DEVNULL if quiet else None,
+                    stderr=subprocess.DEVNULL if quiet else None) as child:
+        code = child.wait()
+        return 128 - code if code < 0 else code
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check', action='store_true', help='Validate an inherited lock without running a command')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if args.check:
+        if args.command:
+            parser.error('--check does not accept a command')
+        if inherited() is None:
+            raise ValueError('Missing inherited operation lock')
+        return 0
     command = args.command[1:] if args.command[:1] == ['--'] else args.command
     if not command:
         parser.error('Expected -- COMMAND [ARGS]')
