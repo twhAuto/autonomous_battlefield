@@ -393,7 +393,7 @@ folder rule. Multiple changed paths contribute the union of their components;
 | Changed path | Selected components | Image build and scan |
 | --- | --- | --- |
 | Any `*.md`, `LICENSE`, `LICENSE.*`, or root `.gitignore` | `none` | None |
-| `infra/ansible/**`, `infra/jenkins/**`, `scripts/infra/**`, `scripts/ci/run-platform.sh` or `Jenkinsfile.platform` (explicit host provisioning) | `none` | None |
+| `infra/ansible/**`, `infra/jenkins/**`, `infra/libvirt/**`, `scripts/infra/**`, `scripts/ci/run-platform.sh`, `scripts/ci/run-vm.sh`, `Jenkinsfile.platform` or `Jenkinsfile.vm` (explicit platform provisioning) | `none` | None |
 | `quality/**` or `sonar-project.properties` | `none` | None |
 | `scripts/test/**` and `tests/**` | `none` | None |
 | Go `backend/**/*_test.go`, frontend `src/**/*.test.ts`, `src/**/*.test.tsx`, or `src/test/**` | `none` | None |
@@ -602,7 +602,7 @@ Deleting the entire `kind` cluster has the same data-loss consequence.
 
 ## Host operation coordination
 
-The [reviewed host job](platform-jobs.md) and the Jenkins production rollout use
+The [reviewed host job](platform-jobs.md), [VM job](k3s-vm.md) and Jenkins production rollout use
 one shared resource through smoke/recovery. Production deploy, tunnel and rollback
 entry points also acquire the registered operator's bootstrap lock so simultaneous
 Ansible mutations fail closed. This file lock protects each command; external CLI

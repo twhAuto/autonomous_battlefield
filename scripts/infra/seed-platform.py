@@ -70,8 +70,10 @@ def folder_xml():
     return ET.tostring(xml('com.cloudbees.hudson.plugins.folder.Folder', description=MARKER), encoding='utf-8')
 
 
-def job_xml():
-    root = xml('flow-definition', description=MARKER + ': AB-131 host plan/apply/verify; manually triggered', keepDependencies='false')
+def job_xml(component="host"):
+    if component not in ("host", "vm"):
+        raise ValueError("Unknown platform job")
+    root = xml('flow-definition', description=MARKER + ': ' + component + ' plan/apply/verify; manually triggered', keepDependencies='false')
     properties = ET.SubElement(root, 'properties')
     parameter = ET.SubElement(ET.SubElement(ET.SubElement(properties, 'hudson.model.ParametersDefinitionProperty'), 'parameterDefinitions'), 'hudson.model.ChoiceParameterDefinition')
     ET.SubElement(parameter, 'name').text = 'ACTION'
@@ -79,6 +81,10 @@ def job_xml():
     items = ET.SubElement(choices, 'a', {'class': 'string-array'})
     for value in ('plan', 'apply', 'verify'):
         ET.SubElement(items, 'string').text = value
+    if component == 'vm':
+        replacement = ET.SubElement(properties.find('hudson.model.ParametersDefinitionProperty/parameterDefinitions'), 'hudson.model.BooleanParameterDefinition')
+        ET.SubElement(replacement, 'name').text = 'REPLACE_OS'
+        ET.SubElement(replacement, 'defaultValue').text = 'false'
     definition = ET.SubElement(root, 'definition', {'class': 'org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition'})
     scm = ET.SubElement(definition, 'scm', {'class': 'hudson.plugins.git.GitSCM'})
     ET.SubElement(scm, 'configVersion').text = '2'
@@ -88,7 +94,7 @@ def job_xml():
     branch = ET.SubElement(ET.SubElement(scm, 'branches'), 'hudson.plugins.git.BranchSpec')
     ET.SubElement(branch, 'name').text = '*/main'
     ET.SubElement(scm, 'extensions')
-    ET.SubElement(definition, 'scriptPath').text = 'Jenkinsfile.platform'
+    ET.SubElement(definition, 'scriptPath').text = 'Jenkinsfile.platform' if component == 'host' else 'Jenkinsfile.vm'
     ET.SubElement(definition, 'lightweight').text = 'false'
     ET.SubElement(root, 'disabled').text = 'false'
     ET.SubElement(root, 'triggers')
@@ -120,10 +126,10 @@ def credential_xml(identifier, content):
     return ET.tostring(root, encoding='utf-8')
 
 
-def validate_pipeline(client):
+def validate_pipeline(client, filename="Jenkinsfile.platform"):
     boundary = 'battlefield-platform-validation'
     data = ('--' + boundary + '\r\nContent-Disposition: form-data; name="jenkinsfile"\r\n\r\n' +
-            (ROOT / 'Jenkinsfile.platform').read_text() + '\r\n--' + boundary + '--\r\n').encode()
+            (ROOT / filename).read_text() + '\r\n--' + boundary + '--\r\n').encode()
     result = client.request('pipeline-model-converter/validate', data,
                             content_type='multipart/form-data; boundary=' + boundary)
     if result.strip() != b'Jenkinsfile successfully validated.':
@@ -138,6 +144,7 @@ def check_plugins(client, install=False):
         missing = sorted(set(pins) - present)
         if not missing:
             validate_pipeline(client)
+            validate_pipeline(client, "Jenkinsfile.vm")
             return
         if not install:
             raise ValueError('Required Jenkins plugins are missing/inactive: ' + ', '.join(missing))
@@ -161,7 +168,7 @@ def seed(client, files):
     for value in files.values():
         bootstrap.outside_repo(bootstrap.safe_path(value))
     # Preflight ownership of every object before sending any credential content.
-    for path, definition in [('job/' + FOLDER, folder_xml()), ('job/' + FOLDER + '/job/host', job_xml())]:
+    for path, definition in [('job/' + FOLDER, folder_xml()), *[('job/' + FOLDER + '/job/' + name, job_xml(name)) for name in ('host', 'vm')]]:
         current = client.request(path + '/config.xml', missing=True)
         if current is not None:
             check_owner(current, definition)
@@ -180,8 +187,22 @@ def seed(client, files):
             print(f'Retained existing {identifier}; credential values are never rotated by seeding')
         else:
             client.request(store + 'createCredentials', credential_xml(identifier, content))
-    ensure_item(client, 'job/' + FOLDER + '/job/host', 'job/' + FOLDER + '/createItem?name=host', job_xml())
-    print('Configured battlefield-platform/host. No build or host apply was triggered.')
+    for name in ('host', 'vm'):
+        ensure_item(client, 'job/' + FOLDER + '/job/' + name, 'job/' + FOLDER + '/createItem?name=' + name, job_xml(name))
+    print('Configured battlefield-platform/host and battlefield-platform/vm. No build was triggered.')
+
+
+def seed_jobs(client):
+    check_plugins(client)
+    folder = client.request('job/' + FOLDER + '/config.xml')
+    check_owner(folder, folder_xml())
+    for name in ('host', 'vm'):
+        current = client.request('job/' + FOLDER + '/job/' + name + '/config.xml', missing=True)
+        if current is not None:
+            check_owner(current, job_xml(name))
+    for name in ('host', 'vm'):
+        ensure_item(client, 'job/' + FOLDER + '/job/' + name, 'job/' + FOLDER + '/createItem?name=' + name, job_xml(name))
+    print('Updated platform jobs using their existing folder credentials; no builds triggered.')
 
 
 def main():
@@ -189,13 +210,20 @@ def main():
     parser.add_argument('--url', default='http://127.0.0.1:8080')
     parser.add_argument('--user', default='whtan')
     parser.add_argument('--token-file', type=bootstrap.safe_path)
+    parser.add_argument('--jobs-only', action='store_true', help='Update owned job definitions using existing folder credentials')
     for name in ('inventory', 'vault', 'vault-password-file', 'become-password-file'):
-        parser.add_argument('--' + name, required=True, type=bootstrap.safe_path)
+        parser.add_argument('--' + name, type=bootstrap.safe_path)
     args = parser.parse_args()
     token = bootstrap.private_file(args.token_file).read_text().strip() if args.token_file else getpass.getpass('Jenkins API token: ')
     if not token or ':' in args.user or not re.fullmatch('[A-Za-z0-9_.@-]+', args.user):
         raise ValueError('A Jenkins user and API token are required')
-    seed(Jenkins(args.url, args.user, token), {'host-inventory': args.inventory, 'host-inputs': args.vault,
+    client = Jenkins(args.url, args.user, token)
+    if args.jobs_only:
+        seed_jobs(client)
+        return
+    if any(getattr(args, name) is None for name in ('inventory', 'vault', 'vault_password_file', 'become_password_file')):
+        parser.error('Credential paths are required unless --jobs-only is selected')
+    seed(client, {'host-inventory': args.inventory, 'host-inputs': args.vault,
          'host-vault-password': args.vault_password_file, 'host-sudo-password': args.become_password_file})
 
 

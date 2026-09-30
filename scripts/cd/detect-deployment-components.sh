@@ -43,7 +43,7 @@ while IFS= read -r -d '' changed_file; do
   case "${changed_file}" in
     *.md|LICENSE|LICENSE.*|.gitignore)
       ;;
-    infra/ansible/*|infra/jenkins/*|scripts/infra/*|scripts/ci/run-platform.sh|Jenkinsfile.platform)
+    infra/ansible/*|infra/jenkins/*|infra/libvirt/*|scripts/infra/*|scripts/ci/run-platform.sh|scripts/ci/run-vm.sh|Jenkinsfile.platform|Jenkinsfile.vm)
       ;;
     quality/*|sonar-project.properties)
       ;;

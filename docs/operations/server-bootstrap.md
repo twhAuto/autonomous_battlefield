@@ -207,8 +207,8 @@ in this role.
 
 Ubuntu, Jenkins, SonarQube and host CI/Docker storage remain on `/`. The future
 Terraform-managed domain must be named `battlefield-k3s`, with its separate OS
-and retained data images in the reported `images` directory. AB-126 still owns
-that provisioning implementation, retained-volume lifecycle and state locking;
+and retained data images in the reported `images` directory. [AB-126](k3s-vm.md) implements
+that provisioning, retained-volume lifecycle and state locking;
 AB-128 owns mounting retained data **inside** the guest before K3s and configuring
 its persistent-volume path. Neither VM provisioning nor application/database
 migration is performed by this host role. The current application remains Kind.
@@ -274,9 +274,9 @@ establish that the filesystem is empty or that it has 100 GB free. The backup se
 backup role must verify the expected mounted UUID before writing, preserve other
 data, and fail visibly when the disk is absent.
 
-The proposed Terraform backend will have one canonical state on the host, with
-locking and recovery copies on the second disk. Terraform itself is not installed
-by this slice. Ordinary application delivery must not run host provisioning;
+The [VM workflow](k3s-vm.md) maintains canonical Terraform state on the host, with
+locking, encrypted local recovery snapshots and an explicit copy command for the
+registered second disk. Terraform is installed by that workflow, not the host job. Ordinary application delivery must not run host provisioning;
 changes limited to `infra/ansible/` or `scripts/infra/` select no application
 components, while regression checks still run.
 
@@ -337,7 +337,7 @@ error; inspect guest networking and initialization rather than accepting it.
 The runner defaults to a checksum-pinned Ubuntu 26.04 cloud image from the
 [official dated image directory](https://cloud-images.ubuntu.com/resolute/20260927/).
 Use `--ubuntu 24.04` to rehearse the other supported host release, using its
-[separate pinned image](https://cloud-images.ubuntu.com/noble/20260926/).
+[separate pinned image](https://cloud-images.ubuntu.com/releases/noble/release-20260926/).
 The verified image is cached under
 `${XDG_CACHE_HOME:-$HOME/.cache}/autonomous-battlefield/rehearsal/`; every run
 checks it again. An optional `--image /path/to/downloaded.img` reuses another local copy only when its
@@ -359,6 +359,9 @@ upstream archive is assumed. To refresh a pin:
    `--ubuntu RELEASE --image /path/to/verified.img` and a new evidence directory.
    Require actual boot, reboot, apply/resume/repeat and cleanup success. Commit
    the manifest/runbook changes together and retain matching source-hash evidence.
+   A 24.04 pin refresh also requires the [K3s VM drill](k3s-vm.md#validation)
+   (`scripts/infra/rehearse-vm.py` with its pinned 26.04 outer image), because
+   the production guest and the host rehearsal share that 24.04 image pin.
 
 The VM uses 2 vCPUs, 3 GiB
 RAM and a sparse 16 GiB disk. It has temporary SSH client/host keys, a synthetic
