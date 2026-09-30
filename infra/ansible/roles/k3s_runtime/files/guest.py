@@ -267,6 +267,7 @@ def verify(c):
         raise ValueError('Metrics API returned no node metrics')
     if c['observability'] and int(Path('/proc/sys/vm/max_map_count').read_text()) < 262144:
         raise ValueError('Observability memory-map prerequisite is missing')
+    run('/usr/bin/python3', '/usr/local/lib/battlefield-k3s/firewall.py', 'verify')
     private_registry_access()
     for name in ('battlefield-k3s-firewall',):
         if run('systemctl', 'is-active', name) != 'active':

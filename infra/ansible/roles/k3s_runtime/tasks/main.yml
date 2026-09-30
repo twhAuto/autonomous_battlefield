@@ -60,6 +60,14 @@
         mode: '0700'
       when: k3s_action != 'verify'
 
+    - name: Install the owned firewall inspection helper
+      ansible.builtin.copy:
+        src: firewall.py
+        dest: /usr/local/lib/battlefield-k3s/firewall.py
+        mode: '0700'
+      notify: Reload guest firewall
+      when: k3s_action != 'verify'
+
     - name: Bind runtime configuration to the verified guest and retained storage
       ansible.builtin.copy:
         content: "{{ k3s_contract | to_nice_json }}\n"
@@ -104,6 +112,14 @@
         src: firewall.service.j2
         dest: /etc/systemd/system/battlefield-k3s-firewall.service
         mode: '0644'
+      notify: Reload guest firewall
+      when: k3s_action != 'verify'
+
+    - name: Detect runtime drift in the owned firewall table
+      ansible.builtin.script: firewall.py check
+      check_mode: false
+      register: k3s_firewall_probe
+      changed_when: (k3s_firewall_probe.stdout | from_json).changed
       notify: Reload guest firewall
       when: k3s_action != 'verify'
 

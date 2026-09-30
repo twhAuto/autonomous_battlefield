@@ -107,6 +107,24 @@ def main():
                 guest.ssh('sudo dd if=/dev/zero of=/dev/disk/by-id/virtio-battlefield-k3s-data bs=1 count=1 conv=notrunc status=none')
                 action('apply')
                 action('verify')
+                print('Detecting and repairing live firewall drift', flush=True)
+                firewall_pid = guest.ssh('sudo systemctl show k3s -p ExecMainStartTimestampMonotonic --value')
+                guest.ssh('sudo nft flush table inet battlefield_k3s')
+                try:
+                    action('verify')
+                except ValueError:
+                    diagnostic = json.loads((args.evidence_dir / 'failure-private.jsonl').read_text().splitlines()[-1])
+                    if 'Managed firewall has runtime drift' not in diagnostic['result'].get('stdout', ''):
+                        raise
+                else:
+                    raise ValueError('Removed firewall rules were not detected')
+                drift_plan = action('plan')
+                if not any(t['changed'] and 'firewall' in t['task'] for t in drift_plan['tasks']):
+                    raise ValueError('Plan did not declare firewall restoration')
+                action('apply')
+                action('verify')
+                if firewall_pid != guest.ssh('sudo systemctl show k3s -p ExecMainStartTimestampMonotonic --value'):
+                    raise ValueError('Firewall repair unnecessarily restarted K3s')
                 print('Rejecting revoked registry access even while the cached probe is running', flush=True)
                 registry.reject_auth = True
                 try:

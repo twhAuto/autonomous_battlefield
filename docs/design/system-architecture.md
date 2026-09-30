@@ -1475,7 +1475,9 @@ policies, CoreDNS and metrics-server. Traefik and ServiceLB are disabled from th
 first start. Pinned Envoy Gateway/Gateway API and Kyverno provide platform
 controllers; application manifests and admission policies remain CD-owned. A
 dedicated guest nftables table restricts private API/kubelet/NodePort access,
-including checks before NodePort translation. The host and CLI VM networks are
+including checks before NodePort translation. Verification compares live rules
+with their recorded applied state; a reviewed reload repairs drift without
+restarting K3s. The host and CLI VM networks are
 preserved. A validation namespace tests private registry pulls, retained PVC
 identity, DNS, allowed/denied traffic and private gateway routing. Trusted kubelet
 metrics use the real serving CA and IP SAN; optional observability prerequisites

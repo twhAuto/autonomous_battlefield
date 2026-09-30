@@ -113,6 +113,9 @@ first start. Kind is not installed inside the guest.
 The guest firewall owns one nftables table and service. Host/operator access and
 pod traffic can reach private API, SSH, kubelet and NodePort ports; other sources
 are blocked, including NodePort checks before kube-proxy destination translation.
+Verification compares the live owned rules with their recorded applied state.
+Runtime drift fails verification and appears as a reload in the next plan; the
+reload changes only this table and preserves the running K3s service.
 It does not edit the host firewall, Docker networks or the existing CLI VM.
 The validation gateway is private and has no public DNS/tunnel route. AB-129 must
 establish and verify the CLI/MCP application's route through the intended private
@@ -170,7 +173,8 @@ python3 scripts/infra/rehearse-k3s.py \
 
 It creates an owned 8 GiB RAM guest with a separate empty 8 GiB virtual data disk,
 runs the actual roles using an authenticated TLS registry fixture with synthetic
-credentials, checks stable initial plans, refuses nonzero unformatted data, and
+credentials, checks stable initial plans, refuses nonzero unformatted data, detects
+and repairs live firewall drift, and
 checks fresh registry authentication (including revoked access), apply/reapply,
 zero drift, unchanged secret identity and K3s start time, reboot persistence,
 reviewed restoration of a stopped service and missing OS node-registration link,

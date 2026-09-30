@@ -26,6 +26,7 @@ def module(name, path):
 k3s = module('k3s', 'scripts/infra/k3s.py')
 storage = module('storage', 'infra/ansible/roles/k3s_storage/files/storage.py')
 guest = module('guest', 'infra/ansible/roles/k3s_runtime/files/guest.py')
+firewall = module('firewall', 'infra/ansible/roles/k3s_runtime/files/firewall.py')
 seed = module('seed', 'scripts/infra/seed-platform.py')
 
 
@@ -100,6 +101,40 @@ class StorageTests(unittest.TestCase):
         other = k3s.config.contract(host, dict(conn, data_volume='/foreign/volume'), 8 * 1024**3, settings, {'schema': 1})
         self.assertEqual(first['storage_id'], second['storage_id'])
         self.assertNotEqual(first['storage_id'], other['storage_id'])
+
+
+class FirewallTests(unittest.TestCase):
+    def test_rule_identity_ignores_handles_but_preserves_actions_and_order(self):
+        rules = {'nftables': [{'metainfo': {'version': '1'}},
+                             {'rule': {'handle': 12, 'expr': [{'accept': None}]}},
+                             {'rule': {'handle': 13, 'expr': [{'drop': None}]}}]}
+        equivalent = json.loads(json.dumps(rules))
+        equivalent['nftables'][0]['metainfo']['version'] = '2'
+        equivalent['nftables'][1]['rule']['handle'] = 99
+        self.assertEqual(firewall.normalize(rules), firewall.normalize(equivalent))
+        reordered = {'nftables': list(reversed(equivalent['nftables']))}
+        self.assertNotEqual(firewall.normalize(rules), firewall.normalize(reordered))
+        equivalent['nftables'][1]['rule']['expr'] = [{'drop': None}]
+        self.assertNotEqual(firewall.normalize(rules), firewall.normalize(equivalent))
+
+    def test_missing_flushed_or_changed_configuration_fails_verification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config, state = Path(tmp) / 'config', Path(tmp) / 'state'
+            config.write_text('owned rules')
+            response = MagicMock(returncode=0, stdout='{"nftables":[{"rule":{"expr":[{"drop":null}]}}]}')
+            with patch.object(firewall, 'CONFIG', config), patch.object(firewall, 'STATE', state), \
+                    patch.object(firewall.subprocess, 'run', return_value=response):
+                self.assertFalse(firewall.matches())
+                state.write_text(json.dumps(firewall.current()))
+                self.assertTrue(firewall.matches())
+                response.stdout = '{"nftables":[]}'
+                self.assertFalse(firewall.matches())
+                response.stdout = '{"nftables":[{"rule":{"expr":[{"drop":null}]}}]}'
+                config.write_text('new rules not loaded')
+                self.assertFalse(firewall.matches())
+                config.write_text('owned rules')
+                response.returncode = 1
+                self.assertFalse(firewall.matches())
 
 
 class ConfigurationTests(unittest.TestCase):
