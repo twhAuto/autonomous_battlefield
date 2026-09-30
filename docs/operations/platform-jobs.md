@@ -122,6 +122,14 @@ not a complete snapshot of host state. Secret (`no_log`) tasks contribute only
 outcomes, and modules without diffs cannot bind unseen changes such as exact
 package-resolution results. Final failure follows Ansible's recap, so ignored or
 rescued failures remain visible without incorrectly failing a successful run.
+If Ansible fails, the console identifies failed/unreachable task names from this
+same sanitized callback, without module errors, raw output or secret values.
+If the callback report is missing or malformed, the console retains a
+generic failure and directs the operator to private interactive diagnostics.
+The compatible-sudo precondition is checked before starting that child process,
+so a missing compatibility binary has explicit installation guidance. Setup
+checks the same prerequisite before requesting or writing Jenkins credentials,
+and validates the operator password with the executable Ansible will use.
 Reports publish an application-specific HMAC fingerprint in place of the raw
 machine ID, following [systemd's guidance](https://www.freedesktop.org/software/systemd/man/latest/machine-id.html).
 They do not publish raw diffs, decrypted inputs, module output, or credentials. This is a
@@ -159,7 +167,11 @@ first plan, approved apply, verify, repeat apply, main/platform contention, reje
 approval, cancellation, and absent/wrong data mount. AB-134 needs its own live
 storage-adoption evidence. Keep the tickets in progress until those checks pass.
 
-On failure, keep the failed build visible and inspect the sanitized report. Run
+On failure, keep the failed build visible and inspect the sanitized task summary.
+A `Gathering Facts (unreachable)` failure can indicate a sudo password-handshake
+problem. Host inspection selects traditional sudo (`/usr/bin/sudo.ws` on hosts
+whose default is sudo-rs); do not disable password authentication or replace the
+system-wide sudo alternative to work around the pinned Ansible prompt matcher. Run
 `server.sh inspect`, then the appropriate interactive plan/verify command for
 private diagnostics. Do not replay a consumed receipt or force a different disk
 identity. If an installation was interrupted, rerun the installer: owned objects

@@ -33,7 +33,7 @@ class StorageTests(unittest.TestCase):
                        dict(data_uuid=UUID, backup_uuid=UUID.replace('-', ''))]:
             with self.subTest(values=values), self.assertRaises(ValueError):
                 bootstrap.validate_inventory(dict(base, **values))
-        result = bootstrap.ansible_inventory(dict(base, data_uuid=UUID, data_mount=str(TARGET)), True)
+        result = bootstrap.ansible_inventory(dict(base, data_uuid=UUID, data_mount=str(TARGET)), True, '/usr/bin/sudo')
         self.assertEqual(result['all']['children']['bootstrap']['hosts']['server']['bootstrap_data_uuid'], UUID)
 
     def test_fstab_preserves_other_entries_and_is_idempotent(self):
