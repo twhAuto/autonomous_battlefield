@@ -300,14 +300,19 @@ class AnsibleInputTests(unittest.TestCase):
                        'ansible.builtin.copy': {'content': 'owned', 'dest': str(marker)}},
                       {'name': 'Must remain unreachable before interruption',
                        'ansible.builtin.copy': {'content': 'unexpected', 'dest': str(next_task)}}]}]))
-        code = """import importlib.util,sys
+        code = """import importlib.util,signal,sys
+# Background CI launchers may preserve SIGINT=SIG_IGN across exec.
+signal.signal(signal.SIGINT, signal.default_int_handler)
 spec=importlib.util.spec_from_file_location('bootstrap',sys.argv[1])
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 class Lock:
     def poll(self): return None
 m.run_playbook(sys.argv[2:],Lock())
 """
-        command = [sys.executable, '-c', code, str(ROOT / 'scripts/infra/server.py'),
+        # Reproduce an ignored SIGINT inherited from a background Jenkins launcher.
+        launcher = ('import os,signal,sys; signal.signal(signal.SIGINT,signal.SIG_IGN); '
+                    'os.execv(sys.executable,[sys.executable,*sys.argv[1:]])')
+        command = [sys.executable, '-c', launcher, '-c', code, str(ROOT / 'scripts/infra/server.py'),
                    str(self.binary / 'ansible-playbook'), '-i', 'localhost,', str(self.playbook),
                    '-e', 'ansible_python_interpreter=' + sys.executable]
         with guest.interruption_callback(self.directory / 'callback_plugins'), \
