@@ -155,6 +155,23 @@ rehearsal VM lifecycle with a larger outer guest, while `rehearse-vm-guest.py`
 exercises actual Terraform, replacement, recovery and reboot inside it. See the
 [VM runbook](../operations/k3s-vm.md) for Jenkins and Ansible handoff details.
 
+`Jenkinsfile.k3s` and `scripts/ci/run-k3s.sh` run the reviewed guest workflow in
+`scripts/infra/k3s.py`; `k3s-config.py` validates cluster settings and renders the
+private platform/probe manifests. `infra/k3s/` holds settings and asset checksums.
+`infra/ansible/k3s.yml` combines `k3s_storage` (stable disk ownership, fstab,
+first-use initialization and startup guard) and `k3s_runtime` (managed K3s,
+firewall, pinned controllers and readiness/identity probes). The custom
+`battlefield_k3s_manifest` module uses server-side Kubernetes diff/apply, including
+check-mode drift detection. Its controller filter retains the Envoy certificate
+Job under a specification-derived name for convergence and safe Job upgrades. Registry tasks are opaque and marked no-log.
+
+`test-k3s.py` tests destructive-operation guards, network validation and review
+boundaries. `rehearse-k3s.py` runs the actual roles in a generated disposable VM;
+`k3s-registry-fixture.py` supplies an authenticated TLS registry with synthetic
+credentials and verified public test-image bytes. Its private diagnostic callback
+extends the normal sanitized report only for fixture failures. See the
+[K3s platform runbook](../operations/k3s-platform.md) for job use and acceptance.
+
 ## Common change paths
 
 ### Add a battle API field

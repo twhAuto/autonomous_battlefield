@@ -71,7 +71,7 @@ def folder_xml():
 
 
 def job_xml(component="host"):
-    if component not in ("host", "vm"):
+    if component not in ("host", "vm", "k3s"):
         raise ValueError("Unknown platform job")
     root = xml('flow-definition', description=MARKER + ': ' + component + ' plan/apply/verify; manually triggered', keepDependencies='false')
     properties = ET.SubElement(root, 'properties')
@@ -94,7 +94,7 @@ def job_xml(component="host"):
     branch = ET.SubElement(ET.SubElement(scm, 'branches'), 'hudson.plugins.git.BranchSpec')
     ET.SubElement(branch, 'name').text = '*/main'
     ET.SubElement(scm, 'extensions')
-    ET.SubElement(definition, 'scriptPath').text = 'Jenkinsfile.platform' if component == 'host' else 'Jenkinsfile.vm'
+    ET.SubElement(definition, 'scriptPath').text = {'host': 'Jenkinsfile.platform', 'vm': 'Jenkinsfile.vm', 'k3s': 'Jenkinsfile.k3s'}[component]
     ET.SubElement(definition, 'lightweight').text = 'false'
     ET.SubElement(root, 'disabled').text = 'false'
     ET.SubElement(root, 'triggers')
@@ -145,6 +145,7 @@ def check_plugins(client, install=False):
         if not missing:
             validate_pipeline(client)
             validate_pipeline(client, "Jenkinsfile.vm")
+            validate_pipeline(client, "Jenkinsfile.k3s")
             return
         if not install:
             raise ValueError('Required Jenkins plugins are missing/inactive: ' + ', '.join(missing))
@@ -168,7 +169,7 @@ def seed(client, files):
     for value in files.values():
         bootstrap.outside_repo(bootstrap.safe_path(value))
     # Preflight ownership of every object before sending any credential content.
-    for path, definition in [('job/' + FOLDER, folder_xml()), *[('job/' + FOLDER + '/job/' + name, job_xml(name)) for name in ('host', 'vm')]]:
+    for path, definition in [('job/' + FOLDER, folder_xml()), *[('job/' + FOLDER + '/job/' + name, job_xml(name)) for name in ('host', 'vm', 'k3s')]]:
         current = client.request(path + '/config.xml', missing=True)
         if current is not None:
             check_owner(current, definition)
@@ -187,20 +188,20 @@ def seed(client, files):
             print(f'Retained existing {identifier}; credential values are never rotated by seeding')
         else:
             client.request(store + 'createCredentials', credential_xml(identifier, content))
-    for name in ('host', 'vm'):
+    for name in ('host', 'vm', 'k3s'):
         ensure_item(client, 'job/' + FOLDER + '/job/' + name, 'job/' + FOLDER + '/createItem?name=' + name, job_xml(name))
-    print('Configured battlefield-platform/host and battlefield-platform/vm. No build was triggered.')
+    print('Configured battlefield-platform/host, battlefield-platform/vm and battlefield-platform/k3s. No build was triggered.')
 
 
 def seed_jobs(client):
     check_plugins(client)
     folder = client.request('job/' + FOLDER + '/config.xml')
     check_owner(folder, folder_xml())
-    for name in ('host', 'vm'):
+    for name in ('host', 'vm', 'k3s'):
         current = client.request('job/' + FOLDER + '/job/' + name + '/config.xml', missing=True)
         if current is not None:
             check_owner(current, job_xml(name))
-    for name in ('host', 'vm'):
+    for name in ('host', 'vm', 'k3s'):
         ensure_item(client, 'job/' + FOLDER + '/job/' + name, 'job/' + FOLDER + '/createItem?name=' + name, job_xml(name))
     print('Updated platform jobs using their existing folder credentials; no builds triggered.')
 

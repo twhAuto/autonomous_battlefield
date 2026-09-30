@@ -1,0 +1,26 @@
+[Unit]
+Description=Battlefield K3s server
+Wants=network-online.target
+After=network-online.target battlefield-k3s-firewall.service
+Requires=battlefield-k3s-firewall.service
+RequiresMountsFor=/srv/battlefield
+BindsTo=srv-battlefield.mount
+
+[Service]
+Type=notify
+User=root
+Delegate=yes
+KillMode=process
+LimitNOFILE=1048576
+LimitNPROC=infinity
+LimitCORE=infinity
+TasksMax=infinity
+TimeoutStartSec=600
+Restart=always
+RestartSec=5
+ExecStartPre=/usr/bin/python3 /usr/local/lib/battlefield-k3s/storage.py guard /etc/battlefield-k3s/contract.json
+ExecStartPre=/usr/bin/python3 /usr/local/lib/battlefield-k3s/guest.py inspect /etc/battlefield-k3s/contract.json
+ExecStart=/usr/local/bin/k3s server --config /etc/rancher/k3s/config.yaml
+
+[Install]
+WantedBy=multi-user.target
