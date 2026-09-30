@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory(prefix='bf-terraform-check-') as temp:
                 descriptor = os.open(cache / 'provider-init.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
                 with os.fdopen(descriptor, 'a') as cache_lock:
                     fcntl.flock(cache_lock, fcntl.LOCK_EX)
-                    subprocess.run(command + arguments, check=True, env=environment)
+                    subprocess.run(command + arguments, check=True, env=environment, pass_fds=(descriptor,))
             else:
                 subprocess.run(command + arguments, check=True, env=environment)
 
