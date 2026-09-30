@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Own exactly the Terraform-retained guest disk; never adopt unrelated filesystems."""
 import argparse
+from contextlib import contextmanager
+import fcntl
 import base64
 import json
 import os
@@ -16,10 +18,31 @@ MOUNT = Path('/srv/battlefield')
 OWNER = Path('/etc/battlefield-k3s/storage.json')
 MARKER = '.battlefield-storage.json'
 FSTAB = Path('/etc/fstab')
+_LOCK_FDS = ()
+
+
+@contextmanager
+def operation_lock(path=Path('/run/lock/battlefield-k3s-storage.lock')):
+    global _LOCK_FDS
+    fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    previous = _LOCK_FDS
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+            raise ValueError('Guest storage lock must be a private operator-owned regular file')
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError('Another guest storage operation is still running') from None
+        _LOCK_FDS = (fd,)
+        yield
+    finally:
+        _LOCK_FDS = previous
+        os.close(fd)
 
 
 def run(*args, allowed=(0,), timeout=60):
-    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)
+    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False, pass_fds=_LOCK_FDS)
     if result.returncode not in allowed:
         raise ValueError(Path(args[0]).name + ' failed during guest storage validation')
     return result.stdout.strip()
@@ -196,7 +219,10 @@ def main():
         _, changes, expected = inspect(contract)
         print(json.dumps({'changes': changes, 'filesystem_uuid': expected['fs_uuid']}))
     elif args.action == 'prepare':
-        print(json.dumps({'changes': prepare(contract)}))
+        # A detached formatting child keeps this guest lock even if its Ansible
+        # controller disconnects. Never start a second formatter concurrently.
+        with operation_lock():
+            print(json.dumps({'changes': prepare(contract)}))
     else:
         guard(contract)
         print('Retained guest storage verified')

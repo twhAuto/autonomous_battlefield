@@ -70,7 +70,9 @@ AB-129 and a reviewed data migration.
 Only the exact stable `virtio-battlefield-k3s-data` device is accepted. The role
 checks guest UUID, disk serial, capacity, filesystem UUID, ownership marker and
 mount. First formatting requires an unpartitioned disk with no signatures and
-all bytes zero; unrelated filesystems are rejected. The retained filesystem
+all bytes zero; unrelated filesystems are rejected. A guest storage lock is
+inherited by formatting children, preventing concurrent initialization after a
+controller disconnect. The retained filesystem
 identity derives from host storage and volume path, so replacing only the VM OS
 preserves its identity. The [node registration password](https://docs.k3s.io/architecture)
 also stays on retained storage, preventing a replacement OS from generating a

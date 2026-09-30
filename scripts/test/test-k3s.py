@@ -36,6 +36,25 @@ class StorageTests(unittest.TestCase):
         self.ready = dict(owner={'identity': self.expected, 'phase': 'ready'}, filesystem='ext4', uuid=self.expected['fs_uuid'],
                           marker=self.expected, mounted=True, mount_uuid=self.expected['fs_uuid'], signatures=[{'type': 'ext4'}])
 
+    def test_guest_storage_mutations_are_exclusive_and_children_inherit_the_lock(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'storage.lock'
+            with storage.operation_lock(path):
+                with self.assertRaisesRegex(ValueError, 'still running'):
+                    with storage.operation_lock(path):
+                        self.fail('A second formatter acquired the same lock')
+                child = subprocess.Popen(['sleep', '10'], pass_fds=storage._LOCK_FDS)
+            try:
+                with self.assertRaisesRegex(ValueError, 'still running'):
+                    with storage.operation_lock(path):
+                        self.fail('Detached formatting child did not retain exclusion')
+            finally:
+                child.terminate()
+                child.wait(timeout=5)
+            with storage.operation_lock(path):
+                self.assertTrue(storage._LOCK_FDS)
+
     def test_only_blank_unowned_disk_initializes(self):
         self.assertTrue(storage.decide(self.empty, self.expected)['initialize'])
         for changes in ({'signatures': [{'type': 'ntfs'}]}, {'filesystem': 'ext4', 'uuid': 'foreign'},
