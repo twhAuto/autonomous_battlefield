@@ -67,6 +67,12 @@ def run_action(args, action, directory, fd):
     # The reviewed callback is the only evidence channel. Never echo captured module output.
     code = lock.run(command, fd, quiet=True)
     if code or not report.is_file():
+        if report.is_file():
+            data = json.loads(report.read_text())
+            failed = [task for task in data.get('tasks', []) if task.get('status') in ('failed', 'unreachable')]
+            if failed:
+                names = ', '.join(f"{task['task']} ({task['status']})" for task in failed)
+                raise ValueError(f'{action} failed at: {names}; run the bootstrap interactively for diagnostics')
         raise ValueError(f'{action} failed; run the bootstrap interactively for diagnostics (no captured output published)')
     data = json.loads(report.read_text())
     if data.get('schema') != 1 or data.get('failed') or not data.get('tasks'):

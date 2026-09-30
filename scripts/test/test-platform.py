@@ -248,6 +248,22 @@ runpy.run_path(sys.argv.pop(1),run_name='__main__')
                 self.assertEqual(action.call_count,1)
                 self.assertFalse(args.report.exists())
 
+    def test_failed_action_reports_only_sanitized_task_outcomes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            args = argparse.Namespace(inventory=directory/'inventory', vault=directory/'vault',
+                vault_password_file=directory/'vault-password', become_password_file=directory/'sudo-password')
+            (directory/'plan.json').write_text(json.dumps({'schema':1, 'failed':True, 'tasks':[
+                {'task':'Gathering Facts', 'status':'unreachable', 'changed':False,
+                 'msg':'private-module-output-must-not-escape'}]}))
+            with patch.object(platform.lock, 'run', return_value=4), self.assertRaises(ValueError) as failed:
+                platform.run_action(args, 'plan', directory, 0)
+            self.assertIn('Gathering Facts (unreachable)', str(failed.exception))
+            self.assertNotIn('private-module-output', str(failed.exception))
+            (directory/'plan.json').unlink()
+            with patch.object(platform.lock, 'run', return_value=1), self.assertRaisesRegex(ValueError, 'no captured output'):
+                platform.run_action(args, 'plan', directory, 0)
+
     def test_sudo_file_is_not_executed_and_password_is_not_in_argv(self):
         b=platform.bootstrap
         with tempfile.TemporaryDirectory() as tmp:

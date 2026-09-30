@@ -23,6 +23,9 @@ ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('server_bootstrap', ROOT / 'scripts/infra/server.py')
 bootstrap = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bootstrap)
+inspect_spec = importlib.util.spec_from_file_location('host_inspection', ROOT / 'scripts/infra/inspect-host.py')
+host_inspection = importlib.util.module_from_spec(inspect_spec)
+inspect_spec.loader.exec_module(host_inspection)
 
 
 class BootstrapTests(unittest.TestCase):
@@ -41,6 +44,30 @@ class BootstrapTests(unittest.TestCase):
             with self.subTest(values=values), self.assertRaises(ValueError):
                 bootstrap.validate_inventory(self.inventory(**values))
         self.assertEqual(bootstrap.validate_inventory(self.inventory())['user'], 'operator')
+
+    def test_selects_supported_sudo_without_changing_system_default(self):
+        classic = {'available': True, 'rc': 0, 'output': 'Sudo version 1.9.17p2\n'}
+        rust = {'available': True, 'rc': 0, 'output': 'sudo-rs 0.2.13\n'}
+        for replies, expected in [([classic], '/usr/bin/sudo'),
+                                  ([rust, classic], '/usr/bin/sudo.ws'),
+                                  ([rust, {'available': False}], ''),
+                                  ([{'available': True, 'error': 'timeout'}, classic], '/usr/bin/sudo.ws')]:
+            with self.subTest(replies=replies), patch.object(host_inspection, 'command', side_effect=replies) as probe:
+                self.assertEqual(host_inspection.sudo_executable(), expected)
+                self.assertTrue(all(call.args[0][1:] == ['--version'] for call in probe.call_args_list))
+
+    def test_inventory_binds_target_sudo_for_local_and_ssh_connections(self):
+        for local in (False, True):
+            for executable in ('/usr/bin/sudo', '/usr/bin/sudo.ws'):
+                with self.subTest(local=local, executable=executable), \
+                        patch.object(bootstrap, 'private_file', return_value=Path('/tmp/test-key')):
+                    inventory = bootstrap.ansible_inventory(self.inventory(), local, executable)
+                    variables = inventory['all']['children']['bootstrap']['hosts']['server']
+                    self.assertEqual(variables['ansible_become_exe'], executable)
+                    self.assertEqual(variables['ansible_connection'], 'local' if local else 'ssh')
+        for invalid in ('', None, '/tmp/sudo', '/usr/bin/sudo;id'):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, 'Compatible sudo'):
+                bootstrap.ansible_inventory(self.inventory(), True, invalid)
 
     def test_backup_selection_rejects_root_disk_unknown_and_duplicate_uuids(self):
         disks = [{'name': 'nvme0n1', 'type': 'disk', 'children': [
@@ -450,6 +477,46 @@ with m.operation_lock.acquire() as fd:
         self.assertEqual(base64.b64decode(values['controller_input']), b'controller-secret')
         self.assertEqual(base64.b64decode(values['host_input']), b'host-secret')
         self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+
+    def test_pinned_ansible_password_handshake_with_sudo_prompt_variants(self):
+        # Synthetic executables never elevate privileges. Exercise the real local
+        # connection/password handshake that failed before any host tasks ran.
+        fake_sudo = self.directory / 'sudo-fixture'
+        fake_sudo.write_text('#!' + sys.executable + '\n' + r"""
+import os,sys
+args=sys.argv[1:]
+prompt=args[args.index('-p')+1]
+if os.environ.get('SYNTHETIC_SUDO_RS') == '1':
+    prompt='[sudo: '+prompt+'] Password: '
+sys.stderr.write(prompt)
+sys.stderr.flush()
+if sys.stdin.readline().strip() != 'fixture-password-only':
+    sys.exit(1)
+command=args.index('/bin/sh')
+os.execv(args[command], args[command:])
+""")
+        fake_sudo.chmod(0o700)
+        marker = self.directory / 'handshake-success'
+        self.playbook.write_text(json.dumps([{
+            'hosts':'all', 'connection':'local', 'gather_facts':False, 'become':True,
+            'vars':{'ansible_become_exe':str(fake_sudo), 'ansible_local_become_success_timeout':1},
+            'tasks':[{'name':'Synthetic password handshake', 'ansible.builtin.copy':{
+                'content':'handshake completed', 'dest':str(marker)}}]}]))
+        for rust_prompt in (True, False):
+            env = bootstrap.clean_ansible_env()
+            env['SYNTHETIC_SUDO_RS'] = '1' if rust_prompt else '0'
+            result = subprocess.run([str(self.binary / 'ansible-playbook'), '-i', 'localhost,', str(self.playbook),
+                                     '-e', 'ansible_python_interpreter=' + sys.executable,
+                                     '--become-password-file', str(self.password)],
+                                    env=env, capture_output=True, text=True, timeout=30)
+            self.assertNotIn('fixture-password-only', result.stdout + result.stderr)
+            if rust_prompt:
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('Timed out waiting for become success', result.stdout)
+                self.assertFalse(marker.exists())
+            else:
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(marker.read_text(), 'handshake completed')
 
     def test_fresh_check_does_not_create_inputs(self):
         result = self.run_play('--check', '--diff')

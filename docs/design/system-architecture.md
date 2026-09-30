@@ -1400,6 +1400,11 @@ an existing QEMU/libvirt HWE stack is rejected before package changes, and apt
 operations refuse dependency removals. Imported inputs are staged
 root-only; application/Jenkins/Cloudflare credentials are not rotated or activated
 by staging. Unknown configuration ownership and differing credentials fail closed.
+Host inspection selects the installed traditional sudo executable for Ansible's
+password handshake, using `/usr/bin/sudo.ws` when Ubuntu's default is sudo-rs.
+Both SSH and local execution use that target-side selection; the system default,
+sudo policy and password requirements remain unchanged. Missing compatibility
+support stops Ansible before host tasks run.
 Applies and individual production deploy/tunnel/rollback commands share an
 operator-owned host lock. Ansible inherits the lock descriptor or a pipe keeping
 its detached lock proxy alive, preserving exclusion when its controller is killed
