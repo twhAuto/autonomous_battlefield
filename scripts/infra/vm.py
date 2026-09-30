@@ -4,7 +4,6 @@ import argparse
 import base64
 import hashlib
 import importlib.util
-import ipaddress
 import json
 import os
 from pathlib import Path
@@ -258,16 +257,27 @@ class VM:
             raise ValueError('K3s VM is not running')
         return value
 
+    def agent_reply(self, identity, request):
+        value = json.loads(self.virsh('qemu-agent-command', identity, json.dumps(request)))
+        if not isinstance(value, dict) or not isinstance(value.get('return'), dict):
+            raise ValueError('Guest agent returned an unexpected response')
+        return value['return']
+
     def guest_public_key(self, identity):
         request = {'execute': 'guest-exec', 'arguments': {'path': '/usr/bin/cat',
                    'arg': ['/etc/ssh/ssh_host_ed25519_key.pub'], 'capture-output': True}}
-        process = json.loads(self.virsh('qemu-agent-command', identity, json.dumps(request)))['return']['pid']
+        process = self.agent_reply(identity, request).get('pid')
+        if type(process) is not int or process <= 0:
+            raise ValueError('Guest agent returned an invalid process ID')
         for _ in range(30):
-            status = json.loads(self.virsh('qemu-agent-command', identity, json.dumps(
-                {'execute': 'guest-exec-status', 'arguments': {'pid': process}})))['return']
-            if status.get('exited'):
+            status = self.agent_reply(identity, {'execute': 'guest-exec-status', 'arguments': {'pid': process}})
+            if type(status.get('exited')) is not bool:
+                raise ValueError('Guest agent returned an invalid execution status')
+            if status['exited']:
                 if status.get('exitcode') != 0:
                     raise ValueError('Guest host-key discovery failed')
+                if not isinstance(status.get('out-data'), str):
+                    raise ValueError('Guest agent returned no SSH public key')
                 key = base64.b64decode(status['out-data'], validate=True).decode().strip().split()
                 if len(key) < 2 or key[0] != 'ssh-ed25519' or not re.fullmatch('[A-Za-z0-9+/=]+', key[1]):
                     raise ValueError('Guest returned an invalid SSH public key')

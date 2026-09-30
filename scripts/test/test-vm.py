@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """VM plan policy, approval ordering, retained storage and recovery boundaries."""
 import argparse
+import base64
 from contextlib import redirect_stdout
 import importlib.util
 import io
@@ -10,6 +11,7 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
+import zipfile
 from unittest.mock import Mock, patch
 import xml.etree.ElementTree as ET
 
@@ -26,6 +28,7 @@ def load(name, filename):
 vm = load('vm_test', 'scripts/infra/vm.py')
 recovery = load('vm_recovery_test', 'scripts/infra/vm-state.py')
 seed = load('vm_seed_test', 'scripts/infra/seed-platform.py')
+rehearsal = load('vm_rehearsal_test', 'scripts/infra/rehearse-vm.py')
 policy = vm.policy
 
 
@@ -135,6 +138,48 @@ class VMTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'synthetic'):
             instance.tf('validate')
         self.assertFalse(Path(instance.run.call_args.kwargs['env']['TMPDIR']).exists())
+
+    def test_cached_terraform_repairs_interrupted_executable_permissions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / 'terraform.zip'
+            with zipfile.ZipFile(archive, 'w') as bundle:
+                bundle.writestr('terraform', b'synthetic-verified-binary')
+            with patch.object(vm.tools, 'download', return_value=archive):
+                binary = vm.tools.terraform(root)
+                binary.chmod(0o600)  # Correct bytes left by interruption before chmod.
+                self.assertEqual(vm.tools.terraform(root), binary)
+                self.assertEqual(binary.read_bytes(), b'synthetic-verified-binary')
+                self.assertEqual(binary.stat().st_mode & 0o777, 0o700)
+
+    def test_guest_agent_errors_are_sanitized_and_valid_key_is_returned(self):
+        instance = object.__new__(vm.VM)
+        malformed = [
+            [{'error': {'desc': 'private-error'}}],
+            [{'return': {}}],
+            [{'return': {'pid': True}}],
+            [{'return': {'pid': 42}}, {'return': []}],
+            [{'return': {'pid': 42}}, {'return': {'exited': 'yes'}}],
+            [{'return': {'pid': 42}}, {'return': {'exited': True, 'exitcode': 0}}],
+            [{'return': {'pid': 42}}, {'return': {'exited': True, 'exitcode': 0, 'out-data': 17}}],
+        ]
+        for replies in malformed:
+            with self.subTest(replies=replies):
+                instance.virsh = Mock(side_effect=[json.dumps(value) for value in replies])
+                with self.assertRaises(ValueError) as caught:
+                    instance.guest_public_key('owned-uuid')
+                self.assertNotIn('private-error', str(caught.exception))
+        public = 'ssh-ed25519 cHVibGljLWZpeHR1cmU= host-comment'
+        instance.virsh = Mock(side_effect=[json.dumps({'return': {'pid': 42}}), json.dumps({'return': {
+            'exited': True, 'exitcode': 0, 'out-data': base64.b64encode(public.encode()).decode()}})])
+        self.assertEqual(instance.guest_public_key('owned-uuid'), 'ssh-ed25519 cHVibGljLWZpeHR1cmU=')
+
+    def test_rehearsal_rejects_negative_or_malformed_guest_result(self):
+        for value in ({'passed': False}, {'passed': 1}, {}, None, []):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'did not report success'):
+                rehearsal.require_guest_success(value)
+        value = {'passed': True, 'checks': ['fixture']}
+        self.assertEqual(rehearsal.require_guest_success(value), value)
 
     def test_state_rejects_other_modules_and_deposed_resources(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -145,11 +145,12 @@ setup and real callback behavior. See [platform jobs](../operations/platform-job
 `Jenkinsfile.vm` and `scripts/ci/run-vm.sh` invoke `scripts/infra/vm.py`, which shares
 the host operation lock and trusted-main check. `vm-policy.py` validates capacity
 settings, resource actions and approval receipts; `vm-tools.py` installs verified
-tools/images in a private cache. `vm-state.py` copies encrypted snapshots to the
+tools/images in a private cache and resolves the shared Ubuntu release pin. `vm-state.py` copies encrypted snapshots to the
 registered second disk and validates resource identity during state recovery.
 `test-vm.py` exercises negative paths; `check-vm-terraform.py` verifies format and
 the pinned provider schema, mocked-provider contracts and real local-backend
-lock contention without contacting libvirt. The opt-in `rehearse-vm.py` uses the shared
+lock contention without contacting libvirt; provider-cache initialization is serialized
+across concurrent CI checks. The opt-in `rehearse-vm.py` uses the shared
 rehearsal VM lifecycle with a larger outer guest, while `rehearse-vm-guest.py`
 exercises actual Terraform, replacement, recovery and reboot inside it. See the
 [VM runbook](../operations/k3s-vm.md) for Jenkins and Ansible handoff details.

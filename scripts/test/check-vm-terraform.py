@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Validate pinned Terraform/provider configuration without a libvirt connection."""
+import fcntl
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -13,9 +15,10 @@ spec.loader.exec_module(tools)
 os.umask(0o077)
 cache = Path.home() / '.cache/autonomous-battlefield/terraform-check'
 binary = tools.terraform(cache)
+plugins = tools.private_directory(cache / 'providers')
 with tempfile.TemporaryDirectory(prefix='bf-terraform-check-') as temp:
     directory = Path(temp)
-    (directory / 'terraform.rc').write_text('disable_checkpoint = true\n')
+    (directory / 'terraform.rc').write_text('disable_checkpoint = true\nplugin_cache_dir = ' + json.dumps(str(plugins)) + '\n')
     env = {k: v for k, v in os.environ.items() if not k.startswith(('TF_', 'LIBVIRT_'))}
     env.update(TF_DATA_DIR=str(directory / 'provider'), TF_CLI_CONFIG_FILE=str(directory / 'terraform.rc'),
                TF_IN_AUTOMATION='1', TF_INPUT='0')
@@ -27,11 +30,18 @@ with tempfile.TemporaryDirectory(prefix='bf-terraform-check-') as temp:
     env['TMPDIR'] = str(long_tmp)
     with tools.terraform_environment(env) as environment:
         for arguments in [['fmt', '-check', '-recursive'], ['init', '-backend=false', '-input=false', '-lockfile=readonly', '-no-color'], ['validate', '-no-color'], ['test', '-no-color']]:
-            subprocess.run(command + arguments, check=True, env=environment)
+            if arguments[0] == 'init':
+                # Terraform's shared plugin cache is not concurrency-safe. Only
+                # initialization writes it; serialize those writes across PRs.
+                descriptor = os.open(cache / 'provider-init.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+                with os.fdopen(descriptor, 'a') as cache_lock:
+                    fcntl.flock(cache_lock, fcntl.LOCK_EX)
+                    subprocess.run(command + arguments, check=True, env=environment)
+            else:
+                subprocess.run(command + arguments, check=True, env=environment)
 
 # Exercise the actual pinned local backend's lock on a synthetic built-in
 # resource. This writes only disposable local state, never a libvirt resource.
-import fcntl
 with tempfile.TemporaryDirectory(prefix='bf-state-lock-check-') as temp:
     directory = Path(temp)
     (directory / 'main.tf').write_text('terraform {\n  backend "local" {}\n}\nresource "terraform_data" "fixture" { input = "synthetic" }\n')

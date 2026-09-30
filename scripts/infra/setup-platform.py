@@ -126,7 +126,7 @@ def main():
             sudo_file=private/'sudo-password';bootstrap.write_new(sudo_file,sudo.encode())
             seed.seed(client,{'host-inventory':args.inventory,'host-inputs':vault,
                 'host-vault-password':vault_password,'host-sudo-password':sudo_file})
-    print('Open battlefield-platform/host in Jenkins and run plan. Keep the Vault passphrase in your password manager.')
+    print('Open battlefield-platform/host in Jenkins and run plan; after host apply/verify, use battlefield-platform/vm. Keep the Vault passphrase in your password manager.')
 
 
 if __name__=='__main__':

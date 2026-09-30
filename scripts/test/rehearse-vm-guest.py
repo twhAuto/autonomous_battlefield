@@ -131,7 +131,8 @@ def main():
     run('git', '-C', str(ROOT), 'update-ref', 'refs/remotes/origin/main', 'HEAD')
     operation('plan', 'initial')
     operation('apply', 'initial')
-    assert not operation('plan', 'repeat')['changes']
+    if operation('plan', 'repeat')['changes']:
+        raise ValueError('Repeat VM plan is not converged')
     operation('apply', 'repeat')
     guest('sudo mkfs.ext4 -F /dev/disk/by-id/virtio-battlefield-k3s-data && sudo mount /dev/disk/by-id/virtio-battlefield-k3s-data /mnt && echo retained | sudo tee /mnt/ab126-marker >/dev/null && sudo umount /mnt')
     module = load_vm()
@@ -155,7 +156,8 @@ def main():
     (STATE / 'terraform.tfstate').rename(PRIVATE / 'saved-state.json')
     run(sys.executable, str(ROOT / 'scripts/infra/vm-state.py'), 'restore', '--inventory', str(PRIVATE / 'inventory.json'),
         '--bundle', str(snapshot), '--vault-password-file', str(PRIVATE / 'vault'), timeout=180)
-    assert json.loads((STATE / 'terraform.tfstate').read_text()) == json.loads((PRIVATE / 'saved-state.json').read_text())
+    if json.loads((STATE / 'terraform.tfstate').read_text()) != json.loads((PRIVATE / 'saved-state.json').read_text()):
+        raise ValueError('Recovered Terraform state differs from the saved state')
     operation('verify', 'restored')
 
 

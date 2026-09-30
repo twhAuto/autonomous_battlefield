@@ -2,7 +2,6 @@
 """Checksum-pinned Terraform and cloud image, cached outside the checkout."""
 from contextlib import contextmanager
 import hashlib
-import io
 import json
 import os
 from pathlib import Path
@@ -93,12 +92,20 @@ def terraform(cache):
         raise ValueError('Refusing a symlink for Terraform')
     if not binary.exists() or binary.read_bytes() != data:
         atomic(binary, data)
-        binary.chmod(0o700)
+    # Repair an interrupted atomic-write/chmod sequence on every invocation.
+    binary.chmod(0o700)
     return binary
 
 
-def prepare(directory):
+def load_pins():
     pins = json.loads((ROOT / 'infra/libvirt/tools.json').read_text())
+    images = json.loads((ROOT / 'infra/ansible/rehearsal-image.json').read_text())
+    pins['image'] = images[pins.pop('image_release')]
+    return pins
+
+
+def prepare(directory):
+    pins = load_pins()
     cache = private_directory(directory / 'cache')
     binary = terraform(cache)
     image = download(cache, pins['image'], '.qcow2')

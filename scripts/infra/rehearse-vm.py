@@ -17,6 +17,12 @@ base = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(base)
 
 
+def require_guest_success(value):
+    if not isinstance(value, dict) or value.get('passed') is not True:
+        raise ValueError('Guest rehearsal did not report success')
+    return value
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--image', type=Path, required=True, help='Pinned Ubuntu 26.04 image for the disposable hypervisor')
@@ -56,7 +62,8 @@ def main():
                 for path in ('infra/ansible', 'infra/libvirt', 'scripts/infra', 'scripts/test/rehearse-vm-guest.py'):
                     archive.add(ROOT / path, arcname=path, filter=lambda item: None if '__pycache__' in item.name else item)
             guest.ssh('mkdir -m 700 source && tar -xf - -C source', input=(work / 'source.tar').read_bytes(), text=False)
-            image_pin = json.loads((ROOT / 'infra/libvirt/tools.json').read_text())['image']
+            release = json.loads((ROOT / 'infra/libvirt/tools.json').read_text())['image_release']
+            image_pin = json.loads((ROOT / 'infra/ansible/rehearsal-image.json').read_text())[release]
             cached_image = Path.home() / '.cache/autonomous-battlefield/rehearsal' / (image_pin['sha256'] + '.img')
             if cached_image.is_file():
                 base.checked_image(cached_image, image_pin['sha256'])
@@ -69,7 +76,7 @@ def main():
             print('Rebooting only the disposable hypervisor to verify VM/network autostart.', flush=True)
             guest.reboot()
             guest.ssh('python3 source/scripts/test/rehearse-vm-guest.py after-reboot', timeout=900)
-            result['guest'] = json.loads(guest.ssh('cat evidence/result.json'))
+            result['guest'] = require_guest_success(json.loads(guest.ssh('cat evidence/result.json')))
             result['passed'] = result['guest']['passed']
         finally:
             try:

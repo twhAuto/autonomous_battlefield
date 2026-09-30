@@ -1442,7 +1442,8 @@ Jenkins/SonarQube reconstruction remains separate work. Folder credential scope
 retains the project's accepted shared-user/host CI trust boundary.
 
 The [Terraform VM workflow](../operations/k3s-vm.md) provisions a dedicated
-Ubuntu guest, NAT network and autostarting domain with separate replaceable OS
+Ubuntu guest from a dated release-build pin shared with the host rehearsal,
+NAT network and autostarting domain with separate replaceable OS
 and retained data disks on the selected partition. It is available through
 `battlefield-platform/vm` after reviewed seeding; it does not establish that the
 production VM has already been deployed. Host/network/mount identity and full

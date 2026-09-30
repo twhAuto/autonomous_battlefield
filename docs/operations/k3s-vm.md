@@ -13,7 +13,9 @@ partition first. Run VM operations locally as the registered Ubuntu operator;
 Jenkins uses the same account. Host packages include libvirt/KVM, qemu-img,
 cloud-localds and OpenSSH. The runner downloads a checksum-pinned Terraform
 binary and Ubuntu image; the committed Terraform dependency lock pins the
-libvirt provider. Outbound HTTPS is needed for these downloads and guest apt.
+libvirt provider. The Ubuntu 24.04 pin is shared with host rehearsal in
+`infra/ansible/rehearsal-image.json` and uses a dated release-build URL. Outbound
+HTTPS is needed for these downloads and guest apt.
 
 The reviewed defaults in [`infra/libvirt/vm.json`](../../infra/libvirt/vm.json) are:
 
@@ -186,7 +188,11 @@ The deployment gate runs pinned Terraform format/schema validation without a
 libvirt connection, exercises mocked-provider contracts and native local-backend
 lock contention, and includes `scripts/test/test-vm.py` for plan/receipt policy,
 protected disks, private paths, SSH identity and job configuration. Run Terraform
-format/validate with the pinned binary and committed provider lock.
+format/validate with the pinned binary and committed provider lock. Provider
+packages are cached under `~/.cache/autonomous-battlefield/terraform-check/providers`;
+initialization writes are serialized across concurrent checks and packages remain
+verified against the dependency lock. Warm checks avoid downloading the provider
+archive again; registry metadata access is still required.
 
 For a real disposable drill on an existing hypervisor with nested KVM, at least
 8 GiB available memory and 110 GiB available sparse-disk capacity:
