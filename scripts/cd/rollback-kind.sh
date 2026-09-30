@@ -7,6 +7,12 @@ set -Eeuo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${project_dir}/scripts/lib/deployment-environment.sh"
 battlefield_env_preflight
+if [[ "${DEPLOY_ENV}" == production && -z "${BATTLEFIELD_OPERATION_LOCK_FD:-}" ]]; then
+  exec python3 "${project_dir}/scripts/infra/operation-lock.py" -- "$0" "$@"
+fi
+if [[ "${DEPLOY_ENV}" == production ]]; then
+  python3 "${project_dir}/scripts/infra/operation-lock.py" --check
+fi
 
 # Restores application images after a failed continuous-delivery verification.
 

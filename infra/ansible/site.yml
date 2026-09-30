@@ -17,11 +17,12 @@
       ansible.builtin.assert:
         that:
           - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['architecture'] == 'x86_64'
           - ansible_facts['distribution_version'] in ['24.04', '26.04']
           - (bootstrap_identity.content | b64decode | trim) == bootstrap_machine_id
           - bootstrap_action in ['plan', 'apply', 'verify']
           - bootstrap_operator is match('^[a-z_][a-z0-9_-]*$')
-        fail_msg: Inventory does not identify this supported Ubuntu server.
+        fail_msg: Inventory must identify this Ubuntu 24.04/26.04 x86_64 server and a valid operator/action.
     - name: Read existing service ownership
       ansible.builtin.service_facts:
     - name: Inspect bootstrap configuration directory
@@ -62,9 +63,9 @@
     - name: Report backup scope
       ansible.builtin.debug:
         msg: >-
-          Second-drive backups only; 100 GB initial budget. Candidate UUID:
+          Scheduled backups are deferred. Optional second-drive candidate UUID:
           {{ bootstrap_backup_uuid | default('') or 'not selected' }}.
-          No filesystem is mounted, formatted or resized by this foundation playbook.
+          The optional data role mounts only its separately selected data_uuid; no filesystem is formatted or resized.
           Backup scheduling is a later recovery role; whole-server-loss recovery is deferred.
   tasks:
     - name: Validate encrypted inputs before any configuration change
@@ -72,10 +73,19 @@
         name: inputs
         tasks_from: preflight
       when: bootstrap_action in ['plan', 'apply']
+    - name: Preflight optional host data storage
+      ansible.builtin.import_role:
+        name: data_storage
+        tasks_from: preflight
+      when: bootstrap_data_uuid | default('') | length > 0
     - name: Configure the foundation
       ansible.builtin.import_role:
         name: foundation
       when: bootstrap_action in ['plan', 'apply']
+    - name: Configure or verify optional host data storage
+      ansible.builtin.import_role:
+        name: data_storage
+      when: bootstrap_data_uuid | default('') | length > 0
     - name: Install the private recovery inputs
       ansible.builtin.import_role:
         name: inputs

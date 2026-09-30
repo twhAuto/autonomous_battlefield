@@ -1,0 +1,53 @@
+---
+- name: Require explicit storage action and read-only plan execution
+  ansible.builtin.assert:
+    that:
+      - bootstrap_action in ['plan', 'apply', 'verify']
+      - bootstrap_action != 'plan' or ansible_check_mode
+    fail_msg: Use the bootstrap wrapper; a direct plan requires Ansible check mode.
+- name: Validate selected data filesystem before configuring the host
+  ansible.builtin.script:
+    cmd: >-
+      {{ role_path }}/files/storage.py plan
+      {{ bootstrap_data_uuid | quote }} {{ bootstrap_data_mount | quote }} {{ bootstrap_operator | quote }}
+    executable: /usr/bin/python3
+  check_mode: false
+  changed_when: false
+
+- name: Inspect hook and helper installation paths
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - /etc/battlefield-data-storage
+    - /etc/battlefield-data-storage/guard.py
+    - /etc/libvirt
+    - /etc/libvirt/hooks
+    - /etc/libvirt/hooks/qemu.d
+    - /etc/libvirt/hooks/qemu.d/50-battlefield-data-storage
+    - /etc/systemd/system/libvirtd.service.d
+    - /etc/systemd/system/libvirtd.service.d/50-battlefield-data.conf
+    - /etc/libvirt/hooks/.battlefield-data-storage-loaded
+  register: data_storage_paths
+- name: Reject symlinked or writable hook installation paths
+  ansible.builtin.assert:
+    that:
+      - not item.stat.exists or (not item.stat.islnk and item.stat.uid == 0 and item.stat.mode[-2] not in ['2', '3', '6', '7'] and item.stat.mode[-1] not in ['2', '3', '6', '7'])
+    fail_msg: Hook/helper paths must be root-owned and not symlinked; inspect existing configuration.
+  loop: "{{ data_storage_paths.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Inspect storage ownership before installing named integration files
+  ansible.builtin.stat:
+    path: /etc/battlefield-data-storage.json
+    follow: false
+  register: data_storage_contract
+- name: Refuse to overwrite unowned helper or integration files
+  ansible.builtin.assert:
+    that:
+      - data_storage_contract.stat.exists or not item.stat.exists
+    fail_msg: A reserved storage helper/hook/unit path already exists without our storage contract; inspect before adoption.
+  loop: "{{ data_storage_paths.results | selectattr('item', 'in', ['/etc/battlefield-data-storage/guard.py', '/etc/libvirt/hooks/qemu.d/50-battlefield-data-storage', '/etc/systemd/system/libvirtd.service.d/50-battlefield-data.conf', '/etc/libvirt/hooks/.battlefield-data-storage-loaded']) | list }}"
+  loop_control:
+    label: "{{ item.item }}"

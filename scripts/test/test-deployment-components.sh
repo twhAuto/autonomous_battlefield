@@ -137,6 +137,9 @@ assert_detection network-policy scripts/ops/render-limited-launch.py
 assert_detection network-policy scripts/cd/reconcile-network-policies.sh
 assert_detection "none" "infra/ansible/site.yml"
 assert_detection "none" "scripts/infra/server.py"
+assert_detection "none" "infra/jenkins/platform-plugins.json"
+assert_detection "none" "scripts/ci/run-platform.sh"
+assert_detection "none" "Jenkinsfile.platform"
 
 assert_detection "frontend,application" "frontend/src/app/App.tsx"
 assert_detection "migration,backend,application" "backend/internal/app/app.go"

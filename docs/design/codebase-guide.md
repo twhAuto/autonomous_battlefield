@@ -108,8 +108,34 @@ Host bootstrap enters through [`scripts/infra/server.sh`](../../scripts/infra/se
 Its Python wrapper validates private inventory, SSH/machine identity, secret imports
 and the host lock; `control-tools.py` installs the hash-locked Ansible environment.
 `infra/ansible/site.yml` separates foundation setup, private input reconciliation
-and verification. `scripts/test/test-server-bootstrap.sh` exercises real Ansible
-with synthetic inputs; see the [bootstrap guide](../operations/server-bootstrap.md).
+and verification. The optional `data_storage` role owns the existing ext4 mount,
+scoped directories and future K3s libvirt guard; its standalone `files/storage.py`
+handles mount identity, fstab preservation and the immutable storage contract.
+`test-data-storage.py` covers negative paths; `rehearse-data-storage.py` verifies
+privileged behavior only in an owned disposable guest.
+`scripts/test/test-server-bootstrap.sh` exercises real Ansible
+with synthetic inputs, the shared `foundation/tasks/virtualization-preflight.yml`
+package guard, the interruption checkpoint, offline rehearsal safety tests and
+storage regressions. The opt-in `scripts/infra/rehearse-server.py` owns disposable
+VM creation/cleanup; `scripts/test/rehearse-server-guest.py` runs the privileged
+fixture only inside its UUID-matched guest and temporarily installs its embedded
+Ansible interruption callback there. The host runner waits for a changed boot ID
+before resuming checks. The pinned Ubuntu image is in
+`infra/ansible/rehearsal-image.json`. See the
+[bootstrap guide](../operations/server-bootstrap.md) for the rehearsal command.
+
+`Jenkinsfile.platform` and `scripts/ci/run-platform.sh` enter the reviewed host
+workflow in `scripts/infra/platform.py`. It binds a private plan receipt to the
+trusted revision and inputs and uses `operation-lock.py` for exclusion and child
+cancellation through a shared supervisor that defers startup signals until the
+child can be reaped. Deployment scripts validate inherited locks with its `--check`
+mode. `infra/ansible/callback_plugins/battlefield_report.py` emits task outcomes
+without module output and hashes available task/loop diffs. Reports use an
+application-specific machine fingerprint. `setup-platform.py` registers/seals inputs and
+opens the SSH tunnel; `seed-platform.py` validates plugins/pipeline and reconciles
+owned folder/job/file credentials without triggering a build. Plugin pins live in
+`infra/jenkins/platform-plugins.json`; `test-platform.py` exercises lock, receipt,
+setup and real callback behavior. See [platform jobs](../operations/platform-jobs.md).
 
 ## Common change paths
 

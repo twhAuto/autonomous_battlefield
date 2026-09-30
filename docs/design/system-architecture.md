@@ -1392,19 +1392,71 @@ of builder layers; the root ignore file is not the boundary for component builds
 
 The [server bootstrap](../operations/server-bootstrap.md) adds an explicit
 workstation/server administration entry point under `scripts/infra/`, backed by
-`infra/ansible/`. It validates trusted SSH and a registered machine ID before
-configuration, imports existing file credentials into an external Ansible Vault
-bundle, and reconciles the Ubuntu host foundation. Imported inputs are staged
+`infra/ansible/`. It validates trusted SSH, Ubuntu release, x86-64 architecture
+and a registered machine ID before configuration, imports existing file credentials into an external Ansible Vault
+bundle, and reconciles the x86-64 Ubuntu host foundation using concrete QEMU packages
+so unattended installation does not depend on virtual-package provider selection;
+an existing QEMU/libvirt HWE stack is rejected before package changes, and apt
+operations refuse dependency removals. Imported inputs are staged
 root-only; application/Jenkins/Cloudflare credentials are not rotated or activated
 by staging. Unknown configuration ownership and differing credentials fail closed.
-Applies share an operator-owned host lock; this lock is not yet integrated with
-application delivery. Package/service setup uses the existing Ubuntu host;
+Applies and individual production deploy/tunnel/rollback commands share an
+operator-owned host lock. Ansible inherits the lock descriptor or a pipe keeping
+its detached lock proxy alive, preserving exclusion when its controller is killed
+while the child continues. This does not protect remote tasks after total loss of
+the workstation/SSH connection. Jenkins additionally holds one shared resource for the
+whole production rollout or reviewed host operation. External operator applies
+must not run between separate application pipeline commands. Package/service setup uses the existing Ubuntu host;
 production Kind and the isolated CLI VM remain the deployed boundaries.
 
-The initial backup design uses the server's separate second disk only, with a
+Optional `data_uuid`/`data_mount` inventory adds an existing ext4 partition to
+host management. The data role persists its UUID mount, prepares private operator
+and libvirt image directories, and records immutable storage identity outside Git.
+A separate libvirt hook refuses future `battlefield-k3s` starts/restores when the
+selected data filesystem is missing, wrong or read-only; other guests retain their
+existing lifecycle. The guard also provides a preflight for future Terraform
+volume operations. This does not move current Docker/PostgreSQL data: production
+remains Kind on the Ubuntu filesystem. Terraform VM provisioning and the guest's
+retained-volume/K3s mount remain separate implementation tasks. See the
+[storage contract](../operations/server-bootstrap.md#terraform-and-guest-storage-contract).
+
+The dedicated [Jenkins host job](../operations/platform-jobs.md) reads trusted
+`main`, binds folder-scoped inventory/Vault/sudo files outside its checkout, and
+executes the local bootstrap as the registered operator. Apply requires an owner
+approval of a fresh plan, rechecks revision/input fingerprints and host change
+digest, consumes its private receipt before mutation, and then verifies. The digest
+includes available loop-item diffs, but only outcomes for secret tasks or modules
+without diffs; it cannot prove a complete host-state snapshot. Reports contain
+only task outcomes and target identity (an application-specific fingerprint for
+the machine ID), never module output or raw diffs. Ansible's final recap determines
+failure after ignored errors or rescue tasks.
+The one-time workstation installer uses a strict SSH tunnel and authenticated API
+to create owned job/credential objects without starting builds or restarting the
+controller. Its plugin pins cover this existing-controller slice; complete
+Jenkins/SonarQube reconstruction remains separate work. Folder credential scope
+retains the project's accepted shared-user/host CI trust boundary.
+
+The owner has deferred scheduled backups and retention for current personal use;
+existing pre-migration dumps remain. The initial backup design uses the server's separate second disk only, with a
 100 GB planning budget. The wrapper can validate a selected filesystem UUID
 against the root physical disk, but does not mount or format it. Backup scheduling,
 Terraform/K3s provisioning, CI-service rebuilds, Cloudflare adoption and full
 restore verification are subsequent work. Losing the whole server is outside the
 initial recovery scope. Host bootstrap files select no application deployment
 components; normal Jenkins application delivery never invokes the bootstrap.
+
+The opt-in `scripts/infra/rehearse-server.py` runs on an existing libvirt host.
+It creates a temporary 2-vCPU/3-GiB Ubuntu guest and its own storage pool, using
+the existing NAT network without changing it. Pinned image checksums, generated
+SSH host keys and a matching VM UUID/guest marker bind the destructive fixture
+to that guest. Synthetic credentials exercise the actual local bootstrap entry
+point, including a clean Ansible controller install, interruption/resume, repeat
+apply, drift and reboot. A guest-only temporary callback holds the completed
+ownership-marker boundary until the fixture signals the real controller; it is
+removed before resume. Reboot readiness requires a changed boot ID, not a fixed
+delay. Evidence contains configuration fingerprints and secret-checked logs;
+host diagnostics omit captured child output. Cleanup checks UUIDs before deleting
+its resources. The ordinary deployment gate runs the real package-profile guard
+against synthetic facts and offline harness checks, never this VM drill. A
+successful matching-release drill on the intended source revision is required
+before first production foundation apply.

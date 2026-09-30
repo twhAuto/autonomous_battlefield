@@ -8,6 +8,12 @@ source "${project_dir}/scripts/lib/deployment-environment.sh"
 [[ "${DEPLOY_ENV:-production}" == production ]] || { echo 'Tunnel deployment requires production.' >&2; exit 1; }
 export DEPLOY_ENV=production
 battlefield_env_preflight
+if [[ "${DEPLOY_ENV}" == production && -z "${BATTLEFIELD_OPERATION_LOCK_FD:-}" ]]; then
+  exec python3 "${project_dir}/scripts/infra/operation-lock.py" -- "$0" "$@"
+fi
+if [[ "${DEPLOY_ENV}" == production ]]; then
+  python3 "${project_dir}/scripts/infra/operation-lock.py" --check
+fi
 runtime_dir="$(mktemp -d)"
 trap 'rm -rf -- "${runtime_dir}"' EXIT
 python3 "${project_dir}/scripts/ops/prepare-limited-production.py" --output "${runtime_dir}"

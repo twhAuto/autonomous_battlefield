@@ -5,5 +5,7 @@
   "identity_file": "/home/operator/.ssh/battlefield-automation",
   "machine_id": "00000000000000000000000000000000",
   "backup_uuid": "",
+  "data_uuid": "",
+  "data_mount": "/srv/battlefield-data",
   "ca_files": []
 }

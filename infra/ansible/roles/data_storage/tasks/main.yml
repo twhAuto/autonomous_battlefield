@@ -1,0 +1,133 @@
+---
+- name: Reconcile or verify the selected data filesystem
+  ansible.builtin.script:
+    cmd: >-
+      {{ role_path }}/files/storage.py {{ 'plan' if ansible_check_mode else bootstrap_action }}
+      {{ bootstrap_data_uuid | quote }} {{ bootstrap_data_mount | quote }} {{ bootstrap_operator | quote }}
+    executable: /usr/bin/python3
+  check_mode: false
+  register: data_storage_result
+  changed_when: (data_storage_result.stdout | from_json).changed
+- name: Resolve the systemd mount unit name
+  ansible.builtin.command:
+    argv: [systemd-escape, --path, --suffix=mount, "{{ bootstrap_data_mount }}"]
+  check_mode: false
+  changed_when: false
+  register: data_storage_mount_unit
+- name: Install guarded VM storage integration
+  when: bootstrap_action in ['plan', 'apply']
+  block:
+    - name: Create root-owned helper and hook directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop: [/etc/battlefield-data-storage, /etc/libvirt/hooks, /etc/libvirt/hooks/qemu.d]
+      when: not (data_storage_paths.results | selectattr('item', 'equalto', item) | first).stat.exists
+    - name: Prepare libvirt boot ordering directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/libvirtd.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Order libvirt after the optional data mount at boot
+      ansible.builtin.template:
+        src: libvirtd-data-mount.conf.j2
+        dest: /etc/systemd/system/libvirtd.service.d/50-battlefield-data.conf
+        owner: root
+        group: root
+        mode: '0644'
+    - name: Refresh systemd units after any interrupted configuration
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when: not ansible_check_mode
+    - name: Install the mount identity guard
+      ansible.builtin.copy:
+        src: storage.py
+        dest: /etc/battlefield-data-storage/guard.py
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Install the future K3s VM guard without replacing existing hooks
+      ansible.builtin.template:
+        src: k3s-storage-hook.j2
+        dest: /etc/libvirt/hooks/qemu.d/50-battlefield-data-storage
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Inspect the hook activation record by its explicit path
+      ansible.builtin.stat:
+        path: /etc/libvirt/hooks/.battlefield-data-storage-loaded
+        follow: false
+      register: data_storage_activation_stat
+    - name: Read the existing hook activation record
+      ansible.builtin.slurp:
+        src: /etc/libvirt/hooks/.battlefield-data-storage-loaded
+      register: data_storage_activation
+      when: data_storage_activation_stat.stat.exists
+    - name: Activate the new hook and record successful discovery
+      when: >-
+        not ansible_check_mode and
+        (not data_storage_activation_stat.stat.exists or
+        (data_storage_activation.content | default('') | b64decode) != lookup('ansible.builtin.template', 'k3s-storage-hook.j2'))
+      block:
+        - name: Reload libvirt hook discovery without restarting guests
+          ansible.builtin.systemd_service:
+            name: libvirtd
+            state: reloaded
+        - name: Record successful hook activation for interrupted-run recovery
+          ansible.builtin.copy:
+            content: "{{ lookup('ansible.builtin.template', 'k3s-storage-hook.j2') }}"
+            dest: /etc/libvirt/hooks/.battlefield-data-storage-loaded
+            owner: root
+            group: root
+            mode: '0600'
+- name: Verify the installed helper and hook content and permissions
+  when: bootstrap_action == 'verify'
+  block:
+    - name: Compare the installed helper to this revision
+      ansible.builtin.copy:
+        src: storage.py
+        dest: /etc/battlefield-data-storage/guard.py
+        owner: root
+        group: root
+        mode: '0755'
+      check_mode: true
+      register: data_storage_helper_check
+    - name: Compare the installed hook to the declared storage identity
+      ansible.builtin.template:
+        src: k3s-storage-hook.j2
+        dest: /etc/libvirt/hooks/qemu.d/50-battlefield-data-storage
+        owner: root
+        group: root
+        mode: '0755'
+      check_mode: true
+      register: data_storage_hook_check
+    - name: Compare the hook activation record
+      ansible.builtin.copy:
+        content: "{{ lookup('ansible.builtin.template', 'k3s-storage-hook.j2') }}"
+        dest: /etc/libvirt/hooks/.battlefield-data-storage-loaded
+        owner: root
+        group: root
+        mode: '0600'
+      check_mode: true
+      register: data_storage_activation_check
+    - name: Compare boot ordering to the declared mount
+      ansible.builtin.template:
+        src: libvirtd-data-mount.conf.j2
+        dest: /etc/systemd/system/libvirtd.service.d/50-battlefield-data.conf
+        owner: root
+        group: root
+        mode: '0644'
+      check_mode: true
+      register: data_storage_order_check
+    - name: Require current guard configuration
+      ansible.builtin.assert:
+        that:
+          - not data_storage_helper_check.changed
+          - not data_storage_hook_check.changed
+          - not data_storage_activation_check.changed
+          - not data_storage_order_check.changed
