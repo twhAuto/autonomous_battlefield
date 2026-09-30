@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "cpus": 4,
+  "memory_mib": 8192,
+  "os_gib": 32,
+  "data_gib": 250,
+  "reserve_gib": 64,
+  "network_cidr": "192.168.235.0/24",
+  "guest_ip": "192.168.235.10",
+  "mac": "52:54:00:bf:23:50"
+}

@@ -10,7 +10,7 @@ private key stays on the workstation.
 This implements the host slice of
 [AB-131 — Add reviewed Jenkins platform jobs and infrastructure verification](https://app.notion.com/p/3eab7a19f8f781f7b89ad3606e2dc11f).
 [AB-107](https://app.notion.com/p/3e3b7a19f8f7816e8b29d8e532189e2d) holds the execution
-map. Terraform VM provisioning (AB-126), reproducible Jenkins/SonarQube services
+map. [Terraform VM provisioning](k3s-vm.md) (AB-126) has its separate `battlefield-platform/vm` job. Reproducible Jenkins/SonarQube services
 (AB-127), guest K3s (AB-128), delivery integration (AB-129), and full platform
 verification remain separate work. Scheduled backups (AB-130) are deferred by the
 owner. This job does not migrate Docker/PostgreSQL or deploy K3s.
@@ -49,7 +49,7 @@ python3 scripts/infra/setup-platform.py \
 
 The command registers and inspects the host, selects the already formatted data
 partition, seals discovered input files, verifies the passphrase and sudo access,
-opens a strict SSH tunnel to Jenkins, and creates the folder/job and four folder
+opens a strict SSH tunnel to Jenkins, and creates the folder, host/VM jobs and four folder
 credentials. It does not format/mount a disk, run an apply, start a build, rotate
 existing credentials, or restart Jenkins. Inventory and the encrypted input bundle
 stay in `~/.config/autonomous-battlefield/server/`; retain the Vault passphrase in
