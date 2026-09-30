@@ -44,6 +44,12 @@ def assert_recap(output, changed=0):
     return int(recaps[0][1])
 
 
+def assert_expected_failure(output, code, message):
+    recaps = re.findall(r'^server\s*:\s*ok=\d+\s+changed=(\d+)\s+unreachable=(\d+)\s+failed=(\d+)', output, re.M)
+    if code == 0 or message not in output or recaps != [('0', '0', '1')]:
+        raise ValueError('Expected an actionable rejection before any changes')
+
+
 def reject_secrets(output):
     # Include base64 strings: no_log must hide loop values as well as plaintext.
     for path in (PRIVATE / 'secret', PRIVATE / 'password'):
@@ -52,7 +58,7 @@ def reject_secrets(output):
             raise ValueError('Synthetic secret appeared in captured output; refusing to archive it')
 
 
-def bootstrap(action, label, interrupt=False, changed=None):
+def bootstrap(action, label, interrupt=False, changed=None, expected_failure=None):
     command = [str(ROOT / 'scripts/infra/server.sh'), action, '--local',
                '--inventory', str(PRIVATE / 'inventory.json')]
     if action in ('plan', 'apply', 'seal'):
@@ -77,6 +83,8 @@ def bootstrap(action, label, interrupt=False, changed=None):
             raise ValueError('Did not interrupt the real initial apply at the intended boundary')
         if run('sudo', '-n', 'cat', '/etc/battlefield-bootstrap/machine-id') != Path('/etc/machine-id').read_text().strip():
             raise ValueError('Interrupted installation did not persist its ownership marker')
+    elif expected_failure:
+        assert_expected_failure(output, code, expected_failure)
     elif code:
         raise ValueError('Bootstrap failed; see ' + label + '.log')
     elif action in ('apply', 'plan', 'verify'):
@@ -91,7 +99,7 @@ paths=[*sorted(root.rglob('*')), pathlib.Path('/var/lib/battlefield-platform/boo
  pathlib.Path('/etc/sysctl.d/90-battlefield-bootstrap.conf'),pathlib.Path('/etc/bf-unmanaged-rehearsal')]
 files={str(p):{'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'mode':stat.S_IMODE(p.stat().st_mode),
  'uid':p.stat().st_uid,'gid':p.stat().st_gid} for p in paths if p.is_file()}
-services={name:subprocess.check_output(['systemctl','show',name,'--property=InvocationID','--value'],text=True).strip()
+services={name:subprocess.run(['systemctl','show',name,'--property=InvocationID','--value'],text=True,capture_output=True,check=False).stdout.strip()
  for name in ('docker','libvirtd')}
 print(json.dumps({'files':files,'services':services,'boot_id':pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
  'mmap':int(subprocess.check_output(['sysctl','-n','vm.max_map_count'],text=True))}))
@@ -149,19 +157,22 @@ def after_reboot():
     release = dict(line.split('=', 1) for line in Path('/etc/os-release').read_text().splitlines() if '=' in line)
     provider = 'qemu-system-x86'
     if release['VERSION_ID'].strip('"') == '26.04':
-        # Deliberately switch this disposable guest to the alternative installed provider,
-        # then prove a foundation apply adopts it instead of replacing it with the default.
+        # HWE changes the complete virtualization dependency family. Deliberately install
+        # it only here, then prove bootstrap refuses the incompatible profile unchanged.
         run('sudo', '-n', 'apt-get', 'install', '-y', 'qemu-system-x86-hwe', timeout=600)
-        run('sudo', '-n', 'systemctl', 'start', 'docker', 'libvirtd')
         adopted = snapshot()
-        bootstrap('apply', 'existing-qemu-provider', changed=0)
+        packages = run('dpkg-query', '-W', '-f=${binary:Package} ${Version} ${Status}\\n')
+        bootstrap('apply', 'existing-qemu-provider', expected_failure='Existing HWE virtualization stack detected')
         same_state(adopted, snapshot())
+        if packages != run('dpkg-query', '-W', '-f=${binary:Package} ${Version} ${Status}\\n'):
+            raise ValueError('Rejected HWE apply changed installed packages')
         provider = 'qemu-system-x86-hwe'
     if run('dpkg-query', '-W', '-f=${Status}', provider) != 'install ok installed':
         raise ValueError('Bootstrap replaced the selected QEMU provider')
     run('qemu-system-x86_64', '--version')
     (EVIDENCE / 'result.json').write_text(json.dumps({
         'qemu_provider_preserved': provider,
+        'hwe_profile_rejected_without_changes': True if provider.endswith('-hwe') else None,
         'passed': True, 'os': Path('/etc/os-release').read_text(),
         'before_reboot': before, 'after_reboot': after,
         'checks': ['interrupted_initial_apply', 'resume', 'verify', 'repeat_zero_changes',
@@ -178,10 +189,26 @@ def main():
     args = parser.parse_args()
     os.umask(0o077)
     require_guest(args.identity)
-    if args.phase == 'before-reboot':
-        before_reboot()
-    else:
-        after_reboot()
+    try:
+        if args.phase == 'before-reboot':
+            before_reboot()
+        else:
+            after_reboot()
+    except (ValueError, OSError, subprocess.SubprocessError) as error:
+        failure = {'phase': args.phase, 'error': type(error).__name__}
+        if isinstance(error, ValueError):
+            failure['message'] = str(error)
+        elif isinstance(error, subprocess.CalledProcessError):
+            failure['command'] = error.cmd[0]
+            failure['returncode'] = error.returncode
+            if error.cmd[:4] == ('sudo', '-n', 'apt-get', 'install'):
+                failure['diagnostic'] = (error.stdout or '') + (error.stderr or '')
+        output = json.dumps(failure, indent=2) + '\n'
+        if EVIDENCE.is_dir():
+            if (PRIVATE / 'secret').exists() and (PRIVATE / 'password').exists():
+                reject_secrets(output)
+            (EVIDENCE / 'failure.json').write_text(output)
+        raise
 
 
 if __name__ == '__main__':

@@ -112,6 +112,14 @@ class RehearsalTests(unittest.TestCase):
                 guest.assert_recap(text)
         self.assertEqual(guest.assert_recap('server : ok=10 changed=0 unreachable=0 failed=0 skipped=5'), 0)
 
+    def test_expected_refusal_requires_failure_message_and_no_changes(self):
+        recap = 'server : ok=20 changed=0 unreachable=0 failed=1'
+        guest.assert_expected_failure('HWE detected\n' + recap, 1, 'HWE detected')
+        for output, code in [(recap, 1), ('HWE detected\n' + recap, 0),
+                             ('HWE detected\n' + recap.replace('changed=0', 'changed=1'), 1)]:
+            with self.subTest(output=output, code=code), self.assertRaises(ValueError):
+                guest.assert_expected_failure(output, code, 'HWE detected')
+
     def test_state_evidence_checks_credentials_service_restarts_and_real_reboot(self):
         before = {'files': {'credential': 'original'}, 'mmap': 1048576,
                   'services': {'docker': 'first'}, 'boot_id': 'first'}

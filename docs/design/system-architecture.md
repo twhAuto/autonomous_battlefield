@@ -1396,7 +1396,8 @@ workstation/server administration entry point under `scripts/infra/`, backed by
 configuration, imports existing file credentials into an external Ansible Vault
 bundle, and reconciles the x86-64 Ubuntu host foundation using concrete QEMU packages
 so unattended installation does not depend on virtual-package provider selection;
-an existing HWE QEMU provider is preserved. Imported inputs are staged
+an existing QEMU/libvirt HWE stack is rejected before package changes, and apt
+operations refuse dependency removals. Imported inputs are staged
 root-only; application/Jenkins/Cloudflare credentials are not rotated or activated
 by staging. Unknown configuration ownership and differing credentials fail closed.
 Applies share an operator-owned host lock; this lock is not yet integrated with

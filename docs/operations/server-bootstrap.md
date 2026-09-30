@@ -96,7 +96,9 @@ The foundation:
 - Installs host prerequisites for libvirt/KVM and CI, selecting the concrete
   `qemu-system-x86` and `qemu-utils` packages. Ubuntu 26.04 has multiple providers
   for the virtual `qemu-kvm` package, so it cannot be used for unattended selection.
-  An already installed `qemu-system-x86-hwe` provider is preserved.
+  An existing QEMU/libvirt HWE stack is rejected before package changes because it
+  uses a different dependency family. Apt operations also refuse package removals;
+  review a compatible package profile before adopting such a host.
   It installs Ubuntu Docker
   and Buildx only if no Docker service exists; an existing Docker installation
   must already provide Buildx. It does not switch package vendors underneath a
@@ -227,13 +229,14 @@ mode must be repaired without restarting healthy services. After a real guest
 reboot, verification and another zero-change apply must pass. This is a host
 foundation drill; it does not exercise application or database recovery. The
 26.04 fixture also installs the alternative QEMU HWE provider in its disposable
-guest and requires another zero-change apply to preserve that provider.
+guest and requires an actionable refusal before any package/configuration changes.
 
 `result.json` records the exact source hashes, pinned image, guest UUID, outcome
 and cleanup status. `guest-evidence.tar.gz` contains test logs and state
 fingerprints, after checking logs for the synthetic secret/password and their
 base64 representations. Credentials and private SSH keys are excluded. Keep the
-evidence directory private. A nonzero exit is a failed rehearsal, even if some
+evidence directory private. Fixture failures include a secret-checked `failure.json`
+when guest evidence is available. A nonzero exit is a failed rehearsal, even if some
 logs show passing tasks.
 
 Normal completion and handled failures remove the UUID-checked VM, its recorded

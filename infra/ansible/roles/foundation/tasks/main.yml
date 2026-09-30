@@ -21,9 +21,16 @@
   changed_when: false
   check_mode: false
   when: "'docker.service' in ansible_facts.services"
-- name: Inspect installed packages to preserve an existing QEMU provider
+- name: Inspect installed packages before selecting the virtualization stack
   ansible.builtin.package_facts:
     manager: apt
+- name: Reject an unsupported HWE virtualization stack before package changes
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.packages.keys() | select('match', '^(qemu|libvirt).*[-]hwe$') | list | length == 0
+    fail_msg: >-
+      Existing HWE virtualization stack detected. Preserve it and review a compatible
+      package profile before applying this standard Ubuntu foundation; no package changes were made.
 - name: Install host foundation packages from the configured Ubuntu repositories
   ansible.builtin.apt:
     name:
@@ -34,18 +41,20 @@
       - python3-venv
       - rsync
       - jq
-      - "{{ 'qemu-system-x86-hwe' if 'qemu-system-x86-hwe' in ansible_facts.packages else 'qemu-system-x86' }}"
+      - qemu-system-x86
       - qemu-utils
       - libvirt-daemon-system
       - libvirt-clients
       - cloud-image-utils
     state: present
+    fail_on_autoremove: true
     update_cache: "{{ not ansible_check_mode }}"
     cache_valid_time: 3600
 - name: Install Ubuntu Docker only when no Docker service exists
   ansible.builtin.apt:
     name: [docker.io, docker-buildx]
     state: present
+    fail_on_autoremove: true
   when: "'docker.service' not in ansible_facts.services"
 - name: Add the operator to virtualization and Docker groups without removing existing groups
   ansible.builtin.user:
