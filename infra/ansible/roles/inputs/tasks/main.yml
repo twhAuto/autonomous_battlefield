@@ -1,0 +1,49 @@
+---
+- name: Create owned bootstrap directory
+  ansible.builtin.file:
+    path: "{{ bootstrap_config_dir }}"
+    state: directory
+    owner: "{{ bootstrap_file_owner }}"
+    group: "{{ bootstrap_file_group }}"
+    mode: '0700'
+- name: Record machine ownership before creating managed children
+  ansible.builtin.copy:
+    content: "{{ bootstrap_machine_id }}\n"
+    dest: "{{ bootstrap_config_dir }}/machine-id"
+    owner: "{{ bootstrap_file_owner }}"
+    group: "{{ bootstrap_file_group }}"
+    mode: '0600'
+- name: Create private input directory
+  ansible.builtin.file:
+    path: "{{ bootstrap_config_dir }}/inputs"
+    state: directory
+    owner: "{{ bootstrap_file_owner }}"
+    group: "{{ bootstrap_file_group }}"
+    mode: '0700'
+- name: Materialize imported inputs without logging contents
+  ansible.builtin.copy:
+    content: "{{ item.value | b64decode }}"
+    dest: "{{ bootstrap_config_dir }}/inputs/{{ item.key }}"
+    owner: "{{ bootstrap_file_owner }}"
+    group: "{{ bootstrap_file_group }}"
+    mode: '0600'
+  loop: "{{ bootstrap_vault.bootstrap_inputs | dict2items }}"
+  no_log: true
+  diff: false
+- name: Create canonical platform state directory outside CI workspaces
+  ansible.builtin.file:
+    path: "{{ bootstrap_state_dir }}"
+    state: directory
+    owner: "{{ bootstrap_operator }}"
+    group: "{{ bootstrap_operator }}"
+    mode: '0700'
+- name: Keep the encrypted recovery bundle alongside private platform state
+  ansible.builtin.copy:
+    src: "{{ bootstrap_vault_file }}"
+    dest: "{{ bootstrap_state_dir }}/bootstrap-inputs.vault"
+    decrypt: false
+    owner: "{{ bootstrap_operator }}"
+    group: "{{ bootstrap_operator }}"
+    mode: '0600'
+  no_log: true
+  diff: false

@@ -1387,3 +1387,24 @@ Docker image builds use the backend and frontend directories as separate
 contexts. Each context excludes local environment files, including nested files,
 while preserving `.env.example`. This keeps local settings and credentials out
 of builder layers; the root ignore file is not the boundary for component builds.
+
+## Ubuntu host bootstrap boundary
+
+The [server bootstrap](../operations/server-bootstrap.md) adds an explicit
+workstation/server administration entry point under `scripts/infra/`, backed by
+`infra/ansible/`. It validates trusted SSH and a registered machine ID before
+configuration, imports existing file credentials into an external Ansible Vault
+bundle, and reconciles the Ubuntu host foundation. Imported inputs are staged
+root-only; application/Jenkins/Cloudflare credentials are not rotated or activated
+by staging. Unknown configuration ownership and differing credentials fail closed.
+Applies share an operator-owned host lock; this lock is not yet integrated with
+application delivery. Package/service setup uses the existing Ubuntu host;
+production Kind and the isolated CLI VM remain the deployed boundaries.
+
+The initial backup design uses the server's separate second disk only, with a
+100 GB planning budget. The wrapper can validate a selected filesystem UUID
+against the root physical disk, but does not mount or format it. Backup scheduling,
+Terraform/K3s provisioning, CI-service rebuilds, Cloudflare adoption and full
+restore verification are subsequent work. Losing the whole server is outside the
+initial recovery scope. Host bootstrap files select no application deployment
+components; normal Jenkins application delivery never invokes the bootstrap.

@@ -43,6 +43,8 @@ while IFS= read -r -d '' changed_file; do
   case "${changed_file}" in
     *.md|LICENSE|LICENSE.*|.gitignore)
       ;;
+    infra/ansible/*|scripts/infra/*)
+      ;;
     quality/*|sonar-project.properties)
       ;;
     scripts/test/*|tests/*)

@@ -1,0 +1,59 @@
+---
+- name: Require an owned foundation
+  ansible.builtin.assert:
+    that: bootstrap_marker.stat.exists
+    fail_msg: Bootstrap has not been applied to this host.
+- name: Check installed service readiness
+  ansible.builtin.command:
+    argv: [systemctl, is-active, "{{ item }}"]
+  loop: [docker, libvirtd]
+  changed_when: false
+- name: Check service persistence across reboot
+  ansible.builtin.command:
+    argv: [systemctl, is-enabled, "{{ item }}"]
+  loop: [docker, libvirtd]
+  changed_when: false
+- name: Check Docker Buildx
+  ansible.builtin.command:
+    argv: [docker, buildx, version]
+  changed_when: false
+- name: Read live mmap capacity
+  ansible.builtin.command:
+    argv: [sysctl, -n, vm.max_map_count]
+  changed_when: false
+  register: verify_mmap
+- name: Require sufficient live mmap capacity
+  ansible.builtin.assert:
+    that: verify_mmap.stdout | int >= 1048576
+- name: Verify virtualization is available
+  ansible.builtin.stat:
+    path: /dev/kvm
+  register: verify_kvm
+- name: Require KVM for the intended guest layout
+  ansible.builtin.assert:
+    that: verify_kvm.stat.exists
+    fail_msg: KVM is unavailable; enable virtualization before provisioning guests.
+- name: Read managed input permissions without contents
+  ansible.builtin.find:
+    paths: "{{ bootstrap_config_dir }}/inputs"
+    file_type: any
+  register: verify_input_files
+  no_log: true
+- name: Require private regular input files
+  ansible.builtin.assert:
+    that:
+      - item.isreg
+      - item.mode == '0600'
+      - item.uid == 0
+    fail_msg: Managed input must be a root-owned regular file with mode 0600; run apply to repair permissions.
+  loop: "{{ verify_input_files.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+- name: Require inputs to be present
+  ansible.builtin.assert:
+    that: verify_input_files.matched > 0
+- name: Report the actual verification boundary
+  ansible.builtin.debug:
+    msg: >-
+      Host foundation checks passed. This does not verify backups/restoration,
+      Jenkins/SonarQube configuration, the future K3s guest, or CLI isolation.

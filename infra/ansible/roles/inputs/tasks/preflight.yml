@@ -1,0 +1,82 @@
+---
+- name: Load encrypted inputs without emitting values or diffs
+  ansible.builtin.include_vars:
+    file: "{{ bootstrap_vault_file }}"
+    name: bootstrap_vault
+  no_log: true
+- name: Validate the encrypted bundle schema
+  ansible.builtin.assert:
+    that:
+      - bootstrap_vault.keys() | list == ['bootstrap_inputs']
+      - bootstrap_vault.bootstrap_inputs is mapping
+      - bootstrap_vault.bootstrap_inputs | length > 0
+      - bootstrap_vault.bootstrap_inputs | length <= 32
+  no_log: true
+- name: Inspect the input directory before traversing it
+  ansible.builtin.stat:
+    path: "{{ bootstrap_config_dir }}/inputs"
+    follow: false
+  register: inputs_directory
+- name: Refuse redirected input directories
+  ansible.builtin.assert:
+    that:
+      - not inputs_directory.stat.exists or (inputs_directory.stat.isdir and not inputs_directory.stat.islnk)
+- name: Enumerate imported input names without contents
+  ansible.builtin.find:
+    paths: "{{ bootstrap_config_dir }}/inputs"
+    file_type: any
+    hidden: true
+  register: inputs_names
+  when: inputs_directory.stat.exists
+  no_log: true
+- name: Identify omitted credential names without exposing values
+  ansible.builtin.set_fact:
+    inputs_missing: >-
+      {{ inputs_names.files | map(attribute='path') | map('basename') |
+         difference(bootstrap_vault.bootstrap_inputs.keys()) | sort }}
+  when: inputs_directory.stat.exists
+  no_log: true
+- name: Require every previously imported credential in the recovery bundle
+  ansible.builtin.assert:
+    that: inputs_missing | length == 0
+    fail_msg: >-
+      Missing imported inputs: {{ inputs_missing | join(', ') }}.
+      Recover them rather than dropping them from the bundle.
+  when: inputs_directory.stat.exists
+- name: Validate named input values
+  ansible.builtin.assert:
+    that:
+      - item.key is match('^[a-z][a-z0-9_-]{0,63}$')
+      - item.value is string
+      - item.value | length > 0
+      - item.value is match('^[A-Za-z0-9+/]+={0,2}$')
+      - (item.value | b64decode | b64encode) == item.value
+  loop: "{{ bootstrap_vault.bootstrap_inputs | dict2items }}"
+  no_log: true
+- name: Inspect existing imported inputs without showing fingerprints
+  ansible.builtin.stat:
+    path: "{{ bootstrap_config_dir }}/inputs/{{ item.key }}"
+    checksum_algorithm: sha256
+    follow: false
+  loop: "{{ bootstrap_vault.bootstrap_inputs | dict2items }}"
+  register: inputs_existing
+  no_log: true
+- name: Initialize conflict names without exposing credential data
+  ansible.builtin.set_fact:
+    inputs_conflicts: []
+  no_log: true
+- name: Identify redirected or differing inputs privately
+  ansible.builtin.set_fact:
+    inputs_conflicts: "{{ inputs_conflicts + [item.item.key] }}"
+  loop: "{{ inputs_existing.results }}"
+  when: >-
+    item.stat.exists and
+    (not item.stat.isreg or item.stat.islnk or
+     item.stat.checksum | default('') != (item.item.value | b64decode | hash('sha256')))
+  no_log: true
+- name: Refuse credential replacement with safe input names only
+  ansible.builtin.assert:
+    that: inputs_conflicts | length == 0
+    fail_msg: >-
+      Conflicting imported inputs: {{ inputs_conflicts | join(', ') }}.
+      Recover the matching original bundle or reconcile explicitly; never regenerate credentials.

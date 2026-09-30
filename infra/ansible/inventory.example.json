@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "host": "192.0.2.10",
+  "user": "operator",
+  "identity_file": "/home/operator/.ssh/battlefield-automation",
+  "machine_id": "00000000000000000000000000000000",
+  "backup_uuid": "",
+  "ca_files": []
+}
