@@ -181,9 +181,67 @@ reconciliation too. Running the Python test file directly without
 `BATTLEFIELD_TEST_ANSIBLE_BIN` runs only wrapper tests and explicitly skips the
 five Ansible checks.
 
-A complete disposable Ubuntu host apply/interruption/reboot and package/service
-adoption rehearsal remains required before production apply. The 2026-09-30 live
-check exercised only `init`/`inspect` over SSH against Ubuntu 26.04/Python 3.14.4;
-no live configuration was changed. Jenkins/SonarQube rebuilds, CLI bundle adoption,
-K3s, Cloudflare adoption, and backup/restore drills remain subsequent work. Track
-acceptance and status in Notion, not this runbook.
+## Disposable full-host rehearsal
+
+On a Linux libvirt host with `virsh`, `qemu-img`, `cloud-localds`, OpenSSH and
+Python 3.12 or newer already available, run from this checkout:
+
+```bash
+python3 scripts/infra/rehearse-server.py \
+  --evidence-dir /tmp/battlefield-rehearsal-evidence
+```
+
+The evidence directory must be new and outside Git. The invoking account needs
+access to `qemu:///system`; no hypervisor sudo password is used. The command
+requires an existing active IPv4 NAT/DHCP network (default `default`; select
+another with `--network NAME`), nested virtualization, 5 GiB available RAM,
+20 GiB free in `/var/lib/libvirt/images` and 8 GiB in temporary storage. It adds
+no host packages, network rules or persistent services. Run it when those
+resources are available alongside existing workloads.
+
+The runner defaults to a checksum-pinned Ubuntu 26.04 cloud image from the
+[official dated image directory](https://cloud-images.ubuntu.com/resolute/20260927/).
+Use `--ubuntu 24.04` to rehearse the other supported host release, using its
+[separate pinned image](https://cloud-images.ubuntu.com/noble/20260926/).
+The verified image is cached under
+`${XDG_CACHE_HOME:-$HOME/.cache}/autonomous-battlefield/rehearsal/`; every run
+checks it again. An optional `--image /path/to/downloaded.img` reuses another local copy only when its
+SHA-256 matches `infra/ansible/rehearsal-image.json`. The VM uses 2 vCPUs, 3 GiB
+RAM and a sparse 16 GiB disk. It has temporary SSH client/host keys, a synthetic
+Vault password and synthetic input; no production inventory or credentials are
+copied. Host keys are pinned before the first SSH connection. The fixture checks
+both its root-owned marker and hardware UUID before privileged operations.
+Passwordless sudo is granted only to this disposable guest's test account.
+
+Inside the guest, the real `server.sh --local` entry point installs its pinned
+controller tools without Jenkins. The fixture interrupts the initial apply after
+its ownership marker is written, resumes with an ordinary apply, verifies the
+foundation, and requires zero Ansible changes on the next apply and check/diff.
+It compares credential/ciphertext hashes, permissions, unrelated configuration
+and service invocation IDs. Lowering the live mmap limit and changing an input's
+mode must be repaired without restarting healthy services. After a real guest
+reboot, verification and another zero-change apply must pass. This is a host
+foundation drill; it does not exercise application or database recovery.
+
+`result.json` records the exact source hashes, pinned image, guest UUID, outcome
+and cleanup status. `guest-evidence.tar.gz` contains test logs and state
+fingerprints, after checking logs for the synthetic secret/password and their
+base64 representations. Credentials and private SSH keys are excluded. Keep the
+evidence directory private. A nonzero exit is a failed rehearsal, even if some
+logs show passing tasks.
+
+Normal completion and handled failures remove the UUID-checked VM, its recorded
+volumes and its now-empty storage pool. Existing domains, networks and disks
+are never selected for cleanup. If the process or host is forcibly killed,
+use the UUID/name in `result.json` to inspect leftover resources with `virsh`
+before deleting anything; no automatic sweep of similarly named VMs is made.
+The evidence stays available after cleanup.
+
+Offline cleanup/integrity/evidence tests run in `test-server-bootstrap.sh` and
+therefore in the normal deployment gate. The VM rehearsal is opt-in and requires
+its own recorded result; ordinary CI does not prove it passed. Rehearse the release
+matching the intended target; one release does not prove the other passed.
+
+Jenkins/SonarQube rebuilds, CLI bundle adoption, K3s, Cloudflare adoption, and
+backup/restore drills remain subsequent work. Track acceptance and actual
+rehearsal results in Notion, not this runbook.

@@ -1408,3 +1408,13 @@ Terraform/K3s provisioning, CI-service rebuilds, Cloudflare adoption and full
 restore verification are subsequent work. Losing the whole server is outside the
 initial recovery scope. Host bootstrap files select no application deployment
 components; normal Jenkins application delivery never invokes the bootstrap.
+
+The opt-in `scripts/infra/rehearse-server.py` runs on an existing libvirt host.
+It creates a temporary 2-vCPU/3-GiB Ubuntu guest and its own storage pool, using
+the existing NAT network without changing it. Pinned image checksums, generated
+SSH host keys and a matching VM UUID/guest marker bind the destructive fixture
+to that guest. Synthetic credentials exercise the actual local bootstrap entry
+point, including a clean Ansible controller install, interruption/resume, repeat
+apply, drift and reboot. Evidence contains configuration fingerprints and
+secret-checked logs; cleanup checks UUIDs before deleting its resources. The
+ordinary deployment gate runs only offline harness checks, never this VM drill.
