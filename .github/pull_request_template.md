@@ -1,6 +1,6 @@
 ## Motivation
 
-<!-- Ticket (AB-NN) and the problem this change solves. -->
+<!-- Link each ticket with its ID and exact Notion name: [AB-NN — Ticket name](NOTION_URL). State when no ticket is associated, then explain the problem this change solves. -->
 
 ## Changes
 
