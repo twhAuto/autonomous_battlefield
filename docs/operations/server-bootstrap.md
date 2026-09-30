@@ -137,12 +137,112 @@ skips group changes and starting not-yet-installed services; it is not evidence 
 a successful apply/reboot. `verify` checks installed services, Buildx, KVM and
 input permissions; it does not prove service/application restoration.
 
+## Optional host data partition
+
+Set `data_uuid` in the private inventory to adopt an **existing ext4 partition**.
+`data_mount` defaults to `/srv/battlefield-data`; only a direct `/srv` child with
+lowercase letters, digits and hyphens is accepted. Empty/omitted `data_uuid` keeps
+the existing foundation-only behavior. This is separate from `backup_uuid`: a
+partition on the Ubuntu SSD is suitable for application storage, but is not a
+second-drive backup.
+
+For the inspected server, the selected inventory additions are:
+
+```json
+"data_uuid": "75db9b1d-5c46-4e5b-bd94-5391b2a35411",
+"data_mount": "/srv/battlefield-data"
+```
+
+These are properties of the existing inventory JSON object, not a replacement
+inventory. Keep the machine identity, operator, SSH key and encrypted inputs.
+Use the same `server.sh plan`, `apply` and `verify` commands described above;
+first adoption requires the ordinary sudo prompt. No new token or key is needed.
+`plan` inspects storage without changing its mount, fstab or permissions. `verify`
+requires the declared mount, directories, guard and activation record to match.
+
+The data role validates the UUID is unique, identifies an ext4 partition and is
+not mounted elsewhere. It rejects occupied unmounted directories, symlinked paths,
+conflicting fstab entries and read-only/wrong mounts. It never formats, partitions,
+resizes, recursively changes ownership, or moves existing service data. It adds
+only its UUID-based entry to `/etc/fstab`, with a private pre-change copy beside
+fstab when an edit is needed. Validation checks the added entry independently of
+unrelated entries; existing fstab problems remain visible for separate repair.
+An already matching entry is retained unchanged.
+After adoption `/etc/battlefield-data-storage.json` records the storage identity;
+a different UUID/path/operator requires a separate reviewed migration. Clearing
+`data_uuid` does not remove this contract, unmount storage or uninstall the guard.
+
+| Path | Ownership and use |
+| --- | --- |
+| `/srv/battlefield-data` | `root:root`, mode `0711`; traversal for scoped subdirectories |
+| `workspace/` | Registered operator, mode `0700`; private files |
+| `libvirt/` | `root:root`, mode `0711` |
+| `libvirt/images/` | `libvirt-qemu` account/group, mode `0750`; future VM images |
+
+Only these directory entries have ownership/mode reconciled. Existing files and
+unrelated directories remain in place. Free bytes are reported in the storage
+result; there is no automatic expansion, cache pruning or disk-capacity alert
+in this role.
+
+### Terraform and guest storage contract
+
+Ubuntu, Jenkins, SonarQube and host CI/Docker storage remain on `/`. The future
+Terraform-managed domain must be named `battlefield-k3s`, with its separate OS
+and retained data images in the reported `images` directory. AB-126 still owns
+that provisioning implementation, retained-volume lifecycle and state locking;
+AB-128 owns mounting retained data **inside** the guest before K3s and configuring
+its persistent-volume path. Neither VM provisioning nor application/database
+migration is performed by this host role. The current application remains Kind.
+
+The root-installed `/etc/battlefield-data-storage/guard.py` provides the
+read-only command consumers must run on the host **before storage mutations**:
+
+```bash
+sudo /etc/battlefield-data-storage/guard.py guard \
+  75db9b1d-5c46-4e5b-bd94-5391b2a35411 /srv/battlefield-data twh09
+```
+
+Use inventory values on other hosts. Success emits no output; failure is nonzero.
+Do not create a libvirt pool or allocate image files after a failed guard. The
+guard checks the ownership contract, exact mount UUID, writable ext4 filesystem
+and image-directory filesystem. It is also installed as a separate executable in
+`/etc/libvirt/hooks/qemu.d/50-battlefield-data-storage`. Only preparation/start,
+restore and incoming migration of `battlefield-k3s` are gated; unrelated guests,
+existing hooks and reconnect/stop events are preserved. The check prevents a new
+VM start against missing/wrong storage, but is not a running-VM disk-failure
+monitor or a capacity quota. Terraform must still place its volumes correctly.
+
+A systemd drop-in orders libvirt after the configured mount at boot. It uses
+`Wants`/`After` so an unavailable data partition does not disable unrelated guests;
+the K3s-specific hook still rejects its start in that case.
+
+The guard lives in its own root-owned directory under `/etc`; shared `/usr/local`
+permissions and existing libvirt hook-directory permissions are preserved.
+
+Libvirt hook discovery is reloaded with SIGHUP after installation, without
+restarting running guests. A private activation record makes an interrupted
+install resume that reload. The behavior follows [libvirt's hook interface](https://libvirt.org/hooks.html)
+and its [hook discovery implementation](https://github.com/libvirt/libvirt/blob/master/src/util/virhook.c).
+
+### Storage validation
+
+`./scripts/test/test-server-bootstrap.sh` includes input, fstab preservation,
+read-only plan/verify, remapping, symlink, mount identity and hook-scope regression
+tests. For privileged acceptance, `scripts/test/rehearse-data-storage.py` is a
+**disposable-guest-only** fixture: it requires the matching rehearsal UUID and
+operator, and an empty 1 GiB `/dev/vdb` before partitioning that test disk. Never
+run that fixture on the production host. It exercises the actual Ansible role,
+libvirt hook invocation, absent/wrong/read-only mounts, repeat apply, interrupted
+activation and persistence after a real guest reboot. These acceptance tests are
+separate from the unprivileged CI suite.
+
 ## Backup drive and recovery boundary
 
-Initial owner choice: use only the server's second physical disk, with a 100 GB
-starting budget. Proposed recovery automation will keep 7 daily and 4 weekly
-points, adjusted to measured sizes, plus checkpoints around infrastructure changes.
-Nightly backups and retention are not active in this foundation slice.
+The owner deferred scheduled backup and retention work on 2026-09-30 for the
+current personal project. Existing pre-migration database dumps remain enabled.
+If backup automation resumes, the recorded preference is the server's second
+physical disk only; the earlier 100 GB / 7 daily / 4 weekly proposal is a planning
+baseline, not an active policy.
 
 Leave `backup_uuid` empty until the intended filesystem is inspected. Once set,
 inspection reports whether it identifies a unique existing ext4 filesystem on a
@@ -151,7 +251,7 @@ ambiguous UUID is reported with `usable: false`; a valid candidate has `usable: 
 and no configured UUID produces `null`. This flag confirms disk identity only.
 Foundation inspection, credential import and configuration remain available when the backup disk is unavailable; a future
 backup operation must reject that selection before writing. Inspection does not
-establish that the filesystem is empty or that it has 100 GB free. No command here mounts, formats, partitions or expands it. The future
+establish that the filesystem is empty or that it has 100 GB free. The backup selection does not mount, format, partition or expand that drive. The future
 backup role must verify the expected mounted UUID before writing, preserve other
 data, and fail visibly when the disk is absent.
 

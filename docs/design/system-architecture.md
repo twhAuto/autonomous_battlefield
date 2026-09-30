@@ -1404,7 +1404,19 @@ Applies share an operator-owned host lock; this lock is not yet integrated with
 application delivery. Package/service setup uses the existing Ubuntu host;
 production Kind and the isolated CLI VM remain the deployed boundaries.
 
-The initial backup design uses the server's separate second disk only, with a
+Optional `data_uuid`/`data_mount` inventory adds an existing ext4 partition to
+host management. The data role persists its UUID mount, prepares private operator
+and libvirt image directories, and records immutable storage identity outside Git.
+A separate libvirt hook refuses future `battlefield-k3s` starts/restores when the
+selected data filesystem is missing, wrong or read-only; other guests retain their
+existing lifecycle. The guard also provides a preflight for future Terraform
+volume operations. This does not move current Docker/PostgreSQL data: production
+remains Kind on the Ubuntu filesystem. Terraform VM provisioning and the guest's
+retained-volume/K3s mount remain separate implementation tasks. See the
+[storage contract](../operations/server-bootstrap.md#terraform-and-guest-storage-contract).
+
+The owner has deferred scheduled backups and retention for current personal use;
+existing pre-migration dumps remain. The initial backup design uses the server's separate second disk only, with a
 100 GB planning budget. The wrapper can validate a selected filesystem UUID
 against the root physical disk, but does not mount or format it. Backup scheduling,
 Terraform/K3s provisioning, CI-service rebuilds, Cloudflare adoption and full
