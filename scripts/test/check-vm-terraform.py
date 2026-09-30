@@ -20,8 +20,14 @@ with tempfile.TemporaryDirectory(prefix='bf-terraform-check-') as temp:
     env.update(TF_DATA_DIR=str(directory / 'provider'), TF_CLI_CONFIG_FILE=str(directory / 'terraform.rc'),
                TF_IN_AUTOMATION='1', TF_INPUT='0')
     command = [str(binary), '-chdir=' + str(ROOT / 'infra/libvirt')]
-    for arguments in [['fmt', '-check', '-recursive'], ['init', '-backend=false', '-input=false', '-lockfile=readonly', '-no-color'], ['validate', '-no-color'], ['test', '-no-color']]:
-        subprocess.run(command + arguments, check=True, env=env)
+    # Reproduce the long TMPDIR inherited from Jenkins without weakening its
+    # workspace isolation. The shared launcher must provide short private IPC.
+    long_tmp = directory / ('jenkins-workspace-' * 7) / 'tmp'
+    long_tmp.mkdir(parents=True)
+    env['TMPDIR'] = str(long_tmp)
+    with tools.terraform_environment(env) as environment:
+        for arguments in [['fmt', '-check', '-recursive'], ['init', '-backend=false', '-input=false', '-lockfile=readonly', '-no-color'], ['validate', '-no-color'], ['test', '-no-color']]:
+            subprocess.run(command + arguments, check=True, env=environment)
 
 # Exercise the actual pinned local backend's lock on a synthetic built-in
 # resource. This writes only disposable local state, never a libvirt resource.

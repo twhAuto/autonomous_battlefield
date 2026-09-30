@@ -203,8 +203,11 @@ class VM:
         self.tf('validate')
 
     def tf(self, *args, timeout=900):
-        return self.run([self.binary, '-chdir=' + str(ROOT / 'infra/libvirt'), *args, '-no-color']
-                        if args[0] not in ('output', 'show') else [self.binary, '-chdir=' + str(ROOT / 'infra/libvirt'), *args], timeout=timeout)
+        command = [self.binary, '-chdir=' + str(ROOT / 'infra/libvirt'), *args]
+        if args[0] not in ('output', 'show'):
+            command.append('-no-color')
+        with tools.terraform_environment(self.env) as environment:
+            return self.run(command, timeout=timeout, env=environment)
 
     def plan(self, path):
         arguments = ['plan', '-input=false', '-lock-timeout=0s', '-var-file=' + str(self.variables), '-out=' + str(path)]

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Checksum-pinned Terraform and cloud image, cached outside the checkout."""
+from contextlib import contextmanager
 import hashlib
 import io
 import json
@@ -70,6 +71,15 @@ def download(directory, pin, suffix):
     if digest(path) != pin['sha256']:
         raise ValueError('Cached tool/image checksum mismatch')
     return path
+
+
+@contextmanager
+def terraform_environment(environment):
+    # go-plugin uses a UNIX socket in TMPDIR. Jenkins workspace temp paths can
+    # exceed sockaddr_un's limit even when the provider binary itself is valid.
+    # Only process IPC uses this short, private directory; state stays canonical.
+    with tempfile.TemporaryDirectory(prefix='bf-tf-ipc-', dir='/tmp') as directory:
+        yield dict(environment, TMPDIR=directory)
 
 
 def terraform(cache):

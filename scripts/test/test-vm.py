@@ -114,6 +114,28 @@ class VMTests(unittest.TestCase):
                 vm.tools.atomic(root/'file', b'no')
             self.assertFalse((root/'preserve').exists())
 
+    def test_terraform_uses_private_short_ipc_and_preserves_state_environment(self):
+        instance = object.__new__(vm.VM)
+        instance.binary = '/verified/terraform'
+        instance.env = {'TMPDIR': '/long/' + 'workspace/' * 20, 'TF_DATA_DIR': '/private/provider'}
+        paths = []
+        def run(command, *, timeout, env):
+            directory = Path(env['TMPDIR'])
+            paths.append(directory)
+            self.assertTrue(directory.is_dir())
+            self.assertLess(len(str(directory)), 60)
+            self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
+            self.assertEqual(env['TF_DATA_DIR'], '/private/provider')
+            return 'validated'
+        instance.run = Mock(side_effect=run)
+        self.assertEqual(instance.tf('validate'), 'validated')
+        self.assertTrue(instance.env['TMPDIR'].startswith('/long/'))
+        self.assertFalse(paths[0].exists())
+        instance.run.side_effect = ValueError('synthetic')
+        with self.assertRaisesRegex(ValueError, 'synthetic'):
+            instance.tf('validate')
+        self.assertFalse(Path(instance.run.call_args.kwargs['env']['TMPDIR']).exists())
+
     def test_state_rejects_other_modules_and_deposed_resources(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp)/'state'

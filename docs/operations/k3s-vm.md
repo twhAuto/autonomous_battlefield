@@ -89,6 +89,10 @@ controller files: private directories, checksum-verified downloads, provider
 cache, the dedicated administration key on first use, cloud-init seed and
 Terraform plan files. `verify` also refreshes the generated Ansible inventory.
 These files live outside the repository and are not archived in Jenkins.
+Terraform provider processes use a short, private temporary socket directory
+under `/tmp`, cleaned after each command, because Jenkins workspace paths can
+exceed UNIX socket limits. Canonical state and saved plans keep their private
+locations described here.
 
 State is canonical at `~/.local/state/battlefield/k3s/terraform.tfstate`, outside
 build workspaces. Terraform's local backend lock protects this file; the shared
