@@ -345,6 +345,7 @@ pipeline {
                 }
 
                 stage('Production rollout') {
+                    options { lock(resource: 'battlefield-production-platform') }
                     when { expression { (env.DEPLOY_COMPONENTS ?: 'all') != 'none' } }
                     environment {
                         DEPLOY_ENV = 'production'

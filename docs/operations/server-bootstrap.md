@@ -3,7 +3,9 @@
 `./scripts/infra/server.sh` registers and inspects a server, imports existing
 credentials into Ansible Vault, and configures the Ubuntu host foundation. Run it
 from a Linux/WSL workstation for first setup, or as the registered operator on the
-server with `--local`. Jenkins is not required on the workstation.
+server with `--local`. Jenkins is not required on the workstation. For routine
+operations from the existing Jenkins controller, install the separate
+[reviewed host job](platform-jobs.md).
 
 This is the first implementation slice of the complete-server automation. The
 current production application still runs in Kind. This playbook does not yet
@@ -87,9 +89,12 @@ recover the inputs. No SSH private key is copied to the server.
 
 `plan` runs Ansible check/diff mode. `apply` prompts for sudo when necessary and
 uses the same roles. An unattended controller can supply an existing private
-`--vault-password-file`; values never appear in arguments. Do not grant blanket
-passwordless sudo just to bypass the first interactive bootstrap. Jenkins
-credential bindings and scoped operational privileges belong to subsequent setup.
+`--vault-password-file` and non-executable `--become-password-file`; values never
+appear in arguments. The [platform job installer](platform-jobs.md) binds those
+files through Jenkins folder credentials. Do not grant blanket
+passwordless sudo just to bypass the first interactive bootstrap. The current job
+uses the existing sudo account; a narrower operational privilege policy remains
+separate work.
 
 The foundation:
 
@@ -124,9 +129,12 @@ Applies from WSL and the server share an exclusive host lock in the registered
 operator's `~/.local/state/battlefield/bootstrap.lock`. Run host-side commands as
 that same operator with `--local`; they do not need an SSH private key. The
 workstation retains a connection for the lock lifetime; losing it aborts the local
-Ansible process. Plans are advisory and do not acquire this mutation lock. This
-bootstrap lock does not yet coordinate application delivery or recovery jobs;
-those jobs need the later shared platform-operation integration.
+Ansible process. Plans are advisory and do not acquire this mutation lock. The reviewed
+Jenkins runner locks plan/apply/verify and uses this same lock for individual
+production deployment, tunnel and rollback commands. Jenkins also serializes its
+whole rollout and platform job with a shared resource. External CLI applies must
+not run between application pipeline commands; see the
+[locking contract](platform-jobs.md#plan-apply-and-verify).
 
 Reruns repair managed permissions/settings and preserve unrelated files. If a run
 stops after creating an empty ownership directory, it can resume. Registration also

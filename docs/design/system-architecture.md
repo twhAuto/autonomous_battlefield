@@ -1400,8 +1400,10 @@ an existing QEMU/libvirt HWE stack is rejected before package changes, and apt
 operations refuse dependency removals. Imported inputs are staged
 root-only; application/Jenkins/Cloudflare credentials are not rotated or activated
 by staging. Unknown configuration ownership and differing credentials fail closed.
-Applies share an operator-owned host lock; this lock is not yet integrated with
-application delivery. Package/service setup uses the existing Ubuntu host;
+Applies and individual production deploy/tunnel/rollback commands share an
+operator-owned host lock. Jenkins additionally holds one shared resource for the
+whole production rollout or reviewed host operation. External operator applies
+must not run between separate application pipeline commands. Package/service setup uses the existing Ubuntu host;
 production Kind and the isolated CLI VM remain the deployed boundaries.
 
 Optional `data_uuid`/`data_mount` inventory adds an existing ext4 partition to
@@ -1414,6 +1416,18 @@ volume operations. This does not move current Docker/PostgreSQL data: production
 remains Kind on the Ubuntu filesystem. Terraform VM provisioning and the guest's
 retained-volume/K3s mount remain separate implementation tasks. See the
 [storage contract](../operations/server-bootstrap.md#terraform-and-guest-storage-contract).
+
+The dedicated [Jenkins host job](../operations/platform-jobs.md) reads trusted
+`main`, binds folder-scoped inventory/Vault/sudo files outside its checkout, and
+executes the local bootstrap as the registered operator. Apply requires an owner
+approval of a fresh plan, rechecks revision/input fingerprints and host change
+digest, consumes its private receipt before mutation, and then verifies. Reports
+contain only task outcomes and target identity, never module output or raw diffs.
+The one-time workstation installer uses a strict SSH tunnel and authenticated API
+to create owned job/credential objects without starting builds or restarting the
+controller. Its plugin pins cover this existing-controller slice; complete
+Jenkins/SonarQube reconstruction remains separate work. Folder credential scope
+retains the project's accepted shared-user/host CI trust boundary.
 
 The owner has deferred scheduled backups and retention for current personal use;
 existing pre-migration dumps remain. The initial backup design uses the server's separate second disk only, with a

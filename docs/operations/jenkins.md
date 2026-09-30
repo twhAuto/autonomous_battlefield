@@ -1,6 +1,6 @@
 # Jenkins and GitHub deployment pipeline
 
-Production now runs on the server at `192.168.1.104` (Jenkins port `8080`).
+Production now runs on the server at `192.168.1.126` (Jenkins port `8080`).
 For initial setup or migration of an existing server, complete the
 [server registration](environments.md#production-setup).
 The following installation commands are server administration instructions.
@@ -59,6 +59,18 @@ For the repeatable Ubuntu host foundation and credential import, start with the
 [server bootstrap](server-bootstrap.md). It can run from WSL before Jenkins exists.
 Jenkins controller/agent configuration below remains the current service setup;
 the foundation playbook does not yet recreate it.
+
+## Reviewed host operations
+
+The separate [platform host job](platform-jobs.md) uses `Jenkinsfile.platform`
+from trusted `main` for manual plan/apply/verify. Its installer registers inputs,
+binds folder credentials and creates the job; it never starts a build. Normal
+`main` delivery remains application-only. Install the required Lockable Resources
+plugin before adopting the updated application Jenkinsfile: production rollout
+and host operations share `battlefield-production-platform` for their full Jenkins
+operation. See the guide for one-time setup, approval, credential rotation and the
+limits of locking when using external operator commands. Full controller/agent and
+SonarQube reconstruction remains AB-127 work.
 
 ## Install the Jenkins controller on Ubuntu or WSL
 
