@@ -76,7 +76,8 @@ def main():
             print('Rebooting only the disposable hypervisor to verify VM/network autostart.', flush=True)
             guest.reboot()
             guest.ssh('python3 source/scripts/test/rehearse-vm-guest.py after-reboot', timeout=900)
-            result['guest'] = require_guest_success(json.loads(guest.ssh('cat evidence/result.json')))
+            result['guest'] = json.loads(guest.ssh('cat evidence/result.json'))
+            require_guest_success(result['guest'])
             result['passed'] = result['guest']['passed']
         finally:
             try:

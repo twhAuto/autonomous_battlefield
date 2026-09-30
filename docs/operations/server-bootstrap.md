@@ -337,7 +337,7 @@ error; inspect guest networking and initialization rather than accepting it.
 The runner defaults to a checksum-pinned Ubuntu 26.04 cloud image from the
 [official dated image directory](https://cloud-images.ubuntu.com/resolute/20260927/).
 Use `--ubuntu 24.04` to rehearse the other supported host release, using its
-[separate pinned image](https://cloud-images.ubuntu.com/noble/20260926/).
+[separate pinned image](https://cloud-images.ubuntu.com/releases/noble/release-20260926/).
 The verified image is cached under
 `${XDG_CACHE_HOME:-$HOME/.cache}/autonomous-battlefield/rehearsal/`; every run
 checks it again. An optional `--image /path/to/downloaded.img` reuses another local copy only when its
@@ -359,6 +359,9 @@ upstream archive is assumed. To refresh a pin:
    `--ubuntu RELEASE --image /path/to/verified.img` and a new evidence directory.
    Require actual boot, reboot, apply/resume/repeat and cleanup success. Commit
    the manifest/runbook changes together and retain matching source-hash evidence.
+   A 24.04 pin refresh also requires the [K3s VM drill](k3s-vm.md#validation)
+   (`scripts/infra/rehearse-vm.py` with its pinned 26.04 outer image), because
+   the production guest and the host rehearsal share that 24.04 image pin.
 
 The VM uses 2 vCPUs, 3 GiB
 RAM and a sparse 16 GiB disk. It has temporary SSH client/host keys, a synthetic
