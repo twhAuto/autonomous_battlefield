@@ -93,7 +93,7 @@ def validate_inventory(data):
         raise ValueError('data_uuid must be an empty string or complete filesystem UUID')
     if not isinstance(data_mount, str) or not re.fullmatch(r'/srv/[a-z][a-z0-9-]{0,62}', data_mount):
         raise ValueError('data_mount must be a direct /srv child with a simple lowercase name')
-    if data_uuid and data_uuid.lower() == data.get('backup_uuid', '').lower():
+    if data_uuid and data_uuid.replace('-', '').lower() == data.get('backup_uuid', '').replace('-', '').lower():
         raise ValueError('Data and backup UUIDs must differ')
     safe_path(data['identity_file'])
     if not isinstance(data.get('ca_files', []), list):

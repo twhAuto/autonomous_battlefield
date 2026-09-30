@@ -19,9 +19,8 @@
     path: "{{ item }}"
     follow: false
   loop:
-    - /usr/local
-    - /usr/local/libexec
-    - /usr/local/libexec/battlefield-data-storage
+    - /etc/battlefield-data-storage
+    - /etc/battlefield-data-storage/guard.py
     - /etc/libvirt
     - /etc/libvirt/hooks
     - /etc/libvirt/hooks/qemu.d
@@ -49,6 +48,6 @@
     that:
       - data_storage_contract.stat.exists or not item.stat.exists
     fail_msg: A reserved storage helper/hook/unit path already exists without our storage contract; inspect before adoption.
-  loop: "{{ data_storage_paths.results | selectattr('item', 'in', ['/usr/local/libexec/battlefield-data-storage', '/etc/libvirt/hooks/qemu.d/50-battlefield-data-storage', '/etc/systemd/system/libvirtd.service.d/50-battlefield-data.conf', '/etc/libvirt/hooks/.battlefield-data-storage-loaded']) | list }}"
+  loop: "{{ data_storage_paths.results | selectattr('item', 'in', ['/etc/battlefield-data-storage/guard.py', '/etc/libvirt/hooks/qemu.d/50-battlefield-data-storage', '/etc/systemd/system/libvirtd.service.d/50-battlefield-data.conf', '/etc/libvirt/hooks/.battlefield-data-storage-loaded']) | list }}"
   loop_control:
     label: "{{ item.item }}"

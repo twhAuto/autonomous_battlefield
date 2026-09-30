@@ -159,7 +159,9 @@ not mounted elsewhere. It rejects occupied unmounted directories, symlinked path
 conflicting fstab entries and read-only/wrong mounts. It never formats, partitions,
 resizes, recursively changes ownership, or moves existing service data. It adds
 only its UUID-based entry to `/etc/fstab`, with a private pre-change copy beside
-fstab when an edit is needed. An already matching entry is retained unchanged.
+fstab when an edit is needed. Validation checks the added entry independently of
+unrelated entries; existing fstab problems remain visible for separate repair.
+An already matching entry is retained unchanged.
 After adoption `/etc/battlefield-data-storage.json` records the storage identity;
 a different UUID/path/operator requires a separate reviewed migration. Clearing
 `data_uuid` does not remove this contract, unmount storage or uninstall the guard.
@@ -186,11 +188,11 @@ AB-128 owns mounting retained data **inside** the guest before K3s and configuri
 its persistent-volume path. Neither VM provisioning nor application/database
 migration is performed by this host role. The current application remains Kind.
 
-The root-installed `/usr/local/libexec/battlefield-data-storage` provides the
+The root-installed `/etc/battlefield-data-storage/guard.py` provides the
 read-only command consumers must run on the host **before storage mutations**:
 
 ```bash
-sudo /usr/local/libexec/battlefield-data-storage guard \
+sudo /etc/battlefield-data-storage/guard.py guard \
   75db9b1d-5c46-4e5b-bd94-5391b2a35411 /srv/battlefield-data twh09
 ```
 
@@ -207,6 +209,9 @@ monitor or a capacity quota. Terraform must still place its volumes correctly.
 A systemd drop-in orders libvirt after the configured mount at boot. It uses
 `Wants`/`After` so an unavailable data partition does not disable unrelated guests;
 the K3s-specific hook still rejects its start in that case.
+
+The guard lives in its own root-owned directory under `/etc`; shared `/usr/local`
+permissions and existing libvirt hook-directory permissions are preserved.
 
 Libvirt hook discovery is reloaded with SIGHUP after installation, without
 restarting running guests. A private activation record makes an interrupted

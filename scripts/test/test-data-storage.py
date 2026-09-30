@@ -17,7 +17,7 @@ SPEC.loader.exec_module(storage)
 BOOT = importlib.util.spec_from_file_location('bootstrap', ROOT / 'scripts/infra/server.py')
 bootstrap = importlib.util.module_from_spec(BOOT)
 BOOT.loader.exec_module(bootstrap)
-UUID = '11111111-2222-3333-4444-555555555555'
+UUID = 'a1111111-b222-c333-d444-e55555555555'
 TARGET = Path('/srv/battlefield-data')
 DEVICE = {'name': '/dev/vdb1', 'type': 'part', 'fstype': 'ext4', 'uuid': UUID,
           'label': 'Data Disk', 'partuuid': 'part-id', 'mountpoints': []}
@@ -29,7 +29,8 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(bootstrap.validate_inventory(base), base)
         for values in [dict(data_uuid='bad'), dict(data_uuid=True), dict(data_mount='/'),
                        dict(data_mount='/srv/../etc'), dict(data_mount='/srv/data/child'),
-                       dict(data_mount='/srv/data;id'), dict(data_uuid=UUID, backup_uuid=UUID)]:
+                       dict(data_mount='/srv/data;id'), dict(data_uuid=UUID, backup_uuid=UUID),
+                       dict(data_uuid=UUID, backup_uuid=UUID.replace('-', ''))]:
             with self.subTest(values=values), self.assertRaises(ValueError):
                 bootstrap.validate_inventory(dict(base, **values))
         result = bootstrap.ansible_inventory(dict(base, data_uuid=UUID, data_mount=str(TARGET)), True)
@@ -42,6 +43,8 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(updated, storage.fstab_content(updated, UUID, TARGET, DEVICE))
         for conflict in [f'UUID={UUID} /other ext4 defaults 0 2',
                          f'UUID=other {TARGET} ext4 defaults 0 2',
+                         f'UUID={UUID.upper()} /elsewhere ext4 defaults 0 2',
+                         'PARTUUID=PART-ID /elsewhere ext4 defaults 0 2',
                          r'LABEL=Data\040Disk /elsewhere ext4 defaults 0 2',
                          'PARTUUID=part-id /other ext4 defaults 0 2',
                          '/dev/vdb1 /elsewhere ext4 defaults 0 2']:
@@ -112,6 +115,7 @@ class StorageTests(unittest.TestCase):
             with patch.object(storage, 'CONTRACT', path):
                 self.assertFalse(storage.inspect_contract(expected))
                 path.write_text(json.dumps(dict(expected, mount='/srv/other')))
+                path.chmod(0o600)  # Isolate identity checks from the invoking process's umask.
                 # Fixture can be non-root in CI; mock only the root ownership check.
                 metadata = path.stat()
                 info = SimpleNamespace(st_mode=metadata.st_mode, st_uid=0)
@@ -124,9 +128,26 @@ class StorageTests(unittest.TestCase):
             path.write_text('original\n')
             with patch.object(storage, 'FSTAB', path), patch.object(storage, 'run', side_effect=subprocess.CalledProcessError(1, 'findmnt')):
                 with self.assertRaises(subprocess.CalledProcessError):
-                    storage.write_fstab('original\n', 'bad\n')
+                    storage.write_fstab('original\n', 'bad\n', 'new entry')
             self.assertEqual(path.read_text(), 'original\n')
             self.assertEqual(list(Path(directory).iterdir()), [path])
+
+    def test_fstab_validation_checks_only_new_entry_and_keeps_unrelated_lines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'fstab'
+            original = '/absent-device /mnt/absent ext4 noauto,nofail 0 0\n'
+            path.write_text(original)
+            entry = storage.fstab_entry(UUID, TARGET)
+            checked = []
+            def validate(*args):
+                if args[0] == 'findmnt':
+                    checked.append(Path(args[-1]).read_text())
+            with patch.object(storage, 'FSTAB', path), patch.object(storage, 'run', side_effect=validate):
+                storage.write_fstab(original, original + entry + '\n', entry)
+            self.assertEqual(checked, [entry + '\n'])
+            self.assertEqual(path.read_text(), original + entry + '\n')
+            backup = next(path.parent.glob('fstab.before-battlefield-data.*'))
+            self.assertEqual(backup.read_text(), original)
 
     def test_fstab_concurrent_write_is_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -135,7 +156,7 @@ class StorageTests(unittest.TestCase):
             def changed(*args):
                 path.write_text('other writer\n')
             with patch.object(storage, 'FSTAB', path), patch.object(storage, 'run', side_effect=changed), self.assertRaisesRegex(ValueError, 'concurrently'):
-                storage.write_fstab('original\n', 'ours\n')
+                storage.write_fstab('original\n', 'ours\n', 'new entry')
             self.assertEqual(path.read_text(), 'other writer\n')
 
     def test_guard_requires_contract_and_same_filesystem(self):

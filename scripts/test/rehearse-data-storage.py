@@ -69,6 +69,9 @@ def main():
     run('sudo', 'udevadm', 'settle')
     run('sudo', 'mkfs.ext4', '-q', '/dev/vdb1')
     data_uuid = run('sudo', 'blkid', '-s', 'UUID', '-o', 'value', '/dev/vdb1')
+    # Stock Debian-style /usr/local and an unrelated absent noauto disk must not block adoption.
+    run('sudo', 'chmod', '2775', '/usr/local')
+    run('sudo', 'tee', '-a', '/etc/fstab', input='/dev/absent-rehearsal-device /mnt/absent-rehearsal ext4 noauto,nofail 0 0\n')
     original = Path('/etc/fstab').read_bytes()
     role('plan', data_uuid)
     assert Path('/etc/fstab').read_bytes() == original and not TARGET.exists()

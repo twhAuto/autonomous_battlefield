@@ -24,7 +24,8 @@
         owner: root
         group: root
         mode: '0755'
-      loop: [/usr/local/libexec, /etc/libvirt/hooks, /etc/libvirt/hooks/qemu.d]
+      loop: [/etc/battlefield-data-storage, /etc/libvirt/hooks, /etc/libvirt/hooks/qemu.d]
+      when: not (data_storage_paths.results | selectattr('item', 'equalto', item) | first).stat.exists
     - name: Prepare libvirt boot ordering directory
       ansible.builtin.file:
         path: /etc/systemd/system/libvirtd.service.d
@@ -46,7 +47,7 @@
     - name: Install the mount identity guard
       ansible.builtin.copy:
         src: storage.py
-        dest: /usr/local/libexec/battlefield-data-storage
+        dest: /etc/battlefield-data-storage/guard.py
         owner: root
         group: root
         mode: '0755'
@@ -57,16 +58,20 @@
         owner: root
         group: root
         mode: '0755'
-      register: data_storage_hook
+    - name: Inspect the hook activation record by its explicit path
+      ansible.builtin.stat:
+        path: /etc/libvirt/hooks/.battlefield-data-storage-loaded
+        follow: false
+      register: data_storage_activation_stat
     - name: Read the existing hook activation record
       ansible.builtin.slurp:
         src: /etc/libvirt/hooks/.battlefield-data-storage-loaded
       register: data_storage_activation
-      when: data_storage_paths.results[-1].stat.exists
+      when: data_storage_activation_stat.stat.exists
     - name: Activate the new hook and record successful discovery
       when: >-
         not ansible_check_mode and
-        (not data_storage_paths.results[-1].stat.exists or
+        (not data_storage_activation_stat.stat.exists or
         (data_storage_activation.content | default('') | b64decode) != lookup('ansible.builtin.template', 'k3s-storage-hook.j2'))
       block:
         - name: Reload libvirt hook discovery without restarting guests
@@ -86,7 +91,7 @@
     - name: Compare the installed helper to this revision
       ansible.builtin.copy:
         src: storage.py
-        dest: /usr/local/libexec/battlefield-data-storage
+        dest: /etc/battlefield-data-storage/guard.py
         owner: root
         group: root
         mode: '0755'

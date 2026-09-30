@@ -83,8 +83,12 @@ def selected_device(uuid, target):
     return device
 
 
+def fstab_entry(uuid, target):
+    return f'UUID={uuid} {target} ext4 defaults,nofail,x-systemd.device-timeout=10s 0 2'
+
+
 def fstab_content(original, uuid, target, device):
-    entry = f'UUID={uuid} {target} ext4 defaults,nofail,x-systemd.device-timeout=10s 0 2'
+    entry = fstab_entry(uuid, target)
     aliases = {f'UUID={uuid}', device['name'], f'/dev/disk/by-uuid/{uuid}'}
     for key in ('label', 'partuuid'):
         if device.get(key):
@@ -96,7 +100,8 @@ def fstab_content(original, uuid, target, device):
         if len(fields) < 2:
             continue
         source = fields[0]
-        same_device = source in aliases or (source.startswith('/dev/') and str(Path(source).resolve()) == device['name'])
+        same_tag = source.startswith(('UUID=', 'PARTUUID=')) and source.lower() in {x.lower() for x in aliases if x.startswith(('UUID=', 'PARTUUID='))}
+        same_device = same_tag or source in aliases or (source.startswith('/dev/') and str(Path(source).resolve()) == device['name'])
         if same_device or fields[1] == str(target):
             if fields != entry.split():
                 raise ValueError('Conflicting fstab entry; inspect it before adoption')
@@ -151,7 +156,7 @@ def directory_changes(specs):
     return changes
 
 
-def write_fstab(original, proposed):
+def write_fstab(original, proposed, entry):
     fd, temporary = tempfile.mkstemp(prefix='.battlefield-fstab-', dir=FSTAB.parent)
     try:
         with os.fdopen(fd, 'w') as output:
@@ -159,7 +164,11 @@ def write_fstab(original, proposed):
             output.flush()
             os.fsync(output.fileno())
         os.chmod(temporary, stat.S_IMODE(FSTAB.stat().st_mode))
-        run('findmnt', '--verify', '--tab-file', temporary)
+        # Validate our entry in isolation; retain unrelated pre-existing entries verbatim.
+        with tempfile.NamedTemporaryFile(mode='w', prefix='.battlefield-entry-', dir=FSTAB.parent) as check:
+            check.write(entry + '\n')
+            check.flush()
+            run('findmnt', '--verify', '--tab-file', check.name)
         if FSTAB.read_text() != original:
             raise ValueError('fstab changed concurrently; retry after inspection')
         fd, backup = tempfile.mkstemp(prefix='fstab.before-battlefield-data.', dir=FSTAB.parent)
@@ -236,7 +245,7 @@ def reconcile(uuid, target, operator, mode):
         # Inspect contents after mounting too, before any permissions change.
         changes = directory_changes(specs)
         if original != proposed:
-            write_fstab(original, proposed)
+            write_fstab(original, proposed, fstab_entry(uuid, target))
         for path, uid, gid, permissions in changes:
             require_mount(uuid, target)
             path.mkdir(mode=permissions, exist_ok=True)
