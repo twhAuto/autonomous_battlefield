@@ -221,6 +221,40 @@ if a!=b or '--- preserve payload' not in a:raise ValueError('Diff paths leak or 
         self.assertFalse(list(job.find('triggers')))
 
 
+class ReadinessTests(unittest.TestCase):
+    def test_controller_readiness_retries_connection_loss_but_fails_at_deadline(self):
+        with patch.object(guest, 'deployments_ready', side_effect=[ValueError('API refused'), False, True]) as check, \
+                patch.object(guest.time, 'sleep'), patch.object(guest.time, 'monotonic', side_effect=[0, 1, 2]):
+            guest.wait_ready('kyverno')
+            self.assertEqual(check.call_count, 3)
+        with patch.object(guest, 'deployments_ready', side_effect=ValueError('API refused')), \
+                patch.object(guest.time, 'monotonic', side_effect=[0, 301]):
+            with self.assertRaisesRegex(ValueError, 'did not become healthy'):
+                guest.wait_ready('kyverno')
+        with self.assertRaisesRegex(ValueError, 'Unexpected platform readiness target'):
+            guest.wait_ready('unrelated')
+
+    def test_node_requires_active_service_ready_api_and_node_condition(self):
+        with patch.object(guest, 'run', return_value='active'), patch.object(guest, 'kubectl', return_value='ok') as api, \
+                patch.object(guest, 'get', return_value={'status': {'conditions': [{'type': 'Ready', 'status': 'True'}]}}) as node:
+            self.assertTrue(guest.node_ready())
+            api.return_value = 'not ready'
+            self.assertFalse(guest.node_ready())
+            api.return_value = 'ok'
+            node.return_value = {'status': {'conditions': [{'type': 'Ready', 'status': 'False'}]}}
+            self.assertFalse(guest.node_ready())
+
+    def test_controller_requires_current_generation_and_all_updated_ready_replicas(self):
+        deployment = {'metadata': {'generation': 2}, 'spec': {'replicas': 1}, 'status': {
+            'observedGeneration': 2, 'updatedReplicas': 1, 'readyReplicas': 1, 'availableReplicas': 1}}
+        with patch.object(guest, 'get', return_value={'items': [deployment]}):
+            self.assertTrue(guest.deployments_ready('kyverno'))
+            for key, value in list(deployment['status'].items()):
+                deployment['status'][key] = 0
+                self.assertFalse(guest.deployments_ready('kyverno'))
+                deployment['status'][key] = value
+
+
 class RehearsalTests(unittest.TestCase):
     def test_diagnostics_accept_pty_combined_and_separate_stderr(self):
         for field in ('stdout', 'stderr'):

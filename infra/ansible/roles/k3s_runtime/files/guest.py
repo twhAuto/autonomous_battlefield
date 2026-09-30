@@ -208,7 +208,26 @@ def deployments_ready(namespace):
     return True
 
 
+def node_ready():
+    if run('systemctl', 'is-active', 'k3s', allowed=(0, 3, 4)) != 'active':
+        return False
+    if kubectl('get', '--raw', '/readyz') != 'ok':
+        return False
+    return any(item.get('type') == 'Ready' and item.get('status') == 'True'
+               for item in get('node', 'battlefield-k3s').get('status', {}).get('conditions', []))
+
+
+def wait_ready(target):
+    if target == 'node':
+        wait(node_ready, 'Private Kubernetes node and API')
+    elif target in ('kube-system', 'envoy-gateway-system', 'kyverno', NS):
+        wait(lambda: deployments_ready(target), 'Current deployment generation in ' + target)
+    else:
+        raise ValueError('Unexpected platform readiness target')
+
+
 def verify(c):
+    wait_ready('node')
     status = inspect(c)
     if not status['registered'] or read(IDENTITY) != live_identity():
         raise ValueError('Persistent cluster identity does not match registration')
@@ -219,11 +238,8 @@ def verify(c):
     node = get('node', 'battlefield-k3s')
     if node['status']['nodeInfo']['kubeletVersion'] != c['versions']['k3s']:
         raise ValueError('Unexpected running kubelet version')
-    kubectl('wait', '--for=condition=Ready', 'node/battlefield-k3s', '--timeout=300s')
     for ns in ('kube-system', 'envoy-gateway-system', 'kyverno', NS):
-        kubectl('wait', '--for=condition=Available', 'deployment', '--all', '-n', ns, '--timeout=300s')
-    for ns in ('kube-system', 'envoy-gateway-system', 'kyverno', NS):
-        wait(lambda: deployments_ready(ns), 'Current deployment generation in ' + ns)
+        wait_ready(ns)
     for name in ('coredns', 'metrics-server'):
         get('deployment', name, '-n', 'kube-system')
     forbidden = {'traefik', 'svclb-traefik'}
@@ -282,11 +298,15 @@ def verify(c):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['inspect', 'begin', 'register', 'verify'])
+    parser.add_argument('action', choices=['inspect', 'begin', 'register', 'verify', 'ready'])
     parser.add_argument('contract')
     args = parser.parse_args()
     if os.geteuid() != 0:
         raise ValueError('Managed runtime checks require root')
+    if args.action == 'ready':
+        wait_ready(args.contract)
+        print(json.dumps({'ready': True}))
+        return
     c = json.loads(Path(args.contract).read_text()) if args.contract.startswith('/') else json.loads(base64.b64decode(args.contract, validate=True))
     if args.action == 'inspect':
         result = inspect(c)
@@ -297,7 +317,7 @@ def main():
         result = {'intent': True}
     elif args.action == 'register':
         register(c)
-        kubectl('wait', '--for=condition=Available', 'deployment/storage-probe', '-n', NS, '--timeout=300s')
+        wait_ready(NS)
         pvc = get('pvc', 'persistence', '-n', NS)
         marker = {'marker': probe('storage-probe', 'cat', '/data/identity'), 'pv_uid': get('pv', pvc['spec']['volumeName'])['metadata']['uid']}
         if read(ROOT / 'platform/pvc.json') is None:

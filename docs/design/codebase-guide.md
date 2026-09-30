@@ -160,7 +160,8 @@ exercises actual Terraform, replacement, recovery and reboot inside it. See the
 private platform/probe manifests. `infra/k3s/` holds settings and asset checksums.
 `infra/ansible/k3s.yml` combines `k3s_storage` (stable disk ownership, fstab,
 first-use initialization and startup guard) and `k3s_runtime` (managed K3s,
-firewall, pinned controllers and readiness/identity probes). Its firewall helper
+firewall, pinned controllers and readiness/identity probes with bounded API
+reconnect retries). Its firewall helper
 records the applied table and detects live rule drift without relying on service
 activity alone. The custom
 `battlefield_k3s_manifest` module uses server-side Kubernetes diff/apply, including

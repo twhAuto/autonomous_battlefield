@@ -1473,7 +1473,7 @@ startup guards reject missing or mismatched storage and prevent silently replaci
 K3s runs a pinned compatible Kubernetes release with Flannel, enforcing network
 policies, CoreDNS and metrics-server. Traefik and ServiceLB are disabled from the
 first start. Pinned Envoy Gateway/Gateway API and Kyverno provide platform
-controllers; application manifests and admission policies remain CD-owned. A
+controllers, with bounded readiness retries for API reconnects after boot; application manifests and admission policies remain CD-owned. A
 dedicated guest nftables table restricts private API/kubelet/kube-proxy health/NodePort access,
 including checks before NodePort translation. Verification compares live rules
 with their recorded applied state; a reviewed reload repairs drift without

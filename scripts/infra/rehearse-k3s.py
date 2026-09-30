@@ -183,8 +183,9 @@ def main():
             try:
                 if guest.ip:
                     # Private diagnostic archive never becomes a Jenkins/public artifact.
-                    guest.ssh('sudo journalctl -u k3s --no-pager -n 100 > /tmp/rehearsal-k3s.log')
+                    guest.ssh("sudo journalctl -u k3s --no-pager -b -n 3000 --grep='level=|panic|Main process|Scheduled restart|Starting|Started|Stopping|Stopped' > /tmp/rehearsal-k3s.log")
                     (args.evidence_dir / 'k3s.log').write_text(guest.ssh('cat /tmp/rehearsal-k3s.log'))
+                    (args.evidence_dir / 'k3s-service.txt').write_text(guest.ssh('systemctl show k3s -p ActiveState -p SubState -p NRestarts -p ExecMainStatus -p ActiveEnterTimestamp'))
             except (OSError, subprocess.SubprocessError):
                 pass
             try:

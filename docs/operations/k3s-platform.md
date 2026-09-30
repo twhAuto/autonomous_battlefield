@@ -151,7 +151,10 @@ Langfuse data stores are installed by this platform job.
 
 The isolated `battlefield-platform-checks` namespace holds a small retained
 claim, HTTP server, allowed/denied clients and private-image probe. Verification
-checks a healthy allowed path before requiring the denied path to fail, DNS
+waits for an active service, API readiness and current controller generations
+through bounded read-only retries, so brief API reconnects after boot do not
+fail immediately; persistent outages still fail. It checks a healthy allowed
+path before requiring the denied path to fail, DNS
 resolution, gateway routing, private image readiness and a fresh authenticated
 registry manifest request using the current pull secret, retained data identity,
 controller readiness, metrics and K3s service state. The private-image probe
