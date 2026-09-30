@@ -4,11 +4,11 @@ import argparse
 import base64
 from contextlib import contextmanager
 import json
+import importlib.util
 import os
 from pathlib import Path
 import re
 import shlex
-import signal
 import stat
 import subprocess
 import sys
@@ -17,6 +17,9 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 ANSIBLE = ROOT / 'infra/ansible'
 MAX_INPUT = 8 * 1024 * 1024
+_lock_spec = importlib.util.spec_from_file_location('operation_lock', ROOT / 'scripts/infra/operation-lock.py')
+operation_lock = importlib.util.module_from_spec(_lock_spec)
+_lock_spec.loader.exec_module(operation_lock)
 
 
 def safe_path(value):
@@ -186,10 +189,18 @@ def tools_bin():
     return Path(result.stdout.strip())
 
 
-def clean_ansible_env():
+def clean_ansible_env(report_file=None):
     env = {key: value for key, value in os.environ.items()
            if not key.startswith(('ANSIBLE_', 'PYTHON'))}
     env.update(ANSIBLE_CONFIG=str(ANSIBLE / 'ansible.cfg'), ANSIBLE_NOCOLOR='1')
+    env.pop('BATTLEFIELD_BOOTSTRAP_REPORT', None)
+    if report_file:
+        report = safe_path(report_file)
+        if report.exists() or report.is_symlink():
+            raise ValueError('Report already exists; use a fresh output path')
+        env.update(ANSIBLE_STDOUT_CALLBACK='battlefield_report',
+                   ANSIBLE_CALLBACK_PLUGINS=str(ANSIBLE / 'callback_plugins'),
+                   BATTLEFIELD_BOOTSTRAP_REPORT=str(report))
     return env
 
 
@@ -263,8 +274,13 @@ sys.stdin.read()
 
 @contextmanager
 def host_lock(data, local):
+    if local and operation_lock.inherited() is not None:
+        yield None
+        return
     args = [sys.executable, '-c', LOCK_CODE] if local else ssh(data) + ['python3 -c ' + shlex.quote(LOCK_CODE)]
-    process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    # A controller process-group crash must not also kill the lock proxy.
+    process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, start_new_session=True)
     try:
         if process.stdout.readline().strip() != b'LOCKED':
             raise ValueError('Another bootstrap owns the host lock, or the lock connection failed')
@@ -327,22 +343,34 @@ def playbook(args, data, report):
                         *vault_password_args]
         if args.command == 'plan':
             command += ['--check', '--diff']
-        if not report['sudo_noninteractive'] and not (args.local and os.geteuid() == 0):
+        become_password = getattr(args, 'become_password_file', None)
+        if become_password:
+            password = private_file(become_password)
+            outside_repo(password)
+            if password.stat().st_mode & 0o111:
+                raise ValueError('Sudo password input must not be executable')
+            command += ['--become-password-file', str(password)]
+        elif not report['sudo_noninteractive'] and not (args.local and os.geteuid() == 0):
             if not sys.stdin.isatty():
                 raise ValueError('Run from a terminal for the sudo prompt; never put a sudo password in inventory')
             command.append('--ask-become-pass')
+        environment = clean_ansible_env(getattr(args, 'report_file', None))
         if args.command == 'apply':
             with host_lock(data, args.local) as lock:
-                run_playbook(command, lock)
+                run_playbook(command, lock, environment)
         else:
-            subprocess.run(command, env=clean_ansible_env(), check=True)
+            subprocess.run(command, env=environment, check=True)
 
 
-def run_playbook(command, lock):
-    process = subprocess.Popen(command, env=clean_ansible_env(), start_new_session=True)
-    try:
+def run_playbook(command, lock, environment=None):
+    # Inherit either the lock itself or the writer keeping the SSH/local proxy alive.
+    # The operation must retain exclusion if its controller is killed unexpectedly.
+    fd = operation_lock.inherited() if lock is None else lock.stdin.fileno()
+    if fd is None:
+        raise ValueError('Apply requires an active host lock')
+    with operation_lock.supervised(command, env=environment or clean_ansible_env(), pass_fds=(fd,)) as process:
         while True:
-            if lock.poll() is not None:
+            if lock is not None and lock.poll() is not None:
                 raise ValueError('Host lock connection lost; stopped configuration')
             try:
                 code = process.wait(timeout=0.2)
@@ -351,14 +379,6 @@ def run_playbook(command, lock):
                 return
             except subprocess.TimeoutExpired:
                 pass
-    finally:
-        if process.poll() is None:
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
 
 
 def parser():
@@ -372,6 +392,8 @@ def parser():
     result.add_argument('--local', action='store_true', help='Run on the registered server as its operator')
     result.add_argument('--files', help='Private JSON map of named controller/host files to encrypt')
     result.add_argument('--vault', help='Encrypted input bundle outside Git')
+    result.add_argument('--report-file', help='Fresh JSON path for secret-safe task outcomes instead of module output')
+    result.add_argument('--become-password-file', help='Private non-executable sudo password file; otherwise prompt')
     result.add_argument('--vault-password-file', help='Private password file for unattended runs; otherwise prompt')
     return result
 
@@ -416,6 +438,8 @@ def main():
 if __name__ == '__main__':
     try:
         main()
+    except KeyboardInterrupt:
+        sys.exit(130)
     except (ValueError, OSError, subprocess.SubprocessError) as error:
         # CalledProcessError may contain arguments; never serialize subprocess objects.
         message = str(error) if isinstance(error, ValueError) else 'Operation failed; inspect the preceding safe output and retry.'

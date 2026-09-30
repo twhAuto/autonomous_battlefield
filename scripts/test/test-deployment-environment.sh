@@ -39,12 +39,22 @@ if [[ "$1 $2" == 'get kubeconfig' ]]; then echo fixture; fi
     clean.update(PATH=str(bins)+':'+os.environ['PATH'], BATTLEFIELD_ENV_FILE=str(config), TEST_LOG=str(log))
     helper = root/'scripts/lib/deployment-environment.sh'
     check = ['bash','-c', 'source "$1"; battlefield_env_preflight', '_', str(helper)]
+    # Run production wrappers against a fixture whose lock resolves only this temp directory.
+    fixture=tmp/'project'
+    shutil.copytree(root/'scripts/cd',fixture/'scripts/cd')
+    shutil.copytree(root/'scripts/lib',fixture/'scripts/lib')
+    (fixture/'scripts/infra').mkdir()
+    (fixture/'scripts/infra/operation-lock.py').write_text(
+        'import pathlib,runpy\npathlib.Path.home=lambda:pathlib.Path('+repr(str(tmp))+')\n'
+        'runpy.run_path('+repr(str(root/'scripts/infra/operation-lock.py'))+',run_name="__main__")\n')
     count=0
-    def run(args=check, ok=True, no_mutation=False, **env):
+    def run(args=check, ok=True, no_mutation=False, error=None, **env):
         global count
         log.write_text('')
         result=subprocess.run(args, env=clean|env, capture_output=True, text=True)
         assert (result.returncode == 0) == ok, (args,result.stdout,result.stderr)
+        if error is not None:
+            assert error in result.stderr, result.stderr
         if no_mutation:
             assert not any(x in log.read_text() for x in [' apply ', ' delete ', ' set image ', ' start ', ' create cluster ', ' build ']), log.read_text()
         count+=1
@@ -61,9 +71,9 @@ if [[ "$1 $2" == 'get kubeconfig' ]]; then echo fixture; fi
     run(ok=False,no_mutation=True,DEPLOY_ENV='production',ENFORCE_SUPPLY_CHAIN_POLICY='0')
     run(['bash',str(root/'deploy-local.sh')],ok=False,no_mutation=True,DEPLOY_ENV='production')
     run(['bash',str(root/'scripts/ops/run-kind-failure-drills.sh')],ok=False,no_mutation=True,DEPLOY_ENV='production',RUN_DESTRUCTIVE_KIND_DRILLS='I_UNDERSTAND_THIS_RESTARTS_DISPOSABLE_KIND_WORKLOADS')
-    run(['bash',str(root/'scripts/cd/rollback-kind.sh'),'a'*40,'b'*40],ok=False,no_mutation=True,DEPLOY_ENV='production')
-    run(['bash',str(root/'scripts/cd/rollback-kind.sh'),'ghcr.io/test/backend@sha256:'+'a'*64,'ghcr.io/test/frontend@sha256:'+'b'*64],
-        ok=False,no_mutation=True,DEPLOY_ENV='production',GHCR_USER='test',GHCR_TOKEN='dummy',COSIGN_PUBLIC_KEY_FILE=str(kube),VERIFY_ARTIFACT_DIR=str(tmp/'verification'))
+    run(['bash',str(fixture/'scripts/cd/rollback-kind.sh'),'a'*40,'b'*40],ok=False,no_mutation=True,DEPLOY_ENV='production',error='requires both exact image digests')
+    run(['bash',str(fixture/'scripts/cd/rollback-kind.sh'),'ghcr.io/test/backend@sha256:'+'a'*64,'ghcr.io/test/frontend@sha256:'+'b'*64],
+        ok=False,no_mutation=True,DEPLOY_ENV='production',error='has not been attested as Access-compatible',GHCR_USER='test',GHCR_TOKEN='dummy',COSIGN_PUBLIC_KEY_FILE=str(kube),VERIFY_ARTIFACT_DIR=str(tmp/'verification'))
     profile();run(['bash',str(root/'deploy-local.sh')],ok=False,no_mutation=True,TEST_UID='wrong')
     run(['bash','-c','source "$1"; battlefield_env_load && battlefield_env_verify_docker','_',str(helper)],ok=False,no_mutation=True,TEST_DOCKER_STATUS='1')
     # Exercise real bootstrap with mocked external commands; profile already exists.
@@ -75,7 +85,6 @@ if [[ "$1 $2" == 'get kubeconfig' ]]; then echo fixture; fi
     run(bootstrap,ok=False,no_mutation=True,DEPLOY_ENV='production')
     # First bootstrap creates only when no profile or cluster exists. Stub registration,
     # whose real identity verification is exercised separately below.
-    fixture=tmp/'project';shutil.copytree(root/'scripts/cd',fixture/'scripts/cd');shutil.copytree(root/'scripts/lib',fixture/'scripts/lib')
     setup=fixture/'scripts/cd/setup-environment.sh'
     setup.write_text('#!/usr/bin/env bash\ncp "$TEST_PROFILE" "$BATTLEFIELD_ENV_FILE"\n');setup.chmod(0o755)
     commands=run(['bash',str(fixture/'scripts/cd/create-kind-cluster.sh')],TEST_STATE='absent',BATTLEFIELD_ENV_FILE=str(tmp/'new.env'),TEST_PROFILE=str(config))

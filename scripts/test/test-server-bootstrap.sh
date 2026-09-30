@@ -10,3 +10,4 @@ ANSIBLE_CONFIG="${project_dir}/infra/ansible/ansible.cfg" "${BATTLEFIELD_TEST_AN
 python3 "${project_dir}/scripts/test/test-server-bootstrap.py"
 python3 "${project_dir}/scripts/test/test-server-rehearsal.py"
 python3 "${project_dir}/scripts/test/test-data-storage.py"
+python3 "${project_dir}/scripts/test/test-platform.py"
