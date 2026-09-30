@@ -207,8 +207,8 @@ in this role.
 
 Ubuntu, Jenkins, SonarQube and host CI/Docker storage remain on `/`. The future
 Terraform-managed domain must be named `battlefield-k3s`, with its separate OS
-and retained data images in the reported `images` directory. AB-126 still owns
-that provisioning implementation, retained-volume lifecycle and state locking;
+and retained data images in the reported `images` directory. [AB-126](k3s-vm.md) implements
+that provisioning, retained-volume lifecycle and state locking;
 AB-128 owns mounting retained data **inside** the guest before K3s and configuring
 its persistent-volume path. Neither VM provisioning nor application/database
 migration is performed by this host role. The current application remains Kind.
@@ -274,9 +274,9 @@ establish that the filesystem is empty or that it has 100 GB free. The backup se
 backup role must verify the expected mounted UUID before writing, preserve other
 data, and fail visibly when the disk is absent.
 
-The proposed Terraform backend will have one canonical state on the host, with
-locking and recovery copies on the second disk. Terraform itself is not installed
-by this slice. Ordinary application delivery must not run host provisioning;
+The [VM workflow](k3s-vm.md) maintains canonical Terraform state on the host, with
+locking, encrypted local recovery snapshots and an explicit copy command for the
+registered second disk. Terraform is installed by that workflow, not the host job. Ordinary application delivery must not run host provisioning;
 changes limited to `infra/ansible/` or `scripts/infra/` select no application
 components, while regression checks still run.
 

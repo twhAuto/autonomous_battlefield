@@ -72,6 +72,7 @@ autonomous_battlefield/
 │   └── test/                   # Shared test setup
 ├── deploy/                     # Kubernetes bases, overlays, supply-chain assets
 ├── infra/ansible/              # Ubuntu host foundation, Vault inputs, pinned control dependencies
+├── infra/libvirt/              # Pinned Terraform VM, network and retained disks
 ├── infra/aws/                  # AWS provisioning with Terraform
 ├── scripts/
 │   ├── infra/                  # Server registration, inspection and Ansible entry point
@@ -139,6 +140,19 @@ opens the SSH tunnel; `seed-platform.py` validates plugins/pipeline and reconcil
 owned folder/job/file credentials without triggering a build. Plugin pins live in
 `infra/jenkins/platform-plugins.json`; `test-platform.py` exercises lock, receipt,
 setup and real callback behavior. See [platform jobs](../operations/platform-jobs.md).
+
+`infra/libvirt` defines the dedicated VM/network and separate OS/data lifecycles.
+`Jenkinsfile.vm` and `scripts/ci/run-vm.sh` invoke `scripts/infra/vm.py`, which shares
+the host operation lock and trusted-main check. `vm-policy.py` validates capacity
+settings, resource actions and approval receipts; `vm-tools.py` installs verified
+tools/images in a private cache. `vm-state.py` copies encrypted snapshots to the
+registered second disk and validates resource identity during state recovery.
+`test-vm.py` exercises negative paths; `check-vm-terraform.py` verifies format and
+the pinned provider schema, mocked-provider contracts and real local-backend
+lock contention without contacting libvirt. The opt-in `rehearse-vm.py` uses the shared
+rehearsal VM lifecycle with a larger outer guest, while `rehearse-vm-guest.py`
+exercises actual Terraform, replacement, recovery and reboot inside it. See the
+[VM runbook](../operations/k3s-vm.md) for Jenkins and Ansible handoff details.
 
 ## Common change paths
 

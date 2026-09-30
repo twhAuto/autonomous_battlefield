@@ -1419,10 +1419,10 @@ host management. The data role persists its UUID mount, prepares private operato
 and libvirt image directories, and records immutable storage identity outside Git.
 A separate libvirt hook refuses future `battlefield-k3s` starts/restores when the
 selected data filesystem is missing, wrong or read-only; other guests retain their
-existing lifecycle. The guard also provides a preflight for future Terraform
+existing lifecycle. The guard also provides a preflight for Terraform
 volume operations. This does not move current Docker/PostgreSQL data: production
-remains Kind on the Ubuntu filesystem. Terraform VM provisioning and the guest's
-retained-volume/K3s mount remain separate implementation tasks. See the
+remains Kind on the Ubuntu filesystem. The Terraform VM module consumes this contract; the guest's
+retained-volume/K3s mount remains AB-128. See the
 [storage contract](../operations/server-bootstrap.md#terraform-and-guest-storage-contract).
 
 The dedicated [Jenkins host job](../operations/platform-jobs.md) reads trusted
@@ -1441,11 +1441,30 @@ controller. Its plugin pins cover this existing-controller slice; complete
 Jenkins/SonarQube reconstruction remains separate work. Folder credential scope
 retains the project's accepted shared-user/host CI trust boundary.
 
+The [Terraform VM workflow](../operations/k3s-vm.md) provisions a dedicated
+Ubuntu guest, NAT network and autostarting domain with separate replaceable OS
+and retained data disks on the selected partition. It is available through
+`battlefield-platform/vm` after reviewed seeding; it does not establish that the
+production VM has already been deployed. Host/network/mount identity and full
+virtual disk capacity are checked before planning. Saved-plan hashes, canonical
+state and a fresh plan bind apply to the owner-reviewed revision; retained
+resources cannot be deleted or recreated silently. The workflow generates Ansible
+inventory from Terraform outputs and authenticates the guest SSH key through its
+UUID-bound QEMU agent channel. Application credentials stay outside Terraform.
+
+VM control files live in the operator's private state directory outside Jenkins
+workspaces. Initial planning may prepare a key, seed and verified tool/image
+caches; libvirt mutation occurs only during apply. The Terraform local backend
+lock and shared operator lock serialize state writes. Versioned encrypted state
+and key snapshots accompany applies; an explicit command can copy them to the
+selected second disk. These snapshots do not back up database or VM data.
+Whole-server-loss recovery and automatic backup retention remain outside scope.
+
 The owner has deferred scheduled backups and retention for current personal use;
 existing pre-migration dumps remain. The initial backup design uses the server's separate second disk only, with a
 100 GB planning budget. The wrapper can validate a selected filesystem UUID
 against the root physical disk, but does not mount or format it. Backup scheduling,
-Terraform/K3s provisioning, CI-service rebuilds, Cloudflare adoption and full
+K3s installation, CI-service rebuilds, Cloudflare adoption and full
 restore verification are subsequent work. Losing the whole server is outside the
 initial recovery scope. Host bootstrap files select no application deployment
 components; normal Jenkins application delivery never invokes the bootstrap.
