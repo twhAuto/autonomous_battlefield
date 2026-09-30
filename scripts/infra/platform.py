@@ -54,8 +54,29 @@ def check_inputs(args):
             raise ValueError('Credential files must not be executable')
     if not bootstrap.private_file(args.vault).read_bytes().startswith(b'$ANSIBLE_VAULT;'):
         raise ValueError('Expected encrypted Vault inputs')
-    bootstrap.inspect_host(inventory, local=True)
+    inspected = bootstrap.inspect_host(inventory, local=True)
+    bootstrap.require_compatible_sudo(inspected.get('sudo_executable'))
     return inventory
+
+
+def read_action_report(path):
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict) or type(data.get('schema')) is not int or data['schema'] != 1:
+        return {}
+    if not isinstance(data.get('failed'), bool) or not isinstance(data.get('change_digest'), str):
+        return {}
+    if not re.fullmatch('[0-9a-f]{64}', data['change_digest']):
+        return {}
+    tasks = data.get('tasks')
+    if not isinstance(tasks, list) or not tasks:
+        return {}
+    if any(not isinstance(task, dict) or not isinstance(task.get('task'), str)
+           or task.get('status') not in ('ok', 'failed', 'unreachable', 'ignored', 'skipped') for task in tasks):
+        return {}
+    return data
 
 
 def run_action(args, action, directory, fd):
@@ -66,17 +87,13 @@ def run_action(args, action, directory, fd):
                '--become-password-file', str(args.become_password_file), '--report-file', str(report)]
     # The reviewed callback is the only evidence channel. Never echo captured module output.
     code = lock.run(command, fd, quiet=True)
-    if code or not report.is_file():
-        if report.is_file():
-            data = json.loads(report.read_text())
-            failed = [task for task in data.get('tasks', []) if task.get('status') in ('failed', 'unreachable')]
-            if failed:
-                names = ', '.join(f"{task['task']} ({task['status']})" for task in failed)
-                raise ValueError(f'{action} failed at: {names}; run the bootstrap interactively for diagnostics')
+    data = read_action_report(report)
+    if code or not data or data.get('failed'):
+        failed = [task for task in data.get('tasks', []) if task['status'] in ('failed', 'unreachable')]
+        if failed:
+            names = ', '.join(f"{task['task']} ({task['status']})" for task in failed)
+            raise ValueError(f'{action} failed at: {names}; run the bootstrap interactively for diagnostics')
         raise ValueError(f'{action} failed; run the bootstrap interactively for diagnostics (no captured output published)')
-    data = json.loads(report.read_text())
-    if data.get('schema') != 1 or data.get('failed') or not data.get('tasks'):
-        raise ValueError(f'{action} did not produce successful runtime evidence')
     return data
 
 

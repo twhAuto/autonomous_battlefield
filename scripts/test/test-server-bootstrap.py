@@ -499,7 +499,7 @@ os.execv(args[command], args[command:])
         marker = self.directory / 'handshake-success'
         self.playbook.write_text(json.dumps([{
             'hosts':'all', 'connection':'local', 'gather_facts':False, 'become':True,
-            'vars':{'ansible_become_exe':str(fake_sudo), 'ansible_local_become_success_timeout':1},
+            'vars':{'ansible_become_exe':str(fake_sudo), 'ansible_local_become_success_timeout':5},
             'tasks':[{'name':'Synthetic password handshake', 'ansible.builtin.copy':{
                 'content':'handshake completed', 'dest':str(marker)}}]}]))
         for rust_prompt in (True, False):

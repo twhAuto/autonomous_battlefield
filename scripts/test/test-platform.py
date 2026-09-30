@@ -253,7 +253,7 @@ runpy.run_path(sys.argv.pop(1),run_name='__main__')
             directory = Path(tmp)
             args = argparse.Namespace(inventory=directory/'inventory', vault=directory/'vault',
                 vault_password_file=directory/'vault-password', become_password_file=directory/'sudo-password')
-            (directory/'plan.json').write_text(json.dumps({'schema':1, 'failed':True, 'tasks':[
+            (directory/'plan.json').write_text(json.dumps({'schema':1, 'failed':True, 'change_digest':'a'*64, 'tasks':[
                 {'task':'Gathering Facts', 'status':'unreachable', 'changed':False,
                  'msg':'private-module-output-must-not-escape'}]}))
             with patch.object(platform.lock, 'run', return_value=4), self.assertRaises(ValueError) as failed:
@@ -263,6 +263,39 @@ runpy.run_path(sys.argv.pop(1),run_name='__main__')
             (directory/'plan.json').unlink()
             with patch.object(platform.lock, 'run', return_value=1), self.assertRaisesRegex(ValueError, 'no captured output'):
                 platform.run_action(args, 'plan', directory, 0)
+
+    def test_missing_compatible_sudo_is_visible_before_platform_child_execution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            args = argparse.Namespace(inventory=directory/'inventory', vault=directory/'vault',
+                vault_password_file=directory/'password', become_password_file=directory/'password')
+            args.vault.write_bytes(b'$ANSIBLE_VAULT;synthetic')
+            args.vault.chmod(0o600)
+            args.vault_password_file.write_text('synthetic-password')
+            args.vault_password_file.chmod(0o600)
+            with patch.object(platform.bootstrap, 'load_inventory', return_value={}), \
+                 patch.object(platform.bootstrap, 'inspect_host', return_value={'sudo_executable':''}), \
+                 patch.object(platform.lock, 'run') as child, self.assertRaisesRegex(ValueError, 'install the Ubuntu sudo package'):
+                platform.check_inputs(args)
+            child.assert_not_called()
+
+    def test_invalid_failed_reports_keep_generic_private_diagnostics(self):
+        base = {'schema':1, 'failed':False, 'change_digest':'a'*64,
+                'tasks':[{'task':'Example', 'status':'ok', 'changed':False}]}
+        malformed = ['{', '[]', 'null'] + [json.dumps(dict(base, **change)) for change in (
+            {'schema':True}, {'failed':None}, {'change_digest':None}, {'change_digest':'invalid'},
+            {'tasks':'invalid'}, {'tasks':[]}, {'tasks':[None]}, {'tasks':[{'status':'failed'}]},
+            {'tasks':[{'task':'x','status':['failed']}]} )]
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            args = argparse.Namespace(inventory=directory/'inventory', vault=directory/'vault',
+                vault_password_file=directory/'password', become_password_file=directory/'password')
+            for value in malformed:
+                for code in (0, 1):
+                    (directory/'plan.json').write_text(value)
+                    with self.subTest(value=value, code=code), patch.object(platform.lock, 'run', return_value=code), \
+                            self.assertRaisesRegex(ValueError, 'no captured output published'):
+                        platform.run_action(args, 'plan', directory, 0)
 
     def test_sudo_file_is_not_executed_and_password_is_not_in_argv(self):
         b=platform.bootstrap
@@ -342,7 +375,7 @@ runpy.run_path(sys.argv.pop(1),run_name='__main__')
             args = argparse.Namespace(inventory=inventory, host=data['host'], user=data['user'],
                 identity_file=Path(data['identity_file']), data_uuid='a'*8+'-aaaa-aaaa-aaaa-'+'a'*12,
                 data_mount='/srv/battlefield-data')
-            with patch.object(setup.bootstrap, 'inspect_host'):
+            with patch.object(setup.bootstrap, 'inspect_host', return_value={'sudo_executable':'/usr/bin/sudo.ws'}):
                 setup.prepare_inventory(args)
                 first = inventory.read_bytes()
                 setup.prepare_inventory(args)
@@ -353,6 +386,46 @@ runpy.run_path(sys.argv.pop(1),run_name='__main__')
                 with self.assertRaisesRegex(ValueError, 'differs'):
                     setup.prepare_inventory(args)
                 self.assertEqual(inventory.read_bytes(), first)
+
+    def test_setup_missing_compatible_sudo_stops_before_credentials(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inventory = Path(tmp)/'inventory.json'
+            platform.write_new(inventory, {'schema':1, 'host':'192.0.2.10', 'user':'operator',
+                'identity_file':'/tmp/key', 'machine_id':'a'*32})
+            argv = ['setup-platform.py', '--host', '192.0.2.10', '--user', 'operator',
+                    '--identity-file', '/tmp/key', '--inventory', str(inventory)]
+            with patch.object(sys, 'argv', argv), patch.object(sys.stdin, 'isatty', return_value=True), \
+                 patch.object(setup.bootstrap, 'inspect_host', return_value={'sudo_executable':''}), \
+                 patch.object(setup, 'password') as prompt, patch.object(setup, 'tunnel') as tunnel, \
+                 self.assertRaisesRegex(ValueError, 'Compatible sudo is unavailable'):
+                setup.main()
+            prompt.assert_not_called()
+            tunnel.assert_not_called()
+
+    def test_setup_authenticates_with_selected_sudo_before_seeding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inventory = Path(tmp)/'inventory.json'
+            platform.bootstrap.write_new(Path(tmp)/'inputs.vault', b'existing encrypted bytes')
+            argv = ['setup-platform.py', '--host', '192.0.2.10', '--user', 'operator',
+                    '--identity-file', '/tmp/key', '--inventory', str(inventory)]
+            commands = []
+            def run(command, **kwargs):
+                commands.append(command)
+                if command[0] == 'ssh':
+                    self.assertEqual(command, ['ssh', 'target', "/usr/bin/sudo.ws -S -p '' -k true"])
+                    self.assertEqual(kwargs['input'], b'synthetic-sudo-password\n')
+                return subprocess.CompletedProcess(command, 0)
+            with patch.object(sys, 'argv', argv), patch.object(sys.stdin, 'isatty', return_value=True), \
+                 patch.object(setup, 'prepare_inventory', return_value=({}, '/usr/bin/sudo.ws')), \
+                 patch.object(setup, 'tunnel', return_value=nullcontext('http://127.0.0.1:8080')), \
+                 patch.object(setup.seed, 'check_plugins'), patch.object(setup.seed, 'seed') as send, \
+                 patch.object(setup, 'password', side_effect=['synthetic-token','synthetic-vault-password','synthetic-sudo-password']), \
+                 patch.object(setup.bootstrap, 'tools_bin', return_value=Path('/tools')), \
+                 patch.object(setup.bootstrap, 'ssh', return_value=['ssh','target']), \
+                 patch.object(setup.subprocess, 'run', side_effect=run), redirect_stdout(io.StringIO()):
+                setup.main()
+                send.assert_called_once()
+            self.assertEqual(len(commands), 2)
 
     def test_setup_wrong_existing_passphrase_never_seeds_or_overwrites_bundle_and_cleans_temp(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -368,7 +441,7 @@ runpy.run_path(sys.argv.pop(1),run_name='__main__')
             argv = ['setup-platform.py', '--host', '192.0.2.10', '--user', 'operator',
                     '--identity-file', '/tmp/key', '--inventory', str(inventory)]
             with patch.object(sys, 'argv', argv), patch.object(sys.stdin, 'isatty', return_value=True), \
-                 patch.object(setup, 'prepare_inventory', return_value={}), \
+                 patch.object(setup, 'prepare_inventory', return_value=({}, '/usr/bin/sudo.ws')), \
                  patch.object(setup, 'tunnel', return_value=nullcontext('http://127.0.0.1:8080')), \
                  patch.object(setup.seed, 'check_plugins'), patch.object(setup.seed, 'seed') as send, \
                  patch.object(setup, 'password', side_effect=['synthetic-token','wrong-vault-passphrase']), \

@@ -308,9 +308,14 @@ def public_ca_paths(data):
     return result
 
 
-def ansible_inventory(data, local, sudo_executable):
+def require_compatible_sudo(sudo_executable):
     if sudo_executable not in ('/usr/bin/sudo', '/usr/bin/sudo.ws'):
         raise ValueError('Compatible sudo is unavailable; install the Ubuntu sudo package before running Ansible')
+    return sudo_executable
+
+
+def ansible_inventory(data, local, sudo_executable):
+    require_compatible_sudo(sudo_executable)
     variables = {'ansible_host': data['host'], 'ansible_user': data['user'],
                  'ansible_connection': 'local' if local else 'ssh',
                  'ansible_python_interpreter': '/usr/bin/python3',

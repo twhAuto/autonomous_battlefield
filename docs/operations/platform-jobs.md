@@ -124,8 +124,12 @@ package-resolution results. Final failure follows Ansible's recap, so ignored or
 rescued failures remain visible without incorrectly failing a successful run.
 If Ansible fails, the console identifies failed/unreachable task names from this
 same sanitized callback, without module errors, raw output or secret values.
-If execution stops before the callback writes a report, the console retains a
+If the callback report is missing or malformed, the console retains a
 generic failure and directs the operator to private interactive diagnostics.
+The compatible-sudo precondition is checked before starting that child process,
+so a missing compatibility binary has explicit installation guidance. Setup
+checks the same prerequisite before requesting or writing Jenkins credentials,
+and validates the operator password with the executable Ansible will use.
 Reports publish an application-specific HMAC fingerprint in place of the raw
 machine ID, following [systemd's guidance](https://www.freedesktop.org/software/systemd/man/latest/machine-id.html).
 They do not publish raw diffs, decrypted inputs, module output, or credentials. This is a
