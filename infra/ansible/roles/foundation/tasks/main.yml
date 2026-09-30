@@ -21,6 +21,9 @@
   changed_when: false
   check_mode: false
   when: "'docker.service' in ansible_facts.services"
+- name: Inspect installed packages to preserve an existing QEMU provider
+  ansible.builtin.package_facts:
+    manager: apt
 - name: Install host foundation packages from the configured Ubuntu repositories
   ansible.builtin.apt:
     name:
@@ -31,7 +34,8 @@
       - python3-venv
       - rsync
       - jq
-      - qemu-kvm
+      - "{{ 'qemu-system-x86-hwe' if 'qemu-system-x86-hwe' in ansible_facts.packages else 'qemu-system-x86' }}"
+      - qemu-utils
       - libvirt-daemon-system
       - libvirt-clients
       - cloud-image-utils

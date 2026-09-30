@@ -14,7 +14,7 @@ CLI access disabled until the existing isolation verification is complete.
 ## Prerequisites and human inputs
 
 - Linux control environment with Python 3.12–3.14 and OpenSSH; target Ubuntu 24.04
-  or 26.04 with Python 3 and an existing SSH/sudo operator account.
+  or 26.04 on x86-64, with Python 3 and an existing SSH/sudo operator account.
 - A dedicated SSH key already authorized for that account. Verify the host key
   through a trusted channel and establish its `known_hosts` entry. The wrapper
   enforces strict host-key checking; it does not accept unknown keys automatically.
@@ -93,7 +93,11 @@ credential bindings and scoped operational privileges belong to subsequent setup
 
 The foundation:
 
-- Installs host prerequisites for libvirt/KVM and CI. It installs Ubuntu Docker
+- Installs host prerequisites for libvirt/KVM and CI, selecting the concrete
+  `qemu-system-x86` and `qemu-utils` packages. Ubuntu 26.04 has multiple providers
+  for the virtual `qemu-kvm` package, so it cannot be used for unattended selection.
+  An already installed `qemu-system-x86-hwe` provider is preserved.
+  It installs Ubuntu Docker
   and Buildx only if no Docker service exists; an existing Docker installation
   must already provide Buildx. It does not switch package vendors underneath a
   running daemon.
@@ -221,7 +225,9 @@ It compares credential/ciphertext hashes, permissions, unrelated configuration
 and service invocation IDs. Lowering the live mmap limit and changing an input's
 mode must be repaired without restarting healthy services. After a real guest
 reboot, verification and another zero-change apply must pass. This is a host
-foundation drill; it does not exercise application or database recovery.
+foundation drill; it does not exercise application or database recovery. The
+26.04 fixture also installs the alternative QEMU HWE provider in its disposable
+guest and requires another zero-change apply to preserve that provider.
 
 `result.json` records the exact source hashes, pinned image, guest UUID, outcome
 and cleanup status. `guest-evidence.tar.gz` contains test logs and state

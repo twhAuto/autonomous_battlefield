@@ -11,7 +11,6 @@ import re
 import secrets
 import signal
 import subprocess
-import sys
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -147,7 +146,22 @@ def after_reboot():
     same_state(before, after, reboot=True)
     bootstrap('apply', 'reboot-apply', changed=0)
     same_state(after, snapshot())
+    release = dict(line.split('=', 1) for line in Path('/etc/os-release').read_text().splitlines() if '=' in line)
+    provider = 'qemu-system-x86'
+    if release['VERSION_ID'].strip('"') == '26.04':
+        # Deliberately switch this disposable guest to the alternative installed provider,
+        # then prove a foundation apply adopts it instead of replacing it with the default.
+        run('sudo', '-n', 'apt-get', 'install', '-y', 'qemu-system-x86-hwe', timeout=600)
+        run('sudo', '-n', 'systemctl', 'start', 'docker', 'libvirtd')
+        adopted = snapshot()
+        bootstrap('apply', 'existing-qemu-provider', changed=0)
+        same_state(adopted, snapshot())
+        provider = 'qemu-system-x86-hwe'
+    if run('dpkg-query', '-W', '-f=${Status}', provider) != 'install ok installed':
+        raise ValueError('Bootstrap replaced the selected QEMU provider')
+    run('qemu-system-x86_64', '--version')
     (EVIDENCE / 'result.json').write_text(json.dumps({
+        'qemu_provider_preserved': provider,
         'passed': True, 'os': Path('/etc/os-release').read_text(),
         'before_reboot': before, 'after_reboot': after,
         'checks': ['interrupted_initial_apply', 'resume', 'verify', 'repeat_zero_changes',
