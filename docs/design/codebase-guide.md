@@ -107,6 +107,9 @@ The backend has five commands in one Go module: four runtime processes and the o
 Host bootstrap enters through [`scripts/infra/server.sh`](../../scripts/infra/server.sh).
 Its Python wrapper validates private inventory, SSH/machine identity, secret imports
 and the host lock; `control-tools.py` installs the hash-locked Ansible environment.
+`inspect-host.py` discovers the target's traditional sudo executable, which
+`server.py` binds into both SSH and local Ansible inventories. Synthetic prompt
+regressions exercise the pinned Ansible password handshake without root access.
 `infra/ansible/site.yml` separates foundation setup, private input reconciliation
 and verification. The optional `data_storage` role owns the existing ext4 mount,
 scoped directories and future K3s libvirt guard; its standalone `files/storage.py`

@@ -308,10 +308,18 @@ def public_ca_paths(data):
     return result
 
 
-def ansible_inventory(data, local):
+def require_compatible_sudo(sudo_executable):
+    if sudo_executable not in ('/usr/bin/sudo', '/usr/bin/sudo.ws'):
+        raise ValueError('Compatible sudo is unavailable; install the Ubuntu sudo package before running Ansible')
+    return sudo_executable
+
+
+def ansible_inventory(data, local, sudo_executable):
+    require_compatible_sudo(sudo_executable)
     variables = {'ansible_host': data['host'], 'ansible_user': data['user'],
                  'ansible_connection': 'local' if local else 'ssh',
                  'ansible_python_interpreter': '/usr/bin/python3',
+                 'ansible_become_exe': sudo_executable,
                  'bootstrap_machine_id': data['machine_id'], 'bootstrap_operator': data['user'],
                  'bootstrap_backup_uuid': data.get('backup_uuid', ''),
                  'bootstrap_data_uuid': data.get('data_uuid', ''),
@@ -330,7 +338,7 @@ def playbook(args, data, report):
         raise ValueError('plan/apply require an encrypted --vault; run seal first')
     with tempfile.TemporaryDirectory(prefix='battlefield-ansible-') as directory:
         inventory = Path(directory) / 'inventory.json'
-        inventory.write_text(json.dumps(ansible_inventory(data, args.local)))
+        inventory.write_text(json.dumps(ansible_inventory(data, args.local, report.get('sudo_executable'))))
         command = [str(binary), '-i', str(inventory), str(ANSIBLE / 'site.yml'),
                    '-e', json.dumps({'bootstrap_action': args.command})]
         if args.vault:

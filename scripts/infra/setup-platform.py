@@ -85,8 +85,8 @@ def prepare_inventory(args):
                 os.replace(pending, args.inventory)
             finally:
                 pending.unlink(missing_ok=True)
-    bootstrap.inspect_host(inventory)
-    return inventory
+    inspected = bootstrap.inspect_host(inventory)
+    return inventory, bootstrap.require_compatible_sudo(inspected.get('sudo_executable'))
 
 
 def main():
@@ -104,7 +104,7 @@ def main():
     if not sys.stdin.isatty():
         raise ValueError('Run this one-time setup in a terminal for non-echoing secret prompts')
     os.umask(0o077)
-    inventory=prepare_inventory(args)
+    inventory,sudo_executable=prepare_inventory(args)
     token=bootstrap.private_file(args.token_file).read_text().strip() if args.token_file else password('Jenkins API token')
     with tunnel(inventory) as url:
         client=seed.Jenkins(url,args.jenkins_user,token)
@@ -120,7 +120,7 @@ def main():
                     '--vault-password-file',str(vault_password)],check=True)
             subprocess.run([str(bootstrap.tools_bin()/'ansible-vault'),'view',str(vault),'--vault-password-file',str(vault_password)], env=bootstrap.clean_ansible_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
             sudo=password('Server sudo password')
-            check=subprocess.run(bootstrap.ssh(inventory)+["sudo -S -p '' -k true"],input=(sudo+'\n').encode(),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            check=subprocess.run(bootstrap.ssh(inventory)+[f"{sudo_executable} -S -p '' -k true"],input=(sudo+'\n').encode(),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             if check.returncode:
                 raise ValueError('Server sudo authentication failed; no Jenkins credentials were written')
             sudo_file=private/'sudo-password';bootstrap.write_new(sudo_file,sudo.encode())

@@ -56,7 +56,14 @@ traversals remain invalid.
 
 Inspection reports OS, CPU/memory/disk metadata, network addresses, libvirt
 resources, selected service states, and whether passwordless sudo is already
-available. It never mounts a disk or prints credential contents. Keep reports
+available through the selected compatible sudo executable. Ansible uses
+`/usr/bin/sudo` when it is traditional sudo, otherwise `/usr/bin/sudo.ws` if
+installed. Ubuntu 26.04's sudo-rs prompt is incompatible with the pinned Ansible
+sudo plugin; this target-side selection works for workstation SSH and Jenkins
+local execution without changing the system default or granting passwordless
+sudo. If neither compatible executable is available, install Ubuntu's `sudo`
+package before bootstrapping. See the [upstream prompt compatibility issue](https://github.com/ansible/ansible/issues/85837).
+Inspection never mounts a disk or prints credential contents. Keep reports
 private because they contain internal addressing and filesystem identifiers.
 
 Registration discovers the operator's existing production `.env`, tunnel JSON,

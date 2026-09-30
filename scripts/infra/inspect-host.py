@@ -20,10 +20,22 @@ def command(argv):
         return {"available": True, "error": "timeout"}
 
 
+def sudo_executable():
+    # The pinned Ansible sudo plugin needs the traditional password prompt.
+    # Ubuntu 26.04 can route /usr/bin/sudo to sudo-rs; keep that system choice
+    # and select the already-installed compatibility binary for Ansible only.
+    for executable in ('/usr/bin/sudo', '/usr/bin/sudo.ws'):
+        version = command([executable, '--version'])
+        if version.get('rc') == 0 and version.get('output', '').startswith('Sudo version '):
+            return executable
+    return ''
+
+
 def inspect():
     release = platform.freedesktop_os_release()
     memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
     account = pwd.getpwuid(os.getuid())
+    sudo = sudo_executable()
     production = Path(account.pw_dir) / '.config/autonomous-battlefield/production'
     inputs = {name: str(production / filename) for name, filename in {
         'application_env': '.env', 'tunnel_credentials': 'tunnel-credentials.json',
@@ -47,7 +59,8 @@ def inspect():
         "services": command(['systemctl', 'show', 'docker', 'libvirtd', 'jenkins',
                              'battlefield-mcp-bridge', 'battlefield-agent-firewall',
                              '--property=Id,LoadState,ActiveState,UnitFileState']),
-        "sudo_noninteractive": command(['sudo', '-n', 'true']).get('rc') == 0,
+        "sudo_executable": sudo,
+        "sudo_noninteractive": bool(sudo) and command([sudo, '-n', 'true']).get('rc') == 0,
     }
 
 
