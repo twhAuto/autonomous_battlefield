@@ -100,7 +100,8 @@ new guest machine ID and trusted admin key; a worker binary from a verified
 backend release; both matching Codex executables; their independently verified
 SHA256 digests; the guest config and worker service source paths. Binary transfer,
 account creation, permissions, units and activation are handled by Ansible.
-Use the [pinned release procedure](agent-vm.md#4-install-the-worker-and-the-complete-pinned-codex-release)
+Keep the copied guest configuration and unit sources owned by the controller user
+with mode 0600. Use the [pinned release procedure](agent-vm.md#4-install-the-worker-and-the-complete-pinned-codex-release)
 to obtain artifacts. Optional native `claude` and `agy` executable artifacts can be registered too;
 verify checks each installed CLI against the configured version family. Use
 standalone releases compatible with the target Ubuntu image. Bootstrap does not

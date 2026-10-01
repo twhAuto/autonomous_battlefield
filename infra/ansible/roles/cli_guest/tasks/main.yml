@@ -22,8 +22,7 @@
   when: cli_action == 'apply'
 - name: Check declared native CLI executables match their configured version families
   ansible.builtin.command:
-    argv: ["/usr/local/bin/{{ {'codex-cli': 'codex', 'claude-cli': 'claude', 'antigravity-cli': 'agy'}[item.provider] }}", --version]
-  become_user: battlefield-worker
+    argv: [/usr/sbin/runuser, -u, battlefield-worker, --, "/usr/local/bin/{{ {'codex-cli': 'codex', 'claude-cli': 'claude', 'antigravity-cli': 'agy'}[item.provider] }}", --version]
   environment:
     HOME: /var/lib/battlefield-worker
   changed_when: false
