@@ -1,0 +1,11 @@
+---
+- name: Check managed services are active
+  ansible.builtin.command:
+    argv: [systemctl, is-active, "{{ item }}"]
+  changed_when: false
+  loop: "{{ cli_units }}"
+- name: Check managed services are enabled for reboot
+  ansible.builtin.command:
+    argv: [systemctl, is-enabled, "{{ item }}"]
+  changed_when: false
+  loop: "{{ cli_units }}"

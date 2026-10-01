@@ -1,0 +1,63 @@
+---
+- name: Read the host service inventory
+  ansible.builtin.service_facts:
+- name: Require kubectl from the registered production host toolchain
+  ansible.builtin.stat:
+    path: /usr/bin/kubectl
+  register: cli_kubectl
+- name: Validate the existing Kubernetes client
+  ansible.builtin.assert:
+    that: cli_kubectl.stat.executable | default(false)
+- name: Register CLI ownership before package installation can create default files
+  ansible.builtin.include_tasks: ../../cli_guest/tasks/ownership.yml
+  when: cli_action in ['apply', 'plan']
+- name: Install dedicated proxy prerequisites without starting default listeners
+  ansible.builtin.apt:
+    name: [caddy, squid, nftables]
+    state: present
+    policy_rc_d: 101
+    fail_on_autoremove: true
+    update_cache: "{{ not ansible_check_mode }}"
+    cache_valid_time: 3600
+  when: cli_action in ['apply', 'plan']
+- name: Reconcile the registered host files
+  ansible.builtin.include_tasks: ../../cli_guest/tasks/files.yml
+  when: cli_action in ['apply', 'plan']
+- name: Validate installed firewall syntax
+  ansible.builtin.command:
+    argv: [/usr/sbin/nft, --check, --file, /etc/battlefield-agent/firewall.nft]
+  changed_when: false
+  when: cli_action == 'apply'
+- name: Validate the installed dedicated Squid configuration
+  ansible.builtin.command:
+    argv: [/usr/sbin/squid, -k, parse, -f, /etc/squid/squid.conf]
+  changed_when: false
+  when: cli_action == 'apply'
+- name: Validate the installed private Caddy configuration
+  ansible.builtin.command:
+    argv: [/usr/bin/caddy, validate, --config, /etc/battlefield-agent/mcp-proxy.Caddyfile, --adapter, caddyfile]
+  changed_when: false
+  when: cli_action == 'apply'
+- name: Activate changed host configuration in dependency order
+  ansible.builtin.meta: flush_handlers
+- name: Enable CLI host services without restarting healthy services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    masked: false
+    state: started
+  loop: "{{ cli_units }}"
+  when: cli_action == 'apply' or (cli_action == 'plan' and (item + '.service') in ansible_facts.services)
+- name: Verify host service persistence
+  ansible.builtin.include_tasks: ../../cli_guest/tasks/verify.yml
+  when: cli_action in ['apply', 'verify']
+- name: Verify the private MCP bridge rejects unauthenticated requests
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ cli_contract.bridge_port }}/mcp"
+    status_code: 401
+    use_proxy: false
+  register: cli_bridge_health
+  retries: 10
+  delay: 3
+  until: cli_bridge_health is succeeded
+  when: cli_action in ['apply', 'verify']

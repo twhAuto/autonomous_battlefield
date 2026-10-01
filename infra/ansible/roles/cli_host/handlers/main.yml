@@ -1,0 +1,10 @@
+---
+- name: Reload CLI service definitions
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+- name: Activate CLI services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: "{{ 'reloaded' if item == 'battlefield-agent-firewall' else 'restarted' }}"
+    masked: false
+  loop: "{{ cli_guard.activate }}"

@@ -1,0 +1,160 @@
+# CLI worker bootstrap and adoption
+
+The optional CLI commands in `scripts/infra/server.sh` install or adopt the host
+bridge, dedicated Caddy/Squid configuration, firewall and worker files using
+Ansible. Normal `server.sh apply` and application deployments do not invoke them.
+They work without Jenkins; AB-139's separate worker update job can reuse this
+entry point later. Jenkins/SonarQube reconstruction remains AB-127.
+
+The CLI VM must already exist with the [documented isolated network and NIC
+filter](agent-vm.md). This command does not create, replace or resize a VM. Host
+foundation and production Kubernetes registration must already work, including
+`/usr/bin/kubectl`. The controller needs trusted SSH entries for the physical host
+and, for guest operations, the VM; host-side execution uses the existing VM admin
+key. Keep Player CLI access disabled until AB-117 verification. Installation or a
+healthy worker is not evidence that the Player isolation gates passed.
+
+## Adopt the existing installation
+
+Use the same checkout and controller throughout registration, planning and
+applying: captured file paths belong to that controller. For the existing server,
+run from its checkout as the registered operator with `--local`. From WSL, omit
+`--local`; guest SSH uses the physical host as its jump connection, without agent
+forwarding. The guest admin private key must then exist on WSL.
+
+```bash
+./scripts/infra/server.sh cli-register --local
+```
+
+Registration reads the existing public host files, VM/network UUIDs and production
+cluster UID. It writes `cli.json` and `cli.files/` alongside the private host
+inventory, without changing services. It preserves the matched `20-loopback.conf`
+override and provider allowlist. It refuses an existing registration, incomplete
+bundle, changed boundary or unknown bundle files. Other systemd overrides are
+rejected during target preflight, before any package or configuration mutation.
+Use `--cli-config /private/path/cli.json` for a different registration location.
+
+Host-only plan/apply/verify do not need a Vault. To include the existing guest,
+unlock its admin key in an SSH agent on the controller if it is passphrase
+protected. Keep the key and passphrase private. Then capture the guest once:
+
+```bash
+private_dir="${XDG_CONFIG_HOME:-$HOME/.config}/autonomous-battlefield/server"
+./scripts/infra/server.sh cli-capture-guest --local \
+  --cli-guest-key "$HOME/.ssh/battlefield-vm-admin" \
+  --vault "$private_dir/cli-inputs.vault"
+```
+
+This copies the existing worker and installed CLI executables, records their
+SHA256 fingerprints, and captures the worker configuration and unit in a private
+`cli.guest/` directory. It encrypts only the dedicated worker environment through
+Ansible Vault stdin; there is no plaintext secret staging file. Existing bundles
+are never overwritten. Provider login directories remain on the guest and are
+neither read nor modified. Retain the Vault password separately. Captured hashes
+identify the adopted installation; they do not add release-signature provenance
+or prove that an old worker is compatible with a newer backend.
+
+Review the public registration and captured configuration, then run:
+
+```bash
+./scripts/infra/server.sh cli-plan --local --vault "$private_dir/cli-inputs.vault"
+./scripts/infra/server.sh cli-apply --local --vault "$private_dir/cli-inputs.vault"
+./scripts/infra/server.sh cli-verify --local --vault "$private_dir/cli-inputs.vault"
+```
+
+Omit `--vault` for host-only registration. The normal private
+`--vault-password-file`, `--become-password-file` and fresh `--report-file` options
+are supported. Root privileges on the physical host use the existing sudo
+prompt; vm-admin uses its existing sudo policy. Ubuntu 26.04 selects `sudo.ws`
+when the default is sudo-rs. No sudo policy is expanded by these commands.
+
+Adoption requires matching existing files and validates both active and persistent
+libvirt XML, the NIC filter, machine identities and cluster UID. Initial guest
+adoption requires a complete matching installation, so an adopted enabled profile
+cannot silently become a fresh installation. Root-owned markers under
+`/etc/battlefield-cli-bootstrap/` bind identities and desired file hashes. A repeat
+apply preserves healthy service invocation IDs, credentials and provider logins.
+Files with unknown ownership, foreign overrides or conflicting worker credentials
+fail before changes. The guard also verifies the live dedicated nftables table;
+owned firewall drift can be repaired without flushing unrelated host rules.
+
+An apply takes the same operator host lock as the foundation. Run it in a
+maintenance window with CLI battles idle and no application rollout in progress:
+the external lock excludes individual deployment commands, not an entire Jenkins
+pipeline. Changed service content is activated through handlers; healthy unchanged
+services are only checked/enabled. A deliberately changed release or desired
+configuration is rejected by the immutable ownership contract. Use a reviewed
+update/rollback procedure (AB-139), not deletion of ownership markers, to upgrade.
+
+## Install services on a fresh, already provisioned CLI VM
+
+For an existing isolated VM with no host bundle, register a new rendered bundle:
+
+```bash
+./scripts/infra/server.sh cli-register --local --cli-install
+```
+
+Set the optional `guest` object using
+[`cli.example.json`](../../infra/ansible/cli.example.json). Required inputs are the
+new guest machine ID and trusted admin key; a worker binary from a verified
+backend release; both matching Codex executables; their independently verified
+SHA256 digests; the guest config and worker service source paths. Binary transfer,
+account creation, permissions, units and activation are handled by Ansible.
+Use the [pinned release procedure](agent-vm.md#4-install-the-worker-and-the-complete-pinned-codex-release)
+to obtain artifacts. Optional native `claude` and `agy` executable artifacts can be registered too;
+verify checks each installed CLI against the configured version family. Use
+standalone releases compatible with the target Ubuntu image. Bootstrap does not
+install arbitrary provider package trees. Provider account login remains
+interactive; follow the [Claude](claude-cli.md) and [Antigravity](antigravity-cli.md)
+guides inside the isolated worker account, keeping profiles disabled until
+isolation and provider checks pass.
+
+Start from `deploy/agent-vm/config.yaml` with **every profile disabled**, use
+`deploy/agent-vm/worker.service`, and set `adopt_existing: false`. Use the existing
+`seal` command with a private manifest whose `cli_worker_environment` entry points
+to a mode-0600 file containing only these three assignments:
+
+```text
+BATTLEFIELD_AGENT_SECRET=<existing dedicated worker control secret>
+BATTLEFIELD_ENV=production
+BATTLEFIELD_CLI_ISOLATION_VERIFIED=false
+```
+
+Never supply the application environment, capability-signing secret or kubeconfig
+as guest inputs. The playbook rejects extra environment keys, public MCP/health
+addresses and enabled fresh-install profiles. Both targets finish preflight before
+either is changed. Only Ubuntu 24.04/26.04 x86-64 is supported. The worker account's
+existing home must match `/var/lib/battlefield-worker`; files beneath it are not
+recursively reconciled. Provider device/browser login remains an interactive step
+inside the VM, followed by AB-117's isolation and accepted-plan checks before
+advertising availability.
+
+## Validation and failure recovery
+
+`cli-plan` uses check/diff mode and does not mutate targets. It validates current
+ownership and reports file counts; it cannot prove package installation or service
+startup on a fresh target. Secrets and configuration diffs are suppressed. Verify
+checks desired files, active/enabled services, unauthenticated MCP rejection and,
+when selected, the worker's loopback health endpoint. None of these invokes a model.
+
+An interrupted installation can resume against its registered marker. Missing
+managed files and ordinary owned drift are repaired; a differing worker secret
+requires recovering the matching bundle, never automatic rotation. Existing VM
+disks, provider homes, Kubernetes credentials and unrelated services are preserved.
+Do not delete a marker to force an update or run the create-only VM script again.
+
+For a disposable lifecycle test on a libvirt host with the pinned Ubuntu cloud
+image already cached by the [foundation rehearsal](server-bootstrap.md):
+
+```bash
+python3 scripts/test/run-cli-bootstrap-rehearsal.py \
+  --ubuntu 26.04 --evidence-dir /private/new-cli-evidence
+```
+
+The test checks real Ansible package/service installation, nested libvirt identity
+and filter inspection, repeat/check/verify runs, firewall drift, conflict refusal,
+interrupted-install resumption, credential/login preservation and reboot. A
+synthetic Kubernetes bridge and worker health process avoid production credentials
+and provider calls. This is lifecycle evidence, not a replacement for AB-117's
+production isolation or inference tests. The runner cleans up only its UUID-bound
+VM and storage pool and records source hashes with the evidence.

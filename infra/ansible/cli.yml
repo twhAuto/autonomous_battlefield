@@ -1,0 +1,100 @@
+---
+- name: Preflight every CLI target before changing either host or guest
+  hosts: cli_host:cli_guest
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Detect guest sudo compatibility without privilege escalation
+      ansible.builtin.command:
+        argv: [/usr/bin/sudo, --version]
+      become: false
+      check_mode: false
+      changed_when: false
+      register: cli_sudo_version
+      when: cli_kind == 'guest'
+    - name: Select the compatible guest sudo implementation
+      ansible.builtin.set_fact:
+        ansible_become_exe: "{{ '/usr/bin/sudo.ws' if cli_sudo_version.stdout.startswith('sudo-rs') else '/usr/bin/sudo' }}"
+      when: cli_kind == 'guest'
+    - name: Gather target facts after selecting compatible sudo
+      ansible.builtin.setup:
+    - name: Read existing service state for check-mode planning
+      ansible.builtin.service_facts:
+    - name: Require a supported Ubuntu target and an explicit CLI action
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['distribution_version'] in ['24.04', '26.04']
+          - ansible_facts['architecture'] == 'x86_64'
+          - cli_action in ['plan', 'apply', 'verify']
+    - name: Load encrypted guest inputs privately
+      ansible.builtin.include_vars:
+        file: "{{ cli_vault_file }}"
+        name: cli_vault
+      no_log: true
+      when: cli_kind == 'guest'
+    - name: Read the declared guest configuration privately
+      ansible.builtin.set_fact:
+        cli_guest_configuration: "{{ lookup('ansible.builtin.file', cli_config_source) | from_yaml }}"
+      no_log: true
+      when: cli_kind == 'guest'
+    - name: Validate the worker-only secret and private transport
+      ansible.builtin.assert:
+        that:
+          - >-
+            (cli_vault.bootstrap_inputs.cli_worker_environment | b64decode) |
+            cli_guest_inputs_valid(cli_guest_configuration,
+            cli_adopt_existing, cli_artifact_names)
+      no_log: true
+      when: cli_kind == 'guest'
+    - name: Bind the encrypted environment to the adoption contract
+      ansible.builtin.set_fact:
+        cli_environment: "{{ cli_vault.bootstrap_inputs.cli_worker_environment | b64decode }}"
+        cli_files: >-
+          {{ cli_files + [{'dest': '/etc/battlefield-agent/worker.env', 'mode': '0400',
+          'sha256': cli_vault.bootstrap_inputs.cli_worker_environment | b64decode | hash('sha256')}] }}
+      no_log: true
+      when: cli_kind == 'guest'
+    - name: Validate CLI ownership with secret-safe failure diagnostics
+      block:
+        - name: Validate identities, isolation, ownership and every managed destination
+          battlefield_cli_guard:
+            kind: "{{ cli_kind }}"
+            contract: "{{ cli_contract }}"
+            files: "{{ cli_files }}"
+            filter_xml: "{{ cli_filter_xml | default('') }}"
+            adopt_existing: "{{ cli_adopt_existing | default(false) }}"
+            firewall: "{{ cli_firewall | default('') }}"
+            verify: "{{ cli_action == 'verify' }}"
+          register: cli_guard
+          no_log: "{{ cli_kind == 'guest' }}"
+      rescue:
+        - name: Report the safe CLI preflight failure
+          ansible.builtin.fail:
+            msg: "{{ ansible_failed_result.msg | default('CLI identity or ownership preflight failed') }}"
+    - name: Require the existing guest account to retain its original home
+      ansible.builtin.getent:
+        database: passwd
+        key: battlefield-worker
+        fail_key: false
+      when: cli_kind == 'guest'
+    - name: Reject an unexpected worker account home
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.getent_passwd['battlefield-worker'] == none or ansible_facts.getent_passwd['battlefield-worker'][4] == '/var/lib/battlefield-worker'
+      when: cli_kind == 'guest'
+
+- name: Install or adopt CLI host services
+  hosts: cli_host
+  become: true
+  gather_facts: false
+  roles:
+    - cli_host
+
+- name: Install or adopt the optional CLI guest
+  hosts: cli_guest
+  become: true
+  gather_facts: false
+  roles:
+    - cli_guest

@@ -391,7 +391,8 @@ def run_playbook(command, lock, environment=None):
 
 def parser():
     result = argparse.ArgumentParser(description=__doc__)
-    result.add_argument('command', choices=['init', 'inspect', 'seal', 'plan', 'apply', 'verify', 'tools'])
+    result.add_argument('command', choices=['init', 'inspect', 'seal', 'plan', 'apply', 'verify', 'tools',
+                                                   'cli-register', 'cli-capture-guest', 'cli-plan', 'cli-apply', 'cli-verify'])
     default = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'autonomous-battlefield/server/inventory.json'
     result.add_argument('--inventory', type=safe_path, default=default)
     result.add_argument('--host')
@@ -403,6 +404,12 @@ def parser():
     result.add_argument('--report-file', help='Fresh JSON path for secret-safe task outcomes instead of module output')
     result.add_argument('--become-password-file', help='Private non-executable sudo password file; otherwise prompt')
     result.add_argument('--vault-password-file', help='Private password file for unattended runs; otherwise prompt')
+    result.add_argument('--cli-guest-key', help='Existing trusted guest admin key on this controller; unlock with ssh-agent if needed')
+    result.add_argument('--cli-config', type=safe_path, help='Private CLI registration; defaults to cli.json alongside inventory')
+    result.add_argument('--cli-kubeconfig', help='Host kubeconfig path for CLI registration only')
+    result.add_argument('--cli-context', default='battlefield-production')
+    result.add_argument('--cli-bridge-port', type=int, default=28084)
+    result.add_argument('--cli-install', action='store_true', help='Register a fresh host bundle instead of adopting existing files')
     return result
 
 
@@ -433,7 +440,17 @@ def main():
         return
     data = load_inventory(args.inventory)
     report = inspect_host(data, args.local)
-    if args.command == 'inspect':
+    if args.command.startswith('cli-'):
+        specification = importlib.util.spec_from_file_location('cli_bootstrap', ROOT / 'scripts/infra/cli-bootstrap.py')
+        cli = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(cli)
+        if args.command == 'cli-register':
+            cli.register(args, data, sys.modules[__name__])
+        elif args.command == 'cli-capture-guest':
+            cli.capture_guest(args, data, sys.modules[__name__])
+        else:
+            cli.playbook(args, data, report, sys.modules[__name__])
+    elif args.command == 'inspect':
         print(json.dumps(report, indent=2))
     elif args.command == 'seal':
         if not args.vault:

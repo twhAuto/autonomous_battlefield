@@ -1,0 +1,35 @@
+---
+- name: Record resumable CLI ownership
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/roles/cli_guest/tasks/ownership.yml"
+- name: Ensure managed configuration parent directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop: "{{ cli_files | map(attribute='dest') | map('dirname') | unique | list }}"
+- name: Install the registered files without exposing configuration in logs
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+    checksum: "{{ item.checksum }}"
+  loop: "{{ cli_files | selectattr('src', 'defined') | list }}"
+  no_log: true
+  diff: false
+  notify: Reload CLI service definitions
+  when: not ansible_check_mode
+- name: Report planned file changes without contents or fingerprints
+  ansible.builtin.debug:
+    msg: "{{ cli_guard.changes | length }} managed files need reconciliation; target identity and existing ownership passed."
+  changed_when: cli_guard.changes | length > 0 or not cli_guard.owned
+  when: ansible_check_mode
+- name: Queue only services whose configuration contents changed
+  ansible.builtin.debug:
+    msg: CLI configuration content changed; activate the registered services.
+  changed_when: true
+  notify: Activate CLI services
+  when: cli_action == 'apply' and cli_guard.content_changes | length > 0

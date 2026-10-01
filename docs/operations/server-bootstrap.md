@@ -10,8 +10,9 @@ operations from the existing Jenkins controller, install the separate
 This is the first implementation slice of the complete-server automation. The
 production application now runs in the separately managed K3s VM. This host
 playbook does not yet
-provision K3s, configure Jenkins/SonarQube, reconcile Cloudflare, install the CLI
-VM bundle, or schedule backups. Their existing configuration is preserved. Keep
+provision K3s, configure Jenkins/SonarQube, reconcile Cloudflare or schedule backups. The separate opt-in
+[CLI bootstrap commands](cli-bootstrap.md) install/adopt the CLI host bundle and
+optional guest; ordinary host apply does not invoke them. Their existing configuration is preserved. Keep
 CLI access disabled until the existing isolation verification is complete.
 
 ## Prerequisites and human inputs

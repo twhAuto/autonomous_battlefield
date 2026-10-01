@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "host": {
+    "machine_id": "00000000000000000000000000000000",
+    "operator": "operator",
+    "home": "/home/operator",
+    "domain_uuid": "00000000-0000-0000-0000-000000000001",
+    "network_uuid": "00000000-0000-0000-0000-000000000002",
+    "kubeconfig": "/home/operator/.config/autonomous-battlefield/production/kubeconfig",
+    "context": "battlefield-production",
+    "kube_system_uid": "00000000-0000-0000-0000-000000000003",
+    "bridge_port": 28084
+  },
+  "bundle": "/home/operator/.config/autonomous-battlefield/server/cli.files",
+  "guest": {
+    "machine_id": "11111111111111111111111111111111",
+    "identity_file": "/home/operator/.ssh/battlefield-vm-admin",
+    "config": "/home/operator/.config/autonomous-battlefield/server/cli.guest/config.yaml",
+    "service": "/home/operator/.config/autonomous-battlefield/server/cli.guest/worker.service",
+    "adopt_existing": false,
+    "artifacts": {
+      "battlefield-agent": {"path": "/home/operator/.config/autonomous-battlefield/server/cli.guest/battlefield-agent", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"},
+      "codex": {"path": "/home/operator/.config/autonomous-battlefield/server/cli.guest/codex", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"},
+      "codex-code-mode-host": {"path": "/home/operator/.config/autonomous-battlefield/server/cli.guest/codex-code-mode-host", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}
+    }
+  }
+}
