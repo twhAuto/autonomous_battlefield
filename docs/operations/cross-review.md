@@ -53,7 +53,7 @@ For Claude-authored work, use `--author claude` to select Codex. Optional `--rep
 selects another checkout. Replace 75 with the actual PR number. Automated handoffs
 must use `--pr`; local-only runs are for explicit manual use, never to evade limits. The output directory must be new and outside that
 repository. Use `--dry-run` to prepare evidence without calling a provider;
-metadata explicitly marks it as not reviewed. The default timeout is 600 seconds;
+metadata explicitly marks it as not reviewed. The default timeout is 1800 seconds (30 minutes);
 `--timeout` can change it. A timeout stops the reviewer process group and is a
 failure, not a clean review.
 

@@ -375,7 +375,8 @@ def main():
     parser.add_argument("--head", default="HEAD")
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path, help="New private report directory outside the repository")
-    parser.add_argument("--timeout", type=int, default=600)
+    parser.add_argument("--timeout", type=int, default=1800,
+                        help="Reviewer timeout in seconds (default: %(default)s)")
     parser.add_argument("--dry-run", action="store_true", help="Prepare evidence without calling a model")
     parser.add_argument("--pr", type=int, help="Publish the completed report to this PR using gh")
     parser.add_argument("--publish-only", action="store_true", help="Publish an existing completed report without rerunning the model")
