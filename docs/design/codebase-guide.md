@@ -188,8 +188,12 @@ See [K3s delivery](../operations/k3s-delivery.md) for registration and migration
 
 The disposable K3s application rehearsal is `scripts/infra/rehearse-k3s-delivery.py`.
 It reuses the platform roles and owned-VM fixture, runs signed-image delivery with
-synthetic application inputs, and records private readiness, retained-claim and
-cleanup evidence. See [its runbook](../operations/k3s-delivery.md#disposable-delivery-rehearsal)
+synthetic application inputs, and optionally deploys two distinct signed releases
+before restoring the previous exact image pair. Checkpoints verify healthy image
+convergence, private readiness, migration state and retained claims. The offline
+`test-k3s-delivery-rehearsal.py` suite rejects false recovery evidence, including
+unchanged images after rollback, missing claims and changed migrations; overall
+acceptance also requires owned-VM cleanup. See [its runbook](../operations/k3s-delivery.md#disposable-delivery-rehearsal)
 for the remaining public and CLI bridge acceptance checks.
 
 ## Common change paths
