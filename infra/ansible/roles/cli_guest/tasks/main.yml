@@ -1,0 +1,66 @@
+---
+- name: Create the isolated worker account without resetting existing login state
+  ansible.builtin.user:
+    name: battlefield-worker
+    home: /var/lib/battlefield-worker
+    shell: /bin/bash
+    create_home: true
+    password_lock: true
+  when: cli_action in ['plan', 'apply']
+- name: Reconcile the registered guest files
+  ansible.builtin.include_tasks: files.yml
+  when: cli_action in ['plan', 'apply']
+- name: Install only the dedicated worker environment from encrypted inputs
+  ansible.builtin.copy:
+    content: "{{ cli_environment }}"
+    dest: /etc/battlefield-agent/worker.env
+    owner: root
+    group: root
+    mode: '0400'
+  no_log: true
+  diff: false
+  when: cli_action == 'apply'
+- name: Check declared native CLI executables match their configured version families
+  ansible.builtin.command:
+    argv: [/usr/bin/timeout, --kill-after=5s, 20s, /usr/sbin/runuser, -u, battlefield-worker, --, "/usr/local/bin/{{ {'codex-cli': 'codex', 'claude-cli': 'claude', 'antigravity-cli': 'agy'}[item.provider] }}", --version]
+  environment:
+    HOME: /var/lib/battlefield-worker
+  changed_when: false
+  register: cli_version
+  failed_when: false
+  loop: "{{ cli_guest_configuration.ai.profiles }}"
+  no_log: true
+  when: >-
+    cli_action in ['apply', 'verify'] and
+    {'codex-cli': 'codex', 'claude-cli': 'claude', 'antigravity-cli': 'agy'}[item.provider] in cli_artifact_names
+- name: Extract safe CLI version failure labels
+  ansible.builtin.set_fact:
+    cli_version_failures: "{{ cli_version.results | cli_version_failures }}"
+  no_log: true
+  when: cli_action in ['apply', 'verify']
+- name: Require the declared native CLI version families
+  ansible.builtin.assert:
+    that: cli_version_failures | length == 0
+    fail_msg: "CLI version check failed; inspect the registered executable for these profiles and expected prefixes: {{ cli_version_failures }}"
+  when: cli_action in ['apply', 'verify']
+- name: Activate changed guest configuration
+  ansible.builtin.meta: flush_handlers
+- name: Enable the worker without restarting a healthy adopted service
+  ansible.builtin.systemd_service:
+    name: battlefield-worker
+    enabled: true
+    state: started
+  when: cli_action == 'apply' or (cli_action == 'plan' and 'battlefield-worker.service' in ansible_facts.services)
+- name: Verify worker service persistence
+  ansible.builtin.include_tasks: verify.yml
+  when: cli_action in ['apply', 'verify']
+- name: Verify the loopback worker health endpoint
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8083/healthz
+    status_code: 204
+    use_proxy: false
+  register: cli_health
+  retries: 10
+  delay: 3
+  until: cli_health is succeeded
+  when: cli_action in ['apply', 'verify']

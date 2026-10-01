@@ -40,6 +40,11 @@ reads the decision context through MCP, calls the provider through Squid, and
 submits a plan through MCP. Acceptance and execution are separate: the engine
 executes accepted orders. A plain model reply is not a submitted battle plan.
 
+For repeatable service installation or adoption of an existing VM, use the
+[Ansible CLI bootstrap](cli-bootstrap.md). It captures the current bundle and can
+install the worker files without manual copying. The steps below document VM
+creation, the underlying boundary and provider login/verification.
+
 ## 1. Prepare the physical host and image
 
 On the Ubuntu host:

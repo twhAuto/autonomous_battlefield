@@ -1406,6 +1406,26 @@ contexts. Each context excludes local environment files, including nested files,
 while preserving `.env.example`. This keeps local settings and credentials out
 of builder layers; the root ignore file is not the boundary for component builds.
 
+## CLI service bootstrap boundary
+
+The optional `server.sh cli-*` commands register and reconcile the existing CLI
+VM host bundle and guest through `infra/ansible/cli.yml`. Host and guest preflight
+finishes before either target changes. Machine/domain/network/cluster identities,
+active and persistent NIC isolation, managed paths and immutable file hashes are
+bound by root-owned markers. Existing bridge overrides and explicit provider
+domains are captured for adoption. Secrets travel only through Vault; the guest
+receives its dedicated worker environment, never host kubeconfig or signing keys.
+New profiles stay disabled; provider login homes and existing shared-directory
+permissions are preserved. Captured adoption inputs retain the installed isolation
+helper. New vendor Caddy and unconfigured Squid units are masked before package
+installation; only the reviewed dedicated services are activated after validation.
+Both targets pass preflight, and a host setup failure blocks guest installation.
+Unchanged applies
+do not restart healthy services. Normal host and application jobs do not call
+this opt-in operation, and worker release upgrades remain a separate reviewed
+workflow. VM creation and Player isolation verification remain separate gates.
+See [CLI bootstrap and adoption](../operations/cli-bootstrap.md).
+
 ## Ubuntu host bootstrap boundary
 
 The [server bootstrap](../operations/server-bootstrap.md) adds an explicit

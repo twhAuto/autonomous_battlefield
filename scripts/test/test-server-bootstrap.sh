@@ -18,3 +18,8 @@ ANSIBLE_CONFIG="${project_dir}/infra/ansible/ansible.cfg" "${BATTLEFIELD_TEST_AN
   -i "${project_dir}/infra/ansible/syntax-inventory.ini" \
   "${project_dir}/infra/ansible/k3s.yml" --syntax-check
 python3 "${project_dir}/scripts/test/test-k3s.py"
+
+ANSIBLE_CONFIG="${project_dir}/infra/ansible/ansible.cfg" "${BATTLEFIELD_TEST_ANSIBLE_BIN}/ansible-playbook" \
+  -i "${project_dir}/infra/ansible/syntax-inventory.ini" \
+  "${project_dir}/infra/ansible/cli.yml" --syntax-check
+python3 "${project_dir}/scripts/test/test-cli-bootstrap.py"
