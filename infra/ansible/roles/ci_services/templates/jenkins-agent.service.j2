@@ -1,0 +1,14 @@
+# battlefield-ci-managed-v1
+[Unit]
+Description=Autonomous Battlefield shared CI agent
+After=network-online.target
+Wants=network-online.target
+[Service]
+WorkingDirectory={{ ci_config.home }}/jenkins-agent
+Environment="PATH=/opt/battlefield-ci/tools/go/bin:/opt/battlefield-ci/tools/node-v{{ ci_lock.node.version }}-linux-x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/usr/bin/sg docker -c "/usr/bin/java -jar {{ ci_config.home }}/jenkins-agent/agent.jar -url http://127.0.0.1:8080/ -secret @{{ ci_config.home }}/.config/jenkins-agent/secret -name battlefield-local -webSocket -workDir {{ ci_config.home }}/jenkins-agent"
+Restart=always
+RestartSec=10
+UMask=0077
+[Install]
+WantedBy=default.target

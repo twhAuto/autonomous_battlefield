@@ -1558,3 +1558,31 @@ its resources. The ordinary deployment gate runs the real package-profile guard
 against synthetic facts and offline harness checks, never this VM drill. A
 successful matching-release drill on the intended source revision is required
 before first production foundation apply.
+
+
+### External CI reconstruction and maintenance
+
+The optional `server.sh ci-*` path manages native Jenkins, its existing operator
+agent and the SonarQube/PostgreSQL Compose stack separately from application
+rollouts. Configuration and input manifests stay outside Git; Ansible Vault carries
+initial/imported credentials. Core, plugin dependencies, Go, Node and SonarScanner
+use checksum pins, while Sonar/PostgreSQL images use digests. Ubuntu supplies Java
+21, browser libraries and fresh-host Docker packages.
+
+JCasC owns only the controller executor count and root URL. Scoped bootstrap code
+preserves existing realms/users, credentials, node identity, unrelated jobs and
+multibranch folder properties; it creates missing repository/assurance jobs
+with Job DSL in a disabled state and reuses the platform seeder. Fresh setup
+requires authentication before serving the UI and enrolls the shared agent without
+copying a secret from the web interface. Sonar initialization uses its API and the
+built-in Sonar way gate. Existing credentials and persistent volume names survive
+adoption; mismatched component versions/layouts fail before reconciliation.
+
+An external operator holds the host operation lock and drains active and paused
+Jenkins builds before controller maintenance. A private local controller archive
+and Sonar database dump precede configuration changes. Quiet mode persists across
+the restart until acceptance succeeds. Unchanged repeats verify without restarting;
+a failed reconciliation remains paused for recovery. This does not activate
+scheduled backups, move application/CI data, change Kind/K3s/Cloudflare or create
+a self-replacing controller job. Production adoption remains an explicit operation
+after implementation review; see [CI bootstrap](../operations/ci-bootstrap.md).
