@@ -182,7 +182,8 @@ a first cluster. It never recreates a registered cluster and rejects `--recreate
 
 The dedicated kubeconfig uses context `battlefield-dev`. Production uses
 `battlefield-production` on the server; neither deployment depends on your
-current kubectl context. Both keep the physical Kind name `battlefield`.
+current kubectl context. The dev Kind cluster keeps the name `battlefield`;
+production uses the separate K3s VM.
 
 ## Deploy the application locally
 

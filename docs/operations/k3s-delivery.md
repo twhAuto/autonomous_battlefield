@@ -250,14 +250,15 @@ point at different clusters.
    Restore the original production application configuration from the retained
    profile and
    deploy it through `scripts/cd/deploy.sh` with the verified digest pair. This
-   recreates the HPA and application replicas. Repeat the preparation command
-   against the adopted production profile before activating its tunnel. Do not copy the old cluster's
+   recreates the HPA and application replicas. Run
+   `./scripts/ops/prepare-limited-production.sh` with the default production
+   profile before activating its tunnel. Do not copy the old cluster's
    recovery record into the new profile.
 5. Retarget the existing [CLI VM bridge](agent-vm.md) to the production kubeconfig.
    Inspect the effective systemd unit and drop-ins. If the path/context are
    unchanged, restarting the bridge makes it read the adopted kubeconfig; no
    unit rewrite is necessary. Keep the existing matched 28084 bridge/Caddy pair
-   during this cutover; do not run the fresh-install 18085 bundle installation.
+   during this cutover; do not reinstall the host bundle merely to retarget it.
    Verify the private MCP path from the CLI VM and
    preserve the existing isolation and provider authorization gates. Do not
    claim a new paid-provider inference test from a health response alone.

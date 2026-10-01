@@ -8,7 +8,8 @@ operations from the existing Jenkins controller, install the separate
 [reviewed host job](platform-jobs.md).
 
 This is the first implementation slice of the complete-server automation. The
-current production application still runs in Kind. This playbook does not yet
+production application now runs in the separately managed K3s VM. This host
+playbook does not yet
 provision K3s, configure Jenkins/SonarQube, reconcile Cloudflare, install the CLI
 VM bundle, or schedule backups. Their existing configuration is preserved. Keep
 CLI access disabled until the existing isolation verification is complete.

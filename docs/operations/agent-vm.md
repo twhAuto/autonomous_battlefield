@@ -24,14 +24,16 @@ Physical Ubuntu PC
     battlefield-worker: worker, Codex login, Codex + code-mode helper
 ```
 
-The renderer below defaults to loopback port 18085. The existing server uses
-28084 through `20-loopback.conf` and a matching Caddy upstream, both inspected
-on 2026-10-01. Preserve that pair during cutover. The renderer emits only the
-canonical 18085 configuration for fresh installs; it does not generate a 28084
-override. Port normalization is a separate operation, not a migration prerequisite. The bridge reads the registered production
-kubeconfig; restarting it after K3s profile adoption retargets the connection
-without reinstalling the CLI worker or copying cluster credentials into its VM.
-See [cutover and recovery](k3s-delivery.md#adoption-and-cutover-boundary).
+The renderer uses loopback port 28084 by default, matching the existing server's
+`20-loopback.conf` and Caddy upstream inspected on 2026-10-01. `--bridge-port`
+selects another free unprivileged port and changes both rendered files together.
+Keep the bridge separate from Jenkins smoke ports 18081–18085; in particular,
+18085 is used by the production frontend liveness check. A custom choice of
+18085 requires changing `SMOKE_TEST_FRONTEND_PORT` in the Jenkins job first.
+The bridge reads the registered production kubeconfig; restarting it after K3s
+profile adoption retargets the connection without reinstalling the CLI worker
+or copying cluster credentials into its VM. See
+[cutover and recovery](k3s-delivery.md#adoption-and-cutover-boundary).
 
 The worker claims a request through the bridge. Codex receives a scoped capability,
 reads the decision context through MCP, calls the provider through Squid, and
@@ -148,25 +150,22 @@ registered production deployment before proceeding:
 kubectl --kubeconfig="$HOME/.config/autonomous-battlefield/production/kubeconfig" \
   --context=battlefield-production get namespace kube-system \
   -o jsonpath='{.metadata.uid}{"\n"}'
-sudo ss -lntp '( sport = :3128 or sport = :18084 or sport = :18085 )'
+sudo ss -lntp '( sport = :3128 or sport = :18084 or sport = :28084 )'
 ```
 
-Port 18085 must be free or already belong to this bridge. Port 18084 can also be
-used on **127.0.0.1 only** by Jenkins smoke checks; the VM proxy binds only to
-192.168.234.1. Back up existing dedicated configuration and units before replacing
-them. Inspect `systemctl cat` for all three Battlefield units and Squid: historical
-drop-ins override main units. The existing `20-loopback.conf` selects 28084 and
-must stay with its matching Caddy upstream during the K3s cutover. The installation
-block below refuses that override before changing any files.
+Port 28084 (or your `--bridge-port` value) must be free or already belong to this
+bridge. Port 18084 can also be used on **127.0.0.1 only** by Jenkins smoke checks;
+the VM proxy binds only to 192.168.234.1. Do not move the bridge to a smoke port.
 
-If intentionally standardizing an existing installation on the fresh-install
-18085 bundle later, schedule an idle worker window, back up both installed units
-and Caddy configuration, stop the bridge and proxy, and move the reviewed
-`20-loopback.conf` outside the `.service.d` directory into that backup. Then
-install the complete matched bundle below and confirm the effective bridge and
-Caddy upstream both use 18085 before accepting work. Restore the backed-up pair
-if installation or verification fails. Preserve unrelated overrides. Do not
-remove the drop-in alone while Caddy still points at 28084.
+For the current server's K3s cutover, preserve the matched bridge/drop-in and
+Caddy configuration and restart the bridge only. The installation block below
+is for a fresh installation and refuses an existing bridge drop-in directory,
+regardless of the filenames it contains, before changing files. For an intentional
+upgrade of an existing bundle, back up the effective units and Caddyfile and
+review all overrides with `systemctl cat`; reconcile them with the rendered
+loopback port in an idle worker window. Never remove an override alone or change
+only one end of the bridge/proxy pair. Preserve unrelated overrides and restore
+the matched backup if verification fails.
 
 On the host, install the reviewed bundle (these are intentional live configuration
 replacements). The Squid package must already be installed:
@@ -175,8 +174,8 @@ replacements). The Squid package must already be installed:
 (
 set -eu
 bundle="$HOME/battlefield-agent-host-bundle"
-if sudo test -e /etc/systemd/system/battlefield-mcp-bridge.service.d/20-loopback.conf; then
-  echo 'Existing bridge override: follow the normalization procedure before reinstalling.' >&2
+if sudo test -d /etc/systemd/system/battlefield-mcp-bridge.service.d; then
+  echo 'Existing bridge overrides: review the effective unit before installing.' >&2
   exit 1
 fi
 sudo install -d -m 0755 /etc/battlefield-agent /etc/systemd/system/squid.service.d
@@ -369,7 +368,7 @@ cancellation and two-Codex-player behavior were **not verified by that run**.
 | `qemu-kvm` has no candidate | Install the explicit `qemu-system-x86` package. |
 | Creation script not found | Run from the repository root, not the image-download directory. |
 | Worker connection refused during boot | Inspect bridge/proxy logs and listeners; both services retry, as does the worker. |
-| `invalid Host header "192.168.234.1:18084"` | Verify Caddy owns that listener, kubectl owns 127.0.0.1:18085, and the Host rewrite is installed. |
+| `invalid Host header "192.168.234.1:18084"` | Verify Caddy owns that listener, kubectl owns 127.0.0.1:28084 (or the configured bridge port), and the Host rewrite is installed. |
 | Plain reply works, code-mode host missing | Install the matching helper beside Codex; a no-tools reply does not test MCP. |
 | `plan_not_submitted` | It means no accepted plan, not a specific root cause. Check MCP tool rejection logs and private CLI diagnostics. |
 | Profile On but unavailable | Check deployed availability/isolation flags, worker connectivity and role policy; editing `.env` alone does not deploy it. |
@@ -380,7 +379,7 @@ Host diagnostics:
 
 ```bash
 sudo journalctl -u battlefield-mcp-bridge -u battlefield-mcp-proxy --since '10 minutes ago' --no-pager
-sudo ss -lntp '( sport = :3128 or sport = :18084 or sport = :18085 )'
+sudo ss -lntp '( sport = :3128 or sport = :18084 or sport = :28084 )'
 ```
 
 VM diagnostics:
