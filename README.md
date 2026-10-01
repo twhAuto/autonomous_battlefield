@@ -58,6 +58,7 @@ with focused [backend](docs/design/backend-guide.md),
 | Inspect, bootstrap and rehearse Ubuntu; optionally manage its data partition | [Server bootstrap](docs/operations/server-bootstrap.md) |
 | Install and run the reviewed Jenkins host and VM jobs | [Platform jobs](docs/operations/platform-jobs.md) |
 | Provision the persistent Terraform VM and recover its state | [K3s VM](docs/operations/k3s-vm.md) |
+| Configure and verify the private K3s platform | [K3s platform](docs/operations/k3s-platform.md) |
 | Configure CI/CD and SonarQube | [Jenkins](docs/operations/jenkins.md) |
 | Inspect metrics, traces, logs, and reliability objectives | [Observability](docs/operations/observability.md) |
 | Launch for invited testers behind Access and provision the isolated CLI VM | [Limited-access launch](docs/operations/limited-launch.md) |

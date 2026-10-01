@@ -1,0 +1,225 @@
+---
+- name: Describe installation or restoration when Kubernetes diff is not available
+  ansible.builtin.debug:
+    msg: "Install or restore pinned K3s {{ k3s_pins.k3s.version }}, Envoy {{ k3s_pins.envoy.version }}, Kyverno {{ k3s_pins.kyverno.version }}, private registry access and retained workload storage."
+  changed_when: true
+  when: ansible_check_mode and not k3s_runtime_status.running
+
+- name: Manage the mounted K3s runtime
+  when: not ansible_check_mode or k3s_runtime_status.running
+  block:
+    - name: Install guest firewall and filesystem prerequisites
+      ansible.builtin.apt:
+        name: [nftables, e2fsprogs, ca-certificates, curl]
+        state: present
+        update_cache: "{{ not ansible_check_mode }}"
+        cache_valid_time: 86400
+      when: k3s_action != 'verify'
+
+    - name: Create private configuration and retained state directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+      loop:
+        - /etc/battlefield-k3s
+        - /etc/rancher/k3s
+        - /usr/local/lib/battlefield-k3s
+        - /srv/battlefield/k3s
+        - /srv/battlefield/storage
+        - /srv/battlefield/kubelet
+        - /srv/battlefield/platform
+        - /srv/battlefield/node
+      when: k3s_action != 'verify'
+
+    - name: Keep the K3s node registration password on retained storage
+      ansible.builtin.file:
+        src: /srv/battlefield/node
+        dest: /etc/rancher/node
+        state: link
+        owner: root
+        group: root
+        follow: false
+      notify: Restart managed K3s
+      when: k3s_action != 'verify'
+
+    - name: Install the retained storage startup guard
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/roles/k3s_storage/files/storage.py"
+        dest: /usr/local/lib/battlefield-k3s/storage.py
+        mode: '0700'
+      notify: Restart managed K3s
+      when: k3s_action != 'verify'
+
+    - name: Install the managed guest inspection helper
+      ansible.builtin.copy:
+        src: guest.py
+        dest: /usr/local/lib/battlefield-k3s/guest.py
+        mode: '0700'
+      when: k3s_action != 'verify'
+
+    - name: Install the owned firewall inspection helper
+      ansible.builtin.copy:
+        src: firewall.py
+        dest: /usr/local/lib/battlefield-k3s/firewall.py
+        mode: '0700'
+      notify: Reload guest firewall
+      when: k3s_action != 'verify'
+
+    - name: Bind runtime configuration to the verified guest and retained storage
+      ansible.builtin.copy:
+        content: "{{ k3s_contract | to_nice_json }}\n"
+        dest: /etc/battlefield-k3s/contract.json
+        mode: '0600'
+      notify: Restart managed K3s
+      when: k3s_action != 'verify'
+
+    - name: Record first-install intent on the verified retained disk
+      ansible.builtin.script:
+        cmd: "guest.py begin {{ k3s_contract | to_json | b64encode }}"
+      changed_when: false
+      when: k3s_action == 'apply'
+
+    - name: Install checksum-verified K3s binary
+      ansible.builtin.copy:
+        src: "{{ k3s_assets.k3s }}"
+        dest: /usr/local/bin/k3s
+        mode: '0755'
+      notify: Restart managed K3s
+      when: k3s_action != 'verify'
+
+    - name: Install declared K3s configuration with retained SQLite state
+      ansible.builtin.copy:
+        content: "{{ k3s_server_config | to_nice_yaml }}"
+        dest: /etc/rancher/k3s/config.yaml
+        mode: '0600'
+      notify: Restart managed K3s
+      when: k3s_action != 'verify'
+
+    - name: Configure the guest's dedicated firewall table
+      ansible.builtin.template:
+        src: firewall.nft.j2
+        dest: /etc/battlefield-k3s/firewall.nft
+        mode: '0600'
+        validate: /usr/sbin/nft --check --file %s
+      notify: Reload guest firewall
+      when: k3s_action != 'verify'
+
+    - name: Install the firewall service
+      ansible.builtin.template:
+        src: firewall.service.j2
+        dest: /etc/systemd/system/battlefield-k3s-firewall.service
+        mode: '0644'
+      notify: Reload guest firewall
+      when: k3s_action != 'verify'
+
+    - name: Detect runtime drift in the owned firewall table
+      ansible.builtin.script: firewall.py check
+      check_mode: false
+      register: k3s_firewall_probe
+      changed_when: k3s_firewall_probe.rc == 0 and (k3s_firewall_probe.stdout | from_json).changed
+      notify: Reload guest firewall
+      when: k3s_action != 'verify'
+
+    - name: Set the memory-map limit for declared observability dependencies
+      ansible.builtin.copy:
+        content: "vm.max_map_count=262144\nnet.ipv4.ip_forward=1\n"
+        dest: /etc/sysctl.d/90-battlefield-k3s.conf
+        mode: '0644'
+      register: k3s_sysctl
+      when: k3s_action != 'verify'
+
+    - name: Apply the managed kernel settings
+      ansible.builtin.command: sysctl -p /etc/sysctl.d/90-battlefield-k3s.conf
+      changed_when: true
+      when: k3s_action == 'apply' and k3s_sysctl.changed
+
+    - name: Install the mount-bound K3s service
+      ansible.builtin.template:
+        src: k3s.service.j2
+        dest: /etc/systemd/system/k3s.service
+        mode: '0644'
+      notify: Restart managed K3s
+      when: k3s_action != 'verify'
+
+    - name: Enable the guest firewall before K3s starts
+      ansible.builtin.systemd_service:
+        name: battlefield-k3s-firewall
+        state: started
+        enabled: true
+        daemon_reload: true
+      when: k3s_action != 'verify'
+
+    - name: Activate pending runtime changes
+      ansible.builtin.meta: flush_handlers
+
+    - name: Enable the mount-bound K3s server
+      ansible.builtin.systemd_service:
+        name: k3s
+        state: started
+        enabled: true
+      when: k3s_action != 'verify'
+
+    - name: Wait for K3s systemd readiness after boot
+      ansible.builtin.command: systemctl is-active k3s
+      register: k3s_service_ready
+      retries: 60
+      delay: 5
+      until: k3s_service_ready.rc == 0
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Wait for the private guest Kubernetes node
+      ansible.builtin.script: guest.py ready node
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Create namespaces required by the pinned controllers
+      battlefield_k3s_manifest:
+        content: "{{ {'apiVersion': 'v1', 'kind': 'List', 'items': lookup('ansible.builtin.file', k3s_assets[item], rstrip=false) | from_yaml_all | select('mapping') | selectattr('kind', 'equalto', 'Namespace') | list} | to_json }}"
+      loop: [envoy, kyverno]
+      when: k3s_action != 'verify'
+
+    - name: Install pinned platform controllers through their real Kubernetes diff
+      battlefield_k3s_manifest:
+        content: "{{ lookup('ansible.builtin.file', k3s_assets[item], rstrip=false) | battlefield_k3s_controller | to_json }}"
+      loop: [envoy, kyverno]
+      when: k3s_action != 'verify'
+
+    - name: Wait for the installed controller webhooks before configuring platform resources
+      ansible.builtin.script: "guest.py ready {{ item }}"
+      loop: [envoy-gateway-system, kyverno]
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Create platform-owned namespaces
+      battlefield_k3s_manifest:
+        content: "{{ k3s_namespaces | to_json }}"
+      when: k3s_action != 'verify'
+
+    - name: Preserve private registry credentials through an opaque Kubernetes diff
+      battlefield_k3s_manifest:
+        content: "{{ k3s_registry_manifests | to_json }}"
+        sensitive: true
+      no_log: true
+      when: k3s_action != 'verify'
+
+    - name: Install the retained storage class and isolated validation gateway
+      battlefield_k3s_manifest:
+        content: "{{ k3s_platform_manifests | to_json }}"
+      when: k3s_action != 'verify'
+
+    - name: Wait for platform controller availability
+      ansible.builtin.script: "guest.py ready {{ item }}"
+      loop: [kube-system, envoy-gateway-system, kyverno]
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Register and verify the persistent cluster identity
+      ansible.builtin.script:
+        cmd: "guest.py {{ 'register' if k3s_action == 'apply' else 'verify' }} {{ k3s_contract | to_json | b64encode }}"
+      changed_when: false
+      register: k3s_verification
+      when: not ansible_check_mode

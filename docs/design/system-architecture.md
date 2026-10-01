@@ -1422,7 +1422,7 @@ selected data filesystem is missing, wrong or read-only; other guests retain the
 existing lifecycle. The guard also provides a preflight for Terraform
 volume operations. This does not move current Docker/PostgreSQL data: production
 remains Kind on the Ubuntu filesystem. The Terraform VM module consumes this contract; the guest's
-retained-volume/K3s mount remains AB-128. See the
+retained-volume mount is managed by the [K3s platform role](../operations/k3s-platform.md). See the
 [storage contract](../operations/server-bootstrap.md#terraform-and-guest-storage-contract).
 
 The dedicated [Jenkins host job](../operations/platform-jobs.md) reads trusted
@@ -1461,11 +1461,42 @@ and key snapshots accompany applies; an explicit command can copy them to the
 selected second disk. These snapshots do not back up database or VM data.
 Whole-server-loss recovery and automatic backup retention remain outside scope.
 
+The [K3s platform workflow](../operations/k3s-platform.md) consumes that verified
+Terraform inventory. Its manually triggered `battlefield-platform/k3s` job runs
+Ansible with the shared locks and a revision/input-bound owner approval. First
+installation formats only the exact, all-zero retained guest disk; subsequent
+operations require its filesystem UUID and ownership marker. The guest mounts it
+at `/srv/battlefield`; SQLite/container state, kubelet state, local-path volumes
+and the node registration password remain there. Systemd mount dependencies and
+startup guards reject missing or mismatched storage and prevent silently replacing registered cluster state.
+
+K3s runs a pinned compatible Kubernetes release with Flannel, enforcing network
+policies, CoreDNS and metrics-server. Traefik and ServiceLB are disabled from the
+first start. Pinned Envoy Gateway/Gateway API and Kyverno provide platform
+controllers, with bounded readiness retries for API reconnects after boot; application manifests and admission policies remain CD-owned. A
+dedicated guest nftables table restricts private API/kubelet/kube-proxy health/NodePort access,
+including checks before NodePort translation. Verification compares live rules
+with their recorded applied state; a reviewed reload repairs drift without
+restarting K3s. The host and CLI VM networks are
+preserved. A validation namespace tests private registry pulls, retained PVC
+identity, DNS, allowed/denied traffic and private gateway routing. Pull credentials
+live in the application and validation namespaces; application delivery owns the
+separate Kyverno admission credential contract. Trusted kubelet
+metrics use the real serving CA and IP SAN; optional observability prerequisites
+are prepared and Langfuse remains explicitly disabled.
+
+Successful verification exports separate private K3s kubeconfig and kubelet CA
+files without changing the registered Kind production profile. There is no public
+tunnel activation or database migration in this job. AB-129 must adapt storage,
+controller ownership, application delivery and the existing host-side CLI MCP
+bridge to this target before cutover. Local-path storage requests are not quotas;
+there is no automatic expansion or new scheduled database backup.
+
 The owner has deferred scheduled backups and retention for current personal use;
 existing pre-migration dumps remain. The initial backup design uses the server's separate second disk only, with a
 100 GB planning budget. The wrapper can validate a selected filesystem UUID
 against the root physical disk, but does not mount or format it. Backup scheduling,
-K3s installation, CI-service rebuilds, Cloudflare adoption and full
+CI-service rebuilds, Cloudflare adoption, application migration and full
 restore verification are subsequent work. Losing the whole server is outside the
 initial recovery scope. Host bootstrap files select no application deployment
 components; normal Jenkins application delivery never invokes the bootstrap.

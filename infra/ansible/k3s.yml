@@ -1,0 +1,43 @@
+---
+- name: Configure the Terraform-owned K3s guest
+  hosts: k3s
+  become: true
+  gather_facts: true
+  pre_tasks:
+    - name: Require the supported guest and declared configuration action
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['distribution_version'] == '24.04'
+          - ansible_facts['architecture'] == 'x86_64'
+          - k3s_action in ['plan', 'apply', 'verify']
+          - ansible_facts['memtotal_mb'] >= 3500
+          - ansible_facts['swaptotal_mb'] == 0
+        fail_msg: K3s needs the registered Ubuntu 24.04 amd64 guest with at least 4 GiB RAM and no swap.
+    - name: Inspect retained disk identity and existing guest ownership without mounting
+      ansible.builtin.script:
+        cmd: "roles/k3s_storage/files/storage.py inspect {{ k3s_contract | to_json | b64encode }}"
+      check_mode: false
+      changed_when: false
+      register: k3s_storage_probe
+    - name: Record the retained storage plan
+      ansible.builtin.set_fact:
+        k3s_storage_status: "{{ k3s_storage_probe.stdout | from_json }}"
+    - name: Inspect runtime ownership and existing cluster identity
+      ansible.builtin.script:
+        cmd: "roles/k3s_runtime/files/guest.py inspect {{ k3s_contract | to_json | b64encode }}"
+      check_mode: false
+      changed_when: false
+      register: k3s_runtime_probe
+    - name: Record the runtime identity plan
+      ansible.builtin.set_fact:
+        k3s_runtime_status: "{{ k3s_runtime_probe.stdout | from_json }}"
+    - name: Require configured retained storage when verifying
+      ansible.builtin.assert:
+        that:
+          - not (k3s_storage_status.changes.values() | select('equalto', true) | list | length > 0)
+          - k3s_runtime_status.installed
+      when: k3s_action == 'verify'
+  roles:
+    - role: k3s_storage
+    - role: k3s_runtime

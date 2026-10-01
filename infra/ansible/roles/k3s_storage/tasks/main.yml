@@ -1,0 +1,19 @@
+---
+- name: Report first-use filesystem preparation and retained mount changes
+  ansible.builtin.debug:
+    msg: "Retained storage actions: {{ k3s_storage_status.changes }}"
+  changed_when: k3s_storage_status.changes.values() | select('equalto', true) | list | length > 0
+  when: ansible_check_mode
+
+- name: Prepare only the registered empty or previously owned retained disk
+  ansible.builtin.script:
+    cmd: "storage.py prepare {{ k3s_contract | to_json | b64encode }}"
+  register: k3s_storage_prepared
+  changed_when: (k3s_storage_prepared.stdout | from_json).changes.values() | select('equalto', true) | list | length > 0
+  when: k3s_action == 'apply'
+
+- name: Verify that the retained disk is mounted before writing runtime state
+  ansible.builtin.script:
+    cmd: "storage.py guard {{ k3s_contract | to_json | b64encode }}"
+  changed_when: false
+  when: k3s_action in ['apply', 'verify']
