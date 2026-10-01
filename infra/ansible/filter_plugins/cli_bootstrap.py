@@ -53,6 +53,13 @@ class FilterModule:
 
 def version_failures(results):
     """Expose declared nonsecret profile labels, never native CLI output."""
-    return [{'id': result['item']['id'], 'expected': result['item']['supportedVersionPrefix']}
-            for result in results if not result.get('skipped', False) and
-            (result.get('rc', 1) != 0 or not result.get('stdout', '').startswith(result['item']['supportedVersionPrefix']))]
+    failures = []
+    for result in results:
+        if result.get('skipped', False):
+            continue
+        item = result.get('item')
+        if not isinstance(item, dict) or not {'id', 'supportedVersionPrefix'} <= item.keys():
+            failures.append({'id': 'unknown', 'expected': 'missing probe metadata'})
+        elif result.get('rc', 1) != 0 or not result.get('stdout', '').startswith(item['supportedVersionPrefix']):
+            failures.append({'id': item['id'], 'expected': item['supportedVersionPrefix']})
+    return failures

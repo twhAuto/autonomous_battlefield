@@ -93,8 +93,11 @@ def main():
             fragment = fragment.strip()
             allowed_fragments = ({'/usr/lib/systemd/system/squid.service', '/lib/systemd/system/squid.service'}
                                  if unit == 'squid' else {'/etc/systemd/system/' + unit + '.service'})
-            if unit == 'squid' and (result['owned'] or initial_defaults):
+            if unit == 'squid' and not squid_active:
                 allowed_fragments.add('/dev/null')
+                mask = Path('/etc/systemd/system/squid.service')
+                if mask.is_symlink() and mask.readlink() == Path('/dev/null'):
+                    allowed_fragments.add(str(mask))
             if fragment and fragment not in allowed_fragments:
                 raise ValueError('CLI service is shadowed by an unexpected unit: ' + unit)
         if kind == 'host':

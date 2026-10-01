@@ -28,8 +28,9 @@ UUID = r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
 SHA = r'[0-9a-f]{64}'
 
 
-def absolute(value):
-    if not isinstance(value, str) or not re.fullmatch(r'/[A-Za-z0-9_./-]+', value) or '..' in Path(value).parts:
+def absolute(value, *, controller=False):
+    pattern = r'/[A-Za-z0-9_./@-]+' if controller else r'/[A-Za-z0-9_./-]+'
+    if not isinstance(value, str) or not re.fullmatch(pattern, value) or '..' in Path(value).parts:
         raise ValueError('CLI paths must be absolute without shell syntax, spaces or parent traversals')
     return value
 
@@ -48,7 +49,7 @@ def validate(config):
             raise ValueError('Invalid CLI identity: ' + key)
     if not isinstance(host['machine_id'], str) or not re.fullmatch(r'[0-9a-f]{32}', host['machine_id']):
         raise ValueError('Invalid CLI host machine identity')
-    absolute(host['home']); absolute(host['kubeconfig']); absolute(config['bundle'])
+    absolute(host['home']); absolute(host['kubeconfig']); absolute(config['bundle'], controller=True)
     if not isinstance(host['operator'], str) or not isinstance(host['context'], str) or not re.fullmatch(r'[a-z_][a-z0-9_-]*', host['operator']) or not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]*', host['context']):
         raise ValueError('Invalid CLI operator or context')
     if type(host['bridge_port']) is not int or not 1024 <= host['bridge_port'] <= 65535 or host['bridge_port'] in range(18081, 18086) or host['bridge_port'] == 3128:
@@ -61,16 +62,16 @@ def validate(config):
             raise ValueError('Invalid CLI guest identity/adoption setting')
         if guest['machine_id'] == host['machine_id']:
             raise ValueError('CLI guest identity must differ from the physical host')
-        absolute(guest['identity_file']); absolute(guest['config']); absolute(guest['service'])
+        absolute(guest['identity_file'], controller=True); absolute(guest['config'], controller=True); absolute(guest['service'], controller=True)
         if 'isolation_script' in guest:
-            absolute(guest['isolation_script'])
+            absolute(guest['isolation_script'], controller=True)
         artifacts = guest['artifacts']
         if not isinstance(artifacts, dict) or not {'battlefield-agent', 'codex', 'codex-code-mode-host'} <= artifacts.keys() or artifacts.keys() - {'battlefield-agent', 'codex', 'codex-code-mode-host', 'claude', 'agy'}:
             raise ValueError('Guest requires the worker and complete Codex release; optional providers need declared artifacts')
         for artifact in artifacts.values():
             if not isinstance(artifact, dict) or set(artifact) != {'path', 'sha256'} or not isinstance(artifact['sha256'], str) or not re.fullmatch(SHA, artifact['sha256']):
                 raise ValueError('Each CLI artifact requires its path and verified release SHA256')
-            absolute(artifact['path'])
+            absolute(artifact['path'], controller=True)
     return config
 
 

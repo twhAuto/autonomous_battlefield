@@ -59,6 +59,15 @@ class CLIBootstrapTests(unittest.TestCase):
             value_config = config(); value_config['schema'] = value
             with self.assertRaises(ValueError): cli.validate(value_config)
 
+    def test_controller_paths_accept_jenkins_tmp_without_weakening_target_paths(self):
+        value=config('/private/job@tmp/cli.files')
+        cli.validate(value)
+        for name in ('identity_file','config','service','isolation_script'):
+            self.assertEqual(cli.absolute('/private/job@tmp/'+name,controller=True),'/private/job@tmp/'+name)
+        for path in ('/private/job@tmp/../key','/private/$(command)','/private/a b'):
+            with self.assertRaises(ValueError): cli.absolute(path,controller=True)
+        with self.assertRaises(ValueError): cli.absolute('/home/operator@host')
+
     def test_rendered_bundle_and_matched_loopback_override_can_be_adopted(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'bundle'
@@ -148,6 +157,8 @@ class CLIBootstrapTests(unittest.TestCase):
         self.assertEqual(result,[{'id':'codex-test','expected':'codex-cli 0.155.'}])
         self.assertEqual(module.version_failures([{'item':item,'rc':0,'stdout':'codex-cli 0.155.0'}]),[])
         self.assertEqual(module.version_failures([{'item':item,'skipped':True}]),[])
+        self.assertEqual(module.version_failures([{'rc':0,'stdout':'private output'}]),
+                         [{'id':'unknown','expected':'missing probe metadata'}])
 
     def test_preserves_provider_domains_and_rejects_wildcard_proxy(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -305,6 +316,29 @@ class CLIBootstrapTests(unittest.TestCase):
 
 
     @unittest.skipUnless(os.environ.get('BATTLEFIELD_TEST_ANSIBLE_BIN'), 'real Ansible supplied by test-server-bootstrap.sh')
+    def test_private_registered_version_results_through_real_ansible(self):
+        private='SYNTHETIC-PRIVATE-CLI-OUTPUT'
+        profiles=[{'id':'matches','supportedVersionPrefix':'codex-cli 0.155.','output':'codex-cli 0.155.0'},
+                  {'id':'mismatch','supportedVersionPrefix':'codex-cli 0.155.','output':private},
+                  {'id':'not-installed','supportedVersionPrefix':'optional','output':private}]
+        play=[{'hosts':'all','gather_facts':False,'connection':'local','vars':{'profiles':profiles},'tasks':[
+            {'name':'Private version probe','ansible.builtin.command':{'argv':['/usr/bin/printf','%s','{{ item.output }}']},
+             'loop':'{{ profiles }}','when':"item.id != 'not-installed'",'no_log':True,'register':'versions','changed_when':False,'failed_when':False},
+            {'ansible.builtin.set_fact':{'failures':'{{ versions.results | cli_version_failures }}'},'no_log':True},
+            {'ansible.builtin.assert':{'that':["failures == [{'id': 'mismatch', 'expected': 'codex-cli 0.155.'}]",'versions.results | length == profiles | length']}},
+            {'ansible.builtin.assert':{'that':'failures | length == 0','fail_msg':'CLI version check failed: {{ failures }}'}}]}]
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'versions.json'; path.write_text(json.dumps(play))
+            env=dict(os.environ,ANSIBLE_CONFIG=str(ROOT/'infra/ansible/ansible.cfg'),ANSIBLE_FILTER_PLUGINS=str(ROOT/'infra/ansible/filter_plugins'))
+            process=subprocess.run([os.environ['BATTLEFIELD_TEST_ANSIBLE_BIN']+'/ansible-playbook','-i','localhost,',str(path)],
+                                   capture_output=True,text=True,env=env,timeout=60)
+            output=process.stdout+process.stderr
+            self.assertEqual(process.returncode,2,output)
+            self.assertIn('CLI version check failed:',output)
+            self.assertIn('mismatch',output); self.assertIn('codex-cli 0.155.',output)
+            self.assertNotIn(private,output)
+
+    @unittest.skipUnless(os.environ.get('BATTLEFIELD_TEST_ANSIBLE_BIN'), 'real Ansible supplied by test-server-bootstrap.sh')
     def test_guest_filter_through_real_ansible_tagged_values(self):
         env_value = 'BATTLEFIELD_AGENT_SECRET='+'a'*32+'\nBATTLEFIELD_ENV=production\nBATTLEFIELD_CLI_ISOLATION_VERIFIED=false\n'
         cfg = {'ai': {'mcpUrl':'http://192.168.234.1:18084/mcp','agentHealthAddress':'127.0.0.1:8083',
@@ -345,7 +379,9 @@ class GuardModuleTests(unittest.TestCase):
             if args[0]=='runuser': return 0,changes.get('cluster_uid',UUID),''
             if args[0]=='systemctl':
                 if '--property=MainPID' in args: return 0,'42',''
-                if '--property=FragmentPath' in args: return 0,changes.get('fragment',''),''
+                if '--property=FragmentPath' in args:
+                    fragment=changes.get('fragment','')
+                    return 0,('' if fragment.endswith('/squid.service') and args[2]!='squid' else fragment),''
                 return 3,'inactive',''
             if args[0]=='nft': return changes.get('nft_rc',0),changes.get('nft','expected firewall'),''
             raise AssertionError(args)
@@ -357,7 +393,8 @@ class GuardModuleTests(unittest.TestCase):
         with patch.dict(sys.modules,modules):
             guard=cli.load('cli_guard_test',ROOT/'infra/ansible/library/battlefield_cli_guard.py')
         with patch.object(Path,'read_text',read), patch.object(Path,'exists',return_value=changes.get('home',False)), \
-             patch.object(Path,'is_symlink',return_value=False), patch.object(Path,'lstat',return_value=types.SimpleNamespace(st_mode=0o040755,st_uid=changes.get('home_uid',1001))), \
+             patch.object(Path,'is_symlink',return_value=changes.get('masked_squid',False)), \
+             patch.object(Path,'readlink',return_value=Path(changes.get('mask_target','/dev/null'))), patch.object(Path,'lstat',return_value=types.SimpleNamespace(st_mode=0o040755,st_uid=changes.get('home_uid',1001))), \
              patch.object(guard.pwd,'getpwnam',return_value=types.SimpleNamespace(pw_uid=1001)), \
              patch.object(guard,'reject_overrides'), patch.object(guard,'inspect_files',return_value=copy.deepcopy(result)):
             try: guard.main()
@@ -373,6 +410,14 @@ class GuardModuleTests(unittest.TestCase):
                 result=self.check_guard(**change); self.assertTrue(result['failed']); self.assertIn(message,result['msg'])
         valid='LISTEN 0 128 127.0.0.1:28084 0.0.0.0:* users:(("kubectl",pid=42,fd=3))'
         self.assertFalse(self.check_guard(listener=valid).get('failed',False))
+
+    def test_masked_squid_fragment_accepts_only_the_owned_dev_null_link(self):
+        # systemd reports the mask symlink path rather than its /dev/null target.
+        fragment='/etc/systemd/system/squid.service'
+        self.assertFalse(self.check_guard(fragment=fragment,masked_squid=True).get('failed',False))
+        self.assertFalse(self.check_guard(fragment=fragment,masked_squid=True,owned=False).get('failed',False))
+        for change in ({'masked_squid':False},{'masked_squid':True,'mask_target':'/tmp/foreign'}):
+            self.assertIn('shadowed',self.check_guard(fragment=fragment,**change)['msg'])
 
     def test_guest_identity_home_and_complete_adoption(self):
         self.assertFalse(self.check_guard('guest',home=True).get('failed',False))

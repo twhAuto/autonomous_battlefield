@@ -104,7 +104,8 @@ For an existing isolated VM with no host bundle, register a new rendered bundle.
 An inactive, unmodified Squid package-default configuration is also accepted: the
 registration binds its SHA256 and preflight rechecks dpkg metadata before the first
 replacement. Active or customized Squid services are refused; they are not silently
-converted into a dedicated proxy.
+converted into a dedicated proxy. A pre-existing `/dev/null` mask is safe even
+when Squid has not been installed yet; preflight still rejects real foreign units.
 
 ```bash
 ./scripts/infra/server.sh cli-register --local --cli-install
@@ -155,6 +156,14 @@ ownership and reports file counts; it cannot prove package installation or servi
 startup on a fresh target. Secrets and configuration diffs are suppressed. Verify
 checks desired files, active/enabled services, unauthenticated MCP rejection and,
 when selected, the worker's loopback health endpoint. None of these invokes a model.
+
+If Squid's package default changes between fresh registration and the first
+apply, the recorded fingerprint intentionally refuses the new bytes. After
+confirming with `sudo test ! -e /etc/battlefield-cli-bootstrap/host.json` that no
+host apply has recorded ownership, run `cli-register --cli-install` with a new
+`--cli-config /private/new-cli.json` to create a new registration, then pass that same
+`--cli-config` to plan/apply. Keep the old bundle for comparison; do not delete
+ownership markers or use this procedure after ownership has been recorded.
 
 An interrupted installation can resume against its registered marker. Missing
 managed files and ordinary owned drift are repaired; a differing worker secret
