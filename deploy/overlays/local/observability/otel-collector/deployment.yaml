@@ -44,7 +44,6 @@ spec:
             - {name: otlp-grpc, containerPort: 4317}
             - {name: otlp-http, containerPort: 4318}
             - {name: health, containerPort: 13133}
-            - {name: health, containerPort: 13133}
           readinessProbe:
             httpGet: {path: /, port: health}
           livenessProbe:

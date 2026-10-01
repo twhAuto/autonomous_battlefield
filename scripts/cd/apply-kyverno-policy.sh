@@ -41,12 +41,14 @@ awk -v key_file="${public_key}" -v backend="${policy_backend}" -v frontend="${po
   { gsub(/__BACKEND_IMAGE_REPOSITORY__/, backend); gsub(/__FRONTEND_IMAGE_REPOSITORY__/, frontend); print }
 ' "${template}" >"${policy}"
 
-kubectl --context "${kube_context}" apply \
-  --server-side \
-  --force-conflicts \
-  --field-manager=battlefield-jenkins \
-  -f \
-  "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/install.yaml"
+if [[ "${CLUSTER_DRIVER:-kind}" == kind ]]; then
+  kubectl --context "${kube_context}" apply \
+    --server-side \
+    --force-conflicts \
+    --field-manager=battlefield-jenkins \
+    -f \
+    "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/install.yaml"
+fi
 if ! kubectl --context "${kube_context}" wait \
   --namespace kyverno \
   --for=condition=Available \

@@ -35,12 +35,12 @@ if ! grep -Fq -- '--use-signing-config=false' \
   exit 1
 fi
 if ! grep -Fq 'OBSERVABILITY_ROLLOUT_TIMEOUT:-900s' \
-  "${project_dir}/scripts/cd/deploy-kind.sh"; then
+  "${project_dir}/scripts/cd/deploy.sh"; then
   echo "Cold observability deployment must have a dedicated rollout budget." >&2
   exit 1
 fi
-if ! grep -Fq 'kind_deploy_report_workload_failure' \
-  "${project_dir}/scripts/cd/lib/kind-deployment.sh"; then
+if ! grep -Fq 'cluster_deploy_report_workload_failure' \
+  "${project_dir}/scripts/cd/lib/kubernetes-deployment.sh"; then
   echo "Observability rollout failures must emit workload diagnostics." >&2
   exit 1
 fi
@@ -83,8 +83,8 @@ source "${project_dir}/scripts/lib/deployment-environment.sh"
 # Overlay tests must not inherit host configuration or query a live cluster.
 LANGFUSE_ENABLED=0
 
-# shellcheck source=scripts/cd/lib/kind-deployment.sh
-source "${project_dir}/scripts/cd/lib/kind-deployment.sh"
+# shellcheck source=scripts/cd/lib/kubernetes-deployment.sh
+source "${project_dir}/scripts/cd/lib/kubernetes-deployment.sh"
 # shellcheck source=scripts/lib/deployment-components.sh
 source "${project_dir}/scripts/lib/deployment-components.sh"
 
@@ -95,7 +95,7 @@ database_url='postgres://battlefield:password@postgres:5432/battlefield?sslmode=
 printf 'DATABASE_URL=%s\n' "${database_url}" >"${secret_file}"
 chmod 400 "${secret_file}"
 
-kind_deploy_prepare_database_secret "${target_file}" >/dev/null
+cluster_deploy_prepare_database_secret "${target_file}" >/dev/null
 
 if [[ "$(stat -c '%a' "${target_file}")" != "600" ]]; then
   echo "Staged database secret must have mode 600." >&2
@@ -118,7 +118,7 @@ ai_secret_file="${secret_file}"
 effective_backend_ref='ghcr.io/twh09/autonomous-battlefield-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 effective_frontend_ref='ghcr.io/twh09/autonomous-battlefield-frontend@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 deployment_components_select "${deploy_components}" deployment
-kind_deploy_prepare_overlays
+cluster_deploy_prepare_overlays
 rendered="${test_dir}/registry-render.yaml"
 kubectl kustomize "${runtime_dir}/deploy/overlays/local/application" >"${rendered}"
 if ! grep -Fq "ghcr.io/twh09/autonomous-battlefield-backend@sha256:aaaaaaaa" "${rendered}" ||
@@ -132,9 +132,9 @@ runtime_dir=""
 # Each targeted deployment stages only its selected overlays and dependencies.
 for selection in application migration gateway observability infrastructure all; do
   deployment_components_select "${selection}" deployment
-  kind_deploy_kube() { return 0; }
+  cluster_deploy_kube() { return 0; }
   namespace=battlefield
-  kind_deploy_prepare_overlays >"${test_dir}/staging.log"
+  cluster_deploy_prepare_overlays >"${test_dir}/staging.log"
   for component in infrastructure migration application observability gateway; do
     overlay="${runtime_dir}/deploy/overlays/local/${component}"
     if deployment_component_selected "${component}"; then
@@ -196,7 +196,7 @@ PROFILE
   secret_file="${BATTLEFIELD_SECRET_FILE}"
   ai_secret_file="${BATTLEFIELD_AI_SECRET_FILE}"
   deployment_components_select infrastructure deployment
-  kind_deploy_prepare_overlays >"${test_dir}/auth-staging.log"
+  cluster_deploy_prepare_overlays >"${test_dir}/auth-staging.log"
   trap 'rm -rf -- "${runtime_dir}"' EXIT
   bash -c 'source "$1"; battlefield_env_preflight' _ "${project_dir}/scripts/lib/deployment-environment.sh"
   [[ "${BATTLEFIELD_AUTH_SECRET_FILE}" == "${registration}/.env" ]]
@@ -204,13 +204,13 @@ PROFILE
   [[ "$(stat -c '%a' "${runtime_dir}/auth.env")" == 600 ]]
   printf 'BATTLEFIELD_AUTH_MODE=cloudflare\nBATTLEFIELD_AUTH_ENABLED=true\n' >"${test_dir}/expected-auth.env"
   cmp "${test_dir}/expected-auth.env" "${runtime_dir}/auth.env"
-  kind_deploy_kube() { printf '%s\n' "$*" >>"${test_dir}/auth-kube-calls"; }
+  cluster_deploy_kube() { printf '%s\n' "$*" >>"${test_dir}/auth-kube-calls"; }
   rollout_timeout=30s
-  kind_deploy_infrastructure >"${test_dir}/auth-apply.log"
+  cluster_deploy_infrastructure >"${test_dir}/auth-apply.log"
   grep -Fq -- "--from-env-file=${runtime_dir}/auth.env" "${test_dir}/auth-kube-calls"
   rm -rf -- "${runtime_dir}"
   deployment_components_select gateway deployment
-  kind_deploy_prepare_overlays >"${test_dir}/auth-gateway.log"
+  cluster_deploy_prepare_overlays >"${test_dir}/auth-gateway.log"
   [[ -z "${staged_auth_secret_file}" ]]
 )
 
@@ -218,7 +218,7 @@ PROFILE
 for langfuse_enabled in 0 1; do
   LANGFUSE_ENABLED="${langfuse_enabled}"
   deployment_components_select observability deployment
-  kind_deploy_prepare_overlays >"${test_dir}/staging.log"
+  cluster_deploy_prepare_overlays >"${test_dir}/staging.log"
   expected_collector="${project_dir}/deploy/overlays/local/observability/otel-collector/config.yaml"
   if [[ "${langfuse_enabled}" == 1 ]]; then
     expected_collector="${project_dir}/deploy/langfuse/collector-config.yaml"
@@ -236,7 +236,7 @@ logging_namespace=battlefield-logging
 rollout_timeout=30s
 observability_rollout_timeout=90s
 runtime_dir="${test_dir}"
-kind_deploy_kube() {
+cluster_deploy_kube() {
   printf '%s\n' "$*" >>"${test_dir}/kube-calls"
   if [[ "$1 $2" == 'get job' ]]; then
     printf '%s\n' "${job_condition:-Complete=True}"
@@ -245,13 +245,13 @@ kind_deploy_kube() {
     return 1
   fi
 }
-kind_deploy_wait_rollout() {
-  kind_deploy_kube rollout status "$@"
+cluster_deploy_wait_rollout() {
+  cluster_deploy_kube rollout status "$@"
 }
 for failed_resource in '' deployment/battlefield-tempo deployment/battlefield-kibana; do
   : >"${test_dir}/kube-calls"
   status=0
-  kind_deploy_observability >"${test_dir}/observability.log" 2>&1 || status=$?
+  cluster_deploy_observability >"${test_dir}/observability.log" 2>&1 || status=$?
   for deployment in prometheus kube-state-metrics grafana otel-collector tempo elasticsearch; do
     grep -Fq "rollout status deployment/battlefield-${deployment} --namespace battlefield --timeout=90s" "${test_dir}/kube-calls"
   done
@@ -281,7 +281,7 @@ done
 job_condition=Failed=True
 : >"${test_dir}/kube-calls"
 status=0
-kind_deploy_wait_kibana_setup >"${test_dir}/job.log" 2>&1 || status=$?
+cluster_deploy_wait_kibana_setup >"${test_dir}/job.log" 2>&1 || status=$?
 [[ "${status}" == 1 ]]
 grep -Fq 'describe job battlefield-kibana-setup' "${test_dir}/kube-calls"
 grep -Fq 'logs --namespace battlefield -l job-name=battlefield-kibana-setup' "${test_dir}/kube-calls"
@@ -296,7 +296,7 @@ status=0
   sleep 30 &
   rollout_pids=("$!")
   printf '%s\n' "${rollout_pids[0]}" >"${test_dir}/rollout-pid"
-  trap kind_deploy_cleanup EXIT
+  trap cluster_deploy_cleanup EXIT
   exit 143
 ) || status=$?
 [[ "${status}" == 143 ]]

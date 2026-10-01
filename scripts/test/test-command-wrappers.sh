@@ -9,7 +9,7 @@ test_dir="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-wrapper-test.XXXXXX")"
 cleanup() { rm -rf -- "${test_dir}"; }
 trap cleanup EXIT
 
-wrappers=(run-k8s-cli-agent.sh deploy-local.sh)
+wrappers=(run-k8s-cli-agent.sh deploy-local.sh scripts/cd/deploy-kind.sh scripts/cd/rollback-kind.sh scripts/cd/smoke-test-kind.sh)
 for name in test-backend test-go-coverage test-go-race with-test-postgres test-ai-evals fuzz-smoke test-deployment-components test-kind-deployment; do
   wrappers+=("scripts/ci/${name}.sh")
 done
@@ -18,6 +18,7 @@ for wrapper in "${wrappers[@]}"; do
   case "${wrapper}" in
     run-*) target="scripts/dev/${wrapper}" ;;
     deploy-local.sh) target="scripts/cd/${wrapper}" ;;
+    scripts/cd/*) target="${wrapper/-kind/}" ;;
     scripts/ci/*) target="scripts/test/${wrapper##*/}" ;;
   esac
   [[ -x "${project_dir}/${wrapper}" && -x "${project_dir}/${target}" ]]

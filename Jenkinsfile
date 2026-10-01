@@ -430,7 +430,7 @@ pipeline {
                                             . artifacts/build/images.env
                                             set +a
                                         fi
-                                        IMAGE_SOURCE=registry ENFORCE_SUPPLY_CHAIN_POLICY=1 ROLLBACK_ON_FAILURE=1 ./scripts/ci/with-ghcr-auth.sh ./scripts/cd/deploy-kind.sh "${IMAGE_TAG}"
+                                        IMAGE_SOURCE=registry ENFORCE_SUPPLY_CHAIN_POLICY=1 ROLLBACK_ON_FAILURE=1 ./scripts/ci/with-ghcr-auth.sh ./scripts/cd/deploy.sh "${IMAGE_TAG}"
                                     '''
                                 }
                             }
@@ -447,7 +447,7 @@ pipeline {
                                     sh '''
                                         set +x
                                         chmod 600 "$BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE"
-                                        ./scripts/cd/smoke-test-kind.sh
+                                        ./scripts/cd/smoke-test.sh
                                     '''
                                 }
                             }
@@ -470,7 +470,7 @@ pipeline {
                                                 file(credentialsId: 'battlefield-cosign-public-key', variable: 'COSIGN_PUBLIC_KEY_FILE')
                                             ]) {
                                                 sh '''
-                                                    ./scripts/cd/rollback-kind.sh \
+                                                    ./scripts/cd/rollback.sh \
                                                         "${PREVIOUS_BACKEND_IMAGE_REF}" \
                                                         "${PREVIOUS_FRONTEND_IMAGE_REF}"
                                                 '''

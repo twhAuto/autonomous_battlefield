@@ -6,6 +6,7 @@ set +x
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${project_dir}/scripts/lib/deployment-environment.sh"
 battlefield_env_preflight
+[[ "${CLUSTER_DRIVER:-kind}" == kind ]] || { echo "Langfuse delivery is not yet supported on K3s." >&2; exit 1; }
 for tool in kubectl python3; do command -v "${tool}" >/dev/null || { echo "Required: ${tool}" >&2; exit 1; }; done
 umask 077
 runtime_dir="$(mktemp -d)"

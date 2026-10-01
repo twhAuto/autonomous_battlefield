@@ -121,7 +121,7 @@ to verify event-page draining without load-sensitive wall-clock deadlines.
 ## Production assurance helpers
 
 `scripts/lib/prometheus-smoke.sh` supplies the bounded Prometheus query wait and
-timeout target diagnostics used by `scripts/cd/smoke-test-kind.sh`. Run
+timeout target diagnostics used by `scripts/cd/smoke-test.sh`. Run
 `bash scripts/test/test-prometheus-smoke.sh` to verify delayed recovery, persistent
 failure, unavailable/malformed diagnostics and timeout validation without a cluster.
 

@@ -9,7 +9,7 @@ const fields = {
   cache: 'BATTLEFIELD_REDIS_URL',
   runtime: 'LOG_LEVEL OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_TRACES_ENDPOINT OTEL_TRACES_SAMPLER_ARG LANGFUSE_BASE_URL LANGFUSE_PROJECT_ID',
 };
-const profileFields = 'BF_ENV BF_CONTEXT BF_CLUSTER BF_UID BF_DOCKER_HOST BF_URL BF_KUBECONFIG BF_DISPOSABLE BF_TUNNEL_ID BF_TUNNEL_CREDENTIALS_FILE BF_TUNNEL_IMAGE BF_KUBELET_CA_FILE'.split(' ');
+const profileFields = 'BF_ENV BF_CONTEXT BF_CLUSTER BF_UID BF_DOCKER_HOST BF_URL BF_KUBECONFIG BF_DISPOSABLE BF_TUNNEL_ID BF_TUNNEL_CREDENTIALS_FILE BF_TUNNEL_IMAGE BF_KUBELET_CA_FILE BF_DRIVER'.split(' ');
 
 function read(file) {
   const values = new Map();
@@ -92,7 +92,19 @@ function validate(values, environment) {
 function profile(file) {
   const values = read(file);
   for (const key of values.keys()) if (!profileFields.includes(key)) throw new Error(`Unknown deployment setting: ${key}`);
-  for (const key of profileFields.slice(0,7)) if (!values.get(key)) throw new Error(`Missing deployment setting: ${key}`);
+  // Profiles created before driver selection describe Kind.
+  if (!values.has('BF_DRIVER')) values.set('BF_DRIVER', 'kind');
+  const driver = values.get('BF_DRIVER');
+  if (!['kind', 'k3s'].includes(driver)) throw new Error('Invalid cluster driver.');
+  for (const key of ['BF_ENV','BF_CONTEXT','BF_CLUSTER','BF_UID','BF_URL','BF_KUBECONFIG']) {
+    if (!values.get(key)) throw new Error(`Missing deployment setting: ${key}`);
+  }
+  if (driver === 'kind' && !values.get('BF_DOCKER_HOST')) throw new Error('Missing deployment setting: BF_DOCKER_HOST');
+  if (driver === 'k3s') {
+    if (values.get('BF_ENV') !== 'production') throw new Error('K3s delivery requires a production profile.');
+    if (values.get('BF_DOCKER_HOST')) throw new Error('K3s profiles must not bind a Docker daemon.');
+    if (!values.get('BF_KUBELET_CA_FILE')) throw new Error('K3s requires BF_KUBELET_CA_FILE.');
+  }
   if (!['dev','production'].includes(values.get('BF_ENV'))) throw new Error('Invalid deployment environment.');
   if (values.has('BF_DISPOSABLE') && !['0','1'].includes(values.get('BF_DISPOSABLE'))) throw new Error('Invalid disposable flag.');
   if (values.get('BF_ENV') === 'production' && values.get('BF_DISPOSABLE') === '1') throw new Error('Production cannot be disposable.');

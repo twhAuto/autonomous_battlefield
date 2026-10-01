@@ -71,8 +71,8 @@ if [[ "$1 $2" == 'get kubeconfig' ]]; then echo fixture; fi
     run(ok=False,no_mutation=True,DEPLOY_ENV='production',ENFORCE_SUPPLY_CHAIN_POLICY='0')
     run(['bash',str(root/'deploy-local.sh')],ok=False,no_mutation=True,DEPLOY_ENV='production')
     run(['bash',str(root/'scripts/ops/run-kind-failure-drills.sh')],ok=False,no_mutation=True,DEPLOY_ENV='production',RUN_DESTRUCTIVE_KIND_DRILLS='I_UNDERSTAND_THIS_RESTARTS_DISPOSABLE_KIND_WORKLOADS')
-    run(['bash',str(fixture/'scripts/cd/rollback-kind.sh'),'a'*40,'b'*40],ok=False,no_mutation=True,DEPLOY_ENV='production',error='requires both exact image digests')
-    run(['bash',str(fixture/'scripts/cd/rollback-kind.sh'),'ghcr.io/test/backend@sha256:'+'a'*64,'ghcr.io/test/frontend@sha256:'+'b'*64],
+    run(['bash',str(fixture/'scripts/cd/rollback.sh'),'a'*40,'b'*40],ok=False,no_mutation=True,DEPLOY_ENV='production',error='requires both exact image digests')
+    run(['bash',str(fixture/'scripts/cd/rollback.sh'),'ghcr.io/test/backend@sha256:'+'a'*64,'ghcr.io/test/frontend@sha256:'+'b'*64],
         ok=False,no_mutation=True,DEPLOY_ENV='production',error='has not been attested as Access-compatible',GHCR_USER='test',GHCR_TOKEN='dummy',COSIGN_PUBLIC_KEY_FILE=str(kube),VERIFY_ARTIFACT_DIR=str(tmp/'verification'))
     profile();run(['bash',str(root/'deploy-local.sh')],ok=False,no_mutation=True,TEST_UID='wrong')
     run(['bash','-c','source "$1"; battlefield_env_load && battlefield_env_verify_docker','_',str(helper)],ok=False,no_mutation=True,TEST_DOCKER_STATUS='1')
@@ -101,18 +101,18 @@ if [[ "$1 $2" == 'get kubeconfig' ]]; then echo fixture; fi
     before=(fixture/'.env').read_bytes()
     run(provision)
     assert (fixture/'.env').read_bytes() == before
-    library=root/'scripts/cd/lib/kind-deployment.sh'
+    library=root/'scripts/cd/lib/kubernetes-deployment.sh'
     # Missing production configuration must fail, never fall back to live Secrets.
     missing=['bash','-ec', r'''source "$1"
 project_dir="$3"; DEPLOY_ENV=production; namespace=battlefield; ai_secret_file=/missing
-kind_deploy_kube() { exit 90; }
-kind_deploy_prepare_ai_secret "$2"
+cluster_deploy_kube() { exit 90; }
+cluster_deploy_prepare_ai_secret "$2"
 ''','_',str(library),str(tmp/'retained.env'),str(root)]
     run(missing,ok=False,no_mutation=True)
     rollback=['bash','-ec', r'''source "$1"
 DEPLOY_ENV=production; current_backend_image=a; current_engine_image=b
 current_agent_image=a; current_mcp_image=a
-kind_deploy_rollback_application
+cluster_deploy_rollback_application
 ''','_',str(library)]
     run(rollback,ok=False,no_mutation=True)
     # Main-only nested delivery and stage-scoped credential regression checks.
@@ -123,7 +123,7 @@ kind_deploy_rollback_application
     assert "branch 'main'" in pipeline[main:rollout]
     assert 'battlefield-production-kubeconfig' not in pipeline[:rollout]
     # A fresh forwarded replica has no HTTP series, even after Gateway traffic.
-    smoke=(root/'scripts/cd/smoke-test-kind.sh').read_text()
+    smoke=(root/'scripts/cd/smoke-test.sh').read_text()
     metrics_check=smoke[smoke.index('# Gateway traffic may reach'):smoke.index('\ncurl --fail --silent --max-time 2 \\\n  --noproxy', smoke.index('# Gateway traffic may reach'))]
     harness=r'''
 set -Eeuo pipefail
