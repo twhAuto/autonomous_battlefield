@@ -192,13 +192,25 @@ must check that no main or platform operation is active or queued. Do not run a
 normal main delivery while the registered profile and its Jenkins credential
 point at different clusters.
 
-1. Prepare the separate candidate registration and deploy the currently verified
-   signed image pair privately. Preserve the existing database, authentication,
-   worker and capability credentials for this migration, but disable managed
-   Players and every provider availability flag in the temporary candidate
-   configuration. Do not activate its tunnel. Validate cluster UIDs, matching
-   migration versions and database roles, retained claims, private readiness and
-   anonymous API denial. Check there are no active battles before the final copy.
+1. Prepare the separate candidate registration with `TARGET_URL` set to the
+   existing public origin; its `BF_URL` must match that origin. Prepare its
+   application `.env` with the existing database, authentication, worker and
+   capability credentials, but disable managed Players and every provider
+   availability flag. Copy the old profile's `BF_TUNNEL_ID` and digest-pinned
+   `BF_TUNNEL_IMAGE` into the candidate `deployment.env`, set
+   `BF_TUNNEL_CREDENTIALS_FILE=tunnel-credentials.json`, and copy the existing
+   tunnel credential file beside it with mode 0600. Keep the generated K3s
+   identity, kubeconfig and kubelet CA. Validate without activating the tunnel:
+
+   ```bash
+   BATTLEFIELD_ENV_FILE="$HOME/.config/autonomous-battlefield/k3s-candidate/deployment.env" \
+     ./scripts/ops/prepare-limited-production.sh
+   ```
+
+   Then deploy the currently verified signed image pair privately. Do not
+   activate the candidate tunnel. Validate cluster UIDs, matching migration
+   versions and database roles, retained claims, private readiness and anonymous
+   API denial. Check there are no active battles before the final copy.
 2. Save the old registration, recovery record, application configuration, HPA and
    replica counts. Pause both targets' application writers and stop every old
    tunnel connector. Temporarily remove the API HPA so scaling cannot restart
@@ -212,15 +224,41 @@ point at different clusters.
    Compare every public table's row count and content fingerprint, sequence
    values and ordered migration ledger before starting new writers.
 4. Update Jenkins's existing `battlefield-production-kubeconfig` file credential
-   and adopt the matching K3s registration as `production`. Retain the old profile
-   separately. Restore the original production application configuration and
+   from the candidate kubeconfig, then adopt the matching registration using
+   directory moves under the held lock. `setup-environment.sh` deliberately
+   refuses to overwrite a registration; do not rerun it or delete the old profile.
+
+   ```bash
+   (
+   set -eu
+   profile_root="$HOME/.config/autonomous-battlefield"
+   test -d "$profile_root/production"
+   test -d "$profile_root/k3s-candidate"
+   test ! -e "$profile_root/kind-retained-ab132"
+   mv -- "$profile_root/production" "$profile_root/kind-retained-ab132"
+   mv -- "$profile_root/k3s-candidate" "$profile_root/production"
+   )
+   ```
+
+   On this server, operator commands and the Jenkins agent run as `twh09` and
+   share that home/profile. Another installation must put the adopted profile in
+   the actual agent's configuration directory as well. Relative `BF_KUBECONFIG`,
+   `BF_KUBELET_CA_FILE` and tunnel credential paths resolve beside the moved
+   `deployment.env`. Verify the adopted directory contains that profile,
+   `kubeconfig`, `kubelet-ca.crt`, `tunnel-credentials.json` and `.env`, with mode
+   0700 on the directory and 0600 on its private files.
+   Restore the original production application configuration from the retained
+   profile and
    deploy it through `scripts/cd/deploy.sh` with the verified digest pair. This
-   recreates the HPA and application replicas. Do not copy the old cluster's
+   recreates the HPA and application replicas. Repeat the preparation command
+   against the adopted production profile before activating its tunnel. Do not copy the old cluster's
    recovery record into the new profile.
 5. Retarget the existing [CLI VM bridge](agent-vm.md) to the production kubeconfig.
    Inspect the effective systemd unit and drop-ins. If the path/context are
    unchanged, restarting the bridge makes it read the adopted kubeconfig; no
-   unit rewrite is necessary. Verify the private MCP path from the CLI VM and
+   unit rewrite is necessary. Keep the existing matched 28084 bridge/Caddy pair
+   during this cutover; do not run the fresh-install 18085 bundle installation.
+   Verify the private MCP path from the CLI VM and
    preserve the existing isolation and provider authorization gates. Do not
    claim a new paid-provider inference test from a health response alone.
 6. Confirm the old writers and connectors remain stopped, then run

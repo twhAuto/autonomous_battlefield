@@ -8,7 +8,7 @@ Kubernetes signing secret into the VM.
 
 ## What runs where
 
-The CLI worker has its own KVM VM. After the initial K3s cutover, a separate
+The CLI worker has its own KVM VM. Following the 2026-10-01 K3s cutover, a separate
 KVM VM runs Kubernetes, the application, engine, MCP server and database.
 Docker remains on the physical Ubuntu host for CI and the retained old Kind
 cluster. The code-mode helper is a process inside the worker VM.
@@ -25,8 +25,10 @@ Physical Ubuntu PC
 ```
 
 The renderer below defaults to loopback port 18085. The existing server uses
-28084 through `20-loopback.conf` and a matching Caddy upstream. Inspect effective
-units before changing ports. The bridge reads the registered production
+28084 through `20-loopback.conf` and a matching Caddy upstream, both inspected
+on 2026-10-01. Preserve that pair during cutover. The renderer emits only the
+canonical 18085 configuration for fresh installs; it does not generate a 28084
+override. Port normalization is a separate operation, not a migration prerequisite. The bridge reads the registered production
 kubeconfig; restarting it after K3s profile adoption retargets the connection
 without reinstalling the CLI worker or copying cluster credentials into its VM.
 See [cutover and recovery](k3s-delivery.md#adoption-and-cutover-boundary).
@@ -153,9 +155,18 @@ Port 18085 must be free or already belong to this bridge. Port 18084 can also be
 used on **127.0.0.1 only** by Jenkins smoke checks; the VM proxy binds only to
 192.168.234.1. Back up existing dedicated configuration and units before replacing
 them. Inspect `systemctl cat` for all three Battlefield units and Squid: historical
-drop-ins override main units. In particular, remove an obsolete
-`battlefield-mcp-bridge.service.d/20-loopback.conf` only after confirming the new
-main unit contains the intended loopback forward. Preserve unrelated overrides.
+drop-ins override main units. The existing `20-loopback.conf` selects 28084 and
+must stay with its matching Caddy upstream during the K3s cutover. The installation
+block below refuses that override before changing any files.
+
+If intentionally standardizing an existing installation on the fresh-install
+18085 bundle later, schedule an idle worker window, back up both installed units
+and Caddy configuration, stop the bridge and proxy, and move the reviewed
+`20-loopback.conf` outside the `.service.d` directory into that backup. Then
+install the complete matched bundle below and confirm the effective bridge and
+Caddy upstream both use 18085 before accepting work. Restore the backed-up pair
+if installation or verification fails. Preserve unrelated overrides. Do not
+remove the drop-in alone while Caddy still points at 28084.
 
 On the host, install the reviewed bundle (these are intentional live configuration
 replacements). The Squid package must already be installed:
@@ -164,6 +175,10 @@ replacements). The Squid package must already be installed:
 (
 set -eu
 bundle="$HOME/battlefield-agent-host-bundle"
+if sudo test -e /etc/systemd/system/battlefield-mcp-bridge.service.d/20-loopback.conf; then
+  echo 'Existing bridge override: follow the normalization procedure before reinstalling.' >&2
+  exit 1
+fi
 sudo install -d -m 0755 /etc/battlefield-agent /etc/systemd/system/squid.service.d
 for file in firewall.nft mcp-proxy.Caddyfile provider-domains.txt; do
   sudo install -o root -g root -m 0644 "$bundle/$file" "/etc/battlefield-agent/$file"

@@ -621,7 +621,8 @@ changes alone do not select application components or run an infrastructure appl
 
 [Jenkins operations](jenkins.md#pipeline-behavior) owns the PR/main stage sequence,
 credentials, publication, verification, and digest rollback workflow. Main deploys
-to the registered production Kind cluster; local dev loads its own images.
+to the registered production cluster, now K3s after the initial cutover; local
+Kind dev loads its own images.
 AWS promotion copies verified images to ECR without rebuilding.
 
 ## Repository-specific requirements

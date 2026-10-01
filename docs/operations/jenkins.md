@@ -631,7 +631,9 @@ work after the underlying job is deleted.
 
 ## Daily startup after a reboot
 
-Jenkins, SonarQube, and the production Kind cluster run on the server. Verify
+Jenkins and SonarQube run on the server; production Kubernetes runs in its
+Terraform-managed K3s VM. Old Kind data is retained for migration recovery, with
+application writers and tunnel connectors stopped. Verify
 those existing services and run `DEPLOY_ENV=production ./scripts/cd/smoke-test.sh`
 as the configured agent account. Do not run the dev bootstrap on this machine.
 If the production cluster is missing, recover its data and registered identity;
