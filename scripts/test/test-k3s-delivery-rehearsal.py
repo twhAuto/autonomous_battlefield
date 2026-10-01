@@ -2,13 +2,16 @@
 """Offline evidence tests for the isolated two-release K3s recovery rehearsal."""
 import copy
 import importlib.util
+import json
+import re
+import tempfile
 import os
 import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('delivery_rehearsal', ROOT/'scripts/infra/rehearse-k3s-delivery.py')
@@ -49,7 +52,9 @@ class RehearsalTests(unittest.TestCase):
     def test_release_arguments_reject_partial_mutable_or_same_release_pairs(self):
         self.assertEqual(rehearsal.releases(self.arguments()), (NEW, NEW))
         self.assertEqual(rehearsal.releases(self.arguments(OLD)), (OLD, NEW))
-        for changes in ({'previous_backend': None}, {'backend': 'ghcr.io/test/backend:latest'},
+        for changes in ({'previous_backend': '', 'previous_frontend': '', 'previous_revision': ''},
+                        {'previous_backend': '', 'previous_frontend': None, 'previous_revision': None},
+                        {'previous_backend': None}, {'backend': 'ghcr.io/test/backend:latest'},
                         {'revision': 'HEAD'}, {'previous_revision': NEW['revision']},
                         {'previous_backend': NEW['backend'], 'previous_frontend': NEW['frontend']}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
@@ -71,6 +76,54 @@ class RehearsalTests(unittest.TestCase):
             else: item['spec']['replicas'] = 0
             with self.subTest(change=change), self.assertRaisesRegex(ValueError, 'converge'):
                 rehearsal.checkpoint(sample, OLD)
+
+    def test_hpa_convergence_retries_but_remains_bounded_and_strict(self):
+        pending = state(OLD)
+        pending['deployments']['items'][0]['spec']['replicas'] = 2
+        ready = copy.deepcopy(pending)
+        ready['deployments']['items'][0]['status'].update(updatedReplicas=2, readyReplicas=2, availableReplicas=2)
+        with patch.object(rehearsal.time, 'sleep') as sleep:
+            inspect = Mock(side_effect=[pending, ready])
+            self.assertEqual(rehearsal.converged_checkpoint(inspect, OLD)['revision'], OLD['revision'])
+            self.assertEqual(inspect.call_count, 2)
+            sleep.assert_called_once_with(5)
+        with patch.object(rehearsal.time, 'sleep') as sleep:
+            inspect = Mock(return_value=pending)
+            with self.assertRaises(rehearsal.RolloutPending):
+                rehearsal.converged_checkpoint(inspect, OLD)
+            self.assertEqual(inspect.call_count, 7)
+            self.assertEqual(sleep.call_count, 6)
+        inspect = Mock(return_value=state(NEW))
+        with self.assertRaises(ValueError):
+            rehearsal.converged_checkpoint(inspect, OLD)
+        self.assertEqual(inspect.call_count, 1)
+
+    def test_inspection_uses_recovery_ledger_contract_and_private_failure_log(self):
+        snapshot = state(OLD)
+        outputs = [SimpleNamespace(stdout=json.dumps(snapshot[k])) for k in ('deployments', 'claims', 'migrations')]
+        with tempfile.TemporaryDirectory() as temporary:
+            evidence = Path(temporary)
+            with patch.object(rehearsal.subprocess, 'run', side_effect=outputs) as run:
+                self.assertEqual(rehearsal.inspect_delivery({}, evidence), snapshot)
+            calls = run.call_args_list
+            self.assertEqual(len(calls), 3)
+            query = calls[-1].args[0][-1]
+            recovery_script = (ROOT/'scripts/cd/production-recovery.sh').read_text()
+            recovery_query = re.search(r'"(SELECT COALESCE[^\n]+;)"', recovery_script).group(1)
+            self.assertEqual(query, recovery_query)
+            self.assertIn('battlefield-postgres-0', calls[-1].args[0])
+            for call in calls:
+                self.assertIn('--request-timeout=15s', call.args[0])
+                self.assertEqual(call.kwargs['timeout'], 30)
+            for failure in (subprocess.CalledProcessError(1, ['kubectl'], output='private failure'),
+                            subprocess.TimeoutExpired(['kubectl'], 30, output=b'private timeout')):
+                with patch.object(rehearsal.subprocess, 'run', side_effect=failure):
+                    with self.assertRaisesRegex(ValueError, 'inspect inspection.private.log') as raised:
+                        rehearsal.inspect_delivery({}, evidence)
+                self.assertNotIn('private failure', str(raised.exception))
+                self.assertIn(type(failure).__name__, (evidence/'inspection.private.log').read_text())
+            self.assertIn('private failure', (evidence/'inspection.private.log').read_text())
+            self.assertIn('private timeout', (evidence/'inspection.private.log').read_text())
 
     def test_evidence_rejects_missing_unbound_or_wrong_storage(self):
         for change in ('missing', 'unbound', 'wrong class', 'missing volume'):
@@ -121,8 +174,13 @@ class RehearsalTests(unittest.TestCase):
             if change == 'migration': upgraded['migrations'].append(3)
             else: upgraded['claims']['items'][0]['metadata']['uid'] = 'replacement'
             command = Mock()
-            with self.subTest(change=change), self.assertRaisesRegex(ValueError, 'changed retained claims or migration state'):
-                self.execute([state(OLD), state(OLD), upgraded], command=command)
+            report = {}
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, 'current: migration ledger changed' if change == 'migration' else 'current: retained claim identities changed'):
+                rehearsal.exercise_delivery(command, Mock(side_effect=[state(OLD), state(OLD), upgraded]),
+                                            Mock(), OLD, NEW, report)
+            self.assertEqual(report['checkpoint_failure'],
+                             'migration_ledger_changed' if change == 'migration' else 'retained_claims_changed')
+            self.assertEqual(report['stage'], 'current')
             self.assertFalse(any(c.args[0].endswith('rollback.sh') for c in command.call_args_list))
 
     def test_noop_rollback_or_failed_probe_cannot_produce_passing_evidence(self):

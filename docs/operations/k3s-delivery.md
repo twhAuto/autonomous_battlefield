@@ -110,7 +110,8 @@ in the checkout. The private registry file uses Docker's `auths.ghcr.io.auth`
 format and read-only package access. The public verification key must be the
 trusted signing key. Both full source revisions must exist in the checkout, differ,
 and refer to different image pairs. The previous-release arguments must be supplied
-together. Omitting all three retains the older same-digest reapplication mode,
+together and must not be empty. Omitting all three retains the older same-digest
+reapplication mode,
 which explicitly reports `distinct_release_rollback: false`.
 The evidence directory must be new and outside the checkout.
 The harness holds the existing operator lock and invokes the actual platform
@@ -130,6 +131,11 @@ identities, an unchanged migration ledger and passing private readiness/anonymou
 denial checks. The previous recovery record is retained throughout the upgrade;
 the fixture's private record never authorizes recovery of production. Overall
 success also requires VM cleanup and preserved existing VM/network identities.
+Checkpoints sample incomplete rollout status up to seven times at five-second intervals
+so a concurrent HPA scale-up can settle; wrong images still fail immediately. Inspection
+requests have a 15-second Kubernetes request timeout and a 30-second process timeout.
+API and database inspection output, including failures, is kept in `inspection.private.log`.
+Claim-identity and migration-ledger failures are reported separately.
 Command output stays in private logs because it may contain sensitive deployment diagnostics. Do not publish those logs. The VM and
 its generated application credentials are removed on normal success or failure.
 An interrupted controller or failed cleanup requires inspecting the owned VM

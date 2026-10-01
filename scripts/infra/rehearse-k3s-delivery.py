@@ -42,7 +42,8 @@ def releases(args):
     """Validate all release identifiers before creating any guest or credential files."""
     current = {name: getattr(args, name) for name in ('backend', 'frontend', 'revision')}
     previous = {name: getattr(args, 'previous_' + name) for name in current}
-    if any(previous.values()) and not all(previous.values()):
+    supplied = any(value is not None for value in previous.values())
+    if supplied and not all(previous.values()):
         raise ValueError('Supply all three previous-release arguments together')
     for release in (current, previous) if all(previous.values()) else (current,):
         if not re.fullmatch(r'[a-f0-9]{40}', release['revision']):
@@ -57,10 +58,22 @@ def releases(args):
     return previous, current
 
 
-def inspect_delivery(environment):
-    kube = ['kubectl', '--context', 'battlefield-production', '-n', 'battlefield']
+def inspect_delivery(environment, evidence_dir):
+    kube = ['kubectl', '--request-timeout=15s', '--context', 'battlefield-production', '-n', 'battlefield']
     def read(*arguments):
-        return json.loads(base.run(*kube, *arguments, env=environment))
+        # Keep API/psql output private, including errors and partial timeout output.
+        with (evidence_dir / 'inspection.private.log').open('a') as log:
+            print(json.dumps([*kube, *arguments]), file=log, flush=True)
+            try:
+                result = subprocess.run([*kube, *arguments], env=environment, check=True,
+                                        text=True, stdout=subprocess.PIPE, stderr=log, timeout=30)
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+                output = error.stdout or ''
+                print(output.decode(errors='replace') if isinstance(output, bytes) else output, file=log)
+                print(type(error).__name__, file=log)
+                raise ValueError('Inspection failed; inspect inspection.private.log') from error
+            print(result.stdout, file=log)
+            return json.loads(result.stdout)
     return {
         'deployments': read('get', 'deployments', '-o', 'json'),
         'claims': read('get', 'pvc', '-o', 'json'),
@@ -69,6 +82,10 @@ def inspect_delivery(environment):
             "SELECT COALESCE(json_agg(version_id ORDER BY version_id), '[]'::json) FROM "
             "(SELECT DISTINCT ON (version_id) version_id, is_applied FROM public.goose_db_version "
             "ORDER BY version_id, id DESC) v WHERE is_applied;")}
+
+
+class RolloutPending(ValueError):
+    """A correctly selected release is still converging to its desired replica count."""
 
 
 def checkpoint(state, release):
@@ -82,10 +99,11 @@ def checkpoint(state, release):
         expected = release['frontend' if name == 'battlefield-frontend' else 'backend']
         actual = next(c['image'] for c in item['spec']['template']['spec']['containers']
                       if c['name'] == name.removeprefix('battlefield-'))
-        if (actual != expected or desired < 1 or
-                status.get('observedGeneration', 0) < item['metadata']['generation'] or
-                any(status.get(field, 0) != desired for field in ('updatedReplicas', 'readyReplicas', 'availableReplicas'))):
+        if actual != expected or desired < 1:
             raise ValueError('Release did not converge to the expected healthy images: ' + name)
+        if (status.get('observedGeneration', 0) < item['metadata']['generation'] or
+                any(status.get(field, 0) != desired for field in ('updatedReplicas', 'readyReplicas', 'availableReplicas'))):
+            raise RolloutPending('Release did not converge to the expected healthy images: ' + name)
         images[name] = actual
     claims = {}
     for item in state['claims']['items']:
@@ -99,16 +117,30 @@ def checkpoint(state, release):
             'database_migrations': recovery.migration_state(state['migrations'])}
 
 
+def converged_checkpoint(inspect, release):
+    # HPA changes can follow rollout status; retry readiness without weakening it.
+    for attempt in range(7):
+        try:
+            return checkpoint(inspect(), release)
+        except RolloutPending:
+            if attempt == 6:
+                raise
+            time.sleep(5)
+
+
 def exercise_delivery(command, inspect, probe, previous, current, report):
     """Use normal delivery and rollback commands against the caller's isolated registration."""
     report['checkpoints'] = {}
     def check(name, release):
         report['stage'] = name
-        evidence = checkpoint(inspect(), release)
+        evidence = converged_checkpoint(inspect, release)
         baseline = report['checkpoints'].get('previous')
-        if baseline and (evidence['claims'] != baseline['claims'] or
-                         evidence['database_migrations'] != baseline['database_migrations']):
-            raise ValueError('Release changed retained claims or migration state; recovery cannot be claimed')
+        if baseline and evidence['claims'] != baseline['claims']:
+            report['checkpoint_failure'] = 'retained_claims_changed'
+            raise ValueError(name + ': retained claim identities changed; recovery cannot be claimed')
+        if baseline and evidence['database_migrations'] != baseline['database_migrations']:
+            report['checkpoint_failure'] = 'migration_ledger_changed'
+            raise ValueError(name + ': migration ledger changed; choose compatible releases; recovery cannot be claimed')
         probe()
         report['checkpoints'][name] = evidence
 
@@ -274,7 +306,7 @@ def main():
                             ('battlefield-frontend', 8080, '/livez', 200),
                             ('battlefield-mcp', 8084, '/healthz', 204)]:
                         private_probe(env, work, service, port, path, status)
-                exercise_delivery(command, lambda: inspect_delivery(env), probe, previous, current, report)
+                exercise_delivery(command, lambda: inspect_delivery(env, args.evidence_dir), probe, previous, current, report)
 
         finally:
             try:
