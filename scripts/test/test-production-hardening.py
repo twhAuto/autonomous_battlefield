@@ -88,25 +88,27 @@ class RecoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp)/'recovery.json'
             digest = 'ghcr.io/test/image@sha256:'+'a'*64
-            self.assertEqual(recovery.approved(path, 'cluster', digest, digest), '')
-            recovery.record(path, 'cluster', 'b'*40, self.state())
+            self.assertEqual(recovery.approved(path, 'cluster', digest, digest, [0, 1]), '')
+            recovery.record(path, 'cluster', 'b'*40, self.state(), [0, 1])
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
-            self.assertEqual(recovery.approved(path, 'cluster', digest, digest), digest)
-            self.assertEqual(recovery.approved(path, 'other-cluster', digest, digest), '')
-            self.assertEqual(recovery.approved(path, 'cluster', digest, 'other'), '')
+            self.assertEqual(recovery.approved(path, 'cluster', digest, digest, [0, 1]), digest)
+            self.assertEqual(recovery.approved(path, 'cluster', digest, digest, [0, 1, 2]), '')
+            self.assertEqual(recovery.approved(path, 'cluster', digest, digest, [0]), '')
+            self.assertEqual(recovery.approved(path, 'other-cluster', digest, digest, [0, 1]), '')
+            self.assertEqual(recovery.approved(path, 'cluster', digest, 'other', [0, 1]), '')
             previous = path.read_bytes()
             state = self.state(); state['items'][0]['status']['readyReplicas'] = 0
-            with self.assertRaises(ValueError): recovery.record(path, 'cluster', 'b'*40, state)
+            with self.assertRaises(ValueError): recovery.record(path, 'cluster', 'b'*40, state, [0, 1])
             self.assertEqual(path.read_bytes(), previous)
             state = self.state(); state['items'][1]['spec']['template']['spec']['containers'][0]['image'] = 'ghcr.io/test/image@sha256:'+'c'*64
-            with self.assertRaises(ValueError): recovery.record(path, 'cluster', 'b'*40, state)
+            with self.assertRaises(ValueError): recovery.record(path, 'cluster', 'b'*40, state, [0, 1])
             state = self.state(); state['items'][-1]['spec']['replicas'] = 0
             state['items'][-1]['status'].update(updatedReplicas=0, readyReplicas=0)
-            with self.assertRaises(ValueError): recovery.record(path, 'cluster', 'b'*40, state)
+            with self.assertRaises(ValueError): recovery.record(path, 'cluster', 'b'*40, state, [0, 1])
             alias = Path(tmp)/'alias.json'; alias.symlink_to(path)
-            with self.assertRaises(ValueError): recovery.approved(alias, 'cluster', digest, digest)
+            with self.assertRaises(ValueError): recovery.approved(alias, 'cluster', digest, digest, [0, 1])
             path.chmod(0o644)
-            with self.assertRaises(ValueError): recovery.approved(path, 'cluster', digest, digest)
+            with self.assertRaises(ValueError): recovery.approved(path, 'cluster', digest, digest, [0, 1])
 
 
 class RenderingTests(unittest.TestCase):

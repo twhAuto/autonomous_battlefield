@@ -1,0 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../local/gateway
+# NodePort 30080 is private on the guest; the platform firewall restricts access.
+# Preserve existing route names and hostnames used by monitoring/CLI tooling.

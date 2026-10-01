@@ -1,5 +1,13 @@
 # Deployment learning guide
 
+Application CD now uses `scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh`;
+existing Kind-named commands remain compatible launchers. The registered driver
+selects Kind or K3s. See [K3s delivery](k3s-delivery.md) for retained storage,
+controller ownership, private gateway checks and the separate production cutover.
+Rollback records include applied migration versions; a changed ledger requires
+reviewed database recovery before automatic image rollback.
+
+
 Deployment targets are now explicit: WSL dev and server production. Start with
 the [environment setup and transition guide](environments.md). The `local` overlay
 name below denotes shared Kind manifests used by both environments.
@@ -400,11 +408,11 @@ folder rule. Multiple changed paths contribute the union of their components;
 | CI lint/coverage summary and existing test compatibility wrappers (`test-*`, `fuzz-smoke`, `with-test-postgres`) | `none` | None |
 | `backend/**` | `migration,backend,application` | Backend image |
 | `frontend/**` | `frontend,application` | Frontend image |
-| `deploy/base/infrastructure/**` or `deploy/overlays/local/infrastructure/**` | `infrastructure` | None |
-| `deploy/base/migration/**` or `deploy/overlays/local/migration/**` | `migration` | None; uses the deployed backend image |
-| `deploy/base/application/**` or `deploy/overlays/local/application/**` | `application` | None; preserves deployed image tags |
-| `deploy/overlays/local/observability/**` or `deploy/overlays/local/logging-collector/**` | `observability` | None |
-| `deploy/overlays/local/gateway/**` | `gateway` | None |
+| `deploy/base/infrastructure/**` or `deploy/overlays/{local,k3s}/infrastructure/**` | `infrastructure` | None |
+| `deploy/base/migration/**` or `deploy/overlays/{local,k3s}/migration/**` | `migration` | None; uses the deployed backend image |
+| `deploy/base/application/**` or `deploy/overlays/{local,k3s}/application/**` | `application` | None; preserves deployed image tags |
+| `deploy/overlays/{local,k3s}/observability/**` or `deploy/overlays/{local,k3s}/logging-collector/**` | `observability` | None |
+| `deploy/overlays/{local,k3s}/gateway/**` | `gateway` | None |
 | `VERSION` | `migration,backend,frontend,application` | Both application images |
 | CI image build or scan scripts | `all` | Both application images |
 | `scripts/ops/render-limited-launch.py` or `scripts/cd/reconcile-network-policies.sh` | `network-policy` | None |

@@ -176,6 +176,22 @@ credentials and verified public test-image bytes. Its private diagnostic callbac
 extends the normal sanitized report only for fixture failures. See the
 [K3s platform runbook](../operations/k3s-platform.md) for job use and acceptance.
 
+`scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh` are the driver-neutral
+entry points used by Jenkins; the old Kind-named scripts forward arguments and
+signals. `cd/lib/kubernetes-deployment.sh` stages selected shared overlays and
+composes `deploy/overlays/k3s` when the profile selects K3s. `lib/k3s-delivery.py`
+performs read-only platform/retained-volume checks. `production_recovery.py`
+binds verified images to the applied database migration ledger. The required
+`test-k3s-delivery.py` suite exercises the real commands with isolated external
+command doubles, alongside the existing Kind and registry rejection suites.
+See [K3s delivery](../operations/k3s-delivery.md) for registration and migration.
+
+The disposable K3s application rehearsal is `scripts/infra/rehearse-k3s-delivery.py`.
+It reuses the platform roles and owned-VM fixture, runs signed-image delivery with
+synthetic application inputs, and records private readiness, retained-claim and
+cleanup evidence. See [its runbook](../operations/k3s-delivery.md#disposable-delivery-rehearsal)
+for the remaining public and CLI bridge acceptance checks.
+
 ## Common change paths
 
 ### Add a battle API field

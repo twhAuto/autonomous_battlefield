@@ -153,6 +153,12 @@ assert_detection "observability" "deploy/overlays/local/observability/prometheus
 assert_detection "observability" "deploy/langfuse/collector-config.yaml"
 assert_detection "observability" "deploy/overlays/local/logging-collector/fluent-bit.conf"
 assert_detection "none" "README.md"
+assert_detection "infrastructure" "deploy/overlays/k3s/infrastructure/kustomization.yaml"
+assert_detection "application" "deploy/overlays/k3s/application/kustomization.yaml"
+assert_detection "migration" "deploy/overlays/k3s/migration/kustomization.yaml"
+assert_detection "observability" "deploy/overlays/k3s/observability/kustomization.yaml"
+assert_detection "observability" "deploy/overlays/k3s/logging-collector/kustomization.yaml"
+assert_detection "gateway" "deploy/overlays/k3s/gateway/kustomization.yaml"
 assert_detection "none" "docs/architecture.md"
 assert_detection "none" "quality/sonarqube/rules.properties"
 assert_detection "none" "scripts/test/test-go-coverage.sh"
@@ -171,8 +177,8 @@ assert_mixed_detection "frontend,application" "frontend/src/app/App.tsx" "fronte
 assert_mixed_detection "frontend,application" "frontend/src/app/App.tsx" "tests/performance/k6-smoke.js"
 assert_detection "all" "scripts/ci/build-images.sh"
 assert_detection "all" "scripts/ci/with-ghcr-auth.sh" 1
-assert_detection "all" "scripts/cd/deploy-kind.sh"
-assert_detection "all" "scripts/cd/lib/kind-deployment.sh"
+assert_detection "all" "scripts/cd/deploy.sh"
+assert_detection "all" "scripts/cd/lib/kubernetes-deployment.sh"
 assert_detection "all" "platform/controllers/reconcile.sh" 1
 assert_mixed_detection "all" \
   "frontend/src/app/App.tsx" \

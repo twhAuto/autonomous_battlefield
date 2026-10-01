@@ -74,7 +74,7 @@ mcp_since=${SECONDS}
 k scale deployment/battlefield-mcp --replicas=1 >&2
 mcp_seconds="$(await_replacement "${mcp_selector}" "${mcp_before}" "${mcp_since}")"
 
-"${project_dir}/scripts/cd/smoke-test-kind.sh"
+"${project_dir}/scripts/cd/smoke-test.sh"
 cat >"${report_dir}/summary.json" <<EOF
 {"schemaVersion":"battlefield.failure-drill-report.v2","startedAt":"${started}","completedAt":"$(date -u +%FT%TZ)","context":"${context}","drills":[{"name":"engine-restart","recoverySeconds":${engine_seconds}},{"name":"postgresql-restart","recoverySeconds":${database_seconds}},{"name":"mcp-outage","outageSeconds":${mcp_outage_seconds},"recoverySeconds":${mcp_seconds}}],"outcome":"passed"}
 EOF

@@ -62,19 +62,19 @@ while IFS= read -r -d '' changed_file; do
       frontend=1
       application=1
       ;;
-    deploy/base/infrastructure/*|deploy/overlays/local/infrastructure/*)
+    deploy/base/infrastructure/*|deploy/overlays/local/infrastructure/*|deploy/overlays/k3s/infrastructure/*)
       infrastructure=1
       ;;
-    deploy/base/migration/*|deploy/overlays/local/migration/*)
+    deploy/base/migration/*|deploy/overlays/local/migration/*|deploy/overlays/k3s/migration/*)
       migration=1
       ;;
-    deploy/base/application/*|deploy/overlays/local/application/*)
+    deploy/base/application/*|deploy/overlays/local/application/*|deploy/overlays/k3s/application/*)
       application=1
       ;;
-    deploy/langfuse/*|deploy/overlays/local/observability/*|deploy/overlays/local/logging-collector/*)
+    deploy/langfuse/*|deploy/overlays/local/observability/*|deploy/overlays/k3s/observability/*|deploy/overlays/local/logging-collector/*|deploy/overlays/k3s/logging-collector/*)
       observability=1
       ;;
-    deploy/overlays/local/gateway/*)
+    deploy/overlays/local/gateway/*|deploy/overlays/k3s/gateway/*)
       gateway=1
       ;;
     VERSION)

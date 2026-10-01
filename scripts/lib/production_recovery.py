@@ -10,7 +10,7 @@ BACKENDS = ('battlefield-api', 'battlefield-engine', 'battlefield-agent', 'battl
 DIGEST = re.compile(r'[a-z0-9][a-z0-9._:/-]+@sha256:[a-f0-9]{64}')
 
 
-def approved(path, cluster, backend, frontend):
+def approved(path, cluster, backend, frontend, migrations):
     if not path.exists():
         return ''
     if path.is_symlink() or not path.is_file() or path.stat().st_mode & 0o077:
@@ -18,10 +18,19 @@ def approved(path, cluster, backend, frontend):
     record = json.loads(path.read_text())
     if (record.get('cluster_uid'), record.get('backend'), record.get('frontend')) != (cluster, backend, frontend):
         return ''
+    if record.get('database_migrations') != migration_state(migrations):
+        return ''
     return backend if DIGEST.fullmatch(backend) and DIGEST.fullmatch(frontend) else ''
 
 
-def record(path, cluster, revision, state):
+def migration_state(values):
+    if (not isinstance(values, list) or not values or
+            any(type(value) is not int or value < 0 for value in values) or values != sorted(set(values))):
+        raise ValueError('Expected a nonempty ordered set of applied Goose migration versions')
+    return values
+
+
+def record(path, cluster, revision, state, migrations):
     if not cluster or not re.fullmatch(r'[a-f0-9]{40}', revision):
         raise ValueError('A verified cluster and full source revision are required')
     deployments = {d['metadata']['name']: d for d in state['items']}
@@ -42,7 +51,8 @@ def record(path, cluster, revision, state):
     backend = images[BACKENDS[0]]
     if any(images[name] != backend for name in BACKENDS):
         raise ValueError('Recovery backend deployments must use the same verified digest')
-    data = dict(cluster_uid=cluster, backend=backend, frontend=images['battlefield-frontend'], verified_revision=revision)
+    data = dict(cluster_uid=cluster, backend=backend, frontend=images['battlefield-frontend'], verified_revision=revision,
+                database_migrations=migration_state(migrations))
     fd, temporary = tempfile.mkstemp(dir=path.parent, prefix='.recovery-')
     try:
         with os.fdopen(fd, 'w') as stream:
@@ -56,11 +66,11 @@ def record(path, cluster, revision, state):
 
 if __name__ == '__main__':
     try:
-        action, filename, cluster, first, second = sys.argv[1:]
+        action, filename, cluster, first, second, database = sys.argv[1:]
         if action == 'read':
-            print(approved(Path(filename), cluster, first, second))
+            print(approved(Path(filename), cluster, first, second, json.loads(Path(database).read_text())))
         elif action == 'record':
-            record(Path(filename), cluster, first, json.loads(Path(second).read_text()))
+            record(Path(filename), cluster, first, json.loads(Path(second).read_text()), json.loads(Path(database).read_text()))
         else:
             raise ValueError('Unknown recovery action')
     except (ValueError, KeyError, OSError, StopIteration):

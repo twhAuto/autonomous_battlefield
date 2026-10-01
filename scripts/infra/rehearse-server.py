@@ -95,9 +95,9 @@ def wait_for(check, message, timeout=300):
 
 
 class Rehearsal:
-    def __init__(self, work, evidence, network, *, memory_mib=3072, root_gib=16):
+    def __init__(self, work, evidence, network, *, memory_mib=3072, root_gib=16, cpus=2):
         self.work, self.evidence, self.network = work, evidence, network
-        self.memory_mib, self.root_gib = memory_mib, root_gib
+        self.memory_mib, self.root_gib, self.cpus = memory_mib, root_gib, cpus
         self.identity = str(uuid.uuid4())
         self.name = 'bf-rehearsal-' + self.identity[:12]
         self.pool_path = '/var/lib/libvirt/images/' + self.name
@@ -154,7 +154,7 @@ class Rehearsal:
             virsh('vol-upload', filename, str(source), '--pool', self.identity, '--sparse', timeout=600)
         domain = f"""<domain type='kvm'>
  <name>{self.name}</name><uuid>{self.identity}</uuid>
- <memory unit='MiB'>{self.memory_mib}</memory><vcpu>2</vcpu>
+ <memory unit='MiB'>{self.memory_mib}</memory><vcpu>{self.cpus}</vcpu>
  <os><type arch='x86_64'>hvm</type><boot dev='hd'/></os>
  <features><acpi/><apic/></features><cpu mode='host-passthrough'/>
  <on_reboot>restart</on_reboot><on_crash>destroy</on_crash>

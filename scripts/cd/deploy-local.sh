@@ -44,8 +44,8 @@ echo "Deploying local configuration, backend, and frontend to kind cluster ${clu
 # .env is ignored by Git; restart application pods to consume secret-only edits too.
 FORCE_RESTART=1 \
   DEPLOY_COMPONENTS="${DEPLOY_COMPONENTS:-infrastructure,backend,frontend,gateway}" \
-  "${project_dir}/scripts/cd/deploy-kind.sh" "${image_tag}"
+  "${project_dir}/scripts/cd/deploy.sh" "${image_tag}"
 
 echo
-"${project_dir}/scripts/cd/smoke-test-kind.sh"
+"${project_dir}/scripts/cd/smoke-test.sh"
 echo "Dev application deployment is ready: ${TARGET_URL}"

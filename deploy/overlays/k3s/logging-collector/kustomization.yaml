@@ -1,0 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../local/logging-collector
+# K3s uses the same CRI /var/log/containers and /var/log/pods paths.
+# Kubelet state is retained separately; do not grant access to its credentials.
