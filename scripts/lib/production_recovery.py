@@ -18,7 +18,11 @@ def approved(path, cluster, backend, frontend, migrations):
     record = json.loads(path.read_text())
     if (record.get('cluster_uid'), record.get('backend'), record.get('frontend')) != (cluster, backend, frontend):
         return ''
-    if record.get('database_migrations') != migration_state(migrations):
+    try:
+        live_migrations = migration_state(migrations)
+    except ValueError:
+        return ''
+    if record.get('database_migrations') != live_migrations:
         return ''
     return backend if DIGEST.fullmatch(backend) and DIGEST.fullmatch(frontend) else ''
 
@@ -68,7 +72,11 @@ if __name__ == '__main__':
     try:
         action, filename, cluster, first, second, database = sys.argv[1:]
         if action == 'read':
-            print(approved(Path(filename), cluster, first, second, json.loads(Path(database).read_text())))
+            try:
+                migrations = json.loads(Path(database).read_text())
+            except (ValueError, OSError):
+                migrations = None
+            print(approved(Path(filename), cluster, first, second, migrations))
         elif action == 'record':
             record(Path(filename), cluster, first, json.loads(Path(second).read_text()), json.loads(Path(database).read_text()))
         else:

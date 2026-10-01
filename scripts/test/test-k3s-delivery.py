@@ -3,6 +3,7 @@ import importlib.util
 import json
 import os
 import re
+import ssl
 from pathlib import Path
 import shutil
 import subprocess
@@ -15,6 +16,15 @@ FRONTEND = 'ghcr.io/test/frontend@sha256:' + 'b' * 64
 
 
 class DeliveryTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.kubectl = shutil.which('kubectl')
+        cls.ca_bundle = ssl.get_default_verify_paths().cafile
+        if not cls.kubectl:
+            raise RuntimeError('K3s delivery tests require kubectl for real Kustomize rendering')
+        if not cls.ca_bundle or not Path(cls.ca_bundle).is_file():
+            raise RuntimeError('K3s delivery tests require a system TLS CA bundle')
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='bf-k3s-delivery-')
         self.addCleanup(self.tmp.cleanup)
@@ -30,7 +40,7 @@ class DeliveryTests(unittest.TestCase):
         self.kubeconfig = self.directory / 'kubeconfig'
         self.kubeconfig.touch()
         self.ca = self.directory / 'ca.pem'
-        self.ca.write_bytes(Path('/etc/ssl/certs/ca-certificates.crt').read_bytes())
+        self.ca.write_bytes(Path(self.ca_bundle).read_bytes())
         self.profile.write_text('BF_ENV=production\nBF_DRIVER=k3s\nBF_CONTEXT=fixture\nBF_CLUSTER=node\nBF_UID=uid\n'
                                 'BF_URL=https://play.example.com\nBF_KUBECONFIG=kubeconfig\nBF_KUBELET_CA_FILE=ca.pem\n')
         (self.directory / '.env').write_text('POSTGRES_DB=battlefield\nPOSTGRES_USER=battlefield\nPOSTGRES_PASSWORD=synthetic\n'
@@ -70,7 +80,7 @@ elif 'get storageclass' in text:
 elif 'get deployment envoy-gateway' in text or 'get deployment kyverno-admission-controller' in text:
     envoy='envoy-gateway' in text
     image='envoyproxy/gateway:'+PINS['envoy']['version'] if envoy else 'reg.kyverno.io/kyverno/kyverno:'+PINS['kyverno']['version']
-    print(json.dumps({'metadata':{'generation':1},'spec':{'replicas':1,'template':{'spec':{'containers':[{'image':image}]}}},'status':{'observedGeneration':1,'updatedReplicas':1,'readyReplicas':1,'availableReplicas':1}}))
+    print(json.dumps({'metadata':{'generation':1},'spec':{'replicas':1,'template':{'spec':{'containers':[{'image':image}]}}},'status':{'observedGeneration':1,'updatedReplicas':1,'readyReplicas':int(os.environ.get('CONTROLLER_READY','1')),'availableReplicas':1}}))
 elif 'get deployment/' in text and '.image}' in text:
     print(FRONTEND if 'battlefield-frontend' in text else BACKEND)
 elif 'get deployments' in text and '-o json' in text:
@@ -81,6 +91,7 @@ elif ' apply -k ' in ' '+text+' ':
     result=subprocess.run([REAL_KUBECTL,'kustomize',str(directory)],capture_output=True,text=True,check=True)
     Path(os.environ['FIXTURE'],directory.name+'.yaml').write_text(result.stdout)
 elif 'exec battlefield-postgres-0' in text and 'psql' in text:
+    if os.environ.get('DATABASE_UNAVAILABLE'): sys.exit(1)
     print(os.environ.get('MIGRATIONS','[0,1]'))
 elif 'pg_dump' in text: print('synthetic dump')
 elif 'create secret' in text: print('{}')
@@ -92,7 +103,7 @@ elif 'port-forward' in args:
     import time
     time.sleep(60)
 elif 'apply' in args and '-f' in args and args[args.index('-f')+1]=='-': sys.stdin.read()
-''', {'PINS':pins, 'REAL_KUBECTL':shutil.which('kubectl'), 'BACKEND':BACKEND, 'FRONTEND':FRONTEND})
+''', {'PINS':pins, 'REAL_KUBECTL':self.kubectl, 'BACKEND':BACKEND, 'FRONTEND':FRONTEND})
         excluded = ('BF_', 'BATTLEFIELD_', 'DEPLOY_', 'KUBERNETES_', 'KIND_', 'DOCKER_', 'SMOKE_', 'BACKEND_', 'FRONTEND_')
         self.env = {k:v for k,v in os.environ.items() if not k.startswith(excluded) and k not in
                     ('KUBECONFIG','CLUSTER_DRIVER','IMAGE_SOURCE','ENFORCE_SUPPLY_CHAIN_POLICY','TARGET_URL','ZAP_TARGET_URL','LANGFUSE_ENABLED')}
@@ -151,7 +162,7 @@ elif 'apply' in args and '-f' in args and args[args.index('-f')+1]=='-': sys.std
 
     def test_wrong_identity_driver_platform_and_supply_chain_fail_before_mutation(self):
         for settings in ({'LIVE_UID':'other'},{'CLUSTER_DRIVER':'kind'},{'K3S_VERSION':'wrong'},
-                         {'RECLAIM':'Delete'},{'IMAGE_SOURCE':'local'},{'SIGNATURE_FAIL':'1'},
+                         {'RECLAIM':'Delete'},{'CONTROLLER_READY':'0'},{'IMAGE_SOURCE':'local'},{'SIGNATURE_FAIL':'1'},
                          {'ATTESTATION_FAIL':'1'},{'GHCR_TOKEN':''},{'KIND_CLUSTER_NAME':'old'}):
             with self.subTest(settings=settings):
                 self.run_script('deploy.sh','f'*40,ok=False,**settings)
@@ -165,6 +176,31 @@ elif 'apply' in args and '-f' in args and args[args.index('-f')+1]=='-': sys.std
         self.assertEqual(sum('set' in c and 'image' in c for c in self.calls),5)
         self.run_script('rollback.sh',BACKEND,FRONTEND,ok=False,MIGRATIONS='[0,1,2]',BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST=BACKEND)
         self.assertFalse(any('set' in c and 'image' in c for c in self.calls))
+
+    def test_unknown_database_disables_rollback_without_blocking_forward_delivery(self):
+        self.run_script('production-recovery.sh','record','f'*40)
+        record=self.directory/'recovery.json'
+        original=record.read_bytes()
+        for settings in ({'DATABASE_UNAVAILABLE':'1'},{'MIGRATIONS':'[]'},{'MIGRATIONS':'invalid-json'}):
+            result=self.run_script('production-recovery.sh','read',BACKEND,FRONTEND,**settings)
+            self.assertEqual(result.stdout.strip(),'')
+            self.run_script('rollback.sh',BACKEND,FRONTEND,ok=False,
+                BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST=BACKEND,**settings)
+            self.assertFalse(any('set' in c and 'image' in c for c in self.calls))
+            self.run_script('production-recovery.sh','record','f'*40,ok=False,**settings)
+            self.assertEqual(record.read_bytes(),original)
+        self.run_script('production-recovery.sh','invalid',ok=False)
+        self.assertEqual(self.calls,[])
+
+    def test_recovery_keeps_identity_and_storage_guards_during_controller_restart(self):
+        self.run_script('production-recovery.sh','record','f'*40)
+        self.run_script('rollback.sh',BACKEND,FRONTEND,CONTROLLER_READY='0',K3S_VERSION='upgrading',
+                        BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST=BACKEND)
+        self.assertEqual(sum('set' in c and 'image' in c for c in self.calls),5)
+        for settings in ({'LIVE_UID':'other'},{'RECLAIM':'Delete'}):
+            self.run_script('rollback.sh',BACKEND,FRONTEND,ok=False,CONTROLLER_READY='0',
+                            BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST=BACKEND,**settings)
+            self.assertFalse(any('set' in c and 'image' in c for c in self.calls))
 
     def test_smoke_selects_k3s_gateway_and_rejects_ambiguous_services(self):
         self.command('curl','pass')

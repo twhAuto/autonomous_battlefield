@@ -81,7 +81,7 @@ battlefield_env_verify() {
   if [[ "${CLUSTER_DRIVER}" == k3s ]]; then
     local helper
     helper="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/k3s-delivery.py"
-    python3 "${helper}" verify "${KUBERNETES_CONTEXT}" "${BF_CLUSTER}" || return
+    python3 "${helper}" "${1:-verify}" "${KUBERNETES_CONTEXT}" "${BF_CLUSTER}" || return
   fi
 }
 
@@ -89,7 +89,7 @@ battlefield_env_verify() {
 # Callers perform Docker identity verification separately when they need it.
 battlefield_env_preflight() {
   battlefield_env_load || return
-  battlefield_env_verify || return
+  battlefield_env_verify "${1:-verify}" || return
 }
 
 # An installed Langfuse project enables tracing without a per-shell export.

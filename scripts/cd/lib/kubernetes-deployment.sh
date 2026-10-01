@@ -128,7 +128,11 @@ cluster_deploy_validate_cluster() {
     || ! cluster_deploy_kube get customresourcedefinition/envoyproxies.gateway.envoyproxy.io \
       >/dev/null 2>&1; then
     echo "Envoy Gateway and the Gateway API are not installed in ${cluster_name}." >&2
-    echo "Verify the registered platform before application delivery." >&2
+    if [[ "${CLUSTER_DRIVER:-kind}" == kind ]]; then
+      echo "Install them with ./scripts/cd/create-kind-cluster.sh" >&2
+    else
+      echo "Verify the registered platform before application delivery." >&2
+    fi
     return 1
   fi
 

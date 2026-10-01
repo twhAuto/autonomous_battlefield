@@ -14,15 +14,15 @@ def kube(context, *args):
         stderr=subprocess.DEVNULL, text=True, timeout=20))
 
 
-def verify(context, node_name):
+def verify(context, node_name, ready_platform=True):
     pins = json.loads((ROOT / 'infra/k3s/pins.json').read_text())
     nodes = kube(context, 'get', 'nodes')['items']
     if len(nodes) != 1 or nodes[0]['metadata']['name'] != node_name:
         raise ValueError('Expected the registered single-node K3s platform')
     node = nodes[0]
-    if node['status']['nodeInfo']['kubeletVersion'] != pins['k3s']['version']:
+    if ready_platform and node['status']['nodeInfo']['kubeletVersion'] != pins['k3s']['version']:
         raise ValueError('K3s version differs from the managed platform pin')
-    if not any(c['type'] == 'Ready' and c['status'] == 'True' for c in node['status']['conditions']):
+    if ready_platform and not any(c['type'] == 'Ready' and c['status'] == 'True' for c in node['status']['conditions']):
         raise ValueError('K3s node is not Ready')
     storage = kube(context, 'get', 'storageclass', 'battlefield-retained')
     expected = {'provisioner': 'rancher.io/local-path', 'reclaimPolicy': 'Retain',
@@ -41,6 +41,8 @@ def verify(context, node_name):
             path = volume['spec'].get('hostPath', {}).get('path', '')
             if not Path(path).is_relative_to('/srv/battlefield/storage') or '..' in Path(path).parts:
                 raise ValueError('Existing application volume is outside retained storage')
+    if not ready_platform:
+        return
     for namespace, name, image in (
         ('envoy-gateway-system', 'envoy-gateway', 'docker.io/envoyproxy/gateway:' + pins['envoy']['version']),
         ('kyverno', 'kyverno-admission-controller', 'reg.kyverno.io/kyverno/kyverno:' + pins['kyverno']['version'])):
@@ -58,8 +60,8 @@ def verify(context, node_name):
 if __name__ == '__main__':
     try:
         action, context, node_name = sys.argv[1:]
-        if action != 'verify':
+        if action not in ('verify', 'verify-recovery'):
             raise ValueError('Unknown K3s delivery action')
-        verify(context, node_name)
+        verify(context, node_name, ready_platform=action == 'verify')
     except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
         raise SystemExit('K3s delivery: ' + (str(error) if isinstance(error, ValueError) else 'platform inspection failed')) from None

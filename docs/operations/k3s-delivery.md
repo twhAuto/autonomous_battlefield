@@ -43,7 +43,8 @@ source for the later reviewed migration, not a substitute for migrating data.
 `BF_DOCKER_HOST`. K3s delivery never calls the Kind CLI or uses Docker to identify
 the cluster. The controller still needs Docker for the existing Cosign verifier,
 as well as Node.js, Python, Git, kubectl and authenticated GHCR configuration.
-Conflicting driver/context/namespace/image-source settings and wrong live UIDs
+For K3s, the existing controller Docker context selects the Cosign container runtime;
+it does not identify the Kubernetes cluster. Conflicting driver/context/namespace/image-source settings and wrong live UIDs
 fail before application changes.
 
 ## Deliver and verify
@@ -137,7 +138,15 @@ Manual schema edits are outside the migration-ledger check and require review.
 Older records without migration state do not authorize automatic rollback. The
 next successful main delivery writes the new format. A failed release before
 that point requires operator recovery. Missing PostgreSQL or unreadable migration
-metadata also prevents claiming a verified recovery target.
+metadata also prevents claiming a verified recovery target. A recovery `read`
+returns no approved digest when the ledger is unavailable, empty or malformed,
+so a forward deployment can still attempt its normal database/migration gates.
+Recording a new verified target remains a hard failure in that situation.
+Recovery reads and rollback check the registered cluster UID, node identity and
+retained storage contract; they do not require controllers to finish restarting
+or match delivery pins. Registration, new delivery and recording verified recovery
+continue to require the pinned ready platform. Kubernetes admission still applies
+to image changes.
 
 ## Adoption and cutover boundary
 

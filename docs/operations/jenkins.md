@@ -632,7 +632,7 @@ work after the underlying job is deleted.
 ## Daily startup after a reboot
 
 Jenkins, SonarQube, and the production Kind cluster run on the server. Verify
-those existing services and run `DEPLOY_ENV=production ./scripts/cd/smoke-test-kind.sh`
+those existing services and run `DEPLOY_ENV=production ./scripts/cd/smoke-test.sh`
 as the configured agent account. Do not run the dev bootstrap on this machine.
 If the production cluster is missing, recover its data and registered identity;
 do not recreate it as a daily startup step.
@@ -703,11 +703,11 @@ failing while its image is still waiting behind those pulls. On failure,
 Jenkins prints descriptions and logs for every unavailable observability
 Deployment plus recent namespace events.
 
-`scripts/cd/deploy-kind.sh` can reapply a temporary Kustomize overlay containing
+`scripts/cd/deploy.sh` can reapply a temporary Kustomize overlay containing
 the previous images if an application apply or rollout fails. Before deploying,
 Jenkins records the independently deployed backend and frontend digest references. If an
 application-related deployment later fails smoke testing,
-`scripts/cd/rollback-kind.sh` restores those two exact immutable revisions only
+`scripts/cd/rollback.sh` restores those two exact immutable revisions only
 when the private cluster-bound recovery record approves the exact image pair.
 The record is written after all runtime assurance stages succeed; an absent or
 mismatched record requires operator recovery. The script operates without
@@ -732,8 +732,8 @@ committing the intended source so the worktree is clean:
 (cd frontend && npm ci && npm test -- --coverage && npm run build)
 BUILD_NUMBER=1 ./scripts/ci/build-images.sh
 ./scripts/ci/scan-images.sh "$(git rev-parse HEAD)"
-ROLLBACK_ON_FAILURE=1 ./scripts/cd/deploy-kind.sh "$(git rev-parse HEAD)"
-./scripts/cd/smoke-test-kind.sh
+ROLLBACK_ON_FAILURE=1 ./scripts/cd/deploy.sh "$(git rev-parse HEAD)"
+./scripts/cd/smoke-test.sh
 ```
 
 Set `DEPLOY_COMPONENTS=frontend`, `backend`, `observability`, or another

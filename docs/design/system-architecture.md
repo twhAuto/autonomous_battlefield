@@ -1309,7 +1309,7 @@ all current ready replicas rather than an aggregate minimum of one.
 
 Successful authentication and runtime assurance establish a private recovery
 record bound to cluster UID and both deployed digests. Subsequent automatic image
-rollback requires an exact match, unchanged applied Goose migration versions and existing signature/provenance verification.
+rollback requires an exact match, unchanged applied Goose migration versions and existing signature/provenance verification. An unavailable migration ledger disables rollback approval without blocking forward delivery; recording a new verified target still fails. Recovery preserves identity/storage checks while allowing a platform-controller restart or upgrade.
 The record does not roll back database changes or replace current authentication
 configuration. An absent record leaves recovery under operator control.
 

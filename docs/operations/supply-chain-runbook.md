@@ -43,7 +43,7 @@ For suspected compromise, stop promotion, revoke Jenkins access, remove the key 
 
 Jenkins records the previous backend/frontend digest pair before rollout.
 Application rollout or smoke-test failure can restore that verified pair with
-`scripts/cd/rollback-kind.sh`; database migrations are not reversed. See
+`scripts/cd/rollback.sh`; database migrations are not reversed. See
 [Jenkins pipeline behavior](jenkins.md#pipeline-behavior).
 
 A lost registered cluster requires explicit recovery. Follow
