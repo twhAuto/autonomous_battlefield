@@ -331,12 +331,13 @@ class VMTests(unittest.TestCase):
             instance.prepare.assert_not_called()
             instance.tf.assert_not_called()
 
-    def test_jobs_only_preflights_both_owners_and_never_reads_or_writes_credentials(self):
+    def test_jobs_only_preflights_all_owners_and_never_reads_or_writes_credentials(self):
         class Client:
             def __init__(self, foreign_vm=False):
                 self.writes = []
                 self.definitions = {'job/battlefield-platform/config.xml': seed.folder_xml(),
                     'job/battlefield-platform/job/host/config.xml': seed.job_xml('host'),
+                    'job/battlefield-platform/job/k3s/config.xml': None,
                     'job/battlefield-platform/job/vm/config.xml':
                         b'<flow-definition><description>unowned</description></flow-definition>' if foreign_vm else None}
             def request(self, path, data=None, **kwargs):
@@ -356,7 +357,8 @@ class VMTests(unittest.TestCase):
                 else:
                     seed.seed_jobs(client)
                     self.assertEqual(client.writes, [('job/battlefield-platform/job/host/config.xml', seed.job_xml('host')),
-                        ('job/battlefield-platform/createItem?name=vm', seed.job_xml('vm'))])
+                        ('job/battlefield-platform/createItem?name=vm', seed.job_xml('vm')),
+                        ('job/battlefield-platform/createItem?name=k3s', seed.job_xml('k3s'))])
 
     def test_vm_job_uses_trusted_main_and_explicit_replacement_default(self):
         job = ET.fromstring(seed.job_xml('vm'))

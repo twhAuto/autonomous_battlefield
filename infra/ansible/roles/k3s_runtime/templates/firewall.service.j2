@@ -1,0 +1,16 @@
+[Unit]
+Description=Battlefield guest private API and gateway firewall
+Before=k3s.service
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/battlefield-k3s/firewall.nft
+ExecStartPost=/usr/bin/python3 /usr/local/lib/battlefield-k3s/firewall.py record
+ExecReload=/usr/sbin/nft -f /etc/battlefield-k3s/firewall.nft
+ExecReload=/usr/bin/python3 /usr/local/lib/battlefield-k3s/firewall.py record
+
+[Install]
+WantedBy=multi-user.target

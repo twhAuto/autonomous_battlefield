@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "pod_cidr": "10.62.0.0/16",
+  "service_cidr": "10.63.0.0/16",
+  "cluster_dns": "10.63.0.10",
+  "datastore": "sqlite",
+  "observability": true,
+  "langfuse": false
+}

@@ -1,0 +1,73 @@
+// AB-128: reviewed configuration of the Terraform-owned K3s guest.
+pipeline {
+    agent { label 'battlefield-production' }
+    options {
+        skipDefaultCheckout(true)
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        timestamps()
+        timeout(time: 90, unit: 'MINUTES')
+    }
+    parameters {
+        choice(name: 'ACTION', choices: ['plan', 'apply', 'verify'], description: 'Apply creates a fresh plan and pauses for owner review before configuring the K3s guest.')
+    }
+    stages {
+        stage('Trusted checkout') {
+            steps {
+                script {
+                    if (env.JOB_NAME != 'battlefield-platform/k3s' || env.CHANGE_ID) {
+                        error('Run this entry point only in the seeded platform K3s job.')
+                    }
+                    deleteDir()
+                    def source = checkout scm
+                    env.PLATFORM_REVISION = source.GIT_COMMIT
+                    env.PLATFORM_PRIVATE = "${pwd(tmp: true)}/platform-${env.BUILD_NUMBER}"
+                    sh 'umask 077; mkdir -p "$PLATFORM_PRIVATE"'
+                }
+            }
+        }
+        stage('K3s operation') {
+            steps {
+                // Same resource as the main production rollout, including its smoke/recovery stages.
+                lock(resource: 'battlefield-production-platform') {
+                    withCredentials([
+                        file(credentialsId: 'host-inventory', variable: 'PLATFORM_INVENTORY'),
+                        file(credentialsId: 'host-vault-password', variable: 'PLATFORM_VAULT_PASSWORD'),
+                        file(credentialsId: 'host-sudo-password', variable: 'PLATFORM_SUDO_PASSWORD'),
+                        usernamePassword(credentialsId: 'battlefield-ghcr', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')
+                    ]) {
+                        script {
+                            def action = params.ACTION == 'verify' ? 'verify' : 'plan'
+                            withEnv(["PLATFORM_ACTION=${action}"]) {
+                                sh './scripts/ci/run-k3s.sh'
+                            }
+                            archiveArtifacts artifacts: "artifacts/k3s-${action}.json", allowEmptyArchive: false
+                            if (params.ACTION == 'apply') {
+                                timeout(time: 10, unit: 'MINUTES') {
+                                    input message: "Review k3s-plan.json for retained disk initialization, private platform changes and revision ${env.PLATFORM_REVISION}. Apply this plan?", ok: 'Apply reviewed plan', submitter: 'whtan'
+                                }
+                                def current = checkout scm
+                                if (current.GIT_COMMIT != env.PLATFORM_REVISION) {
+                                    error('main changed during review; start a new plan.')
+                                }
+                                withEnv(["PLATFORM_ACTION=apply"]) {
+                                    sh './scripts/ci/run-k3s.sh'
+                                }
+                                archiveArtifacts artifacts: 'artifacts/k3s-apply.json', allowEmptyArchive: false
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            script {
+                if (env.PLATFORM_PRIVATE) {
+                    dir(env.PLATFORM_PRIVATE) { deleteDir() }
+                }
+            }
+        }
+    }
+}

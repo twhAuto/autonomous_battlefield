@@ -2,7 +2,7 @@
 
 [AB-126 — Provision a persistent K3s VM with Terraform and libvirt](https://app.notion.com/p/3eab7a19f8f7812e8638e2cf7b7e978a)
 provides the VM foundation. It creates an Ubuntu 24.04 guest and exports Ansible
-connection facts. K3s installation and mounting guest data are AB-128; delivery
+connection facts. [K3s installation and mounting guest data](k3s-platform.md) are AB-128; delivery
 integration and database/application migration are AB-129. Creating this VM does
 not move the current kind application or its database.
 
@@ -41,9 +41,9 @@ memory, leaving at least 2 GiB for host services. This is an operation-time chec
 not continuous disk monitoring or a quota. Other writes can consume the reserve;
 there is no automatic expansion, pruning or database retention in this slice.
 
-The guest data volume starts blank. AB-128 must identify it by
-`/dev/disk/by-id/virtio-battlefield-k3s-data`, validate existing filesystem identity,
-and mount it before K3s starts. Routine provisioning never formats this volume.
+The guest data volume starts blank. The AB-128 Ansible role identifies it by
+`/dev/disk/by-id/virtio-battlefield-k3s-data`, validates existing filesystem identity,
+and mounts it before K3s starts. Routine provisioning never formats this volume.
 
 ## Install or upgrade the Jenkins job
 
