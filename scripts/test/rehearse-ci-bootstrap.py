@@ -191,10 +191,13 @@ println 'created unmanaged fixture'
     run('sudo', 'tar', '-cpf', str(PRIVATE / 'restored-controller.tar'), '-C', '/var/lib', 'jenkins', timeout=300)
     run('sudo', 'mv', '/var/lib/jenkins', '/var/lib/jenkins.before-restore-fixture')
     run('sudo', 'tar', '-xpf', str(PRIVATE / 'restored-controller.tar'), '-C', '/var/lib', timeout=300)
+    run('sudo', 'mv', '/var/lib/jenkins/plugins/structs.jpi', '/var/lib/jenkins/plugins/structs.hpi')
     config = json.loads((PRIVATE / 'ci.json').read_text())
     config['mode'] = 'adopt'
     (PRIVATE / 'ci.json').write_text(json.dumps(config))
     server('ci-apply')
+    run('sudo', 'test', '!', '-e', '/var/lib/jenkins/plugins/structs.hpi')
+    run('sudo', 'test', '-f', '/var/lib/jenkins/plugins/structs.jpi')
     if snapshot() != before:
         raise ValueError('Restored-controller adoption lost users, jobs or credential identity')
     api = client()
@@ -206,6 +209,7 @@ println 'created unmanaged fixture'
     (EVIDENCE / 'identity.json').write_text(json.dumps(snapshot(), indent=2) + '\n')
     evidence = json.loads((EVIDENCE / 'acceptance.json').read_text())
     evidence['restored_adoption_preserves_unmanaged_history'] = True
+    evidence['legacy_hpi_normalized'] = True
     evidence['sonar_analysis_pipeline'] = True
     (EVIDENCE / 'acceptance.json').write_text(json.dumps(evidence) + '\n')
 
@@ -234,6 +238,7 @@ def exercise():
     probe_job()
     before = snapshot()
     invocation = run('systemctl', 'show', 'jenkins', '-p', 'InvocationID', '--value')
+    run('sudo', 'touch', '/opt/battlefield-ci/tools/vendor-cache-probe')
     fixture.assert_recap(server('ci-apply'), changed=0)
     fixture.assert_recap(server('ci-plan'), changed=0)
     if snapshot() != before or invocation != run('systemctl', 'show', 'jenkins', '-p', 'InvocationID', '--value'):

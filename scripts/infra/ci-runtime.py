@@ -5,6 +5,8 @@ Invoked only by ci.yml, never by Jenkins. API response bodies, subprocess output
 credential material and exceptions from external libraries are never printed.
 """
 import base64
+import contextlib
+import io
 import hashlib
 import http.client
 import importlib.util
@@ -668,7 +670,10 @@ def seed(payload):
     # canonical Jenkinsfile.platform/.vm/.k3s definitions. Never trigger builds.
     token = base64.b64decode(api.authorization.split(' ', 1)[1]).decode().split(':', 1)[1]
     client = module.Jenkins(JENKINS, payload['config']['jenkins_admin'], token)
-    module.seed_jobs(client)
+    # The CLI seeder prints an operator notice. Keep this command protocol a
+    # single safe JSON result, including when reused helpers add stdout output.
+    with contextlib.redirect_stdout(io.StringIO()):
+        module.seed_jobs(client)
     return {'platform_jobs_seeded': True}
 
 
@@ -710,7 +715,7 @@ def managed_fingerprints(prefix=Path('/opt/battlefield-ci')):
                       prefix / 'scripts', prefix / 'infra'):
         if directory.exists():
             for path in directory.rglob('*'):
-                if path.is_file() and not path.is_symlink():
+                if path.is_file() and not path.is_symlink() and '__pycache__' not in path.parts:
                     files[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
     for name in ('Jenkinsfile.platform', 'Jenkinsfile.vm', 'Jenkinsfile.k3s'):
         path = prefix / name
