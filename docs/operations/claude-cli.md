@@ -51,8 +51,10 @@ invalid submissions use the existing worker failure and fallback behavior.
 
 If MCP forwarding fails, the launcher prints the `kubectl port-forward` error
 before removing temporary files. It waits up to 120 seconds for the MCP deployment
-rollout before starting forwarding. For a port conflict, stop the existing bridge
-or use `HOST_MCP_PORT=28084 ./run-k8s-cli-agent.sh claude`; a second agent also needs
+rollout before starting forwarding. On the development workstation, choose an
+unused loopback port, for example `HOST_MCP_PORT=28084 ./run-k8s-cli-agent.sh claude`
+only when 28084 is free. The production server already uses that port for its
+CLI VM bridge; do not stop it to run a development launcher. A second agent also needs
 a distinct `HOST_AGENT_HEALTH_PORT`. When tracing is enabled, set distinct
 `HOST_OTEL_PORT` and `HOST_OTEL_HEALTH_PORT` too. For pod startup failures, inspect
 `kubectl -n battlefield get pods -l app.kubernetes.io/component=mcp` using the

@@ -8,7 +8,8 @@ operations from the existing Jenkins controller, install the separate
 [reviewed host job](platform-jobs.md).
 
 This is the first implementation slice of the complete-server automation. The
-current production application still runs in Kind. This playbook does not yet
+production application now runs in the separately managed K3s VM. This host
+playbook does not yet
 provision K3s, configure Jenkins/SonarQube, reconcile Cloudflare, install the CLI
 VM bundle, or schedule backups. Their existing configuration is preserved. Keep
 CLI access disabled until the existing isolation verification is complete.
@@ -205,13 +206,15 @@ in this role.
 
 ### Terraform and guest storage contract
 
-Ubuntu, Jenkins, SonarQube and host CI/Docker storage remain on `/`. The future
+Ubuntu, Jenkins, SonarQube and host CI/Docker storage remain on `/`. The
 Terraform-managed domain must be named `battlefield-k3s`, with its separate OS
 and retained data images in the reported `images` directory. [AB-126](k3s-vm.md) implements
 that provisioning, retained-volume lifecycle and state locking;
 AB-128 owns mounting retained data **inside** the guest before K3s and configuring
 its persistent-volume path. Neither VM provisioning nor application/database
-migration is performed by this host role. The current application remains Kind.
+migration is performed by this host role. The separate
+[application cutover](k3s-delivery.md#adoption-and-cutover-boundary) moves the
+application to K3s while retaining the old Kind data.
 
 The root-installed `/etc/battlefield-data-storage/guard.py` provides the
 read-only command consumers must run on the host **before storage mutations**:

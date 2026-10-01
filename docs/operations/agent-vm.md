@@ -8,20 +8,32 @@ Kubernetes signing secret into the VM.
 
 ## What runs where
 
-There is one KVM VM, not nested VMs. The physical Ubuntu PC runs Docker, and kind
-runs its Kubernetes node as a Docker container on that PC. Kubernetes hosts the
-application, engine, MCP server and database. The separate Ubuntu VM runs the
-worker and Codex processes. The code-mode helper is a process, not another VM.
+The CLI worker has its own KVM VM. Following the 2026-10-01 K3s cutover, a separate
+KVM VM runs Kubernetes, the application, engine, MCP server and database.
+Docker remains on the physical Ubuntu host for CI and the retained old Kind
+cluster. The code-mode helper is a process inside the worker VM.
 
 ```text
 Physical Ubuntu PC
-  Docker -> kind Kubernetes container -> Battlefield services
+  KVM battlefield-k3s -> Kubernetes -> Battlefield services and database
+  Docker -> CI tooling; retained Kind recovery data
   Squid 192.168.234.1:3128 -> approved HTTPS provider domains
-  Caddy 192.168.234.1:18084 -> kubectl 127.0.0.1:18085 -> MCP :8084
-  KVM VM 192.168.234.2
+  Caddy 192.168.234.1:18084 -> host loopback kubectl bridge -> MCP :8084
+  KVM battlefield-agent 192.168.234.2
     vm-admin: administration
     battlefield-worker: worker, Codex login, Codex + code-mode helper
 ```
+
+The renderer uses loopback port 28084 by default, matching the existing server's
+`20-loopback.conf` and Caddy upstream inspected on 2026-10-01. `--bridge-port`
+selects another free unprivileged port and changes both rendered files together.
+Keep the bridge separate from Jenkins smoke ports 18081–18085; in particular,
+18085 is used by the production frontend liveness check. A custom choice of
+18085 requires changing `SMOKE_TEST_FRONTEND_PORT` in the Jenkins job first.
+The bridge reads the registered production kubeconfig; restarting it after K3s
+profile adoption retargets the connection without reinstalling the CLI worker
+or copying cluster credentials into its VM. See
+[cutover and recovery](k3s-delivery.md#adoption-and-cutover-boundary).
 
 The worker claims a request through the bridge. Codex receives a scoped capability,
 reads the decision context through MCP, calls the provider through Squid, and
@@ -138,16 +150,22 @@ registered production deployment before proceeding:
 kubectl --kubeconfig="$HOME/.config/autonomous-battlefield/production/kubeconfig" \
   --context=battlefield-production get namespace kube-system \
   -o jsonpath='{.metadata.uid}{"\n"}'
-sudo ss -lntp '( sport = :3128 or sport = :18084 or sport = :18085 )'
+sudo ss -lntp '( sport = :3128 or sport = :18084 or sport = :28084 )'
 ```
 
-Port 18085 must be free or already belong to this bridge. Port 18084 can also be
-used on **127.0.0.1 only** by Jenkins smoke checks; the VM proxy binds only to
-192.168.234.1. Back up existing dedicated configuration and units before replacing
-them. Inspect `systemctl cat` for all three Battlefield units and Squid: historical
-drop-ins override main units. In particular, remove an obsolete
-`battlefield-mcp-bridge.service.d/20-loopback.conf` only after confirming the new
-main unit contains the intended loopback forward. Preserve unrelated overrides.
+Port 28084 (or your `--bridge-port` value) must be free or already belong to this
+bridge. Port 18084 can also be used on **127.0.0.1 only** by Jenkins smoke checks;
+the VM proxy binds only to 192.168.234.1. Do not move the bridge to a smoke port.
+
+For the current server's K3s cutover, preserve the matched bridge/drop-in and
+Caddy configuration and restart the bridge only. The installation block below
+is for a fresh installation and refuses an existing bridge drop-in directory,
+regardless of the filenames it contains, before changing files. For an intentional
+upgrade of an existing bundle, back up the effective units and Caddyfile and
+review all overrides with `systemctl cat`; reconcile them with the rendered
+loopback port in an idle worker window. Never remove an override alone or change
+only one end of the bridge/proxy pair. Preserve unrelated overrides and restore
+the matched backup if verification fails.
 
 On the host, install the reviewed bundle (these are intentional live configuration
 replacements). The Squid package must already be installed:
@@ -156,6 +174,10 @@ replacements). The Squid package must already be installed:
 (
 set -eu
 bundle="$HOME/battlefield-agent-host-bundle"
+if sudo test -d /etc/systemd/system/battlefield-mcp-bridge.service.d; then
+  echo 'Existing bridge overrides: review the effective unit before installing.' >&2
+  exit 1
+fi
 sudo install -d -m 0755 /etc/battlefield-agent /etc/systemd/system/squid.service.d
 for file in firewall.nft mcp-proxy.Caddyfile provider-domains.txt; do
   sudo install -o root -g root -m 0644 "$bundle/$file" "/etc/battlefield-agent/$file"
@@ -346,7 +368,7 @@ cancellation and two-Codex-player behavior were **not verified by that run**.
 | `qemu-kvm` has no candidate | Install the explicit `qemu-system-x86` package. |
 | Creation script not found | Run from the repository root, not the image-download directory. |
 | Worker connection refused during boot | Inspect bridge/proxy logs and listeners; both services retry, as does the worker. |
-| `invalid Host header "192.168.234.1:18084"` | Verify Caddy owns that listener, kubectl owns 127.0.0.1:18085, and the Host rewrite is installed. |
+| `invalid Host header "192.168.234.1:18084"` | Verify Caddy owns that listener, kubectl owns 127.0.0.1:28084 (or the configured bridge port), and the Host rewrite is installed. |
 | Plain reply works, code-mode host missing | Install the matching helper beside Codex; a no-tools reply does not test MCP. |
 | `plan_not_submitted` | It means no accepted plan, not a specific root cause. Check MCP tool rejection logs and private CLI diagnostics. |
 | Profile On but unavailable | Check deployed availability/isolation flags, worker connectivity and role policy; editing `.env` alone does not deploy it. |
@@ -357,7 +379,7 @@ Host diagnostics:
 
 ```bash
 sudo journalctl -u battlefield-mcp-bridge -u battlefield-mcp-proxy --since '10 minutes ago' --no-pager
-sudo ss -lntp '( sport = :3128 or sport = :18084 or sport = :18085 )'
+sudo ss -lntp '( sport = :3128 or sport = :18084 or sport = :28084 )'
 ```
 
 VM diagnostics:

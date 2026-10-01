@@ -130,7 +130,7 @@ Use a dedicated Linux or WSL Jenkins agent with:
 - GCC and the C development toolchain required by `go test -race`.
 - Docker, with permission to use the Docker daemon.
 - `kubectl`, `kind`, `curl`, and AWS CLI for the optional promotion job.
-- Access to the `battlefield` kind cluster through the dedicated `battlefield-production` context and registered production profile.
+- Access to the registered production cluster (K3s after the initial cutover) through the dedicated `battlefield-production` context. The `battlefield-production-kubeconfig` file credential must match that profile's live cluster UID.
 
 The agent needs Docker access to build images and run the pinned Trivy scanner.
 It also needs enough free space and inode quota in its Jenkins workspace for
@@ -631,7 +631,9 @@ work after the underlying job is deleted.
 
 ## Daily startup after a reboot
 
-Jenkins, SonarQube, and the production Kind cluster run on the server. Verify
+Jenkins and SonarQube run on the server; production Kubernetes runs in its
+Terraform-managed K3s VM. Old Kind data is retained for migration recovery, with
+application writers and tunnel connectors stopped. Verify
 those existing services and run `DEPLOY_ENV=production ./scripts/cd/smoke-test.sh`
 as the configured agent account. Do not run the dev bootstrap on this machine.
 If the production cluster is missing, recover its data and registered identity;
@@ -844,10 +846,11 @@ the selected components and approved digests.
 ## K3s delivery adoption
 
 Main invokes the shared `deploy.sh`, `smoke-test.sh` and `rollback.sh` entry points.
-The existing production profile defaults to Kind; merging K3s support does not
-change its cluster or kubeconfig credential. Follow [K3s delivery](k3s-delivery.md)
-to prepare a separate registration. Profile adoption, database restore and tunnel
-cutover are coordinated operations under AB-132. K3s platform jobs continue to
+Older profiles without `BF_DRIVER` default to Kind; code merges alone never
+change their cluster or kubeconfig credential. The current production profile
+explicitly selects K3s after AB-132 adoption. Follow [K3s delivery](k3s-delivery.md)
+for separate registration, database restore, profile/credential adoption and
+coordinated tunnel cutover. K3s platform jobs continue to
 own provisioning and controller versions. Existing recovery records without
 migration metadata cannot authorize automatic rollback until a successful main
 run records the current applied Goose versions.

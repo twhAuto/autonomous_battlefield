@@ -59,7 +59,7 @@ with focused [backend](docs/design/backend-guide.md),
 | Install and run the reviewed Jenkins host and VM jobs | [Platform jobs](docs/operations/platform-jobs.md) |
 | Provision the persistent Terraform VM and recover its state | [K3s VM](docs/operations/k3s-vm.md) |
 | Configure and verify the private K3s platform | [K3s platform](docs/operations/k3s-platform.md) |
-| Register K3s application delivery and prepare the migration | [K3s delivery](docs/operations/k3s-delivery.md) |
+| Deliver to K3s, migrate existing data and recover after cutover | [K3s delivery](docs/operations/k3s-delivery.md) |
 | Configure CI/CD and SonarQube | [Jenkins](docs/operations/jenkins.md) |
 | Inspect metrics, traces, logs, and reliability objectives | [Observability](docs/operations/observability.md) |
 | Launch for invited testers behind Access and provision the isolated CLI VM | [Limited-access launch](docs/operations/limited-launch.md) |

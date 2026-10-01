@@ -5,7 +5,7 @@
 
 http://192.168.234.1:18084 {
     bind 192.168.234.1
-    reverse_proxy 127.0.0.1:18085 {
+    reverse_proxy 127.0.0.1:@BRIDGE_PORT@ {
         header_up Host 127.0.0.1:8084
     }
 }
