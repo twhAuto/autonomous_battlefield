@@ -99,30 +99,53 @@ python3 scripts/infra/rehearse-k3s-delivery.py \
   --backend "$VERIFIED_BACKEND_DIGEST" \
   --frontend "$VERIFIED_FRONTEND_DIGEST" \
   --revision "$VERIFIED_SOURCE_REVISION" \
+  --previous-backend "$PREVIOUS_VERIFIED_BACKEND_DIGEST" \
+  --previous-frontend "$PREVIOUS_VERIFIED_FRONTEND_DIGEST" \
+  --previous-revision "$PREVIOUS_VERIFIED_SOURCE_REVISION" \
   --evidence-dir /private/new-delivery-rehearsal
 ```
 
 Use previously signed `repository@sha256:...` images and a full revision available
 in the checkout. The private registry file uses Docker's `auths.ghcr.io.auth`
 format and read-only package access. The public verification key must be the
-trusted signing key. The evidence directory must be new and outside the checkout.
+trusted signing key. Both full source revisions must exist in the checkout, differ,
+and refer to different image pairs. The previous-release arguments must be supplied
+together and must not be empty. Omitting all three retains the older same-digest
+reapplication mode,
+which explicitly reports `distinct_release_rollback: false`.
+The evidence directory must be new and outside the checkout.
 The harness holds the existing operator lock and invokes the actual platform
 roles, registration, signature/attestation checks, migration backup, migrations,
-application/observability rollout, configuration-only delivery and database-bound
-reapplication of the verified digests. Synthetic application secrets and disabled
-managed Players prevent a second production application from being activated.
+application/observability rollout, configuration-only delivery, upgrade to the
+second signed release and database-bound rollback to the previous exact pair.
+Each deployment verifies its expected source-revision signature annotations.
+Choose releases with compatible migration state: the rehearsal fails before rollback
+if the live ledger changes. It does not run down migrations or infer compatibility. Synthetic application
+secrets and disabled managed Players prevent a second production application from being activated.
 
-`report.json` records source hashes, private readiness/anonymous denial, retained
-claim identity and cleanup. Command output stays in private logs because it may
-contain sensitive deployment diagnostics. Do not publish those logs. The VM and
+`report.json` records source hashes and checkpoints for the previous release,
+configuration-only delivery, the new release and restoration. Each checkpoint
+requires all five application Deployments to have the exact expected images and
+completed healthy rollouts, both retained claims to stay bound to the same PVC/PV
+identities, an unchanged migration ledger and passing private readiness/anonymous
+denial checks. The previous recovery record is retained throughout the upgrade;
+the fixture's private record never authorizes recovery of production. Overall
+success also requires VM cleanup and preserved existing VM/network identities.
+Checkpoints sample incomplete rollout status up to seven times at five-second intervals
+so a concurrent HPA scale-up can settle; wrong images still fail immediately. Inspection
+requests have a 15-second Kubernetes request timeout and a 30-second process timeout.
+API and database inspection output, including failures, is kept in `inspection.private.log`.
+Claim-identity and migration-ledger failures are reported separately.
+Command output stays in private logs because it may contain sensitive deployment diagnostics. Do not publish those logs. The VM and
 its generated application credentials are removed on normal success or failure.
 An interrupted controller or failed cleanup requires inspecting the owned VM
 before another rehearsal.
 
 This checks private application delivery. It does not run the complete Jenkins
-main pipeline, prove rollback between two different releases, authenticate through
-public Cloudflare Access, or retarget the real CLI VM. Those remaining acceptance
-checks must be recorded explicitly; a private pass cannot stand in for them.
+main pipeline, authenticate through public Cloudflare Access, or retarget the real
+CLI VM. Distinct-release rollback is proven only when the three previous-release
+arguments are supplied and every corresponding checkpoint passes. The remaining
+acceptance checks must be recorded explicitly; a private pass cannot stand in for them.
 
 ## Database-aware rollback
 
