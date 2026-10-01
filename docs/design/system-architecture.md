@@ -1565,7 +1565,7 @@ before first production foundation apply.
 The optional `server.sh ci-*` path manages native Jenkins, its existing operator
 agent and the SonarQube/PostgreSQL Compose stack separately from application
 rollouts. Configuration and input manifests stay outside Git; Ansible Vault carries
-initial/imported credentials. Core, plugin dependencies, Go, Node and SonarScanner
+initial/imported credentials. Core, plugin dependencies, Go, Node, kubectl and SonarScanner
 use checksum pins, while Sonar/PostgreSQL images use digests. Ubuntu supplies Java
 21, browser libraries and fresh-host Docker packages.
 

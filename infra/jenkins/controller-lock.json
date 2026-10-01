@@ -968,5 +968,10 @@
     "version": "8.1.0.6389",
     "url": "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-8.1.0.6389-linux-x64.zip",
     "sha256": "bb8f709f9cb73352f8d1260a3b3c506c0f41146754bc630762c126d795499d0b"
+  },
+  "kubectl": {
+    "version": "1.36.4",
+    "url": "https://dl.k8s.io/release/v1.36.4/bin/linux/amd64/kubectl",
+    "sha256": "8b8f088da2dab964f853b38464033b1be15ede2839eca751482357c45abdd05a"
   }
 }

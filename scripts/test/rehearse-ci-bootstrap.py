@@ -131,8 +131,10 @@ def probe_job():
   deleteDir()
   writeFile file: 'hello.py', text: 'def greet(name):\\n    return "Hello " + name\\n'
   withCredentials([file(credentialsId: 'battlefield-cosign-key', variable: 'KEY_FILE')]) {
-    sh 'set +x; test -s "$KEY_FILE"; go version; node --version; docker info >/dev/null; docker buildx version'
+    sh 'set +x; test -s "$KEY_FILE"; go version; node --version; docker info >/dev/null; docker buildx version; kubectl version --client'
   }
+  writeFile file: 'manifest-probe/kustomization.yaml', text: 'apiVersion: kustomize.config.k8s.io/v1beta1\\nkind: Kustomization\\nresources: []\\n'
+  sh 'kubectl kustomize manifest-probe'
   def scanner = tool 'SonarScanner'
   withSonarQubeEnv('battlefield-sonarqube') {
     withEnv(['PATH+SCANNER=' + scanner + '/bin']) {

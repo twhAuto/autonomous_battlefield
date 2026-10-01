@@ -136,6 +136,12 @@
   loop: "{{ {'go': ci_lock.go, 'node': ci_lock.node, 'scanner': ci_lock.scanner} | dict2items }}"
   loop_control:
     label: "{{ item.key }}@{{ item.value.version }}"
+- name: Download the pinned Kubernetes client
+  ansible.builtin.get_url:
+    url: "{{ ci_lock.kubectl.url }}"
+    dest: /var/cache/battlefield-ci/kubectl
+    checksum: "sha256:{{ ci_lock.kubectl.sha256 }}"
+    mode: '0644'
 - name: Drain all running and paused Jenkins builds before changing services
   ansible.builtin.command:
     argv: [python3, -c, "{{ ci_runtime }}", drain]
@@ -230,6 +236,14 @@
   loop: "{{ [ci_lock.go, ci_lock.node, ci_lock.scanner] }}"
   loop_control:
     label: "{{ item.url | basename }}"
+- name: Install the verified Kubernetes client for manifest rendering
+  ansible.builtin.copy:
+    src: /var/cache/battlefield-ci/kubectl
+    remote_src: true
+    dest: /opt/battlefield-ci/tools/kubectl
+    owner: root
+    group: root
+    mode: '0755'
 - name: Install public CA certificates used by repository integrations
   ansible.builtin.copy:
     src: "{{ item }}"

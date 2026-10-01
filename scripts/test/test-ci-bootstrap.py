@@ -387,6 +387,7 @@ class OfflineAnsibleTests(unittest.TestCase):
             self.assertEqual(security.findtext('useSecurity'), 'true')
             self.assertEqual(security.findtext('authorizationStrategy/denyAnonymousReadAccess'), 'true')
             unit = (directory / 'jenkins-agent.service').read_text()
+            self.assertIn('PATH=/opt/battlefield-ci/tools:', unit)
             self.assertIn('-webSocket', unit)
             self.assertIn('-secret @/home/operator/.config/jenkins-agent/secret', unit)
             self.assertIn('CASC_JENKINS_CONFIG=/etc/battlefield-ci/jenkins.yaml', (directory / 'jenkins-override.conf').read_text())
