@@ -285,8 +285,13 @@ Use HTTPS apt sources through the proxy for updates.
 
 Use the [repeatable VM setup guide](agent-vm.md) and
 `render-agent-vm-host.py` to generate the supervised **host-side** services. Caddy
-binds `192.168.234.1:18084` and forwards to a loopback-only kubectl forward at
-`127.0.0.1:18085`, setting upstream Host to `127.0.0.1:8084`. A direct guest-facing
+binds `192.168.234.1:18084` and forwards to a loopback-only kubectl bridge,
+setting upstream Host to `127.0.0.1:8084`. The renderer defaults to port 28084,
+matching the existing server and avoiding Jenkins smoke ports 18081–18085.
+`--bridge-port` changes both rendered endpoints together. During K3s adoption,
+keep the verified bridge/proxy pair. Follow the
+[bridge installation guidance](agent-vm.md#3-render-and-install-the-host-services)
+before replacing that pair. A direct guest-facing
 port-forward triggers the MCP SDK localhost Host protection. Preserve the narrow
 firewall exception for Jenkins smoke forwards on `127.0.0.1:18084`.
 The kubeconfig and deployment credentials never enter the VM. Verify unauthenticated

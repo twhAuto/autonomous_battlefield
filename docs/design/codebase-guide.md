@@ -268,3 +268,14 @@ while exposing explicitly approved, available CLI profiles.
 2. [`backend/internal/app/app.go`](../../backend/internal/app/app.go)
 3. A feature's `api`, `service`, and `repo` packages in that order
 4. The matching frontend API client and page
+
+### CLI VM host bundle
+
+`scripts/ops/render-agent-vm-host.py` renders the dedicated systemd, Caddy and
+firewall files from `deploy/agent-vm/host` into a new directory without touching
+services. The loopback bridge defaults to 28084, separate from Jenkins smoke
+ports; `--bridge-port` validates an unprivileged port and substitutes the same
+value in the Kubernetes forward and Caddy upstream. Guest-facing ports and the
+MCP Host header remain fixed. `scripts/test/test-agent-vm-host.py` checks the
+matched default/CLI override, invalid-input rejection, isolation configuration
+and refusal to overwrite a reviewed bundle. See the [CLI VM runbook](../operations/agent-vm.md).

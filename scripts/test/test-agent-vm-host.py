@@ -3,6 +3,7 @@
 import importlib.util
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 
@@ -26,11 +27,11 @@ class HostBundleTests(unittest.TestCase):
             bridge = (out / "battlefield-mcp-bridge.service").read_text()
             self.assertIn("User=operator", bridge)
             self.assertIn("--kubeconfig=/private/kubeconfig --context=battlefield-production", bridge)
-            self.assertIn("--address=127.0.0.1 service/battlefield-mcp 18085:8084", bridge)
+            self.assertIn("--address=127.0.0.1 service/battlefield-mcp 28084:8084", bridge)
             self.assertNotIn("--address=192.168.", bridge)
             caddy = (out / "mcp-proxy.Caddyfile").read_text()
             self.assertIn("bind 192.168.234.1", caddy)
-            self.assertIn("reverse_proxy 127.0.0.1:18085", caddy)
+            self.assertIn("reverse_proxy 127.0.0.1:28084", caddy)
             self.assertIn("header_up Host 127.0.0.1:8084", caddy)
             self.assertIn("admin off", caddy)
             self.assertNotIn("persist_config", caddy)
@@ -45,6 +46,29 @@ class HostBundleTests(unittest.TestCase):
             for file in out.iterdir():
                 self.assertNotIn("@USER@", file.read_text())
                 self.assertNotIn("@KUBECONFIG@", file.read_text())
+                self.assertNotIn("@BRIDGE_PORT@", file.read_text())
+
+    def test_cli_port_override_keeps_proxy_and_forward_matched(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory) / "bundle"
+            result = subprocess.run([sys.executable, str(ROOT / "scripts/ops/render-agent-vm-host.py"),
+                "--output", str(out), "--user", "operator", "--home", "/home/operator",
+                "--kubeconfig", "/private/kubeconfig", "--bridge-port", "30884"], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("--address=127.0.0.1 service/battlefield-mcp 30884:8084",
+                          (out / "battlefield-mcp-bridge.service").read_text())
+            caddy = (out / "mcp-proxy.Caddyfile").read_text()
+            self.assertIn("reverse_proxy 127.0.0.1:30884", caddy)
+            self.assertIn("http://192.168.234.1:18084", caddy)
+            self.assertIn("header_up Host 127.0.0.1:8084", caddy)
+
+    def test_invalid_port_fails_before_writing(self):
+        for value in (0, 1023, 65536, True, "28084\nExecStart=/bin/false"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as directory:
+                out = Path(directory) / "bundle"
+                with self.assertRaises(ValueError):
+                    self.render(out, bridge_port=value)
+                self.assertFalse(out.exists())
 
     def test_rejects_unit_injection_before_writing(self):
         for key, value in (("user", "root\nExecStart=/bin/false"), ("home", "/home/%u"),
