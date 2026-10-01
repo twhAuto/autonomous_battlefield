@@ -4,6 +4,9 @@ import base64
 import importlib.util
 import io
 import json
+import os
+import subprocess
+import xml.etree.ElementTree as ET
 from pathlib import Path
 import tempfile
 import tarfile
@@ -268,6 +271,124 @@ class ReleaseTests(unittest.TestCase):
         for key in ('securityRealm:', 'authorizationStrategy:', 'users:', 'nodes:', 'credentials:', 'jobs:'):
             self.assertNotIn(key, lines)
 
+
+
+class ReviewRegressionTests(unittest.TestCase):
+    def test_backup_failure_restores_the_previously_running_controller(self):
+        payload = {'config': profile(), 'inputs': {}}
+        with tempfile.TemporaryDirectory() as work, patch.object(runtime, 'STATE', Path(work)), patch.object(runtime, 'JHOME', Path(work)):
+            marker = Path(work) / 'maintenance.json'
+            marker.write_text('{"phase":"draining","quiet_owned":true}')
+            with patch.object(runtime, 'active', return_value=True):
+                runtime.backup_checkpoint(payload)
+            self.assertEqual(json.loads(marker.read_text())['phase'], 'backing_up')
+            self.assertFalse((Path(work) / 'battlefield-maintenance').exists())
+            with patch.object(runtime, 'active', side_effect=[False, True]), patch.object(runtime, 'run') as command, patch.object(runtime, 'jenkins') as api:
+                self.assertEqual(runtime.resume(payload), {'resumed': True})
+                command.assert_called_once_with(['systemctl', 'start', 'jenkins'], timeout=300)
+                api.return_value.call.assert_any_call('cancelQuietDown', {}, raw=True)
+            self.assertFalse(marker.exists())
+
+    def test_backup_failure_does_not_start_an_originally_stopped_controller(self):
+        payload = {'config': profile(), 'inputs': {}}
+        with tempfile.TemporaryDirectory() as work, patch.object(runtime, 'STATE', Path(work)), patch.object(runtime, 'active', return_value=False), patch.object(runtime, 'run') as command:
+            runtime.backup_checkpoint(payload)
+            self.assertEqual(runtime.resume(payload), {'resumed': True})
+            command.assert_not_called()
+            self.assertFalse((Path(work) / 'maintenance.json').exists())
+
+    def test_completed_bootstrap_removes_all_temporary_secrets(self):
+        with tempfile.TemporaryDirectory() as work, patch.object(runtime, 'CONFIG', Path(work)):
+            path = Path(work) / 'bootstrap.json'
+            metadata = {'admin': 'operator', 'home': '/home/operator', 'mode': 'install', 'scannerHome': '/opt/scanner'}
+            path.write_text(json.dumps(dict(metadata, adminPassword='sensitive', credentials={'key': 'private'}, sonarToken='token')))
+            writer = runtime.private
+            with patch.object(runtime, 'private', side_effect=lambda target, content, **kwargs: writer(target, content)):
+                runtime.scrub_inputs({})
+            self.assertEqual(json.loads(path.read_text()), metadata)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_vendor_cache_changes_do_not_trigger_configuration_maintenance(self):
+        with tempfile.TemporaryDirectory() as work:
+            root = Path(work)
+            prefix = root / 'prefix'
+            (prefix / 'tools/scanner/cache').mkdir(parents=True)
+            (prefix / 'scripts').mkdir()
+            managed = prefix / 'scripts/seed.py'
+            managed.write_text('managed source')
+            with patch.object(runtime, 'CONFIG', root / 'config'), patch.object(runtime, 'JHOME', root / 'jenkins'):
+                before = runtime.managed_fingerprints(prefix)
+                (prefix / 'tools/scanner/cache/generated').write_text('vendor cache')
+                self.assertEqual(runtime.managed_fingerprints(prefix), before)
+                managed.write_text('changed source')
+                self.assertNotEqual(runtime.managed_fingerprints(prefix), before)
+
+    def test_project_gate_selection_preserves_the_instance_default(self):
+        api = Mock()
+        api.call.side_effect = [{'qualitygates': [{'name': 'Sonar way', 'isDefault': False}]},
+                               {'qualityGate': {'name': 'custom default'}}, {}]
+        runtime.configure_quality_gate(api, created=True)
+        api.call.assert_called_with('api/qualitygates/select', {'projectKey': 'autonomous-battlefield', 'gateName': 'Sonar way'}, raw=True)
+        self.assertFalse(any('set_as_default' in call.args[0] for call in api.call.call_args_list))
+        api.reset_mock()
+        api.call.side_effect = [{'qualitygates': [{'name': 'Sonar way'}]}, {'qualityGate': {'name': 'existing custom gate'}}]
+        with self.assertRaisesRegex(runtime.Failure, 'different quality gate'):
+            runtime.configure_quality_gate(api, created=False)
+        self.assertEqual(api.call.call_count, 2)
+
+    def test_removed_package_is_not_treated_as_an_installed_version(self):
+        lock = {'core': {'version': '2.568.3'}}
+        for state in ('config-files 2.1', 'not-installed ', 'installed 2.568.3'):
+            with patch.object(runtime.subprocess, 'run', return_value=Mock(returncode=0, stdout=state)):
+                runtime.check_core_package(lock)
+        for state in ('installed 2.1', 'half-configured 2.568.3'):
+            with patch.object(runtime.subprocess, 'run', return_value=Mock(returncode=0, stdout=state)), self.assertRaises(runtime.Failure):
+                runtime.check_core_package(lock)
+
+
+@unittest.skipUnless(os.environ.get('BATTLEFIELD_TEST_ANSIBLE_BIN'), 'real Ansible supplied by test-server-bootstrap.sh')
+class OfflineAnsibleTests(unittest.TestCase):
+    def test_render_every_ci_template_and_parse_configuration(self):
+        templates = ROOT / 'infra/ansible/roles/ci_services/templates'
+        lock = json.loads((ROOT / 'infra/jenkins/controller-lock.json').read_text())
+        with tempfile.TemporaryDirectory() as work:
+            directory = Path(work)
+            tasks = [{'ansible.builtin.template': {'src': str(path), 'dest': str(directory / path.stem)}}
+                     for path in sorted(templates.glob('*.j2'))]
+            for name, variable in [('jenkins.yaml', 'rendered_jenkins'), ('sonar-compose.yaml', 'rendered_sonar')]:
+                tasks.append({'ansible.builtin.include_vars': {'file': str(directory / name), 'name': variable}})
+            tasks.append({'ansible.builtin.assert': {'that': [
+                'rendered_jenkins.jenkins.numExecutors == 0',
+                'rendered_jenkins.unclassified.location.url == ci_config.jenkins_url',
+                'rendered_sonar.services.database.image == ci_lock.postgres',
+                'rendered_sonar.services.sonarqube.image == ci_lock.sonarqube']}})
+            play = [{'hosts': 'all', 'gather_facts': False, 'connection': 'local',
+                     'vars': {'ci_config': profile(), 'ci_lock': lock}, 'tasks': tasks}]
+            path = directory / 'render.json'; path.write_text(json.dumps(play))
+            result = subprocess.run([os.environ['BATTLEFIELD_TEST_ANSIBLE_BIN'] + '/ansible-playbook', '-i', 'localhost,', str(path)],
+                                    capture_output=True, text=True, timeout=60, env=dict(os.environ, ANSIBLE_CONFIG=str(ROOT / 'infra/ansible/ansible.cfg')))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(len(list(templates.glob('*.j2'))), 5)
+            security = ET.parse(directory / 'fresh-config.xml').getroot()
+            self.assertEqual(security.findtext('useSecurity'), 'true')
+            self.assertEqual(security.findtext('authorizationStrategy/denyAnonymousReadAccess'), 'true')
+            unit = (directory / 'jenkins-agent.service').read_text()
+            self.assertIn('-webSocket', unit)
+            self.assertIn('-secret @/home/operator/.config/jenkins-agent/secret', unit)
+            self.assertIn('CASC_JENKINS_CONFIG=/etc/battlefield-ci/jenkins.yaml', (directory / 'jenkins-override.conf').read_text())
+
+    def test_empty_private_command_output_uses_safe_diagnostic(self):
+        with tempfile.TemporaryDirectory() as work:
+            play = [{'hosts': 'all', 'gather_facts': False, 'connection': 'local',
+                     'vars': {'ci_result': {'rc': 127, 'stdout': '', 'stderr': 'synthetic-private-argument'}},
+                     'tasks': [{'ansible.builtin.assert': {'that': 'ci_result.rc == 0',
+                       'fail_msg': "{{ (ci_result.stdout | default('{}', true) | from_json).error | default('CI service operation failed') }}"}}]}]
+            path = Path(work) / 'failure.json'; path.write_text(json.dumps(play))
+            result = subprocess.run([os.environ['BATTLEFIELD_TEST_ANSIBLE_BIN'] + '/ansible-playbook', '-i', 'localhost,', str(path)],
+                                    capture_output=True, text=True, timeout=60, env=dict(os.environ, ANSIBLE_CONFIG=str(ROOT / 'infra/ansible/ansible.cfg')))
+            self.assertEqual(result.returncode, 2)
+            self.assertIn('CI service operation failed', result.stdout)
+            self.assertNotIn('synthetic-private-argument', result.stdout + result.stderr)
 
 if __name__ == '__main__':
     unittest.main()

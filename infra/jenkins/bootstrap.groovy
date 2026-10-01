@@ -76,12 +76,12 @@ def makeCredential = { String id, Map data ->
 expected.each { id, type ->
     def current = globalStore.getCredentials(Domain.global()).find { it.id == id }
     if (current == null) {
-        def value = id == 'sonarqube-battlefield-token' ? [type: 'string', value: configuration.sonarToken] : configuration.credentials[id]
+        def value = id == 'sonarqube-battlefield-token' ? (configuration.sonarToken != null ? [type: 'string', value: configuration.sonarToken] : null) : configuration.credentials?.get(id)
         if (value == null) { throw new IllegalStateException('Missing declared CI credential: ' + id) }
         globalStore.addCredentials(Domain.global(), makeCredential(id, value))
     } else if (!type.isInstance(current)) {
         throw new IllegalStateException('Existing CI credential has a different type: ' + id)
-    } else if (id == 'sonarqube-battlefield-token' && current.secret.plainText != configuration.sonarToken) {
+    } else if (id == 'sonarqube-battlefield-token' && configuration.sonarToken != null && current.secret.plainText != configuration.sonarToken) {
         throw new IllegalStateException('Imported Sonar token differs from existing Jenkins credential; no rotation performed')
     }
 }
@@ -103,7 +103,7 @@ def folderStore = property.store
 ['host-inventory', 'host-inputs', 'host-vault-password', 'host-sudo-password'].each { id ->
     def current = folderStore.getCredentials(Domain.global()).find { it.id == id }
     if (current == null) {
-        def value = configuration.credentials[id]
+        def value = configuration.credentials?.get(id)
         if (value == null) { throw new IllegalStateException('Missing platform credential: ' + id) }
         folderStore.addCredentials(Domain.global(), makeCredential(id, value))
     } else if (!(current instanceof FileCredentialsImpl) || current.description != 'battlefield-platform-managed-v1') {
@@ -112,7 +112,9 @@ def folderStore = property.store
 }
 def node = j.getNode('battlefield-local')
 if (node == null) {
-    node = new DumbSlave('battlefield-local', configuration.home + '/jenkins-agent', new JNLPLauncher(true))
+    def launcher = new JNLPLauncher()
+    launcher.webSocket = true
+    node = new DumbSlave('battlefield-local', configuration.home + '/jenkins-agent', launcher)
     node.numExecutors = 4
     node.labelString = 'local-kind battlefield-production'
     node.mode = Node.Mode.NORMAL

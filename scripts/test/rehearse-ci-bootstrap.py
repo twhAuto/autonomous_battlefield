@@ -228,6 +228,9 @@ def exercise():
         default_valid = False
     if default_valid:
         raise ValueError('Sonar default password remains active')
+    bootstrap = json.loads(run('sudo', 'cat', '/etc/battlefield-ci/bootstrap.json'))
+    if set(bootstrap) != {'admin', 'home', 'mode', 'scannerHome'}:
+        raise ValueError('Temporary bootstrap credentials were retained after initialization')
     probe_job()
     before = snapshot()
     invocation = run('systemctl', 'show', 'jenkins', '-p', 'InvocationID', '--value')
@@ -235,6 +238,18 @@ def exercise():
     fixture.assert_recap(server('ci-plan'), changed=0)
     if snapshot() != before or invocation != run('systemctl', 'show', 'jenkins', '-p', 'InvocationID', '--value'):
         raise ValueError('Second apply changed controller/credential identity or restarted Jenkins')
+    # Fail before configuration changes, after stopping the controller for backup.
+    # An existing private backup root with unsafe mode must be refused and the
+    # unchanged controller automatically restored to its original running state.
+    run('sudo', 'sh', '-c', "printf ' ' >> /etc/battlefield-ci/bootstrap.json")
+    run('sudo', 'chmod', '0755', '/var/backups/battlefield-ci')
+    failure = server('ci-apply', success=False)
+    if 'Maintenance backup directory must be root-owned and private' not in failure:
+        raise ValueError('Backup guard did not emit its safe diagnostic')
+    if run('systemctl', 'is-active', 'jenkins') != 'active' or client().call('api/json?tree=quietingDown')['quietingDown']:
+        raise ValueError('Backup failure left the unchanged controller unavailable')
+    run('sudo', 'test', '!', '-e', '/var/lib/battlefield-ci/maintenance.json')
+    run('sudo', 'chmod', '0700', '/var/backups/battlefield-ci')
     run('sudo', 'docker', 'stop', 'sonarqube-sonarqube-1', 'sonarqube-database-1')
     plan = server('ci-plan')
     fixture.assert_recap(plan, changed=0)
@@ -247,7 +262,8 @@ def exercise():
     (EVIDENCE / 'identity.json').write_text(json.dumps(before, indent=2) + '\n')
     (EVIDENCE / 'acceptance.json').write_text(json.dumps({'fresh_install': True, 'repeat_no_changes': True,
         'plan_read_only': True, 'service_verify': True, 'stopped_services_repaired': True,
-        'administrator_password_file': True}) + '\n')
+        'administrator_password_file': True, 'bootstrap_secrets_removed': True,
+        'backup_failure_resumes_controller': True}) + '\n')
 
 
 def after_reboot():

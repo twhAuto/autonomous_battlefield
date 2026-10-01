@@ -332,15 +332,28 @@ def release_hash(payload):
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
+def check_core_package(lock):
+    package = subprocess.run(['dpkg-query', '-W', '-f=${db:Status-Status} ${Version}', 'jenkins'], capture_output=True, text=True)
+    if package.returncode == 1:
+        return
+    if package.returncode:
+        raise Failure('Cannot inspect the Jenkins package state')
+    status, _, version = package.stdout.strip().partition(' ')
+    if status in ('not-installed', 'config-files'):
+        return
+    if status != 'installed':
+        raise Failure('Jenkins package configuration is incomplete; repair Ubuntu package state first')
+    if version != lock['core']['version']:
+        raise Failure('Installed Jenkins differs from the locked release; upgrades/downgrades require a separate review')
+
+
 def preflight(payload):
     config, lock = payload['config'], payload['lock']
     values = decode_inputs(payload['inputs'])
     ownership(config)
     if (STATE / 'maintenance.json').exists():
         raise Failure('An interrupted maintenance receipt remains; follow the recovery runbook before another apply')
-    installed = subprocess.run(['dpkg-query', '-W', '-f=${Version}', 'jenkins'], capture_output=True, text=True)
-    if installed.returncode == 0 and installed.stdout != lock['core']['version']:
-        raise Failure('Installed Jenkins differs from the locked release; upgrades/downgrades require a separate review')
+    check_core_package(lock)
     for name, plugin in lock['plugins'].items():
         for suffix in ('.jpi', '.hpi'):
             path = JHOME / 'plugins' / (name + suffix)
@@ -428,17 +441,6 @@ def prepare(payload):
         private(root / 'machine-id', config['machine_id'] + '\n')
     containers = sonar_containers(lock)
     db_password = database_password(containers, values)
-    if containers and not containers['database'].get('State', {}).get('Running'):
-        # Start the already validated, unchanged database container so pg_dump can
-        # take a consistent backup before Compose reconciliation.
-        run(['docker', 'start', containers['database']['Id']])
-        for attempt in range(60):
-            probe = subprocess.run(['docker', 'exec', containers['database']['Id'], 'pg_isready', '-U', 'sonar', '-d', 'sonar'], capture_output=True)
-            if probe.returncode == 0:
-                break
-            time.sleep(2)
-        else:
-            raise Failure('Existing Sonar database did not become ready for backup')
     private(STATE / 'database-password', db_password)
     if containers:
         token = sonar_token(config, values)
@@ -482,6 +484,15 @@ def running_jobs(client, path=''):
             if running_jobs(client, path + 'job/' + urllib.parse.quote(item['name'], safe='') + '/'):
                 return True
     return False
+
+
+def backup_checkpoint(payload):
+    marker = STATE / 'maintenance.json'
+    running = active()
+    if running and (not marker.exists() or json.loads(marker.read_text()).get('phase') != 'draining'):
+        raise Failure('Controller backup requires a completed drain')
+    private(marker, json.dumps({'quiet_owned': True, 'phase': 'backing_up', 'controller_was_running': running}))
+    return {'backup_checkpoint': True}
 
 
 def changing(payload):
@@ -528,6 +539,17 @@ def backup(payload):
     if root.stat().st_uid != 0 or root.stat().st_mode & 0o077:
         raise Failure('Maintenance backup directory must be root-owned and private')
     containers = sonar_containers(payload['lock'])
+    if containers and not containers['database'].get('State', {}).get('Running'):
+        # Start the already validated, unchanged database container so pg_dump can
+        # take a consistent backup before Compose reconciliation.
+        run(['docker', 'start', containers['database']['Id']])
+        for attempt in range(60):
+            probe = subprocess.run(['docker', 'exec', containers['database']['Id'], 'pg_isready', '-U', 'sonar', '-d', 'sonar'], capture_output=True)
+            if probe.returncode == 0:
+                break
+            time.sleep(2)
+        else:
+            raise Failure('Existing Sonar database did not become ready for backup')
     required = controller_backup_bytes(JHOME) + controller_backup_bytes(CONFIG) + controller_backup_bytes(STATE)
     if containers:
         size = run(['docker', 'exec', containers['database']['Id'], 'psql', '-U', 'sonar', '-d', 'sonar', '-Atc',
@@ -553,7 +575,7 @@ def backup(payload):
             result = subprocess.run(['docker', 'exec', containers['database']['Id'], 'pg_dump', '-U', 'sonar', '-d', 'sonar', '-Fc'],
                                     stdout=dump, stderr=subprocess.DEVNULL, timeout=600)
         if result.returncode:
-            raise Failure('Sonar database backup failed; controller remains stopped for recovery')
+            raise Failure('Sonar database backup failed; the unchanged controller will be resumed')
         partial.rename(target / 'sonar.pgdump')
         private(target / 'sonar-containers.json', json.dumps(containers))
     private(STATE / 'last-backup', str(target) + '\n')
@@ -597,19 +619,22 @@ def sonar(payload):
     projects = client.call('api/projects/search?projects=autonomous-battlefield')['components']
     if not projects:
         client.call('api/projects/create', {'project': 'autonomous-battlefield', 'name': 'Autonomous Battlefield', 'visibility': 'private'})
-    gates = client.call('api/qualitygates/list')['qualitygates']
-    gate = next((g for g in gates if g['name'] == 'Sonar way'), None)
-    if gate is None:
-        raise Failure('Expected the built-in Sonar way quality gate')
-    if not gate.get('isDefault'):
-        client.call('api/qualitygates/set_as_default', {'name': gate['name']}, raw=True)
-    assigned = client.call('api/qualitygates/get_by_project?project=autonomous-battlefield')['qualityGate']
-    if assigned['name'] != 'Sonar way':
-        raise Failure('Existing production project has a different quality gate; review it before adoption')
+    configure_quality_gate(client, created=not projects)
     config = payload['config']
     data = controller_inputs(config, values, token, payload['lock'])
     private(CONFIG / 'bootstrap.json', json.dumps(data), owner='jenkins', mode=0o600)
     return {'sonar_configured': True}
+
+
+def configure_quality_gate(client, *, created):
+    gates = client.call('api/qualitygates/list')['qualitygates']
+    gate = next((g for g in gates if g['name'] == 'Sonar way'), None)
+    if gate is None:
+        raise Failure('Expected the built-in Sonar way quality gate')
+    assigned = client.call('api/qualitygates/get_by_project?project=autonomous-battlefield')['qualityGate']
+    if not created and assigned['name'] != 'Sonar way':
+        raise Failure('Existing production project has a different quality gate; review it before adoption')
+    client.call('api/qualitygates/select', {'projectKey': 'autonomous-battlefield', 'gateName': 'Sonar way'}, raw=True)
 
 
 def controller_inputs(config, values, token, lock):
@@ -617,6 +642,20 @@ def controller_inputs(config, values, token, lock):
             'adminPassword': secret(values, 'ci_admin_password') if config['mode'] == 'install' else '',
             'credentials': credentials(values) if config['mode'] == 'install' else {}, 'sonarToken': token,
             'scannerHome': '/opt/battlefield-ci/tools/sonar-scanner-' + lock['scanner']['version'] + '-linux-x64'}
+
+
+def scrub_inputs(payload):
+    path = CONFIG / 'bootstrap.json'
+    data = json.loads(path.read_text())
+    metadata = {key: data[key] for key in ('admin', 'home', 'mode', 'scannerHome')}
+    private(path, json.dumps(metadata), owner='jenkins')
+    return {'bootstrap_secrets_removed': True}
+
+
+def compose(payload):
+    run(['docker', 'compose', '--project-name', 'sonarqube', '-f', str(CONFIG / 'sonar-compose.yaml'),
+         '-f', str(CONFIG / 'sonar-secrets.yml'), 'up', '-d', '--wait', '--wait-timeout', '300'], timeout=420)
+    return {'sonar_containers_ready': True}
 
 
 def seed(payload):
@@ -637,6 +676,21 @@ def resume(payload):
     marker = STATE / 'maintenance.json'
     if marker.exists() and json.loads(marker.read_text()).get('quiet_owned'):
         record = json.loads(marker.read_text())
+        if record.get('phase') == 'backing_up':
+            if not record.get('controller_was_running'):
+                marker.unlink()
+                return {'resumed': True}
+            if not active():
+                run(['systemctl', 'start', 'jenkins'], timeout=300)
+                deadline = time.monotonic() + 300
+                while True:
+                    try:
+                        jenkins(payload['config'], decode_inputs(payload['inputs'])).call('whoAmI/api/json')
+                        break
+                    except Failure:
+                        if time.monotonic() >= deadline:
+                            raise Failure('Unchanged controller could not restart after backup failure; inspect its service locally') from None
+                        time.sleep(3)
         completed = STATE / 'release.json'
         if record.get('phase') == 'changing' and (not completed.exists() or json.loads(completed.read_text())['release'] != release_hash(payload)):
             return {'resume_needed': True}
@@ -646,6 +700,23 @@ def resume(payload):
         (JHOME / 'battlefield-maintenance').unlink(missing_ok=True)
         marker.unlink()
     return {'resumed': True}
+
+
+def managed_fingerprints(prefix=Path('/opt/battlefield-ci')):
+    # Hash managed configuration and copied job/source definitions, not extracted
+    # third-party distributions or their caches. Archive versions live in ci_lock.
+    files = {}
+    for directory in (CONFIG, JHOME / 'init.groovy.d', Path('/etc/systemd/system/jenkins.service.d'),
+                      prefix / 'scripts', prefix / 'infra'):
+        if directory.exists():
+            for path in directory.rglob('*'):
+                if path.is_file() and not path.is_symlink():
+                    files[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
+    for name in ('Jenkinsfile.platform', 'Jenkinsfile.vm', 'Jenkinsfile.k3s'):
+        path = prefix / name
+        if path.is_file():
+            files[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return files
 
 
 def verify(payload):
@@ -672,12 +743,7 @@ def verify(payload):
     if API(SONAR, '', '').call('api/system/status').get('status') != 'UP':
         raise Failure('Sonar is not healthy')
     if payload.get('save_release'):
-        files = {}
-        for directory in (CONFIG, JHOME / 'init.groovy.d', Path('/etc/systemd/system/jenkins.service.d'), Path('/opt/battlefield-ci')):
-            if directory.exists():
-                for path in directory.rglob('*'):
-                    if path.is_file() and not path.is_symlink():
-                        files[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
+        files = managed_fingerprints()
         for name in payload.get('ca', {}):
             path = Path('/usr/local/share/ca-certificates') / ('battlefield-' + name)
             files[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -693,7 +759,8 @@ def main():
     payload = json.load(sys.stdin)
     phase = sys.argv[1]
     functions = {'preflight': preflight, 'prepare': prepare, 'drain': drain, 'backup': backup,
-                 'sonar': sonar, 'resume': resume, 'verify': verify, 'seed': seed, 'changing': changing}
+                 'sonar': sonar, 'resume': resume, 'verify': verify, 'seed': seed, 'changing': changing,
+                 'backup-checkpoint': backup_checkpoint, 'scrub-inputs': scrub_inputs, 'compose': compose}
     if phase not in functions:
         raise Failure('Unknown CI lifecycle phase')
     print(json.dumps(functions[phase](payload)))

@@ -36,7 +36,7 @@
     - name: Require the CI preflight to pass
       ansible.builtin.assert:
         that: ci_preflight.rc == 0
-        fail_msg: "{{ (ci_preflight.stdout | from_json).error | default('CI preflight failed') }}"
+        fail_msg: "{{ (ci_preflight.stdout | default('{}', true) | from_json).error | default('CI preflight failed') }}"
     - name: Record the safe CI plan
       ansible.builtin.set_fact:
         ci_observed: "{{ ci_preflight.stdout | from_json }}"
@@ -48,7 +48,7 @@
       when: ci_action == 'apply' and ci_observed.needs_maintenance
       block:
         - name: Install the pinned CI services
-          ansible.builtin.include_role:
+          ansible.builtin.import_role:
             name: ci_services
       always:
         - name: Release only quiet mode owned by this maintenance operation
@@ -63,7 +63,7 @@
           ansible.builtin.assert:
             that:
               - ci_resume.rc == 0
-              - not (ci_resume.stdout | from_json).resume_needed | default(false)
+              - not (ci_resume.stdout | default('{}', true) | from_json).resume_needed | default(false)
             fail_msg: CI maintenance did not resume the controller; use the private maintenance backup and recovery runbook.
     - name: Verify the installed services without modifying them
       ansible.builtin.command:
@@ -77,5 +77,5 @@
     - name: Require successful CI service verification
       ansible.builtin.assert:
         that: ci_verification.rc == 0
-        fail_msg: "{{ (ci_verification.stdout | from_json).error | default('CI verification failed') }}"
+        fail_msg: "{{ (ci_verification.stdout | default('{}', true) | from_json).error | default('CI verification failed') }}"
       when: ci_action in ['apply', 'verify']

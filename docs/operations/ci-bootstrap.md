@@ -17,6 +17,28 @@ administrator API token in `~/.config/jenkins/token`, owned by your user with mo
 `0600`. An API token is needed only by the external operator; do not paste it into
 chat or commit it. The default administrator login is `whtan`.
 
+Before registration, confirm the server is the supported native Jenkins plus
+Sonar Compose layout:
+
+1. Compare its installed Jenkins core, installed required plugins, and
+   Sonar/PostgreSQL image digests with `infra/jenkins/controller-lock.json`.
+   Missing required plugins can be installed by this role; existing required
+   plugins must already match their pins. Additional unrelated plugins remain.
+2. Ensure the ten documented global credentials, the owned `battlefield-platform`
+   folder and its four credentials already exist. Use the existing
+   [platform seeder](platform-jobs.md) for that folder and
+   [Jenkins credential setup](jenkins.md) for missing external identities.
+3. For a restored controller, restore the complete matching home, including keys,
+   users and credentials, and its matching Sonar Compose containers/volumes first.
+   Use `--ci-install` only for a clean host with no existing controller/agent.
+
+If versions differ, stop before apply. This command does not upgrade or downgrade
+an existing release. Prepare a separate reviewed update to the lock and service
+compatibility checks, validate it on a disposable host, then review the new plan;
+or restore the matching release from a known backup. Do not change lock entries
+just to bypass a refusal. The initial pins were checked against this server's
+read-only inventory, but that inventory does not replace the current preflight.
+
 ```bash
 private_dir="$HOME/.config/autonomous-battlefield/server"
 ./scripts/infra/server.sh ci-register
@@ -55,7 +77,9 @@ from the same external terminal:
 The final plan should report `needs_maintenance: false`. An unchanged second
 apply verifies services without restarting them. Stopped services require a changed
 apply to restore readiness. A changed source, encrypted
-input bundle or managed file requires maintenance again. `--report-file` is
+input bundle or managed configuration file requires maintenance again. Extracted
+third-party tool trees/caches are excluded from the configuration fingerprint;
+their pinned archive versions remain part of the release contract. `--report-file` is
 available for task-only private evidence; ordinary plan output includes the
 human-readable maintenance scope.
 
@@ -68,7 +92,7 @@ human-readable maintenance scope.
 | Agent | Existing `battlefield-local` identity, four executors, `battlefield-production`/`local-kind` labels, operator user service and persistent workspace; enrollment is automatic |
 | Toolchain | Pinned Go, Node and SonarScanner under `/opt/battlefield-ci/tools`; Docker/Buildx/Compose, Java and Chromium OS libraries; Playwright's browser version remains owned by the frontend lockfile |
 | Jenkins integration | Scoped Sonar server and scanner configuration; preserve other installations; reuse `seed-platform.py` and its owned `host`, `vm` and `k3s` definitions |
-| Sonar | Digest-pinned Compose images, existing `sonarqube` project and named volumes, private database credentials, loopback port 9000, API initialization and built-in Sonar way gate |
+| Sonar | Digest-pinned Compose images, existing `sonarqube` project and named volumes, private database credentials, loopback port 9000, API initialization and project-scoped Sonar way gate; preserve the instance-wide default |
 | Certificates | Inventory's public CA certificates enter Ubuntu/Java trust; no global TLS-verification bypass |
 
 Adoption preserves the security realm, administrator, credential values, node
@@ -116,6 +140,15 @@ Do not use fixture credentials outside the disposable rehearsal.
 Fresh Jenkins starts with authentication required, signup disabled and the chosen
 administrator. Sonar's initial `admin` password is replaced through its API and a
 user token is generated privately for Jenkins and preview-project administration.
+After controller initialization succeeds, the temporary plaintext bootstrap JSON
+is replaced with metadata only (administrator name, home, mode and scanner path).
+Credentials then remain in Jenkins's credential store and the encrypted operator
+inputs. If initialization fails before that checkpoint, its private staging file
+remains for diagnosis/recovery and must be handled as secret material. The local
+Sonar database password/token and agent/bootstrap API token still require private
+service files; maintenance archives can contain these, plus Jenkins decryption
+keys, and therefore remain root-only.
+
 The resulting identities persist across repeats/reboots. `ci-verify` checks local
 service, plugin and agent readiness; the first real repository PR also needs green
 Jenkins/GitHub checks and a Sonar gate before production adoption is complete.
@@ -139,7 +172,15 @@ custom-format dump of Sonar's database. Backups go to
 recorded in `/var/lib/battlefield-ci/last-backup`. This is a local pre-maintenance
 copy, not a scheduled backup policy or whole-server-loss recovery copy.
 
-If drain fails, the helper releases only its own quiet mode. If configuration
+If drain fails, the helper releases only its own quiet mode. A backup failure
+before configuration changes automatically restarts an originally running
+controller and releases its own receipt/quiet mode; an originally stopped
+controller stays stopped. The safe failure message identifies the rejected
+backup condition, so correct it and rerun the plan. If automatic restart fails,
+inspect/start the unchanged service before clearing that pre-change receipt.
+Incomplete backup directories are not recorded as completed backups.
+
+If configuration
 fails after services begin changing, it keeps the maintenance receipt/quiet state
 and reports that recovery is required. Inspect `systemctl status jenkins`, its
 journal and `docker compose` status locally; do not paste full private logs or
@@ -166,9 +207,15 @@ python3 scripts/test/run-ci-bootstrap-rehearsal.py \
   --evidence-dir "$HOME/ci-bootstrap-rehearsal-$(date +%Y%m%d-%H%M%S)"
 ```
 
+The secret scan retains its default detectors. `.gitleaks.toml` enumerates only
+known public dependency version strings in the controller lock and the isolated
+Sonar project identifier, each scoped to its source file. Review those exact
+entries when updating plugin dependencies; do not exclude the whole lock file.
+
 The opt-in rehearsal uses an isolated 8 GB / 40 GB disposable Ubuntu VM and the
 existing NAT network. It validates fresh installation, no-change repeat, service
-readiness, a credential-bound Sonar analysis/quality gate, restored-controller
+readiness, temporary credential cleanup, safe restart after a backup guard fails,
+a credential-bound Sonar analysis/quality gate, restored-controller
 adoption with unmanaged history, and reboot identity/agent reconnection, then removes its own UUID-bound
 VM and pool. It never uses production input credentials.
 

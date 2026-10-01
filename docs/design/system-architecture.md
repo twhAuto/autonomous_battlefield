@@ -1575,13 +1575,18 @@ multibranch folder properties; it creates missing repository/assurance jobs
 with Job DSL in a disabled state and reuses the platform seeder. Fresh setup
 requires authentication before serving the UI and enrolls the shared agent without
 copying a secret from the web interface. Sonar initialization uses its API and the
-built-in Sonar way gate. Existing credentials and persistent volume names survive
+project-scoped Sonar way gate without changing the instance-wide default. Successful
+initialization removes plaintext bootstrap credential values from the staging JSON;
+private service inputs and Jenkins decryption keys still require protected archives.
+Existing credentials and persistent volume names survive
 adoption; mismatched component versions/layouts fail before reconciliation.
 
 An external operator holds the host operation lock and drains active and paused
 Jenkins builds before controller maintenance. A private local controller archive
-and Sonar database dump precede configuration changes. Quiet mode persists across
-the restart until acceptance succeeds. Unchanged repeats verify without restarting;
+and Sonar database dump precede configuration changes. A backup failure restores
+an originally running, unchanged controller automatically. Quiet mode persists across
+the configuration restart until acceptance succeeds. Configuration fingerprints
+exclude vendor tool trees/caches. Unchanged repeats verify without restarting;
 a failed reconciliation remains paused for recovery. This does not activate
 scheduled backups, move application/CI data, change Kind/K3s/Cloudflare or create
 a self-replacing controller job. Production adoption remains an explicit operation
