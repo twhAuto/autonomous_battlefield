@@ -9,7 +9,11 @@ entry point later. Jenkins/SonarQube reconstruction remains AB-127.
 The CLI VM must already exist with the [documented isolated network and NIC
 filter](agent-vm.md). This command does not create, replace or resize a VM. Host
 foundation and production Kubernetes registration must already work, including
-`/usr/bin/kubectl`. The controller needs trusted SSH entries for the physical host
+`/usr/bin/kubectl`. The registered operator must belong to the host `libvirt`
+group; start a new login after adding group membership. Managed files and their
+existing parent directories must be root-owned and not writable by group/others.
+The guard rejects an unsafe shared directory rather than changing its permissions.
+The controller needs trusted SSH entries for the physical host
 and, for guest operations, the VM; host-side execution uses the existing VM admin
 key. Keep Player CLI access disabled until AB-117 verification. Installation or a
 healthy worker is not evidence that the Player isolation gates passed.
@@ -46,7 +50,8 @@ private_dir="${XDG_CONFIG_HOME:-$HOME/.config}/autonomous-battlefield/server"
 ```
 
 This copies the existing worker and installed CLI executables, records their
-SHA256 fingerprints, and captures the worker configuration and unit in a private
+SHA256 fingerprints, and captures the worker configuration, unit and installed
+`verify-agent-isolation.py` in a private
 `cli.guest/` directory. It encrypts only the dedicated worker environment through
 Ansible Vault stdin; there is no plaintext secret staging file. Existing bundles
 are never overwritten. Provider login directories remain on the guest and are
@@ -74,8 +79,15 @@ adoption requires a complete matching installation, so an adopted enabled profil
 cannot silently become a fresh installation. Root-owned markers under
 `/etc/battlefield-cli-bootstrap/` bind identities and desired file hashes. A repeat
 apply preserves healthy service invocation IDs, credentials and provider logins.
-Files with unknown ownership, foreign overrides or conflicting worker credentials
-fail before changes. The guard also verifies the live dedicated nftables table;
+A newly installed vendor `caddy.service` is masked before package installation,
+so its default web listener cannot appear after reboot. Existing Caddy executables
+and services are preserved; a missing executable is installed from the host's
+configured Ubuntu apt repositories. The dedicated VM proxy uses its own unit.
+New or interrupted unconfigured Squid installations stay masked until configuration
+validation completes, including across a reboot. Before the first ownership marker,
+conflicting existing files fail preflight. Once the marker exists, managed content
+drift is repaired from the registered snapshot. Foreign service overrides and
+conflicting worker credentials are always rejected. The guard also verifies the live dedicated nftables table;
 owned firewall drift can be repaired without flushing unrelated host rules.
 
 An apply takes the same operator host lock as the foundation. Run it in a
@@ -88,7 +100,11 @@ update/rollback procedure (AB-139), not deletion of ownership markers, to upgrad
 
 ## Install services on a fresh, already provisioned CLI VM
 
-For an existing isolated VM with no host bundle, register a new rendered bundle:
+For an existing isolated VM with no host bundle, register a new rendered bundle.
+An inactive, unmodified Squid package-default configuration is also accepted: the
+registration binds its SHA256 and preflight rechecks dpkg metadata before the first
+replacement. Active or customized Squid services are refused; they are not silently
+converted into a dedicated proxy.
 
 ```bash
 ./scripts/infra/server.sh cli-register --local --cli-install
@@ -103,7 +119,9 @@ account creation, permissions, units and activation are handled by Ansible.
 Keep the copied guest configuration and unit sources owned by the controller user
 with mode 0600. Use the [pinned release procedure](agent-vm.md#4-install-the-worker-and-the-complete-pinned-codex-release)
 to obtain artifacts. Optional native `claude` and `agy` executable artifacts can be registered too;
-verify checks each installed CLI against the configured version family. Use
+verify checks each installed CLI against the configured version family. Every
+profile needs a unique `id` and nonempty `supportedVersionPrefix`; a failed version
+probe names these declared labels without exposing CLI output. Use
 standalone releases compatible with the target Ubuntu image. Bootstrap does not
 install arbitrary provider package trees. Provider account login remains
 interactive; follow the [Claude](claude-cli.md) and [Antigravity](antigravity-cli.md)
@@ -124,7 +142,7 @@ BATTLEFIELD_CLI_ISOLATION_VERIFIED=false
 Never supply the application environment, capability-signing secret or kubeconfig
 as guest inputs. The playbook rejects extra environment keys, public MCP/health
 addresses and enabled fresh-install profiles. Both targets finish preflight before
-either is changed. Only Ubuntu 24.04/26.04 x86-64 is supported. The worker account's
+either is changed. A host setup failure stops the guest play as well. Only Ubuntu 24.04/26.04 x86-64 is supported. The worker account's
 existing home must match `/var/lib/battlefield-worker`; files beneath it are not
 recursively reconciled. Provider device/browser login remains an interactive step
 inside the VM, followed by AB-117's isolation and accepted-plan checks before
@@ -152,7 +170,12 @@ python3 scripts/test/run-cli-bootstrap-rehearsal.py \
   --ubuntu 26.04 --evidence-dir /private/new-cli-evidence
 ```
 
-The test checks real Ansible package/service installation, nested libvirt identity
+Add `--existing-caddy` to exercise preservation of an unrelated existing Caddy
+service instead of the fresh vendor-service mask, and `--preinstall-squid` to
+exercise an inactive package default plus rejection of a modified default. The
+test reboots once immediately after package installation is interrupted and again
+after completion. It checks real Ansible package/service installation, shared
+directory metadata preservation, failure barriers, nested libvirt identity
 and filter inspection, repeat/check/verify runs, firewall drift, conflict refusal,
 interrupted-install resumption, credential/login preservation and reboot. A
 synthetic Kubernetes bridge and worker health process avoid production credentials

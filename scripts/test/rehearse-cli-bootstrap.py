@@ -85,9 +85,10 @@ def digest(path):
     return run('sudo', 'sha256sum', path).split()[0]
 
 
-def guest_playbook(action, inventory=None, success=True):
+def guest_playbook(action, inventory=None, success=True, extra_env=None, expected_rc=None):
     """Run the actual optional guest play on this disposable VM, without nested SSH."""
     env = dict(os.environ, ANSIBLE_CONFIG=str(ROOT / 'infra/ansible/ansible.cfg'), ANSIBLE_NOCOLOR='1')
+    env.update(extra_env or {})
     binary = run(str(ROOT / 'scripts/infra/server.sh'), 'tools') + '/ansible-playbook'
     command = [binary, '-i', str(inventory or PRIVATE / 'guest-inventory.json'), str(ROOT / 'infra/ansible/cli.yml'),
                '-e', json.dumps({'cli_action': action, 'cli_vault_file': str(PRIVATE / 'inputs.vault')}),
@@ -98,12 +99,17 @@ def guest_playbook(action, inventory=None, success=True):
     if SECRET in output or base64.b64encode((PRIVATE/'worker.env').read_bytes()).decode() in output:
         raise ValueError('Synthetic guest credentials leaked')
     (EVIDENCE / ('guest-' + action + '.log')).write_text(output)
+    if expected_rc is not None and result.returncode != expected_rc:
+        raise ValueError('Expected controlled interruption rc='+str(expected_rc)+', got '+str(result.returncode))
     if bool(result.returncode == 0) != success: raise ValueError('Unexpected guest playbook result; inspect safe evidence')
     return output
 
 
-def before():
+def before(existing_caddy=False, preinstall_squid=False):
     PRIVATE.mkdir(mode=0o700); EVIDENCE.mkdir(mode=0o700, exist_ok=True)
+    (EVIDENCE/'shared-parent-baseline.txt').write_text(run('stat','-c','%n %U:%G %a','/usr/local','/usr/local/bin'))
+    # Safe non-default metadata must survive bootstrap without reconciliation.
+    run('sudo','chmod','2755','/usr/local/bin')
     run('sudo', 'apt-get', 'update', '-qq')
     run('sudo', 'env', 'DEBIAN_FRONTEND=noninteractive', 'apt-get', 'install', '-y', '-qq',
         'libvirt-daemon-system', 'libvirt-clients', 'qemu-system-x86', 'python3-venv', timeout=1200)
@@ -115,6 +121,14 @@ def before():
         if 'default' in virsh('net-list', '--name').splitlines():
             virsh('net-destroy', 'default')
     run('sudo', 'usermod', '-aG', 'libvirt', 'rehearsal')
+    if existing_caddy:
+        install('/etc/systemd/system/caddy.service', '[Unit]\nDescription=Unrelated public Caddy fixture\n[Service]\nType=oneshot\nExecStart=/bin/true\nRemainAfterExit=yes\n[Install]\nWantedBy=multi-user.target\n')
+        run('sudo','systemctl','daemon-reload'); run('sudo','systemctl','enable','--now','caddy.service')
+        install('/etc/battlefield-rehearsal-public-caddy','preserve\n')
+    if preinstall_squid:
+        run('sudo','systemctl','mask','squid.service')
+        run('sudo','env','DEBIAN_FRONTEND=noninteractive','apt-get','install','-y','-qq','squid')
+        install('/etc/battlefield-rehearsal-squid-default','package default\n')
     # New SSH session in the outer driver supplies the new supplementary group.
     install('/usr/bin/kubectl', '''#!/usr/bin/python3
 import http.server,sys
@@ -151,11 +165,61 @@ http.server.HTTPServer(('127.0.0.1',28084),Handler).serve_forever()
         if path.is_file(): path.chmod(0o600)
 
 
-def exercise():
-    output = server('cli-register'); (EVIDENCE/'register.log').write_text(output)
+def host_variables():
+    cfg=json.loads((PRIVATE/'cli.json').read_text())
+    return {'ansible_connection':'local','ansible_python_interpreter':'/usr/bin/python3',
+            'ansible_become_exe':'/usr/bin/sudo.ws' if Path('/usr/bin/sudo.ws').exists() else '/usr/bin/sudo',
+            'cli_kind':'host','cli_units':cli.boundary.HOST_UNITS,'cli_contract':cfg['host'],
+            'cli_files':cli.host_files(cfg),'cli_filter_xml':(ROOT/'deploy/agent-vm/filter.xml').read_text(),
+            'cli_firewall':(Path(cfg['bundle'])/'firewall.nft').read_text()}
+
+
+def interrupt_install():
+    if Path('/etc/battlefield-rehearsal-squid-default').exists():
+        # Modified package configuration must be rejected without a registration.
+        saved=subprocess.check_output(['sudo','cat','/etc/squid/squid.conf'],text=True)
+        install('/etc/squid/squid.conf',saved+'# unrelated local customization\n')
+        server('cli-register',success=False)
+        install('/etc/squid/squid.conf',saved)
+    output=server('cli-register'); (EVIDENCE/'register.log').write_text(output)
     recap(server('cli-plan'))
     if Path('/etc/battlefield-cli-bootstrap').exists(): raise ValueError('Plan mutated ownership')
+    inventory=PRIVATE/'package-inventory.json'
+    inventory.write_text(json.dumps({'all':{'children':{'cli_host':{'hosts':{'server':host_variables()}}}}}))
+    callbacks=PRIVATE/'callbacks'; callbacks.mkdir()
+    (callbacks/'stop_after_packages.py').write_text('''from ansible.plugins.callback import CallbackBase
+import os
+class CallbackModule(CallbackBase):
+ CALLBACK_VERSION=2.0
+ CALLBACK_TYPE='aggregate'
+ CALLBACK_NAME='stop_after_packages'
+ CALLBACK_NEEDS_ENABLED=True
+ def v2_runner_on_ok(self,result,**kwargs):
+  if result._task.get_name().endswith('Install dedicated proxy prerequisites without starting default listeners'):
+   os._exit(77)
+''')
+    output=guest_playbook('apply',inventory=inventory,success=False,expected_rc=77,extra_env={
+        'ANSIBLE_CALLBACK_PLUGINS':str(callbacks),'ANSIBLE_CALLBACKS_ENABLED':'stop_after_packages'})
+    (EVIDENCE/'package-interruption.log').write_text(output)
+    run('sudo','test','-f','/etc/battlefield-cli-bootstrap/host.json')
+    run('sudo','test','-x','/usr/sbin/squid')
+    check_masked_squid()
+    check_default_caddy()
+
+
+def check_masked_squid():
+    enabled=subprocess.run(['systemctl','is-enabled','squid.service'],capture_output=True,text=True).stdout.strip()
+    active=subprocess.run(['systemctl','is-active','squid.service'],capture_output=True,text=True).stdout.strip()
+    if enabled!='masked' or active=='active': raise ValueError('Unconfigured Squid can start after interruption')
+
+
+def exercise():
+    check_masked_squid(); check_default_caddy()
+    public_caddy_id=run('systemctl','show','caddy.service','--property=InvocationID','--value') if Path('/etc/battlefield-rehearsal-public-caddy').exists() else None
     output = server('cli-apply'); recap(output); (EVIDENCE/'host-first.log').write_text(output)
+    check_default_caddy()
+    if public_caddy_id and public_caddy_id != run('systemctl','show','caddy.service','--property=InvocationID','--value'):
+        raise ValueError('Existing public Caddy was restarted')
     host_ids = {name: run('systemctl','show',name,'--property=InvocationID','--value') for name in cli.boundary.HOST_UNITS}
     recap(server('cli-apply'),0); recap(server('cli-plan'),0); recap(server('cli-verify'),0)
     if host_ids != {name: run('systemctl','show',name,'--property=InvocationID','--value') for name in cli.boundary.HOST_UNITS}:
@@ -198,12 +262,7 @@ http.server.HTTPServer(('127.0.0.1',8083),Handler).serve_forever()
     (PRIVATE/'guest-inventory.json').write_text(json.dumps({'all':{'children':{'cli_guest':{'hosts':{'worker':variables}}}}}))
     recap(guest_playbook('plan'))
     # A guest preflight failure must prevent repair of even harmless host drift.
-    host_vars={'ansible_connection':'local','ansible_python_interpreter':'/usr/bin/python3',
-               'ansible_become_exe':'/usr/bin/sudo.ws' if Path('/usr/bin/sudo.ws').exists() else '/usr/bin/sudo',
-               'cli_kind':'host','cli_units':cli.boundary.HOST_UNITS,'cli_contract':cfg['host'],
-               'cli_files':cli.host_files(cfg),'cli_filter_xml':(ROOT/'deploy/agent-vm/filter.xml').read_text(),
-               'cli_firewall':(Path(cfg['bundle'])/'firewall.nft').read_text()}
-    host_vars['cli_contract']['domain_uuid']=json.loads(original)['host']['domain_uuid']
+    host_vars=host_variables()
     bad_guest=dict(variables,cli_contract=dict(variables['cli_contract'],machine_id='f'*32))
     both=PRIVATE/'barrier-inventory.json'
     both.write_text(json.dumps({'all':{'children':{'cli_host':{'hosts':{'server':host_vars}},
@@ -213,6 +272,19 @@ http.server.HTTPServer(('127.0.0.1',8083),Handler).serve_forever()
     if run('sudo','stat','-c','%a','/etc/battlefield-agent/mcp-proxy.Caddyfile')!='640':
         raise ValueError('Host changed despite failed guest preflight')
     run('sudo','chmod','0644','/etc/battlefield-agent/mcp-proxy.Caddyfile')
+    # Both preflights succeed, then a real host validator fails: no guest mutation.
+    both.write_text(json.dumps({'all':{'children':{'cli_host':{'hosts':{'server':host_vars}},
+                                                'cli_guest':{'hosts':{'worker':variables}}}}}))
+    run('sudo','mv','/usr/bin/caddy','/usr/bin/caddy.fixture-saved')
+    try:
+        install('/usr/bin/caddy','#!/bin/sh\nexit 1\n','0755')
+        failure=guest_playbook('apply',inventory=both,success=False)
+        if 'Validate the installed private Caddy configuration' not in failure:
+            raise ValueError('Expected host validation failure was not reached')
+        if Path('/etc/systemd/system/battlefield-worker.service').exists() or subprocess.run(['sudo','test','-e','/etc/battlefield-cli-bootstrap/guest.json']).returncode == 0:
+            raise ValueError('Guest changed after host setup failed')
+    finally:
+        run('sudo','mv','/usr/bin/caddy.fixture-saved','/usr/bin/caddy')
     # Simulate interruption immediately after ownership recording, before any managed files exist.
     contract={'schema':1,'identity':variables['cli_contract'],'files':{x['dest']:x['sha256'] for x in files}}
     contract['files']['/etc/battlefield-agent/worker.env']=hashlib.sha256((PRIVATE/'worker.env').read_bytes()).hexdigest()
@@ -220,6 +292,7 @@ http.server.HTTPServer(('127.0.0.1',8083),Handler).serve_forever()
     recap(guest_playbook('apply'))
     install('/var/lib/battlefield-worker/.provider-login-sentinel','preserve-existing-login','0600')
     run('sudo','chown','battlefield-worker:battlefield-worker','/var/lib/battlefield-worker/.provider-login-sentinel')
+    if run('stat','-c','%a','/usr/local/bin')!='2755': raise ValueError('Shared directory metadata changed')
     ids=invocations(); fingerprint=digest('/etc/battlefield-agent/worker.env')
     recap(guest_playbook('apply'),0); recap(guest_playbook('plan'),0); recap(guest_playbook('verify'),0)
     if invocations()!=ids or digest('/etc/battlefield-agent/worker.env')!=fingerprint:
@@ -229,7 +302,17 @@ http.server.HTTPServer(('127.0.0.1',8083),Handler).serve_forever()
     (EVIDENCE/'before.json').write_text(json.dumps({'passed':True,'secret_sha256':fingerprint,'boot_id':Path('/proc/sys/kernel/random/boot_id').read_text().strip()}))
 
 
+def check_default_caddy():
+    enabled=subprocess.run(['systemctl','is-enabled','caddy.service'],capture_output=True,text=True).stdout.strip()
+    active=subprocess.run(['systemctl','is-active','caddy.service'],capture_output=True,text=True).stdout.strip()
+    if Path('/etc/battlefield-rehearsal-public-caddy').exists():
+        if enabled!='enabled' or active!='active': raise ValueError('Existing public Caddy was changed')
+    elif enabled!='masked' or active=='active':
+        raise ValueError('New default Caddy could expose an unintended listener')
+
+
 def after():
+    check_default_caddy()
     previous=json.loads((EVIDENCE/'before.json').read_text())
     if previous['boot_id']==Path('/proc/sys/kernel/random/boot_id').read_text().strip(): raise ValueError('Guest did not reboot')
     recap(server('cli-verify'),0); recap(guest_playbook('verify'),0)
@@ -241,7 +324,10 @@ def after():
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('phase',choices=['prepare','exercise','after-reboot']); parser.add_argument('--identity',required=True)
+    parser.add_argument('phase',choices=['prepare','interrupt-install','exercise','after-reboot']); parser.add_argument('--identity',required=True)
+    parser.add_argument('--existing-caddy', action='store_true')
+    parser.add_argument('--preinstall-squid', action='store_true')
     args=parser.parse_args(); os.umask(0o077); fixture.require_guest(args.identity)
-    {'prepare':before,'exercise':exercise,'after-reboot':after}[args.phase]()
+    if args.phase == 'prepare': before(args.existing_caddy,args.preinstall_squid)
+    else: {'interrupt-install':interrupt_install,'exercise':exercise,'after-reboot':after}[args.phase]()
     print('PASS: CLI bootstrap fixture '+args.phase)

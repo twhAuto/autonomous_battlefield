@@ -18,6 +18,8 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--evidence-dir',type=Path,required=True)
     parser.add_argument('--ubuntu',choices=['24.04','26.04'],default='26.04')
+    parser.add_argument('--existing-caddy',action='store_true',help='Verify an existing unrelated Caddy service is preserved')
+    parser.add_argument('--preinstall-squid',action='store_true',help='Exercise an inactive unmodified package default')
     args=parser.parse_args()
     args.evidence_dir.mkdir(mode=0o700,parents=True,exist_ok=False)
     pin=json.loads((ROOT/'infra/ansible/rehearsal-image.json').read_text())[args.ubuntu]
@@ -26,7 +28,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='bf-cli-rehearsal-') as directory:
         work=Path(directory)
         vm=rehearsal.Rehearsal(work,args.evidence_dir,'default')
-        metadata={'image':pin,'source_sha256':{},'synthetic_backend':True}
+        metadata={'image':pin,'source_sha256':{},'synthetic_backend':True,'existing_caddy':args.existing_caddy,'preinstall_squid':args.preinstall_squid}
         with tarfile.open(work/'source.tar','w') as archive:
             for name in ('infra/ansible','deploy/agent-vm','scripts/infra','scripts/ops','scripts/test/rehearse-cli-bootstrap.py','scripts/test/rehearse-server-guest.py'):
                 archive.add(ROOT/name,arcname=name,filter=lambda item: None if '__pycache__' in item.name else item)
@@ -37,10 +39,12 @@ def main():
         try:
             print('Creating disposable CLI test VM',flush=True); vm.prepare(image)
             vm.ssh('mkdir -m 700 source && tar -xf - -C source',input=(work/'source.tar').read_bytes(),text=False)
-            for phase in ('prepare','exercise'):
+            for phase in ('prepare','interrupt-install','exercise'):
                 print('Running CLI fixture '+phase,flush=True)
-                output=vm.ssh('python3 source/scripts/test/rehearse-cli-bootstrap.py '+phase+' --identity '+vm.identity,timeout=1800)
+                output=vm.ssh('python3 source/scripts/test/rehearse-cli-bootstrap.py '+phase+' --identity '+vm.identity+(' --existing-caddy' if args.existing_caddy else '')+(' --preinstall-squid' if args.preinstall_squid else ''),timeout=1800)
                 (args.evidence_dir/(phase+'.log')).write_text(output)
+                if phase=='interrupt-install':
+                    print('Rebooting interrupted disposable install to verify vendor masks',flush=True); vm.reboot()
             before_evidence=vm.ssh('tar -czf - -C evidence .',text=False)
             (args.evidence_dir/'guest-evidence.tar.gz').write_bytes(before_evidence)
             print('Rebooting only the disposable CLI test VM',flush=True); vm.reboot()

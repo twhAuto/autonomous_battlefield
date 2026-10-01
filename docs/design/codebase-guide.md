@@ -273,12 +273,14 @@ while exposing explicitly approved, available CLI profiles.
 
 `scripts/infra/cli-bootstrap.py`, dispatched by `server.sh cli-*`, registers the
 public host bundle, captures existing guest artifacts with an encrypted worker
-environment, and builds the two-target Ansible inventory. `infra/ansible/cli.yml`
-preflights both targets before the `cli_host`/`cli_guest` roles. The shared
+environment and installed isolation helper, and builds the two-target Ansible inventory. `infra/ansible/cli.yml`
+preflights both targets before the `cli_host`/`cli_guest` roles and stops guest
+installation on host failure. The shared
 `module_utils/battlefield_cli.py` validates immutable ownership, managed files and
 libvirt isolation; `battlefield_cli_guard.py` checks live target metadata and the
-firewall. `filter_plugins/cli_bootstrap.py` enforces worker-only inputs and fresh
-profile gating. `test-cli-bootstrap.py` covers the guards; the optional
+firewall, including the narrowly scoped unmodified Squid package-default
+exception. `filter_plugins/cli_bootstrap.py` enforces worker-only inputs, fresh
+profile gating and safe version failure labels. `test-cli-bootstrap.py` covers the guards; the optional
 `run-cli-bootstrap-rehearsal.py`/`rehearse-cli-bootstrap.py` pair verifies actual
 Ansible service lifecycle only in a UUID-bound disposable guest.
 

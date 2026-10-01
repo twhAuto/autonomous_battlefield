@@ -44,7 +44,21 @@ def safe_components(path):
     return path
 
 
-def inspect_files(files, marker, contract, *, verify=False):
+def package_default(path, metadata):
+    """Recognize only dpkg's unmodified conffile; SHA256 binds the selected bytes."""
+    import hashlib
+    from pathlib import Path
+    path = Path(path)
+    content = path.read_bytes()
+    digest = hashlib.md5(content, usedforsecurity=False).hexdigest()
+    for line in metadata.splitlines():
+        fields = line.split()
+        if fields == [str(path), digest]:
+            return hashlib.sha256(content).hexdigest()
+    return None
+
+
+def inspect_files(files, marker, contract, *, verify=False, initial_defaults=None):
     """Initial adoption is exact; owned drift is repairable; release changes need AB-139."""
     marker = safe_components(marker)
     expected = {'schema': 1, 'identity': contract,
@@ -62,8 +76,10 @@ def inspect_files(files, marker, contract, *, verify=False):
             metadata = path.stat()
             if not stat.S_ISREG(metadata.st_mode):
                 raise ValueError('Managed destination is not a regular file: ' + str(path))
-            differs = sha(path.read_bytes()) != item['sha256']
-            if differs and (not owned or str(path) == '/etc/battlefield-agent/worker.env'):
+            actual = sha(path.read_bytes())
+            differs = actual != item['sha256']
+            initial_default = str(path) == '/etc/squid/squid.conf' and (initial_defaults or {}).get(str(path)) == actual
+            if differs and ((not owned and not initial_default) or str(path) == '/etc/battlefield-agent/worker.env'):
                 raise ValueError('Unowned or conflicting CLI file: ' + str(path))
             if differs:
                 content_changes.append(str(path))

@@ -6,7 +6,7 @@ import pwd
 import stat
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.battlefield_cli import (
-    GUEST_FILES, HOST_FILES, HOST_UNITS, LOOPBACK, inspect_files, reject_overrides, validate_boundary, nft_equivalent, affected_services,
+    GUEST_FILES, HOST_FILES, HOST_UNITS, LOOPBACK, inspect_files, reject_overrides, validate_boundary, nft_equivalent, affected_services, package_default, safe_components,
 )
 
 
@@ -68,8 +68,24 @@ def main():
                        '--request-timeout=15s', 'get', 'namespace', 'kube-system', '-o', 'jsonpath={.metadata.uid}'])
             if uid != contract['kube_system_uid']:
                 raise ValueError('CLI bridge Kubernetes identity differs from registration')
+        initial_defaults = {}
+        squid_active = False
+        if kind == 'host':
+            rc, active, _ = module.run_command(['systemctl', 'is-active', 'squid.service'])
+            squid_active = active.strip() == 'active'
+            for item in files:
+                if 'initial_sha256' not in item:
+                    continue
+                if item['dest'] != '/etc/squid/squid.conf':
+                    raise ValueError('Unexpected package-default destination')
+                path = safe_components(item['dest'])
+                if path.is_file() and not squid_active:
+                    rc, metadata, _ = module.run_command(['dpkg-query', '-W', '-f=${Conffiles}\n', 'squid', 'squid-common'])
+                    fingerprint = package_default(path, metadata) if not rc else None
+                    if fingerprint == item['initial_sha256']:
+                        initial_defaults[str(path)] = fingerprint
         result = inspect_files(files, '/etc/battlefield-cli-bootstrap/' + kind + '.json', contract,
-                               verify=params['verify'])
+                               verify=params['verify'], initial_defaults=initial_defaults)
         if kind == 'guest' and params['adopt_existing'] and not result['owned'] and result['content_changes']:
             raise ValueError('Guest adoption requires a complete matching existing installation; use disabled fresh-install inputs on a new VM')
         for unit in units:
@@ -77,9 +93,12 @@ def main():
             fragment = fragment.strip()
             allowed_fragments = ({'/usr/lib/systemd/system/squid.service', '/lib/systemd/system/squid.service'}
                                  if unit == 'squid' else {'/etc/systemd/system/' + unit + '.service'})
+            if unit == 'squid' and (result['owned'] or initial_defaults):
+                allowed_fragments.add('/dev/null')
             if fragment and fragment not in allowed_fragments:
                 raise ValueError('CLI service is shadowed by an unexpected unit: ' + unit)
         if kind == 'host':
+            result['mask_squid'] = not squid_active and '/etc/squid/squid.conf' in result['content_changes']
             nft = module.get_bin_path('nft')
             rc, current, _ = module.run_command([nft, 'list', 'table', 'inet', 'battlefield_agent']) if nft else (1, '', '')
             if rc or not nft_equivalent(current, params['firewall']):

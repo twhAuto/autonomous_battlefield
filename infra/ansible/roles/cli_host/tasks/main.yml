@@ -11,9 +11,23 @@
 - name: Register CLI ownership before package installation can create default files
   ansible.builtin.include_tasks: ../../cli_guest/tasks/ownership.yml
   when: cli_action in ['apply', 'plan']
+- name: Mask a new vendor Caddy service before its package can enable a public listener
+  ansible.builtin.systemd_service:
+    name: caddy.service
+    masked: true
+  when: cli_action in ['apply', 'plan'] and 'caddy.service' not in ansible_facts.services
+- name: Keep a new or interrupted unconfigured Squid service masked across reboot
+  ansible.builtin.systemd_service:
+    name: squid.service
+    masked: true
+  when: cli_action in ['apply', 'plan'] and cli_guard.mask_squid
+- name: Preserve an existing Caddy executable and its package source
+  ansible.builtin.stat:
+    path: /usr/bin/caddy
+  register: cli_caddy
 - name: Install dedicated proxy prerequisites without starting default listeners
   ansible.builtin.apt:
-    name: [caddy, squid, nftables]
+    name: "{{ ['squid', 'nftables'] + ([] if cli_caddy.stat.exists else ['caddy']) }}"
     state: present
     policy_rc_d: 101
     fail_on_autoremove: true

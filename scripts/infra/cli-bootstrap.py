@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import importlib.util
+import inspect
 import json
 import os
 from pathlib import Path
@@ -34,8 +35,10 @@ def absolute(value):
 
 
 def validate(config):
-    if not isinstance(config, dict) or set(config) != {'schema', 'host', 'bundle', 'guest'} or type(config['schema']) is not int or config['schema'] != 1:
+    if not isinstance(config, dict) or not {'schema', 'host', 'bundle', 'guest'} <= set(config) or set(config) - {'schema', 'host', 'bundle', 'guest', 'squid_package_default'} or type(config['schema']) is not int or config['schema'] != 1:
         raise ValueError('Expected CLI configuration schema 1')
+    if 'squid_package_default' in config and (not isinstance(config['squid_package_default'], str) or not re.fullmatch(SHA, config['squid_package_default'])):
+        raise ValueError('Invalid Squid package default fingerprint')
     host = config['host']
     fields = {'machine_id', 'operator', 'home', 'domain_uuid', 'network_uuid', 'kubeconfig', 'context', 'kube_system_uid', 'bridge_port'}
     if not isinstance(host, dict) or set(host) != fields:
@@ -52,13 +55,15 @@ def validate(config):
         raise ValueError('CLI bridge port must avoid the Jenkins smoke ports and proxy port')
     guest = config['guest']
     if guest is not None:
-        if not isinstance(guest, dict) or set(guest) != {'machine_id', 'identity_file', 'artifacts', 'config', 'service', 'adopt_existing'}:
+        if not isinstance(guest, dict) or not {'machine_id', 'identity_file', 'artifacts', 'config', 'service', 'adopt_existing'} <= set(guest) or set(guest) - {'machine_id', 'identity_file', 'artifacts', 'config', 'service', 'adopt_existing', 'isolation_script'}:
             raise ValueError('Invalid CLI guest configuration; use the example schema')
         if not isinstance(guest['machine_id'], str) or not re.fullmatch(r'[0-9a-f]{32}', guest['machine_id']) or type(guest['adopt_existing']) is not bool:
             raise ValueError('Invalid CLI guest identity/adoption setting')
         if guest['machine_id'] == host['machine_id']:
             raise ValueError('CLI guest identity must differ from the physical host')
         absolute(guest['identity_file']); absolute(guest['config']); absolute(guest['service'])
+        if 'isolation_script' in guest:
+            absolute(guest['isolation_script'])
         artifacts = guest['artifacts']
         if not isinstance(artifacts, dict) or not {'battlefield-agent', 'codex', 'codex-code-mode-host'} <= artifacts.keys() or artifacts.keys() - {'battlefield-agent', 'codex', 'codex-code-mode-host', 'claude', 'agy'}:
             raise ValueError('Guest requires the worker and complete Codex release; optional providers need declared artifacts')
@@ -86,6 +91,8 @@ def host_files(config):
     if names - (set(boundary.HOST_FILES) | {'20-loopback.conf'}) or not set(boundary.HOST_FILES) <= names:
         raise ValueError('CLI bundle must contain exactly the renderer files and optional reviewed loopback override')
     files = [file_entry(directory / name, destination, '0644') for name, destination in boundary.HOST_FILES.items()]
+    if 'squid_package_default' in config:
+        next(item for item in files if item['dest'] == '/etc/squid/squid.conf')['initial_sha256'] = config['squid_package_default']
     if '20-loopback.conf' in names:
         files.append(file_entry(directory / '20-loopback.conf', boundary.LOOPBACK, '0644'))
     validate_bundle(config, {path.name: path.read_text() for path in directory.iterdir()})
@@ -108,15 +115,12 @@ def validate_bundle(config, files):
     if not domains or any(not re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}', domain) for domain in domains):
         raise ValueError('CLI provider allowlist must contain explicit DNS names only')
     expected_command = next(line for line in canonical['battlefield-mcp-bridge.service'].splitlines() if line.startswith('ExecStart='))
-    bridge = files.get('20-loopback.conf', files['battlefield-mcp-bridge.service'])
-    commands = [line for line in bridge.splitlines() if line.startswith('ExecStart=') and line != 'ExecStart=']
-    if commands != [expected_command]:
+    command = expected_command.removeprefix('ExecStart=')
+    effective = directives(files.get('20-loopback.conf', files['battlefield-mcp-bridge.service']))
+    if effective.get('ExecStart') != (['', command] if '20-loopback.conf' in files else [command]):
         raise ValueError('CLI bridge must use the registered loopback endpoint and kubeconfig')
-    if '20-loopback.conf' in files and files['20-loopback.conf'].strip() != '[Service]\nExecStart=\n' + expected_command:
+    if '20-loopback.conf' in files and unit_sections(files['20-loopback.conf']) != {'Service': {'ExecStart': ['', command]}}:
         raise ValueError('Unrecognized CLI bridge override')
-    for name in ('battlefield-mcp-bridge.service', 'battlefield-mcp-proxy.service'):
-        if 'User=' + host['operator'] not in files[name].splitlines():
-            raise ValueError('CLI service user differs from registration')
     bridge_commands = directives(files['battlefield-mcp-bridge.service']).get('ExecStart', [])
     legacy_command = expected_command.removeprefix('ExecStart=').replace('--address=127.0.0.1', '--address=192.168.234.1').replace(str(host['bridge_port']) + ':8084', '18084:8084')
     if bridge_commands not in ([expected_command.removeprefix('ExecStart=')], [legacy_command] if '20-loopback.conf' in files else []):
@@ -135,51 +139,67 @@ def validate_bundle(config, files):
     allowed_nft = ['/usr/sbin/nft --file /etc/battlefield-agent/firewall.nft', '/usr/sbin/nft -f /etc/battlefield-agent/firewall.nft']
     if any(len(firewall.get(key, [])) != 1 or firewall[key][0] not in allowed_nft for key in ('ExecStart', 'ExecReload')):
         raise ValueError('Unrecognized CLI firewall command')
-    for name in ('battlefield-mcp-bridge.service', 'battlefield-mcp-proxy.service', 'squid-override.conf'):
-        if any(key.startswith('Exec') and key != 'ExecStart' for key in directives(files[name])):
-            raise ValueError('Unexpected executable host unit directive')
-    if any(key.startswith('Exec') for key in directives(files['squid-override.conf'])):
-        raise ValueError('The dedicated Squid override must preserve the package service command')
-    proxy_command = 'ExecStart=/usr/bin/caddy run --config /etc/battlefield-agent/mcp-proxy.Caddyfile --adapter caddyfile'
-    if proxy_command not in files['battlefield-mcp-proxy.service'].splitlines():
+    proxy_command = '/usr/bin/caddy run --config /etc/battlefield-agent/mcp-proxy.Caddyfile --adapter caddyfile'
+    if directives(files['battlefield-mcp-proxy.service']).get('ExecStart') != [proxy_command]:
         raise ValueError('Unrecognized CLI proxy command')
     for name, content in files.items():
         if any(word in content.upper() for word in ('PASSWORD=', 'TOKEN=', 'SECRET=')):
             raise ValueError('CLI host bundle must not contain credentials')
         if name.endswith(('.service', '.conf')) and name != 'squid.conf':
-            if re.search(r'^Exec(?:StartPre|StartPost|Stop|StopPost|Condition)=', content, re.M):
-                raise ValueError('Unexpected executable service override in CLI bundle')
+            allowed_exec = ({'ExecStart', 'ExecReload'} if name == 'battlefield-agent-firewall.service'
+                            else set() if name == 'squid-override.conf' else {'ExecStart'})
+            for section, values in unit_sections(content).items():
+                if any(key.startswith('Exec') and (section != 'Service' or key not in allowed_exec) for key in values):
+                    raise ValueError('Unexpected executable host unit directive')
+                if section != 'Service' and any(key in values for key in ('User', 'NoNewPrivileges', 'Environment', 'EnvironmentFile')):
+                    raise ValueError('CLI service boundary directive is outside [Service]')
 
 
-def register(args, data, server):
+def register(args, data, report, server):
     target = args.cli_config or args.inventory.parent / 'cli.json'
     target = server.safe_path(target)
     server.outside_repo(target)
     bundle = target.with_suffix('.files')
     if target.exists() or bundle.exists() or target.is_symlink() or bundle.is_symlink():
         raise ValueError('CLI registration already exists; inspect it instead of replacing identity')
-    home = '/root' if data['user'] == 'root' else '/home/' + data['user']
+    home = absolute(report['home'])
     kubeconfig = absolute(args.cli_kubeconfig or home + '/.config/autonomous-battlefield/production/kubeconfig')
     context = args.cli_context
     if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]*', context):
         raise ValueError('Invalid CLI context')
     payload = {'kubeconfig': kubeconfig, 'context': context, 'files': boundary.HOST_FILES, 'loopback': boundary.LOOPBACK}
-    code = '''import json,pathlib,subprocess,sys,stat
+    code = inspect.getsource(boundary.package_default) + '''
+import json,pathlib,subprocess,sys,stat
 p=json.load(sys.stdin)
-def run(args):
- return subprocess.run(args,check=True,capture_output=True,text=True,timeout=30).stdout.strip()
-files={}
-for name, path in dict(p['files'], **{'20-loopback.conf':p['loopback']}).items():
- f=pathlib.Path(path)
- if f.exists() or f.is_symlink():
-  s=f.lstat()
-  if not stat.S_ISREG(s.st_mode) or s.st_uid != 0 or s.st_mode & 0o022 or s.st_size > 65536: raise ValueError('Unsafe host bundle file')
-  files[name]=f.read_text()
-print(json.dumps({'domain_uuid':run(['virsh','-c','qemu:///system','domuuid','battlefield-agent']),
- 'network_uuid':run(['virsh','-c','qemu:///system','net-uuid','battlefield-agent']),
- 'kube_system_uid':run(['/usr/bin/kubectl','--kubeconfig='+p['kubeconfig'],'--context='+p['context'],'--request-timeout=15s','get','namespace','kube-system','-o','jsonpath={.metadata.uid}']), 'files':files}))
+def run(args, operation):
+ result=subprocess.run(args,capture_output=True,text=True,timeout=30)
+ if result.returncode: raise ValueError(operation)
+ return result.stdout.strip()
+try:
+ files={}
+ for name, path in dict(p['files'], **{'20-loopback.conf':p['loopback']}).items():
+  f=pathlib.Path(path)
+  if f.exists() or f.is_symlink():
+   s=f.lstat()
+   limit=1048576 if name=='squid.conf' else 65536
+   if not stat.S_ISREG(s.st_mode) or s.st_uid != 0 or s.st_mode & 0o022 or s.st_size > limit: raise ValueError('Unsafe or oversized host bundle file: '+name)
+   files[name]=f.read_text()
+ default=None
+ if 'squid.conf' in files:
+  metadata=subprocess.run(['dpkg-query','-W','-f=${Conffiles}\\n','squid','squid-common'],capture_output=True,text=True)
+  if metadata.returncode==0: default=package_default('/etc/squid/squid.conf',metadata.stdout)
+  active=subprocess.run(['systemctl','is-active','squid.service'],capture_output=True,text=True).stdout.strip()
+  if active=='active': default=None
+ print(json.dumps({'domain_uuid':run(['virsh','-c','qemu:///system','domuuid','battlefield-agent'],'Cannot read CLI domain; verify operator libvirt group membership in a new login'),
+  'network_uuid':run(['virsh','-c','qemu:///system','net-uuid','battlefield-agent'],'Cannot read the registered isolated CLI network'),
+  'kube_system_uid':run(['/usr/bin/kubectl','--kubeconfig='+p['kubeconfig'],'--context='+p['context'],'--request-timeout=15s','get','namespace','kube-system','-o','jsonpath={.metadata.uid}'],'Cannot read production cluster identity; verify the operator kubeconfig and context'),
+  'files':files,'squid_package_default':default}))
+except (OSError,ValueError,subprocess.TimeoutExpired) as error:
+ print(json.dumps({'error':str(error) if isinstance(error,ValueError) else 'CLI registration probe could not read host metadata'}))
 '''
     observed = json.loads(server.remote_python(data, code, json.dumps(payload).encode(), args.local))
+    if 'error' in observed:
+        raise ValueError(observed['error'])
     host = dict(machine_id=data['machine_id'], operator=data['user'], home=home, kubeconfig=kubeconfig,
                 context=context, bridge_port=args.cli_bridge_port,
                 **{key: observed[key] for key in ('domain_uuid', 'network_uuid', 'kube_system_uid')})
@@ -188,7 +208,9 @@ print(json.dumps({'domain_uuid':run(['virsh','-c','qemu:///system','domuuid','ba
         staged = Path(directory) / 'bundle'
         if args.cli_install:
             if observed['files']:
-                raise ValueError('Fresh CLI install requested but existing host bundle files were found; use adoption')
+                if set(observed['files']) != {'squid.conf'} or not observed.get('squid_package_default'):
+                    raise ValueError('Fresh CLI install requires no host bundle, or only an inactive unmodified Squid package default; existing custom services need adoption')
+                config['squid_package_default'] = observed['squid_package_default']
             renderer.render(staged, host['operator'], home, kubeconfig, context, host['bridge_port'])
         else:
             if not set(boundary.HOST_FILES) <= observed['files'].keys():
@@ -211,6 +233,18 @@ print(json.dumps({'domain_uuid':run(['virsh','-c','qemu:///system','domuuid','ba
     print('Registered CLI host bundle without changing services. Guest installation is optional; review cli.json before plan/apply.')
 
 
+def guest_file_entries(guest, server):
+    files = [file_entry(server.private_file(guest['service']), '/etc/systemd/system/battlefield-worker.service', '0644'),
+             file_entry(server.private_file(guest['isolation_script']) if 'isolation_script' in guest else ROOT / 'scripts/ops/verify-agent-isolation.py', '/usr/local/bin/verify-agent-isolation.py', '0755'),
+             file_entry(server.private_file(guest['config']), '/etc/battlefield-agent/config.yaml', '0644')]
+    for name, artifact in guest['artifacts'].items():
+        entry = file_entry(artifact['path'], '/usr/local/bin/' + name, '0755')
+        if entry['sha256'] != artifact['sha256']:
+            raise ValueError('CLI artifact differs from verified release SHA256: ' + name)
+        files.append(entry)
+    return files
+
+
 def playbook(args, data, report, server):
     config_path = args.cli_config or args.inventory.parent / 'cli.json'
     server.outside_repo(Path(config_path))
@@ -227,14 +261,7 @@ def playbook(args, data, report, server):
     if guest is not None:
         validate_guest_unit(server.private_file(guest['service']).read_text())
         key = server.private_file(guest['identity_file'])
-        guest_files = [file_entry(server.private_file(guest['service']), '/etc/systemd/system/battlefield-worker.service', '0644'),
-                       file_entry(ROOT / 'scripts/ops/verify-agent-isolation.py', '/usr/local/bin/verify-agent-isolation.py', '0755'),
-                       file_entry(server.private_file(guest['config']), '/etc/battlefield-agent/config.yaml', '0644')]
-        for name, artifact in guest['artifacts'].items():
-            entry = file_entry(artifact['path'], '/usr/local/bin/' + name, '0755')
-            if entry['sha256'] != artifact['sha256']:
-                raise ValueError('CLI artifact differs from verified release SHA256: ' + name)
-            guest_files.append(entry)
+        guest_files = guest_file_entries(guest, server)
         connection = '-o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes'
         if not args.local:
             proxy = shlex.join(server.ssh(data) + ['-W', '%h:%p'])
@@ -311,9 +338,9 @@ def capture_guest(args, data, server):
 root=pathlib.Path('/etc/battlefield-agent')
 result={'machine_id':pathlib.Path('/etc/machine-id').read_text().strip(),
  'domain_uuid':pathlib.Path('/sys/class/dmi/id/product_uuid').read_text().strip().lower(),'files':{}}
-for name,path in [('config.yaml',root/'config.yaml'),('worker.service',pathlib.Path('/etc/systemd/system/battlefield-worker.service')),('worker.env',root/'worker.env')]:
+for name,path in [('config.yaml',root/'config.yaml'),('worker.service',pathlib.Path('/etc/systemd/system/battlefield-worker.service')),('worker.env',root/'worker.env'),('verify-agent-isolation.py',pathlib.Path('/usr/local/bin/verify-agent-isolation.py'))]:
  s=path.lstat()
- if not stat.S_ISREG(s.st_mode) or s.st_uid != 0 or s.st_mode & 0o022 or s.st_size > 16384: raise ValueError('Unsafe guest input')
+ if not stat.S_ISREG(s.st_mode) or s.st_uid != 0 or s.st_mode & 0o022 or s.st_size > 65536: raise ValueError('Unsafe guest input')
  result['files'][name]=path.read_text()
 result['artifacts']={}
 for name in ['battlefield-agent','codex','codex-code-mode-host','claude','agy']:
@@ -344,11 +371,11 @@ print(json.dumps(result))
                 copied = subprocess.run(command + ['cat /usr/local/bin/' + name], stdout=stream, stderr=subprocess.DEVNULL, timeout=180)
             if copied.returncode or boundary.sha(target.read_bytes()) != expected:
                 raise ValueError('Guest artifact changed during capture or transfer failed: ' + name)
-        for name in ('config.yaml', 'worker.service'):
+        for name in ('config.yaml', 'worker.service', 'verify-agent-isolation.py'):
             server.write_new(output / name, observed['files'][name].encode())
         config['guest'] = {'machine_id': observed['machine_id'], 'identity_file': str(key),
                            'config': str(output / 'config.yaml'), 'service': str(output / 'worker.service'),
-                           'adopt_existing': True,
+                           'adopt_existing': True, 'isolation_script': str(output / 'verify-agent-isolation.py'),
                            'artifacts': {name: {'path': str(output / name), 'sha256': value} for name, value in observed['artifacts'].items()}}
         validate(config)
         inputs = {'bootstrap_inputs': {'cli_worker_environment': base64.b64encode(observed['files']['worker.env'].encode()).decode()}}
@@ -381,14 +408,12 @@ def validate_guest_unit(content):
                 'ProtectSystem': 'strict', 'ProtectHome': 'true', 'NoNewPrivileges': 'true',
                 'ReadWritePaths': '/var/lib/battlefield-worker', 'CapabilityBoundingSet': '',
                 'KillMode': 'control-group'}
-    values = {}
-    for line in content.splitlines():
-        if '=' not in line or line.lstrip().startswith('#'):
-            continue
-        key, value = line.split('=', 1)
-        values.setdefault(key, []).append(value)
-        if key.startswith('Exec') and key != 'ExecStart':
+    values = directives(content)
+    for name, section in unit_sections(content).items():
+        if any(key.startswith('Exec') and key != 'ExecStart' for key in section):
             raise ValueError('Guest unit contains an unexpected executable directive')
+        if name != 'Service' and any(key in section for key in set(required) | {'Environment', 'BindPaths', 'BindReadOnlyPaths'}):
+            raise ValueError('Guest service directive appears outside its required section')
     if any(values.get(key) != [value] for key, value in required.items()):
         raise ValueError('Guest unit differs from the required worker account and isolation boundary')
     allowed = {'HOME=/var/lib/battlefield-worker', 'HTTPS_PROXY=http://192.168.234.1:3128',
@@ -397,11 +422,27 @@ def validate_guest_unit(content):
         raise ValueError('Guest unit contains unexpected environment or host paths')
 
 
+def unit_sections(content):
+    """Parse the restricted systemd format accepted for privileged bootstrap inputs."""
+    sections, current = {}, None
+    for raw in content.splitlines():
+        line = raw.strip()
+        if not line or line.startswith(('#', ';')):
+            continue
+        if line.endswith(chr(92)):
+            raise ValueError('Continued systemd directives are not supported by CLI bootstrap')
+        if re.fullmatch(r'\[[A-Za-z]+\]', line):
+            current = line[1:-1]
+            sections.setdefault(current, {})
+        elif current is not None and '=' in line:
+            key, value = (part.strip() for part in line.split('=', 1))
+            if not re.fullmatch(r'[A-Za-z][A-Za-z0-9]*', key):
+                raise ValueError('Invalid CLI systemd directive')
+            sections[current].setdefault(key, []).append(value)
+        else:
+            raise ValueError('Invalid CLI systemd section or directive')
+    return sections
+
+
 def directives(content):
-    values = {}
-    for line in content.splitlines():
-        line = line.strip()
-        if '=' in line and not line.startswith(('#', ';')):
-            key, value = line.split('=', 1)
-            values.setdefault(key, []).append(value)
-    return values
+    return unit_sections(content).get('Service', {})

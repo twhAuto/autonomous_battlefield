@@ -1,14 +1,20 @@
 ---
 - name: Record resumable CLI ownership
   ansible.builtin.include_tasks: "{{ playbook_dir }}/roles/cli_guest/tasks/ownership.yml"
-- name: Ensure managed configuration parent directories
-  ansible.builtin.file:
+- name: Inspect shared parent directories without changing their metadata
+  ansible.builtin.stat:
     path: "{{ item }}"
+  loop: "{{ cli_files | map(attribute='dest') | map('dirname') | unique | list }}"
+  register: cli_parent_directories
+- name: Create missing managed configuration parent directories
+  ansible.builtin.file:
+    path: "{{ item.item }}"
     state: directory
     owner: root
     group: root
     mode: '0755'
-  loop: "{{ cli_files | map(attribute='dest') | map('dirname') | unique | list }}"
+  loop: "{{ cli_parent_directories.results }}"
+  when: not item.stat.exists
 - name: Install the registered files without exposing configuration in logs
   ansible.builtin.copy:
     src: "{{ item.src }}"

@@ -27,7 +27,13 @@ def validate_guest(environment, config, adopt, artifacts):
         if not isinstance(profiles, list) or not profiles:
             raise ValueError()
         providers = {'codex-cli': {'codex', 'codex-code-mode-host'}, 'claude-cli': {'claude'}, 'antigravity-cli': {'agy'}}
+        ids = set()
         for profile in profiles:
+            identifier, prefix = profile.get('id'), profile.get('supportedVersionPrefix')
+            if (not isinstance(identifier, str) or not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}', identifier)
+                    or identifier in ids or not isinstance(prefix, str) or not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9 ._+-]{0,79}', prefix)):
+                raise ValueError()
+            ids.add(identifier)
             if profile['runtime'] != 'cli' or profile['provider'] not in providers or type(profile['enabled']) is not bool:
                 raise ValueError()
             if profile['enabled'] and (not adopt or values['BATTLEFIELD_CLI_ISOLATION_VERIFIED'] != 'true'
@@ -37,9 +43,16 @@ def validate_guest(environment, config, adopt, artifacts):
             raise ValueError()
         return True
     except (ValueError, TypeError, KeyError):
-        raise AnsibleFilterError('Invalid guest inputs: require only the worker control secret, fixed private transport, declared tools, and disabled profiles/isolation for a fresh install') from None
+        raise AnsibleFilterError('Invalid guest inputs: require only the worker control secret, fixed private transport, declared tools, unique profile IDs/version prefixes, and disabled profiles/isolation for a fresh install') from None
 
 
 class FilterModule:
     def filters(self):
-        return {'cli_guest_inputs_valid': validate_guest}
+        return {'cli_guest_inputs_valid': validate_guest, 'cli_version_failures': version_failures}
+
+
+def version_failures(results):
+    """Expose declared nonsecret profile labels, never native CLI output."""
+    return [{'id': result['item']['id'], 'expected': result['item']['supportedVersionPrefix']}
+            for result in results if not result.get('skipped', False) and
+            (result.get('rc', 1) != 0 or not result.get('stdout', '').startswith(result['item']['supportedVersionPrefix']))]

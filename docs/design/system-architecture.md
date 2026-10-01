@@ -1415,7 +1415,12 @@ active and persistent NIC isolation, managed paths and immutable file hashes are
 bound by root-owned markers. Existing bridge overrides and explicit provider
 domains are captured for adoption. Secrets travel only through Vault; the guest
 receives its dedicated worker environment, never host kubeconfig or signing keys.
-New profiles stay disabled; provider login homes are preserved. Unchanged applies
+New profiles stay disabled; provider login homes and existing shared-directory
+permissions are preserved. Captured adoption inputs retain the installed isolation
+helper. New vendor Caddy and unconfigured Squid units are masked before package
+installation; only the reviewed dedicated services are activated after validation.
+Both targets pass preflight, and a host setup failure blocks guest installation.
+Unchanged applies
 do not restart healthy services. Normal host and application jobs do not call
 this opt-in operation, and worker release upgrades remain a separate reviewed
 workflow. VM creation and Player isolation verification remain separate gates.

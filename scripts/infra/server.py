@@ -445,7 +445,7 @@ def main():
         cli = importlib.util.module_from_spec(specification)
         specification.loader.exec_module(cli)
         if args.command == 'cli-register':
-            cli.register(args, data, sys.modules[__name__])
+            cli.register(args, data, report, sys.modules[__name__])
         elif args.command == 'cli-capture-guest':
             cli.capture_guest(args, data, sys.modules[__name__])
         else:

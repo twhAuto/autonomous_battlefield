@@ -87,6 +87,7 @@
 
 - name: Install or adopt CLI host services
   hosts: cli_host
+  any_errors_fatal: true
   become: true
   gather_facts: false
   roles:
@@ -94,6 +95,7 @@
 
 - name: Install or adopt the optional CLI guest
   hosts: cli_guest
+  any_errors_fatal: true
   become: true
   gather_facts: false
   roles:
