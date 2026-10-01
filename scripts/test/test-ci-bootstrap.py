@@ -184,6 +184,21 @@ class LifecycleTests(unittest.TestCase):
             self.assertFalse(marker.exists())
             self.assertFalse(flag.exists())
 
+    def test_same_release_repair_cannot_resume_using_stale_acceptance(self):
+        payload = {'config': profile(), 'inputs': {}, 'lock': {}, 'source': 'unchanged'}
+        with tempfile.TemporaryDirectory() as work, patch.object(runtime, 'STATE', Path(work)), patch.object(runtime, 'JHOME', Path(work)), patch.object(runtime, 'active', return_value=True), patch.object(runtime, 'jenkins') as api:
+            marker = Path(work) / 'maintenance.json'
+            marker.write_text('{"quiet_owned":true,"phase":"draining"}')
+            release = Path(work) / 'release.json'
+            release.write_text(json.dumps({'release': runtime.release_hash(payload)}))
+            writer = runtime.private
+            with patch.object(runtime, 'private', side_effect=lambda path, content, **kwargs: writer(path, content)):
+                runtime.changing(payload)
+            self.assertFalse(release.exists())
+            self.assertEqual(runtime.resume(payload), {'resume_needed': True})
+            api.assert_not_called()
+            self.assertTrue((Path(work) / 'battlefield-maintenance').exists())
+
     def test_private_file_replacement_is_idempotent_and_refuses_symlinks(self):
         with tempfile.TemporaryDirectory() as work:
             file = Path(work) / 'credential'

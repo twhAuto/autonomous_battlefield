@@ -488,6 +488,9 @@ def changing(payload):
     marker = STATE / 'maintenance.json'
     if not marker.exists() and active():
         raise Failure('Controller changes require a completed drain')
+    # A same-source repair must not reuse the previous successful acceptance
+    # record if this maintenance fails before verification writes a new one.
+    (STATE / 'release.json').unlink(missing_ok=True)
     private(marker, json.dumps({'quiet_owned': True, 'phase': 'changing'}))
     private(JHOME / 'battlefield-maintenance', 'external CI maintenance\n', owner='jenkins')
     return {'maintenance_checkpoint': True}
