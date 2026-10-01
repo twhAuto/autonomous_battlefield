@@ -21,10 +21,20 @@ volumes, kubeconfigs, and secrets. The shared environment resolver pins the
 cluster UID before operations. Dev loads working-tree images through a local
 Docker socket; production accepts verified GHCR digests through Jenkins main
 rollout. Context aliases distinguish environments without renaming resources.
-Missing production AI/auth files preserve existing cluster Secrets. Production
-rollback verifies both prior digests; local development never pulls production
+Missing production application inputs fail validation. Production
+rollback verifies both prior digests and the recorded applied migration state; local development never pulls production
 deployment credentials. Observability is optional for dev. See the
 [environment guide](../operations/environments.md) for registration and recovery.
+
+Production profiles explicitly select `BF_DRIVER=kind|k3s`, with Kind as the
+backward-compatible default. K3s preflight verifies the managed node/controllers
+and retained storage contract in addition to the namespace UID. Shared deployment,
+smoke and rollback entry points select K3s overlays without provisioning. K3s
+PostgreSQL and Elasticsearch claims use `battlefield-retained`; CD leaves the
+pinned controllers under platform ownership. Monitoring uses the exported serving
+CA and a port forward into the selected gateway. Existing production stays on
+Kind until the [separate migration/cutover](../operations/k3s-delivery.md).
+
 
 ## 1. Purpose
 
@@ -1299,7 +1309,7 @@ all current ready replicas rather than an aggregate minimum of one.
 
 Successful authentication and runtime assurance establish a private recovery
 record bound to cluster UID and both deployed digests. Subsequent automatic image
-rollback requires an exact match plus existing signature/provenance verification.
+rollback requires an exact match, unchanged applied Goose migration versions and existing signature/provenance verification. An unavailable migration ledger disables rollback approval without blocking forward delivery; recording a new verified target still fails. Recovery preserves identity/storage checks while allowing a platform-controller restart or upgrade.
 The record does not roll back database changes or replace current authentication
 configuration. An absent record leaves recovery under operator control.
 

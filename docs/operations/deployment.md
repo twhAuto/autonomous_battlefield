@@ -1,5 +1,13 @@
 # Deployment learning guide
 
+Application CD now uses `scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh`;
+existing Kind-named commands remain compatible launchers. The registered driver
+selects Kind or K3s. See [K3s delivery](k3s-delivery.md) for retained storage,
+controller ownership, private gateway checks and the separate production cutover.
+Rollback records include applied migration versions; a changed ledger requires
+reviewed database recovery before automatic image rollback.
+
+
 Deployment targets are now explicit: WSL dev and server production. Start with
 the [environment setup and transition guide](environments.md). The `local` overlay
 name below denotes shared Kind manifests used by both environments.
@@ -331,7 +339,7 @@ Grafana, Fluent Bit, Elasticsearch, and Kibana, and programs the local Gateway
 API routes:
 
 ```bash
-./scripts/cd/deploy-kind.sh
+./scripts/cd/deploy.sh
 ```
 
 Application rollouts default to five minutes. The observability stack has a
@@ -347,7 +355,7 @@ and recent namespace events.
 Pass a previous full SHA to deploy a locally built revision explicitly:
 
 ```bash
-./scripts/cd/deploy-kind.sh "$(git rev-parse HEAD)"
+./scripts/cd/deploy.sh "$(git rev-parse HEAD)"
 ```
 
 For an incremental manual deployment, set `DEPLOY_COMPONENTS`. The image build
@@ -357,10 +365,10 @@ and scan scripts consume the same value and ignore non-image components:
 # Frontend source changed: build, scan, and roll only the frontend.
 DEPLOY_COMPONENTS=frontend ./scripts/ci/build-images.sh
 DEPLOY_COMPONENTS=frontend ./scripts/ci/scan-images.sh "$(git rev-parse HEAD)"
-DEPLOY_COMPONENTS=frontend ./scripts/cd/deploy-kind.sh "$(git rev-parse HEAD)"
+DEPLOY_COMPONENTS=frontend ./scripts/cd/deploy.sh "$(git rev-parse HEAD)"
 
 # Only dashboards, alert rules, or observability manifests changed.
-DEPLOY_COMPONENTS=observability ./scripts/cd/deploy-kind.sh "$(git rev-parse HEAD)"
+DEPLOY_COMPONENTS=observability ./scripts/cd/deploy.sh "$(git rev-parse HEAD)"
 ```
 
 Supported components are `infrastructure`, `migration`, `backend`, `frontend`,
@@ -400,11 +408,11 @@ folder rule. Multiple changed paths contribute the union of their components;
 | CI lint/coverage summary and existing test compatibility wrappers (`test-*`, `fuzz-smoke`, `with-test-postgres`) | `none` | None |
 | `backend/**` | `migration,backend,application` | Backend image |
 | `frontend/**` | `frontend,application` | Frontend image |
-| `deploy/base/infrastructure/**` or `deploy/overlays/local/infrastructure/**` | `infrastructure` | None |
-| `deploy/base/migration/**` or `deploy/overlays/local/migration/**` | `migration` | None; uses the deployed backend image |
-| `deploy/base/application/**` or `deploy/overlays/local/application/**` | `application` | None; preserves deployed image tags |
-| `deploy/overlays/local/observability/**` or `deploy/overlays/local/logging-collector/**` | `observability` | None |
-| `deploy/overlays/local/gateway/**` | `gateway` | None |
+| `deploy/base/infrastructure/**` or `deploy/overlays/{local,k3s}/infrastructure/**` | `infrastructure` | None |
+| `deploy/base/migration/**` or `deploy/overlays/{local,k3s}/migration/**` | `migration` | None; uses the deployed backend image |
+| `deploy/base/application/**` or `deploy/overlays/{local,k3s}/application/**` | `application` | None; preserves deployed image tags |
+| `deploy/overlays/{local,k3s}/observability/**` or `deploy/overlays/{local,k3s}/logging-collector/**` | `observability` | None |
+| `deploy/overlays/{local,k3s}/gateway/**` | `gateway` | None |
 | `VERSION` | `migration,backend,frontend,application` | Both application images |
 | CI image build or scan scripts | `all` | Both application images |
 | `scripts/ops/render-limited-launch.py` or `scripts/cd/reconcile-network-policies.sh` | `network-policy` | None |
@@ -450,8 +458,8 @@ into the `kind` node rather than an external registry.
 Automation is grouped by pipeline responsibility: `scripts/ci` contains lint,
 coverage, image build and scan, and classifier tests; `scripts/cd` contains
 cluster setup, deployment-scope detection, deploy, rollback, and smoke-test
-commands. `scripts/cd/deploy-kind.sh` is the public deployment orchestrator. Its
-internal functions live in `scripts/cd/lib/kind-deployment.sh`, while
+commands. `scripts/cd/deploy.sh` is the public deployment orchestrator. Its
+internal functions live in `scripts/cd/lib/kubernetes-deployment.sh`, while
 `scripts/lib/deployment-components.sh` provides the component-selection rules
 shared by CI and CD. Files under either `lib` directory are sourced libraries
 and are not intended to be run directly.
@@ -541,7 +549,7 @@ continue to work.
 Run the same non-interactive verification used by Jenkins at any time:
 
 ```bash
-./scripts/cd/smoke-test-kind.sh
+./scripts/cd/smoke-test.sh
 ```
 
 It verifies frontend access and API readiness, authentication, and scenario
@@ -679,12 +687,12 @@ Registry-backed Kind deployment uses full digest inputs:
 DEPLOY_ENV=production IMAGE_SOURCE=registry \
 BACKEND_IMAGE_REF='ghcr.io/twh09/autonomous-battlefield-backend@sha256:…' \
 FRONTEND_IMAGE_REF='ghcr.io/twh09/autonomous-battlefield-frontend@sha256:…' \
-./scripts/cd/deploy-kind.sh
+./scripts/cd/deploy.sh
 ```
 
 The admission policy derives its repository patterns from the same
 `REGISTRY_NAMESPACE`, `PUBLISHED_BACKEND_IMAGE`, and `PUBLISHED_FRONTEND_IMAGE`
-settings used by publication. During rollout, `deploy-kind.sh` supplies the
+settings used by publication. During rollout, `deploy.sh` supplies the
 resolved backend/frontend digest references through `POLICY_BACKEND_IMAGE_REF`
 and `POLICY_FRONTEND_IMAGE_REF`; this keeps preserved images covered during a
 partial rollout. Standalone policy installation uses the configured repository

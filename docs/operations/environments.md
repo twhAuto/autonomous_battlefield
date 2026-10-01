@@ -5,6 +5,11 @@ Application files contain literal `KEY=value` lines: do not quote values, interp
 variables, or source them as shell scripts. The shared parser rejects unknown and
 duplicate settings. Each environment has its own credentials.
 
+Production supports an explicit `BF_DRIVER=kind|k3s`; older profiles default to
+Kind. Dev remains the local Kind workflow. K3s registration and its controller,
+storage, TLS and cutover requirements are in [K3s delivery](k3s-delivery.md).
+The profile pins the driver as well as the context and namespace UID.
+
 ## File layout
 
 Dev:
@@ -141,7 +146,7 @@ matching UID and explicit acknowledgement; production is forbidden.
 Production monitoring requires `BF_KUBELET_CA_FILE` in `deployment.env`; see
 [trusted kubelet certificates](observability.md#production-kubelet-tls). Successful
 Jenkins deployments maintain a private `recovery.json` beside that profile. It is
-bound to the registered cluster UID and exact verified image pair, and is not an
+bound to the registered cluster UID, exact verified image pair and applied Goose migration versions, and is not an
 application Secret or a credential to copy into Git.
 
 ### Optional managed Players

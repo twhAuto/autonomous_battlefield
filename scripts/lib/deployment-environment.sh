@@ -21,7 +21,7 @@ battlefield_env_load() {
   export DEPLOY_ENV="${requested}"
   local config="${BATTLEFIELD_ENV_FILE:-${HOME}/.config/autonomous-battlefield/${requested}/deployment.env}"
   [[ -f "${config}" ]] || { battlefield_env_error "Missing ${config}; run scripts/cd/setup-environment.sh ${requested} on the target machine."; return 1; }
-  unset BF_ENV BF_CONTEXT BF_CLUSTER BF_UID BF_DOCKER_HOST BF_URL BF_KUBECONFIG BF_DISPOSABLE BF_TUNNEL_ID BF_TUNNEL_IMAGE BF_TUNNEL_CREDENTIALS_FILE BF_KUBELET_CA_FILE
+  unset BF_DRIVER BF_ENV BF_CONTEXT BF_CLUSTER BF_UID BF_DOCKER_HOST BF_URL BF_KUBECONFIG BF_DISPOSABLE BF_TUNNEL_ID BF_TUNNEL_IMAGE BF_TUNNEL_CREDENTIALS_FILE BF_KUBELET_CA_FILE
   local helper profile_values key value
   helper="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/application-env.cjs"
   profile_values="$(node "${helper}" profile "${config}")" || return
@@ -30,20 +30,25 @@ battlefield_env_load() {
   done <<<"${profile_values}"
   [[ "${BF_ENV:-}" == "${requested}" ]] || { battlefield_env_error 'Profile belongs to a different environment.'; return 1; }
   local field
-  for field in BF_CONTEXT BF_CLUSTER BF_UID BF_DOCKER_HOST BF_URL BF_KUBECONFIG; do
+  for field in BF_CONTEXT BF_CLUSTER BF_UID BF_URL BF_KUBECONFIG; do
     [[ -n "${!field:-}" ]] || { battlefield_env_error "Profile is missing ${field}."; return 1; }
   done
   battlefield_env_lock KUBERNETES_CONTEXT "${BF_CONTEXT}" || return
-  battlefield_env_lock KIND_CLUSTER_NAME "${BF_CLUSTER}" || return
+  battlefield_env_lock CLUSTER_DRIVER "${BF_DRIVER}" || return
   battlefield_env_lock KUBERNETES_NAMESPACE battlefield || return
-  battlefield_env_lock DOCKER_HOST "${BF_DOCKER_HOST}" || return
-  if [[ -n "${DOCKER_CONTEXT:-}" ]]; then
-    local endpoint
-    endpoint="$(docker context inspect "${DOCKER_CONTEXT}" --format '{{.Endpoints.docker.Host}}')" || return
-    [[ "${endpoint}" == "${BF_DOCKER_HOST}" ]] || { battlefield_env_error 'DOCKER_CONTEXT points to another daemon.'; return 1; }
+  if [[ "${CLUSTER_DRIVER}" == kind ]]; then
+    battlefield_env_lock KIND_CLUSTER_NAME "${BF_CLUSTER}" || return
+    battlefield_env_lock DOCKER_HOST "${BF_DOCKER_HOST}" || return
+    if [[ -n "${DOCKER_CONTEXT:-}" ]]; then
+      local endpoint
+      endpoint="$(docker context inspect "${DOCKER_CONTEXT}" --format '{{.Endpoints.docker.Host}}')" || return
+      [[ "${endpoint}" == "${BF_DOCKER_HOST}" ]] || { battlefield_env_error 'DOCKER_CONTEXT points to another daemon.'; return 1; }
+    fi
+    unset DOCKER_CONTEXT
+    [[ "${DEPLOY_ENV}" != dev || "${DOCKER_HOST}" == unix:///* ]] || { battlefield_env_error 'Dev requires a local Unix Docker socket.'; return 1; }
+  elif [[ -n "${KIND_CLUSTER_NAME:-}" ]]; then
+    battlefield_env_error 'KIND_CLUSTER_NAME conflicts with the registered K3s driver.'; return 1
   fi
-  unset DOCKER_CONTEXT
-  [[ "${DEPLOY_ENV}" != dev || "${DOCKER_HOST}" == unix:///* ]] || { battlefield_env_error 'Dev requires a local Unix Docker socket.'; return 1; }
   # Jenkins can bind a private copy of the dedicated kubeconfig; identity is checked below.
   export KUBECONFIG="${KUBECONFIG:-${BF_KUBECONFIG}}"
   [[ -f "${KUBECONFIG}" ]] || { battlefield_env_error 'Dedicated kubeconfig is missing.'; return 1; }
@@ -73,18 +78,26 @@ battlefield_env_verify() {
   local uid
   uid="$(kubectl --context "${KUBERNETES_CONTEXT}" --request-timeout=10s get namespace kube-system -o jsonpath='{.metadata.uid}')" || return
   [[ -n "${uid}" && "${uid}" == "${BF_UID}" ]] || { battlefield_env_error 'Cluster identity mismatch; refusing to operate.'; return 1; }
+  if [[ "${CLUSTER_DRIVER}" == k3s ]]; then
+    local helper
+    helper="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/k3s-delivery.py"
+    python3 "${helper}" "${1:-verify}" "${KUBERNETES_CONTEXT}" "${BF_CLUSTER}" || return
+  fi
 }
 
 # Load the requested environment and verify the live cluster's registered UID.
 # Callers perform Docker identity verification separately when they need it.
 battlefield_env_preflight() {
   battlefield_env_load || return
-  battlefield_env_verify || return
+  battlefield_env_verify "${1:-verify}" || return
 }
 
 # An installed Langfuse project enables tracing without a per-shell export.
 # Explicit 0/1 overrides are supported; connection errors must not disable it silently.
 battlefield_env_langfuse_enabled() {
+  if [[ "${CLUSTER_DRIVER:-kind}" == k3s && "${LANGFUSE_ENABLED:-0}" != 0 ]]; then
+    battlefield_env_error 'Langfuse is not supported by the registered K3s delivery profile.'; return 1
+  fi
   if [[ -n "${LANGFUSE_ENABLED:-}" ]]; then
     case "${LANGFUSE_ENABLED}" in
       0|1) printf '%s\n' "${LANGFUSE_ENABLED}"; return ;;
@@ -94,10 +107,14 @@ battlefield_env_langfuse_enabled() {
   local installed
   installed="$(kubectl --context "${KUBERNETES_CONTEXT}" --namespace "${KUBERNETES_NAMESPACE}" \
     --request-timeout=10s get configmap battlefield-langfuse-links --ignore-not-found -o name)" || return
+  if [[ "${CLUSTER_DRIVER:-kind}" == k3s && -n "${installed}" ]]; then
+    battlefield_env_error 'Unexpected Langfuse installation on the managed K3s target.'; return 1
+  fi
   if [[ -n "${installed}" ]]; then printf '1\n'; else printf '0\n'; fi
 }
 
 battlefield_env_verify_docker() {
+  [[ "${CLUSTER_DRIVER:-kind}" == kind ]] || { battlefield_env_error 'This command requires the Kind driver.'; return 1; }
   docker info >/dev/null 2>&1 || { battlefield_env_error 'Docker is unavailable. Start the local Docker engine/WSL integration, then retry.'; return 1; }
   local config uid
   config="$(mktemp)" || return

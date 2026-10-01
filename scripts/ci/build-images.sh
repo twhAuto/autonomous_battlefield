@@ -160,4 +160,4 @@ fi
 
 echo
 echo "Deploy this revision to kind with:"
-echo "  ./scripts/cd/deploy-kind.sh ${image_tag}"
+echo "  ./scripts/cd/deploy.sh ${image_tag}"

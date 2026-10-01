@@ -106,3 +106,26 @@ test('managed Player settings require complete Cloudflare config and isolate its
     }
   } finally { fs.rmSync(dir,{recursive:true,force:true}); }
 });
+
+
+test('cluster driver defaults to Kind and K3s requires an explicit production storage/TLS contract', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'battlefield-driver-'));
+  const file = path.join(dir, 'deployment.env');
+  const base = 'BF_ENV=production\nBF_CONTEXT=k3s\nBF_CLUSTER=node\nBF_UID=uid\nBF_URL=https://play.example.com\nBF_KUBECONFIG=kubeconfig\n';
+  try {
+    fs.writeFileSync(file, base + 'BF_DOCKER_HOST=unix:///var/run/docker.sock\n');
+    assert.equal(profile(file).get('BF_DRIVER'), 'kind');
+    fs.writeFileSync(file, base + 'BF_DRIVER=k3s\nBF_KUBELET_CA_FILE=ca.crt\n');
+    assert.equal(profile(file).get('BF_DRIVER'), 'k3s');
+    assert.equal(profile(file).get('BF_KUBELET_CA_FILE'), path.join(dir, 'ca.crt'));
+    for (const [body, error] of [
+      [base + 'BF_DRIVER=other\n', /Invalid cluster driver/],
+      [base + 'BF_DRIVER=k3s\n', /BF_KUBELET_CA_FILE/],
+      [base + 'BF_DRIVER=k3s\nBF_DOCKER_HOST=unix:///var/run/docker.sock\n', /must not bind/],
+      [base.replace('production', 'dev') + 'BF_DRIVER=k3s\n', /production profile/],
+    ]) {
+      fs.writeFileSync(file, body);
+      assert.throws(() => profile(file), error);
+    }
+  } finally { fs.rmSync(dir, {recursive: true, force: true}); }
+});

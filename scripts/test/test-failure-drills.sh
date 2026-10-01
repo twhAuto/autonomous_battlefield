@@ -32,7 +32,7 @@ esac
     project = tmp/'project'
     for part in ['scripts/ops', 'scripts/lib']:
         shutil.copytree(root/part, project/part)
-    executable(project/'scripts/cd/smoke-test-kind.sh', 'echo smoke >>"$TEST_LOG"\n')
+    executable(project/'scripts/cd/smoke-test.sh', 'echo smoke >>"$TEST_LOG"\n')
     kube = tmp/'kubeconfig'; kube.touch()
     config = tmp/'deployment.env'
     config.write_text(''.join(f'{k}={v}\n' for k, v in dict(
