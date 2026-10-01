@@ -56,6 +56,7 @@ with focused [backend](docs/design/backend-guide.md),
 | Register dev or production and resume a stopped cluster | [Environments](docs/operations/environments.md) |
 | Build, deploy, inspect, or remove Kubernetes workloads | [Deployment](docs/operations/deployment.md) |
 | Inspect, bootstrap and rehearse Ubuntu; optionally manage its data partition | [Server bootstrap](docs/operations/server-bootstrap.md) |
+| Install or adopt the isolated CLI worker services with Ansible | [CLI bootstrap](docs/operations/cli-bootstrap.md) |
 | Install and run the reviewed Jenkins host and VM jobs | [Platform jobs](docs/operations/platform-jobs.md) |
 | Provision the persistent Terraform VM and recover its state | [K3s VM](docs/operations/k3s-vm.md) |
 | Configure and verify the private K3s platform | [K3s platform](docs/operations/k3s-platform.md) |
@@ -238,8 +239,9 @@ Tracing is detected automatically, with no port-forward or per-shell enable flag
 For the one-time limited-access launch, run `./scripts/ops/prepare-limited-production.sh`
 on the registered server after rendering its private launch files; see the
 [launch runbook](docs/operations/limited-launch.md). For CLI workers, use the
-[VM setup and recovery guide](docs/operations/agent-vm.md) and its host-service
-bundle generator instead of hand-writing proxy and systemd configuration. Unattended production checks
+[VM setup and recovery guide](docs/operations/agent-vm.md) and the optional
+[Ansible CLI bootstrap](docs/operations/cli-bootstrap.md) to register and reconcile
+the proxy, firewall and worker files. Unattended production checks
 require the dedicated Cloudflare CI service identity and Jenkins credential described
 in [CI service authentication](docs/operations/limited-launch.md#ci-service-authentication).
 

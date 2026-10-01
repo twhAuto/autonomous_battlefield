@@ -1,0 +1,18 @@
+---
+- name: Create private CLI ownership directory
+  ansible.builtin.file:
+    path: /etc/battlefield-cli-bootstrap
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+- name: Register resumable ownership before installing the first file
+  ansible.builtin.copy:
+    content: "{{ cli_guard.marker | to_nice_json }}\n"
+    dest: "/etc/battlefield-cli-bootstrap/{{ cli_kind }}.json"
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  diff: false
+  when: not ansible_check_mode
