@@ -34,6 +34,11 @@ PostgreSQL and Elasticsearch claims use `battlefield-retained`; CD leaves the
 pinned controllers under platform ownership. Monitoring uses the exported serving
 CA and a port forward into the selected gateway. Existing production stays on
 Kind until the [separate migration/cutover](../operations/k3s-delivery.md).
+The disposable delivery rehearsal can upgrade between two signed releases and
+restore the previous exact image pair while checking the migration ledger and
+retained claim identities. Its synthetic registration and private recovery record
+stay separate from production; public authentication and cutover need their own
+acceptance evidence.
 
 
 ## 1. Purpose
