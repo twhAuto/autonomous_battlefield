@@ -130,7 +130,7 @@ Use a dedicated Linux or WSL Jenkins agent with:
 - GCC and the C development toolchain required by `go test -race`.
 - Docker, with permission to use the Docker daemon.
 - `kubectl`, `kind`, `curl`, and AWS CLI for the optional promotion job.
-- Access to the `battlefield` kind cluster through the dedicated `battlefield-production` context and registered production profile.
+- Access to the registered production cluster (K3s after the initial cutover) through the dedicated `battlefield-production` context. The `battlefield-production-kubeconfig` file credential must match that profile's live cluster UID.
 
 The agent needs Docker access to build images and run the pinned Trivy scanner.
 It also needs enough free space and inode quota in its Jenkins workspace for

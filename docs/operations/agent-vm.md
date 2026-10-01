@@ -8,20 +8,28 @@ Kubernetes signing secret into the VM.
 
 ## What runs where
 
-There is one KVM VM, not nested VMs. The physical Ubuntu PC runs Docker, and kind
-runs its Kubernetes node as a Docker container on that PC. Kubernetes hosts the
-application, engine, MCP server and database. The separate Ubuntu VM runs the
-worker and Codex processes. The code-mode helper is a process, not another VM.
+The CLI worker has its own KVM VM. After the initial K3s cutover, a separate
+KVM VM runs Kubernetes, the application, engine, MCP server and database.
+Docker remains on the physical Ubuntu host for CI and the retained old Kind
+cluster. The code-mode helper is a process inside the worker VM.
 
 ```text
 Physical Ubuntu PC
-  Docker -> kind Kubernetes container -> Battlefield services
+  KVM battlefield-k3s -> Kubernetes -> Battlefield services and database
+  Docker -> CI tooling; retained Kind recovery data
   Squid 192.168.234.1:3128 -> approved HTTPS provider domains
-  Caddy 192.168.234.1:18084 -> kubectl 127.0.0.1:18085 -> MCP :8084
-  KVM VM 192.168.234.2
+  Caddy 192.168.234.1:18084 -> host loopback kubectl bridge -> MCP :8084
+  KVM battlefield-agent 192.168.234.2
     vm-admin: administration
     battlefield-worker: worker, Codex login, Codex + code-mode helper
 ```
+
+The renderer below defaults to loopback port 18085. The existing server uses
+28084 through `20-loopback.conf` and a matching Caddy upstream. Inspect effective
+units before changing ports. The bridge reads the registered production
+kubeconfig; restarting it after K3s profile adoption retargets the connection
+without reinstalling the CLI worker or copying cluster credentials into its VM.
+See [cutover and recovery](k3s-delivery.md#adoption-and-cutover-boundary).
 
 The worker claims a request through the bridge. Codex receives a scoped capability,
 reads the decision context through MCP, calls the provider through Squid, and

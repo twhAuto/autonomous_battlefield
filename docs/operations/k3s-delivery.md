@@ -84,6 +84,13 @@ match the shared collector and the driver-specific port forward.
 
 ## Disposable delivery rehearsal
 
+This optional harness remains useful for delivery and recovery changes. The owner
+approved a direct initial production migration on 2026-10-01 because the service
+is not launched and contains only test data. An additional dedicated Jenkins
+rehearsal job and a complete clean-host rebuild are not prerequisites for that
+migration. The final export, restore comparison, public verification and recovery
+record remain required; see [the cutover procedure](#adoption-and-cutover-boundary).
+
 Run `scripts/infra/rehearse-k3s-delivery.py` on the libvirt controller to exercise
 real delivery before adoption. It uses the pinned Ubuntu 24.04 cloud image, an
 existing active `default` NAT network, 4 vCPUs, 8 GiB RAM, a 32 GiB OS disk and a
@@ -173,22 +180,89 @@ to image changes.
 
 ## Adoption and cutover boundary
 
-[AB-132 — Rehearse full rebuild and migrate production from Kind to K3s](https://app.notion.com/p/3eab7a19f8f7819b91b4c2f502e29e4f)
-owns the separately approved production migration. Its concrete plan must:
+[AB-132 — Migrate initial production from Kind to K3s](https://app.notion.com/p/3eab7a19f8f7819b91b4c2f502e29e4f)
+owns the initial data and traffic migration. The owner authorized the direct
+migration on 2026-10-01, retaining the existing test data and old Kind cluster.
+Broader host/Jenkins/SonarQube reconstruction and rebuild acceptance remain
+separate work under AB-107 and AB-131.
 
-1. Rehearse restore into the new PostgreSQL and compare domain data, identities,
-   invitations and applicable persistent observability data.
-2. Re-render the existing [CLI VM bridge](agent-vm.md) with the new kubeconfig,
-   verify the actual private MCP path, and retain Player CLI authorization gates.
-3. Hold the shared platform/delivery lock, stop writers, take and validate the
-   final logical backup, restore and perform private validation.
-4. Adopt the reviewed profile and matching Jenkins kubeconfig credential, stop
-   old tunnel connectors, activate the new target, and verify public authenticated
-   traffic and runtime assurance before resuming normal delivery.
-5. Record the verified recovery target and retain old Kind until the agreed
-   observation window ends. Routing back after new writes needs a data recovery
-   plan; it cannot safely revert database divergence by itself.
+Use an idle Jenkins window and hold the shared operator lock throughout the
+mutation sequence. Jenkins has an additional resource lock; an external operator
+must check that no main or platform operation is active or queued. Do not run a
+normal main delivery while the registered profile and its Jenkins credential
+point at different clusters.
 
-There is no new scheduled backup policy. One-time migration backups and retained
-database data are still necessary for this operation. This implementation and
-its command-double regression tests do not claim the live cutover is complete.
+1. Prepare the separate candidate registration and deploy the currently verified
+   signed image pair privately. Preserve the existing database, authentication,
+   worker and capability credentials for this migration, but disable managed
+   Players and every provider availability flag in the temporary candidate
+   configuration. Do not activate its tunnel. Validate cluster UIDs, matching
+   migration versions and database roles, retained claims, private readiness and
+   anonymous API denial. Check there are no active battles before the final copy.
+2. Save the old registration, recovery record, application configuration, HPA and
+   replica counts. Pause both targets' application writers and stop every old
+   tunnel connector. Temporarily remove the API HPA so scaling cannot restart
+   writers. Wait for application pods and database client sessions to stop.
+3. Take a mode-0600 custom-format `pg_dump --no-owner` on the server's data mount.
+   Inspect it with `pg_restore --list`, record its SHA-256, and restore it into
+   the candidate using `pg_restore --clean --if-exists --no-owner --exit-on-error
+   --single-transaction`. This replaces the candidate database contents: verify
+   its registered UID and that it contains no user data first. Preserve grants;
+   database roles must exist with the required attributes and credentials.
+   Compare every public table's row count and content fingerprint, sequence
+   values and ordered migration ledger before starting new writers.
+4. Update Jenkins's existing `battlefield-production-kubeconfig` file credential
+   and adopt the matching K3s registration as `production`. Retain the old profile
+   separately. Restore the original production application configuration and
+   deploy it through `scripts/cd/deploy.sh` with the verified digest pair. This
+   recreates the HPA and application replicas. Do not copy the old cluster's
+   recovery record into the new profile.
+5. Retarget the existing [CLI VM bridge](agent-vm.md) to the production kubeconfig.
+   Inspect the effective systemd unit and drop-ins. If the path/context are
+   unchanged, restarting the bridge makes it read the adopted kubeconfig; no
+   unit rewrite is necessary. Verify the private MCP path from the CLI VM and
+   preserve the existing isolation and provider authorization gates. Do not
+   claim a new paid-provider inference test from a health response alone.
+6. Confirm the old writers and connectors remain stopped, then run
+   `scripts/cd/deploy-tunnel.sh` against the new registration. Reuse the existing
+   tunnel UUID and credentials, hostname, DNS and Access policies. Never leave
+   old and new connectors routing the same hostname to different databases.
+7. Run the normal `autonomous-battlefield/main` job with
+   `APPLY_CONFIGURATION=true`. Require successful private/public authenticated
+   smoke, observability and runtime assurance, plus a new K3s-bound recovery
+   record. A response from the public hostname before connector adoption is not
+   evidence about K3s. Record the exact main revision, build and digest pair.
+
+The application data moves; existing historical Elasticsearch logs stay on the
+retained Kind volume. K3s starts a fresh logging volume. This is not a migration
+of historical monitoring data. The two K3s PVC requests remain 10 GiB PostgreSQL
+and 20 GiB Elasticsearch on the shared 250 GiB retained filesystem; these are not
+quotas or automatic expansion limits.
+
+### Recovery boundary and retained evidence
+
+Before K3s writers start, an aborted migration can restore the saved Kind
+registration and Jenkins kubeconfig, restart its original replicas/HPA and bridge,
+and reactivate only the old tunnel. First stop any candidate writers/connectors.
+Once K3s writers start, even background synchronization may change the database.
+Switching traffic or kubeconfigs back alone then loses those changes: pause the
+new writers, take another verified export, and reconcile or restore the latest
+data with explicit migration compatibility review before returning to Kind.
+Normal digest rollback also does not reverse database changes.
+
+Keep the Kind cluster and its volumes for observation, with its application
+writers and connectors paused, until the owner explicitly chooses cleanup. Do not delete them automatically after a green build. The
+initial cutover retains private server evidence at:
+
+- `/srv/battlefield-data/workspace/ab132-cutover/`: final dump, checksum and table
+  comparisons, original application configuration, HPA/replica snapshots and
+  private operation logs.
+- `~/.config/autonomous-battlefield/kind-retained-ab132/`: original registration,
+  kubeconfig, credentials and Kind-bound recovery record.
+- `~/.config/autonomous-battlefield/production/`: adopted K3s registration and,
+  after successful main verification, its own recovery record.
+
+These paths contain secrets and data; keep them private and out of Git/Jenkins
+artifacts. There is no new scheduled backup policy or off-host recovery copy.
+The one-time export is on the same server and does not protect against losing
+that server. Existing migration-time backups remain part of normal CD.
