@@ -64,7 +64,7 @@
             that:
               - ci_resume.rc == 0
               - not (ci_resume.stdout | default('{}', true) | from_json).resume_needed | default(false)
-            fail_msg: CI maintenance did not resume the controller; use the private maintenance backup and recovery runbook.
+            fail_msg: "{{ (ci_resume.stdout | default('{}', true) | from_json).error | default('CI maintenance did not resume the controller; use the private maintenance backup and recovery runbook.') }}"
     - name: Verify the installed services without modifying them
       ansible.builtin.command:
         argv: [python3, -c, "{{ ci_runtime }}", verify]

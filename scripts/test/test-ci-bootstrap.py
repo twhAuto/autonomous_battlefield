@@ -392,18 +392,28 @@ class OfflineAnsibleTests(unittest.TestCase):
             self.assertIn('-secret @/home/operator/.config/jenkins-agent/secret', unit)
             self.assertIn('CASC_JENKINS_CONFIG=/etc/battlefield-ci/jenkins.yaml', (directory / 'jenkins-override.conf').read_text())
 
-    def test_empty_private_command_output_uses_safe_diagnostic(self):
-        with tempfile.TemporaryDirectory() as work:
-            play = [{'hosts': 'all', 'gather_facts': False, 'connection': 'local',
-                     'vars': {'ci_result': {'rc': 127, 'stdout': '', 'stderr': 'synthetic-private-argument'}},
-                     'tasks': [{'ansible.builtin.assert': {'that': 'ci_result.rc == 0',
-                       'fail_msg': "{{ (ci_result.stdout | default('{}', true) | from_json).error | default('CI service operation failed') }}"}}]}]
-            path = Path(work) / 'failure.json'; path.write_text(json.dumps(play))
-            result = subprocess.run([os.environ['BATTLEFIELD_TEST_ANSIBLE_BIN'] + '/ansible-playbook', '-i', 'localhost,', str(path)],
-                                    capture_output=True, text=True, timeout=60, env=dict(os.environ, ANSIBLE_CONFIG=str(ROOT / 'infra/ansible/ansible.cfg')))
-            self.assertEqual(result.returncode, 2)
-            self.assertIn('CI service operation failed', result.stdout)
-            self.assertNotIn('synthetic-private-argument', result.stdout + result.stderr)
+    def test_resume_diagnostic_survives_private_runtime_output(self):
+        binary = os.environ['BATTLEFIELD_TEST_ANSIBLE_BIN']
+        definition = json.loads(subprocess.check_output([binary + '/python', '-c',
+            'import json,sys,yaml; print(json.dumps(yaml.safe_load(open(sys.argv[1]))))',
+            str(ROOT / 'infra/ansible/ci.yml')], text=True))
+        assertion = definition[0]['tasks'][0]['always'][-1]
+        message = 'Unchanged controller could not restart after backup failure; inspect its service locally'
+        fallback = 'CI maintenance did not resume the controller; use the private maintenance backup and recovery runbook.'
+        cases = [(1, json.dumps({'error': message}), message), (127, '', fallback),
+                 (0, json.dumps({'resume_needed': True}), fallback)]
+        for code, output, expected in cases:
+            with self.subTest(output=output), tempfile.TemporaryDirectory() as work:
+                play = [{'hosts': 'all', 'gather_facts': False, 'connection': 'local',
+                         'vars': {'ci_resume': {'rc': code, 'stdout': output, 'stderr': 'synthetic-private-argument'}},
+                         'tasks': [assertion]}]
+                path = Path(work) / 'failure.json'; path.write_text(json.dumps(play))
+                result = subprocess.run([binary + '/ansible-playbook', '-i', 'localhost,', str(path)],
+                                        capture_output=True, text=True, timeout=60,
+                                        env=dict(os.environ, ANSIBLE_CONFIG=str(ROOT / 'infra/ansible/ansible.cfg')))
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(expected, result.stdout)
+                self.assertNotIn('synthetic-private-argument', result.stdout + result.stderr)
 
 if __name__ == '__main__':
     unittest.main()
