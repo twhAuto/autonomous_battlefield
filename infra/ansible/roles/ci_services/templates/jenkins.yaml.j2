@@ -1,0 +1,6 @@
+# Deliberately scoped: no security realm, users, nodes, credentials or job lists.
+jenkins:
+  numExecutors: 0
+unclassified:
+  location:
+    url: {{ ci_config.jenkins_url | to_json }}

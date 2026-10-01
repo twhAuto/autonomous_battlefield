@@ -1,0 +1,81 @@
+---
+- name: Maintain CI services from an external operator session
+  hosts: bootstrap
+  become: true
+  gather_facts: true
+  vars:
+    ci_runtime: "{{ lookup('ansible.builtin.file', ci_source + '/scripts/infra/ci-runtime.py') }}"
+    ci_payload:
+      config: "{{ ci_config }}"
+      lock: "{{ ci_lock }}"
+      inputs: "{{ ci_vault.bootstrap_inputs }}"
+      source: "{{ ci_source_hash }}"
+      ca: "{{ ci_ca_hashes }}"
+  pre_tasks:
+    - name: Require a supported target and explicit CI action
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['distribution_version'] in ['24.04', '26.04']
+          - ansible_facts['architecture'] == 'x86_64'
+          - ci_action in ['plan', 'apply', 'verify']
+    - name: Load CI inputs privately from Ansible Vault
+      ansible.builtin.include_vars:
+        file: "{{ ci_vault_file }}"
+        name: ci_vault
+      no_log: true
+    - name: Inspect identities, imported credentials and release compatibility without changes
+      ansible.builtin.command:
+        argv: [python3, -c, "{{ ci_runtime }}", preflight]
+        stdin: "{{ ci_payload | to_json }}"
+      register: ci_preflight
+      no_log: true
+      changed_when: false
+      failed_when: false
+      check_mode: false
+    - name: Require the CI preflight to pass
+      ansible.builtin.assert:
+        that: ci_preflight.rc == 0
+        fail_msg: "{{ (ci_preflight.stdout | default('{}', true) | from_json).error | default('CI preflight failed') }}"
+    - name: Record the safe CI plan
+      ansible.builtin.set_fact:
+        ci_observed: "{{ ci_preflight.stdout | from_json }}"
+    - name: Report the CI maintenance scope
+      ansible.builtin.debug:
+        var: ci_observed
+  tasks:
+    - name: Apply the reviewed CI maintenance
+      when: ci_action == 'apply' and ci_observed.needs_maintenance
+      block:
+        - name: Install the pinned CI services
+          ansible.builtin.import_role:
+            name: ci_services
+      always:
+        - name: Release only quiet mode owned by this maintenance operation
+          ansible.builtin.command:
+            argv: [python3, -c, "{{ ci_runtime }}", resume]
+            stdin: "{{ ci_payload | to_json }}"
+          register: ci_resume
+          changed_when: false
+          failed_when: false
+          no_log: true
+        - name: Require successful controller quiet-mode cleanup
+          ansible.builtin.assert:
+            that:
+              - ci_resume.rc == 0
+              - not (ci_resume.stdout | default('{}', true) | from_json).resume_needed | default(false)
+            fail_msg: "{{ (ci_resume.stdout | default('{}', true) | from_json).error | default('CI maintenance did not resume the controller; use the private maintenance backup and recovery runbook.') }}"
+    - name: Verify the installed services without modifying them
+      ansible.builtin.command:
+        argv: [python3, -c, "{{ ci_runtime }}", verify]
+        stdin: "{{ ci_payload | to_json }}"
+      register: ci_verification
+      no_log: true
+      changed_when: false
+      failed_when: false
+      when: ci_action in ['apply', 'verify']
+    - name: Require successful CI service verification
+      ansible.builtin.assert:
+        that: ci_verification.rc == 0
+        fail_msg: "{{ (ci_verification.stdout | default('{}', true) | from_json).error | default('CI verification failed') }}"
+      when: ci_action in ['apply', 'verify']

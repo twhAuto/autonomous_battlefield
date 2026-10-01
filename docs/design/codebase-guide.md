@@ -128,6 +128,17 @@ before resuming checks. The pinned Ubuntu image is in
 `infra/ansible/rehearsal-image.json`. See the
 [bootstrap guide](../operations/server-bootstrap.md) for the rehearsal command.
 
+`server.sh ci-*` dispatches to `scripts/infra/ci-bootstrap.py` for private CI
+registration, source fingerprints and external Ansible execution. `infra/ansible/ci.yml`
+and its `ci_services` role manage the pinned controller, Sonar Compose service,
+agent and tools. `ci-runtime.py` implements secret-safe preflight, build draining,
+maintenance backups and service API initialization/verification. `infra/jenkins`
+contains the checksum/dependency lock, scoped JCasC/bootstrap definitions and
+missing-job-only Job DSL. Platform jobs reuse `seed-platform.py` rather than a
+second pipeline definition. `test-ci-bootstrap.py` covers the boundaries;
+`run-ci-bootstrap-rehearsal.py` and its UUID-guarded guest fixture exercise actual
+services. See [CI bootstrap](../operations/ci-bootstrap.md).
+
 `Jenkinsfile.platform` and `scripts/ci/run-platform.sh` enter the reviewed host
 workflow in `scripts/infra/platform.py`. It binds a private plan receipt to the
 trusted revision and inputs and uses `operation-lock.py` for exclusion and child
