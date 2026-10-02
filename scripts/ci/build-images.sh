@@ -136,6 +136,7 @@ if [[ "${build_frontend}" == "1" ]]; then
     "${common_labels[@]}" \
     "${frontend_tags[@]}" \
     "${project_dir}/frontend"
+  python3 "${project_dir}/scripts/ci/verify-frontend-image.py" "${frontend_image}:${image_tag}"
 fi
 
 echo

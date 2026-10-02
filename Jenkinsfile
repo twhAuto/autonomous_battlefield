@@ -116,6 +116,7 @@ pipeline {
                                 sh '''
                                     ./scripts/test/test-deployment.sh
                                     ./scripts/test/test-docker-context.sh
+                                    ./scripts/test/test-frontend-image.sh
                                 '''
                             }
                         }
@@ -243,6 +244,7 @@ pipeline {
                         sh '''
                             ./scripts/test/test-deployment.sh
                             ./scripts/test/test-docker-context.sh
+                            ./scripts/test/test-frontend-image.sh
                         '''
                         script {
                             // Compare with the last successful build so changes from failed builds are included.
@@ -305,7 +307,7 @@ pipeline {
                                 passwordVariable: 'GHCR_TOKEN'
                             )
                         ]) {
-                            sh './scripts/ci/scan-published-images.sh'
+                            sh './scripts/ci/with-ghcr-auth.sh ./scripts/ci/scan-published-images.sh'
                         }
                     }
                 }

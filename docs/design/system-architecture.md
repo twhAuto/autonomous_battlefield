@@ -870,6 +870,15 @@ The API catalog advertises profiles users may select. In cluster mode, an operat
 
 ### Kubernetes
 
+The frontend image sets Nginx configuration ownership/modes explicitly so private
+Jenkins checkouts (`UMask=0077`) cannot make its template unreadable. CI runs an
+isolated container check with UID/GID 101, a read-only root, no capabilities, and
+temporary writable Nginx paths. It verifies probes and built static assets for PR
+images and the exact published frontend digest before production rollout; a
+private-checkout regression also rejects the original unreadable-template failure.
+The check has no network access, exposed ports or production credentials; cluster
+smoke tests still verify the real API proxy and application behavior.
+
 Kustomize deploys separate API, engine, agent, MCP, frontend, and migration workloads. The API requires `battlefield-auth`, the API and agent read profile availability from `battlefield-ai`, MCP receives a distinct `MCP_DATABASE_URL`, and the processes mount a common non-secret ConfigMap. Development smoke uses its local administrator Secret; production smoke requires a real invited Access JWT and uses private port forwards. Neither mode disables authentication for verification.
 
 The migration Job runs the server in migration-only mode and reads the required

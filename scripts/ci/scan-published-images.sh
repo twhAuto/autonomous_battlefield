@@ -37,3 +37,10 @@ scan() {
 
 scan backend "${BACKEND_IMAGE_REF:-}"
 scan frontend "${FRONTEND_IMAGE_REF:-}"
+
+# Check the exact published frontend subject before signing or production rollout.
+# with-ghcr-auth.sh already provides scoped Docker credentials for this pull.
+if [[ -n "${FRONTEND_IMAGE_REF:-}" ]]; then
+  docker pull "${FRONTEND_IMAGE_REF}"
+  python3 "${project_dir}/scripts/ci/verify-frontend-image.py" "${FRONTEND_IMAGE_REF}"
+fi
