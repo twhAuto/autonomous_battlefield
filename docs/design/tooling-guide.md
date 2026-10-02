@@ -16,7 +16,11 @@ for machine configuration, Jenkins credentials, and commands.
 
 ## Deployment code
 
-[`deploy/base`](../../deploy/base) contains portable Kustomize resources. [`deploy/overlays/local`](../../deploy/overlays/local) adds kind-specific PostgreSQL, Gateway API, observability, and logging resources.
+[`deploy/base`](../../deploy/base) contains portable Kustomize resources.
+[`deploy/overlays/local`](../../deploy/overlays/local) adds PostgreSQL, Gateway API,
+observability and logging resources with Kind defaults. The
+[`K3s overlays`](../../deploy/overlays/k3s) reuse those resources and patch the
+driver-specific storage, gateway and telemetry settings.
 
 The key application manifests are:
 

@@ -1,9 +1,9 @@
 # Configure the private K3s platform
 
-[AB-128 — Configure the K3s VM and production platform with Ansible](https://app.notion.com/p/3eab7a19f8f781e494cbfdd2535606b8)
-configures the guest created by [the Terraform VM job](k3s-vm.md). It installs
+The K3s platform job configures the guest created by
+[the Terraform VM job](k3s-vm.md). It installs
 K3s, retained storage, Envoy Gateway, Kyverno and private validation workloads.
-Application delivery and registration are described in [K3s delivery](k3s-delivery.md), tracked by [AB-129](https://app.notion.com/p/3eab7a19f8f781e6bb1ad38d5d25ef0f).
+Application delivery and registration are described in [K3s delivery](k3s-delivery.md).
 Production application traffic and PostgreSQL now use K3s; the Cloudflare
 connector runs there too. The old Kind resources remain a retained recovery
 source. See the dated [rebuild contract](server-rebuild-contract.md). Merging
@@ -73,8 +73,8 @@ Ansible inspection helpers; they do not install the guest runtime.
 The default Terraform allocation is 250 GiB for retained guest data and 32 GiB
 for its OS; actual host usage grows with the sparse images. This is a capacity
 allocation, not an additional physical disk. Existing Docker/Kind/PostgreSQL
-files still use their current host filesystem. Application PVC migration follows
-AB-129 and a reviewed data migration.
+files still use their current host filesystem. Moving application data between
+clusters requires the reviewed [migration procedure](k3s-delivery.md#adoption-and-cutover-boundary).
 
 Only the exact stable `virtio-battlefield-k3s-data` device is accepted. The role
 checks guest UUID, disk serial, capacity, filesystem UUID, ownership marker and
@@ -126,9 +126,10 @@ Verification compares the live owned rules with their recorded applied state.
 Runtime drift fails verification and appears as a reload in the next plan; the
 reload changes only this table and preserves the running K3s service.
 It does not edit the host firewall, Docker networks or the existing CLI VM.
-The validation gateway is private and has no public DNS/tunnel route. AB-129 must
-establish and verify the CLI/MCP application's route through the intended private
-bridge before enabling it on K3s; Player CLI access remains a separate feature.
+The validation gateway is private and has no public DNS/tunnel route. Application
+delivery owns the CLI/MCP route through the intended private bridge; verify that
+route before enabling CLI execution on K3s. Player CLI access requires the separate
+[isolation and accepted-plan checks](agent-vm.md#5-verify-before-advertising-availability).
 
 [`pins.json`](../../infra/k3s/pins.json) pins and checksums K3s, Envoy Gateway's
 controller/CRDs and Kyverno. The chosen Kubernetes version is within both
@@ -139,14 +140,14 @@ specification hash, so reruns do not recreate it and upgrades do not patch an
 immutable Job. Old completed versions can be removed after reviewed upgrades.
 Any new controller Job requires explicit lifecycle review, including Jobs without
 a cleanup TTL. These roles own controller installation; application CD owns routes
-and signature policies. AB-129 must use the managed versions instead of installing the existing
-Kind pipeline's older Kyverno pin over this cluster.
+and signature policies. K3s delivery validates the managed versions and does not
+install the Kind pipeline's Kyverno controller over this cluster.
 
 Observability prerequisites default on: kernel memory-map limit, the metrics API,
 and verified kubelet TLS using the actual serving CA and IP SAN. No kubelet TLS
-verification bypass is introduced. Langfuse is explicitly disabled; enabling it
-is rejected until AB-129 supplies its compatible optional delivery profile and
-controller dependency tests. Neither application observability stacks nor
+verification bypass is introduced. Langfuse is explicitly disabled and remains
+unsupported by the K3s delivery profile. Supporting it requires a compatible
+optional delivery profile and controller dependency tests. Neither application observability stacks nor
 Langfuse data stores are installed by this platform job.
 
 ## Verification and private outputs
@@ -167,12 +168,12 @@ the current credential still works.
 
 Successful apply/verify writes separate private files under
 `~/.local/state/battlefield/k3s/`: `kubeconfig` and `kubelet-ca.crt`. The existing
-Kind profile is preserved. AB-129 can consume these after an explicit registered
-K3s delivery profile is available. Jenkins artifacts contain task outcomes and
+Kind profile is preserved. [K3s registration](k3s-delivery.md#prepare-a-separate-registration)
+consumes these files to create an explicit delivery profile. Jenkins artifacts contain task outcomes and
 version/storage declarations, never kubeconfig, credentials or raw diffs.
 Registry inputs live in a temporary mode-0600 file and a no-log Ansible task. Pull
-secrets are created only in the application and validation namespaces. AB-129
-owns Kyverno image-verification credentials alongside the admission policy; this
+secrets are created only in the application and validation namespaces. Application
+CD owns Kyverno image-verification credentials alongside the admission policy; this
 platform job does not pre-create an incompatible pull secret in that namespace.
 
 ## Disposable acceptance test

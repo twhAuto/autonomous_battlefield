@@ -21,8 +21,8 @@ The application has production-shaped container images and a staged local
 Kubernetes deployment. The AWS infrastructure reference is in `infra/aws`; the application still needs
 an AWS overlay and account-specific provisioning and verification.
 
-The [deployment structure review](deployment-review.md) records the cleanup,
-remaining operational gaps, and optional simplifications.
+See [AWS promotion limits](jenkins.md#aws-promotion-limits) before using the
+optional assurance job to copy images to ECR.
 
 ## Limited-access production
 
@@ -827,15 +827,6 @@ After a manual recovery, recreate only the setup job with
 `kubectl -n battlefield delete job battlefield-kibana-setup --ignore-not-found`
 and `kubectl -n battlefield apply -f deploy/overlays/local/observability/kibana/setup-job.yaml`,
 then confirm completion before running production smoke verification.
-
-Unfinished battles expire one hour after creation, including queued and paused
-time. The engine sweeps at startup and every minute independently of active
-battle processing. It atomically marks expired battles failed with
-`battle_timeout`, clears their leases, and cancels pending/running decisions
-using the existing `battle_stopped` cancellation category. History and tick
-state remain available; active admission slots are released but daily usage is
-not refunded. Existing overdue battles expire on rollout. No migration or new
-configuration is required; while the engine is offline, expiry waits for restart.
 
 Before the first hardened production delivery, complete the
 [Jenkins agent isolation and recovery setup](jenkins.md#production-hardening-rollout)

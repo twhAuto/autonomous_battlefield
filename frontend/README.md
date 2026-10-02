@@ -36,6 +36,8 @@ keyboard access, responsive forms, both board sizes, map expansion/selection,
 early results, event presets, hidden identifiers, AI availability/quota/cooldown,
 and deletion cancellation/failure/success. It needs no credentials, live AI,
 backend, or shared database. Unexpected API requests fail the fixture assertion.
+The admin journey verifies model-access saves and Player role preview on both
+desktop and mobile.
 On a fresh Linux machine, provision browser libraries once with
 `npx playwright install-deps chromium` (requires system package permissions).
 `npx playwright show-report` opens `playwright-report/`; failed tests retain
