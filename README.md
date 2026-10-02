@@ -58,6 +58,7 @@ with focused [backend](docs/design/backend-guide.md),
 | Review the measured layout, state locations and remaining rebuild boundaries | [Server rebuild contract](docs/operations/server-rebuild-contract.md) |
 | Inspect, bootstrap and rehearse Ubuntu; optionally manage its data partition | [Server bootstrap](docs/operations/server-bootstrap.md) |
 | Provision or adopt the isolated CLI VM without recreating its disk | [CLI VM platform](docs/operations/cli-vm-platform.md) |
+| Capture and reproduce the owned Cloudflare tunnel, DNS and Access boundary | [Cloudflare platform](docs/operations/cloudflare-platform.md) |
 | Install or adopt the isolated CLI worker services with Ansible | [CLI bootstrap](docs/operations/cli-bootstrap.md) |
 | Install and run the reviewed Jenkins host and VM jobs | [Platform jobs](docs/operations/platform-jobs.md) |
 | Provision the persistent Terraform VM and recover its state | [K3s VM](docs/operations/k3s-vm.md) |
