@@ -170,11 +170,12 @@ the pinned provider schema, mocked-provider contracts and real local-backend
 lock contention without contacting libvirt; provider-cache initialization is serialized
 across concurrent CI checks. The opt-in `rehearse-vm.py` uses the shared
 rehearsal VM lifecycle with a larger outer guest, while `rehearse-vm-guest.py`
-exercises actual Terraform, replacement, recovery and reboot inside it. The VM
+exercises actual Terraform, replacement, recovery and reboot inside it. The foundation, VM
 and K3s rehearsal entry points remove their own script directory from Python's
-import path before loading the shared fixture, so local `platform.py` cannot
-shadow the standard library. Their test suites run real subprocess `--help`
-checks with ordinary Python path settings. See the
+import path before loading `uuid` in the shared fixture, so local `platform.py` cannot
+shadow the standard library. `test-server-rehearsal.py` runs a shared real
+subprocess `--help` check for foundation, VM, K3s and delivery entry points with
+ordinary Python path settings and a separate working directory. See the
 [VM runbook](../operations/k3s-vm.md) for Jenkins and Ansible handoff details.
 
 `Jenkinsfile.k3s` and `scripts/ci/run-k3s.sh` run the reviewed guest workflow in

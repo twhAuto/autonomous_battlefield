@@ -8,8 +8,6 @@ import io
 import json
 import os
 from pathlib import Path
-import subprocess
-import sys
 import tempfile
 import time
 import unittest
@@ -43,14 +41,6 @@ def plan(*resources):
 
 
 class VMTests(unittest.TestCase):
-    def test_documented_rehearsal_cli_starts_without_import_shadowing(self):
-        environment = {k: v for k, v in os.environ.items() if k not in ('PYTHONPATH', 'PYTHONSAFEPATH')}
-        result = subprocess.run([sys.executable, str(ROOT / 'scripts/infra/rehearse-vm.py'), '--help'],
-                                env=environment, capture_output=True, text=True, timeout=20)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('--image', result.stdout)
-        self.assertIn('--evidence-dir', result.stdout)
-
     def test_configuration_rejects_wrong_types_and_public_or_overlapping_networks(self):
         config = json.loads((ROOT / 'infra/libvirt/vm.json').read_text())
         self.assertEqual(policy.config(config), config)

@@ -189,7 +189,7 @@ independent deliverables are explicitly tracked:
 - [AB-140 — CLI VM provisioning/adoption](https://app.notion.com/p/3edb7a19f8f78120b73ae00b203182f4): consume host identity and preserve the current VM disk/network; then hand off to existing CLI Ansible. `create-agent-vm.sh` is currently create-only, not a declarative adoption workflow.
 - [AB-141 — Cloudflare reconciliation](https://app.notion.com/p/3edb7a19f8f781a19d2fd066ac4af410): privately capture owned policies/IDs, reviewed adopt/create, preserve audience/service identities and unrelated resources. Account/domain ownership remains external.
 - [AB-142 — Local HTTPS routes and CA trust](https://app.notion.com/p/3edb7a19f8f7810ebd5de5d75beaa267): capture protected Caddy configuration/CA state, verify the four current routes and reproduce them without changing trust or the dedicated CLI proxy.
-- Reconcile existing platform/storage acceptance under AB-131/AB-134. Documented disposable VM/K3s rehearsal entry points must start with ordinary Python settings; `--help` checks prove startup, not a new live lifecycle test.
+- Reconcile existing platform/storage acceptance under AB-131/AB-134. Documented disposable foundation/VM/K3s rehearsal entry points must start with ordinary Python settings; `--help` checks prove startup, not a new live lifecycle test.
 
 AB-140 consumes the host/CLI service and reviewed-job foundations; AB-141 consumes
 host encrypted inputs; AB-142 consumes the host and CI service contract. Their
