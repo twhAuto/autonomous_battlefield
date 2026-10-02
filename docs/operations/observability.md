@@ -11,7 +11,7 @@ After [dev environment registration and secret preparation](../developer/local-s
 build and deploy the complete stack with:
 
 ```bash
-DEPLOY_COMPONENTS=all SMOKE_TEST_OBSERVABILITY=1 ./deploy-local.sh
+DEPLOY_COMPONENTS=all SMOKE_TEST_OBSERVABILITY=1 ./scripts/cd/deploy-local.sh
 ```
 
 Visit `http://grafana.localhost:8888` and open **Autonomous Battlefield /

@@ -9,7 +9,7 @@ live tunnel, firewall, or VM has been provisioned.
 
 ## Local development
 
-Local development uses `./deploy-local.sh` and the project-root `.env`.
+Local development uses `./scripts/cd/deploy-local.sh` and the project-root `.env`.
 The deployer reads literal values and renders separate database, auth, and AI
 Kubernetes Secrets. It never sources `.env` as executable shell. The registered
 kubeconfig identifies the dev cluster; production uses separate private settings.

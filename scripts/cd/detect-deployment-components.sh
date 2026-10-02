@@ -48,7 +48,7 @@ while IFS= read -r -d '' changed_file; do
       ;;
     infra/ansible/*|infra/jenkins/*|infra/libvirt/*|infra/k3s/*|scripts/infra/*|scripts/ci/run-platform.sh|scripts/ci/run-vm.sh|scripts/ci/run-k3s.sh)
       ;;
-    infra/sonarqube/*|sonar-project.properties)
+    infra/local/*|infra/sonarqube/*|sonar-project.properties)
       ;;
     scripts/test/*|tests/*)
       ;;
@@ -92,7 +92,7 @@ while IFS= read -r -d '' changed_file; do
     scripts/ci/build-images.sh|scripts/ci/scan-images.sh|scripts/cd/*|scripts/lib/*)
       all=1
       ;;
-    infra/deploy/kind.yaml)
+    infra/deploy/policy/*|infra/deploy/kind.yaml)
       all=1
       ;;
     *)

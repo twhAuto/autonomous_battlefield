@@ -52,4 +52,4 @@ version="${ENVOY_GATEWAY_VERSION:-v1.9.0}"
 [[ "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
 kubectl --context "${KUBERNETES_CONTEXT}" apply --server-side -f "https://github.com/envoyproxy/gateway/releases/download/${version}/install.yaml"
 kubectl --context "${KUBERNETES_CONTEXT}" wait --namespace envoy-gateway-system --for=condition=Available deployment/envoy-gateway --timeout=300s
-echo "Dev cluster ready. Configure dev secrets, then run ./deploy-local.sh (${TARGET_URL})."
+echo "Dev cluster ready. Configure dev secrets, then run ./scripts/cd/deploy-local.sh (${TARGET_URL})."

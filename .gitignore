@@ -3,6 +3,7 @@ backend/cmd/server/__debug_bin*
 backend/coverage.out
 backend/coverage-total.txt
 backend/.env
+infra/local/.env
 /.env
 /.env.backup*
 frontend/node_modules/

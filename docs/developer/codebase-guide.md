@@ -8,7 +8,7 @@ repository/package paths and deployment identifiers remain compatible.
 | Field | Value |
 | --- | --- |
 | Status | Current |
-| Last reviewed | 2026-09-23 |
+| Last reviewed | 2026-10-03 |
 | Audience | Contributors navigating or modifying the implementation |
 | Scope | Repository layout, entry points, packages, dependencies, tests, and reading paths |
 
@@ -72,11 +72,12 @@ autonomous_battlefield/
 │   ├── pages/                  # General pages, including Home
 │   └── test/                   # Shared test setup
 ├── infra/
-│   ├── deploy/                # Kubernetes bases, overlays, supply-chain and CLI VM assets
+│   ├── deploy/                # Kubernetes bases, overlays, policy, supply-chain and CLI VM assets
 │   ├── ansible/               # Ubuntu host foundation, Vault inputs, control dependencies
 │   ├── libvirt/               # Pinned Terraform VM, network and retained disks
 │   ├── k3s/                   # Cluster settings and pinned platform assets
 │   ├── jenkins/               # Auxiliary pipelines, job definitions and plugin pins
+│   ├── local/                 # Standalone PostgreSQL, optional Redis and DBHub
 │   ├── sonarqube/             # Local analysis service
 │   └── aws/                   # AWS provisioning with Terraform
 ├── scripts/
@@ -90,8 +91,7 @@ autonomous_battlefield/
 │   ├── ops/                    # Operational reports and failure drills
 │   ├── review/                 # Codex/Claude cross-review runner
 │   └── lib/                    # Shared script functions
-├── tests/performance/          # k6 scenarios
-├── policy/                     # Deployment policy
+├── tests/performance/          # k6 scenarios and query-plan SQL fixtures
 └── docs/{developer,architecture,operations}/
 ```
 

@@ -133,7 +133,7 @@ fallback; unresolved decisions at the deadline still use `timeout`.
 
 After changing embedded prompts, rebuild/restart the host agent. Deploy the
 backend to pick up MCP diagnostics and engine fallback attribution. For dev,
-run `./deploy-local.sh`, then stop and restart `./run-k8s-cli-agent.sh` in its
+run `./scripts/cd/deploy-local.sh`, then stop and restart `./scripts/dev/run-k8s-cli-agent.sh` in its
 terminal before starting a new battle.
 
 ## Unit knowledge retrieval
@@ -225,7 +225,7 @@ optional orders field. Both model providers share the updated purchasing prompt.
 Deploy API, MCP, engine, and agent together and restart the host CLI agent so tool
 schemas and prompts agree. Existing battle JSON requires no database migration.
 
-See [content libraries and scenario selections](../operations/content-library.md) for shared units,
+See [content libraries and scenario selections](../developer/content-library.md) for shared units,
 buildings, upgrades, roster filtering, and version publication.
 
 For expanded scenarios, recruitment orders may specify `sourceBuildingId` from

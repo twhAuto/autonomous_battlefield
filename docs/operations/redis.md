@@ -2,7 +2,7 @@
 
 Redis is optional and is not provisioned by the default Kind deployment. To use an
 existing Redis service reachable from the API pods, set `BATTLEFIELD_REDIS_URL`
-in the project-root `.env` and run `./deploy-local.sh`. A host loopback URL does
+in the project-root `.env` and run `./scripts/cd/deploy-local.sh`. A host loopback URL does
 not refer to the workstation from inside a pod. Remove the setting and redeploy
 to disable caching. The cache is disposable.
 
@@ -23,18 +23,23 @@ changes the successful HTTP result. Redis is not included in API readiness check
 
 ## Verify locally
 
+For processes running outside Kind, first start the cache profile described in
+[standalone development services](../developer/local-setup.md#standalone-development-services).
+The commands below inspect that standalone stack. For a cluster-backed API, use
+your configured in-cluster Redis client instead.
+
 1. Complete a battle through the UI and open its results. The first completed
    `GET /v1/battles/{id}` stores the final snapshot; subsequent reads use Redis.
 2. Find cache entries and inspect a particular entry's remaining lifetime:
 
    ```bash
-   docker compose -f backend/compose.yaml exec redis redis-cli --scan --pattern 'battlefield:completed-battle:v1:*'
-   docker compose -f backend/compose.yaml exec redis redis-cli TTL 'battlefield:completed-battle:v1:<battle-uuid>'
+   docker compose --env-file infra/local/.env -f infra/local/compose.yaml exec redis redis-cli --scan --pattern 'battlefield:completed-battle:v1:*'
+   docker compose --env-file infra/local/.env -f infra/local/compose.yaml exec redis redis-cli TTL 'battlefield:completed-battle:v1:<battle-uuid>'
    ```
 
    Replace `<battle-uuid>` with the completed battle ID. Running, queued, failed,
    and stopped battles do not populate the cache.
-3. Stop Redis with the command above and reload the results: PostgreSQL should
+3. Stop the standalone cache with `docker compose --env-file infra/local/.env -f infra/local/compose.yaml stop redis` and reload the results: PostgreSQL should
    still serve them. Restart Redis and reload to repopulate the cache.
 
 The backend suite tests cache hits without database reads, expiry, corrupt entries,

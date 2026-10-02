@@ -162,7 +162,7 @@ fi
 
 echo "Evaluating application workload policy..."
 if ! docker run --rm \
-  --volume "${project_dir}/policy/kubernetes:/policy:ro" \
+  --volume "${project_dir}/infra/deploy/policy/kubernetes:/policy:ro" \
   --volume "${artifact_dir}:/reports:ro" \
   "${CONFTEST_IMAGE}" test /reports/rendered-manifests.yaml \
   --policy /policy --all-namespaces --output json \

@@ -191,7 +191,7 @@ production uses the separate K3s VM.
 
 After registering dev, run `./scripts/cd/prepare-dev-secrets.sh`. It preserves
 existing PostgreSQL credentials and creates independent authentication and
-capability secrets in the project-root `.env`. An existing `.env` is never overwritten. `./deploy-local.sh`
+capability secrets in the project-root `.env`. An existing `.env` is never overwritten. `./scripts/cd/deploy-local.sh`
 renders separate Kubernetes Secrets from `.env` and restarts application pods.
 Production uses the same application format in its private `.env`, beside
 `deployment.env`. See the [configuration model](../architecture/configuration.md#file-layout)
@@ -220,11 +220,11 @@ that privilege.
 The `CODEX_CLI_PROFILE_AVAILABLE`, `GEMINI_CLI_PROFILE_AVAILABLE`, and
 `CLAUDE_CLI_PROFILE_AVAILABLE` values
 should normally remain `false` in the secret file. For a local kind battle,
-`run-k8s-cli-agent.sh` manages these flags while an authenticated host worker is
+`scripts/dev/run-k8s-cli-agent.sh` manages these flags while an authenticated host worker is
 connected:
 
 ```bash
-./run-k8s-cli-agent.sh codex
+./scripts/dev/run-k8s-cli-agent.sh codex
 ```
 
 The helper supports `auto`, `codex`, `antigravity`, `claude`, `both`, and `all`
@@ -252,10 +252,10 @@ battles, or `1` to reduce load; the database `runtime_policy.cli_concurrency`
 (4 by default) still caps executions across all workers:
 
 ```bash
-HOST_AGENT_CONCURRENCY=4 ./run-k8s-cli-agent.sh auto
+HOST_AGENT_CONCURRENCY=4 ./scripts/dev/run-k8s-cli-agent.sh auto
 ```
 
-Follow [Claude setup](claude-cli.md) for `./run-k8s-cli-agent.sh claude`.
+Follow [Claude setup](claude-cli.md) for `./scripts/dev/run-k8s-cli-agent.sh claude`.
 The retained `GEMINI_CLI_PROFILE_AVAILABLE` flag now controls Antigravity.
 Follow [Antigravity setup](antigravity-cli.md) to install and authenticate it. It verifies the
 tested CLI version and existing host login, forwards only the internal MCP
@@ -405,7 +405,7 @@ folder rule. Multiple changed paths contribute the union of their components;
 | Any `*.md`, `LICENSE`, `LICENSE.*`, or root `.gitignore` | `none` | None |
 | `infra/jenkins/Jenkinsfile.assurance` | `all` | Backend and frontend images |
 | `infra/ansible/**`, other `infra/jenkins/**`, `infra/libvirt/**`, `infra/k3s/**`, `scripts/infra/**`, `scripts/ci/run-platform.sh`, `scripts/ci/run-vm.sh`, or `scripts/ci/run-k3s.sh` (explicit platform provisioning) | `none` | None |
-| `infra/sonarqube/**` or `sonar-project.properties` | `none` | None |
+| `infra/local/**`, `infra/sonarqube/**` or `sonar-project.properties` | `none` | None |
 | `scripts/test/**` and `tests/**` | `none` | None |
 | Go `backend/**/*_test.go`, frontend `src/**/*.test.ts`, `src/**/*.test.tsx`, or `src/test/**` | `none` | None |
 | CI lint/coverage summary and existing test compatibility wrappers (`test-*`, `fuzz-smoke`, `with-test-postgres`) | `none` | None |
@@ -420,7 +420,7 @@ folder rule. Multiple changed paths contribute the union of their components;
 | CI image build or scan scripts | `all` | Both application images |
 | `scripts/ops/render-limited-launch.py` or `scripts/cd/reconcile-network-policies.sh` | `network-policy` | None |
 | Other paths under `scripts/cd/**` or `scripts/lib/**` | `all` | Both application images |
-| `infra/deploy/kind.yaml` | `all` | Both application images |
+| `infra/deploy/policy/**` or `infra/deploy/kind.yaml` | `all` | Both application images |
 | Any other or newly introduced path | `all`, with a warning | Both application images |
 | Missing or invalid previous-successful revision | `all` | Both application images |
 

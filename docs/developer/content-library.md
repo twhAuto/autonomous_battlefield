@@ -96,10 +96,9 @@ Run backend coverage and frontend coverage/build before deployment:
 ```sh
 ./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
 (cd frontend && npm test -- --coverage && npm run build)
-./deploy-local.sh
 ```
 
-Deploy content, catalog code, engine, and UI together. Use a new battle to test new
+Follow [local setup](local-setup.md) to rebuild content, catalog code, engine, and UI together. Use a new battle to test new
 selections; old battles retain their saved definitions.
 
 ## Expanded content fields

@@ -37,7 +37,7 @@ if (args.includes('config') || args.includes('test')) {
   assert.ok(mounts.includes(`${process.env.SECURITY_ARTIFACT_DIR}:/reports:ro`));
   assert.ok(args.includes('/reports/rendered-manifests.yaml'));
   assert.ok(fs.statSync(`${process.env.SECURITY_ARTIFACT_DIR}/rendered-manifests.yaml`).size > 0);
-  if (args.includes('test')) assert.ok(mounts.some((m) => m.endsWith('/policy/kubernetes:/policy:ro')));
+  if (args.includes('test')) assert.ok(mounts.some((m) => m.endsWith('/infra/deploy/policy/kubernetes:/policy:ro')));
 }
 if (process.env.EXPECTED_TRIVY_IMAGE) assert.ok(args.includes(process.env.EXPECTED_TRIVY_IMAGE));
 process.stdout.write('{}\n');

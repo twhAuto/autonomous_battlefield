@@ -8,7 +8,7 @@ the same model catalog as Codex and Antigravity, with existing role restrictions
 2. Run `claude auth login` and sign in with a Claude subscription. The worker checks
    `claude auth status --json` for a saved `claude.ai` login. API-key and Console logins do
    not satisfy this profile. Authentication stays on the host in its native location.
-3. Start the dev bridge with `./run-k8s-cli-agent.sh claude`. Keep it running while
+3. Start the dev bridge with `./scripts/dev/run-k8s-cli-agent.sh claude`. Keep it running while
    battles or faction-generation jobs use the profile. `auto` detects all available
    CLIs, `all` requires all three, and `both` retains Codex plus Antigravity.
 
@@ -52,7 +52,7 @@ invalid submissions use the existing worker failure and fallback behavior.
 If MCP forwarding fails, the launcher prints the `kubectl port-forward` error
 before removing temporary files. It waits up to 120 seconds for the MCP deployment
 rollout before starting forwarding. On the development workstation, choose an
-unused loopback port, for example `HOST_MCP_PORT=28084 ./run-k8s-cli-agent.sh claude`
+unused loopback port, for example `HOST_MCP_PORT=28084 ./scripts/dev/run-k8s-cli-agent.sh claude`
 only when 28084 is free. The production server already uses that port for its
 CLI VM bridge; do not stop it to run a development launcher. A second agent also needs
 a distinct `HOST_AGENT_HEALTH_PORT`. When tracing is enabled, set distinct

@@ -578,7 +578,7 @@ Production k6 smoke-load credential binding is described in the
   Scenario summaries carry allowed IDs for purchase validation; profiles are generic.
 
 Library-backed and inline rulesets both resolve to the existing immutable game
-snapshot. See [content libraries](../operations/content-library.md) for authoring.
+snapshot. See [content libraries](../developer/content-library.md) for authoring.
 
 The faction API exchanges `{ id, name, doctrine, background? }`; edit requests use PUT.
 Battle setup selects generic profiles without blueprint compatibility filtering.
@@ -659,12 +659,12 @@ stays an index condition in both plan types. The earlier
 `$2 IS NULL OR (created_at, id) < ($2, $3)` form became a filter in generic plans,
 so a deep page walked every newer row. `TestBattleHistoryCursorStaysIndexConditionInGenericPlans`
 guards this. Keep `listBattlesSQL` and the copy in
-`scripts/perf/query-plans/explain.sql` in sync.
+`tests/performance/query-plans/explain.sql` in sync.
 
 Re-measure with the disposable database (10k battles over ~90 days, 120k events):
 
 ```bash
-./scripts/test/with-test-postgres.sh ./scripts/perf/query-plans/run-query-plans.sh
+./scripts/test/with-test-postgres.sh ./scripts/perf/run-query-plans.sh
 ```
 
 Results on PostgreSQL 17.6, 2026-09-29, limit 26 (page size 25 plus one):

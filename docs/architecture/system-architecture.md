@@ -979,7 +979,7 @@ JSON freeze these across later catalog edits. AI legal choices, retrieval, and
 purchase validation consume the same resolved roster. Excluding economy buildings
 disables economy production; legal construction sites remain when other structures are allowed. No schema migration
 or runtime content service is required. See the
-[content authoring guide](../operations/content-library.md).
+[content authoring guide](../developer/content-library.md).
 
 ## 15. Faction doctrine and opening purchases
 

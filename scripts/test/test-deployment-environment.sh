@@ -69,12 +69,12 @@ if [[ "$1 $2" == 'get kubeconfig' ]]; then echo fixture; fi
     profile('production');run(DEPLOY_ENV='production')
     run(ok=False,no_mutation=True,DEPLOY_ENV='production',IMAGE_SOURCE='local')
     run(ok=False,no_mutation=True,DEPLOY_ENV='production',ENFORCE_SUPPLY_CHAIN_POLICY='0')
-    run(['bash',str(root/'deploy-local.sh')],ok=False,no_mutation=True,DEPLOY_ENV='production')
+    run(['bash',str(root/'scripts/cd/deploy-local.sh')],ok=False,no_mutation=True,DEPLOY_ENV='production')
     run(['bash',str(root/'scripts/ops/run-kind-failure-drills.sh')],ok=False,no_mutation=True,DEPLOY_ENV='production',RUN_DESTRUCTIVE_KIND_DRILLS='I_UNDERSTAND_THIS_RESTARTS_DISPOSABLE_KIND_WORKLOADS')
     run(['bash',str(fixture/'scripts/cd/rollback.sh'),'a'*40,'b'*40],ok=False,no_mutation=True,DEPLOY_ENV='production',error='requires both exact image digests')
     run(['bash',str(fixture/'scripts/cd/rollback.sh'),'ghcr.io/test/backend@sha256:'+'a'*64,'ghcr.io/test/frontend@sha256:'+'b'*64],
         ok=False,no_mutation=True,DEPLOY_ENV='production',error='has not been attested as Access-compatible',GHCR_USER='test',GHCR_TOKEN='dummy',COSIGN_PUBLIC_KEY_FILE=str(kube),VERIFY_ARTIFACT_DIR=str(tmp/'verification'))
-    profile();run(['bash',str(root/'deploy-local.sh')],ok=False,no_mutation=True,TEST_UID='wrong')
+    profile();run(['bash',str(root/'scripts/cd/deploy-local.sh')],ok=False,no_mutation=True,TEST_UID='wrong')
     run(['bash','-c','source "$1"; battlefield_env_load && battlefield_env_verify_docker','_',str(helper)],ok=False,no_mutation=True,TEST_DOCKER_STATUS='1')
     # Exercise real bootstrap with mocked external commands; profile already exists.
     bootstrap=['bash',str(root/'scripts/cd/create-kind-cluster.sh')]
