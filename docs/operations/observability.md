@@ -234,6 +234,10 @@ with new UIDs become Ready, so a selector that matches nothing cannot report a
 passed drill. Its `artifacts/failure-drills/summary.json` records the recovery
 seconds for each drill.
 
+The MCP outage drill restores the deployment to exactly one replica; it does not
+capture or restore a different starting count. Use a one-replica MCP in the
+registered disposable dev environment, and verify its replica count after the drill.
+
 ### 2026-09-29 results (dev Kind, `8cc7c07`)
 
 Single-node Kind on one workstation; k6 ran on the same host, so saturation
