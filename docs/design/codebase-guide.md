@@ -189,6 +189,14 @@ credentials and verified public test-image bytes. Its private diagnostic callbac
 extends the normal sanitized report only for fixture failures. See the
 [K3s platform runbook](../operations/k3s-platform.md) for job use and acceptance.
 
+`scripts/ci/verify-frontend-image.py` starts an isolated frontend image with the
+production filesystem/user restrictions and verifies HTTP probes, index and entry
+assets. Local/PR builds and published-digest scanning invoke it before delivery.
+`scripts/test/test-frontend-image.sh` builds tracked frontend inputs with private
+checkout permissions and also exercises the unreadable-template rejection in a
+real container. Jenkins runs this Docker-backed regression separately from the
+command-double deployment suite; see [Jenkins checks](../operations/jenkins.md#pipeline-behavior).
+
 `scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh` are the driver-neutral
 entry points used by Jenkins; the old Kind-named scripts forward arguments and
 signals. `cd/lib/kubernetes-deployment.sh` stages selected shared overlays and

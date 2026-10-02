@@ -3,6 +3,7 @@
 # for CI or deployment.
 
 set -Eeuo pipefail
+export DOCKER_BUILDKIT=1
 
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=scripts/lib/deployment-components.sh
@@ -35,6 +36,7 @@ require_command() {
 
 require_command docker
 require_command git
+require_command python3
 
 for image_name in "${backend_image}" "${frontend_image}"; do
   if [[ ! "${image_name}" =~ ^[a-z0-9][a-z0-9._:/-]*$ ]]; then
@@ -124,7 +126,7 @@ fi
 
 if [[ "${build_backend}" == "1" ]]; then
   echo "Building ${backend_image}:${image_tag} (version ${build_version})"
-  docker build \
+  docker build --builder default \
     "${common_labels[@]}" \
     "${backend_tags[@]}" \
     "${project_dir}/backend"
@@ -132,10 +134,11 @@ fi
 
 if [[ "${build_frontend}" == "1" ]]; then
   echo "Building ${frontend_image}:${image_tag} (version ${build_version})"
-  docker build \
+  docker build --builder default \
     "${common_labels[@]}" \
     "${frontend_tags[@]}" \
     "${project_dir}/frontend"
+  python3 "${project_dir}/scripts/ci/verify-frontend-image.py" "${frontend_image}:${image_tag}"
 fi
 
 echo
