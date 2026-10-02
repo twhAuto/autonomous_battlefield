@@ -42,19 +42,7 @@ user={'users':[{'name':'vm-admin','lock_passwd':True,'shell':'/bin/bash','sudo':
 (out/'network-config').write_text(json.dumps({'version':2,'ethernets':{'worker':{'match':{'macaddress':'52:54:00:ba:77:01'},'set-name':'eth0','dhcp4':False,'dhcp6':False,'accept-ra':False,'addresses':['192.168.234.2/24']}}}))
 PY
 cloud-localds --network-config="${vm_dir}/network-config" "${vm_dir}/seed.iso" "${vm_dir}/user-data" "${vm_dir}/meta-data"
-cat >"${vm_dir}/domain.xml" <<'XML'
-<domain type='kvm'>
- <name>battlefield-agent</name><memory unit='MiB'>4096</memory><vcpu>2</vcpu>
- <os><type arch='x86_64'>hvm</type><boot dev='hd'/></os>
- <features><acpi/><apic/></features><cpu mode='host-model'/>
- <devices>
-  <disk type='file' device='disk'><driver name='qemu' type='qcow2'/><source file='/var/lib/libvirt/images/battlefield-agent/root.qcow2'/><target dev='vda' bus='virtio'/></disk>
-  <disk type='file' device='cdrom'><driver name='qemu' type='raw'/><source file='/var/lib/libvirt/images/battlefield-agent/seed.iso'/><target dev='sda' bus='sata'/><readonly/></disk>
-  <interface type='network'><mac address='52:54:00:ba:77:01'/><source network='battlefield-agent'/><model type='virtio'/><filterref filter='battlefield-agent'><parameter name='IP' value='192.168.234.2'/></filterref></interface>
-  <serial type='pty'><target port='0'/></serial><console type='pty'><target type='serial' port='0'/></console>
- </devices>
-</domain>
-XML
+cp -- "${project_dir}/deploy/agent-vm/domain.xml" "${vm_dir}/domain.xml"
 chown -R libvirt-qemu:kvm "${vm_dir}"
 virsh --connect qemu:///system nwfilter-define "${project_dir}/deploy/agent-vm/filter.xml"
 virsh --connect qemu:///system net-define "${project_dir}/deploy/agent-vm/network.xml"

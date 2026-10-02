@@ -407,6 +407,7 @@ def parser():
     result.add_argument('--vault-password-file', help='Private password file for unattended runs; otherwise prompt')
     result.add_argument('--cli-guest-key', help='Existing trusted guest admin key on this controller; unlock with ssh-agent if needed')
     result.add_argument('--cli-config', type=safe_path, help='Private CLI registration; defaults to cli.json alongside inventory')
+    result.add_argument('--cli-vm-handoff', type=safe_path, help='AB-140 guest connection JSON, local host only; defaults to managed CLI VM state when present')
     result.add_argument('--cli-kubeconfig', help='Host kubeconfig path for CLI registration only')
     result.add_argument('--cli-context', default='battlefield-production')
     result.add_argument('--cli-bridge-port', type=int, default=28084)

@@ -57,6 +57,7 @@ with focused [backend](docs/design/backend-guide.md),
 | Build, deploy, inspect, or remove Kubernetes workloads | [Deployment](docs/operations/deployment.md) |
 | Review the measured layout, state locations and remaining rebuild boundaries | [Server rebuild contract](docs/operations/server-rebuild-contract.md) |
 | Inspect, bootstrap and rehearse Ubuntu; optionally manage its data partition | [Server bootstrap](docs/operations/server-bootstrap.md) |
+| Provision or adopt the isolated CLI VM without recreating its disk | [CLI VM platform](docs/operations/cli-vm-platform.md) |
 | Install or adopt the isolated CLI worker services with Ansible | [CLI bootstrap](docs/operations/cli-bootstrap.md) |
 | Install and run the reviewed Jenkins host and VM jobs | [Platform jobs](docs/operations/platform-jobs.md) |
 | Provision the persistent Terraform VM and recover its state | [K3s VM](docs/operations/k3s-vm.md) |
@@ -241,6 +242,7 @@ Tracing is detected automatically, with no port-forward or per-shell enable flag
 For the one-time limited-access launch, run `./scripts/ops/prepare-limited-production.sh`
 on the registered server after rendering its private launch files; see the
 [launch runbook](docs/operations/limited-launch.md). For CLI workers, use the
+[reviewed VM provisioning/adoption workflow](docs/operations/cli-vm-platform.md),
 [VM setup and recovery guide](docs/operations/agent-vm.md) and the optional
 [Ansible CLI bootstrap](docs/operations/cli-bootstrap.md) to register and reconcile
 the proxy, firewall and worker files. Unattended production checks

@@ -1,0 +1,64 @@
+---
+- name: Review or adopt the isolated CLI VM on its physical host
+  hosts: bootstrap
+  gather_facts: false
+  become: true
+  any_errors_fatal: true
+  tasks:
+    - name: Enforce reviewed CLI VM identity and retained disk ownership
+      battlefield_cli_vm:
+        action: "{{ cli_vm_action }}"
+        request: "{{ cli_vm_request }}"
+        assets: "{{ cli_vm_assets }}"
+        review_id: "{{ cli_vm_review_id }}"
+      register: cli_vm_result
+    - name: Wait for the trusted guest and read only its machine identity
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/timeout
+          - 20s
+          - /usr/bin/ssh
+          - -o
+          - BatchMode=yes
+          - -o
+          - IdentitiesOnly=yes
+          - -o
+          - StrictHostKeyChecking=yes
+          - -o
+          - ConnectTimeout=5
+          - -o
+          - "UserKnownHostsFile={{ cli_vm_result.connection.known_hosts_file }}"
+          - -i
+          - "{{ cli_vm_result.connection.identity_file }}"
+          - vm-admin@192.168.234.2
+          - >-
+            sudo -n python3 -c
+            'import json,pathlib,subprocess; status=json.loads(subprocess.check_output(["cloud-init","status","--format","json"])); assert status["status"] == "done"; print(json.dumps({"machine_id":pathlib.Path("/etc/machine-id").read_text().strip(),"domain_uuid":pathlib.Path("/sys/class/dmi/id/product_uuid").read_text().strip().lower()}))'
+      become: false
+      changed_when: false
+      register: cli_vm_guest
+      retries: 30
+      delay: 5
+      until: cli_vm_guest.rc == 0
+      timeout: 30
+      no_log: true
+      when: cli_vm_action != 'plan'
+    - name: Bind guest identity and export its Ansible connection
+      battlefield_cli_vm:
+        action: finish
+        request: "{{ cli_vm_request }}"
+        assets: "{{ cli_vm_assets }}"
+        guest: "{{ cli_vm_guest.stdout | from_json }}"
+      register: cli_vm_verified
+      when: cli_vm_action != 'plan'
+    - name: Write the safe CLI VM review or verification report
+      ansible.builtin.copy:
+        content: >-
+          {{ (cli_vm_result.report if cli_vm_action == 'plan' else
+          (cli_vm_verified.report | combine({'action': cli_vm_action,
+          'changed': cli_vm_result.changed or cli_vm_verified.changed,
+          'applied_changes': cli_vm_result.applied_changes | default([])}))) | to_nice_json }}
+        dest: "{{ cli_vm_report }}"
+        mode: '0600'
+        force: false
+      become: false

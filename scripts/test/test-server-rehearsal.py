@@ -29,7 +29,7 @@ class RehearsalTests(unittest.TestCase):
     def test_documented_rehearsal_clis_start_without_import_shadowing(self):
         environment = {k: v for k, v in os.environ.items() if k not in ('PYTHONPATH', 'PYTHONSAFEPATH')}
         with tempfile.TemporaryDirectory() as directory:
-            for name in ('server', 'vm', 'k3s', 'k3s-delivery'):
+            for name in ('server', 'vm', 'k3s', 'k3s-delivery', 'cli-vm'):
                 with self.subTest(entry_point=name):
                     result = subprocess.run(
                         [sys.executable, str(ROOT / f'scripts/infra/rehearse-{name}.py'), '--help'],

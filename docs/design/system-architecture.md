@@ -1437,13 +1437,30 @@ this opt-in operation, and worker release upgrades remain a separate reviewed
 workflow. VM creation and Player isolation verification remain separate gates.
 See [CLI bootstrap and adoption](../operations/cli-bootstrap.md).
 
+The independent `scripts/infra/cli-vm.py` workflow owns the CLI VM through Ansible
+and libvirt; Terraform owns K3s. It retains the current unpooled standalone disk,
+2 CPU / 4 GiB / 24 GiB allocation, isolated static subnet and deny-by-default NIC
+filter. Root-owned ownership and expiring review receipts bind identities,
+persistent XML, disk/seed inodes and trusted SSH material. Adoption changes only
+ownership/connection metadata, while clean creation uses the pinned Ubuntu image
+and a private seed. A generated guest host key establishes first-boot SSH trust;
+its private material stays in the protected seed/guest. Missing resources or
+boundary drift fail before mutation; no automatic resize/replacement is exposed.
+The shared host operation lock serializes plan/apply/verify with platform commands.
+Verified guest identity produces a host-local Ansible handoff consumed by the
+service bootstrap, without copying IPs or private keys. Provider homes remain
+outside managed files. See [CLI VM platform](../operations/cli-vm-platform.md)
+for adoption, fresh creation, sensitive local state and interrupted-create limits.
+
+
 ## Ubuntu host bootstrap boundary
 
 The dated [server rebuild contract](../operations/server-rebuild-contract.md)
 records the measured Ubuntu/VM layout, state and credential locations, manual
-prerequisites and recovery limits. Production uses K3s; current CLI VM creation,
-Cloudflare reconciliation and local HTTPS/CA restoration still need explicit
-automation. The data partition and local recovery archives share the host SSD;
+prerequisites and recovery limits. Production uses K3s; Cloudflare reconciliation
+and local HTTPS/CA restoration still need explicit automation. CLI VM creation
+and adoption have the separate reviewed Ansible workflow described above.
+The data partition and local recovery archives share the host SSD;
 whole-server-loss protection remains deferred.
 
 The [server bootstrap](../operations/server-bootstrap.md) adds an explicit
