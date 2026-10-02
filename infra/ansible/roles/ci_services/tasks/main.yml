@@ -1,0 +1,476 @@
+---
+- name: Install CI prerequisites without starting package services prematurely
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - fontconfig
+      - openjdk-21-jre-headless
+      - git
+      - curl
+      - jq
+      - unzip
+      - xz-utils
+      - python3-venv
+      - xvfb
+      - fonts-noto-color-emoji
+      - fonts-unifont
+      - libfontconfig1
+      - libfreetype6
+      - xfonts-cyrillic
+      - xfonts-scalable
+      - fonts-liberation
+      - fonts-ipafont-gothic
+      - fonts-wqy-zenhei
+      - fonts-tlwg-loma-otf
+      - fonts-freefont-ttf
+      - libatspi2.0-0t64
+      - libdbus-1-3
+      - libglib2.0-0t64
+      - libnspr4
+      - libx11-6
+      - libxcb1
+      - libxext6
+      - libnss3
+      - libatk1.0-0t64
+      - libatk-bridge2.0-0t64
+      - libcups2t64
+      - libdrm2
+      - libxkbcommon0
+      - libxcomposite1
+      - libxdamage1
+      - libxfixes3
+      - libxrandr2
+      - libgbm1
+      - libasound2t64
+      - libpango-1.0-0
+      - libcairo2
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    fail_on_autoremove: true
+    policy_rc_d: 101
+- name: Inspect installed Docker service
+  ansible.builtin.service_facts:
+- name: Install Ubuntu Docker on a fresh CI host
+  ansible.builtin.apt:
+    name: [docker.io, docker-buildx, docker-compose-v2]
+    state: present
+    fail_on_autoremove: true
+  when: "'docker.service' not in ansible_facts.services"
+- name: Enable Docker without restarting a healthy daemon
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+- name: Verify Compose and Buildx are already available
+  ansible.builtin.command:
+    argv: "{{ item }}"
+  loop:
+    - [docker, compose, version]
+    - [docker, buildx, version]
+  changed_when: false
+- name: Ensure the native Jenkins system account exists
+  ansible.builtin.user:
+    name: jenkins
+    system: true
+    home: /var/lib/jenkins
+    shell: /bin/bash
+    create_home: true
+- name: Allow the registered agent operator to use Docker
+  ansible.builtin.user:
+    name: "{{ ci_config.operator }}"
+    groups: docker
+    append: true
+- name: Prepare private CI ownership and captured database inputs
+  ansible.builtin.command:
+    argv: [python3, -c, "{{ ci_runtime }}", prepare]
+    stdin: "{{ ci_payload | to_json }}"
+  no_log: true
+  changed_when: true
+  register: ci_prepare
+  failed_when: false
+- name: Require prepared CI ownership and captured inputs
+  ansible.builtin.assert:
+    that: ci_prepare.rc == 0
+    fail_msg: "{{ (ci_prepare.stdout | default('{}', true) | from_json).error | default('CI input preparation failed') }}"
+- name: Permit only Jenkins to traverse its bootstrap configuration
+  ansible.builtin.file:
+    path: /etc/battlefield-ci
+    owner: root
+    group: jenkins
+    mode: '0750'
+- name: Create owned release and download directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /opt/battlefield-ci
+    - /opt/battlefield-ci/tools
+    - /opt/battlefield-ci/scripts/infra
+    - /opt/battlefield-ci/infra/jenkins
+    - /var/cache/battlefield-ci
+- name: Download the exact controller package with its official checksum
+  ansible.builtin.get_url:
+    url: "{{ ci_lock.core.url }}"
+    dest: /var/cache/battlefield-ci/jenkins.deb
+    checksum: "sha256:{{ ci_lock.core.sha256 }}"
+    mode: '0644'
+- name: Download the locked plugin dependency closure
+  ansible.builtin.get_url:
+    url: "{{ item.value.url }}"
+    dest: "/var/cache/battlefield-ci/{{ item.key }}.jpi"
+    checksum: "sha256:{{ item.value.sha256 }}"
+    mode: '0644'
+  loop: "{{ ci_lock.plugins | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}@{{ item.value.version }}"
+- name: Download pinned agent tool archives
+  ansible.builtin.get_url:
+    url: "{{ item.value.url }}"
+    dest: "/var/cache/battlefield-ci/{{ item.value.url | basename }}"
+    checksum: "sha256:{{ item.value.sha256 }}"
+    mode: '0644'
+  loop: "{{ {'go': ci_lock.go, 'node': ci_lock.node, 'scanner': ci_lock.scanner} | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}@{{ item.value.version }}"
+- name: Download the pinned Kubernetes client
+  ansible.builtin.get_url:
+    url: "{{ ci_lock.kubectl.url }}"
+    dest: /var/cache/battlefield-ci/kubectl
+    checksum: "sha256:{{ ci_lock.kubectl.sha256 }}"
+    mode: '0644'
+- name: Drain all running and paused Jenkins builds before changing services
+  ansible.builtin.command:
+    argv: [python3, -c, "{{ ci_runtime }}", drain]
+    stdin: "{{ ci_payload | to_json }}"
+  register: ci_drain
+  no_log: true
+  changed_when: false
+  failed_when: false
+- name: Require a completed drain
+  ansible.builtin.assert:
+    that: ci_drain.rc == 0
+    fail_msg: "{{ (ci_drain.stdout | default('{}', true) | from_json).error | default('CI build drain failed') }}"
+- name: Record the pre-change backup checkpoint
+  ansible.builtin.command:
+    argv: [python3, -c, "{{ ci_runtime }}", backup-checkpoint]
+    stdin: "{{ ci_payload | to_json }}"
+  no_log: true
+  changed_when: false
+  register: ci_checkpoint
+  failed_when: false
+- name: Require the pre-change backup checkpoint
+  ansible.builtin.assert:
+    that: ci_checkpoint.rc == 0
+    fail_msg: "{{ (ci_checkpoint.stdout | default('{}', true) | from_json).error | default('CI backup checkpoint failed') }}"
+- name: Stop the drained controller for a consistent backup
+  ansible.builtin.systemd_service:
+    name: jenkins
+    state: stopped
+  when: ci_observed.controller_running
+- name: Preserve controller identity, history and a consistent Sonar database dump
+  ansible.builtin.command:
+    argv: [python3, -c, "{{ ci_runtime }}", backup]
+    stdin: "{{ ci_payload | to_json }}"
+  register: ci_backup
+  no_log: true
+  changed_when: true
+  failed_when: false
+- name: Require a completed private pre-change backup
+  ansible.builtin.assert:
+    that: ci_backup.rc == 0
+    fail_msg: "{{ (ci_backup.stdout | default('{}', true) | from_json).error | default('CI backup failed') }}"
+- name: Persist quiet mode across the maintenance restart
+  ansible.builtin.command:
+    argv: [python3, -c, "{{ ci_runtime }}", changing]
+    stdin: "{{ ci_payload | to_json }}"
+  no_log: true
+  changed_when: false
+  register: ci_changing
+  failed_when: false
+- name: Require the controller maintenance checkpoint
+  ansible.builtin.assert:
+    that: ci_changing.rc == 0
+    fail_msg: "{{ (ci_changing.stdout | default('{}', true) | from_json).error | default('CI maintenance checkpoint failed') }}"
+- name: Install the locked native Jenkins package without starting it
+  ansible.builtin.apt:
+    deb: /var/cache/battlefield-ci/jenkins.deb
+    policy_rc_d: 101
+    fail_on_autoremove: true
+- name: Create Jenkins configuration directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: jenkins
+    group: jenkins
+    mode: '0750'
+  loop:
+    - /var/lib/jenkins/plugins
+    - /var/lib/jenkins/init.groovy.d
+- name: Install verified plugins without deleting unrelated plugins
+  ansible.builtin.copy:
+    src: "/var/cache/battlefield-ci/{{ item.key }}.jpi"
+    remote_src: true
+    dest: "/var/lib/jenkins/plugins/{{ item.key }}.jpi"
+    owner: jenkins
+    group: jenkins
+    mode: '0644'
+  loop: "{{ ci_lock.plugins | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+- name: Remove superseded HPI archives only after the locked JPI is installed
+  ansible.builtin.file:
+    path: "/var/lib/jenkins/plugins/{{ item }}.hpi"
+    state: absent
+  loop: "{{ ci_lock.plugins | list }}"
+- name: Install locked agent tools into their dedicated prefix
+  ansible.builtin.unarchive:
+    src: "/var/cache/battlefield-ci/{{ item.url | basename }}"
+    dest: /opt/battlefield-ci/tools
+    remote_src: true
+    owner: root
+    group: root
+  loop: "{{ [ci_lock.go, ci_lock.node, ci_lock.scanner] }}"
+  loop_control:
+    label: "{{ item.url | basename }}"
+- name: Install the verified Kubernetes client for manifest rendering
+  ansible.builtin.copy:
+    src: /var/cache/battlefield-ci/kubectl
+    remote_src: true
+    dest: /opt/battlefield-ci/tools/kubectl
+    owner: root
+    group: root
+    mode: '0755'
+- name: Install public CA certificates used by repository integrations
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/share/ca-certificates/battlefield-{{ item | basename }}"
+    owner: root
+    group: root
+    mode: '0644'
+    validate: /usr/bin/openssl x509 -in %s -noout
+  loop: "{{ bootstrap_ca_files }}"
+  register: ci_ca
+- name: Refresh operating-system and Java CA trust when certificates changed
+  ansible.builtin.command:
+    argv: [update-ca-certificates]
+  when: ci_ca is changed
+  changed_when: true
+- name: Read the existing mmap limit without lowering it
+  ansible.builtin.command:
+    argv: [sysctl, -n, vm.max_map_count]
+  register: ci_mmap
+  changed_when: false
+- name: Persist sufficient mmap capacity for Sonar search
+  ansible.builtin.copy:
+    content: "vm.max_map_count = {{ [1048576, ci_mmap.stdout | int] | max }}\n"
+    dest: /etc/sysctl.d/91-battlefield-ci.conf
+    owner: root
+    group: root
+    mode: '0644'
+- name: Apply the Sonar mmap setting
+  ansible.builtin.command:
+    argv: [sysctl, -p, /etc/sysctl.d/91-battlefield-ci.conf]
+  changed_when: false
+- name: Install the pinned Sonar Compose definition
+  ansible.builtin.template:
+    src: sonar-compose.yaml.j2
+    dest: /etc/battlefield-ci/sonar-compose.yaml
+    owner: root
+    group: root
+    mode: '0600'
+- name: Converge Sonar without deleting named volumes
+  ansible.builtin.command:
+    argv: [python3, -c, "{{ ci_runtime }}", compose]
+    stdin: "{{ ci_payload | to_json }}"
+  no_log: true
+  changed_when: true
+  register: ci_compose
+  failed_when: false
+- name: Require ready Sonar containers
+  ansible.builtin.assert:
+    that: ci_compose.rc == 0
+    fail_msg: "{{ (ci_compose.stdout | default('{}', true) | from_json).error | default('Sonar Compose reconciliation failed') }}"
+- name: Configure Sonar through its API and stage private Jenkins inputs
+  ansible.builtin.command:
+    argv: [python3, -c, "{{ ci_runtime }}", sonar]
+    stdin: "{{ ci_payload | to_json }}"
+  register: ci_sonar
+  no_log: true
+  changed_when: true
+  failed_when: false
+- name: Require configured Sonar authentication and gate
+  ansible.builtin.assert:
+    that: ci_sonar.rc == 0
+    fail_msg: "{{ (ci_sonar.stdout | default('{}', true) | from_json).error | default('Sonar initialization failed') }}"
+- name: Install the scoped Configuration as Code definition
+  ansible.builtin.template:
+    src: jenkins.yaml.j2
+    dest: /etc/battlefield-ci/jenkins.yaml
+    owner: root
+    group: jenkins
+    mode: '0640'
+- name: Preserve maintenance quiet mode until acceptance completes
+  ansible.builtin.copy:
+    src: "{{ ci_source }}/infra/jenkins/maintenance.groovy"
+    dest: /var/lib/jenkins/init.groovy.d/00-battlefield-maintenance.groovy
+    owner: root
+    group: jenkins
+    mode: '0640'
+- name: Stage controller bootstrap with credentials excluded from script source
+  ansible.builtin.copy:
+    src: "{{ ci_source }}/infra/jenkins/bootstrap.groovy"
+    dest: /var/lib/jenkins/init.groovy.d/90-battlefield.groovy
+    owner: root
+    group: jenkins
+    mode: '0640'
+- name: Install the reused platform seed definitions and job sources
+  ansible.builtin.copy:
+    src: "{{ ci_source }}/{{ item }}"
+    dest: "/opt/battlefield-ci/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - scripts/infra/seed-platform.py
+    - scripts/infra/server.py
+    - scripts/infra/operation-lock.py
+    - scripts/infra/ci-runtime.py
+    - infra/jenkins/platform-plugins.json
+    - infra/jenkins/repository.groovy
+    - infra/jenkins/assurance.groovy
+    - Jenkinsfile.platform
+    - Jenkinsfile.vm
+    - Jenkinsfile.k3s
+- name: Require authentication before the first controller listener opens
+  ansible.builtin.template:
+    src: fresh-config.xml.j2
+    dest: /var/lib/jenkins/config.xml
+    owner: jenkins
+    group: jenkins
+    mode: '0600'
+    force: false
+  when: ci_observed.fresh
+- name: Create the native controller service override directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/jenkins.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+- name: Configure the existing native controller service
+  ansible.builtin.template:
+    src: jenkins-override.conf.j2
+    dest: /etc/systemd/system/jenkins.service.d/90-battlefield.conf
+    owner: root
+    group: root
+    mode: '0644'
+- name: Remove the previous acceptance marker before this controller start
+  ansible.builtin.file:
+    path: /var/lib/jenkins/battlefield-bootstrap-complete
+    state: absent
+- name: Start the authenticated controller with its pinned plugins
+  ansible.builtin.systemd_service:
+    name: jenkins
+    enabled: true
+    state: started
+    daemon_reload: true
+- name: Wait for the controller configuration acceptance marker
+  ansible.builtin.wait_for:
+    path: /var/lib/jenkins/battlefield-bootstrap-complete
+    timeout: 300
+- name: Remove plaintext bootstrap credentials after successful controller initialization
+  ansible.builtin.command:
+    argv: [python3, -c, "{{ ci_runtime }}", scrub-inputs]
+    stdin: "{{ ci_payload | to_json }}"
+  register: ci_scrub
+  failed_when: false
+  changed_when: true
+  no_log: true
+- name: Require removal of temporary bootstrap credentials
+  ansible.builtin.assert:
+    that: ci_scrub.rc == 0
+    fail_msg: "{{ (ci_scrub.stdout | default('{}', true) | from_json).error | default('CI bootstrap credential cleanup failed') }}"
+- name: Seed platform jobs using the existing owned definitions
+  ansible.builtin.command:
+    argv: [python3, -c, "{{ ci_runtime }}", seed]
+    stdin: "{{ ci_payload | to_json }}"
+  no_log: true
+  changed_when: true
+  register: ci_seed
+  failed_when: false
+- name: Require seeded platform jobs
+  ansible.builtin.assert:
+    that: ci_seed.rc == 0
+    fail_msg: "{{ (ci_seed.stdout | default('{}', true) | from_json).error | default('CI platform seeding failed') }}"
+- name: Ensure the agent working and private configuration directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ ci_config.operator }}"
+    group: "{{ ci_config.operator }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ ci_config.home }}/jenkins-agent", mode: '0750'}
+    - {path: "{{ ci_config.home }}/.config/jenkins-agent", mode: '0700'}
+    - {path: "{{ ci_config.home }}/.config/systemd/user", mode: '0755'}
+- name: Install the existing node enrollment secret without displaying it
+  ansible.builtin.copy:
+    src: /var/lib/jenkins/battlefield-agent-secret
+    remote_src: true
+    dest: "{{ ci_config.home }}/.config/jenkins-agent/secret"
+    owner: "{{ ci_config.operator }}"
+    group: "{{ ci_config.operator }}"
+    mode: '0600'
+  no_log: true
+- name: Obtain the remoting client from the verified local controller
+  ansible.builtin.get_url:
+    url: http://127.0.0.1:8080/jnlpJars/agent.jar
+    dest: "{{ ci_config.home }}/jenkins-agent/agent.jar"
+    owner: "{{ ci_config.operator }}"
+    group: "{{ ci_config.operator }}"
+    mode: '0644'
+- name: Install the operator agent service using a file reference for its secret
+  ansible.builtin.template:
+    src: jenkins-agent.service.j2
+    dest: "{{ ci_config.home }}/.config/systemd/user/jenkins-agent.service"
+    owner: "{{ ci_config.operator }}"
+    group: "{{ ci_config.operator }}"
+    mode: '0644'
+- name: Allow the agent user manager to survive logout and reboot
+  ansible.builtin.command:
+    argv: [loginctl, enable-linger, "{{ ci_config.operator }}"]
+    creates: "/var/lib/systemd/linger/{{ ci_config.operator }}"
+- name: Read the registered agent user ID
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ ci_config.operator }}"
+- name: Restart the drained agent after controller reconciliation
+  ansible.builtin.systemd_service:
+    name: jenkins-agent
+    scope: user
+    state: restarted
+    enabled: true
+    daemon_reload: true
+  become_user: "{{ ci_config.operator }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[ci_config.operator][1] }}"
+- name: Accept the configured services before resuming builds
+  block:
+    - name: Wait for authenticated services and the online agent then record the managed release
+      ansible.builtin.command:
+        argv: [python3, -c, "{{ ci_runtime }}", verify]
+        stdin: "{{ ci_payload | combine({'save_release': true}) | to_json }}"
+      register: ci_acceptance
+      until: ci_acceptance.rc == 0
+      retries: 30
+      delay: 5
+      no_log: true
+      changed_when: false
+  rescue:
+    - name: Report the safe service acceptance failure
+      ansible.builtin.fail:
+        msg: "{{ (ci_acceptance.stdout | default('{}', true) | from_json).error | default('CI service acceptance failed') }}"

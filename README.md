@@ -61,6 +61,7 @@ with focused [backend](docs/design/backend-guide.md),
 | Provision the persistent Terraform VM and recover its state | [K3s VM](docs/operations/k3s-vm.md) |
 | Configure and verify the private K3s platform | [K3s platform](docs/operations/k3s-platform.md) |
 | Deliver to K3s, migrate existing data and recover after cutover | [K3s delivery](docs/operations/k3s-delivery.md) |
+| Recreate or adopt Jenkins, its agent and SonarQube with Ansible | [CI bootstrap](docs/operations/ci-bootstrap.md) |
 | Configure CI/CD and SonarQube | [Jenkins](docs/operations/jenkins.md) |
 | Inspect metrics, traces, logs, and reliability objectives | [Observability](docs/operations/observability.md) |
 | Launch for invited testers behind Access and provision the isolated CLI VM | [Limited-access launch](docs/operations/limited-launch.md) |

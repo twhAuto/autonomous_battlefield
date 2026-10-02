@@ -3,7 +3,8 @@
 Production now runs on the server at `192.168.1.126` (Jenkins port `8080`).
 For initial setup or migration of an existing server, complete the
 [server registration](environments.md#production-setup).
-The following installation commands are server administration instructions.
+For repeatable installation or adoption, use the [Ansible CI bootstrap](ci-bootstrap.md).
+The manual installation sections below remain reference material for the existing services.
 
 The repository owns its pipeline in `Jenkinsfile`. GitHub stores the source;
 the local Jenkins Multibranch job discovers branches and pull requests through
@@ -57,8 +58,9 @@ runs with the completed cache do not contact PyPI for this runtime.
 
 For the repeatable Ubuntu host foundation and credential import, start with the
 [server bootstrap](server-bootstrap.md). It can run from WSL before Jenkins exists.
-Jenkins controller/agent configuration below remains the current service setup;
-the foundation playbook does not yet recreate it.
+The foundation playbook preserves CI services. The separate
+[CI bootstrap](ci-bootstrap.md) recreates or adopts the controller, agent and SonarQube
+from an external operator session; merging application code does not run it.
 
 ## Reviewed host operations
 
@@ -69,8 +71,8 @@ binds folder credentials and creates the job; it never starts a build. Normal
 plugin before adopting the updated application Jenkinsfile: production rollout
 and host operations share `battlefield-production-platform` for their full Jenkins
 operation. See the guide for one-time setup, approval, credential rotation and the
-limits of locking when using external operator commands. Full controller/agent and
-SonarQube reconstruction remains AB-127 work.
+limits of locking when using external operator commands. Use the separate [external CI maintenance path](ci-bootstrap.md) for controller/agent
+and SonarQube reconstruction.
 
 ## Install the Jenkins controller on Ubuntu or WSL
 

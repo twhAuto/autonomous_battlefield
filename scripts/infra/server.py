@@ -392,7 +392,8 @@ def run_playbook(command, lock, environment=None):
 def parser():
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument('command', choices=['init', 'inspect', 'seal', 'plan', 'apply', 'verify', 'tools',
-                                                   'cli-register', 'cli-capture-guest', 'cli-plan', 'cli-apply', 'cli-verify'])
+                                                   'cli-register', 'cli-capture-guest', 'cli-plan', 'cli-apply', 'cli-verify',
+                                                   'ci-register', 'ci-plan', 'ci-apply', 'ci-verify'])
     default = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'autonomous-battlefield/server/inventory.json'
     result.add_argument('--inventory', type=safe_path, default=default)
     result.add_argument('--host')
@@ -410,6 +411,10 @@ def parser():
     result.add_argument('--cli-context', default='battlefield-production')
     result.add_argument('--cli-bridge-port', type=int, default=28084)
     result.add_argument('--cli-install', action='store_true', help='Register a fresh host bundle instead of adopting existing files')
+    result.add_argument('--ci-config', type=safe_path, help='CI registration; defaults to ci.json alongside inventory')
+    result.add_argument('--ci-install', action='store_true', help='Register a clean CI host instead of adopting an existing controller')
+    result.add_argument('--ci-admin', default='whtan', help='Existing administrator login, or fresh administrator to create')
+    result.add_argument('--ci-url', help='Jenkins root URL; defaults to the inventory host on port 8080')
     return result
 
 
@@ -440,7 +445,15 @@ def main():
         return
     data = load_inventory(args.inventory)
     report = inspect_host(data, args.local)
-    if args.command.startswith('cli-'):
+    if args.command.startswith('ci-'):
+        specification = importlib.util.spec_from_file_location('ci_bootstrap', ROOT / 'scripts/infra/ci-bootstrap.py')
+        ci = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(ci)
+        if args.command == 'ci-register':
+            ci.register(args, data, report, sys.modules[__name__])
+        else:
+            ci.playbook(args, data, report, sys.modules[__name__])
+    elif args.command.startswith('cli-'):
         specification = importlib.util.spec_from_file_location('cli_bootstrap', ROOT / 'scripts/infra/cli-bootstrap.py')
         cli = importlib.util.module_from_spec(specification)
         specification.loader.exec_module(cli)
