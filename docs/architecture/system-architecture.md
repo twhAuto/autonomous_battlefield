@@ -12,7 +12,7 @@ resources, authentication, stored data, or API routes.
 | Audience | Contributors reviewing or extending system behavior |
 | Scope | Runtime components, data flows, durability, security, and deployment |
 
-For a package-by-package explanation of the implementation, see the [codebase guide](codebase-guide.md).
+For a package-by-package explanation of the implementation, see the [codebase guide](../developer/codebase-guide.md).
 
 ## Deployment environment boundary
 
@@ -113,7 +113,7 @@ The API and engine entry points compose `httpapi.LifecycleHandler` around applic
 
 ### Source ownership
 
-See the [backend guide](backend-guide.md#backend-organization) for package
+See the [backend guide](../developer/backend-guide.md#backend-organization) for package
 boundaries, frontend ownership, and launcher locations.
 
 The Vite development proxy defaults to `http://localhost:8080` and accepts a
@@ -486,7 +486,7 @@ It verifies persisted acceptance rather than trusting CLI success, and records
 context hashes, prompt provenance, validation failures, latency, usage and
 canonical plan diversity. This measures individual decisions; win rate remains
 null. CLI internal token/turn budgets differ from API enforcement and are labeled
-in reports. See [AI comparisons](../operations/ai-comparisons.md).
+in reports. See [AI comparisons](../developer/ai-comparisons.md).
 
 ### Bounded context
 
@@ -524,7 +524,7 @@ and blocked Barracks orders are skipped; blocked castle spawns or an unaffordabl
 purchase stop remaining purchases. The six-unit limit spans all sources. Empty orders mean no buying; missing orders retain legacy
 priority behavior. Orders are deep-copied and persisted with plans, faction memory,
 and decision hashes. The UI shows requested quantities; recruitment events report
-actual spending. See [explicit unit purchases](../operations/ai-comparisons.md#explicit-unit-purchases)
+actual spending. See [explicit unit purchases](../developer/ai-comparisons.md#explicit-unit-purchases)
 for partial-order and reuse semantics.
 
 ### Versioned unit knowledge
@@ -540,7 +540,7 @@ external service dependency and does not change engine combat or plan validation
 `engine.knowledgeRetrieval` controls positive card and byte limits (defaults 16
 and 16384). Effective limits, selected source IDs, content digest, byte size, and
 truncation accompany decision knowledge. Old scenarios without knowledge remain
-valid. See [AI comparisons](../operations/ai-comparisons.md#unit-knowledge-retrieval)
+valid. See [AI comparisons](../developer/ai-comparisons.md#unit-knowledge-retrieval)
 for authoring, configuration, and evaluation details.
 
 ### Compact unit context and exact lookup
@@ -577,7 +577,7 @@ The saved-context inspector exposes the exact initial projection separately from
 reference details labelled available on demand. Availability does not establish
 that the model fetched them. Evaluation reports count lookup calls and aggregate
 input tokens across turns, alongside latency, acceptance, fallback, and diversity.
-See [compact context rollout](../operations/ai-comparisons.md#compact-unit-context)
+See [compact context rollout](../developer/ai-comparisons.md#compact-unit-context)
 for deployment order and checks.
 
 ### Submission-shape failures and fallback attribution
@@ -987,7 +987,7 @@ an explicit model ID for reproducible comparisons. See [Claude operations](../op
   the `request_id` log field, so a client-reported failure maps to one log line.
   The identifier lives in the leaf `internal/requestid` package because `httpapi`
   imports `authn`, which also writes errors. Codes are listed in the
-  [API reference](../reference/api.md#errors).
+  [API reference](api.md#errors).
 - HTTP completion logs carry `actor_id` and `actor_role` from authentication
   middleware, providing request attribution rather than a tamper-proof audit
   store. Tokens, cookies and email headers are not logged. See
@@ -1287,7 +1287,7 @@ management token. Activation and rotation are in the
   in-flight responses so stale running status cannot overwrite an operator stop.
 - Load and failover behavior needs testing before increasing engine, MCP, or agent replicas.
 - API adapters build text transcripts instead of preserving provider-native structured tool history.
-- The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [backend guide](backend-guide.md#internalgamecontroller-deterministic-policy-abstractions).
+- The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [backend guide](../developer/backend-guide.md#internalgamecontroller-deterministic-policy-abstractions).
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
 
 The image-verification admission webhook fails closed on missing or invalid
@@ -1343,7 +1343,7 @@ See the [hardening rollout](../operations/jenkins.md#production-hardening-rollou
 
 ## Development cross-review boundary
 
-The [Codex/Claude review runner](../operations/cross-review.md) operates
+The [Codex/Claude review runner](../developer/cross-review.md) operates
 on the development machine, separately from production workers. It sends the
 selected committed source/diff to the reviewer's provider using existing CLI
 login, excludes untracked application secrets, and stores private reports outside
@@ -1413,7 +1413,7 @@ Process configuration stays within `internal/config`, with parsers separated by
 concern. Frontend features share unit capabilities and model-profile contracts
 through `shared/domain`; feature API clients retain their request logic. Styles
 are owned by the shell, features, and shared components and assembled through
-`src/styles.css`. See the [codebase index](codebase-guide.md) for the focused guides.
+`src/styles.css`. See the [codebase index](../developer/codebase-guide.md) for the focused guides.
 
 Docker image builds use the backend and frontend directories as separate
 contexts. Each context excludes local environment files, including nested files,
@@ -1531,7 +1531,7 @@ password handshake, using `/usr/bin/sudo.ws` when Ubuntu's default is sudo-rs.
 Both SSH and local execution use that target-side selection; the system default,
 sudo policy and password requirements remain unchanged. Missing compatibility
 support stops Ansible before host tasks run.
-Applies and individual production deploy/tunnel/rollback commands share an
+Applies and individual production infra/deploy/tunnel/rollback commands share an
 operator-owned host lock. Ansible inherits the lock descriptor or a pipe keeping
 its detached lock proxy alive, preserving exclusion when its controller is killed
 while the child continues. This does not protect remote tasks after total loss of

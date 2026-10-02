@@ -17,11 +17,11 @@ git -C "${runtime_dir}" config user.email test@example.invalid
 git -C "${runtime_dir}" config user.name "Deployment component test"
 
 mkdir -p \
-  "${runtime_dir}/deploy/langfuse" \
+  "${runtime_dir}/infra/deploy/langfuse" \
   "${runtime_dir}/backend" \
   "${runtime_dir}/frontend" \
-  "${runtime_dir}/deploy/overlays/local/logging-collector" \
-  "${runtime_dir}/deploy/overlays/local/observability" \
+  "${runtime_dir}/infra/deploy/overlays/local/logging-collector" \
+  "${runtime_dir}/infra/deploy/overlays/local/observability" \
   "${runtime_dir}/legacy" \
   "${runtime_dir}/tests/performance" \
   "${runtime_dir}/scripts/ci" \
@@ -139,9 +139,10 @@ assert_detection "none" "infra/ansible/site.yml"
 assert_detection "none" "scripts/infra/server.py"
 assert_detection "none" "infra/jenkins/platform-plugins.json"
 assert_detection "none" "scripts/ci/run-platform.sh"
-assert_detection "none" "Jenkinsfile.platform"
-assert_detection "none" "Jenkinsfile.vm"
-assert_detection "none" "Jenkinsfile.k3s"
+assert_detection "none" "infra/jenkins/Jenkinsfile.platform"
+assert_detection "none" "infra/jenkins/Jenkinsfile.vm"
+assert_detection "none" "infra/jenkins/Jenkinsfile.k3s"
+assert_detection "all" "infra/jenkins/Jenkinsfile.assurance"
 assert_detection "none" "infra/k3s/settings.json"
 assert_detection "none" "scripts/ci/run-k3s.sh"
 assert_detection "none" "infra/libvirt/main.tf"
@@ -149,18 +150,18 @@ assert_detection "none" "scripts/ci/run-vm.sh"
 
 assert_detection "frontend,application" "frontend/src/app/App.tsx"
 assert_detection "migration,backend,application" "backend/internal/app/app.go"
-assert_detection "observability" "deploy/overlays/local/observability/prometheus/prometheus.yml"
-assert_detection "observability" "deploy/langfuse/collector-config.yaml"
-assert_detection "observability" "deploy/overlays/local/logging-collector/fluent-bit.conf"
+assert_detection "observability" "infra/deploy/overlays/local/observability/prometheus/prometheus.yml"
+assert_detection "observability" "infra/deploy/langfuse/collector-config.yaml"
+assert_detection "observability" "infra/deploy/overlays/local/logging-collector/fluent-bit.conf"
 assert_detection "none" "README.md"
-assert_detection "infrastructure" "deploy/overlays/k3s/infrastructure/kustomization.yaml"
-assert_detection "application" "deploy/overlays/k3s/application/kustomization.yaml"
-assert_detection "migration" "deploy/overlays/k3s/migration/kustomization.yaml"
-assert_detection "observability" "deploy/overlays/k3s/observability/kustomization.yaml"
-assert_detection "observability" "deploy/overlays/k3s/logging-collector/kustomization.yaml"
-assert_detection "gateway" "deploy/overlays/k3s/gateway/kustomization.yaml"
+assert_detection "infrastructure" "infra/deploy/overlays/k3s/infrastructure/kustomization.yaml"
+assert_detection "application" "infra/deploy/overlays/k3s/application/kustomization.yaml"
+assert_detection "migration" "infra/deploy/overlays/k3s/migration/kustomization.yaml"
+assert_detection "observability" "infra/deploy/overlays/k3s/observability/kustomization.yaml"
+assert_detection "observability" "infra/deploy/overlays/k3s/logging-collector/kustomization.yaml"
+assert_detection "gateway" "infra/deploy/overlays/k3s/gateway/kustomization.yaml"
 assert_detection "none" "docs/architecture.md"
-assert_detection "none" "quality/sonarqube/rules.properties"
+assert_detection "none" "infra/sonarqube/rules.properties"
 assert_detection "none" "scripts/test/test-go-coverage.sh"
 assert_detection "none" "scripts/test/test-command-wrappers.sh"
 assert_detection "none" "tests/performance/k6-smoke.js"

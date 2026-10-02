@@ -10,11 +10,11 @@ The Google subscription profile uses `agy` (Antigravity CLI), replacing the reti
 4. In another terminal run `./run-k8s-cli-agent.sh antigravity`, or use `both` for Codex and Antigravity. Keep this terminal open during battles.
 5. Select the Antigravity subscription profile in the battle form. Verify a decision at a planning tick submits a strategy and reports usage.
 
-The pinned model is `gemini-3.7-flash-medium`. Model access depends on the signed-in account; consult `agy models` when diagnosing availability. Change the model consistently in `backend/config.yaml`, `deploy/base/infrastructure/configmap.yaml`, and the host launcher if selecting another supported model.
+The pinned model is `gemini-3.7-flash-medium`. Model access depends on the signed-in account; consult `agy models` when diagnosing availability. Change the model consistently in `backend/config.yaml`, `infra/deploy/base/infrastructure/configmap.yaml`, and the host launcher if selecting another supported model.
 
 ## Isolation and troubleshooting
 
-See [CLI runtime](../design/system-architecture.md#cli-runtime) for isolation,
+See [CLI runtime](../architecture/system-architecture.md#cli-runtime) for isolation,
 context delivery, and submission enforcement.
 
 Before enabling the profile, the launcher runs a bounded account-usage probe under the same isolation. If this fails, confirm interactive sign-in in the same WSL session. A native token file must be a regular file, not a symlink. Temporary token refreshes are not persisted back to the host; if the saved login expires, sign in again with `agy`. CLI execution errors and unsuccessful or missing result envelopes fail the decision. Account authentication does not by itself establish model access or successful MCP submission.
@@ -22,7 +22,7 @@ Before enabling the profile, the launcher runs a bounded account-usage probe und
 Restart the bridge after deployment or CLI configuration changes. Ctrl+C removes the advertised availability. Production does not need an Antigravity installation or subscription login: this is a host development bridge, and no server deployment is performed by installing it.
 
 For `plan_not_submitted` or malformed MCP arguments, use the
-[missing-plan troubleshooting guide](ai-comparisons.md#troubleshooting-a-missing-antigravity-plan).
+[missing-plan troubleshooting guide](../developer/ai-comparisons.md#troubleshooting-a-missing-antigravity-plan).
 A `cli_permission` failure means the result reported a denied action; verify the
 installed version against the configured prefix before restarting the bridge.
 

@@ -291,7 +291,7 @@ def playbook(args, data, report, server):
     host = inventory['all']['children']['bootstrap']['hosts']['server']
     inventory['all']['children']['cli_host'] = inventory['all']['children'].pop('bootstrap')
     host.update(cli_kind='host', cli_contract=config['host'], cli_files=files,
-                cli_units=boundary.HOST_UNITS, cli_firewall=(Path(config['bundle']) / 'firewall.nft').read_text(), cli_filter_xml=(ROOT / 'deploy/agent-vm/filter.xml').read_text())
+                cli_units=boundary.HOST_UNITS, cli_firewall=(Path(config['bundle']) / 'firewall.nft').read_text(), cli_filter_xml=(ROOT / 'infra/deploy/agent-vm/filter.xml').read_text())
     guest = config['guest']
     if guest is not None:
         validate_guest_unit(server.private_file(guest['service']).read_text())

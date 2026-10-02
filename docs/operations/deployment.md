@@ -47,7 +47,7 @@ signature/provenance checks. Missing approval requires operator recovery.
 Use the same application containers and core Kubernetes resources locally and
 on AWS:
 
-See the [system context](../design/system-architecture.md#2-system-context)
+See the [system context](../architecture/system-architecture.md#2-system-context)
 for the API, engine, MCP, agent, PostgreSQL, and optional Redis topology.
 PostgreSQL remains the durable queue in both deployment environments.
 
@@ -70,7 +70,7 @@ are separate from the application-deployment exercise.
 Start with native YAML resources and organize them with Kustomize:
 
 ```text
-deploy/
+infra/deploy/
 ├── base/
 │   ├── infrastructure/     Namespace and non-secret configuration
 │   ├── migration/          One-shot schema migration Job
@@ -115,11 +115,11 @@ stages registered secret inputs into temporary overlays. The remaining overlays
 can be rendered without credentials:
 
 ```bash
-kubectl kustomize deploy/overlays/local/migration
-kubectl kustomize deploy/overlays/local/application
-kubectl kustomize deploy/overlays/local/observability
-kubectl kustomize deploy/overlays/local/logging-collector
-kubectl kustomize deploy/overlays/local/gateway
+kubectl kustomize infra/deploy/overlays/local/migration
+kubectl kustomize infra/deploy/overlays/local/application
+kubectl kustomize infra/deploy/overlays/local/observability
+kubectl kustomize infra/deploy/overlays/local/logging-collector
+kubectl kustomize infra/deploy/overlays/local/gateway
 ```
 
 ## Why Helm comes later
@@ -232,7 +232,7 @@ The helper supports `auto`, `codex`, `antigravity`, `claude`, `both`, and `all`
 and silently skips a CLI whose version is outside its pinned family
 (`codex-cli 0.155.`, Antigravity `1.2.`, Claude `2.1.267`). Name the CLI explicitly
 to see why it was rejected. Pins are kept identical in `backend/config.yaml`,
-`deploy/base/infrastructure/configmap.yaml`, `deploy/agent-vm/config.yaml`, and
+`infra/deploy/base/infrastructure/configmap.yaml`, `infra/deploy/agent-vm/config.yaml`, and
 `scripts/dev/run-k8s-cli-agent.sh`. Before raising a pin, run the opt-in live
 decision test for that CLI (it uses its subscription allowance, synthetic data only):
 
@@ -402,23 +402,24 @@ folder rule. Multiple changed paths contribute the union of their components;
 | Changed path | Selected components | Image build and scan |
 | --- | --- | --- |
 | Any `*.md`, `LICENSE`, `LICENSE.*`, or root `.gitignore` | `none` | None |
-| `infra/ansible/**`, `infra/jenkins/**`, `infra/libvirt/**`, `scripts/infra/**`, `scripts/ci/run-platform.sh`, `scripts/ci/run-vm.sh`, `Jenkinsfile.platform` or `Jenkinsfile.vm` (explicit platform provisioning) | `none` | None |
-| `quality/**` or `sonar-project.properties` | `none` | None |
+| `infra/jenkins/Jenkinsfile.assurance` | `all` | Backend and frontend images |
+| `infra/ansible/**`, other `infra/jenkins/**`, `infra/libvirt/**`, `infra/k3s/**`, `scripts/infra/**`, `scripts/ci/run-platform.sh`, `scripts/ci/run-vm.sh`, or `scripts/ci/run-k3s.sh` (explicit platform provisioning) | `none` | None |
+| `infra/sonarqube/**` or `sonar-project.properties` | `none` | None |
 | `scripts/test/**` and `tests/**` | `none` | None |
 | Go `backend/**/*_test.go`, frontend `src/**/*.test.ts`, `src/**/*.test.tsx`, or `src/test/**` | `none` | None |
 | CI lint/coverage summary and existing test compatibility wrappers (`test-*`, `fuzz-smoke`, `with-test-postgres`) | `none` | None |
 | `backend/**` | `migration,backend,application` | Backend image |
 | `frontend/**` | `frontend,application` | Frontend image |
-| `deploy/base/infrastructure/**` or `deploy/overlays/{local,k3s}/infrastructure/**` | `infrastructure` | None |
-| `deploy/base/migration/**` or `deploy/overlays/{local,k3s}/migration/**` | `migration` | None; uses the deployed backend image |
-| `deploy/base/application/**` or `deploy/overlays/{local,k3s}/application/**` | `application` | None; preserves deployed image tags |
-| `deploy/overlays/{local,k3s}/observability/**` or `deploy/overlays/{local,k3s}/logging-collector/**` | `observability` | None |
-| `deploy/overlays/{local,k3s}/gateway/**` | `gateway` | None |
+| `infra/deploy/base/infrastructure/**` or `infra/deploy/overlays/{local,k3s}/infrastructure/**` | `infrastructure` | None |
+| `infra/deploy/base/migration/**` or `infra/deploy/overlays/{local,k3s}/migration/**` | `migration` | None; uses the deployed backend image |
+| `infra/deploy/base/application/**` or `infra/deploy/overlays/{local,k3s}/application/**` | `application` | None; preserves deployed image tags |
+| `infra/deploy/overlays/{local,k3s}/observability/**` or `infra/deploy/overlays/{local,k3s}/logging-collector/**` | `observability` | None |
+| `infra/deploy/overlays/{local,k3s}/gateway/**` | `gateway` | None |
 | `VERSION` | `migration,backend,frontend,application` | Both application images |
 | CI image build or scan scripts | `all` | Both application images |
 | `scripts/ops/render-limited-launch.py` or `scripts/cd/reconcile-network-policies.sh` | `network-policy` | None |
 | Other paths under `scripts/cd/**` or `scripts/lib/**` | `all` | Both application images |
-| `deploy/kind.yaml` | `all` | Both application images |
+| `infra/deploy/kind.yaml` | `all` | Both application images |
 | Any other or newly introduced path | `all`, with a warning | Both application images |
 | Missing or invalid previous-successful revision | `all` | Both application images |
 
@@ -825,7 +826,7 @@ and container diagnostics on failure. Finished jobs are retained for 300 seconds
 
 After a manual recovery, recreate only the setup job with
 `kubectl -n battlefield delete job battlefield-kibana-setup --ignore-not-found`
-and `kubectl -n battlefield apply -f deploy/overlays/local/observability/kibana/setup-job.yaml`,
+and `kubectl -n battlefield apply -f infra/deploy/overlays/local/observability/kibana/setup-job.yaml`,
 then confirm completion before running production smoke verification.
 
 Before the first hardened production delivery, complete the

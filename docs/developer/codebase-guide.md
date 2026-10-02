@@ -12,7 +12,7 @@ repository/package paths and deployment identifiers remain compatible.
 | Audience | Contributors navigating or modifying the implementation |
 | Scope | Repository layout, entry points, packages, dependencies, tests, and reading paths |
 
-For runtime boundaries, data flows, durability, and security decisions, see the [system architecture](system-architecture.md).
+For runtime boundaries, data flows, durability, and security decisions, see the [system architecture](../architecture/system-architecture.md).
 
 AI-created work branches start from the latest fetched `origin/dev` and target
 `dev` in pull requests, unless the user explicitly requests otherwise. Promotion
@@ -20,7 +20,7 @@ to `main` is separate. See [agent branch guidance](../../AGENTS.md#branches-and-
 and the [Jenkins workflow](../operations/jenkins.md#configure-github-integration-branch-protection).
 Run applicable local checks before opening a PR, and complete the PR template's
 AI-assistance section required by the
-[AI development policy](../security/ai-development-policy.md). The repo's
+[AI development policy](ai-development-policy.md). The repo's
 [raise-pr](../../.agents/skills/raise-pr/SKILL.md),
 [triage-ci](../../.agents/skills/triage-ci/SKILL.md),
 [release-and-recover](../../.agents/skills/release-and-recover/SKILL.md),
@@ -70,10 +70,14 @@ autonomous_battlefield/
 │   ├── shared/{api,domain,components,hooks,styles}/ # Shared contracts, visuals, and foundations
 │   ├── pages/                  # General pages, including Home
 │   └── test/                   # Shared test setup
-├── deploy/                     # Kubernetes bases, overlays, supply-chain assets
-├── infra/ansible/              # Ubuntu host foundation, Vault inputs, pinned control dependencies
-├── infra/libvirt/              # Pinned Terraform VM, network and retained disks
-├── infra/aws/                  # AWS provisioning with Terraform
+├── infra/
+│   ├── deploy/                # Kubernetes bases, overlays, supply-chain and CLI VM assets
+│   ├── ansible/               # Ubuntu host foundation, Vault inputs, control dependencies
+│   ├── libvirt/               # Pinned Terraform VM, network and retained disks
+│   ├── k3s/                   # Cluster settings and pinned platform assets
+│   ├── jenkins/               # Auxiliary pipelines, job definitions and plugin pins
+│   ├── sonarqube/             # Local analysis service
+│   └── aws/                   # AWS provisioning with Terraform
 ├── scripts/
 │   ├── infra/                  # Server registration, inspection and Ansible entry point
 │   ├── dev/                    # Local application and host-agent launchers
@@ -86,9 +90,8 @@ autonomous_battlefield/
 │   ├── review/                 # Codex/Claude cross-review runner
 │   └── lib/                    # Shared script functions
 ├── tests/performance/          # k6 scenarios
-├── quality/sonarqube/          # Local analysis service
 ├── policy/                     # Deployment policy
-└── docs/{design,operations,reference,security}/
+└── docs/{developer,architecture,operations}/
 ```
 
 ## Executable entry points
@@ -146,7 +149,7 @@ second pipeline definition. `test-ci-bootstrap.py` covers the boundaries;
 `run-ci-bootstrap-rehearsal.py` and its UUID-guarded guest fixture exercise actual
 services. See [CI bootstrap](../operations/ci-bootstrap.md).
 
-`Jenkinsfile.platform` and `scripts/ci/run-platform.sh` enter the reviewed host
+`infra/jenkins/Jenkinsfile.platform` and `scripts/ci/run-platform.sh` enter the reviewed host
 workflow in `scripts/infra/platform.py`. It binds a private plan receipt to the
 trusted revision and inputs and uses `operation-lock.py` for exclusion and child
 cancellation through a shared supervisor that defers startup signals until the
@@ -160,7 +163,7 @@ owned folder/job/file credentials without triggering a build. Plugin pins live i
 setup and real callback behavior. See [platform jobs](../operations/platform-jobs.md).
 
 `infra/libvirt` defines the dedicated VM/network and separate OS/data lifecycles.
-`Jenkinsfile.vm` and `scripts/ci/run-vm.sh` invoke `scripts/infra/vm.py`, which shares
+`infra/jenkins/Jenkinsfile.vm` and `scripts/ci/run-vm.sh` invoke `scripts/infra/vm.py`, which shares
 the host operation lock and trusted-main check. `vm-policy.py` validates capacity
 settings, resource actions and approval receipts; `vm-tools.py` installs verified
 tools/images in a private cache and resolves the shared Ubuntu release pin. `vm-state.py` copies encrypted snapshots to the
@@ -178,7 +181,7 @@ subprocess `--help` check for foundation, VM, K3s and delivery entry points with
 ordinary Python path settings and a separate working directory. See the
 [VM runbook](../operations/k3s-vm.md) for Jenkins and Ansible handoff details.
 
-`Jenkinsfile.k3s` and `scripts/ci/run-k3s.sh` run the reviewed guest workflow in
+`infra/jenkins/Jenkinsfile.k3s` and `scripts/ci/run-k3s.sh` run the reviewed guest workflow in
 `scripts/infra/k3s.py`; `k3s-config.py` validates cluster settings and renders the
 private platform/probe manifests. `infra/k3s/` holds settings and asset checksums.
 `infra/ansible/k3s.yml` combines `k3s_storage` (stable disk ownership, fstab,
@@ -210,7 +213,7 @@ command-double deployment suite; see [Jenkins checks](../operations/jenkins.md#p
 `scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh` are the driver-neutral
 entry points used by Jenkins; the old Kind-named scripts forward arguments and
 signals. `cd/lib/kubernetes-deployment.sh` stages selected shared overlays and
-composes `deploy/overlays/k3s` when the profile selects K3s. `lib/k3s-delivery.py`
+composes `infra/deploy/overlays/k3s` when the profile selects K3s. `lib/k3s-delivery.py`
 performs read-only platform/retained-volume checks. `production_recovery.py`
 binds verified images to the applied database migration ledger. The required
 `test-k3s-delivery.py` suite exercises the real commands with isolated external
@@ -306,7 +309,7 @@ while exposing explicitly approved, available CLI profiles.
 VM plan/apply/verify. `infra/ansible/cli-vm.yml` calls `library/battlefield_cli_vm.py`;
 `module_utils/battlefield_cli_vm.py` owns privileged creation/adoption and immutable
 local state, while `battlefield_cli_vm_policy.py` checks layout and receipts.
-`deploy/agent-vm/domain.xml`, `network.xml` and `filter.xml` declare the fixed
+`infra/deploy/agent-vm/domain.xml`, `network.xml` and `filter.xml` declare the fixed
 layout. The wrapper uses the shared operation lock and existing sudo selection.
 Its generated host-local handoff is consumed by `cli-bootstrap.py` before guest
 configuration validation. `test-cli-vm.py` exercises layout, approval and handoff
@@ -329,7 +332,7 @@ Ansible service lifecycle only in a UUID-bound disposable guest.
 
 
 `scripts/ops/render-agent-vm-host.py` renders the dedicated systemd, Caddy and
-firewall files from `deploy/agent-vm/host` into a new directory without touching
+firewall files from `infra/deploy/agent-vm/host` into a new directory without touching
 services. The loopback bridge defaults to 28084, separate from Jenkins smoke
 ports; `--bridge-port` validates an unprivileged port and substitutes the same
 value in the Kubernetes forward and Caddy upstream. Guest-facing ports and the

@@ -30,7 +30,7 @@ class DeliveryTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.directory = Path(self.tmp.name)
         self.project = self.directory / 'project'
-        for name in ('scripts', 'infra/k3s', 'deploy'):
+        for name in ('scripts', 'infra/k3s', 'infra/deploy'):
             shutil.copytree(ROOT / name, self.project / name, ignore=shutil.ignore_patterns('__pycache__'))
         # Use the real interprocess lock, scoped to the disposable controller home.
         lock = self.project / 'scripts/infra/operation-lock.py'
@@ -145,7 +145,7 @@ elif 'apply' in args and '-f' in args and args[args.index('-f')+1]=='-': sys.std
         self.assertTrue(any('pg_restore' in ' '.join(c) for c in self.calls))
 
     def test_collector_ports_are_unique_for_kubernetes_validation(self):
-        manifest=(ROOT/'deploy/overlays/local/observability/otel-collector/deployment.yaml').read_text()
+        manifest=(ROOT/'infra/deploy/overlays/local/observability/otel-collector/deployment.yaml').read_text()
         ports=re.findall(r'\{name: ([a-z0-9-]+), containerPort: ([0-9]+)\}',manifest)
         self.assertGreaterEqual(len(ports),3)
         self.assertEqual(len(ports),len({name for name,_ in ports}))

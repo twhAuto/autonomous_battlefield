@@ -283,48 +283,48 @@ cluster_deploy_prepare_overlays() {
   staged_auth_secret_file=""
   runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/autonomous-battlefield-kustomize.XXXXXX")"
   mkdir -p \
-    "${runtime_dir}/deploy/base" \
-    "${runtime_dir}/deploy/overlays/local"
+    "${runtime_dir}/infra/deploy/base" \
+    "${runtime_dir}/infra/deploy/overlays/local"
 
   local component
   for component in infrastructure migration application observability gateway; do
     deployment_component_selected "${component}" || continue
-    if [[ -d "${project_dir}/deploy/base/${component}" ]]; then
-      cp -R "${project_dir}/deploy/base/${component}" "${runtime_dir}/deploy/base/"
+    if [[ -d "${project_dir}/infra/deploy/base/${component}" ]]; then
+      cp -R "${project_dir}/infra/deploy/base/${component}" "${runtime_dir}/infra/deploy/base/"
     fi
     if [[ "${component}" == "infrastructure" ]]; then
-      mkdir -p "${runtime_dir}/deploy/overlays/local/infrastructure"
+      mkdir -p "${runtime_dir}/infra/deploy/overlays/local/infrastructure"
       # Stage only manifests. Secret inputs are copied explicitly below; optional
       # local authentication files do not belong in deployment scratch space.
-      cp "${project_dir}/deploy/overlays/local/infrastructure/"*.yaml \
-        "${runtime_dir}/deploy/overlays/local/infrastructure/"
+      cp "${project_dir}/infra/deploy/overlays/local/infrastructure/"*.yaml \
+        "${runtime_dir}/infra/deploy/overlays/local/infrastructure/"
     else
-      cp -R "${project_dir}/deploy/overlays/local/${component}" \
-        "${runtime_dir}/deploy/overlays/local/"
+      cp -R "${project_dir}/infra/deploy/overlays/local/${component}" \
+        "${runtime_dir}/infra/deploy/overlays/local/"
     fi
   done
   if deployment_component_selected observability; then
-    cp -R "${project_dir}/deploy/overlays/local/logging-collector" \
-      "${runtime_dir}/deploy/overlays/local/"
+    cp -R "${project_dir}/infra/deploy/overlays/local/logging-collector" \
+      "${runtime_dir}/infra/deploy/overlays/local/"
   fi
   if deployment_component_selected application && [[ "${DEPLOY_ENV:-dev}" == dev ]]; then
-    sed -i 's/value: production/value: dev/' "${runtime_dir}/deploy/base/application/api-deployment.yaml"
+    sed -i 's/value: production/value: dev/' "${runtime_dir}/infra/deploy/base/application/api-deployment.yaml"
   fi
   if deployment_component_selected migration && [[ "${DEPLOY_ENV:-dev}" == dev ]]; then
-    sed -i 's/value: production/value: dev/' "${runtime_dir}/deploy/base/migration/job.yaml"
+    sed -i 's/value: production/value: dev/' "${runtime_dir}/infra/deploy/base/migration/job.yaml"
   fi
   if deployment_component_selected application; then
-    cp -R "${project_dir}/deploy/overlays/local/application" \
-      "${runtime_dir}/deploy/overlays/local/rollback-application"
+    cp -R "${project_dir}/infra/deploy/overlays/local/application" \
+      "${runtime_dir}/infra/deploy/overlays/local/rollback-application"
   fi
 
   if deployment_component_selected infrastructure; then
     cluster_deploy_prepare_database_secret \
-      "${runtime_dir}/deploy/overlays/local/infrastructure/secret.env"
+      "${runtime_dir}/infra/deploy/overlays/local/infrastructure/secret.env"
     cluster_deploy_prepare_ai_secret \
-      "${runtime_dir}/deploy/overlays/local/infrastructure/ai-secret.env"
-    node "${project_dir}/scripts/lib/application-env.cjs" extract "${secret_file}" "${runtime_dir}/deploy/overlays/local/infrastructure/runtime.env" runtime
-    node "${project_dir}/scripts/lib/application-env.cjs" extract "${secret_file}" "${runtime_dir}/deploy/overlays/local/infrastructure/cache.env" cache
+      "${runtime_dir}/infra/deploy/overlays/local/infrastructure/ai-secret.env"
+    node "${project_dir}/scripts/lib/application-env.cjs" extract "${secret_file}" "${runtime_dir}/infra/deploy/overlays/local/infrastructure/runtime.env" runtime
+    node "${project_dir}/scripts/lib/application-env.cjs" extract "${secret_file}" "${runtime_dir}/infra/deploy/overlays/local/infrastructure/cache.env" cache
     node "${project_dir}/scripts/lib/application-env.cjs" extract "${secret_file}" "${runtime_dir}/members.env" members
     if [[ -f "${BATTLEFIELD_AUTH_SECRET_FILE:-}" ]]; then
       node "${project_dir}/scripts/lib/application-env.cjs" extract "${BATTLEFIELD_AUTH_SECRET_FILE}" "${runtime_dir}/auth.env" auth
@@ -336,30 +336,30 @@ cluster_deploy_prepare_overlays() {
     if [[ "${DEPLOY_ENV:-dev}" == production ]]; then
       : "${BF_KUBELET_CA_FILE:?Production monitoring requires a trusted kubelet CA bundle}"
       python3 "${project_dir}/scripts/ops/configure-production-prometheus.py" \
-        "${runtime_dir}/deploy/overlays/local/observability/prometheus" "${BF_KUBELET_CA_FILE}" || return
+        "${runtime_dir}/infra/deploy/overlays/local/observability/prometheus" "${BF_KUBELET_CA_FILE}" || return
     fi
     LANGFUSE_ENABLED="$(battlefield_env_langfuse_enabled)" || return
     if [[ "${LANGFUSE_ENABLED}" == 1 ]]; then
-      cp "${project_dir}/deploy/langfuse/collector-config.yaml" "${runtime_dir}/deploy/overlays/local/observability/otel-collector/config.yaml"
+      cp "${project_dir}/infra/deploy/langfuse/collector-config.yaml" "${runtime_dir}/infra/deploy/overlays/local/observability/otel-collector/config.yaml"
     fi
   fi
 
   if [[ "${CLUSTER_DRIVER:-kind}" == k3s ]]; then
-    mkdir -p "${runtime_dir}/deploy/overlays/k3s"
+    mkdir -p "${runtime_dir}/infra/deploy/overlays/k3s"
     for component in infrastructure migration application observability gateway logging-collector; do
-      [[ -d "${runtime_dir}/deploy/overlays/local/${component}" ]] || continue
-      cp -R "${project_dir}/deploy/overlays/k3s/${component}" "${runtime_dir}/deploy/overlays/k3s/"
+      [[ -d "${runtime_dir}/infra/deploy/overlays/local/${component}" ]] || continue
+      cp -R "${project_dir}/infra/deploy/overlays/k3s/${component}" "${runtime_dir}/infra/deploy/overlays/k3s/"
     done
   fi
-  rollout_overlays="${runtime_dir}/deploy/overlays/$([[ "${CLUSTER_DRIVER:-kind}" == k3s ]] && echo k3s || echo local)"
-  rollback_overlay="${runtime_dir}/deploy/overlays/local/rollback-application"
+  rollout_overlays="${runtime_dir}/infra/deploy/overlays/$([[ "${CLUSTER_DRIVER:-kind}" == k3s ]] && echo k3s || echo local)"
+  rollback_overlay="${runtime_dir}/infra/deploy/overlays/local/rollback-application"
 
   if deployment_component_selected application && [[ "${image_source}" == "registry" ]]; then
     backend_name="${effective_backend_ref%@*}"
     backend_digest="${effective_backend_ref##*@}"
     frontend_name="${effective_frontend_ref%@*}"
     frontend_digest="${effective_frontend_ref##*@}"
-    cat >>"${runtime_dir}/deploy/overlays/local/application/kustomization.yaml" <<EOF
+    cat >>"${runtime_dir}/infra/deploy/overlays/local/application/kustomization.yaml" <<EOF
 
 images:
   - name: autonomous-battlefield-backend
@@ -370,7 +370,7 @@ images:
     digest: "${frontend_digest}"
 EOF
   elif deployment_component_selected application; then
-    cat >>"${runtime_dir}/deploy/overlays/local/application/kustomization.yaml" <<EOF
+    cat >>"${runtime_dir}/infra/deploy/overlays/local/application/kustomization.yaml" <<EOF
 
 images:
   - name: autonomous-battlefield-backend
@@ -385,7 +385,7 @@ EOF
   if deployment_component_selected migration && [[ "${image_source}" == "registry" ]]; then
     backend_name="${effective_backend_ref%@*}"
     backend_digest="${effective_backend_ref##*@}"
-    cat >>"${runtime_dir}/deploy/overlays/local/migration/kustomization.yaml" <<EOF
+    cat >>"${runtime_dir}/infra/deploy/overlays/local/migration/kustomization.yaml" <<EOF
 
 images:
   - name: autonomous-battlefield-backend
@@ -393,7 +393,7 @@ images:
     digest: "${backend_digest}"
 EOF
   elif deployment_component_selected migration; then
-    cat >>"${runtime_dir}/deploy/overlays/local/migration/kustomization.yaml" <<EOF
+    cat >>"${runtime_dir}/infra/deploy/overlays/local/migration/kustomization.yaml" <<EOF
 
 images:
   - name: autonomous-battlefield-backend
@@ -434,7 +434,7 @@ cluster_deploy_registry_credentials() {
 
 cluster_deploy_infrastructure() {
   echo "Applying ${DEPLOY_ENV:-dev} infrastructure..."
-  cluster_deploy_kube apply -k "${rollout_overlays:-${runtime_dir}/deploy/overlays/local}/infrastructure"
+  cluster_deploy_kube apply -k "${rollout_overlays:-${runtime_dir}/infra/deploy/overlays/local}/infrastructure"
   if [[ -f "${staged_auth_secret_file:-}" ]]; then
     cluster_deploy_kube create secret generic battlefield-auth --namespace "${namespace}" \
       --from-env-file="${staged_auth_secret_file}" --dry-run=client -o yaml | cluster_deploy_kube apply -f -
@@ -467,7 +467,7 @@ cluster_deploy_migration() {
   cluster_deploy_kube delete job battlefield-migrate \
     --namespace "${namespace}" \
     --ignore-not-found
-  cluster_deploy_kube apply -k "${rollout_overlays:-${runtime_dir}/deploy/overlays/local}/migration"
+  cluster_deploy_kube apply -k "${rollout_overlays:-${runtime_dir}/infra/deploy/overlays/local}/migration"
 
   if ! cluster_deploy_kube wait --for=condition=complete \
     job/battlefield-migrate \
@@ -545,7 +545,7 @@ EOF
   done
 
   application_update_started=1
-  cluster_deploy_kube apply -k "${rollout_overlays:-${runtime_dir}/deploy/overlays/local}/application"
+  cluster_deploy_kube apply -k "${rollout_overlays:-${runtime_dir}/infra/deploy/overlays/local}/application"
 
   if [[ "${force_restart}" == "1" ]] || deployment_component_selected infrastructure; then
     cluster_deploy_kube rollout restart \
@@ -626,8 +626,8 @@ cluster_deploy_observability() {
   cluster_deploy_kube delete job battlefield-kibana-setup \
     --namespace "${namespace}" \
     --ignore-not-found
-  cluster_deploy_kube apply -k "${rollout_overlays:-${runtime_dir}/deploy/overlays/local}/observability"
-  cluster_deploy_kube apply -k "${rollout_overlays:-${runtime_dir}/deploy/overlays/local}/logging-collector"
+  cluster_deploy_kube apply -k "${rollout_overlays:-${runtime_dir}/infra/deploy/overlays/local}/observability"
+  cluster_deploy_kube apply -k "${rollout_overlays:-${runtime_dir}/infra/deploy/overlays/local}/logging-collector"
   # Wait for the new ReplicaSets, not a possibly stale Available condition.
   # Start waits together so cold image pulls share the same rollout budget.
   for deployment in "${deployments[@]}"; do
@@ -671,14 +671,14 @@ cluster_deploy_observability() {
   fi
   echo "Creating Kibana saved objects..."
   cluster_deploy_kube apply --namespace "${namespace}" \
-    -f "${runtime_dir}/deploy/overlays/local/observability/kibana/setup-job.yaml" || return
+    -f "${runtime_dir}/infra/deploy/overlays/local/observability/kibana/setup-job.yaml" || return
   cluster_deploy_wait_kibana_setup
 
 }
 
 cluster_deploy_gateway() {
   echo "Deploying local HTTP gateway routes..."
-  cluster_deploy_kube apply -k "${rollout_overlays:-${runtime_dir}/deploy/overlays/local}/gateway"
+  cluster_deploy_kube apply -k "${rollout_overlays:-${runtime_dir}/infra/deploy/overlays/local}/gateway"
   cluster_deploy_kube wait --for=condition=Programmed \
     gateway/battlefield-local \
     --namespace "${namespace}" \

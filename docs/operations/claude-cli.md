@@ -29,8 +29,8 @@ execution rather than being bypassed. The worker requires a validated MCP
 submission, not merely a successful CLI exit or a textual plan.
 
 The `sonnet` alias follows the account's current Sonnet model. To pin a model,
-update `backend/config.yaml`, `deploy/base/infrastructure/configmap.yaml`,
-`deploy/agent-vm/config.yaml`, and `scripts/dev/run-k8s-cli-agent.sh` consistently.
+update `backend/config.yaml`, `infra/deploy/base/infrastructure/configmap.yaml`,
+`infra/deploy/agent-vm/config.yaml`, and `scripts/dev/run-k8s-cli-agent.sh` consistently.
 When upgrading the CLI, verify restricted-mode behavior and update the version
 pin in those same files. The current pin prevents older CLIs without restricted
 mode from being advertised.

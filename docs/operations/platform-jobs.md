@@ -3,7 +3,7 @@
 `battlefield-platform/host` is a separate, manually started Jenkins job for the
 existing Ansible host foundation and optional data partition. A merge into `main`
 runs application delivery; it does not run this job. The job reads
-[`Jenkinsfile.platform`](../../Jenkinsfile.platform) from trusted `main` and runs
+[`infra/jenkins/Jenkinsfile.platform`](../../infra/jenkins/Jenkinsfile.platform) from trusted `main` and runs
 locally as the registered `twh09` operator on `battlefield-production`. The SSH
 private key stays on the workstation.
 
@@ -80,6 +80,28 @@ The pin list is not a complete controller rebuild or dependency lockfile.
 
 ## Credentials and trust
 
+### Pipeline source paths
+
+The multibranch application job uses the root `Jenkinsfile`. Auxiliary jobs use
+these paths in their trusted `main` checkout:
+
+| Job | Script path |
+| --- | --- |
+| `battlefield-platform/host` | `infra/jenkins/Jenkinsfile.platform` |
+| `battlefield-platform/vm` | `infra/jenkins/Jenkinsfile.vm` |
+| `battlefield-platform/k3s` | `infra/jenkins/Jenkinsfile.k3s` |
+| `battlefield-assurance` | `infra/jenkins/Jenkinsfile.assurance` |
+
+Repository moves do not update existing Jenkins job configuration automatically.
+Before changing a job's Script Path, verify that its configured SCM branch contains
+the new file. After promotion to `main`, use the owned platform installer above
+to reconcile platform jobs, or update only their Script Path in Jenkins. For the
+assurance job, update its Script Path while preserving credentials, parameters,
+schedule and enabled/disabled state. Check the saved configuration before running
+a job. A `dev` merge alone is insufficient while these jobs still read `main`.
+
+### Managed credentials
+
 | Folder file credential | Content |
 | --- | --- |
 | `host-inventory` | Registered machine/operator and selected disk identity |
@@ -147,7 +169,7 @@ recovery. Separate jobs can queue while approval is pending.
 
 A second, OS-level lock at the registered operator's
 `~/.local/state/battlefield/bootstrap.lock` coordinates workstation Ansible applies,
-the host runner, and individual production deploy/tunnel/rollback commands.
+the host runner, and individual production infra/deploy/tunnel/rollback commands.
 The Ansible child inherits the held lock descriptor or the pipe that keeps the
 workstation's lock proxy alive. A forced controller/process-group stop therefore
 retains the lock while that child runs; normal cancellation stops its process

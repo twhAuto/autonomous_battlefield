@@ -26,7 +26,7 @@ if [[ -n "${nodes}" ]]; then
   done <<<"${nodes}"
 else
   [[ ! -f "${profile}" ]] || { echo 'Registered cluster is missing; refusing to replace its identity or data.' >&2; exit 1; }
-  kind create cluster --name "${KIND_CLUSTER_NAME}" --config "${project_dir}/deploy/kind.yaml"
+  kind create cluster --name "${KIND_CLUSTER_NAME}" --config "${project_dir}/infra/deploy/kind.yaml"
 fi
 if [[ ! -f "${profile}" ]]; then
   # Setup must use the kubeconfig created/exported by Kind, not the current context.

@@ -256,7 +256,7 @@ headroom is insufficient. Leave CLI disabled if the host cannot sustain this.
 
 Install the Ubuntu host's `qemu-system-x86`, `libvirt-daemon-system`, `libvirt-clients`,
 `cloud-image-utils`, and a dedicated Squid service. Review the files in
-`deploy/agent-vm/`. Supply a publisher-verified local Ubuntu 24.04 amd64 cloud image,
+`infra/deploy/agent-vm/`. Supply a publisher-verified local Ubuntu 24.04 amd64 cloud image,
 its verified SHA256, and your public SSH key, then run as root on the server:
 
 ```bash

@@ -64,7 +64,7 @@ from an external operator session; merging application code does not run it.
 
 ## Reviewed host operations
 
-The separate [platform host job](platform-jobs.md) uses `Jenkinsfile.platform`
+The separate [platform host job](platform-jobs.md) uses `infra/jenkins/Jenkinsfile.platform`
 from trusted `main` for manual plan/apply/verify. Its installer registers inputs,
 binds folder credentials and creates the job; it never starts a build. Normal
 `main` delivery remains application-only. Install the required Lockable Resources
@@ -272,7 +272,7 @@ Create these narrowly scoped Jenkins credentials before enabling main delivery:
 | `battlefield-gemini-api-key` | secret text | manual Gemini evaluation only |
 
 Never expose signing or provider credentials to pull-request stages. Configure a
-second Pipeline job using `Jenkinsfile.assurance`; schedule only its `nightly`
+second Pipeline job using `infra/jenkins/Jenkinsfile.assurance`; schedule only its `nightly`
 mode. All other modes require an operator trigger and explicit bounds. AWS
 promotion additionally requires an assumed agent role or other short-lived AWS
 credential source; do not store long-lived access keys in the repository.
@@ -341,7 +341,7 @@ Use a separate agent so builds do not execute on the Jenkins controller:
    (`disableConcurrentBuilds()`), which is what serializes production rollouts.
    Size executors to the host: each frontend stage runs Chromium, and backend stages
    run PostgreSQL containers. Before adding a job that deploys or drills outside
-   `main` delivery (such as `Jenkinsfile.assurance`), serialize it with main
+   `main` delivery (such as `infra/jenkins/Jenkinsfile.assurance`), serialize it with main
    delivery, for example with the Lockable Resources plugin.
 3. Add the label `battlefield-production`, shared by PR verification, main
    delivery and assurance for this owner-operated deployment.
@@ -412,7 +412,7 @@ The repository includes a persistent local SonarQube Community Build and
 PostgreSQL Compose stack. It is separate from the application database:
 
 ```bash
-docker compose -f quality/sonarqube/compose.yaml up -d
+docker compose -f infra/sonarqube/compose.yaml up -d
 curl --fail http://localhost:9000/api/system/status
 ```
 
@@ -478,7 +478,7 @@ The SonarQube data is stored in named Docker volumes and survives restarts. Stop
 it without deleting its data with:
 
 ```bash
-docker compose -f quality/sonarqube/compose.yaml stop
+docker compose -f infra/sonarqube/compose.yaml stop
 ```
 
 Do not use `docker compose down -v` unless you intentionally want to erase the
@@ -700,7 +700,7 @@ For `main`, the pipeline performs:
 
 See [deployment component mapping](deployment.md#change-to-deployment-mapping)
 for the paths that select each rollout stage and
-[supply-chain assets](../../deploy/supply-chain/README.md) for the trust root.
+[supply-chain assets](../../infra/deploy/supply-chain/README.md) for the trust root.
 
 Both PR and main deployment-script checks run
 `./scripts/test/test-frontend-image.sh`: it copies tracked frontend inputs into a
@@ -752,7 +752,7 @@ Local dev loads images into Kind. Production pulls verified GHCR digests.
 ### AWS promotion limits
 
 The separate AWS promotion helper copies verified image subjects and their
-evidence to ECR. The `aws-promotion` mode in `Jenkinsfile.assurance` does not
+evidence to ECR. The `aws-promotion` mode in `infra/jenkins/Jenkinsfile.assurance` does not
 produce or explicitly select a successful build's `artifacts/build/images.env`.
 Its cleanup removes `CI_WORK_ROOT`, while that default artifact path is in the
 retained checkout. Do not treat a file left by an earlier run as the selected

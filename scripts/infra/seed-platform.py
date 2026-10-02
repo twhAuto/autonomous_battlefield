@@ -94,7 +94,7 @@ def job_xml(component="host"):
     branch = ET.SubElement(ET.SubElement(scm, 'branches'), 'hudson.plugins.git.BranchSpec')
     ET.SubElement(branch, 'name').text = '*/main'
     ET.SubElement(scm, 'extensions')
-    ET.SubElement(definition, 'scriptPath').text = {'host': 'Jenkinsfile.platform', 'vm': 'Jenkinsfile.vm', 'k3s': 'Jenkinsfile.k3s'}[component]
+    ET.SubElement(definition, 'scriptPath').text = {'host': 'infra/jenkins/Jenkinsfile.platform', 'vm': 'infra/jenkins/Jenkinsfile.vm', 'k3s': 'infra/jenkins/Jenkinsfile.k3s'}[component]
     ET.SubElement(definition, 'lightweight').text = 'false'
     ET.SubElement(root, 'disabled').text = 'false'
     ET.SubElement(root, 'triggers')
@@ -126,7 +126,7 @@ def credential_xml(identifier, content):
     return ET.tostring(root, encoding='utf-8')
 
 
-def validate_pipeline(client, filename="Jenkinsfile.platform"):
+def validate_pipeline(client, filename="infra/jenkins/Jenkinsfile.platform"):
     boundary = 'battlefield-platform-validation'
     data = ('--' + boundary + '\r\nContent-Disposition: form-data; name="jenkinsfile"\r\n\r\n' +
             (ROOT / filename).read_text() + '\r\n--' + boundary + '--\r\n').encode()
@@ -144,8 +144,8 @@ def check_plugins(client, install=False):
         missing = sorted(set(pins) - present)
         if not missing:
             validate_pipeline(client)
-            validate_pipeline(client, "Jenkinsfile.vm")
-            validate_pipeline(client, "Jenkinsfile.k3s")
+            validate_pipeline(client, "infra/jenkins/Jenkinsfile.vm")
+            validate_pipeline(client, "infra/jenkins/Jenkinsfile.k3s")
             return
         if not install:
             raise ValueError('Required Jenkins plugins are missing/inactive: ' + ', '.join(missing))

@@ -333,7 +333,7 @@ runpy.run_path(sys.argv.pop(1),run_name='__main__')
         self.assertEqual(base64.b64decode(root.findtext('secretBytes')),secret)
         self.assertEqual(root.findtext('description'),seed.MARKER)
         job=ET.fromstring(seed.job_xml())
-        self.assertEqual(job.findtext('.//scriptPath'),'Jenkinsfile.platform')
+        self.assertEqual(job.findtext('.//scriptPath'),'infra/jenkins/Jenkinsfile.platform')
         self.assertEqual(job.findtext('.//branches/hudson.plugins.git.BranchSpec/name'),'*/main')
         self.assertEqual(len(job.find('triggers')),0)
 

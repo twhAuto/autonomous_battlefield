@@ -2,7 +2,7 @@
 
 ## Shared prompts
 
-The [architecture contract](../design/system-architecture.md#shared-prompt-provenance-and-faction-memory)
+The [architecture contract](../architecture/system-architecture.md#shared-prompt-provenance-and-faction-memory)
 describes shared prompts, provenance, and bounded faction memory. The active
 embedded templates live in `backend/internal/ai/prompts/`; each purpose has one current file, with older revisions kept in Git.
 The bundle version and content digest are maintained in `internal/ai/prompts.go`. Rebuild backend binaries after editing active templates,
@@ -225,7 +225,7 @@ optional orders field. Both model providers share the updated purchasing prompt.
 Deploy API, MCP, engine, and agent together and restart the host CLI agent so tool
 schemas and prompts agree. Existing battle JSON requires no database migration.
 
-See [content libraries and scenario selections](content-library.md) for shared units,
+See [content libraries and scenario selections](../operations/content-library.md) for shared units,
 buildings, upgrades, roster filtering, and version publication.
 
 For expanded scenarios, recruitment orders may specify `sourceBuildingId` from
@@ -234,7 +234,7 @@ shared across sources. Unavailable explicit sources and blocked Barracks orders
 are skipped without substitution; blocked castle spawns or an unaffordable order
 stop remaining purchases. Typed `constructionOrders` select building definitions
 from `legal.buildings` at `legal.economySites`. See
-[Frontier Siege](../design/frontier-siege.md) for the new mechanics and balance probes.
+[Frontier Siege](../architecture/frontier-siege.md) for the new mechanics and balance probes.
 
 ## Compact unit context
 
@@ -328,5 +328,5 @@ input/output, optional cached/reasoning subsets, model-call count and CLI-invoca
 count. Existing top-level totals remain compatible. A missing optional counter
 means unavailable, not zero. CLI totals aggregate the CLI session, while API
 counts sum reported model attempts; neither is an initial-context token count.
-Use [Langfuse](langfuse.md) for production model/tool timing and context section
+Use [Langfuse](../operations/langfuse.md) for production model/tool timing and context section
 bytes alongside these isolated decision-quality comparisons.

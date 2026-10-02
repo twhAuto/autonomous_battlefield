@@ -14,11 +14,19 @@ frontend/*.tsbuildinfo
 .jenkins-coverage-check.md
 artifacts/
 .docker-ci/
+infra/deploy/supply-chain/cosign.key
+infra/deploy/overlays/local/infrastructure/secret.env
+infra/deploy/overlays/local/infrastructure/ai-secret.env
+infra/deploy/overlays/local/infrastructure/auth-secret.env
+# Machine deployment profiles and credentials belong outside the checkout.
+infra/deploy/environments/*.env
+infra/deploy/environments/*/kubeconfig
+infra/deploy/environments/*/*.env
+# Keep credentials left in an existing checkout's former paths untracked.
 deploy/supply-chain/cosign.key
 deploy/overlays/local/infrastructure/secret.env
 deploy/overlays/local/infrastructure/ai-secret.env
 deploy/overlays/local/infrastructure/auth-secret.env
-# Machine deployment profiles and credentials belong outside the checkout.
 deploy/environments/*.env
 deploy/environments/*/kubeconfig
 deploy/environments/*/*.env

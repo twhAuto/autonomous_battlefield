@@ -18,11 +18,11 @@ and requires an invitation. To run your own development environment, start with
 Deployment environments are separate: **WSL dev** builds and loads local images;
 **server production** receives verified GHCR images from Jenkins `main` delivery.
 Start with the [environment setup guide](docs/operations/environments.md);
-version-controlled configuration templates live in [`deploy/environments/`](deploy/environments/).
+version-controlled configuration templates live in [`infra/deploy/environments/`](infra/deploy/environments/).
 
 Battles are finite and use authored maps; continuous worlds and procedural map
-generation are not implemented. See [Game rules](docs/design/game-rules.md) for
-the battle loop and win conditions, and [Frontier Siege](docs/design/frontier-siege.md)
+generation are not implemented. See [Game rules](docs/architecture/game-rules.md) for
+the battle loop and win conditions, and [Frontier Siege](docs/architecture/frontier-siege.md)
 for the expanded roster, structures and 25×17 scenario.
 
 Repository paths, container images and Kubernetes resources retain the technical
@@ -30,17 +30,22 @@ name `autonomous-battlefield`; the local address is `battlefield.localhost`.
 
 ## Documentation
 
-Implementation navigation starts at the [codebase index](docs/design/codebase-guide.md),
-with focused [backend](docs/design/backend-guide.md),
-[frontend](docs/design/frontend-guide.md), and [tooling](docs/design/tooling-guide.md) guides.
+Guides are grouped by purpose: [`docs/developer/`](docs/developer/) explains working
+on the repository, [`docs/architecture/`](docs/architecture/) describes system and
+game behavior, and [`docs/operations/`](docs/operations/) contains environment
+and recovery procedures. Deployment assets and provisioning live under [`infra/`](infra/).
+
+Implementation navigation starts at the [codebase index](docs/developer/codebase-guide.md),
+with focused [backend](docs/developer/backend-guide.md),
+[frontend](docs/developer/frontend-guide.md), and [tooling](docs/developer/tooling-guide.md) guides.
 
 | Task | Guide |
 | --- | --- |
 | Start the application | [Run locally](#run-locally) |
-| Understand components and runtime behavior | [System architecture](docs/design/system-architecture.md) |
-| Find packages, tests, and change paths | [Codebase guide](docs/design/codebase-guide.md) |
-| Use the HTTP API | [API reference](docs/reference/api.md) |
-| Read the machine-readable API spec | [OpenAPI contract](docs/reference/openapi.yaml) |
+| Understand components and runtime behavior | [System architecture](docs/architecture/system-architecture.md) |
+| Find packages, tests, and change paths | [Codebase guide](docs/developer/codebase-guide.md) |
+| Use the HTTP API | [API reference](docs/architecture/api.md) |
+| Read the machine-readable API spec | [OpenAPI contract](docs/architecture/openapi.yaml) |
 | Register dev or production and resume a stopped cluster | [Environments](docs/operations/environments.md) |
 | Build, deploy, inspect, or remove Kubernetes workloads | [Deployment](docs/operations/deployment.md) |
 | Review the measured layout, state locations and remaining rebuild boundaries | [Server rebuild contract](docs/operations/server-rebuild-contract.md) |
@@ -58,9 +63,9 @@ with focused [backend](docs/design/backend-guide.md),
 | Inspect metrics, traces, logs, and reliability objectives | [Observability](docs/operations/observability.md) |
 | Launch for invited testers behind Access and provision the isolated CLI VM | [Limited-access launch](docs/operations/limited-launch.md) |
 | Configure subscription CLI authentication | [Antigravity](docs/operations/antigravity-cli.md), [Claude](docs/operations/claude-cli.md) |
-| Compare controllers and author unit knowledge | [AI comparisons](docs/operations/ai-comparisons.md) |
+| Compare controllers and author unit knowledge | [AI comparisons](docs/developer/ai-comparisons.md) |
 | Enable the optional completed-battle cache | [Redis](docs/operations/redis.md) |
-| Review AI development and artifact assurance | [AI policy](docs/security/ai-development-policy.md), [supply-chain runbook](docs/operations/supply-chain-runbook.md) |
+| Review AI development and artifact assurance | [AI policy](docs/developer/ai-development-policy.md), [supply-chain runbook](docs/operations/supply-chain-runbook.md) |
 | Provision the AWS reference | [AWS](infra/aws/README.md) |
 
 The architecture guide owns runtime explanations; the codebase guide owns source
@@ -113,7 +118,7 @@ uses the same application schema in its private `.env`, beside `deployment.env`.
 API profiles require a configured model and credentials. Subscription CLI profiles
 require a supported binary and an existing host login; the configured models and
 version prefixes live in [`backend/config.yaml`](backend/config.yaml).
-See [model execution](docs/design/system-architecture.md#6-model-execution) for
+See [model execution](docs/architecture/system-architecture.md#6-model-execution) for
 the execution contract and isolation, and [Antigravity setup](docs/operations/antigravity-cli.md)
 for its authentication checks.
 
@@ -175,7 +180,7 @@ merged `main` commit is checked again before deployment.
 
 ## API
 
-See the [HTTP API reference](docs/reference/api.md) for authentication, faction
+See the [HTTP API reference](docs/architecture/api.md) for authentication, faction
 profiles, battle creation and controls, results, views, and event pagination.
 
 ## Configuration
@@ -183,7 +188,7 @@ profiles, battle creation and controls, results, views, and event pagination.
 [`backend/config.yaml`](backend/config.yaml) is the checked-in local configuration;
 [`.env.example`](.env.example) lists environment inputs.
 Cluster settings live in the
-[deployment ConfigMap](deploy/base/infrastructure/configmap.yaml), with private
+[deployment ConfigMap](infra/deploy/base/infrastructure/configmap.yaml), with private
 inputs described in the [environment guide](docs/operations/environments.md).
 Unknown YAML fields and invalid configuration fail startup. Catalog paths are
 resolved relative to the configuration file.
@@ -201,14 +206,14 @@ battle; the writer uses an operator-configured API or local CLI profile (default
 `codex-subscription-local`), limited to 10 requests per account per UTC day with
 a 30-second cooldown. Manual editing remains available when generation is off.
 
-- [AI comparisons](docs/operations/ai-comparisons.md) covers the free scripted
+- [AI comparisons](docs/developer/ai-comparisons.md) covers the free scripted
   comparison command, live-provider opt-ins, ablations, and report limits.
 - [Content authoring](docs/operations/content-library.md) covers reusable
   libraries and per-scenario restrictions.
 - [Generation rollout](docs/operations/deployment.md#faction-background-generation-rollout)
-  and the [generation API](docs/reference/api.md#faction-background-generation)
+  and the [generation API](docs/architecture/api.md#faction-background-generation)
   cover background drafts.
-- [Compact battlefield view](docs/design/system-architecture.md#17-compact-battlefield-view)
+- [Compact battlefield view](docs/architecture/system-architecture.md#17-compact-battlefield-view)
   describes how observations are grouped and compressed for agents.
 
 Optional [self-hosted Langfuse](docs/operations/langfuse.md) provides AI decision
@@ -236,7 +241,7 @@ image changes, also run `./scripts/test/test-frontend-image.sh` to build with pr
 checkout permissions and verify actual container startup and static assets. PR verification
 runs for both `dev` and `main` targets.
 
-Agent-authored PR revisions use the [Codex/Claude cross-review workflow](docs/operations/cross-review.md)
+Agent-authored PR revisions use the [Codex/Claude cross-review workflow](docs/developer/cross-review.md)
 before handoff. The opposite reviewer checks the committed change, and `--pr`
 publishes its advisory report with the exact reviewed commits. Authors respond
 on the PR. Run one full review and at most one focused follow-up on the new diff

@@ -86,7 +86,7 @@ frozen, fog-of-war observation of that faction's view:
 A plan sets tactical `actionWeights` (attack vs. defend), spending (recruitment,
 construction, and upgrade orders, `spendOrder`, `reserveGold`), and optional
 `targetBonuses`. Plans cannot be applied outside a window. The plan contract is in
-[the API reference](../reference/api.md) and the MCP tool schema.
+[the API reference](api.md) and the MCP tool schema.
 
 ## Tick order
 
@@ -131,7 +131,7 @@ removed, and the attacker's faction collects loot.
 
 Separately from the rules, operators can stop a battle, and unfinished battles
 expire (fail with `battle_timeout`) one hour after creation. See the
-[API reference](../reference/api.md) for battle status and controls.
+[API reference](api.md) for battle status and controls.
 
 ## Explicitly deferred
 

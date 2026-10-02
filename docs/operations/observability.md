@@ -86,7 +86,7 @@ characters before comparing them with link targets.
 
 See [`internal/telemetry/tracing.go`](../../backend/internal/telemetry/tracing.go)
 for environment configuration and instrumentation, and the
-[collector configuration](../../deploy/overlays/local/observability/otel-collector/config.yaml)
+[collector configuration](../../infra/deploy/overlays/local/observability/otel-collector/config.yaml)
 for the in-cluster path. Prompts, credentials, capabilities, full observations,
 and raw provider responses are excluded from span attributes. Tempo storage is
 also disposable; it is not an audit archive.
@@ -506,7 +506,7 @@ Process entry points wire the shared `httpapi.LifecycleHandler`, which owns all
 health probes. Application routing does not register a second set of probes.
 Engine readiness requires both a running worker and a successful database ping;
 worker shutdown or database failure makes readiness fail while liveness remains
-available. See the [codebase guide](../design/backend-guide.md#process-health-ownership)
+available. See the [codebase guide](../developer/backend-guide.md#process-health-ownership)
 for source ownership and lifecycle tests.
 
 ## AI decision traces in Langfuse

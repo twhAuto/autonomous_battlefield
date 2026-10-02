@@ -78,5 +78,5 @@ also update `API_UPSTREAM`.
 
 ## Source layout
 
-See [frontend organization](../docs/design/frontend-guide.md#frontend-organization)
+See [frontend organization](../docs/developer/frontend-guide.md#frontend-organization)
 for feature ownership, shared transport, polling hooks, and test placement.

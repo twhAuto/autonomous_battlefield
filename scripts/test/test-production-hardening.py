@@ -192,7 +192,7 @@ Path(mount.removesuffix(':/zap/wrk:rw'), 'zap-report.json').write_text(json.dump
     def test_tls_requires_public_trust_and_keeps_narrow_rbac(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)/'prometheus'
-            shutil.copytree(ROOT/'deploy/overlays/local/observability/prometheus', directory)
+            shutil.copytree(ROOT/'infra/deploy/overlays/local/observability/prometheus', directory)
             source = (directory/'prometheus.yml').read_text()
             bad = Path(tmp)/'bad.pem'; bad.write_text('not a certificate')
             with self.assertRaises((ValueError, ssl.SSLError)): tls.configure(directory, bad)

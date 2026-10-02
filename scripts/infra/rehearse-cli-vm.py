@@ -49,7 +49,7 @@ def main():
             print('Preparing the disposable CLI VM hypervisor', flush=True)
             guest.prepare(args.image)
             with tarfile.open(work / 'source.tar', 'w') as archive:
-                for name in ('infra/ansible', 'deploy/agent-vm', 'scripts/infra', 'scripts/ops', 'scripts/test/rehearse-cli-vm-guest.py'):
+                for name in ('infra/ansible', 'infra/deploy/agent-vm', 'scripts/infra', 'scripts/ops', 'scripts/test/rehearse-cli-vm-guest.py'):
                     archive.add(ROOT / name, arcname=name, filter=lambda item: None if '__pycache__' in item.name else item)
                     path = ROOT / name
                     for source in ([path] if path.is_file() else path.rglob('*')):

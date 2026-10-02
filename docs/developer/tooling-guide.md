@@ -1,6 +1,6 @@
 # OrdinalFrontier Tooling Guide
 
-[Codebase index](codebase-guide.md) · [System architecture](system-architecture.md)
+[Codebase index](codebase-guide.md) · [System architecture](../architecture/system-architecture.md)
 
 ## Environment tooling
 
@@ -16,10 +16,10 @@ for machine configuration, Jenkins credentials, and commands.
 
 ## Deployment code
 
-[`deploy/base`](../../deploy/base) contains portable Kustomize resources.
-[`deploy/overlays/local`](../../deploy/overlays/local) adds PostgreSQL, Gateway API,
+[`infra/deploy/base`](../../infra/deploy/base) contains portable Kustomize resources.
+[`infra/deploy/overlays/local`](../../infra/deploy/overlays/local) adds PostgreSQL, Gateway API,
 observability and logging resources with Kind defaults. The
-[`K3s overlays`](../../deploy/overlays/k3s) reuse those resources and patch the
+[`K3s overlays`](../../infra/deploy/overlays/k3s) reuse those resources and patch the
 retained storage class and volume sizes. Delivery scripts handle gateway access
 and telemetry differences; see [K3s delivery](../operations/k3s-delivery.md#deliver-and-verify).
 
@@ -53,7 +53,7 @@ exercises publication and deployment signature checks, including Cosign 3 bundle
 summaries without annotations, retained legacy revisions, and rejected evidence. The Vite
 configuration and `frontend/vite.config.test.ts` cover development proxy overrides.
 
-Root launch scripts remain compatibility entry points that `exec` their implementations under `scripts/dev` and `scripts/cd`. `deploy/` owns Kubernetes configuration; `infra/aws/` provisions cloud resources.
+Root launch scripts remain compatibility entry points that `exec` their implementations under `scripts/dev` and `scripts/cd`. `infra/deploy/` owns Kubernetes configuration; `infra/aws/` provisions cloud resources.
 `infra/ansible/` owns the Ubuntu host foundation through `scripts/infra/server.sh`;
 see the [server bootstrap guide](../operations/server-bootstrap.md). Operational instructions live under `docs/operations`.
 
@@ -109,7 +109,7 @@ budget on the shared CI agent.
 flags and configuration; [`ai/eval/comparison.go`](../../backend/internal/ai/eval/comparison.go)
 runs isolated MCP sessions through production validation. `ai/eval/knowledge.go`
 exports retrieval metadata. `backend/evals/comparison-cases/` contains synthetic
-contexts, including the large-roster fixture. See [comparison operations](../operations/ai-comparisons.md).
+contexts, including the large-roster fixture. See [comparison operations](ai-comparisons.md).
 
 `DecisionRepository.ListFactionMemory` bounds history in SQL; the battle worker
 freezes memory and selected knowledge before hashing. Tests cover faction/attempt
@@ -173,7 +173,7 @@ read-only CLI options, version/argument checks, rejected responses, publication
 identity/body matching, delta-only follow-ups, compact context, round limits,
 process timeouts, and per-review token usage accounting (`--usage`). `CLAUDE.md` points
 Claude to the shared `AGENTS.md` rules. See the
-[cross-review workflow](../operations/cross-review.md).
+[cross-review workflow](cross-review.md).
 
 ## Container build contexts
 

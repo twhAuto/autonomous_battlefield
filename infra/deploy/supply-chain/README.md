@@ -19,4 +19,4 @@ Kyverno 1.15 admission controller to discover the same evidence in private
 GHCR; it is not a separate trust root or a mutable deployment artifact.
 
 For key rotation, compromise response, retention, rollback, and recovery, follow
-the [supply-chain runbook](../../docs/operations/supply-chain-runbook.md).
+the [supply-chain runbook](../../../docs/operations/supply-chain-runbook.md).

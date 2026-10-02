@@ -42,10 +42,10 @@ user={'users':[{'name':'vm-admin','lock_passwd':True,'shell':'/bin/bash','sudo':
 (out/'network-config').write_text(json.dumps({'version':2,'ethernets':{'worker':{'match':{'macaddress':'52:54:00:ba:77:01'},'set-name':'eth0','dhcp4':False,'dhcp6':False,'accept-ra':False,'addresses':['192.168.234.2/24']}}}))
 PY
 cloud-localds --network-config="${vm_dir}/network-config" "${vm_dir}/seed.iso" "${vm_dir}/user-data" "${vm_dir}/meta-data"
-cp -- "${project_dir}/deploy/agent-vm/domain.xml" "${vm_dir}/domain.xml"
+cp -- "${project_dir}/infra/deploy/agent-vm/domain.xml" "${vm_dir}/domain.xml"
 chown -R libvirt-qemu:kvm "${vm_dir}"
-virsh --connect qemu:///system nwfilter-define "${project_dir}/deploy/agent-vm/filter.xml"
-virsh --connect qemu:///system net-define "${project_dir}/deploy/agent-vm/network.xml"
+virsh --connect qemu:///system nwfilter-define "${project_dir}/infra/deploy/agent-vm/filter.xml"
+virsh --connect qemu:///system net-define "${project_dir}/infra/deploy/agent-vm/network.xml"
 virsh --connect qemu:///system net-start battlefield-agent
 virsh --connect qemu:///system net-autostart battlefield-agent
 virsh --connect qemu:///system define "${vm_dir}/domain.xml"

@@ -44,11 +44,11 @@ Keep repository documentation synchronized with every implementation change.
 
 - When a change affects runtime components, boundaries, data flows, persistence,
   security, configuration, deployment, or operational behavior, update
-  `docs/design/system-architecture.md` and any affected operational guide in the
+  `docs/architecture/system-architecture.md` and any affected operational guide in the
   same change.
 - When a change adds, removes, renames, moves, or materially changes packages,
   entry points, important types, routes, migrations, frontend areas, tests, or
-  common development workflows, update `docs/design/codebase-guide.md` in the
+  common development workflows, update `docs/developer/codebase-guide.md` in the
   same change.
 - Update `README.md` when setup steps, capabilities, commands, ports, or
   documentation entry points change.
@@ -164,7 +164,7 @@ token during cleanup.
 ## Cross-review between Codex and Claude
 
 For meaningful agent-authored PR changes, follow
-[the cross-review guide](docs/operations/cross-review.md) and the
+[the cross-review guide](docs/developer/cross-review.md) and the
 [raise-pr skill](.agents/skills/raise-pr/SKILL.md). Batch implementation and
 checks before one full PR review, then at most one focused follow-up. Use the
 existing `scripts/review/cross-review.py` with `--pr NUMBER` so it enforces the

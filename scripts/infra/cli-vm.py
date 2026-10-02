@@ -27,7 +27,7 @@ server = platform.bootstrap
 
 
 def request(args, data):
-    assets = {kind: (ROOT / 'deploy/agent-vm' / (kind + '.xml')).read_text() for kind in ('domain', 'network', 'filter')}
+    assets = {kind: (ROOT / 'infra/deploy/agent-vm' / (kind + '.xml')).read_text() for kind in ('domain', 'network', 'filter')}
     paths = ['scripts/infra/cli-vm.py', 'infra/ansible/cli-vm.yml', 'infra/ansible/library/battlefield_cli_vm.py',
              'infra/ansible/module_utils/battlefield_cli_vm.py', 'infra/ansible/module_utils/battlefield_cli_vm_policy.py']
     source = hashlib.sha256()
