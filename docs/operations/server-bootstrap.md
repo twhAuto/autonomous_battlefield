@@ -11,8 +11,8 @@ The [server rebuild contract](server-rebuild-contract.md) records the complete
 layout, measured capacity, state locations and remaining automation. Production
 runs in the separately managed K3s VM. This foundation playbook does not invoke
 [K3s provisioning](k3s-platform.md) or [CI service configuration](ci-bootstrap.md);
-those have separate entry points. Cloudflare reconciliation and scheduled backups
-are not implemented here. The separate opt-in
+those have separate entry points. [Cloudflare capture and lifecycle](cloudflare-platform.md)
+also has its own opt-in Ansible entry point; scheduled backups remain deferred. The separate opt-in
 [CLI bootstrap commands](cli-bootstrap.md) install/adopt the CLI host bundle and
 optional guest; ordinary host apply does not invoke them. Their existing configuration is preserved. Keep
 CLI access disabled until the existing isolation verification is complete.
