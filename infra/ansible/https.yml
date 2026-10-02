@@ -1,0 +1,15 @@
+---
+- name: Adopt or restore the reviewed native local HTTPS service
+  hosts: bootstrap
+  gather_facts: false
+  become: true
+  any_errors_fatal: true
+  tasks:
+    - name: Enforce reviewed routes and CA identity and verify TLS
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ https_runtime }}"
+          - "{{ https_inputs_file }}"
+      register: https_result
+      changed_when: https_result.rc == 0 and (https_result.stdout | from_json).changed

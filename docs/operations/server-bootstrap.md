@@ -12,7 +12,9 @@ layout, measured capacity, state locations and remaining automation. Production
 runs in the separately managed K3s VM. This foundation playbook does not invoke
 [K3s provisioning](k3s-platform.md) or [CI service configuration](ci-bootstrap.md);
 those have separate entry points. [Cloudflare capture and lifecycle](cloudflare-platform.md)
-also has its own opt-in Ansible entry point; scheduled backups remain deferred. The separate opt-in
+also has its own opt-in Ansible entry point, as does
+[native local HTTPS capture, restoration and route migration](local-https-platform.md).
+Scheduled backups remain deferred. The separate opt-in
 [CLI bootstrap commands](cli-bootstrap.md) install/adopt the CLI host bundle and
 optional guest; ordinary host apply does not invoke them. Their existing configuration is preserved. Keep
 CLI access disabled until the existing isolation verification is complete.
@@ -416,6 +418,6 @@ therefore in the normal deployment gate. The VM rehearsal is opt-in and requires
 its own recorded result; ordinary CI does not prove it passed. Rehearse the release
 matching the intended target; one release does not prove the other passed.
 
-Jenkins/SonarQube rebuilds, CLI bundle adoption, K3s, Cloudflare adoption, and
-backup/restore drills remain subsequent work. Track acceptance and actual
+Jenkins/SonarQube rebuilds, CLI bundle adoption, K3s, Cloudflare adoption, native
+local HTTPS and backup/restore drills have separate workflows. Track acceptance and actual
 rehearsal results in Notion, not this runbook.
