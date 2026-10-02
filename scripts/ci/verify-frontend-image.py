@@ -23,7 +23,7 @@ class Assets(HTMLParser):
         if tag == "script" and attrs.get("src"):
             path = attrs["src"]
             self.has_script = True
-        elif tag == "link" and attrs.get("rel") in {"stylesheet", "modulepreload"}:
+        elif tag == "link" and {"stylesheet", "modulepreload"}.intersection(attrs.get("rel", "").split()):
             path = attrs.get("href")
         if path:
             url = urlsplit(path)
@@ -41,7 +41,7 @@ def verify(image):
     try:
         docker(
             "run", "--detach", "--pull=never", "--name", name,
-            "--network", "none", "--user", "101:101", "--read-only",
+            "--network", "none", "--dns", "127.0.0.1", "--user", "101:101", "--read-only",
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges=true",
             "--memory", "128m", "--cpus", "0.2", "--pids-limit", "64",
             "--tmpfs", "/etc/nginx/conf.d:rw,nosuid,nodev,noexec,uid=101,gid=101,mode=0755",
@@ -81,6 +81,8 @@ def verify(image):
         print("Frontend image passed startup, liveness, readiness, index and asset checks as UID 101.")
     except (subprocess.SubprocessError, OSError, RuntimeError, ValueError) as error:
         print("Frontend image verification failed: " + str(error), file=sys.stderr)
+        if getattr(error, "stderr", None):
+            sys.stderr.buffer.write(error.stderr[-4096:])
         logs = docker("logs", "--tail", "60", name, check=False)
         sys.stderr.buffer.write(logs.stdout + logs.stderr)
         raise
@@ -88,8 +90,8 @@ def verify(image):
         docker("rm", "--force", name, check=False)
 
 
-def interrupted(_signum, _frame):
-    raise KeyboardInterrupt
+def interrupted(signum, _frame):
+    raise SystemExit(128 + signum)
 
 
 def main():

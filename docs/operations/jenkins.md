@@ -167,7 +167,7 @@ the pinned Kyverno 1.15 admission verifier discovers `.sig` and `.att` tags,
 not Cosign v3's referrer-only evidence. Both forms are signed with the same
 Jenkins-managed key and cover the same immutable subject digest.
 [`scripts/ci/with-ghcr-auth.sh`](../../scripts/ci/with-ghcr-auth.sh) supplies a
-mode-700 temporary `DOCKER_CONFIG` for publishing, signing, deployment, rollback,
+mode-700 temporary `DOCKER_CONFIG` for publishing, image scanning/startup verification, signing, deployment, rollback,
 and AWS promotion. It logs in through standard input, forwards command arguments
 and exit status, and removes credentials on success, failure, or cancellation.
 [`test-registry-auth.sh`](../../scripts/test/test-registry-auth.sh) checks this
@@ -706,18 +706,25 @@ Both PR and main deployment-script checks run
 `./scripts/test/test-frontend-image.sh`: it copies tracked frontend inputs into a
 private temporary context with files `0600` and directories `0700`, builds the
 actual Dockerfile, verifies startup, and proves an unreadable template is rejected.
-It needs Docker and access to the configured base-image/package registries and
-removes its own test images and temporary files.
+It needs Docker with BuildKit and access to the configured base-image/package
+registries; it uses the default daemon-backed builder and removes its child image
+before the parent and temporary files. It deliberately runs for every PR/main
+quality check, including changes that select no deployment, to exercise startup
+independently of the real checkout modes. BuildKit can reuse this regression's
+cache across runs.
 
 `scripts/ci/verify-frontend-image.py IMAGE` checks an already-local image as UID/GID
 101 with a read-only root filesystem, dropped capabilities, no new privileges,
 and the production writable paths in temporary filesystems. It publishes no ports,
-uses no application credentials and disables container networking. It checks all
-three Kubernetes probes, the built index and its JavaScript/CSS entry assets over
+uses no application credentials and disables container networking. Its resolver
+input is pinned to loopback so host DNS changes cannot invalidate this isolated
+check. It checks all three Kubernetes probes, the built index and its JavaScript/CSS entry assets over
 loopback HTTP. PR/local image builds invoke it after building the frontend; main
 pulls and checks the scanned frontend digest before signing or rollout. Failures
-print bounded container logs and remove only that check's container. These image
-checks do not verify the API proxy or replace Kubernetes deployment smoke tests.
+print Docker diagnostics and bounded container logs and remove only that check's
+container. The published-image gate removes digest references it pulled solely for
+verification on success or failure, while retaining references already present on
+the agent. Cleanup failure emits a warning. These image checks do not verify the API proxy or replace Kubernetes deployment smoke tests.
 
 The deployment keeps the normal application rollout budget at five minutes but
 allows 15 minutes for the observability group as a whole. A new single-node

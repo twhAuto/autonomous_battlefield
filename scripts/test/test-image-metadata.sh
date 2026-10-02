@@ -33,6 +33,7 @@ raise SystemExit(int(os.environ.get('TEST_FRONTEND_PROBE_EXIT', '0')))
 import json,os,pathlib,sys
 args=sys.argv[1:]
 with open(os.environ['TEST_COMMAND_LOG'],'a') as f: f.write(json.dumps(args)+'\\n')
+if args[:2] == ['image', 'inspect']: sys.exit(0 if os.environ.get('TEST_PUBLISHED_CACHED') == '1' else 1)
 if args[0] == 'pull': sys.exit(int(os.environ.get('TEST_PULL_EXIT', '0')))
 if args[0] == 'run': sys.exit(int(os.environ.get('TEST_SCAN_EXIT', '0')))
 if '--metadata-file' in args:
@@ -74,6 +75,9 @@ if '-f' in args:
             calls=run(script, **overrides)
             builds=[args for args in calls if '--label' in args]
             assert len(builds)==2 and all('org.opencontainers.image.source='+source in args for args in builds)
+            if script == 'scripts/ci/build-images.sh':
+                assert ['verify-frontend', 'autonomous-battlefield-frontend:'+git('rev-parse', 'HEAD')] in calls
+                assert all(args[args.index('--builder')+1] == 'default' for args in builds)
     run('scripts/ci/build-images.sh', ok=False, TEST_FRONTEND_PROBE_EXIT='23')
     run('scripts/ci/build-images.sh', BUILD_COMPONENTS='backend', TEST_FRONTEND_PROBE_EXIT='23')
     image_file = tmp/'published.env'
@@ -82,11 +86,17 @@ if '-f' in args:
     image_file.write_text(f'BACKEND_IMAGE_REF={backend_ref}\nFRONTEND_IMAGE_REF={frontend_ref}\n')
     scan_script = 'scripts/ci/scan-published-images.sh'
     calls = run(scan_script, BUILD_IMAGES_FILE=str(image_file))
-    assert calls[-2:] == [['pull', frontend_ref], ['verify-frontend', frontend_ref]]
+    assert calls[-3:] == [['pull', frontend_ref], ['verify-frontend', frontend_ref], ['image', 'rm', frontend_ref]]
+    cached_calls = run(scan_script, BUILD_IMAGES_FILE=str(image_file), TEST_PUBLISHED_CACHED='1')
+    assert cached_calls[-2:] == [['pull', frontend_ref], ['verify-frontend', frontend_ref]]
+    assert not any(call[:2] == ['image', 'rm'] for call in cached_calls)
     for failure in ['TEST_PULL_EXIT', 'TEST_SCAN_EXIT', 'TEST_FRONTEND_PROBE_EXIT']:
         calls = run(scan_script, ok=False, BUILD_IMAGES_FILE=str(image_file), **{failure: '23'})
         if failure != 'TEST_FRONTEND_PROBE_EXIT':
             assert not any(call[0] == 'verify-frontend' for call in calls)
+            assert not any(call[:2] == ['image', 'rm'] for call in calls)
+        else:
+            assert calls[-1] == ['image', 'rm', frontend_ref]
     image_file.write_text(f'BACKEND_IMAGE_REF={backend_ref}\n')
     calls = run(scan_script, BUILD_IMAGES_FILE=str(image_file), TEST_FRONTEND_PROBE_EXIT='23')
     assert not any(call[0] in ['pull', 'verify-frontend'] for call in calls)
