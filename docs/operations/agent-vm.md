@@ -40,6 +40,9 @@ reads the decision context through MCP, calls the provider through Squid, and
 submits a plan through MCP. Acceptance and execution are separate: the engine
 executes accepted orders. A plain model reply is not a submitted battle plan.
 
+For reviewed VM creation or adoption that preserves the existing disk and login
+homes, use [CLI VM platform](cli-vm-platform.md). The manual creation steps below
+are legacy reference; do not run both creation workflows for the same VM.
 For repeatable service installation or adoption of an existing VM, use the
 [Ansible CLI bootstrap](cli-bootstrap.md). It captures the current bundle and can
 install the worker files without manual copying. The steps below document VM
