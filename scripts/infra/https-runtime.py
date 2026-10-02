@@ -36,6 +36,15 @@ def require(condition, message):
         raise ValueError(message)
 
 
+def safe_error(error):
+    # Parser errors can include private input values; give useful static guidance.
+    if isinstance(error, json.JSONDecodeError):
+        return 'Invalid JSON in HTTPS inputs or state; inspect the private source'
+    if isinstance(error, ipaddress.AddressValueError):
+        return 'Invalid IPv4 address in local HTTPS routing'
+    return str(error) if type(error) is ValueError else type(error).__name__
+
+
 def sha(value):
     return hashlib.sha256(value if isinstance(value, bytes) else value.encode()).hexdigest()
 
@@ -451,6 +460,8 @@ def main():
 if __name__ == '__main__':
     try:
         main()
+    except KeyboardInterrupt:
+        sys.exit(130)
     except Exception as error:
-        print('HTTPS operation stopped: ' + (str(error) if type(error) is ValueError else type(error).__name__), file=sys.stderr)
+        print('HTTPS operation stopped: ' + safe_error(error), file=sys.stderr)
         sys.exit(1)

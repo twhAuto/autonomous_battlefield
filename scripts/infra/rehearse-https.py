@@ -40,7 +40,8 @@ def main():
         try:
             print('Preparing disposable HTTPS host',flush=True);guest.prepare(args.image)
             with tarfile.open(work/'source.tar','w') as archive:
-                for name in ('infra/ansible','scripts/infra','scripts/test/rehearse-https-guest.py'):
+                for name in ('infra/ansible','scripts/infra','scripts/test/rehearse-https-guest.py',
+                             'docs/operations/local-https-platform.md'):
                     archive.add(ROOT/name,arcname=name,filter=lambda item:None if '__pycache__' in item.name else item)
                     path=ROOT/name
                     for source in ([path] if path.is_file() else path.rglob('*')):

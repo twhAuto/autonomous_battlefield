@@ -1485,13 +1485,17 @@ Kind-to-K3s alias migration. It requires the captured shared Caddy version/unit
 and never updates that binary or the separate CLI proxy. Root-only ownership
 and one-use 30-minute receipts bind the host, inputs, revision and observations.
 Foreign configuration, missing CA material and drift stop before apply.
+Changing the capture or registered node requires the runbook's reviewed recovery:
+archive existing ownership under the host lock, retaining receipts and rollback
+material, then review a new plan. Incomplete operations block that archival.
 
 The 2026-10-02 inspection found the local application and monitoring aliases
 still used retained Kind. The owner-approved migration redirects
 `battlefield.home.arpa` to the registered public origin, preserving Cloudflare
 Access login, and sends Grafana/Kibana to the private K3s gateway. SonarQube and
 extra supported loopback routes are preserved. Migration reloads only native
-Caddy, preserving its CA; a failed check attempts restoration of the saved
+Caddy, preserving its CA; it regenerates the three owned blocks, with their
+interior comments retained in the saved original only. A failed check attempts restoration of the saved
 Caddyfile. Fresh restore writes the original root before startup and masks the
 native service on startup failure. Incomplete journals require explicit recovery.
 No normal main build invokes this workflow, and merging its code does not

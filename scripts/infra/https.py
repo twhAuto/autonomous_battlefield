@@ -66,6 +66,7 @@ def target(value):
 def execute(args):
     data = server.load_inventory(args.inventory)
     observed = server.inspect_host(data, local=True)
+    server.require_compatible_sudo(observed['sudo_executable'])
     password_args = server.password_args(args.vault_password_file)
     if args.vault_password_file:
         server.outside_repo(server.private_file(args.vault_password_file))
@@ -155,6 +156,8 @@ def main():
 if __name__ == '__main__':
     try:
         main()
+    except KeyboardInterrupt:
+        sys.exit(130)
     except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:
-        print('HTTPS: ' + (str(error) if type(error) is ValueError else type(error).__name__), file=sys.stderr)
+        print('HTTPS: ' + runtime.safe_error(error), file=sys.stderr)
         sys.exit(1)

@@ -363,7 +363,8 @@ private JSON enters Ansible only as a file path. Migration derives routing from
 the registered K3s production profile, redirects the application alias to the
 public Access-protected origin and retargets monitoring without replacing the
 shared Caddy binary or touching the CLI proxy. `test-local-https.py` covers
-policy and failure paths; `rehearse-https.py` and
+policy, registered K3s routing and failure paths; `rehearse-https.py` and
 `scripts/test/rehearse-https-guest.py` exercise the actual lifecycle and reboot
-with synthetic secrets in a disposable VM. See the
+with synthetic secrets in a disposable VM, including the runbook's exact
+ownership archival command and re-registration after a capture/node change. See the
 [local HTTPS runbook](../operations/local-https-platform.md).

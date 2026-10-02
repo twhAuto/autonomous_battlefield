@@ -38,6 +38,14 @@ owned routes plus self-contained internal-TLS loopback proxy routes. Unknown
 directives, imports, external key paths, foreign units and configuration drift
 stop before adoption; retain them for explicit review instead of deleting them.
 
+The supported binary is the native Ubuntu Caddy package, with bare `X.Y.Z`
+version output and the packaged service commands. The existing host reports
+exactly `2.6.2` (package `2.6.2-14ubuntu0.26.04.1~esm1`), confirmed on
+2026-10-03; the Ubuntu 26.04 disposable fixture also passed capture. Upstream
+build strings such as `v2.7.6 h1:...` are deliberately rejected. Replacing or
+upgrading the shared package requires separate review of both native HTTPS and
+the CLI proxy, then a fresh capture and ownership recovery as described below.
+
 ```bash
 private_dir="$HOME/.config/autonomous-battlefield/server"
 umask 077
@@ -113,7 +121,9 @@ expired, replayed or changed plans cannot apply. The root-only ownership state
 is `/var/lib/battlefield-https`.
 
 Migration saves the original Caddyfile, writes only the three reviewed route
-blocks and reloads native Caddy. The root pair, service unit, CLI proxy and
+blocks and reloads native Caddy. Those blocks are regenerated, including their
+formatting; comments inside them survive only in the saved original Caddyfile.
+Comments outside those blocks are preserved. The root pair, service unit, CLI proxy and
 unrelated route bytes remain in place. A failed reload/verification attempts
 to restore the exact original configuration and reload it. Retained journal
 state blocks retries if rollback or finalization does not complete; inspect
@@ -131,6 +141,66 @@ before starting Caddy, publishes the public host trust certificate and verifies
 TLS. Startup failure masks/stops only native Caddy and retains the incomplete
 journal. No automatic CA rotation, ownership reset, package upgrade, destroy
 or replacement of an existing installation is provided.
+
+## Recover ownership after an intentional change
+
+Ownership binds the full capture, registered host/operator and routing identities,
+including the node UID. A new capture, `adopt` without routing followed by
+`migrate --k3s-routes`, or a reviewed K3s rebuild therefore requires explicit
+re-registration. An unchanged installation should keep using its original
+Vault and routing options; do not re-capture as part of routine verification.
+For the initial Kind correction above, start directly with `--mode migrate`.
+
+For an intentional change, keep Jenkins main/platform jobs idle throughout:
+
+1. Verify the change against the previous plan/verification reports. For a K3s
+   rebuild, finish its own verification and production registration first. Do
+   not adopt an unexplained new host, cluster, CA or configuration.
+2. Run `capture` to a **new Vault path** using the command above. Preserve the
+   previous Vault and public certificate. Compare the new public CA fingerprint
+   with the previous report; it must match. Inspect the current routes and
+   desired destinations. Capture validates the current active configuration,
+   packaged unit, TLS and CA pair, even if the retired upstream returns 503.
+3. Archive the old root-owned management state with the command below, from
+   the reviewed checkout as the registered operator. This holds the shared
+   operation lock and refuses an incomplete operation. It moves only management
+   state, including old receipts and rollback material; Caddy keeps serving the
+   current configuration with its existing CA. Retain the printed archive path.
+
+```bash
+python3 scripts/infra/operation-lock.py -- /usr/bin/sudo.ws /bin/sh -eu -c '
+  state=/var/lib/battlefield-https
+  test -d "$state"
+  test ! -L "$state"
+  test "$(stat -c %u:%a "$state")" = 0:700
+  test -f "$state/owner.json"
+  test ! -L "$state/owner.json"
+  test ! -e "$state/incomplete.json"
+  test ! -L "$state/incomplete.json"
+  archive=$(mktemp -d /var/lib/battlefield-https.previous.XXXXXXXX)
+  mv -- "$state" "$archive/state"
+  printf "Retained HTTPS ownership: %s/state\n" "$archive"
+'
+```
+
+Use `/usr/bin/sudo` instead only on hosts where that is the compatible executable
+selected by bootstrap. An incomplete journal is a separate interrupted-operation
+recovery: inspect and finish or roll back that operation first; do not bypass
+this check by deleting its journal.
+
+4. Generate a **fresh** plan using the new Vault and reviewed main revision.
+   For an intentional route change, use `--mode migrate --k3s-routes`; for an
+   already matching K3s configuration use `--mode adopt --k3s-routes`. Review
+   the CA fingerprint and every destination before applying. The latter plan
+   must contain only `record HTTPS ownership`; an identity change alone does
+   not require a Caddy reload. Run verify and a repeat plan with the same inputs
+   and mode; expect healthy TLS and `changes: []`.
+
+Never reuse an archived plan receipt. If the new plan fails, leave services
+running and investigate; do not clear more state or force apply. The archive
+retains the previous binding and rollback material for diagnosis. Do not put it
+back after applying new inputs. This manual recovery deliberately requires a
+new review instead of silently accepting a different cluster or capture.
 
 ## Workstation trust and DNS
 
@@ -160,7 +230,8 @@ production smoke checks. Browser trust stores can require their own import.
 
 `scripts/test/test-local-https.py` is part of `test-deployment.sh` through the
 server bootstrap harness. It checks route scope, CA/key validation, stale
-receipts, preservation/rollback, capture-versus-acceptance behavior and actual
+receipts, production profile/gateway validation, safe cancellation/errors,
+preservation/rollback, capture-versus-acceptance behavior and actual
 Ansible handling of literal private JSON values.
 
 On the libvirt controller, use the existing pinned Ubuntu 26.04 image:
@@ -174,7 +245,8 @@ python3 scripts/infra/rehearse-https.py \
 The fixture needs 5 GiB available RAM, 20 GiB free libvirt storage and the active
 default NAT network. Its 2-vCPU/3-GiB/16-GiB guest uses a synthetic CA and
 upstreams to exercise real Ansible adoption, a retired Kind 503, the redirect
-and monitoring migration, fresh restore, repeat apply and reboot. Negative
+and monitoring migration, the documented ownership archival and re-registration,
+fresh restore, repeat apply and reboot. Negative
 checks cover missing keys, foreign files, identity drift and stale/replayed
 plans. Evidence includes source hashes and preserved hypervisor identities;
 cleanup removes only the fixture VM and owned volumes. These checks do not

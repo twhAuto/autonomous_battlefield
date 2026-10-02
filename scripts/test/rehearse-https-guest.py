@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import shlex
 import shutil
 import subprocess
 
@@ -39,8 +40,15 @@ def main():
         return json.loads(output.read_text())
     def fails(call, message):
         try:call()
-        except (ValueError,FileNotFoundError):return
+        except (ValueError,FileNotFoundError,subprocess.CalledProcessError):return
         raise AssertionError(message)
+    def archive_ownership():
+        # Execute the actual documented operator command, only inside this fixture.
+        guide=(ROOT/'docs/operations/local-https-platform.md').read_text()
+        section=guide.split('## Recover ownership after an intentional change\n',1)[1]
+        script=section.split('```bash\n',1)[1].split('```',1)[0]
+        if not Path('/usr/bin/sudo.ws').exists():script=script.replace('/usr/bin/sudo.ws','/usr/bin/sudo')
+        return run('runuser','-u','rehearsal','--','bash','-c','cd '+shlex.quote(str(ROOT))+' && '+script)
     if args.phase=='before-reboot':
         run('systemctl','mask','caddy.service')
         run('apt-get','update','--quiet')
@@ -91,7 +99,6 @@ while True:time.sleep(60)
         r.CONFIG.write_text(text)
         fails(lambda:r.Engine(dict(request,machine_id='f'*32)),'Accepted wrong host')
         # Model the actual migration: Kind application retired, monitoring moved to K3s.
-        shutil.rmtree(r.STATE)
         Path('/tmp/retired-kind').touch()
         captured=r.capture();assert captured['upstreams_healthy'] is False
         assert captured['routes']['battlefield.home.arpa']['status']==503
@@ -99,6 +106,16 @@ while True:time.sleep(60)
         address=run('hostname','-I').decode().split()[0]
         request.update(mode='migrate',routing={'gateway':address+':30080','public_origin':'https://play.example.com',
                        'cluster_uid':'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee','node_uid':'ffffffff-aaaa-bbbb-cccc-dddddddddddd'})
+        fails(lambda:r.Engine(request),'Silently changed adopted routing ownership')
+        owner=(r.STATE/'owner.json').read_bytes()
+        (r.STATE/'incomplete.json').write_text('{}')
+        fails(archive_ownership,'Archived an incomplete operation')
+        assert (r.STATE/'owner.json').read_bytes()==owner
+        (r.STATE/'incomplete.json').unlink()  # Fixture-created negative marker only.
+        archived=Path(archive_ownership().decode().strip().split(': ',1)[1])
+        assert (archived/'owner.json').read_bytes()==owner
+        assert (archived/'review.json').exists() and not r.STATE.exists()
+        assert r.CONFIG.read_text()==text and (r.CA/'root.key').read_text()==config['root_private_key']
         desired=r.desired_configuration(config,request['routing'])
         plan=lifecycle('plan',request,'migrate-plan')
         applied=lifecycle('apply',request,'migrate-apply',plan['review_id']);assert applied['changed']
@@ -110,12 +127,28 @@ while True:time.sleep(60)
         assert verified['tls']['battlefield.home.arpa']['status']==307
         repeat=lifecycle('plan',request,'migrate-repeat-plan');assert repeat['changes']==[]
         assert lifecycle('apply',request,'migrate-repeat-apply',repeat['review_id'])['changed'] is False
+        # A fresh capture and verified replacement node require reviewed ownership,
+        # but must not reload Caddy when the desired configuration already matches.
+        recaptured=r.capture()['config']
+        assert r.validate(recaptured)==r.validate(config)
+        fails(lambda:r.Engine(dict(request,config=recaptured)),'Silently accepted new capture')
+        new_routing=dict(request['routing'],node_uid='11111111-2222-3333-4444-555555555555')
+        fails(lambda:r.Engine(dict(request,routing=new_routing)),'Silently accepted replacement node')
+        archive_ownership()
+        request.update(config=recaptured,routing=new_routing,mode='adopt')
+        plan=lifecycle('plan',request,'rebind-plan');assert plan['changes']==['record HTTPS ownership']
+        applied=lifecycle('apply',request,'rebind-apply',plan['review_id'])
+        assert applied['applied_changes']==['record HTTPS ownership']
+        lifecycle('verify',request,'rebind-verify')
+        assert lifecycle('plan',request,'rebind-repeat-plan')['changes']==[]
+        assert run('systemctl','show','caddy','--property=MainPID','--value')==pid
+        assert r.CONFIG.read_text()==desired['caddyfile'] and (r.CA/'root.key').read_text()==config['root_private_key']
         # Rebuild only this disposable native service, retaining its captured root.
         run('systemctl','mask','--now','caddy.service')
         shutil.rmtree(r.HOME/'.local/share/caddy')
         shutil.rmtree(r.STATE)
         r.CONFIG.write_bytes(default)
-        request['mode']='install'
+        request.update(mode='install',config=config)
         missing=dict(config);missing.pop('root_private_key')
         fails(lambda:r.Engine(dict(request,config=missing)),'Accepted missing CA key')
         foreign=r.CONFIG.parent/'unrelated.conf';foreign.write_text('preserve me')
@@ -132,7 +165,7 @@ while True:time.sleep(60)
         assert lifecycle('apply',request,'install-repeat-apply',repeat['review_id'])['changed'] is False
         fails(lambda:r.Engine(request).apply(repeat['review_id']),'Accepted replayed receipt')
         (evidence/'request.json').write_text(json.dumps(request))
-        print('PASS: real Ansible capture/adopt/install/repeat, retained CA and unrelated route, negative guards')
+        print('PASS: real Ansible capture/adopt/migrate/rebind/install/repeat, retained CA and unrelated route, negative guards')
     else:
         request=json.loads((evidence/'request.json').read_text())
         verified=lifecycle('verify',request,'reboot-verify')

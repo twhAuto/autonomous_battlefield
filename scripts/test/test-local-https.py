@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 from unittest.mock import MagicMock
@@ -38,6 +39,47 @@ def routing():
 
 
 class PolicyTests(unittest.TestCase):
+    def test_native_package_prerequisites_keep_version_pin_explicit(self):
+        unit = ('[Service]\nUser=caddy\nGroup=caddy\n'
+                'ExecStart=/usr/bin/caddy run --environ --config /etc/caddy/Caddyfile\n'
+                'ExecReload=/usr/bin/caddy reload --config /etc/caddy/Caddyfile --force\n')
+        with patch.object(runtime.pwd, 'getpwnam', return_value=SimpleNamespace(pw_dir=str(runtime.HOME))), \
+             patch.object(runtime, 'read', return_value=unit.encode()), patch.object(Path, 'glob', return_value=[]), \
+             patch.object(runtime.os.path, 'lexists', return_value=False):
+            for value in ('2.6.2\n', 'v2.7.6 h1:upstream-build\n', 'unknown\n'):
+                with self.subTest(version=value), patch.object(runtime, 'command', return_value=value.encode()):
+                    if value == '2.6.2\n':
+                        self.assertEqual(runtime.prerequisites()[1], '2.6.2')
+                    else:
+                        with self.assertRaisesRegex(ValueError, 'Unsupported Caddy version'):
+                            runtime.prerequisites()
+
+    def test_capture_rejects_missing_sudo_before_accessing_vault(self):
+        with patch.object(wrapper.server, 'load_inventory', return_value={}), \
+             patch.object(wrapper.server, 'inspect_host', return_value={'sudo_executable':''}), \
+             patch.object(wrapper.server, 'password_args', side_effect=AssertionError('Accessed Vault')), \
+             patch.object(wrapper.subprocess, 'run', side_effect=AssertionError('Executed capture')):
+            with self.assertRaisesRegex(ValueError, 'Compatible sudo is unavailable'):
+                wrapper.execute(SimpleNamespace(inventory=Path('/private/inventory.json')))
+
+    def test_parser_errors_are_actionable_without_private_values(self):
+        canary = 'synthetic-private-value'
+        for error, expected in ((json.JSONDecodeError(canary, canary, 0), 'Invalid JSON'),
+                                (runtime.ipaddress.AddressValueError(canary), 'Invalid IPv4')):
+            message = runtime.safe_error(error)
+            self.assertIn(expected, message); self.assertNotIn(canary, message)
+
+    def test_both_entrypoints_cancel_without_tracebacks(self):
+        for filename, setup in (
+                ('https.py', "patch('argparse.ArgumentParser.parse_args', side_effect=KeyboardInterrupt)"),
+                ('https-runtime.py', "patch('os.geteuid', return_value=0), patch('pwd.getpwnam', side_effect=KeyboardInterrupt)")):
+            script = ('import runpy,sys\nfrom unittest.mock import patch\n'
+                      'sys.argv=[sys.argv[1],"capture"]\nwith ' + setup + ':\n'
+                      ' runpy.run_path(sys.argv[0],run_name="__main__")\n')
+            result = subprocess.run([sys.executable, '-c', script, str(ROOT/'scripts/infra'/filename)], capture_output=True)
+            self.assertEqual(result.returncode, 130, result.stderr.decode())
+            self.assertEqual(result.stderr, b'')
+
     def test_migration_preserves_extra_routes_and_sonarqube_and_redirects_only_application(self):
         extra = '\n# retain this comment\nnotes.home.arpa { tls internal reverse_proxy 127.0.0.1:9999 }\n'
         original = caddyfile() + extra
@@ -123,6 +165,71 @@ class CertificateTests(unittest.TestCase):
         for field in ('root_private_key','unit_sha256','caddyfile'):
             value = copy.deepcopy(config); del value[field]
             with self.assertRaises(ValueError): runtime.validate(value)
+        with self.assertRaisesRegex(ValueError, 'version/unit pin'):
+            runtime.validate(dict(config, caddy_version='v2.7.6 h1:upstream-build'))
+
+
+class RoutingTests(unittest.TestCase):
+    def setUp(self):
+        self.profile = {'BF_DRIVER':'k3s', 'BF_ENV':'production', 'BF_KUBECONFIG':'/private/production.yaml',
+                        'BF_CONTEXT':'battlefield-production', 'BF_UID':routing()['cluster_uid'],
+                        'BF_CLUSTER':'battlefield-k3s', 'BF_URL':'https://play.example.com/'}
+        self.namespace = {'metadata':{'uid':self.profile['BF_UID']}}
+        self.nodes = {'items':[{'metadata':{'name':'battlefield-k3s','uid':routing()['node_uid']},
+                               'status':{'conditions':[{'type':'Ready','status':'True'}],
+                                         'addresses':[{'type':'InternalIP','address':'192.168.235.10'}]}}]}
+        self.services = {'items':[{'spec':{'type':'NodePort','ports':[{'port':80,'nodePort':30080}]}}]}
+        self.calls = []
+
+    def command(self, *args):
+        self.calls.append(args)
+        if args[0] == 'node':
+            return '\n'.join(k+'='+v for k,v in self.profile.items()).encode()
+        expected = ('kubectl','--kubeconfig',self.profile['BF_KUBECONFIG'],'--context',
+                    self.profile['BF_CONTEXT'],'--request-timeout=15s','get')
+        self.assertEqual(args[:7], expected)
+        queries = {('namespace','kube-system','-o','json'):self.namespace, ('nodes','-o','json'):self.nodes,
+                   ('services','-n','envoy-gateway-system','-l',
+                    'gateway.envoyproxy.io/owning-gateway-name=battlefield-local,gateway.envoyproxy.io/owning-gateway-namespace=battlefield',
+                    '-o','json'):self.services}
+        return json.dumps(queries[args[7:]]).encode()
+
+    def derive(self):
+        with patch.object(wrapper.server, 'private_file', side_effect=Path), \
+             patch.object(wrapper.runtime, 'command', side_effect=self.command):
+            result = wrapper.registered_routing()
+            runtime.desired_configuration({'caddyfile':caddyfile()}, result)
+            return result
+
+    def test_registered_profile_uses_exact_context_uid_selector_and_gateway(self):
+        self.assertEqual(self.derive(), routing())
+        self.assertEqual(len(self.calls), 4)
+
+    def test_cluster_uid_mismatch_stops_before_node_or_gateway_queries(self):
+        self.namespace['metadata']['uid'] = 'unregistered'
+        with self.assertRaisesRegex(ValueError, 'cluster identity changed'): self.derive()
+        self.assertEqual(len(self.calls), 2)
+
+    def test_missing_multiple_unready_or_wrong_nodes_rejected(self):
+        for kind in ('missing','multiple','unready','wrong-name','multiple-addresses'):
+            self.setUp()
+            if kind == 'missing': self.nodes['items'] = []
+            if kind == 'multiple': self.nodes['items'] *= 2
+            if kind == 'unready': self.nodes['items'][0]['status']['conditions'][0]['status'] = 'False'
+            if kind == 'wrong-name': self.nodes['items'][0]['metadata']['name'] = 'unregistered'
+            if kind == 'multiple-addresses': self.nodes['items'][0]['status']['addresses'] *= 2
+            with self.subTest(kind=kind), self.assertRaises(ValueError): self.derive()
+
+    def test_missing_or_wrong_gateway_and_invalid_public_origin_rejected(self):
+        for kind in ('missing','multiple','type','port','nodePort','origin'):
+            self.setUp()
+            spec = self.services['items'][0]['spec']
+            if kind == 'missing': self.services['items'] = []
+            if kind == 'multiple': self.services['items'] *= 2
+            if kind == 'type': spec['type'] = 'ClusterIP'
+            if kind in ('port','nodePort'): spec['ports'][0][kind] = 9000
+            if kind == 'origin': self.profile['BF_URL'] += 'invalid/path'
+            with self.subTest(kind=kind), self.assertRaises(ValueError): self.derive()
 
 
 class ReviewTests(unittest.TestCase):
