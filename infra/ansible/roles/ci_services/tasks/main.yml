@@ -11,6 +11,8 @@
       - unzip
       - xz-utils
       - python3-venv
+      # Ubuntu 26.04 moved sg/newgrp from login into util-linux-extra.
+      - "{{ 'util-linux-extra' if ansible_facts['distribution_version'] == '26.04' else 'login' }}"
       - xvfb
       - fonts-noto-color-emoji
       - fonts-unifont
@@ -81,6 +83,8 @@
     name: "{{ ci_config.operator }}"
     groups: docker
     append: true
+- name: Check the agent launcher before beginning controller maintenance
+  ansible.builtin.import_tasks: agent-launcher.yml
 - name: Prepare private CI ownership and captured database inputs
   ansible.builtin.command:
     argv: [python3, -c, "{{ ci_runtime }}", prepare]

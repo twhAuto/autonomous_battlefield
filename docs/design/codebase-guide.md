@@ -131,7 +131,9 @@ before resuming checks. The pinned Ubuntu image is in
 `server.sh ci-*` dispatches to `scripts/infra/ci-bootstrap.py` for private CI
 registration, source fingerprints and external Ansible execution. `infra/ansible/ci.yml`
 and its `ci_services` role manage the pinned controller, Sonar Compose service,
-agent and tools. `ci-runtime.py` implements secret-safe preflight, build draining,
+agent and tools. The role's `tasks/agent-launcher.yml` checks the installed group
+launcher as the operator before any controller drain. `ci-runtime.py` implements
+secret-safe preflight, build draining,
 maintenance backups and service API initialization/verification. `infra/jenkins`
 contains the checksum/dependency lock, scoped JCasC/bootstrap definitions and
 missing-job-only Job DSL. Platform jobs reuse `seed-platform.py` rather than a
