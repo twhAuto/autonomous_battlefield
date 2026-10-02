@@ -56,13 +56,15 @@ def validate(config):
         raise ValueError('CLI bridge port must avoid the Jenkins smoke ports and proxy port')
     guest = config['guest']
     if guest is not None:
-        if not isinstance(guest, dict) or not {'machine_id', 'identity_file', 'artifacts', 'config', 'service', 'adopt_existing'} <= set(guest) or set(guest) - {'machine_id', 'identity_file', 'artifacts', 'config', 'service', 'adopt_existing', 'isolation_script'}:
+        if not isinstance(guest, dict) or not {'machine_id', 'identity_file', 'artifacts', 'config', 'service', 'adopt_existing'} <= set(guest) or set(guest) - {'machine_id', 'identity_file', 'artifacts', 'config', 'service', 'adopt_existing', 'isolation_script', 'known_hosts_file'}:
             raise ValueError('Invalid CLI guest configuration; use the example schema')
         if not isinstance(guest['machine_id'], str) or not re.fullmatch(r'[0-9a-f]{32}', guest['machine_id']) or type(guest['adopt_existing']) is not bool:
             raise ValueError('Invalid CLI guest identity/adoption setting')
         if guest['machine_id'] == host['machine_id']:
             raise ValueError('CLI guest identity must differ from the physical host')
         absolute(guest['identity_file'], controller=True); absolute(guest['config'], controller=True); absolute(guest['service'], controller=True)
+        if 'known_hosts_file' in guest:
+            absolute(guest['known_hosts_file'], controller=True)
         if 'isolation_script' in guest:
             absolute(guest['isolation_script'], controller=True)
         artifacts = guest['artifacts']
@@ -246,10 +248,42 @@ def guest_file_entries(guest, server):
     return files
 
 
+def managed_handoff(args, data, config, server):
+    """Resolve a verified host-local VM connection without copying an admin key."""
+    if not isinstance(config, dict) or not isinstance(config.get('host'), dict) or ('guest' not in config) or (config['guest'] is not None and not isinstance(config['guest'], dict)):
+        raise ValueError('Invalid CLI registration for managed VM handoff')
+    explicit = getattr(args, 'cli_vm_handoff', None)
+    if explicit and not args.local:
+        raise ValueError('Managed CLI VM handoff belongs to the physical host; use --local there')
+    path = explicit or (Path.home() / '.local/state/battlefield/cli-vm/handoff.json' if args.local else None)
+    if not path or (not explicit and not path.exists()):
+        return None
+    server.outside_repo(path)
+    value = json.loads(server.private_file(path).read_text())
+    fields = {'schema', 'host_machine_id', 'machine_id', 'domain_uuid', 'network_uuid',
+              'identity_file', 'known_hosts_file', 'ansible_host', 'ansible_user'}
+    if (not isinstance(value, dict) or set(value) != fields or type(value['schema']) is not int or value['schema'] != 1 or
+            value['host_machine_id'] != data['machine_id'] or value['ansible_host'] != '192.168.234.2' or
+            value['ansible_user'] != 'vm-admin' or not isinstance(value['machine_id'], str) or not re.fullmatch(r'[0-9a-f]{32}', value['machine_id']) or
+            any(value[key] != config['host'][key] for key in ('domain_uuid', 'network_uuid'))):
+        raise ValueError('Managed CLI VM handoff differs from the registered host/VM identities')
+    for key in ('identity_file', 'known_hosts_file'):
+        server.outside_repo(server.private_file(value[key]))
+    if config['guest'] is not None:
+        for key in ('machine_id', 'identity_file'):
+            if config['guest'].get(key) and config['guest'][key] != value[key]:
+                raise ValueError('CLI service registration targets another guest or admin key')
+            config['guest'][key] = value[key]
+        config['guest']['known_hosts_file'] = value['known_hosts_file']
+    return value
+
+
 def playbook(args, data, report, server):
     config_path = args.cli_config or args.inventory.parent / 'cli.json'
     server.outside_repo(Path(config_path))
-    config = validate(json.loads(server.private_file(config_path).read_text()))
+    config = json.loads(server.private_file(config_path).read_text())
+    managed_handoff(args, data, config, server)
+    validate(config)
     if config['host']['machine_id'] != data['machine_id'] or config['host']['operator'] != data['user']:
         raise ValueError('CLI registration belongs to a different host/operator')
     files = host_files(config)
@@ -264,6 +298,8 @@ def playbook(args, data, report, server):
         key = server.private_file(guest['identity_file'])
         guest_files = guest_file_entries(guest, server)
         connection = '-o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes'
+        if 'known_hosts_file' in guest:
+            connection += ' -o ' + shlex.quote('UserKnownHostsFile=' + str(server.private_file(guest['known_hosts_file'])))
         if not args.local:
             proxy = shlex.join(server.ssh(data) + ['-W', '%h:%p'])
             connection += ' -o ' + shlex.quote('ProxyCommand=' + proxy)
@@ -310,9 +346,11 @@ def playbook(args, data, report, server):
             subprocess.run(command, env=env, check=True)
 
 
-def guest_ssh(data, key, local, server):
+def guest_ssh(data, key, local, server, known_hosts=None):
     command = ['ssh', '-i', str(key), '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes',
                '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=10']
+    if known_hosts:
+        command += ['-o', 'UserKnownHostsFile=' + str(server.private_file(known_hosts))]
     if not local:
         command += ['-o', 'ProxyCommand=' + shlex.join(server.ssh(data) + ['-W', '%h:%p'])]
     return command + ['vm-admin@192.168.234.2']
@@ -326,10 +364,14 @@ def capture_guest(args, data, server):
         raise ValueError('CLI registration belongs to a different host/operator')
     if config['guest'] is not None:
         raise ValueError('Guest already registered; do not overwrite its adoption/release contract')
-    if not args.cli_guest_key or not args.vault:
-        raise ValueError('cli-capture-guest requires --cli-guest-key and a new encrypted --vault output')
+    handoff = managed_handoff(args, data, config, server)
+    guest_key = args.cli_guest_key or (handoff['identity_file'] if handoff else None)
+    if not guest_key or not args.vault:
+        raise ValueError('cli-capture-guest requires a trusted guest key/handoff and a new encrypted --vault output')
+    if handoff and guest_key != handoff['identity_file']:
+        raise ValueError('Explicit guest key differs from the managed VM handoff')
     password_args = server.password_args(args.vault_password_file)
-    key = server.private_file(args.cli_guest_key)
+    key = server.private_file(guest_key)
     vault = server.safe_path(args.vault)
     server.outside_repo(vault)
     if vault.exists() or vault.is_symlink():
@@ -352,7 +394,7 @@ for name in ['battlefield-agent','codex','codex-code-mode-host','claude','agy']:
  with p.open('rb') as f: result['artifacts'][name]=hashlib.file_digest(f,'sha256').hexdigest()
 print(json.dumps(result))
 '''
-    command = guest_ssh(data, key, args.local, server)
+    command = guest_ssh(data, key, args.local, server, handoff['known_hosts_file'] if handoff else None)
     result = subprocess.run(command + ['sudo -n python3 -c ' + shlex.quote(code)], capture_output=True, timeout=120)
     if result.returncode:
         raise ValueError('Guest capture failed; verify its trusted SSH key, unlocked admin key and vm-admin sudo access. No captured output was logged.')
@@ -378,6 +420,10 @@ print(json.dumps(result))
                            'config': str(output / 'config.yaml'), 'service': str(output / 'worker.service'),
                            'adopt_existing': True, 'isolation_script': str(output / 'verify-agent-isolation.py'),
                            'artifacts': {name: {'path': str(output / name), 'sha256': value} for name, value in observed['artifacts'].items()}}
+        if handoff:
+            if observed['machine_id'] != handoff['machine_id']:
+                raise ValueError('Guest machine identity differs from the managed VM handoff')
+            config['guest']['known_hosts_file'] = handoff['known_hosts_file']
         validate(config)
         inputs = {'bootstrap_inputs': {'cli_worker_environment': base64.b64encode(observed['files']['worker.env'].encode()).decode()}}
         with tempfile.TemporaryDirectory(prefix='battlefield-cli-vault-') as directory:

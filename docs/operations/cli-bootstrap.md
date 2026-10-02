@@ -6,6 +6,7 @@ Ansible. Normal `server.sh apply` and application deployments do not invoke them
 They work without Jenkins; AB-139's separate worker update job can reuse this
 entry point later. Jenkins/SonarQube reconstruction remains AB-127.
 
+Provision or adopt the VM first with [CLI VM platform](cli-vm-platform.md).
 The CLI VM must already exist with the [documented isolated network and NIC
 filter](agent-vm.md). This command does not create, replace or resize a VM. Host
 foundation and production Kubernetes registration must already work, including
@@ -24,7 +25,11 @@ Use the same checkout and controller throughout registration, planning and
 applying: captured file paths belong to that controller. For the existing server,
 run from its checkout as the registered operator with `--local`. From WSL, omit
 `--local`; guest SSH uses the physical host as its jump connection, without agent
-forwarding. The guest admin private key must then exist on WSL.
+forwarding. The guest admin private key must then exist on WSL. The AB-140 managed handoff
+is host-local: use `--local` on the physical host to consume it without copying
+keys. It supplies strict host-key trust and refuses a different guest or key.
+`--cli-vm-handoff` can select an explicit private handoff path; it is rejected
+for a remote controller.
 
 ```bash
 ./scripts/infra/server.sh cli-register --local
@@ -113,7 +118,8 @@ when Squid has not been installed yet; preflight still rejects real foreign unit
 
 Set the optional `guest` object using
 [`cli.example.json`](../../infra/ansible/cli.example.json). Required inputs are the
-new guest machine ID and trusted admin key; a worker binary from a verified
+new guest machine ID and trusted admin key (automatically supplied by the
+AB-140 host-local handoff when those two guest fields are empty); a worker binary from a verified
 backend release; both matching Codex executables; their independently verified
 SHA256 digests; the guest config and worker service source paths. Binary transfer,
 account creation, permissions, units and activation are handled by Ansible.

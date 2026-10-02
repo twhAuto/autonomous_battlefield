@@ -300,7 +300,19 @@ while exposing explicitly approved, available CLI profiles.
 3. A feature's `api`, `service`, and `repo` packages in that order
 4. The matching frontend API client and page
 
-### CLI VM host bundle
+### CLI VM lifecycle and host bundle
+
+`scripts/infra/cli-vm.py` is the trusted-main operator entry point for reviewed
+VM plan/apply/verify. `infra/ansible/cli-vm.yml` calls `library/battlefield_cli_vm.py`;
+`module_utils/battlefield_cli_vm.py` owns privileged creation/adoption and immutable
+local state, while `battlefield_cli_vm_policy.py` checks layout and receipts.
+`deploy/agent-vm/domain.xml`, `network.xml` and `filter.xml` declare the fixed
+layout. The wrapper uses the shared operation lock and existing sudo selection.
+Its generated host-local handoff is consumed by `cli-bootstrap.py` before guest
+configuration validation. `test-cli-vm.py` exercises layout, approval and handoff
+failures; `rehearse-cli-vm.py`/`rehearse-cli-vm-guest.py` run the actual nested VM
+lifecycle with UUID-bound disposable cleanup. See [CLI VM platform](../operations/cli-vm-platform.md).
+
 
 `scripts/infra/cli-bootstrap.py`, dispatched by `server.sh cli-*`, registers the
 public host bundle, captures existing guest artifacts with an encrypted worker
