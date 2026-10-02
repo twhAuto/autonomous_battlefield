@@ -33,7 +33,7 @@ Existing files are never overwritten. A cluster replacement needs an explicit
 new registration and reviewed recovery; editing the UID is not recovery.
 
 Prepare the candidate's private `.env` beside its `deployment.env` using the
-[application schema](environments.md). A disposable rehearsal uses its own database
+[application schema](../architecture/configuration.md). A disposable rehearsal uses its own database
 and synthetic application secrets, with managed Players and all AI/CLI provider
 profiles disabled. Copying production credentials into a second active database
 can create unintended external effects. The current production file remains the

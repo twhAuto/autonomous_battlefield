@@ -24,7 +24,8 @@ rollout. Context aliases distinguish environments without renaming resources.
 Missing production application inputs fail validation. Production
 rollback verifies both prior digests and the recorded applied migration state; local development never pulls production
 deployment credentials. Observability is optional for dev. See the
-[environment guide](../operations/environments.md) for registration and recovery.
+[local setup](../developer/local-setup.md) and
+[production environment operations](../operations/environments.md) for registration and recovery.
 
 Production profiles explicitly select `BF_DRIVER=kind|k3s`, with Kind as the
 backward-compatible default. K3s preflight verifies the managed node/controllers
@@ -52,7 +53,12 @@ The central architectural rule is:
 
 > Models propose bounded strategy plans. The deterministic engine validates and applies those plans and remains the only component that controls battlefield-state mutation.
 
-This document describes the system's runtime boundaries and interactions. Operational instructions remain in [README.md](../../README.md), [docs/operations/deployment.md](../operations/deployment.md), and [docs/operations/observability.md](../operations/observability.md).
+This document describes the system's runtime boundaries and interactions. The
+[configuration model](configuration.md) owns environment files and Secret
+boundaries; [observability architecture](observability.md) owns telemetry contracts
+and reliability objectives. Operational instructions remain in
+[deployment](../operations/deployment.md) and
+[observability operations](../operations/observability.md).
 
 ## 2. System context
 
@@ -991,7 +997,7 @@ an explicit model ID for reproducible comparisons. See [Claude operations](../op
 - HTTP completion logs carry `actor_id` and `actor_role` from authentication
   middleware, providing request attribution rather than a tamper-proof audit
   store. Tokens, cookies and email headers are not logged. See
-  [observability](../operations/observability.md) for the full field list.
+  [observability architecture](observability.md#structured-logs) for the full field list.
 - Engine logs cover battle claims, lease loss, decision windows, fallbacks, requeues,
   and completion. Running battles and pending decision windows report progress
   immediately at their first reporting point and at most every 15 seconds
@@ -1228,7 +1234,7 @@ from original input. Evaluation and tool responses use the same projection.
 The agent worker starts a separate, fully sampled trace for each decision request,
 linked to the engine's `battlefield.engine.decision_window` span; battle creation
 and engine processing are also always sampled (see
-[distributed traces](../operations/observability.md#distributed-traces)).
+[distributed traces](observability.md#distributed-traces)).
 Stable request-derived trace/root IDs let the capability-scoped MCP server attach
 server-side tool observations even when a CLI does not propagate trace headers.
 API runners emit one generation per model attempt; CLI runners emit one aggregate

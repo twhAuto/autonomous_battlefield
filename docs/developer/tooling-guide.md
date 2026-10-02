@@ -11,8 +11,9 @@ its original kubeconfig. `prepare-dev-secrets.sh` provisions private dev files;
 `create-kind-cluster.sh` starts/bootstrap dev without recreation. Deployment,
 rollback, smoke, dev CLI agents, retention reports, and runtime assurance share
 the resolver. `scripts/test/test-deployment-environment.sh` exercises rejection
-and bootstrap paths. See the [environment guide](../operations/environments.md)
-for machine configuration, Jenkins credentials, and commands.
+and bootstrap paths. See the [configuration model](../architecture/configuration.md)
+for file ownership, [local setup](local-setup.md) for dev commands, and
+[environment operations](../operations/environments.md) for production setup.
 
 ## Deployment code
 

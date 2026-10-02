@@ -17,7 +17,8 @@ and requires an invitation. To run your own development environment, start with
 
 Deployment environments are separate: **WSL dev** builds and loads local images;
 **server production** receives verified GHCR images from Jenkins `main` delivery.
-Start with the [environment setup guide](docs/operations/environments.md);
+Start with [local development setup](docs/developer/local-setup.md) or
+[production environment operations](docs/operations/environments.md);
 version-controlled configuration templates live in [`infra/deploy/environments/`](infra/deploy/environments/).
 
 Battles are finite and use authored maps; continuous worlds and procedural map
@@ -46,7 +47,9 @@ with focused [backend](docs/developer/backend-guide.md),
 | Find packages, tests, and change paths | [Codebase guide](docs/developer/codebase-guide.md) |
 | Use the HTTP API | [API reference](docs/architecture/api.md) |
 | Read the machine-readable API spec | [OpenAPI contract](docs/architecture/openapi.yaml) |
-| Register dev or production and resume a stopped cluster | [Environments](docs/operations/environments.md) |
+| Set up local development and resume a stopped Kind cluster | [Local setup](docs/developer/local-setup.md) |
+| Understand environment files, credentials and Secret boundaries | [Configuration model](docs/architecture/configuration.md) |
+| Register and configure production | [Environment operations](docs/operations/environments.md) |
 | Build, deploy, inspect, or remove Kubernetes workloads | [Deployment](docs/operations/deployment.md) |
 | Review the measured layout, state locations and remaining rebuild boundaries | [Server rebuild contract](docs/operations/server-rebuild-contract.md) |
 | Inspect, bootstrap and rehearse Ubuntu; optionally manage its data partition | [Server bootstrap](docs/operations/server-bootstrap.md) |
@@ -59,8 +62,11 @@ with focused [backend](docs/developer/backend-guide.md),
 | Configure and verify the private K3s platform | [K3s platform](docs/operations/k3s-platform.md) |
 | Deliver to K3s, migrate existing data and recover after cutover | [K3s delivery](docs/operations/k3s-delivery.md) |
 | Recreate or adopt Jenkins, its agent and SonarQube with Ansible | [CI bootstrap](docs/operations/ci-bootstrap.md) |
-| Configure CI/CD and SonarQube | [Jenkins](docs/operations/jenkins.md) |
-| Inspect metrics, traces, logs, and reliability objectives | [Observability](docs/operations/observability.md) |
+| Understand and reproduce pull-request checks | [Contributor CI](docs/developer/ci.md) |
+| Administer Jenkins, delivery and SonarQube | [Jenkins operations](docs/operations/jenkins.md) |
+| Understand telemetry and reliability objectives | [Observability architecture](docs/architecture/observability.md) |
+| Inspect metrics, traces and logs | [Observability operations](docs/operations/observability.md) |
+| Run disposable load tests and failure drills | [Reliability testing](docs/operations/reliability-testing.md) |
 | Launch for invited testers behind Access and provision the isolated CLI VM | [Limited-access launch](docs/operations/limited-launch.md) |
 | Configure subscription CLI authentication | [Antigravity](docs/operations/antigravity-cli.md), [Claude](docs/operations/claude-cli.md) |
 | Compare controllers and author unit knowledge | [AI comparisons](docs/developer/ai-comparisons.md) |
@@ -138,8 +144,9 @@ correlation, health behavior, metrics, and traces, see
 [observability](docs/operations/observability.md).
 
 Observability is optional; the
-[environment guide](docs/operations/environments.md) includes the full-stack
-option and restart/recovery procedure.
+[observability runbook](docs/operations/observability.md#run-the-local-stack)
+includes the full-stack option; [local setup](docs/developer/local-setup.md)
+explains how to resume a stopped cluster.
 
 For a development backend on another port, set `DEV_API_PROXY_TARGET` in
 `frontend/.env.local`; see [frontend setup](frontend/README.md#run-locally).
@@ -189,7 +196,7 @@ profiles, battle creation and controls, results, views, and event pagination.
 [`.env.example`](.env.example) lists environment inputs.
 Cluster settings live in the
 [deployment ConfigMap](infra/deploy/base/infrastructure/configmap.yaml), with private
-inputs described in the [environment guide](docs/operations/environments.md).
+inputs described in the [configuration model](docs/architecture/configuration.md).
 Unknown YAML fields and invalid configuration fail startup. Catalog paths are
 resolved relative to the configuration file.
 

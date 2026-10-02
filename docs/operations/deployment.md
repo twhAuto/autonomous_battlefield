@@ -175,7 +175,7 @@ the pinned version.
 
 ### 3. Register or resume WSL dev
 
-Follow the [environment setup guide](environments.md) to register the existing
+Follow the [local setup guide](../developer/local-setup.md) to register the existing
 cluster, prepare independent dev secrets, and deploy. For a stopped or absent
 dev cluster, `./scripts/cd/create-kind-cluster.sh` starts existing nodes or creates
 a first cluster. It never recreates a registered cluster and rejects `--recreate`.
@@ -194,7 +194,8 @@ existing PostgreSQL credentials and creates independent authentication and
 capability secrets in the project-root `.env`. An existing `.env` is never overwritten. `./deploy-local.sh`
 renders separate Kubernetes Secrets from `.env` and restarts application pods.
 Production uses the same application format in its private `.env`, beside
-`deployment.env`. See [environment setup](environments.md) for both layouts.
+`deployment.env`. See the [configuration model](../architecture/configuration.md#file-layout)
+for both layouts.
 
 Set `BATTLEFIELD_AUTH_COOKIE_SECURE=false` for the checked-in loopback HTTP
 gateway and `true` before publishing the application through an HTTPS tunnel.
@@ -621,8 +622,9 @@ changes alone do not select application components or run an infrastructure appl
 
 ## Jenkins deployment pipeline
 
-[Jenkins operations](jenkins.md#pipeline-behavior) owns the PR/main stage sequence,
-credentials, publication, verification, and digest rollback workflow. Main deploys
+[Contributor CI](../developer/ci.md#pull-request-verification) describes PR verification.
+[Jenkins production delivery](jenkins.md#production-delivery) owns the main stage
+sequence, credentials, publication, verification, and digest rollback workflow. Main deploys
 to the registered production cluster, now K3s after the initial cutover; local
 Kind dev loads its own images.
 AWS promotion copies verified images to ECR without rebuilding.

@@ -32,6 +32,7 @@ PR targets on the existing shared `battlefield-production` agent.
 
 Use the focused guides for implementation details:
 
+- [Local setup](local-setup.md) and [continuous integration](ci.md): development environment and verification workflow.
 - [Backend guide](backend-guide.md): package ownership, persistence, configuration, AI execution, and membership.
 - [Frontend guide](frontend-guide.md): feature ownership, shared contracts, styles, and browser behavior.
 - [Tooling guide](tooling-guide.md): deployment scripts, test commands, assurance, and cross-review.
@@ -208,7 +209,7 @@ assets. Local/PR builds and published-digest scanning invoke it before delivery.
 `scripts/test/test-frontend-image.sh` builds tracked frontend inputs with private
 checkout permissions and also exercises the unreadable-template rejection in a
 real container. Jenkins runs this Docker-backed regression separately from the
-command-double deployment suite; see [Jenkins checks](../operations/jenkins.md#pipeline-behavior).
+command-double deployment suite; see [Jenkins checks](ci.md#pull-request-verification).
 
 `scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh` are the driver-neutral
 entry points used by Jenkins; the old Kind-named scripts forward arguments and
