@@ -885,7 +885,7 @@ the selected components and approved digests.
 Main invokes the shared `deploy.sh`, `smoke-test.sh` and `rollback.sh` entry points.
 Older profiles without `BF_DRIVER` default to Kind; code merges alone never
 change their cluster or kubeconfig credential. The current production profile
-explicitly selects K3s after AB-132 adoption. Follow [K3s delivery](k3s-delivery.md)
+explicitly selects K3s. Follow [K3s delivery](k3s-delivery.md)
 for separate registration, database restore, profile/credential adoption and
 coordinated tunnel cutover. K3s platform jobs continue to
 own provisioning and controller versions. Existing recovery records without

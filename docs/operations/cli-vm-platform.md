@@ -1,6 +1,6 @@
 # CLI VM provisioning and adoption
 
-AB-140 adds a reviewed Ansible/libvirt workflow for the existing `battlefield-agent`
+The reviewed Ansible/libvirt workflow provisions or adopts the `battlefield-agent`
 layout. It preserves the isolated `192.168.234.0/24` network, `bf-agent0` bridge,
 NIC filter, 2 vCPU / 4 GiB allocation and standalone 24 GiB root disk at
 `/var/lib/libvirt/images/battlefield-agent/root.qcow2`. Existing provider login
@@ -24,7 +24,7 @@ check budgets for the disk's full virtual size rather than its initial sparse
 allocation. It does not reserve blocks or impose a filesystem quota. The command prompts for sudo when needed and uses the existing
 Ubuntu-compatible sudo selection.
 
-Adoption additionally requires the host-local AB-125 `server/cli.json` registration,
+Adoption additionally requires the host-local `server/cli.json` registration,
 including its captured guest identity, existing admin key and already trusted SSH
 host key. It does not bootstrap trust with `ssh-keyscan`. The VM/network must
 already be running, persistent and configured for autostart. If the existing
@@ -146,7 +146,7 @@ has established trust. Its private host key remains in the root/guest seed image
 readable only by root/libvirt QEMU, and the guest itself. Protect the VM disk,
 seed, host admin key and root-owned state as sensitive local recovery material.
 This is not a backup policy: scheduled backups and whole-host-loss protection
-remain deferred under [AB-130](https://app.notion.com/p/3eab7a19f8f78112a657faf5aed3b880).
+are not implemented by this workflow.
 
 ## Verification before production adoption
 
@@ -165,5 +165,5 @@ checks repeated applies, adoption, negative identities/missing disk/network drif
 stale/replayed plans and provider-home fixture bytes, then reboots the disposable
 hypervisor. UUID-bound cleanup verifies existing outer domains, networks and pools
 were preserved. It never logs into providers or changes production resources.
-A reviewed live no-change adoption remains a separate post-promotion acceptance
-step; passing the disposable fixture alone does not mark AB-140 complete.
+A reviewed live no-change adoption is required separately after promotion;
+passing the disposable fixture alone does not verify production adoption.

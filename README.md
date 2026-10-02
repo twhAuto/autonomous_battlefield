@@ -100,7 +100,7 @@ Use the local Kind Kubernetes deployment as the development workflow:
 Open `http://battlefield.localhost:8888`. Edit the project-root, Git-ignored
 `.env` for database, login, and AI settings. See [the template](.env.example).
 The preparation command preserves existing credentials and never overwrites an
-existing `.env`. Retired split files are not read by deployment.
+existing `.env`.
 Values are literal `KEY=value`: no quotes, interpolation, or shell commands.
 Do not source this file. Shell credential exports do not override it.
 
@@ -108,8 +108,7 @@ The deployment creates separate Kubernetes Secrets and restarts the application
 so configuration changes take effect. Changing a database password in `.env`
 does not rotate an existing PostgreSQL role; retain the current password.
 Cluster identity/kubeconfig remain in the registered machine profile. Production
-uses the same application schema in its private `.env`, beside `deployment.env`. The former host-process launcher has
-been removed.
+uses the same application schema in its private `.env`, beside `deployment.env`.
 
 API profiles require a configured model and credentials. Subscription CLI profiles
 require a supported binary and an existing host login; the configured models and
@@ -133,11 +132,7 @@ to INFO; DEBUG enables per-tick diagnostics. For compact Kibana views, request
 correlation, health behavior, metrics, and traces, see
 [observability](docs/operations/observability.md).
 
-## Run in local Kubernetes
-
-The [local workflow above](#run-locally) builds working-tree changes,
-applies database/configuration, migrations, application and gateway resources,
-and runs application smoke checks in Kind. Observability is optional; the
+Observability is optional; the
 [environment guide](docs/operations/environments.md) includes the full-stack
 option and restart/recovery procedure.
 

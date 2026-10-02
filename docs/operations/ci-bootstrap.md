@@ -12,7 +12,7 @@ restarting the operator's entire user manager. The role installs its Ubuntu pack
 operator before draining Jenkins. A missing or unusable launcher stops the apply
 before controller maintenance. See the [Ubuntu 26.04 package reference](https://manpages.ubuntu.com/manpages/resolute/man1/sg.1.html).
 
-The implementation is AB-127. Promotion and a reviewed production adoption are
+Promotion and a reviewed production adoption are
 separate from disposable-host testing; merging this code does not change the
 current controller, Sonar containers, agent or their data.
 

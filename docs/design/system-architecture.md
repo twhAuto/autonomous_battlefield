@@ -1616,9 +1616,10 @@ are prepared and Langfuse remains explicitly disabled.
 
 Successful verification exports separate private K3s kubeconfig and kubelet CA
 files without changing the registered production profile. There is no public
-tunnel activation or database migration in this job. AB-129 supplies application
-delivery support; AB-132 owns data transfer, profile/credential adoption, the
-host-side CLI MCP bridge and public verification. Local-path storage requests are not quotas;
+tunnel activation or database migration in this job. The [K3s delivery workflow](../operations/k3s-delivery.md)
+handles application delivery; its cutover procedure covers data transfer,
+profile/credential adoption, the host-side CLI MCP bridge and public verification.
+Local-path storage requests are not quotas;
 there is no automatic expansion or new scheduled database backup.
 
 The owner has deferred scheduled backups and retention for current personal use;
