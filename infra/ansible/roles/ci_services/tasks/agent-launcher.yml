@@ -1,0 +1,15 @@
+---
+- name: Verify the agent launcher can enter the Docker group
+  ansible.builtin.command:
+    argv: [/usr/bin/sg, docker, -c, /usr/bin/true]
+  become_user: "{{ ci_config.operator }}"
+  register: ci_agent_launcher
+  changed_when: false
+  failed_when: false
+- name: Require a working agent launcher before draining Jenkins
+  ansible.builtin.assert:
+    that: ci_agent_launcher.rc == 0
+    fail_msg: >-
+      CI agent launcher failed: /usr/bin/sg must be installed and the registered
+      operator must belong to docker. Ubuntu 26.04 provides sg in util-linux-extra;
+      Ubuntu 24.04 provides it in login. Jenkins has not been drained by this apply.

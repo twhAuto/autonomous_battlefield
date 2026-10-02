@@ -6,6 +6,12 @@ or in an operator terminal on the server with `--local`. It requires sudo. It mu
 run outside Jenkins: controller maintenance drains builds and can stop Jenkins.
 Normal `main` delivery does not invoke this playbook.
 
+The agent launcher requires `/usr/bin/sg` to enter the Docker group without
+restarting the operator's entire user manager. The role installs its Ubuntu package
+(`util-linux-extra` on 26.04, `login` on 24.04) and checks it as the registered
+operator before draining Jenkins. A missing or unusable launcher stops the apply
+before controller maintenance. See the [Ubuntu 26.04 package reference](https://manpages.ubuntu.com/manpages/resolute/man1/sg.1.html).
+
 The implementation is AB-127. Promotion and a reviewed production adoption are
 separate from disposable-host testing; merging this code does not change the
 current controller, Sonar containers, agent or their data.
@@ -179,6 +185,15 @@ controller stays stopped. The safe failure message identifies the rejected
 backup condition, so correct it and rerun the plan. If automatic restart fails,
 inspect/start the unchanged service before clearing that pre-change receipt.
 Incomplete backup directories are not recorded as completed backups.
+
+If the agent fails with `203/EXEC` and its journal reports a missing
+`/usr/bin/sg`, repair that dependency first; on Ubuntu 26.04 use
+`sudo apt-get install --no-upgrade util-linux-extra`, then restart the operator's
+`jenkins-agent` user service. Confirm that the existing node reconnects. For an
+already interrupted apply, keep its completed backup and maintenance receipt:
+installing the dependency alone does not complete acceptance or resume builds.
+Review and finish the original service acceptance before clearing maintenance;
+a blind repeat is deliberately rejected while its receipt remains.
 
 If configuration
 fails after services begin changing, it keeps the maintenance receipt/quiet state

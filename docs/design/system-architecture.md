@@ -1567,7 +1567,9 @@ agent and the SonarQube/PostgreSQL Compose stack separately from application
 rollouts. Configuration and input manifests stay outside Git; Ansible Vault carries
 initial/imported credentials. Core, plugin dependencies, Go, Node, kubectl and SonarScanner
 use checksum pins, while Sonar/PostgreSQL images use digests. Ubuntu supplies Java
-21, browser libraries and fresh-host Docker packages.
+21, browser libraries and fresh-host Docker packages. The shared agent uses `sg`
+to enter the Docker group; its OS-specific package is installed explicitly and
+the launcher is checked as the operator before Jenkins is drained.
 
 JCasC owns only the controller executor count and root URL. Scoped bootstrap code
 preserves existing realms/users, credentials, node identity, unrelated jobs and

@@ -392,6 +392,33 @@ class OfflineAnsibleTests(unittest.TestCase):
             self.assertIn('-secret @/home/operator/.config/jenkins-agent/secret', unit)
             self.assertIn('CASC_JENKINS_CONFIG=/etc/battlefield-ci/jenkins.yaml', (directory / 'jenkins-override.conf').read_text())
 
+    def test_missing_agent_launcher_stops_before_later_maintenance(self):
+        binary = os.environ['BATTLEFIELD_TEST_ANSIBLE_BIN']
+        definition = json.loads(subprocess.check_output([binary + '/python', '-c',
+            'import json,sys,yaml; print(json.dumps(yaml.safe_load(open(sys.argv[1]))))',
+            str(ROOT / 'infra/ansible/roles/ci_services/tasks/agent-launcher.yml')], text=True))
+        for available in (False, True):
+            with self.subTest(available=available), tempfile.TemporaryDirectory() as work:
+                directory = Path(work)
+                tasks = json.loads(json.dumps(definition))
+                # Exercise real Ansible command failure and the role's actual gate;
+                # do not require root or Docker-group membership on the test host.
+                tasks[0]['become'] = False
+                tasks[0]['ansible.builtin.command']['argv'] = [
+                    '/usr/bin/true' if available else str(directory / 'missing-sg')]
+                marker = directory / 'maintenance-started'
+                tasks.append({'ansible.builtin.file': {'path': str(marker), 'state': 'touch'}})
+                play = [{'hosts': 'all', 'gather_facts': False, 'connection': 'local',
+                         'vars': {'ci_config': profile()}, 'tasks': tasks}]
+                path = directory / 'launcher.json'; path.write_text(json.dumps(play))
+                result = subprocess.run([binary + '/ansible-playbook', '-i', 'localhost,', str(path)],
+                                        capture_output=True, text=True, timeout=60,
+                                        env=dict(os.environ, ANSIBLE_CONFIG=str(ROOT / 'infra/ansible/ansible.cfg')))
+                self.assertEqual(result.returncode, 0 if available else 2, result.stdout + result.stderr)
+                self.assertEqual(marker.exists(), available)
+                if not available:
+                    self.assertIn('Jenkins has not been drained by this apply', result.stdout)
+
     def test_resume_diagnostic_survives_private_runtime_output(self):
         binary = os.environ['BATTLEFIELD_TEST_ANSIBLE_BIN']
         definition = json.loads(subprocess.check_output([binary + '/python', '-c',
