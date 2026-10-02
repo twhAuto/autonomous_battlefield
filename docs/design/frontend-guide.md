@@ -50,6 +50,8 @@ desktop and mobile Chromium, including destructive cases only against fixtures.
 `POST /v1/battles`, records the request body, and then serves the new battle as
 queued under its own generated identifier, so the journey continues into the live
 battle view. It also covers a rejected creation and a retry after recovery.
+`e2e/admin.spec.ts` verifies model-access saves and Player role preview on desktop
+and mobile using API fixtures.
 Map keyboard tests focus the native “Pan with arrow keys” button; pointer panning
 continues through the map viewport. Admin settings split per-model access controls
 into `ModelAccessCard` and use native outputs for loading and save status.

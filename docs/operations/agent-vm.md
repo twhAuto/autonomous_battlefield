@@ -399,16 +399,11 @@ sudo journalctl -u battlefield-worker --since '10 minutes ago' --no-pager -o cat
 Use the same UTC time window and request ID in the MCP pod logs. The worker's
 normal journal omits raw CLI output. If capturing it temporarily, keep it under the
 worker's private home with mode 0600, never log environment variables or capability
-tokens, inspect locally and redact before sharing. Remove diagnostic PATH overrides
-and private logs after the investigation. For the temporary override used during
-this incident, cleanup inside the VM is:
-
-```bash
-sudo rm -f /run/systemd/system/battlefield-worker.service.d/90-diagnostics.conf
-sudo systemctl daemon-reload
-sudo systemctl restart battlefield-worker
-sudo rm -f /var/lib/battlefield-worker/codex-diagnostic.log
-```
+tokens, inspect locally and redact before sharing. Record the exact temporary
+drop-ins and private logs you create. After the investigation, remove only those
+diagnostic files and restore the normal worker configuration. If a systemd
+drop-in changed, run `sudo systemctl daemon-reload` and restart the worker during
+a maintenance window, then repeat its health and accepted-plan checks.
 
 For a planned restart test, stop battles, reboot during a maintenance window, then
 repeat listener, firewall, health and accepted-plan checks. Verify the VM/network

@@ -104,8 +104,9 @@ events retain full information.
 
 Capabilities and structure definitions are embedded in scenario/state JSON;
 existing snapshots omit them and retain ordinary unit behavior. No SQL migration
-is needed. The new MCP tool schema is `battlefield.mcp-tools.v5`; existing required
-arguments remain valid and new fields are optional. Deploy the API, engine, MCP,
+is needed. These fields were introduced in `battlefield.mcp-tools.v5` and remain
+optional in the current `battlefield.mcp-tools.v7` schema. Existing required
+arguments remain valid. Deploy the API, engine, MCP,
 agent prompt, content, and frontend together, then create a new battle.
 
 ## Verification and initial balance

@@ -413,6 +413,7 @@ Migrations under [`backend/migrations`](../../backend/migrations) are embedded i
 | `00013_player_members.sql` | Durable player membership and access synchronization |
 | `00014_cli_concurrency.sql` | Four shared CLI lease slots with serialized admission |
 | `00015_drop_duplicate_event_index.sql` | Drops `battle_events_cursor_idx`, which duplicated the `battle_events` primary key; event pages use `battle_events_pkey` |
+| `00016_admin_battle_admission.sql` | Exempts authenticated Admin battle creation from admission limits; exempt battles still occupy active capacity |
 
 Schema changes should be made with a new migration, then reflected in repository scan/serialization logic and tests. Do not edit an already-applied migration to evolve a shared database.
 
@@ -691,14 +692,9 @@ paused battles count toward active limits. The message directs players to battle
 history or to retry later for daily limits; the API does not distinguish the
 exhausted limit in its response.
 
-Unfinished battles expire one hour after creation, including queued and paused
-time. The engine sweeps at startup and every minute independently of active
-battle processing. It atomically marks expired battles failed with
-`battle_timeout`, clears their leases, and cancels pending/running decisions
-using the existing `battle_stopped` cancellation category. History and tick
-state remain available; active admission slots are released but daily usage is
-not refunded. Existing overdue battles expire on rollout. No migration or new
-configuration is required; while the engine is offline, expiry waits for restart.
+`internal/battle/repo/expiry.go` owns the atomic expiry update; the battle worker
+schedules the sweep. See [battle expiry](system-architecture.md#battle-expiry)
+for the runtime contract.
 
 ## End-to-end API integration test
 

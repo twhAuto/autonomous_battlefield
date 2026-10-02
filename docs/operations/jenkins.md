@@ -747,10 +747,22 @@ infrastructure-, migration-, observability-, or gateway-only changes. Database
 migrations are deliberately not reversed automatically, so migrations must
 remain backward-compatible with the previous application revision.
 
-Local dev loads images into Kind. Production pulls verified GHCR digests. The
-separate AWS promotion helper copies those verified subjects and their evidence
-to ECR; its assurance-job artifact-input gap remains documented in the
-[deployment review](deployment-review.md).
+Local dev loads images into Kind. Production pulls verified GHCR digests.
+
+### AWS promotion limits
+
+The separate AWS promotion helper copies verified image subjects and their
+evidence to ECR. The `aws-promotion` mode in `Jenkinsfile.assurance` does not
+produce or explicitly select a successful build's `artifacts/build/images.env`.
+Its cleanup removes `CI_WORK_ROOT`, while that default artifact path is in the
+retained checkout. Do not treat a file left by an earlier run as the selected
+release. Before routine use, the job needs explicit successful-build evidence
+selection and clean artifact handling. The helper accepts `BUILD_IMAGES_FILE`
+for an explicitly selected input; this does not add selection to the Jenkins job.
+
+The [AWS reference](../../infra/aws/README.md) provisions infrastructure; an
+application overlay, workload secret integration and account-specific deployment
+verification are still required.
 
 ## Run local build and deployment checks without Jenkins
 
@@ -843,10 +855,6 @@ Revisit isolation before accepting untrusted contributors or builds. A future
 setup can use a separate CI VM/daemon, trusted delivery credential scope, and
 controller-enforced node access. A second label or executor on this host would
 not provide that isolation.
-
-If an older build is already waiting for the retired `battlefield-ci` label,
-abort that build and run the updated PR revision. Running builds retain the
-Jenkinsfile loaded at their start, and the job disables concurrent builds.
 
 All deployment regression suites run through `./scripts/test/test-deployment.sh`
 on both PR and main builds. This includes tunnel preparation, policy boundaries,
