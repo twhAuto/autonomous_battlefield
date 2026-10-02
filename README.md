@@ -1,44 +1,32 @@
 # OrdinalFrontier
 
-OrdinalFrontier is the game's public name. Existing repository paths, container
-images, Kubernetes resources, monitoring identifiers, and the local
-`battlefield.localhost` address retain their technical names for compatibility.
-The public play address is `https://play.ordinalfrontier.com`.
+OrdinalFrontier is a deterministic strategy battle simulator with a Go backend
+and React frontend. Create factions, choose scripted or AI controllers, and watch
+them compete on authored hex maps. AI controllers propose strategy plans; the game
+engine validates and executes them.
 
-The command menu starts with Stage battle, followed by Factions and Battle
-history. Administrators can open the Control center from the Admin navigation
-item to enable or disable providers and configured model profiles, set model access
-by role, and preview the app as a Player or Developer. Access settings persist in
-the database; credentials and model definitions remain deployment settings. Create
-new factions from the Factions page. Technical identifiers are
-handled internally and are hidden from ordinary screens.
+- Create reusable factions with editable backgrounds, doctrines and opening armies.
+- Run two-faction castle-siege battles with autonomous combat, economies and
+  fog-of-war views.
+- Inspect live battles, saved results, events and AI decision history.
+- Manage invited players and model access through Player, Developer and Admin roles.
+
+The hosted application is at [play.ordinalfrontier.com](https://play.ordinalfrontier.com)
+and requires an invitation. To run your own development environment, start with
+[Run locally](#run-locally).
 
 Deployment environments are separate: **WSL dev** builds and loads local images;
 **server production** receives verified GHCR images from Jenkins `main` delivery.
 Start with the [environment setup guide](docs/operations/environments.md);
 version-controlled configuration templates live in [`deploy/environments/`](deploy/environments/).
 
-OrdinalFrontier is a Go backend for an auto-battler and expansion game. The long-term product will let human players and AI agents control factions that gather resources, expand territory, and fight on a continuously running battlefield.
+Battles are finite and use authored maps; continuous worlds and procedural map
+generation are not implemented. See [Game rules](docs/design/game-rules.md) for
+the battle loop and win conditions, and [Frontier Siege](docs/design/frontier-siege.md)
+for the expanded roster, structures and 25×17 scenario.
 
-The project is in an early stage. The current backend provides PostgreSQL-backed faction and battle APIs, a separate queued battle engine, deterministic castle-siege combat on an authored hex map, editable faction doctrines and gold-funded opening armies, autonomous economies, fog-of-war views, production-window decisions, provider-neutral model controllers over MCP, Cloudflare Access authentication with Player/Developer/Admin roles and ownership, validated configuration, health endpoints, and graceful shutdown. Seeded map generation remains planned work. The optional `frontier-siege-v2` scenario adds Catapults, Battering Rams, Pikemen, Herbalists, defense/watch towers, and forward Barracks on a 25×17 map. See [Game rules](docs/design/game-rules.md) for the battle loop, tick order, and win conditions, and [Frontier Siege](docs/design/frontier-siege.md) for the roster, construction limits, and play instructions.
-
-The **Battle history** menu opens `/battles`: browse every run, filter by status
-(including paused battles), page through older engagements, and manually refresh
-the newest entries. Open a battle to inspect its existing map, results, events,
-and AI decisions. Saved participant names survive faction edits and deletion.
-
-For Developers and Admins, the battle inspector combines a **System** event stream and player comparison
-with an **Inspect** dropdown for selecting System or a player. Each player has **Overview**, **Decisions**, **Units**,
-and **Faction** sections, with current gold, living units, and castle health
-always visible. Decisions can load the saved observation used by that AI,
-including historical resources, visible forces, available choices, and memory.
-Faction background and doctrine come from the battle snapshot. Progress and
-controls remain in a compact toolbar above the map. The inspector accommodates
-additional players; creating and simulating battles still requires two factions.
-Unit and building markers use distinct tactical icons, with a collapsible icon
-legend. The map, roster, events, and recruitment sources display readable names
-such as **Iron Legion · Ranger #12**; full IDs remain available in tooltips and
-raw inspection views.
+Repository paths, container images and Kubernetes resources retain the technical
+name `autonomous-battlefield`; the local address is `battlefield.localhost`.
 
 ## Documentation
 
@@ -112,7 +100,7 @@ Use the local Kind Kubernetes deployment as the development workflow:
 Open `http://battlefield.localhost:8888`. Edit the project-root, Git-ignored
 `.env` for database, login, and AI settings. See [the template](.env.example).
 The preparation command preserves existing credentials and never overwrites an
-existing `.env`. Retired split files are not read by deployment.
+existing `.env`.
 Values are literal `KEY=value`: no quotes, interpolation, or shell commands.
 Do not source this file. Shell credential exports do not override it.
 
@@ -120,8 +108,7 @@ The deployment creates separate Kubernetes Secrets and restarts the application
 so configuration changes take effect. Changing a database password in `.env`
 does not rotate an existing PostgreSQL role; retain the current password.
 Cluster identity/kubeconfig remain in the registered machine profile. Production
-uses the same application schema in its private `.env`, beside `deployment.env`. The former host-process launcher has
-been removed.
+uses the same application schema in its private `.env`, beside `deployment.env`.
 
 API profiles require a configured model and credentials. Subscription CLI profiles
 require a supported binary and an existing host login; the configured models and
@@ -145,19 +132,9 @@ to INFO; DEBUG enables per-tick diagnostics. For compact Kibana views, request
 correlation, health behavior, metrics, and traces, see
 [observability](docs/operations/observability.md).
 
-## Run in local Kubernetes
-
-Register the dev environment and prepare its private secrets using the
-[environment guide](docs/operations/environments.md), then run:
-
-```bash
-./deploy-local.sh
-```
-
-Open `http://battlefield.localhost:8888`. This command builds working-tree changes,
-applies database/configuration, migrations, application and gateway resources,
-and runs application smoke checks. Observability is optional; the environment
-guide includes the full-stack option and restart/recovery procedure.
+Observability is optional; the
+[environment guide](docs/operations/environments.md) includes the full-stack
+option and restart/recovery procedure.
 
 For a development backend on another port, set `DEV_API_PROXY_TARGET` in
 `frontend/.env.local`; see [frontend setup](frontend/README.md#run-locally).

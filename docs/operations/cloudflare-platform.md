@@ -1,6 +1,6 @@
 # Cloudflare capture and reviewed lifecycle
 
-AB-141 adds a separate Ansible workflow for the existing locally managed tunnel,
+The Cloudflare Ansible workflow manages the existing locally managed tunnel,
 proxied application CNAME and self-hosted Access application/policies. It preserves
 the current account, zone, audience, issuer, connector secret and service identities
 when adopting. Application delivery continues to consume its existing production
@@ -104,7 +104,7 @@ python3 scripts/infra/cloudflare.py plan --revision "$revision" \
 Verification and the repeat plan must report no changes. Each report path must be
 new. Apply consumes its review before mutation; a failed operation needs a fresh
 plan. Reports contain no memberships, connector secret or service client identity.
-This adoption plus the scoped lifecycle evidence is required before AB-141 is Done.
+Verify live adoption separately from disposable lifecycle testing.
 
 ## Fresh creation and delivery handoff
 

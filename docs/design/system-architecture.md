@@ -615,8 +615,9 @@ Background-generation jobs share the worker and runner categories above except
 | `execution_error` | Runner failed or did not submit, without a more specific category |
 | `invalid_output` | Third empty or over-length background submission |
 | `timeout` | Execution deadline passed while the job was running |
-| `queue_timeout` | Job expired before any worker claimed it (status `expired`) | Unresolved
-requests that reach the deadline retain the timeout category. CLI terminal
+| `queue_timeout` | Job expired before any worker claimed it (status `expired`) |
+
+Unresolved requests that reach the deadline retain the timeout category. CLI terminal
 success remains subject to the worker's accepted-plan check.
 
 ### State machine
@@ -1289,10 +1290,11 @@ management token. Activation and rotation are in the
 - The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [backend guide](backend-guide.md#internalgamecontroller-deterministic-policy-abstractions).
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
 
-The image-verification admission webhook allows 30 seconds per request for
-registry signature and attestation retrieval (`webhookConfiguration.timeoutSeconds`).
-Verification remains enforced with `failurePolicy: Fail`; this timeout does not
-waive missing or invalid evidence.
+The image-verification admission webhook fails closed on missing or invalid
+evidence. See [admission verification](../operations/limited-launch.md#validation-and-recovery)
+for the configured retrieval timeout.
+
+### Battle expiry
 
 Unfinished battles expire one hour after creation, including queued and paused
 time. The engine sweeps at startup and every minute independently of active
@@ -1300,8 +1302,9 @@ battle processing. It atomically marks expired battles failed with
 `battle_timeout`, clears their leases, and cancels pending/running decisions
 using the existing `battle_stopped` cancellation category. History and tick
 state remain available; active admission slots are released but daily usage is
-not refunded. Existing overdue battles expire on rollout. No migration or new
-configuration is required; while the engine is offline, expiry waits for restart.
+not refunded. While the engine is offline, expiry waits for restart.
+
+### Deployment controls
 
 Prometheus deployment smoke queries allow a bounded 120-second discovery/scrape
 settling window per query, configurable from 1 to 600 seconds. Timeout reports
@@ -1613,9 +1616,10 @@ are prepared and Langfuse remains explicitly disabled.
 
 Successful verification exports separate private K3s kubeconfig and kubelet CA
 files without changing the registered production profile. There is no public
-tunnel activation or database migration in this job. AB-129 supplies application
-delivery support; AB-132 owns data transfer, profile/credential adoption, the
-host-side CLI MCP bridge and public verification. Local-path storage requests are not quotas;
+tunnel activation or database migration in this job. The [K3s delivery workflow](../operations/k3s-delivery.md)
+handles application delivery; its cutover procedure covers data transfer,
+profile/credential adoption, the host-side CLI MCP bridge and public verification.
+Local-path storage requests are not quotas;
 there is no automatic expansion or new scheduled database backup.
 
 The owner has deferred scheduled backups and retention for current personal use;
