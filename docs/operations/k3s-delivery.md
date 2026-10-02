@@ -301,6 +301,13 @@ initial cutover retains private server evidence at:
 - `~/.config/autonomous-battlefield/production/`: adopted K3s registration and,
   after successful main verification, its own recovery record.
 
+The native local HTTPS aliases are a separate cutover boundary. Inspection on
+2026-10-02 found they still pointed at Kind: the retired application returned
+503 and the monitoring aliases showed the old cluster. Use the reviewed
+[local HTTPS migration](local-https-platform.md) to redirect the application
+alias to the Access-protected public origin and retarget Grafana/Kibana to K3s.
+Do not restart old application writers to make that obsolete alias respond.
+
 These paths contain secrets and data; keep them private and out of Git/Jenkins
 artifacts. There is no new scheduled backup policy or off-host recovery copy.
 The one-time export is on the same server and does not protect against losing
