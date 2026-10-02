@@ -32,3 +32,7 @@ ANSIBLE_CONFIG="${project_dir}/infra/ansible/ansible.cfg" "${BATTLEFIELD_TEST_AN
   -i "${project_dir}/infra/ansible/syntax-inventory.ini" \
   "${project_dir}/infra/ansible/ci.yml" --syntax-check
 python3 "${project_dir}/scripts/test/test-ci-bootstrap.py"
+
+ANSIBLE_CONFIG="${project_dir}/infra/ansible/ansible.cfg" "${BATTLEFIELD_TEST_ANSIBLE_BIN}/ansible-playbook" \
+  -i localhost, "${project_dir}/infra/ansible/cloudflare.yml" --syntax-check
+python3 "${project_dir}/scripts/test/test-cloudflare.py"

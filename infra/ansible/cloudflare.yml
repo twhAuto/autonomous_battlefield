@@ -1,0 +1,10 @@
+---
+- name: Reconcile the reviewed Cloudflare boundary from the operator controller
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Adopt or create the exact reviewed tunnel DNS and Access resources
+      battlefield_cloudflare:
+        inputs_file: "{{ cloudflare_inputs_file }}"

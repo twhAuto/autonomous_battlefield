@@ -97,3 +97,13 @@ condition = "AND"
 paths = ['''(^|/)scripts/test/rehearse-ci-bootstrap\.py$''']
 regexTarget = "secret"
 regexes = ['''^ab127-ci-fixture$''']
+
+# The initial AB-141 test commit contained base64 of the literal
+# "secret-tunnel-credentials-bytes-123456", never an issued credential.
+# Keep this history-only exception exact and restricted to that test/rule.
+[[rules.allowlists]]
+description = "Synthetic Cloudflare connector value in the original unit-test history"
+condition = "AND"
+paths = ['''(^|/)scripts/test/test-cloudflare\.py$''']
+regexTarget = "secret"
+regexes = ['''^c2VjcmV0LXR1bm5lbC1jcmVkZW50aWFscy1ieXRlcy0xMjM0NTY=$''']

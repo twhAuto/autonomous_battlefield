@@ -1453,12 +1453,35 @@ outside managed files. See [CLI VM platform](../operations/cli-vm-platform.md)
 for adoption, fresh creation, sensitive local state and interrupted-create limits.
 
 
+## Cloudflare resource ownership
+
+`scripts/infra/cloudflare.py` captures deployed routing identities and the existing
+connector credentials into versioned Ansible Vault inputs. The localhost Ansible
+playbook holds the controller lock and registered host operation lock through its
+operator wrapper. API strings and secrets remain in a private JSON file read inside
+the module, outside Ansible variable templating. Expiring one-use receipts bind the clean main revision, physical
+host, encrypted-input contents and live API observation. Explicit adoption records
+ownership without Cloudflare writes. Fresh creation builds new policy/app identities,
+verifies protection, creates a local tunnel and publishes its proxied CNAME last.
+No connector starts and normal application delivery never calls this workflow.
+
+Canonical private controller state journals confirmed IDs and an uncertain POST
+before any retry is possible. Missing/foreign identities, stale reviews, changed
+audience/issuer, broad rules and public bypass fail closed. Referenced service tokens
+and identity providers are preserved; runtime-owned player-group membership is
+observed but never restored. No update/delete/rotate operation exists in the normal
+workflow. Private handoff files match the existing production renderer; fresh
+routing activation remains a separate delivery action. See
+[Cloudflare platform](../operations/cloudflare-platform.md) for ownership, recovery,
+external prerequisites and the isolated no-connector API lifecycle fixture.
+
 ## Ubuntu host bootstrap boundary
 
 The dated [server rebuild contract](../operations/server-rebuild-contract.md)
 records the measured Ubuntu/VM layout, state and credential locations, manual
-prerequisites and recovery limits. Production uses K3s; Cloudflare reconciliation
-and local HTTPS/CA restoration still need explicit automation. CLI VM creation
+prerequisites and recovery limits. Production uses K3s; local HTTPS/CA restoration
+still needs explicit automation. Cloudflare has the separate reviewed workflow
+described below; its live adoption remains an acceptance gate. CLI VM creation
 and adoption have the separate reviewed Ansible workflow described above.
 The data partition and local recovery archives share the host SSD;
 whole-server-loss protection remains deferred.
@@ -1572,8 +1595,8 @@ The owner has deferred scheduled backups and retention for current personal use;
 existing pre-migration dumps remain. The initial backup design uses the server's separate second disk only, with a
 100 GB planning budget. The wrapper can validate a selected filesystem UUID
 against the root physical disk, but does not mount or format it. Backup scheduling,
-CI-service rebuilds, repeatable Cloudflare adoption and full clean-host
-restore verification remain separate work; the initial application cutover has
+full clean-host restore verification and the separate CI-service/Cloudflare
+acceptance gates remain outside this foundation; the initial application cutover has
 its own export/restore and delivery evidence. Losing the whole server is outside the
 initial recovery scope. Host bootstrap files select no application deployment
 components; normal Jenkins application delivery never invokes the bootstrap.

@@ -336,3 +336,19 @@ value in the Kubernetes forward and Caddy upstream. Guest-facing ports and the
 MCP Host header remain fixed. `scripts/test/test-agent-vm-host.py` checks the
 matched default/CLI override, invalid-input rejection, isolation configuration
 and refusal to overwrite a reviewed bundle. See the [CLI VM runbook](../operations/agent-vm.md).
+
+### Cloudflare capture and lifecycle
+
+`scripts/infra/cloudflare.py` handles encrypted capture, fresh-create preparation
+and trusted-main plan/apply/verify under the controller and host locks.
+`infra/ansible/cloudflare.yml` invokes `library/battlefield_cloudflare.py` locally;
+`module_utils/battlefield_cloudflare.py` owns the bounded API client, paginated
+inventory, receipts, journal and private handoff. Its companion
+`battlefield_cloudflare_policy.py` validates the narrow Access/tunnel/DNS contract.
+Existing delivery, runtime player memberships and service-token secrets stay in
+their existing ownership boundaries. `scripts/test/test-cloudflare.py` covers the
+synthetic lifecycle, sanitized real API response shapes and negative cases, including
+actual Ansible checks that remote strings remain literal JSON. The playbook passes
+only a private input-file path into the module. `scripts/infra/rehearse-cloudflare.py`
+exercises a uniquely named idle cloud fixture with ID-bound cleanup and preservation
+checks. See [Cloudflare platform](../operations/cloudflare-platform.md).
