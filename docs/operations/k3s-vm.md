@@ -3,8 +3,9 @@
 [AB-126 — Provision a persistent K3s VM with Terraform and libvirt](https://app.notion.com/p/3eab7a19f8f7812e8638e2cf7b7e978a)
 provides the VM foundation. It creates an Ubuntu 24.04 guest and exports Ansible
 connection facts. [K3s installation and mounting guest data](k3s-platform.md) are AB-128; delivery
-integration and database/application migration are AB-129. Creating this VM does
-not move the current kind application or its database.
+integration is AB-129. Production has since migrated to this VM under AB-132;
+see the dated [rebuild contract](server-rebuild-contract.md). A VM provisioning
+operation alone never migrates an application or its database.
 
 ## Prerequisites and storage
 

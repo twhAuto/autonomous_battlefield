@@ -3,6 +3,8 @@
 import importlib.util
 import json
 import subprocess
+import os
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -24,6 +26,18 @@ guest = module('rehearsal_guest', 'scripts/test/rehearse-server-guest.py')
 
 
 class RehearsalTests(unittest.TestCase):
+    def test_documented_rehearsal_clis_start_without_import_shadowing(self):
+        environment = {k: v for k, v in os.environ.items() if k not in ('PYTHONPATH', 'PYTHONSAFEPATH')}
+        with tempfile.TemporaryDirectory() as directory:
+            for name in ('server', 'vm', 'k3s', 'k3s-delivery'):
+                with self.subTest(entry_point=name):
+                    result = subprocess.run(
+                        [sys.executable, str(ROOT / f'scripts/infra/rehearse-{name}.py'), '--help'],
+                        cwd=directory, env=environment, capture_output=True, text=True, timeout=20)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn('--image', result.stdout)
+                    self.assertIn('--evidence-dir', result.stdout)
+
     def test_image_integrity_and_backing_file_rejection(self):
         with tempfile.TemporaryDirectory() as directory:
             image = Path(directory) / 'image'

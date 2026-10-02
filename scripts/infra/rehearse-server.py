@@ -14,8 +14,11 @@ import tarfile
 import tempfile
 import time
 import urllib.request
-import uuid
 import xml.etree.ElementTree as ET
+
+# Keep the sibling platform.py from shadowing stdlib platform when uuid loads.
+sys.path = [entry for entry in sys.path if Path(entry).resolve() != Path(__file__).resolve().parent]
+import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 URI = 'qemu:///system'

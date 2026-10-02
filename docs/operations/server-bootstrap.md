@@ -7,10 +7,12 @@ server with `--local`. Jenkins is not required on the workstation. For routine
 operations from the existing Jenkins controller, install the separate
 [reviewed host job](platform-jobs.md).
 
-This is the first implementation slice of the complete-server automation. The
-production application now runs in the separately managed K3s VM. This host
-playbook does not yet
-provision K3s, configure Jenkins/SonarQube, reconcile Cloudflare or schedule backups. The separate opt-in
+The [server rebuild contract](server-rebuild-contract.md) records the complete
+layout, measured capacity, state locations and remaining automation. Production
+runs in the separately managed K3s VM. This foundation playbook does not invoke
+[K3s provisioning](k3s-platform.md) or [CI service configuration](ci-bootstrap.md);
+those have separate entry points. Cloudflare reconciliation and scheduled backups
+are not implemented here. The separate opt-in
 [CLI bootstrap commands](cli-bootstrap.md) install/adopt the CLI host bundle and
 optional guest; ordinary host apply does not invoke them. Their existing configuration is preserved. Keep
 CLI access disabled until the existing isolation verification is complete.

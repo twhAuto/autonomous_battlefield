@@ -55,6 +55,7 @@ with focused [backend](docs/design/backend-guide.md),
 | Read the machine-readable API spec | [OpenAPI contract](docs/reference/openapi.yaml) |
 | Register dev or production and resume a stopped cluster | [Environments](docs/operations/environments.md) |
 | Build, deploy, inspect, or remove Kubernetes workloads | [Deployment](docs/operations/deployment.md) |
+| Review the measured layout, state locations and remaining rebuild boundaries | [Server rebuild contract](docs/operations/server-rebuild-contract.md) |
 | Inspect, bootstrap and rehearse Ubuntu; optionally manage its data partition | [Server bootstrap](docs/operations/server-bootstrap.md) |
 | Install or adopt the isolated CLI worker services with Ansible | [CLI bootstrap](docs/operations/cli-bootstrap.md) |
 | Install and run the reviewed Jenkins host and VM jobs | [Platform jobs](docs/operations/platform-jobs.md) |
