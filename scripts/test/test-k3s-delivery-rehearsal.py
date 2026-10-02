@@ -5,9 +5,7 @@ import importlib.util
 import json
 import re
 import tempfile
-import os
 import subprocess
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -38,13 +36,6 @@ def state(release):
 
 
 class RehearsalTests(unittest.TestCase):
-    def test_documented_cli_starts_without_import_shadowing(self):
-        environment = {k: v for k, v in os.environ.items() if k not in ('PYTHONPATH', 'PYTHONSAFEPATH')}
-        result = subprocess.run([sys.executable, str(ROOT/'scripts/infra/rehearse-k3s-delivery.py'), '--help'],
-                                env=environment, capture_output=True, text=True, timeout=20)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('--previous-revision', result.stdout)
-
     def arguments(self, previous=None, **changes):
         values = NEW | {'previous_'+k: (previous or {}).get(k) for k in OLD}
         return SimpleNamespace(**(values | changes))

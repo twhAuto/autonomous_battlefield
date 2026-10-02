@@ -4,8 +4,10 @@
 configures the guest created by [the Terraform VM job](k3s-vm.md). It installs
 K3s, retained storage, Envoy Gateway, Kyverno and private validation workloads.
 Application delivery and registration are described in [K3s delivery](k3s-delivery.md), tracked by [AB-129](https://app.notion.com/p/3eab7a19f8f781e6bb1ad38d5d25ef0f).
-Current application traffic, PostgreSQL and Cloudflare remain on Kind until a
-separate reviewed migration and cutover. Merging this code does not run an apply.
+Production application traffic and PostgreSQL now use K3s; the Cloudflare
+connector runs there too. The old Kind resources remain a retained recovery
+source. See the dated [rebuild contract](server-rebuild-contract.md). Merging
+platform code does not run an apply.
 
 ## Run the job
 
