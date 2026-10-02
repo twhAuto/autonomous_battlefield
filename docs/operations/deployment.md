@@ -492,6 +492,11 @@ default local-path provisioner. It is suitable for learning only.
 
 ### 5. Inspect the migration gate
 
+The migration Job runs the server with `-migrate` and requires the
+`battlefield-auth` Secret because startup still validates API configuration.
+Deployment supplies the same dev/production environment as the API; CLI profiles
+are disabled in this Job.
+
 The deployment script deletes the previous completed Job, recreates it with the
 selected backend image, and waits for success. Inspect the result with:
 

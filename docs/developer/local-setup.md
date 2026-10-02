@@ -26,6 +26,24 @@ It reuses registered clusters and rejects `--recreate`. Registration never
 overwrites an existing profile or kubeconfig.
 
 
+## Standalone process ports
+
+When running processes outside Kind, the defaults in
+[`backend/config.yaml`](../../backend/config.yaml),
+[`frontend/vite.config.ts`](../../frontend/vite.config.ts) and
+[`backend/compose.yaml`](../../backend/compose.yaml) are:
+
+| Port | Process |
+| --- | --- |
+| `5173` | Vite frontend |
+| `8080` | Public API |
+| `8081` | Engine health and metrics |
+| `8083` | Agent health |
+| `8084` | MCP and internal agent control plane |
+| `5432` | PostgreSQL |
+
+These are process defaults; the normal Kind workflow uses the gateway URL above.
+
 ## Optional observability
 
 The [observability runbook](../operations/observability.md#run-the-local-stack) covers

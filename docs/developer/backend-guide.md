@@ -723,6 +723,11 @@ The test covers:
 The private schema keeps the worker from claiming battles that other packages'
 tests create in the shared database at the same time.
 
+Startup and migration tests use the same PostgreSQL advisory-lock configuration
+in `internal/postgres.NewMigrationProvider`. The lock spans schemas within the
+database because role and public-schema permission changes are shared across
+test fixtures.
+
 ## Managed Player membership
 
 `backend/internal/members` contains the PostgreSQL membership/audit store, bounded

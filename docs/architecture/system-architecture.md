@@ -1,49 +1,16 @@
 # OrdinalFrontier System Architecture
 
-OrdinalFrontier is the public product brand. Existing `autonomous-battlefield`
-resource identifiers, `battlefield` service names, local hostnames, and repository
-paths remain operational identifiers; this branding change does not migrate
-resources, authentication, stored data, or API routes.
+OrdinalFrontier is a deterministic strategy battle simulator. The implementation
+uses `autonomous-battlefield` and `battlefield` as technical identifiers.
 
 | Field | Value |
 | --- | --- |
 | Status | Current |
-| Last reviewed | 2026-09-23 |
+| Last reviewed | 2026-10-03 |
 | Audience | Contributors reviewing or extending system behavior |
-| Scope | Runtime components, data flows, durability, security, and deployment |
+| Scope | Runtime components, data flows, durability, security, and deployment topology |
 
 For a package-by-package explanation of the implementation, see the [codebase guide](../developer/codebase-guide.md).
-
-## Deployment environment boundary
-
-WSL dev and server production use separate Kubernetes clusters, PostgreSQL
-volumes, kubeconfigs, and secrets. The shared environment resolver pins the
-cluster UID before operations. Dev loads working-tree images through a local
-Docker socket; production accepts verified GHCR digests through Jenkins main
-rollout. Context aliases distinguish environments without renaming resources.
-Missing production application inputs fail validation. Production
-rollback verifies both prior digests and the recorded applied migration state; local development never pulls production
-deployment credentials. Observability is optional for dev. See the
-[local setup](../developer/local-setup.md) and
-[production environment operations](../operations/environments.md) for registration and recovery.
-
-Production profiles explicitly select `BF_DRIVER=kind|k3s`, with Kind as the
-backward-compatible default. K3s preflight verifies the managed node/controllers
-and retained storage contract in addition to the namespace UID. Shared deployment,
-smoke and rollback entry points select K3s overlays without provisioning. K3s
-PostgreSQL and Elasticsearch claims use `battlefield-retained`; CD leaves the
-pinned controllers under platform ownership. Monitoring uses the exported serving
-CA and a port forward into the selected gateway. The owner-authorized initial
-[migration/cutover](../operations/k3s-delivery.md#adoption-and-cutover-boundary)
-moves application data and the existing tunnel to the K3s VM, retaining Kind
-and its historical logs for recovery. The production registration and Jenkins
-kubeconfig must identify the same cluster before main delivery resumes.
-The disposable delivery rehearsal can upgrade between two signed releases and
-restore the previous exact image pair while checking the migration ledger and
-retained claim identities. Its synthetic registration and private recovery record
-stay separate from production; public authentication and cutover need their own
-acceptance evidence.
-
 
 ## 1. Purpose
 
@@ -445,7 +412,7 @@ OpenAI Responses and Gemini GenerateContent adapters normalize provider tool cal
 ### CLI runtime
 
 The CLI runner starts Codex or Antigravity CLI in a new temporary directory with the
-settings below; the Claude Code CLI runner is described under [Deployment topology](#kubernetes).
+settings below; the [Claude profile](#claude-profile) uses its own provider restrictions.
 
 - an empty workspace;
 - a request-scoped MCP bearer token;
@@ -460,6 +427,27 @@ In development Codex uses the existing host login without copying it; production
 CLI context responses include explicit target-tick and version metadata alongside the full structured context. CLI prompts require copying those values and making a substantive tactical or production decision. Name-only CLI plans are rejected; after three invalid submissions the decision is failed so the battle can fall back. MCP logs record context byte counts and validation field/code pairs without dumping observations or credentials. Usage reporting retries transient failures up to three times.
 
 Antigravity CLI offloads larger MCP tool responses to local files. Because battlefield CLI sessions deny file reads, the host now fetches the request-scoped context through the MCP SDK and embeds the validated JSON directly in the Antigravity prompt (maximum 64 KiB). The model submits through MCP without fetching the large response again. This keeps existing file restrictions and avoids blind tick guessing when the CLI hides an offloaded response.
+
+### Claude profile
+
+The `claude-cli` provider exposes `claude-subscription-local` using Claude Code
+2.1.267 and the `sonnet` alias. The host retains its native subscription login;
+only allowlisted transport environment variables reach the subprocess. Restricted
+mode, empty built-in tools, disabled hooks and settings discovery, strict MCP
+configuration, and `dontAsk` permissions constrain it to explicitly approved
+battlefield tools. A private temporary MCP file holds the request capability and
+is removed on exit. Session persistence is disabled. Server-side capabilities and
+submission validation remain authoritative for battle and faction-generation jobs.
+The API advertises the profile only while `CLAUDE_CLI_PROFILE_AVAILABLE=true`;
+production additionally requires the existing VM isolation verification flag.
+Claude stdout is parsed as a complete JSON document with stderr excluded. The
+VM profile defaults to disabled.
+Native HOME is retained: user-level instruction memory is not explicitly disabled,
+so reproducible comparisons need a dedicated account without personal memory.
+Claude terminal results report aggregate CLI usage, including cache reads/writes
+in total input tokens; errors and permission denials fail the decision. The
+`sonnet` alias follows the subscription's default Sonnet model, so operators need
+an explicit model ID for reproducible comparisons. See [Claude operations](../operations/claude-cli.md).
 
 ## 7. Decision contracts and lifecycle
 
@@ -814,19 +802,45 @@ Tool bodies are bounded, plan fields are validated, and model-provided state is 
 
 ### Agent control plane
 
-`/internal/agent/claim`, `/fail`, `/usage`, `/generation-finish` and `/enabled` use a distinct worker bearer secret. Missing or equal worker/signing secrets deny worker authentication. Claims return a server-minted scoped capability. Kubernetes keeps MCP private; production CLI workers run in a separate KVM VM alongside the K3s application VM. They reach MCP through Caddy on `192.168.234.1:18084`, which forwards to a host loopback-only kubectl bridge. The renderer defaults to `127.0.0.1:28084`, matching the existing server's drop-in and Caddy upstream and avoiding Jenkins smoke ports 18081–18085. Its `--bridge-port` option changes both rendered endpoints together; the bridge selects the registered production kubeconfig. Caddy sets upstream Host to `127.0.0.1:8084` to satisfy the MCP SDK localhost protection while preserving capability authentication. Squid on `192.168.234.1:3128` restricts provider egress. Dedicated systemd units and the host firewall are generated by `scripts/ops/render-agent-vm-host.py`; see the [VM setup guide](../operations/agent-vm.md). Codex and its version-matched code-mode host are separate guest processes, not nested VMs. The development launcher keeps its bridge on loopback. Workers poll the durable operator AI switch and cancel on stop or loss of policy connectivity.
+`/internal/agent/claim`, `/fail`, `/usage`, `/generation-finish` and `/enabled`
+require a distinct worker bearer secret. Missing or equal worker/signing secrets
+deny worker authentication. Claims return server-minted, request-scoped
+capabilities; workers never receive the signing key.
+
+MCP is private to the worker network. Production subscription CLI workers run in
+an isolated VM and reach MCP through an authenticated private bridge. Their
+provider egress is allowlisted; provider login state stays inside the worker
+boundary. Development bridges bind to loopback. Workers poll the durable operator
+AI switch and cancel work on stop or loss of policy connectivity. The
+[worker operations guide](../operations/agent-vm.md) owns addresses, proxy settings,
+firewall rules and service installation.
+
+### Production automation identity
+
+Cloudflare signs service-authentication JWTs for the enrolled
+`BATTLEFIELD_ACCESS_CI_CLIENT_ID`. After normal issuer, audience, expiry and
+signature validation, an exact `common_name` match with `type: app` and empty
+user subject/email produces a separate `ci` actor limited to GET session and
+scenario-catalog routes. It cannot control
+battles or use admin/inspection routes. Human roles and direct-origin denial
+remain independent. The application receives the client ID, while the client
+secret stays with the verification tooling. Credential setup and rotation live
+in the [service authentication runbook](../operations/limited-launch.md#ci-service-authentication).
 
 ### Database privileges
 
 Migration `00004_battle_decisions.sql` creates a `battlefield_mcp` group role with decision-table and evaluation-view access, with no event, unit, building, or resource-state grants. Migration 00011 adds narrowly scoped battle-run ID/counter access and execution-lease/policy access for atomic admission. A deployment must give MCP a login that inherits only that intended role.
 
-### Deployment responsibilities
+### Runtime security requirements
 
-- Replace the development capability secret with high-entropy secret-manager material. MCP refuses to start with a capability secret shorter than 32 bytes or equal to the built-in local-development placeholder.
-- Use Access for production sessions; keep role assignments and the independent worker/signing secrets in private operator configuration. Block direct-origin IPv4/IPv6 access and verify the CNI enforces NetworkPolicy.
-- Keep provider keys only in the agent workload.
-- Treat model rationale as untrusted display text even though its length is bounded.
-- Keep CLI versions pinned because isolation flags and behavior are version-sensitive.
+- MCP rejects capability secrets shorter than 32 bytes or equal to the development placeholder.
+- Production sessions use Access identity; direct-origin access is denied and network policy restricts private services.
+- Provider credentials belong to the decision agent, separate from the API and engine.
+- Model rationale remains untrusted display text; bounded length does not make it authoritative.
+- CLI isolation depends on the configured, validated provider version family.
+
+The [access and isolation runbook](../operations/limited-launch.md) owns credential
+provisioning, network verification and enablement procedures.
 
 ## 10. Configuration and profile availability
 
@@ -862,123 +876,39 @@ The API catalog advertises profiles users may select. In cluster mode, an operat
 
 ## 11. Deployment topology
 
-### Local development
+Kubernetes hosts the runtime processes; battle rules and database coordination do
+not depend on Kubernetes APIs. Local development uses Kind. Production runs K3s
+in a dedicated VM, with a separate VM for subscription CLI workers. Development
+and production have distinct clusters, databases, volumes and credentials.
 
-`deploy-local.sh` builds images, deploys to the registered dev Kind cluster, and runs smoke checks. Dev reads the root `.env`; production reads `.env` beside its private `deployment.env`. Both files use the shared literal parser and explicit schemas. Application settings are filtered into database, auth, AI and optional-runtime Kubernetes Secrets; deployment identity never enters these Secrets. Application pods refresh on configuration-only deployments. Production tunnel settings remain in the deployment profile and its credential JSON stays separate; tunnel resources are rendered temporarily by the explicit tunnel deployment command. No legacy configuration fallback or persistent generated launch files remain.
-
-| Port | Process |
+| Workload | Communication and state |
 | --- | --- |
-| `5173` | Vite frontend |
-| `8080` | Public API |
-| `8081` | Engine health and metrics |
-| `8083` | Agent health |
-| `8084` | MCP and internal agent control plane |
-| `5432` | PostgreSQL |
+| Frontend | Serves the browser application, which calls the API through the shared gateway; no durable game state. |
+| API | Reads and writes PostgreSQL, optionally caches completed results in Redis, and exposes authenticated HTTP routes. |
+| Engine | Claims work and persists ticks through PostgreSQL; exposes health and metrics rather than gameplay routes. |
+| MCP | Exposes private decision tools and agent control routes, with narrower database privileges than the API or engine. |
+| API-provider agent | Calls MCP and external model APIs; provider keys stay in this workload. |
+| Migration Job | Applies database migrations separately from long-running application workloads. |
 
-### Kubernetes
+Public production traffic passes through Cloudflare Access and the tunnel to the
+private gateway. Network policies keep MCP and database access private while
+allowing the required workload and monitoring connections. CLI workers use a
+private MCP bridge and restricted provider proxy; subscription credentials stay
+outside the application cluster.
 
-The frontend image sets Nginx configuration ownership/modes explicitly so private
-Jenkins checkouts (`UMask=0077`) cannot make its template unreadable. CI runs an
-isolated container check with UID/GID 101, a read-only root, no capabilities, and
-temporary writable Nginx paths. It verifies probes and built static assets for PR
-images and the exact published frontend digest before production rollout; a
-private-checkout regression also rejects the original unreadable-template failure.
-The check has no network access, exposed ports or production credentials and
-removes newly pulled verification references while retaining pre-existing local
-images; cluster
-smoke tests still verify the real API proxy and application behavior.
+PostgreSQL is the durable game-state store. Persistent volumes retain database
+and supported observability data across pod replacement; Redis remains a
+disposable cache. Retained storage does not provide whole-host disaster recovery.
+The application and worker VMs share a physical host, so their process/network
+isolation does not eliminate the common host failure domain.
 
-Kustomize deploys separate API, engine, agent, MCP, frontend, and migration workloads. The API requires `battlefield-auth`, the API and agent read profile availability from `battlefield-ai`, MCP receives a distinct `MCP_DATABASE_URL`, and the processes mount a common non-secret ConfigMap. Development smoke uses its local administrator Secret; production smoke requires a real invited Access JWT and uses private port forwards. Neither mode disables authentication for verification.
-
-The migration Job runs the server in migration-only mode and reads the required
-`battlefield-auth` Secret for configuration validation. Deployment supplies the
-same dev/production environment as the API; CLI profiles are disabled in this Job.
-Startup and migration tests construct providers through the same PostgreSQL
-advisory-lock configuration. The lock spans schemas within the database because
-role and public-schema permission changes are shared across test fixtures.
-
-Registry-backed Jenkins deployments use immutable GHCR digest references.
-Publication and admission rendering share validated repository settings. The
-rollout supplies its resolved image references so preserved repositories remain
-covered during partial updates. Image source labels are derived from Git origin
-or an explicit `SOURCE_URL`, rather than a fixed project URL. Before
-admission, Kyverno validates a Cosign signature plus CycloneDX, SLSA v0.2, and
-AI-manifest attestations with the reviewed public key. Cosign v3 OCI 1.1
-referrers remain the portable evidence copied during registry promotion. The
-CI publisher also writes legacy digest-tag mirrors of the same signed evidence
-because the pinned Kyverno 1.15 verifier discovers that layout. Publication and
-GHCR deployment explicitly verify the legacy signature for the signed full-commit
-`revision` annotation: Cosign 3.0.2 bundle signatures and their verification
-summaries do not preserve that annotation. Attestation verification continues to
-use the modern evidence. Registry access
-uses short-lived Docker configuration in Jenkins and a namespace-local pull
-Secret for the admission controller; neither changes the cryptographic trust
-root.
-
-PR verification generates backend and frontend coverage, then runs the shared
-SonarQube Community Build service with quality-gate polling before image builds.
-Each PR is the main branch of its own preview project and keeps one stable project
-identity across retries. Jenkins seeds the preview with the target merge-base as
-one version before scanning the head as the next version, so New Code is relative
-to that PR's target and cannot be moved by another PR. The production project
-remains dedicated to `main` analyses.
-Main delivery repeats the analysis before deployment and classifies changes
-after the CI quality gates. Application-test-only
-changes and known CI test wrappers skip image publication and rollout; production
-file removals and unknown paths still select deployment. The shared
-`scripts/ci/with-ghcr-auth.sh` wrapper isolates registry credentials for each
-authenticated command, including rollback, and cleans up on cancellation.
-
-Deployment staging copies only selected overlays and their base dependencies.
-Infrastructure secret inputs are staged explicitly; unrelated local credentials
-are not copied. Auth-only extraction uses a separate staging path; the exported
-registered `.env` path remains unchanged for child deployment preflight checks.
-Observability verification waits for completion of each new
-Deployment rollout concurrently and reports failures before setup verification.
-The source-security stage owns CI manifest rendering and policy validation;
-scanner versions are centralized in `scripts/ci/tool-versions.env`.
-Its Trivy filesystem scan excludes generated `artifacts`, `frontend/coverage`,
-`frontend/playwright-report`, and `frontend/test-results`
-directories so parallel coverage cleanup cannot race with source analysis.
-Frontend source and dependency lockfiles remain in scan scope.
-Frontend tests use two Vitest workers and a 15-second per-test timeout to allow
-multi-step DOM interactions to finish while the agent runs parallel CI checks.
-Testing Library async waits have a separate five-second deadline inside that
-per-test budget.
-
-W3C trace context is persisted on `battle_runs` and `battle_decisions`. API inbound spans flow through PostgreSQL; engine and agent workers extract that durable context and create consumer spans before simulation, MCP, and provider work. Outbound HTTP clients and selected database operations are instrumented. The local OpenTelemetry Collector exports to Tempo, which Grafana provisions as a data source. Span attributes deliberately exclude prompts, credentials, capabilities, full observations, and raw provider responses.
-
-The observability overlay includes metrics, tracing, and disposable log storage.
-The observability smoke test generates application traffic on the same API
-port-forward it scrapes, because request counters are local to each replica and
-lifecycle probes bypass request instrumentation.
-See [observability operations](../operations/observability.md) for storage,
-security, and access details, and [Jenkins](../operations/jenkins.md) for runtime
-assurance launchers.
-
-The in-cluster agent is intended for API providers. `run-k8s-cli-agent.sh` bridges host subscription CLIs by validating the local binary and login, forwarding MCP to loopback, running a local agent, advertising availability to the API, and removing that availability on exit.
-
-The `claude-cli` provider exposes `claude-subscription-local` using Claude Code
-2.1.267 and the `sonnet` alias. The host retains its native subscription login;
-only allowlisted transport environment variables reach the subprocess. Restricted
-mode, empty built-in tools, disabled hooks and settings discovery, strict MCP
-configuration, and `dontAsk` permissions constrain it to explicitly approved
-battlefield tools. A private temporary MCP file holds the request capability and
-is removed on exit. Session persistence is disabled. Server-side capabilities and
-submission validation remain authoritative for battle and faction-generation jobs.
-The host bridge waits for MCP rollout readiness and surfaces forwarding logs on
-startup failure; bounded loopback health probes bypass proxies and require a live
-forwarding process.
-The API advertises the profile only while `CLAUDE_CLI_PROFILE_AVAILABLE=true`;
-production additionally requires the existing VM isolation verification flag.
-Claude stdout is parsed as a complete JSON document with stderr excluded. The
-host wait accommodates both serial auth checks; the VM profile defaults to disabled.
-Native HOME is retained: user-level instruction memory is not explicitly disabled,
-so reproducible comparisons need a dedicated account without personal memory.
-Claude terminal results report aggregate CLI usage, including cache reads/writes
-in total input tokens; errors and permission denials fail the decision. The
-`sonnet` alias follows the subscription's default Sonnet model, so operators need
-an explicit model ID for reproducible comparisons. See [Claude operations](../operations/claude-cli.md).
+Application configuration is separated into workload-specific Secrets and a
+non-secret ConfigMap. Deployment identity stays outside application Secrets;
+see the [configuration model](configuration.md). Production image admission
+requires verified image provenance. Registry publication, controller provisioning,
+migrations and rollback procedures belong to [deployment operations](../operations/deployment.md),
+[K3s delivery](../operations/k3s-delivery.md), and the
+[supply-chain runbook](../operations/supply-chain-runbook.md).
 
 ## 12. Observability
 
@@ -1191,11 +1121,6 @@ sources share naming helpers. Full IDs remain available through tooltips and raw
 inspection views, and freeform model text is preserved.
 See [Game rules](game-rules.md) for the consolidated battle rules and [Frontier Siege](frontier-siege.md) for the roster, map, and balance probes.
 
-These operational recovery procedures are owned by the operations guides:
-the [Elasticsearch and Kibana rollout recovery](../operations/deployment.md#elasticsearch-and-kibana-rollout-recovery)
-in the deployment guide, and [k6 HTTPS trust](../operations/jenkins.md#k6-https-trust)
-in the Jenkins guide.
-
 ## 17. Compact battlefield view
 
 The agent view groups units, buildings and statistics in `view.state.factions`:
@@ -1251,40 +1176,6 @@ ConfigMap for inspector links. Export is asynchronous and does not participate i
 decision acceptance or timeout enforcement. See [Langfuse operations](../operations/langfuse.md)
 for deployment order, sampling, privacy, persistence and token-accounting limits.
 
-The Langfuse deployment entry point bootstraps missing Helm in its private
-temporary workspace on Linux amd64, verifies a pinned release checksum before
-execution, and cleans it up on exit without changing system tools.
-
-Langfuse and SeaweedFS explicitly run with restricted Pod Security settings and
-non-root volume groups; PostgreSQL adds RuntimeDefault seccomp to its existing
-restricted container configuration. These settings are supplied through chart
-values rather than namespace-policy exceptions.
-
-Langfuse shares the Envoy gateway with Grafana and Kibana at
-`http://langfuse.localhost:8888`. The Helm login URL and API trace-link ConfigMap
-use that public address. Deployment and host-agent scripts detect the installed
-project ConfigMap to enable export automatically, with explicit 0/1 overrides.
-
-Production launch preparation validates the registered cluster identity and rendered Access/tunnel settings, preserves existing secrets, and optionally creates a database backup. It is separate from image delivery and public tunnel activation; the helper does not change live workloads or establish proof of network/MFA enforcement.
-
-Production Jenkins verification and k6 use the private
-`battlefield-production-access-service-token` JSON Secret file. Preflight checks
-its destination, client ID and expiry against the registered application config
-before rollout. The client secret is sent only to the configured public HTTPS
-origin; HTTP redirects are refused. Cloudflare authenticates the service and
-forwards a signed JWT. The API enrolls exactly `BATTLEFIELD_ACCESS_CI_CLIENT_ID`
-via the signed `common_name`, with a separate `ci` actor restricted to GET session
-and scenario catalog. User role mappings, signing-key validation and direct-origin
-denial remain enforced. CI cannot manage battles or use admin/inspection routes.
-Private port forwards still check readiness and rejection of forged identities.
-A fresh human JWT is only needed for optional operator user-session checks.
-
-Credential files carry operator-maintained Cloudflare expiry metadata: builds warn
-within 30 days and stop below one hour. Cloudflare expiry notifications and
-scheduled operator rotation cover idle periods; Jenkins has no Cloudflare
-management token. Activation and rotation are in the
-[launch runbook](../operations/limited-launch.md#ci-service-authentication).
-
 ## 19. Current limitations and follow-up questions
 
 - Production identity is delegated entirely to Cloudflare Access, so Access rule removal and session revocation are deployment responsibilities that offline JWT verification cannot observe. The development password login remains single-administrator and is not player identity.
@@ -1309,72 +1200,6 @@ battle processing. It atomically marks expired battles failed with
 using the existing `battle_stopped` cancellation category. History and tick
 state remain available; active admission slots are released but daily usage is
 not refunded. While the engine is offline, expiry waits for restart.
-
-### Deployment controls
-
-Prometheus deployment smoke queries allow a bounded 120-second discovery/scrape
-settling window per query, configurable from 1 to 600 seconds. Timeout reports
-application/node target health and scrape errors before failing the deployment;
-it does not waive target-health requirements. See the [deployment smoke guide](../operations/deployment.md).
-
-Production API ingress permits the tunnel, frontend and same-namespace Prometheus
-pods on TCP 8080. Prometheus peers must match the name, component and part-of
-labels from its deployment. This enables private metrics scraping while API
-authentication still protects application routes on the shared listener; the
-frontend policy remains tunnel-only. See the [limited-launch policy](../operations/limited-launch.md).
-
-PR verification for `dev` and `main`, main delivery and assurance share the existing
-`battlefield-production` agent and Docker daemon. The owner accepts this setup for
-the small, trusted project; build code can affect production through shared host
-access. Main-only delivery stages and scoped credential bindings prevent routine
-PR deployment but do not isolate malicious build code. Separate agents, daemons
-and controller-enforced credential boundaries remain a future infrastructure option.
-Production policy reconciliation precedes application rollout without
-activating the tunnel. Tunnel config/credential checksum changes trigger rollouts;
-policy-only changes do not. Prometheus requires approved kubelet serving trust in
-production and retains narrow node-metrics RBAC. API scrape verification covers
-all current ready replicas rather than an aggregate minimum of one.
-
-Successful authentication and runtime assurance establish a private recovery
-record bound to cluster UID and both deployed digests. Subsequent automatic image
-rollback requires an exact match, unchanged applied Goose migration versions and existing signature/provenance verification. An unavailable migration ledger disables rollback approval without blocking forward delivery; recording a new verified target still fails. Recovery preserves identity/storage checks while allowing a platform-controller restart or upgrade.
-The record does not roll back database changes or replace current authentication
-configuration. An absent record leaves recovery under operator control.
-
-Production ZAP receives sanitized, authenticated read-only response captures and
-runs without network access or credentials. Its report explicitly covers session,
-scenario catalog and liveness responses only; broader role-specific application
-scanning requires staging. Human JWT copying is no longer part of operator tooling.
-See the [hardening rollout](../operations/jenkins.md#production-hardening-rollout).
-
-## Development cross-review boundary
-
-The [Codex/Claude review runner](../developer/cross-review.md) operates
-on the development machine, separately from production workers. It sends the
-selected committed source/diff to the reviewer's provider using existing CLI
-login, excludes untracked application secrets, and stores private reports outside
-the repository. Claude reviews explicitly select the `opus` model alias and use file-read tools
-only; Codex uses `gpt-6-astra` with medium reasoning effort and a named read-only
-filesystem profile allowing the snapshot, minimal OS paths and installed CLI
-helpers, with sandbox command networking disabled. The runner enforces the
-minimum Codex version and strict configuration parsing. Personal auth files remain
-outside model tool access; the parent CLI still uses its existing login.
-No review result authorizes a merge or deployment. Agents invoke cross-review
-by default at the PR handoff; `--pr` publishes a completed advisory report through
-the host GitHub CLI after checking the live head/base. It never applies findings
-automatically. Local metadata separates review completion from comment publication.
-Publication retries require a report prepared with PR discussion context.
-
-The first PR review inspects the merge-base diff. Follow-ups inspect only changes
-since the last reviewed head and unresolved findings, with the latest report and
-latest self-contained author response as context (32 KiB maximum). The full
-marked discussion is fingerprinted for stale-publication checks but is not sent
-to the model. Two published rounds exhaust the automatic allowance; further
-calls require explicit user authorization via `--allow-extra-round`. Failed calls
-stop rather than automatically retrying. Trivial low-risk edits are exempt by
-author judgment, not file-extension heuristics. Both author directions follow
-this policy. Agreement is advisory; unresolved issues return to the user at the
-limit. No usage accounting or automatic merge is added.
 
 ## Managed Player invitations
 
@@ -1406,285 +1231,10 @@ block subsequent API requests immediately, without cancelling already accepted w
 See [Player invitations](../operations/player-invitations.md) for activation, policy
 separation, credential rotation, rollback limitations and live acceptance checks.
 
-## Policy and build ownership
+## Related guides
 
-Administrator model-access routes depend on `internal/admin.Service`; its
-repository contract is implemented by `admin.Postgres`. The service owns policy
-normalization and validation and supplies the three-second bounded `ReadPolicy`
-callback directly to the AI profile registry. HTTP delivery no longer owns the
-registry's database access. Optimistic versions, actor attribution, deny behavior,
-and response contracts are unchanged.
-
-Process configuration stays within `internal/config`, with parsers separated by
-concern. Frontend features share unit capabilities and model-profile contracts
-through `shared/domain`; feature API clients retain their request logic. Styles
-are owned by the shell, features, and shared components and assembled through
-`src/styles.css`. See the [codebase index](../developer/codebase-guide.md) for the focused guides.
-
-Docker image builds use the backend and frontend directories as separate
-contexts. Each context excludes local environment files, including nested files,
-while preserving `.env.example`. This keeps local settings and credentials out
-of builder layers; the root ignore file is not the boundary for component builds.
-
-## CLI service bootstrap boundary
-
-The optional `server.sh cli-*` commands register and reconcile the existing CLI
-VM host bundle and guest through `infra/ansible/cli.yml`. Host and guest preflight
-finishes before either target changes. Machine/domain/network/cluster identities,
-active and persistent NIC isolation, managed paths and immutable file hashes are
-bound by root-owned markers. Existing bridge overrides and explicit provider
-domains are captured for adoption. Secrets travel only through Vault; the guest
-receives its dedicated worker environment, never host kubeconfig or signing keys.
-New profiles stay disabled; provider login homes and existing shared-directory
-permissions are preserved. Captured adoption inputs retain the installed isolation
-helper. New vendor Caddy and unconfigured Squid units are masked before package
-installation; only the reviewed dedicated services are activated after validation.
-Both targets pass preflight, and a host setup failure blocks guest installation.
-Unchanged applies
-do not restart healthy services. Normal host and application jobs do not call
-this opt-in operation, and worker release upgrades remain a separate reviewed
-workflow. VM creation and Player isolation verification remain separate gates.
-See [CLI bootstrap and adoption](../operations/cli-bootstrap.md).
-
-The independent `scripts/infra/cli-vm.py` workflow owns the CLI VM through Ansible
-and libvirt; Terraform owns K3s. It retains the current unpooled standalone disk,
-2 CPU / 4 GiB / 24 GiB allocation, isolated static subnet and deny-by-default NIC
-filter. Root-owned ownership and expiring review receipts bind identities,
-persistent XML, disk/seed inodes and trusted SSH material. Adoption changes only
-ownership/connection metadata, while clean creation uses the pinned Ubuntu image
-and a private seed. A generated guest host key establishes first-boot SSH trust;
-its private material stays in the protected seed/guest. Missing resources or
-boundary drift fail before mutation; no automatic resize/replacement is exposed.
-The shared host operation lock serializes plan/apply/verify with platform commands.
-Verified guest identity produces a host-local Ansible handoff consumed by the
-service bootstrap, without copying IPs or private keys. Provider homes remain
-outside managed files. See [CLI VM platform](../operations/cli-vm-platform.md)
-for adoption, fresh creation, sensitive local state and interrupted-create limits.
-
-
-## Cloudflare resource ownership
-
-`scripts/infra/cloudflare.py` captures deployed routing identities and the existing
-connector credentials into versioned Ansible Vault inputs. The localhost Ansible
-playbook holds the controller lock and registered host operation lock through its
-operator wrapper. API strings and secrets remain in a private JSON file read inside
-the module, outside Ansible variable templating. Expiring one-use receipts bind the clean main revision, physical
-host, encrypted-input contents and live API observation. Explicit adoption records
-ownership without Cloudflare writes. Fresh creation builds new policy/app identities,
-verifies protection, creates a local tunnel and publishes its proxied CNAME last.
-No connector starts and normal application delivery never calls this workflow.
-
-Canonical private controller state journals confirmed IDs and an uncertain POST
-before any retry is possible. Missing/foreign identities, stale reviews, changed
-audience/issuer, broad rules and public bypass fail closed. Referenced service tokens
-and identity providers are preserved; runtime-owned player-group membership is
-observed but never restored. No update/delete/rotate operation exists in the normal
-workflow. Private handoff files match the existing production renderer; fresh
-routing activation remains a separate delivery action. See
-[Cloudflare platform](../operations/cloudflare-platform.md) for ownership, recovery,
-external prerequisites and the isolated no-connector API lifecycle fixture.
-
-## Native local HTTPS ownership
-
-The general native `caddy.service` terminates internal TLS on 80/443 with its
-existing CA beneath `/var/lib/caddy/.local/share/caddy`. The independent
-`scripts/infra/https.py` Ansible workflow captures its Caddyfile and root pair
-into Vault, then supports explicit adoption, fresh restoration or the reviewed
-Kind-to-K3s alias migration. It requires the captured shared Caddy version/unit
-and never updates that binary or the separate CLI proxy. Root-only ownership
-and one-use 30-minute receipts bind the host, inputs, revision and observations.
-Foreign configuration, missing CA material and drift stop before apply.
-Changing the capture or registered node requires the runbook's reviewed recovery:
-archive existing ownership under the host lock, retaining receipts and rollback
-material, then review a new plan. Incomplete operations block that archival.
-
-The 2026-10-02 inspection found the local application and monitoring aliases
-still used retained Kind. The owner-approved migration redirects
-`battlefield.home.arpa` to the registered public origin, preserving Cloudflare
-Access login, and sends Grafana/Kibana to the private K3s gateway. SonarQube and
-extra supported loopback routes are preserved. Migration reloads only native
-Caddy, preserving its CA; it regenerates the three owned blocks, with their
-interior comments retained in the saved original only. A failed check attempts restoration of the saved
-Caddyfile. Fresh restore writes the original root before startup and masks the
-native service on startup failure. Incomplete journals require explicit recovery.
-No normal main build invokes this workflow, and merging its code does not
-change live routes. See [local HTTPS](../operations/local-https-platform.md)
-for capture health reporting, DNS/browser trust and the live acceptance gate.
-
-## Ubuntu host bootstrap boundary
-
-The dated [server rebuild contract](../operations/server-rebuild-contract.md)
-records the measured Ubuntu/VM layout, state and credential locations, manual
-prerequisites and recovery limits. Production uses K3s; local HTTPS/CA restoration
-and Cloudflare use the separate reviewed workflows above. Their actual live
-acceptance is tracked in Notion. CLI VM creation
-and adoption have the separate reviewed Ansible workflow described above.
-The data partition and local recovery archives share the host SSD;
-whole-server-loss protection remains deferred.
-
-The [server bootstrap](../operations/server-bootstrap.md) adds an explicit
-workstation/server administration entry point under `scripts/infra/`, backed by
-`infra/ansible/`. It validates trusted SSH, Ubuntu release, x86-64 architecture
-and a registered machine ID before configuration, imports existing file credentials into an external Ansible Vault
-bundle, and reconciles the x86-64 Ubuntu host foundation using concrete QEMU packages
-so unattended installation does not depend on virtual-package provider selection;
-an existing QEMU/libvirt HWE stack is rejected before package changes, and apt
-operations refuse dependency removals. Imported inputs are staged
-root-only; application/Jenkins/Cloudflare credentials are not rotated or activated
-by staging. Unknown configuration ownership and differing credentials fail closed.
-Host inspection selects the installed traditional sudo executable for Ansible's
-password handshake, using `/usr/bin/sudo.ws` when Ubuntu's default is sudo-rs.
-Both SSH and local execution use that target-side selection; the system default,
-sudo policy and password requirements remain unchanged. Missing compatibility
-support stops Ansible before host tasks run.
-Applies and individual production infra/deploy/tunnel/rollback commands share an
-operator-owned host lock. Ansible inherits the lock descriptor or a pipe keeping
-its detached lock proxy alive, preserving exclusion when its controller is killed
-while the child continues. This does not protect remote tasks after total loss of
-the workstation/SSH connection. Jenkins additionally holds one shared resource for the
-whole production rollout or reviewed host operation. External operator applies
-must not run between separate application pipeline commands. Package/service setup uses the existing Ubuntu host;
-the K3s application VM and isolated CLI worker VM are separate boundaries.
-The retained Kind cluster is a migration recovery source, not another active writer.
-
-Optional `data_uuid`/`data_mount` inventory adds an existing ext4 partition to
-host management. The data role persists its UUID mount, prepares private operator
-and libvirt image directories, and records immutable storage identity outside Git.
-A separate libvirt hook refuses future `battlefield-k3s` starts/restores when the
-selected data filesystem is missing, wrong or read-only; other guests retain their
-existing lifecycle. The guard also provides a preflight for Terraform
-volume operations. Host storage setup does not move existing Docker data.
-The separate application migration exports PostgreSQL from Kind into K3s on the
-retained guest disk; old Kind data remains on the Ubuntu root filesystem.
-The Terraform VM module consumes this contract; the guest's
-retained-volume mount is managed by the [K3s platform role](../operations/k3s-platform.md). See the
-[storage contract](../operations/server-bootstrap.md#terraform-and-guest-storage-contract).
-
-The dedicated [Jenkins host job](../operations/platform-jobs.md) reads trusted
-`main`, binds folder-scoped inventory/Vault/sudo files outside its checkout, and
-executes the local bootstrap as the registered operator. Apply requires an owner
-approval of a fresh plan, rechecks revision/input fingerprints and host change
-digest, consumes its private receipt before mutation, and then verifies. The digest
-includes available loop-item diffs, but only outcomes for secret tasks or modules
-without diffs; it cannot prove a complete host-state snapshot. Reports contain
-only task outcomes and target identity (an application-specific fingerprint for
-the machine ID), never module output or raw diffs. Ansible's final recap determines
-failure after ignored errors or rescue tasks.
-The one-time workstation installer uses a strict SSH tunnel and authenticated API
-to create owned job/credential objects without starting builds or restarting the
-controller. Its plugin pins cover this existing-controller slice; complete
-Jenkins/SonarQube reconstruction remains separate work. Folder credential scope
-retains the project's accepted shared-user/host CI trust boundary.
-
-The [Terraform VM workflow](../operations/k3s-vm.md) provisions a dedicated
-Ubuntu guest from a dated release-build pin shared with the host rehearsal,
-NAT network and autostarting domain with separate replaceable OS
-and retained data disks on the selected partition. It is available through
-`battlefield-platform/vm` after reviewed seeding; it does not establish that the
-production VM has already been deployed. Host/network/mount identity and full
-virtual disk capacity are checked before planning. Saved-plan hashes, canonical
-state and a fresh plan bind apply to the owner-reviewed revision; retained
-resources cannot be deleted or recreated silently. The workflow generates Ansible
-inventory from Terraform outputs and authenticates the guest SSH key through its
-UUID-bound QEMU agent channel. Application credentials stay outside Terraform.
-
-VM control files live in the operator's private state directory outside Jenkins
-workspaces. Initial planning may prepare a key, seed and verified tool/image
-caches; libvirt mutation occurs only during apply. The Terraform local backend
-lock and shared operator lock serialize state writes. Versioned encrypted state
-and key snapshots accompany applies; an explicit command can copy them to the
-selected second disk. These snapshots do not back up database or VM data.
-Whole-server-loss recovery and automatic backup retention remain outside scope.
-
-The [K3s platform workflow](../operations/k3s-platform.md) consumes that verified
-Terraform inventory. Its manually triggered `battlefield-platform/k3s` job runs
-Ansible with the shared locks and a revision/input-bound owner approval. First
-installation formats only the exact, all-zero retained guest disk; subsequent
-operations require its filesystem UUID and ownership marker. The guest mounts it
-at `/srv/battlefield`; SQLite/container state, kubelet state, local-path volumes
-and the node registration password remain there. Systemd mount dependencies and
-startup guards reject missing or mismatched storage and prevent silently replacing registered cluster state.
-
-K3s runs a pinned compatible Kubernetes release with Flannel, enforcing network
-policies, CoreDNS and metrics-server. Traefik and ServiceLB are disabled from the
-first start. Pinned Envoy Gateway/Gateway API and Kyverno provide platform
-controllers, with bounded readiness retries for API reconnects after boot; application manifests and admission policies remain CD-owned. A
-dedicated guest nftables table restricts private API/kubelet/kube-proxy health/NodePort access,
-including checks before NodePort translation. Verification compares live rules
-with their recorded applied state; a reviewed reload repairs drift without
-restarting K3s. The host and CLI VM networks are
-preserved. A validation namespace tests private registry pulls, retained PVC
-identity, DNS, allowed/denied traffic and private gateway routing. Pull credentials
-live in the application and validation namespaces; application delivery owns the
-separate Kyverno admission credential contract. Trusted kubelet
-metrics use the real serving CA and IP SAN; optional observability prerequisites
-are prepared and Langfuse remains explicitly disabled.
-
-Successful verification exports separate private K3s kubeconfig and kubelet CA
-files without changing the registered production profile. There is no public
-tunnel activation or database migration in this job. The [K3s delivery workflow](../operations/k3s-delivery.md)
-handles application delivery; its cutover procedure covers data transfer,
-profile/credential adoption, the host-side CLI MCP bridge and public verification.
-Local-path storage requests are not quotas;
-there is no automatic expansion or new scheduled database backup.
-
-The owner has deferred scheduled backups and retention for current personal use;
-existing pre-migration dumps remain. The initial backup design uses the server's separate second disk only, with a
-100 GB planning budget. The wrapper can validate a selected filesystem UUID
-against the root physical disk, but does not mount or format it. Backup scheduling,
-full clean-host restore verification and the separate CI-service/Cloudflare
-acceptance gates remain outside this foundation; the initial application cutover has
-its own export/restore and delivery evidence. Losing the whole server is outside the
-initial recovery scope. Host bootstrap files select no application deployment
-components; normal Jenkins application delivery never invokes the bootstrap.
-
-The opt-in `scripts/infra/rehearse-server.py` runs on an existing libvirt host.
-It creates a temporary 2-vCPU/3-GiB Ubuntu guest and its own storage pool, using
-the existing NAT network without changing it. Pinned image checksums, generated
-SSH host keys and a matching VM UUID/guest marker bind the destructive fixture
-to that guest. Synthetic credentials exercise the actual local bootstrap entry
-point, including a clean Ansible controller install, interruption/resume, repeat
-apply, drift and reboot. A guest-only temporary callback holds the completed
-ownership-marker boundary until the fixture signals the real controller; it is
-removed before resume. Reboot readiness requires a changed boot ID, not a fixed
-delay. Evidence contains configuration fingerprints and secret-checked logs;
-host diagnostics omit captured child output. Cleanup checks UUIDs before deleting
-its resources. The ordinary deployment gate runs the real package-profile guard
-against synthetic facts and offline harness checks, never this VM drill. A
-successful matching-release drill on the intended source revision is required
-before first production foundation apply.
-
-
-### External CI reconstruction and maintenance
-
-The optional `server.sh ci-*` path manages native Jenkins, its existing operator
-agent and the SonarQube/PostgreSQL Compose stack separately from application
-rollouts. Configuration and input manifests stay outside Git; Ansible Vault carries
-initial/imported credentials. Core, plugin dependencies, Go, Node, kubectl and SonarScanner
-use checksum pins, while Sonar/PostgreSQL images use digests. Ubuntu supplies Java
-21, browser libraries and fresh-host Docker packages. The shared agent uses `sg`
-to enter the Docker group; its OS-specific package is installed explicitly and
-the launcher is checked as the operator before Jenkins is drained.
-
-JCasC owns only the controller executor count and root URL. Scoped bootstrap code
-preserves existing realms/users, credentials, node identity, unrelated jobs and
-multibranch folder properties; it creates missing repository/assurance jobs
-with Job DSL in a disabled state and reuses the platform seeder. Fresh setup
-requires authentication before serving the UI and enrolls the shared agent without
-copying a secret from the web interface. Sonar initialization uses its API and the
-project-scoped Sonar way gate without changing the instance-wide default. Successful
-initialization removes plaintext bootstrap credential values from the staging JSON;
-private service inputs and Jenkins decryption keys still require protected archives.
-Existing credentials and persistent volume names survive
-adoption; mismatched component versions/layouts fail before reconciliation.
-
-An external operator holds the host operation lock and drains active and paused
-Jenkins builds before controller maintenance. A private local controller archive
-and Sonar database dump precede configuration changes. A backup failure restores
-an originally running, unchanged controller automatically. Quiet mode persists across
-the configuration restart until acceptance succeeds. Configuration fingerprints
-exclude vendor tool trees/caches. Unchanged repeats verify without restarting;
-a failed reconciliation remains paused for recovery. This does not activate
-scheduled backups, move application/CI data, change Kind/K3s/Cloudflare or create
-a self-replacing controller job. Production adoption remains an explicit operation
-after implementation review; see [CI bootstrap](../operations/ci-bootstrap.md).
+- [Codebase guide](../developer/codebase-guide.md): packages, source ownership and implementation change paths.
+- [Contributor CI](../developer/ci.md) and [cross-review](../developer/cross-review.md): development verification and review workflow.
+- [Observability architecture](observability.md): signal paths, telemetry contracts and reliability objectives.
+- [Deployment](../operations/deployment.md) and [Jenkins operations](../operations/jenkins.md): rollout, verification and recovery.
+- [Server rebuild contract](../operations/server-rebuild-contract.md): infrastructure state and recovery boundaries, with links to host, VM, K3s, Cloudflare and local HTTPS procedures.
