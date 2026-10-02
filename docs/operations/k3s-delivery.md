@@ -1,9 +1,9 @@
 # Application delivery to K3s
 
-[AB-129 — Support K3s delivery while preserving Kind development](https://app.notion.com/p/3eab7a19f8f781e6bb1ad38d5d25ef0f)
-adds an explicit driver to the registered production environment. Existing profiles
-without `BF_DRIVER` continue to select Kind. This code does not change the active
-production profile or move existing data when merged.
+Application delivery selects the cluster driver from the registered environment's
+`BF_DRIVER`. Existing profiles without `BF_DRIVER` select Kind. Register a new
+cluster explicitly and use the cutover procedure below to transfer existing data.
+Merging delivery code does not change the active production profile or move data.
 
 The [platform job](k3s-platform.md) owns the VM's K3s installation, retained
 filesystem, storage class, firewall, Envoy and Kyverno controllers. Application
@@ -180,11 +180,12 @@ to image changes.
 
 ## Adoption and cutover boundary
 
-[AB-132 — Migrate initial production from Kind to K3s](https://app.notion.com/p/3eab7a19f8f7819b91b4c2f502e29e4f)
-owns the initial data and traffic migration. The owner authorized the direct
-migration on 2026-10-01, retaining the existing test data and old Kind cluster.
-Broader host/Jenkins/SonarQube reconstruction and rebuild acceptance remain
-separate work under AB-107 and AB-131.
+The cutover procedure coordinates data transfer, environment registration,
+Jenkins credentials and public traffic. Retain the source data and cluster until
+the destination passes verification. Host and CI service reconstruction have
+separate procedures in [server bootstrap](server-bootstrap.md) and
+[CI bootstrap](ci-bootstrap.md); the [server rebuild contract](server-rebuild-contract.md)
+defines their recovery boundaries.
 
 Use an idle Jenkins window and hold the shared operator lock throughout the
 mutation sequence. Jenkins has an additional resource lock; an external operator

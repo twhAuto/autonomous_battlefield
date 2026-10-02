@@ -3,8 +3,8 @@
 The optional CLI commands in `scripts/infra/server.sh` install or adopt the host
 bridge, dedicated Caddy/Squid configuration, firewall and worker files using
 Ansible. Normal `server.sh apply` and application deployments do not invoke them.
-They work without Jenkins; AB-139's separate worker update job can reuse this
-entry point later. Jenkins/SonarQube reconstruction remains AB-127.
+They work without Jenkins. Jenkins and SonarQube reconstruction use the separate
+[CI bootstrap workflow](ci-bootstrap.md).
 
 Provision or adopt the VM first with [CLI VM platform](cli-vm-platform.md).
 The CLI VM must already exist with the [documented isolated network and NIC
@@ -16,8 +16,8 @@ existing parent directories must be root-owned and not writable by group/others.
 The guard rejects an unsafe shared directory rather than changing its permissions.
 The controller needs trusted SSH entries for the physical host
 and, for guest operations, the VM; host-side execution uses the existing VM admin
-key. Keep Player CLI access disabled until AB-117 verification. Installation or a
-healthy worker is not evidence that the Player isolation gates passed.
+key. Keep Player CLI access disabled until the [CLI isolation gates](limited-launch.md#isolated-cli-vm-enable-only-in-the-last-phase)
+pass. Installation or a healthy worker is not evidence that these gates passed.
 
 ## Adopt the existing installation
 
@@ -25,7 +25,7 @@ Use the same checkout and controller throughout registration, planning and
 applying: captured file paths belong to that controller. For the existing server,
 run from its checkout as the registered operator with `--local`. From WSL, omit
 `--local`; guest SSH uses the physical host as its jump connection, without agent
-forwarding. The guest admin private key must then exist on WSL. The AB-140 managed handoff
+forwarding. The guest admin private key must then exist on WSL. The CLI VM managed handoff
 is host-local: use `--local` on the physical host to consume it without copying
 keys. It supplies strict host-key trust and refuses a different guest or key.
 `--cli-vm-handoff` can select an explicit private handoff path; it is rejected
@@ -101,7 +101,8 @@ the external lock excludes individual deployment commands, not an entire Jenkins
 pipeline. Changed service content is activated through handlers; healthy unchanged
 services are only checked/enabled. A deliberately changed release or desired
 configuration is rejected by the immutable ownership contract. Use a reviewed
-update/rollback procedure (AB-139), not deletion of ownership markers, to upgrade.
+update/rollback procedure to upgrade; deleting ownership markers bypasses this
+protection and is unsupported.
 
 ## Install services on a fresh, already provisioned CLI VM
 
@@ -119,13 +120,13 @@ when Squid has not been installed yet; preflight still rejects real foreign unit
 Set the optional `guest` object using
 [`cli.example.json`](../../infra/ansible/cli.example.json). Required inputs are the
 new guest machine ID and trusted admin key (automatically supplied by the
-AB-140 host-local handoff when those two guest fields are empty); a worker binary from a verified
+CLI VM host-local handoff when those two guest fields are empty); a worker binary from a verified
 backend release; both matching Codex executables; their independently verified
 SHA256 digests; the guest config and worker service source paths. Binary transfer,
 account creation, permissions, units and activation are handled by Ansible.
 For the managed handoff, set `"machine_id": ""` and `"identity_file": ""` in the
 example's `guest` object. `known_hosts_file` is a managed connection field supplied
-by AB-140 in memory (or saved during capture); do not add it by hand to the example.
+by CLI VM provisioning in memory (or saved during capture); do not add it by hand to the example.
 Without a managed handoff, keep the example's explicit trusted connection fields.
 Keep the copied guest configuration and unit sources owned by the controller user
 with mode 0600. Use the [pinned release procedure](agent-vm.md#4-install-the-worker-and-the-complete-pinned-codex-release)
@@ -156,7 +157,7 @@ addresses and enabled fresh-install profiles. Both targets finish preflight befo
 either is changed. A host setup failure stops the guest play as well. Only Ubuntu 24.04/26.04 x86-64 is supported. The worker account's
 existing home must match `/var/lib/battlefield-worker`; files beneath it are not
 recursively reconciled. Provider device/browser login remains an interactive step
-inside the VM, followed by AB-117's isolation and accepted-plan checks before
+inside the VM, followed by the [worker isolation and accepted-plan checks](agent-vm.md) before
 advertising availability.
 
 ## Validation and failure recovery
@@ -198,6 +199,6 @@ directory metadata preservation, failure barriers, nested libvirt identity
 and filter inspection, repeat/check/verify runs, firewall drift, conflict refusal,
 interrupted-install resumption, credential/login preservation and reboot. A
 synthetic Kubernetes bridge and worker health process avoid production credentials
-and provider calls. This is lifecycle evidence, not a replacement for AB-117's
-production isolation or inference tests. The runner cleans up only its UUID-bound
+and provider calls. Production isolation and inference tests remain separate
+requirements. The runner cleans up only its UUID-bound
 VM and storage pool and records source hashes with the evidence.
