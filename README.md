@@ -249,7 +249,9 @@ in [CI service authentication](docs/operations/limited-launch.md#ci-service-auth
 CI and delivery share the existing `battlefield-production` agent for this small,
 trusted project. The [hardening rollout guide](docs/operations/jenkins.md#production-hardening-rollout)
 documents that tradeoff and the required production kubelet TLS trust. Validate
-deployment changes locally with `./scripts/test/test-deployment.sh`; PR verification
+deployment changes locally with `./scripts/test/test-deployment.sh`. For frontend
+image changes, also run `./scripts/test/test-frontend-image.sh` to build with private
+checkout permissions and verify actual container startup and static assets. PR verification
 runs for both `dev` and `main` targets.
 
 Agent-authored PR revisions use the [Codex/Claude cross-review workflow](docs/operations/cross-review.md)

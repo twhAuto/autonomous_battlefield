@@ -37,3 +37,28 @@ scan() {
 
 scan backend "${BACKEND_IMAGE_REF:-}"
 scan frontend "${FRONTEND_IMAGE_REF:-}"
+
+# Check the exact published frontend subject before signing or production rollout.
+# with-ghcr-auth.sh already provides scoped Docker credentials for this pull.
+verify_frontend() (
+  local reference="$1" already_present=0 pulled=0
+  if docker image inspect "${reference}" >/dev/null 2>&1; then
+    already_present=1
+  fi
+  cleanup() {
+    if [[ "${pulled}" == 1 && "${already_present}" == 0 ]]; then
+      docker image rm "${reference}" >/dev/null 2>&1 ||
+        echo "Could not remove the frontend verification image reference: ${reference}" >&2
+    fi
+  }
+  trap cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  docker pull "${reference}"
+  pulled=1
+  python3 "${project_dir}/scripts/ci/verify-frontend-image.py" "${reference}"
+)
+
+if [[ -n "${FRONTEND_IMAGE_REF:-}" ]]; then
+  verify_frontend "${FRONTEND_IMAGE_REF}"
+fi

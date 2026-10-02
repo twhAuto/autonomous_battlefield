@@ -167,7 +167,7 @@ the pinned Kyverno 1.15 admission verifier discovers `.sig` and `.att` tags,
 not Cosign v3's referrer-only evidence. Both forms are signed with the same
 Jenkins-managed key and cover the same immutable subject digest.
 [`scripts/ci/with-ghcr-auth.sh`](../../scripts/ci/with-ghcr-auth.sh) supplies a
-mode-700 temporary `DOCKER_CONFIG` for publishing, signing, deployment, rollback,
+mode-700 temporary `DOCKER_CONFIG` for publishing, image scanning/startup verification, signing, deployment, rollback,
 and AWS promotion. It logs in through standard input, forwards command arguments
 and exit status, and removes credentials on success, failure, or cancellation.
 [`test-registry-auth.sh`](../../scripts/test/test-registry-auth.sh) checks this
@@ -655,6 +655,7 @@ local iteration; local Jenkins and SonarQube need not be started.
 | `battlefield-local` is offline | Run `systemctl --user status jenkins-agent`, confirm the controller is active, and restart the user service after correcting the reported error. |
 | A new PR shows only build `#1` | Build numbering is local to that `PR-N` child job; this is not evidence that active history was deleted. Check the Orphaned Item Strategy for closed PR retention. |
 | A feature-branch push has no stages | This is intentional. Open a pull request into `dev` to trigger CI. Promotion to `main` is a separate release. |
+| Frontend exits with `default.conf.template: Permission denied` | Check the image build: private agent checkouts use mode `0600`. The Dockerfile must set readable config modes and a traversable template directory; keep `UMask=0077` on the agent. Run `./scripts/test/test-frontend-image.sh` before publishing the fix. |
 | Frontend proxy returns `502` | Confirm `API_UPSTREAM` renders as `battlefield-api.battlefield.svc.cluster.local:8080`, then inspect frontend logs and the `battlefield-api` Service endpoints. |
 | `kind load docker-image` says the image is not present and is loading | This is normal informational output: kind is copying a host Docker image into the cluster node. |
 
@@ -669,7 +670,8 @@ For a pull request targeting `dev` or `main`, the pipeline performs:
 3. Publication of the GitHub `Coverage` check.
 4. SonarQube preview-project analysis and quality-gate enforcement for the exact
    PR checkout.
-5. Local image builds and vulnerability scans, without publication or production credentials.
+5. Local image builds, frontend container startup/static-asset verification and
+   vulnerability scans, without publication or production credentials.
 
 Backend integration packages run concurrently against the disposable PostgreSQL
 database. Migration fixtures use the same advisory lock as startup, including
@@ -687,6 +689,7 @@ For `main`, the pipeline performs:
    changes select no deployment; an unknown path or unavailable baseline selects
    all components. CI quality gates still run for these changes.
 4. Publication of changed images to GHCR, scanning of the published images,
+   and frontend startup/static-asset verification of the exact pulled digest,
    then attestation, signing, and verification.
 5. Production rollout with the dedicated kubeconfig, recorded previous backend
    and frontend digest references, migration gating, and Kyverno admission verification.
@@ -698,6 +701,30 @@ For `main`, the pipeline performs:
 See [deployment component mapping](deployment.md#change-to-deployment-mapping)
 for the paths that select each rollout stage and
 [supply-chain assets](../../deploy/supply-chain/README.md) for the trust root.
+
+Both PR and main deployment-script checks run
+`./scripts/test/test-frontend-image.sh`: it copies tracked frontend inputs into a
+private temporary context with files `0600` and directories `0700`, builds the
+actual Dockerfile, verifies startup, and proves an unreadable template is rejected.
+It needs Docker with BuildKit and access to the configured base-image/package
+registries; it uses the default daemon-backed builder and removes its child image
+before the parent and temporary files. It deliberately runs for every PR/main
+quality check, including changes that select no deployment, to exercise startup
+independently of the real checkout modes. BuildKit can reuse this regression's
+cache across runs.
+
+`scripts/ci/verify-frontend-image.py IMAGE` checks an already-local image as UID/GID
+101 with a read-only root filesystem, dropped capabilities, no new privileges,
+and the production writable paths in temporary filesystems. It publishes no ports,
+uses no application credentials and disables container networking. Its resolver
+input is pinned to loopback so host DNS changes cannot invalidate this isolated
+check. It checks all three Kubernetes probes, the built index and its JavaScript/CSS entry assets over
+loopback HTTP. PR/local image builds invoke it after building the frontend; main
+pulls and checks the scanned frontend digest before signing or rollout. Failures
+print Docker diagnostics and bounded container logs and remove only that check's
+container. The published-image gate removes digest references it pulled solely for
+verification on success or failure, while retaining references already present on
+the agent. Cleanup failure emits a warning. These image checks do not verify the API proxy or replace Kubernetes deployment smoke tests.
 
 The deployment keeps the normal application rollout budget at five minutes but
 allows 15 minutes for the observability group as a whole. A new single-node

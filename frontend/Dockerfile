@@ -19,13 +19,17 @@ FROM ghcr.io/nginx/nginx-unprivileged:1.30.4-alpine3.24-slim@sha256:bcf91d2c73ab
 
 USER root
 
-RUN apk upgrade --no-cache
+RUN apk upgrade --no-cache \
+    && mkdir -p /etc/nginx/templates \
+    && chmod 0755 /etc/nginx/templates
 
 ENV API_UPSTREAM=battlefield-api:8080
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 
-COPY --chown=101:101 nginx-main.conf /etc/nginx/nginx.conf
-COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+# The private Jenkins workspace uses umask 0077; runtime permissions must not
+# depend on the checkout owner or mode. These files contain no secrets.
+COPY --chown=101:101 --chmod=0644 nginx-main.conf /etc/nginx/nginx.conf
+COPY --chown=101:101 --chmod=0644 nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build --chown=101:101 /src/dist /usr/share/nginx/html
 
 USER 101:101
