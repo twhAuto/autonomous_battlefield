@@ -1475,13 +1475,36 @@ routing activation remains a separate delivery action. See
 [Cloudflare platform](../operations/cloudflare-platform.md) for ownership, recovery,
 external prerequisites and the isolated no-connector API lifecycle fixture.
 
+## Native local HTTPS ownership
+
+The general native `caddy.service` terminates internal TLS on 80/443 with its
+existing CA beneath `/var/lib/caddy/.local/share/caddy`. The independent
+`scripts/infra/https.py` Ansible workflow captures its Caddyfile and root pair
+into Vault, then supports explicit adoption, fresh restoration or the reviewed
+Kind-to-K3s alias migration. It requires the captured shared Caddy version/unit
+and never updates that binary or the separate CLI proxy. Root-only ownership
+and one-use 30-minute receipts bind the host, inputs, revision and observations.
+Foreign configuration, missing CA material and drift stop before apply.
+
+The 2026-10-02 inspection found the local application and monitoring aliases
+still used retained Kind. The owner-approved migration redirects
+`battlefield.home.arpa` to the registered public origin, preserving Cloudflare
+Access login, and sends Grafana/Kibana to the private K3s gateway. SonarQube and
+extra supported loopback routes are preserved. Migration reloads only native
+Caddy, preserving its CA; a failed check attempts restoration of the saved
+Caddyfile. Fresh restore writes the original root before startup and masks the
+native service on startup failure. Incomplete journals require explicit recovery.
+No normal main build invokes this workflow, and merging its code does not
+change live routes. See [local HTTPS](../operations/local-https-platform.md)
+for capture health reporting, DNS/browser trust and the live acceptance gate.
+
 ## Ubuntu host bootstrap boundary
 
 The dated [server rebuild contract](../operations/server-rebuild-contract.md)
 records the measured Ubuntu/VM layout, state and credential locations, manual
 prerequisites and recovery limits. Production uses K3s; local HTTPS/CA restoration
-still needs explicit automation. Cloudflare has the separate reviewed workflow
-described below; its live adoption remains an acceptance gate. CLI VM creation
+and Cloudflare use the separate reviewed workflows above. Their actual live
+acceptance is tracked in Notion. CLI VM creation
 and adoption have the separate reviewed Ansible workflow described above.
 The data partition and local recovery archives share the host SSD;
 whole-server-loss protection remains deferred.

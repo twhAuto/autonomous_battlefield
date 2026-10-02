@@ -63,7 +63,7 @@ The second physical disk is not currently a usable registered recovery target:
 | CLI host services | Squid `.234.1:3128`; dedicated Caddy `.234.1:18084` routes MCP through host loopback `28084`. Provider login homes stay in the CLI guest. |
 | Other networks | Docker routes `172.17/16`, `172.18/16`, `172.19/16`; default libvirt `192.168.122/24`. No overlap with the selected guest subnets was observed. Recheck routes/VPNs on every replacement host. |
 | CI access | Host SSH 22, native Jenkins 8080, Sonar loopback 9000. External automation uses a strict SSH tunnel to a loopback Jenkins URL. |
-| Local HTTPS | Existing general `caddy.service` on 80/443, separate from the CLI proxy. `/etc/caddy/Caddyfile` names `battlefield.home.arpa`, `grafana.home.arpa`, `kibana.home.arpa`, `sonarqube.home.arpa` and uses internal TLS. Destination correctness and CA restoration still need the capture/verification below. |
+| Local HTTPS | Existing general `caddy.service` on 80/443, separate from the CLI proxy. `/etc/caddy/Caddyfile` names `battlefield.home.arpa`, `grafana.home.arpa`, `kibana.home.arpa`, `sonarqube.home.arpa` and uses internal TLS. The subsequent AB-142 inspection found the first three still targeted retained Kind; the [local HTTPS workflow](local-https-platform.md) provides protected capture and reviewed correction/restoration. Live acceptance is separate from merge. |
 | Public application | Healthy locally managed `ordinalfrontier-play` tunnel; proxied `play.ordinalfrontier.com` CNAME; existing self-hosted `play` Access app with six-hour sessions. Account App Launcher is unrelated. |
 
 The Cloudflare inventory used GET requests only. Existing tunnel, DNS and Access
@@ -171,8 +171,9 @@ unrecognized state. Existing runbooks own the exact commands:
    database ledger, private/public Access, telemetry and the recovery record.
 7. **CLI and access:** reproduce/adopt the existing CLI VM, then use
    [CLI bootstrap](cli-bootstrap.md). Provider subscription login and any later
-   reauthorization remain interactive. Reconcile owned Cloudflare and local HTTPS
-   configuration through their implementation work below before claiming a
+   reauthorization remain interactive. Reconcile owned [Cloudflare](cloudflare-platform.md)
+   and [local HTTPS](local-https-platform.md) configuration through their explicit
+   workflows before claiming a
    complete clean-server rebuild.
 
 For a fresh installation, the human-only categories are base OS/network/SSH/sudo,
@@ -188,7 +189,7 @@ independent deliverables are explicitly tracked:
 
 - [AB-140 — CLI VM provisioning/adoption](https://app.notion.com/p/3edb7a19f8f78120b73ae00b203182f4): consume host identity and preserve the current VM disk/network; then hand off to existing CLI Ansible. The dated inventory found `create-agent-vm.sh` was create-only. The subsequent [CLI VM platform](cli-vm-platform.md) adds reviewed Ansible/libvirt creation/adoption while Terraform continues to own K3s; live adoption evidence is still required.
 - [AB-141 — Cloudflare reconciliation](https://app.notion.com/p/3edb7a19f8f781a19d2fd066ac4af410): privately capture owned policies/IDs, reviewed adopt/create, preserve audience/service identities and unrelated resources. The subsequent [Cloudflare platform](cloudflare-platform.md) supplies encrypted capture, reviewed adoption/creation and a scoped API fixture; live no-change adoption remains required. Account/domain ownership remains external.
-- [AB-142 — Local HTTPS routes and CA trust](https://app.notion.com/p/3edb7a19f8f7810ebd5de5d75beaa267): capture protected Caddy configuration/CA state, verify the four current routes and reproduce them without changing trust or the dedicated CLI proxy.
+- [AB-142 — Local HTTPS routes and CA trust](https://app.notion.com/p/3edb7a19f8f7810ebd5de5d75beaa267): the [local HTTPS platform](local-https-platform.md) captures protected Caddy configuration/CA state and provides reviewed install/adopt/migrate operations. The owner approved redirecting the application alias to its public Access-protected origin and moving Grafana/Kibana aliases from retained Kind to K3s. Protected live capture and reviewed migration/verification remain required; SonarQube, CA trust and the CLI proxy are preserved.
 - Reconcile existing platform/storage acceptance under AB-131/AB-134. Documented disposable foundation/VM/K3s rehearsal entry points must start with ordinary Python settings; `--help` checks prove startup, not a new live lifecycle test.
 
 AB-140 consumes the host/CLI service and reviewed-job foundations; AB-141 consumes

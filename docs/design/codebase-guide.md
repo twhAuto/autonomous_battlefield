@@ -352,3 +352,18 @@ actual Ansible checks that remote strings remain literal JSON. The playbook pass
 only a private input-file path into the module. `scripts/infra/rehearse-cloudflare.py`
 exercises a uniquely named idle cloud fixture with ID-bound cleanup and preservation
 checks. See [Cloudflare platform](../operations/cloudflare-platform.md).
+
+### Native local HTTPS lifecycle
+
+`scripts/infra/https.py` provides host-local encrypted capture and reviewed
+plan/apply/verify through `infra/ansible/https.yml`. Its root-side
+`https-runtime.py` owns the narrow Caddyfile parser, retained CA validation,
+root-only ownership/receipts and install/adopt/migrate operations. Literal
+private JSON enters Ansible only as a file path. Migration derives routing from
+the registered K3s production profile, redirects the application alias to the
+public Access-protected origin and retargets monitoring without replacing the
+shared Caddy binary or touching the CLI proxy. `test-local-https.py` covers
+policy and failure paths; `rehearse-https.py` and
+`scripts/test/rehearse-https-guest.py` exercise the actual lifecycle and reboot
+with synthetic secrets in a disposable VM. See the
+[local HTTPS runbook](../operations/local-https-platform.md).
