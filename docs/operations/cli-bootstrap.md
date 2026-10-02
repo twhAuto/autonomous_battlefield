@@ -123,6 +123,10 @@ AB-140 host-local handoff when those two guest fields are empty); a worker binar
 backend release; both matching Codex executables; their independently verified
 SHA256 digests; the guest config and worker service source paths. Binary transfer,
 account creation, permissions, units and activation are handled by Ansible.
+For the managed handoff, set `"machine_id": ""` and `"identity_file": ""` in the
+example's `guest` object. `known_hosts_file` is a managed connection field supplied
+by AB-140 in memory (or saved during capture); do not add it by hand to the example.
+Without a managed handoff, keep the example's explicit trusted connection fields.
 Keep the copied guest configuration and unit sources owned by the controller user
 with mode 0600. Use the [pinned release procedure](agent-vm.md#4-install-the-worker-and-the-complete-pinned-codex-release)
 to obtain artifacts. Optional native `claude` and `agy` executable artifacts can be registered too;

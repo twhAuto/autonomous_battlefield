@@ -265,7 +265,7 @@ def managed_handoff(args, data, config, server):
     if (not isinstance(value, dict) or set(value) != fields or type(value['schema']) is not int or value['schema'] != 1 or
             value['host_machine_id'] != data['machine_id'] or value['ansible_host'] != '192.168.234.2' or
             value['ansible_user'] != 'vm-admin' or not isinstance(value['machine_id'], str) or not re.fullmatch(r'[0-9a-f]{32}', value['machine_id']) or
-            any(value[key] != config['host'][key] for key in ('domain_uuid', 'network_uuid'))):
+            any(value[key] != config['host'].get(key) for key in ('domain_uuid', 'network_uuid'))):
         raise ValueError('Managed CLI VM handoff differs from the registered host/VM identities')
     for key in ('identity_file', 'known_hosts_file'):
         server.outside_repo(server.private_file(value[key]))

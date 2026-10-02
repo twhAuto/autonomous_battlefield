@@ -15,17 +15,17 @@ import urllib.request
 import uuid
 import xml.etree.ElementTree as ET
 from ansible.module_utils.battlefield_cli_vm_policy import (
-    NAME, DIRECTORY, IP, encoded, digest, xml_digest, require_identity, validate_layout, no_overlap, check_receipt,
+    NAME, DIRECTORY, IP, encoded, xml_digest, require_identity, validate_layout, no_overlap, check_receipt,
 )
 
 STATE = Path('/var/lib/battlefield-cli-vm')
 DISKS = Path(DIRECTORY)
 
 
-def run(*args, timeout=120):
+def run(*args, timeout=120, allowed=(0,)):
     result = subprocess.run([str(a) for a in args], capture_output=True, text=True, timeout=timeout,
                             env=dict(os.environ, LC_ALL='C', LANG='C'))
-    if result.returncode:
+    if result.returncode not in allowed:
         operation = Path(args[0]).name
         if operation == 'virsh' and len(args) > 3:
             operation += ' ' + str(args[3])
@@ -91,6 +91,16 @@ def write(path, content, uid=0, gid=0):
         if os.path.exists(temporary):
             os.unlink(temporary)
     return True
+
+
+def copy_image(source, destination, limit=4 * 1024**3):
+    """Bound both cached and downloaded inputs before a bad response can fill the host."""
+    size = 0
+    while block := source.read(min(1024**2, limit - size + 1)):
+        size += len(block)
+        if size > limit:
+            raise ValueError('CLI VM cloud image exceeds the 4 GiB input limit')
+        destination.write(block)
 
 
 def disk_directory(path, gid):
@@ -162,7 +172,9 @@ class Engine:
             raise ValueError('CLI admin key must belong to the operator')
         known = Path(connection['known_hosts_file'])
         safe(known, (0, self.account.pw_uid))
-        matches = run('/usr/bin/ssh-keygen', '-F', IP, '-f', known)
+        if not known.is_file():
+            raise ValueError('Adoption requires an already trusted guest SSH host key')
+        matches = run('/usr/bin/ssh-keygen', '-F', IP, '-f', known, allowed=(0, 1))
         host_keys = []
         for line in matches.splitlines():
             fields = line.split()
@@ -261,7 +273,9 @@ class Engine:
                 'revision': self.request['revision'], 'changes': changes, 'vm_replacement': False,
                 'disk': str(DISKS / 'root.qcow2'), 'root_gib': 24, 'memory_mib': 4096, 'cpus': 2,
                 'guest_ip': IP, 'provider_login': 'manual; existing login homes untouched',
-                'identities': observation.get('identities', {})}
+                'identities': observation.get('identities', {}),
+                'storage_modes': {name: format(observation[name]['mode'], '04o')
+                                  for name in ('disk', 'seed') if name in observation}}
 
     def plan(self):
         observation = self.inspect()
@@ -290,10 +304,11 @@ class Engine:
                 candidate = self.home / '.cache/autonomous-battlefield/rehearsal' / (pin['sha256'] + '.img')
                 if candidate.exists():
                     file_identity(candidate, (0, self.account.pw_uid))
-                    shutil.copyfile(candidate, downloaded)
+                    with candidate.open('rb') as source, downloaded.open('wb') as output:
+                        copy_image(source, output)
                 else:
                     with urllib.request.urlopen(pin['url'], timeout=60) as response, downloaded.open('wb') as output:
-                        shutil.copyfileobj(response, output)
+                        copy_image(response, output)
                 if file_identity(downloaded, (0,), checksum=True)['sha256'] != pin['sha256']:
                     raise ValueError('CLI VM cloud-image checksum mismatch')
                 os.replace(downloaded, image)
@@ -360,6 +375,7 @@ class Engine:
     def apply(self, review_id):
         observation = self.inspect()
         check_receipt(read(self.receipt_path), self.request, observation, review_id)
+        applied_changes = self.summary(observation)['changes']
         # Consume review before any infrastructure mutation. Every retry needs a new plan.
         self.receipt_path.unlink()
         changed = not self.owner
@@ -389,7 +405,8 @@ class Engine:
             self.owner.update(snapshot=snapshot, trusted_connection=self.trusted_connection())
             write(self.owner_path, encoded(self.owner))
             (STATE / 'incomplete.json').unlink(missing_ok=True)
-        return {'changed': changed, 'connection': self.connection(), 'identities': self.owner['identities']}
+        return {'changed': changed, 'applied_changes': applied_changes,
+                'connection': self.connection(), 'identities': self.owner['identities']}
 
     def connection(self):
         return {'identity_file': self.owner['connection']['identity_file'],

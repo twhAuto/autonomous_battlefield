@@ -108,13 +108,17 @@ def main():
                     ('update-ref', 'refs/remotes/origin/main', 'HEAD')]:
         run('git', '-C', ROOT, *command)
     operation('plan', 'create')
-    operation('apply', 'create', review='create')
+    created = operation('apply', 'create', review='create')
+    if not created['changed'] or not created['applied_changes']:
+        raise ValueError('Fresh creation report lost its applied-change evidence')
     guest('sudo -u battlefield-worker sh -c "umask 077; echo synthetic-login > /var/lib/battlefield-worker/.fixture-login; echo retained > /var/lib/battlefield-worker/.fixture-data"')
     before = baseline()
     (EVIDENCE / 'baseline.json').write_text(json.dumps(before))
     if operation('plan', 'repeat')['changes']:
         raise ValueError('Repeated create plan did not converge')
-    operation('apply', 'repeat', review='repeat')
+    repeated = operation('apply', 'repeat', review='repeat')
+    if repeated['changed'] or repeated['applied_changes']:
+        raise ValueError('No-op apply report incorrectly claims infrastructure changes')
     operation('apply', 'replayed', review='repeat', failure=True)
     operation('plan', 'stale')
     receipt = json.loads(run('sudo', 'cat', STATE / 'review.json')); receipt['created'] -= 2000
@@ -150,7 +154,9 @@ def main():
     operation('plan', 'wrong-uuid', mode='adopt', failure=True, reason='UUID differs')
     config['host']['domain_uuid'] = original_uuid; (PRIVATE / 'cli.json').write_text(json.dumps(config))
     operation('plan', 'adopt', mode='adopt')
-    operation('apply', 'adopt', mode='adopt', review='adopt')
+    adopted = operation('apply', 'adopt', mode='adopt', review='adopt')
+    if not adopted['changed'] or adopted['applied_changes'] != ['record existing VM ownership', 'export trusted guest connection']:
+        raise ValueError('Adoption report does not describe its metadata-only changes')
     if operation('plan', 'adopt-repeat', mode='adopt')['changes']:
         raise ValueError('Adoption repeat plan did not converge')
     operation('apply', 'adopt-repeat', mode='adopt', review='adopt-repeat')

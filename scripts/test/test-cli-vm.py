@@ -2,6 +2,7 @@
 """CLI VM identity, retained-layout, approval and Ansible handoff regressions."""
 import copy
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -95,6 +96,42 @@ class LayoutTests(unittest.TestCase):
             with self.assertRaises(ValueError): policy.no_overlap([subnet])
 
 
+class InputTests(unittest.TestCase):
+    def test_image_copy_enforces_limit_before_writing_oversized_response(self):
+        output = io.BytesIO()
+        engine.copy_image(io.BytesIO(b'abc'), output, limit=3)
+        self.assertEqual(output.getvalue(), b'abc')
+        output = io.BytesIO()
+        with self.assertRaisesRegex(ValueError, 'input limit'):
+            engine.copy_image(io.BytesIO(b'abcd'), output, limit=3)
+        self.assertLessEqual(len(output.getvalue()), 3)
+
+    def test_missing_or_unmatched_host_key_has_actionable_error_without_command_log(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary); key = directory / 'key'; known = directory / 'known_hosts'
+            key.write_text('synthetic-private-key'); key.chmod(0o600)
+            instance = object.__new__(engine.Engine)
+            instance.owner = None; instance.home = directory
+            instance.account = types.SimpleNamespace(pw_uid=os.getuid())
+            instance.request = {'mode': 'adopt', 'adoption': {'domain_uuid': IDENTITIES['domain'],
+                'network_uuid': IDENTITIES['network'], 'machine_id': 'b' * 32,
+                'identity_file': str(key), 'known_hosts_file': str(known)}}
+            with patch.object(engine, 'safe', side_effect=lambda path, *a, **kw: Path(path)), patch.object(engine, 'write') as log:
+                with self.assertRaisesRegex(ValueError, 'already trusted guest SSH host key'):
+                    instance.trusted_connection()
+                known.write_text(''); known.chmod(0o600)
+                with self.assertRaisesRegex(ValueError, 'already trusted guest SSH host key'):
+                    instance.trusted_connection()
+                log.assert_not_called()
+
+    def test_adoption_plan_surfaces_existing_storage_permissions(self):
+        instance = object.__new__(engine.Engine)
+        instance.owner = None; instance.request = {'mode': 'adopt', 'revision': 'a' * 40}
+        value = instance.summary({'exists': True, 'disk': {'mode': 0o644}, 'seed': {'mode': 0o600}})
+        self.assertEqual(value['storage_modes'], {'disk': '0644', 'seed': '0600'})
+        self.assertFalse(value['vm_replacement'])
+
+
 class PermissionTests(unittest.TestCase):
     def test_private_operator_umask_does_not_remove_qemu_directory_access(self):
         with tempfile.TemporaryDirectory() as temporary, patch.object(engine.os, 'chown') as chown:
@@ -136,11 +173,13 @@ class ReceiptTests(unittest.TestCase):
         instance = object.__new__(engine.Engine)
         instance.request = {}; instance.owner = {'identities': IDENTITIES}
         instance.inspect = lambda: {'exists': True}; instance.connection = lambda: {'test': True}
+        instance.summary = lambda observed: {'changes': []}
         events = []; instance.receipt_path = types.SimpleNamespace(unlink=lambda: events.append('consumed'))
         instance.create = lambda: self.fail('Recreated owned VM')
         with patch.object(engine, 'read', return_value={}), patch.object(engine, 'check_receipt'), patch.object(engine, 'virsh', side_effect=AssertionError('Mutated VM')):
             result = instance.apply('review')
         self.assertFalse(result['changed']); self.assertEqual(events, ['consumed'])
+        self.assertEqual(result['applied_changes'], [])
 
 
 class HandoffTests(unittest.TestCase):
@@ -170,6 +209,12 @@ class HandoffTests(unittest.TestCase):
         cli.managed_handoff(self.args, {'machine_id': 'a' * 32}, config, self.server)
         cli.validate(config)
         self.assertEqual(config['guest']['known_hosts_file'], '/private/known_hosts')
+
+    def test_missing_host_identity_in_registration_raises_value_error(self):
+        for key in ('domain_uuid', 'network_uuid'):
+            config = copy.deepcopy(self.config); del config['host'][key]
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'registered host/VM identities'):
+                cli.managed_handoff(self.args, {'machine_id': 'a' * 32}, config, self.server)
 
     def test_foreign_handoff_or_remote_controller_rejected(self):
         self.args.local = False

@@ -54,7 +54,10 @@ python3 scripts/infra/cli-vm.py plan --mode adopt --revision "$revision" \
 Review the printed JSON and saved report. On first adoption, expect only ownership
 registration and trusted guest-connection export. `vm_replacement` must be false;
 the recorded domain/network/filter UUIDs and root-disk path must match the existing
-VM. No disk, network definition, service or login home changes during adoption.
+VM. The plan also shows `storage_modes` for the retained disk and seed; adoption
+preserves those permissions, including any broader legacy modes. Fresh files use
+0600. Tightening legacy permissions is a separate reviewed maintenance change.
+No disk, network definition, service or login home changes during adoption.
 A plan writes only a root-owned review receipt and its operator report.
 
 After reviewing, apply that exact plan within 30 minutes:
@@ -71,15 +74,19 @@ Apply re-inspects identities, XML, retained-file inodes, guest trust and inputs
 under the same host operation lock as platform/deployment commands. It rejects
 stale, changed or consumed plans before mutation. A new plan supersedes the
 previous receipt. An unchanged repeat plan reports `changes: []`; repeat apply
-never redefines, resizes, replaces or restarts an existing VM. A stopped or
-inconsistent VM requires explicit operator investigation.
+never redefines, resizes, replaces or restarts an existing VM. Apply reports persist `changed` and `applied_changes` separately from the
+remaining `changes`, so fresh creation and metadata adoption remain distinguishable
+from a no-op repeat. A stopped or inconsistent VM requires explicit operator
+investigation.
 
 For a **clean replacement host only**, use `--mode create` for all three commands.
 Creation refuses any existing matching domain, network, filter, disk directory or
 connection state. It downloads the checksum-pinned Ubuntu 24.04 image declared in
 `infra/ansible/rehearsal-image.json`, makes a standalone qcow2 disk, creates the
-same isolated network/filter and enables VM/network autostart. It installs no
+same isolated network/filter and enables VM/network autostart. The domain explicitly
+selects the `pc` machine family; unexpected device normalization is rejected. It installs no
 worker binary or provider login and makes no outbound guest package downloads.
+Both downloaded and cached image inputs are capped at 4 GiB before conversion.
 Changing the image pin never upgrades an existing disk.
 
 Root-owned state lives in `/var/lib/battlefield-cli-vm/`. The receipt binds the
@@ -120,7 +127,19 @@ recreation. If an apply is interrupted, keep its evidence and create a new plan.
 An incomplete fresh creation leaves `/var/lib/battlefield-cli-vm/incomplete.json`
 with the allocated UUIDs; automatic retries refuse to guess ownership. Inspect
 that journal and the retained resources before an explicit recovery decision.
-The workflow offers no destroy, resize, disk relocation or automatic replacement.
+Manual recovery is deliberate for an interrupted fresh creation: compare the
+journal's UUIDs with `sudo virsh domuuid battlefield-agent`,
+`sudo virsh net-uuid battlefield-agent` and `sudo virsh nwfilter-dumpxml battlefield-agent`
+before deciding how to recover. Do not remove the journal or resources to make a
+retry pass. The workflow offers no destroy, resize, disk relocation or automatic
+replacement.
+
+If the SSH readiness task fails, its output is intentionally censored. Check that
+the existing key is unlocked, then use the exported `known_hosts` path and admin
+key with strict SSH to inspect `sudo cloud-init status --long` inside the guest.
+Do not disable host-key checking or print provider login files to diagnose it.
+For a failed fresh apply, those connection files exist even if the final handoff
+has not yet been exported.
 
 Fresh cloud-init supplies a generated guest SSH host key so its first connection
 has established trust. Its private host key remains in the root/guest seed image,

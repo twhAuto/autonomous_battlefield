@@ -1459,7 +1459,8 @@ The dated [server rebuild contract](../operations/server-rebuild-contract.md)
 records the measured Ubuntu/VM layout, state and credential locations, manual
 prerequisites and recovery limits. Production uses K3s; Cloudflare reconciliation
 and local HTTPS/CA restoration still need explicit automation. CLI VM creation
-and adoption now have the separate reviewed Ansible workflow described below. The data partition and local recovery archives share the host SSD;
+and adoption have the separate reviewed Ansible workflow described above.
+The data partition and local recovery archives share the host SSD;
 whole-server-loss protection remains deferred.
 
 The [server bootstrap](../operations/server-bootstrap.md) adds an explicit

@@ -53,7 +53,11 @@
       when: cli_vm_action != 'plan'
     - name: Write the safe CLI VM review or verification report
       ansible.builtin.copy:
-        content: "{{ (cli_vm_result.report if cli_vm_action == 'plan' else cli_vm_verified.report) | combine({'action': cli_vm_action}) | to_nice_json }}\n"
+        content: >-
+          {{ (cli_vm_result.report if cli_vm_action == 'plan' else
+          (cli_vm_verified.report | combine({'action': cli_vm_action,
+          'changed': cli_vm_result.changed or cli_vm_verified.changed,
+          'applied_changes': cli_vm_result.applied_changes | default([])}))) | to_nice_json }}
         dest: "{{ cli_vm_report }}"
         mode: '0600'
         force: false
