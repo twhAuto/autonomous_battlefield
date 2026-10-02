@@ -188,7 +188,8 @@ Incomplete backup directories are not recorded as completed backups.
 
 If the agent fails with `203/EXEC` and its journal reports a missing
 `/usr/bin/sg`, repair that dependency first; on Ubuntu 26.04 use
-`sudo apt-get install --no-upgrade util-linux-extra`, then restart the operator's
+`sudo apt-get install --no-upgrade util-linux-extra` (use `login` instead on
+Ubuntu 24.04), then restart the operator's
 `jenkins-agent` user service. Confirm that the existing node reconnects. For an
 already interrupted apply, keep its completed backup and maintenance receipt:
 installing the dependency alone does not complete acceptance or resume builds.
