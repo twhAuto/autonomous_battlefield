@@ -78,7 +78,6 @@ def main():
         print(check, flush=True)
     with server.operation_lock.acquire(), server.host_lock(inventory, False) as lock:
         before, _ = baseline.observe()
-        failure = None
         try:
             # Host lock liveness is checked before each phase. An interruption retains
             # evidence; no connector/service or application delivery is ever started.
@@ -86,7 +85,7 @@ def main():
             api.before_request = alive
             alive(); review = engine.plan(); cloud.write_private(evidence/'plan.json', review)
             engine.apply(review['review_id']); record('create-access-before-dns')
-            alive(); record('verify' if not engine.verify()['changes'] else 'unexpected-drift')
+            alive(); engine.verify(); record('verify')
             repeat = engine.plan(); policy.require(not repeat['changes'], 'Repeat plan changed')
             policy.require(not engine.apply(repeat['review_id'])['changed'], 'Repeat apply changed')
             record('repeat-plan-apply-no-change')

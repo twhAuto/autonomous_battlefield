@@ -1,0 +1,211 @@
+{
+  "provenance": "Observed GET response shapes on 2026-10-02; identities, names, memberships, hostname, audience and timestamps replaced with synthetic values.",
+  "app": {
+    "id": "00000001-1111-4111-a111-000000000001",
+    "uid": "00000001-1111-4111-a111-000000000001",
+    "type": "self_hosted",
+    "name": "captured-resource",
+    "aud": "0000000000000000000000000000000000000000000000000000000000000000",
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "domain": "play.example.com",
+    "self_hosted_domains": [
+      "play.example.com"
+    ],
+    "destinations": [
+      {
+        "type": "public",
+        "uri": "play.example.com"
+      }
+    ],
+    "app_launcher_visible": true,
+    "allowed_idps": [
+      "00000002-1111-4111-a111-000000000002",
+      "00000003-1111-4111-a111-000000000003"
+    ],
+    "tags": [],
+    "auto_redirect_to_identity": false,
+    "policies": [
+      {
+        "created_at": "2026-01-01T00:00:00Z",
+        "decision": "allow",
+        "exclude": [],
+        "id": "00000004-1111-4111-a111-000000000004",
+        "include": [
+          {
+            "email": {
+              "email": "captured-user@example.com"
+            }
+          }
+        ],
+        "name": "captured-resource",
+        "require": [],
+        "connection_rules": {
+          "rdp": {}
+        },
+        "uid": "00000004-1111-4111-a111-000000000004",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "reusable": true,
+        "precedence": 1
+      },
+      {
+        "created_at": "2026-01-01T00:00:00Z",
+        "decision": "non_identity",
+        "exclude": [],
+        "id": "00000005-1111-4111-a111-000000000005",
+        "include": [
+          {
+            "service_token": {
+              "token_id": "00000006-1111-4111-a111-000000000006"
+            }
+          }
+        ],
+        "name": "captured-resource",
+        "require": [],
+        "connection_rules": {
+          "rdp": {}
+        },
+        "uid": "00000005-1111-4111-a111-000000000005",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "reusable": true,
+        "precedence": 2
+      },
+      {
+        "created_at": "2026-01-01T00:00:00Z",
+        "decision": "allow",
+        "exclude": [],
+        "id": "00000007-1111-4111-a111-000000000007",
+        "include": [
+          {
+            "group": {
+              "id": "00000008-1111-4111-a111-000000000008"
+            }
+          }
+        ],
+        "name": "captured-resource",
+        "require": [
+          {
+            "login_method": {
+              "id": "00000003-1111-4111-a111-000000000003"
+            }
+          }
+        ],
+        "connection_rules": {
+          "rdp": {}
+        },
+        "uid": "00000007-1111-4111-a111-000000000007",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "reusable": true,
+        "mfa_config": {
+          "allowed_authenticators": null,
+          "session_duration": "",
+          "mfa_disabled": true
+        },
+        "precedence": 3
+      }
+    ],
+    "session_duration": "6h",
+    "enable_binding_cookie": false,
+    "http_only_cookie_attribute": false,
+    "options_preflight_bypass": false,
+    "eager_redirect_cookie_setting": true
+  },
+  "policies": [
+    {
+      "created_at": "2026-01-01T00:00:00Z",
+      "decision": "allow",
+      "exclude": [],
+      "id": "00000004-1111-4111-a111-000000000004",
+      "include": [
+        {
+          "email": {
+            "email": "captured-user@example.com"
+          }
+        }
+      ],
+      "name": "captured-resource",
+      "require": [],
+      "connection_rules": {
+        "rdp": {}
+      },
+      "uid": "00000004-1111-4111-a111-000000000004",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "reusable": true,
+      "precedence": 1
+    },
+    {
+      "created_at": "2026-01-01T00:00:00Z",
+      "decision": "non_identity",
+      "exclude": [],
+      "id": "00000005-1111-4111-a111-000000000005",
+      "include": [
+        {
+          "service_token": {
+            "token_id": "00000006-1111-4111-a111-000000000006"
+          }
+        }
+      ],
+      "name": "captured-resource",
+      "require": [],
+      "connection_rules": {
+        "rdp": {}
+      },
+      "uid": "00000005-1111-4111-a111-000000000005",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "reusable": true,
+      "precedence": 2
+    },
+    {
+      "created_at": "2026-01-01T00:00:00Z",
+      "decision": "allow",
+      "exclude": [],
+      "id": "00000007-1111-4111-a111-000000000007",
+      "include": [
+        {
+          "group": {
+            "id": "00000008-1111-4111-a111-000000000008"
+          }
+        }
+      ],
+      "name": "captured-resource",
+      "require": [
+        {
+          "login_method": {
+            "id": "00000003-1111-4111-a111-000000000003"
+          }
+        }
+      ],
+      "connection_rules": {
+        "rdp": {}
+      },
+      "uid": "00000007-1111-4111-a111-000000000007",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "reusable": true,
+      "mfa_config": {
+        "allowed_authenticators": null,
+        "session_duration": "",
+        "mfa_disabled": true
+      },
+      "precedence": 3
+    }
+  ],
+  "dns": [
+    {
+      "id": "00000000000000000000000000000000",
+      "name": "captured-resource",
+      "type": "CNAME",
+      "content": "00000009-1111-4111-a111-000000000009.cfargotunnel.com",
+      "proxiable": true,
+      "proxied": true,
+      "ttl": 1,
+      "settings": {
+        "flatten_cname": false
+      },
+      "meta": {},
+      "comment": null,
+      "tags": [],
+      "created_on": "2026-01-01T00:00:00Z",
+      "modified_on": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

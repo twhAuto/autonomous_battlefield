@@ -42,7 +42,8 @@ The supported contract is deliberately narrow: one exact hostname, local tunnel,
 proxied CNAME, explicit email/group human rules and explicit service-token rules.
 Bypass policies, wildcard/additional application domains, nested/broad groups,
 unknown security fields and conflicting resources stop the operation. Existing
-App Launcher and unrelated resources are outside ownership. Configuration drift
+App Launcher and unrelated resources are outside ownership. A TXT/CAA or other additional DNS record at the application hostname is also
+refused; this contract owns one CNAME exclusively. Configuration drift
 is refused; this is not a general Access policy editor or credential rotator.
 
 ## Capture and adopt the current production configuration
@@ -66,7 +67,11 @@ Never paste tokens, passwords or decrypted Vault contents into a command or chat
 After promotion, use a clean checkout of the exact fetched `origin/main`. Plan,
 apply and verify reject feature/PR revisions and dirty checkouts. They validate the
 registered host identity, serialize controller state, and hold the existing host
-operation lock used by platform/deployment operations.
+operation lock used by platform/deployment operations. Schedule these operations
+when Jenkins main/platform jobs are idle: lock contention fails immediately; a
+main rollout that reaches a held host lock needs a normal retry after release.
+The playbook receives only a private input-file path. API strings and credentials
+are parsed as JSON inside the module and never enter Ansible templating.
 
 ```bash
 git fetch origin
@@ -142,7 +147,7 @@ new workflow does not modify Kubernetes, `.env`, Jenkins credentials or live rou
 
 ## Failure and recovery boundaries
 
-Successful API mutations are journaled by ID. A definitive HTTP 4xx rejection
+Successful API mutations are journaled by ID. A definite non-timeout client rejection (400/401/403/404/405/409/422/429)
 retains confirmed prior steps; rerun and review a new plan to resume. No completed
 step or secret is recreated. Connection loss, malformed successful responses and
 other ambiguous POST results retain `pending` and block further mutation. Inspect

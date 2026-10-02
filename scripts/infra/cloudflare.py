@@ -141,7 +141,7 @@ def execute(args):
             'cloudflare_config': config, 'cloudflare_state_root': str(state_root), 'cloudflare_revision': args.revision,
             'cloudflare_machine_id': machine, 'cloudflare_review_id': review, 'cloudflare_report': str(report)}))
         command = [str(server.tools_bin() / 'ansible-playbook'), '-i', 'localhost,',
-                   str(ROOT / 'infra/ansible/cloudflare.yml'), '-e', '@' + str(inputs)]
+                   str(ROOT / 'infra/ansible/cloudflare.yml'), '-e', json.dumps({'cloudflare_inputs_file': str(inputs)})]
         # Keep both controller state and the existing host-wide deployment lock serialized.
         with server.operation_lock.acquire() as fd:
             lock_context = nullcontext(None) if args.local else server.host_lock(inventory, False)
@@ -187,6 +187,7 @@ if __name__ == '__main__':
         main()
     except KeyboardInterrupt:
         sys.exit(130)
-    except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):
-        print('Cloudflare operation stopped; check the preceding safe task output, private inputs and retained state. No API response or credential is printed.', file=sys.stderr)
+    except (ValueError, OSError, KeyError, TypeError, AttributeError, subprocess.SubprocessError) as error:
+        message = str(error) if type(error) is ValueError or isinstance(error, cloud.APIError) else type(error).__name__
+        print('Cloudflare operation stopped: ' + message + '; check private inputs and retained state.', file=sys.stderr)
         sys.exit(1)

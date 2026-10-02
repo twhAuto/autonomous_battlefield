@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Cloudflare ownership, failure ordering and credential-preservation regression tests."""
 import copy
+import base64
 import importlib.util
 import io
 import json
@@ -23,12 +24,11 @@ def load(name, path):
 policy = load('cf_policy', 'infra/ansible/module_utils/battlefield_cloudflare_policy.py')
 sys.modules['ansible.module_utils.battlefield_cloudflare_policy'] = policy
 cloud = load('cf_engine', 'infra/ansible/module_utils/battlefield_cloudflare.py')
-wrapper = load('cf_wrapper', 'scripts/infra/cloudflare.py')
 UUID = lambda n: f'{n:08x}-1111-4111-a111-{n:012x}'
 ACCOUNT, ZONE, DNS = 'a' * 32, 'b' * 32, 'c' * 32
 APP, TUNNEL, POLICY, IDP, GROUP, TOKEN = (UUID(n) for n in range(1, 7))
 REV, MACHINE = 'd' * 40, 'e' * 32
-SECRET = 'c2VjcmV0LXR1bm5lbC1jcmVkZW50aWFscy1ieXRlcy0xMjM0NTY='
+SECRET = base64.b64encode(b'unit-test-only-tunnel-credential-32-bytes').decode()
 
 
 def fixture():
@@ -287,6 +287,61 @@ class APIAndInputTests(unittest.TestCase):
             lambda c: c['credentials'].update(TunnelID=UUID(99))]:
             c = fixture(); change(c)
             with self.assertRaises(ValueError): policy.validate(c)
+
+    def test_observed_cloudflare_response_shapes_are_supported(self):
+        data = json.loads((ROOT/'scripts/test/fixtures/cloudflare-api-shapes.json').read_text())
+        app = policy.app_spec(data['app'])
+        self.assertEqual(app['session_duration'], '6h')
+        self.assertFalse(app['options_preflight_bypass'])
+        self.assertEqual(len(data['policies']), 3)
+        for value in data['policies']:
+            self.assertTrue(value['reusable'])
+            self.assertEqual(policy.policy_spec(value)['precedence'], value['precedence'])
+        # Future unknown security controls stay fail-closed, rather than silently ignored.
+        changed = copy.deepcopy(data['app']); changed['allow_authenticate_via_warp'] = True
+        with self.assertRaisesRegex(ValueError, 'Unsupported'): policy.app_spec(changed)
+
+    def test_null_expiry_and_non_object_private_files_have_safe_errors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            api = FakeAPI(fixture()); api.resources['service_tokens'][0]['expires_at'] = None
+            with self.assertRaisesRegex(ValueError, 'expired'):
+                cloud.Engine(api, fixture(), Path(directory), REV, MACHINE).plan()
+            p = Path(directory)/'invalid.json'; p.write_text('[]'); p.chmod(0o600)
+            with self.assertRaisesRegex(ValueError, 'JSON object'): cloud.read_private(p)
+
+    def test_cli_reports_preflight_reason_without_traceback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory)/'password'; p.write_text('synthetic-vault-password'); p.chmod(0o600)
+            result = subprocess.run([sys.executable, str(ROOT/'scripts/infra/cloudflare.py'), 'prepare-create',
+                '--vault', str(Path(directory)/'out.vault'), '--vault-password-file', str(p)], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('prepare-create requires', result.stderr)
+        self.assertNotIn('Traceback', result.stderr)
+
+    @unittest.skipUnless(os.environ.get('BATTLEFIELD_TEST_ANSIBLE_BIN'), 'Pinned Ansible required for templating regression')
+    def test_real_ansible_never_templates_api_strings_or_logs_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); canary = root/'executed'
+            config = fixture()
+            expression = "{{ lookup('pipe', 'touch " + str(canary) + "') }}"
+            config['policies'][0]['spec']['name'] = expression
+            config['dns']['comment'] = expression
+            config['application']['spec']['options_preflight_bypass'] = True
+            inputs = root/'inputs.json'
+            inputs.write_text(json.dumps({'cloudflare_action':'plan', 'cloudflare_token':'synthetic-canary-token',
+                'cloudflare_config':config, 'cloudflare_state_root':str(root/'state'), 'cloudflare_revision':REV,
+                'cloudflare_machine_id':MACHINE, 'cloudflare_review_id':'', 'cloudflare_report':str(root/'report.json')}))
+            inputs.chmod(0o600)
+            env = {k:v for k,v in os.environ.items() if not k.startswith(('ANSIBLE_', 'PYTHON'))}
+            env.update(ANSIBLE_CONFIG=str(ROOT/'infra/ansible/ansible.cfg'), ANSIBLE_NOCOLOR='1')
+            result = subprocess.run([str(Path(os.environ['BATTLEFIELD_TEST_ANSIBLE_BIN'])/'ansible-playbook'),
+                '-i','localhost,',str(ROOT/'infra/ansible/cloudflare.yml'), '-e',
+                json.dumps({'cloudflare_inputs_file':str(inputs)})], env=env, capture_output=True, text=True, timeout=45)
+            output = result.stdout + result.stderr
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Public OPTIONS bypass is not permitted', output)
+            self.assertFalse(canary.exists(), 'API-derived Jinja was executed')
+            for secret in (SECRET, 'synthetic-canary-token', expression): self.assertNotIn(secret, output)
 
     def test_cli_help_outside_checkout_without_pythonpath(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -7,11 +7,4 @@
   tasks:
     - name: Adopt or create the exact reviewed tunnel DNS and Access resources
       battlefield_cloudflare:
-        action: "{{ cloudflare_action }}"
-        token: "{{ cloudflare_token }}"
-        config: "{{ cloudflare_config }}"
-        state_root: "{{ cloudflare_state_root }}"
-        revision: "{{ cloudflare_revision }}"
-        machine_id: "{{ cloudflare_machine_id }}"
-        review_id: "{{ cloudflare_review_id }}"
-        report: "{{ cloudflare_report }}"
+        inputs_file: "{{ cloudflare_inputs_file }}"

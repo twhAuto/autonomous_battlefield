@@ -1458,7 +1458,8 @@ for adoption, fresh creation, sensitive local state and interrupted-create limit
 `scripts/infra/cloudflare.py` captures deployed routing identities and the existing
 connector credentials into versioned Ansible Vault inputs. The localhost Ansible
 playbook holds the controller lock and registered host operation lock through its
-operator wrapper. Expiring one-use receipts bind the clean main revision, physical
+operator wrapper. API strings and secrets remain in a private JSON file read inside
+the module, outside Ansible variable templating. Expiring one-use receipts bind the clean main revision, physical
 host, encrypted-input contents and live API observation. Explicit adoption records
 ownership without Cloudflare writes. Fresh creation builds new policy/app identities,
 verifies protection, creates a local tunnel and publishes its proxied CNAME last.

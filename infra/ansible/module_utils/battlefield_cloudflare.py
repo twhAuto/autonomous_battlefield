@@ -14,7 +14,7 @@ import urllib.parse
 import urllib.request
 
 from ansible.module_utils.battlefield_cloudflare_policy import (
-    APP_FIELDS, ORG_FIELDS, app_spec, creation, digest, hostname, identifier,
+    ORG_FIELDS, app_spec, digest, hostname, identifier,
     policy_spec, references, require, rules, selected, validate,
 )
 
@@ -111,7 +111,7 @@ def reference_inventory(api, account, policies, app):
             elif kind == 'service_tokens':
                 expiry = entry.get('expires_at', '')
                 try:
-                    active = datetime.fromisoformat(expiry.replace('Z', '+00:00')) > datetime.now(timezone.utc)
+                    active = isinstance(expiry, str) and datetime.fromisoformat(expiry.replace('Z', '+00:00')) > datetime.now(timezone.utc)
                 except (ValueError, TypeError):
                     active = False
                 require(active and entry.get('client_id'), 'Referenced service token is expired or missing its client identity')
@@ -137,7 +137,7 @@ def capture(api, zone_name, host, tunnel_name, credentials, contract):
     policy_data = [{'id': p['id'], 'reusable': p.get('reusable', False), 'spec': policy_spec(p)} for p in policies]
     dns = unique(api.list(f'/zones/{zone_id}/dns_records?name=' + host), lambda x: x['name'] == host, 'DNS record')
     require(dns['type'] == 'CNAME' and dns['proxied'] is True and
-            dns['content'].rstrip('.') == tunnel['id'] + '.cfargotunnel.com', 'DNS does not match the protected local tunnel')
+            isinstance(dns.get('content'), str) and dns['content'].rstrip('.') == tunnel['id'] + '.cfargotunnel.com', 'DNS does not match the protected local tunnel')
     organization = selected(api.get(prefix + '/access/organizations'), ORG_FIELDS)
     spec = app_spec(app)
     refs, _ = reference_inventory(api, account, policy_data, spec)
@@ -168,7 +168,9 @@ def read_private(path):
         info = os.fstat(source.fileno())
         require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and not info.st_mode & 0o177 and
                 info.st_nlink == 1 and info.st_size <= LIMIT, 'Expected a private regular file owned by this operator')
-        return json.loads(source.read(LIMIT + 1))
+        value = json.loads(source.read(LIMIT + 1))
+        require(isinstance(value, dict), 'Private Cloudflare file must contain a JSON object')
+        return value
 
 
 def write_private(path, data):
@@ -196,6 +198,7 @@ def covers(value, target):
 class Engine:
     def __init__(self, api, config, state_root, revision, machine_id):
         self.api, self.config = api, validate(copy.deepcopy(config))
+        config = self.config
         self.prefix = '/accounts/' + config['account_id']
         self.zone = '/zones/' + config['zone_id']
         self.identity = digest({'account': config['account_id'], 'zone': config['zone_id'], 'host': config['hostname']})
@@ -255,7 +258,7 @@ class Engine:
                     record = entries[0]
                     value = {k: record.get(k, {'tags': [], 'settings': {}}.get(k)) for k in c['dns']}
                     require(value == {**c['dns'], 'id': identity} and record.get('type') == 'CNAME' and
-                            record.get('proxied') is True and record.get('content', '').rstrip('.') == ids['tunnel'] + '.cfargotunnel.com',
+                            record.get('proxied') is True and isinstance(record.get('content'), str) and record['content'].rstrip('.') == ids['tunnel'] + '.cfargotunnel.com',
                             'DNS record drift or public bypass detected')
                 observed[kind] = value
         policies = self.api.list(self.prefix + '/access/apps/' + ids['application'] + '/policies') if ids['application'] else []
@@ -289,7 +292,7 @@ class Engine:
         return {'schema': 1, 'action': action, 'revision': self.binding['revision'], 'mode': self.config['mode'],
                 'hostname': self.config['hostname'], 'identity_fingerprint': self.identity,
                 'observation_digest': digest(observed), 'changes': changes,
-                'policy_count': len(self.config['policies']), 'public_bypass': False, **extra}
+                'policy_count': len(self.config['policies']), 'configuration_boundary_validated': True, **extra}
 
     def plan(self):
         observed, changes = self.observe()
