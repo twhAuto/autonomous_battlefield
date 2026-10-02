@@ -392,6 +392,51 @@ class OfflineAnsibleTests(unittest.TestCase):
             self.assertIn('-secret @/home/operator/.config/jenkins-agent/secret', unit)
             self.assertIn('CASC_JENKINS_CONFIG=/etc/battlefield-ci/jenkins.yaml', (directory / 'jenkins-override.conf').read_text())
 
+    def test_missing_agent_launcher_stops_before_later_maintenance(self):
+        binary = os.environ['BATTLEFIELD_TEST_ANSIBLE_BIN']
+        def read_tasks(name):
+            return json.loads(subprocess.check_output([binary + '/python', '-c',
+                'import json,sys,yaml; print(json.dumps(yaml.safe_load(open(sys.argv[1]))))',
+                str(ROOT / 'infra/ansible/roles/ci_services/tasks' / name)], text=True))
+        definition = read_tasks('agent-launcher.yml')
+        main = read_tasks('main.yml')
+        # The check must exercise the same launcher as the service, as the
+        # registered operator. Prevent a root-only probe from masking permission failures.
+        unit = (ROOT / 'infra/ansible/roles/ci_services/templates/jenkins-agent.service.j2').read_text()
+        executable = next(line.split('=', 1)[1].split()[0] for line in unit.splitlines() if line.startswith('ExecStart='))
+        self.assertEqual(definition[0]['ansible.builtin.command']['argv'],
+                         [executable, 'docker', '-c', '/usr/bin/true'])
+        self.assertEqual(definition[0]['become_user'], '{{ ci_config.operator }}')
+        self.assertIs(definition[0]['become'], True)
+        # Keep the real import/drain order. A moved or removed gate must fail the
+        # missing-executable case even though actual maintenance is represented by a marker.
+        boundary = [task for task in main if task.get('ansible.builtin.import_tasks') == 'agent-launcher.yml'
+                    or task.get('ansible.builtin.command', {}).get('argv', [])[-1:] == ['drain']]
+        for available in (False, True, None):
+            with self.subTest(available=available), tempfile.TemporaryDirectory() as work:
+                directory = Path(work)
+                launcher = json.loads(json.dumps(definition))
+                launcher[0]['become'] = False
+                launcher[0]['ansible.builtin.command']['argv'][0] = (
+                    '/usr/bin/true' if available else str(directory / 'missing-sg'))
+                if available is None:
+                    launcher[0] = {'ansible.builtin.set_fact': {'ci_agent_launcher': {}}}
+                guard = directory / 'launcher-tasks.json'; guard.write_text(json.dumps(launcher))
+                marker = directory / 'maintenance-started'
+                tasks = [{'ansible.builtin.import_tasks': str(guard)}
+                         if task.get('ansible.builtin.import_tasks') else
+                         {'ansible.builtin.file': {'path': str(marker), 'state': 'touch'}} for task in boundary]
+                play = [{'hosts': 'all', 'gather_facts': False, 'connection': 'local',
+                         'vars': {'ci_config': profile()}, 'tasks': tasks}]
+                path = directory / 'launcher.json'; path.write_text(json.dumps(play))
+                result = subprocess.run([binary + '/ansible-playbook', '-i', 'localhost,', str(path)],
+                                        capture_output=True, text=True, timeout=60,
+                                        env=dict(os.environ, ANSIBLE_CONFIG=str(ROOT / 'infra/ansible/ansible.cfg')))
+                self.assertEqual(result.returncode, 0 if available else 2, result.stdout + result.stderr)
+                self.assertEqual(marker.exists(), bool(available))
+                if not available:
+                    self.assertIn('Jenkins has not been drained by this apply', result.stdout)
+
     def test_resume_diagnostic_survives_private_runtime_output(self):
         binary = os.environ['BATTLEFIELD_TEST_ANSIBLE_BIN']
         definition = json.loads(subprocess.check_output([binary + '/python', '-c',
