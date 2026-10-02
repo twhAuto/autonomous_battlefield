@@ -12,6 +12,8 @@ import tarfile
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
+# Keep the sibling platform.py from shadowing stdlib platform when uuid loads.
+sys.path = [entry for entry in sys.path if Path(entry).resolve() != Path(__file__).resolve().parent]
 spec = importlib.util.spec_from_file_location('rehearsal', ROOT / 'scripts/infra/rehearse-server.py')
 base = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(base)

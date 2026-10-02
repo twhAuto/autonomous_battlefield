@@ -1439,6 +1439,13 @@ See [CLI bootstrap and adoption](../operations/cli-bootstrap.md).
 
 ## Ubuntu host bootstrap boundary
 
+The dated [server rebuild contract](../operations/server-rebuild-contract.md)
+records the measured Ubuntu/VM layout, state and credential locations, manual
+prerequisites and recovery limits. Production uses K3s; current CLI VM creation,
+Cloudflare reconciliation and local HTTPS/CA restoration still need explicit
+automation. The data partition and local recovery archives share the host SSD;
+whole-server-loss protection remains deferred.
+
 The [server bootstrap](../operations/server-bootstrap.md) adds an explicit
 workstation/server administration entry point under `scripts/infra/`, backed by
 `infra/ansible/`. It validates trusted SSH, Ubuntu release, x86-64 architecture

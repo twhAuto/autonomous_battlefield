@@ -8,6 +8,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -256,6 +258,14 @@ class ReadinessTests(unittest.TestCase):
 
 
 class RehearsalTests(unittest.TestCase):
+    def test_documented_rehearsal_cli_starts_without_import_shadowing(self):
+        environment = {k: v for k, v in os.environ.items() if k not in ('PYTHONPATH', 'PYTHONSAFEPATH')}
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/infra/rehearse-k3s.py'), '--help'],
+                                env=environment, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('--image', result.stdout)
+        self.assertIn('--evidence-dir', result.stdout)
+
     def test_diagnostics_accept_pty_combined_and_separate_stderr(self):
         for field in ('stdout', 'stderr'):
             self.assertIn('expected refusal', rehearsal.diagnostic_output({field: 'expected refusal', 'rc': 1}))

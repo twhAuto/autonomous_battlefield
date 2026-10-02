@@ -105,6 +105,11 @@ The backend has five commands in one Go module: four runtime processes and the o
 
 `cmd` packages should remain thin. Domain and use-case behavior belongs under `internal`; entry points should focus on composition and process lifecycle.
 
+The [server rebuild contract](../operations/server-rebuild-contract.md) connects
+the host, CI, VM, K3s and CLI entry points to the measured live layout and names
+remaining automation boundaries. It is a dated operational decision, not a
+duplicate task-status list.
+
 Host bootstrap enters through [`scripts/infra/server.sh`](../../scripts/infra/server.sh).
 Its Python wrapper validates private inventory, SSH/machine identity, secret imports
 and the host lock; `control-tools.py` installs the hash-locked Ansible environment.
@@ -165,7 +170,11 @@ the pinned provider schema, mocked-provider contracts and real local-backend
 lock contention without contacting libvirt; provider-cache initialization is serialized
 across concurrent CI checks. The opt-in `rehearse-vm.py` uses the shared
 rehearsal VM lifecycle with a larger outer guest, while `rehearse-vm-guest.py`
-exercises actual Terraform, replacement, recovery and reboot inside it. See the
+exercises actual Terraform, replacement, recovery and reboot inside it. The VM
+and K3s rehearsal entry points remove their own script directory from Python's
+import path before loading the shared fixture, so local `platform.py` cannot
+shadow the standard library. Their test suites run real subprocess `--help`
+checks with ordinary Python path settings. See the
 [VM runbook](../operations/k3s-vm.md) for Jenkins and Ansible handoff details.
 
 `Jenkinsfile.k3s` and `scripts/ci/run-k3s.sh` run the reviewed guest workflow in

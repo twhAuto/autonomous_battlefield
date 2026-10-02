@@ -9,9 +9,12 @@ import os
 import shutil
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
+# Keep the sibling platform.py from shadowing stdlib platform when uuid loads.
+sys.path = [entry for entry in sys.path if Path(entry).resolve() != Path(__file__).resolve().parent]
 
 
 def load(name, path):
