@@ -24,11 +24,11 @@ The reviewed K3s defaults are 4 vCPUs, 8 GiB RAM, a 32 GiB OS disk and a 250 GiB
 retained data disk. The separate CLI VM uses 2 vCPUs, 4 GiB RAM and a 24 GiB OS
 disk. See the [VM defaults](../../infra/libvirt/vm.json) and
 [CLI VM prerequisites](cli-vm-platform.md#prerequisites).
-The K3s VM preflight budgets full virtual disks,
-4 GiB for its base image and 64 GiB host reserve. Its memory check accounts for
-the existing guest allocation and leaves at least 2 GiB available for host
-services. These are operation-time checks, not reservations against later writes.
-See the [VM resource contract](k3s-vm.md#prerequisites-and-storage).
+The K3s VM preflight budgets full virtual disks, 4 GiB for its base image and
+64 GiB host reserve. Its memory check accounts for the existing guest allocation
+and leaves at least 2 GiB available for host services. These are operation-time
+checks, not reservations against later writes. See the
+[VM resource contract](k3s-vm.md#prerequisites-and-storage).
 
 The selected host layout puts root and data partitions on **the same NVMe SSD**.
 The data mount is `/srv/battlefield-data`; its UUID must match the private host
@@ -123,9 +123,9 @@ best-effort recovery with **no promised RTO or scheduled-backup RPO**:
   loss of the primary SSD, not loss of the complete server; no off-host copy is
   provided by this layout.
 
-State is outside the guest and build workspace, with local
-locking/recovery bundles; whole-host-loss protection is deferred. Reproducible
-configuration cannot recover lost database bytes or missing external secrets.
+State is outside the guest and build workspace, with local locking/recovery
+bundles; whole-host-loss protection is deferred. Reproducible configuration cannot
+recover lost database bytes or missing external secrets.
 
 ## Bootstrap sequence and human prerequisites
 
