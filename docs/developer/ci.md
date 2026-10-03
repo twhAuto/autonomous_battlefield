@@ -118,6 +118,25 @@ they do not publish, sign, or verify production registry artifacts or validate J
 Declarative Pipeline syntax. Use the configured Jenkins Multibranch job for the
 final `Jenkinsfile` validation.
 
+### Coverage gate details
+
+Backend Go statement coverage must be at least 80% in aggregate across the
+module, as reported by the `total:` line from `go tool cover`. The gate is a
+single repository-wide number, not a per-package floor, so thin wiring in
+`cmd/*` and `internal/postgres` may sit below 80% while the module passes. A low
+per-package figure is not a gate failure, and the aggregate is not licence to
+leave new behavior untested. Frontend statements, branches, functions and lines
+must each be at least 80%.
+
+Backend integration tests skip themselves unless `TEST_DATABASE_URL` is set, so
+code exercised only by those tests stays uncovered. Always measure through
+`with-test-postgres.sh`, which starts a throwaway PostgreSQL container and exports
+`TEST_DATABASE_URL` for the wrapped command. Invoking `test-go-coverage.sh`
+directly skips database tests (including much of `internal/generation`) but
+still fails if tests fail or aggregate coverage falls below 80%. The harness
+requires Docker; if it cannot run, report that CI-equivalent coverage was not
+verified and label any measured figure as excluding database-backed tests.
+
 The source-security stage logs each failed check and its report path. Inspect the
 matching file under the build's archived `artifacts/security/` directory to
 separate dependency findings from rendered-manifest or workload-policy failures.
