@@ -92,7 +92,7 @@ autonomous_battlefield/
 │   ├── review/                 # Codex/Claude cross-review runner
 │   └── lib/                    # Shared script functions
 ├── tests/performance/          # k6 scenarios and query-plan SQL fixtures
-└── docs/{developer,architecture,operations}/
+└── docs/{game,developer,architecture,operations}/
 ```
 
 ## Executable entry points

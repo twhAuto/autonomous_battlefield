@@ -6,7 +6,7 @@ three starter units, their knowledge cards, three upgrades, and castle/economy
 building definitions. The version pins the whole library; unit IDs remain stable
 within it. `core-v2.yaml` additionally supplies siege/support units and
 `defense_tower`, `watchtower`, and `barracks` roles. See
-[Frontier Siege](../architecture/frontier-siege.md) for the complete roster and map.
+[Frontier Siege](../game/frontier-siege.md) for the complete roster and map.
 New abilities beyond these capabilities still require engine support.
 
 A ruleset references a library and selects content while retaining ownership of

@@ -323,7 +323,7 @@ The new `unit_healed` event contains `factionId`, `healerId`, `targetId`, actual
 `amount`, and `remainingHealth`. `building_attacked` uses the existing attack
 payload (`attackerId`, `targetId`, `targetType`, `damage`, `remainingHealth`).
 Expanded-scenario `unit_recruited` events include `sourceBuildingId`.
-[Frontier Siege](frontier-siege.md) documents action timing and limits.
+[Frontier Siege](../game/frontier-siege.md) documents action timing and limits.
 
 ## Page through battle events
 

@@ -10,7 +10,7 @@
 This page is the single entry point for the battle rules. It links to the owning
 documents for detail instead of repeating them:
 [Frontier Siege](frontier-siege.md) for the roster, structures, and map, and the
-[system architecture](system-architecture.md#52-strategy-decision-window) for how
+[system architecture](../architecture/system-architecture.md#52-strategy-decision-window) for how
 decisions are requested, stored, and timed out. Values below are for the
 `frontier-siege-v2` scenario (`backend/scenarios/frontier-siege-v2.yaml`, ruleset
 `backend/rulesets/castle-siege-v2.yaml`, content `backend/content/core-v2.yaml`).
@@ -86,7 +86,7 @@ frozen, fog-of-war observation of that faction's view:
 A plan sets tactical `actionWeights` (attack vs. defend), spending (recruitment,
 construction, and upgrade orders, `spendOrder`, `reserveGold`), and optional
 `targetBonuses`. Plans cannot be applied outside a window. The plan contract is in
-[the API reference](api.md) and the MCP tool schema.
+[the API reference](../architecture/api.md) and the MCP tool schema.
 
 ## Tick order
 
@@ -131,7 +131,7 @@ removed, and the attacker's faction collects loot.
 
 Separately from the rules, operators can stop a battle, and unfinished battles
 expire (fail with `battle_timeout`) one hour after creation. See the
-[API reference](api.md) for battle status and controls.
+[API reference](../architecture/api.md) for battle status and controls.
 
 ## Explicitly deferred
 

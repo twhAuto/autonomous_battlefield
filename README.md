@@ -12,8 +12,8 @@ engine validates and executes them.
 
 The hosted application is at [play.ordinalfrontier.com](https://play.ordinalfrontier.com)
 and requires an invitation. Battles are finite and use authored maps. See
-[game rules](docs/architecture/game-rules.md) and the
-[Frontier Siege roster](docs/architecture/frontier-siege.md) for supported gameplay.
+[game rules](docs/game/game-rules.md) and the
+[Frontier Siege roster](docs/game/frontier-siege.md) for supported gameplay.
 
 Repository paths and deployment resources use the technical name
 `autonomous-battlefield`; local development uses `battlefield.localhost`.
@@ -49,7 +49,7 @@ cluster registration, optional model controllers and standalone development serv
 | [`infra/`](infra/README.md) | Deployment manifests and policies, local services, platform provisioning and auxiliary pipelines |
 | [`scripts/`](scripts/) | Development, CI, deployment, verification and operations commands |
 | [`tests/performance/`](tests/performance/) | Load scenarios and query-plan SQL fixtures; launchers are in `scripts/perf/` |
-| [`docs/`](docs/README.md) | Developer guides, architecture and operations runbooks |
+| [`docs/`](docs/README.md) | Game rules, developer guides, architecture and operations runbooks |
 
 Go and React unit tests live beside the code they exercise. The root `Jenkinsfile`
 is the application pipeline; auxiliary pipelines live in `infra/jenkins/`.
@@ -61,7 +61,8 @@ Start with the [documentation index](docs/README.md) for the full guide catalogu
 | I want to… | Start here |
 | --- | --- |
 | Run or change the application | [Local setup](docs/developer/local-setup.md), [codebase guide](docs/developer/codebase-guide.md) |
-| Understand how it works | [System architecture](docs/architecture/system-architecture.md), [game rules](docs/architecture/game-rules.md) |
+| Understand gameplay | [Game rules](docs/game/game-rules.md), [Frontier Siege](docs/game/frontier-siege.md) |
+| Understand the system | [System architecture](docs/architecture/system-architecture.md) |
 | Use the API | [HTTP reference](docs/architecture/api.md), [OpenAPI](docs/architecture/openapi.yaml) |
 | Author game content or compare controllers | [Content authoring](docs/developer/content-library.md), [AI comparisons](docs/developer/ai-comparisons.md) |
 | Deploy, operate or recover an environment | [Environment operations](docs/operations/environments.md), [deployment](docs/operations/deployment.md) |
