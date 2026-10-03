@@ -43,7 +43,7 @@ GHCR login and command cleanup for both Jenkins pipelines and production rollbac
 [`scripts/test/test-registry-auth.sh`](../../scripts/test/test-registry-auth.sh)
 checks credential isolation, argument/input forwarding, failures, and cancellation
 without registry access. Component-classifier tests include application test files,
-CI compatibility wrappers, mixed changes, and production-to-test renames.
+CI lint/coverage-summary scripts, mixed changes, and production-to-test renames.
 
 [`scripts/lib/image-metadata.sh`](../../scripts/lib/image-metadata.sh) owns published
 repository defaults, policy reference validation, and source-URL normalization.
