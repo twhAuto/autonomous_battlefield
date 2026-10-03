@@ -38,6 +38,19 @@ for the status workflow, completion evidence, and new-ticket fields. If Notion
 MCP is unavailable, continue with safe repository work when possible and tell
 the user that task statuses could not be synchronized.
 
+## Project skills
+
+Workflow skills live in `.agents/skills/`; `.claude/skills/` links to the same
+directories. Read the relevant `SKILL.md` before starting that workflow:
+
+| Workflow | Skill |
+| --- | --- |
+| Prepare or open a pull request | [raise-pr](.agents/skills/raise-pr/SKILL.md) |
+| Diagnose Jenkins or SonarQube failures | [triage-ci](.agents/skills/triage-ci/SKILL.md) |
+| Promote, deliver, roll back or recover | [release-and-recover](.agents/skills/release-and-recover/SKILL.md) |
+| Write or substantially revise documentation | [write-project-docs](.agents/skills/write-project-docs/SKILL.md) |
+| Plan, select or update Notion tickets | [track-backlog](.agents/skills/track-backlog/SKILL.md) |
+
 ## Documentation maintenance
 
 Keep repository documentation synchronized with every implementation change.
