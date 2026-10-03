@@ -2,7 +2,7 @@
 
 Use one agent to implement and the other to review the committed result. This is
 the default agent handoff for PR changes on the development machine; it does not
-use the production battle-agent VM. AGENTS.md and CLAUDE.md instruct the author to
+use the production battle-agent VM. AGENTS.md instructs the author to
 invoke it after committing/pushing a ready revision, not on each file save. It is
 agent-driven automation, not a background watcher or an enforced GitHub check.
 The reviewer writes an advisory report, not an approval or a merge. Existing test,
@@ -20,7 +20,7 @@ The installed launcher is normally `~/.local/bin/claude`; ensure `~/.local/bin`
 is in PATH. Use `claude auth status` and `codex login status` to check login.
 If needed, run `claude auth login` interactively; do not put login tokens into the
 repository or reports. Use compatible CLI versions with the options below; the
-Claude integration was checked with 2.1.267. Codex requires 0.155.0 or newer
+Claude integration was checked with 2.1.267 and 2.1.285. Codex requires 0.155.0 or newer
 for this Astra configuration; the runner rejects older or unrecognized versions
 and enables strict config validation. 0.152.0 is rejected by the provider.
 
