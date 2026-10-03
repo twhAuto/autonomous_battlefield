@@ -233,7 +233,7 @@ shared across sources. Unavailable explicit sources and blocked Barracks orders
 are skipped without substitution; blocked castle spawns or an unaffordable order
 stop remaining purchases. Typed `constructionOrders` select building definitions
 from `legal.buildings` at `legal.economySites`. See
-[Frontier Siege](../architecture/frontier-siege.md) for the new mechanics and balance probes.
+[Frontier Siege](../game/frontier-siege.md) for the new mechanics and balance probes.
 
 ## Compact unit context
 

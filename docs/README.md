@@ -6,9 +6,17 @@ Start with [local setup](developer/local-setup.md) to run the application and th
 runtime components fit together. Return to the [project overview](../README.md)
 for capabilities and the repository map.
 
-Each guide has one primary audience: developer guides explain working on the
-repository; architecture guides describe system behavior and contracts; operations
-runbooks explain configuring, deploying, observing and recovering environments.
+Guides are grouped by purpose: game guides explain battle rules and scenario
+mechanics; developer guides explain working on the repository; architecture guides
+describe runtime components and technical contracts; operations runbooks explain
+configuring, deploying, observing and recovering environments.
+
+## Game rules and scenarios
+
+| Guide | Use it for |
+| --- | --- |
+| [Game rules](game/game-rules.md) | Battle lifecycle, combat and win conditions |
+| [Frontier Siege](game/frontier-siege.md) | Expanded roster, structures, map and balance probes |
 
 ## Developer guides
 
@@ -32,8 +40,6 @@ runbooks explain configuring, deploying, observing and recovering environments.
 | [System architecture](architecture/system-architecture.md) | Runtime components, data flows, durability, security and topology |
 | [Configuration](architecture/configuration.md) | Environment files, identity and Secret boundaries |
 | [Observability](architecture/observability.md) | Signal paths, telemetry contracts and reliability objectives |
-| [Game rules](architecture/game-rules.md) | Battle lifecycle, combat and win conditions |
-| [Frontier Siege](architecture/frontier-siege.md) | Expanded roster, structures, map and balance probes |
 | [HTTP API](architecture/api.md) | Authentication, routes, errors and examples |
 | [OpenAPI](architecture/openapi.yaml) | Machine-readable HTTP contract |
 
