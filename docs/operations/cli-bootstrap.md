@@ -100,9 +100,10 @@ maintenance window with CLI battles idle and no application rollout in progress:
 the external lock excludes individual deployment commands, not an entire Jenkins
 pipeline. Changed service content is activated through handlers; healthy unchanged
 services are only checked/enabled. A deliberately changed release or desired
-configuration is rejected by the immutable ownership contract. Use a reviewed
-update/rollback procedure to upgrade; deleting ownership markers bypasses this
-protection and is unsupported.
+configuration is rejected by the immutable ownership contract. Bootstrap does not
+provide an update/rollback command; changing these registered inputs needs a
+separate reviewed workflow. Deleting ownership markers bypasses this protection
+and is unsupported.
 
 ## Install services on a fresh, already provisioned CLI VM
 
@@ -129,7 +130,7 @@ example's `guest` object. `known_hosts_file` is a managed connection field suppl
 by CLI VM provisioning in memory (or saved during capture); do not add it by hand to the example.
 Without a managed handoff, keep the example's explicit trusted connection fields.
 Keep the copied guest configuration and unit sources owned by the controller user
-with mode 0600. Use the [pinned release procedure](agent-vm.md#4-install-the-worker-and-the-complete-pinned-codex-release)
+with mode 0600. Use the [pinned release inputs](agent-vm.md#pinned-release-inputs)
 to obtain artifacts. Optional native `claude` and `agy` executable artifacts can be registered too;
 verify checks each installed CLI against the configured version family. Every
 profile needs a unique `id` and nonempty `supportedVersionPrefix`; a failed version
@@ -157,8 +158,33 @@ addresses and enabled fresh-install profiles. Both targets finish preflight befo
 either is changed. A host setup failure stops the guest play as well. Only Ubuntu 24.04/26.04 x86-64 is supported. The worker account's
 existing home must match `/var/lib/battlefield-worker`; files beneath it are not
 recursively reconciled. Provider device/browser login remains an interactive step
-inside the VM, followed by the [worker isolation and accepted-plan checks](agent-vm.md) before
-advertising availability.
+inside the VM, followed by the [worker isolation checks](agent-vm.md).
+Fresh workers must stop at the enablement boundary below before advertising
+availability or attempting accepted-plan checks.
+
+## Managed profile enablement boundary
+
+Fresh bootstrap requires every profile disabled and
+`BATTLEFIELD_CLI_ISOLATION_VERIFIED=false`. Passing isolation checks does not
+change these registered inputs. There is currently no managed command to enable
+a freshly bootstrapped worker; keep its profiles disabled and the API's CLI
+availability false until a reviewed configuration-update and rollback workflow
+is available.
+
+Do not hand-edit `/etc/battlefield-agent/worker.env` or `config.yaml`: worker
+environment drift fails preflight, and an apply restores configuration drift from
+the registered snapshot. Re-registering with new inputs, including
+`adopt_existing: true`, cannot update an owned installation: the marker binds the
+original file hashes and rejects the changed contract. Do not remove markers to
+bypass this check.
+
+Initial adoption can preserve an **already enabled** installation only when its
+existing files exactly match the registration, the guest isolation flag is true
+and the configured CLI artifacts are present. That is preservation of existing
+state, not a transition from disabled to enabled. Confirm its recorded isolation
+evidence and complete the [accepted-plan and launch checks](agent-vm.md#verify-before-advertising-availability)
+before advertising API availability. Neither adoption nor bootstrap verification
+proves those launch gates passed.
 
 ## Validation and failure recovery
 
@@ -180,7 +206,7 @@ An interrupted installation can resume against its registered marker. Missing
 managed files and ordinary owned drift are repaired; a differing worker secret
 requires recovering the matching bundle, never automatic rotation. Existing VM
 disks, provider homes, Kubernetes credentials and unrelated services are preserved.
-Do not delete a marker to force an update or run the create-only VM script again.
+Do not delete a marker to force an update or run fresh VM creation against retained resources.
 
 For a disposable lifecycle test on a libvirt host with the pinned Ubuntu cloud
 image already cached by the [foundation rehearsal](server-bootstrap.md):

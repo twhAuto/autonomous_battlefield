@@ -77,7 +77,7 @@ configuring, deploying, observing and recovering environments.
 | [Platform jobs](operations/platform-jobs.md) | Auxiliary Jenkins job setup and approved execution |
 | [CLI VM platform](operations/cli-vm-platform.md) | Isolated worker VM creation and adoption |
 | [CLI bootstrap](operations/cli-bootstrap.md) | Worker service, proxy and firewall configuration |
-| [Agent VM](operations/agent-vm.md) | Worker isolation verification, concurrency and recovery |
+| [CLI worker verification](operations/agent-vm.md) | Pinned artifacts, provider login, isolation, concurrency and recovery |
 | [Antigravity CLI](operations/antigravity-cli.md) | Subscription login, local bridge and troubleshooting |
 | [Claude CLI](operations/claude-cli.md) | Subscription login, provider restrictions and troubleshooting |
 

@@ -539,9 +539,11 @@ forward and Squid service override. `scripts/ops/render-agent-vm-host.py` render
 a credential-free bundle into a new directory without changing live services.
 `scripts/test/test-agent-vm-host.py` checks rendering, input rejection and private
 listener/Host-rewrite invariants through the deployment gate.
-[VM setup and recovery](../operations/agent-vm.md) explains host/guest commands,
-Codex helper installation and end-to-end verification;
-`create-agent-vm.sh` provisions a fresh VM after capacity/image checks;
+[Worker verification and recovery](../operations/agent-vm.md) explains pinned
+release inputs, provider login and end-to-end verification.
+`scripts/infra/cli-vm.py` owns reviewed VM creation/adoption; `server.sh cli-*`
+owns host and guest service bootstrap. See [CLI VM platform](../operations/cli-vm-platform.md)
+and [CLI bootstrap](../operations/cli-bootstrap.md).
 `verify-agent-isolation.py` tests its guest boundary. `ai-policy.sh` is the private
 operator stop/status/usage interface. `verify-access-service.py` checks the restricted CI service identity during production smoke;
 the former human-JWT helper has been retired. `scripts/test/test-limited-launch.py` verifies

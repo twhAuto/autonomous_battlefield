@@ -5,9 +5,10 @@ This guide covers controller and agent administration, credentials, delivery and
 
 The production Jenkins controller runs on the server at `192.168.1.126` (Jenkins port `8080`).
 For initial setup or migration of an existing server, complete the
-[server registration](environments.md#production-setup).
+[host registration](server-bootstrap.md).
 For repeatable installation or adoption, use the [Ansible CI bootstrap](ci-bootstrap.md).
-The manual installation sections below remain reference material for the existing services.
+This guide owns administration and diagnostics; the bootstrap guide owns
+installation, adoption, pinned versions and service restoration.
 
 The deployment regression gate includes real Ansible input tests. Agents need
 Python 3.12–3.14 and access to PyPI on the first run of each pinned runtime/Python
@@ -35,53 +36,27 @@ operation. See the guide for one-time setup, approval, credential rotation and t
 limits of locking when using external operator commands. Use the separate [external CI maintenance path](ci-bootstrap.md) for controller/agent
 and SonarQube reconstruction.
 
-## Install the Jenkins controller on Ubuntu or WSL
+## Install or restore the CI services
 
-This project currently uses the Jenkins LTS Debian package as a system service
-on port 8080. Install Java before Jenkins, then use the official LTS package
-repository:
+Use the external [CI bootstrap workflow](ci-bootstrap.md) from a registered
+operator session. For an existing server, follow its adoption prerequisites; for
+a clean replacement host, use its clean-install inputs. The workflow installs
+pinned Java/Jenkins, plugins, tools, the agent and Sonar services. Never run
+controller maintenance from a Jenkins job or improvise installation over retained
+controller state. Restore the complete matching Jenkins home, including its keys
+and credential stores, plus matching Sonar data before adopting a restored host.
 
-```bash
-sudo apt update
-sudo apt install -y fontconfig openjdk-21-jre
-
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo wget -O /etc/apt/keyrings/jenkins-keyring.asc \
-  https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
-echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc]" \
-  https://pkg.jenkins.io/debian-stable binary/ | \
-  sudo tee /etc/apt/sources.list.d/jenkins.list >/dev/null
-
-sudo apt update
-sudo apt install -y jenkins
-sudo systemctl enable --now jenkins
-sudo systemctl status jenkins
-```
-
-If the signing-key filename has changed, use the current commands from the
-[official Jenkins Linux installation guide](https://www.jenkins.io/doc/book/installing/linux/)
-rather than guessing a replacement. Open `http://localhost:8080`, retrieve the
-one-time unlock password locally, install the suggested plugins, and create the
-administrator account:
-
-```bash
-sudo cat /var/lib/jenkins/secrets/initialAdminPassword
-```
-
-The Debian package persists controller state under `/var/lib/jenkins` and
-enables `jenkins.service` at boot. Restarting the computer does not require
-recreating credentials, tools, nodes, or Multibranch jobs. Useful controller
-commands are:
+Controller state persists under `/var/lib/jenkins`; the native service starts at
+boot. Routine diagnostics are:
 
 ```bash
 sudo systemctl status jenkins
-sudo systemctl restart jenkins
 sudo journalctl -u jenkins --since today
 ```
 
-Restart Jenkins after installing a plugin when the plugin manager requests it.
-Installing a plugin alone does not create its global tool configuration; for
-example, `SonarScanner` must still be added under **Manage Jenkins > Tools**.
+Use the [reviewed maintenance and recovery procedure](ci-bootstrap.md#maintenance-backup-and-failure-recovery)
+for changes that can stop the controller. Package/plugin upgrades need a reviewed
+pin and compatibility change; ordinary adoption preserves existing identities.
 
 ## Jenkins agent requirements
 
@@ -115,8 +90,8 @@ from versions pinned in `scripts/ci/tool-versions.env`. This is also the default
 Trivy pin for local image scans; `TRIVY_IMAGE` can override that local command.
 The source-security stage owns the shared manifest rendering, schema checks,
 and policy checks on both PR and main builds. The deployment-script checks
-exercise staging, component selection, scanner launchers, and compatibility
-wrappers separately. `SECURITY_ARTIFACT_DIR` can relocate security reports,
+exercise staging, component selection and scanner launchers separately.
+`SECURITY_ARTIFACT_DIR` can relocate security reports,
 including the rendered manifest consumed by Trivy and Conftest.
 Main builds require
 private GHCR packages named `autonomous-battlefield-backend` and
@@ -287,85 +262,30 @@ find /tmp -maxdepth 1 -user "$(id -un)" -type d \
 
 New pipeline runs no longer create those project caches in `/tmp`.
 
-## Create the persistent `battlefield-local` agent
+## Manage the persistent `battlefield-local` agent
 
-Use a separate agent so builds do not execute on the Jenkins controller:
+[CI bootstrap](ci-bootstrap.md#managed-scope-and-preserved-state) owns the inbound
+WebSocket agent, enrollment secret, tools and operator user service. The registered
+node uses four executors and the `battlefield-production` label shared by PR
+verification, main delivery and assurance; the controller has zero executors.
+The persistent remote root is the operator's `~/jenkins-agent`.
 
-1. Open **Manage Jenkins > Nodes > New Node**.
-2. Name it `battlefield-local` and choose **Permanent Agent**. It currently runs
-   **four executors**, so PR builds for different branches run in parallel. Builds
-   stay safe to overlap because test databases, Playwright dev servers, and image
-   tags are per build: `with-test-postgres.sh` publishes a random port and names the
-   container by build tag, the frontend stages run `scripts/test/run-e2e.sh`, which serves Playwright on a
-   free `E2E_PORT` and retries only a lost port race, and images are
-   tagged by commit. `main` delivery still runs one build at a time
-   (`disableConcurrentBuilds()`), which is what serializes production rollouts.
-   Size executors to the host: each frontend stage runs Chromium, and backend stages
-   run PostgreSQL containers. Before adding a job that deploys or drills outside
-   `main` delivery (such as `infra/jenkins/Jenkinsfile.assurance`), serialize it with main
-   delivery, for example with the Lockable Resources plugin.
-3. Add the label `battlefield-production`, shared by PR verification, main
-   delivery and assurance for this owner-operated deployment.
-   Set the remote root directory to the agent account’s `~/jenkins-agent`.
-4. Choose **Launch agent by connecting it to the controller** and enable the
-   WebSocket launch option.
-5. Save the node, create its work directory, and download the current agent JAR:
+PR builds isolate PostgreSQL test ports, Playwright ports and image tags by build.
+`main` uses `disableConcurrentBuilds()` and the production platform lock to
+serialize delivery. Size executors to available host capacity; sharing the accepted
+agent does not remove locking requirements for other deployment or drill jobs.
 
-   ```bash
-   install -d -m 700 $HOME/jenkins-agent
-   curl --fail --location \
-     --output $HOME/jenkins-agent/agent.jar \
-     http://localhost:8080/jnlpJars/agent.jar
-   ```
+Inspect the existing service as the registered operator:
 
-6. Copy the node's connection secret into a private local environment file. Do
-   not commit, paste into documentation, or share this value:
+```bash
+systemctl --user status jenkins-agent
+journalctl --user -u jenkins-agent --since today
+```
 
-   ```bash
-   install -d -m 700 "$HOME/.config/jenkins-agent"
-   umask 077
-   ${EDITOR:-nano} "$HOME/.config/jenkins-agent/agent.env"
-   ```
-
-   The file contains one line:
-
-   ```text
-   JENKINS_AGENT_SECRET=replace-with-the-node-secret
-   ```
-
-7. Create `~/.config/systemd/user/jenkins-agent.service`:
-
-   ```ini
-   [Unit]
-   Description=Jenkins battlefield-local agent
-   Wants=network-online.target
-   After=network-online.target
-
-   [Service]
-   Type=simple
-   EnvironmentFile=%h/.config/jenkins-agent/agent.env
-   ExecStart=/usr/bin/java -jar %h/jenkins-agent/agent.jar -url http://localhost:8080/ -secret ${JENKINS_AGENT_SECRET} -name battlefield-local -webSocket -workDir %h/jenkins-agent
-   Restart=on-failure
-   RestartSec=5
-
-   [Install]
-   WantedBy=default.target
-   ```
-
-8. Load and start the user service:
-
-   ```bash
-   systemctl --user daemon-reload
-   systemctl --user enable --now jenkins-agent
-   systemctl --user status jenkins-agent
-   ```
-
-Once these commands succeed, both `jenkins.service` and
-`jenkins-agent.service` are enabled. Recreate the node only if its Jenkins
-configuration or local service files are lost. If the connection secret is ever
-exposed, create a replacement inbound node credential, update `agent.env` and
-the service's node name if required, verify the replacement agent, and remove
-the old node.
+Adoption preserves the node's enrollment secret and service configuration. If an
+identity is exposed or lost, use reviewed credential recovery and repeat bootstrap
+verification. Do not recreate the node or overwrite its service merely after a
+reboot; matching controller and agent state must be restored together.
 
 ## Configure local SonarQube
 
@@ -377,24 +297,21 @@ docker compose -f infra/sonarqube/compose.yaml up -d
 curl --fail http://localhost:9000/api/system/status
 ```
 
-The first startup can take several minutes. Open `http://localhost:9000`, sign
-in with the initial `admin` / `admin` credentials, change the password, and
-create an analysis token under the account security settings.
+For the registered server, [CI bootstrap](ci-bootstrap.md) owns the pinned
+Sonar/PostgreSQL Compose deployment, initial passwords/token, Jenkins Sonar server
+and scanner configuration. It preserves database credentials and named volumes;
+use its reviewed maintenance/recovery path for service changes.
 
-Both containers use Docker's `unless-stopped` restart policy. After the Docker
-engine starts following a reboot, PostgreSQL and SonarQube start automatically.
-When using Docker Desktop, enable its login startup setting so that the Docker
-engine itself starts automatically. If the stack was stopped intentionally
-with `docker compose stop`, start it once with the `up -d` command above; it will
-then resume automatic startup after later Docker engine restarts.
+For a separate local analysis service only, the repository Compose command above
+starts the stack. On a fresh local instance, sign in with its initial `admin` /
+`admin` credentials, change the password and create a private analysis token.
+Keep it out of Git. This local stack does not configure Jenkins or replace the
+registered server's managed Compose deployment.
 
-Configure Jenkins as follows:
-
-1. Add the token as a **Secret text** credential.
-2. In **Manage Jenkins > System > SonarQube servers**, add a server named
-   `battlefield-sonarqube`, URL `http://localhost:9000`, using that credential.
-3. In **Manage Jenkins > Tools > SonarQube Scanner installations**, add an
-   installation named `SonarScanner` and enable automatic installation.
+Containers use `unless-stopped`; Docker must be running for automatic recovery.
+After an intentional local `docker compose stop`, the `up -d` command resumes it.
+For the registered server, inspect `/etc/battlefield-ci/sonar-compose.yaml` through
+the managed workflow instead of replacing it with the local manifest.
 
 The scanner polls SonarQube for the quality-gate result for up to five minutes
 and fails the build when the gate fails. No SonarQube webhook is required. This
@@ -435,8 +352,8 @@ statements, branches, functions, and lines. Delete preview projects for closed
 PRs periodically from the SonarQube Projects page; they contain analysis history,
 not runtime data.
 
-The SonarQube data is stored in named Docker volumes and survives restarts. Stop
-it without deleting its data with:
+SonarQube data is stored in named Docker volumes and survives restarts. Stop
+the separate local analysis stack without deleting its data with:
 
 ```bash
 docker compose -f infra/sonarqube/compose.yaml stop
@@ -627,7 +544,8 @@ For `main`, the pipeline performs:
 1. Clean checkout, Go lint, backend/frontend coverage, source security, and deterministic AI evaluation.
 2. SonarQube analysis and quality-gate enforcement.
 3. Deployment-script checks and component classification against the previous
-   successful commit. Documentation-only, application-test-only, and known CI-test-wrapper
+   successful commit. Documentation-only, application-test-only, and CI
+   lint/coverage-summary script
    changes select no deployment; an unknown path or unavailable baseline selects
    all components. CI quality gates still run for these changes.
 4. Publication of changed images to GHCR, scanning of the published images,

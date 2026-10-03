@@ -53,6 +53,8 @@ cluster registration, optional model controllers and standalone development serv
 
 Go and React unit tests live beside the code they exercise. The root `Jenkinsfile`
 is the application pipeline; auxiliary pipelines live in `infra/jenkins/`.
+Use `scripts/test/` for shared test runners and `scripts/cd/{deploy,rollback,smoke-test}.sh`
+for deployment commands. Their registered environment selects Kind or K3s.
 
 ## Documentation
 

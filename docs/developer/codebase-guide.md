@@ -211,8 +211,8 @@ real container. Jenkins runs this Docker-backed regression separately from the
 command-double deployment suite; see [Jenkins checks](ci.md#pull-request-verification).
 
 `scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh` are the driver-neutral
-entry points used by Jenkins; the old Kind-named scripts forward arguments and
-signals. `cd/lib/kubernetes-deployment.sh` stages selected shared overlays and
+entry points used by Jenkins. `cd/lib/kubernetes-deployment.sh` stages selected
+shared overlays and
 composes `infra/deploy/overlays/k3s` when the profile selects K3s. `lib/k3s-delivery.py`
 performs read-only platform/retained-volume checks. `production_recovery.py`
 binds verified images to the applied database migration ledger. The required
@@ -338,7 +338,7 @@ ports; `--bridge-port` validates an unprivileged port and substitutes the same
 value in the Kubernetes forward and Caddy upstream. Guest-facing ports and the
 MCP Host header remain fixed. `scripts/test/test-agent-vm-host.py` checks the
 matched default/CLI override, invalid-input rejection, isolation configuration
-and refusal to overwrite a reviewed bundle. See the [CLI VM runbook](../operations/agent-vm.md).
+and refusal to overwrite a reviewed bundle. See the [CLI worker verification runbook](../operations/agent-vm.md).
 
 ### Cloudflare capture and lifecycle
 
