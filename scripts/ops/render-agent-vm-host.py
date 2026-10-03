@@ -24,13 +24,13 @@ def render(output, user, home, kubeconfig, context, bridge_port=28084):
     # Re-render to a new directory and diff; never silently replace reviewed files.
     output.mkdir(parents=True, exist_ok=False)
     values = {"USER": user, "HOME": home, "KUBECONFIG": kubeconfig, "CONTEXT": context, "BRIDGE_PORT": str(bridge_port)}
-    for source in sorted((ROOT / "deploy/agent-vm/host").iterdir()):
+    for source in sorted((ROOT / "infra/deploy/agent-vm/host").iterdir()):
         text = source.read_text()
         for key, value in values.items():
             text = text.replace("@" + key + "@", value)
         (output / source.name).write_text(text)
     for name in ("squid.conf", "provider-domains.txt"):
-        shutil.copyfile(ROOT / "deploy/agent-vm" / name, output / name)
+        shutil.copyfile(ROOT / "infra/deploy/agent-vm" / name, output / name)
 
 
 def main():

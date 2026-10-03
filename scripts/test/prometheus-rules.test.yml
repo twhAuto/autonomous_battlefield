@@ -1,7 +1,7 @@
 # promtool unit tests for the SLI recording rules in the local Prometheus overlay.
 
 rule_files:
-  - ../../deploy/overlays/local/observability/prometheus/alerts.yml
+  - ../../infra/deploy/overlays/local/observability/prometheus/alerts.yml
 
 evaluation_interval: 30s
 

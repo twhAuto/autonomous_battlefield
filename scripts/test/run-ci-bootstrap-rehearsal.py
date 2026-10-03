@@ -28,7 +28,7 @@ def main():
         vm=rehearsal.Rehearsal(work,args.evidence_dir,'default',memory_mib=8192,root_gib=40,cpus=4)
         metadata={'image':pin,'source_sha256':{},'synthetic_credentials':True}
         with tarfile.open(work/'source.tar','w') as archive:
-            for name in ('infra/ansible','infra/jenkins','Jenkinsfile.platform','Jenkinsfile.vm','Jenkinsfile.k3s','scripts/infra','scripts/ops','scripts/test/rehearse-ci-bootstrap.py','scripts/test/rehearse-server-guest.py'):
+            for name in ('infra/ansible','infra/jenkins','infra/jenkins/Jenkinsfile.platform','infra/jenkins/Jenkinsfile.vm','infra/jenkins/Jenkinsfile.k3s','scripts/infra','scripts/ops','scripts/test/rehearse-ci-bootstrap.py','scripts/test/rehearse-server-guest.py'):
                 archive.add(ROOT/name,arcname=name,filter=lambda item: None if '__pycache__' in item.name else item)
                 path=ROOT/name
                 for source in ([path] if path.is_file() else path.rglob('*')):

@@ -1,6 +1,6 @@
 # OrdinalFrontier Tooling Guide
 
-[Codebase index](codebase-guide.md) · [System architecture](system-architecture.md)
+[Codebase index](codebase-guide.md) · [System architecture](../architecture/system-architecture.md)
 
 ## Environment tooling
 
@@ -11,15 +11,16 @@ its original kubeconfig. `prepare-dev-secrets.sh` provisions private dev files;
 `create-kind-cluster.sh` starts/bootstrap dev without recreation. Deployment,
 rollback, smoke, dev CLI agents, retention reports, and runtime assurance share
 the resolver. `scripts/test/test-deployment-environment.sh` exercises rejection
-and bootstrap paths. See the [environment guide](../operations/environments.md)
-for machine configuration, Jenkins credentials, and commands.
+and bootstrap paths. See the [configuration model](../architecture/configuration.md)
+for file ownership, [local setup](local-setup.md) for dev commands, and
+[environment operations](../operations/environments.md) for production setup.
 
 ## Deployment code
 
-[`deploy/base`](../../deploy/base) contains portable Kustomize resources.
-[`deploy/overlays/local`](../../deploy/overlays/local) adds PostgreSQL, Gateway API,
+[`infra/deploy/base`](../../infra/deploy/base) contains portable Kustomize resources.
+[`infra/deploy/overlays/local`](../../infra/deploy/overlays/local) adds PostgreSQL, Gateway API,
 observability and logging resources with Kind defaults. The
-[`K3s overlays`](../../deploy/overlays/k3s) reuse those resources and patch the
+[`K3s overlays`](../../infra/deploy/overlays/k3s) reuse those resources and patch the
 retained storage class and volume sizes. Delivery scripts handle gateway access
 and telemetry differences; see [K3s delivery](../operations/k3s-delivery.md#deliver-and-verify).
 
@@ -53,7 +54,7 @@ exercises publication and deployment signature checks, including Cosign 3 bundle
 summaries without annotations, retained legacy revisions, and rejected evidence. The Vite
 configuration and `frontend/vite.config.test.ts` cover development proxy overrides.
 
-Root launch scripts remain compatibility entry points that `exec` their implementations under `scripts/dev` and `scripts/cd`. `deploy/` owns Kubernetes configuration; `infra/aws/` provisions cloud resources.
+Local launchers live under `scripts/dev` and `scripts/cd`; invoke those paths directly. `infra/deploy/` owns Kubernetes configuration; `infra/aws/` provisions cloud resources.
 `infra/ansible/` owns the Ubuntu host foundation through `scripts/infra/server.sh`;
 see the [server bootstrap guide](../operations/server-bootstrap.md). Operational instructions live under `docs/operations`.
 
@@ -80,7 +81,7 @@ Battle inspector regions use labelled sections, and asynchronous loading message
 use native `output` elements. Component tests verify the resulting accessibility
 roles rather than requiring redundant explicit role attributes.
 
-Package-specific PostgreSQL integration tests remain beside their adapters and require `TEST_DATABASE_URL`; the isolated PostgreSQL harness supplies it. `scripts/test` contains reusable test runners and deployment script tests. Old `scripts/ci` test commands forward to those runners. `scripts/test/test-command-wrappers.sh` verifies argument, environment, working-directory, exit-status, and signal forwarding without launching the application. `scripts/test/test-kind-deployment.sh` checks selected-overlay staging, preservation of registered auth paths across child preflight checks, auth-only Secret inputs, collector configuration with Langfuse enabled and disabled, real Kustomize renders, and rollout failure handling. It loads the deployment environment helpers with explicit Langfuse overrides so overlay tests do not query a live cluster. `scripts/test/test-security-launchers.sh` checks scanner artifact paths, failure propagation, and the shared Trivy pin using scanner stubs. `scripts/lib/access_service.py` validates private CI credentials, destination binding and expiry; `scripts/ops/verify-access-service.py` verifies private denial and public service authentication without redirects. `scripts/test/test-access-service.py` tests those boundaries, and `test-runtime-assurance.sh` exercises service credential mounting and k6 requests. Performance scenarios live in `tests/performance`; AI cases remain in `backend/evals`. Application browser tests already live in `frontend/e2e`, with deterministic API fixtures and desktop/mobile Chromium projects.
+Package-specific PostgreSQL integration tests remain beside their adapters and require `TEST_DATABASE_URL`; the isolated PostgreSQL harness supplies it. `scripts/test` contains reusable test runners and deployment script tests. Old `scripts/ci` test commands forward to those runners. `scripts/test/test-command-wrappers.sh` verifies argument, environment, working-directory, exit-status, and signal forwarding without launching the application. `scripts/test/test-kind-deployment.sh` checks selected-overlay staging, preservation of registered auth paths across child preflight checks, auth-only Secret inputs, collector configuration with Langfuse enabled and disabled, real Kustomize renders, and rollout failure handling. It loads the deployment environment helpers with explicit Langfuse overrides so overlay tests do not query a live cluster. `scripts/test/test-security-launchers.sh` checks scanner artifact paths, failure propagation, and the shared Trivy pin using scanner stubs. `scripts/lib/access_service.py` validates private CI credentials, destination binding and expiry; `scripts/ops/verify-access-service.py` verifies private denial and public service authentication without redirects. `scripts/test/test-access-service.py` tests those boundaries, and `test-runtime-assurance.sh` exercises service credential mounting and k6 requests. Performance scenarios and SQL fixtures live in `tests/performance`; their launchers live in `scripts/perf`. AI cases remain in `backend/evals`. Application browser tests already live in `frontend/e2e`, with deterministic API fixtures and desktop/mobile Chromium projects.
 
 Merge-blocking gates require at least 80% Go statement coverage in aggregate across the module — one repository-wide total from `go tool cover`, not a per-package floor, so thin wiring in `cmd/*` and `internal/postgres` may sit below 80% while the module passes — and at least 80% frontend statements, branches, functions, and lines. Measure through the PostgreSQL harness; a coverage run without `TEST_DATABASE_URL` skips tests that require the database and omits the code exercised only by those tests:
 
@@ -109,7 +110,7 @@ budget on the shared CI agent.
 flags and configuration; [`ai/eval/comparison.go`](../../backend/internal/ai/eval/comparison.go)
 runs isolated MCP sessions through production validation. `ai/eval/knowledge.go`
 exports retrieval metadata. `backend/evals/comparison-cases/` contains synthetic
-contexts, including the large-roster fixture. See [comparison operations](../operations/ai-comparisons.md).
+contexts, including the large-roster fixture. See [comparison operations](ai-comparisons.md).
 
 `DecisionRepository.ListFactionMemory` bounds history in SQL; the battle worker
 freezes memory and selected knowledge before hashing. Tests cover faction/attempt
@@ -173,7 +174,7 @@ read-only CLI options, version/argument checks, rejected responses, publication
 identity/body matching, delta-only follow-ups, compact context, round limits,
 process timeouts, and per-review token usage accounting (`--usage`). `CLAUDE.md` points
 Claude to the shared `AGENTS.md` rules. See the
-[cross-review workflow](../operations/cross-review.md).
+[cross-review workflow](cross-review.md).
 
 ## Container build contexts
 

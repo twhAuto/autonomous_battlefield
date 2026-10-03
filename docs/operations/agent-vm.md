@@ -279,7 +279,7 @@ sudo install -o root -g root -m 0755 "$HOME/codex-code-mode-host-x86_64-unknown-
 ls -l /usr/local/bin/codex /usr/local/bin/codex-code-mode-host
 ```
 
-Copy `deploy/agent-vm/config.yaml`, `worker.service` and
+Copy `infra/deploy/agent-vm/config.yaml`, `worker.service` and
 `scripts/ops/verify-agent-isolation.py` to vm-admin's home. Inside the VM:
 
 ```bash

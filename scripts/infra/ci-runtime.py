@@ -667,7 +667,7 @@ def seed(payload):
     spec.loader.exec_module(module)
     api = jenkins(payload['config'], decode_inputs(payload['inputs']))
     # The existing seeder provides ownership checks, plugin compatibility and the
-    # canonical Jenkinsfile.platform/.vm/.k3s definitions. Never trigger builds.
+    # canonical infra/jenkins/Jenkinsfile.platform/.vm/.k3s definitions. Never trigger builds.
     token = base64.b64decode(api.authorization.split(' ', 1)[1]).decode().split(':', 1)[1]
     client = module.Jenkins(JENKINS, payload['config']['jenkins_admin'], token)
     # The CLI seeder prints an operator notice. Keep this command protocol a
@@ -717,7 +717,7 @@ def managed_fingerprints(prefix=Path('/opt/battlefield-ci')):
             for path in directory.rglob('*'):
                 if path.is_file() and not path.is_symlink() and '__pycache__' not in path.parts:
                     files[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
-    for name in ('Jenkinsfile.platform', 'Jenkinsfile.vm', 'Jenkinsfile.k3s'):
+    for name in ('infra/jenkins/Jenkinsfile.platform', 'infra/jenkins/Jenkinsfile.vm', 'infra/jenkins/Jenkinsfile.k3s'):
         path = prefix / name
         if path.is_file():
             files[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()

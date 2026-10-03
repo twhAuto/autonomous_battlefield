@@ -1,6 +1,6 @@
 # OrdinalFrontier Backend Guide
 
-[Codebase index](codebase-guide.md) · [System architecture](system-architecture.md)
+[Codebase index](codebase-guide.md) · [System architecture](../architecture/system-architecture.md)
 
 ## Backend organization
 
@@ -111,7 +111,7 @@ service's `ResultCache` port. `cmd/server` constructs and closes it;
 `app.NewAPIWithResultCache` wires it beneath authentication. Service/config tests
 and `resultcache/redis_test.go` cover caching and failure behavior with an
 in-process Redis protocol server; no external Redis process is required.
-See [cache behavior](system-architecture.md#completed-battle-result-caching) and
+See [cache behavior](../architecture/system-architecture.md#completed-battle-result-caching) and
 [Redis operations](../operations/redis.md).
 
 ### `internal/battle/api`: battle HTTP delivery
@@ -119,7 +119,7 @@ See [cache behavior](system-architecture.md#completed-battle-result-caching) and
 [`handler.go`](../../backend/internal/battle/api/handler.go) registers and implements:
 
 Battle, scenario, and profile routes are documented in the
-[HTTP API reference](../reference/api.md). This handler owns JSON decoding,
+[HTTP API reference](../architecture/api.md). This handler owns JSON decoding,
 cursor/attempt parsing, HTTP status mapping, and response encoding for those routes.
 
 Keep domain validation in the service. The handler should concentrate on transport validation and stable HTTP status mapping.
@@ -249,7 +249,7 @@ The CLI runner creates a temporary directory, passes the profile's allowlisted m
 [`clienv/antigravity.go`](../../backend/internal/ai/clienv/antigravity.go) shares
 permission configuration, environment isolation, and saved-login probing between
 profile discovery and execution. `cmd/agent -check-antigravity-auth` supports the
-host launcher's preflight. See [CLI runtime](system-architecture.md#cli-runtime)
+host launcher's preflight. See [CLI runtime](../architecture/system-architecture.md#cli-runtime)
 for context delivery and accepted-plan enforcement.
 
 ### `internal/ai/providers`: external API adapters
@@ -345,7 +345,7 @@ both the handler and registry to the service; policy reads do not depend on HTTP
 
 ### Shared infrastructure packages
 
-- [`internal/authn`](../../backend/internal/authn) provides Cloudflare JWT verification, explicit development login modes, role/ownership helpers, exact-origin mutations, a deny-by-default route permission registry, and mode-aware session/logout routes. `authn.PublicAPIRoutes()` exposes that registry plus the three auth routes; [`internal/apicontract`](../../backend/internal/apicontract) fails the build if [`docs/reference/openapi.yaml`](../reference/openapi.yaml) lists a different set. When adding a `/v1` route, register its permission **and** document the operation in the OpenAPI contract in the same change. `cloudflare_test.go` exercises signatures, key rotation, forged headers, legacy cookies and role removal. `service_test.go` covers enrolled CI service JWTs, invalid claims, disabled enrollment and the read-only route boundary. CI uses a separate `ci` actor, never a human role.
+- [`internal/authn`](../../backend/internal/authn) provides Cloudflare JWT verification, explicit development login modes, role/ownership helpers, exact-origin mutations, a deny-by-default route permission registry, and mode-aware session/logout routes. `authn.PublicAPIRoutes()` exposes that registry plus the three auth routes; [`internal/apicontract`](../../backend/internal/apicontract) fails the build if [`docs/architecture/openapi.yaml`](../architecture/openapi.yaml) lists a different set. When adding a `/v1` route, register its permission **and** document the operation in the OpenAPI contract in the same change. `cloudflare_test.go` exercises signatures, key rotation, forged headers, legacy cookies and role removal. `service_test.go` covers enrolled CI service JWTs, invalid claims, disabled enrollment and the read-only route boundary. CI uses a separate `ci` actor, never a human role.
 - [`internal/config/config.go`](../../backend/internal/config/config.go) strictly decodes one YAML document, rejects unknown fields, resolves environment variables, and provides process-specific loaders.
 - [`internal/postgres`](../../backend/internal/postgres) manages the `pgx` pool, embedded Goose migrations, startup retries, and `LISTEN/NOTIFY`.
 - [`internal/httpapi`](../../backend/internal/httpapi) provides bounded strict JSON, lifecycle/readiness routes, request IDs, routing, and access logging.
@@ -433,8 +433,8 @@ cancellation without application DDL, then verifies successful migration after r
 | [`.env.example`](../../.env.example) | Shared dev/production application settings schema |
 | [`backend/rulesets`](../../backend/rulesets) | Versioned unit, building, economy, and combat values |
 | [`backend/scenarios`](../../backend/scenarios) | Map layout, timing, scripted plans, and fallbacks |
-| [`deploy/base/infrastructure/configmap.yaml`](../../deploy/base/infrastructure/configmap.yaml) | Cluster configuration equivalent |
-| [`deploy/environments/deployment.env.example`](../../deploy/environments/deployment.env.example) | Deployment environment profile template consumed by the shared resolver |
+| [`infra/deploy/base/infrastructure/configmap.yaml`](../../infra/deploy/base/infrastructure/configmap.yaml) | Cluster configuration equivalent |
+| [`infra/deploy/environments/deployment.env.example`](../../infra/deploy/environments/deployment.env.example) | Deployment environment profile template consumed by the shared resolver |
 
 `internal/config/config.go` owns shared types, strict decoding, common parsing
 helpers, and process loaders. Parsers and their concern-specific types live in
@@ -488,7 +488,7 @@ from `backend`.
   context fields, repeat-read compatibility, and reduced transport size.
 - Decision history exposes optional trace links and additive usage metadata;
   `AIDecisionPanel` distinguishes API totals, CLI aggregates and legacy counters.
-- `deploy/langfuse/values.yaml` pins the self-hosted Helm configuration;
+- `infra/deploy/langfuse/values.yaml` pins the self-hosted Helm configuration;
   `collector-config.yaml` adds the filtered export pipeline. Run
   `scripts/cd/deploy-langfuse.sh` using the registered environment and follow
   [Langfuse operations](../operations/langfuse.md) to enable future deploys.
@@ -496,10 +496,10 @@ from `backend`.
 `scripts/lib/ensure-helm.py` supplies the Langfuse installer with an existing
 Helm binary or a temporary checksum-pinned Linux amd64 download.
 
-`deploy/langfuse/values.yaml` also supplies explicit pod/container security contexts
+`infra/deploy/langfuse/values.yaml` also supplies explicit pod/container security contexts
 for Langfuse, SeaweedFS and PostgreSQL, preserving the namespace security policy.
 
-`deploy/overlays/local/gateway/langfuse-route.yaml` exposes the UI through the
+`infra/deploy/overlays/local/gateway/langfuse-route.yaml` exposes the UI through the
 shared gateway. `battlefield_env_langfuse_enabled` in the environment helper detects
 the installed project for collector configuration and host CLI forwarding.
 
@@ -533,7 +533,7 @@ ownership, with backend enforcement independent of the UI.
 
 `scripts/ops/render-limited-launch.py` produces private auth configuration and a
 Tunnel deployment with origin-side Access validation and application ingress policies.
-`deploy/agent-vm/` contains the libvirt network/filter, proxy and worker configuration;
+`infra/deploy/agent-vm/` contains the libvirt network/filter, proxy and worker configuration;
 its `host/` templates include the dedicated firewall, Caddy proxy, loopback MCP
 forward and Squid service override. `scripts/ops/render-agent-vm-host.py` renders
 a credential-free bundle into a new directory without changing live services.
@@ -578,7 +578,7 @@ Production k6 smoke-load credential binding is described in the
   Scenario summaries carry allowed IDs for purchase validation; profiles are generic.
 
 Library-backed and inline rulesets both resolve to the existing immutable game
-snapshot. See [content libraries](../operations/content-library.md) for authoring.
+snapshot. See [content libraries](../developer/content-library.md) for authoring.
 
 The faction API exchanges `{ id, name, doctrine, background? }`; edit requests use PUT.
 Battle setup selects generic profiles without blueprint compatibility filtering.
@@ -659,12 +659,12 @@ stays an index condition in both plan types. The earlier
 `$2 IS NULL OR (created_at, id) < ($2, $3)` form became a filter in generic plans,
 so a deep page walked every newer row. `TestBattleHistoryCursorStaysIndexConditionInGenericPlans`
 guards this. Keep `listBattlesSQL` and the copy in
-`scripts/perf/query-plans/explain.sql` in sync.
+`tests/performance/query-plans/explain.sql` in sync.
 
 Re-measure with the disposable database (10k battles over ~90 days, 120k events):
 
 ```bash
-./scripts/test/with-test-postgres.sh ./scripts/perf/query-plans/run-query-plans.sh
+./scripts/test/with-test-postgres.sh ./scripts/perf/run-query-plans.sh
 ```
 
 Results on PostgreSQL 17.6, 2026-09-29, limit 26 (page size 25 plus one):
@@ -693,7 +693,7 @@ history or to retry later for daily limits; the API does not distinguish the
 exhausted limit in its response.
 
 `internal/battle/repo/expiry.go` owns the atomic expiry update; the battle worker
-schedules the sweep. See [battle expiry](system-architecture.md#battle-expiry)
+schedules the sweep. See [battle expiry](../architecture/system-architecture.md#battle-expiry)
 for the runtime contract.
 
 ## End-to-end API integration test
@@ -722,6 +722,11 @@ The test covers:
 
 The private schema keeps the worker from claiming battles that other packages'
 tests create in the shared database at the same time.
+
+Startup and migration tests use the same PostgreSQL advisory-lock configuration
+in `internal/postgres.NewMigrationProvider`. The lock spans schemas within the
+database because role and public-schema permission changes are shared across
+test fixtures.
 
 ## Managed Player membership
 

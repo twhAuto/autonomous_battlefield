@@ -12,7 +12,7 @@ with tempfile.TemporaryDirectory(prefix='battlefield-images-') as tmp:
     project = tmp/'project with spaces'
     for name in ['scripts/lib/image-metadata.sh', 'scripts/lib/deployment-components.sh',
                  'scripts/ci/publish-images.sh', 'scripts/ci/build-images.sh', 'scripts/ci/scan-published-images.sh', 'scripts/ci/tool-versions.env',
-                 'scripts/cd/apply-kyverno-policy.sh', 'deploy/overlays/jenkins/kyverno/verify-images.yaml.template']:
+                 'scripts/cd/apply-kyverno-policy.sh', 'infra/deploy/overlays/jenkins/kyverno/verify-images.yaml.template']:
         target = project/name; target.parent.mkdir(parents=True, exist_ok=True); shutil.copy(root/name, target)
     (project/'scripts/lib/deployment-environment.sh').write_text('battlefield_env_preflight() { :; }\n')
     (project/'scripts/ci/verify-frontend-image.py').write_text('''import json, os, sys

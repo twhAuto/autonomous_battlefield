@@ -8,7 +8,7 @@ the same model catalog as Codex and Antigravity, with existing role restrictions
 2. Run `claude auth login` and sign in with a Claude subscription. The worker checks
    `claude auth status --json` for a saved `claude.ai` login. API-key and Console logins do
    not satisfy this profile. Authentication stays on the host in its native location.
-3. Start the dev bridge with `./run-k8s-cli-agent.sh claude`. Keep it running while
+3. Start the dev bridge with `./scripts/dev/run-k8s-cli-agent.sh claude`. Keep it running while
    battles or faction-generation jobs use the profile. `auto` detects all available
    CLIs, `all` requires all three, and `both` retains Codex plus Antigravity.
 
@@ -29,8 +29,8 @@ execution rather than being bypassed. The worker requires a validated MCP
 submission, not merely a successful CLI exit or a textual plan.
 
 The `sonnet` alias follows the account's current Sonnet model. To pin a model,
-update `backend/config.yaml`, `deploy/base/infrastructure/configmap.yaml`,
-`deploy/agent-vm/config.yaml`, and `scripts/dev/run-k8s-cli-agent.sh` consistently.
+update `backend/config.yaml`, `infra/deploy/base/infrastructure/configmap.yaml`,
+`infra/deploy/agent-vm/config.yaml`, and `scripts/dev/run-k8s-cli-agent.sh` consistently.
 When upgrading the CLI, verify restricted-mode behavior and update the version
 pin in those same files. The current pin prevents older CLIs without restricted
 mode from being advertised.
@@ -52,7 +52,7 @@ invalid submissions use the existing worker failure and fallback behavior.
 If MCP forwarding fails, the launcher prints the `kubectl port-forward` error
 before removing temporary files. It waits up to 120 seconds for the MCP deployment
 rollout before starting forwarding. On the development workstation, choose an
-unused loopback port, for example `HOST_MCP_PORT=28084 ./run-k8s-cli-agent.sh claude`
+unused loopback port, for example `HOST_MCP_PORT=28084 ./scripts/dev/run-k8s-cli-agent.sh claude`
 only when 28084 is free. The production server already uses that port for its
 CLI VM bridge; do not stop it to run a development launcher. A second agent also needs
 a distinct `HOST_AGENT_HEALTH_PORT`. When tracing is enabled, set distinct

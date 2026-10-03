@@ -140,8 +140,8 @@ interactive; follow the [Claude](claude-cli.md) and [Antigravity](antigravity-cl
 guides inside the isolated worker account, keeping profiles disabled until
 isolation and provider checks pass.
 
-Start from `deploy/agent-vm/config.yaml` with **every profile disabled**, use
-`deploy/agent-vm/worker.service`, and set `adopt_existing: false`. Use the existing
+Start from `infra/deploy/agent-vm/config.yaml` with **every profile disabled**, use
+`infra/deploy/agent-vm/worker.service`, and set `adopt_existing: false`. Use the existing
 `seal` command with a private manifest whose `cli_worker_environment` entry points
 to a mode-0600 file containing only these three assignments:
 

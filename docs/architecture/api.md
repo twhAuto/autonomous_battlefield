@@ -212,7 +212,7 @@ returns credential values or credential environment-variable names.
 At ticks 10, 20, 30, and so on, the engine freezes the prior state, creates one
 fog-of-war-bounded decision per faction, waits up to two minutes for model plans,
 then advances the deterministic simulation with the resolved plans. See
-[strategy windows and production](../design/system-architecture.md#explicit-recruitment-orders).
+[strategy windows and production](system-architecture.md#explicit-recruitment-orders).
 Late plans cannot overwrite the fallback selected by the engine. Completed
 decision metadata is available from
 `GET /v1/battles/{id}/decisions?attempt={attempt}`.
@@ -323,7 +323,7 @@ The new `unit_healed` event contains `factionId`, `healerId`, `targetId`, actual
 `amount`, and `remainingHealth`. `building_attacked` uses the existing attack
 payload (`attackerId`, `targetId`, `targetType`, `damage`, `remainingHealth`).
 Expanded-scenario `unit_recruited` events include `sourceBuildingId`.
-[Frontier Siege](../design/frontier-siege.md) documents action timing and limits.
+[Frontier Siege](frontier-siege.md) documents action timing and limits.
 
 ## Page through battle events
 
@@ -466,4 +466,4 @@ list denies everyone. Invalid bodies return 400, a stale `version` returns 409, 
 persistence failures return 503. The policy restricts only new battle selections
 and background-generation admission; it cannot enable a profile whose credentials
 or runtime are unavailable. See
-[system architecture](../design/system-architecture.md#source-ownership).
+[system architecture](system-architecture.md#source-ownership).

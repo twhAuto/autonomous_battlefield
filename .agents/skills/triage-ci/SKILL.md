@@ -5,7 +5,7 @@ description: Diagnose and fix Autonomous Battlefield Jenkins PR or main pipeline
 
 # Triage CI
 
-1. Read `AGENTS.md`, `docs/operations/jenkins.md`, and the failing run's exact branch, commit, PR target, stages, console output, and published checks. Match the failing head to the current head before editing. A queued, aborted, or skipped stage is not a passing check.
+1. Read `AGENTS.md`, `docs/developer/ci.md`, `docs/operations/jenkins.md`, and the failing run's exact branch, commit, PR target, stages, console output, and published checks. Match the failing head to the current head before editing. A queued, aborted, or skipped stage is not a passing check.
 2. Find the earliest actionable failure and classify it using evidence: code/test regression, threshold or scanner finding, agent/tool/credential problem, external service outage, or pipeline configuration. Inspect downstream failures for shared causes before choosing a fix. Never change coverage thresholds, suppress findings, or claim Sonar is clean from passing local tests.
 3. Reproduce the smallest applicable check through the existing `scripts/test/` and `scripts/ci/` entry points; use `with-test-postgres.sh` for backend coverage and `test-deployment.sh` for deployment changes. For Sonar, follow `AGENTS.md` token handling and the PR preview-project instructions; never scan unmerged code into the production project.
 4. Fix the cause when within the task's scope. Rerun affected checks and inspect a new Jenkins/Sonar result when available. If the failure is environmental, document the failing dependency, evidence, owner/action, and whether a safe retry is warranted; do not disguise it as a source fix.

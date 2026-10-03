@@ -20,7 +20,7 @@ if ! grep -Fq -- '--for=condition=Available' "${project_dir}/scripts/cd/apply-ky
   exit 1
 fi
 if ! grep -Fq 'imageRegistryCredentials:' \
-  "${project_dir}/deploy/overlays/jenkins/kyverno/verify-images.yaml.template"; then
+  "${project_dir}/infra/deploy/overlays/jenkins/kyverno/verify-images.yaml.template"; then
   echo "The Kyverno policy must declare credentials for private GHCR verification." >&2
   exit 1
 fi
@@ -44,7 +44,7 @@ if ! grep -Fq 'cluster_deploy_report_workload_failure' \
   echo "Observability rollout failures must emit workload diagnostics." >&2
   exit 1
 fi
-elasticsearch_deployment="${project_dir}/deploy/overlays/local/observability/elasticsearch/deployment.yaml"
+elasticsearch_deployment="${project_dir}/infra/deploy/overlays/local/observability/elasticsearch/deployment.yaml"
 if ! grep -Fq 'name: prepare-elasticsearch-config' "${elasticsearch_deployment}"; then
   echo "Elasticsearch must prepare a writable configuration directory." >&2
   exit 1
@@ -53,8 +53,8 @@ if grep -Fq 'subPath: elasticsearch.yml' "${elasticsearch_deployment}"; then
   echo "Elasticsearch configuration must not leave its keystore directory read-only." >&2
   exit 1
 fi
-prometheus_config="${project_dir}/deploy/overlays/local/observability/prometheus/prometheus.yml"
-prometheus_rbac="${project_dir}/deploy/overlays/local/observability/prometheus/rbac.yaml"
+prometheus_config="${project_dir}/infra/deploy/overlays/local/observability/prometheus/prometheus.yml"
+prometheus_rbac="${project_dir}/infra/deploy/overlays/local/observability/prometheus/rbac.yaml"
 if ! grep -Fq 'job_name: kubernetes-cadvisor' "${prometheus_config}" \
   || ! grep -Fq 'metrics_path: /metrics/cadvisor' "${prometheus_config}" \
   || ! grep -Fq 'role: node' "${prometheus_config}"; then
@@ -120,7 +120,7 @@ effective_frontend_ref='ghcr.io/twh09/autonomous-battlefield-frontend@sha256:bbb
 deployment_components_select "${deploy_components}" deployment
 cluster_deploy_prepare_overlays
 rendered="${test_dir}/registry-render.yaml"
-kubectl kustomize "${runtime_dir}/deploy/overlays/local/application" >"${rendered}"
+kubectl kustomize "${runtime_dir}/infra/deploy/overlays/local/application" >"${rendered}"
 if ! grep -Fq "ghcr.io/twh09/autonomous-battlefield-backend@sha256:aaaaaaaa" "${rendered}" ||
   ! grep -Fq "ghcr.io/twh09/autonomous-battlefield-frontend@sha256:bbbbbbbb" "${rendered}"; then
   echo "Registry deployment did not render immutable image digests." >&2
@@ -136,7 +136,7 @@ for selection in application migration gateway observability infrastructure all;
   namespace=battlefield
   cluster_deploy_prepare_overlays >"${test_dir}/staging.log"
   for component in infrastructure migration application observability gateway; do
-    overlay="${runtime_dir}/deploy/overlays/local/${component}"
+    overlay="${runtime_dir}/infra/deploy/overlays/local/${component}"
     if deployment_component_selected "${component}"; then
       [[ -d "${overlay}" ]]
       kubectl kustomize "${overlay}" >"${test_dir}/${component}.yaml"
@@ -156,13 +156,13 @@ for selection in application migration gateway observability infrastructure all;
       echo 'Setup Job must not start before observability readiness.' >&2
       exit 1
     fi
-    [[ -f "${runtime_dir}/deploy/overlays/local/observability/kibana/setup-job.yaml" ]]
-    kubectl kustomize "${runtime_dir}/deploy/overlays/local/logging-collector" >"${test_dir}/logging.yaml"
+    [[ -f "${runtime_dir}/infra/deploy/overlays/local/observability/kibana/setup-job.yaml" ]]
+    kubectl kustomize "${runtime_dir}/infra/deploy/overlays/local/logging-collector" >"${test_dir}/logging.yaml"
   else
-    [[ ! -e "${runtime_dir}/deploy/overlays/local/logging-collector" ]]
+    [[ ! -e "${runtime_dir}/infra/deploy/overlays/local/logging-collector" ]]
   fi
-  [[ ! -e "${runtime_dir}/deploy/overlays/local/infrastructure/auth-secret.env" ]]
-  [[ ! -d "${runtime_dir}/deploy/environments" ]]
+  [[ ! -e "${runtime_dir}/infra/deploy/overlays/local/infrastructure/auth-secret.env" ]]
+  [[ ! -d "${runtime_dir}/infra/deploy/environments" ]]
   rm -rf -- "${runtime_dir}"
   runtime_dir=""
 done
@@ -219,12 +219,12 @@ for langfuse_enabled in 0 1; do
   LANGFUSE_ENABLED="${langfuse_enabled}"
   deployment_components_select observability deployment
   cluster_deploy_prepare_overlays >"${test_dir}/staging.log"
-  expected_collector="${project_dir}/deploy/overlays/local/observability/otel-collector/config.yaml"
+  expected_collector="${project_dir}/infra/deploy/overlays/local/observability/otel-collector/config.yaml"
   if [[ "${langfuse_enabled}" == 1 ]]; then
-    expected_collector="${project_dir}/deploy/langfuse/collector-config.yaml"
+    expected_collector="${project_dir}/infra/deploy/langfuse/collector-config.yaml"
   fi
-  cmp "${expected_collector}" "${runtime_dir}/deploy/overlays/local/observability/otel-collector/config.yaml"
-  kubectl kustomize "${runtime_dir}/deploy/overlays/local/observability" >"${test_dir}/langfuse-${langfuse_enabled}.yaml"
+  cmp "${expected_collector}" "${runtime_dir}/infra/deploy/overlays/local/observability/otel-collector/config.yaml"
+  kubectl kustomize "${runtime_dir}/infra/deploy/overlays/local/observability" >"${test_dir}/langfuse-${langfuse_enabled}.yaml"
   rm -rf -- "${runtime_dir}"
   runtime_dir=""
 done

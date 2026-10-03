@@ -346,9 +346,9 @@
     - infra/jenkins/platform-plugins.json
     - infra/jenkins/repository.groovy
     - infra/jenkins/assurance.groovy
-    - Jenkinsfile.platform
-    - Jenkinsfile.vm
-    - Jenkinsfile.k3s
+    - infra/jenkins/Jenkinsfile.platform
+    - infra/jenkins/Jenkinsfile.vm
+    - infra/jenkins/Jenkinsfile.k3s
 - name: Require authentication before the first controller listener opens
   ansible.builtin.template:
     src: fresh-config.xml.j2

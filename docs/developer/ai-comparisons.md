@@ -2,7 +2,7 @@
 
 ## Shared prompts
 
-The [architecture contract](../design/system-architecture.md#shared-prompt-provenance-and-faction-memory)
+The [architecture contract](../architecture/system-architecture.md#shared-prompt-provenance-and-faction-memory)
 describes shared prompts, provenance, and bounded faction memory. The active
 embedded templates live in `backend/internal/ai/prompts/`; each purpose has one current file, with older revisions kept in Git.
 The bundle version and content digest are maintained in `internal/ai/prompts.go`. Rebuild backend binaries after editing active templates,
@@ -133,7 +133,7 @@ fallback; unresolved decisions at the deadline still use `timeout`.
 
 After changing embedded prompts, rebuild/restart the host agent. Deploy the
 backend to pick up MCP diagnostics and engine fallback attribution. For dev,
-run `./deploy-local.sh`, then stop and restart `./run-k8s-cli-agent.sh` in its
+run `./scripts/cd/deploy-local.sh`, then stop and restart `./scripts/dev/run-k8s-cli-agent.sh` in its
 terminal before starting a new battle.
 
 ## Unit knowledge retrieval
@@ -186,8 +186,7 @@ metadata, never full knowledge text. Run the existing compare command with the
 same corpus and different configuration files to compare budgets.
 
 Free scripted comparisons validate integration, not tactical improvement. Live
-comparisons remain opt-in; full battles are needed for outcome claims. This
-worker-context feature does not complete AB-76's separate rules-coach experiment.
+comparisons remain opt-in; full battles are needed for outcome claims.
 
 ## Explicit unit purchases
 
@@ -225,7 +224,7 @@ optional orders field. Both model providers share the updated purchasing prompt.
 Deploy API, MCP, engine, and agent together and restart the host CLI agent so tool
 schemas and prompts agree. Existing battle JSON requires no database migration.
 
-See [content libraries and scenario selections](content-library.md) for shared units,
+See [content libraries and scenario selections](../developer/content-library.md) for shared units,
 buildings, upgrades, roster filtering, and version publication.
 
 For expanded scenarios, recruitment orders may specify `sourceBuildingId` from
@@ -234,7 +233,7 @@ shared across sources. Unavailable explicit sources and blocked Barracks orders
 are skipped without substitution; blocked castle spawns or an unaffordable order
 stop remaining purchases. Typed `constructionOrders` select building definitions
 from `legal.buildings` at `legal.economySites`. See
-[Frontier Siege](../design/frontier-siege.md) for the new mechanics and balance probes.
+[Frontier Siege](../architecture/frontier-siege.md) for the new mechanics and balance probes.
 
 ## Compact unit context
 
@@ -328,5 +327,5 @@ input/output, optional cached/reasoning subsets, model-call count and CLI-invoca
 count. Existing top-level totals remain compatible. A missing optional counter
 means unavailable, not zero. CLI totals aggregate the CLI session, while API
 counts sum reported model attempts; neither is an initial-context token count.
-Use [Langfuse](langfuse.md) for production model/tool timing and context section
+Use [Langfuse](../operations/langfuse.md) for production model/tool timing and context section
 bytes alongside these isolated decision-quality comparisons.

@@ -72,7 +72,7 @@ print(json.dumps({'agent_unit_sha256':hashlib.sha256(unit.read_bytes()).hexdiges
 def source_hash():
     files = [ROOT / name for name in ('scripts/infra/ci-bootstrap.py', 'scripts/infra/ci-runtime.py',
              'scripts/infra/seed-platform.py', 'scripts/infra/server.py', 'scripts/infra/operation-lock.py',
-             'infra/ansible/ci.yml', 'Jenkinsfile.platform', 'Jenkinsfile.vm', 'Jenkinsfile.k3s')]
+             'infra/ansible/ci.yml', 'infra/jenkins/Jenkinsfile.platform', 'infra/jenkins/Jenkinsfile.vm', 'infra/jenkins/Jenkinsfile.k3s')]
     for directory in ('infra/jenkins', 'infra/ansible/roles/ci_services'):
         files.extend(p for p in (ROOT / directory).rglob('*') if p.is_file())
     return hashlib.sha256(json.dumps({str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()

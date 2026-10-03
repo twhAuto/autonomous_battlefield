@@ -1,11 +1,11 @@
 # Persistent K3s VM provisioning
 
-[AB-126 — Provision a persistent K3s VM with Terraform and libvirt](https://app.notion.com/p/3eab7a19f8f7812e8638e2cf7b7e978a)
-provides the VM foundation. It creates an Ubuntu 24.04 guest and exports Ansible
-connection facts. [K3s installation and mounting guest data](k3s-platform.md) are AB-128; delivery
-integration is AB-129. Production has since migrated to this VM under AB-132;
-see the dated [rebuild contract](server-rebuild-contract.md). A VM provisioning
-operation alone never migrates an application or its database.
+The Terraform/libvirt workflow creates an Ubuntu 24.04 guest and exports Ansible
+connection facts. [K3s platform configuration](k3s-platform.md) owns installation
+and mounting guest data; [K3s delivery](k3s-delivery.md) owns application rollout
+and database cutover. See the [rebuild contract](server-rebuild-contract.md) for
+the production layout and state locations. A VM provisioning operation alone
+never migrates an application or its database.
 
 ## Prerequisites and storage
 
@@ -30,7 +30,8 @@ The reviewed defaults in [`infra/libvirt/vm.json`](../../infra/libvirt/vm.json) 
 | Data disk | 250 GiB, retained across OS/domain replacement |
 | Host reserve | 64 GiB plus 4 GiB allowance for the base image |
 
-Images live under the AB-134 contract's `/srv/battlefield-data/libvirt/images`.
+Images live under the [host storage contract](server-bootstrap.md#terraform-and-guest-storage-contract)
+at `/srv/battlefield-data/libvirt/images`.
 The guard verifies the actual mount UUID before planning and again before apply.
 There is no fallback to the root filesystem. The storage pool uses the prepared
 directory without building, formatting or deleting it. Ubuntu/Jenkins/SonarQube
@@ -42,7 +43,7 @@ memory, leaving at least 2 GiB for host services. This is an operation-time chec
 not continuous disk monitoring or a quota. Other writes can consume the reserve;
 there is no automatic expansion, pruning or database retention in this slice.
 
-The guest data volume starts blank. The AB-128 Ansible role identifies it by
+The guest data volume starts blank. The [K3s platform role](k3s-platform.md) identifies it by
 `/dev/disk/by-id/virtio-battlefield-k3s-data`, validates existing filesystem identity,
 and mounts it before K3s starts. Routine provisioning never formats this volume.
 
@@ -131,8 +132,8 @@ to Ansible. No IP copying or workstation private-key upload is necessary.
 ## OS replacement and protected data
 
 `REPLACE_OS=true` explicitly plans replacement of the OS disk and domain. Review
-that downtime and finish AB-128's data-mount/restore procedure before using this
-on an active K3s service. The seed volume may also be replaced after reviewed
+that downtime and finish the [K3s platform data-mount and restore procedure](k3s-platform.md)
+before using this on an active K3s service. The seed volume may also be replaced after reviewed
 configuration changes. Persistent data, network, pool and base image have
 Terraform `prevent_destroy` protection; the wrapper additionally rejects their
 deletion or recreation after a missing-resource refresh. It has no destroy action.

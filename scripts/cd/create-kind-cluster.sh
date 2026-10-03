@@ -26,7 +26,7 @@ if [[ -n "${nodes}" ]]; then
   done <<<"${nodes}"
 else
   [[ ! -f "${profile}" ]] || { echo 'Registered cluster is missing; refusing to replace its identity or data.' >&2; exit 1; }
-  kind create cluster --name "${KIND_CLUSTER_NAME}" --config "${project_dir}/deploy/kind.yaml"
+  kind create cluster --name "${KIND_CLUSTER_NAME}" --config "${project_dir}/infra/deploy/kind.yaml"
 fi
 if [[ ! -f "${profile}" ]]; then
   # Setup must use the kubeconfig created/exported by Kind, not the current context.
@@ -52,4 +52,4 @@ version="${ENVOY_GATEWAY_VERSION:-v1.9.0}"
 [[ "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
 kubectl --context "${KUBERNETES_CONTEXT}" apply --server-side -f "https://github.com/envoyproxy/gateway/releases/download/${version}/install.yaml"
 kubectl --context "${KUBERNETES_CONTEXT}" wait --namespace envoy-gateway-system --for=condition=Available deployment/envoy-gateway --timeout=300s
-echo "Dev cluster ready. Configure dev secrets, then run ./deploy-local.sh (${TARGET_URL})."
+echo "Dev cluster ready. Configure dev secrets, then run ./scripts/cd/deploy-local.sh (${TARGET_URL})."

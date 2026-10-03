@@ -1,52 +1,13 @@
-# Jenkins and GitHub deployment pipeline
+# Jenkins operations
 
-Production now runs on the server at `192.168.1.126` (Jenkins port `8080`).
+For contributor checks and local reproduction, see [continuous integration](../developer/ci.md).
+This guide covers controller and agent administration, credentials, delivery and recovery.
+
+The production Jenkins controller runs on the server at `192.168.1.126` (Jenkins port `8080`).
 For initial setup or migration of an existing server, complete the
 [server registration](environments.md#production-setup).
 For repeatable installation or adoption, use the [Ansible CI bootstrap](ci-bootstrap.md).
 The manual installation sections below remain reference material for the existing services.
-
-The repository owns its pipeline in `Jenkinsfile`. GitHub stores the source;
-the local Jenkins Multibranch job discovers branches and pull requests through
-periodic scans, checks out the exact commit, and executes the pipeline on an
-agent. A public Jenkins installation can use a GitHub webhook instead.
-
-```text
-Pull request targeting dev or main
-          |
-          `--> lint, test with coverage, publish a GitHub Coverage check,
-               pass the SonarQube quality gate, render, build immutable
-               images, and scan
-
-Merge into main
-          |
-          `--> regenerate coverage, pass the SonarQube quality gate,
-               rebuild and scan the exact merge SHA, migrate, deploy,
-               smoke test, and rollback on failure
-```
-
-The diagram summarizes the branch split; [pipeline behavior](#pipeline-behavior)
-lists all current gates, publication, and verification stages.
-
-The Declarative Pipeline groups these paths under `PR verification` and
-`Main delivery`. Jenkins still displays the inactive parent stage as skipped so
-the branch decision remains auditable, but it does not execute that parent's
-nested stages. Within an active `Main delivery` run, image and deployment stages
-can still appear as skipped when the changed-component classifier determines
-that they are unnecessary; those skips are intentional and remain visible.
-
-PRs targeting `dev` or `main`, main delivery and assurance use the existing
-`battlefield-production` agent. Direct pushes to non-`main` branches skip delivery.
-The owner accepts a shared host and Docker daemon for this small, trusted project;
-no separate CI VM or new agent label is required. Keep the assurance job pinned to
-trusted main. Delivery stays main-only and production credentials are bound only
-in the stages that need them, but these controls do not isolate PR code from the
-shared host. See the [shared-agent tradeoff](#production-hardening-rollout).
-
-The `dev` and `main` branches must require pull requests, the Jenkins and
-Coverage checks, and disallow direct pushes. Jenkins sees a `main` update rather
-than a distinct "PR merged" pipeline condition, so the branch rule is what makes
-a `main` update equivalent to an approved merge.
 
 The deployment regression gate includes real Ansible input tests. Agents need
 Python 3.12–3.14 and access to PyPI on the first run of each pinned runtime/Python
@@ -64,7 +25,7 @@ from an external operator session; merging application code does not run it.
 
 ## Reviewed host operations
 
-The separate [platform host job](platform-jobs.md) uses `Jenkinsfile.platform`
+The separate [platform host job](platform-jobs.md) uses `infra/jenkins/Jenkinsfile.platform`
 from trusted `main` for manual plan/apply/verify. Its installer registers inputs,
 binds folder credentials and creates the job; it never starts a build. Normal
 `main` delivery remains application-only. Install the required Lockable Resources
@@ -272,7 +233,7 @@ Create these narrowly scoped Jenkins credentials before enabling main delivery:
 | `battlefield-gemini-api-key` | secret text | manual Gemini evaluation only |
 
 Never expose signing or provider credentials to pull-request stages. Configure a
-second Pipeline job using `Jenkinsfile.assurance`; schedule only its `nightly`
+second Pipeline job using `infra/jenkins/Jenkinsfile.assurance`; schedule only its `nightly`
 mode. All other modes require an operator trigger and explicit bounds. AWS
 promotion additionally requires an assumed agent role or other short-lived AWS
 credential source; do not store long-lived access keys in the repository.
@@ -341,7 +302,7 @@ Use a separate agent so builds do not execute on the Jenkins controller:
    (`disableConcurrentBuilds()`), which is what serializes production rollouts.
    Size executors to the host: each frontend stage runs Chromium, and backend stages
    run PostgreSQL containers. Before adding a job that deploys or drills outside
-   `main` delivery (such as `Jenkinsfile.assurance`), serialize it with main
+   `main` delivery (such as `infra/jenkins/Jenkinsfile.assurance`), serialize it with main
    delivery, for example with the Lockable Resources plugin.
 3. Add the label `battlefield-production`, shared by PR verification, main
    delivery and assurance for this owner-operated deployment.
@@ -412,7 +373,7 @@ The repository includes a persistent local SonarQube Community Build and
 PostgreSQL Compose stack. It is separate from the application database:
 
 ```bash
-docker compose -f quality/sonarqube/compose.yaml up -d
+docker compose -f infra/sonarqube/compose.yaml up -d
 curl --fail http://localhost:9000/api/system/status
 ```
 
@@ -478,7 +439,7 @@ The SonarQube data is stored in named Docker volumes and survives restarts. Stop
 it without deleting its data with:
 
 ```bash
-docker compose -f quality/sonarqube/compose.yaml stop
+docker compose -f infra/sonarqube/compose.yaml stop
 ```
 
 Do not use `docker compose down -v` unless you intentionally want to erase the
@@ -659,26 +620,7 @@ local iteration; local Jenkins and SonarQube need not be started.
 | Frontend proxy returns `502` | Confirm `API_UPSTREAM` renders as `battlefield-api.battlefield.svc.cluster.local:8080`, then inspect frontend logs and the `battlefield-api` Service endpoints. |
 | `kind load docker-image` says the image is not present and is loading | This is normal informational output: kind is copying a host Docker image into the cluster node. |
 
-## Pipeline behavior
-
-For a pull request targeting `dev` or `main`, the pipeline performs:
-
-1. Clean checkout of the exact GitHub commit.
-2. Parallel Go lint, isolated PostgreSQL-backed tests (coverage and race checks),
-   frontend coverage/build, source security and policy validation, fuzz smoke,
-   deterministic AI evaluation, and deployment-script checks.
-3. Publication of the GitHub `Coverage` check.
-4. SonarQube preview-project analysis and quality-gate enforcement for the exact
-   PR checkout.
-5. Local image builds, frontend container startup/static-asset verification and
-   vulnerability scans, without publication or production credentials.
-
-Backend integration packages run concurrently against the disposable PostgreSQL
-database. Migration fixtures use the same advisory lock as startup, including
-tests that upgrade or downgrade selected versions. Separate schemas alone do not
-isolate shared role/grant changes. A failed backend test stops the coverage run;
-the published `Unavailable` backend coverage result is not evidence of a low
-coverage percentage. Inspect the failing test before changing any coverage gate.
+## Production delivery
 
 For `main`, the pipeline performs:
 
@@ -700,31 +642,7 @@ For `main`, the pipeline performs:
 
 See [deployment component mapping](deployment.md#change-to-deployment-mapping)
 for the paths that select each rollout stage and
-[supply-chain assets](../../deploy/supply-chain/README.md) for the trust root.
-
-Both PR and main deployment-script checks run
-`./scripts/test/test-frontend-image.sh`: it copies tracked frontend inputs into a
-private temporary context with files `0600` and directories `0700`, builds the
-actual Dockerfile, verifies startup, and proves an unreadable template is rejected.
-It needs Docker with BuildKit and access to the configured base-image/package
-registries; it uses the default daemon-backed builder and removes its child image
-before the parent and temporary files. It deliberately runs for every PR/main
-quality check, including changes that select no deployment, to exercise startup
-independently of the real checkout modes. BuildKit can reuse this regression's
-cache across runs.
-
-`scripts/ci/verify-frontend-image.py IMAGE` checks an already-local image as UID/GID
-101 with a read-only root filesystem, dropped capabilities, no new privileges,
-and the production writable paths in temporary filesystems. It publishes no ports,
-uses no application credentials and disables container networking. Its resolver
-input is pinned to loopback so host DNS changes cannot invalidate this isolated
-check. It checks all three Kubernetes probes, the built index and its JavaScript/CSS entry assets over
-loopback HTTP. PR/local image builds invoke it after building the frontend; main
-pulls and checks the scanned frontend digest before signing or rollout. Failures
-print Docker diagnostics and bounded container logs and remove only that check's
-container. The published-image gate removes digest references it pulled solely for
-verification on success or failure, while retaining references already present on
-the agent. Cleanup failure emits a warning. These image checks do not verify the API proxy or replace Kubernetes deployment smoke tests.
+[supply-chain assets](../../infra/deploy/supply-chain/README.md) for the trust root.
 
 The deployment keeps the normal application rollout budget at five minutes but
 allows 15 minutes for the observability group as a whole. A new single-node
@@ -752,7 +670,7 @@ Local dev loads images into Kind. Production pulls verified GHCR digests.
 ### AWS promotion limits
 
 The separate AWS promotion helper copies verified image subjects and their
-evidence to ECR. The `aws-promotion` mode in `Jenkinsfile.assurance` does not
+evidence to ECR. The `aws-promotion` mode in `infra/jenkins/Jenkinsfile.assurance` does not
 produce or explicitly select a successful build's `artifacts/build/images.env`.
 Its cleanup removes `CI_WORK_ROOT`, while that default artifact path is in the
 retained checkout. Do not treat a file left by an earlier run as the selected
@@ -764,36 +682,7 @@ The [AWS reference](../../infra/aws/README.md) provisions infrastructure; an
 application overlay, workload secret integration and account-specific deployment
 verification are still required.
 
-## Run local build and deployment checks without Jenkins
-
-After [dev environment setup](environments.md#wsl-setup-and-normal-use) and
-committing the intended source so the worktree is clean:
-
-```bash
-./scripts/ci/lint-go.sh
-./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
-(cd frontend && npm ci && npm test -- --coverage && npm run build)
-BUILD_NUMBER=1 ./scripts/ci/build-images.sh
-./scripts/ci/scan-images.sh "$(git rev-parse HEAD)"
-ROLLBACK_ON_FAILURE=1 ./scripts/cd/deploy.sh "$(git rev-parse HEAD)"
-./scripts/cd/smoke-test.sh
-```
-
-Set `DEPLOY_COMPONENTS=frontend`, `backend`, `observability`, or another
-supported comma-separated selection on the build, scan, and deploy commands to
-exercise an incremental path. Run
-`./scripts/test/test-deployment-components.sh` to verify the path classifier.
-
-These commands exercise local build/deploy checks after dev environment setup;
-they do not publish, sign, or verify production registry artifacts or validate Jenkins
-Declarative Pipeline syntax. Use the configured Jenkins Multibranch job for the
-final `Jenkinsfile` validation.
-
-The source-security stage logs each failed check and its report path. Inspect the
-matching file under the build's archived `artifacts/security/` directory to
-separate dependency findings from rendered-manifest or workload-policy failures.
-
-### Trivy database download recovery
+## Trivy database download recovery
 
 The source-security launcher prepares the vulnerability database before scanning,
 using the persistent Docker volume `autonomous-battlefield-trivy-cache` (override
@@ -810,7 +699,7 @@ connectivity to those registries and rerun after recovery. The launcher tests st
 networked scanners to verify registry fallback and failure propagation; they do
 not establish that the remote registries are reachable.
 
-### k6 HTTPS trust
+## k6 HTTPS trust
 
 The k6 launcher mounts the Linux agent's `/etc/ssl/certs/ca-certificates.crt`
 read-only into the container and sets `SSL_CERT_FILE` to that mount. This makes

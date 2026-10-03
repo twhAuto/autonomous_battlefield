@@ -1,6 +1,6 @@
 # OrdinalFrontier Frontend Guide
 
-[Codebase index](codebase-guide.md) · [System architecture](system-architecture.md)
+[Codebase index](codebase-guide.md) · [System architecture](../architecture/system-architecture.md)
 
 ## Frontend organization
 

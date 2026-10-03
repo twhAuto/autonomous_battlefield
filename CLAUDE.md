@@ -11,5 +11,5 @@ for PR preparation use
 documentation work use
 [write-project-docs](.agents/skills/write-project-docs/SKILL.md); for Notion
 backlog tickets use [track-backlog](.agents/skills/track-backlog/SKILL.md).
-Follow [the cross-review guide](docs/operations/cross-review.md) for the
+Follow [the cross-review guide](docs/developer/cross-review.md) for the
 actual reviewer invocation and author-response protocol.

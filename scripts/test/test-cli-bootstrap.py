@@ -29,7 +29,7 @@ def config(bundle='/private/bundle'):
 
 
 def network():
-    tree = ET.fromstring((ROOT / 'deploy/agent-vm/network.xml').read_text())
+    tree = ET.fromstring((ROOT / 'infra/deploy/agent-vm/network.xml').read_text())
     ET.SubElement(tree, 'uuid').text = UUID
     return tree
 
@@ -173,7 +173,7 @@ class CLIBootstrapTests(unittest.TestCase):
                 cli.host_files(value)
 
     def test_firewall_adoption_tolerates_comments_whitespace_and_counters_only(self):
-        desired = (ROOT / 'deploy/agent-vm/host/firewall.nft').read_text()
+        desired = (ROOT / 'infra/deploy/agent-vm/host/firewall.nft').read_text()
         live = '\n'.join(line for line in desired.splitlines() if not line.startswith(('add ', 'flush ')))
         live = live.replace('counter ', 'counter packets 14 bytes 1200 ')
         self.assertTrue(boundary.nft_equivalent(live, desired))
@@ -194,7 +194,7 @@ class CLIBootstrapTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'redirected'): cli.host_files(value)
 
     def test_live_and_persistent_vm_boundary_identity(self):
-        expected = (ROOT / 'deploy/agent-vm/filter.xml').read_text()
+        expected = (ROOT / 'infra/deploy/agent-vm/filter.xml').read_text()
         live_domain=domain(); live_domain.set('type','kvm'); live_domain.set('id','7')
         nic=live_domain.find('devices/interface'); nic.find('source').set('bridge','bf-agent0'); nic.find('source').set('portid',UUID)
         ET.SubElement(nic,'target',dev='vnet9'); ET.SubElement(nic,'alias',name='net0')
@@ -275,7 +275,7 @@ class CLIBootstrapTests(unittest.TestCase):
 
 
     def test_guest_unit_preserves_worker_boundary_and_rejects_credential_injection(self):
-        unit = (ROOT / 'deploy/agent-vm/worker.service').read_text()
+        unit = (ROOT / 'infra/deploy/agent-vm/worker.service').read_text()
         cli.validate_guest_unit(unit)
         for modified in [unit.replace('User=battlefield-worker','User=root'),
                          unit+'\nExecStartPre=/bin/sh\n', unit+'\nEnvironment=SECRET=value\n',
@@ -362,7 +362,7 @@ class GuardModuleTests(unittest.TestCase):
             pass
         contract=config()['host'] if kind=='host' else {'machine_id':'a'*32,'domain_uuid':UUID}
         params={'kind':kind,'contract':contract,'files':[{'dest':'/etc/battlefield-agent/firewall.nft' if kind=='host' else '/etc/battlefield-agent/config.yaml'}],
-                'filter_xml':(ROOT/'deploy/agent-vm/filter.xml').read_text(),'firewall':'expected firewall',
+                'filter_xml':(ROOT/'infra/deploy/agent-vm/filter.xml').read_text(),'firewall':'expected firewall',
                 'adopt_existing':changes.get('adopt',False),'verify':changes.get('verify',False)}
         result={'owned':changes.get('owned',True),'changes':[],'content_changes':changes.get('content_changes',[]),'marker':{}}
         network_xml=ET.tostring(network(),encoding='unicode')

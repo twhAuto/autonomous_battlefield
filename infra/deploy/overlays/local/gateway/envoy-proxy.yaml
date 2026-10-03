@@ -1,5 +1,5 @@
 # Configures Envoy's service as NodePort 30080, matching the host mapping in
-# deploy/kind.yaml.
+# infra/deploy/kind.yaml.
 
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
