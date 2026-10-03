@@ -244,7 +244,7 @@ def main():
     before = {name: base.virsh('domuuid', name) for name in base.virsh('list', '--all', '--name').splitlines() if name}
     networks = {name: base.virsh('net-uuid', name) for name in base.virsh('net-list', '--all', '--name').splitlines() if name}
     report = {'passed': False, 'cleaned_up': False, 'scope': 'private application delivery; no public cutover or CLI VM retargeting',
-              'source_sha256': {str(p.relative_to(ROOT)): base.digest(p) for directory in ('scripts/cd','scripts/lib','scripts/infra','deploy','infra/ansible','infra/k3s')
+              'source_sha256': {str(p.relative_to(ROOT)): base.digest(p) for directory in ('scripts/cd','scripts/lib','scripts/infra','infra/deploy','infra/ansible','infra/k3s')
                                  for p in (ROOT/directory).rglob('*') if p.is_file() and '__pycache__' not in p.parts}}
     with tempfile.TemporaryDirectory(prefix='bf-delivery-rehearsal-') as temporary:
         work = Path(temporary)

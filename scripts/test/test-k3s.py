@@ -216,7 +216,7 @@ if a!=b or '--- preserve payload' not in a:raise ValueError('Diff paths leak or 
     def test_all_jobs_use_trusted_main_without_automatic_triggers(self):
         import xml.etree.ElementTree as ET
         job = ET.fromstring(seed.job_xml('k3s'))
-        self.assertEqual(job.findtext('.//scriptPath'), 'Jenkinsfile.k3s')
+        self.assertEqual(job.findtext('.//scriptPath'), 'infra/jenkins/Jenkinsfile.k3s')
         self.assertEqual(job.findtext('.//hudson.plugins.git.BranchSpec/name'), '*/main')
         self.assertFalse(list(job.find('triggers')))
 

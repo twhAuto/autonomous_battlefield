@@ -140,7 +140,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 http.server.HTTPServer(('127.0.0.1',28084),Handler).serve_forever()
 ''', '0755')
     for name in ('filter', 'network'):
-        source = ROOT / ('deploy/agent-vm/' + name + '.xml')
+        source = ROOT / ('infra/deploy/agent-vm/' + name + '.xml')
         virsh('nwfilter-define' if name == 'filter' else 'net-define', str(source))
     virsh('net-start', 'battlefield-agent'); virsh('net-autostart', 'battlefield-agent')
     # Tiny TCG domain exercises real libvirt ownership/NIC checks. It has no workload OS.
@@ -170,7 +170,7 @@ def host_variables():
     return {'ansible_connection':'local','ansible_python_interpreter':'/usr/bin/python3',
             'ansible_become_exe':'/usr/bin/sudo.ws' if Path('/usr/bin/sudo.ws').exists() else '/usr/bin/sudo',
             'cli_kind':'host','cli_units':cli.boundary.HOST_UNITS,'cli_contract':cfg['host'],
-            'cli_files':cli.host_files(cfg),'cli_filter_xml':(ROOT/'deploy/agent-vm/filter.xml').read_text(),
+            'cli_files':cli.host_files(cfg),'cli_filter_xml':(ROOT/'infra/deploy/agent-vm/filter.xml').read_text(),
             'cli_firewall':(Path(cfg['bundle'])/'firewall.nft').read_text()}
 
 
@@ -246,12 +246,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
 http.server.HTTPServer(('127.0.0.1',8083),Handler).serve_forever()
 ''')
     guest_config=PRIVATE/'config.yaml'
-    guest_config.write_text((ROOT/'deploy/agent-vm/config.yaml').read_text().replace('enabled: true','enabled: false'))
+    guest_config.write_text((ROOT/'infra/deploy/agent-vm/config.yaml').read_text().replace('enabled: true','enabled: false'))
     artifacts={}
     for name in ('codex','codex-code-mode-host'):
         path=PRIVATE/name; path.write_text('#!/bin/sh\nprintf "codex-cli 0.155.0\\n"\n'); artifacts[name]=path
     files=[cli.file_entry(worker,'/usr/local/bin/battlefield-agent','0755'),
-           cli.file_entry(ROOT/'deploy/agent-vm/worker.service','/etc/systemd/system/battlefield-worker.service','0644'),
+           cli.file_entry(ROOT/'infra/deploy/agent-vm/worker.service','/etc/systemd/system/battlefield-worker.service','0644'),
            cli.file_entry(ROOT/'scripts/ops/verify-agent-isolation.py','/usr/local/bin/verify-agent-isolation.py','0755'),
            cli.file_entry(guest_config,'/etc/battlefield-agent/config.yaml','0644')]
     files += [cli.file_entry(path,'/usr/local/bin/'+name,'0755') for name,path in artifacts.items()]

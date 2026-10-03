@@ -362,10 +362,10 @@ class VMTests(unittest.TestCase):
 
     def test_vm_job_uses_trusted_main_and_explicit_replacement_default(self):
         job = ET.fromstring(seed.job_xml('vm'))
-        self.assertEqual(job.findtext('definition/scriptPath'), 'Jenkinsfile.vm')
+        self.assertEqual(job.findtext('definition/scriptPath'), 'infra/jenkins/Jenkinsfile.vm')
         self.assertEqual(job.findtext('.//hudson.plugins.git.BranchSpec/name'), '*/main')
         self.assertEqual(job.findtext('.//hudson.model.BooleanParameterDefinition/defaultValue'), 'false')
-        pipeline = (ROOT/'Jenkinsfile.vm').read_text()
+        pipeline = (ROOT/'infra/jenkins/Jenkinsfile.vm').read_text()
         self.assertIn("lock(resource: 'battlefield-production-platform')", pipeline)
         self.assertIn("submitter: 'whtan'", pipeline)
         self.assertNotIn("credentialsId: 'host-inputs'", pipeline)

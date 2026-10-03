@@ -151,12 +151,12 @@ historical inspection. Disable the trace links by removing the
 
 ```bash
 helm template langfuse langfuse --repo https://langfuse.github.io/langfuse-k8s --version 2.1.0 \
-  -n battlefield -f deploy/langfuse/values.yaml \
+  -n battlefield -f infra/deploy/langfuse/values.yaml \
   --api-versions clickhouse.com/v1alpha1/ClickHouseCluster \
   --api-versions clickhouse.com/v1alpha1/KeeperCluster >/dev/null
 
 docker run --rm --network none -e LANGFUSE_AUTHORIZATION='Basic dGVzdDp0ZXN0' \
-  -v "$PWD/deploy/langfuse/collector-config.yaml:/etc/otel/config.yaml:ro" \
+  -v "$PWD/infra/deploy/langfuse/collector-config.yaml:/etc/otel/config.yaml:ro" \
   otel/opentelemetry-collector-contrib:0.135.0 validate --config=/etc/otel/config.yaml
 ```
 

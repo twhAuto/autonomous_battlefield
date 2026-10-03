@@ -26,7 +26,7 @@ func loadSpecification(t *testing.T) specification {
 	if !ok {
 		t.Fatal("cannot locate the test file")
 	}
-	path := filepath.Join(filepath.Dir(file), "..", "..", "..", "docs", "reference", "openapi.yaml")
+	path := filepath.Join(filepath.Dir(file), "..", "..", "..", "docs", "architecture", "openapi.yaml")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read OpenAPI document: %v", err)

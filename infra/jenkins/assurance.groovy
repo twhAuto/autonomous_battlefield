@@ -14,7 +14,7 @@ pipelineJob('battlefield-assurance') {
                     branch('*/main')
                 }
             }
-            scriptPath('Jenkinsfile.assurance')
+            scriptPath('infra/jenkins/Jenkinsfile.assurance')
             lightweight(false)
         }
     }

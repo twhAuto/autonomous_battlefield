@@ -10,7 +10,7 @@
 
 ## AI assistance
 
-<!-- Required by docs/security/ai-development-policy.md. -->
+<!-- Required by docs/developer/ai-development-policy.md. -->
 
 - **Used:** yes / no. If yes, which tools and models.
 - **Affected files or concerns:**

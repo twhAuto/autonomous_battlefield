@@ -63,18 +63,18 @@ class LaunchTests(unittest.TestCase):
                 'ports': [{'protocol': 'TCP', 'port': 8080}]}])
 
     def test_vm_has_no_forwarding_and_explicit_egress(self):
-        network = ET.parse(ROOT/'deploy/agent-vm/network.xml').getroot()
+        network = ET.parse(ROOT/'infra/deploy/agent-vm/network.xml').getroot()
         self.assertIsNone(network.find('forward'))
         self.assertEqual(network.find('dns').get('enable'), 'no')
-        rules = ET.parse(ROOT/'deploy/agent-vm/filter.xml').getroot().findall('rule')
+        rules = ET.parse(ROOT/'infra/deploy/agent-vm/filter.xml').getroot().findall('rule')
         outbound = [r.find('tcp') for r in rules if r.get('action')=='accept' and r.get('direction')=='out']
         self.assertTrue(all(r.get('dstipaddr')=='192.168.234.1' for r in outbound))
         self.assertEqual({r.get('dstportstart') for r in outbound if r.get('state')!='ESTABLISHED'}, {'3128','18084'})
         self.assertTrue(any(r.get('action')=='drop' and r.find('all-ipv6') is not None for r in rules))
-        proxy = (ROOT/'deploy/agent-vm/squid.conf').read_text()
+        proxy = (ROOT/'infra/deploy/agent-vm/squid.conf').read_text()
         self.assertLess(proxy.index('http_access deny private'), proxy.index('http_access allow'))
         self.assertIn('http_access deny all', proxy)
-        worker = (ROOT/'deploy/agent-vm/worker.service').read_text()
+        worker = (ROOT/'infra/deploy/agent-vm/worker.service').read_text()
         self.assertIn('User=battlefield-worker', worker)
         self.assertIn('KillMode=control-group', worker)
         self.assertNotIn('CAPABILITY_SECRET', worker)

@@ -1,8 +1,8 @@
 # Deployment learning guide
 
-Application CD now uses `scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh`;
-existing Kind-named commands remain compatible launchers. The registered driver
-selects Kind or K3s. See [K3s delivery](k3s-delivery.md) for retained storage,
+Application CD uses `deploy.sh`, `rollback.sh` and `smoke-test.sh` in `scripts/cd/`.
+The registered driver selects Kind or K3s. See [K3s delivery](k3s-delivery.md) for
+retained storage,
 controller ownership, private gateway checks and the separate production cutover.
 Rollback records include applied migration versions; a changed ledger requires
 reviewed database recovery before automatic image rollback.
@@ -21,8 +21,8 @@ The application has production-shaped container images and a staged local
 Kubernetes deployment. The AWS infrastructure reference is in `infra/aws`; the application still needs
 an AWS overlay and account-specific provisioning and verification.
 
-The [deployment structure review](deployment-review.md) records the cleanup,
-remaining operational gaps, and optional simplifications.
+See [AWS promotion limits](jenkins.md#aws-promotion-limits) before using the
+optional assurance job to copy images to ECR.
 
 ## Limited-access production
 
@@ -47,7 +47,7 @@ signature/provenance checks. Missing approval requires operator recovery.
 Use the same application containers and core Kubernetes resources locally and
 on AWS:
 
-See the [system context](../design/system-architecture.md#2-system-context)
+See the [system context](../architecture/system-architecture.md#2-system-context)
 for the API, engine, MCP, agent, PostgreSQL, and optional Redis topology.
 PostgreSQL remains the durable queue in both deployment environments.
 
@@ -70,7 +70,7 @@ are separate from the application-deployment exercise.
 Start with native YAML resources and organize them with Kustomize:
 
 ```text
-deploy/
+infra/deploy/
 ├── base/
 │   ├── infrastructure/     Namespace and non-secret configuration
 │   ├── migration/          One-shot schema migration Job
@@ -115,11 +115,11 @@ stages registered secret inputs into temporary overlays. The remaining overlays
 can be rendered without credentials:
 
 ```bash
-kubectl kustomize deploy/overlays/local/migration
-kubectl kustomize deploy/overlays/local/application
-kubectl kustomize deploy/overlays/local/observability
-kubectl kustomize deploy/overlays/local/logging-collector
-kubectl kustomize deploy/overlays/local/gateway
+kubectl kustomize infra/deploy/overlays/local/migration
+kubectl kustomize infra/deploy/overlays/local/application
+kubectl kustomize infra/deploy/overlays/local/observability
+kubectl kustomize infra/deploy/overlays/local/logging-collector
+kubectl kustomize infra/deploy/overlays/local/gateway
 ```
 
 ## Why Helm comes later
@@ -175,7 +175,7 @@ the pinned version.
 
 ### 3. Register or resume WSL dev
 
-Follow the [environment setup guide](environments.md) to register the existing
+Follow the [local setup guide](../developer/local-setup.md) to register the existing
 cluster, prepare independent dev secrets, and deploy. For a stopped or absent
 dev cluster, `./scripts/cd/create-kind-cluster.sh` starts existing nodes or creates
 a first cluster. It never recreates a registered cluster and rejects `--recreate`.
@@ -191,10 +191,11 @@ production uses the separate K3s VM.
 
 After registering dev, run `./scripts/cd/prepare-dev-secrets.sh`. It preserves
 existing PostgreSQL credentials and creates independent authentication and
-capability secrets in the project-root `.env`. An existing `.env` is never overwritten. `./deploy-local.sh`
+capability secrets in the project-root `.env`. An existing `.env` is never overwritten. `./scripts/cd/deploy-local.sh`
 renders separate Kubernetes Secrets from `.env` and restarts application pods.
 Production uses the same application format in its private `.env`, beside
-`deployment.env`. See [environment setup](environments.md) for both layouts.
+`deployment.env`. See the [configuration model](../architecture/configuration.md#file-layout)
+for both layouts.
 
 Set `BATTLEFIELD_AUTH_COOKIE_SECURE=false` for the checked-in loopback HTTP
 gateway and `true` before publishing the application through an HTTPS tunnel.
@@ -219,11 +220,11 @@ that privilege.
 The `CODEX_CLI_PROFILE_AVAILABLE`, `GEMINI_CLI_PROFILE_AVAILABLE`, and
 `CLAUDE_CLI_PROFILE_AVAILABLE` values
 should normally remain `false` in the secret file. For a local kind battle,
-`run-k8s-cli-agent.sh` manages these flags while an authenticated host worker is
+`scripts/dev/run-k8s-cli-agent.sh` manages these flags while an authenticated host worker is
 connected:
 
 ```bash
-./run-k8s-cli-agent.sh codex
+./scripts/dev/run-k8s-cli-agent.sh codex
 ```
 
 The helper supports `auto`, `codex`, `antigravity`, `claude`, `both`, and `all`
@@ -232,7 +233,7 @@ The helper supports `auto`, `codex`, `antigravity`, `claude`, `both`, and `all`
 and silently skips a CLI whose version is outside its pinned family
 (`codex-cli 0.155.`, Antigravity `1.2.`, Claude `2.1.267`). Name the CLI explicitly
 to see why it was rejected. Pins are kept identical in `backend/config.yaml`,
-`deploy/base/infrastructure/configmap.yaml`, `deploy/agent-vm/config.yaml`, and
+`infra/deploy/base/infrastructure/configmap.yaml`, `infra/deploy/agent-vm/config.yaml`, and
 `scripts/dev/run-k8s-cli-agent.sh`. Before raising a pin, run the opt-in live
 decision test for that CLI (it uses its subscription allowance, synthetic data only):
 
@@ -251,10 +252,10 @@ battles, or `1` to reduce load; the database `runtime_policy.cli_concurrency`
 (4 by default) still caps executions across all workers:
 
 ```bash
-HOST_AGENT_CONCURRENCY=4 ./run-k8s-cli-agent.sh auto
+HOST_AGENT_CONCURRENCY=4 ./scripts/dev/run-k8s-cli-agent.sh auto
 ```
 
-Follow [Claude setup](claude-cli.md) for `./run-k8s-cli-agent.sh claude`.
+Follow [Claude setup](claude-cli.md) for `./scripts/dev/run-k8s-cli-agent.sh claude`.
 The retained `GEMINI_CLI_PROFILE_AVAILABLE` flag now controls Antigravity.
 Follow [Antigravity setup](antigravity-cli.md) to install and authenticate it. It verifies the
 tested CLI version and existing host login, forwards only the internal MCP
@@ -402,23 +403,24 @@ folder rule. Multiple changed paths contribute the union of their components;
 | Changed path | Selected components | Image build and scan |
 | --- | --- | --- |
 | Any `*.md`, `LICENSE`, `LICENSE.*`, or root `.gitignore` | `none` | None |
-| `infra/ansible/**`, `infra/jenkins/**`, `infra/libvirt/**`, `scripts/infra/**`, `scripts/ci/run-platform.sh`, `scripts/ci/run-vm.sh`, `Jenkinsfile.platform` or `Jenkinsfile.vm` (explicit platform provisioning) | `none` | None |
-| `quality/**` or `sonar-project.properties` | `none` | None |
+| `infra/jenkins/Jenkinsfile.assurance` | `all` | Backend and frontend images |
+| `infra/ansible/**`, other `infra/jenkins/**`, `infra/libvirt/**`, `infra/k3s/**`, `scripts/infra/**`, `scripts/ci/run-platform.sh`, `scripts/ci/run-vm.sh`, or `scripts/ci/run-k3s.sh` (explicit platform provisioning) | `none` | None |
+| `infra/local/**`, `infra/sonarqube/**` or `sonar-project.properties` | `none` | None |
 | `scripts/test/**` and `tests/**` | `none` | None |
 | Go `backend/**/*_test.go`, frontend `src/**/*.test.ts`, `src/**/*.test.tsx`, or `src/test/**` | `none` | None |
-| CI lint/coverage summary and existing test compatibility wrappers (`test-*`, `fuzz-smoke`, `with-test-postgres`) | `none` | None |
+| `scripts/ci/lint-go.sh` or `scripts/ci/coverage-check-summary.sh` | `none` | None |
 | `backend/**` | `migration,backend,application` | Backend image |
 | `frontend/**` | `frontend,application` | Frontend image |
-| `deploy/base/infrastructure/**` or `deploy/overlays/{local,k3s}/infrastructure/**` | `infrastructure` | None |
-| `deploy/base/migration/**` or `deploy/overlays/{local,k3s}/migration/**` | `migration` | None; uses the deployed backend image |
-| `deploy/base/application/**` or `deploy/overlays/{local,k3s}/application/**` | `application` | None; preserves deployed image tags |
-| `deploy/overlays/{local,k3s}/observability/**` or `deploy/overlays/{local,k3s}/logging-collector/**` | `observability` | None |
-| `deploy/overlays/{local,k3s}/gateway/**` | `gateway` | None |
+| `infra/deploy/base/infrastructure/**` or `infra/deploy/overlays/{local,k3s}/infrastructure/**` | `infrastructure` | None |
+| `infra/deploy/base/migration/**` or `infra/deploy/overlays/{local,k3s}/migration/**` | `migration` | None; uses the deployed backend image |
+| `infra/deploy/base/application/**` or `infra/deploy/overlays/{local,k3s}/application/**` | `application` | None; preserves deployed image tags |
+| `infra/deploy/overlays/{local,k3s}/observability/**` or `infra/deploy/overlays/{local,k3s}/logging-collector/**` | `observability` | None |
+| `infra/deploy/overlays/{local,k3s}/gateway/**` | `gateway` | None |
 | `VERSION` | `migration,backend,frontend,application` | Both application images |
 | CI image build or scan scripts | `all` | Both application images |
 | `scripts/ops/render-limited-launch.py` or `scripts/cd/reconcile-network-policies.sh` | `network-policy` | None |
 | Other paths under `scripts/cd/**` or `scripts/lib/**` | `all` | Both application images |
-| `deploy/kind.yaml` | `all` | Both application images |
+| `infra/deploy/policy/**` or `infra/deploy/kind.yaml` | `all` | Both application images |
 | Any other or newly introduced path | `all`, with a warning | Both application images |
 | Missing or invalid previous-successful revision | `all` | Both application images |
 
@@ -489,6 +491,11 @@ The local PostgreSQL StatefulSet uses a 1 GiB persistent volume from `kind`'s
 default local-path provisioner. It is suitable for learning only.
 
 ### 5. Inspect the migration gate
+
+The migration Job runs the server with `-migrate` and requires the
+`battlefield-auth` Secret because startup still validates API configuration.
+Deployment supplies the same dev/production environment as the API; CLI profiles
+are disabled in this Job.
 
 The deployment script deletes the previous completed Job, recreates it with the
 selected backend image, and waits for success. Inspect the result with:
@@ -620,8 +627,9 @@ changes alone do not select application components or run an infrastructure appl
 
 ## Jenkins deployment pipeline
 
-[Jenkins operations](jenkins.md#pipeline-behavior) owns the PR/main stage sequence,
-credentials, publication, verification, and digest rollback workflow. Main deploys
+[Contributor CI](../developer/ci.md#pull-request-verification) describes PR verification.
+[Jenkins production delivery](jenkins.md#production-delivery) owns the main stage
+sequence, credentials, publication, verification, and digest rollback workflow. Main deploys
 to the registered production cluster, now K3s after the initial cutover; local
 Kind dev loads its own images.
 AWS promotion copies verified images to ECR without rebuilding.
@@ -825,17 +833,8 @@ and container diagnostics on failure. Finished jobs are retained for 300 seconds
 
 After a manual recovery, recreate only the setup job with
 `kubectl -n battlefield delete job battlefield-kibana-setup --ignore-not-found`
-and `kubectl -n battlefield apply -f deploy/overlays/local/observability/kibana/setup-job.yaml`,
+and `kubectl -n battlefield apply -f infra/deploy/overlays/local/observability/kibana/setup-job.yaml`,
 then confirm completion before running production smoke verification.
-
-Unfinished battles expire one hour after creation, including queued and paused
-time. The engine sweeps at startup and every minute independently of active
-battle processing. It atomically marks expired battles failed with
-`battle_timeout`, clears their leases, and cancels pending/running decisions
-using the existing `battle_stopped` cancellation category. History and tick
-state remain available; active admission slots are released but daily usage is
-not refunded. Existing overdue battles expire on rollout. No migration or new
-configuration is required; while the engine is offline, expiry waits for restart.
 
 Before the first hardened production delivery, complete the
 [Jenkins agent isolation and recovery setup](jenkins.md#production-hardening-rollout)

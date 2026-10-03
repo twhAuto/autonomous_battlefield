@@ -43,15 +43,18 @@ while IFS= read -r -d '' changed_file; do
   case "${changed_file}" in
     *.md|LICENSE|LICENSE.*|.gitignore)
       ;;
-    infra/ansible/*|infra/jenkins/*|infra/libvirt/*|infra/k3s/*|scripts/infra/*|scripts/ci/run-platform.sh|scripts/ci/run-vm.sh|scripts/ci/run-k3s.sh|Jenkinsfile.platform|Jenkinsfile.vm|Jenkinsfile.k3s)
+    infra/jenkins/Jenkinsfile.assurance)
+      all=1
       ;;
-    quality/*|sonar-project.properties)
+    infra/ansible/*|infra/jenkins/*|infra/libvirt/*|infra/k3s/*|scripts/infra/*|scripts/ci/run-platform.sh|scripts/ci/run-vm.sh|scripts/ci/run-k3s.sh)
+      ;;
+    infra/local/*|infra/sonarqube/*|sonar-project.properties)
       ;;
     scripts/test/*|tests/*)
       ;;
     backend/*_test.go|frontend/src/*.test.ts|frontend/src/*.test.tsx|frontend/src/test/*)
       ;;
-    scripts/ci/coverage-check-summary.sh|scripts/ci/lint-go.sh|scripts/ci/fuzz-smoke.sh|scripts/ci/test-ai-evals.sh|scripts/ci/test-backend.sh|scripts/ci/test-deployment-components.sh|scripts/ci/test-go-coverage.sh|scripts/ci/test-go-race.sh|scripts/ci/test-kind-deployment.sh|scripts/ci/with-test-postgres.sh)
+    scripts/ci/coverage-check-summary.sh|scripts/ci/lint-go.sh)
       ;;
     backend/*)
       backend=1
@@ -62,19 +65,19 @@ while IFS= read -r -d '' changed_file; do
       frontend=1
       application=1
       ;;
-    deploy/base/infrastructure/*|deploy/overlays/local/infrastructure/*|deploy/overlays/k3s/infrastructure/*)
+    infra/deploy/base/infrastructure/*|infra/deploy/overlays/local/infrastructure/*|infra/deploy/overlays/k3s/infrastructure/*)
       infrastructure=1
       ;;
-    deploy/base/migration/*|deploy/overlays/local/migration/*|deploy/overlays/k3s/migration/*)
+    infra/deploy/base/migration/*|infra/deploy/overlays/local/migration/*|infra/deploy/overlays/k3s/migration/*)
       migration=1
       ;;
-    deploy/base/application/*|deploy/overlays/local/application/*|deploy/overlays/k3s/application/*)
+    infra/deploy/base/application/*|infra/deploy/overlays/local/application/*|infra/deploy/overlays/k3s/application/*)
       application=1
       ;;
-    deploy/langfuse/*|deploy/overlays/local/observability/*|deploy/overlays/k3s/observability/*|deploy/overlays/local/logging-collector/*|deploy/overlays/k3s/logging-collector/*)
+    infra/deploy/langfuse/*|infra/deploy/overlays/local/observability/*|infra/deploy/overlays/k3s/observability/*|infra/deploy/overlays/local/logging-collector/*|infra/deploy/overlays/k3s/logging-collector/*)
       observability=1
       ;;
-    deploy/overlays/local/gateway/*|deploy/overlays/k3s/gateway/*)
+    infra/deploy/overlays/local/gateway/*|infra/deploy/overlays/k3s/gateway/*)
       gateway=1
       ;;
     VERSION)
@@ -89,7 +92,7 @@ while IFS= read -r -d '' changed_file; do
     scripts/ci/build-images.sh|scripts/ci/scan-images.sh|scripts/cd/*|scripts/lib/*)
       all=1
       ;;
-    deploy/kind.yaml)
+    infra/deploy/policy/*|infra/deploy/kind.yaml)
       all=1
       ;;
     *)

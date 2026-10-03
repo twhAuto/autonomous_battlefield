@@ -35,7 +35,7 @@ IDENTITIES = {kind: str(i) * 8 + '-1111-4111-a111-' + str(i) * 12 for i, kind in
 def xml():
     result = {}
     for kind in IDENTITIES:
-        node = ET.fromstring((ROOT / 'deploy/agent-vm' / (kind + '.xml')).read_text())
+        node = ET.fromstring((ROOT / 'infra/deploy/agent-vm' / (kind + '.xml')).read_text())
         ET.SubElement(node, 'uuid').text = IDENTITIES[kind]
         result[kind] = node
     return result
@@ -43,7 +43,7 @@ def xml():
 
 def validate(nodes, identities=None):
     policy.validate_layout(*(ET.tostring(nodes[k], encoding='unicode') for k in ('domain', 'network', 'filter')),
-                           (ROOT / 'deploy/agent-vm/filter.xml').read_text(), identities or IDENTITIES)
+                           (ROOT / 'infra/deploy/agent-vm/filter.xml').read_text(), identities or IDENTITIES)
 
 
 class LayoutTests(unittest.TestCase):

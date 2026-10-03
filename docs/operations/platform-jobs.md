@@ -3,17 +3,16 @@
 `battlefield-platform/host` is a separate, manually started Jenkins job for the
 existing Ansible host foundation and optional data partition. A merge into `main`
 runs application delivery; it does not run this job. The job reads
-[`Jenkinsfile.platform`](../../Jenkinsfile.platform) from trusted `main` and runs
+[`infra/jenkins/Jenkinsfile.platform`](../../infra/jenkins/Jenkinsfile.platform) from trusted `main` and runs
 locally as the registered `twh09` operator on `battlefield-production`. The SSH
 private key stays on the workstation.
 
-This implements the host slice of
-[AB-131 — Add reviewed Jenkins platform jobs and infrastructure verification](https://app.notion.com/p/3eab7a19f8f781f7b89ad3606e2dc11f).
-[AB-107](https://app.notion.com/p/3e3b7a19f8f7816e8b29d8e532189e2d) holds the execution
-map. [Terraform VM provisioning](k3s-vm.md) (AB-126) has its separate `battlefield-platform/vm` job. Reproducible Jenkins/SonarQube services
-(AB-127), delivery integration (AB-129), and full platform
-verification remain separate work. Scheduled backups (AB-130) are deferred by the
-owner. The [K3s platform job](k3s-platform.md) (AB-128) now provides reviewed guest configuration separately. The host job does not migrate Docker/PostgreSQL or deploy K3s.
+[Terraform VM provisioning](k3s-vm.md) uses the separate `battlefield-platform/vm`
+job, and the [K3s platform job](k3s-platform.md) owns guest configuration.
+[CI service administration](ci-bootstrap.md) and
+[application delivery](k3s-delivery.md) have their own workflows. The host job
+does not migrate Docker/PostgreSQL or deploy K3s. Scheduled backups and retention
+are not configured; see the [backup and recovery boundary](server-bootstrap.md#backup-drive-and-recovery-boundary).
 
 ## One-time installation
 
@@ -79,6 +78,28 @@ running core are not compared with the recorded test versions.
 The pin list is not a complete controller rebuild or dependency lockfile.
 
 ## Credentials and trust
+
+### Pipeline source paths
+
+The multibranch application job uses the root `Jenkinsfile`. Auxiliary jobs use
+these paths in their trusted `main` checkout:
+
+| Job | Script path |
+| --- | --- |
+| `battlefield-platform/host` | `infra/jenkins/Jenkinsfile.platform` |
+| `battlefield-platform/vm` | `infra/jenkins/Jenkinsfile.vm` |
+| `battlefield-platform/k3s` | `infra/jenkins/Jenkinsfile.k3s` |
+| `battlefield-assurance` | `infra/jenkins/Jenkinsfile.assurance` |
+
+Repository moves do not update existing Jenkins job configuration automatically.
+Before changing a job's Script Path, verify that its configured SCM branch contains
+the new file. After promotion to `main`, use the owned platform installer above
+to reconcile platform jobs, or update only their Script Path in Jenkins. For the
+assurance job, update its Script Path while preserving credentials, parameters,
+schedule and enabled/disabled state. Check the saved configuration before running
+a job. A `dev` merge alone is insufficient while these jobs still read `main`.
+
+### Managed credentials
 
 | Folder file credential | Content |
 | --- | --- |
@@ -147,7 +168,7 @@ recovery. Separate jobs can queue while approval is pending.
 
 A second, OS-level lock at the registered operator's
 `~/.local/state/battlefield/bootstrap.lock` coordinates workstation Ansible applies,
-the host runner, and individual production deploy/tunnel/rollback commands.
+the host runner, and individual production infra/deploy/tunnel/rollback commands.
 The Ansible child inherits the held lock descriptor or the pipe that keeps the
 workstation's lock proxy alive. A forced controller/process-group stop therefore
 retains the lock while that child runs; normal cancellation stops its process
@@ -164,10 +185,10 @@ Local tests cover lock contention, startup cancellation and controller crashes,
 revision and plan-drift rejection (including loops),
 secret-free real Ansible reports, and safe setup. Disposable Jenkins validation
 covers pipeline compilation and repeated job/credential creation without starting
-builds. Before marking the host slice complete, record live evidence in AB-131:
-first plan, approved apply, verify, repeat apply, main/platform contention, rejected
-approval, cancellation, and absent/wrong data mount. AB-134 needs its own live
-storage-adoption evidence. Keep the tickets in progress until those checks pass.
+builds. Before enabling routine host administration, verify the first plan,
+approved apply, verify-only run, repeat apply, main/platform contention, rejected
+approval, cancellation and absent/wrong data-mount behavior. Verify storage
+adoption against the [host storage contract](server-bootstrap.md#terraform-and-guest-storage-contract).
 
 On failure, keep the failed build visible and inspect the sanitized task summary.
 A `Gathering Facts (unreachable)` failure can indicate a sudo password-handshake

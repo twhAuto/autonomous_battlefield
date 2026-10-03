@@ -60,14 +60,14 @@ secret = base64.b64decode(data['LANGFUSE_INIT_PROJECT_SECRET_KEY'])
 PY
 kube create secret generic battlefield-langfuse-export --from-file="authorization=${runtime_dir}/authorization" --dry-run=client -o yaml | kube apply -f - >/dev/null
 helm_cluster upgrade --install langfuse langfuse --repo https://langfuse.github.io/langfuse-k8s --version 2.1.0 \
-  --namespace "${namespace}" -f "${project_dir}/deploy/langfuse/values.yaml" --wait --timeout 15m
+  --namespace "${namespace}" -f "${project_dir}/infra/deploy/langfuse/values.yaml" --wait --timeout 15m
 kube create configmap battlefield-langfuse-links \
   --from-literal=LANGFUSE_BASE_URL=http://langfuse.localhost:8888 \
   --from-literal=LANGFUSE_PROJECT_ID=battlefield-agents --dry-run=client -o yaml | kube apply -f - >/dev/null
-kube create configmap battlefield-otel-collector-config --from-file="config.yaml=${project_dir}/deploy/langfuse/collector-config.yaml" --dry-run=client -o yaml | kube apply -f - >/dev/null
-kube apply -f "${project_dir}/deploy/overlays/local/observability/otel-collector/deployment.yaml"
-kube apply -f "${project_dir}/deploy/overlays/local/observability/otel-collector/service.yaml"
-kube apply -f "${project_dir}/deploy/overlays/local/gateway/langfuse-route.yaml"
+kube create configmap battlefield-otel-collector-config --from-file="config.yaml=${project_dir}/infra/deploy/langfuse/collector-config.yaml" --dry-run=client -o yaml | kube apply -f - >/dev/null
+kube apply -f "${project_dir}/infra/deploy/overlays/local/observability/otel-collector/deployment.yaml"
+kube apply -f "${project_dir}/infra/deploy/overlays/local/observability/otel-collector/service.yaml"
+kube apply -f "${project_dir}/infra/deploy/overlays/local/gateway/langfuse-route.yaml"
 kube rollout restart deployment/battlefield-otel-collector deployment/battlefield-api
 kube rollout status deployment/battlefield-otel-collector --timeout=120s
 kube rollout status deployment/battlefield-api --timeout=120s

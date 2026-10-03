@@ -1,52 +1,14 @@
-# Jenkins and GitHub deployment pipeline
+# Jenkins operations
 
-Production now runs on the server at `192.168.1.126` (Jenkins port `8080`).
+For contributor checks and local reproduction, see [continuous integration](../developer/ci.md).
+This guide covers controller and agent administration, credentials, delivery and recovery.
+
+The production Jenkins controller runs on the server at `192.168.1.126` (Jenkins port `8080`).
 For initial setup or migration of an existing server, complete the
-[server registration](environments.md#production-setup).
+[host registration](server-bootstrap.md).
 For repeatable installation or adoption, use the [Ansible CI bootstrap](ci-bootstrap.md).
-The manual installation sections below remain reference material for the existing services.
-
-The repository owns its pipeline in `Jenkinsfile`. GitHub stores the source;
-the local Jenkins Multibranch job discovers branches and pull requests through
-periodic scans, checks out the exact commit, and executes the pipeline on an
-agent. A public Jenkins installation can use a GitHub webhook instead.
-
-```text
-Pull request targeting dev or main
-          |
-          `--> lint, test with coverage, publish a GitHub Coverage check,
-               pass the SonarQube quality gate, render, build immutable
-               images, and scan
-
-Merge into main
-          |
-          `--> regenerate coverage, pass the SonarQube quality gate,
-               rebuild and scan the exact merge SHA, migrate, deploy,
-               smoke test, and rollback on failure
-```
-
-The diagram summarizes the branch split; [pipeline behavior](#pipeline-behavior)
-lists all current gates, publication, and verification stages.
-
-The Declarative Pipeline groups these paths under `PR verification` and
-`Main delivery`. Jenkins still displays the inactive parent stage as skipped so
-the branch decision remains auditable, but it does not execute that parent's
-nested stages. Within an active `Main delivery` run, image and deployment stages
-can still appear as skipped when the changed-component classifier determines
-that they are unnecessary; those skips are intentional and remain visible.
-
-PRs targeting `dev` or `main`, main delivery and assurance use the existing
-`battlefield-production` agent. Direct pushes to non-`main` branches skip delivery.
-The owner accepts a shared host and Docker daemon for this small, trusted project;
-no separate CI VM or new agent label is required. Keep the assurance job pinned to
-trusted main. Delivery stays main-only and production credentials are bound only
-in the stages that need them, but these controls do not isolate PR code from the
-shared host. See the [shared-agent tradeoff](#production-hardening-rollout).
-
-The `dev` and `main` branches must require pull requests, the Jenkins and
-Coverage checks, and disallow direct pushes. Jenkins sees a `main` update rather
-than a distinct "PR merged" pipeline condition, so the branch rule is what makes
-a `main` update equivalent to an approved merge.
+This guide owns administration and diagnostics; the bootstrap guide owns
+installation, adoption, pinned versions and service restoration.
 
 The deployment regression gate includes real Ansible input tests. Agents need
 Python 3.12–3.14 and access to PyPI on the first run of each pinned runtime/Python
@@ -64,7 +26,7 @@ from an external operator session; merging application code does not run it.
 
 ## Reviewed host operations
 
-The separate [platform host job](platform-jobs.md) uses `Jenkinsfile.platform`
+The separate [platform host job](platform-jobs.md) uses `infra/jenkins/Jenkinsfile.platform`
 from trusted `main` for manual plan/apply/verify. Its installer registers inputs,
 binds folder credentials and creates the job; it never starts a build. Normal
 `main` delivery remains application-only. Install the required Lockable Resources
@@ -74,53 +36,27 @@ operation. See the guide for one-time setup, approval, credential rotation and t
 limits of locking when using external operator commands. Use the separate [external CI maintenance path](ci-bootstrap.md) for controller/agent
 and SonarQube reconstruction.
 
-## Install the Jenkins controller on Ubuntu or WSL
+## Install or restore the CI services
 
-This project currently uses the Jenkins LTS Debian package as a system service
-on port 8080. Install Java before Jenkins, then use the official LTS package
-repository:
+Use the external [CI bootstrap workflow](ci-bootstrap.md) from a registered
+operator session. For an existing server, follow its adoption prerequisites; for
+a clean replacement host, use its clean-install inputs. The workflow installs
+pinned Java/Jenkins, plugins, tools, the agent and Sonar services. Never run
+controller maintenance from a Jenkins job or improvise installation over retained
+controller state. Restore the complete matching Jenkins home, including its keys
+and credential stores, plus matching Sonar data before adopting a restored host.
 
-```bash
-sudo apt update
-sudo apt install -y fontconfig openjdk-21-jre
-
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo wget -O /etc/apt/keyrings/jenkins-keyring.asc \
-  https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
-echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc]" \
-  https://pkg.jenkins.io/debian-stable binary/ | \
-  sudo tee /etc/apt/sources.list.d/jenkins.list >/dev/null
-
-sudo apt update
-sudo apt install -y jenkins
-sudo systemctl enable --now jenkins
-sudo systemctl status jenkins
-```
-
-If the signing-key filename has changed, use the current commands from the
-[official Jenkins Linux installation guide](https://www.jenkins.io/doc/book/installing/linux/)
-rather than guessing a replacement. Open `http://localhost:8080`, retrieve the
-one-time unlock password locally, install the suggested plugins, and create the
-administrator account:
-
-```bash
-sudo cat /var/lib/jenkins/secrets/initialAdminPassword
-```
-
-The Debian package persists controller state under `/var/lib/jenkins` and
-enables `jenkins.service` at boot. Restarting the computer does not require
-recreating credentials, tools, nodes, or Multibranch jobs. Useful controller
-commands are:
+Controller state persists under `/var/lib/jenkins`; the native service starts at
+boot. Routine diagnostics are:
 
 ```bash
 sudo systemctl status jenkins
-sudo systemctl restart jenkins
 sudo journalctl -u jenkins --since today
 ```
 
-Restart Jenkins after installing a plugin when the plugin manager requests it.
-Installing a plugin alone does not create its global tool configuration; for
-example, `SonarScanner` must still be added under **Manage Jenkins > Tools**.
+Use the [reviewed maintenance and recovery procedure](ci-bootstrap.md#maintenance-backup-and-failure-recovery)
+for changes that can stop the controller. Package/plugin upgrades need a reviewed
+pin and compatibility change; ordinary adoption preserves existing identities.
 
 ## Jenkins agent requirements
 
@@ -154,8 +90,8 @@ from versions pinned in `scripts/ci/tool-versions.env`. This is also the default
 Trivy pin for local image scans; `TRIVY_IMAGE` can override that local command.
 The source-security stage owns the shared manifest rendering, schema checks,
 and policy checks on both PR and main builds. The deployment-script checks
-exercise staging, component selection, scanner launchers, and compatibility
-wrappers separately. `SECURITY_ARTIFACT_DIR` can relocate security reports,
+exercise staging, component selection and scanner launchers separately.
+`SECURITY_ARTIFACT_DIR` can relocate security reports,
 including the rendered manifest consumed by Trivy and Conftest.
 Main builds require
 private GHCR packages named `autonomous-battlefield-backend` and
@@ -272,7 +208,7 @@ Create these narrowly scoped Jenkins credentials before enabling main delivery:
 | `battlefield-gemini-api-key` | secret text | manual Gemini evaluation only |
 
 Never expose signing or provider credentials to pull-request stages. Configure a
-second Pipeline job using `Jenkinsfile.assurance`; schedule only its `nightly`
+second Pipeline job using `infra/jenkins/Jenkinsfile.assurance`; schedule only its `nightly`
 mode. All other modes require an operator trigger and explicit bounds. AWS
 promotion additionally requires an assumed agent role or other short-lived AWS
 credential source; do not store long-lived access keys in the repository.
@@ -326,85 +262,30 @@ find /tmp -maxdepth 1 -user "$(id -un)" -type d \
 
 New pipeline runs no longer create those project caches in `/tmp`.
 
-## Create the persistent `battlefield-local` agent
+## Manage the persistent `battlefield-local` agent
 
-Use a separate agent so builds do not execute on the Jenkins controller:
+[CI bootstrap](ci-bootstrap.md#managed-scope-and-preserved-state) owns the inbound
+WebSocket agent, enrollment secret, tools and operator user service. The registered
+node uses four executors and the `battlefield-production` label shared by PR
+verification, main delivery and assurance; the controller has zero executors.
+The persistent remote root is the operator's `~/jenkins-agent`.
 
-1. Open **Manage Jenkins > Nodes > New Node**.
-2. Name it `battlefield-local` and choose **Permanent Agent**. It currently runs
-   **four executors**, so PR builds for different branches run in parallel. Builds
-   stay safe to overlap because test databases, Playwright dev servers, and image
-   tags are per build: `with-test-postgres.sh` publishes a random port and names the
-   container by build tag, the frontend stages run `scripts/test/run-e2e.sh`, which serves Playwright on a
-   free `E2E_PORT` and retries only a lost port race, and images are
-   tagged by commit. `main` delivery still runs one build at a time
-   (`disableConcurrentBuilds()`), which is what serializes production rollouts.
-   Size executors to the host: each frontend stage runs Chromium, and backend stages
-   run PostgreSQL containers. Before adding a job that deploys or drills outside
-   `main` delivery (such as `Jenkinsfile.assurance`), serialize it with main
-   delivery, for example with the Lockable Resources plugin.
-3. Add the label `battlefield-production`, shared by PR verification, main
-   delivery and assurance for this owner-operated deployment.
-   Set the remote root directory to the agent account’s `~/jenkins-agent`.
-4. Choose **Launch agent by connecting it to the controller** and enable the
-   WebSocket launch option.
-5. Save the node, create its work directory, and download the current agent JAR:
+PR builds isolate PostgreSQL test ports, Playwright ports and image tags by build.
+`main` uses `disableConcurrentBuilds()` and the production platform lock to
+serialize delivery. Size executors to available host capacity; sharing the accepted
+agent does not remove locking requirements for other deployment or drill jobs.
 
-   ```bash
-   install -d -m 700 $HOME/jenkins-agent
-   curl --fail --location \
-     --output $HOME/jenkins-agent/agent.jar \
-     http://localhost:8080/jnlpJars/agent.jar
-   ```
+Inspect the existing service as the registered operator:
 
-6. Copy the node's connection secret into a private local environment file. Do
-   not commit, paste into documentation, or share this value:
+```bash
+systemctl --user status jenkins-agent
+journalctl --user -u jenkins-agent --since today
+```
 
-   ```bash
-   install -d -m 700 "$HOME/.config/jenkins-agent"
-   umask 077
-   ${EDITOR:-nano} "$HOME/.config/jenkins-agent/agent.env"
-   ```
-
-   The file contains one line:
-
-   ```text
-   JENKINS_AGENT_SECRET=replace-with-the-node-secret
-   ```
-
-7. Create `~/.config/systemd/user/jenkins-agent.service`:
-
-   ```ini
-   [Unit]
-   Description=Jenkins battlefield-local agent
-   Wants=network-online.target
-   After=network-online.target
-
-   [Service]
-   Type=simple
-   EnvironmentFile=%h/.config/jenkins-agent/agent.env
-   ExecStart=/usr/bin/java -jar %h/jenkins-agent/agent.jar -url http://localhost:8080/ -secret ${JENKINS_AGENT_SECRET} -name battlefield-local -webSocket -workDir %h/jenkins-agent
-   Restart=on-failure
-   RestartSec=5
-
-   [Install]
-   WantedBy=default.target
-   ```
-
-8. Load and start the user service:
-
-   ```bash
-   systemctl --user daemon-reload
-   systemctl --user enable --now jenkins-agent
-   systemctl --user status jenkins-agent
-   ```
-
-Once these commands succeed, both `jenkins.service` and
-`jenkins-agent.service` are enabled. Recreate the node only if its Jenkins
-configuration or local service files are lost. If the connection secret is ever
-exposed, create a replacement inbound node credential, update `agent.env` and
-the service's node name if required, verify the replacement agent, and remove
-the old node.
+Adoption preserves the node's enrollment secret and service configuration. If an
+identity is exposed or lost, use reviewed credential recovery and repeat bootstrap
+verification. Do not recreate the node or overwrite its service merely after a
+reboot; matching controller and agent state must be restored together.
 
 ## Configure local SonarQube
 
@@ -412,28 +293,25 @@ The repository includes a persistent local SonarQube Community Build and
 PostgreSQL Compose stack. It is separate from the application database:
 
 ```bash
-docker compose -f quality/sonarqube/compose.yaml up -d
+docker compose -f infra/sonarqube/compose.yaml up -d
 curl --fail http://localhost:9000/api/system/status
 ```
 
-The first startup can take several minutes. Open `http://localhost:9000`, sign
-in with the initial `admin` / `admin` credentials, change the password, and
-create an analysis token under the account security settings.
+For the registered server, [CI bootstrap](ci-bootstrap.md) owns the pinned
+Sonar/PostgreSQL Compose deployment, initial passwords/token, Jenkins Sonar server
+and scanner configuration. It preserves database credentials and named volumes;
+use its reviewed maintenance/recovery path for service changes.
 
-Both containers use Docker's `unless-stopped` restart policy. After the Docker
-engine starts following a reboot, PostgreSQL and SonarQube start automatically.
-When using Docker Desktop, enable its login startup setting so that the Docker
-engine itself starts automatically. If the stack was stopped intentionally
-with `docker compose stop`, start it once with the `up -d` command above; it will
-then resume automatic startup after later Docker engine restarts.
+For a separate local analysis service only, the repository Compose command above
+starts the stack. On a fresh local instance, sign in with its initial `admin` /
+`admin` credentials, change the password and create a private analysis token.
+Keep it out of Git. This local stack does not configure Jenkins or replace the
+registered server's managed Compose deployment.
 
-Configure Jenkins as follows:
-
-1. Add the token as a **Secret text** credential.
-2. In **Manage Jenkins > System > SonarQube servers**, add a server named
-   `battlefield-sonarqube`, URL `http://localhost:9000`, using that credential.
-3. In **Manage Jenkins > Tools > SonarQube Scanner installations**, add an
-   installation named `SonarScanner` and enable automatic installation.
+Containers use `unless-stopped`; Docker must be running for automatic recovery.
+After an intentional local `docker compose stop`, the `up -d` command resumes it.
+For the registered server, inspect `/etc/battlefield-ci/sonar-compose.yaml` through
+the managed workflow instead of replacing it with the local manifest.
 
 The scanner polls SonarQube for the quality-gate result for up to five minutes
 and fails the build when the gate fails. No SonarQube webhook is required. This
@@ -474,11 +352,11 @@ statements, branches, functions, and lines. Delete preview projects for closed
 PRs periodically from the SonarQube Projects page; they contain analysis history,
 not runtime data.
 
-The SonarQube data is stored in named Docker volumes and survives restarts. Stop
-it without deleting its data with:
+SonarQube data is stored in named Docker volumes and survives restarts. Stop
+the separate local analysis stack without deleting its data with:
 
 ```bash
-docker compose -f quality/sonarqube/compose.yaml stop
+docker compose -f infra/sonarqube/compose.yaml stop
 ```
 
 Do not use `docker compose down -v` unless you intentionally want to erase the
@@ -659,33 +537,15 @@ local iteration; local Jenkins and SonarQube need not be started.
 | Frontend proxy returns `502` | Confirm `API_UPSTREAM` renders as `battlefield-api.battlefield.svc.cluster.local:8080`, then inspect frontend logs and the `battlefield-api` Service endpoints. |
 | `kind load docker-image` says the image is not present and is loading | This is normal informational output: kind is copying a host Docker image into the cluster node. |
 
-## Pipeline behavior
-
-For a pull request targeting `dev` or `main`, the pipeline performs:
-
-1. Clean checkout of the exact GitHub commit.
-2. Parallel Go lint, isolated PostgreSQL-backed tests (coverage and race checks),
-   frontend coverage/build, source security and policy validation, fuzz smoke,
-   deterministic AI evaluation, and deployment-script checks.
-3. Publication of the GitHub `Coverage` check.
-4. SonarQube preview-project analysis and quality-gate enforcement for the exact
-   PR checkout.
-5. Local image builds, frontend container startup/static-asset verification and
-   vulnerability scans, without publication or production credentials.
-
-Backend integration packages run concurrently against the disposable PostgreSQL
-database. Migration fixtures use the same advisory lock as startup, including
-tests that upgrade or downgrade selected versions. Separate schemas alone do not
-isolate shared role/grant changes. A failed backend test stops the coverage run;
-the published `Unavailable` backend coverage result is not evidence of a low
-coverage percentage. Inspect the failing test before changing any coverage gate.
+## Production delivery
 
 For `main`, the pipeline performs:
 
 1. Clean checkout, Go lint, backend/frontend coverage, source security, and deterministic AI evaluation.
 2. SonarQube analysis and quality-gate enforcement.
 3. Deployment-script checks and component classification against the previous
-   successful commit. Documentation-only, application-test-only, and known CI-test-wrapper
+   successful commit. Documentation-only, application-test-only, and CI
+   lint/coverage-summary script
    changes select no deployment; an unknown path or unavailable baseline selects
    all components. CI quality gates still run for these changes.
 4. Publication of changed images to GHCR, scanning of the published images,
@@ -700,31 +560,7 @@ For `main`, the pipeline performs:
 
 See [deployment component mapping](deployment.md#change-to-deployment-mapping)
 for the paths that select each rollout stage and
-[supply-chain assets](../../deploy/supply-chain/README.md) for the trust root.
-
-Both PR and main deployment-script checks run
-`./scripts/test/test-frontend-image.sh`: it copies tracked frontend inputs into a
-private temporary context with files `0600` and directories `0700`, builds the
-actual Dockerfile, verifies startup, and proves an unreadable template is rejected.
-It needs Docker with BuildKit and access to the configured base-image/package
-registries; it uses the default daemon-backed builder and removes its child image
-before the parent and temporary files. It deliberately runs for every PR/main
-quality check, including changes that select no deployment, to exercise startup
-independently of the real checkout modes. BuildKit can reuse this regression's
-cache across runs.
-
-`scripts/ci/verify-frontend-image.py IMAGE` checks an already-local image as UID/GID
-101 with a read-only root filesystem, dropped capabilities, no new privileges,
-and the production writable paths in temporary filesystems. It publishes no ports,
-uses no application credentials and disables container networking. Its resolver
-input is pinned to loopback so host DNS changes cannot invalidate this isolated
-check. It checks all three Kubernetes probes, the built index and its JavaScript/CSS entry assets over
-loopback HTTP. PR/local image builds invoke it after building the frontend; main
-pulls and checks the scanned frontend digest before signing or rollout. Failures
-print Docker diagnostics and bounded container logs and remove only that check's
-container. The published-image gate removes digest references it pulled solely for
-verification on success or failure, while retaining references already present on
-the agent. Cleanup failure emits a warning. These image checks do not verify the API proxy or replace Kubernetes deployment smoke tests.
+[supply-chain assets](../../infra/deploy/supply-chain/README.md) for the trust root.
 
 The deployment keeps the normal application rollout budget at five minutes but
 allows 15 minutes for the observability group as a whole. A new single-node
@@ -747,41 +583,24 @@ infrastructure-, migration-, observability-, or gateway-only changes. Database
 migrations are deliberately not reversed automatically, so migrations must
 remain backward-compatible with the previous application revision.
 
-Local dev loads images into Kind. Production pulls verified GHCR digests. The
-separate AWS promotion helper copies those verified subjects and their evidence
-to ECR; its assurance-job artifact-input gap remains documented in the
-[deployment review](deployment-review.md).
+Local dev loads images into Kind. Production pulls verified GHCR digests.
 
-## Run local build and deployment checks without Jenkins
+### AWS promotion limits
 
-After [dev environment setup](environments.md#wsl-setup-and-normal-use) and
-committing the intended source so the worktree is clean:
+The separate AWS promotion helper copies verified image subjects and their
+evidence to ECR. The `aws-promotion` mode in `infra/jenkins/Jenkinsfile.assurance` does not
+produce or explicitly select a successful build's `artifacts/build/images.env`.
+Its cleanup removes `CI_WORK_ROOT`, while that default artifact path is in the
+retained checkout. Do not treat a file left by an earlier run as the selected
+release. Before routine use, the job needs explicit successful-build evidence
+selection and clean artifact handling. The helper accepts `BUILD_IMAGES_FILE`
+for an explicitly selected input; this does not add selection to the Jenkins job.
 
-```bash
-./scripts/ci/lint-go.sh
-./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
-(cd frontend && npm ci && npm test -- --coverage && npm run build)
-BUILD_NUMBER=1 ./scripts/ci/build-images.sh
-./scripts/ci/scan-images.sh "$(git rev-parse HEAD)"
-ROLLBACK_ON_FAILURE=1 ./scripts/cd/deploy.sh "$(git rev-parse HEAD)"
-./scripts/cd/smoke-test.sh
-```
+The [AWS reference](../../infra/aws/README.md) provisions infrastructure; an
+application overlay, workload secret integration and account-specific deployment
+verification are still required.
 
-Set `DEPLOY_COMPONENTS=frontend`, `backend`, `observability`, or another
-supported comma-separated selection on the build, scan, and deploy commands to
-exercise an incremental path. Run
-`./scripts/test/test-deployment-components.sh` to verify the path classifier.
-
-These commands exercise local build/deploy checks after dev environment setup;
-they do not publish, sign, or verify production registry artifacts or validate Jenkins
-Declarative Pipeline syntax. Use the configured Jenkins Multibranch job for the
-final `Jenkinsfile` validation.
-
-The source-security stage logs each failed check and its report path. Inspect the
-matching file under the build's archived `artifacts/security/` directory to
-separate dependency findings from rendered-manifest or workload-policy failures.
-
-### Trivy database download recovery
+## Trivy database download recovery
 
 The source-security launcher prepares the vulnerability database before scanning,
 using the persistent Docker volume `autonomous-battlefield-trivy-cache` (override
@@ -798,7 +617,7 @@ connectivity to those registries and rerun after recovery. The launcher tests st
 networked scanners to verify registry fallback and failure propagation; they do
 not establish that the remote registries are reachable.
 
-### k6 HTTPS trust
+## k6 HTTPS trust
 
 The k6 launcher mounts the Linux agent's `/etc/ssl/certs/ca-certificates.crt`
 read-only into the container and sets `SSL_CERT_FILE` to that mount. This makes
@@ -844,10 +663,6 @@ setup can use a separate CI VM/daemon, trusted delivery credential scope, and
 controller-enforced node access. A second label or executor on this host would
 not provide that isolation.
 
-If an older build is already waiting for the retired `battlefield-ci` label,
-abort that build and run the updated PR revision. Running builds retain the
-Jenkinsfile loaded at their start, and the job disables concurrent builds.
-
 All deployment regression suites run through `./scripts/test/test-deployment.sh`
 on both PR and main builds. This includes tunnel preparation, policy boundaries,
 recovery approval, authenticated capture and per-replica scrape checks. Source
@@ -877,7 +692,7 @@ the selected components and approved digests.
 Main invokes the shared `deploy.sh`, `smoke-test.sh` and `rollback.sh` entry points.
 Older profiles without `BF_DRIVER` default to Kind; code merges alone never
 change their cluster or kubeconfig credential. The current production profile
-explicitly selects K3s after AB-132 adoption. Follow [K3s delivery](k3s-delivery.md)
+explicitly selects K3s. Follow [K3s delivery](k3s-delivery.md)
 for separate registration, database restore, profile/credential adoption and
 coordinated tunnel cutover. K3s platform jobs continue to
 own provisioning and controller versions. Existing recovery records without

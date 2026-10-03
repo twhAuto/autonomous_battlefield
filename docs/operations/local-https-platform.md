@@ -1,7 +1,6 @@
 # Local HTTPS and retained CA
 
-[AB-142 — Capture and reproduce local HTTPS routes and CA trust](https://app.notion.com/p/3edb7a19f8f7810ebd5de5d75beaa267)
-provides an explicit host-local Ansible workflow for native `caddy.service` on
+The host-local Ansible workflow manages native `caddy.service` on
 80/443. It is separate from application delivery, Jenkins maintenance and the
 CLI VM's `battlefield-mcp-proxy.service`. Both proxies use `/usr/bin/caddy`;
 this workflow neither upgrades that shared binary nor replaces either unit.

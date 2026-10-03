@@ -17,7 +17,7 @@ policy_frontend="$(policy_image_repository "${POLICY_FRONTEND_IMAGE_REF:-}" "${p
 kube_context="${KUBERNETES_CONTEXT:-kind-${KIND_CLUSTER_NAME:-battlefield}}"
 public_key="${COSIGN_PUBLIC_KEY_FILE:?COSIGN_PUBLIC_KEY_FILE is required}"
 docker_config_file="${DOCKER_CONFIG:-${HOME}/.docker}/config.json"
-template="${project_dir}/deploy/overlays/jenkins/kyverno/verify-images.yaml.template"
+template="${project_dir}/infra/deploy/overlays/jenkins/kyverno/verify-images.yaml.template"
 runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-kyverno.XXXXXX")"
 policy="${runtime_dir}/verify-images.yaml"
 trap 'rm -rf -- "${runtime_dir}"' EXIT INT TERM
