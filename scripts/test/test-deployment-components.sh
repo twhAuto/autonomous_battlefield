@@ -24,7 +24,6 @@ mkdir -p \
   "${runtime_dir}/infra/deploy/overlays/local/observability" \
   "${runtime_dir}/legacy" \
   "${runtime_dir}/tests/performance" \
-  "${runtime_dir}/scripts/ci" \
   "${runtime_dir}/scripts/test" \
   "${runtime_dir}/scripts/cd"
 cp "${project_dir}/scripts/cd/detect-deployment-components.sh" \
@@ -167,6 +166,8 @@ assert_detection "none" "infra/local/compose.yaml"
 assert_detection "all" "infra/deploy/policy/kubernetes/workload.rego"
 assert_detection "none" "tests/performance/query-plans/seed.sql"
 assert_detection "none" "scripts/test/test-go-coverage.sh"
+assert_detection "none" "scripts/ci/lint-go.sh"
+assert_detection "none" "scripts/ci/coverage-check-summary.sh"
 assert_detection "none" "tests/performance/k6-smoke.js"
 for runner in fuzz-smoke test-ai-evals test-backend test-go-race test-kind-deployment with-test-postgres; do
   assert_detection "none" "scripts/test/${runner}.sh"

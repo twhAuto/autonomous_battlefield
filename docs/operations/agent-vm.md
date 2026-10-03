@@ -199,9 +199,18 @@ sudo nft list table inet battlefield_agent
 sudo systemctl is-active battlefield-agent-firewall battlefield-mcp-bridge battlefield-mcp-proxy squid
 ```
 
-Complete the remaining isolation gates in the limited-launch guide. Then set
-`BATTLEFIELD_CLI_ISOLATION_VERIFIED=true` in the VM worker environment, enable
-only the Codex profile in the VM configuration, and restart the worker. In the host's private production `.env`, set that flag and
+Complete the remaining isolation gates in the limited-launch guide. A freshly
+bootstrapped managed worker must remain disabled: bootstrap cannot change its
+registered environment or profile configuration. Follow the
+[managed profile enablement boundary](cli-bootstrap.md#managed-profile-enablement-boundary);
+do not hand-edit the managed files, re-register to change their hashes or delete
+ownership markers.
+
+The launch checks below apply to an existing enabled installation adopted with
+matching files and previously recorded isolation evidence. Confirm that its VM
+environment already has `BATTLEFIELD_CLI_ISOLATION_VERIFIED=true` and only the
+intended Codex profile is enabled. In the host's private production `.env`, set
+that flag and
 `CODEX_CLI_PROFILE_AVAILABLE=true`, leaving Gemini and Claude false. Run
 `./scripts/ops/prepare-limited-production.sh`, then use the normal production
 configuration deployment (`APPLY_CONFIGURATION=true`). Preparation alone explicitly

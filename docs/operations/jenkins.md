@@ -90,8 +90,8 @@ from versions pinned in `scripts/ci/tool-versions.env`. This is also the default
 Trivy pin for local image scans; `TRIVY_IMAGE` can override that local command.
 The source-security stage owns the shared manifest rendering, schema checks,
 and policy checks on both PR and main builds. The deployment-script checks
-exercise staging, component selection, scanner launchers, and compatibility
-wrappers separately. `SECURITY_ARTIFACT_DIR` can relocate security reports,
+exercise staging, component selection and scanner launchers separately.
+`SECURITY_ARTIFACT_DIR` can relocate security reports,
 including the rendered manifest consumed by Trivy and Conftest.
 Main builds require
 private GHCR packages named `autonomous-battlefield-backend` and
@@ -544,7 +544,8 @@ For `main`, the pipeline performs:
 1. Clean checkout, Go lint, backend/frontend coverage, source security, and deterministic AI evaluation.
 2. SonarQube analysis and quality-gate enforcement.
 3. Deployment-script checks and component classification against the previous
-   successful commit. Documentation-only, application-test-only, and known CI-test-wrapper
+   successful commit. Documentation-only, application-test-only, and CI
+   lint/coverage-summary script
    changes select no deployment; an unknown path or unavailable baseline selects
    all components. CI quality gates still run for these changes.
 4. Publication of changed images to GHCR, scanning of the published images,

@@ -311,8 +311,12 @@ Test malicious faction text requesting extra tools, another request ID, files, a
 network destinations. The server must reject unrelated MCP contexts and the VM
 boundary must hold regardless of how the model responds.
 
-After the initial boundary checks, set the VM isolation flag, enable only the
-intended VM profile and restart its worker as described in the setup guide.
+After the initial boundary checks, a freshly bootstrapped managed worker remains
+disabled until a reviewed update workflow is available. Do not hand-edit its
+environment or profiles; see the [managed profile enablement boundary](cli-bootstrap.md#managed-profile-enablement-boundary).
+For an existing enabled installation adopted with matching files, confirm its
+previously recorded isolation evidence and complete the
+[accepted-plan and launch checks](agent-vm.md#verify-before-advertising-availability).
 Only after recording the required checks, set `BATTLEFIELD_CLI_ISOLATION_VERIFIED=true`
 in the API's private AI configuration and enable the desired CLI availability flag.
 Production startup rejects advertised CLI profiles without this flag. The flag is
