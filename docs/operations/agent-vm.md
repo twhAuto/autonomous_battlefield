@@ -1,10 +1,10 @@
-# Production CLI VM setup and recovery
+# Production CLI worker verification and recovery
 
 Use this guide with the [limited-launch gates](limited-launch.md#isolated-cli-vm-enable-only-in-the-last-phase).
 Run commands from the repository root unless a step says otherwise. Keep CLI
-availability false until isolation checks pass. Commands below provision services;
-stop active test battles before restarting them. Never copy the host kubeconfig or
-Kubernetes signing secret into the VM.
+availability false until isolation checks pass. Use the provisioning and service
+runbooks below before verification; stop active test battles before restarting
+services. Never copy the host kubeconfig or Kubernetes signing secret into the VM.
 
 ## What runs where
 
@@ -40,85 +40,42 @@ reads the decision context through MCP, calls the provider through Squid, and
 submits a plan through MCP. Acceptance and execution are separate: the engine
 executes accepted orders. A plain model reply is not a submitted battle plan.
 
-For reviewed VM creation or adoption that preserves the existing disk and login
-homes, use [CLI VM platform](cli-vm-platform.md). The manual creation steps below
-are legacy reference; do not run both creation workflows for the same VM.
-For repeatable service installation or adoption of an existing VM, use the
-[Ansible CLI bootstrap](cli-bootstrap.md). It captures the current bundle and can
-install the worker files without manual copying. The steps below document VM
-creation, the underlying boundary and provider login/verification.
+## Provision and install
 
-## 1. Prepare the physical host and image
+Use [CLI VM provisioning and adoption](cli-vm-platform.md) for reviewed VM
+creation or adoption, then [CLI worker bootstrap](cli-bootstrap.md) for the host
+bridge, proxy, firewall and guest service files. The workflows own image pins,
+capacity checks, SSH trust, service activation and interruption recovery. Preserve
+existing disks, provider homes, bridge overrides and the matched proxy/bridge pair.
+Never delete ownership markers or rerun fresh creation against retained resources.
 
-On the Ubuntu host:
+The VM has no default route, NAT or DNS server. The host firewall replaces only
+its owned table; unrelated Docker/libvirt rules and public Caddy configuration
+remain intact. Its narrow loopback exception permits Jenkins smoke checks on
+18084. IPv6 cannot reach protected ports; the external NIC filter also denies it.
 
-```bash
-sudo apt update
-sudo apt install qemu-system-x86 libvirt-daemon-system libvirt-clients \
-  qemu-utils cloud-image-utils python3 curl nftables ubuntu-cloudimage-keyring
-```
- Some Ubuntu releases expose `qemu-kvm` only as a
-virtual package; explicitly selecting `qemu-system-x86` avoids that installation
-failure. Install Caddy and kubectl using the project's existing host setup.
+Kubernetes port-forward reaches MCP over loopback while preserving the original
+Host header. The Go MCP SDK rejects a non-loopback Host on that connection. The
+separate Caddy proxy sets upstream Host to `127.0.0.1:8084`; bearer authentication
+and MCP origin/localhost protection remain enabled. Do not use a direct
+guest-facing kubectl forward or disable SDK protection globally.
 
-Before installing Squid on a fresh host, mask `squid.service` so its default
-configuration cannot start an unintended listener. Do not replace a shared Squid
-installation with this dedicated configuration. On a fresh host:
-
-```bash
-sudo systemctl mask squid.service
-sudo apt install squid
-```
-
-Keep it masked until step 3 has installed the firewall and reviewed configuration.
-
-```bash
-sudo systemctl enable --now libvirtd
-sudo virt-host-validate qemu
-free -h
-df -h /var/lib/libvirt/images
-```
-
-Enable AMD SVM or Intel virtualization in firmware if KVM is unavailable. A warning
-about missing SEV/TDX does not itself prevent ordinary KVM operation. No host reboot
-is needed merely to enter an already-running VM.
-
-Download the Ubuntu 24.04 amd64 cloud image and verify the publisher's signed
-checksum list before using its image digest. Do not treat a digest calculated from
-an unverified download as publisher verification. Retain the verified digest in
-operator records.
-
-Create a dedicated SSH key if it does not already exist (never overwrite an
-existing private key):
-
-```bash
-ssh-keygen -t ed25519 -f "$HOME/.ssh/battlefield-vm-admin"
-cp "$HOME/.ssh/battlefield-vm-admin.pub" "$HOME/battlefield-vm-admin.pub"
-```
-
-Set `BATTLEFIELD_VM_IMAGE` to the absolute image path,
-`BATTLEFIELD_VM_IMAGE_SHA256` to the verified expected digest, and
-`BATTLEFIELD_VM_ADMIN_KEY` to the public key path. From the repository root:
-
-```bash
-sudo --preserve-env=BATTLEFIELD_VM_IMAGE,BATTLEFIELD_VM_IMAGE_SHA256,BATTLEFIELD_VM_ADMIN_KEY \
-  ./scripts/ops/create-agent-vm.sh
-sudo virsh --connect qemu:///system autostart battlefield-agent
-sudo virsh --connect qemu:///system list --all
-```
-
-The creation script intentionally refuses existing domains, networks and VM
-storage. To resume an interrupted installation, inspect the existing resources;
-do not delete them or rerun provisioning blindly. Default sizing is 2 vCPU,
-4 GiB RAM and 24 GiB disk. The VM has no default route, NAT or DNS server.
-
-## 2. Enter the VM and understand the accounts
+## Access the provisioned VM
 
 From the physical host:
 
 ```bash
-ssh -i "$HOME/.ssh/battlefield-vm-admin" vm-admin@192.168.234.2
+guest_key="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["identity_file"])' \
+  "$HOME/.local/state/battlefield/cli-vm/handoff.json")"
+ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+  -o UserKnownHostsFile="$HOME/.local/state/battlefield/cli-vm/known_hosts" \
+  -i "$guest_key" vm-admin@192.168.234.2
 ```
+
+The [managed handoff](cli-vm-platform.md#automatic-ansible-handoff) supplies the
+trusted key path and host keys: fresh creation generates a host-local admin key,
+while adoption preserves the existing one. Unlock an encrypted adopted key in
+the host's SSH agent first; do not substitute a new key or accept unknown host keys.
 
 Inside the VM:
 
@@ -134,102 +91,13 @@ switches to the worker account in the same VM; it is not another SSH connection.
 `exit` returns to vm-admin, and another `exit` returns to the physical host. When
 accessing the PC remotely, the initial SSH to the PC is one additional hop.
 
-## 3. Render and install the host services
-
-The renderer is safe to run on a development workstation: it creates files only,
-contains no credentials and does not contact Kubernetes or start services. Supply
-the actual physical-host user, home and absolute kubeconfig path. On the host:
-
-```bash
-python3 scripts/ops/render-agent-vm-host.py \
-  --user "$(id -un)" --home "$HOME" \
-  --kubeconfig "$HOME/.config/autonomous-battlefield/production/kubeconfig" \
-  --context battlefield-production \
-  --output "$HOME/battlefield-agent-host-bundle"
-```
-
-The output directory must be new. To regenerate, use a new directory and compare
-it with the installed files. Review all output, especially the provider allowlist.
-Confirm `/usr/bin/caddy`, `/usr/bin/kubectl`, `/usr/sbin/nft` and the service user's
-kubeconfig exist. Check the kubeconfig context and kube-system UID against the
-registered production deployment before proceeding:
-
-```bash
-kubectl --kubeconfig="$HOME/.config/autonomous-battlefield/production/kubeconfig" \
-  --context=battlefield-production get namespace kube-system \
-  -o jsonpath='{.metadata.uid}{"\n"}'
-sudo ss -lntp '( sport = :3128 or sport = :18084 or sport = :28084 )'
-```
-
-Port 28084 (or your `--bridge-port` value) must be free or already belong to this
-bridge. Port 18084 can also be used on **127.0.0.1 only** by Jenkins smoke checks;
-the VM proxy binds only to 192.168.234.1. Do not move the bridge to a smoke port.
-
-For the current server's K3s cutover, preserve the matched bridge/drop-in and
-Caddy configuration and restart the bridge only. The installation block below
-is for a fresh installation and refuses an existing bridge drop-in directory,
-regardless of the filenames it contains, before changing files. For an intentional
-upgrade of an existing bundle, back up the effective units and Caddyfile and
-review all overrides with `systemctl cat`; reconcile them with the rendered
-loopback port in an idle worker window. Never remove an override alone or change
-only one end of the bridge/proxy pair. Preserve unrelated overrides and restore
-the matched backup if verification fails.
-
-On the host, install the reviewed bundle (these are intentional live configuration
-replacements). The Squid package must already be installed:
-
-```bash
-(
-set -eu
-bundle="$HOME/battlefield-agent-host-bundle"
-if sudo test -d /etc/systemd/system/battlefield-mcp-bridge.service.d; then
-  echo 'Existing bridge overrides: review the effective unit before installing.' >&2
-  exit 1
-fi
-sudo install -d -m 0755 /etc/battlefield-agent /etc/systemd/system/squid.service.d
-for file in firewall.nft mcp-proxy.Caddyfile provider-domains.txt; do
-  sudo install -o root -g root -m 0644 "$bundle/$file" "/etc/battlefield-agent/$file"
-done
-sudo install -o root -g root -m 0644 "$bundle/squid.conf" /etc/squid/squid.conf
-for unit in battlefield-agent-firewall battlefield-mcp-bridge battlefield-mcp-proxy; do
-  sudo install -o root -g root -m 0644 "$bundle/$unit.service" "/etc/systemd/system/$unit.service"
-done
-sudo install -o root -g root -m 0644 "$bundle/squid-override.conf" \
-  /etc/systemd/system/squid.service.d/battlefield.conf
-sudo nft --check --file /etc/battlefield-agent/firewall.nft
-sudo squid -k parse -f /etc/squid/squid.conf
-sudo caddy validate --config /etc/battlefield-agent/mcp-proxy.Caddyfile --adapter caddyfile
-sudo systemctl daemon-reload
-sudo systemctl enable battlefield-agent-firewall battlefield-mcp-bridge battlefield-mcp-proxy
-sudo systemctl restart battlefield-agent-firewall
-sudo systemctl restart battlefield-mcp-bridge
-sudo systemctl restart battlefield-mcp-proxy
-sudo systemctl unmask squid
-sudo systemctl enable squid
-sudo systemctl restart squid
-)
-```
-
-Caddy runs as a separate service with its admin endpoint disabled. The unit gives
-its autosaved configuration a private runtime directory; `persist_config off` is
-not used as a Caddyfile option. Existing public Caddy configuration is untouched.
-The firewall reload replaces only its own table, not Docker/libvirt/other rules.
-Its localhost exception on 18084 is needed by Jenkins. IPv6 cannot use either
-protected port through the catch-all drop; the VM NIC filter also denies IPv6.
-
-Why two bridge services? Kubernetes port-forward reaches MCP over loopback while
-preserving the original Host header. The Go MCP SDK rejects a non-loopback Host
-on that connection. Caddy changes only the upstream Host to `127.0.0.1:8084`;
-bearer authentication and MCP origin/localhost protection remain enabled. Do not
-use a direct guest-facing kubectl forward or disable SDK protection globally.
-
-## 4. Install the worker and the complete pinned Codex release
+## Pinned release inputs
 
 On the host, obtain the `battlefield-agent` binary from the same verified backend
 release deployed in production. For example, extract `/app/agent` from the running
 MCP container into a private staging directory; check the command succeeds before
-transferring the file. Record its checksum and verify it again in the VM. Install
-it root-owned at `/usr/local/bin/battlefield-agent`, mode 0755.
+registering the file. Record its checksum for the CLI bootstrap guest inputs;
+Ansible installs it root-owned at `/usr/local/bin/battlefield-agent`, mode 0755.
 
 The supported Codex release is **0.155.0**; the supplied profile requires the
 `codex-cli 0.155.` version family (0.152 is rejected by the provider). Download **both** version-matched Linux amd64
@@ -264,40 +132,19 @@ SUMS
 for name in codex codex-code-mode-host; do
   tar -xzf "$name-x86_64-unknown-linux-musl.tar.gz"
 done
-scp -i "$HOME/.ssh/battlefield-vm-admin" \
-  codex-x86_64-unknown-linux-musl codex-code-mode-host-x86_64-unknown-linux-musl \
-  vm-admin@192.168.234.2:
 )
 ```
 
-Install inside the VM:
+Supply the extracted binaries, their independently verified SHA256 digests, the
+worker binary and disabled configuration to
+[CLI bootstrap's fresh-service inputs](cli-bootstrap.md#install-services-on-a-fresh-already-provisioned-cli-vm).
+Ansible transfers the artifacts and installs the worker, matching Codex/helper,
+isolation verifier, configuration and service unit. Its encrypted guest environment
+contains only the dedicated worker secret, production environment and initial
+false isolation flag. Every fresh profile stays disabled until verification.
+Never copy the complete application environment or Kubernetes Secret into the VM.
 
-```bash
-sudo install -o root -g root -m 0755 "$HOME/codex-x86_64-unknown-linux-musl" /usr/local/bin/codex
-sudo install -o root -g root -m 0755 "$HOME/codex-code-mode-host-x86_64-unknown-linux-musl" /usr/local/bin/codex-code-mode-host
-/usr/local/bin/codex --version
-ls -l /usr/local/bin/codex /usr/local/bin/codex-code-mode-host
-```
-
-Copy `infra/deploy/agent-vm/config.yaml`, `worker.service` and
-`scripts/ops/verify-agent-isolation.py` to vm-admin's home. Inside the VM:
-
-```bash
-sudo install -d -m 0755 /etc/battlefield-agent
-sudo install -o root -g root -m 0644 "$HOME/config.yaml" /etc/battlefield-agent/config.yaml
-sudo install -o root -g root -m 0644 "$HOME/worker.service" /etc/systemd/system/battlefield-worker.service
-sudo install -o root -g root -m 0755 "$HOME/verify-agent-isolation.py" /usr/local/bin/verify-agent-isolation.py
-sudo systemctl daemon-reload
-```
-
-Securely provision `/etc/battlefield-agent/worker.env`, root:root mode 0400,
-using `worker.env.example`, but initially set its isolation flag to **false**.
-Set **both profiles to `enabled: false`** in the VM configuration during boundary
-verification: production startup refuses enabled CLI profiles without the isolation
-attestation. Transfer only the dedicated `BATTLEFIELD_AGENT_SECRET`
-from the production secret store, without printing it or putting it in shell
-history. Do not transfer the full Kubernetes Secret. Systemd reads this file;
-the worker account need not be able to read it directly.
+## Provider login
 
 Inside the VM, switch to `battlefield-worker`, set transport variables and perform
 the interactive login for the dedicated account:
@@ -314,7 +161,7 @@ codex login status
 Return to vm-admin with `exit`. This login step is deliberately interactive;
 never bake login tokens into the image or rendered bundle.
 
-## 5. Verify before advertising availability
+## Verify before advertising availability
 
 Inside the VM, test an allowed HTTPS destination through Squid and a denied one:
 
@@ -329,7 +176,7 @@ Expect allowed HTTPS success, denied CONNECT 403, and unauthenticated MCP 401.
 before the SDK Host check. A real accepted plan is required to test that path.
 
 Keep production API CLI availability false while starting the worker and checking
-the boundary. Keep both VM profiles disabled for this initial check. In the
+the boundary. Keep all VM profiles disabled for this initial check. In the
 vm-admin shell, set `ROUTER_IP` to your router's LAN address and `HOST_LAN_IP`
 to the physical host's LAN address, then run:
 
@@ -374,7 +221,6 @@ cancellation and two-Codex-player behavior were **not verified by that run**.
 | Symptom | Check or correction |
 | --- | --- |
 | `qemu-kvm` has no candidate | Install the explicit `qemu-system-x86` package. |
-| Creation script not found | Run from the repository root, not the image-download directory. |
 | Worker connection refused during boot | Inspect bridge/proxy logs and listeners; both services retry, as does the worker. |
 | `invalid Host header "192.168.234.1:18084"` | Verify Caddy owns that listener, kubectl owns 127.0.0.1:28084 (or the configured bridge port), and the Host rewrite is installed. |
 | Plain reply works, code-mode host missing | Install the matching helper beside Codex; a no-tools reply does not test MCP. |

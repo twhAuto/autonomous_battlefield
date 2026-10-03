@@ -25,6 +25,7 @@ mkdir -p \
   "${runtime_dir}/legacy" \
   "${runtime_dir}/tests/performance" \
   "${runtime_dir}/scripts/ci" \
+  "${runtime_dir}/scripts/test" \
   "${runtime_dir}/scripts/cd"
 cp "${project_dir}/scripts/cd/detect-deployment-components.sh" \
   "${runtime_dir}/scripts/cd/detect-deployment-components.sh"
@@ -34,7 +35,7 @@ printf '0.1.0\n' >"${runtime_dir}/VERSION"
 printf 'legacy\n' >"${runtime_dir}/legacy/obsolete.conf"
 printf 'package legacy\n' >"${runtime_dir}/backend/legacy.go"
 printf '// performance scenario\n' >"${runtime_dir}/tests/performance/seed.js"
-printf '# coverage wrapper\n' >"${runtime_dir}/scripts/ci/test-go-coverage.sh"
+printf '# coverage runner\n' >"${runtime_dir}/scripts/test/test-go-coverage.sh"
 git -C "${runtime_dir}" add .
 git -C "${runtime_dir}" commit --quiet -m initial
 base_revision="$(git -C "${runtime_dir}" rev-parse HEAD)"
@@ -166,11 +167,9 @@ assert_detection "none" "infra/local/compose.yaml"
 assert_detection "all" "infra/deploy/policy/kubernetes/workload.rego"
 assert_detection "none" "tests/performance/query-plans/seed.sql"
 assert_detection "none" "scripts/test/test-go-coverage.sh"
-assert_detection "none" "scripts/test/test-command-wrappers.sh"
 assert_detection "none" "tests/performance/k6-smoke.js"
-assert_detection "none" "scripts/ci/test-go-coverage.sh"
-for wrapper in fuzz-smoke test-ai-evals test-backend test-go-race test-kind-deployment with-test-postgres; do
-  assert_detection "none" "scripts/ci/${wrapper}.sh"
+for runner in fuzz-smoke test-ai-evals test-backend test-go-race test-kind-deployment with-test-postgres; do
+  assert_detection "none" "scripts/test/${runner}.sh"
 done
 assert_detection "none" "backend/internal/ai/providers/providers_test.go"
 assert_detection "none" "frontend/src/features/factions/api/factions.test.ts"
@@ -195,7 +194,7 @@ assert_rename "migration,backend,application" "backend/legacy.go" "tests/legacy.
 assert_rename "migration,backend,application" "backend/legacy.go" "backend/legacy_test.go"
 assert_rename "frontend,application" "tests/performance/seed.js" "frontend/src/seed.tsx"
 assert_rename "frontend,application" "tests/performance/seed.js" "frontend/src/seed.js"
-assert_rename "none" "scripts/ci/test-go-coverage.sh" "scripts/test/test-go-coverage.sh"
+assert_rename "none" "scripts/test/test-go-coverage.sh" "scripts/test/coverage-fixture.sh"
 
 unknown_base="0000000000000000000000000000000000000000"
 actual="$("${runtime_dir}/scripts/cd/detect-deployment-components.sh" \

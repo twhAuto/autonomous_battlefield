@@ -54,7 +54,7 @@ while IFS= read -r -d '' changed_file; do
       ;;
     backend/*_test.go|frontend/src/*.test.ts|frontend/src/*.test.tsx|frontend/src/test/*)
       ;;
-    scripts/ci/coverage-check-summary.sh|scripts/ci/lint-go.sh|scripts/ci/fuzz-smoke.sh|scripts/ci/test-ai-evals.sh|scripts/ci/test-backend.sh|scripts/ci/test-deployment-components.sh|scripts/ci/test-go-coverage.sh|scripts/ci/test-go-race.sh|scripts/ci/test-kind-deployment.sh|scripts/ci/with-test-postgres.sh)
+    scripts/ci/coverage-check-summary.sh|scripts/ci/lint-go.sh)
       ;;
     backend/*)
       backend=1

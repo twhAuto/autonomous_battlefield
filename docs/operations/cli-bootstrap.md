@@ -129,7 +129,7 @@ example's `guest` object. `known_hosts_file` is a managed connection field suppl
 by CLI VM provisioning in memory (or saved during capture); do not add it by hand to the example.
 Without a managed handoff, keep the example's explicit trusted connection fields.
 Keep the copied guest configuration and unit sources owned by the controller user
-with mode 0600. Use the [pinned release procedure](agent-vm.md#4-install-the-worker-and-the-complete-pinned-codex-release)
+with mode 0600. Use the [pinned release inputs](agent-vm.md#pinned-release-inputs)
 to obtain artifacts. Optional native `claude` and `agy` executable artifacts can be registered too;
 verify checks each installed CLI against the configured version family. Every
 profile needs a unique `id` and nonempty `supportedVersionPrefix`; a failed version
@@ -180,7 +180,7 @@ An interrupted installation can resume against its registered marker. Missing
 managed files and ordinary owned drift are repaired; a differing worker secret
 requires recovering the matching bundle, never automatic rotation. Existing VM
 disks, provider homes, Kubernetes credentials and unrelated services are preserved.
-Do not delete a marker to force an update or run the create-only VM script again.
+Do not delete a marker to force an update or run fresh VM creation against retained resources.
 
 For a disposable lifecycle test on a libvirt host with the pinned Ubuntu cloud
 image already cached by the [foundation rehearsal](server-bootstrap.md):

@@ -1,8 +1,8 @@
 # Deployment learning guide
 
-Application CD now uses `scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh`;
-existing Kind-named commands remain compatible launchers. The registered driver
-selects Kind or K3s. See [K3s delivery](k3s-delivery.md) for retained storage,
+Application CD uses `deploy.sh`, `rollback.sh` and `smoke-test.sh` in `scripts/cd/`.
+The registered driver selects Kind or K3s. See [K3s delivery](k3s-delivery.md) for
+retained storage,
 controller ownership, private gateway checks and the separate production cutover.
 Rollback records include applied migration versions; a changed ledger requires
 reviewed database recovery before automatic image rollback.
@@ -408,7 +408,7 @@ folder rule. Multiple changed paths contribute the union of their components;
 | `infra/local/**`, `infra/sonarqube/**` or `sonar-project.properties` | `none` | None |
 | `scripts/test/**` and `tests/**` | `none` | None |
 | Go `backend/**/*_test.go`, frontend `src/**/*.test.ts`, `src/**/*.test.tsx`, or `src/test/**` | `none` | None |
-| CI lint/coverage summary and existing test compatibility wrappers (`test-*`, `fuzz-smoke`, `with-test-postgres`) | `none` | None |
+| CI lint/coverage summary; test runners and fixtures under `scripts/test/` and `tests/` | `none` | None |
 | `backend/**` | `migration,backend,application` | Backend image |
 | `frontend/**` | `frontend,application` | Frontend image |
 | `infra/deploy/base/infrastructure/**` or `infra/deploy/overlays/{local,k3s}/infrastructure/**` | `infrastructure` | None |

@@ -338,7 +338,7 @@ ports; `--bridge-port` validates an unprivileged port and substitutes the same
 value in the Kubernetes forward and Caddy upstream. Guest-facing ports and the
 MCP Host header remain fixed. `scripts/test/test-agent-vm-host.py` checks the
 matched default/CLI override, invalid-input rejection, isolation configuration
-and refusal to overwrite a reviewed bundle. See the [CLI VM runbook](../operations/agent-vm.md).
+and refusal to overwrite a reviewed bundle. See the [CLI worker verification runbook](../operations/agent-vm.md).
 
 ### Cloudflare capture and lifecycle
 

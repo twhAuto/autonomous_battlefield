@@ -254,20 +254,12 @@ a one-slot starting size, not validated four-CLI capacity. Before selecting four
 slots, test four processes together and increase guest/service limits if measured
 headroom is insufficient. Leave CLI disabled if the host cannot sustain this.
 
-Install the Ubuntu host's `qemu-system-x86`, `libvirt-daemon-system`, `libvirt-clients`,
-`cloud-image-utils`, and a dedicated Squid service. Review the files in
-`infra/deploy/agent-vm/`. Supply a publisher-verified local Ubuntu 24.04 amd64 cloud image,
-its verified SHA256, and your public SSH key, then run as root on the server:
-
-```bash
-sudo --preserve-env=BATTLEFIELD_VM_IMAGE,BATTLEFIELD_VM_IMAGE_SHA256,BATTLEFIELD_VM_ADMIN_KEY \
-  scripts/ops/create-agent-vm.sh
-```
-
-The script refuses an existing VM/network/directory and checks KVM, at least 6 GiB
-available RAM, and 30 GiB disk before reserving the VM. It creates the disk,
-cloud-init seed, private libvirt network and host-enforced NIC filter, then boots
-the VM. It installs no CLI credentials and enables no public profile.
+Use [CLI VM provisioning and adoption](cli-vm-platform.md) to create or adopt
+the isolated VM, then [CLI worker bootstrap](cli-bootstrap.md) to install or adopt
+its host and guest services. These reviewed workflows own image verification,
+capacity checks, the isolated network/NIC filter and interruption recovery.
+Neither workflow enables public CLI availability or provisions provider logins.
+Keep retained disks, provider homes and the existing administration identity.
 
 The VM has **no default route, NAT, DNS server, host mounts or Docker socket**.
 `bf-agent0` is `192.168.234.1/24`; the guest is `192.168.234.2`. The external NIC
@@ -275,34 +267,24 @@ filter permits only guest connections to the host proxy at 3128 and MCP bridge a
 18084, plus operator SSH from the host. IPv6 is dropped. The proxy resolves approved
 provider/update names; direct guest DNS and direct internet traffic are unnecessary.
 
-Provision a dedicated Squid instance using `squid.conf` and
-`provider-domains.txt`; use `squid -k parse -f /etc/squid/squid.conf`
-before starting it. Keep its host listener on `192.168.234.1`, with a host firewall
-allowing 3128/18084 only from `bf-agent0` and the guest IP. The domain list is a
-starting allowlist: test actual provider login and inference, then add exact
-necessary destinations. Never broadly permit HTTPS or remove the private-IP deny.
-Use HTTPS apt sources through the proxy for updates.
+The service bootstrap installs dedicated Squid, Caddy, firewall and loopback
+bridge configuration. Review the exact provider allowlist and verify actual login
+and inference; never broadly permit HTTPS or remove the private-IP deny. The
+proxy resolves approved names, and HTTPS package updates use it.
 
-Use the [repeatable VM setup guide](agent-vm.md) and
-`render-agent-vm-host.py` to generate the supervised **host-side** services. Caddy
-binds `192.168.234.1:18084` and forwards to a loopback-only kubectl bridge,
+Caddy binds `192.168.234.1:18084` and forwards to the loopback-only kubectl bridge,
 setting upstream Host to `127.0.0.1:8084`. The renderer defaults to port 28084,
-matching the existing server and avoiding Jenkins smoke ports 18081–18085.
-`--bridge-port` changes both rendered endpoints together. During K3s adoption,
-keep the verified bridge/proxy pair. Follow the
-[bridge installation guidance](agent-vm.md#3-render-and-install-the-host-services)
-before replacing that pair. A direct guest-facing
-port-forward triggers the MCP SDK localhost Host protection. Preserve the narrow
-firewall exception for Jenkins smoke forwards on `127.0.0.1:18084`.
+separate from Jenkins smoke ports 18081–18085. Preserve the verified bridge/proxy
+pair and the narrow firewall exception for smoke forwards on `127.0.0.1:18084`.
 The kubeconfig and deployment credentials never enter the VM. Verify unauthenticated
 bridge requests return 401, then verify a real accepted plan: authentication runs
-before the SDK Host check, so 401 alone is insufficient. Copy only the verified `cmd/agent` binary and pinned CLI
-packages into the VM, install them root-owned, and install the supplied worker
-configuration and systemd unit. Check the actual CLI versions match the pinned
-families before enabling them. Install the version-matched `codex-code-mode-host`
-beside Codex; the main binary archive does not include it. Disable unused profiles.
+before the SDK Host check, so 401 alone is insufficient. Obtain the verified worker
+and version-matched CLI/helper using the
+[pinned release inputs](agent-vm.md#pinned-release-inputs), then let the service
+bootstrap install them. Check actual CLI versions before enabling profiles.
 
-Create `/etc/battlefield-agent/worker.env` as **root:root 0400**, containing only
+The service bootstrap installs `/etc/battlefield-agent/worker.env` as
+**root:root 0400**, containing only
 `BATTLEFIELD_AGENT_SECRET`, `BATTLEFIELD_ENV=production`, and the isolation flag
 once verified. Never put the capability-signing secret, database URLs, API server
 passwords, personal files, SSH keys, or deployment credentials in the worker's home.
@@ -311,7 +293,7 @@ dedicated home `/var/lib/battlefield-worker`. Linux workers disable dumpability 
 block same-user subprocess reads of parent environment/memory; CLI children receive
 an explicit allowlist of transport/login settings and their scoped capability.
 
-For initial boundary checks, keep **both VM profiles disabled** and the
+For initial boundary checks, keep **all VM profiles disabled** and the
 **API's CLI availability false**, then start the worker and execute:
 
 ```bash

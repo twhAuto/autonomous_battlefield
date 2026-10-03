@@ -129,7 +129,7 @@ It does not edit the host firewall, Docker networks or the existing CLI VM.
 The validation gateway is private and has no public DNS/tunnel route. Application
 delivery owns the CLI/MCP route through the intended private bridge; verify that
 route before enabling CLI execution on K3s. Player CLI access requires the separate
-[isolation and accepted-plan checks](agent-vm.md#5-verify-before-advertising-availability).
+[isolation and accepted-plan checks](agent-vm.md#verify-before-advertising-availability).
 
 [`pins.json`](../../infra/k3s/pins.json) pins and checksums K3s, Envoy Gateway's
 controller/CRDs and Kyverno. The chosen Kubernetes version is within both
