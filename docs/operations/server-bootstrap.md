@@ -8,7 +8,7 @@ operations from the existing Jenkins controller, install the separate
 [reviewed host job](platform-jobs.md).
 
 The [server rebuild contract](server-rebuild-contract.md) records the complete
-layout, measured capacity, state locations and remaining automation. Production
+layout, state locations, capacity guards and recovery verification. Production
 runs in the separately managed K3s VM. This foundation playbook does not invoke
 [K3s provisioning](k3s-platform.md) or [CI service configuration](ci-bootstrap.md);
 those have separate entry points. [Cloudflare capture and lifecycle](cloudflare-platform.md)

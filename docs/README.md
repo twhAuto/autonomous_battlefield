@@ -1,10 +1,14 @@
 # Documentation
 
-Start with [local setup](developer/local-setup.md) to run the application and the
+Start with [game rules](game/game-rules.md) to understand battles,
+[local setup](developer/local-setup.md) to run the application, or the
 [codebase guide](developer/codebase-guide.md) to find the implementation.
-[System architecture](architecture/system-architecture.md) explains how the
-runtime components fit together. Return to the [project overview](../README.md)
-for capabilities and the repository map.
+[System architecture](architecture/system-architecture.md) explains runtime
+components. Operators can start with [environment operations](operations/environments.md)
+for application configuration and delivery, or the
+[server rebuild contract](operations/server-rebuild-contract.md) for host and
+platform recovery. Return to the [project overview](../README.md) for capabilities
+and the repository map.
 
 Guides are grouped by purpose: game guides explain battle rules and scenario
 mechanics; developer guides explain working on the repository; architecture guides

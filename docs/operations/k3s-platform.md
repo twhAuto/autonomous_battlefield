@@ -6,7 +6,7 @@ K3s, retained storage, Envoy Gateway, Kyverno and private validation workloads.
 Application delivery and registration are described in [K3s delivery](k3s-delivery.md).
 Production application traffic and PostgreSQL now use K3s; the Cloudflare
 connector runs there too. The old Kind resources remain a retained recovery
-source. See the dated [rebuild contract](server-rebuild-contract.md). Merging
+source. See the [rebuild contract](server-rebuild-contract.md). Merging
 platform code does not run an apply.
 
 ## Run the job

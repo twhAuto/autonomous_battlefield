@@ -110,9 +110,8 @@ The backend has five commands in one Go module: four runtime processes and the o
 `cmd` packages should remain thin. Domain and use-case behavior belongs under `internal`; entry points should focus on composition and process lifecycle.
 
 The [server rebuild contract](../operations/server-rebuild-contract.md) connects
-the host, CI, VM, K3s and CLI entry points to the measured live layout and names
-remaining automation boundaries. It is a dated operational decision, not a
-duplicate task-status list.
+the host, CI, VM, K3s and CLI entry points to state ownership, rebuild prerequisites
+and recovery verification. Its linked runbooks own the operational procedures.
 
 Host bootstrap enters through [`scripts/infra/server.sh`](../../scripts/infra/server.sh).
 Its Python wrapper validates private inventory, SSH/machine identity, secret imports
