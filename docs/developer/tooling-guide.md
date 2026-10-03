@@ -172,8 +172,9 @@ fingerprints still prevent knowingly stale publication. An explicitly approved
 `--allow-extra-round` permits one more focused call. `scripts/test/test-cross-review.py` checks snapshot boundaries,
 read-only CLI options, version/argument checks, rejected responses, publication
 identity/body matching, delta-only follow-ups, compact context, round limits,
-process timeouts, and per-review token usage accounting (`--usage`). Codex and Claude both
-read the shared `AGENTS.md` rules. See the
+process timeouts, and per-review token usage accounting (`--usage`). Codex and Claude Code
+2.1.277 or newer load the shared `AGENTS.md` rules at startup; the repository has
+no `CLAUDE.md`, so older Claude Code sessions start without them. See the
 [cross-review workflow](cross-review.md).
 
 ## Container build contexts
