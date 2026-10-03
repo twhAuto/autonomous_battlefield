@@ -752,6 +752,9 @@ retried. Together with `battle_timeout` (see
 [current limitations](#19-current-limitations-and-follow-up-questions)), these are
 the engine's terminal battle error codes.
 
+See [engine capacity and recovery limits](observability.md#engine-capacity-and-recovery-limits)
+for serial queue processing, claim timing, shutdown handoffs and database failures.
+
 Decision wake-ups use the `battlefield_decision_ready` PostgreSQL channel, with the
 profile ID as payload.
 

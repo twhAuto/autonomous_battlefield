@@ -7,13 +7,12 @@ runs application delivery; it does not run this job. The job reads
 locally as the registered `twh09` operator on `battlefield-production`. The SSH
 private key stays on the workstation.
 
-This implements the host slice of
-[AB-131 — Add reviewed Jenkins platform jobs and infrastructure verification](https://app.notion.com/p/3eab7a19f8f781f7b89ad3606e2dc11f).
-[AB-107](https://app.notion.com/p/3e3b7a19f8f7816e8b29d8e532189e2d) holds the execution
-map. [Terraform VM provisioning](k3s-vm.md) (AB-126) has its separate `battlefield-platform/vm` job. Reproducible Jenkins/SonarQube services
-(AB-127), delivery integration (AB-129), and full platform
-verification remain separate work. Scheduled backups (AB-130) are deferred by the
-owner. The [K3s platform job](k3s-platform.md) (AB-128) now provides reviewed guest configuration separately. The host job does not migrate Docker/PostgreSQL or deploy K3s.
+[Terraform VM provisioning](k3s-vm.md) uses the separate `battlefield-platform/vm`
+job, and the [K3s platform job](k3s-platform.md) owns guest configuration.
+[CI service administration](ci-bootstrap.md) and
+[application delivery](k3s-delivery.md) have their own workflows. The host job
+does not migrate Docker/PostgreSQL or deploy K3s. Scheduled backups and retention
+are not configured; see the [backup and recovery boundary](server-bootstrap.md#backup-drive-and-recovery-boundary).
 
 ## One-time installation
 
@@ -186,10 +185,10 @@ Local tests cover lock contention, startup cancellation and controller crashes,
 revision and plan-drift rejection (including loops),
 secret-free real Ansible reports, and safe setup. Disposable Jenkins validation
 covers pipeline compilation and repeated job/credential creation without starting
-builds. Before marking the host slice complete, record live evidence in AB-131:
-first plan, approved apply, verify, repeat apply, main/platform contention, rejected
-approval, cancellation, and absent/wrong data mount. AB-134 needs its own live
-storage-adoption evidence. Keep the tickets in progress until those checks pass.
+builds. Before enabling routine host administration, verify the first plan,
+approved apply, verify-only run, repeat apply, main/platform contention, rejected
+approval, cancellation and absent/wrong data-mount behavior. Verify storage
+adoption against the [host storage contract](server-bootstrap.md#terraform-and-guest-storage-contract).
 
 On failure, keep the failed build visible and inspect the sanitized task summary.
 A `Gathering Facts (unreachable)` failure can indicate a sudo password-handshake

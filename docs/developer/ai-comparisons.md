@@ -186,8 +186,7 @@ metadata, never full knowledge text. Run the existing compare command with the
 same corpus and different configuration files to compare budgets.
 
 Free scripted comparisons validate integration, not tactical improvement. Live
-comparisons remain opt-in; full battles are needed for outcome claims. This
-worker-context feature does not complete AB-76's separate rules-coach experiment.
+comparisons remain opt-in; full battles are needed for outcome claims.
 
 ## Explicit unit purchases
 

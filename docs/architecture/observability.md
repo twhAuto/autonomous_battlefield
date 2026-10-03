@@ -132,6 +132,51 @@ cluster without a trusted kubelet CA.
 Workload telemetry explains pod health and resource use; it does not directly
 measure whether a user request succeeded.
 
+## Engine capacity and recovery limits
+
+Each engine worker processes one battle synchronously before claiming another;
+the application manifest defaults to one engine replica. Additional admitted
+battles queue. The default admission limit is four unfinished battles globally,
+and queued time counts toward the one-hour battle expiry. Queue delay therefore
+depends on battle duration, decision waits, pauses and available engine replicas;
+admission does not guarantee that a battle finishes before expiry.
+
+Crash recovery has two gates: the previous lease must expire (30 seconds by
+default), and an available worker must make its next claim. Claims select eligible
+battles by creation time and ID. An engine already processing another battle
+does not interrupt it to reclaim an orphan, so recovery can take longer than the
+lease duration.
+
+Every claim starts a new attempt at tick 0 from the frozen initial state. It does
+not resume the last persisted tick. Earlier attempt events remain inspectable,
+and matching resolved decisions can be reused as described in
+[battle retries](system-architecture.md#battle-retries).
+
+Every claim consumes an attempt, including a claim after a successful graceful
+shutdown requeue. Requeueing preserves the attempt count. With
+`engine.maxAttempts: 3`, an interrupted third attempt is marked `failed` with
+`attempts_exhausted` on a subsequent claim pass instead of being claimed again.
+Repeated rolling restarts during a battle can therefore exhaust its retry budget.
+
+Database errors returned by the claim operation terminate the worker loop and
+cause the engine process to exit with an error; Kubernetes restarts the container.
+A database interruption that reaches this path can consequently trigger lease
+recovery and a fresh attempt. Restart timing and recovery are separate: a ready
+replacement still has to satisfy the claim gates above.
+
+The API and engines share PostgreSQL. Inspect database CPU and throttling, query
+latency and connection-pool pressure alongside API pod usage when assessing
+capacity. Adding API replicas does not remove shared database work; the limiting
+resource and sustainable request rate depend on the workload and resource limits.
+Use [reliability testing](../operations/reliability-testing.md) to measure them.
+
+These contracts come from the
+[worker loop](../../backend/internal/battle/worker/worker.go),
+[claim and requeue operations](../../backend/internal/battle/repo/queue.go),
+[expiry sweep](../../backend/internal/battle/repo/expiry.go) and
+[engine entry point](../../backend/cmd/engine/main.go). Historical queue timings
+and load measurements are kept separately from these runtime contracts.
+
 ## Proposed SLIs and SLOs
 
 These targets are a starting policy for an early-stage service. Review them

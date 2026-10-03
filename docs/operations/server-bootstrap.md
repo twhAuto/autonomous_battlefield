@@ -213,10 +213,11 @@ in this role.
 
 Ubuntu, Jenkins, SonarQube and host CI/Docker storage remain on `/`. The
 Terraform-managed domain must be named `battlefield-k3s`, with its separate OS
-and retained data images in the reported `images` directory. [AB-126](k3s-vm.md) implements
-that provisioning, retained-volume lifecycle and state locking;
-AB-128 owns mounting retained data **inside** the guest before K3s and configuring
-its persistent-volume path. Neither VM provisioning nor application/database
+and retained data images in the reported `images` directory.
+[VM provisioning](k3s-vm.md) owns the retained-volume lifecycle and state locking;
+[K3s platform configuration](k3s-platform.md) owns mounting retained data
+**inside** the guest before K3s and configuring its persistent-volume path.
+Neither VM provisioning nor application/database
 migration is performed by this host role. The separate
 [application cutover](k3s-delivery.md#adoption-and-cutover-boundary) moves the
 application to K3s while retaining the old Kind data.
