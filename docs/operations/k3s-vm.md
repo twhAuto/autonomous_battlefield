@@ -161,7 +161,7 @@ directory exists on that filesystem, copy a selected completed bundle:
 ```bash
 python3 scripts/infra/vm-state.py copy \
   --inventory /absolute/private/inventory.json \
-  --bundle /home/twh09/.local/state/battlefield/k3s/recovery/SELECTED.vault \
+  --bundle "$HOME"/.local/state/battlefield/k3s/recovery/SELECTED.vault \
   --destination /absolute/mounted-backup/private-directory
 ```
 
