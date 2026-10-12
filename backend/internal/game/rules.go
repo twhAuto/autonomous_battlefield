@@ -151,11 +151,6 @@ func UpgradesByID(ruleset Ruleset) map[string]Upgrade {
 	return result
 }
 
-func DesignCost(ruleset Ruleset, blueprint Blueprint) int64 {
-	cost, _ := ValidateBlueprint(ruleset, blueprint)
-	return cost
-}
-
 func normalizedSelections(blueprint Blueprint) []UnitSelection {
 	result := append([]UnitSelection(nil), blueprint.Units...)
 	sort.Slice(result, func(i, j int) bool { return result[i].Type < result[j].Type })

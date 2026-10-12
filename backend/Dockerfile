@@ -1,7 +1,7 @@
-# Builds the API, engine, MCP, and agent binaries and packages their runtime configuration
+# Builds the API, engine, AI gateway, and agent binaries and packages their runtime configuration
 # and authored game content in a non-root image.
 
-FROM golang:1.26.6-alpine AS build
+FROM golang:1.26.9-alpine AS build
 
 WORKDIR /src
 
@@ -21,7 +21,7 @@ RUN CGO_ENABLED=0 go build \
       -o /out/engine \
       ./cmd/engine \
     && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/agent ./cmd/agent \
-    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/mcp ./cmd/mcp
+    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/ai-gateway ./cmd/aigateway
 
 FROM alpine:3.23
 
@@ -35,7 +35,10 @@ WORKDIR /app
 COPY --from=build --chown=battlefield:battlefield /out/server /app/server
 COPY --from=build --chown=battlefield:battlefield /out/engine /app/engine
 COPY --from=build --chown=battlefield:battlefield /out/agent /app/agent
-COPY --from=build --chown=battlefield:battlefield /out/mcp /app/mcp
+COPY --from=build --chown=battlefield:battlefield /out/ai-gateway /app/ai-gateway
+# Pre-rename path for the same binary; the gateway Deployment still runs it so that
+# image-only rollbacks to older images keep working. Remove with that command.
+COPY --from=build --chown=battlefield:battlefield /out/ai-gateway /app/mcp
 COPY --chown=battlefield:battlefield config.yaml /app/config.yaml
 COPY --chown=battlefield:battlefield scenarios /app/scenarios
 COPY --chown=battlefield:battlefield rulesets /app/rulesets

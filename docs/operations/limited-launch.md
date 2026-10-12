@@ -1,7 +1,7 @@
 # Limited-access launch
 
 The chosen application hostname is **play.ordinalfrontier.com**, under Access team
-**ordinalfrontier-lab**. Start with the owner's Google identity only. Application
+**ordinalfrontier-lab**. Start with a single administrator's Google identity. Application
 privileged roles are private operator configuration; optional managed Player
 invitations live in PostgreSQL. No email list is committed to Git. This
 runbook describes the implemented deployment path; it does not certify that a
@@ -33,11 +33,11 @@ CLI jobs from your personal home directory.
 1. Create a named Cloudflare Tunnel for the application. Route DNS for
    `play.ordinalfrontier.com` to that tunnel. Create a self-hosted Access application
    covering the **entire hostname**, with a six-hour application session.
-   The owner confirmed this duration on 2026-09-27. The privileged MFA challenge
+   The privileged MFA challenge
    duration remains one hour; it is separate from the application session.
    Keep policy session durations inherited from the application.
 2. Configure Google as the identity provider. Add an Allow policy listing the
-   owner's exact email. Do not add a domain-wide allow, Bypass, Everyone, or public
+   administrator's exact email. Do not add a domain-wide allow, Bypass, Everyone, or public
    service-token policy. Require MFA for Admin/Developer identities using an IdP
    and Access policy that actually enforces it. Test the MFA challenge; a normal
    Google login alone is not evidence of MFA. For the initial owner-only phase,
@@ -51,7 +51,7 @@ CLI jobs from your personal home directory.
    `.env`. Put `BF_TUNNEL_ID`, `BF_TUNNEL_IMAGE` (digest-pinned), and
    `BF_TUNNEL_CREDENTIALS_FILE=tunnel-credentials.json` in its `deployment.env`.
    Install the application's tunnel credentials beside those files (mode 600).
-5. Configure independent worker and MCP credentials in `.env`. Keep provider and
+5. Configure independent worker and MCP capability credentials in `.env`. Keep provider and
    CLI availability false until intentionally enabled and verified.
 6. Validate with `./scripts/ops/prepare-limited-production.sh`, then use the normal
    verified application pipeline. Production database migration backups remain
@@ -69,7 +69,7 @@ CLI jobs from your personal home directory.
    Only the tunnel's outbound connection should expose the application. Block
    inbound direct access on **both IPv4 and IPv6**, including forwarded container
    ports. Keep SSH restricted to the operator's private management network.
-   MCP, databases, Kubernetes, Jenkins, SonarQube and monitoring stay private.
+   the AI gateway, databases, Kubernetes, Jenkins, SonarQube and monitoring stay private.
 
 The rendered NetworkPolicies allow the tunnel to reach frontend/API and frontend
 to reach API. The API policy also permits same-namespace Prometheus pods matching
@@ -122,8 +122,9 @@ For a tunnel credential incident, stop its connectors, rotate or replace the
 named tunnel credentials using Cloudflare's supported management flow, update only
 the tunnel Secret from the new private credentials file, and restart its deployment.
 Revoke the old credential and verify the old connector can no longer establish a
-connection. Rotating worker credentials requires updating both MCP and all workers;
-rotating capability-signing material requires only MCP and invalidates active jobs.
+connection. Rotating worker credentials requires updating both the AI gateway and all workers;
+rotating capability-signing material requires only the AI gateway and invalidates
+active jobs.
 
 To retire the deployment, stop the connectors and worker first, remove the
 application DNS route and Access application/Allow policies, and delete the dedicated
@@ -216,7 +217,7 @@ existing idempotency key. Expired queued jobs and failed executions both consume
 
 A shared database limit admits up to four CLI executions across decisions and
 background jobs (`runtime_policy.cli_concurrency`, range 1–4). Workers separately
-limit their active jobs with `ai.agentConcurrency` (default 1; explicitly select 4 after validation).
+limit their active jobs with `ai.agentConcurrency` (1 when omitted; the K3s API worker and CLI VM template set 4).
 Submission alone does not release a slot: the worker must report
 completion, or the bounded execution lease must expire. Claims never wait in a
 worker's local execution queue. Workers use the database lease deadline rather than
@@ -263,7 +264,7 @@ Keep retained disks, provider homes and the existing administration identity.
 
 The VM has **no default route, NAT, DNS server, host mounts or Docker socket**.
 `bf-agent0` is `192.168.234.1/24`; the guest is `192.168.234.2`. The external NIC
-filter permits only guest connections to the host proxy at 3128 and MCP bridge at
+filter permits only guest connections to the host proxy at 3128 and AI gateway bridge at
 18084, plus operator SSH from the host. IPv6 is dropped. The proxy resolves approved
 provider/update names; direct guest DNS and direct internet traffic are unnecessary.
 
@@ -342,9 +343,9 @@ Checks also require denial of admin access, battle reads and logout mutations.
 Redirects are not followed and response bodies/credentials are not logged.
 Separately test the public hostname with allowed and denied Google identities,
 MFA, six-hour user-session expiry, logout, account removal, and direct-origin
-IPv4/IPv6 probes. The old human-JWT `verify-access-origin.py` helper has been retired. Use real
+IPv4/IPv6 probes. Use real
 browser sessions for human-role checks; do not copy browser JWTs into scripts or
-Jenkins. Remove obsolete `battlefield-production-access-token` credentials after
+Jenkins. Remove any leftover `battlefield-production-access-token` credential after
 checking all Jenkins jobs for references. Keep the service-token credential and
 tunnel credentials, which serve different purposes.
 
@@ -382,8 +383,8 @@ waive missing or invalid evidence.
 ## CI service authentication
 
 Jenkins uses the Secret file credential `battlefield-production-access-service-token`
-for credential preflight, deployment smoke, and k6 smoke load. The old
-`battlefield-production-access-token` browser JWT credential is no longer used.
+for credential preflight, deployment smoke, and k6 smoke load. The
+`battlefield-production-access-token` browser JWT credential is not used.
 Service authentication does not grant a Player, Developer or Admin role. The API
 validates the signed Access application JWT (RS256, fixed issuer and audience,
 expiry, issuance time and signing keys), requires its `common_name` to exactly
@@ -506,8 +507,8 @@ into `/tmp` or weaken that setting. Use these server logs for verifier failures.
 
 ### Cloudflare Browser Integrity Check exception
 
-The production API clients previously received Cloudflare error 1010 before Access
-or the application could authenticate them. Under the zone's Configuration Rules,
+Cloudflare's Browser Integrity Check blocks the production API clients with error
+1010 before Access or the application can authenticate them. Under the zone's Configuration Rules,
 set **Browser Integrity Check: Off** only for this expression:
 
 ```text

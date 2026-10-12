@@ -77,7 +77,7 @@ func toolDefinitions(ctx context.Context, session *mcp.ClientSession) ([]ai.Tool
 		names = append(names, tool.Name)
 	}
 	slices.Sort(names)
-	valid := slices.Equal(names, []string{"get_decision_context", "submit_strategy_plan"}) || slices.Equal(names, []string{"get_decision_context", "get_unit_details", "submit_strategy_plan"}) || slices.Equal(names, []string{"get_background_context", "submit_faction_background"})
+	valid := slices.Equal(names, []string{"get_decision_context", "get_unit_details", "submit_strategy_plan"}) || slices.Equal(names, []string{"get_background_context", "submit_faction_background"})
 	if !valid {
 		return nil, fmt.Errorf("MCP exposed an unsupported tool set")
 	}

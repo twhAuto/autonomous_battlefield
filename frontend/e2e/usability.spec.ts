@@ -147,13 +147,14 @@ test('failed availability reads can be retried without inventing configuration a
   await expect(page.getByText(/generations left today/)).toHaveCount(0)
   await expect(page.getByLabel('Background (optional)')).toHaveValue('Manual background remains editable.')
 })
-test('pages reflow across mobile tablet and desktop', async ({ page }) => {
-  for (const width of [390, 768, 1440]) {
+// One test per width keeps each within the default timeout on a shared CI host.
+for (const width of [390, 768, 1440]) {
+  test(`pages reflow at ${width}px width`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     for (const path of ['/', '/factions', '/factions/new', '/battles/new', '/battles', `/battles/${battleId}`]) {
       await page.goto(path)
       await expect(page.getByRole('main')).toBeVisible()
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     }
-  }
-})
+  })
+}

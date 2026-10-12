@@ -189,10 +189,6 @@ type UnitDetailsResponse struct {
 	Units []UnitDetailResult `json:"units"`
 }
 
-func LookupUnitDetails(c DecisionContext, ids []string) (UnitDetailsResponse, error) {
-	return LookupUnitDetailsPage(c, ids, 0)
-}
-
 // Guidance offsets are UTF-8 byte offsets into the frozen card. A continuation
 // repeats base stats and never truncates guidance without an explicit next offset.
 func LookupUnitDetailsPage(c DecisionContext, ids []string, offset int) (UnitDetailsResponse, error) {

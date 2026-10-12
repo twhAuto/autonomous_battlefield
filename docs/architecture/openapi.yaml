@@ -11,7 +11,7 @@ info:
     **Scope.** Every `/v1` route the API serves is listed here. The process probes
     (`/startupz`, `/livez`, `/healthz`, `/readyz`) and `/metrics` are infrastructure
     endpoints outside this contract, as is the internal worker plane served by the
-    separate `cmd/mcp` binary.
+    separate `cmd/aigateway` binary.
 
     **Drift protection.** `backend/internal/apicontract` fails the build if the set of
     operations here differs from `authn.PublicAPIRoutes()`, the permission registry

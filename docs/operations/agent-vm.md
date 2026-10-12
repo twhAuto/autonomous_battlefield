@@ -8,8 +8,7 @@ services. Never copy the host kubeconfig or Kubernetes signing secret into the V
 
 ## What runs where
 
-The CLI worker has its own KVM VM. Following the 2026-10-01 K3s cutover, a separate
-KVM VM runs Kubernetes, the application, engine, MCP server and database.
+The CLI worker has its own KVM VM. A separate KVM VM runs Kubernetes (K3s), the application, engine, AI gateway and database.
 Docker remains on the physical Ubuntu host for CI and the retained old Kind
 cluster. The code-mode helper is a process inside the worker VM.
 
@@ -18,14 +17,14 @@ Physical Ubuntu PC
   KVM battlefield-k3s -> Kubernetes -> Battlefield services and database
   Docker -> CI tooling; retained Kind recovery data
   Squid 192.168.234.1:3128 -> approved HTTPS provider domains
-  Caddy 192.168.234.1:18084 -> host loopback kubectl bridge -> MCP :8084
+  Caddy 192.168.234.1:18084 -> host loopback kubectl bridge -> AI gateway :8084
   KVM battlefield-agent 192.168.234.2
     vm-admin: administration
     battlefield-worker: worker, Codex login, Codex + code-mode helper
 ```
 
 The renderer uses loopback port 28084 by default, matching the existing server's
-`20-loopback.conf` and Caddy upstream inspected on 2026-10-01. `--bridge-port`
+`20-loopback.conf` and Caddy upstream. `--bridge-port`
 selects another free unprivileged port and changes both rendered files together.
 Keep the bridge separate from Jenkins smoke ports 18081–18085; in particular,
 18085 is used by the production frontend liveness check. A custom choice of
@@ -35,9 +34,16 @@ profile adoption retargets the connection without reinstalling the CLI worker
 or copying cluster credentials into its VM. See
 [cutover and recovery](k3s-delivery.md#adoption-and-cutover-boundary).
 
+The host units keep their pre-rename names (`battlefield-mcp-bridge` and
+`battlefield-mcp-proxy`), and the bridge still forwards `service/battlefield-mcp`.
+In-cluster agents use the same name through `ai.mcpUrl`. That Service is now an
+alias for the AI gateway: the deploy script points it at the new pods only once
+their rollout is ready, then retires the legacy Deployment. It is removed after
+the units and `ai.mcpUrl` switch to `battlefield-ai-gateway`.
+
 The worker claims a request through the bridge. Codex receives a scoped capability,
-reads the decision context through MCP, calls the provider through Squid, and
-submits a plan through MCP. Acceptance and execution are separate: the engine
+reads the decision context through the AI gateway's MCP tools, calls the provider
+through Squid, and submits a plan through those tools. Acceptance and execution are separate: the engine
 executes accepted orders. A plain model reply is not a submitted battle plan.
 
 ## Provision and install
@@ -54,7 +60,7 @@ its owned table; unrelated Docker/libvirt rules and public Caddy configuration
 remain intact. Its narrow loopback exception permits Jenkins smoke checks on
 18084. IPv6 cannot reach protected ports; the external NIC filter also denies it.
 
-Kubernetes port-forward reaches MCP over loopback while preserving the original
+Kubernetes port-forward reaches the AI gateway over loopback while preserving the original
 Host header. The Go MCP SDK rejects a non-loopback Host on that connection. The
 separate Caddy proxy sets upstream Host to `127.0.0.1:8084`; bearer authentication
 and MCP origin/localhost protection remain enabled. Do not use a direct
@@ -95,7 +101,7 @@ accessing the PC remotely, the initial SSH to the PC is one additional hop.
 
 On the host, obtain the `battlefield-agent` binary from the same verified backend
 release deployed in production. For example, extract `/app/agent` from the running
-MCP container into a private staging directory; check the command succeeds before
+AI gateway container into a private staging directory; check the command succeeds before
 registering the file. Record its checksum for the CLI bootstrap guest inputs;
 Ansible installs it root-owned at `/usr/local/bin/battlefield-agent`, mode 0755.
 
@@ -251,7 +257,7 @@ VM diagnostics:
 sudo journalctl -u battlefield-worker --since '10 minutes ago' --no-pager -o cat
 ```
 
-Use the same UTC time window and request ID in the MCP pod logs. The worker's
+Use the same UTC time window and request ID in the AI gateway pod logs. The worker's
 normal journal omits raw CLI output. If capturing it temporarily, keep it under the
 worker's private home with mode 0600, never log environment variables or capability
 tokens, inspect locally and redact before sharing. Record the exact temporary
@@ -270,9 +276,9 @@ and the generator replace ad hoc unit-file editing, not the verification gates.
 ## Concurrent decisions
 
 Set `ai.agentConcurrency: 4` to allow four independent jobs
-across all enabled CLI providers, not four per provider. The template defaults to
-one until resource validation; omitted configuration
-keeps the worker at one slot; explicit values outside 1–4 are rejected.
+across all enabled CLI providers, not four per provider. The template sets four;
+omitted configuration keeps the worker at one slot; explicit values outside 1–4
+are rejected.
 Migration `00014_cli_concurrency.sql` raises the shared database CLI capacity to
 four. Both the migration and updated worker binary are required. The database
 limit also includes faction background jobs and other worker instances.

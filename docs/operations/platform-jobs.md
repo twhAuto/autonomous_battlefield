@@ -118,7 +118,8 @@ tokens work without disabling [CSRF protection](https://www.jenkins.io/doc/book/
 Folder scope prevents ordinary credential lookup from sibling jobs; it does not
 isolate malicious code running as the same Unix user. The project retains its
 accepted shared-host CI model. Limit job configuration/replay, trusted `main`
-changes and approvals to the owner. Jenkins administrators can override the
+changes to trusted administrators; plan approval is limited to the single
+`submitter` named in each platform Jenkinsfile. Jenkins administrators can override the
 [input submitter restriction](https://www.jenkins.io/doc/pipeline/steps/pipeline-input-step/).
 Never expose these credentials to PR job parameters or SCM references.
 

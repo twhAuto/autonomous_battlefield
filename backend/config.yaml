@@ -47,8 +47,9 @@ ai:
     queueTimeout: 5m
     executionTimeout: 2m
   environment: local
+  agentConcurrency: 4
   agentHealthAddress: "127.0.0.1:8083"
-  mcpAddress: "127.0.0.1:8084"
+  aiGatewayAddress: "127.0.0.1:8084"
   mcpUrl: http://127.0.0.1:8084/mcp
   decisionTimeout: 2m
   capabilitySecretEnvironmentVariable: BATTLEFIELD_MCP_CAPABILITY_SECRET
@@ -87,6 +88,7 @@ ai:
       model: gpt-5.6-luna
       scope: local
       supportedVersionPrefix: codex-cli 0.155.
+      availabilityEnvironmentVariable: CODEX_CLI_PROFILE_AVAILABLE
       maxSteps: 3
       enabled: true
     - id: claude-subscription-local
@@ -106,6 +108,7 @@ ai:
       model: gemini-3.7-flash-medium
       scope: local
       supportedVersionPrefix: 1.2.
+      availabilityEnvironmentVariable: GEMINI_CLI_PROFILE_AVAILABLE
       maxSteps: 3
       enabled: true
 

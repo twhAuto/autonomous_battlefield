@@ -1,4 +1,4 @@
-// Claims compatible model work through MCP within the configured concurrency limit and
+// Claims compatible model work from the AI gateway within the configured concurrency limit and
 // reports execution outcomes.
 
 package worker
@@ -44,6 +44,12 @@ type Worker struct {
 }
 
 func (w *Worker) Ready() bool { return w.ready.Load() }
+
+// serviceURL resolves a path on the AI gateway that serves the configured /mcp
+// endpoint, such as the agent dispatch API or the generation MCP endpoint.
+func (w *Worker) serviceURL(path string) string {
+	return strings.TrimSuffix(strings.TrimRight(w.MCPURL, "/"), "/mcp") + path
+}
 
 func (w *Worker) Run(ctx context.Context) error {
 	if w.Concurrency < 1 {
@@ -156,7 +162,7 @@ func (w *Worker) claim(ctx context.Context, profileIDs []string) (job, bool, err
 		"workerId": w.WorkerID, "leaseSeconds": int(w.DecisionTimeout.Seconds()) + 5,
 		"waitSeconds": max(1, min(20, int(w.ClaimWait.Seconds()))), "profileIds": profileIDs, "jobTypes": []string{"battle_decision", "faction_background"},
 	})
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(w.MCPURL, "/mcp")+"/internal/agent/claim", bytes.NewReader(payload))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, w.serviceURL("/internal/agent/claim"), bytes.NewReader(payload))
 	if err != nil {
 		return job{}, false, err
 	}
@@ -331,7 +337,7 @@ func (w *Worker) reportUsage(ctx context.Context, requestID string, result ai.De
 
 func (w *Worker) reportUsageOnce(ctx context.Context, requestID string, result ai.DecisionResult) error {
 	payload, _ := json.Marshal(map[string]any{"requestId": requestID, "usage": result.Usage, "metadata": result.ProviderData})
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(w.MCPURL, "/mcp")+"/internal/agent/usage", bytes.NewReader(payload))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, w.serviceURL("/internal/agent/usage"), bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
@@ -352,7 +358,7 @@ func (w *Worker) reportUsageOnce(ctx context.Context, requestID string, result a
 
 func (w *Worker) fail(ctx context.Context, requestID, category string, result ai.DecisionResult) error {
 	payload, _ := json.Marshal(map[string]any{"requestId": requestID, "category": category, "usage": result.Usage, "metadata": result.ProviderData})
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(w.MCPURL, "/mcp")+"/internal/agent/fail", bytes.NewReader(payload))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, w.serviceURL("/internal/agent/fail"), bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}

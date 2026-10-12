@@ -35,9 +35,8 @@ that they are unnecessary; those skips are intentional and remain visible.
 
 PRs targeting `dev` or `main`, main delivery and assurance use the existing
 `battlefield-production` agent. Direct pushes to non-`main` branches skip delivery.
-The owner accepts a shared host and Docker daemon for this small, trusted project;
-no separate CI VM or new agent label is required. Keep the assurance job pinned to
-trusted main. Delivery stays main-only and production credentials are bound only
+By design, builds share one host and Docker daemon; no separate CI VM or agent
+label is required. Keep the assurance job pinned to trusted main. Delivery stays main-only and production credentials are bound only
 in the stages that need them, but these controls do not isolate PR code from the
 shared host. See the [shared-agent tradeoff](../operations/jenkins.md#production-hardening-rollout).
 

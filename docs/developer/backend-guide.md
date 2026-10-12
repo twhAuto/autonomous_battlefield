@@ -35,8 +35,9 @@ Repository interfaces live close to the service or worker that consumes them. Th
 
 `httpapi.LifecycleHandler` is the sole owner of startup, liveness, readiness, and metrics endpoints. The API and engine entry points wire its dependencies and readiness callback into that handler. The application router owns business routes only, and the application database contract requires SQL operations without a health-ping dependency. `Worker.Ready()` exposes execution state; the worker package contains no HTTP health wrapper. Engine lifecycle integration tests cover worker startup/shutdown and database failure through the shared handler.
 
-Agent and MCP commands expose a separate `/healthz` endpoint; they do not use
-`LifecycleHandler`.
+Agent and AI gateway commands expose a separate `/healthz` endpoint; they do not use
+`LifecycleHandler`. The AI gateway also serves `/readyz`, which pings PostgreSQL with a
+2-second timeout and backs its Kubernetes readiness probe.
 
 ### AI-oriented code
 
@@ -218,13 +219,13 @@ editor, service, and generation validation.
 
 [`worker.go`](../../backend/internal/ai/worker/worker.go) starts one claim loop per concurrency slot. Each loop:
 
-1. long-polls the MCP agent-control endpoint with executable profile IDs;
+1. long-polls the AI gateway's agent dispatch endpoint with executable profile IDs;
 2. immediately runs the claimed job in its owned slot;
 3. requires the claimed profile from the local registry;
 4. requires the server-minted request-scoped capability;
 5. creates an API or CLI runner;
 6. applies a decision timeout;
-7. reports usage or failure metadata through MCP.
+7. reports usage or failure metadata to the AI gateway.
 
 The default runner factory is the only place that chooses concrete provider implementations from a model profile.
 
@@ -240,8 +241,8 @@ The default runner factory is the only place that chooses concrete provider impl
 | [`observability.go`](../../backend/internal/ai/runner/observability.go) | Langfuse generation observations for API and CLI runs |
 | [`process_linux.go`](../../backend/internal/ai/runner/process_linux.go) | CLI process-group isolation and cancellation (no-op fallback in `process_other.go`) |
 
-The API loop accepts only a known MCP tool set: the three battle tools (or the
-legacy two-tool pair during rollout) or the two background-generation tools. It
+The API loop accepts only a known MCP tool set: the three battle tools or the two
+background-generation tools. It
 rejects any other tool name a provider requests. It appends tool calls and results to the neutral message transcript and accumulates usage over turns.
 
 The CLI runner creates a temporary directory, passes the profile's allowlisted model explicitly with `--model`, and constructs provider-specific command-line restrictions. Tests use the `CommandExecutor` interface to inspect the selected model and execution restrictions without starting a real CLI.
@@ -269,11 +270,15 @@ Both adapters:
 
 ### `internal/ai/mcpserver`: model and agent boundary
 
-[`server.go`](../../backend/internal/ai/mcpserver/server.go) exposes separate HTTP surfaces:
+The package exposes separate HTTP surfaces:
 
-- `/mcp` is the request-capability-protected battle model tool surface;
-- `/generation-mcp` exposes only background context and submission tools;
-- `/internal/agent/*` is the shared-secret agent control plane for claims and result metadata.
+- `/mcp` ([`server.go`](../../backend/internal/ai/mcpserver/server.go)) is the
+  request-capability-protected battle model tool surface;
+- `/generation-mcp` ([`generation.go`](../../backend/internal/ai/mcpserver/generation.go))
+  exposes only background context and submission tools;
+- `/internal/agent/*` ([`dispatch.go`](../../backend/internal/ai/mcpserver/dispatch.go))
+  is the shared-secret agent dispatch API for claims, capability minting and result
+  metadata. It is plain JSON over HTTP, not MCP.
 
 The MCP tools are:
 
@@ -290,15 +295,13 @@ capability-scoped lookup. The saved-context service and frontend inspector show
 reconstructed context separately from optional reference details. All evaluation
 variants use the current projection, with lookup and total input-token metrics.
 
-The server validates request scope before calling `DecisionService`. PostgreSQL notifications close an in-memory wake-up channel so long-polling claim requests promptly query durable state.
+The tool server validates request scope before calling `DecisionService`. In the dispatch API, PostgreSQL notifications close an in-memory wake-up channel so long-polling claim requests promptly query durable state.
 
-### `internal/game/controller`: deterministic policy abstractions
+### `internal/game/controller`: strategy-plan contract
 
-[`types.go`](../../backend/internal/game/controller/types.go) defines `PlanProposal`, action candidates, strategy plans, and a controller interface. `PlanProposal` is actively used by the game, AI subsystem, scenarios, repository, API, and frontend.
+[`types.go`](../../backend/internal/game/controller/types.go) defines `PlanProposal`, its typed construction and recruitment orders, `Coordinate` and `Tick`. `PlanProposal` is actively used by the game, AI subsystem, scenarios, repository, API, and frontend; the match consumes it directly and performs deterministic action scoring internally.
 
-[`utility_controller.go`](../../backend/internal/game/controller/utility_controller.go) is an independently tested in-memory utility controller with its own decision scheduling and pending-plan lifecycle. It is not constructed by the API, engine, or `game.Match` production path. The current match consumes `PlanProposal` directly and performs deterministic action scoring internally.
-
-The standalone controller is retained as an intentional, independently tested capability. Shared production plan validation lives in [`validation.go`](../../backend/internal/game/controller/validation.go); [`clone.go`](../../backend/internal/game/controller/clone.go) owns `ClonePlanProposal` and `ClonePlanProposals`, used by the match, catalog, and utility controller. Add new mutable proposal fields to that copy implementation and its isolation test.
+Shared production plan validation lives in [`validation.go`](../../backend/internal/game/controller/validation.go); [`clone.go`](../../backend/internal/game/controller/clone.go) owns `ClonePlanProposal` and `ClonePlanProposals`, used by the match and catalog. Add new mutable proposal fields to that copy implementation and its isolation test.
 
 ### `internal/faction`: reusable doctrines
 
@@ -394,32 +397,15 @@ permissions, frontend save/reload, and preview navigation.
 
 ## Database migrations and adapters
 
-Migrations under [`backend/migrations`](../../backend/migrations) are embedded into the server binary.
-
-| Migration | Main change |
-| --- | --- |
-| `00001_create_factions.sql` | Initial faction table |
-| `00002_create_battle_queue.sql` | Battle runs and per-attempt event stream |
-| `00003_castle_siege_state.sql` | Ruleset/blueprint and battle state snapshots |
-| `00004_battle_decisions.sql` | Model decisions, indexes, evaluation view, restricted MCP role |
-| `00005_stop_battles.sql` | `stopped` battle status |
-| `00006_pause_battles.sql` | Pause flag and unpaused claim index |
-| `00007_trace_context.sql` | Persisted trace propagation context |
-| `00008_faction_doctrine.sql` | Faction doctrine and versioned battle snapshots |
-| `00009_faction_background.sql` | Faction background and asynchronous generation jobs |
-| `00010_battle_history.sql` | Descending creation-time/ID index for battle history |
-| `00011_friends_access.sql` | Row ownership, atomic admission triggers, AI execution counts, single CLI lease, runtime stop policy, and private usage view |
-| `00012_model_access.sql` | Versioned administrator model access policy and last editor metadata |
-| `00013_player_members.sql` | Durable player membership and access synchronization |
-| `00014_cli_concurrency.sql` | Four shared CLI lease slots with serialized admission |
-| `00015_drop_duplicate_event_index.sql` | Drops `battle_events_cursor_idx`, which duplicated the `battle_events` primary key; event pages use `battle_events_pkey` |
-| `00016_admin_battle_admission.sql` | Exempts authenticated Admin battle creation from admission limits; exempt battles still occupy active capacity |
+Migrations under [`backend/migrations`](../../backend/migrations) are embedded into the
+server binary. The [database guide](../architecture/database.md) owns the schema,
+migration history, roles, triggers and migration conventions.
 
 Schema changes should be made with a new migration, then reflected in repository scan/serialization logic and tests. Do not edit an already-applied migration to evolve a shared database.
 
 `internal/postgres.NewMigrationProvider` configures embedded Goose migrations with
 the same database-wide advisory session lock for application startup and tests
-that run `Up`, `UpTo`, or `Down`. Separate test schemas still share the MCP role
+that run `Up`, `UpTo`, or `Down`. Separate test schemas still share the cluster-wide AI gateway role
 and public-schema permissions; constructing an unlocked provider can cause
 `tuple concurrently updated` failures across parallel packages. The PostgreSQL
 integration regression holds the lock from another schema, verifies migration
@@ -521,7 +507,7 @@ AI execution counts, the original CLI lease, runtime stop policy and private usa
 Migration `00014_cli_concurrency.sql` expands that lease admission to four shared slots.
 `generation/friends_integration_test.go` tests cross-connection admission, paused
 limits, UTC reset, shared CLI slots and execution budgets against PostgreSQL.
-Workers receive capabilities from MCP instead of signing them. `worker/policy.go`
+Workers receive capabilities from the AI gateway instead of signing them. `worker/policy.go`
 cancels execution on the private stop switch; `credentials_linux.go` blocks procfs/
 ptrace reads of the worker's credentials; `runner/process_linux.go` kills CLI process
 groups. Local credentials remain available only to the appropriate CLI login.
@@ -534,7 +520,7 @@ ownership, with backend enforcement independent of the UI.
 `scripts/ops/render-limited-launch.py` produces private auth configuration and a
 Tunnel deployment with origin-side Access validation and application ingress policies.
 `infra/deploy/agent-vm/` contains the libvirt network/filter, proxy and worker configuration;
-its `host/` templates include the dedicated firewall, Caddy proxy, loopback MCP
+its `host/` templates include the dedicated firewall, Caddy proxy, loopback AI gateway
 forward and Squid service override. `scripts/ops/render-agent-vm-host.py` renders
 a credential-free bundle into a new directory without changing live services.
 `scripts/test/test-agent-vm-host.py` checks rendering, input rejection and private
@@ -545,8 +531,8 @@ release inputs, provider login and end-to-end verification.
 owns host and guest service bootstrap. See [CLI VM platform](../operations/cli-vm-platform.md)
 and [CLI bootstrap](../operations/cli-bootstrap.md).
 `verify-agent-isolation.py` tests its guest boundary. `ai-policy.sh` is the private
-operator stop/status/usage interface. `verify-access-service.py` checks the restricted CI service identity during production smoke;
-the former human-JWT helper has been retired. `scripts/test/test-limited-launch.py` verifies
+operator stop/status/usage interface. `verify-access-service.py` checks the restricted CI service identity during production smoke.
+`scripts/test/test-limited-launch.py` verifies
 rendered routing and isolation artifacts without modifying infrastructure.
 See [limited-access launch](../operations/limited-launch.md) for setup and live verification.
 
@@ -605,7 +591,7 @@ Battle setup selects generic profiles without blueprint compatibility filtering.
   account quotas, idempotency, durable claims, expiry and result validation.
 - `backend/migrations/00009_faction_background.sql` adds an empty-default
   background, generation jobs/account locks, active/queue/quota indexes, and
-  narrowly scoped MCP grants. Existing profiles, blueprints and battle snapshots
+  narrowly scoped AI gateway role grants. Existing profiles, blueprints and battle snapshots
   are preserved. `internal/postgres/migrations.go` serializes migration runners
   with a PostgreSQL advisory session lock, including concurrent fresh schemas.
 - Faction API/service/repository and battle catalog/worker copy background with

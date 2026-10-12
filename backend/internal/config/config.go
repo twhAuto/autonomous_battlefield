@@ -87,10 +87,13 @@ type fileConfig struct {
 			QueueTimeout     string `yaml:"queueTimeout"`
 			ExecutionTimeout string `yaml:"executionTimeout"`
 		} `yaml:"backgroundGeneration"`
-		Environment                         string            `yaml:"environment"`
-		AgentConcurrency                    *int              `yaml:"agentConcurrency"`
-		AgentHealthAddress                  string            `yaml:"agentHealthAddress"`
-		MCPAddress                          string            `yaml:"mcpAddress"`
+		Environment        string `yaml:"environment"`
+		AgentConcurrency   *int   `yaml:"agentConcurrency"`
+		AgentHealthAddress string `yaml:"agentHealthAddress"`
+		AIGatewayAddress   string `yaml:"aiGatewayAddress"`
+		// LegacyMCPAddress is the pre-rename key for aiGatewayAddress. Deployed
+		// ConfigMaps keep it until every rollback target accepts the new key.
+		LegacyMCPAddress                    string            `yaml:"mcpAddress"`
 		MCPURL                              string            `yaml:"mcpUrl"`
 		DecisionTimeout                     string            `yaml:"decisionTimeout"`
 		CapabilitySecretEnvironmentVariable string            `yaml:"capabilitySecretEnvironmentVariable"`
@@ -193,7 +196,7 @@ func LoadAgent(path string) (Config, error) {
 	return Config{AI: aiConfig}, nil
 }
 
-func LoadMCP(path string) (Config, error) {
+func LoadAIGateway(path string) (Config, error) {
 	raw, err := decode(path)
 	if err != nil {
 		return Config{}, err
@@ -211,7 +214,7 @@ func LoadMCP(path string) (Config, error) {
 	}
 	aiConfig.AgentSecret = os.Getenv("BATTLEFIELD_AGENT_SECRET")
 	if len(aiConfig.AgentSecret) < 32 || aiConfig.AgentSecret == aiConfig.CapabilitySecret {
-		return Config{}, fmt.Errorf("MCP requires a distinct agent secret of at least 32 bytes")
+		return Config{}, fmt.Errorf("the AI gateway requires a distinct agent secret of at least 32 bytes")
 	}
 	return Config{Database: databaseConfig, AI: aiConfig}, nil
 }

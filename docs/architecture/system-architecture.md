@@ -37,7 +37,7 @@ flowchart LR
     Engine[Battle engine<br/>cmd/engine]
     DB[(PostgreSQL)]
     Cache[(Optional Redis)]
-    MCP[MCP decision service<br/>cmd/mcp]
+    Gateway[AI gateway<br/>cmd/aigateway]
     Agent[Decision agent<br/>cmd/agent]
     Provider[OpenAI / Gemini API<br/>or Codex / Antigravity / Claude CLI]
 
@@ -47,10 +47,10 @@ flowchart LR
     API -->|completed battle snapshots with TTL| Cache
     Engine -->|claim battles, persist ticks| DB
     Engine -->|create and resolve decisions| DB
-    DB -.->|LISTEN/NOTIFY wake-up| MCP
-    Agent -->|claim work, MCP tools, result metadata| MCP
+    DB -.->|LISTEN/NOTIFY wake-up| Gateway
+    Agent -->|claim work, MCP tools, result metadata| Gateway
     Agent <-->|model turns or isolated CLI process| Provider
-    MCP -->|decision-table-only access| DB
+    Gateway -->|decision-table-only access| DB
 ```
 
 PostgreSQL is the durable coordination point. The API and engine do not call each other directly, and the engine and agent do not call each other directly. Each workload can fail or restart while preserving battle and decision state.
@@ -62,20 +62,20 @@ PostgreSQL is the durable coordination point. The API and engine do not call eac
 | React frontend | Session-aware navigation (Cloudflare Access in production, development login locally), faction creation, battle staging and history, map display, controls, event stream, and AI decision history | Public API |
 | Public API | Access identity verification, role/ownership authorization, managed Player membership, HTTP validation, scenario resolution, faction and battle persistence, and selectable model-profile catalog | PostgreSQL, scenario/ruleset YAML, optional Redis, optional Cloudflare Access group API |
 | Battle engine | Battle queue claims, deterministic ticks, strategy windows, state/event persistence | PostgreSQL |
-| MCP decision service | Request-scoped battle tools (`get_decision_context`, `get_unit_details`, `submit_strategy_plan`), background-generation tools, and an internal agent control plane | PostgreSQL |
-| Decision agent | Model-decision claims and API or CLI model execution | MCP service, model provider |
+| AI gateway | MCP tool server with request-scoped battle tools (`get_decision_context`, `get_unit_details`, `submit_strategy_plan`) and background-generation tools, plus the agent dispatch API (claims, capability minting, result reports) | PostgreSQL |
+| Decision agent | Model-decision claims and API or CLI model execution | AI gateway, model provider |
 | Redis (optional) | Disposable completed battle read cache; no engine or readiness dependency | Memory, API-only connection |
 | PostgreSQL | Factions, battle queue, event history, snapshots, leases, and model decisions | Persistent storage |
 | Scenario catalog | Authored map, timing, fallback plans, unit/building rules, and combat rules | Loaded by API and frozen into battle rows |
 
-The backend commands are `cmd/server`, `cmd/engine`, `cmd/mcp`, `cmd/agent`, and `cmd/aieval`. The first four are runtime processes; `aieval` runs deterministic offline cases or explicitly enabled live comparisons and produces reports.
+The backend commands are `cmd/server`, `cmd/engine`, `cmd/aigateway`, `cmd/agent`, and `cmd/aieval`. The first four are runtime processes; `aieval` runs deterministic offline cases or explicitly enabled live comparisons and produces reports.
 
 ### Why four backend processes?
 
 - The API remains responsive while battles and model calls take time.
 - The engine can restart or scale without exposing gameplay HTTP routes.
 - Provider credentials and model behavior remain outside the deterministic simulation process.
-- The MCP service can receive narrower database permissions than the API or engine.
+- The AI gateway can receive narrower database permissions than the API or engine.
 - Local subscription CLIs can run on a developer host without copying login credentials into Kubernetes.
 
 ## 4. Architectural boundaries
@@ -263,7 +263,7 @@ AI observations rather than controlling these engine paths.
 
 ### Public application boundary
 
-Production requires Cloudflare Access on the whole application hostname through a named Tunnel. The API independently verifies the Access JWT and maps issuer/subject identity and verified email to a role on every request. Privileged roles remain configured; optionally managed Player membership is read from PostgreSQL. No legacy password/cookie fallback is accepted. Explicit local-password and disabled-development modes remain development-only. Exact-origin mutation checks and a deny-by-default route permission registry wrap every application API. The browser never connects to the engine, MCP or PostgreSQL. See [limited-access launch](../operations/limited-launch.md).
+Production requires Cloudflare Access on the whole application hostname through a named Tunnel. The API independently verifies the Access JWT and maps issuer/subject identity and verified email to a role on every request. Privileged roles remain configured; optionally managed Player membership is read from PostgreSQL. No legacy password/cookie fallback is accepted. Explicit local-password and disabled-development modes remain development-only. Exact-origin mutation checks and a deny-by-default route permission registry wrap every application API. The browser never connects to the engine, AI gateway or PostgreSQL. See [limited-access launch](../operations/limited-launch.md).
 
 ### Model boundary
 
@@ -322,41 +322,40 @@ sequenceDiagram
     participant Engine as Battle engine
     participant Match as Deterministic match
     participant DB as PostgreSQL
-    participant MCP as MCP service
+    participant Gateway as AI gateway
     participant Agent as Agent worker
     participant Model as Model provider / CLI
 
     Engine->>Match: DecisionSnapshot(faction)
     Match-->>Engine: Visible view + economy + legal choices
     Engine->>DB: Create/reuse durable decision row
-    DB-->>MCP: pg_notify advisory wake-up
-    Agent->>MCP: Claim compatible work with shared secret
-    MCP->>DB: Atomic decision lease claim
-    DB-->>MCP: Request ID and profile
-    MCP-->>Agent: Claimed job
-    Agent->>Agent: Mint short-lived request capability
+    DB-->>Gateway: pg_notify advisory wake-up
+    Agent->>Gateway: Claim compatible work with shared secret
+    Gateway->>DB: Atomic decision lease claim
+    DB-->>Gateway: Request ID and profile
+    Gateway-->>Agent: Claimed job + server-minted request capability
     Agent->>Model: Start bounded tool loop
     Model->>Agent: Request get_decision_context
-    Agent->>MCP: Execute tool call
-    MCP->>DB: Read frozen observation
-    DB-->>MCP: Decision context
-    MCP-->>Agent: Bounded context
+    Agent->>Gateway: Execute tool call
+    Gateway->>DB: Read frozen observation
+    DB-->>Gateway: Decision context
+    Gateway-->>Agent: Bounded context
     Agent-->>Model: Tool result
     opt Unit details needed
         Model->>Agent: Request get_unit_details
-        Agent->>MCP: Execute scoped lookup
-        MCP->>DB: Read frozen reference snapshot
-        DB-->>MCP: Authorized reference data
-        MCP-->>Agent: Inline base stats and guidance page
+        Agent->>Gateway: Execute scoped lookup
+        Gateway->>DB: Read frozen reference snapshot
+        DB-->>Gateway: Authorized reference data
+        Gateway-->>Agent: Inline base stats and guidance page
         Agent-->>Model: Tool result (continuation available for long guidance)
     end
     Model->>Agent: Request submit_strategy_plan
-    Agent->>MCP: Execute tool call
-    MCP->>MCP: Validate request, version, tick, plan, units, and sites
-    MCP->>DB: Atomic versioned submission
-    DB-->>MCP: Accepted or rejected
-    MCP-->>Agent: Structured result
-    Agent->>MCP: Report usage or failure metadata
+    Agent->>Gateway: Execute tool call
+    Gateway->>Gateway: Validate request, version, tick, plan, units, and sites
+    Gateway->>DB: Atomic versioned submission
+    DB-->>Gateway: Accepted or rejected
+    Gateway-->>Agent: Structured result
+    Agent->>Gateway: Report usage or failure metadata
     loop Until resolved or timeout
         Engine->>DB: Read decisions and heartbeat battle lease
     end
@@ -394,14 +393,14 @@ At the decision deadline:
 
 ## 6. Model execution
 
-`internal/ai/worker` owns decision claims, concurrency, timeouts, and outcome reporting. Workers use `ai.agentConcurrency` execution slots (1–4, default 1); the VM template keeps 1 until an operator selects 4 after a resource check. PostgreSQL serializes admission on the policy row and caps active CLI leases at `runtime_policy.cli_concurrency` (1–4, default 4), shared across all workers, battle decisions and generation jobs. API jobs do not consume CLI leases. A completed submission retains the CLI lease until the worker reports completion or its execution deadline expires. Claim responses carry the database lease deadline, so network delays cannot extend a worker’s allotted execution time. Keep the database, MCP and VM clocks synchronized. It selects an `APIRunner` or `CLIRunner` from `internal/ai/runner`; both implement the same provider-neutral decision-runner contract.
+`internal/ai/worker` owns decision claims, concurrency, timeouts, and outcome reporting. Workers use `ai.agentConcurrency` execution slots (1–4; 1 when omitted). The K3s API worker and the CLI VM template both set 4. API jobs are bounded only by their slots and the per-battle decision budget. PostgreSQL serializes admission on the policy row and caps active CLI leases at `runtime_policy.cli_concurrency` (1–4, default 4), shared across all workers, battle decisions and generation jobs. API jobs do not consume CLI leases. A completed submission retains the CLI lease until the worker reports completion or its execution deadline expires. Claim responses carry the database lease deadline, so network delays cannot extend a worker’s allotted execution time. Keep the database, AI gateway and VM clocks synchronized. It selects an `APIRunner` or `CLIRunner` from `internal/ai/runner`; both implement the same provider-neutral decision-runner contract.
 
 ### API runtime
 
 `APIRunner` in `internal/ai/runner/api.go` runs the shared API tool loop:
 
 1. connects to MCP with a request-scoped capability;
-2. accepts the battle tool set `get_decision_context`, `get_unit_details`, and `submit_strategy_plan` (also accepting the legacy pair during rollout);
+2. accepts the battle tool set `get_decision_context`, `get_unit_details`, and `submit_strategy_plan`;
 3. asks the configured provider for a tool-calling turn;
 4. rejects unsupported tools or a turn with no tool call;
 5. adds tool input and output to the transcript;
@@ -424,7 +423,7 @@ settings below; the [Claude profile](#claude-profile) uses its own provider rest
 
 In development Codex uses the existing host login without copying it; production uses only a dedicated VM login. Antigravity uses the host OS keyring or a private temporary copy of its native `antigravity-oauth-token` login file, with a temporary HOME and XDG directories. Both CLI subprocess environments exclude worker control credentials, provider keys and personal CLI overrides. Linux workers disable dumpability to block parent environment/memory reads from same-user children; CLI process groups are killed on cancellation and output capture is bounded at 4 MiB. Generated permissions allow the session's battlefield MCP tools and deny file, command, and URL operations; slash-command expansion is disabled. A headless account-usage probe must succeed before advertising the profile. JSON result envelopes must report SUCCESS with no denied actions. Explicit permission rules are used without strict mode, which overrides MCP allows in CLI 1.1.27. The MCP usage endpoint verifies that a plan is accepted before acknowledging completion; missing submissions trigger a worker failure and fallback. Usage counters are recorded for accepted plans. Subscription credentials are not placed in Kubernetes.
 
-CLI context responses include explicit target-tick and version metadata alongside the full structured context. CLI prompts require copying those values and making a substantive tactical or production decision. Name-only CLI plans are rejected; after three invalid submissions the decision is failed so the battle can fall back. MCP logs record context byte counts and validation field/code pairs without dumping observations or credentials. Usage reporting retries transient failures up to three times.
+CLI context responses include explicit target-tick and version metadata alongside the full structured context. CLI prompts require copying those values and making a substantive tactical or production decision. Name-only CLI plans are rejected; after three invalid submissions the decision is failed so the battle can fall back. AI gateway logs record context byte counts and validation field/code pairs without dumping observations or credentials. Usage reporting retries transient failures up to three times.
 
 Antigravity CLI offloads larger MCP tool responses to local files. Because battlefield CLI sessions deny file reads, the host now fetches the request-scoped context through the MCP SDK and embeds the validated JSON directly in the Antigravity prompt (maximum 64 KiB). The model submits through MCP without fetching the large response again. This keeps existing file restrictions and avoids blind tick guessing when the CLI hides an offloaded response.
 
@@ -475,7 +474,7 @@ matching prompt/tool versions and profile/provider/runtime/model identifiers as
 well as observation hashes. Attempts never read memory from previous attempts.
 
 `aieval -mode compare` runs matched, repeated synthetic decisions through the
-production MCP validator with isolated loopback repositories and API/CLI runners.
+production AI gateway tool server and validator with isolated loopback repositories and API/CLI runners.
 It verifies persisted acceptance rather than trusting CLI success, and records
 context hashes, prompt provenance, validation failures, latency, usage and
 canonical plan diversity. This measures individual decisions; win rate remains
@@ -635,81 +634,8 @@ An accepted submission is idempotent when it repeats the stored idempotency key.
 
 ## 8. Persistence and durability
 
-Migration `00011_friends_access.sql` persists faction/battle owners, the singleton
-`runtime_policy`, shared `agent_execution_leases`, per-battle execution counters,
-and the private `friend_ai_usage` view. PostgreSQL admission serializes across API
-replicas: 20 battles/person/UTC day, 2 unfinished/person and 4 globally. Queued and
-running rows remain unfinished while paused. Generation admission retains its
-account lock and idempotency, with 10/day including queued jobs that later expire.
-Same-identity request retries reuse admission. Admin battles are exempt from the
-battle allowances (migration `00016`: the API sets `admission_exempt` only for an
-Admin actor), but still count as unfinished for other identities because they use
-the same engine. Players, Developers and CI keep every limit.
-
-A battle receives at most 100 model execution claims, including retries, then the
-existing fallback resolves new windows. Disabling AI prevents new generation
-admissions/claims and makes new model windows fall back. Production migrations
-first save and validate a PostgreSQL backup; recovery retains Access authentication.
-The legacy-owner quota exemption supports migrations/trusted internal fixtures;
-application identities (including local Admin) cannot select that owner ID.
-
-
-| Table or view | Purpose | Important behavior |
-| --- | --- | --- |
-| `factions` | Reusable faction identity and doctrine; archived legacy blueprint | Existing battle snapshots survive faction deletion |
-| `battle_runs` | Queue, scenario/initial snapshot, current state, lease, status, and result | Lease owner and attempt guard writes |
-| `battle_events` | Replayable per-attempt event stream | Primary key and conflict handling make insertion idempotent |
-| `battle_decisions` | Observations, provenance, leases, plans, fallbacks, errors, and usage | Unique per battle/attempt/faction/tick; versioned resolution |
-| `battle_controller_evaluation` | Aggregated controller comparison | Latency, fallback/invalid rates, token use, plan diversity, and win rate |
-| `runtime_policy` | Singleton admission limits, AI stop switch, and CLI concurrency | Row lock serializes battle, decision, and generation admission |
-| `agent_execution_leases` | Active CLI execution slots | Capped by `runtime_policy.cli_concurrency`; expired rows are pruned on admission |
-| `faction_generation_accounts` / `faction_background_generations` | Per-actor generation lock and durable background draft jobs | Account row lock plus partial unique index allow one active job |
-| `model_access_policy` | Singleton administrator model-access policy | Optimistic version rejects conflicting saves |
-| `player_members` / `player_membership_sync` / `player_membership_audit` | Managed Player grants, Access-group synchronization, and audit history | Removal takes effect on the next API request |
-
-```mermaid
-erDiagram
-    FACTIONS {
-        uuid id PK
-        text name
-        text ruleset_id "legacy only"
-        text doctrine
-        jsonb blueprint "legacy only"
-    }
-    BATTLE_RUNS {
-        uuid id PK
-        text scenario_id
-        jsonb scenario_snapshot
-        jsonb initial_state
-        jsonb current_state
-        text status
-        int attempt
-        text lease_owner
-    }
-    BATTLE_EVENTS {
-        uuid battle_id PK,FK
-        int attempt PK
-        bigint sequence PK
-        bigint tick
-        text type
-        jsonb payload
-    }
-    BATTLE_DECISIONS {
-        uuid id PK
-        uuid battle_id FK
-        int attempt
-        uuid faction_id
-        bigint target_tick
-        text status
-        jsonb observation
-        jsonb resolved_plan
-    }
-
-    BATTLE_RUNS ||--o{ BATTLE_EVENTS : records
-    BATTLE_RUNS ||--o{ BATTLE_DECISIONS : coordinates
-```
-
-`battle_decisions.faction_id` is historical snapshot data rather than a foreign key to `factions`. PostgreSQL `NOTIFY` only reduces claim latency: it carries no authoritative work payload and is safe to miss because agents query durable state after every wake-up.
+PostgreSQL schema, access and coordination rules are in the [database guide](database.md).
+This section covers the completed-result cache and battle retries.
 
 ### Completed battle result caching
 
@@ -719,7 +645,7 @@ invalid entry, or Redis error falls back to PostgreSQL. Only a `completed` run w
 non-null result is stored, as a JSON snapshot containing its final state and scenario.
 Existing battle responses retain their schema. Faction views are projected from the
 snapshot after retrieval; event payloads and decision history remain PostgreSQL reads.
-Authentication runs before cache access. Engine and MCP persistence never use Redis.
+Authentication runs before cache access. Engine and AI gateway persistence never use Redis.
 
 Keys are `battlefield:completed-battle:v1:<lowercase-battle-uuid>`, with a default
 one-hour TTL and 100 ms deadline per cache operation, with command retries disabled.
@@ -799,19 +725,21 @@ supported only in development. Local cookie logout does not revoke copied tokens
 
 ### Model-facing capability
 
-The MCP server mints each model session an HMAC-signed token containing one request ID and expiry. Workers cannot mint capabilities and never receive the signing secret. MCP verifies the signature, expiry, and equality between the authorized and supplied request IDs.
+The AI gateway mints each model session an HMAC-signed token containing one request ID and expiry. Workers cannot mint capabilities and never receive the signing secret. The gateway's MCP endpoints verify the signature, expiry, and equality between the authorized and supplied request IDs.
 
 Tool bodies are bounded, plan fields are validated, and model-provided state is never authoritative.
 
 ### Agent control plane
 
 `/internal/agent/claim`, `/fail`, `/usage`, `/generation-finish` and `/enabled`
-require a distinct worker bearer secret. Missing or equal worker/signing secrets
-deny worker authentication. Claims return server-minted, request-scoped
+require a distinct worker bearer secret of at least 32 bytes, compared in constant
+time. The AI gateway refuses to start, and denies worker authentication, when it is missing,
+shorter or equal to the signing secret. Every worker placement (the K3s API
+worker and the CLI worker VM) currently shares this one secret. Claims return server-minted, request-scoped
 capabilities; workers never receive the signing key.
 
-MCP is private to the worker network. Production subscription CLI workers run in
-an isolated VM and reach MCP through an authenticated private bridge. Their
+The AI gateway is private to the worker network. Production subscription CLI workers run in
+an isolated VM and reach it through an authenticated private bridge. Their
 provider egress is allowlisted; provider login state stays inside the worker
 boundary. Development bridges bind to loopback. Workers poll the durable operator
 AI switch and cancel work on stop or loss of policy connectivity. The
@@ -830,13 +758,10 @@ remain independent. The application receives the client ID, while the client
 secret stays with the verification tooling. Credential setup and rotation live
 in the [service authentication runbook](../operations/limited-launch.md#ci-service-authentication).
 
-### Database privileges
-
-Migration `00004_battle_decisions.sql` creates a `battlefield_mcp` group role with decision-table and evaluation-view access, with no event, unit, building, or resource-state grants. Migration 00011 adds narrowly scoped battle-run ID/counter access and execution-lease/policy access for atomic admission. A deployment must give MCP a login that inherits only that intended role.
-
 ### Runtime security requirements
 
-- MCP rejects capability secrets shorter than 32 bytes or equal to the development placeholder.
+- The AI gateway rejects capability secrets shorter than 32 bytes or equal to the development placeholder.
+- The AI gateway requires a worker secret of at least 32 bytes that differs from the capability secret.
 - Production sessions use Access identity; direct-origin access is denied and network policy restricts private services.
 - Provider credentials belong to the decision agent, separate from the API and engine.
 - Model rationale remains untrusted display text; bounded length does not make it authoritative.
@@ -875,7 +800,7 @@ Key runtime settings and their defaults:
 
 `backend/config.yaml` is the reference for all keys; unknown keys fail startup.
 
-The API catalog advertises profiles users may select. In cluster mode, an operator flag can advertise a host-connected CLI even though the API pod cannot execute it. An agent advertises only profiles it can execute; claims include those IDs so heterogeneous agents do not lease incompatible work.
+The API catalog advertises profiles users may select. In cluster mode, an operator flag can advertise a host-connected CLI even though the API pod cannot execute it. An agent advertises only profiles it can execute; claims include those IDs so heterogeneous agents do not lease incompatible work. The worker ID and profile list are self-reported: this is a scheduling filter, not an authorization boundary, because the AI gateway does not bind the worker secret to a placement or profile set.
 
 ## 11. Deployment topology
 
@@ -889,14 +814,14 @@ and production have distinct clusters, databases, volumes and credentials.
 | Frontend | Serves the browser application, which calls the API through the shared gateway; no durable game state. |
 | API | Reads and writes PostgreSQL, optionally caches completed results in Redis, and exposes authenticated HTTP routes. |
 | Engine | Claims work and persists ticks through PostgreSQL; exposes health and metrics rather than gameplay routes. |
-| MCP | Exposes private decision tools and agent control routes, with narrower database privileges than the API or engine. |
-| API-provider agent | Calls MCP and external model APIs; provider keys stay in this workload. |
+| AI gateway | Exposes private MCP decision tools and agent dispatch routes, with narrower database privileges than the API or engine. |
+| API-provider agent | Calls the AI gateway and external model APIs; provider keys stay in this workload. |
 | Migration Job | Applies database migrations separately from long-running application workloads. |
 
 Public production traffic passes through Cloudflare Access and the tunnel to the
-private gateway. Network policies keep MCP and database access private while
+private gateway. Network policies keep AI gateway and database access private while
 allowing the required workload and monitoring connections. CLI workers use a
-private MCP bridge and restricted provider proxy; subscription credentials stay
+private AI gateway bridge and restricted provider proxy; subscription credentials stay
 outside the application cluster.
 
 PostgreSQL is the durable game-state store. Persistent volumes retain database
@@ -936,9 +861,9 @@ migrations and rollback procedures belong to [deployment operations](../operatio
   immediately at their first reporting point and at most every 15 seconds
   thereafter. Waiting updates include pending faction counts; completion includes
   elapsed wall time. Per-tick persistence events require DEBUG logging.
-- Agent/MCP logs cover decision claims, tool access, validation, provider outcome, usage, and latency.
+- Agent and AI gateway logs cover decision claims, tool access, validation, provider outcome, usage, and latency.
 - Full combat detail lives in `battle_events` rather than normal process logs.
-- API and engine expose lifecycle checks; agent and MCP expose `/healthz`.
+- API and engine expose lifecycle checks; the agent exposes `/healthz`; the AI gateway exposes `/healthz` for liveness and `/readyz`, which pings PostgreSQL, for readiness.
 - Prometheus, Grafana, Elasticsearch, Kibana, and Fluent Bit are provided for the local Kubernetes environment.
 - Local Prometheus discovers nodes and scrapes each kubelet's cAdvisor endpoint
   using service-account authentication and the narrow `nodes/metrics`
@@ -960,11 +885,11 @@ Rules, factions, and initial state are captured per battle. Replays remain stabl
 
 ### MCP as a capability boundary
 
-The same small, auditable tool surface supports API and subscription CLI models. The trade-off is another service and authentication boundary.
+The same small, auditable MCP tool surface supports API and subscription CLI models. The AI gateway also hosts the agent dispatch API, so one process holds the restricted database role and the capability signing secret. The trade-off is another service and authentication boundary.
 
 ### Polling with advisory wake-ups
 
-The UI polls the API, the engine polls battle rows, and agents long-poll MCP. PostgreSQL notifications reduce model-claim latency without becoming a correctness dependency. Higher scale may justify push delivery or a dedicated broker.
+The UI polls the API, the engine polls battle rows, and agents long-poll the AI gateway. PostgreSQL notifications reduce model-claim latency without becoming a correctness dependency. Higher scale may justify push delivery or a dedicated broker.
 
 ## 14. Shared content library and scenario restrictions
 
@@ -1042,11 +967,11 @@ Generation workers reuse the agent execution infrastructure with an advertised
 job types remain battle-only. Battle claims take priority; generation starts only
 when a worker owns a free execution slot. Workers check ready background jobs
 before entering an empty battle long poll; jobs admitted during that poll are
-checked on the next claim. The MCP write timeout leaves room beyond the maximum
+checked on the next claim. The AI gateway write timeout leaves room beyond the maximum
 20-second poll so a durable claim can be delivered. Claims use `FOR UPDATE SKIP LOCKED` and
 never reclaim running generation jobs. Generation capabilities are namespaced
 separately and authorize only the draft's two tools on `/generation-mcp`.
-The restricted MCP database role receives SELECT/UPDATE on generation jobs,
+The restricted AI gateway database role receives SELECT/UPDATE on generation jobs,
 without faction-table or battle-state access.
 
 One operator-configured profile selects the writer independently of battle
@@ -1163,7 +1088,7 @@ The agent worker starts a separate, fully sampled trace for each decision reques
 linked to the engine's `battlefield.engine.decision_window` span; battle creation
 and engine processing are also always sampled (see
 [distributed traces](observability.md#distributed-traces)).
-Stable request-derived trace/root IDs let the capability-scoped MCP server attach
+Stable request-derived trace/root IDs let the capability-scoped AI gateway attach
 server-side tool observations even when a CLI does not propagate trace headers.
 API runners emit one generation per model attempt; CLI runners emit one aggregate
 session generation. Decision roots carry no duplicate billable token usage.
@@ -1185,9 +1110,9 @@ for deployment order, sampling, privacy, persistence and token-accounting limits
 - Public battle updates use polling rather than push delivery.
   A terminal battle-control response cancels status polling and invalidates
   in-flight responses so stale running status cannot overwrite an operator stop.
-- Load and failover behavior needs testing before increasing engine, MCP, or agent replicas.
+- Load and failover behavior needs testing before increasing engine, AI gateway, or agent replicas.
+- All worker placements share one control-plane secret, and claims self-report their profile IDs. A compromised worker could claim another placement's profiles. The secret cannot be rotated without changing every holder at once, and the CLI VM's `worker.env` cannot be changed through the managed workflow.
 - API adapters build text transcripts instead of preserving provider-native structured tool history.
-- The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [backend guide](../developer/backend-guide.md#internalgamecontroller-deterministic-policy-abstractions).
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
 
 The image-verification admission webhook fails closed on missing or invalid
@@ -1238,6 +1163,7 @@ separation, credential rotation, rollback limitations and live acceptance checks
 
 - [Codebase guide](../developer/codebase-guide.md): packages, source ownership and implementation change paths.
 - [Contributor CI](../developer/ci.md) and [cross-review](../developer/cross-review.md): development verification and review workflow.
+- [Database](database.md): schema, process access, claim and admission rules, and migrations.
 - [Observability architecture](observability.md): signal paths, telemetry contracts and reliability objectives.
 - [Deployment](../operations/deployment.md) and [Jenkins operations](../operations/jenkins.md): rollout, verification and recovery.
 - [Server rebuild contract](../operations/server-rebuild-contract.md): infrastructure state and recovery boundaries, with links to host, VM, K3s, Cloudflare and local HTTPS procedures.

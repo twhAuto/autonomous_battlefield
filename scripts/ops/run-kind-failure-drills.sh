@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Restarts engine, database, and MCP workloads in an explicitly registered disposable dev
+# Restarts engine, database, and AI gateway workloads in an explicitly registered disposable dev
 # cluster, verifies each was replaced and recovered, then runs smoke checks and writes a
 # recovery report.
 
@@ -14,7 +14,7 @@ context="${KUBERNETES_CONTEXT:-kind-${cluster_name}}"
 namespace="${KUBERNETES_NAMESPACE:-battlefield}"
 report_dir="${REPORT_DIR:-artifacts/failure-drills}"
 recovery_timeout="${DRILL_RECOVERY_TIMEOUT_SECONDS:-180}"
-mcp_outage_seconds="${MCP_OUTAGE_SECONDS:-30}"
+gateway_outage_seconds="${AI_GATEWAY_OUTAGE_SECONDS:-30}"
 
 if [[ "${RUN_DESTRUCTIVE_KIND_DRILLS:-}" != "I_UNDERSTAND_THIS_RESTARTS_DISPOSABLE_KIND_WORKLOADS" ]]; then
   echo "Set RUN_DESTRUCTIVE_KIND_DRILLS=I_UNDERSTAND_THIS_RESTARTS_DISPOSABLE_KIND_WORKLOADS." >&2
@@ -65,16 +65,16 @@ started="$(date -u +%FT%TZ)"
 engine_seconds="$(restart_drill app.kubernetes.io/component=engine)"
 database_seconds="$(restart_drill app.kubernetes.io/component=database)"
 
-mcp_selector=app.kubernetes.io/component=mcp
-mcp_before="$(pod_uids "${mcp_selector}")"
-[[ -n "${mcp_before}" ]] || { echo "No pods match ${mcp_selector}; the drill would not disrupt anything." >&2; exit 1; }
-k scale deployment/battlefield-mcp --replicas=0 >&2
-sleep "${mcp_outage_seconds}"
-mcp_since=${SECONDS}
-k scale deployment/battlefield-mcp --replicas=1 >&2
-mcp_seconds="$(await_replacement "${mcp_selector}" "${mcp_before}" "${mcp_since}")"
+gateway_selector=app.kubernetes.io/component=ai-gateway
+gateway_before="$(pod_uids "${gateway_selector}")"
+[[ -n "${gateway_before}" ]] || { echo "No pods match ${gateway_selector}; the drill would not disrupt anything." >&2; exit 1; }
+k scale deployment/battlefield-ai-gateway --replicas=0 >&2
+sleep "${gateway_outage_seconds}"
+gateway_since=${SECONDS}
+k scale deployment/battlefield-ai-gateway --replicas=1 >&2
+gateway_seconds="$(await_replacement "${gateway_selector}" "${gateway_before}" "${gateway_since}")"
 
 "${project_dir}/scripts/cd/smoke-test.sh"
 cat >"${report_dir}/summary.json" <<EOF
-{"schemaVersion":"battlefield.failure-drill-report.v2","startedAt":"${started}","completedAt":"$(date -u +%FT%TZ)","context":"${context}","drills":[{"name":"engine-restart","recoverySeconds":${engine_seconds}},{"name":"postgresql-restart","recoverySeconds":${database_seconds}},{"name":"mcp-outage","outageSeconds":${mcp_outage_seconds},"recoverySeconds":${mcp_seconds}}],"outcome":"passed"}
+{"schemaVersion":"battlefield.failure-drill-report.v2","startedAt":"${started}","completedAt":"$(date -u +%FT%TZ)","context":"${context}","drills":[{"name":"engine-restart","recoverySeconds":${engine_seconds}},{"name":"postgresql-restart","recoverySeconds":${database_seconds}},{"name":"ai-gateway-outage","outageSeconds":${gateway_outage_seconds},"recoverySeconds":${gateway_seconds}}],"outcome":"passed"}
 EOF

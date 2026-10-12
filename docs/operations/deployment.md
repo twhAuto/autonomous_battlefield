@@ -48,7 +48,7 @@ Use the same application containers and core Kubernetes resources locally and
 on AWS:
 
 See the [system context](../architecture/system-architecture.md#2-system-context)
-for the API, engine, MCP, agent, PostgreSQL, and optional Redis topology.
+for the API, engine, AI gateway, agent, PostgreSQL, and optional Redis topology.
 PostgreSQL remains the durable queue in both deployment environments.
 
 For a first AWS deployment, use:
@@ -203,19 +203,21 @@ Set `BATTLEFIELD_AUTH_MODE=local-password` for dev login. To disable dev login,
 explicitly select `disabled-development` and set `BATTLEFIELD_AUTH_ENABLED=false`.
 Production requires Cloudflare Access and rejects both development modes.
 
-The setup command generates or recovers MCP and worker secrets in `.env`.
+The setup command generates or recovers the MCP capability and worker secrets in `.env`.
 New provider profiles start unavailable, so scripted battles need no provider
-credentials. The deployment reuses `DATABASE_URL` for MCP when `.env` does not
-contain `MCP_DATABASE_URL`.
+credentials. The deployment reuses `DATABASE_URL` for the AI gateway when `.env`
+contains neither `AI_GATEWAY_DATABASE_URL` nor its pre-rename name
+`MCP_DATABASE_URL`, which is still accepted.
 
 To enable an API provider, edit the root `.env` using [`.env.example`](../../.env.example) as a reference, set
 a strong capability secret, add the provider key and model, and change that
 provider's `*_PROFILE_AVAILABLE` value to `true`. Production should always
-supply explicit secrets and point `MCP_DATABASE_URL` at a login granted only
-the `battlefield_mcp` role created by the decision migration.
+supply explicit secrets and point `AI_GATEWAY_DATABASE_URL` at a login granted
+only the `battlefield_ai_gateway` role ([database access](../architecture/database.md#the-battlefield_ai_gateway-role)).
 The production migration principal therefore needs `CREATEROLE` for the first
-application of migration `00004`; the MCP workload login itself must not have
-that privilege.
+application of migration `00004`, and `00017` renames that role, which also needs
+`ADMIN OPTION` on it (held automatically by the principal that created it, or by a
+superuser). The gateway workload login itself must not have these privileges.
 
 The `CODEX_CLI_PROFILE_AVAILABLE`, `GEMINI_CLI_PROFILE_AVAILABLE`, and
 `CLAUDE_CLI_PROFILE_AVAILABLE` values
@@ -258,7 +260,7 @@ HOST_AGENT_CONCURRENCY=4 ./scripts/dev/run-k8s-cli-agent.sh auto
 Follow [Claude setup](claude-cli.md) for `./scripts/dev/run-k8s-cli-agent.sh claude`.
 The retained `GEMINI_CLI_PROFILE_AVAILABLE` flag now controls Antigravity.
 Follow [Antigravity setup](antigravity-cli.md) to install and authenticate it. It verifies the
-tested CLI version and existing host login, forwards only the internal MCP
+tested CLI version and existing host login, forwards only the internal AI gateway
 service to loopback, runs the decision agent on the host, and temporarily makes
 the connected profiles selectable through the API. No CLI authentication
 directory or provider credential is mounted into the cluster. Keep the helper
@@ -432,7 +434,7 @@ The selected components have these deployment effects:
 | `migration` | Recreate the migration Job with the selected or currently deployed backend image and wait for completion. |
 | `backend` | Load the backend image into kind; automatically includes `migration` and `application`. |
 | `frontend` | Load the frontend image into kind; automatically includes `application`. |
-| `application` | Apply API, engine, agent, internal MCP, frontend, Services, network policy, autoscaling, and disruption-budget resources; wait for application rollouts. |
+| `application` | Apply API, engine, agent, internal AI gateway, frontend, Services, network policy, autoscaling, and disruption-budget resources; wait for application rollouts. |
 | `observability` | Apply Prometheus, kube-state-metrics, Grafana, Fluent Bit, Elasticsearch, Kibana, dashboards, data views, recording rules, and alerts; wait for readiness. |
 | `gateway` | Apply Envoy Gateway routes and wait for the local Gateway to become programmed. |
 | `network-policy` | Reconcile production API/frontend ingress policies without image builds or a tunnel restart. |
@@ -523,7 +525,7 @@ kubectl rollout status deployment/battlefield-engine \
 kubectl rollout status deployment/battlefield-agent \
   --namespace battlefield \
   --timeout=120s
-kubectl rollout status deployment/battlefield-mcp \
+kubectl rollout status deployment/battlefield-ai-gateway \
   --namespace battlefield \
   --timeout=120s
 kubectl rollout status deployment/battlefield-frontend \
@@ -591,7 +593,7 @@ kubectl logs deployment/battlefield-engine \
   --namespace battlefield --tail=100
 kubectl logs deployment/battlefield-agent \
   --namespace battlefield --tail=100
-kubectl logs deployment/battlefield-mcp \
+kubectl logs deployment/battlefield-ai-gateway \
   --namespace battlefield --tail=100
 kubectl logs deployment/battlefield-frontend \
   --namespace battlefield --tail=100
@@ -653,7 +655,7 @@ AWS promotion copies verified images to ECR without rebuilding.
   transient PostgreSQL startup failures. Invalid configuration still fails
   immediately.
 - Frontend Nginx resolves the API Service at request time, so temporary absence
-  of the API DNS record no longer prevents the frontend container from starting.
+  of the API DNS record does not prevent the frontend container from starting.
 - Set `terminationGracePeriodSeconds` longer than the configured ten-second
   graceful-shutdown deadline.
 - The engine can have multiple replicas because work is claimed through durable
@@ -755,7 +757,7 @@ Budget alerts are notifications, not guaranteed spending limits.
 
 ## Doctrine profile rollout
 
-Deploy API, engine, MCP, agent, and frontend from the same revision. Startup migration
+Deploy API, engine, AI gateway, agent, and frontend from the same revision. Startup migration
 00008 preserves existing faction IDs/names and legacy blueprints, backfills balanced
 doctrine, and permits tick-zero decisions. New battles use snapshot version 2;
 existing queued battles retain their snapshotted legacy rules. No data reset is needed.
@@ -769,7 +771,7 @@ tick zero before tick one. Purchases should reduce the same gold balance through
 
 ### Faction background generation rollout
 
-Deploy API, MCP, engine/agent workers and frontend from the same revision. Apply
+Deploy API, AI gateway, engine/agent workers and frontend from the same revision. Apply
 migration `00009_faction_background.sql` before rollout. It preserves existing
 factions (empty background), legacy blueprints and historical battle snapshots.
 Migration runners use a PostgreSQL advisory session lock to serialize startup.
@@ -825,7 +827,7 @@ snapshot any data that must be preserved before that transition.
 The deployment helper waits for Elasticsearch and the other observability
 workloads, restarts Kibana against the ready Elasticsearch instance, waits for
 Kibana's rollout, then applies its setup job separately. Applying the observability
-Kustomization alone no longer creates the setup job. Each observability rollout
+Kustomization alone does not create the setup job. Each observability rollout
 briefly restarts Kibana. The setup job has a 300-second deadline, bounded HTTP
 requests, and separate pods for retries so failed-attempt logs remain available.
 The helper detects both successful and failed Job conditions and prints job, pod,

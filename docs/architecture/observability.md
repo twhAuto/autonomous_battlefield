@@ -22,7 +22,7 @@ kubelet /metrics/cadvisor -----+          |
                                           +--> recording and alert rules
 
 application container stdout --> Fluent Bit --> Elasticsearch --> Kibana
-API / engine / MCP / agent spans --> OTel Collector --> Tempo --> Grafana
+API / engine / AI gateway / agent spans --> OTel Collector --> Tempo --> Grafana
 ```
 
 Prometheus discovers annotated pods in the `battlefield` namespace and uses
@@ -38,7 +38,7 @@ The local stack deliberately does not include Alertmanager. Prometheus evaluates
 the checked-in alert rules and shows their state, but notifications require an
 Alertmanager or another production alert-delivery integration.
 
-Fluent Bit runs once per node and tails API, engine, agent, MCP, frontend, and migration
+Fluent Bit runs once per node and tails API, engine, agent, AI gateway, frontend, and migration
 container logs from the `battlefield` namespace. It enriches each record with
 pod, container, and label metadata and sends daily
 `battlefield-app-YYYY.MM.DD` indices to Elasticsearch. JSON application logs
@@ -52,7 +52,7 @@ outside the configured input path.
 
 ## Distributed traces
 
-The API, engine, MCP, and agent use OpenTelemetry. W3C trace context is stored on
+The API, engine, AI gateway, and agent use OpenTelemetry. W3C trace context is stored on
 battle and decision rows so workers can connect their spans after queue claims. The
 collector accepts OTLP and exports traces to Tempo. Host agents need an
 OTLP endpoint reachable from the host to export their own spans.

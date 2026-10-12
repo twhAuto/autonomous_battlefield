@@ -50,8 +50,7 @@ fail before application changes.
 ## Deliver and verify
 
 The canonical commands are `scripts/cd/deploy.sh`, `scripts/cd/smoke-test.sh` and
-`scripts/cd/rollback.sh`. The former `*-kind.sh` commands remain forwarding
-launchers. Jenkins main uses the canonical commands and the same signed-digest,
+`scripts/cd/rollback.sh`. Jenkins main uses the canonical commands and the same signed-digest,
 provenance, migration-backup, smoke, runtime-assurance and recovery stages.
 
 The registered profile selects the overlays. K3s composes shared manifests with:
@@ -84,11 +83,9 @@ match the shared collector and the driver-specific port forward.
 
 ## Disposable delivery rehearsal
 
-This optional harness remains useful for delivery and recovery changes. The owner
-approved a direct initial production migration on 2026-10-01 because the service
-is not launched and contains only test data. An additional dedicated Jenkins
-rehearsal job and a complete clean-host rebuild are not prerequisites for that
-migration. The final export, restore comparison, public verification and recovery
+This optional harness remains useful for delivery and recovery changes. While
+production holds only test data, a direct migration is accepted without a dedicated
+Jenkins rehearsal job or a complete clean-host rebuild. The final export, restore comparison, public verification and recovery
 record remain required; see [the cutover procedure](#adoption-and-cutover-boundary).
 
 Run `scripts/infra/rehearse-k3s-delivery.py` on the libvirt controller to exercise
@@ -260,7 +257,7 @@ point at different clusters.
    unchanged, restarting the bridge makes it read the adopted kubeconfig; no
    unit rewrite is necessary. Keep the existing matched 28084 bridge/Caddy pair
    during this cutover; do not reinstall the host bundle merely to retarget it.
-   Verify the private MCP path from the CLI VM and
+   Verify the private AI gateway path from the CLI VM and
    preserve the existing isolation and provider authorization gates. Do not
    claim a new paid-provider inference test from a health response alone.
 6. Confirm the old writers and connectors remain stopped, then run
@@ -291,7 +288,7 @@ data with explicit migration compatibility review before returning to Kind.
 Normal digest rollback also does not reverse database changes.
 
 Keep the Kind cluster and its volumes for observation, with its application
-writers and connectors paused, until the owner explicitly chooses cleanup. Do not delete them automatically after a green build. The
+writers and connectors paused, until an operator explicitly chooses cleanup. Do not delete them automatically after a green build. The
 initial cutover retains private server evidence at:
 
 - `/srv/battlefield-data/workspace/ab132-cutover/`: final dump, checksum and table
@@ -302,9 +299,9 @@ initial cutover retains private server evidence at:
 - `~/.config/autonomous-battlefield/production/`: adopted K3s registration and,
   after successful main verification, its own recovery record.
 
-The native local HTTPS aliases are a separate cutover boundary. Inspection on
-2026-10-02 found they still pointed at Kind: the retired application returned
-503 and the monitoring aliases showed the old cluster. Use the reviewed
+The native local HTTPS aliases are a separate cutover boundary. Until the local
+HTTPS migration runs, they point at retained Kind: the application alias returns
+503 and the monitoring aliases show the old cluster. Use the reviewed
 [local HTTPS migration](local-https-platform.md) to redirect the application
 alias to the Access-protected public origin and retarget Grafana/Kibana to K3s.
 Do not restart old application writers to make that obsolete alias respond.

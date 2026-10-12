@@ -1,0 +1,13 @@
+# Pre-rename alias for the AI gateway. The deploy script applies it only once the
+# gateway rollout is ready (or at once when no legacy battlefield-mcp Deployment
+# exists), so it never routes to unready pods. In-cluster agents (ai.mcpUrl) and the
+# CLI host bridge use it until both are switched to battlefield-ai-gateway.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: battlefield-mcp
+spec:
+  type: ClusterIP
+  selector: {app.kubernetes.io/name: autonomous-battlefield, app.kubernetes.io/component: ai-gateway}
+  ports: [{name: http, port: 8084, targetPort: http}]

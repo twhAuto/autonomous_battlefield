@@ -107,7 +107,7 @@ SQLite recovery needs both the datastore and server token; see
 [the K3s backup requirements](https://docs.k3s.io/datastore/backup-restore).
 The encrypted Terraform recovery bundle contains control-plane provisioning
 state and SSH access, **not** K3s state, application databases or retained disk
-contents. The owner has deferred scheduled backups. This workflow is reproducible
+contents. Scheduled backups are not configured. This workflow is reproducible
 infrastructure, not a claim of data recovery after disk failure.
 
 ## Private networking and version ownership
@@ -127,7 +127,7 @@ Runtime drift fails verification and appears as a reload in the next plan; the
 reload changes only this table and preserves the running K3s service.
 It does not edit the host firewall, Docker networks or the existing CLI VM.
 The validation gateway is private and has no public DNS/tunnel route. Application
-delivery owns the CLI/MCP route through the intended private bridge; verify that
+delivery owns the CLI/AI gateway route through the intended private bridge; verify that
 route before enabling CLI execution on K3s. Player CLI access requires the separate
 [isolation and accepted-plan checks](agent-vm.md#verify-before-advertising-availability).
 

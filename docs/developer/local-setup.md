@@ -8,8 +8,9 @@ credential precedence and cluster identity checks. For production, see
 ## WSL setup and normal use
 
 Requirements: Docker, Kind, kubectl, Bash, curl, Python 3, Node.js 24 and npm.
-Backend development and Go checks require Go 1.26.5. Run commands from the
-repository root unless a command changes directory explicitly.
+Backend development and Go checks require Go 1.26.9 or newer, matching the backend
+image. Run commands from the repository root unless a command changes directory
+explicitly.
 
 For a fresh checkout, create the dev cluster and its registration:
 
@@ -84,12 +85,9 @@ docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile
 docker compose --env-file infra/local/.env -f infra/local/compose.yaml down
 ```
 
-The explicit Compose project name is `backend`, preserving the former default
-network and `backend_battlefield-postgres` volume. For a stack created from the
-former `backend/compose.yaml`, retain its existing password and copy its private
-`backend/.env` to `infra/local/.env` without overwriting an existing file. Both
-locations remain Git-ignored. If you previously used `-p` or `COMPOSE_PROJECT_NAME`,
-keep that same override. Moving the manifest does not move data or rotate passwords.
+The Compose project name is fixed as `backend`, so the network and the
+`backend_battlefield-postgres` volume keep stable names. `infra/local/.env` is
+Git-ignored.
 
 Application processes started separately need their own `DATABASE_URL` pointing
 to this PostgreSQL instance. The Compose environment file is not the Kind root
@@ -110,7 +108,7 @@ When running processes outside Kind, the defaults in
 | `8080` | Public API |
 | `8081` | Engine health and metrics |
 | `8083` | Agent health |
-| `8084` | MCP and internal agent control plane |
+| `8084` | AI gateway: MCP tools and internal agent dispatch API |
 | `5432` | PostgreSQL |
 
 These are process defaults; the normal Kind workflow uses the gateway URL above.

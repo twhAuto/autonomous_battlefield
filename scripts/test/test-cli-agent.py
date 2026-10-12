@@ -17,7 +17,7 @@ class CLIProfiles(unittest.TestCase):
         with tempfile.TemporaryDirectory() as runtime:
             script = FUNCTIONS + '''
 use_codex=0; use_gemini=0; use_claude=0
-health_port=18083; mcp_port=18084; agent_concurrency="${agent_concurrency:-2}"
+health_port=18083; gateway_port=18084; agent_concurrency="${agent_concurrency:-2}"
 codex_available() { [[ "$available" == *codex* ]]; }
 antigravity_available() { [[ "$available" == *gemini* ]]; }
 claude_available() { [[ "$available" == *claude* ]]; }
@@ -92,12 +92,12 @@ assert.doesNotThrow(() => validate(values, 'production'));
             script = FUNCTIONS + r"""
 kill() { return 1; }
 curl() { echo 'unexpected health probe'; return 0; }
-wait_for_endpoint http://127.0.0.1:18084/healthz 123 'MCP port-forward' "$1"
+wait_for_endpoint http://127.0.0.1:18084/healthz 123 'AI gateway port-forward' "$1"
 """
             result = subprocess.run(['bash', '-ec', script, '_', str(log)], capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('address already in use', result.stderr)
-            self.assertIn('HOST_MCP_PORT', result.stderr)
+            self.assertIn('HOST_AI_GATEWAY_PORT', result.stderr)
             self.assertNotIn('unexpected health probe', result.stdout)
 
     def test_endpoint_timeout_prints_log_and_probes_are_bounded(self):
@@ -112,7 +112,7 @@ curl() {
   [[ "$*" == *'--noproxy *'* ]] || exit 91
   return 1
 }
-wait_for_endpoint http://127.0.0.1:18084/healthz 123 'MCP port-forward' "$1"
+wait_for_endpoint http://127.0.0.1:18084/healthz 123 'AI gateway port-forward' "$1"
 """
             result = subprocess.run(['bash', '-ec', script, '_', str(log)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 1)
@@ -123,7 +123,7 @@ wait_for_endpoint http://127.0.0.1:18084/healthz 123 'MCP port-forward' "$1"
         script = FUNCTIONS + r"""
 kill() { return 0; }
 curl() { return 0; }
-wait_for_endpoint http://127.0.0.1:18084/healthz 123 'MCP port-forward'
+wait_for_endpoint http://127.0.0.1:18084/healthz 123 'AI gateway port-forward'
 """
         subprocess.run(['bash', '-ec', script], check=True)
 

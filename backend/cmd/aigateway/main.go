@@ -1,5 +1,5 @@
-// Starts the authenticated MCP and agent-control server with restricted repositories and
-// database wakeup notifications.
+// Starts the AI gateway: the MCP tool server and the agent dispatch API, with restricted
+// repositories and database wakeup notifications.
 
 package main
 
@@ -26,17 +26,17 @@ import (
 )
 
 func main() {
-	logger := logging.New("mcp")
+	logger := logging.New("ai-gateway")
 	slog.SetDefault(logger)
 	configPath := flag.String("config", "config.yaml", "path to YAML configuration")
 	flag.Parse()
-	configuration, err := config.LoadMCP(*configPath)
+	configuration, err := config.LoadAIGateway(*configPath)
 	if err != nil {
 		logger.Error("configuration_load_failed", "error", err)
 		os.Exit(1)
 	}
 	if err := run(configuration); err != nil {
-		logger.Error("mcp_process_stopped", "error", err)
+		logger.Error("ai_gateway_process_stopped", "error", err)
 		os.Exit(1)
 	}
 }
@@ -44,7 +44,7 @@ func main() {
 func run(configuration config.Config) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	shutdownTracing, err := telemetry.ConfigureTracing(ctx, "battlefield-mcp")
+	shutdownTracing, err := telemetry.ConfigureTracing(ctx, "battlefield-ai-gateway")
 	if err != nil {
 		return fmt.Errorf("configure tracing: %w", err)
 	}
@@ -58,7 +58,8 @@ func run(configuration config.Config) error {
 		return err
 	}
 	defer db.Close()
-	server := mcpserver.New(battlerepo.NewPostgres(db), configuration.AI.CapabilitySecret, configuration.AI.AllowedOrigins).WithAgentSecret(configuration.AI.AgentSecret).WithGenerations(&generation.Postgres{DB: db})
+	repository := battlerepo.NewPostgres(db)
+	server := mcpserver.New(repository, configuration.AI.CapabilitySecret, configuration.AI.AllowedOrigins).WithAgentSecret(configuration.AI.AgentSecret).WithGenerations(&generation.Postgres{DB: db})
 	notificationErrors := make(chan error, 1)
 	go func() {
 		notificationErrors <- postgres.ListenForNotifications(ctx, db, ai.DecisionReadyChannel, func(string) {
@@ -68,9 +69,10 @@ func run(configuration config.Config) error {
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", server.Handler())
 	mux.Handle("/generation-mcp", server.GenerationHandler())
-	mux.Handle("/internal/agent/", http.StripPrefix("/internal/agent", server.AgentHandler(battlerepo.NewPostgres(db))))
+	mux.Handle("/internal/agent/", http.StripPrefix("/internal/agent", server.AgentHandler(repository)))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	httpServer := &http.Server{Addr: configuration.AI.MCPAddress, Handler: telemetry.HTTPHandler("battlefield-mcp.http", mux), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second}
+	mux.HandleFunc("GET /readyz", readinessHandler(db, 2*time.Second))
+	httpServer := &http.Server{Addr: configuration.AI.AIGatewayAddress, Handler: telemetry.HTTPHandler("battlefield-ai-gateway.http", mux), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second}
 	errorsChannel := make(chan error, 1)
 	go func() {
 		err := httpServer.ListenAndServe()
@@ -79,7 +81,7 @@ func run(configuration config.Config) error {
 		}
 		errorsChannel <- err
 	}()
-	slog.InfoContext(ctx, "mcp_ready", "address", httpServer.Addr)
+	slog.InfoContext(ctx, "ai_gateway_ready", "address", httpServer.Addr)
 	select {
 	case err := <-errorsChannel:
 		return err
@@ -90,10 +92,29 @@ func run(configuration config.Config) error {
 	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := httpServer.Shutdown(shutdown); err != nil {
-		return fmt.Errorf("shutdown MCP server: %w", err)
+		return fmt.Errorf("shutdown AI gateway: %w", err)
 	}
 	if err := <-errorsChannel; err != nil {
 		return err
 	}
 	return <-notificationErrors
+}
+
+type pinger interface {
+	Ping(context.Context) error
+}
+
+// readinessHandler reports ready only while PostgreSQL answers within timeout, so a
+// lost database connection removes the gateway from Service endpoints. /healthz stays a
+// process-liveness check that scripts use to confirm port-forwards.
+func readinessHandler(database pinger, timeout time.Duration) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), timeout)
+		defer cancel()
+		if err := database.Ping(ctx); err != nil {
+			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
 }

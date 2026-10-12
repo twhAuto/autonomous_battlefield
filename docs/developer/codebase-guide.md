@@ -45,7 +45,7 @@ autonomous_battlefield/
 ├── .claude/skills/             # Links to the canonical skills for Claude Code
 ├── .github/pull_request_template.md # PR sections, including the required AI-assistance record
 ├── backend/
-│   ├── cmd/{server,engine,mcp,agent,aieval}/ # Startup and command wiring
+│   ├── cmd/{server,engine,aigateway,agent,aieval}/ # Startup and command wiring
 │   ├── internal/
 │   │   ├── battle/{api,service,catalog,worker,repo,resultcache}/
 │   │   ├── faction/{api,service,repo}/
@@ -103,7 +103,7 @@ The backend has five commands in one Go module: four runtime processes and the o
 | --- | --- | --- |
 | API | [`backend/cmd/server/main.go`](../../backend/cmd/server/main.go) | Flags, configuration, migrations, PostgreSQL startup, catalog loading, application wiring, HTTP lifecycle |
 | Engine | [`backend/cmd/engine/main.go`](../../backend/cmd/engine/main.go) | Configuration, PostgreSQL startup, worker construction, health server, signals, graceful requeue/shutdown |
-| MCP | [`backend/cmd/mcp/main.go`](../../backend/cmd/mcp/main.go) | Restricted repository construction, PostgreSQL notification listener, MCP and agent-control routes, HTTP lifecycle |
+| AI gateway | [`backend/cmd/aigateway/main.go`](../../backend/cmd/aigateway/main.go) | Restricted repository construction, PostgreSQL notification listener, MCP tool and agent dispatch routes, HTTP lifecycle |
 | Agent | [`backend/cmd/agent/main.go`](../../backend/cmd/agent/main.go) | Profile registry, decision worker, health endpoint, signals, shutdown |
 | AI evaluation | [`backend/cmd/aieval/main.go`](../../backend/cmd/aieval/main.go) | Evaluation case execution, pricing inputs, reports, and runtime provenance via `-mode metadata` |
 
@@ -211,9 +211,11 @@ real container. Jenkins runs this Docker-backed regression separately from the
 command-double deployment suite; see [Jenkins checks](ci.md#pull-request-verification).
 
 `scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh` are the driver-neutral
-entry points used by Jenkins. `cd/lib/kubernetes-deployment.sh` stages selected
-shared overlays and
-composes `infra/deploy/overlays/k3s` when the profile selects K3s. `lib/k3s-delivery.py`
+entry points used by Jenkins. On main, `capture-rollback-images.sh` records the
+running images before rollout and `rollback-on-failed-verification.sh` decides
+whether a failed smoke test may call `rollback.sh`; the `Jenkinsfile` keeps only
+stage wiring and shared helper functions. `cd/lib/kubernetes-deployment.sh` stages
+selected shared overlays and composes `infra/deploy/overlays/k3s` when the profile selects K3s. `lib/k3s-delivery.py`
 performs read-only platform/retained-volume checks. `production_recovery.py`
 binds verified images to the applied database migration ledger. The required
 `test-k3s-delivery.py` suite exercises the real commands with isolated external
@@ -291,7 +293,7 @@ while exposing explicitly approved, available CLI profiles.
 1. [`backend/internal/ai/types.go`](../../backend/internal/ai/types.go)
 2. [`backend/internal/battle/worker/decisions.go`](../../backend/internal/battle/worker/decisions.go), starting at `resolveDecisionWindow`
 3. [`backend/internal/battle/repo/decisions.go`](../../backend/internal/battle/repo/decisions.go)
-4. [`backend/internal/ai/mcpserver/server.go`](../../backend/internal/ai/mcpserver/server.go)
+4. [`backend/internal/ai/mcpserver/dispatch.go`](../../backend/internal/ai/mcpserver/dispatch.go) (claims), then [`server.go`](../../backend/internal/ai/mcpserver/server.go) (tools)
 5. [`backend/internal/ai/worker/worker.go`](../../backend/internal/ai/worker/worker.go)
 6. [`backend/internal/ai/runner/api.go`](../../backend/internal/ai/runner/api.go)
 7. [`backend/internal/ai/providers/openai.go`](../../backend/internal/ai/providers/openai.go) or [`gemini.go`](../../backend/internal/ai/providers/gemini.go)

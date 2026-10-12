@@ -29,7 +29,7 @@ Production:
 ```
 
 The application `.env` holds database URLs, authentication, provider settings,
-worker/MCP credentials, and optional Redis/logging/telemetry settings.
+worker and MCP capability credentials, and optional Redis/logging/telemetry settings.
 `deployment.env` holds only deployment identity, Docker endpoint, cluster UID,
 gateway URL, kubeconfig path, and production tunnel settings. See the
 [deployment template](../../infra/deploy/environments/deployment.env.example).

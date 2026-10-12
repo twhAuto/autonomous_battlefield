@@ -42,6 +42,7 @@ configuring, deploying, observing and recovering environments.
 | Guide | Use it for |
 | --- | --- |
 | [System architecture](architecture/system-architecture.md) | Runtime components, data flows, durability, security and topology |
+| [Database](architecture/database.md) | Schema, process access, claim and admission rules, and migrations |
 | [Configuration](architecture/configuration.md) | Environment files, identity and Secret boundaries |
 | [Observability](architecture/observability.md) | Signal paths, telemetry contracts and reliability objectives |
 | [HTTP API](architecture/api.md) | Authentication, routes, errors and examples |

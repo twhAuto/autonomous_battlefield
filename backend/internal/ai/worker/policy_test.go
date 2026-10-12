@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -40,5 +41,25 @@ func TestDelayedClaimCannotExtendExecutionLease(t *testing.T) {
 	got, _ := ctx.Deadline()
 	if !got.Equal(expiry) {
 		t.Fatal("claim arrival extended reservation")
+	}
+}
+
+func TestPolicyCheckFailsClosed(t *testing.T) {
+	enabled := agentRoundTrip(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader(""))}, nil
+	})
+	unreachable := agentRoundTrip(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("connection refused")
+	})
+	for name, w := range map[string]*Worker{
+		"malformed gateway URL": {MCPURL: "http://bad host/mcp", Client: &http.Client{Transport: enabled}},
+		"gateway unreachable":   {MCPURL: "http://private/mcp", Client: &http.Client{Transport: unreachable}},
+	} {
+		if w.policyEnabled(context.Background()) {
+			t.Fatalf("%s: policy check reported enabled", name)
+		}
+	}
+	if !(&Worker{MCPURL: "http://private/mcp", Client: &http.Client{Transport: enabled}}).policyEnabled(context.Background()) {
+		t.Fatal("204 policy response was not treated as enabled")
 	}
 }

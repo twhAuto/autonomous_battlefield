@@ -7,7 +7,7 @@ not refer to the workstation from inside a pod. Remove the setting and redeploy
 to disable caching. The cache is disposable.
 
 The engine
-and MCP service do not use this variable. The default configuration is:
+and AI gateway do not use this variable. The default configuration is:
 
 ```yaml
 resultCache:
