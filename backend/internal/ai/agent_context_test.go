@@ -33,7 +33,7 @@ func TestCompactProjectionAndFrozenLookup(t *testing.T) {
 	before, _ := ObservationHash(c)
 	r.Units[0].Attack = 999
 	r.Knowledge.Cards[0].Guidance = "edited"
-	result, err := LookupUnitDetails(c, []string{"unit-00", "unit-20", "unit-23", "unknown"})
+	result, err := LookupUnitDetailsPage(c, []string{"unit-00", "unit-20", "unit-23", "unknown"}, 0)
 	if err != nil || !result.Units[0].Available || result.Units[0].Stats.Attack == 999 || result.Units[0].Guidance == "edited" || !result.Units[1].Available || result.Units[2].Available || result.Units[3].Available {
 		t.Fatalf("bad frozen lookup: %+v %v", result, err)
 	}
@@ -47,7 +47,7 @@ func TestCompactProjectionAndFrozenLookup(t *testing.T) {
 	}
 	// Even an accidentally overbroad stored snapshot cannot expose a hidden type.
 	c.UnitReference.Units = append(c.UnitReference.Units, UnitDetail{UnitID: "hidden", Stats: game.UnitType{ID: "hidden"}})
-	hidden, _ := LookupUnitDetails(c, []string{"hidden"})
+	hidden, _ := LookupUnitDetailsPage(c, []string{"hidden"}, 0)
 	if hidden.Units[0].Available {
 		t.Fatal("hidden reference exposed")
 	}
@@ -57,7 +57,7 @@ func TestUnitDetailsMissingKnowledgeAndInvalidBatches(t *testing.T) {
 	r.Knowledge = nil
 	c.Knowledge = nil
 	c.UnitReference = FreezeUnitReference(r, c)
-	got, err := LookupUnitDetails(c, []string{"unit-00"})
+	got, err := LookupUnitDetailsPage(c, []string{"unit-00"}, 0)
 	if err != nil || !got.Units[0].Available || got.Units[0].Guidance != "" {
 		t.Fatal(got, err)
 	}
@@ -66,7 +66,7 @@ func TestUnitDetailsMissingKnowledgeAndInvalidBatches(t *testing.T) {
 		t.Fatal("invented role")
 	}
 	for _, ids := range [][]string{nil, {}, {""}, {"unit-00", "unit-00"}, {"a", "b", "c", "d", "e"}} {
-		if _, err := LookupUnitDetails(c, ids); err == nil {
+		if _, err := LookupUnitDetailsPage(c, ids, 0); err == nil {
 			t.Fatalf("accepted %v", ids)
 		}
 	}
@@ -75,12 +75,12 @@ func TestLegacyContextAndLookup(t *testing.T) {
 	_, c := compactFixture()
 	c.SchemaVersion = "battlefield.decision-context.v2"
 	c.UnitReference = nil
-	details, err := LookupUnitDetails(c, []string{"unit-00", "unit-20", "unit-23"})
+	details, err := LookupUnitDetailsPage(c, []string{"unit-00", "unit-20", "unit-23"}, 0)
 	if err != nil || !details.Units[0].Available || !details.Units[1].Available || details.Units[2].Available {
 		t.Fatal(details, err)
 	}
 	c.Knowledge = nil
-	details, err = LookupUnitDetails(c, []string{"unit-00", "unit-20"})
+	details, err = LookupUnitDetailsPage(c, []string{"unit-00", "unit-20"}, 0)
 	if err != nil || !details.Units[0].Available || details.Units[1].Available {
 		t.Fatal(details, err)
 	}
@@ -136,7 +136,7 @@ func TestCompactContextSizeByBattleStage(t *testing.T) {
 }
 func TestFourSmallUnitDetailsFitInline(t *testing.T) {
 	_, c := compactFixture()
-	result, err := LookupUnitDetails(c, []string{"unit-00", "unit-01", "unit-02", "unit-03"})
+	result, err := LookupUnitDetailsPage(c, []string{"unit-00", "unit-01", "unit-02", "unit-03"}, 0)
 	payload, _ := json.Marshal(result)
 	if err != nil || len(payload) > UnitDetailsMaxBytes || len(result.Units) != 4 {
 		t.Fatal(len(payload), err)
@@ -150,7 +150,7 @@ func TestOversizedDetailsAskForSmallerBatch(t *testing.T) {
 		r.Knowledge.Cards[i].Guidance = guidance
 	}
 	c.UnitReference = FreezeUnitReference(r, c)
-	if _, err := LookupUnitDetails(c, []string{"unit-00", "unit-01", "unit-02", "unit-03"}); err == nil {
+	if _, err := LookupUnitDetailsPage(c, []string{"unit-00", "unit-01", "unit-02", "unit-03"}, 0); err == nil {
 		t.Fatal("unbounded response")
 	}
 	assertGuidancePagination(t, c, guidance)
@@ -163,7 +163,7 @@ func TestOversizedDetailsAskForSmallerBatch(t *testing.T) {
 		}
 	}
 	c.UnitReference.RulesetID = strings.Repeat("x", UnitDetailsMaxBytes)
-	if _, err := LookupUnitDetails(c, []string{"unit-00"}); err == nil {
+	if _, err := LookupUnitDetailsPage(c, []string{"unit-00"}, 0); err == nil {
 		t.Fatal("unbounded metadata")
 	}
 }
@@ -182,7 +182,7 @@ func TestCompactOverviewIgnoresAutomaticCardLimit(t *testing.T) {
 	if len(overview.Legal.Units) != len(r.Units) || len(restored.Knowledge.Cards) != 1 {
 		t.Fatal("automatic card limit changed legal overview")
 	}
-	detail, err := LookupUnitDetails(restored, []string{r.Units[len(r.Units)-1].ID})
+	detail, err := LookupUnitDetailsPage(restored, []string{r.Units[len(r.Units)-1].ID}, 0)
 	if err != nil || !detail.Units[0].Available || detail.Units[0].Guidance == "" {
 		t.Fatal("persisted reference omitted non-selected card", err)
 	}

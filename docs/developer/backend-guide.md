@@ -240,8 +240,8 @@ The default runner factory is the only place that chooses concrete provider impl
 | [`observability.go`](../../backend/internal/ai/runner/observability.go) | Langfuse generation observations for API and CLI runs |
 | [`process_linux.go`](../../backend/internal/ai/runner/process_linux.go) | CLI process-group isolation and cancellation (no-op fallback in `process_other.go`) |
 
-The API loop accepts only a known MCP tool set: the three battle tools (or the
-legacy two-tool pair during rollout) or the two background-generation tools. It
+The API loop accepts only a known MCP tool set: the three battle tools or the two
+background-generation tools. It
 rejects any other tool name a provider requests. It appends tool calls and results to the neutral message transcript and accumulates usage over turns.
 
 The CLI runner creates a temporary directory, passes the profile's allowlisted model explicitly with `--model`, and constructs provider-specific command-line restrictions. Tests use the `CommandExecutor` interface to inspect the selected model and execution restrictions without starting a real CLI.
@@ -292,13 +292,11 @@ variants use the current projection, with lookup and total input-token metrics.
 
 The server validates request scope before calling `DecisionService`. PostgreSQL notifications close an in-memory wake-up channel so long-polling claim requests promptly query durable state.
 
-### `internal/game/controller`: deterministic policy abstractions
+### `internal/game/controller`: strategy-plan contract
 
-[`types.go`](../../backend/internal/game/controller/types.go) defines `PlanProposal`, action candidates, strategy plans, and a controller interface. `PlanProposal` is actively used by the game, AI subsystem, scenarios, repository, API, and frontend.
+[`types.go`](../../backend/internal/game/controller/types.go) defines `PlanProposal`, its typed construction and recruitment orders, `Coordinate` and `Tick`. `PlanProposal` is actively used by the game, AI subsystem, scenarios, repository, API, and frontend; the match consumes it directly and performs deterministic action scoring internally.
 
-[`utility_controller.go`](../../backend/internal/game/controller/utility_controller.go) is an independently tested in-memory utility controller with its own decision scheduling and pending-plan lifecycle. It is not constructed by the API, engine, or `game.Match` production path. The current match consumes `PlanProposal` directly and performs deterministic action scoring internally.
-
-The standalone controller is retained as an intentional, independently tested capability. Shared production plan validation lives in [`validation.go`](../../backend/internal/game/controller/validation.go); [`clone.go`](../../backend/internal/game/controller/clone.go) owns `ClonePlanProposal` and `ClonePlanProposals`, used by the match, catalog, and utility controller. Add new mutable proposal fields to that copy implementation and its isolation test.
+Shared production plan validation lives in [`validation.go`](../../backend/internal/game/controller/validation.go); [`clone.go`](../../backend/internal/game/controller/clone.go) owns `ClonePlanProposal` and `ClonePlanProposals`, used by the match and catalog. Add new mutable proposal fields to that copy implementation and its isolation test.
 
 ### `internal/faction`: reusable doctrines
 

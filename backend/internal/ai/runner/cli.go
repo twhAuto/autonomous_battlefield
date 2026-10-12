@@ -174,21 +174,6 @@ func replaceEnvironment(values []string, key, value string) []string {
 	return append(result, prefix+value)
 }
 
-func redactedCLIOutput(output []byte, token string) string {
-	if token != "" {
-		output = []byte(strings.ReplaceAll(string(output), token, "[redacted]"))
-	}
-	return boundedOutput(output)
-}
-
-func boundedOutput(value []byte) string {
-	const limit = 2048
-	if len(value) > limit {
-		value = value[len(value)-limit:]
-	}
-	return strings.TrimSpace(string(value))
-}
-
 // Antigravity offloads larger MCP responses to local files. Fetch the scoped
 // observation with our SDK and place it directly in the prompt instead.
 func (r CLIRunner) prefetchContext(ctx context.Context, session ai.DecisionSession) (json.RawMessage, error) {

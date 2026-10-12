@@ -56,12 +56,6 @@ func generationPromptVersion(system, decision string) string {
 	return fmt.Sprintf("faction-background-v2.%x", sha256.Sum256([]byte(system+"\x00"+decision)))
 }
 
-// DecisionPrompt varies only the context transport; decision policy is shared.
-// A nil context means the model must fetch it through MCP.
-func DecisionPrompt(requestID string, inlineContext []byte) string {
-	return DecisionInstructions + "\n" + contextDelivery(requestID, inlineContext)
-}
-
 // contextDelivery is the request-specific suffix: request ID and any inline
 // battlefield context. Everything before it must stay stable across decisions
 // so provider prompt caches can reuse the prefix.
