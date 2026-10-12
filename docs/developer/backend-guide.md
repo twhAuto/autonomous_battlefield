@@ -545,8 +545,8 @@ release inputs, provider login and end-to-end verification.
 owns host and guest service bootstrap. See [CLI VM platform](../operations/cli-vm-platform.md)
 and [CLI bootstrap](../operations/cli-bootstrap.md).
 `verify-agent-isolation.py` tests its guest boundary. `ai-policy.sh` is the private
-operator stop/status/usage interface. `verify-access-service.py` checks the restricted CI service identity during production smoke;
-the former human-JWT helper has been retired. `scripts/test/test-limited-launch.py` verifies
+operator stop/status/usage interface. `verify-access-service.py` checks the restricted CI service identity during production smoke.
+`scripts/test/test-limited-launch.py` verifies
 rendered routing and isolation artifacts without modifying infrastructure.
 See [limited-access launch](../operations/limited-launch.md) for setup and live verification.
 
