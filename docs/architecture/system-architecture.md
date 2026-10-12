@@ -938,7 +938,7 @@ migrations and rollback procedures belong to [deployment operations](../operatio
   elapsed wall time. Per-tick persistence events require DEBUG logging.
 - Agent/MCP logs cover decision claims, tool access, validation, provider outcome, usage, and latency.
 - Full combat detail lives in `battle_events` rather than normal process logs.
-- API and engine expose lifecycle checks; agent and MCP expose `/healthz`.
+- API and engine expose lifecycle checks; the agent exposes `/healthz`; MCP exposes `/healthz` for liveness and `/readyz`, which pings PostgreSQL, for readiness.
 - Prometheus, Grafana, Elasticsearch, Kibana, and Fluent Bit are provided for the local Kubernetes environment.
 - Local Prometheus discovers nodes and scrapes each kubelet's cAdvisor endpoint
   using service-account authentication and the narrow `nodes/metrics`
