@@ -635,17 +635,8 @@ An accepted submission is idempotent when it repeats the stored idempotency key.
 
 ## 8. Persistence and durability
 
-PostgreSQL is the system of record and the only coordination channel between the API,
-engine and MCP service. Battles, events, decision windows and generation jobs are
-durable rows. Processes claim them with `FOR UPDATE SKIP LOCKED` leases, and
-admission triggers serialized on the `runtime_policy` row enforce battle allowances,
-the AI stop switch, per-battle model budgets and CLI capacity. A battle receives at
-most 100 model execution claims, including retries; after that, new windows fall
-back. Production migrations first save and validate a PostgreSQL backup.
-
-The [database guide](database.md) owns the schema, ER diagram, process logins and the
-restricted `battlefield_mcp` role, claim and admission rules, wake-up notifications,
-idempotency, expiry and migration conventions.
+PostgreSQL schema, access and coordination rules are in the [database guide](database.md).
+This section covers the completed-result cache and battle retries.
 
 ### Completed battle result caching
 
@@ -765,12 +756,6 @@ battles or use admin/inspection routes. Human roles and direct-origin denial
 remain independent. The application receives the client ID, while the client
 secret stays with the verification tooling. Credential setup and rotation live
 in the [service authentication runbook](../operations/limited-launch.md#ci-service-authentication).
-
-### Database privileges
-
-MCP connects with a login that inherits only the `battlefield_mcp` group role, which
-can read and write decision and generation rows but not battle events, state or
-factions. See [database access](database.md#deployment-and-access).
 
 ### Runtime security requirements
 
@@ -1175,6 +1160,7 @@ separation, credential rotation, rollback limitations and live acceptance checks
 
 - [Codebase guide](../developer/codebase-guide.md): packages, source ownership and implementation change paths.
 - [Contributor CI](../developer/ci.md) and [cross-review](../developer/cross-review.md): development verification and review workflow.
+- [Database](database.md): schema, process access, claim and admission rules, and migrations.
 - [Observability architecture](observability.md): signal paths, telemetry contracts and reliability objectives.
 - [Deployment](../operations/deployment.md) and [Jenkins operations](../operations/jenkins.md): rollout, verification and recovery.
 - [Server rebuild contract](../operations/server-rebuild-contract.md): infrastructure state and recovery boundaries, with links to host, VM, K3s, Cloudflare and local HTTPS procedures.
