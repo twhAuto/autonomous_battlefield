@@ -47,6 +47,7 @@ with new UIDs become Ready, so a selector that matches nothing cannot report a
 passed drill. Its `artifacts/failure-drills/summary.json` records the recovery
 seconds for each drill.
 
-The MCP outage drill restores the deployment to exactly one replica; it does not
-capture or restore a different starting count. Use a one-replica MCP in the
+The AI gateway outage drill (`ai-gateway-outage`; set its length with
+`AI_GATEWAY_OUTAGE_SECONDS`) restores the deployment to exactly one replica; it does
+not capture or restore a different starting count. Use a one-replica AI gateway in the
 registered disposable dev environment, and verify its replica count after the drill.

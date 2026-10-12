@@ -1,5 +1,5 @@
 // Defines durable decision records, repository operations, and errors shared by the
-// engine, agents, and MCP service.
+// engine, agents, and AI gateway.
 
 package ai
 

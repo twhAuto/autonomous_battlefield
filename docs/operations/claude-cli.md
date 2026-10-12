@@ -16,7 +16,7 @@ The launcher toggles `CLAUDE_CLI_PROFILE_AVAILABLE` in the cluster while connect
 then clears it on exit. Keep its environment-file default `false`. Production
 uses the existing dedicated agent VM and requires
 `BATTLEFIELD_CLI_ISOLATION_VERIFIED=true` before advertising any CLI profile.
-Do not install or mount Claude credentials inside the API or MCP containers.
+Do not install or mount Claude credentials inside the API or AI gateway containers.
 
 The runner uses [Claude's CLI restrictions](https://code.claude.com/docs/en/cli-reference):
 restricted mode, no built-in tools, disabled hooks and slash commands, no personal
@@ -49,15 +49,15 @@ cache-read and cache-creation tokens; cached input is also recorded as a subset.
 Missing usage stays unreported. Failed results, permission denials, timeouts and
 invalid submissions use the existing worker failure and fallback behavior.
 
-If MCP forwarding fails, the launcher prints the `kubectl port-forward` error
-before removing temporary files. It waits up to 120 seconds for the MCP deployment
+If AI gateway forwarding fails, the launcher prints the `kubectl port-forward` error
+before removing temporary files. It waits up to 120 seconds for the AI gateway deployment
 rollout before starting forwarding. On the development workstation, choose an
-unused loopback port, for example `HOST_MCP_PORT=28084 ./scripts/dev/run-k8s-cli-agent.sh claude`
+unused loopback port, for example `HOST_AI_GATEWAY_PORT=28084 ./scripts/dev/run-k8s-cli-agent.sh claude`
 only when 28084 is free. The production server already uses that port for its
 CLI VM bridge; do not stop it to run a development launcher. A second agent also needs
 a distinct `HOST_AGENT_HEALTH_PORT`. When tracing is enabled, set distinct
 `HOST_OTEL_PORT` and `HOST_OTEL_HEALTH_PORT` too. For pod startup failures, inspect
-`kubectl -n battlefield get pods -l app.kubernetes.io/component=mcp` using the
+`kubectl -n battlefield get pods -l app.kubernetes.io/component=ai-gateway` using the
 registered dev kubeconfig and context. Health probes bypass HTTP proxies and
 check that the forwarding process is still alive.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs a host-side model CLI agent against the registered dev cluster through temporary
-# MCP forwarding and a generated agent configuration.
+# AI gateway forwarding and a generated agent configuration.
 
 set -Eeuo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -16,7 +16,7 @@ export PATH="${HOME}/.local/bin:${PATH}"
 cluster_name="${KIND_CLUSTER_NAME:-battlefield}"
 kube_context="${KUBERNETES_CONTEXT:-kind-${cluster_name}}"
 namespace="${KUBERNETES_NAMESPACE:-battlefield}"
-mcp_port="${HOST_MCP_PORT:-18084}"
+gateway_port="${HOST_AI_GATEWAY_PORT:-18084}"
 health_port="${HOST_AGENT_HEALTH_PORT:-18083}"
 # Concurrent decision slots across all enabled CLIs. Two lets both factions of a
 # model-vs-model battle decide at once; the worker accepts 1-4, and the database
@@ -164,7 +164,7 @@ write_agent_config() {
     printf 'ai:\n'
     printf '  environment: local\n'
     printf '  agentHealthAddress: "127.0.0.1:%s"\n' "${health_port}"
-    printf '  mcpUrl: "http://127.0.0.1:%s/mcp"\n' "${mcp_port}"
+    printf '  mcpUrl: "http://127.0.0.1:%s/mcp"\n' "${gateway_port}"
     printf '  decisionTimeout: 2m\n'
     printf '  agentConcurrency: %s\n' "${agent_concurrency}"
     printf '  profiles:\n'
@@ -210,7 +210,7 @@ show_forward_error() {
   if [[ -n "${log_file}" && -s "${log_file}" ]]; then
     tail -n 30 -- "${log_file}" >&2
     if grep -Fq 'address already in use' "${log_file}"; then
-      echo "A local port is already occupied. Stop the existing bridge or set HOST_MCP_PORT (and HOST_AGENT_HEALTH_PORT for another agent). Collector ports use HOST_OTEL_PORT and HOST_OTEL_HEALTH_PORT." >&2
+      echo "A local port is already occupied. Stop the existing bridge or set HOST_AI_GATEWAY_PORT (and HOST_AGENT_HEALTH_PORT for another agent). Collector ports use HOST_OTEL_PORT and HOST_OTEL_HEALTH_PORT." >&2
     fi
   fi
 }
@@ -250,14 +250,14 @@ echo "Building the host decision agent..."
 (cd "${backend_dir}" && go build -o "${runtime_dir}/agent" ./cmd/agent)
 select_profiles
 
-if [[ ! "${mcp_port}" =~ ^[0-9]+$ || ! "${health_port}" =~ ^[0-9]+$ ]]; then
-  echo "HOST_MCP_PORT and HOST_AGENT_HEALTH_PORT must be numeric." >&2
+if [[ ! "${gateway_port}" =~ ^[0-9]+$ || ! "${health_port}" =~ ^[0-9]+$ ]]; then
+  echo "HOST_AI_GATEWAY_PORT and HOST_AGENT_HEALTH_PORT must be numeric." >&2
   exit 1
 fi
 
 kube get deployment battlefield-api >/dev/null
-echo "Waiting for the Kubernetes MCP deployment to become ready..."
-kube rollout status deployment/battlefield-mcp --timeout=120s
+echo "Waiting for the Kubernetes AI gateway deployment to become ready..."
+kube rollout status deployment/battlefield-ai-gateway --timeout=120s
 encoded_secret="$(kube get secret battlefield-ai -o 'jsonpath={.data.BATTLEFIELD_AGENT_SECRET}')"
 if [[ -z "${encoded_secret}" ]]; then
   echo "The battlefield-ai capability secret is missing." >&2
@@ -269,10 +269,10 @@ unset encoded_secret
 write_agent_config
 
 
-echo "Forwarding Kubernetes MCP to http://127.0.0.1:${mcp_port}/mcp..."
-kube port-forward --address 127.0.0.1 service/battlefield-mcp "${mcp_port}:8084" >"${runtime_dir}/port-forward.log" 2>&1 &
+echo "Forwarding the Kubernetes AI gateway to http://127.0.0.1:${gateway_port}..."
+kube port-forward --address 127.0.0.1 service/battlefield-ai-gateway "${gateway_port}:8084" >"${runtime_dir}/port-forward.log" 2>&1 &
 port_forward_pid=$!
-wait_for_endpoint "http://127.0.0.1:${mcp_port}/healthz" "${port_forward_pid}" "MCP port-forward" "${runtime_dir}/port-forward.log"
+wait_for_endpoint "http://127.0.0.1:${gateway_port}/healthz" "${port_forward_pid}" "AI gateway port-forward" "${runtime_dir}/port-forward.log"
 
 LANGFUSE_ENABLED="$(battlefield_env_langfuse_enabled)"
 if [[ "${LANGFUSE_ENABLED}" == 1 ]]; then

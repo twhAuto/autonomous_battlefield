@@ -1,4 +1,4 @@
-// Checks MCP startup reports a failed database connection and readiness follows
+// Checks AI gateway startup reports a failed database connection and readiness follows
 // database availability.
 
 package main
@@ -15,7 +15,7 @@ import (
 )
 
 func TestRunRejectsInvalidDatabaseConnection(t *testing.T) {
-	configuration := config.Config{Database: config.Database{URL: "://bad", ConnectTimeout: time.Millisecond, MaxConnections: 1}, AI: config.AI{CapabilitySecret: "secret", MCPAddress: ":8084"}}
+	configuration := config.Config{Database: config.Database{URL: "://bad", ConnectTimeout: time.Millisecond, MaxConnections: 1}, AI: config.AI{CapabilitySecret: "secret", AIGatewayAddress: ":8084"}}
 	if err := run(configuration); err == nil {
 		t.Fatal("invalid database accepted")
 	}

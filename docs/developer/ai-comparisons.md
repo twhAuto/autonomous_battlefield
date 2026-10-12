@@ -52,7 +52,7 @@ go run ./cmd/aieval -mode compare \
 ```
 
 The checked-in configuration compares a scripted baseline, a variant without
-memory, and a variant without knowledge. All three traverse the production API runner, loopback MCP server, and
+memory, and a variant without knowledge. All three traverse the production API runner, loopback AI gateway tool server, and
 submission validator. This is a free integration check, not evidence that memory
 improves a real model's strategy.
 
@@ -118,7 +118,7 @@ estimated cost can mean missing pricing/CLI usage, not a free live run.
 
 ## Troubleshooting a missing Antigravity plan
 
-`plan_not_submitted` means the CLI finished without a plan accepted by MCP.
+`plan_not_submitted` means the CLI finished without a plan accepted by the AI gateway.
 It does not by itself mean the decision deadline expired. SDK schema rejection
 can occur before the plan handler: `decision_tool_input_rejected` now logs the
 authenticated request ID, missing required field names, and whether a nested
@@ -132,7 +132,7 @@ The engine preserves the original runner failure category when applying a
 fallback; unresolved decisions at the deadline still use `timeout`.
 
 After changing embedded prompts, rebuild/restart the host agent. Deploy the
-backend to pick up MCP diagnostics and engine fallback attribution. For dev,
+backend to pick up AI gateway diagnostics and engine fallback attribution. For dev,
 run `./scripts/cd/deploy-local.sh`, then stop and restart `./scripts/dev/run-k8s-cli-agent.sh` in its
 terminal before starting a new battle.
 
@@ -221,7 +221,7 @@ requested quantities, while `unit_recruited` events record actual purchases.
 
 MCP tool schema is now `battlefield.mcp-tools.v7`; existing clients may omit the
 optional orders field. Both model providers share the updated purchasing prompt.
-Deploy API, MCP, engine, and agent together and restart the host CLI agent so tool
+Deploy API, AI gateway, engine, and agent together and restart the host CLI agent so tool
 schemas and prompts agree. Existing battle JSON requires no database migration.
 
 See [content libraries and scenario selections](../developer/content-library.md) for shared units,

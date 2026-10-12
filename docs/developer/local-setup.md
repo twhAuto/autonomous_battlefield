@@ -108,7 +108,7 @@ When running processes outside Kind, the defaults in
 | `8080` | Public API |
 | `8081` | Engine health and metrics |
 | `8083` | Agent health |
-| `8084` | MCP and internal agent control plane |
+| `8084` | AI gateway: MCP tools and internal agent dispatch API |
 | `5432` | PostgreSQL |
 
 These are process defaults; the normal Kind workflow uses the gateway URL above.

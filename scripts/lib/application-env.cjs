@@ -2,7 +2,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const fields = {
-  database: 'POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL MCP_DATABASE_URL',
+  // MCP_DATABASE_URL is the pre-rename name for AI_GATEWAY_DATABASE_URL.
+  database: 'POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL AI_GATEWAY_DATABASE_URL MCP_DATABASE_URL',
   auth: 'BATTLEFIELD_AUTH_MODE BATTLEFIELD_AUTH_ENABLED BATTLEFIELD_ADMIN_USERNAME BATTLEFIELD_ADMIN_PASSWORD BATTLEFIELD_SESSION_SECRET BATTLEFIELD_AUTH_COOKIE_SECURE BATTLEFIELD_ACCESS_ISSUER BATTLEFIELD_ACCESS_AUDIENCE BATTLEFIELD_ACCESS_ROLES BATTLEFIELD_ACCESS_CI_CLIENT_ID BATTLEFIELD_PUBLIC_ORIGIN',
   ai: 'BATTLEFIELD_AGENT_SECRET BATTLEFIELD_MCP_CAPABILITY_SECRET BATTLEFIELD_CLI_ISOLATION_VERIFIED OPENAI_API_KEY OPENAI_MODEL OPENAI_PROFILE_AVAILABLE GEMINI_API_KEY GEMINI_MODEL GEMINI_PROFILE_AVAILABLE CODEX_CLI_PROFILE_AVAILABLE GEMINI_CLI_PROFILE_AVAILABLE CLAUDE_CLI_PROFILE_AVAILABLE',
   members: 'BATTLEFIELD_MANAGED_PLAYERS BATTLEFIELD_MEMBERS_ACCOUNT_ID BATTLEFIELD_MEMBERS_GROUP_ID BATTLEFIELD_MEMBERS_API_TOKEN',
@@ -35,14 +36,16 @@ function validate(values, environment) {
     if (Buffer.byteLength(values.get(key) || '') < minimum) throw new Error(`${key} requires at least ${minimum} bytes.`);
   };
   for (const key of ['DATABASE_URL','POSTGRES_DB','POSTGRES_USER','POSTGRES_PASSWORD']) requireLength(key);
-  for (const key of ['DATABASE_URL','MCP_DATABASE_URL']) {
+  const gatewayURL = values.get('AI_GATEWAY_DATABASE_URL'), legacyURL = values.get('MCP_DATABASE_URL');
+  if (gatewayURL && legacyURL && gatewayURL !== legacyURL) throw new Error('AI_GATEWAY_DATABASE_URL and legacy MCP_DATABASE_URL disagree; set only AI_GATEWAY_DATABASE_URL.');
+  for (const key of ['DATABASE_URL','AI_GATEWAY_DATABASE_URL','MCP_DATABASE_URL']) {
     if (!values.get(key)) continue;
     let url;
     try { url = new URL(values.get(key)); } catch { throw new Error(`Invalid database URL: ${key}`); }
     if (!['postgres:','postgresql:'].includes(url.protocol) || !url.hostname) throw new Error(`Invalid database URL: ${key}`);
   }
   for (const key of ['BATTLEFIELD_AGENT_SECRET','BATTLEFIELD_MCP_CAPABILITY_SECRET']) requireLength(key,32);
-  if (values.get('BATTLEFIELD_AGENT_SECRET') === values.get('BATTLEFIELD_MCP_CAPABILITY_SECRET')) throw new Error('Worker and MCP secrets must be distinct.');
+  if (values.get('BATTLEFIELD_AGENT_SECRET') === values.get('BATTLEFIELD_MCP_CAPABILITY_SECRET')) throw new Error('Worker and capability secrets must be distinct.');
   for (const [key,value] of values) {
     if ((key.endsWith('_AVAILABLE') || key.endsWith('_VERIFIED') || ['BATTLEFIELD_AUTH_ENABLED','BATTLEFIELD_AUTH_COOKIE_SECURE'].includes(key)) && value && !['true','false'].includes(value)) throw new Error(`Invalid boolean: ${key}`);
   }

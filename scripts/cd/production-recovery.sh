@@ -35,6 +35,6 @@ if [[ "${action}" == read ]]; then
   python3 "${project_dir}/scripts/lib/production_recovery.py" read "${record}" "${BF_UID}" "$2" "$3" "${runtime_dir}/migrations.json"
 else
   kubectl --context "${KUBERNETES_CONTEXT}" -n "${KUBERNETES_NAMESPACE}" get deployments \
-    battlefield-api battlefield-engine battlefield-agent battlefield-mcp battlefield-frontend -o json >"${runtime_dir}/deployments.json"
+    battlefield-api battlefield-engine battlefield-agent battlefield-ai-gateway battlefield-frontend -o json >"${runtime_dir}/deployments.json"
   python3 "${project_dir}/scripts/lib/production_recovery.py" record "${record}" "${BF_UID}" "$2" "${runtime_dir}/deployments.json" "${runtime_dir}/migrations.json"
 fi

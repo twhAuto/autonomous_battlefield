@@ -88,7 +88,7 @@ is required. Library metadata and the resolved selection participate in the batt
 snapshot hash. Editing files cannot change an existing battle's saved rules.
 
 Both faction-visible AI context and knowledge retrieval use the resolved roster.
-Engine and MCP purchase validation reject excluded units. The same rule applies
+Engine and AI gateway purchase validation reject excluded units. The same rule applies
 to explicit purchase orders and legacy recruitment priorities.
 
 Run backend coverage and frontend coverage/build before deployment:

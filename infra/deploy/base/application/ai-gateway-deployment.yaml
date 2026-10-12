@@ -1,23 +1,25 @@
-# Runs the MCP decision/background tools and agent-control endpoints with their database
-# and capability-secret configuration.
+# Runs the AI gateway (MCP decision/background tools and the agent dispatch API) with its
+# database and capability-secret configuration.
 
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: battlefield-mcp
+  name: battlefield-ai-gateway
 spec:
   replicas: 1
   selector:
-    matchLabels: {app.kubernetes.io/name: autonomous-battlefield, app.kubernetes.io/component: mcp}
+    matchLabels: {app.kubernetes.io/name: autonomous-battlefield, app.kubernetes.io/component: ai-gateway}
   template:
     metadata:
-      labels: {app.kubernetes.io/name: autonomous-battlefield, app.kubernetes.io/component: mcp}
+      labels: {app.kubernetes.io/name: autonomous-battlefield, app.kubernetes.io/component: ai-gateway}
     spec:
       automountServiceAccountToken: false
       securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
       containers:
-        - name: mcp
+        - name: ai-gateway
           image: autonomous-battlefield-backend:dev
+          # /app/mcp is the same binary as /app/ai-gateway. Keep it until no rollback
+          # target predates the rename, because rollback swaps only the image.
           command: [/app/mcp]
           args: [-config, /etc/battlefield/config.yaml]
           envFrom:
@@ -26,7 +28,7 @@ spec:
           env:
             - {name: BATTLEFIELD_AGENT_SECRET, valueFrom: {secretKeyRef: {name: battlefield-ai, key: BATTLEFIELD_AGENT_SECRET}}}
             - {name: BATTLEFIELD_ENVIRONMENT, value: local}
-            - {name: DATABASE_URL, valueFrom: {secretKeyRef: {name: battlefield-database, key: MCP_DATABASE_URL}}}
+            - {name: DATABASE_URL, valueFrom: {secretKeyRef: {name: battlefield-database, key: AI_GATEWAY_DATABASE_URL}}}
             - {name: BATTLEFIELD_MCP_CAPABILITY_SECRET, valueFrom: {secretKeyRef: {name: battlefield-ai, key: BATTLEFIELD_MCP_CAPABILITY_SECRET}}}
           ports: [{name: http, containerPort: 8084}]
           readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5, timeoutSeconds: 3}

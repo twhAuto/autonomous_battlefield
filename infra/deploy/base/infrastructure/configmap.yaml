@@ -53,8 +53,10 @@ data:
       environment: cluster
       agentConcurrency: 4
       agentHealthAddress: ":8083"
+      # Legacy key for aiGatewayAddress. Older rollback targets reject unknown keys,
+      # so switch only after none predate the rename.
       mcpAddress: ":8084"
-      mcpUrl: http://battlefield-mcp:8084/mcp
+      mcpUrl: http://battlefield-ai-gateway:8084/mcp
       decisionTimeout: 2m
       capabilitySecretEnvironmentVariable: BATTLEFIELD_MCP_CAPABILITY_SECRET
       allowedOrigins: []

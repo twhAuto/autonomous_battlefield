@@ -58,7 +58,7 @@ missing registered cluster.
 - Quarterly, in a disposable environment: restore database backups into a replacement
   Kind cluster, register its verified identity, and restore the last known-good digest pair.
 - Quarterly: rotate the MCP capability secret and application authentication secret.
-- Quarterly: exercise engine lease reclaim, duplicate submission, PostgreSQL restart, MCP outage, provider timeout/429, failed migration, failed rollout, and rollback.
+- Quarterly: exercise engine lease reclaim, duplicate submission, PostgreSQL restart, AI gateway outage, provider timeout/429, failed migration, failed rollout, and rollback.
 - Before production: restore RDS from backup, disrupt an EKS pod and node, and complete Terraform teardown in a disposable account.
 
 Archive the command transcript, timestamps, digest pair, recovery point/recovery time, smoke/load results, failures, and follow-up tickets. The included Kind failure script automates only the safe disposable-cluster subset; failed-migration and RDS restore drills remain explicitly reviewed manual operations.

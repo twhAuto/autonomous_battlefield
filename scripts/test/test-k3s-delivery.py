@@ -84,7 +84,7 @@ elif 'get deployment envoy-gateway' in text or 'get deployment kyverno-admission
 elif 'get deployment/' in text and '.image}' in text:
     print(FRONTEND if 'battlefield-frontend' in text else BACKEND)
 elif 'get deployments' in text and '-o json' in text:
-    names=['api','engine','agent','mcp','frontend']
+    names=['api','engine','agent','ai-gateway','frontend']
     print(json.dumps({'items':[{'metadata':{'name':'battlefield-'+n,'generation':1},'spec':{'replicas':1,'template':{'spec':{'containers':[{'name':n,'image':FRONTEND if n=='frontend' else BACKEND}]}}},'status':{'observedGeneration':1,'updatedReplicas':1,'readyReplicas':1}} for n in names]}))
 elif ' apply -k ' in ' '+text+' ':
     directory=Path(args[args.index('-k')+1])

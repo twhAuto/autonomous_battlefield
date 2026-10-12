@@ -304,7 +304,7 @@ def main():
                             ('battlefield-api', 8080, '/readyz', 200),
                             ('battlefield-api', 8080, '/v1/scenarios', 401),
                             ('battlefield-frontend', 8080, '/livez', 200),
-                            ('battlefield-mcp', 8084, '/healthz', 204)]:
+                            ('battlefield-ai-gateway', 8084, '/healthz', 204)]:
                         private_probe(env, work, service, port, path, status)
                 exercise_delivery(command, lambda: inspect_delivery(env, args.evidence_dir), probe, previous, current, report)
 

@@ -257,7 +257,7 @@ point at different clusters.
    unchanged, restarting the bridge makes it read the adopted kubeconfig; no
    unit rewrite is necessary. Keep the existing matched 28084 bridge/Caddy pair
    during this cutover; do not reinstall the host bundle merely to retarget it.
-   Verify the private MCP path from the CLI VM and
+   Verify the private AI gateway path from the CLI VM and
    preserve the existing isolation and provider authorization gates. Do not
    claim a new paid-provider inference test from a health response alone.
 6. Confirm the old writers and connectors remain stopped, then run

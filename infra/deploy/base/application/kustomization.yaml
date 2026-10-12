@@ -11,9 +11,9 @@ resources:
   - api-service.yaml
   - engine-deployment.yaml
   - agent-deployment.yaml
-  - mcp-deployment.yaml
-  - mcp-service.yaml
-  - mcp-network-policy.yaml
+  - ai-gateway-deployment.yaml
+  - ai-gateway-service.yaml
+  - ai-gateway-network-policy.yaml
   - frontend-deployment.yaml
   - frontend-service.yaml
   - ingress.yaml

@@ -1,4 +1,4 @@
-# Runs the model job worker with configured provider profiles, MCP access, health checks,
+# Runs the model job worker with configured provider profiles, AI gateway access, health checks,
 # and resource limits.
 
 apiVersion: apps/v1

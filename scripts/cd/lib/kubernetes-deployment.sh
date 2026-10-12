@@ -160,12 +160,21 @@ cluster_deploy_capture_current_images() {
       -o jsonpath='{.spec.template.spec.containers[?(@.name=="agent")].image}' \
       2>/dev/null || true
   )"
-  current_mcp_image="$(
-    cluster_deploy_kube get deployment/battlefield-mcp \
+  current_gateway_image="$(
+    cluster_deploy_kube get deployment/battlefield-ai-gateway \
       --namespace "${namespace}" \
-      -o jsonpath='{.spec.template.spec.containers[?(@.name=="mcp")].image}' \
+      -o jsonpath='{.spec.template.spec.containers[?(@.name=="ai-gateway")].image}' \
       2>/dev/null || true
   )"
+  if [[ -z "${current_gateway_image}" ]]; then
+    # First rollout after the rename: the gateway still runs as battlefield-mcp.
+    current_gateway_image="$(
+      cluster_deploy_kube get deployment/battlefield-mcp \
+        --namespace "${namespace}" \
+        -o jsonpath='{.spec.template.spec.containers[?(@.name=="mcp")].image}' \
+        2>/dev/null || true
+    )"
+  fi
   current_frontend_image="$(
     cluster_deploy_kube get deployment/battlefield-frontend \
       --namespace "${namespace}" \
@@ -179,7 +188,7 @@ cluster_deploy_resolve_images() {
 		effective_backend_ref="${backend_image_ref}"
 		effective_frontend_ref="${frontend_image_ref}"
 		if ! deployment_component_selected backend && { deployment_component_selected application || deployment_component_selected migration; }; then
-			if [[ -z "${current_backend_image}" || "${current_backend_image}" != "${current_engine_image}" || "${current_backend_image}" != "${current_agent_image}" || "${current_backend_image}" != "${current_mcp_image}" ]]; then
+			if [[ -z "${current_backend_image}" || "${current_backend_image}" != "${current_engine_image}" || "${current_backend_image}" != "${current_agent_image}" || "${current_backend_image}" != "${current_gateway_image}" ]]; then
 				echo "Cannot preserve the current backend image; include backend in DEPLOY_COMPONENTS." >&2
 				return 1
 			fi
@@ -205,7 +214,7 @@ cluster_deploy_resolve_images() {
     if [[ -z "${current_backend_image}" \
       || "${current_backend_image}" != "${current_engine_image}" \
       || "${current_backend_image}" != "${current_agent_image}" \
-      || "${current_backend_image}" != "${current_mcp_image}" \
+      || "${current_backend_image}" != "${current_gateway_image}" \
       || "${current_backend_image}" == *@sha256:* \
       || "${current_backend_image}" != *:* ]]; then
       echo "Cannot preserve the current backend image; include backend in DEPLOY_COMPONENTS." >&2
@@ -252,27 +261,41 @@ cluster_deploy_validate_artifacts() {
 cluster_deploy_prepare_database_secret() {
   local target_file="$1"
   local database_url=""
-  local mcp_database_url=""
+  local gateway_database_url=""
+  local legacy_database_url=""
   local line
+  local staged
 
   node "${project_dir}/scripts/lib/application-env.cjs" extract "${secret_file}" "${target_file}" database
-  # Only the private staged copy receives the derived MCP connection string.
+  # Only the private staged copy receives the derived gateway connection string.
   chmod 600 "${target_file}"
   while IFS= read -r line; do
     case "${line}" in
       DATABASE_URL=*) database_url="${line#DATABASE_URL=}" ;;
-      MCP_DATABASE_URL=*) mcp_database_url="${line#MCP_DATABASE_URL=}" ;;
+      AI_GATEWAY_DATABASE_URL=*) gateway_database_url="${line#AI_GATEWAY_DATABASE_URL=}" ;;
+      MCP_DATABASE_URL=*) legacy_database_url="${line#MCP_DATABASE_URL=}" ;;
     esac
   done <"${target_file}"
 
-  if [[ -z "${mcp_database_url}" ]]; then
+  if [[ -n "${gateway_database_url}" && -n "${legacy_database_url}" && "${gateway_database_url}" != "${legacy_database_url}" ]]; then
+    echo "AI_GATEWAY_DATABASE_URL and legacy MCP_DATABASE_URL disagree in ${secret_file}; set only AI_GATEWAY_DATABASE_URL." >&2
+    return 1
+  fi
+  if [[ -z "${gateway_database_url}" && -n "${legacy_database_url}" ]]; then
+    gateway_database_url="${legacy_database_url}"
+    echo "Using legacy MCP_DATABASE_URL as AI_GATEWAY_DATABASE_URL; rename it in ${secret_file}."
+  fi
+  if [[ -z "${gateway_database_url}" ]]; then
     if [[ -z "${database_url}" ]]; then
       echo "DATABASE_URL must be set in ${secret_file}." >&2
       return 1
     fi
-    printf '\nMCP_DATABASE_URL=%s\n' "${database_url}" >>"${target_file}"
-    echo "No MCP_DATABASE_URL supplied; reusing DATABASE_URL for this local deployment."
+    gateway_database_url="${database_url}"
+    echo "No AI_GATEWAY_DATABASE_URL supplied; reusing DATABASE_URL for this local deployment."
   fi
+  # The Secret carries one gateway key; the legacy name is input-only.
+  staged="$(grep -v -e '^AI_GATEWAY_DATABASE_URL=' -e '^MCP_DATABASE_URL=' "${target_file}" || true)"
+  printf '%s\nAI_GATEWAY_DATABASE_URL=%s\n' "${staged}" "${gateway_database_url}" >"${target_file}"
 }
 
 cluster_deploy_prepare_ai_secret() {
@@ -488,7 +511,7 @@ cluster_deploy_application() {
   if [[ -n "${current_backend_image}" \
     && "${current_backend_image}" == "${current_engine_image}" \
     && "${current_backend_image}" == "${current_agent_image}" \
-    && "${current_backend_image}" == "${current_mcp_image}" \
+    && "${current_backend_image}" == "${current_gateway_image}" \
     && -n "${current_frontend_image}" \
     && "${current_backend_image}" != *@sha256:* \
     && "${current_frontend_image}" != *@sha256:* \
@@ -513,7 +536,7 @@ EOF
   elif [[ -n "${current_backend_image}" \
     && "${current_backend_image}" == "${current_engine_image}" \
     && "${current_backend_image}" == "${current_agent_image}" \
-    && "${current_backend_image}" == "${current_mcp_image}" \
+    && "${current_backend_image}" == "${current_gateway_image}" \
     && -n "${current_frontend_image}" \
     && "${current_backend_image}" == *@sha256:* \
     && "${current_frontend_image}" == *@sha256:* ]]; then
@@ -535,7 +558,7 @@ EOF
     rollback_overlay_ready=1
   fi
 
-  for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-mcp battlefield-frontend; do
+  for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-ai-gateway battlefield-frontend; do
     previous_revisions["${deployment}"]="$(
       cluster_deploy_kube get "deployment/${deployment}" \
         --namespace "${namespace}" \
@@ -552,16 +575,21 @@ EOF
       deployment/battlefield-api \
       deployment/battlefield-engine \
       deployment/battlefield-agent \
-      deployment/battlefield-mcp \
+      deployment/battlefield-ai-gateway \
       deployment/battlefield-frontend \
       --namespace "${namespace}"
   fi
 
-  for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-mcp battlefield-frontend; do
+  for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-ai-gateway battlefield-frontend; do
     cluster_deploy_kube rollout status "deployment/${deployment}" \
       --namespace "${namespace}" \
       --timeout="${rollout_timeout}"
   done
+  # Retire the pre-rename gateway only once its replacement is ready. The
+  # battlefield-mcp Service stays as an alias that selects the new pods.
+  cluster_deploy_kube delete deployment/battlefield-mcp networkpolicy/battlefield-mcp-agent-only \
+    --namespace "${namespace}" \
+    --ignore-not-found
   application_update_started=0
 }
 
@@ -687,7 +715,7 @@ cluster_deploy_gateway() {
 
 cluster_deploy_rollback_application() {
   if [[ "${DEPLOY_ENV:-dev}" == production ]]; then
-    if [[ "${current_backend_image}" != "${current_engine_image}" || "${current_backend_image}" != "${current_agent_image}" || "${current_backend_image}" != "${current_mcp_image}" ]]; then
+    if [[ "${current_backend_image}" != "${current_engine_image}" || "${current_backend_image}" != "${current_agent_image}" || "${current_backend_image}" != "${current_gateway_image}" ]]; then
       echo 'Previous backend digests are inconsistent; production rollback requires operator recovery.' >&2
       return 1
     fi
@@ -705,7 +733,7 @@ cluster_deploy_rollback_application() {
       return 1
     fi
 
-    for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-mcp battlefield-frontend; do
+    for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-ai-gateway battlefield-frontend; do
       if ! cluster_deploy_kube rollout status "deployment/${deployment}" \
         --namespace "${namespace}" \
         --timeout="${rollout_timeout}"; then
@@ -716,7 +744,7 @@ cluster_deploy_rollback_application() {
     return "${rollback_failed}"
   fi
 
-  for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-mcp battlefield-frontend; do
+  for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-ai-gateway battlefield-frontend; do
     local previous_revision="${previous_revisions[${deployment}]:-}"
     local current_revision
     current_revision="$(
@@ -737,7 +765,7 @@ cluster_deploy_rollback_application() {
   done
 
   if [[ "${rollback_started}" == "1" ]]; then
-    for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-mcp battlefield-frontend; do
+    for deployment in battlefield-api battlefield-engine battlefield-agent battlefield-ai-gateway battlefield-frontend; do
       if ! cluster_deploy_kube rollout status "deployment/${deployment}" \
         --namespace "${namespace}" \
         --timeout="${rollout_timeout}"; then

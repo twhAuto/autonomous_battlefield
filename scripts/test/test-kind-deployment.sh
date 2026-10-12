@@ -102,15 +102,31 @@ if [[ "$(stat -c '%a' "${target_file}")" != "600" ]]; then
   exit 1
 fi
 
-if ! grep -Fxq "MCP_DATABASE_URL=${database_url}" "${target_file}"; then
-  echo "Staged database secret did not inherit DATABASE_URL for MCP_DATABASE_URL." >&2
+if ! grep -Fxq "AI_GATEWAY_DATABASE_URL=${database_url}" "${target_file}"; then
+  echo "Staged database secret did not inherit DATABASE_URL for AI_GATEWAY_DATABASE_URL." >&2
   exit 1
 fi
 
-if [[ "$(grep -c '^MCP_DATABASE_URL=' "${target_file}")" != "1" ]]; then
-  echo "Staged database secret must contain exactly one MCP_DATABASE_URL." >&2
+if [[ "$(grep -c '^AI_GATEWAY_DATABASE_URL=' "${target_file}")" != "1" ]]; then
+  echo "Staged database secret must contain exactly one AI_GATEWAY_DATABASE_URL." >&2
   exit 1
 fi
+
+legacy_url='postgres://legacy-gateway:password@postgres:5432/battlefield?sslmode=disable'
+chmod 600 "${secret_file}"
+printf 'DATABASE_URL=%s\nMCP_DATABASE_URL=%s\n' "${database_url}" "${legacy_url}" >"${secret_file}"
+cluster_deploy_prepare_database_secret "${target_file}" >/dev/null
+if ! grep -Fxq "AI_GATEWAY_DATABASE_URL=${legacy_url}" "${target_file}" || grep -q '^MCP_DATABASE_URL=' "${target_file}"; then
+  echo "Staged database secret must carry the legacy MCP_DATABASE_URL only as AI_GATEWAY_DATABASE_URL." >&2
+  exit 1
+fi
+printf 'DATABASE_URL=%s\nMCP_DATABASE_URL=%s\nAI_GATEWAY_DATABASE_URL=%s\n' "${database_url}" "${legacy_url}" "${database_url}" >"${secret_file}"
+if cluster_deploy_prepare_database_secret "${target_file}" >/dev/null 2>&1; then
+  echo "Conflicting gateway database URLs were accepted." >&2
+  exit 1
+fi
+printf 'DATABASE_URL=%s\n' "${database_url}" >"${secret_file}"
+chmod 400 "${secret_file}"
 
 image_source=registry
 deploy_components=application

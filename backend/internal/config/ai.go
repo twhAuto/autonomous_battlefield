@@ -16,7 +16,7 @@ type AI struct {
 	Environment          string
 	AgentConcurrency     int
 	AgentHealthAddress   string
-	MCPAddress           string
+	AIGatewayAddress     string
 	MCPURL               string
 	DecisionTimeout      time.Duration
 	AgentSecret          string
@@ -39,7 +39,10 @@ func parseAIConfig(raw fileConfig) (AI, error) {
 		return AI{}, fmt.Errorf("ai.agentConcurrency must be between 1 and 4")
 	}
 	health := stringOrDefault(raw.AI.AgentHealthAddress, ":8083")
-	mcpAddress := stringOrDefault(raw.AI.MCPAddress, ":8084")
+	gatewayAddress, err := aiGatewayAddress(raw.AI.AIGatewayAddress, raw.AI.LegacyMCPAddress)
+	if err != nil {
+		return AI{}, err
+	}
 	mcpURL := stringOrDefault(raw.AI.MCPURL, "http://127.0.0.1:8084/mcp")
 	timeout, err := parseOptionalDuration("ai.decisionTimeout", raw.AI.DecisionTimeout, 2*time.Minute, false)
 	if err != nil {
@@ -53,9 +56,19 @@ func parseAIConfig(raw fileConfig) (AI, error) {
 	if err != nil {
 		return AI{}, err
 	}
-	return AI{AgentConcurrency: concurrency, BackgroundGeneration: gen, Environment: environment, AgentHealthAddress: health, MCPAddress: mcpAddress, MCPURL: mcpURL,
+	return AI{AgentConcurrency: concurrency, BackgroundGeneration: gen, Environment: environment, AgentHealthAddress: health, AIGatewayAddress: gatewayAddress, MCPURL: mcpURL,
 		DecisionTimeout: timeout, CapabilitySecret: secret, CapabilitySecretEnv: secretEnv,
 		AllowedOrigins: append([]string(nil), raw.AI.AllowedOrigins...), Profiles: append([]ai.ModelProfile(nil), raw.AI.Profiles...)}, nil
+}
+
+// aiGatewayAddress accepts the legacy mcpAddress key so ConfigMaps can switch keys
+// only after every rollback target understands aiGatewayAddress.
+func aiGatewayAddress(current, legacy string) (string, error) {
+	current, legacy = strings.TrimSpace(current), strings.TrimSpace(legacy)
+	if current != "" && legacy != "" && current != legacy {
+		return "", fmt.Errorf("ai.aiGatewayAddress and legacy ai.mcpAddress disagree; set only ai.aiGatewayAddress")
+	}
+	return stringOrDefault(current, stringOrDefault(legacy, ":8084")), nil
 }
 
 func parseAIEnvironment(value string) (string, error) {
@@ -67,7 +80,7 @@ func parseAIEnvironment(value string) (string, error) {
 }
 
 // localDevelopmentCapabilitySecret lets local processes that never mint or verify
-// capabilities parse configuration. It is public, so LoadMCP rejects it.
+// capabilities parse configuration. It is public, so LoadAIGateway rejects it.
 const localDevelopmentCapabilitySecret = "local-development-capability-secret-change-me"
 
 func aiCapabilitySecret(configuredEnvironmentVariable, environment string) (string, string) {

@@ -45,7 +45,7 @@ registered, mounted and verified; its presence alone provides no backup protecti
 | LAN | Host address, gateway and strict SSH trust come from the private registration. Preserve the address through a router reservation or deliberately update registration; verify the reservation on a replacement host. |
 | K3s | `192.168.235.0/24`, `bf-k3s0`, NAT, reserved guest `192.168.235.10`; API and NodePorts remain private and firewall controlled. |
 | CLI | `192.168.234.0/24`, `bf-agent0`, guest `.2`; **no NAT, no libvirt DNS**, with the existing NIC filter and host nftables boundary. |
-| CLI host services | Squid `.234.1:3128`; dedicated Caddy `.234.1:18084` routes MCP through host loopback `28084`. Provider login homes stay in the CLI guest. |
+| CLI host services | Squid `.234.1:3128`; dedicated Caddy `.234.1:18084` routes the AI gateway through host loopback `28084`. Provider login homes stay in the CLI guest. |
 | Other networks | Check Docker, libvirt, LAN and VPN routes for overlap with the selected guest subnets on every replacement host. |
 | CI access | Host SSH 22, native Jenkins 8080, Sonar loopback 9000. External automation uses a strict SSH tunnel to a loopback Jenkins URL. |
 | Local HTTPS | General `caddy.service` on 80/443, separate from the CLI proxy. `/etc/caddy/Caddyfile` owns the application, Grafana, Kibana and Sonar aliases with internal TLS. Use the [local HTTPS workflow](local-https-platform.md) to capture and verify routes and retained CA material. Route correction requires reviewed migration; a merge does not change live routes. |
