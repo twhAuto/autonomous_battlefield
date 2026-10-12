@@ -338,8 +338,8 @@ for legacy_present in 1 0; do
     declare -A previous_revisions=()
     cluster_deploy_kube() {
       printf '%s\n' "$*" >>"${test_dir}/app-calls"
-      if [[ "$1 $2" == 'get deployment/battlefield-mcp' ]]; then
-        [[ "${legacy_present}" == 1 ]]
+      if [[ "$1 $2" == 'get deployment/battlefield-mcp' && "${legacy_present}" == 1 ]]; then
+        printf 'deployment.apps/battlefield-mcp\n'
       fi
     }
     cluster_deploy_application >/dev/null
@@ -375,6 +375,7 @@ set +e
   declare -A previous_revisions=()
   cluster_deploy_kube() {
     printf '%s\n' "$*" >>"${test_dir}/app-calls"
+    [[ "$1 $2" != 'get deployment/battlefield-mcp' ]] || printf 'deployment.apps/battlefield-mcp\n'
     [[ "$1 $2" != 'rollout status' || "$3" != deployment/battlefield-ai-gateway ]]
   }
   cluster_deploy_application >/dev/null 2>&1
@@ -383,6 +384,33 @@ status=$?
 set -e
 if [[ "${status}" == 0 ]] || grep -Eq 'ai-gateway-alias-service.yaml|^delete deployment/battlefield-mcp' "${test_dir}/app-calls"; then
   echo 'An unready AI gateway rollout must not route the alias or retire the legacy gateway.' >&2
+  exit 1
+fi
+
+# A failed legacy lookup is not proof of absence: abort before routing anything.
+: >"${test_dir}/app-calls"
+set +e
+(
+  set -e
+  deployment_components_select application deployment
+  namespace=battlefield
+  rollout_timeout=30s
+  force_restart=0
+  image_tag=test
+  current_backend_image=""
+  runtime_dir="${test_dir}"
+  rollout_overlays=""
+  declare -A previous_revisions=()
+  cluster_deploy_kube() {
+    printf '%s\n' "$*" >>"${test_dir}/app-calls"
+    [[ "$1 $2" != 'get deployment/battlefield-mcp' ]]
+  }
+  cluster_deploy_application >/dev/null 2>&1
+)
+status=$?
+set -e
+if [[ "${status}" == 0 ]] || grep -Eq 'ai-gateway-alias-service.yaml|^delete deployment/battlefield-mcp|^rollout status' "${test_dir}/app-calls"; then
+  echo 'A failed legacy gateway lookup must abort before routing the alias.' >&2
   exit 1
 fi
 

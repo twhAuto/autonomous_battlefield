@@ -507,6 +507,7 @@ cluster_deploy_migration() {
 
 cluster_deploy_application() {
   local deployment
+  local legacy_gateway
 
   echo "Deploying selected application components for revision ${image_tag}..."
 
@@ -571,8 +572,14 @@ EOF
 
   application_update_started=1
   cluster_deploy_kube apply -k "${rollout_overlays:-${runtime_dir}/infra/deploy/overlays/local}/application"
-  # Without a legacy gateway there is nothing to drain, so route the alias now.
-  if ! cluster_deploy_kube get deployment/battlefield-mcp --namespace "${namespace}" >/dev/null 2>&1; then
+  # Without a legacy gateway there is nothing to drain, so route the alias now. Only
+  # a successful empty lookup means absent; an API error must not reroute traffic.
+  if ! legacy_gateway="$(cluster_deploy_kube get deployment/battlefield-mcp \
+    --namespace "${namespace}" --ignore-not-found -o name)"; then
+    echo "Could not determine whether the legacy battlefield-mcp gateway exists." >&2
+    return 1
+  fi
+  if [[ -z "${legacy_gateway}" ]]; then
     cluster_deploy_route_gateway_alias
   fi
 
