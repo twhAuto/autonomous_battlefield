@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -53,7 +52,7 @@ func (w *Worker) runGeneration(parent context.Context, job job) {
 	payload, _ := json.Marshal(map[string]any{"requestId": job.RequestID, "category": category, "usage": result.Usage, "metadata": metadata})
 	reportCtx, reportCancel := context.WithTimeout(context.WithoutCancel(parent), 5*time.Second)
 	defer reportCancel()
-	request, err := http.NewRequestWithContext(reportCtx, http.MethodPost, strings.TrimSuffix(w.MCPURL, "/mcp")+"/internal/agent/generation-finish", bytes.NewReader(payload))
+	request, err := http.NewRequestWithContext(reportCtx, http.MethodPost, w.serviceURL("/internal/agent/generation-finish"), bytes.NewReader(payload))
 	if err != nil {
 		return
 	}
@@ -80,7 +79,7 @@ func (w *Worker) executeGeneration(ctx context.Context, job job, profile ai.Mode
 	if err != nil {
 		return ai.DecisionResult{}, "provider_unavailable"
 	}
-	result, err := executor.Run(ctx, ai.DecisionSession{JobType: "faction_background", RequestID: job.RequestID, CapabilityToken: token, MCPURL: strings.TrimSuffix(w.MCPURL, "/mcp") + "/generation-mcp", Profile: profile})
+	result, err := executor.Run(ctx, ai.DecisionSession{JobType: "faction_background", RequestID: job.RequestID, CapabilityToken: token, MCPURL: w.serviceURL("/generation-mcp"), Profile: profile})
 	if err == nil && result.Accepted {
 		return result, ""
 	}

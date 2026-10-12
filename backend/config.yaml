@@ -47,6 +47,7 @@ ai:
     queueTimeout: 5m
     executionTimeout: 2m
   environment: local
+  agentConcurrency: 1
   agentHealthAddress: "127.0.0.1:8083"
   mcpAddress: "127.0.0.1:8084"
   mcpUrl: http://127.0.0.1:8084/mcp
