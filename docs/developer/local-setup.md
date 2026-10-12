@@ -85,12 +85,9 @@ docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile
 docker compose --env-file infra/local/.env -f infra/local/compose.yaml down
 ```
 
-The explicit Compose project name is `backend`, preserving the former default
-network and `backend_battlefield-postgres` volume. For a stack created from the
-former `backend/compose.yaml`, retain its existing password and copy its private
-`backend/.env` to `infra/local/.env` without overwriting an existing file. Both
-locations remain Git-ignored. If you previously used `-p` or `COMPOSE_PROJECT_NAME`,
-keep that same override. Moving the manifest does not move data or rotate passwords.
+The Compose project name is fixed as `backend`, so the network and the
+`backend_battlefield-postgres` volume keep stable names. `infra/local/.env` is
+Git-ignored.
 
 Application processes started separately need their own `DATABASE_URL` pointing
 to this PostgreSQL instance. The Compose environment file is not the Kind root

@@ -36,7 +36,6 @@ Feature-specific API clients live in `src/features/<feature>/api`; common HTTP t
 from existing availability, quota, cooldown, and active-job fields. Retrying status
 never configures a provider. Identifiers are generated internally and retained in
 API requests and routes, but ordinary pages show no identifier or copy controls.
-The former shared `Identifier` component has been removed.
 
 Home and primary navigation share three destinations in order: Stage battle,
 Factions, Battle history. Administrator navigation also includes Admin. The compact home has no promotional hero. Factions
