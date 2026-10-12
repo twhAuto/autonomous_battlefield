@@ -7,7 +7,7 @@ capabilities, CLI diagnostics, and private reasoning are not exported.
 
 ## Install and enable
 
-Deploy the updated backend, MCP server, agent, frontend and collector manifests
+Deploy the updated backend, AI gateway, agent, frontend and collector manifests
 first. Then, from the repository root on the registered deployment machine:
 
 ```bash
@@ -106,7 +106,7 @@ runner embeds its JSON into the initial prompt to avoid large-tool file
 offloading. A read span alone therefore does not establish a model-issued call
 or duplicate model input. API runners likewise select one readable result.
 The prompt instructs agents to reuse a successful snapshot; this does not impose
-a new hard call limit or prevent retries after delivery failures. Deploy the MCP
+a new hard call limit or prevent retries after delivery failures. Deploy the AI gateway
 service and rebuild/restart API and host CLI agents to pick up the new transport
 and embedded prompt; existing traces remain unchanged.
 
@@ -121,7 +121,7 @@ introduce LLM judges or claim measured token savings.
 ## Verify and troubleshoot
 
 1. Start the host CLI agent normally in the registered environment.
-   The bridge forwards the collector in addition to MCP. Kubernetes API agents
+   The bridge forwards the collector in addition to the AI gateway. Kubernetes API agents
    already have the collector endpoint configured.
 2. Run a short model battle. Inspect the saved decision's usage scope and click
    **View in Langfuse**. New records get this link only when the worker recorded
@@ -136,7 +136,7 @@ introduce LLM judges or claim measured token savings.
 
 AI observations are sampled at 100% independently of infrastructure's default
 10% sampling, including when the upstream battle span was unsampled. Trace IDs
-and parent IDs are derived from the authenticated request ID on MCP, so opaque
+and parent IDs are derived from the authenticated request ID on the AI gateway, so opaque
 CLI transports cannot lose correlation by dropping trace headers. Export runs
 asynchronously with bounded queues. Collector failure does not prevent strategy
 submission, but queue overflow or shutdown can lose telemetry. No sampling or

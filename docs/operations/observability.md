@@ -29,12 +29,12 @@ For model-controller troubleshooting, open the provisioned **Battlefield AI
 Decisions** saved search in Discover. It filters to decision lifecycle events
 and defaults to `@timestamp` and readable `msg` columns. Expand a row to see
 the correlation fields needed to follow one decision across the
-engine, MCP service, and in-cluster agent: `battle_id`, `request_id`,
+engine, AI gateway, and in-cluster agent: `battle_id`, `request_id`,
 `faction_id`, `target_tick`, `profile_id`, `decision_status`,
 `error_category`, `fallback_source`, and `duration_ms`. The collector includes
-the API, engine, agent, MCP, frontend, and migration workloads. A subscription
+the API, engine, agent, AI gateway, frontend, and migration workloads. A subscription
 CLI agent runs on the host, so its process-local messages remain in the bridge
-terminal; its MCP claims, tool calls, submissions, failures, and final engine
+terminal; its claims, MCP tool calls, submissions, failures, and final engine
 resolution are recorded by Kubernetes services and therefore appear in
 Kibana.
 

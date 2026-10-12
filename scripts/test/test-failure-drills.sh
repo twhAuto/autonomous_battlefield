@@ -24,7 +24,7 @@ case "$*" in
    [[ " ${TEST_EMPTY:-} " == *" ${selector} "* ]] && exit 0
    if [[ -e "$TEST_STATE/${selector}" && -z "${TEST_STUCK:-}" ]]; then printf "new-%s" "$selector"; else printf "old-%s" "$selector"; fi ;;
  *"delete pod"*) touch "$TEST_STATE/${selector}" ;;
- *"--replicas=0"*) touch "$TEST_STATE/mcp" ;;
+ *"--replicas=0"*) touch "$TEST_STATE/ai-gateway" ;;
 esac
 ''')
     executable(bins/'docker', 'exit 0\n')
@@ -39,9 +39,9 @@ esac
         BF_ENV='dev', BF_CONTEXT='battlefield-dev', BF_CLUSTER='battlefield', BF_UID='cluster-dev',
         BF_DOCKER_HOST='unix:///var/run/docker.sock', BF_URL='http://battlefield.localhost:8888',
         BF_KUBECONFIG=str(kube), BF_DISPOSABLE='1').items()))
-    clean = {k: v for k, v in os.environ.items() if not k.startswith(('BF_', 'BATTLEFIELD_', 'DEPLOY_', 'KUBERNETES_', 'KIND_', 'DOCKER_', 'TEST_', 'DRILL_', 'MCP_')) and k != 'KUBECONFIG'}
+    clean = {k: v for k, v in os.environ.items() if not k.startswith(('BF_', 'BATTLEFIELD_', 'DEPLOY_', 'KUBERNETES_', 'KIND_', 'DOCKER_', 'TEST_', 'DRILL_', 'AI_GATEWAY_')) and k != 'KUBECONFIG'}
     clean.update(PATH=f'{bins}:{os.environ["PATH"]}', BATTLEFIELD_ENV_FILE=str(config), TEST_LOG=str(log),
-                 TEST_STATE=str(state), DEPLOY_ENV='dev', MCP_OUTAGE_SECONDS='0', DRILL_RECOVERY_TIMEOUT_SECONDS='3',
+                 TEST_STATE=str(state), DEPLOY_ENV='dev', AI_GATEWAY_OUTAGE_SECONDS='0', DRILL_RECOVERY_TIMEOUT_SECONDS='3',
                  RUN_DESTRUCTIVE_KIND_DRILLS='I_UNDERSTAND_THIS_RESTARTS_DISPOSABLE_KIND_WORKLOADS',
                  REPORT_DIR=str(tmp/'report'))
     def run(ok, **env):
@@ -55,12 +55,12 @@ esac
     commands, _ = run(True)
     for expected in ['delete pod --wait=false -l app.kubernetes.io/component=engine',
                      'delete pod --wait=false -l app.kubernetes.io/component=database',
-                     'scale deployment/battlefield-mcp --replicas=0', 'scale deployment/battlefield-mcp --replicas=1']:
+                     'scale deployment/battlefield-ai-gateway --replicas=0', 'scale deployment/battlefield-ai-gateway --replicas=1']:
         assert any(expected in line or set(expected.split()) <= set(line.split()) for line in commands.splitlines()), (expected, commands)
     assert commands.rstrip().endswith('smoke'), commands
     report = json.loads((tmp/'report/summary.json').read_text())
     assert report['schemaVersion'] == 'battlefield.failure-drill-report.v2'
-    assert [d['name'] for d in report['drills']] == ['engine-restart', 'postgresql-restart', 'mcp-outage']
+    assert [d['name'] for d in report['drills']] == ['engine-restart', 'postgresql-restart', 'ai-gateway-outage']
     assert all(isinstance(d['recoverySeconds'], int) for d in report['drills'])
 
     # A selector that matches nothing must fail instead of reporting a restart.

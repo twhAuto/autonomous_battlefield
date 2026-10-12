@@ -45,7 +45,7 @@ autonomous_battlefield/
 ├── .claude/skills/             # Links to the canonical skills for Claude Code
 ├── .github/pull_request_template.md # PR sections, including the required AI-assistance record
 ├── backend/
-│   ├── cmd/{server,engine,mcp,agent,aieval}/ # Startup and command wiring
+│   ├── cmd/{server,engine,aigateway,agent,aieval}/ # Startup and command wiring
 │   ├── internal/
 │   │   ├── battle/{api,service,catalog,worker,repo,resultcache}/
 │   │   ├── faction/{api,service,repo}/
@@ -103,7 +103,7 @@ The backend has five commands in one Go module: four runtime processes and the o
 | --- | --- | --- |
 | API | [`backend/cmd/server/main.go`](../../backend/cmd/server/main.go) | Flags, configuration, migrations, PostgreSQL startup, catalog loading, application wiring, HTTP lifecycle |
 | Engine | [`backend/cmd/engine/main.go`](../../backend/cmd/engine/main.go) | Configuration, PostgreSQL startup, worker construction, health server, signals, graceful requeue/shutdown |
-| MCP | [`backend/cmd/mcp/main.go`](../../backend/cmd/mcp/main.go) | Restricted repository construction, PostgreSQL notification listener, MCP and agent-control routes, HTTP lifecycle |
+| AI gateway | [`backend/cmd/aigateway/main.go`](../../backend/cmd/aigateway/main.go) | Restricted repository construction, PostgreSQL notification listener, MCP tool and agent dispatch routes, HTTP lifecycle |
 | Agent | [`backend/cmd/agent/main.go`](../../backend/cmd/agent/main.go) | Profile registry, decision worker, health endpoint, signals, shutdown |
 | AI evaluation | [`backend/cmd/aieval/main.go`](../../backend/cmd/aieval/main.go) | Evaluation case execution, pricing inputs, reports, and runtime provenance via `-mode metadata` |
 

@@ -49,7 +49,7 @@ ai:
   environment: local
   agentConcurrency: 4
   agentHealthAddress: "127.0.0.1:8083"
-  mcpAddress: "127.0.0.1:8084"
+  aiGatewayAddress: "127.0.0.1:8084"
   mcpUrl: http://127.0.0.1:8084/mcp
   decisionTimeout: 2m
   capabilitySecretEnvironmentVariable: BATTLEFIELD_MCP_CAPABILITY_SECRET

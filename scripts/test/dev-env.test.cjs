@@ -54,6 +54,15 @@ test('shared schema enforces production authentication and separates deployment 
     BATTLEFIELD_ACCESS_AUDIENCE:'a'.repeat(64),BATTLEFIELD_PUBLIC_ORIGIN:'https://play.example.com',
     BATTLEFIELD_ACCESS_ROLES:'{"admin":["owner@example.com"]}'}));
   validate(values,'production');
+  values.set('MCP_DATABASE_URL','postgres://legacy-gateway');
+  validate(values,'production');
+  values.set('AI_GATEWAY_DATABASE_URL','postgres://legacy-gateway');
+  validate(values,'production');
+  values.set('AI_GATEWAY_DATABASE_URL','postgres://gateway');
+  assert.throws(()=>validate(values,'production'),/disagree/);
+  values.delete('MCP_DATABASE_URL');
+  validate(values,'production');
+  assert.equal(group('AI_GATEWAY_DATABASE_URL'),'database');
   values.set('BATTLEFIELD_ACCESS_CI_CLIENT_ID', 'a'.repeat(32)+'.access');
   validate(values,'production');
   assert.equal(group('BATTLEFIELD_ACCESS_CI_CLIENT_ID'), 'auth');

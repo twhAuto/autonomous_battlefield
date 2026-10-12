@@ -1,5 +1,5 @@
 // Runs claimed background-generation jobs in scoped model sessions and reports their usage
-// or failure through MCP.
+// or failure to the AI gateway.
 
 package worker
 

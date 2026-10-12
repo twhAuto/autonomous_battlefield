@@ -39,7 +39,7 @@ kube_context="${KUBERNETES_CONTEXT:-kind-${cluster_name}}"
 rollout_timeout="${ROLLOUT_TIMEOUT:-120s}"
 backend_image="${BACKEND_IMAGE:-autonomous-battlefield-backend}"
 frontend_image="${FRONTEND_IMAGE:-autonomous-battlefield-frontend}"
-deployments=(battlefield-api battlefield-engine battlefield-agent battlefield-mcp battlefield-frontend)
+deployments=(battlefield-api battlefield-engine battlefield-agent battlefield-ai-gateway battlefield-frontend)
 
 if [[ "$#" -gt 2 ]]; then
   echo "Usage: $0 [previous-backend-image [previous-frontend-image]]" >&2
@@ -88,8 +88,8 @@ if [[ "$#" -ge 1 ]]; then
   kube set image deployment/battlefield-agent \
     "agent=${previous_backend}" \
     --namespace "${namespace}"
-  kube set image deployment/battlefield-mcp \
-    "mcp=${previous_backend}" \
+  kube set image deployment/battlefield-ai-gateway \
+    "ai-gateway=${previous_backend}" \
     --namespace "${namespace}"
   kube set image deployment/battlefield-frontend \
     "frontend=${previous_frontend}" \

@@ -1,4 +1,4 @@
-// Claims compatible model work through MCP within the configured concurrency limit and
+// Claims compatible model work from the AI gateway within the configured concurrency limit and
 // reports execution outcomes.
 
 package worker
@@ -45,8 +45,8 @@ type Worker struct {
 
 func (w *Worker) Ready() bool { return w.ready.Load() }
 
-// serviceURL resolves a path on the MCP service that serves the configured /mcp
-// endpoint, such as the agent control plane or the generation MCP endpoint.
+// serviceURL resolves a path on the AI gateway that serves the configured /mcp
+// endpoint, such as the agent dispatch API or the generation MCP endpoint.
 func (w *Worker) serviceURL(path string) string {
 	return strings.TrimSuffix(strings.TrimRight(w.MCPURL, "/"), "/mcp") + path
 }

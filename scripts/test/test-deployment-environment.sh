@@ -111,7 +111,7 @@ cluster_deploy_prepare_ai_secret "$2"
     run(missing,ok=False,no_mutation=True)
     rollback=['bash','-ec', r'''source "$1"
 DEPLOY_ENV=production; current_backend_image=a; current_engine_image=b
-current_agent_image=a; current_mcp_image=a
+current_agent_image=a; current_gateway_image=a
 cluster_deploy_rollback_application
 ''','_',str(library)]
     run(rollback,ok=False,no_mutation=True)
@@ -122,11 +122,11 @@ cluster_deploy_rollback_application
     assert main < rollout < pipeline.index("credentials('battlefield-production-kubeconfig')")
     assert "branch 'main'" in pipeline[main:rollout]
     assert 'battlefield-production-kubeconfig' not in pipeline[:rollout]
-    # MCP readiness pings PostgreSQL; the probe must outlast that ping deadline.
-    mcp_probe=re.search(r'readinessProbe: \{httpGet: \{path: /readyz, port: http\}.*timeoutSeconds: (\d+)\}',
-        (root/'infra/deploy/base/application/mcp-deployment.yaml').read_text())
-    ping_deadline=re.search(r'readinessHandler\(db, (\d+)\*time\.Second\)', (root/'backend/cmd/mcp/main.go').read_text())
-    assert mcp_probe and ping_deadline and int(mcp_probe.group(1)) > int(ping_deadline.group(1)), 'MCP readiness probe must outlast its database ping'
+    # AI gateway readiness pings PostgreSQL; the probe must outlast that ping deadline.
+    gateway_probe=re.search(r'readinessProbe: \{httpGet: \{path: /readyz, port: http\}.*timeoutSeconds: (\d+)\}',
+        (root/'infra/deploy/base/application/ai-gateway-deployment.yaml').read_text())
+    ping_deadline=re.search(r'readinessHandler\(db, (\d+)\*time\.Second\)', (root/'backend/cmd/aigateway/main.go').read_text())
+    assert gateway_probe and ping_deadline and int(gateway_probe.group(1)) > int(ping_deadline.group(1)), 'AI gateway readiness probe must outlast its database ping'
     # A fresh forwarded replica has no HTTP series, even after Gateway traffic.
     smoke=(root/'scripts/cd/smoke-test.sh').read_text()
     metrics_check=smoke[smoke.index('# Gateway traffic may reach'):smoke.index('\ncurl --fail --silent --max-time 2 \\\n  --noproxy', smoke.index('# Gateway traffic may reach'))]

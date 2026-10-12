@@ -43,7 +43,7 @@ emails. Admin/Developer identities and their MFA policies remain operator-manage
 7. Run `./scripts/ops/prepare-limited-production.sh` on the production host, then
    the normal reviewed main delivery with **APPLY_CONFIGURATION=true**. This
    stages the settings in `battlefield-members` and restarts application pods.
-   Only the API consumes that Secret; migrations, engine, MCP and agent do not.
+   Only the API consumes that Secret; migrations, engine, AI gateway and agent do not.
    Do not manage invitations until every API replica finishes this rollout:
    older replicas still use static role assignments.
 8. Verify the live checks below before considering activation complete. The

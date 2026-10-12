@@ -6,7 +6,7 @@ import re
 import sys
 import tempfile
 
-BACKENDS = ('battlefield-api', 'battlefield-engine', 'battlefield-agent', 'battlefield-mcp')
+BACKENDS = ('battlefield-api', 'battlefield-engine', 'battlefield-agent', 'battlefield-ai-gateway')
 DIGEST = re.compile(r'[a-z0-9][a-z0-9._:/-]+@sha256:[a-f0-9]{64}')
 
 

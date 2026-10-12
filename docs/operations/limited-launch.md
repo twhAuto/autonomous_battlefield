@@ -51,7 +51,7 @@ CLI jobs from your personal home directory.
    `.env`. Put `BF_TUNNEL_ID`, `BF_TUNNEL_IMAGE` (digest-pinned), and
    `BF_TUNNEL_CREDENTIALS_FILE=tunnel-credentials.json` in its `deployment.env`.
    Install the application's tunnel credentials beside those files (mode 600).
-5. Configure independent worker and MCP credentials in `.env`. Keep provider and
+5. Configure independent worker and MCP capability credentials in `.env`. Keep provider and
    CLI availability false until intentionally enabled and verified.
 6. Validate with `./scripts/ops/prepare-limited-production.sh`, then use the normal
    verified application pipeline. Production database migration backups remain
@@ -69,7 +69,7 @@ CLI jobs from your personal home directory.
    Only the tunnel's outbound connection should expose the application. Block
    inbound direct access on **both IPv4 and IPv6**, including forwarded container
    ports. Keep SSH restricted to the operator's private management network.
-   MCP, databases, Kubernetes, Jenkins, SonarQube and monitoring stay private.
+   the AI gateway, databases, Kubernetes, Jenkins, SonarQube and monitoring stay private.
 
 The rendered NetworkPolicies allow the tunnel to reach frontend/API and frontend
 to reach API. The API policy also permits same-namespace Prometheus pods matching
@@ -122,8 +122,9 @@ For a tunnel credential incident, stop its connectors, rotate or replace the
 named tunnel credentials using Cloudflare's supported management flow, update only
 the tunnel Secret from the new private credentials file, and restart its deployment.
 Revoke the old credential and verify the old connector can no longer establish a
-connection. Rotating worker credentials requires updating both MCP and all workers;
-rotating capability-signing material requires only MCP and invalidates active jobs.
+connection. Rotating worker credentials requires updating both the AI gateway and all workers;
+rotating capability-signing material requires only the AI gateway and invalidates
+active jobs.
 
 To retire the deployment, stop the connectors and worker first, remove the
 application DNS route and Access application/Allow policies, and delete the dedicated
@@ -263,7 +264,7 @@ Keep retained disks, provider homes and the existing administration identity.
 
 The VM has **no default route, NAT, DNS server, host mounts or Docker socket**.
 `bf-agent0` is `192.168.234.1/24`; the guest is `192.168.234.2`. The external NIC
-filter permits only guest connections to the host proxy at 3128 and MCP bridge at
+filter permits only guest connections to the host proxy at 3128 and AI gateway bridge at
 18084, plus operator SSH from the host. IPv6 is dropped. The proxy resolves approved
 provider/update names; direct guest DNS and direct internet traffic are unnecessary.
 

@@ -35,8 +35,8 @@ Repository interfaces live close to the service or worker that consumes them. Th
 
 `httpapi.LifecycleHandler` is the sole owner of startup, liveness, readiness, and metrics endpoints. The API and engine entry points wire its dependencies and readiness callback into that handler. The application router owns business routes only, and the application database contract requires SQL operations without a health-ping dependency. `Worker.Ready()` exposes execution state; the worker package contains no HTTP health wrapper. Engine lifecycle integration tests cover worker startup/shutdown and database failure through the shared handler.
 
-Agent and MCP commands expose a separate `/healthz` endpoint; they do not use
-`LifecycleHandler`. MCP also serves `/readyz`, which pings PostgreSQL with a
+Agent and AI gateway commands expose a separate `/healthz` endpoint; they do not use
+`LifecycleHandler`. The AI gateway also serves `/readyz`, which pings PostgreSQL with a
 2-second timeout and backs its Kubernetes readiness probe.
 
 ### AI-oriented code
@@ -219,13 +219,13 @@ editor, service, and generation validation.
 
 [`worker.go`](../../backend/internal/ai/worker/worker.go) starts one claim loop per concurrency slot. Each loop:
 
-1. long-polls the MCP agent-control endpoint with executable profile IDs;
+1. long-polls the AI gateway's agent dispatch endpoint with executable profile IDs;
 2. immediately runs the claimed job in its owned slot;
 3. requires the claimed profile from the local registry;
 4. requires the server-minted request-scoped capability;
 5. creates an API or CLI runner;
 6. applies a decision timeout;
-7. reports usage or failure metadata through MCP.
+7. reports usage or failure metadata to the AI gateway.
 
 The default runner factory is the only place that chooses concrete provider implementations from a model profile.
 
@@ -405,7 +405,7 @@ Schema changes should be made with a new migration, then reflected in repository
 
 `internal/postgres.NewMigrationProvider` configures embedded Goose migrations with
 the same database-wide advisory session lock for application startup and tests
-that run `Up`, `UpTo`, or `Down`. Separate test schemas still share the MCP role
+that run `Up`, `UpTo`, or `Down`. Separate test schemas still share the cluster-wide AI gateway role
 and public-schema permissions; constructing an unlocked provider can cause
 `tuple concurrently updated` failures across parallel packages. The PostgreSQL
 integration regression holds the lock from another schema, verifies migration
@@ -507,7 +507,7 @@ AI execution counts, the original CLI lease, runtime stop policy and private usa
 Migration `00014_cli_concurrency.sql` expands that lease admission to four shared slots.
 `generation/friends_integration_test.go` tests cross-connection admission, paused
 limits, UTC reset, shared CLI slots and execution budgets against PostgreSQL.
-Workers receive capabilities from MCP instead of signing them. `worker/policy.go`
+Workers receive capabilities from the AI gateway instead of signing them. `worker/policy.go`
 cancels execution on the private stop switch; `credentials_linux.go` blocks procfs/
 ptrace reads of the worker's credentials; `runner/process_linux.go` kills CLI process
 groups. Local credentials remain available only to the appropriate CLI login.
@@ -520,7 +520,7 @@ ownership, with backend enforcement independent of the UI.
 `scripts/ops/render-limited-launch.py` produces private auth configuration and a
 Tunnel deployment with origin-side Access validation and application ingress policies.
 `infra/deploy/agent-vm/` contains the libvirt network/filter, proxy and worker configuration;
-its `host/` templates include the dedicated firewall, Caddy proxy, loopback MCP
+its `host/` templates include the dedicated firewall, Caddy proxy, loopback AI gateway
 forward and Squid service override. `scripts/ops/render-agent-vm-host.py` renders
 a credential-free bundle into a new directory without changing live services.
 `scripts/test/test-agent-vm-host.py` checks rendering, input rejection and private
@@ -591,7 +591,7 @@ Battle setup selects generic profiles without blueprint compatibility filtering.
   account quotas, idempotency, durable claims, expiry and result validation.
 - `backend/migrations/00009_faction_background.sql` adds an empty-default
   background, generation jobs/account locks, active/queue/quota indexes, and
-  narrowly scoped MCP grants. Existing profiles, blueprints and battle snapshots
+  narrowly scoped AI gateway role grants. Existing profiles, blueprints and battle snapshots
   are preserved. `internal/postgres/migrations.go` serializes migration runners
   with a PostgreSQL advisory session lock, including concurrent fresh schemas.
 - Faction API/service/repository and battle catalog/worker copy background with

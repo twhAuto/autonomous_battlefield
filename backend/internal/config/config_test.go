@@ -255,7 +255,7 @@ func TestParseEngineConfigValidationAndDefaults(t *testing.T) {
 
 func TestParseAIConfigDefaultsProfilesAndValidation(t *testing.T) {
 	configuration, err := parseAIConfig(fileConfig{})
-	if err != nil || configuration.AgentHealthAddress != ":8083" || configuration.MCPAddress != ":8084" || configuration.DecisionTimeout != 2*time.Minute || configuration.CapabilitySecret == "" {
+	if err != nil || configuration.AgentHealthAddress != ":8083" || configuration.AIGatewayAddress != ":8084" || configuration.DecisionTimeout != 2*time.Minute || configuration.CapabilitySecret == "" {
 		t.Fatalf("AI=%#v err=%v", configuration, err)
 	}
 	valid := func() fileConfig {
@@ -284,7 +284,28 @@ func TestParseAIConfigDefaultsProfilesAndValidation(t *testing.T) {
 	}
 }
 
-func TestLoadAgentAndMCPRequireClusterCapability(t *testing.T) {
+func TestParseAIConfigAcceptsLegacyGatewayAddressKey(t *testing.T) {
+	for _, tc := range []struct{ current, legacy, want string }{
+		{"", "", ":8084"},
+		{":9000", "", ":9000"},
+		{"", ":9001", ":9001"},
+		{":9002", ":9002", ":9002"},
+	} {
+		var raw fileConfig
+		raw.AI.AIGatewayAddress, raw.AI.LegacyMCPAddress = tc.current, tc.legacy
+		parsed, err := parseAIConfig(raw)
+		if err != nil || parsed.AIGatewayAddress != tc.want {
+			t.Fatalf("aiGatewayAddress=%q mcpAddress=%q: got %q, %v; want %q", tc.current, tc.legacy, parsed.AIGatewayAddress, err, tc.want)
+		}
+	}
+	var raw fileConfig
+	raw.AI.AIGatewayAddress, raw.AI.LegacyMCPAddress = ":9000", ":9001"
+	if _, err := parseAIConfig(raw); err == nil {
+		t.Fatal("conflicting gateway address keys accepted")
+	}
+}
+
+func TestLoadAgentAndAIGatewayRequireClusterCapability(t *testing.T) {
 	path := writeEngineConfigFile(t, `ai:
   environment: cluster
   capabilitySecretEnvironmentVariable: TEST_CAPABILITY_SECRET
@@ -294,24 +315,24 @@ func TestLoadAgentAndMCPRequireClusterCapability(t *testing.T) {
 	if _, err := LoadAgent(path); err == nil {
 		t.Fatal("agent accepted missing secret")
 	}
-	if _, err := LoadMCP(path); err == nil {
-		t.Fatal("MCP accepted missing secret")
+	if _, err := LoadAIGateway(path); err == nil {
+		t.Fatal("AI gateway accepted missing secret")
 	}
 	t.Setenv("BATTLEFIELD_AGENT_SECRET", strings.Repeat("w", 32))
 	t.Setenv("TEST_CAPABILITY_SECRET", "secret")
 	if _, err := LoadAgent(path); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadMCP(path); err == nil {
-		t.Fatal("MCP accepted a short capability secret")
+	if _, err := LoadAIGateway(path); err == nil {
+		t.Fatal("AI gateway accepted a short capability secret")
 	}
 	t.Setenv("TEST_CAPABILITY_SECRET", strings.Repeat("m", 32))
-	if _, err := LoadMCP(path); err != nil {
+	if _, err := LoadAIGateway(path); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestLoadMCPRejectsLocalDevelopmentCapabilitySecret(t *testing.T) {
+func TestLoadAIGatewayRejectsLocalDevelopmentCapabilitySecret(t *testing.T) {
 	path := writeEngineConfigFile(t, `ai:
   environment: local
   capabilitySecretEnvironmentVariable: TEST_CAPABILITY_SECRET
@@ -319,8 +340,8 @@ func TestLoadMCPRejectsLocalDevelopmentCapabilitySecret(t *testing.T) {
 	t.Setenv("BATTLEFIELD_AGENT_SECRET", strings.Repeat("w", 32))
 	for _, secret := range []string{"", localDevelopmentCapabilitySecret} {
 		t.Setenv("TEST_CAPABILITY_SECRET", secret)
-		if _, err := LoadMCP(path); err == nil {
-			t.Fatalf("MCP accepted capability secret %q", secret)
+		if _, err := LoadAIGateway(path); err == nil {
+			t.Fatalf("AI gateway accepted capability secret %q", secret)
 		}
 	}
 }

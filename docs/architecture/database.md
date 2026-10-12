@@ -2,12 +2,12 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Current: describes migrations `00001`–`00016` |
+| Status | Current: describes migrations `00001`–`00017` |
 | Audience | Contributors and operators who need the schema, access model and coordination rules |
 | Source of truth | [`backend/migrations`](../../backend/migrations) and the PostgreSQL adapters in `backend/internal` |
 
 PostgreSQL is the system of record and the only coordination channel between the
-API, the battle engine and the MCP service. Processes never call each other to hand
+API, the battle engine and the AI gateway. Processes never call each other to hand
 over work: they claim rows, hold leases and record results in the database. This
 page owns the schema, database access, coordination patterns and migration
 conventions. [System architecture](system-architecture.md) describes the runtime
@@ -23,14 +23,16 @@ places its volume on the retained `battlefield-retained` storage class.
 | API (`cmd/server`) | `DATABASE_URL` (application login) | Factions, battle creation, generation jobs, model access, Player membership; reads battles, events and decisions for inspection |
 | Engine (`cmd/engine`) | `DATABASE_URL` (application login) | Battle claims, ticks and state, events, decision windows and fallbacks, expiry sweeps |
 | Migration job (`cmd/server -migrate`) | `DATABASE_URL` (application login) | Schema changes; needs `CREATEROLE` the first time `00004` runs |
-| MCP (`cmd/mcp`) | `MCP_DATABASE_URL`, a login that inherits only `battlefield_mcp` | Decision and generation claims, context reads, plan submission, usage and failures |
-| Agent (`cmd/agent`) | None | Reaches data only through MCP |
+| AI gateway (`cmd/aigateway`) | `AI_GATEWAY_DATABASE_URL`, a login that inherits only `battlefield_ai_gateway` | Decision and generation claims, context reads, plan submission, usage and failures |
+| Agent (`cmd/agent`) | None | Reaches data only through the AI gateway |
 
-### The `battlefield_mcp` role
+### The `battlefield_ai_gateway` role
 
-Migration `00004` creates `battlefield_mcp` as a `NOLOGIN` group role. Operators
-create a separate login and grant it this role, which keeps credential lifecycle
-apart from schema lifecycle. Grants added by later migrations:
+Migration `00004` created this `NOLOGIN` group role as `battlefield_mcp`; `00017`
+renamed it to `battlefield_ai_gateway`. A rename keeps the role's identity, so
+logins already granted the old name keep their membership. Operators create a
+separate login and grant it this role, which keeps credential lifecycle apart from
+schema lifecycle. Grants (restated in full by `00017`):
 
 | Object | Privilege | Migration |
 | --- | --- | --- |
@@ -42,9 +44,9 @@ apart from schema lifecycle. Grants added by later migrations:
 | `agent_execution_leases` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` | `00011` |
 
 The role has no access to battle events, battle state, factions, membership or
-policy tables beyond these columns. When `MCP_DATABASE_URL` is absent, the
-deployment scripts reuse `DATABASE_URL` for MCP, which is acceptable only for local
-development; production must supply the restricted login
+policy tables beyond these columns. When `AI_GATEWAY_DATABASE_URL` is absent, the
+deployment scripts use the pre-rename `MCP_DATABASE_URL` if present, and otherwise
+reuse `DATABASE_URL`, which is acceptable only for local development; production must supply the restricted login
 ([deployment configuration](../operations/deployment.md)).
 
 ## Schema
@@ -61,7 +63,7 @@ development; production must supply the restricted login
 | `agent_execution_leases` | Active CLI execution slots, keyed by decision or generation ID | Rows expire with their lease and are pruned on admission |
 | `model_access_policy` | Singleton administrator model-access policy | `version` rejects conflicting saves |
 | `player_members` / `player_membership_sync` / `player_membership_audit` | Managed Player grants, Cloudflare Access group synchronization state, and audit history | Unique email; versioned desired and synced state |
-| `battle_controller_evaluation` (view) | Per-controller decision count, fallback and invalid-plan rates, latency, tokens, plan diversity and win rate | Readable by MCP for comparison reports |
+| `battle_controller_evaluation` (view) | Per-controller decision count, fallback and invalid-plan rates, latency, tokens, plan diversity and win rate | Readable by the AI gateway role |
 | `friend_ai_usage` (view) | Model usage per identity across decisions and generation jobs | Private reporting view |
 | `goose_db_version` | Goose's applied-migration ledger | Production recovery records compare it before approving an image rollback |
 
@@ -160,16 +162,16 @@ block on or double-claim the same row.
   restarts from `initial_state`. Tick writes extend the lease only where status,
   attempt and lease owner still match, so a previous owner cannot write after a
   reclaim.
-- **Decisions:** MCP claims `model` decisions that are `pending`, or `running` with
+- **Decisions:** the AI gateway claims `model` decisions that are `pending`, or `running` with
   an expired lease, for the worker's profile IDs, and sets `status='running'` with a
   lease. The capability token issued with the claim expires at that lease deadline.
-- **Generation jobs:** MCP claims queued jobs by setting `status='running'`, the
+- **Generation jobs:** the AI gateway claims queued jobs by setting `status='running'`, the
   worker ID and an expiry.
 
 ### Admission triggers
 
 PL/pgSQL triggers enforce limits inside the same transaction as the write, so every
-API replica, engine and MCP instance sees one serialized policy:
+API replica, engine and AI gateway instance sees one serialized policy:
 
 | Trigger (function) | Fires | Effect |
 | --- | --- | --- |
@@ -196,7 +198,7 @@ active job per actor and same-key retries reusing the existing job.
 ### Wake-up notifications
 
 Inserting a model decision runs `pg_notify('battlefield_decision_ready', profile_id)`.
-MCP listens on that channel to wake long-polling claims. The notification carries no
+The AI gateway listens on that channel to wake long-polling claims. The notification carries no
 authoritative data and is safe to miss: every woken worker still claims through the
 locked query, and workers claim again after each long poll ends. The engine is not notified when a plan arrives;
 it reads the decision row when the window closes and falls back if no plan was
@@ -250,6 +252,7 @@ interleave DDL.
 | `00014_cli_concurrency.sql` | Shared CLI capacity of four with serialized admission |
 | `00015_drop_duplicate_event_index.sql` | Drops an index that duplicated the `battle_events` primary key |
 | `00016_admin_battle_admission.sql` | Admin battles bypass admission allowances but still occupy capacity |
+| `00017_rename_ai_gateway_role.sql` | Renames `battlefield_mcp` to `battlefield_ai_gateway` and restates its grants |
 
 Conventions:
 
@@ -257,8 +260,8 @@ Conventions:
   been applied to a shared database.
 - Include a `-- +goose Down` section. Guard data-dependent downgrades instead of
   silently discarding rows.
-- Grant `battlefield_mcp` only the columns MCP needs, in the same migration that
-  adds them.
+- Grant `battlefield_ai_gateway` only the columns the AI gateway needs, in the same
+  migration that adds them.
 - Update repository scanning, serialization and tests in the same change, and update
   this page.
 
