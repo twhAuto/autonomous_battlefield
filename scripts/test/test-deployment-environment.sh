@@ -6,7 +6,7 @@ set -Eeuo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 node --test "${project_dir}/scripts/test/dev-env.test.cjs"
 python3 - "${project_dir}" <<'PY'
-import os, pathlib, shutil, subprocess, sys, tempfile
+import os, pathlib, re, shutil, subprocess, sys, tempfile
 root = pathlib.Path(sys.argv[1])
 with tempfile.TemporaryDirectory(prefix='battlefield-environments-') as tmp:
     tmp = pathlib.Path(tmp)
@@ -122,6 +122,11 @@ cluster_deploy_rollback_application
     assert main < rollout < pipeline.index("credentials('battlefield-production-kubeconfig')")
     assert "branch 'main'" in pipeline[main:rollout]
     assert 'battlefield-production-kubeconfig' not in pipeline[:rollout]
+    # MCP readiness pings PostgreSQL; the probe must outlast that ping deadline.
+    mcp_probe=re.search(r'readinessProbe: \{httpGet: \{path: /readyz, port: http\}.*timeoutSeconds: (\d+)\}',
+        (root/'infra/deploy/base/application/mcp-deployment.yaml').read_text())
+    ping_deadline=re.search(r'readinessHandler\(db, (\d+)\*time\.Second\)', (root/'backend/cmd/mcp/main.go').read_text())
+    assert mcp_probe and ping_deadline and int(mcp_probe.group(1)) > int(ping_deadline.group(1)), 'MCP readiness probe must outlast its database ping'
     # A fresh forwarded replica has no HTTP series, even after Gateway traffic.
     smoke=(root/'scripts/cd/smoke-test.sh').read_text()
     metrics_check=smoke[smoke.index('# Gateway traffic may reach'):smoke.index('\ncurl --fail --silent --max-time 2 \\\n  --noproxy', smoke.index('# Gateway traffic may reach'))]
