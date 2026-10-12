@@ -451,7 +451,7 @@ effective-stat profiles and inclusive visibility row ranges, with independent
 size checks to retain inline fields when smaller. Its tests reconstruct observed
 units and visibility, check version compatibility and measure opening/small/large
 views. To measure a local JSON context without adding private data to fixtures,
-run `BATTLEFIELD_CONTEXT_FIXTURE=/path/to/context.json go test ./internal/ai -run TestBattlefieldContextExternalFixture -v`
+run `BATTLEFIELD_CONTEXT_FIXTURE=/path/to/context.json go test ./internal/ai/agentview -run TestBattlefieldContextExternalFixture -v`
 from `backend`.
 
 ## Langfuse integration
