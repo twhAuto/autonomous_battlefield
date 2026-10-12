@@ -107,7 +107,7 @@ SQLite recovery needs both the datastore and server token; see
 [the K3s backup requirements](https://docs.k3s.io/datastore/backup-restore).
 The encrypted Terraform recovery bundle contains control-plane provisioning
 state and SSH access, **not** K3s state, application databases or retained disk
-contents. The owner has deferred scheduled backups. This workflow is reproducible
+contents. Scheduled backups are not configured. This workflow is reproducible
 infrastructure, not a claim of data recovery after disk failure.
 
 ## Private networking and version ownership

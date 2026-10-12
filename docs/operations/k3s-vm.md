@@ -152,8 +152,8 @@ control-plane recovery bundles, not database or VM-data backups. Keep the
 passphrase outside this server. Local snapshots have no scheduled retention;
 inspect their size as part of manual maintenance.
 
-The owner selected only the server's separate second disk for recovery copies.
-Scheduled application backups and whole-server-loss recovery remain deferred.
+Recovery copies go only to the server's separate second disk. Scheduled
+application backups and whole-server-loss recovery are not configured.
 Register its `backup_uuid` in the existing inventory and mount it deliberately;
 this command neither mounts nor formats disks. Once an operator-owned mode-0700
 directory exists on that filesystem, copy a selected completed bundle:

@@ -5,12 +5,12 @@ The host-local Ansible workflow manages native `caddy.service` on
 CLI VM's `battlefield-mcp-proxy.service`. Both proxies use `/usr/bin/caddy`;
 this workflow neither upgrades that shared binary nor replaces either unit.
 
-On 2026-10-02, inspection at deployed main `a767fa5` found that the local
-application, Grafana and Kibana still used retained Kind on `127.0.0.1:8888`.
-The old application replicas were intentionally zero after the K3s migration,
-so its local alias returned 503. The old monitoring pages still responded.
-The owner chose the following correction; it takes effect only after a reviewed
-`migrate` apply, not when this code merges or ordinary main delivery runs:
+Before migration, the local application, Grafana and Kibana names route to
+retained Kind on `127.0.0.1:8888`. Its application replicas are zero after the K3s
+migration, so the application alias returns 503 while the old monitoring pages
+still respond. `--mode migrate` sets the destinations below; they take effect only
+after a reviewed `apply --mode migrate`, not when code merges or ordinary main
+delivery runs:
 
 | Local HTTPS name | Reviewed destination |
 | --- | --- |
@@ -39,8 +39,8 @@ stop before adoption; retain them for explicit review instead of deleting them.
 
 The supported binary is the native Ubuntu Caddy package, with bare `X.Y.Z`
 version output and the packaged service commands. The existing host reports
-exactly `2.6.2` (package `2.6.2-14ubuntu0.26.04.1~esm1`), confirmed on
-2026-10-03; the Ubuntu 26.04 disposable fixture also passed capture. Upstream
+exactly `2.6.2` (package `2.6.2-14ubuntu0.26.04.1~esm1`), and the Ubuntu 26.04
+disposable fixture passes capture. Upstream
 build strings such as `v2.7.6 h1:...` are deliberately rejected. Replacing or
 upgrading the shared package requires separate review of both native HTTPS and
 the CLI proxy, then a fresh capture and ownership recovery as described below.

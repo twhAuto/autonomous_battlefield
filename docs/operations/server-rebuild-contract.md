@@ -135,7 +135,7 @@ unrecognized state. Existing runbooks own the exact commands:
 
 1. **Operator bootstrap:** install supported Ubuntu, enable KVM, establish network,
    an SSH/sudo account and trusted host-key entry. Keep the current SSH key on the
-   workstation; Jenkins need not exist there. The owner enters sudo interactively.
+   workstation; Jenkins need not exist there. The operator enters sudo interactively.
    Passphrase-protected guest keys may need unlocking in the server SSH agent.
 2. **Register/import:** [host init, inspect and seal](server-bootstrap.md). Supply
    existing external credentials, public CA inputs and a separately retained Vault
