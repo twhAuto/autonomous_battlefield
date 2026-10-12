@@ -333,8 +333,7 @@ sequenceDiagram
     Agent->>MCP: Claim compatible work with shared secret
     MCP->>DB: Atomic decision lease claim
     DB-->>MCP: Request ID and profile
-    MCP-->>Agent: Claimed job
-    Agent->>Agent: Mint short-lived request capability
+    MCP-->>Agent: Claimed job + server-minted request capability
     Agent->>Model: Start bounded tool loop
     Model->>Agent: Request get_decision_context
     Agent->>MCP: Execute tool call
@@ -733,8 +732,10 @@ Tool bodies are bounded, plan fields are validated, and model-provided state is 
 ### Agent control plane
 
 `/internal/agent/claim`, `/fail`, `/usage`, `/generation-finish` and `/enabled`
-require a distinct worker bearer secret. Missing or equal worker/signing secrets
-deny worker authentication. Claims return server-minted, request-scoped
+require a distinct worker bearer secret of at least 32 bytes, compared in constant
+time. MCP refuses to start, and denies worker authentication, when it is missing,
+shorter or equal to the signing secret. Every worker placement (the K3s API
+worker and the CLI worker VM) currently shares this one secret. Claims return server-minted, request-scoped
 capabilities; workers never receive the signing key.
 
 MCP is private to the worker network. Production subscription CLI workers run in
@@ -760,6 +761,7 @@ in the [service authentication runbook](../operations/limited-launch.md#ci-servi
 ### Runtime security requirements
 
 - MCP rejects capability secrets shorter than 32 bytes or equal to the development placeholder.
+- MCP requires a worker secret of at least 32 bytes that differs from the capability secret.
 - Production sessions use Access identity; direct-origin access is denied and network policy restricts private services.
 - Provider credentials belong to the decision agent, separate from the API and engine.
 - Model rationale remains untrusted display text; bounded length does not make it authoritative.
@@ -798,7 +800,7 @@ Key runtime settings and their defaults:
 
 `backend/config.yaml` is the reference for all keys; unknown keys fail startup.
 
-The API catalog advertises profiles users may select. In cluster mode, an operator flag can advertise a host-connected CLI even though the API pod cannot execute it. An agent advertises only profiles it can execute; claims include those IDs so heterogeneous agents do not lease incompatible work.
+The API catalog advertises profiles users may select. In cluster mode, an operator flag can advertise a host-connected CLI even though the API pod cannot execute it. An agent advertises only profiles it can execute; claims include those IDs so heterogeneous agents do not lease incompatible work. The worker ID and profile list are self-reported: this is a scheduling filter, not an authorization boundary, because MCP does not bind the worker secret to a placement or profile set.
 
 ## 11. Deployment topology
 
@@ -1109,6 +1111,7 @@ for deployment order, sampling, privacy, persistence and token-accounting limits
   A terminal battle-control response cancels status polling and invalidates
   in-flight responses so stale running status cannot overwrite an operator stop.
 - Load and failover behavior needs testing before increasing engine, MCP, or agent replicas.
+- All worker placements share one control-plane secret, and claims self-report their profile IDs. A compromised worker could claim another placement's profiles. The secret cannot be rotated without changing every holder at once, and the CLI VM's `worker.env` cannot be changed through the managed workflow.
 - API adapters build text transcripts instead of preserving provider-native structured tool history.
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
 
