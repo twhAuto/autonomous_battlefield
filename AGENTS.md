@@ -33,6 +33,8 @@ Keep documentation synchronized with every implementation change:
 - Runtime components, boundaries, data flows, persistence, security, configuration,
   deployment or operational behavior: update
   `docs/architecture/system-architecture.md` and affected operations guides.
+- Schema, migrations, database roles, grants or triggers: update
+  `docs/architecture/database.md`.
 - Packages, entry points, important types, routes, migrations, frontend areas,
   tests or common workflows: update `docs/developer/codebase-guide.md`.
 - Setup steps, capabilities, commands, ports or documentation entry points: update

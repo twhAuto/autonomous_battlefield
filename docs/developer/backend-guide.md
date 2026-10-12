@@ -393,26 +393,9 @@ permissions, frontend save/reload, and preview navigation.
 
 ## Database migrations and adapters
 
-Migrations under [`backend/migrations`](../../backend/migrations) are embedded into the server binary.
-
-| Migration | Main change |
-| --- | --- |
-| `00001_create_factions.sql` | Initial faction table |
-| `00002_create_battle_queue.sql` | Battle runs and per-attempt event stream |
-| `00003_castle_siege_state.sql` | Ruleset/blueprint and battle state snapshots |
-| `00004_battle_decisions.sql` | Model decisions, indexes, evaluation view, restricted MCP role |
-| `00005_stop_battles.sql` | `stopped` battle status |
-| `00006_pause_battles.sql` | Pause flag and unpaused claim index |
-| `00007_trace_context.sql` | Persisted trace propagation context |
-| `00008_faction_doctrine.sql` | Faction doctrine and versioned battle snapshots |
-| `00009_faction_background.sql` | Faction background and asynchronous generation jobs |
-| `00010_battle_history.sql` | Descending creation-time/ID index for battle history |
-| `00011_friends_access.sql` | Row ownership, atomic admission triggers, AI execution counts, single CLI lease, runtime stop policy, and private usage view |
-| `00012_model_access.sql` | Versioned administrator model access policy and last editor metadata |
-| `00013_player_members.sql` | Durable player membership and access synchronization |
-| `00014_cli_concurrency.sql` | Four shared CLI lease slots with serialized admission |
-| `00015_drop_duplicate_event_index.sql` | Drops `battle_events_cursor_idx`, which duplicated the `battle_events` primary key; event pages use `battle_events_pkey` |
-| `00016_admin_battle_admission.sql` | Exempts authenticated Admin battle creation from admission limits; exempt battles still occupy active capacity |
+Migrations under [`backend/migrations`](../../backend/migrations) are embedded into the
+server binary. The [database guide](../architecture/database.md) owns the schema,
+migration history, roles, triggers and migration conventions.
 
 Schema changes should be made with a new migration, then reflected in repository scan/serialization logic and tests. Do not edit an already-applied migration to evolve a shared database.
 
