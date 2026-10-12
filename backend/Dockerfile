@@ -1,7 +1,7 @@
 # Builds the API, engine, MCP, and agent binaries and packages their runtime configuration
 # and authored game content in a non-root image.
 
-FROM golang:1.26.6-alpine AS build
+FROM golang:1.26.9-alpine AS build
 
 WORKDIR /src
 
