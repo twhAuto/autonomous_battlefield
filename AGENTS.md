@@ -11,9 +11,8 @@
   user requests it.
 - Run the applicable checks before opening a PR, including
   `./scripts/test/test-deployment.sh` for deployment changes. Jenkins verifies PRs
-  on the shared `battlefield-production` agent, which the owner accepts; do not add
-  a separate-agent prerequisite unasked. Skipped or queued stages are not
-  verification.
+  on the shared `battlefield-production` agent by design. Skipped or queued stages
+  are not verification.
 
 ## Project tracking
 
@@ -74,25 +73,22 @@ explicit approval, or upload unmerged code to the production
 
 ## Cross-review between Codex and Claude
 
-For meaningful agent-authored PR changes, follow the
-[cross-review guide](docs/developer/cross-review.md) through the raise-pr skill:
-one full review via `scripts/review/cross-review.py --pr NUMBER`, then at most one
-focused follow-up. Ask the user before any extra round; never set
-`--allow-extra-round` automatically, omit `--pr`, delete comments, or retry failed
-model calls to evade the limit.
+Meaningful agent-authored PRs get one full review from the other agent through the
+raise-pr skill and `scripts/review/cross-review.py --pr NUMBER`, then at most one
+focused follow-up. Agents may post advisory review and author-response comments on
+PRs; the [cross-review guide](docs/developer/cross-review.md) defines the procedure,
+comment format and limits.
 
-Trivial wording, formatting and low-risk preference edits may skip review with the
-reason recorded. Authentication, permissions, deployment behavior and substantive
-logic always need review, whatever the diff size. Honor an explicit user request to
-skip review for a PR and state that it was skipped.
-
-The user authorizes advisory review and author-response comments on PRs. Author
-responses carry the guide's marker, the current head SHA and every unresolved
-finding ID with a fix or evidence-backed disagreement. Batch changes before
-review, verify findings before fixing them, test fixes, and leave unresolved
-findings visible. Review is advisory: it does not replace CI or
-authorize merging or deployment. Reviewers must not edit the change or invoke
-another reviewer.
+- Batch changes before review. Ask the user before any extra round; never set
+  `--allow-extra-round` automatically, omit `--pr`, delete comments, or retry
+  failed model calls to get around the limit.
+- Trivial wording, formatting and low-risk preference edits may skip review; record
+  the reason. Authentication, permissions, deployment behavior and substantive logic
+  always need review, whatever the diff size. If the user asks to skip review for a
+  PR, skip it and say so.
+- Verify findings before fixing them, test the fixes, and leave unresolved findings
+  visible. Review is advisory: it does not replace CI or authorize merging or
+  deployment. Reviewers must not edit the change or invoke another reviewer.
 
 At completed task boundaries, report branch/PR/head, goal, checks, unresolved
-findings and next step. Do not add usage ledgers or cost-report comments.
+findings and next step.
