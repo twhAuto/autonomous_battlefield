@@ -177,6 +177,40 @@ elif 'apply' in args and '-f' in args and args[args.index('-f')+1]=='-': sys.std
         self.run_script('rollback.sh',BACKEND,FRONTEND,ok=False,MIGRATIONS='[0,1,2]',BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST=BACKEND)
         self.assertFalse(any('set' in c and 'image' in c for c in self.calls))
 
+    def test_running_images_are_captured_without_mutation_and_keep_identity_guard(self):
+        output=self.directory/'artifacts/deployment/rollback-images.env'
+        self.run_script('capture-rollback-images.sh',str(output))
+        self.assertEqual(output.read_text(),
+            f'PREVIOUS_BACKEND_IMAGE_REF={BACKEND}\nPREVIOUS_FRONTEND_IMAGE_REF={FRONTEND}\n')
+        self.assertFalse(any(any(v in c for v in ['apply','delete','patch','set']) for c in self.calls),self.calls)
+        output.unlink()
+        self.run_script('capture-rollback-images.sh',str(output),ok=False,LIVE_UID='other')
+        self.assertFalse(output.exists())
+        self.run_script('capture-rollback-images.sh',ok=False)
+        self.assertEqual(self.calls,[])
+
+    def test_failed_verification_rolls_back_only_application_changes_with_both_digests(self):
+        self.run_script('production-recovery.sh','record','f'*40)
+        refs={'PREVIOUS_BACKEND_IMAGE_REF':BACKEND,'PREVIOUS_FRONTEND_IMAGE_REF':FRONTEND,
+              'BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST':BACKEND}
+        for components in ('all','frontend,application','migration,backend,application'):
+            with self.subTest(components=components):
+                self.run_script('rollback-on-failed-verification.sh',DEPLOY_COMPONENTS=components,**refs)
+                self.assertEqual(sum('set' in c and 'image' in c for c in self.calls),5)
+        for components in ('infrastructure','observability','gateway','migration'):
+            with self.subTest(components=components):
+                result=self.run_script('rollback-on-failed-verification.sh',DEPLOY_COMPONENTS=components,**refs)
+                self.assertIn('did not change application images',result.stdout)
+                self.assertEqual(self.calls,[])
+        for missing in ({'PREVIOUS_BACKEND_IMAGE_REF':''},{'PREVIOUS_FRONTEND_IMAGE_REF':'ghcr.io/test/frontend:latest'}):
+            with self.subTest(missing=missing):
+                result=self.run_script('rollback-on-failed-verification.sh',DEPLOY_COMPONENTS='all',**(refs|missing))
+                self.assertIn('not both available',result.stdout)
+                self.assertEqual(self.calls,[])
+        # A refused rollback still fails the build so the operator sees it.
+        self.run_script('rollback-on-failed-verification.sh',ok=False,DEPLOY_COMPONENTS='all',MIGRATIONS='[0,1,2]',**refs)
+        self.assertFalse(any('set' in c and 'image' in c for c in self.calls))
+
     def test_unknown_database_disables_rollback_without_blocking_forward_delivery(self):
         self.run_script('production-recovery.sh','record','f'*40)
         record=self.directory/'recovery.json'

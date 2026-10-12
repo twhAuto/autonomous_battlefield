@@ -572,9 +572,10 @@ Deployment plus recent namespace events.
 
 `scripts/cd/deploy.sh` can reapply a temporary Kustomize overlay containing
 the previous images if an application apply or rollout fails. Before deploying,
-Jenkins records the independently deployed backend and frontend digest references. If an
-application-related deployment later fails smoke testing,
-`scripts/cd/rollback.sh` restores those two exact immutable revisions only
+`scripts/cd/capture-rollback-images.sh` records the independently deployed backend
+and frontend digest references. If an application-related deployment later fails
+smoke testing, `scripts/cd/rollback-on-failed-verification.sh` calls
+`scripts/cd/rollback.sh` to restore those two exact immutable revisions only
 when the private cluster-bound recovery record approves the exact image pair.
 The record is written after all runtime assurance stages succeed; an absent or
 mismatched record requires operator recovery. The script operates without
