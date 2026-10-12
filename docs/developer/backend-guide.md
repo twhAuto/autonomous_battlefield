@@ -36,7 +36,8 @@ Repository interfaces live close to the service or worker that consumes them. Th
 `httpapi.LifecycleHandler` is the sole owner of startup, liveness, readiness, and metrics endpoints. The API and engine entry points wire its dependencies and readiness callback into that handler. The application router owns business routes only, and the application database contract requires SQL operations without a health-ping dependency. `Worker.Ready()` exposes execution state; the worker package contains no HTTP health wrapper. Engine lifecycle integration tests cover worker startup/shutdown and database failure through the shared handler.
 
 Agent and MCP commands expose a separate `/healthz` endpoint; they do not use
-`LifecycleHandler`.
+`LifecycleHandler`. MCP also serves `/readyz`, which pings PostgreSQL with a
+2-second timeout and backs its Kubernetes readiness probe.
 
 ### AI-oriented code
 

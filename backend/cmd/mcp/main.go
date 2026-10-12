@@ -58,7 +58,8 @@ func run(configuration config.Config) error {
 		return err
 	}
 	defer db.Close()
-	server := mcpserver.New(battlerepo.NewPostgres(db), configuration.AI.CapabilitySecret, configuration.AI.AllowedOrigins).WithAgentSecret(configuration.AI.AgentSecret).WithGenerations(&generation.Postgres{DB: db})
+	repository := battlerepo.NewPostgres(db)
+	server := mcpserver.New(repository, configuration.AI.CapabilitySecret, configuration.AI.AllowedOrigins).WithAgentSecret(configuration.AI.AgentSecret).WithGenerations(&generation.Postgres{DB: db})
 	notificationErrors := make(chan error, 1)
 	go func() {
 		notificationErrors <- postgres.ListenForNotifications(ctx, db, ai.DecisionReadyChannel, func(string) {
@@ -68,8 +69,9 @@ func run(configuration config.Config) error {
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", server.Handler())
 	mux.Handle("/generation-mcp", server.GenerationHandler())
-	mux.Handle("/internal/agent/", http.StripPrefix("/internal/agent", server.AgentHandler(battlerepo.NewPostgres(db))))
+	mux.Handle("/internal/agent/", http.StripPrefix("/internal/agent", server.AgentHandler(repository)))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	mux.HandleFunc("GET /readyz", readinessHandler(db, 2*time.Second))
 	httpServer := &http.Server{Addr: configuration.AI.MCPAddress, Handler: telemetry.HTTPHandler("battlefield-mcp.http", mux), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second}
 	errorsChannel := make(chan error, 1)
 	go func() {
@@ -96,4 +98,23 @@ func run(configuration config.Config) error {
 		return err
 	}
 	return <-notificationErrors
+}
+
+type pinger interface {
+	Ping(context.Context) error
+}
+
+// readinessHandler reports ready only while PostgreSQL answers within timeout, so a
+// lost database connection removes MCP from Service endpoints. /healthz stays a
+// process-liveness check that scripts use to confirm port-forwards.
+func readinessHandler(database pinger, timeout time.Duration) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), timeout)
+		defer cancel()
+		if err := database.Ping(ctx); err != nil {
+			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
