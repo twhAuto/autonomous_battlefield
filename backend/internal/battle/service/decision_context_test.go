@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
@@ -122,7 +123,7 @@ func TestCompactSavedDecisionContext(t *testing.T) {
 	record.Observation.SchemaVersion = ai.ContextSchema
 	rules := game.Ruleset{ID: "r", Version: "1", Units: []game.UnitType{{ID: "ranger", Cost: 10, Attack: 20}}}
 	record.Observation.Legal.Units = rules.Units
-	record.Observation.UnitReference = ai.FreezeUnitReference(rules, record.Observation)
+	record.Observation.UnitReference = agentview.FreezeUnitReference(rules, record.Observation)
 	repo := &contextRepo{fakeBattleRepo: &fakeBattleRepo{}, record: record}
 	svc := NewService(repo, &battleFactionRepo{}, &fakeScenarioCatalog{}, 100).(DecisionContextService)
 	result, err := svc.GetDecisionContext(context.Background(), contextBattleID, contextRequestID, 2)
@@ -130,7 +131,7 @@ func TestCompactSavedDecisionContext(t *testing.T) {
 		t.Fatal(result, err)
 	}
 	initial, _ := json.Marshal(result.InitialContext)
-	expected, _ := json.Marshal(ai.AgentObservation(record.Observation))
+	expected, _ := json.Marshal(agentview.AgentObservation(record.Observation))
 	if string(initial) != string(expected) || strings.Contains(string(initial), `"attack":20`) {
 		t.Fatal("incorrect initial projection")
 	}

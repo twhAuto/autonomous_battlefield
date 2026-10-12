@@ -5,9 +5,11 @@ package worker
 
 import (
 	"context"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"testing"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 func TestKnowledgePersistedBeforeDecisionHash(t *testing.T) {
@@ -49,7 +51,7 @@ func assertFrozenKnowledge(t *testing.T, record ai.DecisionRecord, limits ai.Kno
 	if k == nil || k.Limits != limits || len(k.Cards) != 1 {
 		t.Fatal("missing knowledge")
 	}
-	h, err := ai.ObservationHash(record.Observation)
+	h, err := decision.ObservationHash(record.Observation)
 	if err != nil || h != record.Observation.ObservationHash {
 		t.Fatal("knowledge not hashed")
 	}

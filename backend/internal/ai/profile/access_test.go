@@ -1,14 +1,16 @@
-package ai
+package profile
 
 import (
 	"context"
 	"errors"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"testing"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 )
 
 func TestAccessPolicyControlsSelectionsWithoutChangingConfiguration(t *testing.T) {
-	base := NewProfileCatalog("cluster", []ModelProfile{{ID: "api", DisplayName: "API", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true}})
+	base := NewProfileCatalog("cluster", []ai.ModelProfile{{ID: "api", DisplayName: "API", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true}})
 	policy := AccessPolicy{Providers: map[string]bool{"openai": true}, Profiles: map[string]ProfileAccess{"api": {Enabled: true, AllowedRoles: []string{"player"}}}}
 	var failure error
 	registry := base.WithAccessPolicy(func() (AccessPolicy, error) { return policy, failure })

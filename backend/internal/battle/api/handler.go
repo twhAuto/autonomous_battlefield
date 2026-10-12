@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 
@@ -416,7 +417,7 @@ func visibleProfiles(r *http.Request, profiles []ai.ModelProfile) any {
 	if authn.IsPlayer(r.Context()) {
 		result := []map[string]any{}
 		for _, p := range profiles {
-			if ai.ProfileAllowed(r.Context(), p) && p.Available {
+			if profile.ProfileAllowed(r.Context(), p) && p.Available {
 				result = append(result, map[string]any{"id": p.ID, "displayName": p.DisplayName, "modelLabel": p.ModelLabel, "runtime": p.Runtime, "available": true})
 			}
 		}
@@ -427,7 +428,7 @@ func visibleProfiles(r *http.Request, profiles []ai.ModelProfile) any {
 	}
 	result := []ai.ModelProfile{}
 	for _, p := range profiles {
-		if ai.ProfileAllowed(r.Context(), p) {
+		if profile.ProfileAllowed(r.Context(), p) {
 			result = append(result, p)
 		}
 	}

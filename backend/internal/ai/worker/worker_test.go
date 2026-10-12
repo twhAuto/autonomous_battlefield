@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
 )
 
@@ -85,7 +86,7 @@ func TestWorkerClaimsRunsAndReportsUsage(t *testing.T) {
 	var claims atomic.Int32
 	var usage atomic.Int32
 	client := &http.Client{Transport: usageReportingTransport{cancel: cancel, claims: &claims, usage: &usage}}
-	profiles := ai.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
+	profiles := profile.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
 	worker := &Worker{MCPURL: "http://mcp/mcp", Secret: "secret", WorkerID: "agent", Profiles: profiles, PollInterval: time.Millisecond, DecisionTimeout: time.Second, Concurrency: 2, Client: client, RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
 		return fakeRunner{result: ai.DecisionResult{Accepted: true, Usage: ai.Usage{Requests: 1}}}, nil
 	}}
@@ -159,7 +160,7 @@ func TestWorkerDoesNotClaimBeyondAvailableConcurrency(t *testing.T) {
 	release := make(chan struct{})
 	defer close(release)
 
-	profiles := ai.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
+	profiles := profile.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
 	worker := &Worker{MCPURL: "http://mcp/mcp", Secret: "secret", WorkerID: "agent", Profiles: profiles, DecisionTimeout: time.Second, Concurrency: 4, Client: client, RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
 		return runnerFunc(func(ctx context.Context, _ ai.DecisionSession) (ai.DecisionResult, error) {
 			started <- struct{}{}
@@ -238,7 +239,7 @@ func TestRunJobReportsUnavailableAndRunnerFailures(t *testing.T) {
 		}
 		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil
 	})}
-	profiles := ai.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
+	profiles := profile.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
 	worker := &Worker{MCPURL: "http://mcp/mcp", Secret: "secret", Profiles: profiles, DecisionTimeout: time.Second, Client: client, Logger: slog.New(slog.NewJSONHandler(&logs, nil)), RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) { return fakeRunner{err: errors.New("provider")}, nil }}
 	worker.runJob(context.Background(), job{CapabilityToken: "server-issued-capability", RequestID: "request", ProfileID: "missing"})
 	worker.runJob(context.Background(), job{CapabilityToken: "server-issued-capability", RequestID: "request", ProfileID: "profile"})
@@ -321,7 +322,7 @@ func TestTransientClaimFailureDoesNotCancelSibling(t *testing.T) {
 			return nil, req.Context().Err()
 		}
 	})}
-	profiles := ai.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
+	profiles := profile.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
 	w := &Worker{MCPURL: "http://mcp/mcp", Profiles: profiles, Concurrency: 2, Client: client, PollInterval: time.Millisecond, DecisionTimeout: time.Minute, RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
 		return runnerFunc(func(ctx context.Context, _ ai.DecisionSession) (ai.DecisionResult, error) {
 			started <- ctx

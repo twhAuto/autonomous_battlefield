@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
@@ -18,7 +19,7 @@ import (
 type Handler struct {
 	Repository Repository
 	Config     Config
-	Profiles   *ai.ProfileRegistry
+	Profiles   *profile.ProfileRegistry
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
@@ -52,7 +53,7 @@ func (h *Handler) options(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, available := h.availability()
-	available = available && ai.ProfileAllowed(r.Context(), p)
+	available = available && profile.ProfileAllowed(r.Context(), p)
 	o.Available = available
 	o.ModelLabel = p.ModelLabel
 	if o.ModelLabel == "" {
@@ -83,7 +84,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, available := h.availability()
-	available = available && ai.ProfileAllowed(r.Context(), p)
+	available = available && profile.ProfileAllowed(r.Context(), p)
 	if !available {
 		apierror.Write(w, r, 503, "background generation is unavailable")
 		return

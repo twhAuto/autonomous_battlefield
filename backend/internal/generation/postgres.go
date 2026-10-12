@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
@@ -145,7 +146,7 @@ func (p *Postgres) Admit(ctx context.Context, actor, key string, input Input, c 
 	if err != nil {
 		return Job{}, o, err
 	}
-	j, err := scan(tx.QueryRow(ctx, `INSERT INTO faction_background_generations(id,actor_id,idempotency_key,input_hash,input,profile_id,model_label,prompt_version,status,expires_at,execution_seconds,runtime) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',now()+$9::interval,$10,$11) RETURNING `+columns, id, actor, key, hash, raw, c.ProfileID, label, ai.GenerationPromptVersion, c.QueueTimeout.String(), max(1, int(c.ExecutionTimeout.Seconds())), c.Runtime))
+	j, err := scan(tx.QueryRow(ctx, `INSERT INTO faction_background_generations(id,actor_id,idempotency_key,input_hash,input,profile_id,model_label,prompt_version,status,expires_at,execution_seconds,runtime) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',now()+$9::interval,$10,$11) RETURNING `+columns, id, actor, key, hash, raw, c.ProfileID, label, prompts.GenerationPromptVersion, c.QueueTimeout.String(), max(1, int(c.ExecutionTimeout.Seconds())), c.Runtime))
 	if err != nil {
 		return j, o, admissionError(err)
 	}

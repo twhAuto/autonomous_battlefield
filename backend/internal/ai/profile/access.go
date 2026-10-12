@@ -1,4 +1,6 @@
-package ai
+package profile
+
+import "github.com/twh09/autonomous_battlefield/backend/internal/ai"
 
 // AccessPolicy restricts new selections; deployment configuration still determines
 // which models can run. Existing battle controller snapshots are unchanged.
@@ -16,7 +18,7 @@ type ProfileAccess struct {
 func (r *ProfileRegistry) WithAccessPolicy(read func() (AccessPolicy, error)) *ProfileRegistry {
 	return &ProfileRegistry{profiles: r.profiles, accessPolicy: read}
 }
-func applyAccess(p ModelProfile, policy AccessPolicy, err error) ModelProfile {
+func applyAccess(p ai.ModelProfile, policy AccessPolicy, err error) ai.ModelProfile {
 	if err != nil {
 		p.Available = false
 		p.UnavailableReason = "model access policy could not be loaded"

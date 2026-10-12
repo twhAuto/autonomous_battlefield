@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/admin"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	battleapi "github.com/twh09/autonomous_battlefield/backend/internal/battle/api"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/catalog"
@@ -31,37 +31,37 @@ type App struct {
 
 type MemberOptions struct {
 	Store    members.Repository
-	Profiles []*ai.ProfileRegistry
+	Profiles []*profile.ProfileRegistry
 }
 
-func NewAPI(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, registries ...*ai.ProfileRegistry) *App {
+func NewAPI(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, registries ...*profile.ProfileRegistry) *App {
 	return NewAPIWithAuthentication(db, catalog, maxTicks, authn.Config{}, registries...)
 }
 
-func NewAPIWithAuthentication(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, registries ...*ai.ProfileRegistry) *App {
+func NewAPIWithAuthentication(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, registries ...*profile.ProfileRegistry) *App {
 	return NewAPIWithResultCache(db, catalog, maxTicks, authentication, nil, registries...)
 }
 
-func NewAPIWithResultCache(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, registries ...*ai.ProfileRegistry) *App {
+func NewAPIWithResultCache(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, registries ...*profile.ProfileRegistry) *App {
 	return NewAPIWithGeneration(db, catalog, maxTicks, authentication, cache, generation.DefaultConfig(), registries...)
 }
-func NewAPIWithGeneration(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, generationConfig generation.Config, registries ...*ai.ProfileRegistry) *App {
+func NewAPIWithGeneration(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, generationConfig generation.Config, registries ...*profile.ProfileRegistry) *App {
 	return NewAPIWithMembers(db, catalog, maxTicks, authentication, cache, generationConfig, MemberOptions{Profiles: registries})
 }
 
 func NewAPIWithMembers(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, generationConfig generation.Config, options MemberOptions) *App {
 	registries := options.Profiles
-	var profiles *ai.ProfileRegistry
+	var profiles *profile.ProfileRegistry
 	if len(registries) > 0 {
 		profiles = registries[0]
 	}
 	if profiles == nil {
-		profiles = ai.NewProfileCatalog("local", nil)
+		profiles = profile.NewProfileCatalog("local", nil)
 	}
 	adminService := &admin.Service{Repository: &admin.Postgres{DB: db}, Profiles: profiles}
 	adminHandler := &admin.Handler{Service: adminService}
 	profiles = profiles.WithAccessPolicy(adminService.ReadPolicy)
-	registries = []*ai.ProfileRegistry{profiles}
+	registries = []*profile.ProfileRegistry{profiles}
 	generationHandler := &generation.Handler{Repository: &generation.Postgres{DB: db}, Config: generationConfig, Profiles: profiles}
 	factionRepository := factionrepo.NewPostgres(db)
 	factionService := factionservice.NewService(factionRepository, catalog)

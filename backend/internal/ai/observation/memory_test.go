@@ -1,22 +1,25 @@
 // Checks faction-memory scope, chronological ordering, size bounds, and contribution to
 // observation hashes.
 
-package ai
+package observation
 
 import (
 	"encoding/json"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"strings"
 	"testing"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
-func memoryRecord(tick uint64) DecisionRecord {
-	return DecisionRecord{BattleID: "battle", Attempt: 2, FactionID: "blue", TargetTick: tick, Status: "accepted", ResolvedPlan: &controller.PlanProposal{Name: "reserve", ReserveGold: 100}, Observation: DecisionContext{Economy: EconomyContext{Gold: int64(tick)}, View: game.View{State: game.State{Tick: tick - 1, Units: []game.Unit{{FactionID: "blue"}, {FactionID: "red"}}}}}}
+func memoryRecord(tick uint64) ai.DecisionRecord {
+	return ai.DecisionRecord{BattleID: "battle", Attempt: 2, FactionID: "blue", TargetTick: tick, Status: "accepted", ResolvedPlan: &controller.PlanProposal{Name: "reserve", ReserveGold: 100}, Observation: ai.DecisionContext{Economy: ai.EconomyContext{Gold: int64(tick)}, View: game.View{State: game.State{Tick: tick - 1, Units: []game.Unit{{FactionID: "blue"}, {FactionID: "red"}}}}}}
 }
 func TestFactionMemoryScopeChronologyAndBounds(t *testing.T) {
-	records := []DecisionRecord{memoryRecord(10), memoryRecord(20), memoryRecord(30), memoryRecord(40)}
-	for _, change := range []func(*DecisionRecord){func(r *DecisionRecord) { r.BattleID = "other" }, func(r *DecisionRecord) { r.Attempt = 1 }, func(r *DecisionRecord) { r.FactionID = "red" }, func(r *DecisionRecord) { r.Status = "running" }, func(r *DecisionRecord) { r.ResolvedPlan = nil }} {
+	records := []ai.DecisionRecord{memoryRecord(10), memoryRecord(20), memoryRecord(30), memoryRecord(40)}
+	for _, change := range []func(*ai.DecisionRecord){func(r *ai.DecisionRecord) { r.BattleID = "other" }, func(r *ai.DecisionRecord) { r.Attempt = 1 }, func(r *ai.DecisionRecord) { r.FactionID = "red" }, func(r *ai.DecisionRecord) { r.Status = "running" }, func(r *ai.DecisionRecord) { r.ResolvedPlan = nil }} {
 		bad := memoryRecord(45)
 		change(&bad)
 		records = append(records, bad)
@@ -39,15 +42,15 @@ func TestFactionMemoryScopeChronologyAndBounds(t *testing.T) {
 	}
 }
 func TestObservationHashIncludesMemory(t *testing.T) {
-	c := DecisionContext{RequestID: "one"}
-	before, _ := ObservationHash(c)
-	c.Memory = BuildFactionMemory([]DecisionRecord{memoryRecord(10)}, "battle", 2, "blue", 20)
-	after, _ := ObservationHash(c)
+	c := ai.DecisionContext{RequestID: "one"}
+	before, _ := decision.ObservationHash(c)
+	c.Memory = BuildFactionMemory([]ai.DecisionRecord{memoryRecord(10)}, "battle", 2, "blue", 20)
+	after, _ := decision.ObservationHash(c)
 	if before == after {
 		t.Fatal("memory changes must invalidate reuse")
 	}
 	c.RequestID = "two"
-	equivalent, _ := ObservationHash(c)
+	equivalent, _ := decision.ObservationHash(c)
 	if after != equivalent {
 		t.Fatal("request id must not affect observation hash")
 	}

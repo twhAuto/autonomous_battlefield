@@ -1,10 +1,14 @@
-package ai
+package agentview
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+)
 
 // Omit exact identity copies already supplied in the system prompt. Never
 // summarize user-authored identity or change the canonical inspector response.
-func SessionContextPayload(session DecisionSession, payload json.RawMessage) json.RawMessage {
+func SessionContextPayload(session ai.DecisionSession, payload json.RawMessage) json.RawMessage {
 	if session.JobType == "faction_background" {
 		return payload
 	}

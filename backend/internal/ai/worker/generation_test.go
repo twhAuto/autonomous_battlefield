@@ -3,6 +3,9 @@
 package worker
 
 import (
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
 
 	"context"
@@ -24,7 +27,7 @@ func TestGenerationWorkerScopesSessionAndReportsOutcomes(t *testing.T) {
 }
 
 func checkGenerationOutcome(t *testing.T, mode string) {
-	profiles := ai.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "writer", DisplayName: "Writer", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 12, MaxOutputTokens: 4000}})
+	profiles := profile.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "writer", DisplayName: "Writer", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 12, MaxOutputTokens: 4000}})
 	var report struct {
 		RequestID, Category string
 		Usage               ai.Usage
@@ -45,7 +48,7 @@ func checkGenerationOutcome(t *testing.T, mode string) {
 		}
 		return runnerFunc(func(ctx context.Context, s ai.DecisionSession) (ai.DecisionResult, error) {
 			testutil.Require(t, !(s.JobType != "faction_background" || s.MCPURL != "http://mcp/generation-mcp" || s.Doctrine != ""), func() { t.Fatal(s) })
-			id, err := ai.VerifyCapability("secret", s.CapabilityToken, time.Now())
+			id, err := capability.VerifyCapability("secret", s.CapabilityToken, time.Now())
 			testutil.Require(t, !(err != nil || id != "generation:draft"), func() { t.Fatal(id, err) })
 			if mode == "model_failure" {
 				return ai.DecisionResult{ErrorCategory: "invalid_output"}, errors.New("invalid")
@@ -53,7 +56,7 @@ func checkGenerationOutcome(t *testing.T, mode string) {
 			return ai.DecisionResult{Accepted: true, Usage: ai.Usage{Requests: 2}}, nil
 		}), nil
 	}
-	token, _ := ai.MintCapability("secret", "generation:draft", time.Now().Add(time.Minute))
+	token, _ := capability.MintCapability("secret", "generation:draft", time.Now().Add(time.Minute))
 	j := job{CapabilityToken: token, RequestID: "draft", ProfileID: "writer", JobType: "faction_background", ExecutionTimeoutSeconds: 120}
 	if mode == "missing_profile" {
 		j.ProfileID = "unknown"
@@ -67,5 +70,5 @@ func checkGenerationOutcome(t *testing.T, mode string) {
 	w.runGeneration(ctx, j)
 	want := map[string]string{"success": "", "model_failure": "invalid_output", "factory_failure": "provider_unavailable", "missing_profile": "profile_unavailable", "timeout": "timeout"}[mode]
 	testutil.Require(t, !(report.RequestID != "draft" || report.Category != want), func() { t.Fatal(report) })
-	testutil.Require(t, !(mode == "success" && (report.Usage.Requests != 2 || report.Metadata["promptVersion"] != ai.GenerationPromptVersion)), func() { t.Fatal(report) })
+	testutil.Require(t, !(mode == "success" && (report.Usage.Requests != 2 || report.Metadata["promptVersion"] != prompts.GenerationPromptVersion)), func() { t.Fatal(report) })
 }

@@ -8,9 +8,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"go.opentelemetry.io/otel/attribute"
 	"io"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
 
 	"os"
 	"os/exec"
@@ -18,7 +19,9 @@ import (
 	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/clienv"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 )
 
 const disableFlag = "--disable"
@@ -68,7 +71,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 	if executor == nil {
 		executor = OSCommandExecutor{}
 	}
-	prompt := ai.SessionSystemPrompt(session) + "\n" + ai.SessionDecisionPrompt(session, nil)
+	prompt := prompts.SessionSystemPrompt(session) + "\n" + prompts.SessionDecisionPrompt(session, nil)
 	var name string
 	var args, environment []string
 	switch r.Provider {
@@ -78,7 +81,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 			disableFlag, "shell_tool", disableFlag, "browser_use", disableFlag, "in_app_browser", disableFlag, "computer_use", disableFlag, "apps", disableFlag, "image_generation", disableFlag, "multi_agent", disableFlag, "skill_search", disableFlag, "skill_mcp_dependency_install", disableFlag, "plugins", disableFlag, "hooks", disableFlag, "goals", disableFlag, "standalone_web_search",
 			"-c", `approval_policy="never"`, "-c", `mcp_servers.battlefield.url="` + session.MCPURL + `"`,
 			"-c", `mcp_servers.battlefield.env_http_headers={Authorization="BATTLEFIELD_MCP_AUTHORIZATION"}`,
-			"-c", `mcp_servers.battlefield.enabled_tools=["` + strings.Join(ai.SessionToolNames(session), `","`) + `"]`,
+			"-c", `mcp_servers.battlefield.enabled_tools=["` + strings.Join(prompts.SessionToolNames(session), `","`) + `"]`,
 			"-c", `mcp_servers.battlefield.default_tools_approval_mode="approve"`, prompt}
 		args = withModel(args, r.Model)
 		environment = replaceEnvironment(cliEnvironment(), "CODEX_WORKSPACE", workspace)
@@ -96,9 +99,9 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 		if contextErr != nil {
 			return ai.DecisionResult{ErrorCategory: "mcp_context"}, contextErr
 		}
-		prompt = ai.SessionSystemPrompt(session) + "\n" + ai.SessionDecisionPrompt(session, payload)
+		prompt = prompts.SessionSystemPrompt(session) + "\n" + prompts.SessionDecisionPrompt(session, payload)
 
-		environment, err = clienv.PrepareAntigravity(temporary, session.MCPURL, session.CapabilityToken, ai.SessionToolNames(session)...)
+		environment, err = clienv.PrepareAntigravity(temporary, session.MCPURL, session.CapabilityToken, prompts.SessionToolNames(session)...)
 		if err != nil {
 			return ai.DecisionResult{ErrorCategory: "cli_isolation"}, err
 		}
@@ -187,7 +190,7 @@ func (r CLIRunner) prefetchContext(ctx context.Context, session ai.DecisionSessi
 	}
 	defer client.Close()
 	arguments, _ := json.Marshal(map[string]string{"requestId": session.RequestID})
-	payload, _, err := client.Call(ctx, ai.ToolCall{Name: ai.SessionToolNames(session)[0], Arguments: arguments})
+	payload, _, err := client.Call(ctx, ai.ToolCall{Name: prompts.SessionToolNames(session)[0], Arguments: arguments})
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +203,7 @@ func (r CLIRunner) prefetchContext(ctx context.Context, session ai.DecisionSessi
 	if json.Unmarshal(payload, &result) != nil || result.Context.RequestID != session.RequestID || (session.JobType != "faction_background" && ((result.Context.TargetTick == 0 && !result.Context.Opening) || result.Context.ExpectedVersion < 1)) {
 		return nil, fmt.Errorf("invalid decision context metadata")
 	}
-	return ai.SessionContextPayload(session, payload), nil
+	return agentview.SessionContextPayload(session, payload), nil
 }
 
 // Only CLI login and transport settings cross the subprocess boundary.

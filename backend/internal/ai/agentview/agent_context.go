@@ -1,5 +1,5 @@
 // Projects frozen observations into bounded agent responses and serves exact unit references.
-package ai
+package agentview
 
 import (
 	"crypto/sha256"
@@ -9,6 +9,7 @@ import (
 	"sort"
 	"unicode/utf8"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
@@ -22,25 +23,8 @@ type UnitOverview struct {
 	Weaknesses string `json:"weaknesses,omitempty"`
 }
 
-type ReferenceIdentity struct {
-	RulesetID      string `json:"rulesetId"`
-	RulesetVersion string `json:"rulesetVersion"`
-	Digest         string `json:"digest"`
-}
-
-type UnitReferenceSnapshot struct {
-	ReferenceIdentity
-	Units []UnitDetail `json:"units"`
-}
-
-type UnitDetail struct {
-	UnitID string         `json:"unitId"`
-	Stats  game.UnitType  `json:"stats"`
-	Card   *game.UnitCard `json:"card,omitempty"`
-}
-
 type AgentKnowledge struct {
-	ReferenceIdentity
+	ai.ReferenceIdentity
 	Mechanics string `json:"mechanics,omitempty"`
 }
 
@@ -69,8 +53,8 @@ type AgentContext struct {
 	ObservationVersion uint64                  `json:"observationVersion"`
 	ObservationHash    string                  `json:"observationHash"`
 	View               game.View               `json:"view"`
-	Economy            EconomyContext          `json:"economy"`
-	Memory             []FactionMemoryEntry    `json:"memory,omitempty"`
+	Economy            ai.EconomyContext       `json:"economy"`
+	Memory             []ai.FactionMemoryEntry `json:"memory,omitempty"`
 	ActivePlan         controller.PlanProposal `json:"activePlan"`
 	Legal              AgentLegalChoices       `json:"legal"`
 	Knowledge          *AgentKnowledge         `json:"knowledge,omitempty"`
@@ -79,10 +63,10 @@ type AgentContext struct {
 
 // FreezeUnitReference captures all and only legal or visible types, independently of
 // the legacy automatic knowledge budget. Values are copied from the frozen ruleset.
-func FreezeUnitReference(r game.Ruleset, c DecisionContext) *UnitReferenceSnapshot {
+func FreezeUnitReference(r game.Ruleset, c ai.DecisionContext) *ai.UnitReferenceSnapshot {
 	payload, _ := json.Marshal(r)
 	digest := sha256.Sum256(payload)
-	result := &UnitReferenceSnapshot{ReferenceIdentity: ReferenceIdentity{r.ID, r.Version, hex.EncodeToString(digest[:])}, Units: []UnitDetail{}}
+	result := &ai.UnitReferenceSnapshot{ReferenceIdentity: ai.ReferenceIdentity{RulesetID: r.ID, RulesetVersion: r.Version, Digest: hex.EncodeToString(digest[:])}, Units: []ai.UnitDetail{}}
 	allowed := visibleAndLegalUnitIDs(c)
 	cards := map[string]game.UnitCard{}
 	if r.Knowledge != nil {
@@ -94,7 +78,7 @@ func FreezeUnitReference(r game.Ruleset, c DecisionContext) *UnitReferenceSnapsh
 		if !allowed[stats.ID] {
 			continue
 		}
-		detail := UnitDetail{UnitID: stats.ID, Stats: stats}
+		detail := ai.UnitDetail{UnitID: stats.ID, Stats: stats}
 		if card, ok := cards[stats.ID]; ok {
 			detail.Card = &card
 		}
@@ -104,7 +88,7 @@ func FreezeUnitReference(r game.Ruleset, c DecisionContext) *UnitReferenceSnapsh
 	return result
 }
 
-func visibleAndLegalUnitIDs(c DecisionContext) map[string]bool {
+func visibleAndLegalUnitIDs(c ai.DecisionContext) map[string]bool {
 	ids := map[string]bool{}
 	for _, unit := range c.Legal.Units {
 		ids[unit.ID] = true
@@ -125,10 +109,10 @@ func unitOverview(stats game.UnitType, card *game.UnitCard) UnitOverview {
 	return result
 }
 
-func CompactContext(c DecisionContext) AgentContext {
+func CompactContext(c ai.DecisionContext) AgentContext {
 	result := AgentContext{
 		FactionName: c.FactionName, Background: c.Background, Doctrine: c.Doctrine,
-		Opening: c.Opening, OwnedUpgradeIDs: c.OwnedUpgradeIDs, SchemaVersion: ContextSchema,
+		Opening: c.Opening, OwnedUpgradeIDs: c.OwnedUpgradeIDs, SchemaVersion: ai.ContextSchema,
 		RequestID: c.RequestID, BattleID: c.BattleID, FactionID: c.FactionID,
 		TargetTick: c.TargetTick, ExpectedVersion: c.ExpectedVersion,
 		ObservationVersion: c.ObservationVersion, ObservationHash: c.ObservationHash,
@@ -140,7 +124,7 @@ func CompactContext(c DecisionContext) AgentContext {
 		},
 	}
 
-	details := map[string]UnitDetail{}
+	details := map[string]ai.UnitDetail{}
 	if c.UnitReference != nil {
 		result.Knowledge = &AgentKnowledge{ReferenceIdentity: c.UnitReference.ReferenceIdentity}
 		for _, detail := range c.UnitReference.Units {
@@ -149,7 +133,7 @@ func CompactContext(c DecisionContext) AgentContext {
 	}
 	if c.Knowledge != nil {
 		if result.Knowledge == nil {
-			result.Knowledge = &AgentKnowledge{ReferenceIdentity: ReferenceIdentity{c.Knowledge.RulesetID, c.Knowledge.RulesetVersion, c.Knowledge.Digest}}
+			result.Knowledge = &AgentKnowledge{ReferenceIdentity: ai.ReferenceIdentity{RulesetID: c.Knowledge.RulesetID, RulesetVersion: c.Knowledge.RulesetVersion, Digest: c.Knowledge.Digest}}
 		}
 		result.Knowledge.Mechanics = c.Knowledge.Mechanics
 	}
@@ -169,7 +153,7 @@ func CompactContext(c DecisionContext) AgentContext {
 }
 
 // Project every saved observation into the current format without changing storage.
-func AgentObservation(c DecisionContext) any {
+func AgentObservation(c ai.DecisionContext) any {
 	return groupContextFactions(deduplicateContext(battlefieldContext{AgentContext: CompactContext(c), View: compactBattlefieldView(c.View)}))
 }
 
@@ -185,13 +169,13 @@ type UnitDetailResult struct {
 	Guidance           string         `json:"guidance,omitempty"`
 }
 type UnitDetailsResponse struct {
-	ReferenceIdentity
+	ai.ReferenceIdentity
 	Units []UnitDetailResult `json:"units"`
 }
 
 // Guidance offsets are UTF-8 byte offsets into the frozen card. A continuation
 // repeats base stats and never truncates guidance without an explicit next offset.
-func LookupUnitDetailsPage(c DecisionContext, ids []string, offset int) (UnitDetailsResponse, error) {
+func LookupUnitDetailsPage(c ai.DecisionContext, ids []string, offset int) (UnitDetailsResponse, error) {
 	response := UnitDetailsResponse{Units: []UnitDetailResult{}}
 	if err := validateUnitDetailsRequest(ids, offset); err != nil {
 		return response, err
@@ -213,9 +197,9 @@ func LookupUnitDetailsPage(c DecisionContext, ids []string, offset int) (UnitDet
 	return boundUnitDetailsPage(response, offset)
 }
 
-func unitDetailsReference(c DecisionContext) (ReferenceIdentity, map[string]UnitDetail) {
-	var identity ReferenceIdentity
-	details := map[string]UnitDetail{}
+func unitDetailsReference(c ai.DecisionContext) (ai.ReferenceIdentity, map[string]ai.UnitDetail) {
+	var identity ai.ReferenceIdentity
+	details := map[string]ai.UnitDetail{}
 	if c.UnitReference != nil {
 		identity = c.UnitReference.ReferenceIdentity
 		for _, detail := range c.UnitReference.Units {
@@ -224,10 +208,10 @@ func unitDetailsReference(c DecisionContext) (ReferenceIdentity, map[string]Unit
 	} else {
 		// Legacy records may only have some cards, but legal base stats remain authoritative.
 		if c.Knowledge != nil {
-			identity = ReferenceIdentity{c.Knowledge.RulesetID, c.Knowledge.RulesetVersion, c.Knowledge.Digest}
+			identity = ai.ReferenceIdentity{RulesetID: c.Knowledge.RulesetID, RulesetVersion: c.Knowledge.RulesetVersion, Digest: c.Knowledge.Digest}
 			for _, card := range c.Knowledge.Cards {
 				copy := card.UnitCard
-				details[card.UnitID] = UnitDetail{UnitID: card.UnitID, Stats: card.Stats, Card: &copy}
+				details[card.UnitID] = ai.UnitDetail{UnitID: card.UnitID, Stats: card.Stats, Card: &copy}
 			}
 		}
 		for _, unit := range c.Legal.Units {
@@ -240,7 +224,7 @@ func unitDetailsReference(c DecisionContext) (ReferenceIdentity, map[string]Unit
 	return identity, details
 }
 
-func unitDetailPage(detail UnitDetail, id string, offset int) (UnitDetailResult, error) {
+func unitDetailPage(detail ai.UnitDetail, id string, offset int) (UnitDetailResult, error) {
 	stats := detail.Stats
 	result := UnitDetailResult{UnitID: id, Available: true, Stats: &stats}
 	if detail.Card == nil {

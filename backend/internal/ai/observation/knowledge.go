@@ -1,48 +1,20 @@
 // Selects rules knowledge from faction-visible context, enforcing card and byte limits and
 // recording a digest.
 
-package ai
+package observation
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"sort"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
-type KnowledgeLimits struct {
-	MaxUnitCards int `json:"maxUnitCards" yaml:"maxUnitCards"`
-	MaxBytes     int `json:"maxBytes" yaml:"maxBytes"`
-}
-
-func DefaultKnowledgeLimits() KnowledgeLimits { return KnowledgeLimits{16, 16 << 10} }
-func (l KnowledgeLimits) Validate() error {
-	if l.MaxUnitCards <= 0 || l.MaxBytes <= 0 {
-		return fmt.Errorf("knowledgeRetrieval limits must be positive")
-	}
-	return nil
-}
-
-type RetrievedCard struct {
-	game.UnitCard
-	Stats game.UnitType `json:"stats"`
-}
-type DecisionKnowledge struct {
-	RulesetID      string          `json:"rulesetId"`
-	RulesetVersion string          `json:"rulesetVersion"`
-	Digest         string          `json:"digest"`
-	Limits         KnowledgeLimits `json:"limits"`
-	Mechanics      string          `json:"mechanics,omitempty"`
-	Cards          []RetrievedCard `json:"cards"`
-	SelectedIDs    []string        `json:"selectedIds"`
-	SerializedSize int             `json:"serializedSize"`
-	Truncated      bool            `json:"truncated"`
-}
-
 // Size includes metadata and its own decimal representation.
-func knowledgeSize(k *DecisionKnowledge) int {
+func knowledgeSize(k *ai.DecisionKnowledge) int {
 	for {
 		b, _ := json.Marshal(k)
 		if len(b) == k.SerializedSize {
@@ -51,7 +23,7 @@ func knowledgeSize(k *DecisionKnowledge) int {
 		k.SerializedSize = len(b)
 	}
 }
-func RetrieveKnowledge(r game.Ruleset, c DecisionContext, limits KnowledgeLimits) (*DecisionKnowledge, error) {
+func RetrieveKnowledge(r game.Ruleset, c ai.DecisionContext, limits ai.KnowledgeLimits) (*ai.DecisionKnowledge, error) {
 	if err := limits.Validate(); err != nil {
 		return nil, err
 	}
@@ -60,7 +32,7 @@ func RetrieveKnowledge(r game.Ruleset, c DecisionContext, limits KnowledgeLimits
 	}
 	payload, _ := json.Marshal(r)
 	digest := sha256.Sum256(payload)
-	k := &DecisionKnowledge{RulesetID: r.ID, RulesetVersion: r.Version, Digest: hex.EncodeToString(digest[:]), Limits: limits, Cards: []RetrievedCard{}, SelectedIDs: []string{}}
+	k := &ai.DecisionKnowledge{RulesetID: r.ID, RulesetVersion: r.Version, Digest: hex.EncodeToString(digest[:]), Limits: limits, Cards: []ai.RetrievedCard{}, SelectedIDs: []string{}}
 	// Very small budgets cannot accommodate even metadata. Keep authoritative context usable.
 	k.Truncated = true
 	if knowledgeSize(k) > limits.MaxBytes {
@@ -84,7 +56,7 @@ func RetrieveKnowledge(r game.Ruleset, c DecisionContext, limits KnowledgeLimits
 		if len(k.Cards) >= limits.MaxUnitCards {
 			break
 		}
-		k.Cards = append(k.Cards, RetrievedCard{card, units[id]})
+		k.Cards = append(k.Cards, ai.RetrievedCard{UnitCard: card, Stats: units[id]})
 		k.SelectedIDs = append(k.SelectedIDs, id)
 		if knowledgeSize(k) > limits.MaxBytes {
 			k.Cards = k.Cards[:len(k.Cards)-1]
@@ -99,7 +71,7 @@ func RetrieveKnowledge(r game.Ruleset, c DecisionContext, limits KnowledgeLimits
 	}
 	return k, nil
 }
-func knowledgeCandidates(c DecisionContext) []string {
+func knowledgeCandidates(c ai.DecisionContext) []string {
 	enemy, own := []string{}, []string{}
 	for _, u := range c.View.State.Units {
 		if u.FactionID == c.FactionID {

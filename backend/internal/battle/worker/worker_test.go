@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/observation"
 	battle "github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
@@ -553,7 +555,7 @@ func assertMemoryReadFailure(t *testing.T, worker *Worker, repository *decisionB
 	t.Helper()
 
 	repository.memoryErr = errors.New("memory unavailable")
-	if err := worker.prepareDecision(context.Background(), job.Lease, simulation, job.Scenario.Factions[0].ID, 30, simulation.ScriptedPlans(), ai.NewDecisionService(repository)); err != nil {
+	if err := worker.prepareDecision(context.Background(), job.Lease, simulation, job.Scenario.Factions[0].ID, 30, simulation.ScriptedPlans(), decision.NewDecisionService(repository)); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(logs.String(), "faction_memory_unavailable") {
@@ -582,7 +584,7 @@ func (r *decisionBattleRepository) ListFactionMemory(_ context.Context, battleID
 	for _, record := range r.records {
 		records = append(records, record)
 	}
-	return ai.BuildFactionMemory(records, battleID, attempt, factionID, beforeTick), nil
+	return observation.BuildFactionMemory(records, battleID, attempt, factionID, beforeTick), nil
 }
 
 func TestFallbackPreservesRunnerFailureCategory(t *testing.T) {

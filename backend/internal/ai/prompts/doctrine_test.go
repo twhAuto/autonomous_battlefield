@@ -1,19 +1,22 @@
 // Checks opening-decision submissions reject invalid upgrade choices.
 
-package ai
+package prompts
 
 import (
+	"testing"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
-	"testing"
 )
 
 func TestOpeningSubmissionValidatesUpgrades(t *testing.T) {
-	record := DecisionRecord{ID: "opening", Version: 1, Observation: DecisionContext{Opening: true, Legal: LegalChoices{ActionKinds: []string{"attack"}, Upgrades: []game.Upgrade{{ID: "plating", Cost: 20}}}}}
+	record := ai.DecisionRecord{ID: "opening", Version: 1, Observation: ai.DecisionContext{Opening: true, Legal: ai.LegalChoices{ActionKinds: []string{"attack"}, Upgrades: []game.Upgrade{{ID: "plating", Cost: 20}}}}}
 	empty := []controller.RecruitmentOrder{}
 	plan := controller.PlanProposal{Name: "save", RecruitmentOrders: &empty, UpgradeOrders: []string{"plating"}, SpendOrder: []string{"upgrades"}}
-	submission := PlanSubmission{RequestID: "opening", IdempotencyKey: "once", ExpectedVersion: 1, TargetTick: 0, Plan: plan}
-	if issues := ValidateSubmission(record, submission); len(issues) != 0 {
+	submission := ai.PlanSubmission{RequestID: "opening", IdempotencyKey: "once", ExpectedVersion: 1, TargetTick: 0, Plan: plan}
+	if issues := decision.ValidateSubmission(record, submission); len(issues) != 0 {
 		t.Fatal(issues)
 	}
 	for _, mutate := range []func(*controller.PlanProposal){
@@ -24,7 +27,7 @@ func TestOpeningSubmissionValidatesUpgrades(t *testing.T) {
 	} {
 		submission.Plan = controller.ClonePlanProposal(plan)
 		mutate(&submission.Plan)
-		if len(ValidateSubmission(record, submission)) == 0 {
+		if len(decision.ValidateSubmission(record, submission)) == 0 {
 			t.Fatal("invalid opening accepted")
 		}
 	}

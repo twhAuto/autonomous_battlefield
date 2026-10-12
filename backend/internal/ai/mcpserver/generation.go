@@ -12,6 +12,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 )
@@ -36,7 +38,7 @@ type backgroundOutput struct {
 }
 
 func (s *Server) backgroundServer() *mcp.Server {
-	server := mcp.NewServer(&mcp.Implementation{Name: "faction-background", Version: ai.GenerationPromptVersion}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "faction-background", Version: prompts.GenerationPromptVersion}, nil)
 	server.AddReceivingMiddleware(s.logToolInputFailures)
 	mcp.AddTool(server, &mcp.Tool{Name: "get_background_context", Description: "Read the draft faction profile for this generation request."}, func(ctx context.Context, _ *mcp.CallToolRequest, input getContextInput) (*mcp.CallToolResult, backgroundOutput, error) {
 		if err := authorizedRequestID(ctx, input.RequestID); err != nil {
@@ -72,7 +74,7 @@ func (s *Server) GenerationHandler() http.Handler {
 			return
 		}
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), bearerPrefix)
-		id, err := ai.VerifyCapability(s.secret, token, time.Now())
+		id, err := capability.VerifyCapability(s.secret, token, time.Now())
 		if err != nil || !strings.HasPrefix(id, generationLeasePrefix) {
 			http.Error(w, "invalid generation capability", 401)
 			return

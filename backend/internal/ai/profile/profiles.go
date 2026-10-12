@@ -1,25 +1,27 @@
 // Evaluates configured model profiles for catalog visibility or local execution, checking
 // credentials and CLI availability.
 
-package ai
+package profile
 
 import (
 	"context"
 	"errors"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/clienv"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/clienv"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 )
 
 var ErrProfileUnavailable = errors.New("model profile unavailable")
 
 type ProfileRegistry struct {
-	profiles     map[string]ModelProfile
+	profiles     map[string]ai.ModelProfile
 	accessPolicy func() (AccessPolicy, error)
 }
 
@@ -33,19 +35,19 @@ const (
 	antigravityCLIProvider = "antigravity-cli"
 )
 
-func NewProfileRegistry(environment string, configured []ModelProfile) *ProfileRegistry {
+func NewProfileRegistry(environment string, configured []ai.ModelProfile) *ProfileRegistry {
 	return newProfileRegistry(environment, configured, profileExecutor)
 }
 
 // NewProfileCatalog evaluates profiles for battle selection. In a cluster it
 // may advertise an operator-enabled local CLI profile supplied by an external
 // host worker, without claiming that the API pod itself can execute the CLI.
-func NewProfileCatalog(environment string, configured []ModelProfile) *ProfileRegistry {
+func NewProfileCatalog(environment string, configured []ai.ModelProfile) *ProfileRegistry {
 	return newProfileRegistry(environment, configured, profileCatalog)
 }
 
-func newProfileRegistry(environment string, configured []ModelProfile, purpose profileRegistryPurpose) *ProfileRegistry {
-	registry := &ProfileRegistry{profiles: make(map[string]ModelProfile, len(configured))}
+func newProfileRegistry(environment string, configured []ai.ModelProfile, purpose profileRegistryPurpose) *ProfileRegistry {
+	registry := &ProfileRegistry{profiles: make(map[string]ai.ModelProfile, len(configured))}
 	for _, raw := range configured {
 		profile := evaluateProfile(strings.TrimSpace(environment), raw, purpose)
 		registry.profiles[profile.ID] = profile
@@ -53,7 +55,7 @@ func newProfileRegistry(environment string, configured []ModelProfile, purpose p
 	return registry
 }
 
-func (r *ProfileRegistry) Get(id string) (ModelProfile, bool) {
+func (r *ProfileRegistry) Get(id string) (ai.ModelProfile, bool) {
 	profile, ok := r.profiles[id]
 	if ok && r.accessPolicy != nil {
 		policy, err := r.accessPolicy()
@@ -62,16 +64,16 @@ func (r *ProfileRegistry) Get(id string) (ModelProfile, bool) {
 	return profile, ok
 }
 
-func (r *ProfileRegistry) Require(id string) (ModelProfile, error) {
+func (r *ProfileRegistry) Require(id string) (ai.ModelProfile, error) {
 	profile, ok := r.Get(id)
 	if !ok || !profile.Available {
-		return ModelProfile{}, ErrProfileUnavailable
+		return ai.ModelProfile{}, ErrProfileUnavailable
 	}
 	return profile, nil
 }
 
-func (r *ProfileRegistry) List() []ModelProfile {
-	result := make([]ModelProfile, 0, len(r.profiles))
+func (r *ProfileRegistry) List() []ai.ModelProfile {
+	result := make([]ai.ModelProfile, 0, len(r.profiles))
 	var policy AccessPolicy
 	var err error
 	if r.accessPolicy != nil {
@@ -101,7 +103,7 @@ func (r *ProfileRegistry) AvailableIDs() []string {
 	return result
 }
 
-func evaluateProfile(environment string, profile ModelProfile, purpose profileRegistryPurpose) ModelProfile {
+func evaluateProfile(environment string, profile ai.ModelProfile, purpose profileRegistryPurpose) ai.ModelProfile {
 	profile.ID = strings.TrimSpace(profile.ID)
 	profile.Model = strings.TrimSpace(profile.Model)
 	if profile.Runtime == "cli" {
@@ -125,7 +127,7 @@ func evaluateProfile(environment string, profile ModelProfile, purpose profileRe
 	return evaluateLocalCLIProfile(profile)
 }
 
-func evaluateExternalCLIProfile(profile ModelProfile, purpose profileRegistryPurpose) ModelProfile {
+func evaluateExternalCLIProfile(profile ai.ModelProfile, purpose profileRegistryPurpose) ai.ModelProfile {
 	if purpose != profileCatalog || !strings.EqualFold(strings.TrimSpace(os.Getenv(profile.AvailabilityEnvironmentVariable)), "true") {
 		profile.UnavailableReason = "host CLI agent is not connected"
 		return profile
@@ -141,7 +143,7 @@ func evaluateExternalCLIProfile(profile ModelProfile, purpose profileRegistryPur
 	return profile
 }
 
-func evaluateAPIProfile(environment string, profile ModelProfile) ModelProfile {
+func evaluateAPIProfile(environment string, profile ai.ModelProfile) ai.ModelProfile {
 	if profile.Provider != "openai" && profile.Provider != "gemini" {
 		profile.UnavailableReason = "unsupported API provider"
 		return profile
@@ -164,7 +166,7 @@ func evaluateAPIProfile(environment string, profile ModelProfile) ModelProfile {
 	return profile
 }
 
-func evaluateLocalCLIProfile(profile ModelProfile) ModelProfile {
+func evaluateLocalCLIProfile(profile ai.ModelProfile) ai.ModelProfile {
 	binary := map[string]string{claudeCLIProvider: "claude", codexCLIProvider: "codex", antigravityCLIProvider: "agy"}[profile.Provider]
 	if binary == "" {
 		profile.UnavailableReason = "unsupported CLI provider"
@@ -208,7 +210,7 @@ func evaluateLocalCLIProfile(profile ModelProfile) ModelProfile {
 }
 
 // ProfileAllowed is also enforced on submitted IDs, not just catalog visibility.
-func ProfileAllowed(ctx context.Context, p ModelProfile) bool {
+func ProfileAllowed(ctx context.Context, p ai.ModelProfile) bool {
 	a, ok := authn.ActorFromContext(ctx)
 	if !ok {
 		return false

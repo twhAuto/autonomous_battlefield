@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
@@ -75,8 +76,8 @@ func (s *battleService) GetDecisionContext(ctx context.Context, battleID, reques
 		Economy: observation.Economy, View: observation.View, Legal: observation.Legal,
 		ActivePlan: observation.ActivePlan, Memory: observation.Memory,
 	}
-	compact := ai.CompactContext(observation)
-	result.InitialContext = ai.AgentObservation(observation)
+	compact := agentview.CompactContext(observation)
+	result.InitialContext = agentview.AgentObservation(observation)
 	result.AvailableUnitDetails = observation.UnitReference
 	result.Context.Legal = compact.Legal
 	result.Context.Knowledge = compact.Knowledge

@@ -1,4 +1,4 @@
-package ai
+package agentview
 
 import (
 	"encoding/json"
@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
@@ -42,7 +43,7 @@ func TestBattlefieldContextExternalFixture(t *testing.T) {
 		t.Fatal("context grew")
 	}
 	t.Logf("initial context bytes before=%d after=%d saved=%d (%.1f%%)", before, after, before-after, 100*float64(before-after)/float64(before))
-	var session DecisionSession
+	var session ai.DecisionSession
 	_ = json.Unmarshal(source["factionName"], &session.FactionName)
 	_ = json.Unmarshal(source["background"], &session.Background)
 	_ = json.Unmarshal(source["doctrine"], &session.Doctrine)

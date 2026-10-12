@@ -10,10 +10,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
@@ -153,17 +155,17 @@ type battleService struct {
 	factions    factionRepository
 	catalog     ScenarioCatalog
 	maxTicks    uint64
-	profiles    *ai.ProfileRegistry
+	profiles    *profile.ProfileRegistry
 	resultCache ResultCache
 }
 
-func NewService(battles Repository, factions factionRepository, catalog ScenarioCatalog, maxTicks uint64, registries ...*ai.ProfileRegistry) Service {
+func NewService(battles Repository, factions factionRepository, catalog ScenarioCatalog, maxTicks uint64, registries ...*profile.ProfileRegistry) Service {
 	return NewServiceWithResultCache(battles, factions, catalog, maxTicks, nil, registries...)
 }
 
 // NewServiceWithResultCache enables optional caching of terminal battle snapshots.
-func NewServiceWithResultCache(battles Repository, factions factionRepository, catalog ScenarioCatalog, maxTicks uint64, cache ResultCache, registries ...*ai.ProfileRegistry) Service {
-	registry := ai.NewProfileRegistry("local", nil)
+func NewServiceWithResultCache(battles Repository, factions factionRepository, catalog ScenarioCatalog, maxTicks uint64, cache ResultCache, registries ...*profile.ProfileRegistry) Service {
+	registry := profile.NewProfileRegistry("local", nil)
 	if len(registries) > 0 && registries[0] != nil {
 		registry = registries[0]
 	}
@@ -306,7 +308,7 @@ func (s *battleService) authorizeController(ctx context.Context, controller game
 	if controller.Type == ai.ControllerModel {
 		if _, hasActor := authn.ActorFromContext(ctx); hasActor {
 			p, e := s.profiles.Require(controller.ProfileID)
-			if e == nil && !ai.ProfileAllowed(ctx, p) {
+			if e == nil && !profile.ProfileAllowed(ctx, p) {
 				return authn.ErrForbidden
 			}
 		}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
@@ -42,7 +43,7 @@ func (w *Worker) runGeneration(parent context.Context, job job) {
 			model = os.Getenv(profile.ModelEnvironmentVariable)
 		}
 		metadata["modelIdentifier"] = model
-		metadata["promptVersion"] = ai.GenerationPromptVersion
+		metadata["promptVersion"] = prompts.GenerationPromptVersion
 		result, category = w.executeGeneration(ctx, job, profile, duration)
 	}
 	if ctx.Err() != nil {

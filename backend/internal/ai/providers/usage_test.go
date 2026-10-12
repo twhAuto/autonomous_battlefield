@@ -2,10 +2,11 @@ package providers
 
 import (
 	"context"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 )
 
 func TestProviderUsageSubsetsAndMissingUsage(t *testing.T) {

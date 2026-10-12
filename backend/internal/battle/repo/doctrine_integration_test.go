@@ -3,9 +3,13 @@
 package repo
 
 import (
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
 
 	"context"
+	"testing"
+	"time"
+
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	factions "github.com/twh09/autonomous_battlefield/backend/internal/faction"
@@ -13,8 +17,6 @@ import (
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
-	"testing"
-	"time"
 )
 
 func TestDoctrinePersistenceAndTickZeroAgainstPostgres(t *testing.T) {
@@ -55,7 +57,7 @@ func TestDoctrinePersistenceAndTickZeroAgainstPostgres(t *testing.T) {
 	job := createAndClaimBattle(t, ctx, repo, battleID)
 	orders := []controller.RecruitmentOrder{}
 	plan := controller.PlanProposal{Name: "save", RecruitmentOrders: &orders}
-	params := ai.CreateDecisionParams{ID: randomUUID(t), BattleID: battleID, Attempt: job.Lease.Attempt, FactionID: id, TargetTick: 0, ControllerType: ai.ControllerScripted, Observation: ai.DecisionContext{Opening: true, Doctrine: "Scout"}, ObservationHash: "opening", PromptVersion: ai.PromptVersion, ToolSchemaVersion: ai.ToolSchema}
+	params := ai.CreateDecisionParams{ID: randomUUID(t), BattleID: battleID, Attempt: job.Lease.Attempt, FactionID: id, TargetTick: 0, ControllerType: ai.ControllerScripted, Observation: ai.DecisionContext{Opening: true, Doctrine: "Scout"}, ObservationHash: "opening", PromptVersion: prompts.PromptVersion, ToolSchemaVersion: ai.ToolSchema}
 	record, err := repo.CreateOrReuseDecision(ctx, params)
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	submission := ai.PlanSubmission{RequestID: record.ID, ExpectedVersion: record.Version, TargetTick: 0, IdempotencyKey: "opening", Plan: plan}

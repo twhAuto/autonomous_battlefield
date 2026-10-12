@@ -1,4 +1,4 @@
-package ai
+package agentview
 
 import (
 	"encoding/json"

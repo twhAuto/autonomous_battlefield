@@ -1,7 +1,7 @@
 // Embeds shared model instructions and derives prompt versions; renders prompts and tool
 // allowlists for each session purpose.
 
-package ai
+package prompts
 
 import (
 	"crypto/sha256"
@@ -10,34 +10,35 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 )
 
 // All instructions are embedded and versioned together. The digest changes even
 // if an editor forgets to bump the human-readable version.
 //
-//go:embed prompts/battlefield-agent.txt
+//go:embed battlefield-agent.txt
 var systemPromptTemplate string
 
-//go:embed prompts/decision.txt
+//go:embed decision.txt
 var decisionPromptTemplate string
 
-//go:embed prompts/tool-context.txt
+//go:embed tool-context.txt
 var toolContextTemplate string
 
-//go:embed prompts/inline-context.txt
+//go:embed inline-context.txt
 var inlineContextTemplate string
 
-//go:embed prompts/doctrine.txt
+//go:embed doctrine.txt
 var doctrinePromptTemplate string
 
-//go:embed prompts/identity.txt
+//go:embed identity.txt
 var identityPromptTemplate string
 
-//go:embed prompts/background-generation.txt
+//go:embed background-generation.txt
 var backgroundGenerationPrompt string
 
-//go:embed prompts/background-decision.txt
+//go:embed background-decision.txt
 var backgroundDecisionTemplate string
 
 var generationSystemPrompt = fmt.Sprintf(strings.TrimSpace(backgroundGenerationPrompt), faction.MaxBackgroundLength)
@@ -66,14 +67,14 @@ func contextDelivery(requestID string, inlineContext []byte) string {
 	return strings.TrimSpace(inlineContextTemplate) + "\nBEGIN_BATTLEFIELD_CONTEXT\n" + string(inlineContext) + "\nEND_BATTLEFIELD_CONTEXT"
 }
 
-func SessionSystemPrompt(session DecisionSession) string {
+func SessionSystemPrompt(session ai.DecisionSession) string {
 	if session.JobType == "faction_background" {
 		return generationSystemPrompt
 	}
 	return SystemPrompt
 }
 
-func SessionDecisionPrompt(session DecisionSession, inline []byte) string {
+func SessionDecisionPrompt(session ai.DecisionSession, inline []byte) string {
 	if session.JobType != "faction_background" {
 		identity, _ := json.Marshal(map[string]string{"name": session.FactionName, "background": session.Background, "doctrine": session.Doctrine})
 		// Shared policy, then per-faction identity, then per-request delivery: the
@@ -86,7 +87,7 @@ func SessionDecisionPrompt(session DecisionSession, inline []byte) string {
 	}
 	return prompt
 }
-func SessionToolNames(session DecisionSession) []string {
+func SessionToolNames(session ai.DecisionSession) []string {
 	if session.JobType == "faction_background" {
 		return []string{"get_background_context", "submit_faction_background"}
 	}

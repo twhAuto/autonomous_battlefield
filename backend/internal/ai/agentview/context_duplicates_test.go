@@ -1,8 +1,10 @@
-package ai
+package agentview
 
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 )
 
 func TestContextDuplicatesPreserveDifferentFacts(t *testing.T) {
@@ -42,12 +44,12 @@ func TestContextDuplicatesPreserveDifferentFacts(t *testing.T) {
 
 func TestSessionContextIdentityIsSuppliedExactlyOnce(t *testing.T) {
 	payload := json.RawMessage(`{"context":{"factionName":"WH","background":"Full story","doctrine":"Defend","requestId":"r"}}`)
-	s := DecisionSession{FactionName: "WH", Background: "Full story", Doctrine: "Defend"}
+	s := ai.DecisionSession{FactionName: "WH", Background: "Full story", Doctrine: "Defend"}
 	got := SessionContextPayload(s, payload)
 	if string(got) != `{"context":{"requestId":"r"}}` {
 		t.Fatal(string(got))
 	}
-	for _, session := range []DecisionSession{{}, {FactionName: "Other", Background: "Different", Doctrine: "Attack"}, {JobType: "faction_background", Background: "Full story"}} {
+	for _, session := range []ai.DecisionSession{{}, {FactionName: "Other", Background: "Different", Doctrine: "Attack"}, {JobType: "faction_background", Background: "Full story"}} {
 		if string(SessionContextPayload(session, payload)) != string(payload) {
 			t.Fatal("unsupplied identity removed")
 		}

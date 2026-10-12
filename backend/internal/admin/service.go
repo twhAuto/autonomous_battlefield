@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 )
 
 var (
@@ -15,8 +16,8 @@ var (
 )
 
 type Settings struct {
-	Version int64           `json:"version"`
-	Policy  ai.AccessPolicy `json:"policy"`
+	Version int64                `json:"version"`
+	Policy  profile.AccessPolicy `json:"policy"`
 }
 
 type SettingsView struct {
@@ -32,11 +33,11 @@ type Repository interface {
 
 type Service struct {
 	Repository Repository
-	Profiles   *ai.ProfileRegistry
+	Profiles   *profile.ProfileRegistry
 }
 
 // ReadPolicy supplies the registry callback, including its bounded database read.
-func (s *Service) ReadPolicy() (ai.AccessPolicy, error) {
+func (s *Service) ReadPolicy() (profile.AccessPolicy, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	settings, err := s.Repository.Read(ctx)
@@ -50,7 +51,7 @@ func (s *Service) Get(ctx context.Context) (SettingsView, error) {
 	}
 	models := s.Profiles.List()
 	stored := settings.Policy
-	settings.Policy = ai.AccessPolicy{Providers: map[string]bool{}, Profiles: map[string]ai.ProfileAccess{}}
+	settings.Policy = profile.AccessPolicy{Providers: map[string]bool{}, Profiles: map[string]profile.ProfileAccess{}}
 	for _, p := range models {
 		if value, ok := stored.Providers[p.Provider]; ok {
 			settings.Policy.Providers[p.Provider] = value
@@ -73,12 +74,12 @@ func (s *Service) Save(ctx context.Context, settings Settings, actorID string) (
 	return s.Repository.Save(ctx, settings, actorID)
 }
 
-func defaultProfileAccess(p ai.ModelProfile) ai.ProfileAccess {
+func defaultProfileAccess(p ai.ModelProfile) profile.ProfileAccess {
 	roles := p.AllowedRoles
 	if len(roles) == 0 {
 		roles = []string{"admin", "developer"}
 	}
-	return ai.ProfileAccess{Enabled: true, AllowedRoles: roles}
+	return profile.ProfileAccess{Enabled: true, AllowedRoles: roles}
 }
 func validRoles(roles []string) bool {
 	if roles == nil {

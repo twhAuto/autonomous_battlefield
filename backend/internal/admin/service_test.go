@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 )
 
@@ -31,7 +32,7 @@ func (r *policyRepository) Save(_ context.Context, s Settings, actor string) (Se
 }
 
 func TestPolicySourceWithoutHTTP(t *testing.T) {
-	repo := &policyRepository{settings: Settings{Policy: ai.AccessPolicy{Providers: map[string]bool{"openai": false}}}}
+	repo := &policyRepository{settings: Settings{Policy: profile.AccessPolicy{Providers: map[string]bool{"openai": false}}}}
 	service := &Service{Repository: repo, Profiles: registry()}
 	profiles := service.Profiles.WithAccessPolicy(service.ReadPolicy)
 	if _, err := profiles.Require("api"); err == nil {
@@ -57,11 +58,11 @@ func TestSaveValidatesBeforePersistenceAndPreservesActor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	view.Policy.Profiles["cli"] = ai.ProfileAccess{Enabled: true, AllowedRoles: []string{"root"}}
+	view.Policy.Profiles["cli"] = profile.ProfileAccess{Enabled: true, AllowedRoles: []string{"root"}}
 	if _, err := service.Save(context.Background(), view.Settings, "administrator"); !errors.Is(err, ErrInvalid) || repo.saves != 0 {
 		t.Fatalf("invalid policy persisted: saves=%d err=%v", repo.saves, err)
 	}
-	view.Policy.Profiles["cli"] = ai.ProfileAccess{Enabled: true, AllowedRoles: []string{"admin"}}
+	view.Policy.Profiles["cli"] = profile.ProfileAccess{Enabled: true, AllowedRoles: []string{"admin"}}
 	saved, err := service.Save(context.Background(), view.Settings, "administrator")
 	if err != nil || saved.Version != 1 || repo.saves != 1 || repo.actor != "administrator" {
 		t.Fatalf("save lost version or actor: %+v repo=%+v err=%v", saved, repo, err)
@@ -74,7 +75,7 @@ func TestSaveValidatesBeforePersistenceAndPreservesActor(t *testing.T) {
 
 func TestPlayerCLIAccessGrantAndRevocation(t *testing.T) {
 	t.Setenv("TEST_CLI_AVAILABLE", "true")
-	base := ai.NewProfileCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true, AvailabilityEnvironmentVariable: "TEST_CLI_AVAILABLE", SupportedVersionPrefix: "1."}})
+	base := profile.NewProfileCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true, AvailabilityEnvironmentVariable: "TEST_CLI_AVAILABLE", SupportedVersionPrefix: "1."}})
 	repo := &policyRepository{}
 	service := &Service{Repository: repo, Profiles: base}
 	profiles := base.WithAccessPolicy(service.ReadPolicy)
@@ -82,7 +83,7 @@ func TestPlayerCLIAccessGrantAndRevocation(t *testing.T) {
 	check := func(want bool) {
 		t.Helper()
 		p, err := profiles.Require("cli")
-		if err != nil || ai.ProfileAllowed(ctx, p) != want {
+		if err != nil || profile.ProfileAllowed(ctx, p) != want {
 			t.Fatalf("CLI permission want %v: %+v %v", want, p, err)
 		}
 	}
@@ -96,7 +97,7 @@ func TestPlayerCLIAccessGrantAndRevocation(t *testing.T) {
 		if allow {
 			roles = append(roles, "player")
 		}
-		view.Policy.Profiles["cli"] = ai.ProfileAccess{Enabled: true, AllowedRoles: roles}
+		view.Policy.Profiles["cli"] = profile.ProfileAccess{Enabled: true, AllowedRoles: roles}
 		if _, err := service.Save(ctx, view.Settings, "administrator"); err != nil {
 			t.Fatal(err)
 		}

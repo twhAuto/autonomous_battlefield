@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/app"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/catalog"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/resultcache"
@@ -156,7 +156,7 @@ func startServer(configuration config.Config) error {
 		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, fmt.Errorf("load scenario catalog: %w", err))
 	}
 	slog.Info("scenario_catalog_loaded", "path", configuration.API.ScenarioCatalogPath, "scenario_count", len(catalog.IDs()))
-	profiles := ai.NewProfileCatalog(configuration.AI.Environment, configuration.AI.Profiles)
+	profiles := profile.NewProfileCatalog(configuration.AI.Environment, configuration.AI.Profiles)
 	cache, err := resultcache.New(configuration.ResultCache.URL, configuration.ResultCache.TTL, configuration.ResultCache.Timeout)
 	if err != nil {
 		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
@@ -178,7 +178,7 @@ func startServer(configuration config.Config) error {
 		go func() { defer close(syncDone); store.Run(syncCtx) }()
 		defer func() { stopSync(); <-syncDone }()
 	}
-	application := app.NewAPIWithMembers(db, catalog, configuration.API.MaxTicks, configuration.Auth, cache, configuration.AI.BackgroundGeneration, app.MemberOptions{Store: memberStore, Profiles: []*ai.ProfileRegistry{profiles}})
+	application := app.NewAPIWithMembers(db, catalog, configuration.API.MaxTicks, configuration.Auth, cache, configuration.AI.BackgroundGeneration, app.MemberOptions{Store: memberStore, Profiles: []*profile.ProfileRegistry{profiles}})
 	lifecycle.Activate(application.HTTPHandler(), db, nil)
 	slog.Info("api_ready", "address", server.Addr)
 

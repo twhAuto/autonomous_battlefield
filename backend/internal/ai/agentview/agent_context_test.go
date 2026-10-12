@@ -1,4 +1,4 @@
-package ai
+package agentview
 
 import (
 	"encoding/json"
@@ -7,14 +7,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/observation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
-func compactFixture() (game.Ruleset, DecisionContext) {
+func compactFixture() (game.Ruleset, ai.DecisionContext) {
 	r, c := knowledgeFixture()
-	c.SchemaVersion = ContextSchema
+	c.SchemaVersion = ai.ContextSchema
 	c.Legal.Units = append([]game.UnitType(nil), r.Units[:8]...)
-	c.Knowledge, _ = RetrieveKnowledge(r, c, DefaultKnowledgeLimits())
+	c.Knowledge, _ = observation.RetrieveKnowledge(r, c, ai.DefaultKnowledgeLimits())
 	c.UnitReference = FreezeUnitReference(r, c)
 	return r, c
 }
@@ -30,7 +33,7 @@ func TestCompactProjectionAndFrozenLookup(t *testing.T) {
 			t.Fatalf("leaked %s", forbidden)
 		}
 	}
-	before, _ := ObservationHash(c)
+	before, _ := decision.ObservationHash(c)
 	r.Units[0].Attack = 999
 	r.Knowledge.Cards[0].Guidance = "edited"
 	result, err := LookupUnitDetailsPage(c, []string{"unit-00", "unit-20", "unit-23", "unknown"}, 0)
@@ -41,12 +44,12 @@ func TestCompactProjectionAndFrozenLookup(t *testing.T) {
 		t.Fatal("wrong identity")
 	}
 	c.UnitReference.Units[0].Stats.Attack++
-	after, _ := ObservationHash(c)
+	after, _ := decision.ObservationHash(c)
 	if before == after {
 		t.Fatal("reference not hashed")
 	}
 	// Even an accidentally overbroad stored snapshot cannot expose a hidden type.
-	c.UnitReference.Units = append(c.UnitReference.Units, UnitDetail{UnitID: "hidden", Stats: game.UnitType{ID: "hidden"}})
+	c.UnitReference.Units = append(c.UnitReference.Units, ai.UnitDetail{UnitID: "hidden", Stats: game.UnitType{ID: "hidden"}})
 	hidden, _ := LookupUnitDetailsPage(c, []string{"hidden"}, 0)
 	if hidden.Units[0].Available {
 		t.Fatal("hidden reference exposed")
@@ -84,7 +87,7 @@ func TestLegacyContextAndLookup(t *testing.T) {
 	if err != nil || !details.Units[0].Available || details.Units[1].Available {
 		t.Fatal(details, err)
 	}
-	c.SchemaVersion = ContextSchema
+	c.SchemaVersion = ai.ContextSchema
 	compact := CompactContext(c)
 	if compact.Knowledge != nil {
 		t.Fatal("invented knowledge")
@@ -108,7 +111,7 @@ func TestCompactContextSizeByBattleStage(t *testing.T) {
 				c.View.State.Units = append(c.View.State.Units, game.Unit{ID: fmt.Sprint(i), Type: "unit-00", Health: 50, MaxHealth: 100, Attack: 20, Defense: 10})
 			}
 			c.UnitReference = FreezeUnitReference(r, c)
-			c.Knowledge, _ = RetrieveKnowledge(r, c, DefaultKnowledgeLimits())
+			c.Knowledge, _ = observation.RetrieveKnowledge(r, c, ai.DefaultKnowledgeLimits())
 			compact := CompactContext(c)
 			full := c
 			full.UnitReference = nil
@@ -116,8 +119,8 @@ func TestCompactContextSizeByBattleStage(t *testing.T) {
 			fullJSON, _ := json.Marshal(full)
 			compactJSON, _ := json.Marshal(compact)
 			catalogBefore, _ := json.Marshal(struct {
-				Legal     LegalChoices
-				Knowledge *DecisionKnowledge
+				Legal     ai.LegalChoices
+				Knowledge *ai.DecisionKnowledge
 			}{c.Legal, c.Knowledge})
 			catalogAfter, _ := json.Marshal(struct {
 				Legal          AgentLegalChoices
@@ -170,11 +173,11 @@ func TestOversizedDetailsAskForSmallerBatch(t *testing.T) {
 
 func TestCompactOverviewIgnoresAutomaticCardLimit(t *testing.T) {
 	r, c := knowledgeFixture()
-	c.SchemaVersion = ContextSchema
-	c.Knowledge, _ = RetrieveKnowledge(r, c, KnowledgeLimits{MaxUnitCards: 1, MaxBytes: 2048})
+	c.SchemaVersion = ai.ContextSchema
+	c.Knowledge, _ = observation.RetrieveKnowledge(r, c, ai.KnowledgeLimits{MaxUnitCards: 1, MaxBytes: 2048})
 	c.UnitReference = FreezeUnitReference(r, c)
 	stored, _ := json.Marshal(c)
-	var restored DecisionContext
+	var restored ai.DecisionContext
 	if err := json.Unmarshal(stored, &restored); err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +191,7 @@ func TestCompactOverviewIgnoresAutomaticCardLimit(t *testing.T) {
 	}
 }
 
-func assertGuidancePagination(t *testing.T, c DecisionContext, guidance string) {
+func assertGuidancePagination(t *testing.T, c ai.DecisionContext, guidance string) {
 	t.Helper()
 	joined := ""
 	offset := 0

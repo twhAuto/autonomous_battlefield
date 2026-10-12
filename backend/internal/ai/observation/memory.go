@@ -1,35 +1,22 @@
 // Builds bounded summaries of earlier decisions from the same battle attempt and faction
 // for later model context.
 
-package ai
+package observation
 
 import (
 	"encoding/json"
 	"sort"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 )
 
 const FactionMemoryLimit = 3
 const FactionMemoryMaxBytes = 8192
 
-// FactionMemoryEntry contains only historical facts from a faction's authorized
-// observation and its resolved plan. It never carries nested memory or raw text
-// from providers. Status distinguishes accepted plans from engine fallbacks.
-type FactionMemoryEntry struct {
-	ObservationTick   uint64                  `json:"observationTick"`
-	TargetTick        uint64                  `json:"targetTick"`
-	Status            string                  `json:"status"`
-	Economy           EconomyContext          `json:"economy"`
-	OwnUnits          int                     `json:"ownUnits"`
-	VisibleEnemyUnits int                     `json:"visibleEnemyUnits"`
-	Plan              controller.PlanProposal `json:"plan"`
-}
-
 // BuildFactionMemory checks scope again for alternate repository implementations.
 // The SQL reader must apply scope and the row limit before retrieving records.
-func BuildFactionMemory(records []DecisionRecord, battleID string, attempt int, factionID string, beforeTick uint64) []FactionMemoryEntry {
-	var entries []FactionMemoryEntry
+func BuildFactionMemory(records []ai.DecisionRecord, battleID string, attempt int, factionID string, beforeTick uint64) []ai.FactionMemoryEntry {
+	var entries []ai.FactionMemoryEntry
 	for _, record := range records {
 		if record.BattleID != battleID || record.Attempt != attempt || record.FactionID != factionID || record.TargetTick >= beforeTick || record.ResolvedPlan == nil || (record.Status != "accepted" && record.Status != "fallback") {
 			continue
@@ -42,9 +29,9 @@ func BuildFactionMemory(records []DecisionRecord, battleID string, attempt int, 
 		entries = entries[:FactionMemoryLimit]
 	}
 	// Prefer recent entries and omit whole oversized entries, never truncate JSON.
-	var bounded []FactionMemoryEntry
+	var bounded []ai.FactionMemoryEntry
 	for _, entry := range entries {
-		candidate := append(append([]FactionMemoryEntry(nil), bounded...), entry)
+		candidate := append(append([]ai.FactionMemoryEntry(nil), bounded...), entry)
 		payload, err := json.Marshal(candidate)
 		if err == nil && len(payload) <= FactionMemoryMaxBytes {
 			bounded = candidate
@@ -55,8 +42,8 @@ func BuildFactionMemory(records []DecisionRecord, battleID string, attempt int, 
 	return bounded
 }
 
-func summarizeFactionDecision(record DecisionRecord) FactionMemoryEntry {
-	entry := FactionMemoryEntry{ObservationTick: record.Observation.View.State.Tick, TargetTick: record.TargetTick, Status: record.Status, Economy: record.Observation.Economy, Plan: *record.ResolvedPlan}
+func summarizeFactionDecision(record ai.DecisionRecord) ai.FactionMemoryEntry {
+	entry := ai.FactionMemoryEntry{ObservationTick: record.Observation.View.State.Tick, TargetTick: record.TargetTick, Status: record.Status, Economy: record.Observation.Economy, Plan: *record.ResolvedPlan}
 	for _, unit := range record.Observation.View.State.Units {
 		if unit.FactionID == record.FactionID {
 			entry.OwnUnits++

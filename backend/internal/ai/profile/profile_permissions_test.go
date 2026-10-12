@@ -1,9 +1,11 @@
-package ai
+package profile
 
 import (
 	"context"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"testing"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 )
 
 func TestControllerEligibilityByIdentity(t *testing.T) {
@@ -30,7 +32,7 @@ func TestControllerEligibilityByIdentity(t *testing.T) {
 			if tt.role != "" {
 				ctx = authn.WithActor(ctx, authn.Actor{ID: "friend", Role: tt.role})
 			}
-			if got := ProfileAllowed(ctx, ModelProfile{Runtime: tt.runtime, AllowedRoles: tt.roles}); got != tt.want {
+			if got := ProfileAllowed(ctx, ai.ModelProfile{Runtime: tt.runtime, AllowedRoles: tt.roles}); got != tt.want {
 				t.Fatalf("eligibility=%v want %v", got, tt.want)
 			}
 		})
