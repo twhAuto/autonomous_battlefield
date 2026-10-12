@@ -211,9 +211,11 @@ real container. Jenkins runs this Docker-backed regression separately from the
 command-double deployment suite; see [Jenkins checks](ci.md#pull-request-verification).
 
 `scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh` are the driver-neutral
-entry points used by Jenkins. `cd/lib/kubernetes-deployment.sh` stages selected
-shared overlays and
-composes `infra/deploy/overlays/k3s` when the profile selects K3s. `lib/k3s-delivery.py`
+entry points used by Jenkins. On main, `capture-rollback-images.sh` records the
+running images before rollout and `rollback-on-failed-verification.sh` decides
+whether a failed smoke test may call `rollback.sh`; the `Jenkinsfile` keeps only
+stage wiring and shared helper functions. `cd/lib/kubernetes-deployment.sh` stages
+selected shared overlays and composes `infra/deploy/overlays/k3s` when the profile selects K3s. `lib/k3s-delivery.py`
 performs read-only platform/retained-volume checks. `production_recovery.py`
 binds verified images to the applied database migration ledger. The required
 `test-k3s-delivery.py` suite exercises the real commands with isolated external
