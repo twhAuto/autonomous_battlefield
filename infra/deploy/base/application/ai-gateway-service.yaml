@@ -9,14 +9,3 @@ spec:
   type: ClusterIP
   selector: {app.kubernetes.io/name: autonomous-battlefield, app.kubernetes.io/component: ai-gateway}
   ports: [{name: http, port: 8084, targetPort: http}]
----
-# Pre-rename alias. The CLI host bridge still port-forwards service/battlefield-mcp
-# until its units are renamed and re-applied; remove this alias after that.
-apiVersion: v1
-kind: Service
-metadata:
-  name: battlefield-mcp
-spec:
-  type: ClusterIP
-  selector: {app.kubernetes.io/name: autonomous-battlefield, app.kubernetes.io/component: ai-gateway}
-  ports: [{name: http, port: 8084, targetPort: http}]

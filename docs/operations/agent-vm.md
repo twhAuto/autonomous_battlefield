@@ -36,8 +36,10 @@ or copying cluster credentials into its VM. See
 
 The host units keep their pre-rename names (`battlefield-mcp-bridge` and
 `battlefield-mcp-proxy`), and the bridge still forwards `service/battlefield-mcp`.
-That Service is now an alias that selects the AI gateway pods; it is retired once
-the units are renamed and re-applied.
+In-cluster agents use the same name through `ai.mcpUrl`. That Service is now an
+alias for the AI gateway: the deploy script points it at the new pods only once
+their rollout is ready, then retires the legacy Deployment. It is removed after
+the units and `ai.mcpUrl` switch to `battlefield-ai-gateway`.
 
 The worker claims a request through the bridge. Codex receives a scoped capability,
 reads the decision context through the AI gateway's MCP tools, calls the provider

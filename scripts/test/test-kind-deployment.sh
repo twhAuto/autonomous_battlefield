@@ -107,8 +107,9 @@ if ! grep -Fxq "AI_GATEWAY_DATABASE_URL=${database_url}" "${target_file}"; then
   exit 1
 fi
 
-if [[ "$(grep -c '^AI_GATEWAY_DATABASE_URL=' "${target_file}")" != "1" ]]; then
-  echo "Staged database secret must contain exactly one AI_GATEWAY_DATABASE_URL." >&2
+if [[ "$(grep -c '^AI_GATEWAY_DATABASE_URL=' "${target_file}")" != "1" || "$(grep -c '^MCP_DATABASE_URL=' "${target_file}")" != "1" ]] ||
+  ! grep -Fxq "MCP_DATABASE_URL=${database_url}" "${target_file}"; then
+  echo "Staged database secret must contain one AI_GATEWAY_DATABASE_URL and a matching legacy MCP_DATABASE_URL." >&2
   exit 1
 fi
 
@@ -116,8 +117,8 @@ legacy_url='postgres://legacy-gateway:password@postgres:5432/battlefield?sslmode
 chmod 600 "${secret_file}"
 printf 'DATABASE_URL=%s\nMCP_DATABASE_URL=%s\n' "${database_url}" "${legacy_url}" >"${secret_file}"
 cluster_deploy_prepare_database_secret "${target_file}" >/dev/null
-if ! grep -Fxq "AI_GATEWAY_DATABASE_URL=${legacy_url}" "${target_file}" || grep -q '^MCP_DATABASE_URL=' "${target_file}"; then
-  echo "Staged database secret must carry the legacy MCP_DATABASE_URL only as AI_GATEWAY_DATABASE_URL." >&2
+if ! grep -Fxq "AI_GATEWAY_DATABASE_URL=${legacy_url}" "${target_file}" || ! grep -Fxq "MCP_DATABASE_URL=${legacy_url}" "${target_file}"; then
+  echo "Staged database secret must carry the legacy MCP_DATABASE_URL under both names." >&2
   exit 1
 fi
 printf 'DATABASE_URL=%s\nMCP_DATABASE_URL=%s\nAI_GATEWAY_DATABASE_URL=%s\n' "${database_url}" "${legacy_url}" "${database_url}" >"${secret_file}"
@@ -318,6 +319,70 @@ status=0
 [[ "${status}" == 143 ]]
 if kill -0 "$(cat "${test_dir}/rollout-pid")" 2>/dev/null; then
   echo 'Cancellation left a rollout wait running.' >&2
+  exit 1
+fi
+
+# The pre-rename gateway alias moves to the new pods only after they are ready, and
+# the legacy Deployment is retired after that. Fresh clusters route the alias at once.
+for legacy_present in 1 0; do
+  (
+    : >"${test_dir}/app-calls"
+    deployment_components_select application deployment
+    namespace=battlefield
+    rollout_timeout=30s
+    force_restart=0
+    image_tag=test
+    current_backend_image=""
+    runtime_dir="${test_dir}"
+    rollout_overlays=""
+    declare -A previous_revisions=()
+    cluster_deploy_kube() {
+      printf '%s\n' "$*" >>"${test_dir}/app-calls"
+      if [[ "$1 $2" == 'get deployment/battlefield-mcp' ]]; then
+        [[ "${legacy_present}" == 1 ]]
+      fi
+    }
+    cluster_deploy_application >/dev/null
+  )
+  python3 - "${test_dir}/app-calls" "${legacy_present}" <<'CHECK'
+import sys
+calls, legacy = open(sys.argv[1]).read().splitlines(), sys.argv[2] == '1'
+alias = [i for i, c in enumerate(calls) if c.startswith('apply --namespace battlefield -f ') and c.endswith('/infra/deploy/transition/ai-gateway-alias-service.yaml')]
+apply_k = next(i for i, c in enumerate(calls) if c.startswith('apply -k '))
+ready = next(i for i, c in enumerate(calls) if c.startswith('rollout status deployment/battlefield-ai-gateway '))
+retire = next(i for i, c in enumerate(calls) if c.startswith('delete deployment/battlefield-mcp networkpolicy/battlefield-mcp-agent-only '))
+if legacy:
+    assert len(alias) == 1 and ready < alias[0] < retire, calls
+else:
+    assert len(alias) == 2 and apply_k < alias[0] < ready < alias[1] < retire, calls
+CHECK
+done
+
+# An unready replacement leaves the alias on the legacy pods and keeps the legacy
+# Deployment running.
+: >"${test_dir}/app-calls"
+set +e
+(
+  set -e
+  deployment_components_select application deployment
+  namespace=battlefield
+  rollout_timeout=30s
+  force_restart=0
+  image_tag=test
+  current_backend_image=""
+  runtime_dir="${test_dir}"
+  rollout_overlays=""
+  declare -A previous_revisions=()
+  cluster_deploy_kube() {
+    printf '%s\n' "$*" >>"${test_dir}/app-calls"
+    [[ "$1 $2" != 'rollout status' || "$3" != deployment/battlefield-ai-gateway ]]
+  }
+  cluster_deploy_application >/dev/null 2>&1
+)
+status=$?
+set -e
+if [[ "${status}" == 0 ]] || grep -Eq 'ai-gateway-alias-service.yaml|^delete deployment/battlefield-mcp' "${test_dir}/app-calls"; then
+  echo 'An unready AI gateway rollout must not route the alias or retire the legacy gateway.' >&2
   exit 1
 fi
 

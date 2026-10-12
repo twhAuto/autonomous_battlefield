@@ -56,7 +56,9 @@ data:
       # Legacy key for aiGatewayAddress. Older rollback targets reject unknown keys,
       # so switch only after none predate the rename.
       mcpAddress: ":8084"
-      mcpUrl: http://battlefield-ai-gateway:8084/mcp
+      # The pre-rename alias Service keeps serving the legacy gateway until the new one
+      # is ready; switch to battlefield-ai-gateway when the alias is retired.
+      mcpUrl: http://battlefield-mcp:8084/mcp
       decisionTimeout: 2m
       capabilitySecretEnvironmentVariable: BATTLEFIELD_MCP_CAPABILITY_SECRET
       allowedOrigins: []

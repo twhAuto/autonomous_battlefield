@@ -52,30 +52,9 @@ func TestAIGatewayRoleMigrationKeepsMembershipAndGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !renamedEarlier {
-		var member bool
-		if err = admin.QueryRowContext(ctx, `SELECT pg_has_role($1, 'battlefield_ai_gateway', 'MEMBER')`, login).Scan(&member); err != nil || !member {
-			t.Fatalf("login role lost its gateway membership: member=%v err=%v", member, err)
-		}
+		requireRoleMember(ctx, t, admin, login, "battlefield_ai_gateway")
 	}
-	var canLogin bool
-	if err = admin.QueryRowContext(ctx, `SELECT rolcanlogin FROM pg_roles WHERE rolname='battlefield_ai_gateway'`).Scan(&canLogin); err != nil || canLogin {
-		t.Fatalf("gateway role must exist as NOLOGIN: canLogin=%v err=%v", canLogin, err)
-	}
-	for _, grant := range []struct{ table, privilege string }{
-		{"battle_decisions", "SELECT"}, {"battle_decisions", "INSERT"}, {"battle_decisions", "UPDATE"},
-		{"battle_controller_evaluation", "SELECT"},
-		{"faction_background_generations", "SELECT"}, {"faction_background_generations", "UPDATE"},
-		{"agent_execution_leases", "DELETE"},
-	} {
-		var granted bool
-		if err = admin.QueryRowContext(ctx, `SELECT has_table_privilege('battlefield_ai_gateway', $1, $2)`, schema+"."+grant.table, grant.privilege).Scan(&granted); err != nil || !granted {
-			t.Fatalf("gateway role lacks %s on %s: err=%v", grant.privilege, grant.table, err)
-		}
-	}
-	var columnGrant, broadGrant bool
-	if err = admin.QueryRowContext(ctx, `SELECT has_column_privilege('battlefield_ai_gateway', $1, 'ai_executions', 'UPDATE'), has_table_privilege('battlefield_ai_gateway', $1, 'UPDATE')`, schema+".battle_runs").Scan(&columnGrant, &broadGrant); err != nil || !columnGrant || broadGrant {
-		t.Fatalf("battle_runs grants must stay column-scoped: column=%v table=%v err=%v", columnGrant, broadGrant, err)
-	}
+	requireGatewayRoleGrants(ctx, t, admin, schema)
 	if _, err = provider.Up(ctx); err != nil {
 		t.Fatal("migration rerun", err)
 	}
@@ -100,4 +79,35 @@ func grantLegacyGatewayRole(ctx context.Context, t *testing.T, admin *sql.DB, lo
 		t.Fatal(err)
 	}
 	return renamed
+}
+
+func requireRoleMember(ctx context.Context, t *testing.T, admin *sql.DB, login, role string) {
+	t.Helper()
+	var member bool
+	if err := admin.QueryRowContext(ctx, `SELECT pg_has_role($1, $2, 'MEMBER')`, login, role).Scan(&member); err != nil || !member {
+		t.Fatalf("%s is not a member of %s: err=%v", login, role, err)
+	}
+}
+
+func requireGatewayRoleGrants(ctx context.Context, t *testing.T, admin *sql.DB, schema string) {
+	t.Helper()
+	var canLogin bool
+	if err := admin.QueryRowContext(ctx, `SELECT rolcanlogin FROM pg_roles WHERE rolname='battlefield_ai_gateway'`).Scan(&canLogin); err != nil || canLogin {
+		t.Fatalf("gateway role must exist as NOLOGIN: canLogin=%v err=%v", canLogin, err)
+	}
+	for _, grant := range []struct{ table, privilege string }{
+		{"battle_decisions", "SELECT"}, {"battle_decisions", "INSERT"}, {"battle_decisions", "UPDATE"},
+		{"battle_controller_evaluation", "SELECT"},
+		{"faction_background_generations", "SELECT"}, {"faction_background_generations", "UPDATE"},
+		{"agent_execution_leases", "DELETE"},
+	} {
+		var granted bool
+		if err := admin.QueryRowContext(ctx, `SELECT has_table_privilege('battlefield_ai_gateway', $1, $2)`, schema+"."+grant.table, grant.privilege).Scan(&granted); err != nil || !granted {
+			t.Fatalf("gateway role lacks %s on %s: err=%v", grant.privilege, grant.table, err)
+		}
+	}
+	var columnGrant, broadGrant bool
+	if err := admin.QueryRowContext(ctx, `SELECT has_column_privilege('battlefield_ai_gateway', $1, 'ai_executions', 'UPDATE'), has_table_privilege('battlefield_ai_gateway', $1, 'UPDATE')`, schema+".battle_runs").Scan(&columnGrant, &broadGrant); err != nil || !columnGrant || broadGrant {
+		t.Fatalf("battle_runs grants must stay column-scoped: column=%v table=%v err=%v", columnGrant, broadGrant, err)
+	}
 }

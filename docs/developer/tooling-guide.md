@@ -29,8 +29,10 @@ The key application manifests are:
 - `api-deployment.yaml` and `api-service.yaml`;
 - `engine-deployment.yaml`;
 - `agent-deployment.yaml`;
-- `ai-gateway-deployment.yaml`, `ai-gateway-service.yaml` (with the transitional
-  `battlefield-mcp` alias Service), and `ai-gateway-network-policy.yaml`;
+- `ai-gateway-deployment.yaml`, `ai-gateway-service.yaml`, and `ai-gateway-network-policy.yaml`.
+  The transitional `battlefield-mcp` alias Service lives in
+  `infra/deploy/transition/`; the deploy script applies it only after the gateway
+  rollout is ready;
 - frontend deployment and service;
 - `ingress.yaml` for external routing;
 - `api-hpa.yaml` for API horizontal autoscaling;

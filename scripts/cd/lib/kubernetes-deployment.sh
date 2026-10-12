@@ -293,9 +293,11 @@ cluster_deploy_prepare_database_secret() {
     gateway_database_url="${database_url}"
     echo "No AI_GATEWAY_DATABASE_URL supplied; reusing DATABASE_URL for this local deployment."
   fi
-  # The Secret carries one gateway key; the legacy name is input-only.
+  # Stage both names with one value: a legacy gateway pod that restarts before the
+  # application rollout (for example after a failed migration) still needs the old key.
   staged="$(grep -v -e '^AI_GATEWAY_DATABASE_URL=' -e '^MCP_DATABASE_URL=' "${target_file}" || true)"
-  printf '%s\nAI_GATEWAY_DATABASE_URL=%s\n' "${staged}" "${gateway_database_url}" >"${target_file}"
+  printf '%s\nAI_GATEWAY_DATABASE_URL=%s\nMCP_DATABASE_URL=%s\n' \
+    "${staged}" "${gateway_database_url}" "${gateway_database_url}" >"${target_file}"
 }
 
 cluster_deploy_prepare_ai_secret() {
@@ -569,6 +571,10 @@ EOF
 
   application_update_started=1
   cluster_deploy_kube apply -k "${rollout_overlays:-${runtime_dir}/infra/deploy/overlays/local}/application"
+  # Without a legacy gateway there is nothing to drain, so route the alias now.
+  if ! cluster_deploy_kube get deployment/battlefield-mcp --namespace "${namespace}" >/dev/null 2>&1; then
+    cluster_deploy_route_gateway_alias
+  fi
 
   if [[ "${force_restart}" == "1" ]] || deployment_component_selected infrastructure; then
     cluster_deploy_kube rollout restart \
@@ -585,12 +591,18 @@ EOF
       --namespace "${namespace}" \
       --timeout="${rollout_timeout}"
   done
-  # Retire the pre-rename gateway only once its replacement is ready. The
-  # battlefield-mcp Service stays as an alias that selects the new pods.
+  # Route the alias and retire the pre-rename gateway only once its replacement is
+  # ready; until then the alias keeps selecting the legacy pods.
+  cluster_deploy_route_gateway_alias
   cluster_deploy_kube delete deployment/battlefield-mcp networkpolicy/battlefield-mcp-agent-only \
     --namespace "${namespace}" \
     --ignore-not-found
   application_update_started=0
+}
+
+cluster_deploy_route_gateway_alias() {
+  cluster_deploy_kube apply --namespace "${namespace}" \
+    -f "${project_dir}/infra/deploy/transition/ai-gateway-alias-service.yaml"
 }
 
 cluster_deploy_report_workload_failure() {
