@@ -22,7 +22,7 @@ Repository paths and deployment resources use the technical name
 
 The normal development environment uses Kind on Linux or WSL with Docker access.
 Install Docker, Kind, kubectl, Bash, curl, Python 3, Node.js 24 and npm.
-Go 1.26.5 is required for backend development and local Go checks.
+Go 1.26.9 or newer, matching the backend image, is required for backend development.
 
 From the repository root:
 
@@ -86,3 +86,9 @@ The PostgreSQL harness uses a throwaway Docker database. Go aggregate statement
 coverage and each frontend coverage metric must reach 80%. Infrastructure changes
 also require `./scripts/test/test-deployment.sh`. See
 [contributor CI](docs/developer/ci.md) for browser prerequisites and additional gates.
+
+## License
+
+Copyright © 2026 Tan Wei Hao. All rights reserved. The source is shared for
+portfolio and learning purposes; no license is granted to copy, modify or
+distribute it.
