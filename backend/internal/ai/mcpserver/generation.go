@@ -1,11 +1,9 @@
-// Exposes capability-scoped background-draft tools and connects generation jobs to the
-// agent control plane.
+// Exposes capability-scoped background-draft MCP tools.
 
 package mcpserver
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -82,48 +80,4 @@ func (s *Server) GenerationHandler() http.Handler {
 		id = strings.TrimPrefix(id, generationLeasePrefix)
 		transport.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestIDKey{}, id)))
 	})
-}
-func (s *Server) claimGeneration(w http.ResponseWriter, r *http.Request, request agentClaimRequest) bool {
-	if s.generations == nil {
-		return false
-	}
-	job, err := s.generations.Claim(r.Context(), request.WorkerID, request.ProfileIDs)
-	if errors.Is(err, generation.ErrNotFound) {
-		return false
-	}
-	if err != nil {
-		http.Error(w, "generation claim failed", 500)
-		return true
-	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"executionDeadline": job.ExpiresAt, "capabilityToken": s.mint(generationLeasePrefix+job.ID, time.Until(job.ExpiresAt)), "jobType": generation.JobType, "requestId": job.ID, "profileId": job.ProfileID, "executionTimeoutSeconds": job.ExecutionSeconds})
-	return true
-}
-func (s *Server) finishGeneration(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAgentAuthorization(w, r) {
-		return
-	}
-	if s.generations == nil {
-		http.Error(w, "generation unavailable", 503)
-		return
-	}
-	var body struct {
-		RequestID string         `json:"requestId"`
-		Category  string         `json:"category"`
-		Usage     ai.Usage       `json:"usage"`
-		Metadata  map[string]any `json:"metadata"`
-	}
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body) != nil {
-		http.Error(w, "invalid request", 400)
-		return
-	}
-	ok, err := s.generations.Finish(r.Context(), body.RequestID, body.Category, body.Usage, body.Metadata)
-	if err != nil {
-		http.Error(w, "generation report failed", 500)
-		return
-	}
-	if !ok {
-		http.Error(w, "generation closed", 409)
-		return
-	}
-	w.WriteHeader(204)
 }
