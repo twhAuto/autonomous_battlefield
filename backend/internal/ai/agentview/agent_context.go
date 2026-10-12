@@ -23,12 +23,12 @@ type UnitOverview struct {
 	Weaknesses string `json:"weaknesses,omitempty"`
 }
 
-type AgentKnowledge struct {
+type Knowledge struct {
 	ai.ReferenceIdentity
 	Mechanics string `json:"mechanics,omitempty"`
 }
 
-type AgentLegalChoices struct {
+type LegalChoices struct {
 	Buildings          []game.BuildingType     `json:"buildings,omitempty"`
 	RecruitmentSources []string                `json:"recruitmentSources,omitempty"`
 	Upgrades           []game.Upgrade          `json:"upgrades,omitempty"`
@@ -38,7 +38,7 @@ type AgentLegalChoices struct {
 }
 
 // Deliberately does not embed DecisionContext: new stored fields are private by default.
-type AgentContext struct {
+type Context struct {
 	FactionName        string                  `json:"factionName,omitempty"`
 	Background         string                  `json:"background,omitempty"`
 	Doctrine           string                  `json:"doctrine,omitempty"`
@@ -56,8 +56,8 @@ type AgentContext struct {
 	Economy            ai.EconomyContext       `json:"economy"`
 	Memory             []ai.FactionMemoryEntry `json:"memory,omitempty"`
 	ActivePlan         controller.PlanProposal `json:"activePlan"`
-	Legal              AgentLegalChoices       `json:"legal"`
-	Knowledge          *AgentKnowledge         `json:"knowledge,omitempty"`
+	Legal              LegalChoices            `json:"legal"`
+	Knowledge          *Knowledge              `json:"knowledge,omitempty"`
 	ReferenceUnits     []UnitOverview          `json:"referenceUnits,omitempty"`
 }
 
@@ -109,15 +109,15 @@ func unitOverview(stats game.UnitType, card *game.UnitCard) UnitOverview {
 	return result
 }
 
-func CompactContext(c ai.DecisionContext) AgentContext {
-	result := AgentContext{
+func Compact(c ai.DecisionContext) Context {
+	result := Context{
 		FactionName: c.FactionName, Background: c.Background, Doctrine: c.Doctrine,
 		Opening: c.Opening, OwnedUpgradeIDs: c.OwnedUpgradeIDs, SchemaVersion: ai.ContextSchema,
 		RequestID: c.RequestID, BattleID: c.BattleID, FactionID: c.FactionID,
 		TargetTick: c.TargetTick, ExpectedVersion: c.ExpectedVersion,
 		ObservationVersion: c.ObservationVersion, ObservationHash: c.ObservationHash,
 		View: c.View, Economy: c.Economy, Memory: c.Memory, ActivePlan: c.ActivePlan,
-		Legal: AgentLegalChoices{
+		Legal: LegalChoices{
 			Buildings: c.Legal.Buildings, RecruitmentSources: c.Legal.RecruitmentSources,
 			Upgrades: c.Legal.Upgrades, ActionKinds: c.Legal.ActionKinds,
 			EconomySites: c.Legal.EconomySites, Units: []UnitOverview{},
@@ -126,14 +126,14 @@ func CompactContext(c ai.DecisionContext) AgentContext {
 
 	details := map[string]ai.UnitDetail{}
 	if c.UnitReference != nil {
-		result.Knowledge = &AgentKnowledge{ReferenceIdentity: c.UnitReference.ReferenceIdentity}
+		result.Knowledge = &Knowledge{ReferenceIdentity: c.UnitReference.ReferenceIdentity}
 		for _, detail := range c.UnitReference.Units {
 			details[detail.UnitID] = detail
 		}
 	}
 	if c.Knowledge != nil {
 		if result.Knowledge == nil {
-			result.Knowledge = &AgentKnowledge{ReferenceIdentity: ai.ReferenceIdentity{RulesetID: c.Knowledge.RulesetID, RulesetVersion: c.Knowledge.RulesetVersion, Digest: c.Knowledge.Digest}}
+			result.Knowledge = &Knowledge{ReferenceIdentity: ai.ReferenceIdentity{RulesetID: c.Knowledge.RulesetID, RulesetVersion: c.Knowledge.RulesetVersion, Digest: c.Knowledge.Digest}}
 		}
 		result.Knowledge.Mechanics = c.Knowledge.Mechanics
 	}
@@ -153,8 +153,8 @@ func CompactContext(c ai.DecisionContext) AgentContext {
 }
 
 // Project every saved observation into the current format without changing storage.
-func AgentObservation(c ai.DecisionContext) any {
-	return groupContextFactions(deduplicateContext(battlefieldContext{AgentContext: CompactContext(c), View: compactBattlefieldView(c.View)}))
+func Observation(c ai.DecisionContext) any {
+	return groupContextFactions(deduplicateContext(battlefieldContext{Context: Compact(c), View: compactBattlefieldView(c.View)}))
 }
 
 // UnitDetailsMaxBytes leaves headroom below the observed CLI offload threshold.

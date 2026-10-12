@@ -17,7 +17,7 @@ type doctrineProvider struct {
 }
 
 func (p *doctrineProvider) NextTurn(ctx context.Context, request ai.ModelTurnRequest) (ai.ModelTurnResult, error) {
-	if !strings.Contains(request.Messages[0].Content, `"doctrine":"Protect income"`) || request.SystemPrompt != prompts.SystemPrompt {
+	if !strings.Contains(request.Messages[0].Content, `"doctrine":"Protect income"`) || request.SystemPrompt != prompts.System {
 		p.t.Fatal("API doctrine missing")
 	}
 	return p.turnProvider.NextTurn(ctx, request)

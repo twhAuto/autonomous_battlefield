@@ -17,9 +17,9 @@ func generationSpan(ctx context.Context, session ai.DecisionSession, scope strin
 	if session.Profile.Runtime == "api" && session.Profile.ModelEnvironmentVariable != "" {
 		model = os.Getenv(session.Profile.ModelEnvironmentVariable)
 	}
-	promptVersion := prompts.PromptVersion
+	promptVersion := prompts.Version
 	if session.JobType == "faction_background" {
-		promptVersion = prompts.GenerationPromptVersion
+		promptVersion = prompts.GenerationVersion
 	}
 	return telemetry.StartAI(ctx, "battlefield.model."+scope, "generation",
 		attribute.String("langfuse.observation.model.name", model),

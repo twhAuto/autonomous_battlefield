@@ -51,7 +51,9 @@ autonomous_battlefield/
 │   │   ├── faction/{api,service,repo}/
 │   │   ├── game/               # Deterministic state transitions
 │   │   │   └── controller/     # Infrastructure-free controller contracts
-│   │   ├── ai/                 # Decision execution, providers, MCP, evaluations
+│   │   ├── ai/                 # Shared decision contracts; subpackages for capability tokens,
+│   │   │                       # validation, profiles, prompts, model views, runners, providers,
+│   │   │                       # the AI gateway server, the agent worker and evaluations
 │   │   ├── admin/              # Model-access handler, service, and repository
 │   │   ├── apicontract/        # Tests keeping openapi.yaml in step with served routes
 │   │   ├── members/            # Player membership and reconciliation

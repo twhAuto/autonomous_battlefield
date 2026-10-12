@@ -104,7 +104,7 @@ func TestCompactDecisionThroughAPIAndCLI(t *testing.T) {
 				repo := &fakeRepository{record: compactRecord()}
 				server := httptest.NewServer(New(repo, "secret", nil).Handler())
 				defer server.Close()
-				token, _ := capability.MintCapability("secret", "sample", time.Now().Add(time.Minute))
+				token, _ := capability.Mint("secret", "sample", time.Now().Add(time.Minute))
 				session := ai.DecisionSession{RequestID: "sample", MCPURL: server.URL, CapabilityToken: token, Profile: ai.ModelProfile{MaxSteps: 3, MaxOutputTokens: 1000}}
 				var executor ai.DecisionRunner = runner.APIRunner{Provider: &compactProvider{t: t, lookup: lookup}}
 				if runtime == "cli" {
@@ -124,7 +124,7 @@ func TestUnitDetailsToolAuthorizationAndErrors(t *testing.T) {
 	repo := &fakeRepository{record: compactRecord()}
 	server := httptest.NewServer(New(repo, "secret", nil).Handler())
 	defer server.Close()
-	token, _ := capability.MintCapability("secret", "sample", time.Now().Add(time.Minute))
+	token, _ := capability.Mint("secret", "sample", time.Now().Add(time.Minute))
 	client, err := (runner.MCPClient{}).Connect(context.Background(), server.URL, token)
 	if err != nil {
 		t.Fatal(err)

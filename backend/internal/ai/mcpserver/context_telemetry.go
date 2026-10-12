@@ -12,7 +12,7 @@ import (
 
 func recordContextSize(ctx context.Context, value ai.DecisionContext) {
 	span := trace.SpanFromContext(ctx)
-	payload, _ := json.Marshal(agentview.AgentObservation(value))
+	payload, _ := json.Marshal(agentview.Observation(value))
 	span.SetAttributes(attribute.Int("battlefield.context.bytes", len(payload)),
 		attribute.String("langfuse.session.id", value.BattleID),
 		attribute.String("langfuse.trace.metadata.battle_id", value.BattleID),

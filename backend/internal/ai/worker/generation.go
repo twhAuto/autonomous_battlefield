@@ -43,7 +43,7 @@ func (w *Worker) runGeneration(parent context.Context, job job) {
 			model = os.Getenv(profile.ModelEnvironmentVariable)
 		}
 		metadata["modelIdentifier"] = model
-		metadata["promptVersion"] = prompts.GenerationPromptVersion
+		metadata["promptVersion"] = prompts.GenerationVersion
 		result, category = w.executeGeneration(ctx, job, profile, duration)
 	}
 	if ctx.Err() != nil {

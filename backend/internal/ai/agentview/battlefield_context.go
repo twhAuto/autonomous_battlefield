@@ -10,7 +10,7 @@ import (
 
 // Only the agent projection changes; persisted observations retain all fields.
 type battlefieldContext struct {
-	AgentContext
+	Context
 	View map[string]json.RawMessage `json:"view"`
 }
 

@@ -171,11 +171,11 @@ func TestWorkerAuthenticationNeverFallsBackToCapabilitySecret(t *testing.T) {
 		}
 	}
 	token := s.mint("request-one", time.Minute)
-	id, e := capability.VerifyCapability("signing-secret", token, time.Now())
+	id, e := capability.Verify("signing-secret", token, time.Now())
 	if e != nil || id != "request-one" {
 		t.Fatal(id, e)
 	}
-	if _, e = capability.VerifyCapability("worker-secret", token, time.Now()); e == nil {
+	if _, e = capability.Verify("worker-secret", token, time.Now()); e == nil {
 		t.Fatal("worker key verified capability")
 	}
 }

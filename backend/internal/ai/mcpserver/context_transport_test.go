@@ -29,7 +29,7 @@ func TestContextTransportSingleJSONCopy(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer cs.Close()
-			want, err := json.Marshal(getContextOutput{Context: agentview.AgentObservation(record.Observation)})
+			want, err := json.Marshal(getContextOutput{Context: agentview.Observation(record.Observation)})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -71,7 +71,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 	if executor == nil {
 		executor = OSCommandExecutor{}
 	}
-	prompt := prompts.SessionSystemPrompt(session) + "\n" + prompts.SessionDecisionPrompt(session, nil)
+	prompt := prompts.SessionSystem(session) + "\n" + prompts.SessionDecision(session, nil)
 	var name string
 	var args, environment []string
 	switch r.Provider {
@@ -99,7 +99,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 		if contextErr != nil {
 			return ai.DecisionResult{ErrorCategory: "mcp_context"}, contextErr
 		}
-		prompt = prompts.SessionSystemPrompt(session) + "\n" + prompts.SessionDecisionPrompt(session, payload)
+		prompt = prompts.SessionSystem(session) + "\n" + prompts.SessionDecision(session, payload)
 
 		environment, err = clienv.PrepareAntigravity(temporary, session.MCPURL, session.CapabilityToken, prompts.SessionToolNames(session)...)
 		if err != nil {

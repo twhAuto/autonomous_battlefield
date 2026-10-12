@@ -453,8 +453,8 @@ an explicit model ID for reproducible comparisons. See [Claude operations](../op
 ### Shared prompt provenance and faction memory
 
 API, Codex, Antigravity, and Claude CLI use one embedded decision policy assembled by
-`internal/ai/prompts.go`. Only context delivery differs: tool fetch versus
-Antigravity host-prefetched JSON. The persisted `PromptVersion` includes a SHA-256
+`internal/ai/prompts/prompts.go`. Only context delivery differs: tool fetch versus
+Antigravity host-prefetched JSON. The persisted `prompts.Version` includes a SHA-256
 digest covering the base, identity/context boundary, doctrine, policy, and both delivery templates. Version v7 moved faction-authored name/background/doctrine into JSON-escaped untrusted decision context; they never extend the system instructions. Version v8 orders the decision prompt from most to least stable (shared policy, then the faction identity block, then the per-request ID and any inline context), so the prefix repeated across one faction's decisions includes its identity and stays eligible for provider prompt caching. Bump the major version whenever assembly order changes, because the digest covers only template text.
 Each prompt purpose has one current `.txt` file; Git preserves previous revisions.
 The build manifest reads the runtime prompt version, bundle digest, and tool schema
@@ -544,7 +544,7 @@ observation's `unitReference` JSON field. This reference is independent of the
 legacy automatic card budget. Full observations continue to drive validation.
 No database migration is required: observations are stored as JSON.
 
-The explicit `AgentContext` projection emits unit ID, cost, class, role, strengths,
+The explicit `agentview.Context` projection emits unit ID, cost, class, role, strengths,
 and weaknesses in `legal.units`, plus `referenceUnits` for visible types that are
 not recruitable. It keeps knowledge mechanics and source identity but omits cards,
 base statistics, and the stored reference snapshot. Battlefield observations,

@@ -83,7 +83,7 @@ func TestBattlefieldContextVersionCompatibility(t *testing.T) {
 	c.SchemaVersion = "battlefield.decision-context.v3"
 	before := string(contextJSON(c))
 	var result map[string]json.RawMessage
-	_ = json.Unmarshal(contextJSON(AgentObservation(c)), &result)
+	_ = json.Unmarshal(contextJSON(Observation(c)), &result)
 	if string(contextJSON(c)) != before {
 		t.Fatal("stored observation mutated")
 	}

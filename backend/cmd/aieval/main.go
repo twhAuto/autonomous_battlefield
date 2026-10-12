@@ -46,8 +46,8 @@ func run(args []string) error {
 	}
 
 	if *mode == "metadata" {
-		_, digest, _ := strings.Cut(prompts.PromptVersion, ".")
-		fmt.Printf("%s\t%s\t%s\n", prompts.PromptVersion, digest, ai.ToolSchema)
+		_, digest, _ := strings.Cut(prompts.Version, ".")
+		fmt.Printf("%s\t%s\t%s\n", prompts.Version, digest, ai.ToolSchema)
 		return nil
 	}
 

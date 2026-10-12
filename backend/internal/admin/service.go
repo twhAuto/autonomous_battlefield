@@ -33,7 +33,7 @@ type Repository interface {
 
 type Service struct {
 	Repository Repository
-	Profiles   *profile.ProfileRegistry
+	Profiles   *profile.Registry
 }
 
 // ReadPolicy supplies the registry callback, including its bounded database read.
@@ -51,7 +51,7 @@ func (s *Service) Get(ctx context.Context) (SettingsView, error) {
 	}
 	models := s.Profiles.List()
 	stored := settings.Policy
-	settings.Policy = profile.AccessPolicy{Providers: map[string]bool{}, Profiles: map[string]profile.ProfileAccess{}}
+	settings.Policy = profile.AccessPolicy{Providers: map[string]bool{}, Profiles: map[string]profile.Access{}}
 	for _, p := range models {
 		if value, ok := stored.Providers[p.Provider]; ok {
 			settings.Policy.Providers[p.Provider] = value
@@ -74,12 +74,12 @@ func (s *Service) Save(ctx context.Context, settings Settings, actorID string) (
 	return s.Repository.Save(ctx, settings, actorID)
 }
 
-func defaultProfileAccess(p ai.ModelProfile) profile.ProfileAccess {
+func defaultProfileAccess(p ai.ModelProfile) profile.Access {
 	roles := p.AllowedRoles
 	if len(roles) == 0 {
 		roles = []string{"admin", "developer"}
 	}
-	return profile.ProfileAccess{Enabled: true, AllowedRoles: roles}
+	return profile.Access{Enabled: true, AllowedRoles: roles}
 }
 func validRoles(roles []string) bool {
 	if roles == nil {

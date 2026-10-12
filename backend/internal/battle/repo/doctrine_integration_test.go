@@ -57,7 +57,7 @@ func TestDoctrinePersistenceAndTickZeroAgainstPostgres(t *testing.T) {
 	job := createAndClaimBattle(t, ctx, repo, battleID)
 	orders := []controller.RecruitmentOrder{}
 	plan := controller.PlanProposal{Name: "save", RecruitmentOrders: &orders}
-	params := ai.CreateDecisionParams{ID: randomUUID(t), BattleID: battleID, Attempt: job.Lease.Attempt, FactionID: id, TargetTick: 0, ControllerType: ai.ControllerScripted, Observation: ai.DecisionContext{Opening: true, Doctrine: "Scout"}, ObservationHash: "opening", PromptVersion: prompts.PromptVersion, ToolSchemaVersion: ai.ToolSchema}
+	params := ai.CreateDecisionParams{ID: randomUUID(t), BattleID: battleID, Attempt: job.Lease.Attempt, FactionID: id, TargetTick: 0, ControllerType: ai.ControllerScripted, Observation: ai.DecisionContext{Opening: true, Doctrine: "Scout"}, ObservationHash: "opening", PromptVersion: prompts.Version, ToolSchemaVersion: ai.ToolSchema}
 	record, err := repo.CreateOrReuseDecision(ctx, params)
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	submission := ai.PlanSubmission{RequestID: record.ID, ExpectedVersion: record.Version, TargetTick: 0, IdempotencyKey: "opening", Plan: plan}

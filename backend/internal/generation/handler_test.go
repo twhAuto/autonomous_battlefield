@@ -48,7 +48,7 @@ func generationHTTP(t *testing.T, r Repository, enabled bool) http.Handler {
 	c := DefaultConfig()
 	c.Enabled = enabled
 	c.ProfileID = "writer"
-	profiles := profile.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "writer", DisplayName: "Writer", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 3, MaxOutputTokens: 1000}})
+	profiles := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "writer", DisplayName: "Writer", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 3, MaxOutputTokens: 1000}})
 	mux := http.NewServeMux()
 	(&Handler{Repository: r, Config: c, Profiles: profiles}).RegisterRoutes(mux)
 	return authn.RequireAuthentication(false, authn.NewManager(authn.Config{}), mux)
@@ -123,7 +123,7 @@ func TestGenerationEndpoints(t *testing.T) {
 
 func TestPlayerCannotIndirectlyTriggerCLI(t *testing.T) {
 	t.Setenv("CLI_AVAILABLE", "true")
-	p := profile.NewProfileCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Runtime: "cli", Provider: "codex-cli", Scope: "local", Enabled: true, AvailabilityEnvironmentVariable: "CLI_AVAILABLE", SupportedVersionPrefix: "1."}})
+	p := profile.NewCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Runtime: "cli", Provider: "codex-cli", Scope: "local", Enabled: true, AvailabilityEnvironmentVariable: "CLI_AVAILABLE", SupportedVersionPrefix: "1."}})
 	repo := &httpRepo{}
 	c := DefaultConfig()
 	c.ProfileID = "cli"
@@ -139,8 +139,8 @@ func TestPlayerCannotIndirectlyTriggerCLI(t *testing.T) {
 
 func TestPlayerCLIGenerationFollowsAdminPolicy(t *testing.T) {
 	t.Setenv("CLI_AVAILABLE", "true")
-	base := profile.NewProfileCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Runtime: "cli", Provider: "codex-cli", Scope: "local", Enabled: true, AvailabilityEnvironmentVariable: "CLI_AVAILABLE", SupportedVersionPrefix: "1."}})
-	policy := profile.AccessPolicy{Profiles: map[string]profile.ProfileAccess{}}
+	base := profile.NewCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Runtime: "cli", Provider: "codex-cli", Scope: "local", Enabled: true, AvailabilityEnvironmentVariable: "CLI_AVAILABLE", SupportedVersionPrefix: "1."}})
+	policy := profile.AccessPolicy{Profiles: map[string]profile.Access{}}
 	profiles := base.WithAccessPolicy(func() (profile.AccessPolicy, error) { return policy, nil })
 	repo := &httpRepo{}
 	c := DefaultConfig()
@@ -153,7 +153,7 @@ func TestPlayerCLIGenerationFollowsAdminPolicy(t *testing.T) {
 		if allow {
 			roles = append(roles, "player")
 		}
-		policy.Profiles["cli"] = profile.ProfileAccess{Enabled: true, AllowedRoles: roles}
+		policy.Profiles["cli"] = profile.Access{Enabled: true, AllowedRoles: roles}
 		before := repo.calls
 		r := httptest.NewRequest("POST", "/v1/faction-background-generations", strings.NewReader(`{"name":"A","doctrine":"d","idempotencyKey":"one"}`)).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "friend", Role: authn.Player}))
 		w := httptest.NewRecorder()

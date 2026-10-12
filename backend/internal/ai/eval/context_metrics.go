@@ -17,6 +17,6 @@ func countUnitDetailCalls(calls []string) int {
 }
 func evaluationContextBytes(value Case) int {
 	c := evaluationObservation(value)
-	payload, _ := json.Marshal(map[string]any{"context": agentview.AgentObservation(c)})
+	payload, _ := json.Marshal(map[string]any{"context": agentview.Observation(c)})
 	return len(payload)
 }

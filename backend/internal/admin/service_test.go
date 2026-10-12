@@ -58,11 +58,11 @@ func TestSaveValidatesBeforePersistenceAndPreservesActor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	view.Policy.Profiles["cli"] = profile.ProfileAccess{Enabled: true, AllowedRoles: []string{"root"}}
+	view.Policy.Profiles["cli"] = profile.Access{Enabled: true, AllowedRoles: []string{"root"}}
 	if _, err := service.Save(context.Background(), view.Settings, "administrator"); !errors.Is(err, ErrInvalid) || repo.saves != 0 {
 		t.Fatalf("invalid policy persisted: saves=%d err=%v", repo.saves, err)
 	}
-	view.Policy.Profiles["cli"] = profile.ProfileAccess{Enabled: true, AllowedRoles: []string{"admin"}}
+	view.Policy.Profiles["cli"] = profile.Access{Enabled: true, AllowedRoles: []string{"admin"}}
 	saved, err := service.Save(context.Background(), view.Settings, "administrator")
 	if err != nil || saved.Version != 1 || repo.saves != 1 || repo.actor != "administrator" {
 		t.Fatalf("save lost version or actor: %+v repo=%+v err=%v", saved, repo, err)
@@ -75,7 +75,7 @@ func TestSaveValidatesBeforePersistenceAndPreservesActor(t *testing.T) {
 
 func TestPlayerCLIAccessGrantAndRevocation(t *testing.T) {
 	t.Setenv("TEST_CLI_AVAILABLE", "true")
-	base := profile.NewProfileCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true, AvailabilityEnvironmentVariable: "TEST_CLI_AVAILABLE", SupportedVersionPrefix: "1."}})
+	base := profile.NewCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true, AvailabilityEnvironmentVariable: "TEST_CLI_AVAILABLE", SupportedVersionPrefix: "1."}})
 	repo := &policyRepository{}
 	service := &Service{Repository: repo, Profiles: base}
 	profiles := base.WithAccessPolicy(service.ReadPolicy)
@@ -83,7 +83,7 @@ func TestPlayerCLIAccessGrantAndRevocation(t *testing.T) {
 	check := func(want bool) {
 		t.Helper()
 		p, err := profiles.Require("cli")
-		if err != nil || profile.ProfileAllowed(ctx, p) != want {
+		if err != nil || profile.Allowed(ctx, p) != want {
 			t.Fatalf("CLI permission want %v: %+v %v", want, p, err)
 		}
 	}
@@ -97,7 +97,7 @@ func TestPlayerCLIAccessGrantAndRevocation(t *testing.T) {
 		if allow {
 			roles = append(roles, "player")
 		}
-		view.Policy.Profiles["cli"] = profile.ProfileAccess{Enabled: true, AllowedRoles: roles}
+		view.Policy.Profiles["cli"] = profile.Access{Enabled: true, AllowedRoles: roles}
 		if _, err := service.Save(ctx, view.Settings, "administrator"); err != nil {
 			t.Fatal(err)
 		}

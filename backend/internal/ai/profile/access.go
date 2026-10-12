@@ -5,18 +5,18 @@ import "github.com/twh09/autonomous_battlefield/backend/internal/ai"
 // AccessPolicy restricts new selections; deployment configuration still determines
 // which models can run. Existing battle controller snapshots are unchanged.
 type AccessPolicy struct {
-	Providers map[string]bool          `json:"providers"`
-	Profiles  map[string]ProfileAccess `json:"profiles"`
+	Providers map[string]bool   `json:"providers"`
+	Profiles  map[string]Access `json:"profiles"`
 }
-type ProfileAccess struct {
+type Access struct {
 	Enabled      bool     `json:"enabled"`
 	AllowedRoles []string `json:"allowedRoles"`
 }
 
 // WithAccessPolicy returns a registry sharing immutable configuration and reading
 // durable policy on each selection. It must be wired before serving requests.
-func (r *ProfileRegistry) WithAccessPolicy(read func() (AccessPolicy, error)) *ProfileRegistry {
-	return &ProfileRegistry{profiles: r.profiles, accessPolicy: read}
+func (r *Registry) WithAccessPolicy(read func() (AccessPolicy, error)) *Registry {
+	return &Registry{profiles: r.profiles, accessPolicy: read}
 }
 func applyAccess(p ai.ModelProfile, policy AccessPolicy, err error) ai.ModelProfile {
 	if err != nil {

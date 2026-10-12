@@ -417,7 +417,7 @@ func visibleProfiles(r *http.Request, profiles []ai.ModelProfile) any {
 	if authn.IsPlayer(r.Context()) {
 		result := []map[string]any{}
 		for _, p := range profiles {
-			if profile.ProfileAllowed(r.Context(), p) && p.Available {
+			if profile.Allowed(r.Context(), p) && p.Available {
 				result = append(result, map[string]any{"id": p.ID, "displayName": p.DisplayName, "modelLabel": p.ModelLabel, "runtime": p.Runtime, "available": true})
 			}
 		}
@@ -428,7 +428,7 @@ func visibleProfiles(r *http.Request, profiles []ai.ModelProfile) any {
 	}
 	result := []ai.ModelProfile{}
 	for _, p := range profiles {
-		if profile.ProfileAllowed(r.Context(), p) {
+		if profile.Allowed(r.Context(), p) {
 			result = append(result, p)
 		}
 	}

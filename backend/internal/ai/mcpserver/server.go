@@ -33,7 +33,7 @@ const (
 
 type Server struct {
 	generations    generation.WorkerRepository
-	decisions      *decision.DecisionService
+	decisions      *decision.Service
 	secret         string
 	agentSecret    string
 	allowedOrigins map[string]bool
@@ -53,7 +53,7 @@ func NewWithLogger(repository ai.DecisionRepository, secret string, origins []st
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Server{decisions: decision.NewDecisionService(repository), secret: secret, allowedOrigins: allowed, wakeups: newDecisionWakeups(), logger: logger}
+	return &Server{decisions: decision.NewService(repository), secret: secret, allowedOrigins: allowed, wakeups: newDecisionWakeups(), logger: logger}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -70,7 +70,7 @@ func (s *Server) Handler() http.Handler {
 			http.Error(w, "missing capability", http.StatusUnauthorized)
 			return
 		}
-		requestID, err := capability.VerifyCapability(s.secret, strings.TrimSpace(strings.TrimPrefix(authorization, bearerPrefix)), time.Now())
+		requestID, err := capability.Verify(s.secret, strings.TrimSpace(strings.TrimPrefix(authorization, bearerPrefix)), time.Now())
 		if err != nil {
 			http.Error(w, "invalid capability", http.StatusUnauthorized)
 			return
@@ -136,7 +136,7 @@ func (s *Server) getDecisionContext(ctx context.Context, _ *mcp.CallToolRequest,
 		return nil, getContextOutput{}, err
 	}
 	recordContextSize(ctx, value)
-	payload, err := json.Marshal(getContextOutput{Context: agentview.AgentObservation(value)})
+	payload, err := json.Marshal(getContextOutput{Context: agentview.Observation(value)})
 	if err != nil {
 		return nil, getContextOutput{}, err
 	}

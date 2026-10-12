@@ -131,7 +131,7 @@ func TestCompactSavedDecisionContext(t *testing.T) {
 		t.Fatal(result, err)
 	}
 	initial, _ := json.Marshal(result.InitialContext)
-	expected, _ := json.Marshal(agentview.AgentObservation(record.Observation))
+	expected, _ := json.Marshal(agentview.Observation(record.Observation))
 	if string(initial) != string(expected) || strings.Contains(string(initial), `"attack":20`) {
 		t.Fatal("incorrect initial projection")
 	}

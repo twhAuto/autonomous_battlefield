@@ -39,14 +39,14 @@ func (r APIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 	if err != nil {
 		return ai.DecisionResult{ErrorCategory: "mcp_discovery"}, err
 	}
-	messages := []ai.Message{{Role: "user", Content: prompts.SessionDecisionPrompt(session, nil)}}
+	messages := []ai.Message{{Role: "user", Content: prompts.SessionDecision(session, nil)}}
 	usage := ai.Usage{Scope: "api_calls", ModelCalls: new(int64)}
 	for step := 0; step < session.Profile.MaxSteps; step++ {
 		turnCtx, span := generationSpan(ctx, session, "api_call")
 		messageJSON, _ := json.Marshal(messages)
 		toolJSON, _ := json.Marshal(tools)
-		span.SetAttributes(attribute.Int("battlefield.prompt.system_bytes", len(prompts.SessionSystemPrompt(session))), attribute.Int("battlefield.prompt.message_json_bytes", len(messageJSON)), attribute.Int("battlefield.prompt.tool_schema_json_bytes", len(toolJSON)))
-		turn, err := r.Provider.NextTurn(turnCtx, ai.ModelTurnRequest{SystemPrompt: prompts.SessionSystemPrompt(session), Messages: messages, Tools: tools, MaxTokens: session.Profile.MaxOutputTokens})
+		span.SetAttributes(attribute.Int("battlefield.prompt.system_bytes", len(prompts.SessionSystem(session))), attribute.Int("battlefield.prompt.message_json_bytes", len(messageJSON)), attribute.Int("battlefield.prompt.tool_schema_json_bytes", len(toolJSON)))
+		turn, err := r.Provider.NextTurn(turnCtx, ai.ModelTurnRequest{SystemPrompt: prompts.SessionSystem(session), Messages: messages, Tools: tools, MaxTokens: session.Profile.MaxOutputTokens})
 		finishGeneration(span, turn.Usage, err != nil)
 		*usage.ModelCalls++
 		usage.TokensReported = usage.TokensReported || turn.Usage.TokensReported

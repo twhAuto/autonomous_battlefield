@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
@@ -55,7 +54,7 @@ func (r *memoryRepository) RecordDecisionValidation(context.Context, string) err
 
 func TestDecisionServiceValidatesAndSubmits(t *testing.T) {
 	repository := &memoryRepository{record: validRecord(), result: ai.SubmissionResult{Accepted: true, Status: "accepted"}}
-	service := NewDecisionService(repository)
+	service := NewService(repository)
 	contextValue, err := service.GetContext(context.Background(), "request")
 	if err != nil || contextValue.RequestID != "request" {
 		t.Fatalf("GetContext() = %#v, %v", contextValue, err)
@@ -75,29 +74,13 @@ func TestDecisionValidationRejectsAuthorityAndSchemaViolations(t *testing.T) {
 		t.Fatalf("issues = %#v", issues)
 	}
 	repository := &memoryRepository{record: record}
-	result, err := NewDecisionService(repository).SubmitPlan(context.Background(), bad)
+	result, err := NewService(repository).SubmitPlan(context.Background(), bad)
 	if err != nil || result.Accepted || repository.submitted.RequestID != "" || repository.validations != 1 {
 		t.Fatalf("result = %#v, err=%v", result, err)
 	}
 }
 
-func TestCapabilityAndObservationHash(t *testing.T) {
-	expires := time.Now().Add(time.Minute)
-	token, err := capability.MintCapability("secret", "request", expires)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, err := capability.VerifyCapability("secret", token, time.Now()); err != nil || got != "request" {
-		t.Fatalf("VerifyCapability=%q,%v", got, err)
-	}
-	for _, test := range []struct {
-		secret, token string
-		now           time.Time
-	}{{"bad", token, time.Now()}, {"secret", "bad", time.Now()}, {"secret", token, expires.Add(time.Second)}} {
-		if _, err := capability.VerifyCapability(test.secret, test.token, test.now); err == nil {
-			t.Fatal("invalid capability accepted")
-		}
-	}
+func TestObservationHashIgnoresBookkeepingFields(t *testing.T) {
 	first := validRecord().Observation
 	second := first
 	second.RequestID = "other"
@@ -107,29 +90,11 @@ func TestCapabilityAndObservationHash(t *testing.T) {
 	if a != b || a == "" {
 		t.Fatalf("hashes %q %q", a, b)
 	}
-	if _, err := capability.MintCapability("", "request", expires); err == nil {
-		t.Fatal("empty secret accepted")
-	}
-}
-
-func FuzzVerifyCapability(f *testing.F) {
-	valid, err := capability.MintCapability("secret", "request", time.Unix(2_000_000_000, 0))
-	if err != nil {
-		f.Fatal(err)
-	}
-	f.Add(valid)
-	f.Add("not-a-capability")
-	f.Fuzz(func(t *testing.T, token string) {
-		requestID, err := capability.VerifyCapability("secret", token, time.Unix(1_900_000_000, 0))
-		if err == nil && requestID == "" {
-			t.Fatal("accepted capability has an empty request ID")
-		}
-	})
 }
 
 func TestDecisionServicePropagatesRepositoryFailure(t *testing.T) {
 	want := errors.New("database")
-	service := NewDecisionService(&memoryRepository{err: want})
+	service := NewService(&memoryRepository{err: want})
 	if _, err := service.GetContext(context.Background(), "request"); !errors.Is(err, want) {
 		t.Fatal(err)
 	}
@@ -170,12 +135,12 @@ func testModelRejectsPlaceholderAndStopsGuessing(t *testing.T, runtime string) {
 	submission.TargetTick = 999
 	record.ProviderMetadata = map[string]any{"validationFailures": float64(2)}
 	repository := &boundedCLIRepository{memoryRepository: memoryRepository{record: record}}
-	result, err := NewDecisionService(repository).SubmitPlan(context.Background(), submission)
+	result, err := NewService(repository).SubmitPlan(context.Background(), submission)
 	if err != nil || result.Status != "failed" || repository.failed != "validation_limit" {
 		t.Fatalf("guessing not bounded: %+v %v", result, err)
 	}
 	repository.record.Status = "failed"
-	result, err = NewDecisionService(repository).SubmitPlan(context.Background(), submission)
+	result, err = NewService(repository).SubmitPlan(context.Background(), submission)
 	if err != nil || result.Errors[0].Code != "terminal" || repository.validations != 1 {
 		t.Fatal("terminal decision revalidated")
 	}

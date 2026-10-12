@@ -23,11 +23,11 @@ func compactFixture() (game.Ruleset, ai.DecisionContext) {
 }
 func TestCompactProjectionAndFrozenLookup(t *testing.T) {
 	r, c := compactFixture()
-	initial := CompactContext(c)
+	initial := Compact(c)
 	if len(initial.Legal.Units) != 8 || len(initial.ReferenceUnits) != 2 || !reflect.DeepEqual(initial.View, c.View) {
 		t.Fatal("lost legal/visible observations")
 	}
-	payload, _ := json.Marshal(AgentObservation(c))
+	payload, _ := json.Marshal(Observation(c))
 	for _, forbidden := range []string{`"unitReference"`, `"stats"`, `"guidance"`, `"cards"`} {
 		if strings.Contains(string(payload), forbidden) {
 			t.Fatalf("leaked %s", forbidden)
@@ -64,7 +64,7 @@ func TestUnitDetailsMissingKnowledgeAndInvalidBatches(t *testing.T) {
 	if err != nil || !got.Units[0].Available || got.Units[0].Guidance != "" {
 		t.Fatal(got, err)
 	}
-	overview := CompactContext(c)
+	overview := Compact(c)
 	if overview.Legal.Units[0].Role != "" {
 		t.Fatal("invented role")
 	}
@@ -88,13 +88,13 @@ func TestLegacyContextAndLookup(t *testing.T) {
 		t.Fatal(details, err)
 	}
 	c.SchemaVersion = ai.ContextSchema
-	compact := CompactContext(c)
+	compact := Compact(c)
 	if compact.Knowledge != nil {
 		t.Fatal("invented knowledge")
 	}
 	_, withKnowledge := compactFixture()
 	withKnowledge.UnitReference = nil
-	if CompactContext(withKnowledge).Knowledge.Mechanics == "" {
+	if Compact(withKnowledge).Knowledge.Mechanics == "" {
 		t.Fatal("lost mechanics")
 	}
 }
@@ -112,7 +112,7 @@ func TestCompactContextSizeByBattleStage(t *testing.T) {
 			}
 			c.UnitReference = FreezeUnitReference(r, c)
 			c.Knowledge, _ = observation.RetrieveKnowledge(r, c, ai.DefaultKnowledgeLimits())
-			compact := CompactContext(c)
+			compact := Compact(c)
 			full := c
 			full.UnitReference = nil
 			full.SchemaVersion = "battlefield.decision-context.v2"
@@ -123,8 +123,8 @@ func TestCompactContextSizeByBattleStage(t *testing.T) {
 				Knowledge *ai.DecisionKnowledge
 			}{c.Legal, c.Knowledge})
 			catalogAfter, _ := json.Marshal(struct {
-				Legal          AgentLegalChoices
-				Knowledge      *AgentKnowledge
+				Legal          LegalChoices
+				Knowledge      *Knowledge
 				ReferenceUnits []UnitOverview
 			}{compact.Legal, compact.Knowledge, compact.ReferenceUnits})
 			if len(catalogAfter) >= len(catalogBefore) || len(compactJSON) > len(fullJSON) {
@@ -181,7 +181,7 @@ func TestCompactOverviewIgnoresAutomaticCardLimit(t *testing.T) {
 	if err := json.Unmarshal(stored, &restored); err != nil {
 		t.Fatal(err)
 	}
-	overview := CompactContext(restored)
+	overview := Compact(restored)
 	if len(overview.Legal.Units) != len(r.Units) || len(restored.Knowledge.Cards) != 1 {
 		t.Fatal("automatic card limit changed legal overview")
 	}

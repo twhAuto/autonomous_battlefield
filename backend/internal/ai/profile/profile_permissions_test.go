@@ -32,7 +32,7 @@ func TestControllerEligibilityByIdentity(t *testing.T) {
 			if tt.role != "" {
 				ctx = authn.WithActor(ctx, authn.Actor{ID: "friend", Role: tt.role})
 			}
-			if got := ProfileAllowed(ctx, ai.ModelProfile{Runtime: tt.runtime, AllowedRoles: tt.roles}); got != tt.want {
+			if got := Allowed(ctx, ai.ModelProfile{Runtime: tt.runtime, AllowedRoles: tt.roles}); got != tt.want {
 				t.Fatalf("eligibility=%v want %v", got, tt.want)
 			}
 		})

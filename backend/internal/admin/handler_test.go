@@ -48,8 +48,8 @@ func (d *fakeDB) QueryRow(_ context.Context, q string, args ...any) pgx.Row {
 		return nil
 	})
 }
-func registry() *profile.ProfileRegistry {
-	return profile.NewProfileCatalog("cluster", []ai.ModelProfile{
+func registry() *profile.Registry {
+	return profile.NewCatalog("cluster", []ai.ModelProfile{
 		{ID: "api", DisplayName: "API", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true},
 		{ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true},
 	})
@@ -101,19 +101,19 @@ func TestSettingsValidationAndAuthorization(t *testing.T) {
 			t.Fatal("unauthorized settings access")
 		}
 	}
-	s.Policy.Profiles["cli"] = profile.ProfileAccess{Enabled: true, AllowedRoles: []string{"player"}}
+	s.Policy.Profiles["cli"] = profile.Access{Enabled: true, AllowedRoles: []string{"player"}}
 	if request(h, "PUT", s, authn.Admin).Code != 200 {
 		t.Fatal("explicit player CLI access rejected")
 	}
-	s.Policy.Profiles["cli"] = profile.ProfileAccess{Enabled: true, AllowedRoles: []string{"root"}}
+	s.Policy.Profiles["cli"] = profile.Access{Enabled: true, AllowedRoles: []string{"root"}}
 	if h.Service.valid(s) {
 		t.Fatal("unknown role")
 	}
-	s.Policy.Profiles["cli"] = profile.ProfileAccess{Enabled: true, AllowedRoles: []string{"admin", "admin"}}
+	s.Policy.Profiles["cli"] = profile.Access{Enabled: true, AllowedRoles: []string{"admin", "admin"}}
 	if h.Service.valid(s) {
 		t.Fatal("duplicate role")
 	}
-	s.Policy.Profiles["cli"] = profile.ProfileAccess{Enabled: true, AllowedRoles: []string{}}
+	s.Policy.Profiles["cli"] = profile.Access{Enabled: true, AllowedRoles: []string{}}
 	if !h.Service.valid(s) {
 		t.Fatal("empty explicit role list rejected")
 	}

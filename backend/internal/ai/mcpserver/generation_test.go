@@ -123,7 +123,7 @@ func TestGenerationThroughAPIAndCLITools(t *testing.T) {
 			service := New(&fakeRepository{}, "secret", nil).WithGenerations(repo)
 			server := httptest.NewServer(service.GenerationHandler())
 			defer server.Close()
-			token, err := capability.MintCapability("secret", "generation:draft", time.Now().Add(time.Minute))
+			token, err := capability.Mint("secret", "generation:draft", time.Now().Add(time.Minute))
 			testutil.Require(t, err == nil, func() { t.Fatal(err) })
 			session := ai.DecisionSession{JobType: generation.JobType, RequestID: "draft", MCPURL: server.URL, CapabilityToken: token, Profile: ai.ModelProfile{MaxSteps: 3, MaxOutputTokens: 1000}}
 			var executor ai.DecisionRunner = runner.APIRunner{Provider: &generationProvider{t: t}}
@@ -146,14 +146,14 @@ func TestGenerationCapabilityAndControlPlane(t *testing.T) {
 	repo := &generationRepo{job: generation.Job{ID: "draft", ProfileID: "writer", ExecutionSeconds: 120}}
 	service := New(&fakeRepository{}, "secret", nil).WithGenerations(repo)
 	for _, id := range []string{"", "battle-request"} {
-		token, _ := capability.MintCapability("secret", id, time.Now().Add(time.Minute))
+		token, _ := capability.Mint("secret", id, time.Now().Add(time.Minute))
 		req := httptest.NewRequest("POST", "/generation-mcp", nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		w := httptest.NewRecorder()
 		service.GenerationHandler().ServeHTTP(w, req)
 		testutil.Require(t, w.Code == 401, func() { t.Fatal(w.Code) })
 	}
-	token, _ := capability.MintCapability("secret", "generation:draft", time.Now().Add(time.Minute))
+	token, _ := capability.Mint("secret", "generation:draft", time.Now().Add(time.Minute))
 	req := httptest.NewRequest("POST", "/generation-mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Origin", "https://evil.example")

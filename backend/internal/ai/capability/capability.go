@@ -17,9 +17,9 @@ type capabilityClaims struct {
 	ExpiresAt int64  `json:"expiresAt"`
 }
 
-// MintCapability signs a token granting access to one request until expiresAt.
+// Mint signs a token granting access to one request until expiresAt.
 // The token is a bearer credential and must stay out of logs and model context.
-func MintCapability(secret, requestID string, expiresAt time.Time) (string, error) {
+func Mint(secret, requestID string, expiresAt time.Time) (string, error) {
 	if secret == "" || requestID == "" {
 		return "", errors.New("capability secret and request ID are required")
 	}
@@ -33,9 +33,9 @@ func MintCapability(secret, requestID string, expiresAt time.Time) (string, erro
 	return encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
 }
 
-// VerifyCapability checks the signature and expiry and returns the authorized
+// Verify checks the signature and expiry and returns the authorized
 // request ID; callers must still check the request's current state.
-func VerifyCapability(secret, token string, now time.Time) (string, error) {
+func Verify(secret, token string, now time.Time) (string, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 2 {
 		return "", errors.New("invalid capability token")

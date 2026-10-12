@@ -47,7 +47,7 @@ func TestAntigravityLiveDecision(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	token, err := capability.MintCapability("synthetic-secret", record.ID, time.Now().Add(2*time.Minute))
+	token, err := capability.Mint("synthetic-secret", record.ID, time.Now().Add(2*time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -31,7 +31,7 @@ func (w *Worker) resolveDecisionWindow(ctx context.Context, lease BattleLease, s
 	)
 	defer func() { telemetry.EndSpan(span, err) }()
 	baselines := simulation.ScriptedPlans()
-	service := decision.NewDecisionService(w.decisions)
+	service := decision.NewService(w.decisions)
 	w.logger.InfoContext(ctx, "decision_window_started",
 		"battle_id", lease.BattleID,
 		"attempt", lease.Attempt,
@@ -65,7 +65,7 @@ func (w *Worker) resolveDecisionWindow(ctx context.Context, lease BattleLease, s
 	return plans, nil
 }
 
-func (w *Worker) prepareDecisionWindow(ctx context.Context, lease BattleLease, simulation *game.Match, targetTick uint64, baselines map[string]controller.PlanProposal, service *decision.DecisionService) error {
+func (w *Worker) prepareDecisionWindow(ctx context.Context, lease BattleLease, simulation *game.Match, targetTick uint64, baselines map[string]controller.PlanProposal, service *decision.Service) error {
 	for _, factionID := range simulation.FactionIDs() {
 		if err := w.prepareDecision(ctx, lease, simulation, factionID, targetTick, baselines, service); err != nil {
 			return err
@@ -74,7 +74,7 @@ func (w *Worker) prepareDecisionWindow(ctx context.Context, lease BattleLease, s
 	return nil
 }
 
-func (w *Worker) prepareDecision(ctx context.Context, lease BattleLease, simulation *game.Match, factionID string, targetTick uint64, baselines map[string]controller.PlanProposal, service *decision.DecisionService) error {
+func (w *Worker) prepareDecision(ctx context.Context, lease BattleLease, simulation *game.Match, factionID string, targetTick uint64, baselines map[string]controller.PlanProposal, service *decision.Service) error {
 	snapshot, err := simulation.DecisionSnapshot(factionID)
 	if err != nil {
 		return err
@@ -101,7 +101,7 @@ func (w *Worker) prepareDecision(ctx context.Context, lease BattleLease, simulat
 	record, err := w.decisions.CreateOrReuseDecision(ctx, ai.CreateDecisionParams{ID: decisionContext.RequestID, BattleID: lease.BattleID, Attempt: lease.Attempt,
 		FactionID: factionID, TargetTick: targetTick, ControllerType: setup.Controller.Type, ProfileID: setup.Controller.ProfileID,
 		Provider: setup.Controller.Provider, Runtime: setup.Controller.Runtime, ModelIdentifier: setup.Controller.ModelIdentifier,
-		PromptVersion: prompts.PromptVersion, ToolSchemaVersion: ai.ToolSchema, Observation: decisionContext, ObservationHash: hash,
+		PromptVersion: prompts.Version, ToolSchemaVersion: ai.ToolSchema, Observation: decisionContext, ObservationHash: hash,
 		Traceparent: traceparent, Tracestate: tracestate})
 	if err != nil {
 		return err
@@ -128,7 +128,7 @@ func (w *Worker) logPreparedDecision(ctx context.Context, lease BattleLease, tar
 		"profile_id", setup.Controller.ProfileID, "provider", setup.Controller.Provider, "runtime", setup.Controller.Runtime, "decision_status", record.Status)
 }
 
-func submitScriptedPlan(ctx context.Context, service *decision.DecisionService, record ai.DecisionRecord, targetTick uint64, plan controller.PlanProposal) error {
+func submitScriptedPlan(ctx context.Context, service *decision.Service, record ai.DecisionRecord, targetTick uint64, plan controller.PlanProposal) error {
 	result, err := service.SubmitPlan(ctx, ai.PlanSubmission{RequestID: record.ID, IdempotencyKey: record.ID + ":scripted", ExpectedVersion: record.Version, TargetTick: targetTick, Plan: plan})
 	if err != nil {
 		return err

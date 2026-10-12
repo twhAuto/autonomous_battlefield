@@ -27,7 +27,7 @@ func TestClaudeLiveDecision(t *testing.T) {
 	repository := &fakeRepository{record: record}
 	server := httptest.NewServer(New(repository, "synthetic-secret", nil).Handler())
 	defer server.Close()
-	token, err := capability.MintCapability("synthetic-secret", record.ID, time.Now().Add(2*time.Minute))
+	token, err := capability.Mint("synthetic-secret", record.ID, time.Now().Add(2*time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}

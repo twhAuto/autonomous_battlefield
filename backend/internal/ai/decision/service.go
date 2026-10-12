@@ -15,25 +15,25 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
-// DecisionSubmissionRepository is intentionally unable to mutate battle
+// SubmissionRepository is intentionally unable to mutate battle
 // state. MCP submissions and the scripted resolver receive only this narrow
 // decision-table capability.
-type DecisionSubmissionRepository interface {
+type SubmissionRepository interface {
 	GetDecision(context.Context, string) (ai.DecisionRecord, error)
 	SubmitDecisionPlan(context.Context, ai.PlanSubmission) (ai.SubmissionResult, error)
 }
 
-type DecisionService struct{ repository DecisionSubmissionRepository }
+type Service struct{ repository SubmissionRepository }
 
 type decisionValidationRecorder interface {
 	RecordDecisionValidation(context.Context, string) error
 }
 
-func NewDecisionService(repository DecisionSubmissionRepository) *DecisionService {
-	return &DecisionService{repository: repository}
+func NewService(repository SubmissionRepository) *Service {
+	return &Service{repository: repository}
 }
 
-func (s *DecisionService) GetContext(ctx context.Context, requestID string) (ai.DecisionContext, error) {
+func (s *Service) GetContext(ctx context.Context, requestID string) (ai.DecisionContext, error) {
 	record, err := s.repository.GetDecision(ctx, requestID)
 	if err != nil {
 		return ai.DecisionContext{}, err
@@ -43,7 +43,7 @@ func (s *DecisionService) GetContext(ctx context.Context, requestID string) (ai.
 
 // SubmitPlan checks the persisted decision and its legal choices before writing
 // a plan; validation rejection is returned in the result rather than as an error.
-func (s *DecisionService) SubmitPlan(ctx context.Context, submission ai.PlanSubmission) (ai.SubmissionResult, error) {
+func (s *Service) SubmitPlan(ctx context.Context, submission ai.PlanSubmission) (ai.SubmissionResult, error) {
 	record, err := s.repository.GetDecision(ctx, submission.RequestID)
 	if err != nil {
 		return ai.SubmissionResult{}, err
@@ -58,7 +58,7 @@ func (s *DecisionService) SubmitPlan(ctx context.Context, submission ai.PlanSubm
 	return s.repository.SubmitDecisionPlan(ctx, submission)
 }
 
-func (s *DecisionService) rejectInvalidPlan(ctx context.Context, record ai.DecisionRecord, requestID string, issues []ai.ValidationIssue) (ai.SubmissionResult, error) {
+func (s *Service) rejectInvalidPlan(ctx context.Context, record ai.DecisionRecord, requestID string, issues []ai.ValidationIssue) (ai.SubmissionResult, error) {
 	if recorder, ok := s.repository.(decisionValidationRecorder); ok {
 		if err := recorder.RecordDecisionValidation(ctx, requestID); err != nil {
 			return ai.SubmissionResult{}, err

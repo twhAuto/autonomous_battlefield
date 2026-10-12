@@ -5,7 +5,7 @@
 The [architecture contract](../architecture/system-architecture.md#shared-prompt-provenance-and-faction-memory)
 describes shared prompts, provenance, and bounded faction memory. The active
 embedded templates live in `backend/internal/ai/prompts/`; each purpose has one current file, with older revisions kept in Git.
-The bundle version and content digest are maintained in `internal/ai/prompts.go`. Rebuild backend binaries after editing active templates,
+The bundle version and content digest are maintained in `internal/ai/prompts/prompts.go`. Rebuild backend binaries after editing active templates,
 and restart host agents so recorded prompt digests match the deployed policy.
 CLI tools may add their own internal instructions.
 

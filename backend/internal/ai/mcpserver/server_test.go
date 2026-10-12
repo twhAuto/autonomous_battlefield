@@ -141,7 +141,7 @@ func TestMCPRejectsMissingCapabilityAndForeignOrigin(t *testing.T) {
 	if missing.Code != http.StatusUnauthorized {
 		t.Fatal(missing.Code)
 	}
-	token, _ := capability.MintCapability("secret", "request", time.Now().Add(time.Minute))
+	token, _ := capability.Mint("secret", "request", time.Now().Add(time.Minute))
 	foreignRequest := httptest.NewRequest(http.MethodPost, "http://server", nil)
 	foreignRequest.Header.Set("Authorization", "Bearer "+token)
 	foreignRequest.Header.Set("Origin", "https://evil.example")
@@ -168,7 +168,7 @@ func FuzzMCPRequestBody(f *testing.F) {
 		if len(body) > 64<<10 {
 			t.Skip()
 		}
-		token, err := capability.MintCapability("secret", "request", time.Now().Add(time.Minute))
+		token, err := capability.Mint("secret", "request", time.Now().Add(time.Minute))
 		if err != nil {
 			t.Fatal(err)
 		}

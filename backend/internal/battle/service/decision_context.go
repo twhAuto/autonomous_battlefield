@@ -76,8 +76,8 @@ func (s *battleService) GetDecisionContext(ctx context.Context, battleID, reques
 		Economy: observation.Economy, View: observation.View, Legal: observation.Legal,
 		ActivePlan: observation.ActivePlan, Memory: observation.Memory,
 	}
-	compact := agentview.CompactContext(observation)
-	result.InitialContext = agentview.AgentObservation(observation)
+	compact := agentview.Compact(observation)
+	result.InitialContext = agentview.Observation(observation)
 	result.AvailableUnitDetails = observation.UnitReference
 	result.Context.Legal = compact.Legal
 	result.Context.Knowledge = compact.Knowledge

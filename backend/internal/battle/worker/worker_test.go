@@ -555,7 +555,7 @@ func assertMemoryReadFailure(t *testing.T, worker *Worker, repository *decisionB
 	t.Helper()
 
 	repository.memoryErr = errors.New("memory unavailable")
-	if err := worker.prepareDecision(context.Background(), job.Lease, simulation, job.Scenario.Factions[0].ID, 30, simulation.ScriptedPlans(), decision.NewDecisionService(repository)); err != nil {
+	if err := worker.prepareDecision(context.Background(), job.Lease, simulation, job.Scenario.Factions[0].ID, 30, simulation.ScriptedPlans(), decision.NewService(repository)); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(logs.String(), "faction_memory_unavailable") {

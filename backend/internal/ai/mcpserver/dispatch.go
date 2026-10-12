@@ -136,7 +136,7 @@ func (s *Server) writeDecisionClaim(w http.ResponseWriter, r *http.Request, work
 		http.Error(w, "missing execution deadline", 503)
 		return
 	}
-	token, err := capability.MintCapability(s.secret, record.ID, *record.LeaseExpiresAt)
+	token, err := capability.Mint(s.secret, record.ID, *record.LeaseExpiresAt)
 	if err != nil {
 		http.Error(w, "capability unavailable", 503)
 		return
@@ -331,7 +331,7 @@ func (s *Server) claimAfterGeneration(w http.ResponseWriter, r *http.Request, re
 
 func (s *Server) WithAgentSecret(secret string) *Server { s.agentSecret = secret; return s }
 func (s *Server) mint(id string, ttl time.Duration) string {
-	token, _ := capability.MintCapability(s.secret, id, time.Now().Add(ttl))
+	token, _ := capability.Mint(s.secret, id, time.Now().Add(ttl))
 	return token
 }
 

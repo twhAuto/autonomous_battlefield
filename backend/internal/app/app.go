@@ -31,37 +31,37 @@ type App struct {
 
 type MemberOptions struct {
 	Store    members.Repository
-	Profiles []*profile.ProfileRegistry
+	Profiles []*profile.Registry
 }
 
-func NewAPI(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, registries ...*profile.ProfileRegistry) *App {
+func NewAPI(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, registries ...*profile.Registry) *App {
 	return NewAPIWithAuthentication(db, catalog, maxTicks, authn.Config{}, registries...)
 }
 
-func NewAPIWithAuthentication(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, registries ...*profile.ProfileRegistry) *App {
+func NewAPIWithAuthentication(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, registries ...*profile.Registry) *App {
 	return NewAPIWithResultCache(db, catalog, maxTicks, authentication, nil, registries...)
 }
 
-func NewAPIWithResultCache(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, registries ...*profile.ProfileRegistry) *App {
+func NewAPIWithResultCache(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, registries ...*profile.Registry) *App {
 	return NewAPIWithGeneration(db, catalog, maxTicks, authentication, cache, generation.DefaultConfig(), registries...)
 }
-func NewAPIWithGeneration(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, generationConfig generation.Config, registries ...*profile.ProfileRegistry) *App {
+func NewAPIWithGeneration(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, generationConfig generation.Config, registries ...*profile.Registry) *App {
 	return NewAPIWithMembers(db, catalog, maxTicks, authentication, cache, generationConfig, MemberOptions{Profiles: registries})
 }
 
 func NewAPIWithMembers(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, generationConfig generation.Config, options MemberOptions) *App {
 	registries := options.Profiles
-	var profiles *profile.ProfileRegistry
+	var profiles *profile.Registry
 	if len(registries) > 0 {
 		profiles = registries[0]
 	}
 	if profiles == nil {
-		profiles = profile.NewProfileCatalog("local", nil)
+		profiles = profile.NewCatalog("local", nil)
 	}
 	adminService := &admin.Service{Repository: &admin.Postgres{DB: db}, Profiles: profiles}
 	adminHandler := &admin.Handler{Service: adminService}
 	profiles = profiles.WithAccessPolicy(adminService.ReadPolicy)
-	registries = []*profile.ProfileRegistry{profiles}
+	registries = []*profile.Registry{profiles}
 	generationHandler := &generation.Handler{Repository: &generation.Postgres{DB: db}, Config: generationConfig, Profiles: profiles}
 	factionRepository := factionrepo.NewPostgres(db)
 	factionService := factionservice.NewService(factionRepository, catalog)

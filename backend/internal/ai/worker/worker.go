@@ -35,7 +35,7 @@ var errNoAcceptedPlan = errors.New("decision has no accepted plan")
 type Worker struct {
 	PolicyPolling                            bool
 	MCPURL, Secret, WorkerID                 string
-	Profiles                                 *profile.ProfileRegistry
+	Profiles                                 *profile.Registry
 	PollInterval, ClaimWait, DecisionTimeout time.Duration
 	Concurrency                              int
 	Client                                   *http.Client

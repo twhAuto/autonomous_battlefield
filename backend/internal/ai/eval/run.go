@@ -34,7 +34,7 @@ func (r Runner) Run(ctx context.Context, cases []Case) Report {
 		now = time.Now
 	}
 	started := now()
-	report := Report{SchemaVersion: ReportSchema, CorpusVersion: r.CorpusVersion, PromptVersion: prompts.PromptVersion, ToolVersion: ai.ToolSchema, StartedAt: started, Passed: true}
+	report := Report{SchemaVersion: ReportSchema, CorpusVersion: r.CorpusVersion, PromptVersion: prompts.Version, ToolVersion: ai.ToolSchema, StartedAt: started, Passed: true}
 	for _, value := range cases {
 		caseReport := r.runCase(ctx, value, now)
 		report.Cases = append(report.Cases, caseReport)
@@ -52,7 +52,7 @@ func (r Runner) runCase(ctx context.Context, value Case, now func() time.Time) C
 	if value.Capability == "expired" {
 		expiresAt = started.Add(-time.Second)
 	}
-	token, _ := capability.MintCapability(secret, value.RequestID, expiresAt)
+	token, _ := capability.Mint(secret, value.RequestID, expiresAt)
 	if value.Capability == "tampered" {
 		token += "tampered"
 	}
@@ -65,7 +65,7 @@ func (r Runner) runCase(ctx context.Context, value Case, now func() time.Time) C
 	})
 	entry := CaseReport{Usage: &result.Usage,
 		ID: value.ID, Category: value.Category, Profile: value.Profile, Model: value.Model,
-		PromptVersion: prompts.PromptVersion, ToolSchemaVersion: ai.ToolSchema, RulesVersion: value.RulesVersion,
+		PromptVersion: prompts.Version, ToolSchemaVersion: ai.ToolSchema, RulesVersion: value.RulesVersion,
 		Accepted: result.Accepted, ErrorCategory: result.ErrorCategory, DurationMS: max(0, now().Sub(started).Milliseconds()),
 		InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests,
 		ToolCalls: append([]string(nil), session.calls...),
@@ -121,7 +121,7 @@ func (r Runner) RunProvider(ctx context.Context, cases []Case, provider ai.TurnP
 		now = time.Now
 	}
 	started := now()
-	report := Report{SchemaVersion: ReportSchema, CorpusVersion: r.CorpusVersion, PromptVersion: prompts.PromptVersion, ToolVersion: ai.ToolSchema, StartedAt: started, Passed: true}
+	report := Report{SchemaVersion: ReportSchema, CorpusVersion: r.CorpusVersion, PromptVersion: prompts.Version, ToolVersion: ai.ToolSchema, StartedAt: started, Passed: true}
 	options := providerRunOptions{provider: provider, profile: profile, model: model, maxSteps: maxSteps, maxTokens: maxTokens, now: now}
 	for _, value := range cases {
 		entry := r.runProviderCase(ctx, value, options)
@@ -155,7 +155,7 @@ type providerRunOptions struct {
 func (r Runner) runProviderCase(ctx context.Context, value Case, options providerRunOptions) CaseReport {
 	caseStarted := options.now()
 	secret := "evaluation-only-secret"
-	token, _ := capability.MintCapability(secret, value.RequestID, caseStarted.Add(time.Hour))
+	token, _ := capability.Mint(secret, value.RequestID, caseStarted.Add(time.Hour))
 	session := &scriptedSession{value: value}
 	recorder := &recordingProvider{inner: options.provider}
 	result, runErr := (airunner.APIRunner{Provider: recorder, Connector: scriptedConnector{secret: secret, requestID: value.RequestID, now: caseStarted, session: session}}).Run(ctx, ai.DecisionSession{
@@ -163,7 +163,7 @@ func (r Runner) runProviderCase(ctx context.Context, value Case, options provide
 		Profile: ai.ModelProfile{ID: options.profile, ModelLabel: options.model, MaxSteps: options.maxSteps, MaxOutputTokens: options.maxTokens},
 	})
 	entry := CaseReport{Usage: &result.Usage, ID: value.ID, Category: value.Category, Profile: options.profile, Model: options.model,
-		PromptVersion: prompts.PromptVersion, ToolSchemaVersion: ai.ToolSchema, RulesVersion: value.RulesVersion,
+		PromptVersion: prompts.Version, ToolSchemaVersion: ai.ToolSchema, RulesVersion: value.RulesVersion,
 		Accepted: result.Accepted, ErrorCategory: result.ErrorCategory, DurationMS: max(0, options.now().Sub(caseStarted).Milliseconds()),
 		InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests,
 		ToolCalls: append([]string(nil), session.calls...)}
@@ -304,7 +304,7 @@ type scriptedConnector struct {
 }
 
 func (c scriptedConnector) Connect(_ context.Context, _ string, stringToken string) (airunner.DecisionToolSession, error) {
-	requestID, err := capability.VerifyCapability(c.secret, stringToken, c.now)
+	requestID, err := capability.Verify(c.secret, stringToken, c.now)
 	if err != nil || requestID != c.requestID {
 		return nil, errors.New("evaluation capability rejected")
 	}
@@ -355,7 +355,7 @@ func (s *scriptedSession) Call(_ context.Context, call ai.ToolCall) (json.RawMes
 		return payload, false, err
 	}
 	if call.Name == "get_decision_context" {
-		payload, err := json.Marshal(map[string]any{"context": agentview.AgentObservation(evaluationObservation(s.value))})
+		payload, err := json.Marshal(map[string]any{"context": agentview.Observation(evaluationObservation(s.value))})
 		return payload, false, err
 	}
 	fingerprint := sha256.Sum256(call.Arguments)
