@@ -27,7 +27,7 @@ func main() {
 	logger := logging.New("agent")
 	slog.SetDefault(logger)
 	configPath := flag.String("config", "config.yaml", "path to YAML configuration")
-	checkAuth := flag.Bool("check-antigravity-auth", false, "check isolated Antigravity keyring login without model inference")
+	checkAntigravityAuth := flag.Bool("check-antigravity-auth", false, "check isolated Antigravity keyring login without model inference")
 	checkClaudeAuth := flag.Bool("check-claude-auth", false, "check Claude subscription login without model inference")
 	flag.Parse()
 	if *checkClaudeAuth {
@@ -39,7 +39,7 @@ func main() {
 		}
 		return
 	}
-	if *checkAuth {
+	if *checkAntigravityAuth {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if err := clienv.CheckAntigravityAuth(ctx); err != nil {
