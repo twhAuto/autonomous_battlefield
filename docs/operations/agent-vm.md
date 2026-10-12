@@ -269,9 +269,9 @@ and the generator replace ad hoc unit-file editing, not the verification gates.
 ## Concurrent decisions
 
 Set `ai.agentConcurrency: 4` to allow four independent jobs
-across all enabled CLI providers, not four per provider. The template defaults to
-one until resource validation; omitted configuration
-keeps the worker at one slot; explicit values outside 1–4 are rejected.
+across all enabled CLI providers, not four per provider. The template sets four;
+omitted configuration keeps the worker at one slot; explicit values outside 1–4
+are rejected.
 Migration `00014_cli_concurrency.sql` raises the shared database CLI capacity to
 four. Both the migration and updated worker binary are required. The database
 limit also includes faction background jobs and other worker instances.

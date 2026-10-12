@@ -51,7 +51,7 @@ data:
         queueTimeout: 5m
         executionTimeout: 2m
       environment: cluster
-      agentConcurrency: 1
+      agentConcurrency: 4
       agentHealthAddress: ":8083"
       mcpAddress: ":8084"
       mcpUrl: http://battlefield-mcp:8084/mcp
