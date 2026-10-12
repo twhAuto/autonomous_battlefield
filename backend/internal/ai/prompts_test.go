@@ -18,10 +18,11 @@ func TestVersionedSystemPromptIsEmbedded(t *testing.T) {
 }
 
 func TestDecisionPromptSharesPolicyAndSeparatesTransport(t *testing.T) {
-	tool := DecisionPrompt("request-123", nil)
-	inline := DecisionPrompt("request-123", []byte(`{"context":{"requestId":"request-123"}}`))
+	session := DecisionSession{RequestID: "request-123"}
+	tool := SessionDecisionPrompt(session, nil)
+	inline := SessionDecisionPrompt(session, []byte(`{"context":{"requestId":"request-123"}}`))
 	for _, prompt := range []string{tool, inline} {
-		if !strings.HasPrefix(prompt, DecisionInstructions+"\n") || !strings.Contains(prompt, "at most twice") || !strings.Contains(prompt, "historical faction-visible") {
+		if !strings.HasPrefix(prompt, DecisionInstructions) || !strings.Contains(prompt, "at most twice") || !strings.Contains(prompt, "historical faction-visible") {
 			t.Fatal("shared policy missing")
 		}
 	}

@@ -87,6 +87,7 @@ ai:
       model: gpt-5.6-luna
       scope: local
       supportedVersionPrefix: codex-cli 0.155.
+      availabilityEnvironmentVariable: CODEX_CLI_PROFILE_AVAILABLE
       maxSteps: 3
       enabled: true
     - id: claude-subscription-local
@@ -106,6 +107,7 @@ ai:
       model: gemini-3.7-flash-medium
       scope: local
       supportedVersionPrefix: 1.2.
+      availabilityEnvironmentVariable: GEMINI_CLI_PROFILE_AVAILABLE
       maxSteps: 3
       enabled: true
 

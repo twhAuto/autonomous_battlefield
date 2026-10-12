@@ -401,7 +401,7 @@ At the decision deadline:
 `APIRunner` in `internal/ai/runner/api.go` runs the shared API tool loop:
 
 1. connects to MCP with a request-scoped capability;
-2. accepts the battle tool set `get_decision_context`, `get_unit_details`, and `submit_strategy_plan` (also accepting the legacy pair during rollout);
+2. accepts the battle tool set `get_decision_context`, `get_unit_details`, and `submit_strategy_plan`;
 3. asks the configured provider for a tool-calling turn;
 4. rejects unsupported tools or a turn with no tool call;
 5. adds tool input and output to the transcript;
@@ -1187,7 +1187,6 @@ for deployment order, sampling, privacy, persistence and token-accounting limits
   in-flight responses so stale running status cannot overwrite an operator stop.
 - Load and failover behavior needs testing before increasing engine, MCP, or agent replicas.
 - API adapters build text transcripts instead of preserving provider-native structured tool history.
-- The standalone `UtilityController` lifecycle overlaps with the durable decision-window design but is not wired into production. See the [backend guide](../developer/backend-guide.md#internalgamecontroller-deterministic-policy-abstractions).
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
 
 The image-verification admission webhook fails closed on missing or invalid

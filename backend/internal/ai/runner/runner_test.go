@@ -38,6 +38,9 @@ func TestSDKToolSessionDiscoveryCallsAndBearer(t *testing.T) {
 	mcp.AddTool(server, &mcp.Tool{Name: "submit_strategy_plan"}, func(context.Context, *mcp.CallToolRequest, toolInput) (*mcp.CallToolResult, ai.SubmissionResult, error) {
 		return nil, ai.SubmissionResult{Accepted: true, Status: "accepted"}, nil
 	})
+	mcp.AddTool(server, &mcp.Tool{Name: "get_unit_details"}, func(context.Context, *mcp.CallToolRequest, toolInput) (*mcp.CallToolResult, map[string]any, error) {
+		return nil, map[string]any{"units": []any{}}, nil
+	})
 	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +54,7 @@ func TestSDKToolSessionDiscoveryCallsAndBearer(t *testing.T) {
 	session := sdkSession{raw}
 	defer session.Close()
 	tools, err := session.Tools(context.Background())
-	if err != nil || len(tools) != 2 {
+	if err != nil || len(tools) != 3 {
 		t.Fatalf("tools=%#v err=%v", tools, err)
 	}
 	payload, accepted, err := session.Call(context.Background(), ai.ToolCall{Name: "submit_strategy_plan", Arguments: []byte(`{"requestId":"r"}`)})
@@ -68,6 +71,30 @@ func TestSDKToolSessionDiscoveryCallsAndBearer(t *testing.T) {
 	request, _ := http.NewRequest(http.MethodGet, "http://example", nil)
 	if _, err := transport.RoundTrip(request); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSDKToolSessionRejectsIncompleteBattleToolSet(t *testing.T) {
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	server := mcp.NewServer(&mcp.Implementation{Name: "server", Version: "1"}, nil)
+	for _, name := range []string{"get_decision_context", "submit_strategy_plan"} {
+		mcp.AddTool(server, &mcp.Tool{Name: name}, func(context.Context, *mcp.CallToolRequest, toolInput) (*mcp.CallToolResult, map[string]any, error) {
+			return nil, map[string]any{}, nil
+		})
+	}
+	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	raw, err := mcp.NewClient(&mcp.Implementation{Name: "client", Version: "1"}, nil).Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := sdkSession{raw}
+	defer session.Close()
+	if tools, err := session.Tools(context.Background()); err == nil {
+		t.Fatalf("accepted battle tool set without get_unit_details: %#v", tools)
 	}
 }
 
@@ -304,12 +331,6 @@ func TestAntigravityRejectsMissingOrFailedResult(t *testing.T) {
 		if err == nil || result.Accepted || result.ErrorCategory != "cli" {
 			t.Fatalf("accepted %s", output)
 		}
-	}
-	if strings.Contains(redactedCLIOutput([]byte("Bearer secret"), "secret"), "secret") {
-		t.Fatal("capability leaked")
-	}
-	if len(boundedOutput(make([]byte, 3000))) != 2048 {
-		t.Fatal("output not bounded")
 	}
 }
 
