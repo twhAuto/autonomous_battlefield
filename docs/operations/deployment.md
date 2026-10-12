@@ -653,7 +653,7 @@ AWS promotion copies verified images to ECR without rebuilding.
   transient PostgreSQL startup failures. Invalid configuration still fails
   immediately.
 - Frontend Nginx resolves the API Service at request time, so temporary absence
-  of the API DNS record no longer prevents the frontend container from starting.
+  of the API DNS record does not prevent the frontend container from starting.
 - Set `terminationGracePeriodSeconds` longer than the configured ten-second
   graceful-shutdown deadline.
 - The engine can have multiple replicas because work is claimed through durable
@@ -825,7 +825,7 @@ snapshot any data that must be preserved before that transition.
 The deployment helper waits for Elasticsearch and the other observability
 workloads, restarts Kibana against the ready Elasticsearch instance, waits for
 Kibana's rollout, then applies its setup job separately. Applying the observability
-Kustomization alone no longer creates the setup job. Each observability rollout
+Kustomization alone does not create the setup job. Each observability rollout
 briefly restarts Kibana. The setup job has a 300-second deadline, bounded HTTP
 requests, and separate pods for retries so failed-attempt logs remain available.
 The helper detects both successful and failed Job conditions and prints job, pod,

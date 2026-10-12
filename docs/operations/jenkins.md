@@ -260,7 +260,8 @@ find /tmp -maxdepth 1 -user "$(id -un)" -type d \
   -exec rm -rf -- {} +
 ```
 
-New pipeline runs no longer create those project caches in `/tmp`.
+Current pipeline runs keep Go caches under the build's temporary workspace, which
+the pipeline deletes after every build.
 
 ## Manage the persistent `battlefield-local` agent
 
@@ -414,7 +415,7 @@ successfully; afterward it can be selected in the GitHub branch ruleset.
 The production agent reads `~/.config/autonomous-battlefield/production/.env`
 for database, authentication, provider and integration settings. Its adjacent
 `deployment.env` identifies the cluster. Keep both private; the application file
-is parsed as literal data. Jenkins no longer binds a separate database credential.
+is parsed as literal data. Jenkins binds no separate database credential.
 It retains registry, signing, production Access-token and kubeconfig credentials.
 Use the main pipeline's `APPLY_CONFIGURATION` parameter after editing only `.env`.
 
@@ -456,7 +457,7 @@ the Jenkins checks as advisory.
 
 In the repository, open **Settings > Rules > Rulesets** and create or update
 the ruleset targeting `main`. `dev` is intentionally left without a ruleset so
-the owner can work on it directly when needed; Jenkins and SonarQube still run
+maintainers can push to it directly when needed; Jenkins and SonarQube still run
 on pull requests into `dev`, but their results there are advisory. The `main`
 ruleset should:
 
@@ -643,13 +644,12 @@ change. See [activation and rotation](limited-launch.md#ci-service-authenticatio
 for the JSON schema, Cloudflare Service Auth policy, expiry alerts and first rollout
 with `APPLY_CONFIGURATION=true`. Jenkins validates local credential metadata before
 rollout, then tests actual read-only service access through the public hostname.
-It no longer needs a copied browser session cookie.
+It needs no copied browser session cookie.
 
 ## Production hardening rollout
 
-Both Jenkinsfiles use the existing `battlefield-production` agent. The owner has
-chosen to share CI and production infrastructure for this small project with
-trusted build authors. Keep the existing agent online with its current label and
+Both Jenkinsfiles use the existing `battlefield-production` agent. By design, this
+small project with trusted build authors shares CI and production infrastructure. Keep the existing agent online with its current label and
 CI tools; a separate VM and `battlefield-ci` label are not rollout prerequisites.
 
 This is an accepted tradeoff: PR scripts and dependency installers execute with

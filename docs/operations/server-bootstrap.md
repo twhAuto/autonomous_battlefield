@@ -266,9 +266,8 @@ separate from the unprivileged CI suite.
 
 ## Backup drive and recovery boundary
 
-The owner deferred scheduled backup and retention work on 2026-09-30 for the
-current personal project. Existing pre-migration database dumps remain enabled.
-If backup automation resumes, the recorded preference is the server's second
+Scheduled backup and retention are not configured. Pre-migration database dumps
+remain enabled. If backup automation is added, the target is the server's second
 physical disk only; the earlier 100 GB / 7 daily / 4 weekly proposal is a planning
 baseline, not an active policy.
 

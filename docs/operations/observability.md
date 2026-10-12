@@ -211,7 +211,7 @@ See the linked guide for installation, host CLI forwarding and measurement limit
 
 ## Production kubelet TLS
 
-Production Prometheus no longer reuses the development-only
+Production Prometheus does not use the development-only
 `insecure_skip_verify: true` cAdvisor setting. Its staged overlay requires
 `BF_KUBELET_CA_FILE` in the private production `deployment.env`; relative paths
 resolve beside that file. The bundle is mounted at `/etc/prometheus/kubelet-ca.crt`

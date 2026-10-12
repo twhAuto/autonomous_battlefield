@@ -8,8 +8,7 @@ services. Never copy the host kubeconfig or Kubernetes signing secret into the V
 
 ## What runs where
 
-The CLI worker has its own KVM VM. Following the 2026-10-01 K3s cutover, a separate
-KVM VM runs Kubernetes, the application, engine, MCP server and database.
+The CLI worker has its own KVM VM. A separate KVM VM runs Kubernetes (K3s), the application, engine, MCP server and database.
 Docker remains on the physical Ubuntu host for CI and the retained old Kind
 cluster. The code-mode helper is a process inside the worker VM.
 
@@ -25,7 +24,7 @@ Physical Ubuntu PC
 ```
 
 The renderer uses loopback port 28084 by default, matching the existing server's
-`20-loopback.conf` and Caddy upstream inspected on 2026-10-01. `--bridge-port`
+`20-loopback.conf` and Caddy upstream. `--bridge-port`
 selects another free unprivileged port and changes both rendered files together.
 Keep the bridge separate from Jenkins smoke ports 18081–18085; in particular,
 18085 is used by the production frontend liveness check. A custom choice of
