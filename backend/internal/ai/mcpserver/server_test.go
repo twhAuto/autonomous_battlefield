@@ -27,6 +27,9 @@ type fakeRepository struct {
 	claimedProfiles []string
 	claimFn         func([]string) (ai.DecisionRecord, error)
 	err             error
+	failErr         error
+	usageErr        error
+	noDeadline      bool
 }
 
 func (r *fakeRepository) CreateOrReuseDecision(context.Context, ai.CreateDecisionParams) (ai.DecisionRecord, error) {
@@ -51,17 +54,19 @@ func (r *fakeRepository) ClaimModelDecision(_ context.Context, _ string, profile
 	if r.claimFn != nil {
 		record, err = r.claimFn(profiles)
 	}
-	expiry := time.Now().Add(time.Minute)
-	record.LeaseExpiresAt = &expiry
+	if !r.noDeadline {
+		expiry := time.Now().Add(time.Minute)
+		record.LeaseExpiresAt = &expiry
+	}
 	return record, err
 }
 func (r *fakeRepository) FinishDecisionFailure(context.Context, string, string, ai.Usage, map[string]any) error {
 	r.failures++
-	return nil
+	return r.failErr
 }
 func (r *fakeRepository) RecordDecisionUsage(context.Context, string, ai.Usage, map[string]any) error {
 	r.usage++
-	return nil
+	return r.usageErr
 }
 
 func TestStreamableMCPToolsAreAuthenticatedAndScoped(t *testing.T) {
