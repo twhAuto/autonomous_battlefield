@@ -270,11 +270,15 @@ Both adapters:
 
 ### `internal/ai/mcpserver`: model and agent boundary
 
-[`server.go`](../../backend/internal/ai/mcpserver/server.go) exposes separate HTTP surfaces:
+The package exposes separate HTTP surfaces:
 
-- `/mcp` is the request-capability-protected battle model tool surface;
-- `/generation-mcp` exposes only background context and submission tools;
-- `/internal/agent/*` is the shared-secret agent control plane for claims and result metadata.
+- `/mcp` ([`server.go`](../../backend/internal/ai/mcpserver/server.go)) is the
+  request-capability-protected battle model tool surface;
+- `/generation-mcp` ([`generation.go`](../../backend/internal/ai/mcpserver/generation.go))
+  exposes only background context and submission tools;
+- `/internal/agent/*` ([`dispatch.go`](../../backend/internal/ai/mcpserver/dispatch.go))
+  is the shared-secret agent dispatch API for claims, capability minting and result
+  metadata. It is plain JSON over HTTP, not MCP.
 
 The MCP tools are:
 
@@ -291,7 +295,7 @@ capability-scoped lookup. The saved-context service and frontend inspector show
 reconstructed context separately from optional reference details. All evaluation
 variants use the current projection, with lookup and total input-token metrics.
 
-The server validates request scope before calling `DecisionService`. PostgreSQL notifications close an in-memory wake-up channel so long-polling claim requests promptly query durable state.
+The tool server validates request scope before calling `DecisionService`. In the dispatch API, PostgreSQL notifications close an in-memory wake-up channel so long-polling claim requests promptly query durable state.
 
 ### `internal/game/controller`: strategy-plan contract
 
