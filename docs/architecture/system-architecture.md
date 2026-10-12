@@ -635,81 +635,17 @@ An accepted submission is idempotent when it repeats the stored idempotency key.
 
 ## 8. Persistence and durability
 
-Migration `00011_friends_access.sql` persists faction/battle owners, the singleton
-`runtime_policy`, shared `agent_execution_leases`, per-battle execution counters,
-and the private `friend_ai_usage` view. PostgreSQL admission serializes across API
-replicas: 20 battles/person/UTC day, 2 unfinished/person and 4 globally. Queued and
-running rows remain unfinished while paused. Generation admission retains its
-account lock and idempotency, with 10/day including queued jobs that later expire.
-Same-identity request retries reuse admission. Admin battles are exempt from the
-battle allowances (migration `00016`: the API sets `admission_exempt` only for an
-Admin actor), but still count as unfinished for other identities because they use
-the same engine. Players, Developers and CI keep every limit.
+PostgreSQL is the system of record and the only coordination channel between the API,
+engine and MCP service. Battles, events, decision windows and generation jobs are
+durable rows. Processes claim them with `FOR UPDATE SKIP LOCKED` leases, and
+admission triggers serialized on the `runtime_policy` row enforce battle allowances,
+the AI stop switch, per-battle model budgets and CLI capacity. A battle receives at
+most 100 model execution claims, including retries; after that, new windows fall
+back. Production migrations first save and validate a PostgreSQL backup.
 
-A battle receives at most 100 model execution claims, including retries, then the
-existing fallback resolves new windows. Disabling AI prevents new generation
-admissions/claims and makes new model windows fall back. Production migrations
-first save and validate a PostgreSQL backup; recovery retains Access authentication.
-The legacy-owner quota exemption supports migrations/trusted internal fixtures;
-application identities (including local Admin) cannot select that owner ID.
-
-
-| Table or view | Purpose | Important behavior |
-| --- | --- | --- |
-| `factions` | Reusable faction identity and doctrine; archived legacy blueprint | Existing battle snapshots survive faction deletion |
-| `battle_runs` | Queue, scenario/initial snapshot, current state, lease, status, and result | Lease owner and attempt guard writes |
-| `battle_events` | Replayable per-attempt event stream | Primary key and conflict handling make insertion idempotent |
-| `battle_decisions` | Observations, provenance, leases, plans, fallbacks, errors, and usage | Unique per battle/attempt/faction/tick; versioned resolution |
-| `battle_controller_evaluation` | Aggregated controller comparison | Latency, fallback/invalid rates, token use, plan diversity, and win rate |
-| `runtime_policy` | Singleton admission limits, AI stop switch, and CLI concurrency | Row lock serializes battle, decision, and generation admission |
-| `agent_execution_leases` | Active CLI execution slots | Capped by `runtime_policy.cli_concurrency`; expired rows are pruned on admission |
-| `faction_generation_accounts` / `faction_background_generations` | Per-actor generation lock and durable background draft jobs | Account row lock plus partial unique index allow one active job |
-| `model_access_policy` | Singleton administrator model-access policy | Optimistic version rejects conflicting saves |
-| `player_members` / `player_membership_sync` / `player_membership_audit` | Managed Player grants, Access-group synchronization, and audit history | Removal takes effect on the next API request |
-
-```mermaid
-erDiagram
-    FACTIONS {
-        uuid id PK
-        text name
-        text ruleset_id "legacy only"
-        text doctrine
-        jsonb blueprint "legacy only"
-    }
-    BATTLE_RUNS {
-        uuid id PK
-        text scenario_id
-        jsonb scenario_snapshot
-        jsonb initial_state
-        jsonb current_state
-        text status
-        int attempt
-        text lease_owner
-    }
-    BATTLE_EVENTS {
-        uuid battle_id PK,FK
-        int attempt PK
-        bigint sequence PK
-        bigint tick
-        text type
-        jsonb payload
-    }
-    BATTLE_DECISIONS {
-        uuid id PK
-        uuid battle_id FK
-        int attempt
-        uuid faction_id
-        bigint target_tick
-        text status
-        jsonb observation
-        jsonb resolved_plan
-    }
-
-    BATTLE_RUNS ||--o{ BATTLE_EVENTS : records
-    BATTLE_RUNS ||--o{ BATTLE_DECISIONS : coordinates
-```
-
-`battle_decisions.faction_id` is historical snapshot data rather than a foreign key to `factions`. PostgreSQL `NOTIFY` only reduces claim latency: it carries no authoritative work payload and is safe to miss because agents query durable state after every wake-up.
+The [database guide](database.md) owns the schema, ER diagram, process logins and the
+restricted `battlefield_mcp` role, claim and admission rules, wake-up notifications,
+idempotency, expiry and migration conventions.
 
 ### Completed battle result caching
 
@@ -832,7 +768,9 @@ in the [service authentication runbook](../operations/limited-launch.md#ci-servi
 
 ### Database privileges
 
-Migration `00004_battle_decisions.sql` creates a `battlefield_mcp` group role with decision-table and evaluation-view access, with no event, unit, building, or resource-state grants. Migration 00011 adds narrowly scoped battle-run ID/counter access and execution-lease/policy access for atomic admission. A deployment must give MCP a login that inherits only that intended role.
+MCP connects with a login that inherits only the `battlefield_mcp` group role, which
+can read and write decision and generation rows but not battle events, state or
+factions. See [database access](database.md#deployment-and-access).
 
 ### Runtime security requirements
 
