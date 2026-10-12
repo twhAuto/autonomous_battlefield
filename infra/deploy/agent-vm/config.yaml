@@ -1,6 +1,6 @@
 ai:
   environment: local
-  agentConcurrency: 1
+  agentConcurrency: 4
   agentHealthAddress: 127.0.0.1:8083
   mcpUrl: http://192.168.234.1:18084/mcp
   decisionTimeout: 2m

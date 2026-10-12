@@ -355,3 +355,15 @@ func TestTransientClaimFailureDoesNotCancelSibling(t *testing.T) {
 		t.Fatal("worker failed to stop")
 	}
 }
+
+func TestServiceURLDerivesControlAndGenerationEndpoints(t *testing.T) {
+	for _, mcpURL := range []string{"http://mcp:8084/mcp", "http://mcp:8084/mcp/", "http://mcp:8084", "http://mcp:8084/"} {
+		w := &Worker{MCPURL: mcpURL}
+		if got := w.serviceURL("/internal/agent/claim"); got != "http://mcp:8084/internal/agent/claim" {
+			t.Errorf("serviceURL(%q) = %q", mcpURL, got)
+		}
+		if got := w.serviceURL("/generation-mcp"); got != "http://mcp:8084/generation-mcp" {
+			t.Errorf("generation URL for %q = %q", mcpURL, got)
+		}
+	}
+}

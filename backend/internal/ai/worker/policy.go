@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -23,27 +22,31 @@ func (w *Worker) watchPolicy(parent context.Context) (context.Context, context.C
 				return
 			case <-ticker.C:
 			}
-			check, done := context.WithTimeout(ctx, 2*time.Second)
-			req, err := http.NewRequestWithContext(check, "GET", strings.TrimSuffix(w.MCPURL, "/mcp")+"/internal/agent/enabled", nil)
-			if err != nil {
-				done()
-				cancel()
-				return
-			}
-			req.Header.Set("Authorization", bearerPrefix+w.Secret)
-			response, err := w.Client.Do(req)
-			enabled := err == nil && response.StatusCode == http.StatusNoContent
-			if response != nil {
-				response.Body.Close()
-			}
-			done()
-			if !enabled {
+			if !w.policyEnabled(ctx) {
 				cancel()
 				return
 			}
 		}
 	}()
 	return ctx, cancel
+}
+
+// policyEnabled reports whether the control plane currently allows model work.
+// Any request or transport failure counts as disabled.
+func (w *Worker) policyEnabled(ctx context.Context) bool {
+	check, done := context.WithTimeout(ctx, 2*time.Second)
+	defer done()
+	req, err := http.NewRequestWithContext(check, http.MethodGet, w.serviceURL("/internal/agent/enabled"), nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Authorization", bearerPrefix+w.Secret)
+	response, err := w.Client.Do(req)
+	if err != nil {
+		return false
+	}
+	response.Body.Close()
+	return response.StatusCode == http.StatusNoContent
 }
 
 // Use the database lease deadline, not response-arrival time: a delayed claim

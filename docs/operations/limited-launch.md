@@ -216,7 +216,7 @@ existing idempotency key. Expired queued jobs and failed executions both consume
 
 A shared database limit admits up to four CLI executions across decisions and
 background jobs (`runtime_policy.cli_concurrency`, range 1–4). Workers separately
-limit their active jobs with `ai.agentConcurrency` (default 1; explicitly select 4 after validation).
+limit their active jobs with `ai.agentConcurrency` (1 when omitted; the K3s API worker and CLI VM template set 4).
 Submission alone does not release a slot: the worker must report
 completion, or the bounded execution lease must expire. Claims never wait in a
 worker's local execution queue. Workers use the database lease deadline rather than
