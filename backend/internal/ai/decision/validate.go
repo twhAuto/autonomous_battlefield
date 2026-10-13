@@ -11,6 +11,8 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
+const fieldRecruitmentOrders = "plan.recruitmentOrders"
+
 // ValidateSubmission checks version, target tick, and plan choices against the
 // frozen observation without mutating the decision or simulation. It returns every
 // issue at once so a model can correct them in one retry.
@@ -73,7 +75,7 @@ func validateUpgrades(legal ai.LegalChoices, plan controller.PlanProposal) []ai.
 func validateOpening(plan controller.PlanProposal) []ai.ValidationIssue {
 	var issues []ai.ValidationIssue
 	if plan.RecruitmentOrders == nil {
-		issues = append(issues, ai.ValidationIssue{Field: "plan.recruitmentOrders", Code: "required", Message: "Opening requires explicit orders; use [] to buy nothing."})
+		issues = append(issues, ai.ValidationIssue{Field: fieldRecruitmentOrders, Code: "required", Message: "Opening requires explicit orders; use [] to buy nothing."})
 	}
 	for _, kind := range plan.SpendOrder {
 		if kind == "construction" {
@@ -102,10 +104,10 @@ func validateRecruitment(legal ai.LegalChoices, plan controller.PlanProposal) []
 	}
 	for _, order := range *plan.RecruitmentOrders {
 		if !units[order.UnitType] {
-			issues = append(issues, ai.ValidationIssue{Field: "plan.recruitmentOrders", Code: "unsupported", Message: fmt.Sprintf("unit type %q is not legal", order.UnitType)})
+			issues = append(issues, ai.ValidationIssue{Field: fieldRecruitmentOrders, Code: "unsupported", Message: fmt.Sprintf("unit type %q is not legal", order.UnitType)})
 		}
 		if order.SourceBuildingID != "" && !sources[order.SourceBuildingID] {
-			issues = append(issues, ai.ValidationIssue{Field: "plan.recruitmentOrders", Code: "unsupported", Message: "sourceBuildingId must identify a legal owned recruitment source"})
+			issues = append(issues, ai.ValidationIssue{Field: fieldRecruitmentOrders, Code: "unsupported", Message: "sourceBuildingId must identify a legal owned recruitment source"})
 		}
 	}
 	return issues
