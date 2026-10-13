@@ -119,7 +119,7 @@ func TestSessionRejectsMissingTamperedAndExpiredTokens(t *testing.T) {
 func TestAuthenticationMiddlewareProtectsOnlyApplicationAPI(t *testing.T) {
 	manager := testManager()
 	downstream := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if strings.HasPrefix(request.URL.Path, "/v1/") && !isPublicAuthenticationPath(request.URL.Path) {
+		if strings.HasPrefix(request.URL.Path, "/v1/") && !publicPaths[request.URL.Path] {
 			actor, ok := ActorFromContext(request.Context())
 			if !ok || actor.ID != "admin" {
 				t.Errorf("actor=%#v ok=%t", actor, ok)
