@@ -7,12 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
-	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
@@ -64,22 +61,12 @@ func (s *Server) backgroundServer() *mcp.Server {
 }
 func (s *Server) GenerationHandler() http.Handler {
 	transport := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s.backgroundServer() }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 64 << 10, PropagateRequestCancellation: true})
+	authenticated := s.capabilityHandler(true, transport)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.generations == nil {
-			http.Error(w, "generation unavailable", 503)
+			http.Error(w, "generation unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		if origin := strings.TrimSpace(r.Header.Get("Origin")); origin != "" && !s.allowedOrigins[origin] {
-			http.Error(w, "origin not allowed", 403)
-			return
-		}
-		token := strings.TrimPrefix(r.Header.Get("Authorization"), bearerPrefix)
-		id, err := capability.Verify(s.secret, token, time.Now())
-		if err != nil || !strings.HasPrefix(id, generationLeasePrefix) {
-			http.Error(w, "invalid generation capability", 401)
-			return
-		}
-		id = strings.TrimPrefix(id, generationLeasePrefix)
-		transport.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestIDKey{}, id)))
+		authenticated.ServeHTTP(w, r)
 	})
 }
