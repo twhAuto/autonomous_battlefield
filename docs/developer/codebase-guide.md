@@ -111,6 +111,12 @@ The backend has five commands in one Go module: four runtime processes and the o
 
 `cmd` packages should remain thin. Domain and use-case behavior belongs under `internal`; entry points should focus on composition and process lifecycle.
 
+### Which packages each binary links
+
+Most `internal` packages are shared, so a package's folder doesn't say which process
+runs it. The generated [component map](component-map.md) lists the binaries that link
+each internal package, and the rules that keep them apart.
+
 The [server rebuild contract](../operations/server-rebuild-contract.md) connects
 the host, CI, VM, K3s and CLI entry points to state ownership, rebuild prerequisites
 and recovery verification. Its linked runbooks own the operational procedures.

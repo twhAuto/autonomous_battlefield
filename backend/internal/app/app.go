@@ -17,6 +17,7 @@ import (
 	factionrepo "github.com/twh09/autonomous_battlefield/backend/internal/faction/repo"
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
+	generationrepo "github.com/twh09/autonomous_battlefield/backend/internal/generation/repo"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 	"github.com/twh09/autonomous_battlefield/backend/internal/members"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
@@ -62,7 +63,7 @@ func NewAPIWithMembers(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint
 	adminHandler := &admin.Handler{Service: adminService}
 	profiles = profiles.WithAccessPolicy(adminService.ReadPolicy)
 	registries = []*profile.Registry{profiles}
-	generationHandler := &generation.Handler{Repository: &generation.Postgres{DB: db}, Config: generationConfig, Profiles: profiles}
+	generationHandler := &generation.Handler{Repository: &generationrepo.Postgres{DB: db}, Config: generationConfig, Profiles: profiles}
 	factionRepository := factionrepo.NewPostgres(db)
 	factionService := factionservice.NewService(factionRepository, catalog)
 	battleService := battleservice.NewServiceWithResultCache(battlerepo.NewPostgres(db), factionRepository, catalog, maxTicks, cache, registries...)

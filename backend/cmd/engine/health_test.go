@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 )
@@ -71,10 +72,10 @@ type idleHealthRepository struct {
 	claimed chan struct{}
 }
 
-func (r *idleHealthRepository) ClaimBattle(ctx context.Context, _ string, _ time.Duration, _ int) (*worker.BattleJob, error) {
+func (r *idleHealthRepository) ClaimBattle(ctx context.Context, _ string, _ time.Duration, _ int) (*queue.Job, error) {
 	close(r.claimed)
 	<-ctx.Done()
-	return nil, worker.ErrNoBattleAvailable
+	return nil, queue.ErrNoBattleAvailable
 }
 
 type healthDatabase struct{ err error }

@@ -5,13 +5,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
-	"go.opentelemetry.io/otel/attribute"
 	"log/slog"
 	"sync/atomic"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type Config struct {
@@ -104,7 +106,7 @@ func (w *Worker) claimBattles(ctx context.Context) error {
 			return nil
 		}
 		job, err := w.repository.ClaimBattle(ctx, w.config.WorkerID, w.config.LeaseDuration, w.config.MaxAttempts)
-		if errors.Is(err, ErrNoBattleAvailable) {
+		if errors.Is(err, queue.ErrNoBattleAvailable) {
 			if !wait(ctx, w.config.PollInterval) {
 				w.shuttingDown.Store(true)
 				return nil
@@ -118,7 +120,7 @@ func (w *Worker) claimBattles(ctx context.Context) error {
 	}
 }
 
-func (w *Worker) processClaimedBattle(ctx context.Context, job *BattleJob) {
+func (w *Worker) processClaimedBattle(ctx context.Context, job *queue.Job) {
 	telemetry.ObserveEngineClaim(job.Lease.Attempt > 1)
 	jobContext, span := telemetry.StartBattleProcess(ctx, job.Traceparent, job.Tracestate,
 		attribute.String("battlefield.battle_id", job.Lease.BattleID),
@@ -141,19 +143,19 @@ func (w *Worker) processClaimedBattle(ctx context.Context, job *BattleJob) {
 	switch {
 	case errors.Is(processErr, context.Canceled):
 		// Graceful requeue paths log their successful handoff directly.
-	case errors.Is(processErr, ErrBattleLeaseLost):
+	case errors.Is(processErr, queue.ErrLeaseLost):
 		w.logger.WarnContext(jobContext, "battle_lease_lost", attributes...)
 	default:
 		w.logger.ErrorContext(jobContext, "battle_processing_stopped", attributes...)
 	}
 }
 
-func (w *Worker) process(ctx context.Context, job *BattleJob) (resultErr error) {
+func (w *Worker) process(ctx context.Context, job *queue.Job) (resultErr error) {
 	started := time.Now()
 	ctx = context.WithValue(ctx, battleStartedKey{}, started)
 	outcome := "error"
 	defer func() {
-		if errors.Is(resultErr, ErrBattleLeaseLost) {
+		if errors.Is(resultErr, queue.ErrLeaseLost) {
 			outcome = "lease_lost"
 		}
 		telemetry.ObserveEngineBattle(outcome, time.Since(started))
@@ -171,7 +173,7 @@ func (w *Worker) process(ctx context.Context, job *BattleJob) (resultErr error) 
 	return resultErr
 }
 
-func (w *Worker) runBattle(ctx context.Context, job *BattleJob, simulation *game.Match) (string, error) {
+func (w *Worker) runBattle(ctx context.Context, job *queue.Job, simulation *game.Match) (string, error) {
 	var progress progressLog
 	for {
 		outcome, finished, err := w.runTick(ctx, job.Lease, simulation)
@@ -186,7 +188,7 @@ func (w *Worker) runBattle(ctx context.Context, job *BattleJob, simulation *game
 	}
 }
 
-func (w *Worker) runTick(ctx context.Context, lease BattleLease, simulation *game.Match) (string, bool, error) {
+func (w *Worker) runTick(ctx context.Context, lease queue.Lease, simulation *game.Match) (string, bool, error) {
 	if ctx.Err() != nil {
 		outcome, err := requeueOutcome(w.requeueAfterCancellation(ctx, lease))
 		return outcome, true, err
@@ -212,7 +214,7 @@ func (w *Worker) runTick(ctx context.Context, lease BattleLease, simulation *gam
 	return w.persistRunningTick(ctx, lease, simulation, transition, tickStarted)
 }
 
-func (w *Worker) advanceSimulation(ctx context.Context, lease BattleLease, simulation *game.Match) (game.Transition, error) {
+func (w *Worker) advanceSimulation(ctx context.Context, lease queue.Lease, simulation *game.Match) (game.Transition, error) {
 	if !simulation.DecisionWindowDue() || w.decisions == nil {
 		return simulation.Advance()
 	}
@@ -223,7 +225,7 @@ func (w *Worker) advanceSimulation(ctx context.Context, lease BattleLease, simul
 	return simulation.AdvanceWithPlans(plans)
 }
 
-func (w *Worker) persistRunningTick(ctx context.Context, lease BattleLease, simulation *game.Match, transition game.Transition, tickStarted time.Time) (string, bool, error) {
+func (w *Worker) persistRunningTick(ctx context.Context, lease queue.Lease, simulation *game.Match, transition game.Transition, tickStarted time.Time) (string, bool, error) {
 	if ctx.Err() != nil {
 		outcome, err := requeueOutcome(w.persistTickAndRequeue(ctx, lease, transition))
 		return outcome, true, err
@@ -247,7 +249,7 @@ func (w *Worker) persistRunningTick(ctx context.Context, lease BattleLease, simu
 	return "", false, nil
 }
 
-func (w *Worker) failInvalidScenario(ctx context.Context, lease BattleLease, scenarioErr error) error {
+func (w *Worker) failInvalidScenario(ctx context.Context, lease queue.Lease, scenarioErr error) error {
 	w.logger.ErrorContext(ctx, "battle_scenario_invalid",
 		"battle_id", lease.BattleID,
 		"attempt", lease.Attempt,
@@ -266,7 +268,7 @@ func (w *Worker) failInvalidScenario(ctx context.Context, lease BattleLease, sce
 	return nil
 }
 
-func (w *Worker) completeBattle(ctx context.Context, lease BattleLease, transition game.Transition) (string, error) {
+func (w *Worker) completeBattle(ctx context.Context, lease queue.Lease, transition game.Transition) (string, error) {
 	completeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.config.ShutdownTimeout)
 	defer cancel()
 	if err := w.repository.CompleteBattle(completeCtx, lease, transition); err != nil {

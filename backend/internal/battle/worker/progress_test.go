@@ -4,6 +4,7 @@
 package worker
 
 import (
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
 
 	"bytes"
@@ -73,7 +74,7 @@ func TestDecisionWaitingLogsPendingCountAndRenewsLease(t *testing.T) {
 	config.DecisionTimeout = time.Second
 	worker, err := NewWithLogger(repo, config, slog.New(logging.NewHandler(slog.NewJSONHandler(&output, nil))))
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
-	err = worker.waitForWindowDecisions(ctx, BattleLease{BattleID: "battle-1", Attempt: 1}, 10)
+	err = worker.waitForWindowDecisions(ctx, queue.Lease{BattleID: "battle-1", Attempt: 1}, 10)
 	testutil.Require(t, !(!errors.Is(err, context.Canceled) || repo.heartbeats != 1), func() { t.Fatalf("lease not renewed while waiting: %v, heartbeats=%d", err, repo.heartbeats) })
 	var row map[string]any
 	{
@@ -89,7 +90,7 @@ func TestResolvedDecisionWindowDoesNotReportWaiting(t *testing.T) {
 	worker, err := NewWithLogger(repo, testWorkerConfig(), slog.New(logging.NewHandler(slog.NewJSONHandler(&output, nil))))
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	{
-		err := worker.waitForWindowDecisions(context.Background(), BattleLease{}, 10)
+		err := worker.waitForWindowDecisions(context.Background(), queue.Lease{}, 10)
 		testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	}
 	testutil.Require(t, output.Len() == 0, func() { t.Fatal("logged waiting when no decisions pending", output.String()) })

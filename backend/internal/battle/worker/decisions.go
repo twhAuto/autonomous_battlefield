@@ -15,13 +15,14 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/observation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 )
 
-func (w *Worker) resolveDecisionWindow(ctx context.Context, lease BattleLease, simulation *game.Match) (plans map[string]controller.PlanProposal, err error) {
+func (w *Worker) resolveDecisionWindow(ctx context.Context, lease queue.Lease, simulation *game.Match) (plans map[string]controller.PlanProposal, err error) {
 	targetTick := simulation.DecisionTargetTick()
 	// Decisions store this span's context, so each agent decision trace links here.
 	ctx, span := telemetry.StartSpan(ctx, "battlefield.engine.decision_window",
@@ -65,7 +66,7 @@ func (w *Worker) resolveDecisionWindow(ctx context.Context, lease BattleLease, s
 	return plans, nil
 }
 
-func (w *Worker) prepareDecisionWindow(ctx context.Context, lease BattleLease, simulation *game.Match, targetTick uint64, baselines map[string]controller.PlanProposal, service *decision.Service) error {
+func (w *Worker) prepareDecisionWindow(ctx context.Context, lease queue.Lease, simulation *game.Match, targetTick uint64, baselines map[string]controller.PlanProposal, service *decision.Service) error {
 	for _, factionID := range simulation.FactionIDs() {
 		if err := w.prepareDecision(ctx, lease, simulation, factionID, targetTick, baselines, service); err != nil {
 			return err
@@ -74,7 +75,7 @@ func (w *Worker) prepareDecisionWindow(ctx context.Context, lease BattleLease, s
 	return nil
 }
 
-func (w *Worker) prepareDecision(ctx context.Context, lease BattleLease, simulation *game.Match, factionID string, targetTick uint64, baselines map[string]controller.PlanProposal, service *decision.Service) error {
+func (w *Worker) prepareDecision(ctx context.Context, lease queue.Lease, simulation *game.Match, factionID string, targetTick uint64, baselines map[string]controller.PlanProposal, service *decision.Service) error {
 	snapshot, err := simulation.DecisionSnapshot(factionID)
 	if err != nil {
 		return err
@@ -113,7 +114,7 @@ func (w *Worker) prepareDecision(ctx context.Context, lease BattleLease, simulat
 	return nil
 }
 
-func newDecisionContext(lease BattleLease, factionID string, targetTick uint64, snapshot game.DecisionSnapshot) ai.DecisionContext {
+func newDecisionContext(lease queue.Lease, factionID string, targetTick uint64, snapshot game.DecisionSnapshot) ai.DecisionContext {
 	return ai.DecisionContext{Doctrine: snapshot.Doctrine, FactionName: snapshot.FactionName, Background: snapshot.Background, Opening: snapshot.Opening, OwnedUpgradeIDs: snapshot.OwnedUpgradeIDs, SchemaVersion: ai.ContextSchema, RequestID: decisionID(lease.BattleID, lease.Attempt, factionID, targetTick), BattleID: lease.BattleID,
 		FactionID: factionID, TargetTick: targetTick, ExpectedVersion: 1, ObservationVersion: snapshot.Version,
 		View: snapshot.View, Economy: ai.EconomyContext{MaximumBuildings: snapshot.MaximumBuildings, Gold: snapshot.Gold, ProjectedIncome: snapshot.ProjectedIncome,
@@ -122,7 +123,7 @@ func newDecisionContext(lease BattleLease, factionID string, targetTick uint64, 
 		Legal: ai.LegalChoices{Buildings: snapshot.LegalBuildings, RecruitmentSources: snapshot.RecruitmentSources, Upgrades: snapshot.LegalUpgrades, ActionKinds: []string{game.ActionAttack, game.ActionDefend}, Units: snapshot.LegalUnits, EconomySites: snapshot.LegalSites}, ActivePlan: snapshot.ActivePlan}
 }
 
-func (w *Worker) logPreparedDecision(ctx context.Context, lease BattleLease, targetTick uint64, factionID string, setup game.FactionSetup, record ai.DecisionRecord) {
+func (w *Worker) logPreparedDecision(ctx context.Context, lease queue.Lease, targetTick uint64, factionID string, setup game.FactionSetup, record ai.DecisionRecord) {
 	w.logger.InfoContext(ctx, "decision_prepared", "battle_id", lease.BattleID, "attempt", lease.Attempt,
 		"request_id", record.ID, "faction_id", factionID, "target_tick", targetTick, "controller_type", setup.Controller.Type,
 		"profile_id", setup.Controller.ProfileID, "provider", setup.Controller.Provider, "runtime", setup.Controller.Runtime, "decision_status", record.Status)
@@ -139,7 +140,7 @@ func submitScriptedPlan(ctx context.Context, service *decision.Service, record a
 	return nil
 }
 
-func (w *Worker) waitForWindowDecisions(ctx context.Context, lease BattleLease, targetTick uint64) error {
+func (w *Worker) waitForWindowDecisions(ctx context.Context, lease queue.Lease, targetTick uint64) error {
 	deadline := time.Now().Add(w.config.DecisionTimeout)
 	nextHeartbeat := time.Now().Add(w.config.HeartbeatInterval)
 	var progress progressLog
@@ -182,7 +183,7 @@ func pendingDecisionCount(records []ai.DecisionRecord) int {
 	return count
 }
 
-func (w *Worker) resolveDecisionPlans(ctx context.Context, lease BattleLease, simulation *game.Match, targetTick uint64, baselines map[string]controller.PlanProposal, records []ai.DecisionRecord) (map[string]controller.PlanProposal, int, int, error) {
+func (w *Worker) resolveDecisionPlans(ctx context.Context, lease queue.Lease, simulation *game.Match, targetTick uint64, baselines map[string]controller.PlanProposal, records []ai.DecisionRecord) (map[string]controller.PlanProposal, int, int, error) {
 	plans := make(map[string]controller.PlanProposal, len(records))
 	acceptedCount, fallbackCount := 0, 0
 	for _, record := range records {
@@ -203,7 +204,7 @@ func (w *Worker) resolveDecisionPlans(ctx context.Context, lease BattleLease, si
 
 func (w *Worker) resolveDecisionRecord(ctx context.Context, simulation *game.Match, targetTick uint64, baselines map[string]controller.PlanProposal, record ai.DecisionRecord) (ai.DecisionRecord, error) {
 	if record.Status == "failed" && record.ErrorCategory == "battle_stopped" {
-		return record, ErrBattleLeaseLost
+		return record, queue.ErrLeaseLost
 	}
 	if record.ResolvedPlan == nil {
 		fallback, source := fallbackPlan(simulation, targetTick, baselines, record)
@@ -236,7 +237,7 @@ func fallbackPlan(simulation *game.Match, targetTick uint64, baselines map[strin
 	return record.Observation.ActivePlan, "previous_plan"
 }
 
-func (w *Worker) logResolvedDecision(ctx context.Context, lease BattleLease, record ai.DecisionRecord) {
+func (w *Worker) logResolvedDecision(ctx context.Context, lease queue.Lease, record ai.DecisionRecord) {
 	level := slog.LevelInfo
 	if record.Status == "fallback" || record.Status == "failed" {
 		level = slog.LevelWarn
@@ -279,7 +280,7 @@ func fallbackCategory(record ai.DecisionRecord) string {
 	return "timeout"
 }
 
-func (w *Worker) heartbeatWindow(ctx context.Context, lease BattleLease, nextHeartbeat time.Time) (time.Time, error) {
+func (w *Worker) heartbeatWindow(ctx context.Context, lease queue.Lease, nextHeartbeat time.Time) (time.Time, error) {
 	if !time.Now().Before(nextHeartbeat) {
 		if err := w.repository.HeartbeatBattle(ctx, lease, w.config.LeaseDuration); err != nil {
 			return nextHeartbeat, err
@@ -289,7 +290,7 @@ func (w *Worker) heartbeatWindow(ctx context.Context, lease BattleLease, nextHea
 	return nextHeartbeat, nil
 }
 
-func (w *Worker) logWindowProgress(ctx context.Context, lease BattleLease, targetTick uint64, pending int, started, deadline time.Time, progress *progressLog) {
+func (w *Worker) logWindowProgress(ctx context.Context, lease queue.Lease, targetTick uint64, pending int, started, deadline time.Time, progress *progressLog) {
 	if progress.due(time.Now()) {
 		w.logger.InfoContext(ctx, "decision_window_waiting", "battle_id", lease.BattleID,
 			"attempt", lease.Attempt, "target_tick", targetTick, "pending_count", pending,

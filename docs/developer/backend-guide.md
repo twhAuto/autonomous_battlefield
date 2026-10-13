@@ -129,7 +129,7 @@ Keep domain validation in the service. The handler should concentrate on transpo
 
 | File | Responsibility |
 | --- | --- |
-| [`repository.go`](../../backend/internal/battle/worker/repository.go) | Battle-job, lease, and worker repository contracts |
+| [`repository.go`](../../backend/internal/battle/worker/repository.go) | The worker's repository contract. The job and lease types it uses (`queue.Job`, `queue.Lease`, `queue.ErrLeaseLost`) live in [`battle/queue`](../../backend/internal/battle/queue/queue.go), which `battle/repo` also imports, so the persistence adapter doesn't depend on the engine package |
 | [`worker.go`](../../backend/internal/battle/worker/worker.go) | Construction, claims, battle/tick execution, persistence, and completion |
 | [`decisions.go`](../../backend/internal/battle/worker/decisions.go) | Decision-window preparation, waiting, validation, fallback, and logging |
 | [`lifecycle.go`](../../backend/internal/battle/worker/lifecycle.go) | Worker readiness, pause/heartbeat waits, cancellation, and requeue |
@@ -173,14 +173,15 @@ SQL concurrency behavior is part of the application's correctness. Changes to st
 ### `internal/ai`: shared contracts and focused subpackages
 
 The root package holds only the contracts every AI component shares. Behaviour lives
-in subpackages that import those contracts; the root imports none of them.
+in subpackages that import those contracts; the root imports none of them, which
+`internal/boundaries` enforces.
 
 | Package | Responsibility |
 | --- | --- |
 | [`ai`](../../backend/internal/ai/types.go) | `types.go`: decision sessions, frozen contexts (including their knowledge, memory and unit-reference types), submissions, records, model turns, tools, usage and profiles. `repository.go`: the durable decision repository contract and errors |
 | [`ai/capability`](../../backend/internal/ai/capability/capability.go) | `Mint` and `Verify` for request-scoped HMAC capability tokens |
 | [`ai/cliisolation`](../../backend/internal/ai/cliisolation/) | Environment allowlists, Antigravity's private home, and saved-login checks for the Codex, Claude and Antigravity subscription CLIs |
-| [`ai/decision`](../../backend/internal/ai/decision/service.go) | Context reads, plan validation against the frozen observation, observation hashes |
+| [`ai/decision`](../../backend/internal/ai/decision/service.go) | Context reads, the three-strike validation limit, observation hashes; `validate.go` holds every plan rule checked against the frozen observation |
 | [`ai/profile`](../../backend/internal/ai/profile/profiles.go) | API/CLI profile validation and availability (`Registry`, `NewCatalog`, `NewRegistry`) and the administrator access policy |
 | [`ai/prompts`](../../backend/internal/ai/prompts/prompts.go) | Embedded instruction templates, context delivery, and the battle and background-generation prompt digests |
 | [`ai/agentview`](../../backend/internal/ai/agentview/agent_context.go) | The bounded projection models see (`Compact`, `Observation`), compaction, frozen unit references and paged unit details |
@@ -330,7 +331,7 @@ Deleting a faction removes it from the active registry but does not affect the c
 | --- | --- |
 | [`types.go`](../../backend/internal/generation/types.go) | Configuration, normalized draft input, job state, quota options, and the repository contracts |
 | [`handler.go`](../../backend/internal/generation/handler.go) | Authenticated options, admission, and status routes under `/v1/faction-background-generations` |
-| [`postgres.go`](../../backend/internal/generation/postgres.go) | Transactional admission, account quotas, idempotency, durable claims, expiry, and result recording |
+| [`repo/postgres.go`](../../backend/internal/generation/repo/postgres.go) | PostgreSQL adapter (package `generation/repo`, kept apart so importing the contracts does not link database code): transactional admission, account quotas, idempotency, durable claims, expiry, and result recording |
 
 This package runs background writing as durable asynchronous jobs rather than
 inline requests. `Admit` opens a transaction per actor, expires stale jobs,
@@ -379,7 +380,7 @@ both the handler and registry to the service; policy reads do not depend on HTTP
 | `ai.DecisionContext` | `internal/ai/types.go` | Frozen bounded model observation |
 | `ai.DecisionRecord` | `internal/ai/types.go` | Durable decision state and provenance |
 | `service.BattleRun` | `battle/service/service.go` | Public/use-case representation of a stored run |
-| `worker.BattleLease` | `battle/worker/repository.go` | Attempt and ownership guard for engine writes |
+| `queue.Lease` | `battle/queue/queue.go` | Attempt and ownership guard for engine writes |
 
 When introducing a new field, identify its authority:
 
@@ -511,7 +512,7 @@ Faction/battle service tests cover every role for own, other and legacy content.
 Migration `00011_friends_access.sql` owns row ownership, atomic admission triggers,
 AI execution counts, the original CLI lease, runtime stop policy and private usage view.
 Migration `00014_cli_concurrency.sql` expands that lease admission to four shared slots.
-`generation/friends_integration_test.go` tests cross-connection admission, paused
+`generation/repo/friends_integration_test.go` tests cross-connection admission, paused
 limits, UTC reset, shared CLI slots and execution budgets against PostgreSQL.
 Workers receive capabilities from the AI gateway instead of signing them. `worker/policy.go`
 cancels execution on the private stop switch; `credentials_linux.go` blocks procfs/
@@ -559,7 +560,7 @@ Production k6 smoke-load credential binding is described in the
   a versioned library instead of duplicating stats.
 - `backend/scenarios/frontier-siege-v2.yaml` supplies the expanded 25×17 authored
   map and mixed scripted plans, selected through `castle-siege-v2`.
-- `backend/internal/ai/decision/expansion.go` validates typed construction and recruitment
+- `backend/internal/ai/decision/validate.go` validates typed construction and recruitment
   sources against frozen legal choices. The worker exposes structure definitions
   and source IDs through the MCP context.
 - `backend/internal/game/expansion_test.go` covers expansion mechanics;
@@ -744,5 +745,5 @@ only by API pods. See [Player invitations](../operations/player-invitations.md).
 Worker capacity is configured by `ai.agentConcurrency` in
 `backend/internal/config/ai.go` and passed by `backend/cmd/agent/main.go`.
 Migration `backend/migrations/00014_cli_concurrency.sql` sets the shared CLI lease
-capacity; `backend/internal/generation/friends_integration_test.go` verifies
+capacity; `backend/internal/generation/repo/friends_integration_test.go` verifies
 concurrent admission across battle and generation jobs.

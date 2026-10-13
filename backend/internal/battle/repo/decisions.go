@@ -204,12 +204,17 @@ func (r *Postgres) RecordDecisionUsage(ctx context.Context, id string, usage ai.
 	return err
 }
 
-func (r *Postgres) RecordDecisionValidation(ctx context.Context, id string) error {
-	_, err := r.db.Exec(ctx, `UPDATE battle_decisions
+func (r *Postgres) RecordDecisionValidation(ctx context.Context, id string) (int, error) {
+	var failures int
+	err := r.db.QueryRow(ctx, `UPDATE battle_decisions
 		SET provider_metadata=jsonb_set(provider_metadata, '{validationFailures}',
 			to_jsonb(COALESCE((provider_metadata->>'validationFailures')::integer, 0) + 1), true)
-		WHERE id=$1 AND status IN ('pending','running')`, id)
-	return err
+		WHERE id=$1 AND status IN ('pending','running')
+		RETURNING (provider_metadata->>'validationFailures')::integer`, id).Scan(&failures)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return failures, err
 }
 
 func scanDecision(row decisionRow) (ai.DecisionRecord, error) {

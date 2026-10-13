@@ -1,5 +1,5 @@
-// Checks decision authority and schema validation, repository errors, capability
-// integrity, and malformed-token fuzzing.
+// Checks decision submission, the validation limit, repository errors, and observation
+// hashing.
 
 package decision
 
@@ -47,9 +47,9 @@ func (r *memoryRepository) FinishDecisionFailure(context.Context, string, string
 func (r *memoryRepository) RecordDecisionUsage(context.Context, string, ai.Usage, map[string]any) error {
 	return r.err
 }
-func (r *memoryRepository) RecordDecisionValidation(context.Context, string) error {
+func (r *memoryRepository) RecordDecisionValidation(context.Context, string) (int, error) {
 	r.validations++
-	return r.err
+	return r.validations, r.err
 }
 
 func TestDecisionServiceValidatesAndSubmits(t *testing.T) {
@@ -133,15 +133,14 @@ func testModelRejectsPlaceholderAndStopsGuessing(t *testing.T, runtime string) {
 		t.Fatalf("explicit defensive decision rejected: %+v", issues)
 	}
 	submission.TargetTick = 999
-	record.ProviderMetadata = map[string]any{"validationFailures": float64(2)}
-	repository := &boundedCLIRepository{memoryRepository: memoryRepository{record: record}}
+	repository := &boundedCLIRepository{memoryRepository: memoryRepository{record: record, validations: 2}}
 	result, err := NewService(repository).SubmitPlan(context.Background(), submission)
 	if err != nil || result.Status != "failed" || repository.failed != "validation_limit" {
 		t.Fatalf("guessing not bounded: %+v %v", result, err)
 	}
 	repository.record.Status = "failed"
 	result, err = NewService(repository).SubmitPlan(context.Background(), submission)
-	if err != nil || result.Errors[0].Code != "terminal" || repository.validations != 1 {
+	if err != nil || result.Errors[0].Code != "terminal" || repository.validations != 3 {
 		t.Fatal("terminal decision revalidated")
 	}
 }

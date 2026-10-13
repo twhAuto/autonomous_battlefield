@@ -8,14 +8,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 // SaveTick stores state and events and renews the lease in one SQL statement.
 // A worker whose attempt or owner no longer matches receives ErrBattleLeaseLost.
-func (r *Postgres) SaveTick(ctx context.Context, lease worker.BattleLease, transition game.Transition, leaseDuration time.Duration) error {
+func (r *Postgres) SaveTick(ctx context.Context, lease queue.Lease, transition game.Transition, leaseDuration time.Duration) error {
 	events, err := json.Marshal(transition.Events)
 	if err != nil {
 		return fmt.Errorf("marshal tick events: %w", err)
@@ -44,14 +45,14 @@ func (r *Postgres) SaveTick(ctx context.Context, lease worker.BattleLease, trans
 		return fmt.Errorf("save battle %q tick %d: %w", lease.BattleID, transition.Tick, err)
 	}
 	if !owned {
-		return worker.ErrBattleLeaseLost
+		return queue.ErrLeaseLost
 	}
 	return nil
 }
 
 // CompleteBattle atomically stores the terminal state, result, and events and
 // releases the lease; unfinished transitions and stale workers are rejected.
-func (r *Postgres) CompleteBattle(ctx context.Context, lease worker.BattleLease, transition game.Transition) error {
+func (r *Postgres) CompleteBattle(ctx context.Context, lease queue.Lease, transition game.Transition) error {
 	if !transition.Finished || transition.Result == nil {
 		return errors.New("cannot complete battle without a finished transition")
 	}
@@ -89,7 +90,7 @@ func (r *Postgres) CompleteBattle(ctx context.Context, lease worker.BattleLease,
 		return fmt.Errorf("complete battle %q: %w", lease.BattleID, err)
 	}
 	if !owned {
-		return worker.ErrBattleLeaseLost
+		return queue.ErrLeaseLost
 	}
 	return nil
 }

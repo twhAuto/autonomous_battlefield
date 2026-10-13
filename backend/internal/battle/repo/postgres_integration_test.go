@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
 	battle "github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
@@ -29,7 +29,7 @@ func TestBattleRepositoryLifecycleAgainstPostgres(t *testing.T) {
 	if job.Lease.BattleID != battleID || job.Lease.Attempt != 1 {
 		t.Fatalf("claimed job = %#v", job)
 	}
-	if _, err := repo.ClaimBattle(ctx, "worker-2", 30*time.Second, 3); err != worker.ErrNoBattleAvailable {
+	if _, err := repo.ClaimBattle(ctx, "worker-2", 30*time.Second, 3); err != queue.ErrNoBattleAvailable {
 		t.Fatalf("second ClaimBattle() error = %v, want ErrNoBattleAvailable", err)
 	}
 
@@ -64,12 +64,12 @@ func TestBattleRepositoryLifecycleAgainstPostgres(t *testing.T) {
 	if run.Status != "completed" || run.CurrentTick != 2 || run.Result == nil || run.Result.Reason != "tick_limit" {
 		t.Fatalf("run = %#v", run)
 	}
-	if err := repo.RequeueBattle(ctx, job.Lease); err != worker.ErrBattleLeaseLost {
+	if err := repo.RequeueBattle(ctx, job.Lease); err != queue.ErrLeaseLost {
 		t.Fatalf("stale RequeueBattle() error = %v, want ErrBattleLeaseLost", err)
 	}
 }
 
-func createAndClaimBattle(t *testing.T, ctx context.Context, repo *Postgres, battleID string) *worker.BattleJob {
+func createAndClaimBattle(t *testing.T, ctx context.Context, repo *Postgres, battleID string) *queue.Job {
 	t.Helper()
 	scenario := repositoryTestScenario()
 	if err := repo.CreateBattle(ctx, battleservice.CreateBattleParams{ID: battleID, ScenarioID: scenario.ID, ScenarioDigest: "digest", ScenarioSnapshot: scenario, RequestedTicks: 2}); err != nil {
@@ -103,7 +103,7 @@ func TestBattleRepositoryReclaimsExpiredLeaseAndRejectsStaleWorker(t *testing.T)
 	if second.Lease.Attempt != 2 || second.Lease.Owner != "worker-2" {
 		t.Fatalf("reclaimed lease = %#v", second.Lease)
 	}
-	if err := repo.HeartbeatBattle(ctx, first.Lease, time.Second); err != worker.ErrBattleLeaseLost {
+	if err := repo.HeartbeatBattle(ctx, first.Lease, time.Second); err != queue.ErrLeaseLost {
 		t.Fatalf("stale HeartbeatBattle() error = %v, want ErrBattleLeaseLost", err)
 	}
 	if err := repo.RequeueBattle(ctx, second.Lease); err != nil {
@@ -124,7 +124,7 @@ func TestBattleRepositoryFailsExhaustedAttempts(t *testing.T) {
 		t.Fatalf("ClaimBattle() returned an error: %v", err)
 	}
 	time.Sleep(10 * time.Millisecond)
-	if _, err := repo.ClaimBattle(ctx, "worker-2", time.Second, 1); err != worker.ErrNoBattleAvailable {
+	if _, err := repo.ClaimBattle(ctx, "worker-2", time.Second, 1); err != queue.ErrNoBattleAvailable {
 		t.Fatalf("second ClaimBattle() error = %v, want ErrNoBattleAvailable", err)
 	}
 	run, err := repo.GetBattle(ctx, battleID)
