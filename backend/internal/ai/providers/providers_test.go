@@ -176,3 +176,45 @@ func TestProvidersCloseResponsesAndPreserveErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestProviderErrorsReportKindWithoutMessage(t *testing.T) {
+	for name, test := range map[string]struct {
+		provider ai.TurnProvider
+		body     string
+		want     string
+	}{
+		"OpenAI": {&OpenAI{}, `{"error":{"message":"echoed request content","type":"invalid_request_error","code":"invalid_value"}}`, "OpenAI response status 400 (invalid_request_error/invalid_value)"},
+		"Gemini": {&Gemini{}, `{"error":{"code":400,"message":"echoed request content","status":"INVALID_ARGUMENT"}}`, "Gemini response status 400 (INVALID_ARGUMENT/400)"},
+		"unsafe": {&OpenAI{}, `{"error":{"type":"has spaces and\nnewlines","code":"ok_code"}}`, "OpenAI response status 400 (ok_code)"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			switch provider := test.provider.(type) {
+			case *OpenAI:
+				provider.Client = clientWith(http.StatusBadRequest, test.body, nil)
+			case *Gemini:
+				provider.Client = clientWith(http.StatusBadRequest, test.body, nil)
+			}
+			_, err := test.provider.NextTurn(context.Background(), providerRequest())
+			if err == nil || err.Error() != test.want || strings.Contains(err.Error(), "echoed") {
+				t.Fatalf("error=%v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestProvidersRejectOversizedResponses(t *testing.T) {
+	huge := `{"output":[],"padding":"` + strings.Repeat("x", maxResponseBytes) + `"}`
+	_, err := (&OpenAI{Client: clientWith(http.StatusOK, huge, nil)}).NextTurn(context.Background(), providerRequest())
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversized response accepted: %v", err)
+	}
+}
+
+func TestGeminiEscapesModelInPath(t *testing.T) {
+	var path string
+	client := clientWith(http.StatusOK, `{"candidates":[]}`, func(request *http.Request) { path = request.URL.EscapedPath() })
+	_, _ = (&Gemini{Model: "gemini/../../other?x=1", Client: client}).NextTurn(context.Background(), providerRequest())
+	if path != "/v1beta/models/gemini%2F..%2F..%2Fother%3Fx=1:generateContent" {
+		t.Fatalf("model not escaped in path: %s", path)
+	}
+}

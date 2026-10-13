@@ -264,8 +264,11 @@ for context delivery and accepted-plan enforcement.
 [`openai.go`](../../backend/internal/ai/providers/openai.go) translates neutral tools into OpenAI Responses function tools. [`gemini.go`](../../backend/internal/ai/providers/gemini.go) translates them into Gemini function declarations.
 
 [`http.go`](../../backend/internal/ai/providers/http.go) owns transcript formatting,
-the shared HTTP response lifecycle, status errors, and JSON decoding. Provider
-adapters retain their authentication, request schemas, and named response types.
+the shared HTTP response lifecycle, status errors, and JSON decoding. Responses are
+capped at 4 MiB. Error statuses report only the provider's machine-readable error
+class (for example `invalid_request_error` or `INVALID_ARGUMENT`), never its free-text
+message, which can echo request content. Provider adapters retain their
+authentication, request schemas, and named response types.
 
 Both adapters:
 
