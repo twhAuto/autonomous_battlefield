@@ -15,9 +15,10 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
-func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDuration time.Duration, maxAttempts int) (*queue.Job, error) {
-	ctx, span := telemetry.StartDatabaseSpan(ctx, "claim_battle")
-	defer span.End()
+// FailExhaustedBattles fails queued or lease-expired battles that have used every
+// attempt, so they end as attempts_exhausted instead of waiting forever. ClaimBattle
+// never claims them; the engine runs this before each claim.
+func (r *Postgres) FailExhaustedBattles(ctx context.Context, maxAttempts int) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE battle_runs
 		SET status = 'failed', error_code = 'attempts_exhausted',
@@ -29,12 +30,17 @@ func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDurati
 		  AND attempt >= $1
 	`, maxAttempts)
 	if err != nil {
-		return nil, fmt.Errorf("fail exhausted battles: %w", err)
+		return fmt.Errorf("fail exhausted battles: %w", err)
 	}
+	return nil
+}
 
+func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDuration time.Duration, maxAttempts int) (*queue.Job, error) {
+	ctx, span := telemetry.StartDatabaseSpan(ctx, "claim_battle")
+	defer span.End()
 	var job queue.Job
 	var snapshot []byte
-	err = r.db.QueryRow(ctx, `
+	err := r.db.QueryRow(ctx, `
 		WITH candidate AS (
 			SELECT id
 			FROM battle_runs

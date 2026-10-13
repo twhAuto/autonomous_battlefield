@@ -14,6 +14,7 @@ import (
 // Repository describes the durable queue operations required by the worker.
 type Repository interface {
 	ExpireBattles(context.Context) error
+	FailExhaustedBattles(context.Context, int) error
 	ClaimBattle(context.Context, string, time.Duration, int) (*queue.Job, error)
 	SaveTick(context.Context, queue.Lease, game.Transition, time.Duration) error
 	HeartbeatBattle(context.Context, queue.Lease, time.Duration) error

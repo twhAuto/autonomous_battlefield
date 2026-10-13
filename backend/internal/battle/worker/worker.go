@@ -105,6 +105,9 @@ func (w *Worker) claimBattles(ctx context.Context) error {
 			w.shuttingDown.Store(true)
 			return nil
 		}
+		if err := w.repository.FailExhaustedBattles(ctx, w.config.MaxAttempts); err != nil {
+			return fmt.Errorf("claim battle: %w", err)
+		}
 		job, err := w.repository.ClaimBattle(ctx, w.config.WorkerID, w.config.LeaseDuration, w.config.MaxAttempts)
 		if errors.Is(err, queue.ErrNoBattleAvailable) {
 			if !wait(ctx, w.config.PollInterval) {

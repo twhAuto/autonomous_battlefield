@@ -124,6 +124,9 @@ func TestBattleRepositoryFailsExhaustedAttempts(t *testing.T) {
 		t.Fatalf("ClaimBattle() returned an error: %v", err)
 	}
 	time.Sleep(10 * time.Millisecond)
+	if err := repo.FailExhaustedBattles(ctx, 1); err != nil {
+		t.Fatalf("FailExhaustedBattles() returned an error: %v", err)
+	}
 	if _, err := repo.ClaimBattle(ctx, "worker-2", time.Second, 1); err != queue.ErrNoBattleAvailable {
 		t.Fatalf("second ClaimBattle() error = %v, want ErrNoBattleAvailable", err)
 	}

@@ -161,7 +161,7 @@ All persistence calls carry the current battle lease. Do not add an unguarded wr
 
 ### `internal/battle/repo`: PostgreSQL battle adapter
 
-The adapter stays in one package: [`postgres.go`](../../backend/internal/battle/repo/postgres.go) constructs it, [`battles.go`](../../backend/internal/battle/repo/battles.go) owns public battle operations, [`queue.go`](../../backend/internal/battle/repo/queue.go) owns queue leases, and [`ticks.go`](../../backend/internal/battle/repo/ticks.go) owns atomic tick and completion writes. Splitting files does not change transaction boundaries.
+The adapter stays in one package: [`postgres.go`](../../backend/internal/battle/repo/postgres.go) constructs it, [`battles.go`](../../backend/internal/battle/repo/battles.go) owns public battle operations, [`queue.go`](../../backend/internal/battle/repo/queue.go) owns queue leases and `FailExhaustedBattles` (the engine runs it before each claim), [`expiry.go`](../../backend/internal/battle/repo/expiry.go) owns the `battleTimeout` (one hour) sweep, and [`ticks.go`](../../backend/internal/battle/repo/ticks.go) owns atomic tick and completion writes. Splitting files does not change transaction boundaries.
 
 [`decisions.go`](../../backend/internal/battle/repo/decisions.go) implements the AI decision repository:
 
