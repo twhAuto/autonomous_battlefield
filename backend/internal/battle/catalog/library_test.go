@@ -78,7 +78,7 @@ func TestScenarioContentRestrictionsReachEngineAndAI(t *testing.T) {
 	tmpl.AllowedUpgrades = []string{}
 	tmpl.AllowedBuildings = []string{"castle"}
 	writeTemplate(t, dir, tmpl)
-	c, err := LoadCatalog(filepath.Join(dir, "scenarios"))
+	c, err := LoadCatalog(filepath.Join(dir, "scenarios"), "")
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	bp := game.Blueprint{Units: []game.UnitSelection{{Type: "ranger", Count: 1}}, RecruitmentPriority: []string{"ranger"}}
 	ids := [2]service.FactionIdentity{{ID: "a", Name: "A", RulesetID: tmpl.RulesetID, Blueprint: bp}, {ID: "b", Name: "B", RulesetID: tmpl.RulesetID, Blueprint: bp}}
@@ -132,7 +132,7 @@ func TestScenarioContentRestrictionsReachEngineAndAI(t *testing.T) {
 	library.Units[2].Cost++
 	data, _ := yaml.Marshal(library)
 	_ = os.WriteFile(path, data, 0600)
-	next, err := LoadCatalog(filepath.Join(dir, "scenarios"))
+	next, err := LoadCatalog(filepath.Join(dir, "scenarios"), "")
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	changed, nextHash, err := next.Resolve("restricted", ids)
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
@@ -168,7 +168,7 @@ func TestInvalidScenarioRestrictionsFailAtStartup(t *testing.T) {
 			change(&tmpl)
 			writeTemplate(t, dir, tmpl)
 			{
-				_, err := LoadCatalog(filepath.Join(dir, "scenarios"))
+				_, err := LoadCatalog(filepath.Join(dir, "scenarios"), "")
 				testutil.Require(t, err != nil, func() { t.Fatal("invalid restriction accepted") })
 			}
 		})
