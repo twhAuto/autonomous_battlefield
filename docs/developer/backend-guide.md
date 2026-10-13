@@ -173,14 +173,15 @@ SQL concurrency behavior is part of the application's correctness. Changes to st
 ### `internal/ai`: shared contracts and focused subpackages
 
 The root package holds only the contracts every AI component shares. Behaviour lives
-in subpackages that import those contracts; the root imports none of them.
+in subpackages that import those contracts; the root imports none of them, which
+`internal/boundaries` enforces.
 
 | Package | Responsibility |
 | --- | --- |
 | [`ai`](../../backend/internal/ai/types.go) | `types.go`: decision sessions, frozen contexts (including their knowledge, memory and unit-reference types), submissions, records, model turns, tools, usage and profiles. `repository.go`: the durable decision repository contract and errors |
 | [`ai/capability`](../../backend/internal/ai/capability/capability.go) | `Mint` and `Verify` for request-scoped HMAC capability tokens |
 | [`ai/cliisolation`](../../backend/internal/ai/cliisolation/) | Environment allowlists, Antigravity's private home, and saved-login checks for the Codex, Claude and Antigravity subscription CLIs |
-| [`ai/decision`](../../backend/internal/ai/decision/service.go) | Context reads, plan validation against the frozen observation, observation hashes |
+| [`ai/decision`](../../backend/internal/ai/decision/service.go) | Context reads, the three-strike validation limit, observation hashes; `validate.go` holds every plan rule checked against the frozen observation |
 | [`ai/profile`](../../backend/internal/ai/profile/profiles.go) | API/CLI profile validation and availability (`Registry`, `NewCatalog`, `NewRegistry`) and the administrator access policy |
 | [`ai/prompts`](../../backend/internal/ai/prompts/prompts.go) | Embedded instruction templates, context delivery, and the battle and background-generation prompt digests |
 | [`ai/agentview`](../../backend/internal/ai/agentview/agent_context.go) | The bounded projection models see (`Compact`, `Observation`), compaction, frozen unit references and paged unit details |
@@ -559,7 +560,7 @@ Production k6 smoke-load credential binding is described in the
   a versioned library instead of duplicating stats.
 - `backend/scenarios/frontier-siege-v2.yaml` supplies the expanded 25×17 authored
   map and mixed scripted plans, selected through `castle-siege-v2`.
-- `backend/internal/ai/decision/expansion.go` validates typed construction and recruitment
+- `backend/internal/ai/decision/validate.go` validates typed construction and recruitment
   sources against frozen legal choices. The worker exposes structure definitions
   and source IDs through the MCP context.
 - `backend/internal/game/expansion_test.go` covers expansion mechanics;
