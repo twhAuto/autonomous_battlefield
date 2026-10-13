@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 )
@@ -47,7 +48,7 @@ func (p *Gemini) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	}
 	endpoint := p.Endpoint
 	if endpoint == "" {
-		endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + p.Model + ":generateContent"
+		endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + url.PathEscape(p.Model) + ":generateContent"
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
