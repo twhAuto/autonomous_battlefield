@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/cliisolation"
 	aieval "github.com/twh09/autonomous_battlefield/backend/internal/ai/eval"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/providers"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
@@ -120,7 +121,7 @@ func makeComparisonVariant(v comparisonVariantConfig, prices aieval.PriceBook) (
 			}
 			return runner.APIRunner{Provider: provider}
 		}
-	case "codex-cli", "antigravity-cli", "claude-cli":
+	case cliisolation.ProviderCodex, cliisolation.ProviderAntigravity, cliisolation.ProviderClaude:
 		result.Runtime = "cli"
 		result.NewRunner = func() ai.DecisionRunner { return runner.CLIRunner{Provider: v.Provider, Model: v.Model} }
 	default:

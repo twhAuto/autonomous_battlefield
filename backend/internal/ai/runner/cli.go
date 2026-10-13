@@ -72,11 +72,10 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 		executor = OSCommandExecutor{}
 	}
 	prompt := prompts.SessionSystem(session) + "\n" + prompts.SessionDecision(session, nil)
-	var name string
+	name := cliisolation.Binary(r.Provider)
 	var args, environment []string
 	switch r.Provider {
-	case "codex-cli":
-		name = "codex"
+	case cliisolation.ProviderCodex:
 		args = []string{"exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "--ignore-user-config", "-C", workspace,
 			disableFlag, "shell_tool", disableFlag, "browser_use", disableFlag, "in_app_browser", disableFlag, "computer_use", disableFlag, "apps", disableFlag, "image_generation", disableFlag, "multi_agent", disableFlag, "skill_search", disableFlag, "skill_mcp_dependency_install", disableFlag, "plugins", disableFlag, "hooks", disableFlag, "goals", disableFlag, "standalone_web_search",
 			"-c", `approval_policy="never"`, "-c", `mcp_servers.battlefield.url="` + session.MCPURL + `"`,
@@ -86,15 +85,13 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 		args = withModel(args, r.Model)
 		environment = replaceEnvironment(cliisolation.CodexEnvironment(), "CODEX_WORKSPACE", workspace)
 		environment = replaceEnvironment(environment, "BATTLEFIELD_MCP_AUTHORIZATION", "Bearer "+session.CapabilityToken)
-	case "claude-cli":
-		name = "claude"
+	case cliisolation.ProviderClaude:
 		args, err = claudeArguments(temporary, prompt, r.Model, session)
 		if err != nil {
 			return ai.DecisionResult{ErrorCategory: "cli_isolation"}, err
 		}
 		environment = cliisolation.ClaudeEnvironment()
-	case "antigravity-cli":
-		name = "agy"
+	case cliisolation.ProviderAntigravity:
 		payload, contextErr := r.prefetchContext(ctx, session)
 		if contextErr != nil {
 			return ai.DecisionResult{ErrorCategory: "mcp_context"}, contextErr
@@ -112,9 +109,9 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 	}
 	span.SetAttributes(attribute.Int("battlefield.prompt.bytes", len(prompt)))
 	output, err := executor.Run(ctx, name, args, environment, workspace)
-	if r.Provider == "antigravity-cli" {
+	if r.Provider == cliisolation.ProviderAntigravity {
 		result, runErr = antigravityResult(output)
-	} else if r.Provider == "claude-cli" {
+	} else if r.Provider == cliisolation.ProviderClaude {
 		result, runErr = claudeResult(output)
 	} else {
 		result, runErr = codexResult(output)

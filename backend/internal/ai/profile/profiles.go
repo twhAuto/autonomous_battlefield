@@ -29,9 +29,6 @@ type profileRegistryPurpose uint8
 const (
 	profileExecutor profileRegistryPurpose = iota
 	profileCatalog
-	claudeCLIProvider      = "claude-cli"
-	codexCLIProvider       = "codex-cli"
-	antigravityCLIProvider = "antigravity-cli"
 )
 
 func NewRegistry(environment string, configured []ai.ModelProfile) *Registry {
@@ -131,7 +128,7 @@ func evaluateExternalCLIProfile(profile ai.ModelProfile, purpose profileRegistry
 		profile.UnavailableReason = "host CLI agent is not connected"
 		return profile
 	}
-	if profile.Runtime != "cli" || (profile.Provider != codexCLIProvider && profile.Provider != antigravityCLIProvider && profile.Provider != claudeCLIProvider) || strings.TrimSpace(profile.SupportedVersionPrefix) == "" {
+	if profile.Runtime != "cli" || cliisolation.Binary(profile.Provider) == "" || strings.TrimSpace(profile.SupportedVersionPrefix) == "" {
 		profile.UnavailableReason = "invalid external CLI profile configuration"
 		return profile
 	}
@@ -166,7 +163,7 @@ func evaluateAPIProfile(environment string, profile ai.ModelProfile) ai.ModelPro
 }
 
 func evaluateLocalCLIProfile(profile ai.ModelProfile) ai.ModelProfile {
-	binary := map[string]string{claudeCLIProvider: "claude", codexCLIProvider: "codex", antigravityCLIProvider: "agy"}[profile.Provider]
+	binary := cliisolation.Binary(profile.Provider)
 	if binary == "" {
 		profile.UnavailableReason = "unsupported CLI provider"
 		return profile
@@ -180,21 +177,9 @@ func evaluateLocalCLIProfile(profile ai.ModelProfile) ai.ModelProfile {
 		profile.UnavailableReason = binary + " CLI version is not supported"
 		return profile
 	}
-	if profile.Provider == antigravityCLIProvider {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		if err := cliisolation.CheckAntigravityAuth(ctx); err != nil {
-			profile.UnavailableReason = err.Error()
-			return profile
-		}
-	} else if profile.Provider == claudeCLIProvider {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		if err := cliisolation.CheckClaudeAuth(ctx); err != nil {
-			profile.UnavailableReason = err.Error()
-			return profile
-		}
-	} else if err := cliisolation.CheckCodexAuth(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := cliisolation.CheckAuth(ctx, profile.Provider); err != nil {
 		profile.UnavailableReason = err.Error()
 		return profile
 	}
