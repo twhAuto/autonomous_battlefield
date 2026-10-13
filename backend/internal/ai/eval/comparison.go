@@ -268,12 +268,12 @@ func (r *comparisonRepository) SubmitDecisionPlan(_ context.Context, s ai.PlanSu
 	r.record.Version++
 	return ai.SubmissionResult{Accepted: true, Status: "accepted"}, nil
 }
-func (r *comparisonRepository) RecordDecisionValidation(context.Context, string) error {
+func (r *comparisonRepository) RecordDecisionValidation(context.Context, string) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.validationFailures++
 	r.calls = append(r.calls, "submit_strategy_plan")
-	return nil
+	return r.validationFailures, nil
 }
 func (r *comparisonRepository) FinishDecisionFailure(_ context.Context, _ string, category string, _ ai.Usage, _ map[string]any) error {
 	r.mu.Lock()

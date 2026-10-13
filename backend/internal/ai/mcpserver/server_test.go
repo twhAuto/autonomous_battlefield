@@ -24,6 +24,7 @@ type fakeRepository struct {
 	submitted       ai.PlanSubmission
 	failures        int
 	usage           int
+	validations     int
 	claimErr        error
 	claimedProfiles []string
 	claimFn         func([]string) (ai.DecisionRecord, error)
@@ -64,6 +65,10 @@ func (r *fakeRepository) ClaimModelDecision(_ context.Context, _ string, profile
 func (r *fakeRepository) FinishDecisionFailure(context.Context, string, string, ai.Usage, map[string]any) error {
 	r.failures++
 	return r.failErr
+}
+func (r *fakeRepository) RecordDecisionValidation(context.Context, string) (int, error) {
+	r.validations++
+	return r.validations, nil
 }
 func (r *fakeRepository) RecordDecisionUsage(context.Context, string, ai.Usage, map[string]any) error {
 	r.usage++

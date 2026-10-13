@@ -47,5 +47,8 @@ type DecisionRepository interface {
 	ResolveDecisionFallback(context.Context, string, int64, controller.PlanProposal, string, string) (bool, error)
 	ClaimModelDecision(context.Context, string, []string, time.Duration) (DecisionRecord, error)
 	FinishDecisionFailure(context.Context, string, string, Usage, map[string]any) error
+	// RecordDecisionValidation counts an invalid submission on an open decision and
+	// returns the updated count; a closed decision returns 0.
+	RecordDecisionValidation(context.Context, string) (int, error)
 	RecordDecisionUsage(context.Context, string, Usage, map[string]any) error
 }

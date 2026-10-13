@@ -471,6 +471,9 @@ func (r *decisionBattleRepository) FinishDecisionFailure(context.Context, string
 func (r *decisionBattleRepository) RecordDecisionUsage(context.Context, string, ai.Usage, map[string]any) error {
 	return nil
 }
+func (r *decisionBattleRepository) RecordDecisionValidation(context.Context, string) (int, error) {
+	return 1, nil
+}
 
 func TestDecisionWindowResolvesScriptedAndModelFallback(t *testing.T) {
 	for _, model := range []bool{false, true} {

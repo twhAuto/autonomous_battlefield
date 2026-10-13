@@ -83,7 +83,21 @@ func TestDecisionListAndMutations(t *testing.T) {
 	if err := repository.RecordDecisionUsage(context.Background(), "id", ai.Usage{Requests: 1}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.RecordDecisionValidation(context.Background(), "id"); err != nil {
+}
+
+func TestRecordDecisionValidationReturnsUpdatedCount(t *testing.T) {
+	db := &battleDB{}
+	repository := NewPostgres(db)
+	if failures, err := repository.RecordDecisionValidation(context.Background(), "closed"); err != nil || failures != 0 {
+		t.Fatalf("closed decision: failures=%d err=%v", failures, err)
+	}
+	db.row = battleRow(func(destinations ...any) error { *(destinations[0].(*int)) = 3; return nil })
+	if failures, err := repository.RecordDecisionValidation(context.Background(), "open"); err != nil || failures != 3 || !strings.Contains(db.queryRowSQL, "RETURNING") {
+		t.Fatalf("open decision: failures=%d err=%v", failures, err)
+	}
+	want := errors.New("database")
+	db.row = battleRow(func(...any) error { return want })
+	if _, err := repository.RecordDecisionValidation(context.Background(), "open"); !errors.Is(err, want) {
 		t.Fatal(err)
 	}
 }
