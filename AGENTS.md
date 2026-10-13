@@ -36,7 +36,10 @@ Keep documentation synchronized with every implementation change:
 - Schema, migrations, database roles, grants or triggers: update
   `docs/architecture/database.md`.
 - Packages, entry points, important types, routes, migrations, frontend areas,
-  tests or common workflows: update `docs/developer/codebase-guide.md`.
+  tests or common workflows: update `docs/developer/codebase-guide.md`. When a
+  backend change adds, moves or newly imports an `internal` package, regenerate
+  `docs/developer/component-map.md` with
+  `go test ./internal/boundaries -run TestComponentMapIsCurrent -update` from `backend/`.
 - Setup steps, capabilities, commands, ports or documentation entry points: update
   `README.md`.
 - Skip mechanical edits for internal changes that alter no documented behavior,
