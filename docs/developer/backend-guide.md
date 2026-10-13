@@ -287,6 +287,10 @@ The package exposes separate HTTP surfaces:
   is the shared-secret agent dispatch API for claims, capability minting and result
   metadata. It is plain JSON over HTTP, not MCP.
 
+Both MCP surfaces authenticate through one `capabilityHandler` in `server.go`: origin
+allowlist, `Bearer` capability verification, and a check that the token's kind
+(battle or `generation:`-prefixed) matches the endpoint.
+
 The MCP tools are:
 
 - `get_decision_context`;

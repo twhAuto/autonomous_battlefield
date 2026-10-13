@@ -371,7 +371,8 @@ submissions close the job with `invalid_output`.
 The internal claim endpoint accepts `jobTypes: ["battle_decision",
 "faction_background"]` and executable `profileIds`. Omitted job types mean
 battle decisions only. Battle decisions receive priority. Generation capabilities
-are separate from battle capabilities; `/generation-mcp` exposes only
+are separate from battle capabilities, and each MCP endpoint returns 401 for the
+other kind; `/generation-mcp` exposes only
 `get_background_context` and `submit_faction_background`. Neither tool receives
 battle data. Workers report actual configured model, prompt version, usage, and
 failure category to `/internal/agent/generation-finish`.

@@ -970,7 +970,9 @@ before entering an empty battle long poll; jobs admitted during that poll are
 checked on the next claim. The AI gateway write timeout leaves room beyond the maximum
 20-second poll so a durable claim can be delivered. Claims use `FOR UPDATE SKIP LOCKED` and
 never reclaim running generation jobs. Generation capabilities are namespaced
-separately and authorize only the draft's two tools on `/generation-mcp`.
+separately and authorize only the draft's two tools on `/generation-mcp`. Each
+endpoint accepts only its own kind: `/mcp` rejects generation capabilities and
+`/generation-mcp` rejects battle capabilities.
 The restricted AI gateway database role receives SELECT/UPDATE on generation jobs,
 without faction-table or battle-state access.
 

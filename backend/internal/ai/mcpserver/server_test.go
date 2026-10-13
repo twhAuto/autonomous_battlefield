@@ -192,3 +192,64 @@ func FuzzMCPRequestBody(f *testing.F) {
 func (r *fakeRepository) ListFactionMemory(context.Context, string, int, string, uint64) ([]ai.FactionMemoryEntry, error) {
 	return nil, nil
 }
+
+func TestCapabilityHandlerScopesEachEndpointToItsOwnTokens(t *testing.T) {
+	server := New(&fakeRepository{}, "secret", []string{"https://allowed.example"})
+	mint := func(id string, ttl time.Duration) string {
+		token, _ := capability.Mint("secret", id, time.Now().Add(ttl))
+		return token
+	}
+	battle, generationToken := mint("battle-request", time.Minute), mint(generationLeasePrefix+"draft", time.Minute)
+	for name, tc := range map[string]struct {
+		generationScope bool
+		authorization   string
+		origin          string
+		code            int
+		requestID       string
+	}{
+		"battle token on battle endpoint":         {false, "Bearer " + battle, "", http.StatusOK, "battle-request"},
+		"generation token on generation endpoint": {true, "Bearer " + generationToken, "https://allowed.example", http.StatusOK, "draft"},
+		"generation token on battle endpoint":     {false, "Bearer " + generationToken, "", http.StatusUnauthorized, ""},
+		"battle token on generation endpoint":     {true, "Bearer " + battle, "", http.StatusUnauthorized, ""},
+		"missing authorization":                   {false, "", "", http.StatusUnauthorized, ""},
+		"token without bearer scheme":             {true, generationToken, "", http.StatusUnauthorized, ""},
+		"token signed with another secret": {false, "Bearer " + func() string {
+			token, _ := capability.Mint("other", "battle-request", time.Now().Add(time.Minute))
+			return token
+		}(), "", http.StatusUnauthorized, ""},
+		"expired token": {false, "Bearer " + mint("battle-request", -time.Second), "", http.StatusUnauthorized, ""},
+		"foreign origin with a valid battle token":  {false, "Bearer " + battle, "https://evil.example", http.StatusForbidden, ""},
+		"foreign origin with a valid generation id": {true, "Bearer " + generationToken, "https://evil.example", http.StatusForbidden, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var reached string
+			transport := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				reached, _ = r.Context().Value(requestIDKey{}).(string)
+			})
+			request := httptest.NewRequest(http.MethodPost, "http://server", nil)
+			if tc.authorization != "" {
+				request.Header.Set("Authorization", tc.authorization)
+			}
+			if tc.origin != "" {
+				request.Header.Set("Origin", tc.origin)
+			}
+			response := httptest.NewRecorder()
+			server.capabilityHandler(tc.generationScope, transport).ServeHTTP(response, request)
+			if response.Code != tc.code || reached != tc.requestID {
+				t.Fatalf("code=%d reached=%q, want %d %q", response.Code, reached, tc.code, tc.requestID)
+			}
+		})
+	}
+}
+
+func TestMCPRejectsGenerationCapability(t *testing.T) {
+	generationID := generationLeasePrefix + "draft"
+	token, _ := capability.Mint("secret", generationID, time.Now().Add(time.Minute))
+	request := httptest.NewRequest(http.MethodPost, "http://server", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	response := httptest.NewRecorder()
+	New(&fakeRepository{}, "secret", nil).Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatal(response.Code)
+	}
+}

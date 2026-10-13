@@ -60,18 +60,28 @@ func (s *Server) Handler() http.Handler {
 	transport := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s.mcpServer() }, &mcp.StreamableHTTPOptions{
 		Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 64 << 10, PropagateRequestCancellation: true,
 	})
+	return s.capabilityHandler(false, transport)
+}
+
+// capabilityHandler is the only authentication path for the model-facing MCP endpoints.
+// It checks the origin and the capability token, then scopes the request to the
+// token's request ID. Battle and generation tokens are signed with the same secret,
+// so each endpoint accepts only its own kind: generation IDs carry
+// generationLeasePrefix, which is stripped before the tools see the ID.
+func (s *Server) capabilityHandler(generationScope bool, transport http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin := strings.TrimSpace(r.Header.Get("Origin")); origin != "" && !s.allowedOrigins[origin] {
 			http.Error(w, "origin not allowed", http.StatusForbidden)
 			return
 		}
-		authorization := strings.TrimSpace(r.Header.Get("Authorization"))
-		if !strings.HasPrefix(authorization, bearerPrefix) {
+		token, ok := strings.CutPrefix(strings.TrimSpace(r.Header.Get("Authorization")), bearerPrefix)
+		if !ok {
 			http.Error(w, "missing capability", http.StatusUnauthorized)
 			return
 		}
-		requestID, err := capability.Verify(s.secret, strings.TrimSpace(strings.TrimPrefix(authorization, bearerPrefix)), time.Now())
-		if err != nil {
+		requestID, err := capability.Verify(s.secret, strings.TrimSpace(token), time.Now())
+		requestID, isGeneration := strings.CutPrefix(requestID, generationLeasePrefix)
+		if err != nil || isGeneration != generationScope {
 			http.Error(w, "invalid capability", http.StatusUnauthorized)
 			return
 		}
