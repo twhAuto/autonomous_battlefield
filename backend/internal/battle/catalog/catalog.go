@@ -42,12 +42,13 @@ type template struct {
 	ScriptedPlans         []controller.PlanProposal `yaml:"scriptedPlans"`
 }
 
-// LoadCatalog loads scenarios and rulesets. Without the optional path, the
-// rulesets directory beside the scenario directory is used.
-func LoadCatalog(scenarioDirectory string, rulesetDirectory ...string) (*Catalog, error) {
-	rulesPath := filepath.Join(filepath.Dir(scenarioDirectory), "rulesets")
-	if len(rulesetDirectory) > 0 {
-		rulesPath = rulesetDirectory[0]
+// LoadCatalog loads scenarios and rulesets. An empty rulesetDirectory selects the
+// rulesets directory beside the scenario directory. Content libraries are always read
+// from the content directory beside the rulesets directory.
+func LoadCatalog(scenarioDirectory, rulesetDirectory string) (*Catalog, error) {
+	rulesPath := rulesetDirectory
+	if rulesPath == "" {
+		rulesPath = filepath.Join(filepath.Dir(scenarioDirectory), "rulesets")
 	}
 	rulesets, err := loadRulesets(rulesPath)
 	if err != nil {
@@ -94,6 +95,7 @@ func (c *Catalog) Summaries() []battleservice.ScenarioSummary {
 	result := make([]battleservice.ScenarioSummary, 0, len(c.templates))
 	for _, id := range c.IDs() {
 		value := c.templates[id]
+		// validateTemplate already restricted every loaded template successfully.
 		restricted, _ := restrictRuleset(c.rulesets[value.RulesetID], value)
 		result = append(result, battleservice.ScenarioSummary{AllowedUnits: unitIDs(restricted), AllowedUpgrades: upgradeIDs(restricted), AllowedBuildings: buildingIDs(restricted), ID: value.ID, RulesVersion: value.RulesVersion, RulesetID: value.RulesetID, MaximumTicks: value.MaximumTicks, TickDuration: value.TickDuration, DecisionIntervalTicks: value.DecisionIntervalTicks, MapWidth: value.Map.Width, MapHeight: value.Map.Height})
 	}
@@ -132,6 +134,7 @@ func (c *Catalog) Resolve(id string, identities [2]battleservice.FactionIdentity
 
 		factions[index] = game.FactionSetup{ID: identity.ID, Name: identity.Name, Doctrine: identity.Doctrine, Background: identity.Background, FallbackPlan: controller.ClonePlanProposal(tmpl.FallbackPlan), ScriptedPlans: controller.ClonePlanProposals(tmpl.ScriptedPlans)}
 	}
+	// validateTemplateTiming already parsed every loaded template's duration.
 	duration, _ := time.ParseDuration(tmpl.TickDuration)
 	resolved := game.Scenario{SnapshotVersion: game.DoctrineSnapshotVersion, ID: tmpl.ID, RulesVersion: tmpl.RulesVersion, RulesetID: tmpl.RulesetID, MaximumTicks: tmpl.MaximumTicks, TickDuration: duration, DecisionIntervalTicks: tmpl.DecisionIntervalTicks, Map: game.CloneMap(tmpl.Map), Ruleset: cloneRuleset(ruleset), Factions: factions}
 	if _, err := game.NewMatch("scenario-validation", resolved, 1); err != nil {
