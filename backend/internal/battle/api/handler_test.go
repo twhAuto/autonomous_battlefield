@@ -392,7 +392,16 @@ type fakeBattleService struct {
 }
 
 func (s *fakeBattleService) ListScenarios() []battleservice.ScenarioSummary { return s.scenarios }
-func (s *fakeBattleService) ListModelProfiles() []ai.ModelProfile           { return s.profiles }
+
+// The base fake has no saved views or decision contexts; tests that need them embed
+// it and override these methods.
+func (s *fakeBattleService) GetFactionView(context.Context, string, string) (game.View, error) {
+	return game.View{}, battleservice.ErrBattleNotFound
+}
+func (s *fakeBattleService) GetDecisionContext(context.Context, string, string, int) (battleservice.SavedDecisionContext, error) {
+	return battleservice.SavedDecisionContext{}, ai.ErrDecisionNotFound
+}
+func (s *fakeBattleService) ListModelProfiles() []ai.ModelProfile { return s.profiles }
 func (s *fakeBattleService) ListDecisionHistory(context.Context, string, int) ([]battleservice.DecisionHistory, error) {
 	return s.history, s.err
 }

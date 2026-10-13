@@ -122,6 +122,11 @@ See [cache behavior](../architecture/system-architecture.md#completed-battle-res
 Battle, scenario, and profile routes are documented in the
 [HTTP API reference](../architecture/api.md). This handler owns JSON decoding,
 cursor/attempt parsing, HTTP status mapping, and response encoding for those routes.
+[`errors.go`](../../backend/internal/battle/api/errors.go) holds the shared service-error
+mapping (`writeError`): forbidden is 403, allowance 429, invalid 400, not found 404, and not
+active 409, with route-specific messages. Any other error is logged and becomes a generic 500.
+Handlers depend on the full `battleservice.Service` interface, so a missing capability is a
+compile error rather than an empty response.
 
 Keep domain validation in the service. The handler should concentrate on transport validation and stable HTTP status mapping.
 

@@ -109,6 +109,10 @@ type Service interface {
 	PauseBattle(context.Context, string) (*BattleRun, error)
 	ResumeBattle(context.Context, string) (*BattleRun, error)
 	ListBattleEvents(context.Context, string, *int, uint64, int, bool) (BattleEventPage, error)
+	ModelProfileService
+	DecisionHistoryService
+	PerspectiveService
+	DecisionContextService
 }
 
 type ModelProfileService interface {

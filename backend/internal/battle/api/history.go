@@ -4,8 +4,6 @@
 package api
 
 import (
-	"errors"
-	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -29,13 +27,8 @@ func (h *Handler) ListBattles(w http.ResponseWriter, r *http.Request) {
 		limit = parsed
 	}
 	page, err := h.battles.ListBattles(r.Context(), battleservice.BattleHistoryInput{Status: query.Get("status"), Cursor: query.Get("cursor"), Limit: limit})
-	if errors.Is(err, battleservice.ErrInvalidBattle) {
-		apierror.Write(w, r, http.StatusBadRequest, "invalid battle history query")
-		return
-	}
-	if err != nil {
-		slog.ErrorContext(r.Context(), "battle_history_read_failed", "request_id", httpapi.RequestID(r.Context()), "error", err)
-		apierror.Write(w, r, http.StatusInternalServerError, "could not list battles")
+	if writeError(w, r, err, []errorCase{invalidError("invalid battle history query")},
+		failure{event: "battle_history_read_failed", message: "could not list battles"}) {
 		return
 	}
 	if authn.IsPlayer(r.Context()) {
