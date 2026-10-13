@@ -32,7 +32,6 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/catalog"
 	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
-	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
@@ -114,10 +113,10 @@ func startIntegrationAPI(t *testing.T, db *pgxpool.Pool, issuer *accessIssuer) *
 	if err != nil {
 		t.Fatalf("LoadCatalog() returned an error: %v", err)
 	}
-	application := NewAPIWithMembers(db, scenarios, 10_000, authn.Config{
+	application := New(db, scenarios, 10_000, Options{Auth: authn.Config{
 		Mode: authn.ModeCloudflare, Issuer: issuer.server.URL, Audience: integrationAudience,
 		Origin: integrationOrigin, CIClientID: integrationCIClient, Roles: integrationRoles,
-	}, nil, generation.DefaultConfig(), MemberOptions{})
+	}})
 	lifecycle := httpapi.NewLifecycleHandler()
 	lifecycle.Activate(application.HTTPHandler(), db, nil)
 	server := httptest.NewServer(lifecycle)

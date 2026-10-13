@@ -178,7 +178,7 @@ func startServer(configuration config.Config) error {
 		go func() { defer close(syncDone); store.Run(syncCtx) }()
 		defer func() { stopSync(); <-syncDone }()
 	}
-	application := app.NewAPIWithMembers(db, catalog, configuration.API.MaxTicks, configuration.Auth, cache, configuration.AI.BackgroundGeneration, app.MemberOptions{Store: memberStore, Profiles: []*profile.Registry{profiles}})
+	application := app.New(db, catalog, configuration.API.MaxTicks, app.Options{Auth: configuration.Auth, Cache: cache, Generation: &configuration.AI.BackgroundGeneration, Profiles: profiles, Members: memberStore})
 	lifecycle.Activate(application.HTTPHandler(), db, nil)
 	slog.Info("api_ready", "address", server.Addr)
 

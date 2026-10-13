@@ -34,7 +34,7 @@ func savedRecord() ai.DecisionRecord {
 
 func TestSavedDecisionContextProjection(t *testing.T) {
 	repo := &contextRepo{fakeBattleRepo: &fakeBattleRepo{}, record: savedRecord()}
-	service := NewService(repo, &battleFactionRepo{}, &fakeScenarioCatalog{}, 100).(DecisionContextService)
+	service := NewService(repo, &battleFactionRepo{}, &fakeScenarioCatalog{}, 100, Options{}).(DecisionContextService)
 	result, err := service.GetDecisionContext(context.Background(), contextBattleID, contextRequestID, 2)
 	if err != nil || result.Context == nil || result.Context.Economy.Gold != 35 || result.ObservationTick != 8 || result.TargetTick != 10 || result.Context.Background != "Saved background" {
 		t.Fatalf("result=%+v error=%v", result, err)
@@ -68,14 +68,14 @@ func TestSavedDecisionContextValidationAndScope(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &contextRepo{fakeBattleRepo: &fakeBattleRepo{}, record: savedRecord()}
 			tc.mutate(&repo.record)
-			service := NewService(repo, &battleFactionRepo{}, &fakeScenarioCatalog{}, 100).(DecisionContextService)
+			service := NewService(repo, &battleFactionRepo{}, &fakeScenarioCatalog{}, 100, Options{}).(DecisionContextService)
 			if _, err := service.GetDecisionContext(context.Background(), contextBattleID, contextRequestID, 2); !errors.Is(err, ai.ErrDecisionNotFound) {
 				t.Fatal(err)
 			}
 		})
 	}
 	repo := &contextRepo{fakeBattleRepo: &fakeBattleRepo{}, record: savedRecord()}
-	service := NewService(repo, &battleFactionRepo{}, &fakeScenarioCatalog{}, 100).(DecisionContextService)
+	service := NewService(repo, &battleFactionRepo{}, &fakeScenarioCatalog{}, 100, Options{}).(DecisionContextService)
 	for _, args := range []struct {
 		battle, request string
 		attempt         int
@@ -92,7 +92,7 @@ func TestSavedDecisionContextValidationAndScope(t *testing.T) {
 	if _, err := service.GetDecisionContext(context.Background(), contextBattleID, contextRequestID, 2); !errors.Is(err, repo.err) {
 		t.Fatal(err)
 	}
-	service = NewService(&fakeBattleRepo{}, &battleFactionRepo{}, &fakeScenarioCatalog{}, 100).(DecisionContextService)
+	service = NewService(&fakeBattleRepo{}, &battleFactionRepo{}, &fakeScenarioCatalog{}, 100, Options{}).(DecisionContextService)
 	if _, err := service.GetDecisionContext(context.Background(), contextBattleID, contextRequestID, 2); !errors.Is(err, ai.ErrDecisionNotFound) {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestBattleProfileSnapshotSurvivesFactionChanges(t *testing.T) {
 	snapshot := game.FactionSetup{ID: "a", Name: "Original", Background: "Original history", Doctrine: "Original doctrine"}
 	repository := &fakeBattleRepo{run: &BattleRun{ID: contextBattleID, ScenarioSnapshot: game.Scenario{Factions: []game.FactionSetup{snapshot}}}}
 	factions := &battleFactionRepo{factions: map[string]*faction.Faction{"a": {ID: "a", Name: "Renamed", Background: "Edited history", Doctrine: "Edited doctrine"}}}
-	service := NewService(repository, factions, &fakeScenarioCatalog{}, 100)
+	service := NewService(repository, factions, &fakeScenarioCatalog{}, 100, Options{})
 	for _, deleted := range []bool{false, true} {
 		if deleted {
 			delete(factions.factions, "a")
@@ -125,7 +125,7 @@ func TestCompactSavedDecisionContext(t *testing.T) {
 	record.Observation.Legal.Units = rules.Units
 	record.Observation.UnitReference = agentview.FreezeUnitReference(rules, record.Observation)
 	repo := &contextRepo{fakeBattleRepo: &fakeBattleRepo{}, record: record}
-	svc := NewService(repo, &battleFactionRepo{}, &fakeScenarioCatalog{}, 100).(DecisionContextService)
+	svc := NewService(repo, &battleFactionRepo{}, &fakeScenarioCatalog{}, 100, Options{}).(DecisionContextService)
 	result, err := svc.GetDecisionContext(context.Background(), contextBattleID, contextRequestID, 2)
 	if err != nil || result.InitialContext == nil || result.AvailableUnitDetails == nil {
 		t.Fatal(result, err)

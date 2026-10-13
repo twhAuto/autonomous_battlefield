@@ -159,17 +159,19 @@ type battleService struct {
 	resultCache ResultCache
 }
 
-func NewService(battles Repository, factions factionRepository, catalog ScenarioCatalog, maxTicks uint64, registries ...*profile.Registry) Service {
-	return NewServiceWithResultCache(battles, factions, catalog, maxTicks, nil, registries...)
+// Options configures optional battle service dependencies. A nil Profiles uses the
+// local registry; a nil Cache disables caching of terminal battle snapshots.
+type Options struct {
+	Cache    ResultCache
+	Profiles *profile.Registry
 }
 
-// NewServiceWithResultCache enables optional caching of terminal battle snapshots.
-func NewServiceWithResultCache(battles Repository, factions factionRepository, catalog ScenarioCatalog, maxTicks uint64, cache ResultCache, registries ...*profile.Registry) Service {
-	registry := profile.NewRegistry("local", nil)
-	if len(registries) > 0 && registries[0] != nil {
-		registry = registries[0]
+func NewService(battles Repository, factions factionRepository, catalog ScenarioCatalog, maxTicks uint64, options Options) Service {
+	registry := options.Profiles
+	if registry == nil {
+		registry = profile.NewRegistry("local", nil)
 	}
-	return &battleService{battles: battles, factions: factions, catalog: catalog, maxTicks: maxTicks, profiles: registry, resultCache: cache}
+	return &battleService{battles: battles, factions: factions, catalog: catalog, maxTicks: maxTicks, profiles: registry, resultCache: options.Cache}
 }
 
 func (s *battleService) ListModelProfiles() []ai.ModelProfile { return s.profiles.List() }

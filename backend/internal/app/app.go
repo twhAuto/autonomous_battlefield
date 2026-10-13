@@ -30,43 +30,35 @@ type App struct {
 	httpHandler http.Handler
 }
 
-type MemberOptions struct {
-	Store    members.Repository
-	Profiles []*profile.Registry
+// Options configures optional API dependencies. Zero values select defaults: the local
+// model catalog, no result cache, the default background-generation configuration, and
+// no member store.
+type Options struct {
+	Auth       authn.Config
+	Cache      battleservice.ResultCache
+	Generation *generation.Config
+	Profiles   *profile.Registry
+	Members    members.Repository
 }
 
-func NewAPI(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, registries ...*profile.Registry) *App {
-	return NewAPIWithAuthentication(db, catalog, maxTicks, authn.Config{}, registries...)
-}
-
-func NewAPIWithAuthentication(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, registries ...*profile.Registry) *App {
-	return NewAPIWithResultCache(db, catalog, maxTicks, authentication, nil, registries...)
-}
-
-func NewAPIWithResultCache(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, registries ...*profile.Registry) *App {
-	return NewAPIWithGeneration(db, catalog, maxTicks, authentication, cache, generation.DefaultConfig(), registries...)
-}
-func NewAPIWithGeneration(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, generationConfig generation.Config, registries ...*profile.Registry) *App {
-	return NewAPIWithMembers(db, catalog, maxTicks, authentication, cache, generationConfig, MemberOptions{Profiles: registries})
-}
-
-func NewAPIWithMembers(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, authentication authn.Config, cache battleservice.ResultCache, generationConfig generation.Config, options MemberOptions) *App {
-	registries := options.Profiles
-	var profiles *profile.Registry
-	if len(registries) > 0 {
-		profiles = registries[0]
-	}
+// New composes the API from its database, scenario catalog, and battle tick limit.
+func New(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, options Options) *App {
+	authentication := options.Auth
+	profiles := options.Profiles
 	if profiles == nil {
 		profiles = profile.NewCatalog("local", nil)
+	}
+	generationConfig := generation.DefaultConfig()
+	if options.Generation != nil {
+		generationConfig = *options.Generation
 	}
 	adminService := &admin.Service{Repository: &admin.Postgres{DB: db}, Profiles: profiles}
 	adminHandler := &admin.Handler{Service: adminService}
 	profiles = profiles.WithAccessPolicy(adminService.ReadPolicy)
-	registries = []*profile.Registry{profiles}
 	generationHandler := &generation.Handler{Repository: &generationrepo.Postgres{DB: db}, Config: generationConfig, Profiles: profiles}
 	factionRepository := factionrepo.NewPostgres(db)
 	factionService := factionservice.NewService(factionRepository, catalog)
-	battleService := battleservice.NewServiceWithResultCache(battlerepo.NewPostgres(db), factionRepository, catalog, maxTicks, cache, registries...)
+	battleService := battleservice.NewService(battlerepo.NewPostgres(db), factionRepository, catalog, maxTicks, battleservice.Options{Cache: options.Cache, Profiles: profiles})
 
 	factionHandler := factionapi.NewHandler(factionService)
 	battleHandler := battleapi.NewHandler(battleService)
@@ -76,7 +68,7 @@ func NewAPIWithMembers(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint
 	}
 	router := httpapi.NewRouterWithMiddleware(
 		[]httpapi.Middleware{authenticationMiddleware},
-		authn.NewRoutes(authenticationManager), factionHandler, battleHandler, generationHandler, adminHandler, &members.Handler{Store: options.Store, Origin: authentication.Origin},
+		authn.NewRoutes(authenticationManager), factionHandler, battleHandler, generationHandler, adminHandler, &members.Handler{Store: options.Members, Origin: authentication.Origin},
 	)
 	// Tracing wraps access logging so completion logs share the request span.
 	return &App{httpHandler: telemetry.HTTPHandler("battlefield-api.http", router)}
