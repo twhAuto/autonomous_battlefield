@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/clienv"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/cliisolation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	aiworker "github.com/twh09/autonomous_battlefield/backend/internal/ai/worker"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
@@ -33,7 +33,7 @@ func main() {
 	if *checkClaudeAuth {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		if err := clienv.CheckClaudeAuth(ctx); err != nil {
+		if err := cliisolation.CheckClaudeAuth(ctx); err != nil {
 			logger.Error("claude_auth_unavailable", "error", err)
 			os.Exit(1)
 		}
@@ -42,7 +42,7 @@ func main() {
 	if *checkAntigravityAuth {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		if err := clienv.CheckAntigravityAuth(ctx); err != nil {
+		if err := cliisolation.CheckAntigravityAuth(ctx); err != nil {
 			logger.Error("antigravity_auth_unavailable", "error", err)
 			os.Exit(1)
 		}
