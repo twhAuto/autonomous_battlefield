@@ -6,6 +6,7 @@ package prompts
 import (
 	"crypto/sha256"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -115,5 +116,17 @@ func TestVersionCoversAssembledPrompts(t *testing.T) {
 	identityTemplate = "changed wording\n%s"
 	if fmt.Sprintf("battlefield-agent-v9.%x", sha256.Sum256([]byte(versionSample()))) == Version {
 		t.Fatal("a change to the identity wrapper did not change the version")
+	}
+}
+
+var gameRuleTerms = regexp.MustCompile(`\b(herbalists?|watchtowers?|catapults?|pikem[ae]n|siege|heal(s|ing)?)\b`)
+
+// Unit and building behaviour belongs to the ruleset's knowledge.mechanics, which is
+// versioned with the rules; repeating it here lets the prompt drift from the game.
+func TestDecisionPromptLeavesGameRulesToKnowledge(t *testing.T) {
+	// "attack and heal observations" names a context field, not a rule.
+	lower := strings.ReplaceAll(strings.ToLower(DecisionInstructions), "attack and heal observations", "")
+	if term := gameRuleTerms.FindString(lower); term != "" {
+		t.Fatalf("decision prompt restates ruleset behaviour (%q); put it in knowledge.mechanics", term)
 	}
 }
