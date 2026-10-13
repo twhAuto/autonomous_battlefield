@@ -15,17 +15,12 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
-func modelTranscript(turn ai.ModelTurnRequest) string {
-	var transcript strings.Builder
-	transcript.WriteString(turn.SystemPrompt)
-	transcript.WriteByte('\n')
-	for _, message := range turn.Messages {
-		transcript.WriteString(strings.ToUpper(message.Role))
-		transcript.WriteString(": ")
-		transcript.WriteString(message.Content)
-		transcript.WriteByte('\n')
+// toolArguments returns a call's arguments as JSON, defaulting to an empty object.
+func toolArguments(call ai.ToolCall) json.RawMessage {
+	if len(call.Arguments) == 0 {
+		return json.RawMessage("{}")
 	}
-	return transcript.String()
+	return call.Arguments
 }
 
 // doJSON owns the shared response lifecycle; adapters own provider wire formats.

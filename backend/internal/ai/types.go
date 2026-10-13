@@ -51,9 +51,16 @@ type ModelTurnResult struct {
 	Usage     Usage
 }
 
+// Message is one entry in a provider-neutral conversation. Role is "user",
+// "assistant" or "tool". An assistant message carries any text and the tool calls it
+// requested; a tool message answers one call, identified by ToolCallID and Name, with
+// the result in Content.
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content"`
+	ToolCalls  []ToolCall `json:"toolCalls,omitempty"`
+	ToolCallID string     `json:"toolCallId,omitempty"`
+	Name       string     `json:"name,omitempty"`
 }
 
 type ToolDefinition struct {
@@ -66,6 +73,9 @@ type ToolCall struct {
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments"`
+	// Signature is opaque provider state, such as a Gemini thought signature, that
+	// must be sent back with the call in later requests of the same conversation.
+	Signature string `json:"signature,omitempty"`
 }
 
 type Usage struct {

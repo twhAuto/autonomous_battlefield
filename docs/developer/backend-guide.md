@@ -247,7 +247,7 @@ The default runner factory is the only place that chooses concrete provider impl
 
 The API loop accepts only a known MCP tool set: the three battle tools or the two
 background-generation tools. It
-rejects any other tool name a provider requests. It appends tool calls and results to the neutral message transcript and accumulates usage over turns.
+rejects any other tool name a provider requests. Each turn becomes one assistant message holding its text and tool calls (missing call IDs are assigned per turn), followed by one tool message per result; usage accumulates over turns.
 
 The CLI runner creates a temporary directory, passes the profile's allowlisted model explicitly with `--model`, and constructs provider-specific command-line restrictions. Tests use the `CommandExecutor` interface to inspect the selected model and execution restrictions without starting a real CLI.
 
@@ -263,7 +263,8 @@ for context delivery and accepted-plan enforcement.
 
 [`openai.go`](../../backend/internal/ai/providers/openai.go) translates neutral tools into OpenAI Responses function tools. [`gemini.go`](../../backend/internal/ai/providers/gemini.go) translates them into Gemini function declarations.
 
-[`http.go`](../../backend/internal/ai/providers/http.go) owns transcript formatting,
+Each adapter converts the neutral history to its API's native roles and tool-call
+items (`openAIInput`, `geminiContents`). [`http.go`](../../backend/internal/ai/providers/http.go) owns
 the shared HTTP response lifecycle, status errors, and JSON decoding. Responses are
 capped at 4 MiB. Error statuses report only the provider's machine-readable error
 class (for example `invalid_request_error` or `INVALID_ARGUMENT`), never its free-text

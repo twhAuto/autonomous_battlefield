@@ -36,15 +36,16 @@ func clientWith(status int, body string, check func(*http.Request)) *http.Client
 func TestOpenAIParsesToolCallsAndUsage(t *testing.T) {
 	client := clientWith(http.StatusOK, `{"output":[{"type":"function_call","call_id":"call-1","name":"get_decision_context","arguments":"{\"requestId\":\"r\"}"}],"usage":{"input_tokens":12,"output_tokens":4}}`, func(request *http.Request) {
 		var body struct {
-			Input string `json:"input"`
-			Tools []struct {
+			Instructions string           `json:"instructions"`
+			Input        []map[string]any `json:"input"`
+			Tools        []struct {
 				Strict     *bool          `json:"strict"`
 				Parameters map[string]any `json:"parameters"`
 			} `json:"tools"`
 		}
 		{
 			err := json.NewDecoder(request.Body).Decode(&body)
-			testutil.Require(t, !(err != nil || body.Input != "system\nUSER: decide\n"), func() { t.Fatalf("transcript=%q err=%v", body.Input, err) })
+			testutil.Require(t, !(err != nil || body.Instructions != "system" || len(body.Input) != 1 || body.Input[0]["role"] != "user" || body.Input[0]["content"] != "decide"), func() { t.Fatalf("instructions=%q input=%v err=%v", body.Instructions, body.Input, err) })
 		}
 		if request.Header.Get("Authorization") != "Bearer key" {
 			t.Error("missing authorization")
@@ -77,6 +78,11 @@ func TestProvidersRecognizeRefusals(t *testing.T) {
 func TestGeminiParsesToolCallsAndErrors(t *testing.T) {
 	client := clientWith(http.StatusOK, `{"candidates":[{"content":{"parts":[{"text":"working"},{"functionCall":{"name":"submit_strategy_plan","args":{"requestId":"r"}}}]}}],"usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":3}}`, func(request *http.Request) {
 		var body struct {
+			SystemInstruction struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"systemInstruction"`
 			Contents []struct {
 				Parts []struct {
 					Text string `json:"text"`
@@ -98,7 +104,7 @@ func TestGeminiParsesToolCallsAndErrors(t *testing.T) {
 			err := json.NewDecoder(request.Body).Decode(&body)
 			testutil.Require(t, err == nil, func() { t.Fatal(err) })
 		}
-		testutil.Require(t, !(len(body.Contents) != 1 || len(body.Contents[0].Parts) != 1 || body.Contents[0].Parts[0].Text != "system\nUSER: decide\n"), func() { t.Fatalf("unexpected transcript: %+v", body) })
+		testutil.Require(t, !(len(body.SystemInstruction.Parts) != 1 || body.SystemInstruction.Parts[0].Text != "system" || len(body.Contents) != 1 || len(body.Contents[0].Parts) != 1 || body.Contents[0].Parts[0].Text != "decide"), func() { t.Fatalf("unexpected request: %+v", body) })
 		testutil.Require(t, len(body.Tools) == 1 && len(body.Tools[0].FunctionDeclarations) == 1, func() { t.Fatalf("tools=%+v", body.Tools) })
 		declaration := body.Tools[0].FunctionDeclarations[0]
 		if len(declaration.Parameters) != 0 {
@@ -216,5 +222,71 @@ func TestGeminiEscapesModelInPath(t *testing.T) {
 	_, _ = (&Gemini{Model: "gemini/../../other?x=1", Client: client}).NextTurn(context.Background(), providerRequest())
 	if path != "/v1beta/models/gemini%2F..%2F..%2Fother%3Fx=1:generateContent" {
 		t.Fatalf("model not escaped in path: %s", path)
+	}
+}
+
+// conversationRequest is a second turn: the model fetched context and a unit detail,
+// and both results came back.
+func conversationRequest() ai.ModelTurnRequest {
+	request := providerRequest()
+	request.Messages = append(request.Messages,
+		ai.Message{Role: "assistant", Content: "checking", ToolCalls: []ai.ToolCall{
+			{ID: "call-a", Name: "get_decision_context", Arguments: json.RawMessage(`{"requestId":"r"}`), Signature: "sig-a"},
+			{ID: "call-b", Name: "get_unit_details", Arguments: json.RawMessage(`{"requestId":"r","unitIds":["ranger"]}`)},
+		}},
+		ai.Message{Role: "tool", ToolCallID: "call-a", Name: "get_decision_context", Content: `{"context":{"requestId":"r"}}`},
+		ai.Message{Role: "tool", ToolCallID: "call-b", Name: "get_unit_details", Content: `not an object`},
+	)
+	return request
+}
+
+func TestOpenAISendsNativeConversationItems(t *testing.T) {
+	var input []map[string]any
+	client := clientWith(http.StatusOK, `{"output":[]}`, func(request *http.Request) {
+		var body struct {
+			Input []map[string]any `json:"input"`
+		}
+		_ = json.NewDecoder(request.Body).Decode(&body)
+		input = body.Input
+	})
+	_, _ = (&OpenAI{Client: client}).NextTurn(context.Background(), conversationRequest())
+	want := []map[string]any{
+		{"role": "user", "content": "decide"},
+		{"role": "assistant", "content": "checking"},
+		{"type": "function_call", "call_id": "call-a", "name": "get_decision_context", "arguments": `{"requestId":"r"}`},
+		{"type": "function_call", "call_id": "call-b", "name": "get_unit_details", "arguments": `{"requestId":"r","unitIds":["ranger"]}`},
+		{"type": "function_call_output", "call_id": "call-a", "output": `{"context":{"requestId":"r"}}`},
+		{"type": "function_call_output", "call_id": "call-b", "output": "not an object"},
+	}
+	got, _ := json.Marshal(input)
+	expected, _ := json.Marshal(want)
+	if string(got) != string(expected) {
+		t.Fatalf("input=%s\nwant  %s", got, expected)
+	}
+}
+
+func TestGeminiSendsNativeTurnsAndEchoesSignatures(t *testing.T) {
+	var contents json.RawMessage
+	client := clientWith(http.StatusOK, `{"candidates":[]}`, func(request *http.Request) {
+		var body struct {
+			Contents json.RawMessage `json:"contents"`
+		}
+		_ = json.NewDecoder(request.Body).Decode(&body)
+		contents = body.Contents
+	})
+	_, _ = (&Gemini{Client: client}).NextTurn(context.Background(), conversationRequest())
+	want := `[{"parts":[{"text":"decide"}],"role":"user"},` +
+		`{"parts":[{"text":"checking"},{"functionCall":{"args":{"requestId":"r"},"name":"get_decision_context"},"thoughtSignature":"sig-a"},{"functionCall":{"args":{"requestId":"r","unitIds":["ranger"]},"name":"get_unit_details"}}],"role":"model"},` +
+		`{"parts":[{"functionResponse":{"name":"get_decision_context","response":{"context":{"requestId":"r"}}}},{"functionResponse":{"name":"get_unit_details","response":{"result":"not an object"}}}],"role":"user"}]`
+	if string(contents) != want {
+		t.Fatalf("contents=%s\nwant     %s", contents, want)
+	}
+}
+
+func TestGeminiKeepsThoughtSignatures(t *testing.T) {
+	client := clientWith(http.StatusOK, `{"candidates":[{"content":{"parts":[{"functionCall":{"name":"get_decision_context","args":{"requestId":"r"}},"thoughtSignature":"opaque"}]}}]}`, nil)
+	result, err := (&Gemini{Client: client}).NextTurn(context.Background(), providerRequest())
+	if err != nil || len(result.ToolCalls) != 1 || result.ToolCalls[0].Signature != "opaque" {
+		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }

@@ -403,8 +403,15 @@ At the decision deadline:
 2. accepts the battle tool set `get_decision_context`, `get_unit_details`, and `submit_strategy_plan`;
 3. asks the configured provider for a tool-calling turn;
 4. rejects unsupported tools or a turn with no tool call;
-5. adds tool input and output to the transcript;
+5. records the turn's text and tool calls as one assistant message with call IDs, and each result as a tool message answering its call;
 6. stops after an accepted submission or the configured step limit.
+
+Provider adapters send this history in each API's native form: OpenAI receives the
+system prompt as `instructions` and the conversation as Responses input items
+(`function_call` and `function_call_output` matched by `call_id`); Gemini receives
+`systemInstruction`, model turns with `functionCall` parts (echoing each call's thought
+signature) and results as `functionResponse` parts. The policy therefore arrives with
+system authority, separate from untrusted battlefield data.
 
 OpenAI Responses and Gemini GenerateContent adapters normalize provider tool calls, refusals, and usage into common types.
 
@@ -1114,7 +1121,6 @@ for deployment order, sampling, privacy, persistence and token-accounting limits
   in-flight responses so stale running status cannot overwrite an operator stop.
 - Load and failover behavior needs testing before increasing engine, AI gateway, or agent replicas.
 - All worker placements share one control-plane secret, and claims self-report their profile IDs. A compromised worker could claim another placement's profiles. The secret cannot be rotated without changing every holder at once, and the CLI VM's `worker.env` cannot be changed through the managed workflow.
-- API adapters build text transcripts instead of preserving provider-native structured tool history.
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
 
 The image-verification admission webhook fails closed on missing or invalid

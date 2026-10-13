@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 
@@ -61,16 +60,15 @@ func (r APIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 		if len(turn.ToolCalls) == 0 {
 			return ai.DecisionResult{ErrorCategory: "no_progress", Usage: usage}, fmt.Errorf("provider returned no tool call")
 		}
-		accepted, updatedMessages, err := executeToolCalls(ctx, clientSession, turn.ToolCalls, messages, prompts.SessionToolNames(session)...)
+		calls := withCallIDs(turn.ToolCalls, step)
+		messages = append(messages, ai.Message{Role: "assistant", Content: turn.Text, ToolCalls: calls})
+		accepted, updatedMessages, err := executeToolCalls(ctx, clientSession, calls, messages, prompts.SessionToolNames(session)...)
 		if err != nil {
 			return ai.DecisionResult{ErrorCategory: toolErrorCategory(err), Usage: usage}, err
 		}
 		messages = updatedMessages
 		if accepted {
 			return ai.DecisionResult{Accepted: true, Usage: usage}, nil
-		}
-		if strings.TrimSpace(turn.Text) != "" {
-			messages = append(messages, ai.Message{Role: "assistant", Content: turn.Text})
 		}
 	}
 	return ai.DecisionResult{ErrorCategory: "step_limit", Usage: usage}, fmt.Errorf("provider exceeded %d steps", session.Profile.MaxSteps)
@@ -116,12 +114,24 @@ func executeToolCalls(ctx context.Context, session DecisionToolSession, calls []
 		if err != nil {
 			return false, messages, err
 		}
-		messages = append(messages, ai.Message{Role: "assistant", Content: "tool call " + call.Name + ": " + string(call.Arguments)}, ai.Message{Role: "tool", Content: string(payload)})
+		messages = append(messages, ai.Message{Role: "tool", ToolCallID: call.ID, Name: call.Name, Content: string(payload)})
 		if accepted {
 			return true, messages, nil
 		}
 	}
 	return false, messages, nil
+}
+
+// Providers that do not identify calls get stable per-turn IDs, so every result in the
+// conversation can be matched to the call it answers.
+func withCallIDs(calls []ai.ToolCall, step int) []ai.ToolCall {
+	identified := slices.Clone(calls)
+	for i := range identified {
+		if identified[i].ID == "" {
+			identified[i].ID = fmt.Sprintf("call_%d_%d", step, i)
+		}
+	}
+	return identified
 }
 
 func toolErrorCategory(err error) string {

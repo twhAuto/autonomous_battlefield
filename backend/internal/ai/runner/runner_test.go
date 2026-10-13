@@ -381,3 +381,52 @@ func TestCLIContextPrefetchFailsClosed(t *testing.T) {
 		}
 	}
 }
+
+type recordingTurnProvider struct{ requests []ai.ModelTurnRequest }
+
+// submitOnlySession accepts only submissions; reads return a small JSON result.
+type submitOnlySession struct{ injectionSession }
+
+func (submitOnlySession) Call(_ context.Context, call ai.ToolCall) (json.RawMessage, bool, error) {
+	return []byte(`{"ok":true}`), call.Name == "submit_strategy_plan", nil
+}
+
+type submitOnlyConnector struct{}
+
+func (submitOnlyConnector) Connect(context.Context, string, string) (DecisionToolSession, error) {
+	return submitOnlySession{}, nil
+}
+
+func (p *recordingTurnProvider) NextTurn(_ context.Context, request ai.ModelTurnRequest) (ai.ModelTurnResult, error) {
+	p.requests = append(p.requests, request)
+	if len(p.requests) == 1 {
+		return ai.ModelTurnResult{Text: "reading", ToolCalls: []ai.ToolCall{{Name: "get_decision_context", Arguments: []byte(`{"requestId":"request"}`)}, {ID: "provider-id", Name: "get_unit_details", Arguments: []byte(`{"requestId":"request","unitIds":["ranger"]}`)}}}, nil
+	}
+	return ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "submit_strategy_plan", Arguments: []byte(`{"requestId":"request"}`)}}}, nil
+}
+
+func TestAPIRunnerKeepsToolCallsStructured(t *testing.T) {
+	provider := &recordingTurnProvider{}
+	result, err := (APIRunner{Provider: provider, Connector: submitOnlyConnector{}}).Run(context.Background(), ai.DecisionSession{RequestID: "request", Profile: ai.ModelProfile{MaxSteps: 2, MaxOutputTokens: 100}})
+	if err != nil || !result.Accepted || len(provider.requests) != 2 {
+		t.Fatalf("result=%#v err=%v requests=%d", result, err, len(provider.requests))
+	}
+	messages := provider.requests[1].Messages
+	if len(messages) != 4 {
+		t.Fatalf("messages=%+v", messages)
+	}
+	assistant, first, second := messages[1], messages[2], messages[3]
+	if assistant.Role != "assistant" || assistant.Content != "reading" || len(assistant.ToolCalls) != 2 ||
+		assistant.ToolCalls[0].ID != "call_0_0" || assistant.ToolCalls[1].ID != "provider-id" {
+		t.Fatalf("assistant turn=%+v", assistant)
+	}
+	if first.Role != "tool" || first.ToolCallID != "call_0_0" || first.Name != "get_decision_context" ||
+		second.ToolCallID != "provider-id" || second.Name != "get_unit_details" {
+		t.Fatalf("tool results=%+v %+v", first, second)
+	}
+	for _, message := range messages {
+		if strings.HasPrefix(message.Content, "tool call ") {
+			t.Fatalf("tool call rendered as text: %q", message.Content)
+		}
+	}
+}

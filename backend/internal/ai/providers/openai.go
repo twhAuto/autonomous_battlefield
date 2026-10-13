@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 )
@@ -32,8 +33,7 @@ func (p *OpenAI) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	if err != nil {
 		return ai.ModelTurnResult{}, err
 	}
-	transcript := modelTranscript(turn)
-	body, err := json.Marshal(map[string]any{"model": p.Model, "input": transcript, "tools": tools, "tool_choice": "auto", "max_output_tokens": turn.MaxTokens})
+	body, err := json.Marshal(map[string]any{"model": p.Model, "instructions": turn.SystemPrompt, "input": openAIInput(turn.Messages), "tools": tools, "tool_choice": "auto", "max_output_tokens": turn.MaxTokens})
 	if err != nil {
 		return ai.ModelTurnResult{}, err
 	}
@@ -72,6 +72,29 @@ func (p *OpenAI) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	result.Usage.CachedInputTokens = decoded.Usage.InputDetails.Cached
 	result.Usage.ReasoningOutputTokens = decoded.Usage.OutputDetails.Reasoning
 	return result, err
+}
+
+// openAIInput sends the conversation as Responses input items: messages keep their
+// roles, earlier calls become function_call items, and results become
+// function_call_output items matched by call_id.
+func openAIInput(messages []ai.Message) []map[string]any {
+	items := make([]map[string]any, 0, len(messages))
+	for _, message := range messages {
+		switch message.Role {
+		case "tool":
+			items = append(items, map[string]any{"type": "function_call_output", "call_id": message.ToolCallID, "output": message.Content})
+		case "assistant":
+			if strings.TrimSpace(message.Content) != "" {
+				items = append(items, map[string]any{"role": "assistant", "content": message.Content})
+			}
+			for _, call := range message.ToolCalls {
+				items = append(items, map[string]any{"type": "function_call", "call_id": call.ID, "name": call.Name, "arguments": string(toolArguments(call))})
+			}
+		default:
+			items = append(items, map[string]any{"role": "user", "content": message.Content})
+		}
+	}
+	return items
 }
 
 func openAITools(definitions []ai.ToolDefinition) ([]map[string]any, error) {
