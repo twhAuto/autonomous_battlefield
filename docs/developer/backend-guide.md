@@ -195,7 +195,7 @@ version; background writer prompts have a separate `prompts.GenerationVersion`.
 | File | Role |
 | --- | --- |
 | `battlefield-agent.txt` | Battle session system prompt establishing tool-only authority and untrusted observations |
-| `decision.txt` | Main tactical and production decision instructions |
+| `decision.txt` | Main decision instructions: session rules, the submission contract, engine purchase semantics and how to read compacted context. Unit and building behaviour comes from the ruleset's `knowledge.mechanics`, not this file; a test rejects ruleset terms here |
 | `tool-context.txt` | Short per-decision prompt when context is fetched through MCP |
 | `inline-context.txt` | Variant used when the host has already supplied the full context JSON |
 | `identity.txt` | Faction identity block: how to use doctrine and background, their precedence below core rules, and the untrusted-data delimiters |
