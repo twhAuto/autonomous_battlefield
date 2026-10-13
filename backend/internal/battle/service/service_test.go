@@ -6,8 +6,10 @@ package service
 import (
 	"context"
 	"errors"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"testing"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
@@ -139,7 +141,7 @@ func TestCreateBattlePersistsAllowedModelProfile(t *testing.T) {
 	ids := [2]string{"4db8d152-1e04-4d10-8824-859c6ed72878", "41ac3a2f-3371-4de1-b0f6-70600fcd9052"}
 	identities := [2]FactionIdentity{{ID: ids[0], Name: "A"}, {ID: ids[1], Name: "B"}}
 	factions := &battleFactionRepo{factions: map[string]*faction.Faction{ids[0]: {ID: ids[0], Name: "A"}, ids[1]: {ID: ids[1], Name: "B"}}}
-	registry := ai.NewProfileRegistry("cluster", []ai.ModelProfile{{ID: "gemini", DisplayName: "Gemini", Provider: "gemini", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 3, MaxOutputTokens: 100}})
+	registry := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "gemini", DisplayName: "Gemini", Provider: "gemini", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 3, MaxOutputTokens: 100}})
 	repository := &fakeBattleRepo{}
 	service := NewService(repository, factions, &fakeScenarioCatalog{resolved: serviceTestScenario(identities)}, 10_000, registry)
 	_, err := service.CreateBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), CreateBattleInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "castle-siege-v1", TickCount: 10, Participants: []ParticipantInput{{FactionID: ids[0], Controller: game.ControllerConfig{Type: "model", ProfileID: "gemini"}}, {FactionID: ids[1], Controller: game.ControllerConfig{Type: "scripted"}}}})
@@ -167,14 +169,14 @@ func TestPlayerCLIBattleSelectionFollowsAdminPolicy(t *testing.T) {
 		ids[0]: {ID: ids[0], Name: "A"},
 		ids[1]: {ID: ids[1], Name: "B"},
 	}}
-	policy := ai.AccessPolicy{Profiles: map[string]ai.ProfileAccess{
+	policy := profile.AccessPolicy{Profiles: map[string]profile.Access{
 		"cli": {Enabled: true, AllowedRoles: []string{"admin", "developer", "player"}},
 	}}
-	base := ai.NewProfileCatalog("cluster", []ai.ModelProfile{{
+	base := profile.NewCatalog("cluster", []ai.ModelProfile{{
 		ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true,
 		AvailabilityEnvironmentVariable: "CLI_AVAILABLE", SupportedVersionPrefix: "1.",
 	}})
-	profiles := base.WithAccessPolicy(func() (ai.AccessPolicy, error) { return policy, nil })
+	profiles := base.WithAccessPolicy(func() (profile.AccessPolicy, error) { return policy, nil })
 	repository := &fakeBattleRepo{}
 	service := NewService(repository, factions, &fakeScenarioCatalog{resolved: serviceTestScenario(identities)}, 10_000, profiles)
 	ctx := authn.WithActor(context.Background(), authn.Actor{ID: "friend", Role: authn.Player})
@@ -192,7 +194,7 @@ func TestPlayerCLIBattleSelectionFollowsAdminPolicy(t *testing.T) {
 		t.Fatalf("controller=%#v", selected)
 	}
 
-	policy.Profiles["cli"] = ai.ProfileAccess{Enabled: true, AllowedRoles: []string{"admin", "developer"}}
+	policy.Profiles["cli"] = profile.Access{Enabled: true, AllowedRoles: []string{"admin", "developer"}}
 	input.ID = "8f22e693-bacd-46bb-b942-64fa613cd388"
 	if _, err := service.CreateBattle(ctx, input); !errors.Is(err, authn.ErrForbidden) {
 		t.Fatalf("revoked Player CLI battle error = %v, want permission denied", err)

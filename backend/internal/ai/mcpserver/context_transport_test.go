@@ -7,6 +7,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
 )
 
 func TestContextTransportSingleJSONCopy(t *testing.T) {
@@ -28,7 +29,7 @@ func TestContextTransportSingleJSONCopy(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer cs.Close()
-			want, err := json.Marshal(getContextOutput{Context: ai.AgentObservation(record.Observation)})
+			want, err := json.Marshal(getContextOutput{Context: agentview.Observation(record.Observation)})
 			if err != nil {
 				t.Fatal(err)
 			}

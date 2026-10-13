@@ -14,6 +14,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
@@ -140,7 +141,7 @@ func TestMCPRejectsMissingCapabilityAndForeignOrigin(t *testing.T) {
 	if missing.Code != http.StatusUnauthorized {
 		t.Fatal(missing.Code)
 	}
-	token, _ := ai.MintCapability("secret", "request", time.Now().Add(time.Minute))
+	token, _ := capability.Mint("secret", "request", time.Now().Add(time.Minute))
 	foreignRequest := httptest.NewRequest(http.MethodPost, "http://server", nil)
 	foreignRequest.Header.Set("Authorization", "Bearer "+token)
 	foreignRequest.Header.Set("Origin", "https://evil.example")
@@ -167,7 +168,7 @@ func FuzzMCPRequestBody(f *testing.F) {
 		if len(body) > 64<<10 {
 			t.Skip()
 		}
-		token, err := ai.MintCapability("secret", "request", time.Now().Add(time.Minute))
+		token, err := capability.Mint("secret", "request", time.Now().Add(time.Minute))
 		if err != nil {
 			t.Fatal(err)
 		}

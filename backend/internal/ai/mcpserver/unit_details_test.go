@@ -4,16 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
-	"go.opentelemetry.io/otel"
-	sdk "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"go.opentelemetry.io/otel"
+	sdk "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
@@ -21,7 +24,7 @@ import (
 func compactRecord() ai.DecisionRecord {
 	rules := game.Ruleset{ID: "rules", Version: "1", Units: []game.UnitType{{ID: "ranger", Cost: 10, Attack: 23}}, Knowledge: &game.RulesKnowledge{Mechanics: "Combat", Cards: []game.UnitCard{{UnitID: "ranger", Role: "ranged", Guidance: "keep-distance-marker"}}}}
 	c := ai.DecisionContext{SchemaVersion: ai.ContextSchema, RequestID: "sample", TargetTick: 20, ExpectedVersion: 1, Legal: ai.LegalChoices{Units: rules.Units, ActionKinds: []string{"attack"}}}
-	c.UnitReference = ai.FreezeUnitReference(rules, c)
+	c.UnitReference = agentview.FreezeUnitReference(rules, c)
 	return ai.DecisionRecord{ID: "sample", Version: 1, TargetTick: 20, Status: "running", Observation: c}
 }
 
@@ -101,7 +104,7 @@ func TestCompactDecisionThroughAPIAndCLI(t *testing.T) {
 				repo := &fakeRepository{record: compactRecord()}
 				server := httptest.NewServer(New(repo, "secret", nil).Handler())
 				defer server.Close()
-				token, _ := ai.MintCapability("secret", "sample", time.Now().Add(time.Minute))
+				token, _ := capability.Mint("secret", "sample", time.Now().Add(time.Minute))
 				session := ai.DecisionSession{RequestID: "sample", MCPURL: server.URL, CapabilityToken: token, Profile: ai.ModelProfile{MaxSteps: 3, MaxOutputTokens: 1000}}
 				var executor ai.DecisionRunner = runner.APIRunner{Provider: &compactProvider{t: t, lookup: lookup}}
 				if runtime == "cli" {
@@ -121,7 +124,7 @@ func TestUnitDetailsToolAuthorizationAndErrors(t *testing.T) {
 	repo := &fakeRepository{record: compactRecord()}
 	server := httptest.NewServer(New(repo, "secret", nil).Handler())
 	defer server.Close()
-	token, _ := ai.MintCapability("secret", "sample", time.Now().Add(time.Minute))
+	token, _ := capability.Mint("secret", "sample", time.Now().Add(time.Minute))
 	client, err := (runner.MCPClient{}).Connect(context.Background(), server.URL, token)
 	if err != nil {
 		t.Fatal(err)

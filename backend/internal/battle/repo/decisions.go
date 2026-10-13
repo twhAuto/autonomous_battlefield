@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/observation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
@@ -248,7 +249,7 @@ func (r *Postgres) ListFactionMemory(ctx context.Context, battleID string, attem
 	rows, err := r.db.Query(ctx, `SELECT `+decisionColumns+` FROM battle_decisions
         WHERE battle_id=$1 AND attempt=$2 AND faction_id=$3 AND target_tick<$4
           AND status IN ('accepted','fallback') AND resolved_plan IS NOT NULL
-        ORDER BY target_tick DESC LIMIT $5`, battleID, attempt, factionID, beforeTick, ai.FactionMemoryLimit)
+        ORDER BY target_tick DESC LIMIT $5`, battleID, attempt, factionID, beforeTick, observation.FactionMemoryLimit)
 	if err != nil {
 		return nil, fmt.Errorf("list faction memory: %w", err)
 	}
@@ -264,7 +265,7 @@ func (r *Postgres) ListFactionMemory(ctx context.Context, battleID string, attem
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return ai.BuildFactionMemory(records, battleID, attempt, factionID, beforeTick), nil
+	return observation.BuildFactionMemory(records, battleID, attempt, factionID, beforeTick), nil
 }
 
 func (r *Postgres) AgentEnabled(ctx context.Context) (bool, error) {

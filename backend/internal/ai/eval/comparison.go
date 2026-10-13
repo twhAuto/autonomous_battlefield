@@ -19,7 +19,12 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/mcpserver"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/observation"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
@@ -81,7 +86,7 @@ func (r Runner) Compare(ctx context.Context, cases []Case, variants []Comparison
 	if err := options.KnowledgeRetrieval.Validate(); err != nil {
 		return ComparisonReport{}, err
 	}
-	report := ComparisonReport{SchemaVersion: "battlefield.ai-comparison.v1", PromptVersion: ai.PromptVersion, CorpusVersion: r.CorpusVersion, Options: options, Passed: true}
+	report := ComparisonReport{SchemaVersion: "battlefield.ai-comparison.v1", PromptVersion: prompts.Version, CorpusVersion: r.CorpusVersion, Options: options, Passed: true}
 	if len(cases) == 0 || len(cases) > 20 || len(variants) < 1 || len(variants) > 8 || options.Repetitions < 1 || options.Repetitions > 10 || options.MaxSteps < 1 || options.MaxSteps > 16 || options.MaxTokens < 1 || options.MaxTokens > 65536 || options.Timeout <= 0 || options.Timeout > 5*time.Minute {
 		return report, errors.New("comparison requires bounded cases, variants, repetitions, steps, tokens and timeout")
 	}
@@ -139,13 +144,13 @@ func comparisonObservations(cases []Case, limits ai.KnowledgeLimits) ([]ai.Decis
 			}
 			envelope.Context.Legal.Units = append([]game.UnitType(nil), c.KnowledgeRuleset.Units...)
 			var err error
-			envelope.Context.Knowledge, err = ai.RetrieveKnowledge(*c.KnowledgeRuleset, envelope.Context, limits)
+			envelope.Context.Knowledge, err = observation.RetrieveKnowledge(*c.KnowledgeRuleset, envelope.Context, limits)
 			if err != nil {
 				return nil, err
 			}
 		}
 		if c.KnowledgeRuleset != nil {
-			envelope.Context.UnitReference = ai.FreezeUnitReference(*c.KnowledgeRuleset, envelope.Context)
+			envelope.Context.UnitReference = agentview.FreezeUnitReference(*c.KnowledgeRuleset, envelope.Context)
 		}
 		observations[i] = envelope.Context
 	}
@@ -194,7 +199,7 @@ func (r Runner) compareSample(ctx context.Context, c Case, observation ai.Decisi
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = server.Serve(listener) }()
 	defer server.Close()
-	token, _ := ai.MintCapability(secret, c.RequestID, time.Now().Add(options.Timeout+time.Second))
+	token, _ := capability.Mint(secret, c.RequestID, time.Now().Add(options.Timeout+time.Second))
 	started := time.Now()
 	result, runErr := variant.NewRunner().Run(ctx, ai.DecisionSession{Doctrine: observation.Doctrine, FactionName: observation.FactionName, Background: observation.Background, RequestID: c.RequestID, MCPURL: "http://" + listener.Addr().String(), CapabilityToken: token, Profile: ai.ModelProfile{MaxSteps: options.MaxSteps, MaxOutputTokens: options.MaxTokens}})
 	repository.mu.Lock()
@@ -204,10 +209,10 @@ func (r Runner) compareSample(ctx context.Context, c Case, observation ai.Decisi
 	if !accepted && category == "" {
 		category = "missing_submission"
 	}
-	hash, _ := ai.ObservationHash(observation)
-	entry := CaseReport{Usage: &result.Usage, ID: c.ID, Category: c.Category, Profile: variant.ID, Model: variant.Model, PromptVersion: ai.PromptVersion, ToolSchemaVersion: ai.ToolSchema, RulesVersion: c.RulesVersion, Passed: accepted && runErr == nil, Accepted: accepted, ErrorCategory: category, DurationMS: time.Since(started).Milliseconds(), InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests, ToolCalls: append([]string(nil), repository.calls...)}
+	hash, _ := decision.ObservationHash(observation)
+	entry := CaseReport{Usage: &result.Usage, ID: c.ID, Category: c.Category, Profile: variant.ID, Model: variant.Model, PromptVersion: prompts.Version, ToolSchemaVersion: ai.ToolSchema, RulesVersion: c.RulesVersion, Passed: accepted && runErr == nil, Accepted: accepted, ErrorCategory: category, DurationMS: time.Since(started).Milliseconds(), InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests, ToolCalls: append([]string(nil), repository.calls...)}
 	entry.UnitDetailCalls = int(reads.calls.Load())
-	payload, _ := json.Marshal(map[string]any{"context": ai.AgentObservation(observation)})
+	payload, _ := json.Marshal(map[string]any{"context": agentview.Observation(observation)})
 	entry.ContextBytes = len(payload)
 	entry.Outcome = "rejected"
 	if accepted {

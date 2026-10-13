@@ -170,42 +170,46 @@ The adapter stays in one package: [`postgres.go`](../../backend/internal/battle/
 
 SQL concurrency behavior is part of the application's correctness. Changes to status predicates, `FOR UPDATE SKIP LOCKED`, versions, owners, attempts, or leases require focused concurrency and race tests.
 
-### `internal/ai`: shared contracts
+### `internal/ai`: shared contracts and focused subpackages
 
-| File | Responsibility |
+The root package holds only the contracts every AI component shares. Behaviour lives
+in subpackages that import those contracts; the root imports none of them.
+
+| Package | Responsibility |
 | --- | --- |
-| [`types.go`](../../backend/internal/ai/types.go) | Decision sessions, contexts, submissions, records, model turns, tools, usage, and profiles |
-| [`repository.go`](../../backend/internal/ai/repository.go) | Durable decision repository contract and errors |
-| [`service.go`](../../backend/internal/ai/service.go) | Context reads, plan validation, observation hashes, and HMAC capabilities |
-| [`prompts.go`](../../backend/internal/ai/prompts.go) | Embedded shared instructions, context delivery, and separate battle and background-generation prompt digests |
-| [`knowledge.go`](../../backend/internal/ai/knowledge.go) | Bounded knowledge selection from frozen rules and faction-visible context |
-| [`memory.go`](../../backend/internal/ai/memory.go) | Scoped, chronological historical decision summaries with count/byte bounds |
-| [`profiles.go`](../../backend/internal/ai/profiles.go) | API/CLI profile validation and availability evaluation |
+| [`ai`](../../backend/internal/ai/types.go) | `types.go`: decision sessions, frozen contexts (including their knowledge, memory and unit-reference types), submissions, records, model turns, tools, usage and profiles. `repository.go`: the durable decision repository contract and errors |
+| [`ai/capability`](../../backend/internal/ai/capability/capability.go) | `Mint` and `Verify` for request-scoped HMAC capability tokens |
+| [`ai/cliisolation`](../../backend/internal/ai/cliisolation/) | Environment allowlists, Antigravity's private home, and saved-login checks for the Codex, Claude and Antigravity subscription CLIs |
+| [`ai/decision`](../../backend/internal/ai/decision/service.go) | Context reads, plan validation against the frozen observation, observation hashes |
+| [`ai/profile`](../../backend/internal/ai/profile/profiles.go) | API/CLI profile validation and availability (`Registry`, `NewCatalog`, `NewRegistry`) and the administrator access policy |
+| [`ai/prompts`](../../backend/internal/ai/prompts/prompts.go) | Embedded instruction templates, context delivery, and the battle and background-generation prompt digests |
+| [`ai/agentview`](../../backend/internal/ai/agentview/agent_context.go) | The bounded projection models see (`Compact`, `Observation`), compaction, frozen unit references and paged unit details |
+| [`ai/observation`](../../backend/internal/ai/observation/knowledge.go) | Bounded knowledge selection and scoped faction memory, used when the engine freezes a decision context |
 
-Prompt files are embedded through [`prompts.go`](../../backend/internal/ai/prompts.go).
-`PromptVersion` hashes the six battle prompt templates below and the inline
-`identityContextTemplate`; background writer prompts have a separate
-`GenerationPromptVersion`.
+The templates sit beside [`prompts.go`](../../backend/internal/ai/prompts/prompts.go)
+in `internal/ai/prompts/`. `prompts.Version` hashes the six battle prompt templates
+below and the inline `identityContextTemplate`; background writer prompts have a
+separate `prompts.GenerationVersion`.
 
 | File | Role |
 | --- | --- |
-| `prompts/battlefield-agent.txt` | Battle session system prompt establishing tool-only authority and untrusted observations |
-| `prompts/decision.txt` | Main tactical and production decision instructions |
-| `prompts/tool-context.txt` | Short per-decision prompt when context is fetched through MCP |
-| `prompts/inline-context.txt` | Variant used when the host has already supplied the full context JSON |
-| `prompts/doctrine.txt` | Doctrine template embedded and included in `PromptVersion`, but currently not rendered |
-| `prompts/identity.txt` | Identity template embedded and included in `PromptVersion`, but currently not rendered |
-| `prompts/background-generation.txt` | Background writer system instructions |
-| `prompts/background-decision.txt` | Background writer per-job instructions |
+| `battlefield-agent.txt` | Battle session system prompt establishing tool-only authority and untrusted observations |
+| `decision.txt` | Main tactical and production decision instructions |
+| `tool-context.txt` | Short per-decision prompt when context is fetched through MCP |
+| `inline-context.txt` | Variant used when the host has already supplied the full context JSON |
+| `doctrine.txt` | Doctrine template embedded and included in `prompts.Version`, but currently not rendered |
+| `identity.txt` | Identity template embedded and included in `prompts.Version`, but currently not rendered |
+| `background-generation.txt` | Background writer system instructions |
+| `background-decision.txt` | Background writer per-job instructions |
 
-For battle sessions, `SessionSystemPrompt` returns the battlefield system prompt.
-`SessionDecisionPrompt` renders the shared decision instructions, then the faction
+For battle sessions, `prompts.SessionSystem` returns the battlefield system prompt.
+`prompts.SessionDecision` renders the shared decision instructions, then the faction
 name, background, and doctrine as JSON inside the untrusted-data delimiters defined
 by `identityContextTemplate`, then the request-specific delivery (request ID, and
 inline context when prefetched). Keep request-specific text last: content ahead of
 it is the prefix providers can cache across a faction's decisions.
 
-`GenerationPromptVersion` covers both background writer instruction
+`prompts.GenerationVersion` covers both background writer instruction
 components and the rendered character limit. Faction limits are declared in
 `internal/faction/faction.go` and mirrored in frontend `features/factions/limits.ts`;
 update both when changing this API contract. Existing Unicode boundary tests cover
@@ -213,7 +217,7 @@ editor, service, and generation validation.
 
 `DecisionRunner` is the execution boundary used by the agent. `TurnProvider` is the narrower boundary implemented by model APIs that participate in the shared tool loop.
 
-`DecisionService` deliberately receives only a `DecisionSubmissionRepository`, which cannot modify battles or simulation state.
+`decision.Service` deliberately receives only a `decision.SubmissionRepository`, which cannot modify battles or simulation state.
 
 ### `internal/ai/worker`: provider-neutral worker
 
@@ -247,9 +251,11 @@ rejects any other tool name a provider requests. It appends tool calls and resul
 
 The CLI runner creates a temporary directory, passes the profile's allowlisted model explicitly with `--model`, and constructs provider-specific command-line restrictions. Tests use the `CommandExecutor` interface to inspect the selected model and execution restrictions without starting a real CLI.
 
-[`clienv/antigravity.go`](../../backend/internal/ai/clienv/antigravity.go) shares
-permission configuration, environment isolation, and saved-login probing between
-profile discovery and execution. `cmd/agent -check-antigravity-auth` supports the
+[`cliisolation`](../../backend/internal/ai/cliisolation/) shares environment
+isolation and saved-login probing for the Codex, Claude, and Antigravity CLIs between
+profile discovery and execution. All three inherit only login and transport
+variables; Antigravity additionally gets a private home holding only its permission
+configuration, MCP server, and copied login token. `cmd/agent -check-antigravity-auth` supports the
 host launcher's preflight. See [CLI runtime](../architecture/system-architecture.md#cli-runtime)
 for context delivery and accepted-plan enforcement.
 
@@ -286,7 +292,7 @@ The MCP tools are:
 - `get_unit_details` (1–4 exact unit IDs);
 - `submit_strategy_plan`.
 
-[`agent_context.go`](../../backend/internal/ai/agent_context.go) owns the explicit
+[`agentview/agent_context.go`](../../backend/internal/ai/agentview/agent_context.go) owns the explicit
 agent projection, frozen unit reference snapshot, and exact lookup. The full
 `DecisionContext` remains persisted for validation. New snapshots are captured by
 the battle worker before hashing for every decision.
@@ -295,7 +301,7 @@ capability-scoped lookup. The saved-context service and frontend inspector show
 reconstructed context separately from optional reference details. All evaluation
 variants use the current projection, with lookup and total input-token metrics.
 
-The tool server validates request scope before calling `DecisionService`. In the dispatch API, PostgreSQL notifications close an in-memory wake-up channel so long-polling claim requests promptly query durable state.
+The tool server validates request scope before calling `decision.Service`. In the dispatch API, PostgreSQL notifications close an in-memory wake-up channel so long-polling claim requests promptly query durable state.
 
 ### `internal/game/controller`: strategy-plan contract
 
@@ -384,7 +390,7 @@ When introducing a new field, identify its authority:
 
 Administrator model access is implemented in [`internal/admin`](../../backend/internal/admin):
 its handler validates settings and stores a versioned policy in PostgreSQL.
-[`internal/ai/access.go`](../../backend/internal/ai/access.go) overlays that policy
+[`internal/ai/profile/access.go`](../../backend/internal/ai/profile/access.go) overlays that policy
 on the API profile registry for catalog reads and new selections. The API composition
 root wires the same effective registry into battle and background-generation handlers.
 [`internal/authn/preview.go`](../../backend/internal/authn/preview.go) enforces
@@ -443,12 +449,12 @@ value is supplied in the system prompt. API tool delivery and Gemini prefetch
 apply this helper; MCP's canonical response stays self-contained. Tests cover
 historical differences, faction scope, source immutability and both runner paths.
 
-`backend/internal/ai/battlefield_context.go` implements the v4 agent view:
+`backend/internal/ai/agentview/battlefield_context.go` implements the v4 agent view:
 effective-stat profiles and inclusive visibility row ranges, with independent
 size checks to retain inline fields when smaller. Its tests reconstruct observed
 units and visibility, check version compatibility and measure opening/small/large
 views. To measure a local JSON context without adding private data to fixtures,
-run `BATTLEFIELD_CONTEXT_FIXTURE=/path/to/context.json go test ./internal/ai -run TestBattlefieldContextExternalFixture -v`
+run `BATTLEFIELD_CONTEXT_FIXTURE=/path/to/context.json go test ./internal/ai/agentview -run TestBattlefieldContextExternalFixture -v`
 from `backend`.
 
 ## Langfuse integration
@@ -458,7 +464,7 @@ from `backend`.
 - `backend/internal/ai/runner/observability.go` emits generation observations;
   `codex_usage.go` parses terminal JSONL usage without retaining model reasoning.
   `runner/claude.go` constructs the restricted Claude invocation and parses its
-  terminal result and cache-aware usage. `clienv/claude.go` filters environment
+  terminal result and cache-aware usage. `cliisolation/claude.go` filters environment
   variables and checks the native subscription login without model inference.
   Their tests cover tool restrictions, credential handling, cleanup, multiline JSON
   with separated stderr diagnostics, and failures;
@@ -553,7 +559,7 @@ Production k6 smoke-load credential binding is described in the
   a versioned library instead of duplicating stats.
 - `backend/scenarios/frontier-siege-v2.yaml` supplies the expanded 25×17 authored
   map and mixed scripted plans, selected through `castle-siege-v2`.
-- `backend/internal/ai/expansion.go` validates typed construction and recruitment
+- `backend/internal/ai/decision/expansion.go` validates typed construction and recruitment
   sources against frozen legal choices. The worker exposes structure definitions
   and source IDs through the MCP context.
 - `backend/internal/game/expansion_test.go` covers expansion mechanics;
@@ -595,7 +601,7 @@ Battle setup selects generic profiles without blueprint compatibility filtering.
   are preserved. `internal/postgres/migrations.go` serializes migration runners
   with a PostgreSQL advisory session lock, including concurrent fresh schemas.
 - Faction API/service/repository and battle catalog/worker copy background with
-  name/doctrine; `ai.SessionDecisionPrompt` embeds that identity through
+  name/doctrine; `prompts.SessionDecision` embeds that identity through
   `identityContextTemplate` (`identity.txt` is hashed but not rendered). Observation
   hashing includes owning identity. Prompt history lives in Git; filenames identify purpose without version suffixes.
 - `backend/internal/ai/mcpserver/generation.go` provides draft-only tools and

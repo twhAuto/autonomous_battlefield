@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/observation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
@@ -146,7 +147,7 @@ func TestFactionMemoryQueryScopesAndLimitsBeforeRead(t *testing.T) {
 			t.Fatalf("unscoped query: %s", db.querySQL)
 		}
 	}
-	if len(db.queryArgs) != 5 || db.queryArgs[4] != ai.FactionMemoryLimit {
+	if len(db.queryArgs) != 5 || db.queryArgs[4] != observation.FactionMemoryLimit {
 		t.Fatal("unbounded query")
 	}
 	db.queryErr = errors.New("unavailable")

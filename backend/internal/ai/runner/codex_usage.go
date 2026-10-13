@@ -3,8 +3,9 @@ package runner
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"strings"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 )
 
 // Codex JSONL turn.completed usage is the CLI turn aggregate, not a count

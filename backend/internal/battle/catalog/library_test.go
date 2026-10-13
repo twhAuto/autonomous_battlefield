@@ -4,18 +4,21 @@
 package catalog
 
 import (
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/observation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
 
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"reflect"
+	"testing"
+
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	service "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"go.yaml.in/yaml/v3"
-	"os"
-	"path/filepath"
-	"reflect"
-	"testing"
 )
 
 func libraryFixture(t *testing.T) (string, template) {
@@ -88,11 +91,11 @@ func TestScenarioContentRestrictionsReachEngineAndAI(t *testing.T) {
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	testutil.Require(t, !(len(snapshot.LegalUnits) != 1 || len(snapshot.LegalSites) != 0), func() { t.Fatal("excluded content in legal snapshot") })
 	ctx := ai.DecisionContext{FactionID: "a", Legal: ai.LegalChoices{Units: snapshot.LegalUnits, ActionKinds: []string{"attack"}}}
-	knowledge, err := ai.RetrieveKnowledge(scenario.Ruleset, ctx, ai.DefaultKnowledgeLimits())
+	knowledge, err := observation.RetrieveKnowledge(scenario.Ruleset, ctx, ai.DefaultKnowledgeLimits())
 	testutil.Require(t, !(err != nil || len(knowledge.Cards) != 1 || knowledge.SelectedIDs[0] != "ranger"), func() { t.Fatal("knowledge leaked excluded cards") })
 	orders := []controller.RecruitmentOrder{{UnitType: "striker", Count: 1}}
 	submission := ai.PlanSubmission{IdempotencyKey: "once", ExpectedVersion: 1, TargetTick: 10, Plan: controller.PlanProposal{Name: "invalid", RecruitmentOrders: &orders}}
-	testutil.Require(t, len(ai.ValidateSubmission(ai.DecisionRecord{Version: 1, TargetTick: 10, Observation: ctx}, submission)) != 0, func() { t.Fatal("AI accepted excluded purchase") })
+	testutil.Require(t, len(decision.ValidateSubmission(ai.DecisionRecord{Version: 1, TargetTick: 10, Observation: ctx}, submission)) != 0, func() { t.Fatal("AI accepted excluded purchase") })
 	for range 10 {
 		{
 			_, err = m.Advance()

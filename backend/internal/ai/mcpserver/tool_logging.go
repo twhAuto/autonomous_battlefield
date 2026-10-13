@@ -6,6 +6,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 

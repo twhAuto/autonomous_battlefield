@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
 	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 )
 
@@ -170,11 +171,11 @@ func TestWorkerAuthenticationNeverFallsBackToCapabilitySecret(t *testing.T) {
 		}
 	}
 	token := s.mint("request-one", time.Minute)
-	id, e := ai.VerifyCapability("signing-secret", token, time.Now())
+	id, e := capability.Verify("signing-secret", token, time.Now())
 	if e != nil || id != "request-one" {
 		t.Fatal(id, e)
 	}
-	if _, e = ai.VerifyCapability("worker-secret", token, time.Now()); e == nil {
+	if _, e = capability.Verify("worker-secret", token, time.Now()); e == nil {
 		t.Fatal("worker key verified capability")
 	}
 }

@@ -3,11 +3,13 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"os"
+
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"os"
 )
 
 func generationSpan(ctx context.Context, session ai.DecisionSession, scope string) (context.Context, trace.Span) {
@@ -15,9 +17,9 @@ func generationSpan(ctx context.Context, session ai.DecisionSession, scope strin
 	if session.Profile.Runtime == "api" && session.Profile.ModelEnvironmentVariable != "" {
 		model = os.Getenv(session.Profile.ModelEnvironmentVariable)
 	}
-	promptVersion := ai.PromptVersion
+	promptVersion := prompts.Version
 	if session.JobType == "faction_background" {
-		promptVersion = ai.GenerationPromptVersion
+		promptVersion = prompts.GenerationVersion
 	}
 	return telemetry.StartAI(ctx, "battlefield.model."+scope, "generation",
 		attribute.String("langfuse.observation.model.name", model),

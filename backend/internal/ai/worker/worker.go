@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/providers"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
@@ -34,7 +35,7 @@ var errNoAcceptedPlan = errors.New("decision has no accepted plan")
 type Worker struct {
 	PolicyPolling                            bool
 	MCPURL, Secret, WorkerID                 string
-	Profiles                                 *ai.ProfileRegistry
+	Profiles                                 *profile.Registry
 	PollInterval, ClaimWait, DecisionTimeout time.Duration
 	Concurrency                              int
 	Client                                   *http.Client

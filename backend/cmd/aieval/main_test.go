@@ -13,6 +13,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 
 	aieval "github.com/twh09/autonomous_battlefield/backend/internal/ai/eval"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 )
 
 func TestRunDeterministicWritesPassingReports(t *testing.T) {
@@ -129,7 +130,7 @@ func TestMetadataWorksWithoutEvaluationInputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	fields := strings.Fields(string(data))
-	if len(fields) != 3 || fields[0] != ai.PromptVersion || fields[2] != ai.ToolSchema || !strings.HasSuffix(fields[0], "."+fields[1]) || len(fields[1]) != 64 {
+	if len(fields) != 3 || fields[0] != prompts.Version || fields[2] != ai.ToolSchema || !strings.HasSuffix(fields[0], "."+fields[1]) || len(fields[1]) != 64 {
 		t.Fatalf("invalid runtime provenance: %q", data)
 	}
 }

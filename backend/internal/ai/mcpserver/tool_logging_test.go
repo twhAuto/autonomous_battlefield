@@ -5,13 +5,14 @@ package mcpserver
 import (
 	"bytes"
 	"context"
+	"log/slog"
+	"strings"
+	"testing"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	sdk "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
-	"log/slog"
-	"strings"
-	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"

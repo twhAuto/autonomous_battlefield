@@ -5,7 +5,7 @@
 The [architecture contract](../architecture/system-architecture.md#shared-prompt-provenance-and-faction-memory)
 describes shared prompts, provenance, and bounded faction memory. The active
 embedded templates live in `backend/internal/ai/prompts/`; each purpose has one current file, with older revisions kept in Git.
-The bundle version and content digest are maintained in `internal/ai/prompts.go`. Rebuild backend binaries after editing active templates,
+The bundle version and content digest are maintained in `internal/ai/prompts/prompts.go`. Rebuild backend binaries after editing active templates,
 and restart host agents so recorded prompt digests match the deployed policy.
 CLI tools may add their own internal instructions.
 
@@ -298,7 +298,7 @@ is limited to what that CLI reports. Decision acceptance is not a win-rate measu
 From the repository root:
 
 ```bash
-(cd backend && go test ./internal/ai -run TestCompactContextSizeByBattleStage -v)
+(cd backend && go test ./internal/ai/agentview -run TestCompactContextSizeByBattleStage -v)
 ./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
 (cd frontend && npm test -- --coverage)
 (cd frontend && npm run build)

@@ -8,11 +8,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"go.opentelemetry.io/otel/attribute"
 	"slices"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/providers"
 )
 
@@ -36,14 +39,14 @@ func (r APIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 	if err != nil {
 		return ai.DecisionResult{ErrorCategory: "mcp_discovery"}, err
 	}
-	messages := []ai.Message{{Role: "user", Content: ai.SessionDecisionPrompt(session, nil)}}
+	messages := []ai.Message{{Role: "user", Content: prompts.SessionDecision(session, nil)}}
 	usage := ai.Usage{Scope: "api_calls", ModelCalls: new(int64)}
 	for step := 0; step < session.Profile.MaxSteps; step++ {
 		turnCtx, span := generationSpan(ctx, session, "api_call")
 		messageJSON, _ := json.Marshal(messages)
 		toolJSON, _ := json.Marshal(tools)
-		span.SetAttributes(attribute.Int("battlefield.prompt.system_bytes", len(ai.SessionSystemPrompt(session))), attribute.Int("battlefield.prompt.message_json_bytes", len(messageJSON)), attribute.Int("battlefield.prompt.tool_schema_json_bytes", len(toolJSON)))
-		turn, err := r.Provider.NextTurn(turnCtx, ai.ModelTurnRequest{SystemPrompt: ai.SessionSystemPrompt(session), Messages: messages, Tools: tools, MaxTokens: session.Profile.MaxOutputTokens})
+		span.SetAttributes(attribute.Int("battlefield.prompt.system_bytes", len(prompts.SessionSystem(session))), attribute.Int("battlefield.prompt.message_json_bytes", len(messageJSON)), attribute.Int("battlefield.prompt.tool_schema_json_bytes", len(toolJSON)))
+		turn, err := r.Provider.NextTurn(turnCtx, ai.ModelTurnRequest{SystemPrompt: prompts.SessionSystem(session), Messages: messages, Tools: tools, MaxTokens: session.Profile.MaxOutputTokens})
 		finishGeneration(span, turn.Usage, err != nil)
 		*usage.ModelCalls++
 		usage.TokensReported = usage.TokensReported || turn.Usage.TokensReported
@@ -58,7 +61,7 @@ func (r APIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 		if len(turn.ToolCalls) == 0 {
 			return ai.DecisionResult{ErrorCategory: "no_progress", Usage: usage}, fmt.Errorf("provider returned no tool call")
 		}
-		accepted, updatedMessages, err := executeToolCalls(ctx, clientSession, turn.ToolCalls, messages, ai.SessionToolNames(session)...)
+		accepted, updatedMessages, err := executeToolCalls(ctx, clientSession, turn.ToolCalls, messages, prompts.SessionToolNames(session)...)
 		if err != nil {
 			return ai.DecisionResult{ErrorCategory: toolErrorCategory(err), Usage: usage}, err
 		}
@@ -96,7 +99,7 @@ type identityContextSession struct {
 func (s identityContextSession) Call(ctx context.Context, call ai.ToolCall) (json.RawMessage, bool, error) {
 	payload, accepted, err := s.DecisionToolSession.Call(ctx, call)
 	if err == nil && call.Name == "get_decision_context" {
-		payload = ai.SessionContextPayload(s.identity, payload)
+		payload = agentview.SessionContextPayload(s.identity, payload)
 	}
 	return payload, accepted, err
 }

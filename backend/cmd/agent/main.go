@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/clienv"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/cliisolation"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	aiworker "github.com/twh09/autonomous_battlefield/backend/internal/ai/worker"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
@@ -33,7 +33,7 @@ func main() {
 	if *checkClaudeAuth {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		if err := clienv.CheckClaudeAuth(ctx); err != nil {
+		if err := cliisolation.CheckClaudeAuth(ctx); err != nil {
 			logger.Error("claude_auth_unavailable", "error", err)
 			os.Exit(1)
 		}
@@ -42,7 +42,7 @@ func main() {
 	if *checkAntigravityAuth {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		if err := clienv.CheckAntigravityAuth(ctx); err != nil {
+		if err := cliisolation.CheckAntigravityAuth(ctx); err != nil {
 			logger.Error("antigravity_auth_unavailable", "error", err)
 			os.Exit(1)
 		}
@@ -74,7 +74,7 @@ func run(configuration config.Config) error {
 		defer cancel()
 		_ = shutdownTracing(shutdown)
 	}()
-	worker := &aiworker.Worker{PolicyPolling: true, MCPURL: configuration.AI.MCPURL, Secret: configuration.AI.AgentSecret, WorkerID: hostname(), Profiles: ai.NewProfileRegistry(configuration.AI.Environment, configuration.AI.Profiles), PollInterval: time.Second, DecisionTimeout: configuration.AI.DecisionTimeout, Concurrency: configuration.AI.AgentConcurrency}
+	worker := &aiworker.Worker{PolicyPolling: true, MCPURL: configuration.AI.MCPURL, Secret: configuration.AI.AgentSecret, WorkerID: hostname(), Profiles: profile.NewRegistry(configuration.AI.Environment, configuration.AI.Profiles), PollInterval: time.Second, DecisionTimeout: configuration.AI.DecisionTimeout, Concurrency: configuration.AI.AgentConcurrency}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		if !worker.Ready() {
