@@ -6,7 +6,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 )
 
-// Omit exact identity copies already supplied in the system prompt. Never
+// Omit exact identity copies already supplied in the prompt's faction identity. Never
 // summarize user-authored identity or change the canonical inspector response.
 func SessionContextPayload(session ai.DecisionSession, payload json.RawMessage) json.RawMessage {
 	if session.JobType == "faction_background" {

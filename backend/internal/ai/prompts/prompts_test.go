@@ -4,6 +4,8 @@
 package prompts
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -15,7 +17,7 @@ func TestVersionedSystemPromptIsEmbedded(t *testing.T) {
 	if strings.TrimSpace(System) == "" || !strings.Contains(System, "untrusted data") {
 		t.Fatalf("versioned system prompt is empty or missing its trust boundary")
 	}
-	if !strings.HasPrefix(Version, "battlefield-agent-v8.") {
+	if !strings.HasPrefix(Version, "battlefield-agent-v9.") {
 		t.Fatalf("Version = %q", Version)
 	}
 }
@@ -92,5 +94,26 @@ func TestDoctrinePromptAndProvenance(t *testing.T) {
 	second, _ := decision.ObservationHash(ai.DecisionContext{Doctrine: "Attack"})
 	if first == second {
 		t.Fatal("doctrine absent from provenance")
+	}
+}
+
+func TestDecisionPromptFramesDoctrineAndPrecedence(t *testing.T) {
+	prompt := SessionDecision(ai.DecisionSession{RequestID: "r", FactionName: "North", Doctrine: "Hold the river"}, nil)
+	guidance := strings.Index(prompt, "treat its doctrine as your strategic preferences")
+	identity := strings.Index(prompt, "BEGIN_FACTION_IDENTITY")
+	if guidance < 0 || identity < guidance || !strings.Contains(prompt, "doctrine takes precedence over background") {
+		t.Fatalf("doctrine guidance missing or after the identity block:\n%s", prompt)
+	}
+}
+
+func TestVersionCoversAssembledPrompts(t *testing.T) {
+	if Version != fmt.Sprintf("battlefield-agent-v9.%x", sha256.Sum256([]byte(versionSample()))) {
+		t.Fatal("Version does not fingerprint the assembled sample prompts")
+	}
+	original := identityTemplate
+	t.Cleanup(func() { identityTemplate = original })
+	identityTemplate = "changed wording\n%s"
+	if fmt.Sprintf("battlefield-agent-v9.%x", sha256.Sum256([]byte(versionSample()))) == Version {
+		t.Fatal("a change to the identity wrapper did not change the version")
 	}
 }
