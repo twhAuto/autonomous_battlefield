@@ -20,7 +20,7 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/clienv"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/cliisolation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 )
 
@@ -84,7 +84,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 			"-c", `mcp_servers.battlefield.enabled_tools=["` + strings.Join(prompts.SessionToolNames(session), `","`) + `"]`,
 			"-c", `mcp_servers.battlefield.default_tools_approval_mode="approve"`, prompt}
 		args = withModel(args, r.Model)
-		environment = replaceEnvironment(cliEnvironment(), "CODEX_WORKSPACE", workspace)
+		environment = replaceEnvironment(cliisolation.CodexEnvironment(), "CODEX_WORKSPACE", workspace)
 		environment = replaceEnvironment(environment, "BATTLEFIELD_MCP_AUTHORIZATION", "Bearer "+session.CapabilityToken)
 	case "claude-cli":
 		name = "claude"
@@ -92,7 +92,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 		if err != nil {
 			return ai.DecisionResult{ErrorCategory: "cli_isolation"}, err
 		}
-		environment = clienv.ClaudeEnvironment()
+		environment = cliisolation.ClaudeEnvironment()
 	case "antigravity-cli":
 		name = "agy"
 		payload, contextErr := r.prefetchContext(ctx, session)
@@ -101,7 +101,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 		}
 		prompt = prompts.SessionSystem(session) + "\n" + prompts.SessionDecision(session, payload)
 
-		environment, err = clienv.PrepareAntigravity(temporary, session.MCPURL, session.CapabilityToken, prompts.SessionToolNames(session)...)
+		environment, err = cliisolation.PrepareAntigravity(temporary, session.MCPURL, session.CapabilityToken, prompts.SessionToolNames(session)...)
 		if err != nil {
 			return ai.DecisionResult{ErrorCategory: "cli_isolation"}, err
 		}
@@ -204,17 +204,6 @@ func (r CLIRunner) prefetchContext(ctx context.Context, session ai.DecisionSessi
 		return nil, fmt.Errorf("invalid decision context metadata")
 	}
 	return agentview.SessionContextPayload(session, payload), nil
-}
-
-// Only CLI login and transport settings cross the subprocess boundary.
-func cliEnvironment() []string {
-	env := []string{}
-	for _, key := range []string{"PATH", "HOME", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR", "LANG"} {
-		if value, ok := os.LookupEnv(key); ok {
-			env = append(env, key+"="+value)
-		}
-	}
-	return env
 }
 
 // Bound allocation during execution, including output from a compromised CLI.

@@ -179,6 +179,7 @@ in subpackages that import those contracts; the root imports none of them.
 | --- | --- |
 | [`ai`](../../backend/internal/ai/types.go) | `types.go`: decision sessions, frozen contexts (including their knowledge, memory and unit-reference types), submissions, records, model turns, tools, usage and profiles. `repository.go`: the durable decision repository contract and errors |
 | [`ai/capability`](../../backend/internal/ai/capability/capability.go) | `Mint` and `Verify` for request-scoped HMAC capability tokens |
+| [`ai/cliisolation`](../../backend/internal/ai/cliisolation/) | Environment allowlists, Antigravity's private home, and saved-login checks for the Codex, Claude and Antigravity subscription CLIs |
 | [`ai/decision`](../../backend/internal/ai/decision/service.go) | Context reads, plan validation against the frozen observation, observation hashes |
 | [`ai/profile`](../../backend/internal/ai/profile/profiles.go) | API/CLI profile validation and availability (`Registry`, `NewCatalog`, `NewRegistry`) and the administrator access policy |
 | [`ai/prompts`](../../backend/internal/ai/prompts/prompts.go) | Embedded instruction templates, context delivery, and the battle and background-generation prompt digests |
@@ -250,9 +251,11 @@ rejects any other tool name a provider requests. It appends tool calls and resul
 
 The CLI runner creates a temporary directory, passes the profile's allowlisted model explicitly with `--model`, and constructs provider-specific command-line restrictions. Tests use the `CommandExecutor` interface to inspect the selected model and execution restrictions without starting a real CLI.
 
-[`clienv/antigravity.go`](../../backend/internal/ai/clienv/antigravity.go) shares
-permission configuration, environment isolation, and saved-login probing between
-profile discovery and execution. `cmd/agent -check-antigravity-auth` supports the
+[`cliisolation`](../../backend/internal/ai/cliisolation/) shares environment
+isolation and saved-login probing for the Codex, Claude, and Antigravity CLIs between
+profile discovery and execution. All three inherit only login and transport
+variables; Antigravity additionally gets a private home holding only its permission
+configuration, MCP server, and copied login token. `cmd/agent -check-antigravity-auth` supports the
 host launcher's preflight. See [CLI runtime](../architecture/system-architecture.md#cli-runtime)
 for context delivery and accepted-plan enforcement.
 
@@ -461,7 +464,7 @@ from `backend`.
 - `backend/internal/ai/runner/observability.go` emits generation observations;
   `codex_usage.go` parses terminal JSONL usage without retaining model reasoning.
   `runner/claude.go` constructs the restricted Claude invocation and parses its
-  terminal result and cache-aware usage. `clienv/claude.go` filters environment
+  terminal result and cache-aware usage. `cliisolation/claude.go` filters environment
   variables and checks the native subscription login without model inference.
   Their tests cover tool restrictions, credential handling, cleanup, multiline JSON
   with separated stderr diagnostics, and failures;

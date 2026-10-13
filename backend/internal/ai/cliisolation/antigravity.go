@@ -1,6 +1,7 @@
-// Package clienv prepares isolated subscription CLI sessions without importing
-// personal configuration, API keys, or unrelated MCP servers.
-package clienv
+// Package cliisolation prepares isolated subscription CLI sessions without importing
+// personal configuration, API keys, or unrelated MCP servers, and checks their saved
+// logins without model inference.
+package cliisolation
 
 import (
 	"context"
@@ -52,12 +53,7 @@ func PrepareAntigravity(home, mcpURL, capability string, toolNames ...string) ([
 	}
 	// Only transport variables required for the local keyring and network proxy
 	// survive. In particular, no provider keys, CLI overrides, or agent secrets do.
-	environment := []string{}
-	for _, key := range []string{"PATH", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR"} {
-		if value, ok := os.LookupEnv(key); ok {
-			environment = append(environment, key+"="+value)
-		}
-	}
+	environment := inheritEnvironment([]string{"PATH", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR"})
 	environment = append(environment, "HOME="+home, "XDG_CONFIG_HOME="+filepath.Join(home, ".config"), "XDG_CACHE_HOME="+filepath.Join(home, ".cache"), "XDG_DATA_HOME="+filepath.Join(home, ".local", "share"), "TMPDIR="+home, "AGY_CLI_DISABLE_AUTO_UPDATE=1")
 	return environment, nil
 }

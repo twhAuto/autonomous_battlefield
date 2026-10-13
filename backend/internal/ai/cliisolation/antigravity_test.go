@@ -1,7 +1,7 @@
 // Checks isolated Antigravity login preparation, tool restrictions, filesystem failures,
 // and non-generating authentication probes.
 
-package clienv
+package cliisolation
 
 import (
 	"context"

@@ -1,10 +1,9 @@
-package clienv
+package cliisolation
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
 )
 
@@ -12,13 +11,7 @@ import (
 // provider overrides, and application secrets. Restricted mode and explicit CLI
 // settings prevent personal configuration from supplying tools or hooks.
 func ClaudeEnvironment() []string {
-	environment := []string{}
-	for _, key := range []string{"PATH", "HOME", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR", "LANG"} {
-		if value, ok := os.LookupEnv(key); ok {
-			environment = append(environment, key+"="+value)
-		}
-	}
-	return append(environment, "DISABLE_AUTOUPDATER=1")
+	return append(inheritEnvironment(loginEnvironmentKeys), "DISABLE_AUTOUPDATER=1")
 }
 
 // CheckClaudeAuth checks the saved subscription login without model inference.

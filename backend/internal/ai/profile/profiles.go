@@ -8,13 +8,12 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/clienv"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/cliisolation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 )
 
@@ -184,23 +183,20 @@ func evaluateLocalCLIProfile(profile ai.ModelProfile) ai.ModelProfile {
 	if profile.Provider == antigravityCLIProvider {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		if err := clienv.CheckAntigravityAuth(ctx); err != nil {
+		if err := cliisolation.CheckAntigravityAuth(ctx); err != nil {
 			profile.UnavailableReason = err.Error()
 			return profile
 		}
 	} else if profile.Provider == claudeCLIProvider {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		if err := clienv.CheckClaudeAuth(ctx); err != nil {
+		if err := cliisolation.CheckClaudeAuth(ctx); err != nil {
 			profile.UnavailableReason = err.Error()
 			return profile
 		}
-	} else {
-		home, _ := os.UserHomeDir()
-		if _, err := os.Stat(filepath.Join(home, ".codex", "auth.json")); err != nil {
-			profile.UnavailableReason = binary + " CLI is not authenticated"
-			return profile
-		}
+	} else if err := cliisolation.CheckCodexAuth(); err != nil {
+		profile.UnavailableReason = err.Error()
+		return profile
 	}
 	if profile.ModelLabel == "" {
 		profile.ModelLabel = binary + " subscription"
