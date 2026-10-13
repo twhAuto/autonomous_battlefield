@@ -1,4 +1,4 @@
-package generation
+package repo
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 )
 
 func insertFriendBattle(p *Postgres, n int, owner string) error {
@@ -75,20 +76,20 @@ func TestGlobalCLISlotHeldUntilWorkerCompletion(t *testing.T) {
 	p := database(t)
 	sqlExec(t, p, "UPDATE runtime_policy SET cli_concurrency=1")
 	ctx := context.Background()
-	c := DefaultConfig()
+	c := generation.DefaultConfig()
 	first := admit(t, p, "one", "a", c)
 	second := admit(t, p, "two", "a", c)
 	job, e := p.Claim(ctx, "vm-one", []string{c.ProfileID})
 	if e != nil || job.ID != first.ID {
 		t.Fatal(job, e)
 	}
-	if _, e = p.Claim(ctx, "vm-two", []string{c.ProfileID}); !errors.Is(e, ErrNotFound) {
+	if _, e = p.Claim(ctx, "vm-two", []string{c.ProfileID}); !errors.Is(e, generation.ErrNotFound) {
 		t.Fatalf("second CLI started: %v", e)
 	}
 	if ok, e := p.Submit(ctx, first.ID, "A valid background"); e != nil || !ok {
 		t.Fatal(ok, e)
 	}
-	if _, e = p.Claim(ctx, "vm-two", []string{c.ProfileID}); !errors.Is(e, ErrNotFound) {
+	if _, e = p.Claim(ctx, "vm-two", []string{c.ProfileID}); !errors.Is(e, generation.ErrNotFound) {
 		t.Fatalf("submission released slot too early: %v", e)
 	}
 	if ok, e := p.Finish(ctx, first.ID, "", ai.Usage{}, nil); e != nil || !ok {
@@ -99,7 +100,7 @@ func TestGlobalCLISlotHeldUntilWorkerCompletion(t *testing.T) {
 		t.Fatal(job, e)
 	}
 	sqlExec(t, p, "UPDATE runtime_policy SET ai_enabled=false")
-	if _, _, e = p.Admit(ctx, "third", "a", draft, c, "Writer"); !errors.Is(e, ErrLimited) {
+	if _, _, e = p.Admit(ctx, "third", "a", draft, c, "Writer"); !errors.Is(e, generation.ErrLimited) {
 		t.Fatalf("kill switch admitted work: %v", e)
 	}
 }
@@ -129,9 +130,9 @@ func TestDecisionExecutionBudgetAndSharedGenerationSlot(t *testing.T) {
 	if s := claim(first); s != "running" {
 		t.Fatal(s)
 	}
-	c := DefaultConfig()
+	c := generation.DefaultConfig()
 	admit(t, p, "friend", "a", c)
-	if _, e := p.Claim(ctx, "vm-two", []string{c.ProfileID}); !errors.Is(e, ErrNotFound) {
+	if _, e := p.Claim(ctx, "vm-two", []string{c.ProfileID}); !errors.Is(e, generation.ErrNotFound) {
 		t.Fatalf("generation overlapped decision: %v", e)
 	}
 	sqlExec(t, p, "UPDATE battle_decisions SET status='failed',usage='{}',lease_owner=NULL,lease_expires_at=NULL WHERE id=$1", first)
@@ -143,7 +144,7 @@ func TestDecisionExecutionBudgetAndSharedGenerationSlot(t *testing.T) {
 		t.Fatal(used, e)
 	}
 	sqlExec(t, p, "UPDATE runtime_policy SET ai_enabled=false")
-	if _, e := p.Claim(ctx, "vm", []string{c.ProfileID}); !errors.Is(e, ErrNotFound) {
+	if _, e := p.Claim(ctx, "vm", []string{c.ProfileID}); !errors.Is(e, generation.ErrNotFound) {
 		t.Fatalf("disabled worker claim: %v", e)
 	}
 }
@@ -151,7 +152,7 @@ func TestDecisionExecutionBudgetAndSharedGenerationSlot(t *testing.T) {
 func TestFourSharedCLISlotsAcrossConcurrentClaims(t *testing.T) {
 	p := database(t)
 	ctx := context.Background()
-	c := DefaultConfig()
+	c := generation.DefaultConfig()
 	if err := insertFriendBattle(p, 1, "legacy-admin"); err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +178,7 @@ func TestFourSharedCLISlotsAcrossConcurrentClaims(t *testing.T) {
 	for err := range results {
 		if err == nil {
 			claimed++
-		} else if !errors.Is(err, ErrNotFound) {
+		} else if !errors.Is(err, generation.ErrNotFound) {
 			t.Fatal(err)
 		}
 	}
@@ -185,7 +186,7 @@ func TestFourSharedCLISlotsAcrossConcurrentClaims(t *testing.T) {
 		t.Fatalf("generation claimed %d slots alongside one battle; want 3", claimed)
 	}
 	sqlExec(t, p, `UPDATE battle_decisions SET status='accepted' WHERE id=$1`, decision)
-	if _, err := p.Claim(ctx, "vm", []string{c.ProfileID}); !errors.Is(err, ErrNotFound) {
+	if _, err := p.Claim(ctx, "vm", []string{c.ProfileID}); !errors.Is(err, generation.ErrNotFound) {
 		t.Fatalf("accepted plan prematurely released capacity: %v", err)
 	}
 	sqlExec(t, p, `UPDATE battle_decisions SET usage='{}' WHERE id=$1`, decision)
@@ -197,7 +198,7 @@ func TestFourSharedCLISlotsAcrossConcurrentClaims(t *testing.T) {
 		t.Fatalf("expired leases blocked capacity: %v", err)
 	}
 	sqlExec(t, p, `UPDATE runtime_policy SET ai_enabled=false`)
-	if _, err := p.Claim(ctx, "vm", []string{c.ProfileID}); !errors.Is(err, ErrNotFound) {
+	if _, err := p.Claim(ctx, "vm", []string{c.ProfileID}); !errors.Is(err, generation.ErrNotFound) {
 		t.Fatalf("disabled AI admitted work: %v", err)
 	}
 }

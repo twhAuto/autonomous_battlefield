@@ -1,7 +1,7 @@
 // Stores background-generation jobs and enforces per-account quotas, idempotency, claims,
 // expiry, and completion accounting.
 
-package generation
+package repo
 
 import (
 	"context"
@@ -19,6 +19,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
+	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
@@ -26,12 +27,12 @@ type Postgres struct{ DB postgres.DBTX }
 
 const columns = `id,actor_id,input,profile_id,model_label,prompt_version,status,background,error_category,created_at,started_at,finished_at,expires_at,execution_seconds`
 
-func scan(row interface{ Scan(...any) error }) (Job, error) {
-	var j Job
+func scan(row interface{ Scan(...any) error }) (generation.Job, error) {
+	var j generation.Job
 	var raw []byte
 	err := row.Scan(&j.ID, &j.ActorID, &raw, &j.ProfileID, &j.ModelLabel, &j.PromptVersion, &j.Status, &j.Background, &j.ErrorCategory, &j.CreatedAt, &j.StartedAt, &j.FinishedAt, &j.ExpiresAt, &j.ExecutionSeconds)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return j, ErrNotFound
+		return j, generation.ErrNotFound
 	}
 	if err != nil {
 		return j, err
@@ -63,8 +64,8 @@ func expire(ctx context.Context, db postgres.DBTX, actor string) error {
 	_, err := db.Exec(ctx, `UPDATE faction_background_generations SET status=CASE WHEN status='queued' THEN 'expired' ELSE 'failed' END,error_category=CASE WHEN status='queued' THEN 'queue_timeout' ELSE 'timeout' END,finished_at=now() WHERE ($1='' OR actor_id=$1) AND status IN ('queued','running') AND expires_at<=now()`, actor)
 	return err
 }
-func quota(ctx context.Context, tx postgres.DBTX, actor string, c Config) (Options, error) {
-	var o Options
+func quota(ctx context.Context, tx postgres.DBTX, actor string, c generation.Config) (generation.Options, error) {
+	var o generation.Options
 	var count int
 	var last *time.Time
 	var now time.Time
@@ -96,14 +97,14 @@ func quota(ctx context.Context, tx postgres.DBTX, actor string, c Config) (Optio
 	}
 	return o, err
 }
-func (p *Postgres) Options(ctx context.Context, actor string, c Config) (Options, error) {
+func (p *Postgres) Options(ctx context.Context, actor string, c generation.Config) (generation.Options, error) {
 	tx, err := p.begin(ctx, actor)
 	if err != nil {
-		return Options{}, err
+		return generation.Options{}, err
 	}
 	defer tx.Rollback(ctx)
 	if err = expire(ctx, tx, actor); err != nil {
-		return Options{}, err
+		return generation.Options{}, err
 	}
 	o, err := quota(ctx, tx, actor, c)
 	if err != nil {
@@ -111,10 +112,10 @@ func (p *Postgres) Options(ctx context.Context, actor string, c Config) (Options
 	}
 	return o, tx.Commit(ctx)
 }
-func (p *Postgres) Admit(ctx context.Context, actor, key string, input Input, c Config, label string) (Job, Options, error) {
+func (p *Postgres) Admit(ctx context.Context, actor, key string, input generation.Input, c generation.Config, label string) (generation.Job, generation.Options, error) {
 	input, err := input.Normalized()
 	if err != nil || strings.TrimSpace(key) == "" || len(key) > 200 {
-		return Job{}, Options{}, ErrInvalid
+		return generation.Job{}, generation.Options{}, generation.ErrInvalid
 	}
 	if c.Runtime == "" {
 		c.Runtime = "cli"
@@ -123,11 +124,11 @@ func (p *Postgres) Admit(ctx context.Context, actor, key string, input Input, c 
 	hash := fmt.Sprintf("%x", sha256.Sum256(raw))
 	tx, err := p.begin(ctx, actor)
 	if err != nil {
-		return Job{}, Options{}, err
+		return generation.Job{}, generation.Options{}, err
 	}
 	defer tx.Rollback(ctx)
 	if err = expire(ctx, tx, actor); err != nil {
-		return Job{}, Options{}, err
+		return generation.Job{}, generation.Options{}, err
 	}
 	var storedHash string
 	var id string
@@ -136,15 +137,15 @@ func (p *Postgres) Admit(ctx context.Context, actor, key string, input Input, c 
 		return existingAdmission(ctx, tx, id, hash, storedHash)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return Job{}, Options{}, err
+		return generation.Job{}, generation.Options{}, err
 	}
 	o, err := admissionQuota(ctx, tx, actor, c)
 	if err != nil {
-		return Job{}, o, err
+		return generation.Job{}, o, err
 	}
 	id, err = newGenerationID()
 	if err != nil {
-		return Job{}, o, err
+		return generation.Job{}, o, err
 	}
 	j, err := scan(tx.QueryRow(ctx, `INSERT INTO faction_background_generations(id,actor_id,idempotency_key,input_hash,input,profile_id,model_label,prompt_version,status,expires_at,execution_seconds,runtime) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',now()+$9::interval,$10,$11) RETURNING `+columns, id, actor, key, hash, raw, c.ProfileID, label, prompts.GenerationVersion, c.QueueTimeout.String(), max(1, int(c.ExecutionTimeout.Seconds())), c.Runtime))
 	if err != nil {
@@ -155,7 +156,7 @@ func (p *Postgres) Admit(ctx context.Context, actor, key string, input Input, c 
 	}
 	return j, o, tx.Commit(ctx)
 }
-func admissionQuota(ctx context.Context, tx pgx.Tx, actor string, c Config) (Options, error) {
+func admissionQuota(ctx context.Context, tx pgx.Tx, actor string, c generation.Config) (generation.Options, error) {
 	o, err := quota(ctx, tx, actor, c)
 	if err != nil {
 		return o, err
@@ -168,7 +169,7 @@ func admissionQuota(ctx context.Context, tx pgx.Tx, actor string, c Config) (Opt
 		if err = tx.Commit(ctx); err != nil {
 			return o, err
 		}
-		return o, ErrLimited
+		return o, generation.ErrLimited
 	}
 	return o, nil
 }
@@ -176,7 +177,7 @@ func admissionQuota(ctx context.Context, tx pgx.Tx, actor string, c Config) (Opt
 func admissionError(err error) error {
 	var pgerr *pgconn.PgError
 	if errors.As(err, &pgerr) && pgerr.Code == "P0429" {
-		return ErrLimited
+		return generation.ErrLimited
 	}
 	return err
 }
@@ -191,18 +192,18 @@ func newGenerationID() (string, error) {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", bytes[:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:]), nil
 }
 
-func (p *Postgres) Get(ctx context.Context, actor, id string) (Job, error) {
+func (p *Postgres) Get(ctx context.Context, actor, id string) (generation.Job, error) {
 	if err := expire(ctx, p.DB, actor); err != nil {
-		return Job{}, err
+		return generation.Job{}, err
 	}
 	return scan(p.DB.QueryRow(ctx, `SELECT `+columns+` FROM faction_background_generations WHERE id::text=$1 AND actor_id=$2`, id, actor))
 }
-func (p *Postgres) Context(ctx context.Context, id string) (Job, error) {
+func (p *Postgres) Context(ctx context.Context, id string) (generation.Job, error) {
 	return scan(p.DB.QueryRow(ctx, `SELECT `+columns+` FROM faction_background_generations WHERE id::text=$1 AND status='running' AND expires_at>now()`, id))
 }
-func (p *Postgres) Claim(ctx context.Context, worker string, profiles []string) (Job, error) {
+func (p *Postgres) Claim(ctx context.Context, worker string, profiles []string) (generation.Job, error) {
 	if err := expire(ctx, p.DB, ""); err != nil {
-		return Job{}, err
+		return generation.Job{}, err
 	}
 	return scan(p.DB.QueryRow(ctx, `UPDATE faction_background_generations SET status='running',started_at=now(),expires_at=now()+execution_seconds*interval '1 second',worker_id=$1 WHERE id=(SELECT id FROM faction_background_generations WHERE status='queued' AND expires_at>now() AND profile_id=ANY($2) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING `+columns, worker, profiles))
 }
@@ -213,7 +214,7 @@ func (p *Postgres) Submit(ctx context.Context, id, background string) (bool, err
 		if err != nil {
 			return false, err
 		}
-		return false, ErrInvalid
+		return false, generation.ErrInvalid
 	}
 	tag, err := p.DB.Exec(ctx, `UPDATE faction_background_generations SET status='succeeded',background=$2,finished_at=COALESCE(finished_at,now()) WHERE id::text=$1 AND ((status='running' AND expires_at>now()) OR (status='succeeded' AND background=$2))`, id, background)
 	return tag.RowsAffected() == 1, err
@@ -228,13 +229,13 @@ func (p *Postgres) Finish(ctx context.Context, id, category string, usage ai.Usa
 	return tag.RowsAffected() == 1, err
 }
 
-func existingAdmission(ctx context.Context, tx pgx.Tx, id, hash, storedHash string) (Job, Options, error) {
+func existingAdmission(ctx context.Context, tx pgx.Tx, id, hash, storedHash string) (generation.Job, generation.Options, error) {
 	if hash != storedHash {
-		return Job{}, Options{}, ErrConflict
+		return generation.Job{}, generation.Options{}, generation.ErrConflict
 	}
 	j, e := scan(tx.QueryRow(ctx, `SELECT `+columns+` FROM faction_background_generations WHERE id=$1`, id))
 	if e != nil {
-		return j, Options{}, e
+		return j, generation.Options{}, e
 	}
-	return j, Options{}, tx.Commit(ctx)
+	return j, generation.Options{}, tx.Commit(ctx)
 }

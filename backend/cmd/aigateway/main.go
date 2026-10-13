@@ -19,7 +19,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/mcpserver"
 	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
-	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
+	generationrepo "github.com/twh09/autonomous_battlefield/backend/internal/generation/repo"
 	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
@@ -59,7 +59,7 @@ func run(configuration config.Config) error {
 	}
 	defer db.Close()
 	repository := battlerepo.NewPostgres(db)
-	server := mcpserver.New(repository, configuration.AI.CapabilitySecret, configuration.AI.AllowedOrigins).WithAgentSecret(configuration.AI.AgentSecret).WithGenerations(&generation.Postgres{DB: db})
+	server := mcpserver.New(repository, configuration.AI.CapabilitySecret, configuration.AI.AllowedOrigins).WithAgentSecret(configuration.AI.AgentSecret).WithGenerations(&generationrepo.Postgres{DB: db})
 	notificationErrors := make(chan error, 1)
 	go func() {
 		notificationErrors <- postgres.ListenForNotifications(ctx, db, ai.DecisionReadyChannel, func(string) {
