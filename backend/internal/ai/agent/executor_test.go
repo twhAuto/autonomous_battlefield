@@ -1,7 +1,7 @@
 // Checks model job claiming, concurrency limits, runner selection, cancellation outcomes,
 // and usage-report retries.
 
-package worker
+package agent
 
 import (
 	"bytes"
@@ -87,7 +87,7 @@ func TestWorkerClaimsRunsAndReportsUsage(t *testing.T) {
 	var usage atomic.Int32
 	client := &http.Client{Transport: usageReportingTransport{cancel: cancel, claims: &claims, usage: &usage}}
 	profiles := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
-	worker := &Worker{MCPURL: "http://mcp/mcp", Secret: "secret", WorkerID: "agent", Profiles: profiles, PollInterval: time.Millisecond, DecisionTimeout: time.Second, Concurrency: 2, Client: client, RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
+	worker := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", WorkerID: "agent", Profiles: profiles, PollInterval: time.Millisecond, DecisionTimeout: time.Second, Concurrency: 2, Client: client, RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
 		return fakeRunner{result: ai.DecisionResult{Accepted: true, Usage: ai.Usage{Requests: 1}}}, nil
 	}}
 	if err := worker.Run(ctx); err != nil {
@@ -99,7 +99,7 @@ func TestWorkerClaimsRunsAndReportsUsage(t *testing.T) {
 }
 
 func TestWorkerValidationAndDefaultProvider(t *testing.T) {
-	worker := &Worker{Concurrency: 1}
+	worker := &Executor{Concurrency: 1}
 	if err := worker.Run(context.Background()); err == nil {
 		t.Fatal("low concurrency accepted")
 	}
@@ -161,7 +161,7 @@ func TestWorkerDoesNotClaimBeyondAvailableConcurrency(t *testing.T) {
 	defer close(release)
 
 	profiles := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
-	worker := &Worker{MCPURL: "http://mcp/mcp", Secret: "secret", WorkerID: "agent", Profiles: profiles, DecisionTimeout: time.Second, Concurrency: 4, Client: client, RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
+	worker := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", WorkerID: "agent", Profiles: profiles, DecisionTimeout: time.Second, Concurrency: 4, Client: client, RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
 		return runnerFunc(func(ctx context.Context, _ ai.DecisionSession) (ai.DecisionResult, error) {
 			started <- struct{}{}
 			select {
@@ -199,7 +199,7 @@ func TestWorkerClaimAndReportingFailures(t *testing.T) {
 			return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 		})}
 	}
-	worker := &Worker{MCPURL: "http://mcp/mcp", Secret: "secret", WorkerID: "agent", DecisionTimeout: time.Second}
+	worker := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", WorkerID: "agent", DecisionTimeout: time.Second}
 	worker.Client = clientFor(http.StatusInternalServerError, "", nil)
 	if _, _, err := worker.claim(context.Background(), []string{"profile"}); err == nil {
 		t.Fatal("claim status accepted")
@@ -240,7 +240,7 @@ func TestRunJobReportsUnavailableAndRunnerFailures(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil
 	})}
 	profiles := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
-	worker := &Worker{MCPURL: "http://mcp/mcp", Secret: "secret", Profiles: profiles, DecisionTimeout: time.Second, Client: client, Logger: slog.New(slog.NewJSONHandler(&logs, nil)), RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) { return fakeRunner{err: errors.New("provider")}, nil }}
+	worker := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", Profiles: profiles, DecisionTimeout: time.Second, Client: client, Logger: slog.New(slog.NewJSONHandler(&logs, nil)), RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) { return fakeRunner{err: errors.New("provider")}, nil }}
 	worker.runJob(context.Background(), job{CapabilityToken: "server-issued-capability", RequestID: "request", ProfileID: "missing"})
 	worker.runJob(context.Background(), job{CapabilityToken: "server-issued-capability", RequestID: "request", ProfileID: "profile"})
 	worker.RunnerFactory = func(ai.ModelProfile) (ai.DecisionRunner, error) { return nil, errors.New("factory") }
@@ -256,7 +256,7 @@ func TestRunJobReportsUnavailableAndRunnerFailures(t *testing.T) {
 func TestCompletionWithoutPlanFailsImmediately(t *testing.T) {
 	var failed bool
 	var logs bytes.Buffer
-	w := &Worker{MCPURL: "http://mcp/mcp", Client: &http.Client{Transport: agentRoundTrip(func(r *http.Request) (*http.Response, error) {
+	w := &Executor{MCPURL: "http://mcp/mcp", Client: &http.Client{Transport: agentRoundTrip(func(r *http.Request) (*http.Response, error) {
 		status := http.StatusConflict
 		if strings.HasSuffix(r.URL.Path, "/fail") {
 			var body struct {
@@ -283,7 +283,7 @@ func TestCompletionWithoutPlanFailsImmediately(t *testing.T) {
 
 func TestUsageRetriesTransientEOF(t *testing.T) {
 	attempts := 0
-	w := &Worker{MCPURL: "http://mcp/mcp", Client: &http.Client{Transport: agentRoundTrip(func(r *http.Request) (*http.Response, error) {
+	w := &Executor{MCPURL: "http://mcp/mcp", Client: &http.Client{Transport: agentRoundTrip(func(r *http.Request) (*http.Response, error) {
 		attempts++
 		var payload map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -323,7 +323,7 @@ func TestTransientClaimFailureDoesNotCancelSibling(t *testing.T) {
 		}
 	})}
 	profiles := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
-	w := &Worker{MCPURL: "http://mcp/mcp", Profiles: profiles, Concurrency: 2, Client: client, PollInterval: time.Millisecond, DecisionTimeout: time.Minute, RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
+	w := &Executor{MCPURL: "http://mcp/mcp", Profiles: profiles, Concurrency: 2, Client: client, PollInterval: time.Millisecond, DecisionTimeout: time.Minute, RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
 		return runnerFunc(func(ctx context.Context, _ ai.DecisionSession) (ai.DecisionResult, error) {
 			started <- ctx
 			<-ctx.Done()
@@ -359,7 +359,7 @@ func TestTransientClaimFailureDoesNotCancelSibling(t *testing.T) {
 
 func TestServiceURLDerivesControlAndGenerationEndpoints(t *testing.T) {
 	for _, mcpURL := range []string{"http://mcp:8084/mcp", "http://mcp:8084/mcp/", "http://mcp:8084", "http://mcp:8084/"} {
-		w := &Worker{MCPURL: mcpURL}
+		w := &Executor{MCPURL: mcpURL}
 		if got := w.serviceURL("/internal/agent/claim"); got != "http://mcp:8084/internal/agent/claim" {
 			t.Errorf("serviceURL(%q) = %q", mcpURL, got)
 		}

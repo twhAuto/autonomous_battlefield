@@ -40,11 +40,11 @@ var forbidden = map[string][]string{
 	// The agent is outbound-only: no database, battle state, or gateway signing code.
 	"cmd/agent": {"internal/postgres", "internal/battle/...", "internal/faction/repo", "internal/generation/repo", "internal/admin", "internal/members", "internal/app", "internal/ai/mcpserver", "internal/ai/capability"},
 	// The gateway serves tools and dispatch; it neither runs battles nor calls models.
-	"cmd/aigateway": {"internal/battle/worker", "internal/battle/api", "internal/app", "internal/ai/runner", "internal/ai/providers", "internal/ai/worker"},
+	"cmd/aigateway": {"internal/battle/worker", "internal/battle/api", "internal/app", "internal/ai/runner", "internal/ai/providers", "internal/ai/agent"},
 	// The engine runs battles; model execution and the tool server live elsewhere.
-	"cmd/engine": {"internal/app", "internal/battle/api", "internal/ai/mcpserver", "internal/ai/capability", "internal/ai/runner", "internal/ai/providers", "internal/ai/worker"},
+	"cmd/engine": {"internal/app", "internal/battle/api", "internal/ai/mcpserver", "internal/ai/capability", "internal/ai/runner", "internal/ai/providers", "internal/ai/agent"},
 	// The API serves HTTP; it neither runs battles nor calls models.
-	"cmd/server": {"internal/battle/worker", "internal/ai/mcpserver", "internal/ai/capability", "internal/ai/runner", "internal/ai/providers", "internal/ai/worker"},
+	"cmd/server": {"internal/battle/worker", "internal/ai/mcpserver", "internal/ai/capability", "internal/ai/runner", "internal/ai/providers", "internal/ai/agent"},
 	// The persistence adapter implements the engine's contract without importing it.
 	"internal/battle/repo": {"internal/battle/worker"},
 	// Shared AI contracts import none of the subpackages built on them.
@@ -68,6 +68,26 @@ func TestForbiddenDependencies(t *testing.T) {
 				if matches(dep, rule) {
 					t.Errorf("%s must not depend on %s (rule %q)", pkg, dep, rule)
 				}
+			}
+		}
+	}
+}
+
+// A rule naming a package that no longer exists would pass silently, for example after
+// a rename, so every forbidden target must match at least one real package.
+func TestForbiddenRulesNameExistingPackages(t *testing.T) {
+	deps := listDependencies(t)
+	for pkg, rules := range forbidden {
+		for _, rule := range rules {
+			found := false
+			for candidate := range deps {
+				if matches(candidate, rule) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("%s: rule %q matches no package; update it", pkg, rule)
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-package worker
+package agent
 
 import (
 	"context"
@@ -8,9 +8,9 @@ import (
 
 // watchPolicy cancels in-flight inference when the operator disables AI. Transport
 // failure also cancels: a disconnected worker cannot continue spending indefinitely.
-func (w *Worker) watchPolicy(parent context.Context) (context.Context, context.CancelFunc) {
+func (e *Executor) watchPolicy(parent context.Context) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(parent)
-	if !w.PolicyPolling {
+	if !e.PolicyPolling {
 		return ctx, cancel
 	}
 	go func() {
@@ -22,7 +22,7 @@ func (w *Worker) watchPolicy(parent context.Context) (context.Context, context.C
 				return
 			case <-ticker.C:
 			}
-			if !w.policyEnabled(ctx) {
+			if !e.policyEnabled(ctx) {
 				cancel()
 				return
 			}
@@ -33,15 +33,15 @@ func (w *Worker) watchPolicy(parent context.Context) (context.Context, context.C
 
 // policyEnabled reports whether the control plane currently allows model work.
 // Any request or transport failure counts as disabled.
-func (w *Worker) policyEnabled(ctx context.Context) bool {
+func (e *Executor) policyEnabled(ctx context.Context) bool {
 	check, done := context.WithTimeout(ctx, 2*time.Second)
 	defer done()
-	req, err := http.NewRequestWithContext(check, http.MethodGet, w.serviceURL("/internal/agent/enabled"), nil)
+	req, err := http.NewRequestWithContext(check, http.MethodGet, e.serviceURL("/internal/agent/enabled"), nil)
 	if err != nil {
 		return false
 	}
-	req.Header.Set("Authorization", bearerPrefix+w.Secret)
-	response, err := w.Client.Do(req)
+	req.Header.Set("Authorization", bearerPrefix+e.Secret)
+	response, err := e.Client.Do(req)
 	if err != nil {
 		return false
 	}
@@ -51,12 +51,12 @@ func (w *Worker) policyEnabled(ctx context.Context) bool {
 
 // Use the database lease deadline, not response-arrival time: a delayed claim
 // response must never extend execution beyond the slot reservation.
-func (w *Worker) executionContext(parent context.Context, job job, timeout time.Duration) (context.Context, context.CancelFunc) {
+func (e *Executor) executionContext(parent context.Context, job job, timeout time.Duration) (context.Context, context.CancelFunc) {
 	deadline := time.Now().Add(timeout)
 	if !job.ExecutionDeadline.IsZero() && job.ExecutionDeadline.Before(deadline) {
 		deadline = job.ExecutionDeadline
 	}
-	if w.PolicyPolling && job.ExecutionDeadline.IsZero() {
+	if e.PolicyPolling && job.ExecutionDeadline.IsZero() {
 		deadline = time.Now()
 	}
 	return context.WithDeadline(parent, deadline)

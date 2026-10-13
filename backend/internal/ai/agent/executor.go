@@ -1,7 +1,11 @@
 // Claims compatible model work from the AI gateway within the configured concurrency limit and
 // reports execution outcomes.
 
-package worker
+// Package agent is the model agent's job executor, run by cmd/agent both in the cluster
+// (API profiles) and on the CLI host (subscription CLI profiles). It pulls jobs that the
+// AI gateway's dispatch API hands out, runs each through the matching runner, and reports
+// usage or failure back. WorkerID keeps the claim protocol's workerId name.
+package agent
 
 import (
 	"bytes"
@@ -32,7 +36,7 @@ var errTransientClaim = errors.New("transient agent claim failure")
 
 var errNoAcceptedPlan = errors.New("decision has no accepted plan")
 
-type Worker struct {
+type Executor struct {
 	PolicyPolling                            bool
 	MCPURL, Secret, WorkerID                 string
 	Profiles                                 *profile.Registry
@@ -44,56 +48,56 @@ type Worker struct {
 	ready                                    atomic.Bool
 }
 
-func (w *Worker) Ready() bool { return w.ready.Load() }
+func (e *Executor) Ready() bool { return e.ready.Load() }
 
 // serviceURL resolves a path on the AI gateway that serves the configured /mcp
 // endpoint, such as the agent dispatch API or the generation MCP endpoint.
-func (w *Worker) serviceURL(path string) string {
-	return strings.TrimSuffix(strings.TrimRight(w.MCPURL, "/"), "/mcp") + path
+func (e *Executor) serviceURL(path string) string {
+	return strings.TrimSuffix(strings.TrimRight(e.MCPURL, "/"), "/mcp") + path
 }
 
-func (w *Worker) Run(ctx context.Context) error {
-	if w.Concurrency < 1 {
+func (e *Executor) Run(ctx context.Context) error {
+	if e.Concurrency < 1 {
 		return errors.New("agent concurrency must be at least one")
 	}
-	if w.Client == nil {
-		w.Client = telemetry.HTTPClient(nil)
+	if e.Client == nil {
+		e.Client = telemetry.HTTPClient(nil)
 	}
-	if w.Profiles == nil {
+	if e.Profiles == nil {
 		return errors.New("agent profile registry is required")
 	}
-	if w.PollInterval <= 0 {
-		w.PollInterval = time.Second
+	if e.PollInterval <= 0 {
+		e.PollInterval = time.Second
 	}
-	if w.ClaimWait <= 0 {
-		w.ClaimWait = 5 * time.Second
+	if e.ClaimWait <= 0 {
+		e.ClaimWait = 5 * time.Second
 	}
-	profileIDs := w.Profiles.AvailableIDs()
-	logger := w.logger()
-	logger.InfoContext(ctx, "agent_worker_ready", "worker_id", w.WorkerID, "concurrency", w.Concurrency, "profile_ids", profileIDs)
-	w.ready.Store(true)
+	profileIDs := e.Profiles.AvailableIDs()
+	logger := e.logger()
+	logger.InfoContext(ctx, "agent_worker_ready", "worker_id", e.WorkerID, "concurrency", e.Concurrency, "profile_ids", profileIDs)
+	e.ready.Store(true)
 	defer func() {
-		w.ready.Store(false)
-		logger.Info("agent_worker_stopped", "worker_id", w.WorkerID)
+		e.ready.Store(false)
+		logger.Info("agent_worker_stopped", "worker_id", e.WorkerID)
 	}()
 	group, groupContext := errgroup.WithContext(ctx)
-	for range w.Concurrency {
-		group.Go(func() error { return w.runClaimLoop(groupContext, profileIDs) })
+	for range e.Concurrency {
+		group.Go(func() error { return e.runClaimLoop(groupContext, profileIDs) })
 	}
 	return group.Wait()
 }
 
-func (w *Worker) runClaimLoop(ctx context.Context, profileIDs []string) error {
+func (e *Executor) runClaimLoop(ctx context.Context, profileIDs []string) error {
 	for ctx.Err() == nil {
 		if len(profileIDs) == 0 {
-			if !waitFor(ctx, w.PollInterval) {
+			if !waitFor(ctx, e.PollInterval) {
 				return nil
 			}
 			continue
 		}
-		job, ok, err := w.claim(ctx, profileIDs)
+		job, ok, err := e.claim(ctx, profileIDs)
 		if err != nil {
-			if err := w.handleClaimError(ctx, err); err != nil {
+			if err := e.handleClaimError(ctx, err); err != nil {
 				return err
 			}
 			continue
@@ -101,23 +105,23 @@ func (w *Worker) runClaimLoop(ctx context.Context, profileIDs []string) error {
 		if !ok {
 			continue
 		}
-		w.logger().InfoContext(ctx, "decision_claimed", "worker_id", w.WorkerID, "request_id", job.RequestID, "profile_id", job.ProfileID)
+		e.logger().InfoContext(ctx, "decision_claimed", "worker_id", e.WorkerID, "request_id", job.RequestID, "profile_id", job.ProfileID)
 		// Each claim loop owns one concurrency slot, so a leased decision is
 		// always executed immediately instead of waiting behind another job.
-		w.runClaimedJob(ctx, job)
+		e.runClaimedJob(ctx, job)
 	}
 	return nil
 }
 
-func (w *Worker) handleClaimError(ctx context.Context, err error) error {
+func (e *Executor) handleClaimError(ctx context.Context, err error) error {
 	if ctx.Err() != nil {
 		return nil
 	}
-	w.logger().ErrorContext(ctx, "decision_claim_failed", "worker_id", w.WorkerID, "error", err)
+	e.logger().ErrorContext(ctx, "decision_claim_failed", "worker_id", e.WorkerID, "error", err)
 	if !errors.Is(err, errTransientClaim) {
 		return err
 	}
-	waitFor(ctx, w.PollInterval)
+	waitFor(ctx, e.PollInterval)
 	return nil
 }
 
@@ -158,17 +162,17 @@ type jobRun struct {
 	profile   ai.ModelProfile
 }
 
-func (w *Worker) claim(ctx context.Context, profileIDs []string) (job, bool, error) {
+func (e *Executor) claim(ctx context.Context, profileIDs []string) (job, bool, error) {
 	payload, _ := json.Marshal(map[string]any{
-		"workerId": w.WorkerID, "leaseSeconds": int(w.DecisionTimeout.Seconds()) + 5,
-		"waitSeconds": max(1, min(20, int(w.ClaimWait.Seconds()))), "profileIds": profileIDs, "jobTypes": []string{"battle_decision", "faction_background"},
+		"workerId": e.WorkerID, "leaseSeconds": int(e.DecisionTimeout.Seconds()) + 5,
+		"waitSeconds": max(1, min(20, int(e.ClaimWait.Seconds()))), "profileIds": profileIDs, "jobTypes": []string{"battle_decision", "faction_background"},
 	})
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, w.serviceURL("/internal/agent/claim"), bytes.NewReader(payload))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, e.serviceURL("/internal/agent/claim"), bytes.NewReader(payload))
 	if err != nil {
 		return job{}, false, err
 	}
-	request.Header.Set("Authorization", bearerPrefix+w.Secret)
-	response, err := w.Client.Do(request)
+	request.Header.Set("Authorization", bearerPrefix+e.Secret)
+	response, err := e.Client.Do(request)
 	if err != nil {
 		return job{}, false, fmt.Errorf("%w: %w", errTransientClaim, err)
 	}
@@ -189,7 +193,7 @@ func (w *Worker) claim(ctx context.Context, profileIDs []string) (job, bool, err
 	return value, true, nil
 }
 
-func (w *Worker) runJob(parent context.Context, job job) {
+func (e *Executor) runJob(parent context.Context, job job) {
 	parent = telemetry.ContextWithTrace(parent, job.Traceparent, job.Tracestate)
 	parent = telemetry.WithDecisionMetadata(parent,
 		attribute.String("langfuse.session.id", job.BattleID),
@@ -201,32 +205,32 @@ func (w *Worker) runJob(parent context.Context, job job) {
 	span.SetAttributes(attribute.String("langfuse.trace.metadata.profile_id", job.ProfileID))
 	defer span.End()
 	started := time.Now()
-	logger := w.logger().With("worker_id", w.WorkerID, "request_id", job.RequestID, "profile_id", job.ProfileID)
-	profile, err := w.Profiles.Require(job.ProfileID)
+	logger := e.logger().With("worker_id", e.WorkerID, "request_id", job.RequestID, "profile_id", job.ProfileID)
+	profile, err := e.Profiles.Require(job.ProfileID)
 	if err != nil {
-		w.reportJobFailure(parent, logger, started, job.RequestID, "profile_unavailable", "profile_unavailable", ai.DecisionResult{})
+		e.reportJobFailure(parent, logger, started, job.RequestID, "profile_unavailable", "profile_unavailable", ai.DecisionResult{})
 		return
 	}
 	logger.InfoContext(parent, "decision_runner_started", "provider", profile.Provider, "runtime", profile.Runtime)
-	policy, stopPolicy := w.watchPolicy(parent)
+	policy, stopPolicy := e.watchPolicy(parent)
 	defer stopPolicy()
-	ctx, cancel := w.executionContext(policy, job, w.DecisionTimeout)
+	ctx, cancel := e.executionContext(policy, job, e.DecisionTimeout)
 	defer cancel()
 	token := job.CapabilityToken
 	if token == "" {
-		w.reportJobFailure(parent, logger, started, job.RequestID, "capability", "capability_error", ai.DecisionResult{})
+		e.reportJobFailure(parent, logger, started, job.RequestID, "capability", "capability_error", ai.DecisionResult{})
 		return
 	}
-	factory := w.RunnerFactory
+	factory := e.RunnerFactory
 	if factory == nil {
 		factory = defaultRunner
 	}
 	decisionRunner, err := factory(profile)
 	if err != nil {
-		w.reportJobFailure(parent, logger, started, job.RequestID, "provider_unavailable", "provider_unavailable", ai.DecisionResult{})
+		e.reportJobFailure(parent, logger, started, job.RequestID, "provider_unavailable", "provider_unavailable", ai.DecisionResult{})
 		return
 	}
-	result, err := decisionRunner.Run(ctx, ai.DecisionSession{Doctrine: job.Doctrine, FactionName: job.FactionName, Background: job.Background, RequestID: job.RequestID, CapabilityToken: token, MCPURL: w.MCPURL, Profile: profile})
+	result, err := decisionRunner.Run(ctx, ai.DecisionSession{Doctrine: job.Doctrine, FactionName: job.FactionName, Background: job.Background, RequestID: job.RequestID, CapabilityToken: token, MCPURL: e.MCPURL, Profile: profile})
 	if result.ProviderData == nil {
 		result.ProviderData = map[string]any{}
 	}
@@ -234,10 +238,10 @@ func (w *Worker) runJob(parent context.Context, job job) {
 		result.ProviderData["aiTraceId"] = telemetry.DecisionTraceID(job.RequestID)
 	}
 	telemetry.AIOutcome(span, err != nil || !result.Accepted, result.ErrorCategory)
-	w.finishJob(parent, ctx, jobRun{logger: logger, started: started, requestID: job.RequestID, profile: profile}, result, err)
+	e.finishJob(parent, ctx, jobRun{logger: logger, started: started, requestID: job.RequestID, profile: profile}, result, err)
 }
 
-func (w *Worker) finishJob(parent, runContext context.Context, run jobRun, result ai.DecisionResult, runErr error) {
+func (e *Executor) finishJob(parent, runContext context.Context, run jobRun, result ai.DecisionResult, runErr error) {
 	telemetry.AIOutcome(trace.SpanFromContext(parent), runErr != nil || !result.Accepted, result.ErrorCategory)
 	if runErr != nil || !result.Accepted {
 		category := result.ErrorCategory
@@ -250,16 +254,16 @@ func (w *Worker) finishJob(parent, runContext context.Context, run jobRun, resul
 		}
 		result.ProviderData["runnerOutcome"] = outcome
 		run.logger.WarnContext(parent, "decision_runner_failed", "provider", run.profile.Provider, "runtime", run.profile.Runtime, "error_category", category, "runner_outcome", outcome, "duration_ms", time.Since(run.started).Milliseconds())
-		if reportErr := w.fail(parent, run.requestID, category, result); reportErr != nil {
+		if reportErr := e.fail(parent, run.requestID, category, result); reportErr != nil {
 			run.logger.ErrorContext(parent, "decision_failure_report_failed", "error", reportErr)
 		}
 		return
 	}
-	if reportErr := w.reportUsage(parent, run.requestID, result); reportErr != nil {
+	if reportErr := e.reportUsage(parent, run.requestID, result); reportErr != nil {
 		if errors.Is(reportErr, errNoAcceptedPlan) {
 			result.Accepted = false
 			result.ErrorCategory = "plan_not_submitted"
-			w.finishJob(parent, runContext, run, result, reportErr)
+			e.finishJob(parent, runContext, run, result, reportErr)
 		} else {
 			telemetry.AIOutcome(trace.SpanFromContext(parent), true, "usage_report_failed")
 			run.logger.ErrorContext(parent, "decision_usage_report_failed", "error", reportErr)
@@ -269,17 +273,17 @@ func (w *Worker) finishJob(parent, runContext context.Context, run jobRun, resul
 	run.logger.InfoContext(parent, "decision_runner_completed", "provider", run.profile.Provider, "runtime", run.profile.Runtime, "duration_ms", time.Since(run.started).Milliseconds(), "input_tokens", result.Usage.InputTokens, "output_tokens", result.Usage.OutputTokens, "provider_requests", result.Usage.Requests)
 }
 
-func (w *Worker) reportJobFailure(ctx context.Context, logger *slog.Logger, started time.Time, requestID, category, outcome string, result ai.DecisionResult) {
+func (e *Executor) reportJobFailure(ctx context.Context, logger *slog.Logger, started time.Time, requestID, category, outcome string, result ai.DecisionResult) {
 	telemetry.AIOutcome(trace.SpanFromContext(ctx), true, category)
 	logger.WarnContext(ctx, "decision_runner_failed", "error_category", category, "runner_outcome", outcome, "duration_ms", time.Since(started).Milliseconds())
-	if err := w.fail(ctx, requestID, category, result); err != nil {
+	if err := e.fail(ctx, requestID, category, result); err != nil {
 		logger.ErrorContext(ctx, "decision_failure_report_failed", "error", err)
 	}
 }
 
-func (w *Worker) logger() *slog.Logger {
-	if w.Logger != nil {
-		return w.Logger
+func (e *Executor) logger() *slog.Logger {
+	if e.Logger != nil {
+		return e.Logger
 	}
 	return slog.Default()
 }
@@ -316,10 +320,10 @@ func defaultRunner(profile ai.ModelProfile) (ai.DecisionRunner, error) {
 	return runner.APIRunner{Provider: provider}, nil
 }
 
-func (w *Worker) reportUsage(ctx context.Context, requestID string, result ai.DecisionResult) error {
+func (e *Executor) reportUsage(ctx context.Context, requestID string, result ai.DecisionResult) error {
 	var err error
 	for attempt := 0; attempt < 3; attempt++ {
-		err = w.reportUsageOnce(ctx, requestID, result)
+		err = e.reportUsageOnce(ctx, requestID, result)
 		if err == nil || errors.Is(err, errNoAcceptedPlan) || ctx.Err() != nil {
 			return err
 		}
@@ -336,14 +340,14 @@ func (w *Worker) reportUsage(ctx context.Context, requestID string, result ai.De
 	return err
 }
 
-func (w *Worker) reportUsageOnce(ctx context.Context, requestID string, result ai.DecisionResult) error {
+func (e *Executor) reportUsageOnce(ctx context.Context, requestID string, result ai.DecisionResult) error {
 	payload, _ := json.Marshal(map[string]any{"requestId": requestID, "usage": result.Usage, "metadata": result.ProviderData})
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, w.serviceURL("/internal/agent/usage"), bytes.NewReader(payload))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, e.serviceURL("/internal/agent/usage"), bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Authorization", bearerPrefix+w.Secret)
-	response, err := w.Client.Do(request)
+	request.Header.Set("Authorization", bearerPrefix+e.Secret)
+	response, err := e.Client.Do(request)
 	if err != nil {
 		return err
 	}
@@ -357,14 +361,14 @@ func (w *Worker) reportUsageOnce(ctx context.Context, requestID string, result a
 	return nil
 }
 
-func (w *Worker) fail(ctx context.Context, requestID, category string, result ai.DecisionResult) error {
+func (e *Executor) fail(ctx context.Context, requestID, category string, result ai.DecisionResult) error {
 	payload, _ := json.Marshal(map[string]any{"requestId": requestID, "category": category, "usage": result.Usage, "metadata": result.ProviderData})
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, w.serviceURL("/internal/agent/fail"), bytes.NewReader(payload))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, e.serviceURL("/internal/agent/fail"), bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Authorization", bearerPrefix+w.Secret)
-	response, err := w.Client.Do(request)
+	request.Header.Set("Authorization", bearerPrefix+e.Secret)
+	response, err := e.Client.Do(request)
 	if err != nil {
 		return err
 	}
@@ -375,10 +379,10 @@ func (w *Worker) fail(ctx context.Context, requestID, category string, result ai
 	return nil
 }
 
-func (w *Worker) runClaimedJob(ctx context.Context, job job) {
+func (e *Executor) runClaimedJob(ctx context.Context, job job) {
 	if job.JobType == "faction_background" {
-		w.runGeneration(ctx, job)
+		e.runGeneration(ctx, job)
 	} else {
-		w.runJob(ctx, job)
+		e.runJob(ctx, job)
 	}
 }

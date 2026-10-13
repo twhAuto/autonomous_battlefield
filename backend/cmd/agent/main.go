@@ -1,4 +1,4 @@
-// Starts the model-agent process, wiring executable profiles, the job worker, health
+// Starts the model-agent process, wiring executable profiles, the job executor, health
 // checks, and graceful shutdown.
 
 package main
@@ -15,9 +15,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agent"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/cliisolation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
-	aiworker "github.com/twh09/autonomous_battlefield/backend/internal/ai/worker"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
@@ -60,8 +60,8 @@ func main() {
 }
 
 func run(configuration config.Config) error {
-	if err := aiworker.ProtectCredentials(); err != nil {
-		return fmt.Errorf("protect worker credentials: %w", err)
+	if err := agent.ProtectCredentials(); err != nil {
+		return fmt.Errorf("protect agent credentials: %w", err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -74,10 +74,10 @@ func run(configuration config.Config) error {
 		defer cancel()
 		_ = shutdownTracing(shutdown)
 	}()
-	worker := &aiworker.Worker{PolicyPolling: true, MCPURL: configuration.AI.MCPURL, Secret: configuration.AI.AgentSecret, WorkerID: hostname(), Profiles: profile.NewRegistry(configuration.AI.Environment, configuration.AI.Profiles), PollInterval: time.Second, DecisionTimeout: configuration.AI.DecisionTimeout, Concurrency: configuration.AI.AgentConcurrency}
+	executor := &agent.Executor{PolicyPolling: true, MCPURL: configuration.AI.MCPURL, Secret: configuration.AI.AgentSecret, WorkerID: hostname(), Profiles: profile.NewRegistry(configuration.AI.Environment, configuration.AI.Profiles), PollInterval: time.Second, DecisionTimeout: configuration.AI.DecisionTimeout, Concurrency: configuration.AI.AgentConcurrency}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		if !worker.Ready() {
+		if !executor.Ready() {
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}
@@ -92,12 +92,12 @@ func run(configuration config.Config) error {
 		}
 		serverErrors <- err
 	}()
-	workerErrors := make(chan error, 1)
-	go func() { workerErrors <- worker.Run(ctx) }()
+	executorErrors := make(chan error, 1)
+	go func() { executorErrors <- executor.Run(ctx) }()
 	select {
 	case err := <-serverErrors:
 		return err
-	case err := <-workerErrors:
+	case err := <-executorErrors:
 		return err
 	case <-ctx.Done():
 	}

@@ -1,4 +1,4 @@
-package worker
+package agent
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 )
 
 func TestPolicyDisablesRunningExecution(t *testing.T) {
-	w := &Worker{MCPURL: "http://private/mcp", Secret: "worker-only", PolicyPolling: true, Client: &http.Client{Transport: agentRoundTrip(func(r *http.Request) (*http.Response, error) {
+	w := &Executor{MCPURL: "http://private/mcp", Secret: "worker-only", PolicyPolling: true, Client: &http.Client{Transport: agentRoundTrip(func(r *http.Request) (*http.Response, error) {
 		if r.URL.Path != "/internal/agent/enabled" || r.Header.Get("Authorization") != "Bearer worker-only" {
 			t.Error("incorrect policy authentication")
 		}
@@ -27,7 +27,7 @@ func TestPolicyDisablesRunningExecution(t *testing.T) {
 }
 
 func TestDelayedClaimCannotExtendExecutionLease(t *testing.T) {
-	w := &Worker{PolicyPolling: true}
+	w := &Executor{PolicyPolling: true}
 	for _, deadline := range []time.Time{time.Time{}, time.Now().Add(-time.Second)} {
 		ctx, cancel := w.executionContext(context.Background(), job{ExecutionDeadline: deadline}, 2*time.Minute)
 		if ctx.Err() == nil {
@@ -51,7 +51,7 @@ func TestPolicyCheckFailsClosed(t *testing.T) {
 	unreachable := agentRoundTrip(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("connection refused")
 	})
-	for name, w := range map[string]*Worker{
+	for name, w := range map[string]*Executor{
 		"malformed gateway URL": {MCPURL: "http://bad host/mcp", Client: &http.Client{Transport: enabled}},
 		"gateway unreachable":   {MCPURL: "http://private/mcp", Client: &http.Client{Transport: unreachable}},
 	} {
@@ -59,7 +59,7 @@ func TestPolicyCheckFailsClosed(t *testing.T) {
 			t.Fatalf("%s: policy check reported enabled", name)
 		}
 	}
-	if !(&Worker{MCPURL: "http://private/mcp", Client: &http.Client{Transport: enabled}}).policyEnabled(context.Background()) {
+	if !(&Executor{MCPURL: "http://private/mcp", Client: &http.Client{Transport: enabled}}).policyEnabled(context.Background()) {
 		t.Fatal("204 policy response was not treated as enabled")
 	}
 }

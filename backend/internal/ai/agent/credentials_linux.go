@@ -1,4 +1,4 @@
-package worker
+package agent
 
 import "golang.org/x/sys/unix"
 

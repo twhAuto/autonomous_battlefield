@@ -219,9 +219,12 @@ editor, service, and generation validation.
 
 `decision.Service` deliberately receives only a `decision.SubmissionRepository`, which cannot modify battles or simulation state.
 
-### `internal/ai/worker`: provider-neutral worker
+### `internal/ai/agent`: the agent's job executor
 
-[`worker.go`](../../backend/internal/ai/worker/worker.go) starts one claim loop per concurrency slot. Each loop:
+`cmd/agent` runs one `agent.Executor`, in the cluster for API profiles and on the CLI host
+for subscription CLI profiles. The AI gateway's dispatch API hands out jobs; the executor
+pulls the ones its available profiles can run and hands each to the matching runner.
+[`executor.go`](../../backend/internal/ai/agent/executor.go) starts one claim loop per concurrency slot. Each loop:
 
 1. long-polls the AI gateway's agent dispatch endpoint with executable profile IDs;
 2. immediately runs the claimed job in its owned slot;
@@ -347,7 +350,7 @@ and input hash match. `Claim` hands a job to an agent worker by executable
 profile. `Submit` and `Finish` record the draft, category, usage, and metadata.
 
 The generation path never touches battle or simulation state. Its worker side
-lives in [`ai/worker/generation.go`](../../backend/internal/ai/worker/generation.go)
+lives in [`ai/agent/generation.go`](../../backend/internal/ai/agent/generation.go)
 and its tool surface in [`ai/mcpserver/generation.go`](../../backend/internal/ai/mcpserver/generation.go),
 which exposes draft-only tools and namespaced capabilities. Migration
 `00009_faction_background.sql` owns the jobs, account locks, and quota indexes.
@@ -613,7 +616,7 @@ Battle setup selects generic profiles without blueprint compatibility filtering.
   `identity.txt`, which frames doctrine as strategic preferences below core rules. Observation
   hashing includes owning identity. Prompt history lives in Git; filenames identify purpose without version suffixes.
 - `backend/internal/ai/mcpserver/generation.go` provides draft-only tools and
-  namespaced capabilities; `internal/ai/worker/generation.go` executes and reports
+  namespaced capabilities; `internal/ai/agent/generation.go` executes and reports
   background jobs without battle data, using the configured writer profile.
 - `frontend/src/features/factions/components/BackgroundGenerator.tsx` handles
   allowance discovery, admission, polling, editable preview and use/discard.

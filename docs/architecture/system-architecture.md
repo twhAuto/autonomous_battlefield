@@ -393,7 +393,7 @@ At the decision deadline:
 
 ## 6. Model execution
 
-`internal/ai/worker` owns decision claims, concurrency, timeouts, and outcome reporting. Workers use `ai.agentConcurrency` execution slots (1–4; 1 when omitted). The K3s API worker and the CLI VM template both set 4. API jobs are bounded only by their slots and the per-battle decision budget. PostgreSQL serializes admission on the policy row and caps active CLI leases at `runtime_policy.cli_concurrency` (1–4, default 4), shared across all workers, battle decisions and generation jobs. API jobs do not consume CLI leases. A completed submission retains the CLI lease until the worker reports completion or its execution deadline expires. Claim responses carry the database lease deadline, so network delays cannot extend a worker’s allotted execution time. Keep the database, AI gateway and VM clocks synchronized. It selects an `APIRunner` or `CLIRunner` from `internal/ai/runner`; both implement the same provider-neutral decision-runner contract.
+`internal/ai/agent` (`agent.Executor`) owns decision claims, concurrency, timeouts, and outcome reporting. Agents use `ai.agentConcurrency` execution slots (1–4; 1 when omitted). The K3s API worker and the CLI VM template both set 4. API jobs are bounded only by their slots and the per-battle decision budget. PostgreSQL serializes admission on the policy row and caps active CLI leases at `runtime_policy.cli_concurrency` (1–4, default 4), shared across all workers, battle decisions and generation jobs. API jobs do not consume CLI leases. A completed submission retains the CLI lease until the worker reports completion or its execution deadline expires. Claim responses carry the database lease deadline, so network delays cannot extend a worker’s allotted execution time. Keep the database, AI gateway and VM clocks synchronized. It selects an `APIRunner` or `CLIRunner` from `internal/ai/runner`; both implement the same provider-neutral decision-runner contract.
 
 ### API runtime
 
@@ -1120,6 +1120,7 @@ for deployment order, sampling, privacy, persistence and token-accounting limits
   A terminal battle-control response cancels status polling and invalidates
   in-flight responses so stale running status cannot overwrite an operator stop.
 - Load and failover behavior needs testing before increasing engine, AI gateway, or agent replicas.
+- Antigravity decisions prefetch the context into the prompt and refuse contexts over 64 KiB, because the CLI offloads large tool results to files it cannot read. Large late-game contexts therefore fall back for that profile.
 - All worker placements share one control-plane secret, and claims self-report their profile IDs. A compromised worker could claim another placement's profiles. The secret cannot be rotated without changing every holder at once, and the CLI VM's `worker.env` cannot be changed through the managed workflow.
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
 
