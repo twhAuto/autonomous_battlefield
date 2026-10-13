@@ -20,10 +20,10 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/briefing"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/mcpserver"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/observation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
@@ -144,7 +144,7 @@ func comparisonObservations(cases []Case, limits ai.KnowledgeLimits) ([]ai.Decis
 			}
 			envelope.Context.Legal.Units = append([]game.UnitType(nil), c.KnowledgeRuleset.Units...)
 			var err error
-			envelope.Context.Knowledge, err = observation.RetrieveKnowledge(*c.KnowledgeRuleset, envelope.Context, limits)
+			envelope.Context.Knowledge, err = briefing.RetrieveKnowledge(*c.KnowledgeRuleset, envelope.Context, limits)
 			if err != nil {
 				return nil, err
 			}

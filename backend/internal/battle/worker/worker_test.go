@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/briefing"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/observation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	battle "github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
@@ -588,7 +588,7 @@ func (r *decisionBattleRepository) ListFactionMemory(_ context.Context, battleID
 	for _, record := range r.records {
 		records = append(records, record)
 	}
-	return observation.BuildFactionMemory(records, battleID, attempt, factionID, beforeTick), nil
+	return briefing.BuildFactionMemory(records, battleID, attempt, factionID, beforeTick), nil
 }
 
 func TestFallbackPreservesRunnerFailureCategory(t *testing.T) {

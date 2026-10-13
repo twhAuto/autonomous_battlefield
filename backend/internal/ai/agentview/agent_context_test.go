@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/briefing"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/observation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
@@ -17,7 +17,7 @@ func compactFixture() (game.Ruleset, ai.DecisionContext) {
 	r, c := knowledgeFixture()
 	c.SchemaVersion = ai.ContextSchema
 	c.Legal.Units = append([]game.UnitType(nil), r.Units[:8]...)
-	c.Knowledge, _ = observation.RetrieveKnowledge(r, c, ai.DefaultKnowledgeLimits())
+	c.Knowledge, _ = briefing.RetrieveKnowledge(r, c, ai.DefaultKnowledgeLimits())
 	c.UnitReference = FreezeUnitReference(r, c)
 	return r, c
 }
@@ -111,7 +111,7 @@ func TestCompactContextSizeByBattleStage(t *testing.T) {
 				c.View.State.Units = append(c.View.State.Units, game.Unit{ID: fmt.Sprint(i), Type: "unit-00", Health: 50, MaxHealth: 100, Attack: 20, Defense: 10})
 			}
 			c.UnitReference = FreezeUnitReference(r, c)
-			c.Knowledge, _ = observation.RetrieveKnowledge(r, c, ai.DefaultKnowledgeLimits())
+			c.Knowledge, _ = briefing.RetrieveKnowledge(r, c, ai.DefaultKnowledgeLimits())
 			compact := Compact(c)
 			full := c
 			full.UnitReference = nil
@@ -174,7 +174,7 @@ func TestOversizedDetailsAskForSmallerBatch(t *testing.T) {
 func TestCompactOverviewIgnoresAutomaticCardLimit(t *testing.T) {
 	r, c := knowledgeFixture()
 	c.SchemaVersion = ai.ContextSchema
-	c.Knowledge, _ = observation.RetrieveKnowledge(r, c, ai.KnowledgeLimits{MaxUnitCards: 1, MaxBytes: 2048})
+	c.Knowledge, _ = briefing.RetrieveKnowledge(r, c, ai.KnowledgeLimits{MaxUnitCards: 1, MaxBytes: 2048})
 	c.UnitReference = FreezeUnitReference(r, c)
 	stored, _ := json.Marshal(c)
 	var restored ai.DecisionContext
