@@ -8,8 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
 )
 
 func TestExpireBattlesAgainstPostgres(t *testing.T) {
@@ -83,7 +83,7 @@ func assertExpiredBattle(t *testing.T, ctx context.Context, repository *Postgres
 	if run.Status != "failed" || run.ErrorCode == nil || *run.ErrorCode != "battle_timeout" || run.Paused {
 		t.Fatalf("expired battle: %#v", run)
 	}
-	if err := repository.HeartbeatBattle(ctx, worker.BattleLease{BattleID: id, Attempt: 1, Owner: "expiry-test"}, time.Minute); !errors.Is(err, worker.ErrBattleLeaseLost) {
+	if err := repository.HeartbeatBattle(ctx, queue.Lease{BattleID: id, Attempt: 1, Owner: "expiry-test"}, time.Minute); !errors.Is(err, queue.ErrLeaseLost) {
 		t.Fatalf("stale lease: %v", err)
 	}
 }

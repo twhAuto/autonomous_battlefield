@@ -129,7 +129,7 @@ Keep domain validation in the service. The handler should concentrate on transpo
 
 | File | Responsibility |
 | --- | --- |
-| [`repository.go`](../../backend/internal/battle/worker/repository.go) | Battle-job, lease, and worker repository contracts |
+| [`repository.go`](../../backend/internal/battle/worker/repository.go) | The worker's repository contract. The job and lease types it uses (`queue.Job`, `queue.Lease`, `queue.ErrLeaseLost`) live in [`battle/queue`](../../backend/internal/battle/queue/queue.go), which `battle/repo` also imports, so the persistence adapter doesn't depend on the engine package |
 | [`worker.go`](../../backend/internal/battle/worker/worker.go) | Construction, claims, battle/tick execution, persistence, and completion |
 | [`decisions.go`](../../backend/internal/battle/worker/decisions.go) | Decision-window preparation, waiting, validation, fallback, and logging |
 | [`lifecycle.go`](../../backend/internal/battle/worker/lifecycle.go) | Worker readiness, pause/heartbeat waits, cancellation, and requeue |
@@ -379,7 +379,7 @@ both the handler and registry to the service; policy reads do not depend on HTTP
 | `ai.DecisionContext` | `internal/ai/types.go` | Frozen bounded model observation |
 | `ai.DecisionRecord` | `internal/ai/types.go` | Durable decision state and provenance |
 | `service.BattleRun` | `battle/service/service.go` | Public/use-case representation of a stored run |
-| `worker.BattleLease` | `battle/worker/repository.go` | Attempt and ownership guard for engine writes |
+| `queue.Lease` | `battle/queue/queue.go` | Attempt and ownership guard for engine writes |
 
 When introducing a new field, identify its authority:
 

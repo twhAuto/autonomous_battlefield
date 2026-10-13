@@ -14,8 +14,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
 	battle "github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
@@ -179,12 +179,12 @@ func TestSetBattlePausedMapsStateAndDatabaseResults(t *testing.T) {
 }
 
 func TestBattlePausedRequiresOwnedLease(t *testing.T) {
-	lease := worker.BattleLease{BattleID: "battle-1", Attempt: 2, Owner: "worker-1"}
+	lease := queue.Lease{BattleID: "battle-1", Attempt: 2, Owner: "worker-1"}
 	paused, err := NewPostgres(&battleDB{row: booleanBattleRow(true)}).BattlePaused(context.Background(), lease)
 	if err != nil || !paused {
 		t.Fatalf("BattlePaused() = %t, %v", paused, err)
 	}
-	if _, err := NewPostgres(&battleDB{row: battleRow(func(...any) error { return pgx.ErrNoRows })}).BattlePaused(context.Background(), lease); !errors.Is(err, worker.ErrBattleLeaseLost) {
+	if _, err := NewPostgres(&battleDB{row: battleRow(func(...any) error { return pgx.ErrNoRows })}).BattlePaused(context.Background(), lease); !errors.Is(err, queue.ErrLeaseLost) {
 		t.Fatalf("missing lease error = %v", err)
 	}
 }
@@ -236,7 +236,7 @@ func TestClaimBattleClaimsAndDecodesJob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ClaimBattle() returned an error: %v", err)
 	}
-	if job.Lease != (worker.BattleLease{BattleID: "battle-1", Attempt: 2, Owner: "worker-1"}) || job.Scenario.ID != scenario.ID || job.RequestedTicks != 30 {
+	if job.Lease != (queue.Lease{BattleID: "battle-1", Attempt: 2, Owner: "worker-1"}) || job.Scenario.ID != scenario.ID || job.RequestedTicks != 30 {
 		t.Fatalf("ClaimBattle() = %#v", job)
 	}
 }
@@ -248,7 +248,7 @@ func TestClaimBattleMapsQueueErrors(t *testing.T) {
 		want error
 	}{
 		{name: "fail exhausted", db: &battleDB{execErr: errDatabase}, want: errDatabase},
-		{name: "empty", db: &battleDB{row: battleRow(func(...any) error { return pgx.ErrNoRows })}, want: worker.ErrNoBattleAvailable},
+		{name: "empty", db: &battleDB{row: battleRow(func(...any) error { return pgx.ErrNoRows })}, want: queue.ErrNoBattleAvailable},
 		{name: "claim", db: &battleDB{row: battleRow(func(...any) error { return errDatabase })}, want: errDatabase},
 		{name: "scenario JSON", db: &battleDB{row: battleRow(func(destinations ...any) error {
 			return assignBattleValues(destinations, []any{"battle-1", 1, []byte("{"), uint64(1), "", ""})
@@ -269,7 +269,7 @@ func TestClaimBattleMapsQueueErrors(t *testing.T) {
 }
 
 func TestLeaseMutations(t *testing.T) {
-	lease := worker.BattleLease{BattleID: "battle-1", Attempt: 2, Owner: "worker-1"}
+	lease := queue.Lease{BattleID: "battle-1", Attempt: 2, Owner: "worker-1"}
 	transition := battle.Transition{Tick: 3, Events: []battle.Event{{Sequence: 1, Tick: 3, Type: "tick"}}}
 
 	t.Run("heartbeat", func(t *testing.T) {
@@ -339,7 +339,7 @@ func leaseExecCases() []leaseCase {
 	return []leaseCase{
 		{name: "success", db: func() *battleDB { return &battleDB{execTag: pgconn.NewCommandTag("UPDATE 1")} }},
 		{name: "database error", db: func() *battleDB { return &battleDB{execErr: errDatabase} }, want: errDatabase},
-		{name: "lease lost", db: func() *battleDB { return &battleDB{execTag: pgconn.NewCommandTag("UPDATE 0")} }, want: worker.ErrBattleLeaseLost},
+		{name: "lease lost", db: func() *battleDB { return &battleDB{execTag: pgconn.NewCommandTag("UPDATE 0")} }, want: queue.ErrLeaseLost},
 	}
 }
 
@@ -347,7 +347,7 @@ func leaseRowCases() []leaseCase {
 	return []leaseCase{
 		{name: "success", db: func() *battleDB { return &battleDB{row: booleanBattleRow(true)} }},
 		{name: "database error", db: func() *battleDB { return &battleDB{row: battleRow(func(...any) error { return errDatabase })} }, want: errDatabase},
-		{name: "lease lost", db: func() *battleDB { return &battleDB{row: booleanBattleRow(false)} }, want: worker.ErrBattleLeaseLost},
+		{name: "lease lost", db: func() *battleDB { return &battleDB{row: booleanBattleRow(false)} }, want: queue.ErrLeaseLost},
 	}
 }
 
