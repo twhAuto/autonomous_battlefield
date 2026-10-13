@@ -21,7 +21,7 @@ flowchart LR
 - `api` packages translate HTTP requests, responses, and error categories.
 - `service` packages enforce use-case rules and depend on narrow interfaces.
 - `repo` packages implement those interfaces using PostgreSQL.
-- [`backend/internal/app/app.go`](../../backend/internal/app/app.go) wires the API's concrete repositories, services, and handlers.
+- [`backend/internal/app/app.go`](../../backend/internal/app/app.go) wires the API's concrete repositories, services, and handlers through one constructor, `app.New(db, catalog, maxTicks, app.Options{…})`; zero-valued options select defaults.
 
 Repository interfaces live close to the service or worker that consumes them. This keeps the use case independent from a particular database implementation.
 
@@ -109,7 +109,7 @@ The API stores this resolved value in `battle_runs.scenario_snapshot`. The engin
 
 [`redis.go`](../../backend/internal/battle/resultcache/redis.go) implements the
 service's `ResultCache` port. `cmd/server` constructs and closes it;
-`app.NewAPIWithResultCache` wires it beneath authentication. Service/config tests
+`app.New` wires it (`app.Options.Cache`) beneath authentication. Service/config tests
 and `resultcache/redis_test.go` cover caching and failure behavior with an
 in-process Redis protocol server; no external Redis process is required.
 See [cache behavior](../architecture/system-architecture.md#completed-battle-result-caching) and

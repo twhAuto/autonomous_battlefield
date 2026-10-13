@@ -6,8 +6,9 @@ package service
 import (
 	"context"
 	"errors"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"testing"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 type fakeResultCache struct {
@@ -43,7 +44,7 @@ func TestCompletedResultCache(t *testing.T) {
 	run := &BattleRun{ID: id, Status: "completed", Result: &game.Result{}}
 	repo := &countingBattleRepo{fakeBattleRepo: fakeBattleRepo{run: run}}
 	cache := &fakeResultCache{}
-	svc := NewServiceWithResultCache(repo, nil, nil, 100, cache)
+	svc := NewService(repo, nil, nil, 100, Options{Cache: cache})
 	if _, err := svc.GetBattle(ctx, "bad"); !errors.Is(err, ErrInvalidBattle) || cache.reads != 0 {
 		t.Fatal("invalid ID reached cache")
 	}
@@ -69,7 +70,7 @@ func TestOnlyCompletedResultsAreCached(t *testing.T) {
 			run := &BattleRun{ID: id, Status: status}
 			repo := &countingBattleRepo{fakeBattleRepo: fakeBattleRepo{run: run}}
 			cache := &fakeResultCache{run: run}
-			svc := NewServiceWithResultCache(repo, nil, nil, 100, cache)
+			svc := NewService(repo, nil, nil, 100, Options{Cache: cache})
 			for range 2 {
 				if _, err := svc.GetBattle(context.Background(), id); err != nil {
 					t.Fatal(err)
@@ -82,7 +83,7 @@ func TestOnlyCompletedResultsAreCached(t *testing.T) {
 	}
 	repo := &countingBattleRepo{fakeBattleRepo: fakeBattleRepo{getErr: ErrBattleNotFound}}
 	cache := &fakeResultCache{run: &BattleRun{ID: "other", Status: "completed", Result: &game.Result{}}}
-	svc := NewServiceWithResultCache(repo, nil, nil, 100, cache)
+	svc := NewService(repo, nil, nil, 100, Options{Cache: cache})
 	if _, err := svc.GetBattle(context.Background(), id); !errors.Is(err, ErrBattleNotFound) {
 		t.Fatal("cross-battle cache hit")
 	}

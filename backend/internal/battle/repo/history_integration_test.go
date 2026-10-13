@@ -76,7 +76,7 @@ func TestBattleHistoryAgainstPostgres(t *testing.T) {
 		rows, err := repo.ListBattles(ctx, battleservice.BattleHistoryQuery{Status: "completed", Limit: 25})
 		testutil.Require(t, !(err != nil || rows[0].Participants[0].Name != "Historical name" || rows[0].Outcome == nil || rows[0].Outcome.WinnerFactionID != nil || rows[0].Outcome.Reason != "tick_limit"), func() { t.Fatalf("rows=%+v err=%v", rows, err) })
 	}
-	service := battleservice.NewService(repo, nil, nil, 100)
+	service := battleservice.NewService(repo, nil, nil, 100, battleservice.Options{})
 	first, err := service.ListBattles(ctx, battleservice.BattleHistoryInput{Limit: 2})
 	testutil.Require(t, !(err != nil || first.NextCursor == nil || first.Battles[0].ID != ids[6]), func() { t.Fatalf("first=%+v err=%v", first, err) })
 	newerID := "00000000-0000-0000-0000-000000000008"
