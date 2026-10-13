@@ -22,12 +22,12 @@ persistence code. Add a rule there when you introduce a new boundary.
 | [`admin`](../../backend/internal/admin) | ✓ |  |  |  |  |
 | [`ai`](../../backend/internal/ai) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`ai/agentview`](../../backend/internal/ai/agentview) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`ai/briefing`](../../backend/internal/ai/briefing) | ✓ | ✓ | ✓ |  | ✓ |
 | [`ai/capability`](../../backend/internal/ai/capability) |  |  | ✓ |  | ✓ |
 | [`ai/cliisolation`](../../backend/internal/ai/cliisolation) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`ai/decision`](../../backend/internal/ai/decision) |  | ✓ | ✓ |  | ✓ |
 | [`ai/eval`](../../backend/internal/ai/eval) |  |  |  |  | ✓ |
 | [`ai/mcpserver`](../../backend/internal/ai/mcpserver) |  |  | ✓ |  | ✓ |
-| [`ai/observation`](../../backend/internal/ai/observation) | ✓ | ✓ | ✓ |  | ✓ |
 | [`ai/profile`](../../backend/internal/ai/profile) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`ai/prompts`](../../backend/internal/ai/prompts) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`ai/providers`](../../backend/internal/ai/providers) |  |  |  | ✓ | ✓ |

@@ -1,7 +1,7 @@
 // Checks knowledge selection stays within visibility, frozen-rule, card-count, and byte-
 // budget boundaries.
 
-package observation
+package briefing
 
 import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"

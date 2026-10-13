@@ -15,8 +15,8 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/briefing"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/observation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/providers"
 	airunner "github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
@@ -383,7 +383,7 @@ func evaluationObservation(value Case) ai.DecisionContext {
 	c := caseIdentity(value)
 	if value.KnowledgeRuleset != nil {
 		c.UnitReference = agentview.FreezeUnitReference(*value.KnowledgeRuleset, c)
-		c.Knowledge, _ = observation.RetrieveKnowledge(*value.KnowledgeRuleset, c, ai.DefaultKnowledgeLimits())
+		c.Knowledge, _ = briefing.RetrieveKnowledge(*value.KnowledgeRuleset, c, ai.DefaultKnowledgeLimits())
 	}
 	return c
 }

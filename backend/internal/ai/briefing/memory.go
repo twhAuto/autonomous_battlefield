@@ -1,7 +1,7 @@
 // Builds bounded summaries of earlier decisions from the same battle attempt and faction
 // for later model context.
 
-package observation
+package briefing
 
 import (
 	"encoding/json"

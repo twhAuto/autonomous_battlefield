@@ -12,8 +12,8 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/briefing"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/observation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
@@ -82,7 +82,7 @@ func (w *Worker) prepareDecision(ctx context.Context, lease queue.Lease, simulat
 	}
 	setup := factionSetup(simulation.Scenario(), factionID)
 	decisionContext := newDecisionContext(lease, factionID, targetTick, snapshot)
-	decisionContext.Knowledge, err = observation.RetrieveKnowledge(simulation.Scenario().Ruleset, decisionContext, w.config.KnowledgeRetrieval)
+	decisionContext.Knowledge, err = briefing.RetrieveKnowledge(simulation.Scenario().Ruleset, decisionContext, w.config.KnowledgeRetrieval)
 	if err != nil {
 		return err
 	}

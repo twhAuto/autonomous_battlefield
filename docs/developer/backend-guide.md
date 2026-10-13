@@ -185,7 +185,7 @@ in subpackages that import those contracts; the root imports none of them, which
 | [`ai/profile`](../../backend/internal/ai/profile/profiles.go) | API/CLI profile validation and availability (`Registry`, `NewCatalog`, `NewRegistry`) and the administrator access policy |
 | [`ai/prompts`](../../backend/internal/ai/prompts/prompts.go) | Embedded instruction templates, context delivery, and the battle and background-generation prompt digests |
 | [`ai/agentview`](../../backend/internal/ai/agentview/agent_context.go) | The bounded projection models see (`Compact`, `Observation`), compaction, frozen unit references and paged unit details |
-| [`ai/observation`](../../backend/internal/ai/observation/knowledge.go) | Bounded knowledge selection and scoped faction memory, used when the engine freezes a decision context |
+| [`ai/briefing`](../../backend/internal/ai/briefing/knowledge.go) | What a model receives alongside the battlefield view: bounded rules knowledge and scoped faction memory, built when the engine freezes a decision context |
 
 The templates sit beside [`prompts.go`](../../backend/internal/ai/prompts/prompts.go)
 in `internal/ai/prompts/`. `prompts.Version` hashes the six battle prompt templates

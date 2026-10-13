@@ -1,7 +1,10 @@
 // Selects rules knowledge from faction-visible context, enforcing card and byte limits and
 // recording a digest.
 
-package observation
+// Package briefing prepares what a model receives alongside the battlefield view when the
+// engine freezes a decision context: bounded rules knowledge and the faction's memory of
+// its own earlier decisions. The battlefield view itself comes from agentview.
+package briefing
 
 import (
 	"crypto/sha256"
