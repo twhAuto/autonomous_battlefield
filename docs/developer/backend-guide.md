@@ -188,9 +188,9 @@ in subpackages that import those contracts; the root imports none of them, which
 | [`ai/briefing`](../../backend/internal/ai/briefing/knowledge.go) | What a model receives alongside the battlefield view: bounded rules knowledge and scoped faction memory, built when the engine freezes a decision context |
 
 The templates sit beside [`prompts.go`](../../backend/internal/ai/prompts/prompts.go)
-in `internal/ai/prompts/`. `prompts.Version` hashes the six battle prompt templates
-below and the inline `identityContextTemplate`; background writer prompts have a
-separate `prompts.GenerationVersion`.
+in `internal/ai/prompts/`. `prompts.Version` hashes the battle prompts as assembled
+for a fixed sample session, so changes to wording, order or wiring all produce a new
+version; background writer prompts have a separate `prompts.GenerationVersion`.
 
 | File | Role |
 | --- | --- |
@@ -198,15 +198,14 @@ separate `prompts.GenerationVersion`.
 | `decision.txt` | Main tactical and production decision instructions |
 | `tool-context.txt` | Short per-decision prompt when context is fetched through MCP |
 | `inline-context.txt` | Variant used when the host has already supplied the full context JSON |
-| `doctrine.txt` | Doctrine template embedded and included in `prompts.Version`, but currently not rendered |
-| `identity.txt` | Identity template embedded and included in `prompts.Version`, but currently not rendered |
+| `identity.txt` | Faction identity block: how to use doctrine and background, their precedence below core rules, and the untrusted-data delimiters |
 | `background-generation.txt` | Background writer system instructions |
 | `background-decision.txt` | Background writer per-job instructions |
 
 For battle sessions, `prompts.SessionSystem` returns the battlefield system prompt.
 `prompts.SessionDecision` renders the shared decision instructions, then the faction
 name, background, and doctrine as JSON inside the untrusted-data delimiters defined
-by `identityContextTemplate`, then the request-specific delivery (request ID, and
+by `identity.txt`, then the request-specific delivery (request ID, and
 inline context when prefetched). Keep request-specific text last: content ahead of
 it is the prefix providers can cache across a faction's decisions.
 
@@ -442,15 +441,15 @@ Configuration is decoded with `yaml.KnownFields(true)`. Update the file-facing s
 
 ## Agent context compaction
 
-`ai/faction_groups.go` groups observed units/buildings with faction statistics
+`agentview/faction_groups.go` groups observed units/buildings with faction statistics
 after metadata deduplication, and conditionally shares effective building stats.
 Its reconstruction tests verify ownership, missing faction statistics, distinct
 effective profiles, stable full IDs and individual observations. The inspector
 renders grouped JSON through its existing reconstructed-context section.
 
-`ai/context_duplicates.go` removes equal plan/metadata copies from the current
-projection. `ai/session_context.go` removes identity text only when the exact
-value is supplied in the system prompt. API tool delivery and Gemini prefetch
+`agentview/context_duplicates.go` removes equal plan/metadata copies from the current
+projection. `agentview/session_context.go` removes identity text only when the exact
+value is supplied in the prompt's faction identity block. API tool delivery and Gemini prefetch
 apply this helper; MCP's canonical response stays self-contained. Tests cover
 historical differences, faction scope, source immutability and both runner paths.
 
@@ -607,7 +606,7 @@ Battle setup selects generic profiles without blueprint compatibility filtering.
   with a PostgreSQL advisory session lock, including concurrent fresh schemas.
 - Faction API/service/repository and battle catalog/worker copy background with
   name/doctrine; `prompts.SessionDecision` embeds that identity through
-  `identityContextTemplate` (`identity.txt` is hashed but not rendered). Observation
+  `identity.txt`, which frames doctrine as strategic preferences below core rules. Observation
   hashing includes owning identity. Prompt history lives in Git; filenames identify purpose without version suffixes.
 - `backend/internal/ai/mcpserver/generation.go` provides draft-only tools and
   namespaced capabilities; `internal/ai/worker/generation.go` executes and reports
