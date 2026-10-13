@@ -1,6 +1,6 @@
-// Checks background workers scope sessions to generation jobs and report their outcomes.
+// Checks the executor scopes background sessions to generation jobs and report their outcomes.
 
-package worker
+package agent
 
 import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
@@ -33,7 +33,7 @@ func checkGenerationOutcome(t *testing.T, mode string) {
 		Usage               ai.Usage
 		Metadata            map[string]any
 	}
-	w := &Worker{MCPURL: "http://mcp/mcp", Secret: "secret", Profiles: profiles, Client: &http.Client{Transport: agentRoundTrip(func(r *http.Request) (*http.Response, error) {
+	w := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", Profiles: profiles, Client: &http.Client{Transport: agentRoundTrip(func(r *http.Request) (*http.Response, error) {
 		testutil.Require(t, !(r.URL.Path != "/internal/agent/generation-finish" || r.Header.Get("Authorization") != "Bearer secret"), func() { t.Fatal(r.URL.Path) })
 		{
 			err := json.NewDecoder(r.Body).Decode(&report)

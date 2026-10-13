@@ -21,6 +21,7 @@ persistence code. Add a rule there when you introduce a new boundary.
 | --- | :-: | :-: | :-: | :-: | :-: |
 | [`admin`](../../backend/internal/admin) | ✓ |  |  |  |  |
 | [`ai`](../../backend/internal/ai) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`ai/agent`](../../backend/internal/ai/agent) |  |  |  | ✓ |  |
 | [`ai/agentview`](../../backend/internal/ai/agentview) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`ai/briefing`](../../backend/internal/ai/briefing) | ✓ | ✓ | ✓ |  | ✓ |
 | [`ai/capability`](../../backend/internal/ai/capability) |  |  | ✓ |  | ✓ |
@@ -32,7 +33,6 @@ persistence code. Add a rule there when you introduce a new boundary.
 | [`ai/prompts`](../../backend/internal/ai/prompts) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`ai/providers`](../../backend/internal/ai/providers) |  |  |  | ✓ | ✓ |
 | [`ai/runner`](../../backend/internal/ai/runner) |  |  |  | ✓ | ✓ |
-| [`ai/worker`](../../backend/internal/ai/worker) |  |  |  | ✓ |  |
 | [`apierror`](../../backend/internal/apierror) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`app`](../../backend/internal/app) | ✓ |  |  |  |  |
 | [`authn`](../../backend/internal/authn) | ✓ | ✓ | ✓ | ✓ | ✓ |

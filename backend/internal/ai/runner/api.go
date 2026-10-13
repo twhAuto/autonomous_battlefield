@@ -62,7 +62,7 @@ func (r APIRunner) Run(ctx context.Context, session ai.DecisionSession) (ai.Deci
 		}
 		calls := withCallIDs(turn.ToolCalls, step)
 		messages = append(messages, ai.Message{Role: "assistant", Content: turn.Text, ToolCalls: calls})
-		accepted, updatedMessages, err := executeToolCalls(ctx, clientSession, calls, messages, prompts.SessionToolNames(session)...)
+		accepted, updatedMessages, err := executeToolCalls(ctx, clientSession, calls, messages, prompts.SessionToolNames(session))
 		if err != nil {
 			return ai.DecisionResult{ErrorCategory: toolErrorCategory(err), Usage: usage}, err
 		}
@@ -102,11 +102,9 @@ func (s identityContextSession) Call(ctx context.Context, call ai.ToolCall) (jso
 	return payload, accepted, err
 }
 
-func executeToolCalls(ctx context.Context, session DecisionToolSession, calls []ai.ToolCall, messages []ai.Message, allowed ...string) (bool, []ai.Message, error) {
+// executeToolCalls runs calls only for tools in allowed; an empty list allows none.
+func executeToolCalls(ctx context.Context, session DecisionToolSession, calls []ai.ToolCall, messages []ai.Message, allowed []string) (bool, []ai.Message, error) {
 	for _, call := range calls {
-		if len(allowed) == 0 {
-			allowed = []string{"get_decision_context", "submit_strategy_plan", "get_unit_details"}
-		}
 		if !slices.Contains(allowed, call.Name) {
 			return false, messages, fmt.Errorf("%w: provider requested unsupported tool %q", errUnauthorizedTool, call.Name)
 		}

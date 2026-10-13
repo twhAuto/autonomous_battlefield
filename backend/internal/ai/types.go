@@ -32,6 +32,11 @@ type DecisionSession struct {
 }
 
 type DecisionResult struct {
+	// Accepted means different things per runtime. API runners set it from the
+	// gateway's submission result, so it means the plan was accepted. CLI runners set
+	// it when the CLI ends successfully, which proves nothing about submission; the
+	// agent executor then reports usage, and the gateway rejects that report unless
+	// the decision is accepted, turning the result into plan_not_submitted.
 	Accepted      bool
 	ErrorCategory string
 	Usage         Usage

@@ -430,3 +430,10 @@ func TestAPIRunnerKeepsToolCallsStructured(t *testing.T) {
 		}
 	}
 }
+
+func TestExecuteToolCallsAllowsNothingWithoutAList(t *testing.T) {
+	_, _, err := executeToolCalls(context.Background(), submitOnlySession{}, []ai.ToolCall{{ID: "c", Name: "get_decision_context", Arguments: []byte(`{}`)}}, nil, nil)
+	if !errors.Is(err, errUnauthorizedTool) {
+		t.Fatalf("call ran without an allowed list: %v", err)
+	}
+}

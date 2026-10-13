@@ -1,7 +1,7 @@
 // Runs claimed background-generation jobs in scoped model sessions and reports their usage
 // or failure to the AI gateway.
 
-package worker
+package agent
 
 import (
 	"bytes"
@@ -16,21 +16,21 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
-func (w *Worker) runGeneration(parent context.Context, job job) {
+func (e *Executor) runGeneration(parent context.Context, job job) {
 	parent, span := telemetry.StartDecision(parent, job.RequestID)
 	defer span.End()
 	duration := time.Duration(job.ExecutionTimeoutSeconds) * time.Second
 	if duration <= 0 {
 		duration = 2 * time.Minute
 	}
-	policy, stopPolicy := w.watchPolicy(parent)
+	policy, stopPolicy := e.watchPolicy(parent)
 	defer stopPolicy()
-	ctx, cancel := w.executionContext(policy, job, duration)
+	ctx, cancel := e.executionContext(policy, job, duration)
 	defer cancel()
 	result := ai.DecisionResult{}
 	category := ""
 	metadata := map[string]any{}
-	profile, err := w.Profiles.Require(job.ProfileID)
+	profile, err := e.Profiles.Require(job.ProfileID)
 	if err != nil {
 		category = "profile_unavailable"
 	} else {
@@ -44,7 +44,7 @@ func (w *Worker) runGeneration(parent context.Context, job job) {
 		}
 		metadata["modelIdentifier"] = model
 		metadata["promptVersion"] = prompts.GenerationVersion
-		result, category = w.executeGeneration(ctx, job, profile, duration)
+		result, category = e.executeGeneration(ctx, job, profile, duration)
 	}
 	if ctx.Err() != nil {
 		category = "timeout"
@@ -53,26 +53,26 @@ func (w *Worker) runGeneration(parent context.Context, job job) {
 	payload, _ := json.Marshal(map[string]any{"requestId": job.RequestID, "category": category, "usage": result.Usage, "metadata": metadata})
 	reportCtx, reportCancel := context.WithTimeout(context.WithoutCancel(parent), 5*time.Second)
 	defer reportCancel()
-	request, err := http.NewRequestWithContext(reportCtx, http.MethodPost, w.serviceURL("/internal/agent/generation-finish"), bytes.NewReader(payload))
+	request, err := http.NewRequestWithContext(reportCtx, http.MethodPost, e.serviceURL("/internal/agent/generation-finish"), bytes.NewReader(payload))
 	if err != nil {
 		return
 	}
-	request.Header.Set("Authorization", bearerPrefix+w.Secret)
-	response, err := w.Client.Do(request)
+	request.Header.Set("Authorization", bearerPrefix+e.Secret)
+	response, err := e.Client.Do(request)
 	if err != nil {
-		w.logger().ErrorContext(parent, "background_generation_report_failed", "request_id", job.RequestID)
+		e.logger().ErrorContext(parent, "background_generation_report_failed", "request_id", job.RequestID)
 		return
 	}
 	defer response.Body.Close()
-	w.logger().InfoContext(parent, "background_generation_finished", "request_id", job.RequestID, "category", category, "report_status", response.StatusCode)
+	e.logger().InfoContext(parent, "background_generation_finished", "request_id", job.RequestID, "category", category, "report_status", response.StatusCode)
 }
 
-func (w *Worker) executeGeneration(ctx context.Context, job job, profile ai.ModelProfile, duration time.Duration) (ai.DecisionResult, string) {
+func (e *Executor) executeGeneration(ctx context.Context, job job, profile ai.ModelProfile, duration time.Duration) (ai.DecisionResult, string) {
 	token := job.CapabilityToken
 	if token == "" {
 		return ai.DecisionResult{}, "capability"
 	}
-	factory := w.RunnerFactory
+	factory := e.RunnerFactory
 	if factory == nil {
 		factory = defaultRunner
 	}
@@ -80,7 +80,7 @@ func (w *Worker) executeGeneration(ctx context.Context, job job, profile ai.Mode
 	if err != nil {
 		return ai.DecisionResult{}, "provider_unavailable"
 	}
-	result, err := executor.Run(ctx, ai.DecisionSession{JobType: "faction_background", RequestID: job.RequestID, CapabilityToken: token, MCPURL: w.serviceURL("/generation-mcp"), Profile: profile})
+	result, err := executor.Run(ctx, ai.DecisionSession{JobType: "faction_background", RequestID: job.RequestID, CapabilityToken: token, MCPURL: e.serviceURL("/generation-mcp"), Profile: profile})
 	if err == nil && result.Accepted {
 		return result, ""
 	}

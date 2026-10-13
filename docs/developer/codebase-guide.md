@@ -302,7 +302,7 @@ while exposing explicitly approved, available CLI profiles.
 2. [`backend/internal/battle/worker/decisions.go`](../../backend/internal/battle/worker/decisions.go), starting at `resolveDecisionWindow`
 3. [`backend/internal/battle/repo/decisions.go`](../../backend/internal/battle/repo/decisions.go)
 4. [`backend/internal/ai/mcpserver/dispatch.go`](../../backend/internal/ai/mcpserver/dispatch.go) (claims), then [`server.go`](../../backend/internal/ai/mcpserver/server.go) (tools)
-5. [`backend/internal/ai/worker/worker.go`](../../backend/internal/ai/worker/worker.go)
+5. [`backend/internal/ai/agent/executor.go`](../../backend/internal/ai/agent/executor.go)
 6. [`backend/internal/ai/runner/api.go`](../../backend/internal/ai/runner/api.go)
 7. [`backend/internal/ai/providers/openai.go`](../../backend/internal/ai/providers/openai.go) or [`gemini.go`](../../backend/internal/ai/providers/gemini.go)
 
