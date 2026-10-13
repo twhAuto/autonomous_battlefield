@@ -28,7 +28,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 		"GET /v1/admin/members": h.list, "POST /v1/admin/members": h.grant,
 		"DELETE /v1/admin/members/{id}": h.remove, "POST /v1/admin/members/retry": h.retry,
 	} {
-		mux.HandleFunc(pattern, authn.Permit("admin", h.bounded(handler)))
+		mux.HandleFunc(pattern, authn.Permit(authn.PermissionAdmin, h.bounded(handler)))
 	}
 }
 func (h *Handler) bounded(next http.HandlerFunc) http.HandlerFunc {

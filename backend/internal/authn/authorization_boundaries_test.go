@@ -9,9 +9,10 @@ import (
 
 func TestPermissionMiddlewareRejectsUnknownAndAnonymous(t *testing.T) {
 	for _, tt := range []struct {
-		name, permission string
-		role             Role
-		status           int
+		name       string
+		permission Permission
+		role       Role
+		status     int
 	}{
 		{"anonymous", "play", "", 401}, {"unknown permission", "future", Admin, 403},
 		{"player admin", "admin", Player, 403}, {"developer admin", "admin", Developer, 403},
@@ -70,5 +71,31 @@ func TestRouteRegistryDeniesUnregisteredEndpoints(t *testing.T) {
 				t.Fatalf("status=%d want %d", w.Code, tt.status)
 			}
 		})
+	}
+}
+
+// Guards on the access policy table itself, so a careless edit cannot widen access.
+func TestRouteRulesStayConsistent(t *testing.T) {
+	seen := map[string]bool{}
+	for _, rule := range routeRules {
+		method, path, ok := strings.Cut(rule.pattern, " ")
+		if !ok || method == "" || !strings.HasPrefix(path, "/v1/") {
+			t.Errorf("%q: pattern must be \"METHOD /v1/...\"", rule.pattern)
+		}
+		if seen[rule.pattern] {
+			t.Errorf("%q: listed twice", rule.pattern)
+		}
+		seen[rule.pattern] = true
+		// Identity routes skip the permission check, so only authentication routes may.
+		if rule.permission == "" && !strings.HasPrefix(path, "/v1/auth/") {
+			t.Errorf("%q: only /v1/auth/ routes may omit a permission", rule.pattern)
+		}
+		if rule.public && rule.permission != "" {
+			t.Errorf("%q: a public route cannot also require a permission", rule.pattern)
+		}
+		// CI matches the exact method and path, so a wildcard would never match.
+		if rule.ci && strings.ContainsAny(path, "{}") {
+			t.Errorf("%q: CI routes must be literal paths", rule.pattern)
+		}
 	}
 }
