@@ -63,12 +63,12 @@ The package root contains types and interfaces shared across these subpackages, 
 | [`opening.go`](../../backend/internal/game/opening.go) | Tick-zero opening phase and deterministic fallback |
 | [`upgrades.go`](../../backend/internal/game/upgrades.go) | One-time gold purchases and bonus propagation |
 | [`decisions.go`](../../backend/internal/game/decisions.go) | Decision snapshots, plan validation, scripted plans, and tactics |
-| [`economy.go`](../../backend/internal/game/economy.go) | Income, construction, and recruitment |
+| [`economy.go`](../../backend/internal/game/economy.go) | Income, spending in plan order (shared by regular windows and the opening), construction payment, and recruitment |
 | [`structures.go`](../../backend/internal/game/structures.go) | Typed construction, building caps, tower turns, and forward recruitment |
 | [`siege.go`](../../backend/internal/game/siege.go) | Structure approach priorities and minimum-range retreat |
-| [`support.go`](../../backend/internal/game/support.go) | Herbalist treatment and allied movement |
-| [`combat.go`](../../backend/internal/game/combat.go) | Unit turns, targeting, damage, and loot |
-| [`movement.go`](../../backend/internal/game/movement.go) | Castle approach paths and reachable enemy alternatives |
+| [`support.go`](../../backend/internal/game/support.go) | Herbalist treatment and healer escort routes |
+| [`combat.go`](../../backend/internal/game/combat.go) | Unit turns, targeting, damage, position attacks, and loot |
+| [`movement.go`](../../backend/internal/game/movement.go) | All unit movement helpers: castle approach, goal sets, routing around occupied hexes, stepping, and reachable enemy alternatives |
 | [`knowledge.go`](../../backend/internal/game/knowledge.go) | Ruleset knowledge validation and defensive copying |
 | [`visibility.go`](../../backend/internal/game/visibility.go) | Faction perspectives and fog of war |
 | [`clone.go`](../../backend/internal/game/clone.go) | Defensive copying of state, scenarios, results, and plans |

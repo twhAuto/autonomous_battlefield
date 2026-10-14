@@ -5,9 +5,10 @@ package game
 
 import (
 	"encoding/json"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"reflect"
 	"testing"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 func doctrineMatch(t *testing.T) *Match {

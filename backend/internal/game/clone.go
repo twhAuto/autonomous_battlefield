@@ -3,9 +3,7 @@
 
 package game
 
-import (
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
-)
+import "github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 
 func CloneState(value State) State {
 	value.UnitDeaths = append([]UnitDeath(nil), value.UnitDeaths...)

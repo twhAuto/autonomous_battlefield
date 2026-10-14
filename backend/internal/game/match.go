@@ -5,9 +5,10 @@ package game
 
 import (
 	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"sort"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 type factionRuntime struct {
@@ -88,10 +89,7 @@ func (m *Match) AdvanceWithPlans(plans map[string]controller.PlanProposal) (Tran
 		}
 	}
 	events = append(events, m.runEconomy(decisionWindow)...)
-	tactics, tacticEvents, err := m.selectTactics()
-	if err != nil {
-		return Transition{}, err
-	}
+	tactics, tacticEvents := m.selectTactics()
 	events = append(events, tacticEvents...)
 	m.captureAttackAims()
 	events = append(events, m.runTowers(tactics)...)

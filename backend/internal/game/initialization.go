@@ -5,8 +5,9 @@ package game
 
 import (
 	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"strings"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 func NewMatch(id string, scenario Scenario, maxTicks uint64) (*Match, error) {
@@ -58,7 +59,7 @@ func (m *Match) addFaction(slot int, setup FactionSetup, occupied map[Position]b
 	if m.scenario.SnapshotVersion >= DoctrineSnapshotVersion {
 		return nil
 	}
-	if err := m.addStartingUnits(setup, runtime, availableSpawns(m.scenario.Map, castle.Position, occupied), occupied); err != nil {
+	if err := m.addStartingUnits(setup, runtime, freeNeighbors(m.scenario.Map, castle.Position, occupied), occupied); err != nil {
 		return err
 	}
 	m.factionState(setup.ID).UnitsStarted = runtime.unitSequence
@@ -101,17 +102,6 @@ func (m *Match) addCastle(slot int, factionID string, occupied map[Position]bool
 	m.state.Buildings = append(m.state.Buildings, castle)
 	occupied[castle.Position] = true
 	return castle
-}
-
-func availableSpawns(gameMap Map, castle Position, occupied map[Position]bool) []Position {
-	spawns := make([]Position, 0, 6)
-	for _, candidate := range Neighbors(castle) {
-		if gameMap.InBounds(candidate) && gameMap.Traversable(candidate) && !occupied[candidate] {
-			spawns = append(spawns, candidate)
-		}
-	}
-	sortPositions(spawns)
-	return spawns
 }
 
 func (m *Match) addStartingUnits(setup FactionSetup, runtime *factionRuntime, spawns []Position, occupied map[Position]bool) error {

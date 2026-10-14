@@ -302,7 +302,7 @@ func assertStateInvariants(t *testing.T, state State) {
 
 func testScenario() Scenario {
 	plan := controller.PlanProposal{Name: "attack", ActionWeights: map[string]int64{ActionAttack: 1500, ActionDefend: 500}}
-	return Scenario{ID: "castle-siege-v1", RulesVersion: "1", RulesetID: "castle-siege-v1", DecisionIntervalTicks: 10, DecisionLeadTicks: 2, Map: testMap(), Ruleset: testRuleset(), Factions: []FactionSetup{{ID: "faction-a", Name: "A", Blueprint: defaultBlueprint(), FallbackPlan: plan, ScriptedPlans: []controller.PlanProposal{plan}}, {ID: "faction-b", Name: "B", Blueprint: defaultBlueprint(), FallbackPlan: plan, ScriptedPlans: []controller.PlanProposal{plan}}}}
+	return Scenario{ID: "castle-siege-v1", RulesVersion: "1", RulesetID: "castle-siege-v1", DecisionIntervalTicks: 10, Map: testMap(), Ruleset: testRuleset(), Factions: []FactionSetup{{ID: "faction-a", Name: "A", Blueprint: defaultBlueprint(), FallbackPlan: plan, ScriptedPlans: []controller.PlanProposal{plan}}, {ID: "faction-b", Name: "B", Blueprint: defaultBlueprint(), FallbackPlan: plan, ScriptedPlans: []controller.PlanProposal{plan}}}}
 }
 
 func defaultBlueprint() Blueprint {

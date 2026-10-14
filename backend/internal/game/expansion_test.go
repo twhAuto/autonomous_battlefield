@@ -196,7 +196,7 @@ func TestTypedConstructionLimitsAndRebuilding(t *testing.T) {
 	if err := validateProductionPlan(m.scenario, m.scenario.Factions[0], plan); err != nil {
 		t.Fatal(err)
 	}
-	events := m.runConstruction(0, "faction-a", plan)
+	events := m.runConstruction("faction-a", plan)
 	if len(events) != 1 || events[0].Type != "building_constructed" || m.factionState("faction-a").Gold != 920 {
 		t.Fatal("typed purchase failed")
 	}

@@ -49,16 +49,10 @@ func (m *Match) buildStructureAt(factionID, kind string, site Position, reserve 
 	if definition == nil {
 		return Building{}, "unsupported_building"
 	}
-	if m.buildingAt(site) != nil {
-		return Building{}, "site_occupied"
+	state, reason := m.payForBuilding(factionID, site, definition.Cost, reserve)
+	if reason != "" {
+		return Building{}, reason
 	}
-	state := m.factionState(factionID)
-	if state.Gold-definition.Cost < reserve {
-		return Building{}, "reserve_required"
-	}
-	state.Gold -= definition.Cost
-	state.GoldSpent += definition.Cost
-	state.BuildingsBuilt++
 	b := Building{ID: fmt.Sprintf("%s:%s:%03d", factionID, kind, state.BuildingsBuilt), FactionID: factionID, Type: definition.Kind, Position: site, Health: definition.Health, MaxHealth: definition.Health, Defense: definition.Defense, Vision: definition.Vision, Cost: definition.Cost, Attack: definition.Attack, Range: definition.Range, ReadyAtTick: m.state.Tick + 1}
 	m.state.Buildings = append(m.state.Buildings, b)
 	return b, ""

@@ -520,7 +520,7 @@ func serviceTestScenario(identities [2]FactionIdentity) game.Scenario {
 	for index, identity := range identities {
 		factions[index] = game.FactionSetup{ID: identity.ID, Name: identity.Name, Blueprint: blueprint, FallbackPlan: plan, ScriptedPlans: []controller.PlanProposal{plan}}
 	}
-	return game.Scenario{ID: "castle-siege-v1", RulesVersion: "1", RulesetID: ruleset.ID, MaximumTicks: 500, DecisionIntervalTicks: 10, DecisionLeadTicks: 2, Map: gameMap, Ruleset: ruleset, Factions: factions}
+	return game.Scenario{ID: "castle-siege-v1", RulesVersion: "1", RulesetID: ruleset.ID, MaximumTicks: 500, DecisionIntervalTicks: 10, Map: gameMap, Ruleset: ruleset, Factions: factions}
 }
 
 func (r *fakeBattleRepo) ListBattles(_ context.Context, query BattleHistoryQuery) ([]BattleSummary, error) {
