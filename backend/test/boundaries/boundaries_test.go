@@ -67,12 +67,6 @@ var forbidden = map[string][]string{
 	// Generation's domain types serve both the API and the AI gateway; HTTP lives in
 	// generation/api and storage in generation/repo.
 	"internal/generation": {"internal/httpapi", "internal/apierror", "internal/postgres", "internal/generation/api", "internal/generation/repo"},
-	// Observability packages are leaves, so any package can log, count, trace, or read the
-	// request ID without an import cycle.
-	"internal/observability/logging":   {"internal/..."},
-	"internal/observability/metrics":   {"internal/..."},
-	"internal/observability/tracing":   {"internal/..."},
-	"internal/observability/requestid": {"internal/..."},
 }
 
 func TestForbiddenDependencies(t *testing.T) {
@@ -90,6 +84,27 @@ func TestForbiddenDependencies(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// Observability packages may import only each other, so any package can log, count,
+// trace, redact, or read the request ID without an import cycle.
+func TestObservabilityPackagesStayLeaves(t *testing.T) {
+	deps := listDependencies(t)
+	found := 0
+	for pkg, linked := range deps {
+		if !strings.HasPrefix(pkg, "internal/observability/") {
+			continue
+		}
+		found++
+		for _, dep := range linked {
+			if !strings.HasPrefix(dep, "internal/observability/") {
+				t.Errorf("%s must not depend on %s", pkg, dep)
+			}
+		}
+	}
+	if found == 0 {
+		t.Fatal("no internal/observability packages found")
 	}
 }
 

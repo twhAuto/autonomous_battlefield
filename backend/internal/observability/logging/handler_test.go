@@ -4,7 +4,9 @@
 package logging
 
 import (
+	"fmt"
 	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
+	"net"
 
 	"bytes"
 	"context"
@@ -119,4 +121,20 @@ func TestHandlerResolvesValuesOnce(t *testing.T) {
 	rows := decodeLogs(t, output.Bytes())
 	testutil.Require(t, !(calls != 2 || rows[0]["attempt"] != float64(1) || rows[0]["status"] != float64(2) || rows[1]["attempt"] != float64(1)), func() { t.Fatal("values evaluated more than once", calls, rows) })
 	testutil.Require(t, !(!strings.Contains(rows[0]["msg"].(string), "attempt: 1") || !strings.Contains(rows[0]["msg"].(string), "HTTP status: 2")), func() { t.Fatal("summary and fields disagree", rows[0]) })
+}
+
+func TestHandlerRedactsErrorValuesUnderAnyKey(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(NewHandler(slog.NewJSONHandler(&output, nil)))
+	dial := &net.OpError{Op: "dial", Net: "tcp", Addr: &net.TCPAddr{IP: net.ParseIP("10.0.0.5"), Port: 5432}, Err: errors.New("connect: connection refused")}
+	logger.With("cause", dial).Error("database_connect_retry", "error", fmt.Errorf("ping: %w", dial), slog.Group("detail", "inner", dial), "plain", "kept")
+	got := output.String()
+	if strings.Contains(got, "10.0.0.5") {
+		t.Fatalf("log leaked the address: %s", got)
+	}
+	for _, want := range []string{`"error":"ping: dial tcp: connect: connection refused"`, `"cause":"dial tcp: connect: connection refused"`, `"inner":"dial tcp: connect: connection refused"`, `"plain":"kept"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("log %s lacks %s", got, want)
+		}
+	}
 }

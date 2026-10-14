@@ -140,7 +140,7 @@ func (w *Worker) processClaimedBattle(ctx context.Context, job *queue.Job) {
 	if processErr == nil {
 		return
 	}
-	span.RecordError(processErr)
+	tracing.RecordError(span, processErr)
 	attributes := []any{"battle_id", job.Lease.BattleID, "attempt", job.Lease.Attempt, "error", processErr}
 	switch {
 	case errors.Is(processErr, context.Canceled):

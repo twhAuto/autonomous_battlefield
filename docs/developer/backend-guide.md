@@ -376,10 +376,11 @@ both the handler and registry to the service; policy reads do not depend on HTTP
 - [`internal/postgres`](../../backend/internal/postgres) manages the `pgx` pool, embedded Goose migrations, startup retries, and `LISTEN/NOTIFY`. `DBTX` covers pools and transactions; `Pool` adds `Begin` for code that opens its own transactions, such as `app.New` and the generation repository.
 - [`internal/httpapi`](../../backend/internal/httpapi) provides bounded strict JSON, lifecycle/readiness routes, request IDs, routing, and access logging. The API uses all of it; the engine uses only `LifecycleHandler` for its probe and metrics port. A caller's `X-Request-ID` is kept only if it matches `[A-Za-z0-9._:-]{1,128}`; otherwise the server generates a 32-hex ID.
 - [`internal/observability`](../../backend/internal/observability) groups the leaf
-  packages every binary uses to observe itself. `test/boundaries` keeps each free of
-  other internal imports, so any package can use them without an import cycle:
+  packages every binary uses to observe itself. `test/boundaries` lets them import only
+  each other, so any package can use them without an import cycle:
   - [`logging`](../../backend/internal/observability/logging) configures `LOG_LEVEL`
-    (an unrecognised value falls back to INFO and logs `log_level_invalid`), formats
+    (an unrecognised value falls back to INFO and logs `log_level_invalid`), redacts
+    error attributes, formats
     readable operational messages while retaining stable event names, and enriches
     logs with active trace/span IDs. `handler.go` preserves slog attribute grouping;
     `messages.go` selects the operational fields shown in compact messages.
@@ -391,6 +392,10 @@ both the handler and registry to the service; policy reads do not depend on HTTP
     `deployment.environment` from `BATTLEFIELD_ENVIRONMENT`.
   - [`requestid`](../../backend/internal/observability/requestid) carries the HTTP
     correlation ID in the request context for `httpapi` and `apierror`.
+  - [`redact`](../../backend/internal/observability/redact) strips database
+    connection identities from error text. The logging handler applies it to every
+    error-valued attribute; spans use `tracing.RecordError`, which
+    [`test/conventions`](../../backend/test/conventions) enforces.
 - [`worker/progress.go`](../../backend/internal/battle/worker/progress.go) bounds
   battle and decision-wait updates to one per 15 seconds and supplies elapsed time.
 
