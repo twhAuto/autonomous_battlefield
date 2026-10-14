@@ -50,7 +50,9 @@ From the repository checkout, substitute the actual server/account/key:
 ./scripts/infra/server.sh inspect
 ```
 
-`init` writes private `inventory.json` and `inputs.json` files under
+`init` writes private `inventory.json` and `inputs.json` files (shaped like
+[`inventory.example.json`](../../infra/ansible/inventory.example.json) and
+[`inputs.example.json`](../../infra/ansible/inputs.example.json)) under
 `${XDG_CONFIG_HOME:-$HOME/.config}/autonomous-battlefield/server/`. It refuses to
 replace existing files. The inventory records the machine ID read over trusted
 SSH; later operations reject a different machine ID or operator. Replacing a host

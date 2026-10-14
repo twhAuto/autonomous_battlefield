@@ -1,8 +1,8 @@
 pipelineJob('battlefield-assurance') {
     description('battlefield-ci-managed-v1: trusted-main offline assurance; activate after reviewing credentials')
     disabled(true)
-    parameters { choiceParam('MODE', ['nightly', 'load', 'failure-drills', 'provider-eval', 'aws-promotion']) }
-    triggers { cron('H H(1-4) * * *') }
+    // Run on demand only: production is not kept running, so a schedule would fail.
+    parameters { choiceParam('MODE', ['offline', 'load', 'failure-drills', 'provider-eval', 'aws-promotion']) }
     definition {
         cpsScm {
             scm {

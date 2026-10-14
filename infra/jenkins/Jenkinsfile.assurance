@@ -6,7 +6,7 @@ pipeline {
     agent { label 'battlefield-production' }
 
     parameters {
-        choice(name: 'MODE', choices: ['nightly', 'load', 'failure-drills', 'provider-eval', 'aws-promotion'], description: 'Assurance workflow to run')
+        choice(name: 'MODE', choices: ['offline', 'load', 'failure-drills', 'provider-eval', 'aws-promotion'], description: 'Assurance workflow to run')
         choice(name: 'AI_PROVIDER', choices: ['openai', 'gemini'], description: 'Provider for an explicitly paid evaluation')
         string(name: 'AI_MODEL', defaultValue: '', description: 'Model with a reviewed entry in backend/evals/pricing.yaml')
         string(name: 'AI_CASE_COUNT', defaultValue: '1', description: 'Explicit fixed-corpus provider case budget')
@@ -51,8 +51,8 @@ pipeline {
             }
         }
 
-        stage('Nightly offline assurance') {
-            when { expression { params.MODE == 'nightly' } }
+        stage('Offline assurance') {
+            when { expression { params.MODE == 'offline' } }
             steps {
                 sh './scripts/ci/security-and-policy.sh'
                 sh 'FUZZ_SECONDS=120 ./scripts/test/fuzz-smoke.sh'
