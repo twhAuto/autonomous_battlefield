@@ -28,8 +28,12 @@ const battleControlRequests = {
 }
 
 export function BattlePage() {
-  const permissions = usePermissions()
   const { id = '' } = useParams()
+  return <BattleDetail key={id} id={id} />
+}
+
+function BattleDetail({ id }: Readonly<{ id: string }>) {
+  const permissions = usePermissions()
   const { battle, connection, connectionMessage, lastUpdated, retryConnection, applyBattle } = useBattleStatus(id)
   const {
     selectedAttempt,
@@ -42,7 +46,7 @@ export function BattlePage() {
     loadEventPage,
   } = useBattleEventStream(id, battle?.attempt, battle?.status)
   const [perspective, setPerspective] = useState('spectator')
-  const factionView = useFactionPerspective(id, battle, perspective)
+  const { view: factionView, message: perspectiveMessage, retry: retryPerspective } = useFactionPerspective(id, battle, perspective)
   const { decisions, decisionMessage } = useDecisionHistory(id, battle, permissions.inspect)
   const [controlState, setControlState] = useState<BattleControlState>('idle')
   const [controlMessage, setControlMessage] = useState('')
@@ -82,11 +86,17 @@ export function BattlePage() {
     ? participantNames.get(battle.result.winnerFactionId) ?? battle.result.winnerFactionId
     : null
   const battleTitle = battleTitleFor(battle)
-  const mapView = factionView ?? (battle.map && battle.state ? {
+  const spectatorView = battle.map && battle.state ? {
     map: battle.map,
     state: battle.state,
     visiblePositions: battle.map.rows.flatMap((row, y) => [...row].map((_, x) => ({ x, y }))),
-  } : null)
+  } : null
+  // Keep the map shell mounted (including its modal and camera), but replace all
+  // map content with feedback until the selected perspective is available.
+  const mapView = perspective === 'spectator' ? spectatorView : factionView
+  const displayView = mapView ?? spectatorView
+  const perspectiveFeedback = perspectiveMessage ? <p role="alert">{perspectiveMessage} <button className="text-button" type="button" onClick={retryPerspective}>Retry faction view</button></p> : <p role="status">Loading faction view…</p>
+  const perspectiveControl = <div className="map-perspective-control"><label htmlFor="perspective">Perspective</label><select id="perspective" value={perspective} onChange={(event) => setPerspective(event.target.value)}><option value="spectator">Spectator · full map</option>{battle.participants.map((participant) => <option key={participant.id} value={participant.id}>{participant.name}</option>)}</select></div>
 
   return (
     <>
@@ -108,15 +118,16 @@ export function BattlePage() {
         </aside>
       </section>
 
-      <section className={`battle-live-layout ${mapView ? '' : 'battle-live-layout--events-only'}`}>
+      <section className={`battle-live-layout ${displayView ? '' : 'battle-live-layout--events-only'}`}>
         <div className="battle-map-column">
-          {mapView &&
+          {displayView &&
             <HexBattleMap
-              map={mapView.map}
-              state={mapView.state}
-              visiblePositions={mapView.visiblePositions}
+              map={displayView.map}
+              state={displayView.state}
+              visiblePositions={displayView.visiblePositions}
               factionNames={participantNames}
-              toolbarControls={<div className="map-perspective-control"><label htmlFor="perspective">Perspective</label><select id="perspective" value={perspective} onChange={(event) => setPerspective(event.target.value)}><option value="spectator">Spectator · full map</option>{battle.participants.map((participant) => <option key={participant.id} value={participant.id}>{participant.name}</option>)}</select></div>}
+              toolbarControls={perspectiveControl}
+              placeholder={!mapView ? perspectiveFeedback : undefined}
             />
           }
         </div>

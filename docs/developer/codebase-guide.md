@@ -13,6 +13,11 @@ tests and `frontend/e2e/usability.spec.ts` cover failed logout and retry; see th
 editor; its colocated tests cover fresh form state when leaving an edit route for
 creation, including recovery from a failed load.
 
+`frontend/src/features/battles/pages/BattlePage.tsx` similarly scopes its detail
+state to the battle ID. `hooks/useFactionPerspective.ts` scopes map responses to
+the battle, attempt, and faction. Hook/page tests cover late responses, route
+changes, and retry; browser tests cover retry inside the expanded map.
+
 | Field | Value |
 | --- | --- |
 | Status | Current |

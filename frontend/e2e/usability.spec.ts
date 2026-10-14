@@ -108,6 +108,23 @@ for (const [width, height] of [[15, 11], [25, 17]]) {
     expect(api.writes).toEqual([])
   })
 }
+test('failed faction views retain the expanded map controls and can be retried', async ({ page }) => {
+  await page.route('**/view', route => route.fulfill({ status: 503, body: 'Unavailable' }))
+  await page.goto(`/battles/${battleId}`)
+  await page.getByRole('button', { name: 'Expand map' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('Perspective').selectOption(factionId)
+  await expect(dialog.getByRole('alert')).toContainText('Faction view could not be loaded.')
+  await expect(dialog.getByLabel('Map navigation')).toHaveCount(0)
+  await expect(dialog.getByLabel('Perspective')).toHaveValue(factionId)
+  await page.unroute('**/view')
+  await dialog.getByRole('button', { name: 'Retry faction view' }).click()
+  await expect(dialog.getByLabel('Map navigation')).toBeVisible()
+  await expect(dialog.getByRole('alert')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'Expand map' })).toBeFocused()
+})
+
 test('key events, all events and details preserve loaded history', async ({ page, isMobile }) => {
   await page.goto(`/battles/${battleId}`)
   await expect(page.getByLabel('Event group')).toHaveValue('key')
