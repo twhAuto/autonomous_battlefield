@@ -17,7 +17,7 @@ import (
 )
 
 func TestReadinessReturnsOKWhenDatabaseResponds(t *testing.T) {
-	router := NewLifecycleHandler()
+	router := NewLifecycleHandler(nil)
 	router.Activate(http.NotFoundHandler(), pingerFunc(func(context.Context) error {
 		return nil
 	}), nil)
@@ -34,7 +34,7 @@ func TestReadinessReturnsOKWhenDatabaseResponds(t *testing.T) {
 }
 
 func TestReadinessReturnsUnavailableWhenDatabasePingFails(t *testing.T) {
-	router := NewLifecycleHandler()
+	router := NewLifecycleHandler(nil)
 	router.Activate(http.NotFoundHandler(), pingerFunc(func(context.Context) error {
 		return errors.New("database is unavailable")
 	}), nil)
@@ -61,7 +61,7 @@ func TestReadinessReturnsUnavailableWhenDatabasePingFails(t *testing.T) {
 }
 
 func TestReadinessBoundsDatabasePing(t *testing.T) {
-	router := NewLifecycleHandler()
+	router := NewLifecycleHandler(nil)
 	router.Activate(http.NotFoundHandler(), pingerFunc(func(ctx context.Context) error {
 		<-ctx.Done()
 		return ctx.Err()
@@ -77,7 +77,7 @@ func TestReadinessBoundsDatabasePing(t *testing.T) {
 }
 
 func TestLifecycleHealthEndpoints(t *testing.T) {
-	router := NewLifecycleHandler()
+	router := NewLifecycleHandler(nil)
 	router.Activate(http.NotFoundHandler(), pingerFunc(func(context.Context) error { return nil }), nil)
 	for _, path := range []string{"/healthz", "/livez", "/startupz"} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)

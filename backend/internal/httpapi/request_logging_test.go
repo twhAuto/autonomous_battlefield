@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -77,11 +78,16 @@ func TestLoggingResponseWriterAndRequestIDHelpers(t *testing.T) {
 	if _, err := writer.Write([]byte("ok")); err != nil || writer.status != http.StatusOK || writer.bytes != 2 {
 		t.Fatalf("writer = %#v, error = %v", writer, err)
 	}
-	if acceptedRequestID(strings.Repeat("x", 129)) == strings.Repeat("x", 129) {
-		t.Fatal("acceptedRequestID() accepted an oversized ID")
+	for _, accepted := range []string{"a", "req-1.2_3:4", strings.Repeat("x", 128)} {
+		if got := acceptedRequestID(accepted); got != accepted {
+			t.Fatalf("acceptedRequestID(%q) = %q, want it kept", accepted, got)
+		}
 	}
-	if stringID(0) != "0" || stringID(12345) != "12345" {
-		t.Fatalf("stringID() results = %q, %q", stringID(0), stringID(12345))
+	generated := regexp.MustCompile(`^[0-9a-f]{32}$`)
+	for _, rejected := range []string{"", " padded ", strings.Repeat("x", 129), "has space", `quote"`, "naïve", "line\nbreak"} {
+		if got := acceptedRequestID(rejected); got == rejected || !generated.MatchString(got) {
+			t.Fatalf("acceptedRequestID(%q) = %q, want a generated 32-hex ID", rejected, got)
+		}
 	}
 	if RequestID(context.Background()) != "" {
 		t.Fatal("RequestID() returned a value for an empty context")
