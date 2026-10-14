@@ -64,6 +64,9 @@ var forbidden = map[string][]string{
 	"internal/ai/decision":  {"internal/postgres", "internal/httpapi"},
 	"internal/ai/briefing":  {"internal/postgres", "internal/httpapi"},
 	"internal/ai/agentview": {"internal/postgres", "internal/httpapi"},
+	// Generation's domain types serve both the API and the AI gateway; HTTP lives in
+	// generation/api and storage in generation/repo.
+	"internal/generation": {"internal/httpapi", "internal/apierror", "internal/postgres", "internal/generation/api", "internal/generation/repo"},
 }
 
 func TestForbiddenDependencies(t *testing.T) {

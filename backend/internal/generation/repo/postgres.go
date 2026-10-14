@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -23,7 +24,14 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
-type Postgres struct{ DB postgres.DBTX }
+// Postgres needs transactions: admission serializes each account inside one.
+type Postgres struct{ db postgres.Pool }
+
+func NewPostgres(db postgres.Pool) *Postgres { return &Postgres{db: db} }
+
+// uuidPattern guards lookups so the uuid primary key is compared directly, and so a
+// malformed ID reads as "not found" rather than a database cast error.
+var uuidPattern = regexp.MustCompile(`^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$`)
 
 const columns = `id,actor_id,input,profile_id,model_label,prompt_version,status,background,error_category,created_at,started_at,finished_at,expires_at,execution_seconds`
 
@@ -41,13 +49,7 @@ func scan(row interface{ Scan(...any) error }) (generation.Job, error) {
 	return j, err
 }
 func (p *Postgres) begin(ctx context.Context, actor string) (pgx.Tx, error) {
-	db, ok := p.DB.(interface {
-		Begin(context.Context) (pgx.Tx, error)
-	})
-	if !ok {
-		return nil, errors.New("generation requires transactional database")
-	}
-	tx, err := db.Begin(ctx)
+	tx, err := p.db.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -112,13 +114,10 @@ func (p *Postgres) Options(ctx context.Context, actor string, c generation.Confi
 	}
 	return o, tx.Commit(ctx)
 }
-func (p *Postgres) Admit(ctx context.Context, actor, key string, input generation.Input, c generation.Config, label string) (generation.Job, generation.Options, error) {
+func (p *Postgres) Admit(ctx context.Context, actor, key string, input generation.Input, c generation.Config, model generation.Admission) (generation.Job, generation.Options, error) {
 	input, err := input.Normalized()
-	if err != nil || strings.TrimSpace(key) == "" || len(key) > 200 {
+	if err != nil || strings.TrimSpace(key) == "" || len(key) > 200 || strings.TrimSpace(model.ProfileID) == "" || (model.Runtime != "api" && model.Runtime != "cli") {
 		return generation.Job{}, generation.Options{}, generation.ErrInvalid
-	}
-	if c.Runtime == "" {
-		c.Runtime = "cli"
 	}
 	raw, _ := json.Marshal(input)
 	hash := fmt.Sprintf("%x", sha256.Sum256(raw))
@@ -147,7 +146,7 @@ func (p *Postgres) Admit(ctx context.Context, actor, key string, input generatio
 	if err != nil {
 		return generation.Job{}, o, err
 	}
-	j, err := scan(tx.QueryRow(ctx, `INSERT INTO faction_background_generations(id,actor_id,idempotency_key,input_hash,input,profile_id,model_label,prompt_version,status,expires_at,execution_seconds,runtime) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',now()+$9::interval,$10,$11) RETURNING `+columns, id, actor, key, hash, raw, c.ProfileID, label, prompts.GenerationVersion, c.QueueTimeout.String(), max(1, int(c.ExecutionTimeout.Seconds())), c.Runtime))
+	j, err := scan(tx.QueryRow(ctx, `INSERT INTO faction_background_generations(id,actor_id,idempotency_key,input_hash,input,profile_id,model_label,prompt_version,status,expires_at,execution_seconds,runtime) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',now()+$9::interval,$10,$11) RETURNING `+columns, id, actor, key, hash, raw, model.ProfileID, model.ModelLabel, prompts.GenerationVersion, c.QueueTimeout.String(), max(1, int(c.ExecutionTimeout.Seconds())), model.Runtime))
 	if err != nil {
 		return j, o, admissionError(err)
 	}
@@ -193,39 +192,51 @@ func newGenerationID() (string, error) {
 }
 
 func (p *Postgres) Get(ctx context.Context, actor, id string) (generation.Job, error) {
-	if err := expire(ctx, p.DB, actor); err != nil {
+	if !uuidPattern.MatchString(id) {
+		return generation.Job{}, generation.ErrNotFound
+	}
+	if err := expire(ctx, p.db, actor); err != nil {
 		return generation.Job{}, err
 	}
-	return scan(p.DB.QueryRow(ctx, `SELECT `+columns+` FROM faction_background_generations WHERE id::text=$1 AND actor_id=$2`, id, actor))
+	return scan(p.db.QueryRow(ctx, `SELECT `+columns+` FROM faction_background_generations WHERE id=$1 AND actor_id=$2`, id, actor))
 }
 func (p *Postgres) Context(ctx context.Context, id string) (generation.Job, error) {
-	return scan(p.DB.QueryRow(ctx, `SELECT `+columns+` FROM faction_background_generations WHERE id::text=$1 AND status='running' AND expires_at>now()`, id))
+	if !uuidPattern.MatchString(id) {
+		return generation.Job{}, generation.ErrNotFound
+	}
+	return scan(p.db.QueryRow(ctx, `SELECT `+columns+` FROM faction_background_generations WHERE id=$1 AND status='running' AND expires_at>now()`, id))
 }
 func (p *Postgres) Claim(ctx context.Context, worker string, profiles []string) (generation.Job, error) {
-	if err := expire(ctx, p.DB, ""); err != nil {
+	if err := expire(ctx, p.db, ""); err != nil {
 		return generation.Job{}, err
 	}
-	return scan(p.DB.QueryRow(ctx, `UPDATE faction_background_generations SET status='running',started_at=now(),expires_at=now()+execution_seconds*interval '1 second',worker_id=$1 WHERE id=(SELECT id FROM faction_background_generations WHERE status='queued' AND expires_at>now() AND profile_id=ANY($2) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING `+columns, worker, profiles))
+	return scan(p.db.QueryRow(ctx, `UPDATE faction_background_generations SET status='running',started_at=now(),expires_at=now()+execution_seconds*interval '1 second',worker_id=$1 WHERE id=(SELECT id FROM faction_background_generations WHERE status='queued' AND expires_at>now() AND profile_id=ANY($2) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING `+columns, worker, profiles))
 }
 func (p *Postgres) Submit(ctx context.Context, id, background string) (bool, error) {
+	if !uuidPattern.MatchString(id) {
+		return false, nil
+	}
 	background = strings.TrimSpace(background)
 	if background == "" || utf8.RuneCountInString(background) > faction.MaxBackgroundLength {
-		_, err := p.DB.Exec(ctx, `UPDATE faction_background_generations SET submissions=submissions+1,status=CASE WHEN submissions>=2 THEN 'failed' ELSE status END,error_category=CASE WHEN submissions>=2 THEN 'invalid_output' ELSE error_category END,finished_at=CASE WHEN submissions>=2 THEN now() ELSE finished_at END WHERE id::text=$1 AND status='running' AND expires_at>now()`, id)
+		_, err := p.db.Exec(ctx, `UPDATE faction_background_generations SET submissions=submissions+1,status=CASE WHEN submissions>=2 THEN 'failed' ELSE status END,error_category=CASE WHEN submissions>=2 THEN 'invalid_output' ELSE error_category END,finished_at=CASE WHEN submissions>=2 THEN now() ELSE finished_at END WHERE id=$1 AND status='running' AND expires_at>now()`, id)
 		if err != nil {
 			return false, err
 		}
 		return false, generation.ErrInvalid
 	}
-	tag, err := p.DB.Exec(ctx, `UPDATE faction_background_generations SET status='succeeded',background=$2,finished_at=COALESCE(finished_at,now()) WHERE id::text=$1 AND ((status='running' AND expires_at>now()) OR (status='succeeded' AND background=$2))`, id, background)
+	tag, err := p.db.Exec(ctx, `UPDATE faction_background_generations SET status='succeeded',background=$2,finished_at=COALESCE(finished_at,now()) WHERE id=$1 AND ((status='running' AND expires_at>now()) OR (status='succeeded' AND background=$2))`, id, background)
 	return tag.RowsAffected() == 1, err
 }
 func (p *Postgres) Finish(ctx context.Context, id, category string, usage ai.Usage, metadata map[string]any) (bool, error) {
+	if !uuidPattern.MatchString(id) {
+		return false, nil
+	}
 	raw, _ := json.Marshal(usage)
 	meta, _ := json.Marshal(metadata)
 	if category == "" {
 		category = "no_submission"
 	}
-	tag, err := p.DB.Exec(ctx, `UPDATE faction_background_generations SET usage=$2,metadata=$3,model_label=COALESCE(NULLIF($3::jsonb->>'modelIdentifier',''),model_label),status=CASE WHEN status='running' THEN 'failed' ELSE status END,error_category=CASE WHEN status='running' THEN $4 ELSE error_category END,finished_at=COALESCE(finished_at,now()) WHERE id::text=$1 AND status IN ('running','succeeded','failed')`, id, raw, meta, category)
+	tag, err := p.db.Exec(ctx, `UPDATE faction_background_generations SET usage=$2,metadata=$3,model_label=COALESCE(NULLIF($3::jsonb->>'modelIdentifier',''),model_label),status=CASE WHEN status='running' THEN 'failed' ELSE status END,error_category=CASE WHEN status='running' THEN $4 ELSE error_category END,finished_at=COALESCE(finished_at,now()) WHERE id=$1 AND status IN ('running','succeeded','failed')`, id, raw, meta, category)
 	return tag.RowsAffected() == 1, err
 }
 

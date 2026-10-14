@@ -345,9 +345,9 @@ Deleting a faction removes it from the active registry but does not affect the c
 
 | File | Responsibility |
 | --- | --- |
-| [`types.go`](../../backend/internal/generation/types.go) | Configuration, normalized draft input, job state, quota options, and the repository contracts |
-| [`handler.go`](../../backend/internal/generation/handler.go) | Authenticated options, admission, and status routes under `/v1/faction-background-generations` |
-| [`repo/postgres.go`](../../backend/internal/generation/repo/postgres.go) | PostgreSQL adapter (package `generation/repo`, kept apart so importing the contracts does not link database code): transactional admission, account quotas, idempotency, durable claims, expiry, and result recording |
+| [`types.go`](../../backend/internal/generation/types.go) | Configuration, normalized draft input, job state, quota options, the `Admission` (profile, label and runtime a job runs with), and the repository contracts. The root package links no HTTP or database code, which `test/boundaries` enforces, so the AI gateway and AI eval can import it |
+| [`api/handler.go`](../../backend/internal/generation/api/handler.go) | Authenticated options, admission, and status routes under `/v1/faction-background-generations`; server failures are logged |
+| [`repo/postgres.go`](../../backend/internal/generation/repo/postgres.go) | PostgreSQL adapter built by `NewPostgres(postgres.Pool)`, since admission needs transactions: account quotas, idempotency, durable claims, expiry, and result recording. Job lookups validate the UUID and compare the primary key directly |
 
 This package runs background writing as durable asynchronous jobs rather than
 inline requests. `Admit` opens a transaction per actor, expires stale jobs,
@@ -373,7 +373,7 @@ both the handler and registry to the service; policy reads do not depend on HTTP
 
 - [`internal/authn`](../../backend/internal/authn) provides Cloudflare JWT verification, explicit development login modes, role/ownership helpers, exact-origin mutations, a deny-by-default route access table, and mode-aware session/logout routes. `routeRules` in `authorization.go` is the one table of every public route: its `authn.Permission` (`play`, `inspect`, `admin`), whether it is `public` (no authentication; login and session), and whether the `ci` identity may call it. Identity routes under `/v1/auth/` carry no permission and skip `RoutePolicy`. `TestRouteRulesStayConsistent` rejects malformed, duplicate or over-broad rules. `authn.PublicAPIRoutes()` exposes the table; [`test/apicontract`](../../backend/test/apicontract) fails the build if [`docs/architecture/openapi.yaml`](../architecture/openapi.yaml) lists a different set. When adding a `/v1` route, add its rule to `routeRules` **and** document the operation in the OpenAPI contract in the same change. `cloudflare_test.go` exercises signatures, key rotation, forged headers, legacy cookies and role removal. `service_test.go` covers enrolled CI service JWTs, invalid claims, disabled enrollment and the read-only route boundary. CI uses a separate `ci` actor, never a human role.
 - [`internal/config/config.go`](../../backend/internal/config/config.go) strictly decodes one YAML document, rejects unknown fields, and provides one loader and one result type per binary: `LoadAPI` → `APIConfig`, `LoadEngine` → `EngineConfig`, `LoadAgent` → `AgentConfig`, `LoadAIGateway` → `AIGatewayConfig`. [`environment.go`](../../backend/internal/config/environment.go) names every fixed environment variable and validates `BATTLEFIELD_ENV` for all four.
-- [`internal/postgres`](../../backend/internal/postgres) manages the `pgx` pool, embedded Goose migrations, startup retries, and `LISTEN/NOTIFY`.
+- [`internal/postgres`](../../backend/internal/postgres) manages the `pgx` pool, embedded Goose migrations, startup retries, and `LISTEN/NOTIFY`. `DBTX` covers pools and transactions; `Pool` adds `Begin` for code that opens its own transactions, such as `app.New` and the generation repository.
 - [`internal/httpapi`](../../backend/internal/httpapi) provides bounded strict JSON, lifecycle/readiness routes, request IDs, routing, and access logging.
 - [`internal/logging`](../../backend/internal/logging) configures `LOG_LEVEL`,
   formats readable operational messages while retaining stable event names, and
@@ -544,8 +544,13 @@ Faction/battle service tests cover every role for own, other and legacy content.
 Migration `00011_friends_access.sql` owns row ownership, atomic admission triggers,
 AI execution counts, the original CLI lease, runtime stop policy and private usage view.
 Migration `00014_cli_concurrency.sql` expands that lease admission to four shared slots.
-`generation/repo/friends_integration_test.go` tests cross-connection admission, paused
-limits, UTC reset, shared CLI slots and execution budgets against PostgreSQL.
+`backend/migrations/battle_admission_integration_test.go` tests the battle admission
+triggers against PostgreSQL: per-player and global caps across connections, paused
+battles still counting, the daily allowance and its UTC reset, and admin-exempt battles.
+`generation/repo/cli_capacity_integration_test.go` tests how generation claims hold and
+release the shared CLI slots alongside battle decisions, the per-battle execution budget
+and the AI kill switch. The AI gateway's agent control plane requires the operator switch
+(`mcpserver.AgentRepository.AgentEnabled`) and checks it before an agent claims work.
 Workers receive capabilities from the AI gateway instead of signing them. `worker/policy.go`
 cancels execution on the private stop switch; `credentials_linux.go` blocks procfs/
 ptrace reads of the worker's credentials; `runner/process_linux.go` kills CLI process
@@ -625,13 +630,15 @@ Battle setup selects generic profiles without blueprint compatibility filtering.
 
 ### Faction backgrounds and generation
 
-- `backend/internal/generation/{types,handler,postgres}.go` defines normalized
+- `backend/internal/generation/types.go`, `api/handler.go` and `repo/postgres.go` define normalized
   draft input, configuration, authenticated endpoints, PostgreSQL admission,
   account quotas, idempotency, durable claims, expiry and result validation.
 - `backend/migrations/00009_faction_background.sql` adds an empty-default
   background, generation jobs/account locks, active/queue/quota indexes, and
   narrowly scoped AI gateway role grants. Existing profiles, blueprints and battle snapshots
-  are preserved. `internal/postgres/migrations.go` serializes migration runners
+  are preserved; `backend/migrations/faction_background_integration_test.go` migrates a
+  private schema to version 8, seeds a legacy faction and battle, and checks both after
+  the upgrade. `internal/postgres/migrations.go` serializes migration runners
   with a PostgreSQL advisory session lock, including concurrent fresh schemas.
 - Faction API/service/repository and battle catalog/worker copy background with
   name/doctrine; `prompts.SessionDecision` embeds that identity through
@@ -777,5 +784,5 @@ only by API pods. See [Player invitations](../operations/player-invitations.md).
 Worker capacity is configured by `ai.agentConcurrency` in
 `backend/internal/config/ai.go` and passed by `backend/cmd/agent/main.go`.
 Migration `backend/migrations/00014_cli_concurrency.sql` sets the shared CLI lease
-capacity; `backend/internal/generation/repo/friends_integration_test.go` verifies
+capacity; `backend/internal/generation/repo/cli_capacity_integration_test.go` verifies
 concurrent admission across battle and generation jobs.

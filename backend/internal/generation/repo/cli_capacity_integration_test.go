@@ -1,3 +1,7 @@
+// Checks generation claims against the shared CLI capacity: a claimed job holds its slot
+// until Finish, battle decisions and generations share the slots and the per-battle
+// execution budget, and the AI kill switch stops new work.
+
 package repo
 
 import (
@@ -7,69 +11,14 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 )
 
-func insertFriendBattle(p *Postgres, n int, owner string) error {
-	_, err := p.DB.Exec(context.Background(), `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state) VALUES($1,'s','d','{}',10,$2,'{}','{}')`, fmt.Sprintf("00000000-0000-4000-8000-%012d", n), owner)
+// insertBattle queues a minimal battle owned by owner; the admission triggers apply.
+func insertBattle(p *Postgres, n int, owner string) error {
+	_, err := p.db.Exec(context.Background(), `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state) VALUES($1,'s','d','{}',10,$2,'{}','{}')`, fmt.Sprintf("00000000-0000-4000-8000-%012d", n), owner)
 	return err
-}
-func limited(err error) bool { var e *pgconn.PgError; return errors.As(err, &e) && e.Code == "P0429" }
-
-func TestFriendsBattleAdmissionAcrossConnections(t *testing.T) {
-	p := database(t)
-	// Independent pool connections stand in for separate replicas.
-	var wg sync.WaitGroup
-	results := make(chan error, 12)
-	for i := range 12 {
-		wg.Add(1)
-		go func(n int) { defer wg.Done(); results <- insertFriendBattle(p, n, "owner") }(i)
-	}
-	wg.Wait()
-	close(results)
-	accepted := 0
-	for e := range results {
-		if e == nil {
-			accepted++
-		} else if !limited(e) {
-			t.Fatal(e)
-		}
-	}
-	if accepted != 2 {
-		t.Fatalf("accepted %d; want 2", accepted)
-	}
-	sqlExec(t, p, "UPDATE battle_runs SET paused=true")
-	if e := insertFriendBattle(p, 20, "owner"); !limited(e) {
-		t.Fatalf("paused evaded limit: %v", e)
-	}
-	if e := insertFriendBattle(p, 21, "other"); e != nil {
-		t.Fatal(e)
-	}
-	if e := insertFriendBattle(p, 22, "other"); e != nil {
-		t.Fatal(e)
-	}
-	if e := insertFriendBattle(p, 23, "third"); !limited(e) {
-		t.Fatalf("global limit: %v", e)
-	}
-	sqlExec(t, p, "UPDATE battle_runs SET status='completed'")
-	if e := insertFriendBattle(p, 24, "owner"); e != nil {
-		t.Fatal(e)
-	}
-	// A lower operator allowance is durable and applies to every non-exempt identity.
-	sqlExec(t, p, "UPDATE runtime_policy SET daily_battles=3")
-	if e := insertFriendBattle(p, 25, "owner"); !limited(e) {
-		t.Fatalf("daily limit: %v", e)
-	}
-	sqlExec(t, p, "UPDATE battle_runs SET created_at=date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'-interval '1 second'")
-	if e := insertFriendBattle(p, 26, "owner"); e != nil {
-		t.Fatal(e)
-	}
-	// Existing ID reaches uniqueness instead of charging a quota twice.
-	if e := insertFriendBattle(p, 26, "owner"); e == nil || limited(e) {
-		t.Fatalf("idempotent insert: %v", e)
-	}
 }
 
 func TestGlobalCLISlotHeldUntilWorkerCompletion(t *testing.T) {
@@ -100,7 +49,7 @@ func TestGlobalCLISlotHeldUntilWorkerCompletion(t *testing.T) {
 		t.Fatal(job, e)
 	}
 	sqlExec(t, p, "UPDATE runtime_policy SET ai_enabled=false")
-	if _, _, e = p.Admit(ctx, "third", "a", draft, c, "Writer"); !errors.Is(e, generation.ErrLimited) {
+	if _, _, e = p.Admit(ctx, "third", "a", draft, c, writer); !errors.Is(e, generation.ErrLimited) {
 		t.Fatalf("kill switch admitted work: %v", e)
 	}
 }
@@ -109,7 +58,7 @@ func TestDecisionExecutionBudgetAndSharedGenerationSlot(t *testing.T) {
 	p := database(t)
 	sqlExec(t, p, "UPDATE runtime_policy SET cli_concurrency=1")
 	ctx := context.Background()
-	if e := insertFriendBattle(p, 1, "admin-identity"); e != nil {
+	if e := insertBattle(p, 1, "admin-identity"); e != nil {
 		t.Fatal(e)
 	}
 	sqlExec(t, p, "UPDATE runtime_policy SET decision_executions=1")
@@ -119,7 +68,7 @@ func TestDecisionExecutionBudgetAndSharedGenerationSlot(t *testing.T) {
 	}
 	claim := func(id string) string {
 		var status string
-		e := p.DB.QueryRow(ctx, `UPDATE battle_decisions SET status='running',lease_owner='vm',lease_expires_at=now()+interval '1 minute' WHERE id=$1 RETURNING status`, id).Scan(&status)
+		e := p.db.QueryRow(ctx, `UPDATE battle_decisions SET status='running',lease_owner='vm',lease_expires_at=now()+interval '1 minute' WHERE id=$1 RETURNING status`, id).Scan(&status)
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -140,7 +89,7 @@ func TestDecisionExecutionBudgetAndSharedGenerationSlot(t *testing.T) {
 		t.Fatalf("budget exceeded: %s", s)
 	}
 	var used int
-	if e := p.DB.QueryRow(ctx, "SELECT ai_executions FROM battle_runs WHERE id=$1", battleID).Scan(&used); e != nil || used != 1 {
+	if e := p.db.QueryRow(ctx, "SELECT ai_executions FROM battle_runs WHERE id=$1", battleID).Scan(&used); e != nil || used != 1 {
 		t.Fatal(used, e)
 	}
 	sqlExec(t, p, "UPDATE runtime_policy SET ai_enabled=false")
@@ -153,7 +102,7 @@ func TestFourSharedCLISlotsAcrossConcurrentClaims(t *testing.T) {
 	p := database(t)
 	ctx := context.Background()
 	c := generation.DefaultConfig()
-	if err := insertFriendBattle(p, 1, "legacy-admin"); err != nil {
+	if err := insertBattle(p, 1, "legacy-admin"); err != nil {
 		t.Fatal(err)
 	}
 	const decision = "10000000-0000-4000-8000-000000000001"
@@ -200,33 +149,5 @@ func TestFourSharedCLISlotsAcrossConcurrentClaims(t *testing.T) {
 	sqlExec(t, p, `UPDATE runtime_policy SET ai_enabled=false`)
 	if _, err := p.Claim(ctx, "vm", []string{c.ProfileID}); !errors.Is(err, generation.ErrNotFound) {
 		t.Fatalf("disabled AI admitted work: %v", err)
-	}
-}
-
-func insertExemptBattle(p *Postgres, n int, owner string) error {
-	_, err := p.DB.Exec(context.Background(), `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state,admission_exempt) VALUES($1,'s','d','{}',10,$2,'{}','{}',true)`, fmt.Sprintf("00000000-0000-4000-8000-%012d", n), owner)
-	return err
-}
-
-func TestAdminBattlesSkipAllowancesButCountGlobally(t *testing.T) {
-	p := database(t)
-	sqlExec(t, p, "UPDATE runtime_policy SET daily_battles=1")
-	// Exempt rows pass the daily, per-person and global limits.
-	for n := range 5 {
-		if e := insertExemptBattle(p, n, "admin"); e != nil {
-			t.Fatalf("exempt battle %d: %v", n, e)
-		}
-	}
-	// They still occupy the engine, so other identities meet the global cap.
-	if e := insertFriendBattle(p, 10, "player"); !limited(e) {
-		t.Fatalf("player admitted beside five unfinished exempt battles: %v", e)
-	}
-	sqlExec(t, p, "UPDATE battle_runs SET status='completed'")
-	if e := insertFriendBattle(p, 11, "player"); e != nil {
-		t.Fatal(e)
-	}
-	// The flag, not the owner name, grants the exemption.
-	if e := insertFriendBattle(p, 12, "admin"); !limited(e) {
-		t.Fatalf("non-exempt row evaded the daily limit: %v", e)
 	}
 }

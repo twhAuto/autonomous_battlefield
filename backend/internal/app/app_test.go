@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -107,6 +108,9 @@ func (appDatabase) Exec(context.Context, string, ...any) (pgconn.CommandTag, err
 }
 func (appDatabase) Query(context.Context, string, ...any) (pgx.Rows, error) { return nil, nil }
 func (appDatabase) QueryRow(context.Context, string, ...any) pgx.Row        { return nil }
+func (appDatabase) Begin(context.Context) (pgx.Tx, error) {
+	return nil, errors.New("no transactions in app tests")
+}
 
 type cachedBattle struct{ reads int }
 

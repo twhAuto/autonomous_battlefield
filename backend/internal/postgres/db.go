@@ -16,3 +16,9 @@ type DBTX interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
+
+// Pool is a DBTX that can also open transactions, such as *pgxpool.Pool.
+type Pool interface {
+	DBTX
+	Begin(ctx context.Context) (pgx.Tx, error)
+}

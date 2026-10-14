@@ -180,14 +180,6 @@ func TestWorkerAuthenticationNeverFallsBackToCapabilitySecret(t *testing.T) {
 	}
 }
 
-type policyRepository struct {
-	*fakeRepository
-	enabled bool
-	err     error
-}
-
-func (r policyRepository) AgentEnabled(context.Context) (bool, error) { return r.enabled, r.err }
-
 func agentRequest(method, path, body string) *http.Request {
 	request := httptest.NewRequest(method, path, strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer worker-secret")
@@ -202,20 +194,19 @@ func serveAgent(handler http.Handler, request *http.Request) *httptest.ResponseR
 
 func TestAgentEnabledReflectsOperatorPolicy(t *testing.T) {
 	for name, tc := range map[string]struct {
-		repository ai.DecisionRepository
+		repository *fakeRepository
 		status     int
 	}{
-		"policy unsupported": {&fakeRepository{}, http.StatusServiceUnavailable},
-		"policy read fails":  {policyRepository{&fakeRepository{}, true, errors.New("database down")}, http.StatusServiceUnavailable},
-		"AI stopped":         {policyRepository{&fakeRepository{}, false, nil}, http.StatusServiceUnavailable},
-		"AI enabled":         {policyRepository{&fakeRepository{}, true, nil}, http.StatusNoContent},
+		"policy read fails": {&fakeRepository{policyErr: errors.New("database down")}, http.StatusServiceUnavailable},
+		"AI stopped":        {&fakeRepository{agentDisabled: true}, http.StatusServiceUnavailable},
+		"AI enabled":        {&fakeRepository{}, http.StatusNoContent},
 	} {
 		handler := New(tc.repository, "secret", nil).WithAgentSecret("worker-secret").AgentHandler(tc.repository)
 		if response := serveAgent(handler, agentRequest(http.MethodGet, "/enabled", "")); response.Code != tc.status {
 			t.Fatalf("%s: status=%d want %d", name, response.Code, tc.status)
 		}
 	}
-	repository := policyRepository{&fakeRepository{}, true, nil}
+	repository := &fakeRepository{}
 	handler := New(repository, "secret", nil).WithAgentSecret("worker-secret").AgentHandler(repository)
 	if response := serveAgent(handler, httptest.NewRequest(http.MethodGet, "/enabled", nil)); response.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated policy read=%d", response.Code)

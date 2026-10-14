@@ -4,9 +4,6 @@
 package repo
 
 import (
-	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
-	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
-
 	"context"
 	"errors"
 	"fmt"
@@ -19,7 +16,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
+	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
 )
 
 func database(t *testing.T) *Postgres {
@@ -49,21 +48,24 @@ func database(t *testing.T) *Postgres {
 	db, err := pgxpool.New(ctx, u.String())
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	t.Cleanup(db.Close)
-	return &Postgres{DB: db}
+	return NewPostgres(db)
 }
+
+// writer is the model a test job is admitted with.
+var writer = generation.Admission{ProfileID: "codex-subscription-local", ModelLabel: "Writer", Runtime: "cli"}
 
 var draft = generation.Input{Name: " Northwind ", Doctrine: " Defend the weak. ", Background: " Old roots. "}
 
 func admit(t *testing.T, p *Postgres, actor, key string, c generation.Config) generation.Job {
 	t.Helper()
-	j, _, err := p.Admit(context.Background(), actor, key, draft, c, "Writer")
+	j, _, err := p.Admit(context.Background(), actor, key, draft, c, writer)
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	return j
 }
 func sqlExec(t *testing.T, p *Postgres, query string, args ...any) {
 	t.Helper()
 	{
-		_, err := p.DB.Exec(context.Background(), query, args...)
+		_, err := p.db.Exec(context.Background(), query, args...)
 		testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	}
 }
@@ -77,7 +79,7 @@ func TestAdmissionConcurrencyIdempotencyAndIsolation(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, _, e := p.Admit(ctx, "one", fmt.Sprint(i), draft, c, "Writer")
+			_, _, e := p.Admit(ctx, "one", fmt.Sprint(i), draft, c, writer)
 			results <- e
 		}()
 	}
@@ -100,7 +102,7 @@ func TestAdmissionConcurrencyIdempotencyAndIsolation(t *testing.T) {
 	changed := draft
 	changed.Doctrine = "Attack"
 	{
-		_, _, err = p.Admit(ctx, "two", "same", changed, c, "")
+		_, _, err = p.Admit(ctx, "two", "same", changed, c, writer)
 		testutil.Require(t, errors.Is(err, generation.ErrConflict), func() { t.Fatal(err) })
 	}
 	{
@@ -108,15 +110,15 @@ func TestAdmissionConcurrencyIdempotencyAndIsolation(t *testing.T) {
 		testutil.Require(t, errors.Is(err, generation.ErrNotFound), func() { t.Fatal("cross-account read", err) })
 	}
 	{
-		_, _, err = p.Admit(ctx, "two", "bad", generation.Input{}, c, "")
+		_, _, err = p.Admit(ctx, "two", "bad", generation.Input{}, c, writer)
 		testutil.Require(t, errors.Is(err, generation.ErrInvalid), func() { t.Fatal(err) })
 	}
 	{
-		_, _, err = p.Admit(ctx, "two", "", draft, c, "")
+		_, _, err = p.Admit(ctx, "two", "", draft, c, writer)
 		testutil.Require(t, errors.Is(err, generation.ErrInvalid), func() { t.Fatal(err) })
 	}
 	{
-		_, _, err = p.Admit(ctx, "two", strings.Repeat("k", 201), draft, c, "")
+		_, _, err = p.Admit(ctx, "two", strings.Repeat("k", 201), draft, c, writer)
 		testutil.Require(t, errors.Is(err, generation.ErrInvalid), func() { t.Fatal(err) })
 	}
 }
@@ -135,7 +137,7 @@ func TestLifecycleExpiryAndExecutionAccounting(t *testing.T) {
 	o, err := p.Options(ctx, "one", c)
 	testutil.Require(t, !(err != nil || o.Remaining != 9 || o.ActiveJobID != ""), func() { t.Fatalf("expiry accounting %+v %v", o, err) })
 	{
-		_, _, err = p.Admit(ctx, "one", "cooldown", draft, c, "")
+		_, _, err = p.Admit(ctx, "one", "cooldown", draft, c, writer)
 		testutil.Require(t, errors.Is(err, generation.ErrLimited), func() { t.Fatal("expiry must retain cooldown", err) })
 	}
 	sqlExec(t, p, "UPDATE faction_generation_accounts SET last_admitted_at=now()-interval '31 seconds'")
@@ -177,7 +179,7 @@ func TestSubmissionLimitsDailyResetAndMetadata(t *testing.T) {
 	o, err := p.Options(ctx, "one", c)
 	testutil.Require(t, !(err != nil || o.Remaining != 0 || !o.RetryAt.Equal(o.ResetAt)), func() { t.Fatal(o, err) })
 	{
-		_, _, err = p.Admit(ctx, "one", "exhausted", draft, c, "")
+		_, _, err = p.Admit(ctx, "one", "exhausted", draft, c, writer)
 		testutil.Require(t, errors.Is(err, generation.ErrLimited), func() { t.Fatal(err) })
 	}
 	sqlExec(t, p, "UPDATE faction_background_generations SET created_at=date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'-interval '1 second'")
