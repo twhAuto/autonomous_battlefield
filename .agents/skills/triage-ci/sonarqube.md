@@ -2,11 +2,13 @@
 
 Loaded by the [triage-ci skill](SKILL.md) when inspecting or fixing SonarQube findings.
 
-The SonarQube project key is `autonomous-battlefield`. Use
+Select the project from the failing run before querying findings: merged `main`
+uses `autonomous-battlefield`; PR `NUMBER` uses
+`autonomous-battlefield-pr-NUMBER`. Record the analysis revision and the PR's actual
+target branch; a production result does not verify an unmerged PR. Use
 `https://sonarqube.home.arpa` from this workspace. Jenkins logs may show
 `http://localhost:9000`, which refers to the Jenkins host, not this workspace.
-The dashboard is
-`https://sonarqube.home.arpa/dashboard?id=autonomous-battlefield`.
+Use `/dashboard?id=PROJECT_KEY` for the selected project.
 When asked to inspect or fix SonarQube findings:
 
 1. Confirm the server is healthy with
@@ -15,31 +17,37 @@ When asked to inspect or fix SonarQube findings:
    alone does not mean the server is down. The server uses a private certificate
    authority. Prefer a trusted CA or a temporary truststore scoped to this server;
    do not disable TLS verification globally.
-2. Use `SONAR_TOKEN` if supplied; otherwise read the persistent token from
-   `~/.config/sonarqube/token`. The older temporary location
-   `/tmp/autonomous-battlefield-sonar-token` is a fallback. Never print the token,
+2. Use the supplied `SONAR_TOKEN` or Jenkins `SONAR_AUTH_TOKEN`; otherwise read
+   the persistent token from `~/.config/sonarqube/token`. The PR runner accepts
+   either environment variable. Never print the token,
    place it in the repository, add it to command-line arguments, or copy it into
    an application secret file. Keep shell tracing disabled while handling it.
 3. Query unresolved findings through
-   `/api/issues/search?componentKeys=autonomous-battlefield&resolved=false&ps=500`.
+   `/api/issues/search?componentKeys=PROJECT_KEY&resolved=false&ps=500`.
    Authenticate using the token through an in-process HTTP client or a protected
    curl configuration, without exposing it in process arguments. Paginate if
    necessary. Triage every returned issue by rule, file, line, severity, and type
    before editing. Also query
-   `/api/qualitygates/project_status?projectKey=autonomous-battlefield` to identify
+   `/api/qualitygates/project_status?projectKey=PROJECT_KEY` to identify
    the failed conditions; a gate failure does not necessarily mean low coverage.
 4. Fix the underlying behavior or structure. Do not suppress rules, add broad
    exclusions, weaken the quality profile, or mark issues resolved manually
    unless the user explicitly requests and justifies that tradeoff.
-5. Run the repository checks required by the changed files, including the
-   coverage commands above. Generate both coverage reports before a full scan.
+5. Run the repository checks required by the changed files. Before a full scan,
+   generate both reports with
+   `./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh` and
+   `(cd frontend && npm test -- --coverage)`. A missing report is not passing
+   coverage evidence.
 6. Run SonarScanner from the repository root with `SONAR_TOKEN` in the
    environment, `-Dsonar.host.url=https://sonarqube.home.arpa`, and
    `-Dsonar.qualitygate.wait=true`. Never upload unmerged code to the production
    `autonomous-battlefield` project. For an open PR, set `SONAR_SCANNER_HOME` and
    `SONAR_HOST_URL` and use
-   `scripts/ci/run-sonarqube-pr-gate.sh PR_NUMBER origin/dev`; it deletes, seeds,
-   and scans that PR's isolated preview project. Its reset call uses `curl`, so
+   `scripts/ci/run-sonarqube-pr-gate.sh PR_NUMBER origin/TARGET_BRANCH` after
+   fetching the PR's actual target branch (`dev` by default, or its selected stack
+   base). It deletes, seeds, and scans only that PR's isolated preview project.
+   Coordinate with an active Jenkins scan of the same PR before resetting its
+   preview; a reset discards that project's prior analysis. Its reset call uses `curl`, so
    point `CURL_CA_BUNDLE` at the server's CA certificate. If the scanner is absent from
    `PATH`, check `~/jenkins-agent/tools/hudson.plugins.sonar.SonarRunnerInstallation/SonarScanner/bin/sonar-scanner`.
    For a private CA, configure `sonar.scanner.truststorePath` and
