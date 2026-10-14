@@ -5,13 +5,14 @@ package catalog
 import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
 
+	"os"
+	"path/filepath"
+	"testing"
+
 	service "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"go.yaml.in/yaml/v3"
-	"os"
-	"path/filepath"
-	"testing"
 )
 
 func TestAdditionalUnitFromYAML(t *testing.T) {
@@ -49,11 +50,13 @@ func TestAdditionalUnitFromYAML(t *testing.T) {
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	bp := game.Blueprint{Units: []game.UnitSelection{{Type: unit.ID, Count: 1}}, RecruitmentPriority: []string{unit.ID}}
 	identities := [2]service.FactionIdentity{{ID: "a", Name: "A", RulesetID: rules.ID, Blueprint: bp}, {ID: "b", Name: "B", RulesetID: rules.ID, Blueprint: bp}}
-	scenario, digest, err := catalog.Resolve("castle-siege-v1", identities)
+	scenario, err := catalog.Resolve("castle-siege-v1", identities)
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	digest := digestOf(t, scenario)
 	old := game.CloneScenario(scenario)
 	catalog.rulesets[rules.ID].Knowledge.Cards[0].Role = "edited"
-	_, next, err := catalog.Resolve("castle-siege-v1", identities)
+	nextScenario, err := catalog.Resolve("castle-siege-v1", identities)
+	next := digestOf(t, nextScenario)
 	testutil.Require(t, !(err != nil || next == digest || old.Ruleset.Knowledge.Cards[0].Role != scenario.Ruleset.Knowledge.Cards[0].Role), func() { t.Fatal("snapshot/hash isolation") })
 	match, err := game.NewMatch("new-unit", scenario, 20)
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })

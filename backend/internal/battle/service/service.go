@@ -142,10 +142,6 @@ type DecisionHistoryService interface {
 	ListDecisionHistory(context.Context, string, int) ([]DecisionHistory, error)
 }
 
-type decisionHistoryRepository interface {
-	ListBattleDecisions(context.Context, string, int) ([]ai.DecisionRecord, error)
-}
-
 type PerspectiveService interface {
 	GetFactionView(context.Context, string, string) (game.View, error)
 }
@@ -184,11 +180,7 @@ func (s *battleService) ListDecisionHistory(ctx context.Context, battleID string
 	if !battleUUIDPattern.MatchString(battleID) || attempt < 1 {
 		return nil, ErrInvalidBattle
 	}
-	repository, ok := s.battles.(decisionHistoryRepository)
-	if !ok {
-		return []DecisionHistory{}, nil
-	}
-	records, err := repository.ListBattleDecisions(ctx, battleID, attempt)
+	records, err := s.battles.ListBattleDecisions(ctx, battleID, attempt)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +205,7 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		return nil, err
 	}
 
-	resolved, digest, err := s.catalog.Resolve(input.ScenarioID, identities)
+	resolved, err := s.catalog.Resolve(input.ScenarioID, identities)
 	if err != nil {
 		return nil, err
 	}
@@ -223,12 +215,10 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 	for index := range resolved.Factions {
 		resolved.Factions[index].Controller = controllers[index]
 	}
-	payload, err := json.Marshal(resolved)
+	digest, err := ScenarioDigest(resolved)
 	if err != nil {
-		return nil, fmt.Errorf("marshal resolved scenario: %w", err)
+		return nil, err
 	}
-	hash := sha256.Sum256(payload)
-	digest = hex.EncodeToString(hash[:])
 	match, err := game.NewMatch(input.ID, resolved, input.TickCount)
 	if err != nil {
 		return nil, fmt.Errorf("build initial battle state: %w", err)
@@ -262,6 +252,17 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		RequestedTicks: input.TickCount,
 		Status:         "queued",
 	}, nil
+}
+
+// ScenarioDigest fingerprints a battle's frozen scenario, including its controllers. A
+// create retry is a replay only when the digest matches the stored battle.
+func ScenarioDigest(scenario game.Scenario) (string, error) {
+	payload, err := json.Marshal(scenario)
+	if err != nil {
+		return "", fmt.Errorf("marshal resolved scenario: %w", err)
+	}
+	hash := sha256.Sum256(payload)
+	return hex.EncodeToString(hash[:]), nil
 }
 
 // replayCreate returns the stored battle when a create retry repeats the same

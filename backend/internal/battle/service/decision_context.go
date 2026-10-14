@@ -16,10 +16,6 @@ type DecisionContextService interface {
 	GetDecisionContext(context.Context, string, string, int) (SavedDecisionContext, error)
 }
 
-type decisionContextRepository interface {
-	GetDecision(context.Context, string) (ai.DecisionRecord, error)
-}
-
 type SavedDecisionContext struct {
 	InitialContext       any                       `json:"initialContext,omitempty"`
 	AvailableUnitDetails *ai.UnitReferenceSnapshot `json:"availableUnitDetails,omitempty"`
@@ -50,11 +46,7 @@ func (s *battleService) GetDecisionContext(ctx context.Context, battleID, reques
 	if !battleUUIDPattern.MatchString(battleID) || !battleUUIDPattern.MatchString(requestID) || attempt < 1 {
 		return SavedDecisionContext{}, ErrInvalidBattle
 	}
-	repository, ok := s.battles.(decisionContextRepository)
-	if !ok {
-		return SavedDecisionContext{}, ai.ErrDecisionNotFound
-	}
-	record, err := repository.GetDecision(ctx, requestID)
+	record, err := s.battles.GetDecision(ctx, requestID)
 	if err != nil {
 		return SavedDecisionContext{}, err
 	}

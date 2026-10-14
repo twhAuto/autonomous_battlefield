@@ -36,7 +36,7 @@ func TestCreateBattleResolvesFactionsAndPersistsSnapshot(t *testing.T) {
 		"4db8d152-1e04-4d10-8824-859c6ed72878": {ID: "4db8d152-1e04-4d10-8824-859c6ed72878", Name: "Northwind"},
 		"41ac3a2f-3371-4de1-b0f6-70600fcd9052": {ID: "41ac3a2f-3371-4de1-b0f6-70600fcd9052", Name: "Verdant"},
 	}}
-	catalog := &fakeScenarioCatalog{resolved: game.Scenario{ID: "castle-siege-v1"}, digest: "digest"}
+	catalog := &fakeScenarioCatalog{resolved: game.Scenario{ID: "castle-siege-v1"}}
 	service := NewService(battleRepo, factions, catalog, 10_000, Options{})
 
 	run, err := service.CreateBattle(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), CreateBattleInput{
@@ -64,7 +64,7 @@ func TestCreateBattleExemptsOnlyAdminFromAllowances(t *testing.T) {
 			"4db8d152-1e04-4d10-8824-859c6ed72878": {ID: "4db8d152-1e04-4d10-8824-859c6ed72878", Name: "Northwind"},
 			"41ac3a2f-3371-4de1-b0f6-70600fcd9052": {ID: "41ac3a2f-3371-4de1-b0f6-70600fcd9052", Name: "Verdant"},
 		}}
-		catalog := &fakeScenarioCatalog{resolved: game.Scenario{ID: "castle-siege-v1"}, digest: "digest"}
+		catalog := &fakeScenarioCatalog{resolved: game.Scenario{ID: "castle-siege-v1"}}
 		service := NewService(battleRepo, factions, catalog, 10_000, Options{})
 		ctx := authn.WithActor(context.Background(), authn.Actor{ID: "actor", Role: tc.role})
 		if _, err := service.CreateBattle(ctx, CreateBattleInput{
@@ -424,18 +424,17 @@ func TestListBattleEventsValidatesAndPropagatesErrors(t *testing.T) {
 
 type fakeScenarioCatalog struct {
 	resolved   game.Scenario
-	digest     string
 	err        error
 	identities [2]FactionIdentity
 	summaries  []ScenarioSummary
 }
 
-func (c *fakeScenarioCatalog) Resolve(_ string, identities [2]FactionIdentity) (game.Scenario, string, error) {
+func (c *fakeScenarioCatalog) Resolve(_ string, identities [2]FactionIdentity) (game.Scenario, error) {
 	c.identities = identities
 	if c.err == nil && c.resolved.ID != "" && c.resolved.Map.Width == 0 {
 		c.resolved = serviceTestScenario(identities)
 	}
-	return c.resolved, c.digest, c.err
+	return c.resolved, c.err
 }
 
 func (c *fakeScenarioCatalog) Summaries() []ScenarioSummary { return c.summaries }
@@ -497,6 +496,15 @@ func (r *fakeBattleRepo) SetBattlePaused(_ context.Context, id string, paused bo
 	r.pausedValue = paused
 	return r.pauseErr
 }
+
+// The base fake stores no decisions; tests that need them embed it and override these.
+func (r *fakeBattleRepo) ListBattleDecisions(context.Context, string, int) ([]ai.DecisionRecord, error) {
+	return nil, nil
+}
+func (r *fakeBattleRepo) GetDecision(context.Context, string) (ai.DecisionRecord, error) {
+	return ai.DecisionRecord{}, ai.ErrDecisionNotFound
+}
+
 func (r *fakeBattleRepo) ListBattleEvents(_ context.Context, _ string, attempt int, _ uint64, _ int, latest bool) ([]StoredBattleEvent, error) {
 	r.listAttempt = attempt
 	r.listLatest = latest

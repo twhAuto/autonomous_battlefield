@@ -33,6 +33,6 @@ type ScenarioSummary struct {
 
 // ScenarioCatalog describes the immutable scenario data required by the service.
 type ScenarioCatalog interface {
-	Resolve(string, [2]FactionIdentity) (game.Scenario, string, error)
+	Resolve(string, [2]FactionIdentity) (game.Scenario, error)
 	Summaries() []ScenarioSummary
 }

@@ -82,8 +82,9 @@ func TestScenarioContentRestrictionsReachEngineAndAI(t *testing.T) {
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	bp := game.Blueprint{Units: []game.UnitSelection{{Type: "ranger", Count: 1}}, RecruitmentPriority: []string{"ranger"}}
 	ids := [2]service.FactionIdentity{{ID: "a", Name: "A", RulesetID: tmpl.RulesetID, Blueprint: bp}, {ID: "b", Name: "B", RulesetID: tmpl.RulesetID, Blueprint: bp}}
-	scenario, hash, err := c.Resolve("restricted", ids)
+	scenario, err := c.Resolve("restricted", ids)
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	hash := digestOf(t, scenario)
 	testutil.Require(t, !(len(scenario.Ruleset.Units) != 1 || len(scenario.Ruleset.Upgrades) != 0 || scenario.Ruleset.Buildings.MaximumEconomyCount != 0 || scenario.Ruleset.ContentSource.Digest == ""), func() { t.Fatal("restrictions not resolved") })
 	m, err := game.NewMatch("restricted", scenario, 20)
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
@@ -116,13 +117,13 @@ func TestScenarioContentRestrictionsReachEngineAndAI(t *testing.T) {
 	bad := ids
 	bad[0].Blueprint = game.Blueprint{Units: []game.UnitSelection{{Type: "striker", Count: 1}}, RecruitmentPriority: []string{"striker"}}
 	{
-		_, _, err = c.Resolve("restricted", bad)
+		_, err = c.Resolve("restricted", bad)
 		testutil.Require(t, err == nil, func() { t.Fatalf("incompatible unit blueprint: %v", err) })
 	}
 	bad = ids
 	bad[0].Blueprint.UpgradeIDs = []string{"arsenal"}
 	{
-		_, _, err = c.Resolve("restricted", bad)
+		_, err = c.Resolve("restricted", bad)
 		testutil.Require(t, err == nil, func() { t.Fatalf("incompatible upgrade blueprint: %v", err) })
 	}
 	// Editing library source changes new snapshots, never existing ones.
@@ -134,8 +135,9 @@ func TestScenarioContentRestrictionsReachEngineAndAI(t *testing.T) {
 	_ = os.WriteFile(path, data, 0600)
 	next, err := LoadCatalog(filepath.Join(dir, "scenarios"), "")
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
-	changed, nextHash, err := next.Resolve("restricted", ids)
+	changed, err := next.Resolve("restricted", ids)
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	nextHash := digestOf(t, changed)
 	testutil.Require(t, !(nextHash == hash || changed.Ruleset.Units[0].Cost == scenario.Ruleset.Units[0].Cost || m.Scenario().Ruleset.Units[0].Cost != scenario.Ruleset.Units[0].Cost), func() { t.Fatal("snapshot immutability") })
 	for _, s := range c.Summaries() {
 		testutil.Require(t, !(s.ID == "restricted" && (!reflect.DeepEqual(s.AllowedUnits, []string{"ranger"}) || len(s.AllowedUpgrades) != 0 || !reflect.DeepEqual(s.AllowedBuildings, []string{"castle"}))), func() { t.Fatal("summary differs from restrictions") })
