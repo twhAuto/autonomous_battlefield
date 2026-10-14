@@ -181,3 +181,97 @@ func digestOf(t *testing.T, scenario game.Scenario) string {
 	}
 	return digest
 }
+
+func TestCatalogRejectsBrokenContentAtStartup(t *testing.T) {
+	for _, test := range []struct {
+		name, want string
+		change     func(t *testing.T, dir string)
+	}{
+		{"malformed ruleset", "decode catalog file", func(t *testing.T, dir string) {
+			writeCatalogFile(t, dir, "rulesets/broken.yaml", "id: [")
+		}},
+		{"missing library version", "content/core-v9.yaml", func(t *testing.T, dir string) {
+			editedRuleset(t, dir, "other.yaml", `id: other`, `  version: "1"`, `  version: "9"`)
+		}},
+		{"invalid ruleset values", "ruleset \"rulesets/other.yaml\"", func(t *testing.T, dir string) {
+			editedRuleset(t, dir, "other.yaml", `id: other`, `startingGold: 180`, `startingGold: -1`)
+		}},
+		{"duplicate ruleset", `duplicate ruleset ID "castle-siege-v1"`, func(t *testing.T, dir string) {
+			copyCatalogFile(t, dir, "rulesets/castle-siege-v1.yaml", "rulesets/copy.yaml")
+		}},
+		{"no rulesets", "rulesets contains no YAML rulesets", func(t *testing.T, dir string) {
+			replaceWithNotes(t, dir, "rulesets")
+		}},
+		{"duplicate scenario", `duplicate scenario ID "castle-siege-v1"`, func(t *testing.T, dir string) {
+			copyCatalogFile(t, dir, "scenarios/castle-siege-v1.yaml", "scenarios/copy.yaml")
+		}},
+		{"no scenarios", "scenarios contains no YAML scenarios", func(t *testing.T, dir string) {
+			replaceWithNotes(t, dir, "scenarios")
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := copyGameData(t)
+			test.change(t, dir)
+			if _, err := LoadCatalog(os.DirFS(dir)); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want it to mention %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestCatalogSkipsFoldersAndNonYAMLFiles(t *testing.T) {
+	dir := copyGameData(t)
+	for _, folder := range []string{"rulesets", "scenarios"} {
+		writeCatalogFile(t, dir, folder+"/notes.txt", "not YAML")
+		if err := os.Mkdir(filepath.Join(dir, folder, "drafts.yaml"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	catalog, err := LoadCatalog(os.DirFS(dir))
+	if err != nil || len(catalog.IDs()) != 3 || len(catalog.Rulesets()) != 2 {
+		t.Fatalf("catalog = %v, %v", catalog, err)
+	}
+}
+
+func writeCatalogFile(t *testing.T, dir, name, contents string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func copyCatalogFile(t *testing.T, dir, from, to string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, from))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeCatalogFile(t, dir, to, string(data))
+}
+
+// editedRuleset adds castle-siege-v1 as a new ruleset file under a new ID, with one
+// line replaced.
+func editedRuleset(t *testing.T, dir, name, id, old, replacement string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, "rulesets", "castle-siege-v1.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Replace(string(data), "id: castle-siege-v1", id, 1)
+	if !strings.Contains(text, old) {
+		t.Fatalf("ruleset has no %q", old)
+	}
+	writeCatalogFile(t, dir, "rulesets/"+name, strings.Replace(text, old, replacement, 1))
+}
+
+// replaceWithNotes empties a catalog folder except for a non-YAML file.
+func replaceWithNotes(t *testing.T, dir, folder string) {
+	t.Helper()
+	if err := os.RemoveAll(filepath.Join(dir, folder)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, folder), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeCatalogFile(t, dir, folder+"/README.md", "notes")
+}
