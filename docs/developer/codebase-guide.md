@@ -61,10 +61,12 @@ autonomous_battlefield/
 │   │   ├── apierror/           # Stable JSON error envelope and codes for /v1
 │   │   ├── requestid/          # Request correlation ID carried in the context
 │   │   └── ...                 # app, authn, config, httpapi, postgres, logging, telemetry
-│   ├── test/                   # Module-wide checks with no runtime code:
+│   ├── test/                   # Cross-package tests and fixtures; no runtime code
 │   │   ├── apicontract/        # openapi.yaml stays in step with served routes
-│   │   └── boundaries/         # Forbidden dependencies and the generated component map
-│   ├── migrations/             # Embedded SQL migrations
+│   │   ├── boundaries/         # Forbidden dependencies and the generated component map
+│   │   ├── integration/        # End-to-end API and engine run against PostgreSQL
+│   │   └── performance/        # k6 scenarios and query-plan SQL fixtures
+│   ├── migrations/             # Embedded SQL migrations and their PostgreSQL tests
 │   ├── content/                # Shared versioned unit and building libraries
 │   ├── rulesets/               # Versioned game rules
 │   ├── scenarios/              # Authored battle templates
@@ -95,7 +97,6 @@ autonomous_battlefield/
 │   ├── ops/                    # Operational reports and failure drills
 │   ├── review/                 # Codex/Claude cross-review runner
 │   └── lib/                    # Shared script functions
-├── tests/performance/          # k6 scenarios and query-plan SQL fixtures
 └── docs/{game,developer,architecture,operations}/
 ```
 

@@ -1,6 +1,6 @@
 // Exercises the reversible removal of the duplicate battle-events index.
 
-package repo
+package migrations_test
 
 import (
 	"context"
@@ -14,8 +14,8 @@ import (
 )
 
 func TestDuplicateEventIndexMigrationUpAndDown(t *testing.T) {
-	ctx, pool := integrationDatabase(t)
-	config := pool.Config().ConnConfig.Copy()
+	ctx := context.Background()
+	config := testDatabaseConfig(t)
 	admin := stdlib.OpenDB(*config)
 	defer admin.Close()
 	schema := "event_index_" + strings.ReplaceAll(randomUUID(t), "-", "")

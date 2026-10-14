@@ -426,6 +426,10 @@ migration history, roles, triggers and migration conventions.
 
 Schema changes should be made with a new migration, then reflected in repository scan/serialization logic and tests. Do not edit an already-applied migration to evolve a shared database.
 
+Tests for an individual migration's upgrade, downgrade or backfill live beside the SQL in
+`backend/migrations` (`*_integration_test.go`, package `migrations_test`). Each migrates a
+private schema to the version before the change and checks the data it leaves behind.
+
 `internal/postgres.NewMigrationProvider` configures embedded Goose migrations with
 the same database-wide advisory session lock for application startup and tests
 that run `Up`, `UpTo`, or `Down`. Separate test schemas still share the cluster-wide AI gateway role
@@ -670,7 +674,7 @@ stays an index condition in both plan types. The earlier
 `$2 IS NULL OR (created_at, id) < ($2, $3)` form became a filter in generic plans,
 so a deep page walked every newer row. `TestBattleHistoryCursorStaysIndexConditionInGenericPlans`
 guards this. Keep `listBattlesSQL` and the copy in
-`tests/performance/query-plans/explain.sql` in sync.
+`backend/test/performance/query-plans/explain.sql` in sync.
 
 Re-measure with the disposable database (10k battles over ~90 days, 120k events):
 
@@ -709,7 +713,7 @@ for the runtime contract.
 
 ## End-to-end API integration test
 
-`backend/internal/app/api_integration_test.go` runs the assembled API, including
+`backend/test/integration/api_test.go` runs the assembled API, including
 the lifecycle handler, behind a real HTTP server. It uses a PostgreSQL schema of
 its own through `TEST_DATABASE_URL`, and skips when that variable is unset. It
 uses the production Cloudflare Access verifier. A local test issuer publishes a

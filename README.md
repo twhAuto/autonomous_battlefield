@@ -48,7 +48,7 @@ cluster registration, optional model controllers and standalone development serv
 | [`frontend/`](frontend/) | React application, component tests and browser tests |
 | [`infra/`](infra/README.md) | Deployment manifests and policies, local services, platform provisioning and auxiliary pipelines |
 | [`scripts/`](scripts/) | Development, CI, deployment, verification and operations commands |
-| [`tests/performance/`](tests/performance/) | Load scenarios and query-plan SQL fixtures; launchers are in `scripts/perf/` |
+| [`backend/test/performance/`](backend/test/performance/) | Load scenarios and query-plan SQL fixtures; launchers are in `scripts/perf/` |
 | [`docs/`](docs/README.md) | Game rules, developer guides, architecture and operations runbooks |
 
 Go and React unit tests live beside the code they exercise. The root `Jenkinsfile`

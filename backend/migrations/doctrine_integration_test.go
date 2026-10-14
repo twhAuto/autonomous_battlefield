@@ -1,33 +1,25 @@
 // Checks the doctrine migration backfills faction profiles without rewriting historical
 // battle snapshots.
 
-package repo
+package migrations_test
 
 import (
 	"context"
-	"github.com/jackc/pgx/v5"
+	"strings"
+	"testing"
+
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
-	"os"
-	"strings"
-	"testing"
 )
 
 func TestDoctrineMigrationBackfillsWithoutRewritingHistory(t *testing.T) {
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("TEST_DATABASE_URL is not set")
-	}
-	config, err := pgx.ParseConfig(url)
-	if err != nil {
-		t.Fatal("invalid test database configuration")
-	}
+	config := testDatabaseConfig(t)
 	admin := stdlib.OpenDB(*config)
 	defer admin.Close()
 	ctx := context.Background()
 	schema := "doctrine_" + strings.ReplaceAll(randomUUID(t), "-", "")
-	if _, err = admin.ExecContext(ctx, `CREATE SCHEMA `+schema); err != nil {
+	if _, err := admin.ExecContext(ctx, `CREATE SCHEMA `+schema); err != nil {
 		t.Fatal(err)
 	}
 	defer admin.ExecContext(ctx, `DROP SCHEMA `+schema+` CASCADE`)

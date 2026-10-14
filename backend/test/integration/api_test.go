@@ -2,7 +2,7 @@
 // Access) authentication, faction and battle creation, an in-process engine run with
 // polling and views, authorization failures, retries, and malformed input.
 
-package app
+package integration
 
 import (
 	"bytes"
@@ -28,6 +28,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
+	"github.com/twh09/autonomous_battlefield/backend/internal/app"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/catalog"
 	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
@@ -113,7 +114,7 @@ func startIntegrationAPI(t *testing.T, db *pgxpool.Pool, issuer *accessIssuer) *
 	if err != nil {
 		t.Fatalf("LoadCatalog() returned an error: %v", err)
 	}
-	application := New(db, scenarios, 10_000, Options{Auth: authn.Config{
+	application := app.New(db, scenarios, 10_000, app.Options{Auth: authn.Config{
 		Mode: authn.ModeCloudflare, Issuer: issuer.server.URL, Audience: integrationAudience,
 		Origin: integrationOrigin, CIClientID: integrationCIClient, Roles: integrationRoles,
 	}})

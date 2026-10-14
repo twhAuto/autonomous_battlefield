@@ -395,7 +395,7 @@ understood.
 
 #### Change-to-deployment mapping
 
-Changes under `scripts/test/` and `tests/`, Go `*_test.go` files, React/TypeScript `*.test.ts` and `*.test.tsx` files under `frontend/src`, and frontend test setup do not select application deployment components. These changes still run the normal CI quality gates. Renames inspect both old and new paths, so moving production code into a test path still selects the production component. Unknown paths retain the conservative full-deployment fallback.
+Changes under `scripts/test/` and `backend/test/`, Go `*_test.go` files, React/TypeScript `*.test.ts` and `*.test.tsx` files under `frontend/src`, and frontend test setup do not select application deployment components. These changes still run the normal CI quality gates. Renames inspect both old and new paths, so moving production code into a test path still selects the production component. Unknown paths retain the conservative full-deployment fallback.
 
 The path classifier evaluates the following rules from top to bottom for each
 path, so an earlier documentation rule takes precedence over a broader source
@@ -408,7 +408,7 @@ folder rule. Multiple changed paths contribute the union of their components;
 | `infra/jenkins/Jenkinsfile.assurance` | `all` | Backend and frontend images |
 | `infra/ansible/**`, other `infra/jenkins/**`, `infra/libvirt/**`, `infra/k3s/**`, `scripts/infra/**`, `scripts/ci/run-platform.sh`, `scripts/ci/run-vm.sh`, or `scripts/ci/run-k3s.sh` (explicit platform provisioning) | `none` | None |
 | `infra/local/**`, `infra/sonarqube/**` or `sonar-project.properties` | `none` | None |
-| `scripts/test/**` and `tests/**` | `none` | None |
+| `scripts/test/**` and `backend/test/**` | `none` | None |
 | Go `backend/**/*_test.go`, frontend `src/**/*.test.ts`, `src/**/*.test.tsx`, or `src/test/**` | `none` | None |
 | `scripts/ci/lint-go.sh` or `scripts/ci/coverage-check-summary.sh` | `none` | None |
 | `backend/**` | `migration,backend,application` | Backend image |
