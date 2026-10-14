@@ -60,11 +60,15 @@ func TestDoctrinePersistenceAndTickZeroAgainstPostgres(t *testing.T) {
 	params := ai.CreateDecisionParams{ID: randomUUID(t), BattleID: battleID, Attempt: job.Lease.Attempt, FactionID: id, TargetTick: 0, ControllerType: ai.ControllerScripted, Observation: ai.DecisionContext{Opening: true, Doctrine: "Scout"}, ObservationHash: "opening", PromptVersion: prompts.Version, ToolSchemaVersion: ai.ToolSchema}
 	record, err := repo.CreateOrReuseDecision(ctx, params)
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	pending, err := repo.CountPendingWindowDecisions(ctx, battleID, job.Lease.Attempt, 0)
+	testutil.Require(t, err == nil && pending == 1, func() { t.Fatalf("pending before submission: %d %v", pending, err) })
 	submission := ai.PlanSubmission{RequestID: record.ID, ExpectedVersion: record.Version, TargetTick: 0, IdempotencyKey: "opening", Plan: plan}
 	for range 2 {
 		result, err := repo.SubmitDecisionPlan(ctx, submission)
 		testutil.Require(t, !(err != nil || !result.Accepted), func() { t.Fatalf("submit %+v %v", result, err) })
 	}
+	pending, err = repo.CountPendingWindowDecisions(ctx, battleID, job.Lease.Attempt, 0)
+	testutil.Require(t, err == nil && pending == 0, func() { t.Fatalf("pending after acceptance: %d %v", pending, err) })
 	transition := game.Transition{Tick: 0, State: game.State{BattleID: battleID, OpeningComplete: true}, Events: []game.Event{{Sequence: 1, Tick: 0, Type: "opening_completed", Data: map[string]any{}}}}
 	for range 2 {
 		{

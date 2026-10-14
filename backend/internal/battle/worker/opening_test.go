@@ -8,11 +8,12 @@ import (
 
 	"context"
 	"encoding/json"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 func TestOpeningIsRecordedAndPersistedBeforeCombat(t *testing.T) {
@@ -31,7 +32,7 @@ func TestDoctrineBattleCompletesWithAcceptedModelStub(t *testing.T) {
 		job.Scenario.Factions[i].Doctrine = "Buy protection"
 	}
 	repo := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}, acceptModels: true}
-	worker, _ := New(repo, testWorkerConfig())
+	worker, _ := New(repo, repo, testWorkerConfig())
 	{
 		err := worker.process(context.Background(), job)
 		testutil.Require(t, err == nil, func() { t.Fatal(err) })
@@ -60,7 +61,7 @@ func checkOpeningPersistence(t *testing.T, model bool) {
 	repo := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}}
 	config := testWorkerConfig()
 	config.DecisionTimeout = time.Millisecond
-	worker, _ := New(repo, config)
+	worker, _ := New(repo, repo, config)
 	simulation, err := game.NewMatch(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	_, finished, err := worker.runTick(context.Background(), job.Lease, simulation)

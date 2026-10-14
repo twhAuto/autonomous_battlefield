@@ -79,6 +79,18 @@ func (r *Postgres) GetDecision(ctx context.Context, id string) (ai.DecisionRecor
 	return record, err
 }
 
+// CountPendingWindowDecisions counts a decision window's unresolved rows without reading
+// their frozen observations. The engine polls it while models work, then reads the full
+// window once. battle_decisions_window_idx serves the filter.
+func (r *Postgres) CountPendingWindowDecisions(ctx context.Context, battleID string, attempt int, targetTick uint64) (int, error) {
+	var count int
+	err := r.db.QueryRow(ctx, `SELECT count(*) FROM battle_decisions WHERE battle_id=$1 AND attempt=$2 AND target_tick=$3 AND status IN ('pending','running')`, battleID, attempt, targetTick).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count pending decisions: %w", err)
+	}
+	return count, nil
+}
+
 func (r *Postgres) ListWindowDecisions(ctx context.Context, battleID string, attempt int, targetTick uint64) ([]ai.DecisionRecord, error) {
 	rows, err := r.db.Query(ctx, `SELECT `+decisionColumns+` FROM battle_decisions WHERE battle_id=$1 AND attempt=$2 AND target_tick=$3 ORDER BY faction_id`, battleID, attempt, targetTick)
 	if err != nil {

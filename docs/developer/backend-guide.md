@@ -135,9 +135,9 @@ Keep domain validation in the service. The handler should concentrate on transpo
 
 | File | Responsibility |
 | --- | --- |
-| [`repository.go`](../../backend/internal/battle/worker/repository.go) | The worker's repository contract. The job and lease types it uses (`queue.Job`, `queue.Lease`, `queue.ErrLeaseLost`) live in [`battle/queue`](../../backend/internal/battle/queue/queue.go), which `battle/repo` also imports, so the persistence adapter doesn't depend on the engine package |
+| [`repository.go`](../../backend/internal/battle/worker/repository.go) | The worker's repository contract, including `BattlePaused`, and the engine's `DecisionRepository` (the shared decision contract plus the pending count). `worker.New(repository, decisions, config)` takes decisions explicitly; nil means scripted plans only. The job and lease types it uses (`queue.Job`, `queue.Lease`, `queue.ErrLeaseLost`) live in [`battle/queue`](../../backend/internal/battle/queue/queue.go), which `battle/repo` also imports, so the persistence adapter doesn't depend on the engine package |
 | [`worker.go`](../../backend/internal/battle/worker/worker.go) | Construction, claims, battle/tick execution, persistence, and completion |
-| [`decisions.go`](../../backend/internal/battle/worker/decisions.go) | Decision-window preparation, waiting, validation, fallback, and logging |
+| [`decisions.go`](../../backend/internal/battle/worker/decisions.go) | Decision-window preparation, waiting, validation, fallback, and logging. While models work, it polls `CountPendingWindowDecisions` (a `count(*)` that never reads frozen observations) and reads the full window once when it closes |
 | [`lifecycle.go`](../../backend/internal/battle/worker/lifecycle.go) | Worker readiness, pause/heartbeat waits, cancellation, and requeue |
 
 The worker's main call path is:

@@ -30,7 +30,7 @@ func TestKnowledgePersistedBeforeDecisionHash(t *testing.T) {
 	repo := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}}
 	cfg := testWorkerConfig()
 	cfg.KnowledgeRetrieval = ai.KnowledgeLimits{MaxUnitCards: 32, MaxBytes: 32768}
-	w, err := New(repo, cfg)
+	w, err := New(repo, repo, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

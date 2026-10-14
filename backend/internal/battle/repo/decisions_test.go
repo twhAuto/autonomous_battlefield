@@ -174,3 +174,19 @@ func TestFactionMemoryQueryScopesAndLimitsBeforeRead(t *testing.T) {
 		t.Fatal("scan failure lost")
 	}
 }
+
+func TestCountPendingWindowDecisions(t *testing.T) {
+	db := &battleDB{row: battleRow(func(destinations ...any) error { *(destinations[0].(*int)) = 2; return nil })}
+	count, err := NewPostgres(db).CountPendingWindowDecisions(context.Background(), "battle", 1, 10)
+	if err != nil || count != 2 {
+		t.Fatalf("count=%d err=%v", count, err)
+	}
+	// The poll must stay cheap: count unresolved rows only, never the frozen observations.
+	if !strings.Contains(db.queryRowSQL, "count(*)") || !strings.Contains(db.queryRowSQL, "status IN ('pending','running')") || strings.Contains(db.queryRowSQL, "observation") {
+		t.Fatalf("query=%s", db.queryRowSQL)
+	}
+	want := errors.New("database")
+	if _, err := NewPostgres(&battleDB{row: battleRow(func(...any) error { return want })}).CountPendingWindowDecisions(context.Background(), "battle", 1, 10); !errors.Is(err, want) {
+		t.Fatal(err)
+	}
+}
