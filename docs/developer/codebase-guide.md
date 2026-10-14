@@ -46,6 +46,9 @@ AI-assistance section required by the
 PRs, CI, releases, docs, and backlog work. Claude Code discovers the same
 skills through `.claude/skills/` symlinks. Jenkins verifies both `dev` and `main`
 PR targets on the existing shared `battlefield-production` agent.
+For a user-selected PR stack, review and Sonar preview instructions use each
+PR's actual target branch. CI evidence identifies both the tested head and target
+commit; a passing run for an older pair does not verify the current tree.
 
 Use the focused guides for implementation details:
 
