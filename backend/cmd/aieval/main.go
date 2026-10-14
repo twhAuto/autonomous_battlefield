@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/gamedata"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	aieval "github.com/twh09/autonomous_battlefield/backend/internal/ai/eval"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
@@ -47,7 +48,11 @@ func run(args []string) error {
 
 	if *mode == "metadata" {
 		_, digest, _ := strings.Cut(prompts.Version, ".")
-		fmt.Printf("%s\t%s\t%s\n", prompts.Version, digest, ai.ToolSchema)
+		content, err := gamedata.Digest()
+		if err != nil {
+			return fmt.Errorf("digest game content: %w", err)
+		}
+		fmt.Printf("%s\t%s\t%s\t%s\n", prompts.Version, digest, ai.ToolSchema, content)
 		return nil
 	}
 

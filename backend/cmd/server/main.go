@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/twh09/autonomous_battlefield/backend/gamedata"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/app"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
@@ -148,11 +149,11 @@ func startServer(configuration config.APIConfig) error {
 	defer db.Close()
 	slog.Info("database_connected")
 
-	catalog, err := catalog.LoadCatalog(configuration.API.ScenarioCatalogPath, configuration.API.RulesetCatalogPath)
+	catalog, err := catalog.LoadCatalog(gamedata.Files)
 	if err != nil {
 		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, fmt.Errorf("load scenario catalog: %w", err))
 	}
-	slog.Info("scenario_catalog_loaded", "path", configuration.API.ScenarioCatalogPath, "scenario_count", len(catalog.IDs()))
+	slog.Info("scenario_catalog_loaded", "scenario_count", len(catalog.IDs()))
 	profiles := profile.NewCatalog(configuration.Models.Environment, configuration.Models.Profiles)
 	cache, err := resultcache.New(configuration.ResultCache.URL, configuration.ResultCache.TTL, configuration.ResultCache.Timeout)
 	if err != nil {

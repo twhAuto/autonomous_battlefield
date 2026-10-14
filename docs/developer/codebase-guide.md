@@ -67,9 +67,8 @@ autonomous_battlefield/
 │   │   ├── integration/        # End-to-end API and engine run against PostgreSQL
 │   │   └── performance/        # k6 scenarios and query-plan SQL fixtures
 │   ├── migrations/             # Embedded SQL migrations and their PostgreSQL tests
-│   ├── content/                # Shared versioned unit and building libraries
-│   ├── rulesets/               # Versioned game rules
-│   ├── scenarios/              # Authored battle templates
+│   ├── gamedata/               # Game content embedded in the server: content libraries,
+│   │                           # rulesets and scenarios, plus their bundle digest
 │   └── evals/                  # Evaluation cases and pricing configuration
 ├── frontend/src/
 │   ├── app/                    # Application shell, routes, integration tests

@@ -12,8 +12,9 @@ documents for detail instead of repeating them:
 [Frontier Siege](frontier-siege.md) for the roster, structures, and map, and the
 [system architecture](../architecture/system-architecture.md#52-strategy-decision-window) for how
 decisions are requested, stored, and timed out. Values below are for the
-`frontier-siege-v2` scenario (`backend/scenarios/frontier-siege-v2.yaml`, ruleset
-`backend/rulesets/castle-siege-v2.yaml`, content `backend/content/core-v2.yaml`).
+`frontier-siege-v2` scenario (`backend/gamedata/scenarios/frontier-siege-v2.yaml`,
+ruleset `backend/gamedata/rulesets/castle-siege-v2.yaml`, content
+`backend/gamedata/content/core-v2.yaml`).
 
 ## Battle loop
 

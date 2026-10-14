@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/twh09/autonomous_battlefield/backend/gamedata"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 
 	aieval "github.com/twh09/autonomous_battlefield/backend/internal/ai/eval"
@@ -130,7 +131,10 @@ func TestMetadataWorksWithoutEvaluationInputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	fields := strings.Fields(string(data))
-	if len(fields) != 3 || fields[0] != prompts.Version || fields[2] != ai.ToolSchema || !strings.HasSuffix(fields[0], "."+fields[1]) || len(fields[1]) != 64 {
+	if len(fields) != 4 || fields[0] != prompts.Version || fields[2] != ai.ToolSchema || !strings.HasSuffix(fields[0], "."+fields[1]) || len(fields[1]) != 64 {
 		t.Fatalf("invalid runtime provenance: %q", data)
+	}
+	if content, err := gamedata.Digest(); err != nil || fields[3] != content {
+		t.Fatalf("game content digest = %q, want %q (%v)", fields[3], content, err)
 	}
 }
