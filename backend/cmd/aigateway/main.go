@@ -59,7 +59,7 @@ func run(configuration config.AIGatewayConfig) error {
 	}
 	defer db.Close()
 	repository := battlerepo.NewPostgres(db)
-	server := mcpserver.New(repository, configuration.Gateway.CapabilitySecret, configuration.Gateway.AllowedOrigins).WithAgentSecret(configuration.Gateway.AgentSecret).WithGenerations(&generationrepo.Postgres{DB: db})
+	server := mcpserver.New(repository, configuration.Gateway.CapabilitySecret, configuration.Gateway.AllowedOrigins).WithAgentSecret(configuration.Gateway.AgentSecret).WithGenerations(generationrepo.NewPostgres(db))
 	notificationErrors := make(chan error, 1)
 	go func() {
 		notificationErrors <- postgres.ListenForNotifications(ctx, db, ai.DecisionReadyChannel, func(string) {

@@ -13,7 +13,7 @@ import (
 )
 
 func insertFriendBattle(p *Postgres, n int, owner string) error {
-	_, err := p.DB.Exec(context.Background(), `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state) VALUES($1,'s','d','{}',10,$2,'{}','{}')`, fmt.Sprintf("00000000-0000-4000-8000-%012d", n), owner)
+	_, err := p.db.Exec(context.Background(), `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state) VALUES($1,'s','d','{}',10,$2,'{}','{}')`, fmt.Sprintf("00000000-0000-4000-8000-%012d", n), owner)
 	return err
 }
 func limited(err error) bool { var e *pgconn.PgError; return errors.As(err, &e) && e.Code == "P0429" }
@@ -100,7 +100,7 @@ func TestGlobalCLISlotHeldUntilWorkerCompletion(t *testing.T) {
 		t.Fatal(job, e)
 	}
 	sqlExec(t, p, "UPDATE runtime_policy SET ai_enabled=false")
-	if _, _, e = p.Admit(ctx, "third", "a", draft, c, "Writer"); !errors.Is(e, generation.ErrLimited) {
+	if _, _, e = p.Admit(ctx, "third", "a", draft, c, writer); !errors.Is(e, generation.ErrLimited) {
 		t.Fatalf("kill switch admitted work: %v", e)
 	}
 }
@@ -119,7 +119,7 @@ func TestDecisionExecutionBudgetAndSharedGenerationSlot(t *testing.T) {
 	}
 	claim := func(id string) string {
 		var status string
-		e := p.DB.QueryRow(ctx, `UPDATE battle_decisions SET status='running',lease_owner='vm',lease_expires_at=now()+interval '1 minute' WHERE id=$1 RETURNING status`, id).Scan(&status)
+		e := p.db.QueryRow(ctx, `UPDATE battle_decisions SET status='running',lease_owner='vm',lease_expires_at=now()+interval '1 minute' WHERE id=$1 RETURNING status`, id).Scan(&status)
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -140,7 +140,7 @@ func TestDecisionExecutionBudgetAndSharedGenerationSlot(t *testing.T) {
 		t.Fatalf("budget exceeded: %s", s)
 	}
 	var used int
-	if e := p.DB.QueryRow(ctx, "SELECT ai_executions FROM battle_runs WHERE id=$1", battleID).Scan(&used); e != nil || used != 1 {
+	if e := p.db.QueryRow(ctx, "SELECT ai_executions FROM battle_runs WHERE id=$1", battleID).Scan(&used); e != nil || used != 1 {
 		t.Fatal(used, e)
 	}
 	sqlExec(t, p, "UPDATE runtime_policy SET ai_enabled=false")
@@ -204,7 +204,7 @@ func TestFourSharedCLISlotsAcrossConcurrentClaims(t *testing.T) {
 }
 
 func insertExemptBattle(p *Postgres, n int, owner string) error {
-	_, err := p.DB.Exec(context.Background(), `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state,admission_exempt) VALUES($1,'s','d','{}',10,$2,'{}','{}',true)`, fmt.Sprintf("00000000-0000-4000-8000-%012d", n), owner)
+	_, err := p.db.Exec(context.Background(), `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,owner_id,initial_state,current_state,admission_exempt) VALUES($1,'s','d','{}',10,$2,'{}','{}',true)`, fmt.Sprintf("00000000-0000-4000-8000-%012d", n), owner)
 	return err
 }
 

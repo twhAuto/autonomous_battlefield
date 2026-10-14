@@ -17,6 +17,7 @@ import (
 	factionrepo "github.com/twh09/autonomous_battlefield/backend/internal/faction/repo"
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
+	generationapi "github.com/twh09/autonomous_battlefield/backend/internal/generation/api"
 	generationrepo "github.com/twh09/autonomous_battlefield/backend/internal/generation/repo"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 	"github.com/twh09/autonomous_battlefield/backend/internal/members"
@@ -42,7 +43,7 @@ type Options struct {
 }
 
 // New composes the API from its database, scenario catalog, and battle tick limit.
-func New(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, options Options) *App {
+func New(db postgres.Pool, catalog *catalog.Catalog, maxTicks uint64, options Options) *App {
 	authentication := options.Auth
 	profiles := options.Profiles
 	if profiles == nil {
@@ -55,7 +56,7 @@ func New(db postgres.DBTX, catalog *catalog.Catalog, maxTicks uint64, options Op
 	adminService := &admin.Service{Repository: &admin.Postgres{DB: db}, Profiles: profiles}
 	adminHandler := &admin.Handler{Service: adminService}
 	profiles = profiles.WithAccessPolicy(adminService.ReadPolicy)
-	generationHandler := &generation.Handler{Repository: &generationrepo.Postgres{DB: db}, Config: generationConfig, Profiles: profiles}
+	generationHandler := generationapi.NewHandler(generationrepo.NewPostgres(db), generationConfig, profiles)
 	factionRepository := factionrepo.NewPostgres(db)
 	factionService := factionservice.NewService(factionRepository, catalog)
 	battleService := battleservice.NewService(battlerepo.NewPostgres(db), factionRepository, catalog, maxTicks, battleservice.Options{Cache: options.Cache, Profiles: profiles})

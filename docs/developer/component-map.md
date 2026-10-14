@@ -31,13 +31,13 @@ introduce a new boundary.
 | [`ai/decision`](../../backend/internal/ai/decision) |  | ✓ | ✓ |  | ✓ |
 | [`ai/eval`](../../backend/internal/ai/eval) |  |  |  |  | ✓ |
 | [`ai/mcpserver`](../../backend/internal/ai/mcpserver) |  |  | ✓ |  | ✓ |
-| [`ai/profile`](../../backend/internal/ai/profile) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`ai/profile`](../../backend/internal/ai/profile) | ✓ | ✓ | ✓ | ✓ |  |
 | [`ai/prompts`](../../backend/internal/ai/prompts) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`ai/providers`](../../backend/internal/ai/providers) |  |  |  | ✓ | ✓ |
 | [`ai/runner`](../../backend/internal/ai/runner) |  |  |  | ✓ | ✓ |
-| [`apierror`](../../backend/internal/apierror) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`apierror`](../../backend/internal/apierror) | ✓ | ✓ | ✓ | ✓ |  |
 | [`app`](../../backend/internal/app) | ✓ |  |  |  |  |
-| [`authn`](../../backend/internal/authn) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`authn`](../../backend/internal/authn) | ✓ | ✓ | ✓ | ✓ |  |
 | [`battle/api`](../../backend/internal/battle/api) | ✓ |  |  |  |  |
 | [`battle/catalog`](../../backend/internal/battle/catalog) | ✓ |  |  |  |  |
 | [`battle/queue`](../../backend/internal/battle/queue) | ✓ | ✓ | ✓ |  |  |
@@ -53,11 +53,12 @@ introduce a new boundary.
 | [`game`](../../backend/internal/game) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`game/controller`](../../backend/internal/game/controller) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`generation`](../../backend/internal/generation) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`generation/api`](../../backend/internal/generation/api) | ✓ |  |  |  |  |
 | [`generation/repo`](../../backend/internal/generation/repo) | ✓ |  | ✓ |  |  |
-| [`httpapi`](../../backend/internal/httpapi) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`httpapi`](../../backend/internal/httpapi) | ✓ | ✓ |  |  |  |
 | [`logging`](../../backend/internal/logging) | ✓ | ✓ | ✓ | ✓ |  |
 | [`members`](../../backend/internal/members) | ✓ |  |  |  |  |
 | [`postgres`](../../backend/internal/postgres) | ✓ | ✓ | ✓ |  |  |
-| [`requestid`](../../backend/internal/requestid) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`requestid`](../../backend/internal/requestid) | ✓ | ✓ | ✓ | ✓ |  |
 | [`telemetry`](../../backend/internal/telemetry) | ✓ | ✓ | ✓ | ✓ | ✓ |
 <!-- component-map:end -->
