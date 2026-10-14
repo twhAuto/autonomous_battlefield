@@ -138,3 +138,12 @@ func TestHandlerRedactsErrorValuesUnderAnyKey(t *testing.T) {
 		}
 	}
 }
+
+func TestHandlerLogsTypedNilErrorsWithoutPanicking(t *testing.T) {
+	var output bytes.Buffer
+	var operation *net.OpError
+	slog.New(NewHandler(slog.NewJSONHandler(&output, nil))).Error("database_connect_retry", "error", operation)
+	if !strings.Contains(output.String(), `"error":"<nil>"`) {
+		t.Fatalf("typed-nil error logged as %s", output.String())
+	}
+}

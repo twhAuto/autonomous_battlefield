@@ -67,3 +67,44 @@ func TestErrorKeepsApplicationTextAndSQLState(t *testing.T) {
 		t.Fatal("Error(nil) is not empty")
 	}
 }
+
+func TestErrorRedactsEveryBranchAndRepeat(t *testing.T) {
+	dial := func(ip string) error {
+		return &net.OpError{Op: "dial", Net: "tcp", Addr: &net.TCPAddr{IP: net.ParseIP(ip), Port: 5432}, Err: errors.New("connect: connection refused")}
+	}
+	first, second := dial("10.0.0.5"), dial("10.0.0.6")
+	for _, err := range []error{
+		errors.Join(first, second),
+		fmt.Errorf("primary: %w; replica: %w", first, second),
+		fmt.Errorf("attempt 1: %w; attempt 2: %w", first, first),
+	} {
+		got := Error(err)
+		if strings.Contains(got, "10.0.0.5") || strings.Contains(got, "10.0.0.6") {
+			t.Fatalf("Error(%v) = %q still contains an address", err, got)
+		}
+		if strings.Count(got, "dial tcp: connect: connection refused") != 2 {
+			t.Fatalf("Error(%v) = %q, want both failures kept", err, got)
+		}
+	}
+}
+
+type panickingError struct{}
+
+func (panickingError) Error() string { panic("broken error") }
+
+func TestErrorSurvivesTypedNilAndPanickingErrors(t *testing.T) {
+	var operation *net.OpError
+	var lookup *net.DNSError
+	var connect *pgconn.ConnectError
+	for _, err := range []error{operation, lookup, connect} {
+		if got := Error(err); got != "<nil>" {
+			t.Fatalf("Error(typed nil %T) = %q, want <nil>", err, got)
+		}
+	}
+	if got := Error(fmt.Errorf("wrapped: %w", error(operation))); got != "wrapped: <nil>" {
+		t.Fatalf("wrapped typed nil = %q", got)
+	}
+	if got := Error(panickingError{}); got != "<unprintable error>" {
+		t.Fatalf("panicking error = %q", got)
+	}
+}
