@@ -71,7 +71,9 @@ are not carried forward.
 ## Plan submission
 
 At each window the engine asks every faction's controller for a plan, based on a
-frozen, fog-of-war observation of that faction's view:
+frozen, fog-of-war observation of that faction's view. It shows enemy units and
+buildings only inside the faction's vision (enemy castles are always shown) and
+never the opponent's gold, upgrades or production totals:
 
 - A **scripted** controller submits its deterministic plan immediately.
 - A **model** controller receives the observation through MCP tools and must

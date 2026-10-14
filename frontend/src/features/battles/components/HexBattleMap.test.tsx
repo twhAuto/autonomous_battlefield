@@ -357,3 +357,20 @@ it('colors movement, attacks, tower fire, and arrowheads by the acting faction',
     }
   }
 })
+
+
+it('keeps each faction\'s color when a perspective lists only its own faction', () => {
+  const units = ['b', 'a'].map((factionId, index) => ({ ...state.units[0], id: `${factionId}:ranger:1`, factionId, movedFrom: { x: index + 1, y: 1 }, position: { x: index, y: 1 } }))
+  const names = new Map([['b', 'Southreach'], ['a', 'Northwind']])
+  const colorsFor = (factions: typeof state.factions) => {
+    const { container, unmount } = render(<HexBattleMap map={map} state={{ ...state, factions, units, buildings: [] }} visiblePositions={[]} factionNames={names} />)
+    const strokes = [...container.querySelectorAll<SVGElement>('.unit-direction--movement')].map((arrow) => arrow.style.stroke)
+    unmount()
+    return strokes
+  }
+  const spectator = colorsFor(['a', 'b'].map((factionId) => ({ ...state.factions[0], factionId })))
+  expect(spectator).toHaveLength(2)
+  for (const own of ['a', 'b']) {
+    expect(colorsFor([{ ...state.factions[0], factionId: own }])).toEqual(spectator)
+  }
+})

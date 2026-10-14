@@ -493,7 +493,7 @@ in reports. See [AI comparisons](../developer/ai-comparisons.md).
 A decision context contains:
 
 - battle, faction, request, target-tick, and version identifiers;
-- a fog-of-war faction view;
+- a fog-of-war faction view: terrain, the faction's own entities, visible enemies, enemy castles, and only the faction's own gold, upgrades and production totals;
 - current and projected economy values;
 - legal action kinds, unit/building definitions, construction sites, and owned recruitment sources;
 - the currently active plan;
