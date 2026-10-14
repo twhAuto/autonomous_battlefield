@@ -29,6 +29,27 @@ overrides the package owner). It does not delete registry versions. Treat missin
 cluster or rollback evidence as incomplete inventory before making any deletion
 decision; the report is advisory, not an automated retention policy.
 
+## Base-image pins
+
+Every `FROM` in `backend/Dockerfile` and `frontend/Dockerfile` names its base image
+by digest only (`name@sha256:<digest>`), so rebuilding an old revision uses the same
+base content. The line above records the tag the digest was resolved from, as
+`# Base image: name:tag`. Tag and digest are not combined on the `FROM` line:
+Docker ignores the tag there, and SonarQube's `docker:S8431` rejects it.
+`scripts/test/test-base-image-pins.py`, part of `scripts/test/test-deployment.sh`,
+fails on an unpinned base image or a missing or mismatched tag comment.
+
+Nothing updates the digests automatically. Refresh them when
+`scripts/ci/scan-published-images.sh` reports a fixable vulnerability in a base
+image, when moving to a new tag, and at least monthly:
+
+1. Resolve the multi-platform index digest of each tag, for example
+   `docker buildx imagetools inspect golang:1.26.9-alpine`, and take its `Digest:`.
+2. Replace the digest on the `FROM` line, and the tag in the comment above it if
+   moving to a new tag.
+3. Run `./scripts/test/test-deployment.sh`, then raise the change as a normal PR
+   so Jenkins rebuilds and rescans both images.
+
 ## Signing-key rotation
 
 1. Open a reviewed security ticket and record the old public-key fingerprint.

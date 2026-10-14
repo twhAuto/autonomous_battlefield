@@ -1,3 +1,6 @@
+-- Adds managed Player membership: desired access per email, the Cloudflare Access group
+-- synchronization state, and an audit trail of grants, removals, retries and imports.
+
 -- +goose Up
 CREATE TABLE player_membership_sync (
  id boolean PRIMARY KEY DEFAULT true CHECK (id),
