@@ -8,7 +8,8 @@ AI manifest generation requires the backend Go toolchain and module dependencies
 `scripts/ci/generate-ai-manifest.sh` runs `go run ./cmd/aieval -mode metadata`
 from `backend/` to obtain the runtime prompt version (including its content digest),
 the SHA-256 of the battle prompts as assembled for a fixed sample session
-(`promptSourceSha256`), and the tool schema version.
+(`promptSourceSha256`), the tool schema version, and the digest of the game content
+embedded in the binary (`gameDataBundleSha256`, schema `battlefield.ai-build-manifest.v2`).
 It does not run evaluations or call a model provider.
 
 Retention automation must begin in report-only mode. Before deletion it must subtract every digest referenced by a live environment, the recorded rollback pair, a release, an active incident, or a legal hold. Package deletion is not enabled by this repository.

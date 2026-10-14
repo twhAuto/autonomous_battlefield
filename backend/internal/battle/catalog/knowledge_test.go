@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/twh09/autonomous_battlefield/backend/gamedata"
 	service "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
@@ -14,9 +15,8 @@ import (
 )
 
 func TestAdditionalUnitFromYAML(t *testing.T) {
-	root := filepath.Join("..", "..", "..")
-	dir, rules, unit := writeRulesetsWithSentinel(t, root)
-	catalog, err := LoadCatalog(filepath.Join(root, "scenarios"), dir)
+	dir, rules, unit := writeRulesetsWithSentinel(t)
+	catalog, err := LoadCatalog(os.DirFS(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,11 +37,11 @@ func TestAdditionalUnitFromYAML(t *testing.T) {
 	checkSentinelIsRecruited(t, scenario, unit.ID)
 }
 
-// writeRulesetsWithSentinel writes the authored rulesets to a temporary directory, with
-// castle-siege-v1 gaining a cheap "sentinel" unit and its knowledge card.
-func writeRulesetsWithSentinel(t *testing.T, root string) (string, game.Ruleset, game.UnitType) {
+// writeRulesetsWithSentinel copies the game content to a temporary directory whose
+// resolved rulesets give castle-siege-v1 a cheap "sentinel" unit and its knowledge card.
+func writeRulesetsWithSentinel(t *testing.T) (string, game.Ruleset, game.UnitType) {
 	t.Helper()
-	seed, err := LoadCatalog(filepath.Join(root, "scenarios"), filepath.Join(root, "rulesets"))
+	seed, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,12 +53,19 @@ func writeRulesetsWithSentinel(t *testing.T, root string) (string, game.Ruleset,
 	card := rules.Knowledge.Cards[0]
 	card.UnitID = unit.ID
 	rules.Knowledge.Cards = append(rules.Knowledge.Cards, card)
-	dir := t.TempDir()
-	writeYAML(t, filepath.Join(dir, "rules.yaml"), rules)
+	dir := copyGameData(t)
+	rulesets := filepath.Join(dir, "rulesets")
+	if err := os.RemoveAll(rulesets); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(rulesets, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeYAML(t, filepath.Join(rulesets, "rules.yaml"), rules)
 	// Preserve the other authored rulesets when overriding only the v1 fixture.
 	for _, other := range seed.Rulesets() {
 		if other.ID != rules.ID {
-			writeYAML(t, filepath.Join(dir, other.ID+".yaml"), other)
+			writeYAML(t, filepath.Join(rulesets, other.ID+".yaml"), other)
 		}
 	}
 	return dir, rules, unit

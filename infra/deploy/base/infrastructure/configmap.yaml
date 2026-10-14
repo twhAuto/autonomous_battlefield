@@ -24,8 +24,6 @@ data:
       minConnections: 1
       maxConnectionLifetime: 30m
     api:
-      scenarioCatalogPath: /app/scenarios
-      rulesetCatalogPath: /app/rulesets
       maxTicks: 10000
     auth:
       enabledEnvironmentVariable: BATTLEFIELD_AUTH_ENABLED

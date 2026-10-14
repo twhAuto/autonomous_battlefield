@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/twh09/autonomous_battlefield/backend/gamedata"
 	service "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
@@ -17,7 +18,7 @@ import (
 func TestLegacyBattleTraceUnchanged(t *testing.T) {
 	// Content/snapshot digests include the shortened authored guidance. The
 	// simulation transition digest below remains the pre-expansion baseline.
-	c, err := LoadCatalog("../../../scenarios", "../../../rulesets")
+	c, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func withoutVisualizationMetadata(transition *game.Transition) {
 }
 
 func TestFrontierCatalogMapAndDeterministicBattle(t *testing.T) {
-	c, err := LoadCatalog("../../../scenarios", "../../../rulesets")
+	c, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +156,7 @@ func checkCatalogCopiesAreIndependent(t *testing.T, c *Catalog, s game.Scenario)
 }
 
 func TestExpansionScenarioRestrictions(t *testing.T) {
-	c, err := LoadCatalog("../../../scenarios", "../../../rulesets")
+	c, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)
 	}

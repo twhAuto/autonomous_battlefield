@@ -3,6 +3,7 @@ package catalog
 import (
 	"testing"
 
+	"github.com/twh09/autonomous_battlefield/backend/gamedata"
 	service "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
@@ -11,7 +12,7 @@ import (
 // These are reproducible balance probes, not promises that one army always wins.
 // Mirror each equal-budget opening to expose side/turn-order bias.
 func TestFrontierEqualBudgetMatchups(t *testing.T) {
-	c, err := LoadCatalog("../../../scenarios", "../../../rulesets")
+	c, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)
 	}

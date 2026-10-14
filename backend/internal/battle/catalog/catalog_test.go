@@ -4,18 +4,22 @@
 package catalog
 
 import (
+	"bytes"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"testing/fstest"
 
+	"github.com/twh09/autonomous_battlefield/backend/gamedata"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 func TestCatalogLoadsRulesetAndResolvesBlueprints(t *testing.T) {
-	root := filepath.Join("..", "..", "..")
-	catalog, err := LoadCatalog(filepath.Join(root, "scenarios"), filepath.Join(root, "rulesets"))
+	catalog, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,24 +53,60 @@ func TestCatalogLoadsRulesetAndResolvesBlueprints(t *testing.T) {
 }
 
 func TestCatalogRejectsUnknownScenarioField(t *testing.T) {
-	root := filepath.Join("..", "..", "..")
-	scenarios := t.TempDir()
-	contents, err := os.ReadFile(filepath.Join(root, "scenarios", "castle-siege-v1.yaml"))
+	dir := copyGameData(t)
+	contents, err := fs.ReadFile(gamedata.Files, "scenarios/castle-siege-v1.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
 	contents = append(contents, []byte("\nunknown: true\n")...)
-	if err := os.WriteFile(filepath.Join(scenarios, "bad.yaml"), contents, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "scenarios", "bad.yaml"), contents, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadCatalog(scenarios, filepath.Join(root, "rulesets")); err == nil {
+	if _, err := LoadCatalog(os.DirFS(dir)); err == nil {
 		t.Fatal("unknown scenario field accepted")
 	}
 }
 
+func TestCatalogRejectsScenarioRulesVersionMismatch(t *testing.T) {
+	dir := copyGameData(t)
+	contents, err := fs.ReadFile(gamedata.Files, "scenarios/castle-siege-v1.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents = bytes.Replace(contents, []byte(`rulesVersion: "1"`), []byte(`rulesVersion: "2"`), 1)
+	if err := os.WriteFile(filepath.Join(dir, "scenarios", "castle-siege-v1.yaml"), contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCatalog(os.DirFS(dir)); !errors.Is(err, ErrInvalidScenario) || !strings.Contains(err.Error(), "rules version") {
+		t.Fatalf("mismatched rules version: %v", err)
+	}
+}
+
+func TestCatalogReportsMissingDirectories(t *testing.T) {
+	for _, missing := range []string{"rulesets", "scenarios"} {
+		dir := copyGameData(t)
+		if err := os.RemoveAll(filepath.Join(dir, missing)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadCatalog(os.DirFS(dir)); err == nil || !strings.Contains(err.Error(), missing[:len(missing)-1]) {
+			t.Fatalf("missing %s: %v", missing, err)
+		}
+	}
+}
+
+// copyGameData copies the embedded game content into a temporary directory that a
+// test can change.
+func copyGameData(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, gamedata.Files); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func TestCatalogAcceptsGenericFaction(t *testing.T) {
-	root := filepath.Join("..", "..", "..")
-	catalog, err := LoadCatalog(filepath.Join(root, "scenarios"), filepath.Join(root, "rulesets"))
+	catalog, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,8 +117,7 @@ func TestCatalogAcceptsGenericFaction(t *testing.T) {
 }
 
 func TestCatalogReturnsNotFound(t *testing.T) {
-	root := filepath.Join("..", "..", "..")
-	catalog, err := LoadCatalog(filepath.Join(root, "scenarios"), filepath.Join(root, "rulesets"))
+	catalog, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,8 +128,7 @@ func TestCatalogReturnsNotFound(t *testing.T) {
 }
 
 func FuzzScenarioYAML(f *testing.F) {
-	root := filepath.Join("..", "..", "..")
-	seed, err := os.ReadFile(filepath.Join(root, "scenarios", "castle-siege-v1.yaml"))
+	seed, err := fs.ReadFile(gamedata.Files, "scenarios/castle-siege-v1.yaml")
 	if err != nil {
 		f.Fatal(err)
 	}
@@ -100,18 +138,13 @@ func FuzzScenarioYAML(f *testing.F) {
 		if len(value) > 64<<10 {
 			t.Skip()
 		}
-		path := filepath.Join(t.TempDir(), "scenario.yaml")
-		if err := os.WriteFile(path, value, 0o600); err != nil {
-			t.Fatal(err)
-		}
 		var scenario game.Scenario
-		_ = decodeOne(path, &scenario)
+		_ = decodeOne(fstest.MapFS{"scenario.yaml": {Data: value}}, "scenario.yaml", &scenario)
 	})
 }
 
 func TestDoctrineSnapshotIsIndependentOfFutureProfileEdits(t *testing.T) {
-	root := filepath.Join("..", "..", "..")
-	catalog, err := LoadCatalog(filepath.Join(root, "scenarios"), filepath.Join(root, "rulesets"))
+	catalog, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)
 	}

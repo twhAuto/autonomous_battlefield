@@ -156,7 +156,7 @@ an immutable scenario and participant snapshot.
 
 ## Queue a battle
 
-Both factions must already exist. The scenario ID refers to a strict YAML template in `backend/scenarios`; the API snapshots faction names/backgrounds/doctrines, the map, ruleset, and controller plans. New snapshots use `snapshotVersion: 2` and start with castles and gold. Older queued snapshots retain legacy initialization.
+Both factions must already exist. The scenario ID refers to a strict YAML template in `backend/gamedata/scenarios`; the API snapshots faction names/backgrounds/doctrines, the map, ruleset, and controller plans. New snapshots use `snapshotVersion: 2` and start with castles and gold. Older queued snapshots retain legacy initialization.
 
 The frontend discovers available templates through `GET /v1/scenarios`, which returns scenario IDs, rules versions, scenario-specific maximum ticks, tick pacing, and decision timing. `castle-siege-v1` allows at most 500 ticks.
 

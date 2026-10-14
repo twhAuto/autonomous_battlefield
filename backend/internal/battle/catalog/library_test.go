@@ -4,6 +4,9 @@
 package catalog
 
 import (
+	"io/fs"
+
+	"github.com/twh09/autonomous_battlefield/backend/gamedata"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/briefing"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
 
@@ -20,39 +23,30 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
+// libraryFixture copies the castle-siege-v1 content, ruleset and scenario into a
+// temporary catalog directory and returns it with the decoded scenario template.
 func libraryFixture(t *testing.T) (string, template) {
 	t.Helper()
-	root := filepath.Join("..", "..", "..")
 	dir := t.TempDir()
-	for _, sub := range []string{"content", "rulesets", "scenarios"} {
-		{
-			err := os.Mkdir(filepath.Join(dir, sub), 0700)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
 	for _, name := range []string{"content/core-v1.yaml", "rulesets/castle-siege-v1.yaml", "scenarios/castle-siege-v1.yaml"} {
-		data, err := os.ReadFile(filepath.Join(root, name))
+		data, err := fs.ReadFile(gamedata.Files, name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		{
-			err = os.WriteFile(filepath.Join(dir, name), data, 0600)
-			if err != nil {
-				t.Fatal(err)
-			}
+		if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(name)), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+			t.Fatal(err)
 		}
 	}
 	var tmpl template
-	{
-		err := decodeOne(filepath.Join(dir, "scenarios/castle-siege-v1.yaml"), &tmpl)
-		if err != nil {
-			t.Fatal(err)
-		}
+	if err := decodeOne(os.DirFS(dir), "scenarios/castle-siege-v1.yaml", &tmpl); err != nil {
+		t.Fatal(err)
 	}
 	return dir, tmpl
 }
+
 func writeTemplate(t *testing.T, dir string, tmpl template) {
 	t.Helper()
 	data, err := yaml.Marshal(tmpl)
@@ -93,7 +87,7 @@ func TestScenarioContentRestrictionsReachEngineAndAI(t *testing.T) {
 	tmpl.AllowedUpgrades = []string{}
 	tmpl.AllowedBuildings = []string{"castle"}
 	writeTemplate(t, dir, tmpl)
-	c, err := LoadCatalog(filepath.Join(dir, "scenarios"), "")
+	c, err := LoadCatalog(os.DirFS(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,13 +178,12 @@ func checkIncompatibleBlueprintsStillResolve(t *testing.T, c *Catalog, ids [2]se
 // change, existing ones never do.
 func checkLibraryEditsLeaveSnapshotsUnchanged(t *testing.T, dir string, ids [2]service.FactionIdentity, scenario game.Scenario, hash string, m *game.Match) {
 	t.Helper()
-	path := filepath.Join(dir, "content/core-v1.yaml")
 	var library contentLibrary
-	_ = decodeOne(path, &library)
+	_ = decodeOne(os.DirFS(dir), "content/core-v1.yaml", &library)
 	library.Units[2].Cost++
 	data, _ := yaml.Marshal(library)
-	_ = os.WriteFile(path, data, 0600)
-	next, err := LoadCatalog(filepath.Join(dir, "scenarios"), "")
+	_ = os.WriteFile(filepath.Join(dir, "content/core-v1.yaml"), data, 0600)
+	next, err := LoadCatalog(os.DirFS(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +235,7 @@ func TestInvalidScenarioRestrictionsFailAtStartup(t *testing.T) {
 			change(&tmpl)
 			writeTemplate(t, dir, tmpl)
 			{
-				_, err := LoadCatalog(filepath.Join(dir, "scenarios"), "")
+				_, err := LoadCatalog(os.DirFS(dir))
 				if err == nil {
 					t.Fatal("invalid restriction accepted")
 				}
@@ -253,18 +246,14 @@ func TestInvalidScenarioRestrictionsFailAtStartup(t *testing.T) {
 func TestLibraryReferencesAndLegacyInlineCompatibility(t *testing.T) {
 	dir, _ := libraryFixture(t)
 	var file rulesetFile
-	path := filepath.Join(dir, "rulesets/castle-siege-v1.yaml")
-	{
-		err := decodeOne(path, &file)
-		if err != nil {
-			t.Fatal(err)
-		}
+	if err := decodeOne(os.DirFS(dir), "rulesets/castle-siege-v1.yaml", &file); err != nil {
+		t.Fatal(err)
 	}
-	baseline, err := resolveLibrary(filepath.Join(dir, "rulesets"), file)
+	baseline, err := resolveLibrary(os.DirFS(dir), file)
 	if err != nil {
 		t.Fatal(err)
 	}
-	inline, err := resolveLibrary(dir, rulesetFile{Ruleset: baseline})
+	inline, err := resolveLibrary(os.DirFS(dir), rulesetFile{Ruleset: baseline})
 	if err != nil || !reflect.DeepEqual(baseline, inline) {
 		t.Fatal("legacy inline broken")
 	}
@@ -274,7 +263,7 @@ func TestLibraryReferencesAndLegacyInlineCompatibility(t *testing.T) {
 		copy.Library = &ref
 		change(&copy)
 		{
-			_, err := resolveLibrary(filepath.Join(dir, "rulesets"), copy)
+			_, err := resolveLibrary(os.DirFS(dir), copy)
 			if err == nil {
 				t.Fatal("invalid library reference accepted")
 			}
@@ -286,7 +275,7 @@ func TestLibraryValidatesUnselectedContent(t *testing.T) {
 	dir, _ := libraryFixture(t)
 	var l contentLibrary
 	{
-		err := decodeOne(filepath.Join(dir, "content/core-v1.yaml"), &l)
+		err := decodeOne(os.DirFS(dir), "content/core-v1.yaml", &l)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -308,19 +297,19 @@ func TestRulesetsReusePinnedLibraryWithDifferentSelections(t *testing.T) {
 	dir, _ := libraryFixture(t)
 	var file rulesetFile
 	{
-		err := decodeOne(filepath.Join(dir, "rulesets/castle-siege-v1.yaml"), &file)
+		err := decodeOne(os.DirFS(dir), "rulesets/castle-siege-v1.yaml", &file)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	a, err := resolveLibrary(filepath.Join(dir, "rulesets"), file)
+	a, err := resolveLibrary(os.DirFS(dir), file)
 	if err != nil {
 		t.Fatal(err)
 	}
 	file.ID = "ranged"
 	file.Library.Units = []string{"ranger"}
 	file.Library.Upgrades = []string{}
-	b, err := resolveLibrary(filepath.Join(dir, "rulesets"), file)
+	b, err := resolveLibrary(os.DirFS(dir), file)
 	if err != nil {
 		t.Fatal(err)
 	}

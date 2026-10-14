@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -51,9 +50,7 @@ type AIGatewayConfig struct {
 }
 
 type API struct {
-	ScenarioCatalogPath string
-	RulesetCatalogPath  string
-	MaxTicks            uint64
+	MaxTicks uint64
 }
 
 // fileConfig mirrors the YAML file. The *EnvironmentVariable keys are retired: they may
@@ -80,9 +77,7 @@ type fileConfig struct {
 		MaxConnectionLifetime  string `yaml:"maxConnectionLifetime"`
 	} `yaml:"database"`
 	API struct {
-		ScenarioCatalogPath string `yaml:"scenarioCatalogPath"`
-		RulesetCatalogPath  string `yaml:"rulesetCatalogPath"`
-		MaxTicks            uint64 `yaml:"maxTicks"`
+		MaxTicks uint64 `yaml:"maxTicks"`
 	} `yaml:"api"`
 	Auth struct {
 		EnabledEnvironmentVariable       string `yaml:"enabledEnvironmentVariable"`
@@ -137,7 +132,7 @@ func LoadAPI(path string) (APIConfig, error) {
 		if c.Database, err = parseDatabaseConfig(raw); err != nil {
 			return c, err
 		}
-		if c.API, err = parseAPIConfig(raw, path); err != nil {
+		if c.API, err = parseAPIConfig(raw); err != nil {
 			return c, err
 		}
 		if c.Auth, err = parseAuthConfig(raw, production); err != nil {
@@ -244,21 +239,7 @@ func decode(path string) (fileConfig, error) {
 	return raw, nil
 }
 
-func parseAPIConfig(raw fileConfig, path string) (API, error) {
-	catalogPath := strings.TrimSpace(raw.API.ScenarioCatalogPath)
-	if catalogPath == "" {
-		catalogPath = "scenarios"
-	}
-	if !filepath.IsAbs(catalogPath) {
-		catalogPath = filepath.Join(filepath.Dir(path), catalogPath)
-	}
-	rulesetPath := strings.TrimSpace(raw.API.RulesetCatalogPath)
-	if rulesetPath == "" {
-		rulesetPath = "rulesets"
-	}
-	if !filepath.IsAbs(rulesetPath) {
-		rulesetPath = filepath.Join(filepath.Dir(path), rulesetPath)
-	}
+func parseAPIConfig(raw fileConfig) (API, error) {
 	maxTicks := raw.API.MaxTicks
 	if maxTicks == 0 {
 		maxTicks = 10_000
@@ -266,7 +247,7 @@ func parseAPIConfig(raw fileConfig, path string) (API, error) {
 	if maxTicks > 10_000 {
 		return API{}, fmt.Errorf("api.maxTicks must not exceed 10000")
 	}
-	return API{ScenarioCatalogPath: catalogPath, RulesetCatalogPath: rulesetPath, MaxTicks: maxTicks}, nil
+	return API{MaxTicks: maxTicks}, nil
 }
 
 func parseOptionalDuration(field, value string, fallback time.Duration) (time.Duration, error) {

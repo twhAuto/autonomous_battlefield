@@ -60,13 +60,13 @@ PostgreSQL is the durable coordination point. The API and engine do not call eac
 | Component | Responsibility | Direct dependencies |
 | --- | --- | --- |
 | React frontend | Session-aware navigation (Cloudflare Access in production, development login locally), faction creation, battle staging and history, map display, controls, event stream, and AI decision history | Public API |
-| Public API | Access identity verification, role/ownership authorization, managed Player membership, HTTP validation, scenario resolution, faction and battle persistence, and selectable model-profile catalog | PostgreSQL, scenario/ruleset YAML, optional Redis, optional Cloudflare Access group API |
+| Public API | Access identity verification, role/ownership authorization, managed Player membership, HTTP validation, scenario resolution, faction and battle persistence, and selectable model-profile catalog | PostgreSQL, embedded scenario/ruleset/content YAML, optional Redis, optional Cloudflare Access group API |
 | Battle engine | Battle queue claims, deterministic ticks, strategy windows, state/event persistence | PostgreSQL |
 | AI gateway | MCP tool server with request-scoped battle tools (`get_decision_context`, `get_unit_details`, `submit_strategy_plan`) and background-generation tools, plus the agent dispatch API (claims, capability minting, result reports) | PostgreSQL |
 | Decision agent | Model-decision claims and API or CLI model execution | AI gateway, model provider |
 | Redis (optional) | Disposable completed battle read cache; no engine or readiness dependency | Memory, API-only connection |
 | PostgreSQL | Factions, battle queue, event history, snapshots, leases, and model decisions | Persistent storage |
-| Scenario catalog | Authored map, timing, fallback plans, unit/building rules, and combat rules | Loaded by API and frozen into battle rows |
+| Scenario catalog | Authored map, timing, fallback plans, unit/building rules, and combat rules | Embedded in the server binary (`backend/gamedata`), loaded by the API at startup and frozen into battle rows |
 
 The backend commands are `cmd/server`, `cmd/engine`, `cmd/aigateway`, `cmd/agent`, and `cmd/aieval`. The first four are runtime processes; `aieval` runs deterministic offline cases or explicitly enabled live comparisons and produces reports.
 
@@ -464,8 +464,10 @@ API, Codex, Antigravity, and Claude CLI use one embedded decision policy assembl
 Antigravity host-prefetched JSON. The persisted `prompts.Version` includes a SHA-256
 digest of the battle prompts as assembled for a fixed sample session (system prompt, tool delivery and inline delivery), so wording, order and wiring changes all produce a new version. Version v7 moved faction-authored name/background/doctrine into JSON-escaped untrusted decision context; they never extend the system instructions. Version v8 orders the decision prompt from most to least stable (shared policy, then the faction identity block, then the per-request ID and any inline context), so the prefix repeated across one faction's decisions includes its identity and stays eligible for provider prompt caching. Version v9 restores the identity block's guidance, lost in v7: doctrine is the faction's strategic preferences and background its perspective, below core rules, legal choices, tool restrictions and observation privacy.
 Each prompt purpose has one current `.txt` file; Git preserves previous revisions.
-The build manifest reads the runtime prompt version, bundle digest, and tool schema
-through `go run ./cmd/aieval -mode metadata`, requiring Go during manifest generation. Both API and CLI
+The build manifest reads the runtime prompt version, bundle digest, tool schema and
+embedded game-content digest (`gameDataBundleSha256`: every file under
+`backend/gamedata`, including the knowledge cards models receive) through
+`go run ./cmd/aieval -mode metadata`, requiring Go during manifest generation. Both API and CLI
 model submissions require a substantive plan and stop after three validation
 rejections.
 
