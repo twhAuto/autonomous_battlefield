@@ -15,7 +15,9 @@ An authentication observer carries identity to the outer request logger; rejecte
 credentials leave identity empty. Tokens, cookies and email headers are not logged.
 Error text passes through `observability/redact` before it reaches a log or a span.
 A pgx connection error (database user, database name, host) becomes "failed to connect
-to the database", keeping any SQLSTATE, and network errors lose their address and
+to the database", keeping any SQLSTATE; a connection string pgx cannot parse becomes
+"invalid database connection string", since pgx quotes it with only best-effort
+password masking; and network errors lose their address and
 hostname, in every branch of a wrapped or joined error; other error text is kept for
 debugging. A typed-nil error logs as `<nil>`. The logging handler redacts every
 error-valued attribute under any key, so call sites keep logging `"error", err`. Spans

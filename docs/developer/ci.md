@@ -122,7 +122,7 @@ final `Jenkinsfile` validation.
 Backend Go statement coverage must be at least 80% in aggregate across the
 module, as reported by the `total:` line from `go tool cover`. The gate is a
 single repository-wide number, not a per-package floor, so thin wiring in
-`cmd/*` and `internal/postgres` may sit below 80% while the module passes. A low
+`cmd/*` may sit below 80% while the module passes. A low
 per-package figure is not a gate failure, and the aggregate is not licence to
 leave new behavior untested. Frontend statements, branches, functions and lines
 must each be at least 80%.

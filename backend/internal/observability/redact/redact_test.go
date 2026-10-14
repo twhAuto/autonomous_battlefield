@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestErrorRemovesPgxConnectionIdentity(t *testing.T) {
@@ -33,6 +34,24 @@ func TestErrorRemovesPgxConnectionIdentity(t *testing.T) {
 	}
 	if got != "open database: failed to connect to the database" {
 		t.Fatalf("redacted text = %q", got)
+	}
+}
+
+func TestErrorRemovesUnparsableConnectionStrings(t *testing.T) {
+	for _, connString := range []string{
+		// The URL fails to parse, so pgx masks only the text after the password's last colon.
+		"postgres://secret_user:secret:password@secret.host:5432/secret_database%zz",
+		"postgres://secret_user:secret_password@secret.host:5432/secret_database?pool_max_conns=x",
+		"host=secret.host user=secret_user password=secret_password dbname=secret_database sslmode=bogus",
+	} {
+		_, err := pgxpool.ParseConfig(connString)
+		var parse *pgconn.ParseConfigError
+		if !errors.As(err, &parse) {
+			t.Fatalf("expected a ParseConfigError, got %T: %v", err, err)
+		}
+		if got := Error(fmt.Errorf("parse PostgreSQL configuration: %w", err)); got != "parse PostgreSQL configuration: invalid database connection string" {
+			t.Fatalf("redacted text = %q", got)
+		}
 	}
 }
 

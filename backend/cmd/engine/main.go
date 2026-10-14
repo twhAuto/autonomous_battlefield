@@ -97,12 +97,10 @@ func startEngine(configuration config.EngineConfig) error {
 		cancelRun()
 	}()
 
-	db, err := postgres.NewPostgresDBWithRetry(runContext, configuration.Database.URL, postgres.Options{
+	db, err := postgres.ConnectWithRetry(runContext, configuration.Database.URL, postgres.Options{
 		MaxConnections: configuration.Database.MaxConnections, MinConnections: configuration.Database.MinConnections,
 		MaxConnectionLifetime: configuration.Database.MaxConnectionLifetime,
-	}, configuration.Database.ConnectTimeout, time.Second, func(attempt int, err error) {
-		slog.Warn("database_connect_retry", "attempt", attempt, "retry_in", time.Second, "error", err)
-	})
+	}, configuration.Database.ConnectTimeout, time.Second)
 	if err != nil {
 		return stopEngineInitialization(healthServer, lifecycle, healthErrors, signalContext, engineConfig.ShutdownTimeout, err)
 	}

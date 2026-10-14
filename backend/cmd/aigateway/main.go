@@ -53,7 +53,7 @@ func run(configuration config.AIGatewayConfig) error {
 		defer cancel()
 		_ = shutdownTracing(shutdown)
 	}()
-	db, err := postgres.NewPostgresDBWithRetry(ctx, configuration.Database.URL, postgres.Options{MaxConnections: configuration.Database.MaxConnections, MinConnections: configuration.Database.MinConnections, MaxConnectionLifetime: configuration.Database.MaxConnectionLifetime}, configuration.Database.ConnectTimeout, time.Second, nil)
+	db, err := postgres.ConnectWithRetry(ctx, configuration.Database.URL, postgres.Options{MaxConnections: configuration.Database.MaxConnections, MinConnections: configuration.Database.MinConnections, MaxConnectionLifetime: configuration.Database.MaxConnectionLifetime}, configuration.Database.ConnectTimeout, time.Second)
 	if err != nil {
 		return err
 	}

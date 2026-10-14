@@ -137,13 +137,11 @@ func startServer(configuration config.APIConfig) error {
 		cancelProcess()
 	}()
 
-	db, err := postgres.NewPostgresDBWithRetry(processContext, configuration.Database.URL, postgres.Options{
+	db, err := postgres.ConnectWithRetry(processContext, configuration.Database.URL, postgres.Options{
 		MaxConnections:        configuration.Database.MaxConnections,
 		MinConnections:        configuration.Database.MinConnections,
 		MaxConnectionLifetime: configuration.Database.MaxConnectionLifetime,
-	}, configuration.Database.ConnectTimeout, time.Second, func(attempt int, err error) {
-		slog.Warn("database_connect_retry", "attempt", attempt, "retry_in", time.Second, "error", err)
-	})
+	}, configuration.Database.ConnectTimeout, time.Second)
 	if err != nil {
 		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
 	}

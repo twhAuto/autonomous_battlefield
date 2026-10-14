@@ -149,9 +149,9 @@ func integrationDatabase(t *testing.T) (context.Context, *pgxpool.Pool) {
 	if _, err := postgres.Migrate(ctx, url, 5*time.Second); err != nil {
 		t.Fatalf("postgres.Migrate() returned an error: %v", err)
 	}
-	db, err := postgres.NewPostgresDB(ctx, url, postgres.Options{MaxConnections: 4, MinConnections: 0, MaxConnectionLifetime: time.Minute})
+	db, err := postgres.Connect(ctx, url, postgres.Options{MaxConnections: 4, MinConnections: 0, MaxConnectionLifetime: time.Minute})
 	if err != nil {
-		t.Fatalf("postgres.NewPostgresDB() returned an error: %v", err)
+		t.Fatalf("postgres.Connect() returned an error: %v", err)
 	}
 	t.Cleanup(db.Close)
 	return ctx, db
