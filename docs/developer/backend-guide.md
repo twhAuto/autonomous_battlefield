@@ -70,7 +70,7 @@ The package root contains types and interfaces shared across these subpackages, 
 | [`combat.go`](../../backend/internal/game/combat.go) | Unit turns, targeting, damage, and loot |
 | [`movement.go`](../../backend/internal/game/movement.go) | Castle approach paths and reachable enemy alternatives |
 | [`knowledge.go`](../../backend/internal/game/knowledge.go) | Ruleset knowledge validation and defensive copying |
-| [`visibility.go`](../../backend/internal/game/visibility.go) | Faction perspectives and fog of war |
+| [`visibility.go`](../../backend/internal/game/visibility.go) | Faction perspectives and fog of war; a faction view carries only its own `FactionState` (gold, upgrades, production totals) |
 | [`clone.go`](../../backend/internal/game/clone.go) | Defensive copying of state, scenarios, results, and plans |
 | [`map.go`](../../backend/internal/game/map.go) | Hex-map validation, coordinates, traversal, and visibility helpers |
 | [`rules.go`](../../backend/internal/game/rules.go) | Ruleset and legacy blueprint validation |
