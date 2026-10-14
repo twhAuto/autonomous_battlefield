@@ -87,7 +87,7 @@ The package root contains types and interfaces shared across these subpackages, 
 
 ### `internal/battle/catalog`: authored inputs
 
-[`catalog.go`](../../backend/internal/battle/catalog/catalog.go) strictly decodes scenario and ruleset YAML with unknown-field rejection. It validates templates, combines a scenario with two stored faction identities, and returns a complete resolved `game.Scenario` plus digest.
+[`catalog.go`](../../backend/internal/battle/catalog/catalog.go) strictly decodes scenario and ruleset YAML with unknown-field rejection. It validates templates, combines a scenario with two stored faction identities, and returns a complete resolved `game.Scenario`. The battle service attaches controllers and computes the battle's digest with `battleservice.ScenarioDigest`, the only digest function, which the catalog tests also use.
 
 The API stores this resolved value in `battle_runs.scenario_snapshot`. The engine therefore does not reload live YAML when it claims a battle.
 

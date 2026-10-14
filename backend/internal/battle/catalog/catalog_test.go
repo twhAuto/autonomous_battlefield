@@ -21,14 +21,16 @@ func TestCatalogLoadsRulesetAndResolvesBlueprints(t *testing.T) {
 	}
 	blueprint := game.Blueprint{Units: []game.UnitSelection{{Type: "vanguard", Count: 1}, {Type: "striker", Count: 1}, {Type: "ranger", Count: 1}}, UpgradeIDs: []string{"arsenal"}, RecruitmentPriority: []string{"vanguard", "striker", "ranger"}}
 	identities := [2]battleservice.FactionIdentity{{ID: "faction-a", Name: "A", RulesetID: "castle-siege-v1", Blueprint: blueprint}, {ID: "faction-b", Name: "B", RulesetID: "castle-siege-v1", Blueprint: blueprint}}
-	first, digest, err := catalog.Resolve("castle-siege-v1", identities)
+	first, err := catalog.Resolve("castle-siege-v1", identities)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, nextDigest, err := catalog.Resolve("castle-siege-v1", identities)
+	digest := digestOf(t, first)
+	second, err := catalog.Resolve("castle-siege-v1", identities)
 	if err != nil {
 		t.Fatal(err)
 	}
+	nextDigest := digestOf(t, second)
 	if digest == "" || digest != nextDigest || first.Map.Width != 15 || second.Map.Height != 11 {
 		t.Fatalf("unexpected resolutions: %#v", first)
 	}
@@ -68,7 +70,7 @@ func TestCatalogAcceptsGenericFaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = catalog.Resolve("castle-siege-v1", [2]battleservice.FactionIdentity{{ID: "a", Name: "A", Doctrine: "Defend", RulesetID: "other"}, {ID: "b", Name: "B", Doctrine: "Attack", RulesetID: "other"}})
+	_, err = catalog.Resolve("castle-siege-v1", [2]battleservice.FactionIdentity{{ID: "a", Name: "A", Doctrine: "Defend", RulesetID: "other"}, {ID: "b", Name: "B", Doctrine: "Attack", RulesetID: "other"}})
 	if err != nil {
 		t.Fatalf("error = %v", err)
 	}
@@ -80,7 +82,7 @@ func TestCatalogReturnsNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = catalog.Resolve("missing", [2]battleservice.FactionIdentity{})
+	_, err = catalog.Resolve("missing", [2]battleservice.FactionIdentity{})
 	if !errors.Is(err, battleservice.ErrScenarioNotFound) {
 		t.Fatalf("error = %v", err)
 	}
@@ -114,23 +116,35 @@ func TestDoctrineSnapshotIsIndependentOfFutureProfileEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	identities := [2]battleservice.FactionIdentity{{ID: "a", Name: "A", Doctrine: "Scout", Background: "Old roots"}, {ID: "b", Name: "B", Doctrine: "Defend"}}
-	first, hash, err := catalog.Resolve("castle-siege-v1", identities)
+	first, err := catalog.Resolve("castle-siege-v1", identities)
 	if err != nil {
 		t.Fatal(err)
 	}
+	hash := digestOf(t, first)
 	identities[0].Name = "Edited"
 	identities[0].Doctrine = "Attack"
 	identities[0].Background = "A new history"
-	_, updated, err := catalog.Resolve("castle-siege-v1", identities)
+	updatedScenario, err := catalog.Resolve("castle-siege-v1", identities)
 	if err != nil {
 		t.Fatal(err)
 	}
+	updated := digestOf(t, updatedScenario)
 	if first.Factions[0].Background != "Old roots" || first.Factions[0].Name != "A" || first.Factions[0].Doctrine != "Scout" || hash == updated || first.SnapshotVersion != game.DoctrineSnapshotVersion {
 		t.Fatal("profile snapshot not immutable")
 	}
 	for _, summary := range catalog.Summaries() {
-		if _, _, err := catalog.Resolve(summary.ID, identities); err != nil {
+		if _, err := catalog.Resolve(summary.ID, identities); err != nil {
 			t.Fatal("generic profiles cannot cross scenarios", err)
 		}
 	}
+}
+
+// digestOf fingerprints a resolved scenario with the battle service's digest function.
+func digestOf(t *testing.T, scenario game.Scenario) string {
+	t.Helper()
+	digest, err := battleservice.ScenarioDigest(scenario)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return digest
 }

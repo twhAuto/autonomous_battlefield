@@ -2,9 +2,6 @@
 package catalog
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -120,14 +117,16 @@ func (c *Catalog) Ruleset(id string) (game.Ruleset, bool) {
 	return cloneRuleset(value), ok
 }
 
-func (c *Catalog) Resolve(id string, identities [2]battleservice.FactionIdentity) (game.Scenario, string, error) {
+// Resolve assembles a validated scenario for two factions. The battle service attaches
+// controllers and computes the battle's digest with battleservice.ScenarioDigest.
+func (c *Catalog) Resolve(id string, identities [2]battleservice.FactionIdentity) (game.Scenario, error) {
 	tmpl, ok := c.templates[id]
 	if !ok {
-		return game.Scenario{}, "", fmt.Errorf("%w: %q", battleservice.ErrScenarioNotFound, id)
+		return game.Scenario{}, fmt.Errorf("%w: %q", battleservice.ErrScenarioNotFound, id)
 	}
 	ruleset, err := restrictRuleset(c.rulesets[tmpl.RulesetID], tmpl)
 	if err != nil {
-		return game.Scenario{}, "", err
+		return game.Scenario{}, err
 	}
 	factions := make([]game.FactionSetup, 2)
 	for index, identity := range identities {
@@ -138,14 +137,9 @@ func (c *Catalog) Resolve(id string, identities [2]battleservice.FactionIdentity
 	duration, _ := time.ParseDuration(tmpl.TickDuration)
 	resolved := game.Scenario{SnapshotVersion: game.DoctrineSnapshotVersion, ID: tmpl.ID, RulesVersion: tmpl.RulesVersion, RulesetID: tmpl.RulesetID, MaximumTicks: tmpl.MaximumTicks, TickDuration: duration, DecisionIntervalTicks: tmpl.DecisionIntervalTicks, Map: game.CloneMap(tmpl.Map), Ruleset: cloneRuleset(ruleset), Factions: factions}
 	if _, err := game.NewMatch("scenario-validation", resolved, 1); err != nil {
-		return game.Scenario{}, "", fmt.Errorf("%w: scenario %q: %v", ErrInvalidScenario, id, err)
+		return game.Scenario{}, fmt.Errorf("%w: scenario %q: %v", ErrInvalidScenario, id, err)
 	}
-	payload, err := json.Marshal(resolved)
-	if err != nil {
-		return game.Scenario{}, "", fmt.Errorf("marshal resolved scenario %q: %w", id, err)
-	}
-	digest := sha256.Sum256(payload)
-	return resolved, hex.EncodeToString(digest[:]), nil
+	return resolved, nil
 }
 
 func loadRulesets(directory string) (map[string]game.Ruleset, error) {

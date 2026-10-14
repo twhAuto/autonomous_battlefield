@@ -3,10 +3,11 @@ package catalog
 import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
 
+	"testing"
+
 	service "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
-	"testing"
 )
 
 // These are reproducible balance probes, not promises that one army always wins.
@@ -14,7 +15,7 @@ import (
 func TestFrontierEqualBudgetMatchups(t *testing.T) {
 	c, err := LoadCatalog("../../../scenarios", "../../../rulesets")
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
-	scenario, _, err := c.Resolve("frontier-siege-v2", [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
+	scenario, err := c.Resolve("frontier-siege-v2", [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	tests := []struct {
 		name        string

@@ -18,8 +18,9 @@ func TestLegacyBattleTraceUnchanged(t *testing.T) {
 	// simulation transition digest below remains the pre-expansion baseline.
 	c, err := LoadCatalog("../../../scenarios", "../../../rulesets")
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
-	s, digest, err := c.Resolve("castle-siege-v1", [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
+	s, err := c.Resolve("castle-siege-v1", [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	digest := digestOf(t, s)
 	testutil.Require(t, !(digest != "356a05c48256e0840499b2969648215e58726e7bbd48966605288ea90aa8fd24" || s.Ruleset.ContentSource.Digest != "2f1d5db379cb23dc35af710547520401c03fa5a36242237146df58b40948f6ad"), func() { t.Fatal("content/snapshot hash changed") })
 	m, err := game.NewMatch("compat", s, 200)
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
@@ -52,7 +53,7 @@ func TestLegacyBattleTraceUnchanged(t *testing.T) {
 func TestFrontierCatalogMapAndDeterministicBattle(t *testing.T) {
 	c, err := LoadCatalog("../../../scenarios", "../../../rulesets")
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
-	s, _, err := c.Resolve("frontier-siege-v2", [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
+	s, err := c.Resolve("frontier-siege-v2", [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	testutil.Require(t, !(s.Map.Width != 25 || s.Map.Height != 17 || len(s.Map.EconomySites[0]) != 6 || len(s.Ruleset.Units) != 7 || len(s.Ruleset.Structures) != 3), func() { t.Fatal("incomplete frontier content") })
 	testutil.Require(t, s.Ruleset.ContentSource.Version == "2", func() { t.Fatal("incorrect content version") })
