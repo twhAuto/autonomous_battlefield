@@ -95,7 +95,7 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
   // map content with feedback until the selected perspective is available.
   const mapView = perspective === 'spectator' ? spectatorView : factionView
   const displayView = mapView ?? spectatorView
-  const perspectiveFeedback = perspectiveMessage ? <p role="alert">{perspectiveMessage} <button className="text-button" type="button" onClick={retryPerspective}>Retry faction view</button></p> : <p role="status">Loading faction view…</p>
+  const perspectiveFeedback = perspectiveMessage ? <p role="alert">{perspectiveMessage} <button className="text-button" type="button" onClick={retryPerspective}>Retry faction view</button></p> : <output>Loading faction view…</output>
   const perspectiveControl = <div className="map-perspective-control"><label htmlFor="perspective">Perspective</label><select id="perspective" value={perspective} onChange={(event) => setPerspective(event.target.value)}><option value="spectator">Spectator · full map</option>{battle.participants.map((participant) => <option key={participant.id} value={participant.id}>{participant.name}</option>)}</select></div>
 
   return (

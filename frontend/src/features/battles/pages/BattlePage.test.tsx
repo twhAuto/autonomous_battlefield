@@ -213,7 +213,7 @@ it('withholds the full map while a faction view loads or fails and supports retr
   renderBattle()
   await user.selectOptions(await screen.findByRole('combobox', { name: 'Perspective' }), north)
   expect(screen.queryByRole('region', { name: 'Map navigation' })).not.toBeInTheDocument()
-  expect(screen.getByText('Loading faction view…')).toBeInTheDocument()
+  expect(screen.getByText('Loading faction view…')).toHaveRole('status')
   await act(async () => reject(new Error('Offline')))
   expect(screen.getByRole('alert')).toHaveTextContent('Faction view could not be loaded.')
   expect(screen.queryByRole('region', { name: 'Map navigation' })).not.toBeInTheDocument()
