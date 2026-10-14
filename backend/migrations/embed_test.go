@@ -53,8 +53,13 @@ func conventionProblem(sql string) string {
 	if up < 0 || down < up || strings.Count(sql, "-- +goose Up") != 1 || strings.Count(sql, "-- +goose Down") != 1 {
 		return "needs exactly one +goose Up section followed by one +goose Down section"
 	}
-	// PostgreSQL DO blocks and function bodies contain semicolons, so each must sit in
-	// one StatementBegin/StatementEnd pair for Goose to send it as one statement.
+	return statementBlockProblem(sql)
+}
+
+// statementBlockProblem checks statement blocks. PostgreSQL DO blocks and function
+// bodies contain semicolons, so each dollar-quoted body must sit in one
+// StatementBegin/StatementEnd pair for Goose to send it as one statement.
+func statementBlockProblem(sql string) string {
 	open := false
 	for _, line := range strings.Split(sql, "\n") {
 		if strings.Contains(line, "$$") && !open {
