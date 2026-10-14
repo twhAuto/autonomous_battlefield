@@ -3,107 +3,139 @@
 package repo
 
 import (
-	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
-
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
+	battle "github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
 func TestBattleHistoryAgainstPostgres(t *testing.T) {
 	ctx, db := integrationDatabase(t)
 	tx, err := db.Begin(ctx)
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer tx.Rollback(context.Background())
 	// Isolate fixtures from other integration tests and any existing development data.
-	{
-		_, err := tx.Exec(ctx, "CREATE TEMP TABLE battle_runs (LIKE battle_runs INCLUDING ALL) ON COMMIT DROP")
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
-	}
+	mustExec(t, tx, "CREATE TEMP TABLE battle_runs (LIKE battle_runs INCLUDING ALL) ON COMMIT DROP")
 	repo := NewPostgres(tx)
 	scenario := repositoryTestScenario()
 	scenario.Factions[0].Name = "Historical name"
 	when := time.Date(2026, 9, 7, 0, 0, 0, 123456000, time.UTC)
+	ids := seedHistory(t, tx, repo, scenario, when)
+
+	checkHistoryStatusFilters(t, repo, ids)
+	checkHistoryIgnoresFactionRegistry(t, tx, repo, scenario.Factions[0].ID)
+	checkHistoryCursorIgnoresNewerBattles(t, tx, repo, scenario, when, ids)
+}
+
+// seedHistory creates seven battles, one per status (two of them paused), all at the
+// same creation time, and returns their IDs in creation order.
+func seedHistory(t *testing.T, tx pgx.Tx, repo *Postgres, scenario battle.Scenario, when time.Time) []string {
+	t.Helper()
 	statuses := []string{"queued", "running", "queued", "running", "completed", "failed", "stopped"}
 	ids := make([]string, len(statuses))
 	for i, status := range statuses {
 		ids[i] = fmt.Sprintf("00000000-0000-0000-0000-%012d", i+1)
-		{
-			err := repo.CreateBattle(ctx, battleservice.CreateBattleParams{ID: ids[i], ScenarioID: scenario.ID, ScenarioDigest: "digest", ScenarioSnapshot: scenario, RequestedTicks: 25})
-			testutil.Require(t, err == nil, func() { t.Fatal(err) })
-		}
-		{
-			_, err := tx.Exec(ctx, "UPDATE battle_runs SET status=$2, paused=$3, created_at=$4 WHERE id=$1", ids[i], status, i == 2 || i == 3, when)
-			testutil.Require(t, err == nil, func() { t.Fatal(err) })
-		}
+		createHistoryBattle(t, repo, scenario, ids[i])
+		mustExec(t, tx, "UPDATE battle_runs SET status=$2, paused=$3, created_at=$4 WHERE id=$1", ids[i], status, i == 2 || i == 3, when)
 	}
-	{
-		_, err := tx.Exec(ctx, `UPDATE battle_runs SET result='{"winnerFactionId":null,"reason":"tick_limit","factions":[]}' WHERE status='completed'`)
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	mustExec(t, tx, `UPDATE battle_runs SET result='{"winnerFactionId":null,"reason":"tick_limit","factions":[]}' WHERE status='completed'`)
+	return ids
+}
+
+func createHistoryBattle(t *testing.T, repo *Postgres, scenario battle.Scenario, id string) {
+	t.Helper()
+	if err := repo.CreateBattle(context.Background(), battleservice.CreateBattleParams{ID: id, ScenarioID: scenario.ID, ScenarioDigest: "digest", ScenarioSnapshot: scenario, RequestedTicks: 25}); err != nil {
+		t.Fatal(err)
 	}
+}
+
+// checkHistoryStatusFilters lists each status filter, newest ID first among equal times.
+func checkHistoryStatusFilters(t *testing.T, repo *Postgres, ids []string) {
+	t.Helper()
 	for _, test := range []struct {
 		status string
 		want   []int
 	}{
 		{"", []int{6, 5, 4, 3, 2, 1, 0}}, {"queued", []int{0}}, {"running", []int{1}}, {"paused", []int{3, 2}}, {"completed", []int{4}}, {"failed", []int{5}}, {"stopped", []int{6}},
 	} {
-		rows, err := repo.ListBattles(ctx, battleservice.BattleHistoryQuery{Status: test.status, Limit: 100})
-		testutil.Require(t, !(err != nil || len(rows) != len(test.want)), func() { t.Fatalf("status=%s rows=%+v err=%v", test.status, rows, err) })
+		rows, err := repo.ListBattles(context.Background(), battleservice.BattleHistoryQuery{Status: test.status, Limit: 100})
+		if err != nil || len(rows) != len(test.want) {
+			t.Fatalf("status=%s rows=%+v err=%v", test.status, rows, err)
+		}
 		for i, index := range test.want {
-			testutil.Require(t, rows[i].ID == ids[index], func() { t.Fatal(rows) })
+			if rows[i].ID != ids[index] {
+				t.Fatal(rows)
+			}
 		}
 	}
-	// A faction registry change cannot affect the saved snapshot, including after deletion.
-	{
-		_, err := tx.Exec(ctx, "CREATE TEMP TABLE factions (id text, name text) ON COMMIT DROP")
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
-	}
-	{
-		_, err := tx.Exec(ctx, "INSERT INTO factions VALUES ($1,'Historical name')", scenario.Factions[0].ID)
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
-	}
+}
+
+// checkHistoryIgnoresFactionRegistry renames and then deletes the faction: the saved
+// snapshot keeps the original name and outcome.
+func checkHistoryIgnoresFactionRegistry(t *testing.T, tx pgx.Tx, repo *Postgres, factionID string) {
+	t.Helper()
+	mustExec(t, tx, "CREATE TEMP TABLE factions (id text, name text) ON COMMIT DROP")
+	mustExec(t, tx, "INSERT INTO factions VALUES ($1,'Historical name')", factionID)
 	for _, mutation := range []string{"UPDATE factions SET name='Renamed'", "DELETE FROM factions"} {
-		{
-			_, err := tx.Exec(ctx, mutation)
-			testutil.Require(t, err == nil, func() { t.Fatal(err) })
+		mustExec(t, tx, mutation)
+		rows, err := repo.ListBattles(context.Background(), battleservice.BattleHistoryQuery{Status: "completed", Limit: 25})
+		if err != nil || rows[0].Participants[0].Name != "Historical name" || rows[0].Outcome == nil || rows[0].Outcome.WinnerFactionID != nil || rows[0].Outcome.Reason != "tick_limit" {
+			t.Fatalf("rows=%+v err=%v", rows, err)
 		}
-		rows, err := repo.ListBattles(ctx, battleservice.BattleHistoryQuery{Status: "completed", Limit: 25})
-		testutil.Require(t, !(err != nil || rows[0].Participants[0].Name != "Historical name" || rows[0].Outcome == nil || rows[0].Outcome.WinnerFactionID != nil || rows[0].Outcome.Reason != "tick_limit"), func() { t.Fatalf("rows=%+v err=%v", rows, err) })
 	}
+}
+
+// checkHistoryCursorIgnoresNewerBattles pages through the history two at a time while a
+// newer battle is created after the first page: the cursor still returns exactly the
+// original seven, and a fresh first page starts with the newer battle.
+func checkHistoryCursorIgnoresNewerBattles(t *testing.T, tx pgx.Tx, repo *Postgres, scenario battle.Scenario, when time.Time, ids []string) {
+	t.Helper()
+	ctx := context.Background()
 	service := battleservice.NewService(repo, nil, nil, 100, battleservice.Options{})
 	first, err := service.ListBattles(ctx, battleservice.BattleHistoryInput{Limit: 2})
-	testutil.Require(t, !(err != nil || first.NextCursor == nil || first.Battles[0].ID != ids[6]), func() { t.Fatalf("first=%+v err=%v", first, err) })
+	if err != nil || first.NextCursor == nil || first.Battles[0].ID != ids[6] {
+		t.Fatalf("first=%+v err=%v", first, err)
+	}
 	newerID := "00000000-0000-0000-0000-000000000008"
-	{
-		err := repo.CreateBattle(ctx, battleservice.CreateBattleParams{ID: newerID, ScenarioID: scenario.ID, ScenarioDigest: "digest", ScenarioSnapshot: scenario, RequestedTicks: 25})
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
-	}
-	{
-		_, err := tx.Exec(ctx, "UPDATE battle_runs SET created_at=$2 WHERE id=$1", newerID, when.Add(time.Second))
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
-	}
+	createHistoryBattle(t, repo, scenario, newerID)
+	mustExec(t, tx, "UPDATE battle_runs SET created_at=$2 WHERE id=$1", newerID, when.Add(time.Second))
 	seen := []string{first.Battles[0].ID, first.Battles[1].ID}
-	cursor := first.NextCursor
-	for cursor != nil {
+	for cursor := first.NextCursor; cursor != nil; {
 		page, err := service.ListBattles(ctx, battleservice.BattleHistoryInput{Limit: 2, Cursor: *cursor})
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
+		if err != nil {
+			t.Fatal(err)
+		}
 		for _, row := range page.Battles {
 			seen = append(seen, row.ID)
 		}
 		cursor = page.NextCursor
 	}
-	testutil.Require(t, len(seen) == 7, func() { t.Fatal(seen) })
-	for i, id := range seen {
-		testutil.Require(t, id == ids[6-i], func() { t.Fatal(seen) })
+	want := []string{ids[6], ids[5], ids[4], ids[3], ids[2], ids[1], ids[0]}
+	if !slices.Equal(seen, want) {
+		t.Fatal(seen)
 	}
 	fresh, err := service.ListBattles(ctx, battleservice.BattleHistoryInput{Limit: 1})
-	testutil.Require(t, !(err != nil || fresh.Battles[0].ID != newerID), func() { t.Fatalf("fresh=%+v err=%v", fresh, err) })
+	if err != nil || fresh.Battles[0].ID != newerID {
+		t.Fatalf("fresh=%+v err=%v", fresh, err)
+	}
+}
+
+// mustExec runs a fixture statement and stops the test if it fails.
+func mustExec(t *testing.T, db postgres.DBTX, sql string, args ...any) {
+	t.Helper()
+	if _, err := db.Exec(context.Background(), sql, args...); err != nil {
+		t.Fatal(sql, err)
+	}
 }
 
 func TestBattleHistoryMigrationUpAndDown(t *testing.T) {
@@ -114,48 +146,68 @@ func TestBattleHistoryMigrationUpAndDown(t *testing.T) {
 	schema := "history_" + strings.ReplaceAll(randomUUID(t), "-", "")
 	{
 		_, err := admin.ExecContext(ctx, "CREATE SCHEMA "+schema)
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	defer admin.ExecContext(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
 	config.RuntimeParams["search_path"] = schema
 	db := stdlib.OpenDB(*config)
 	defer db.Close()
 	provider, err := postgres.NewMigrationProvider(db)
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	{
 		_, err := provider.UpTo(ctx, 9)
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	id := randomUUID(t)
 	{
 		_, err := db.ExecContext(ctx, `INSERT INTO battle_runs(id,scenario_id,scenario_digest,scenario_snapshot,requested_ticks,initial_state,current_state) VALUES($1,'old','digest','{"factions":[]}',25,'{}','{}')`, id)
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	{
 		_, err := provider.UpTo(ctx, 10)
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	var index string
 	{
 		err := db.QueryRowContext(ctx, "SELECT indexdef FROM pg_indexes WHERE schemaname=$1 AND indexname='battle_runs_history_idx'", schema).Scan(&index)
-		testutil.Require(t, !(err != nil || !strings.Contains(index, "created_at DESC, id DESC")), func() { t.Fatalf("index=%s err=%v", index, err) })
+		if err != nil || !strings.Contains(index, "created_at DESC, id DESC") {
+			t.Fatalf("index=%s err=%v", index, err)
+		}
 	}
 	{
 		_, err := provider.Down(ctx)
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	var count int
 	{
 		err := db.QueryRowContext(ctx, "SELECT count(*) FROM battle_runs WHERE id=$1", id).Scan(&count)
-		testutil.Require(t, !(err != nil || count != 1), func() { t.Fatalf("count=%d err=%v", count, err) })
+		if err != nil || count != 1 {
+			t.Fatalf("count=%d err=%v", count, err)
+		}
 	}
 	{
 		err := db.QueryRowContext(ctx, "SELECT indexdef FROM pg_indexes WHERE schemaname=$1 AND indexname='battle_runs_history_idx'", schema).Scan(&index)
-		testutil.Require(t, err != nil, func() { t.Fatal("history index survived rollback") })
+		if err == nil {
+			t.Fatal("history index survived rollback")
+		}
 	}
 	{
 		_, err := provider.UpTo(ctx, 10)
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -166,7 +218,9 @@ func TestBattleHistoryMigrationUpAndDown(t *testing.T) {
 func TestBattleHistoryCursorStaysIndexConditionInGenericPlans(t *testing.T) {
 	ctx, db := integrationDatabase(t)
 	tx, err := db.Begin(ctx)
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer tx.Rollback(context.Background())
 	for _, statement := range []string{
 		"SET LOCAL plan_cache_mode = force_generic_plan",
@@ -175,14 +229,20 @@ func TestBattleHistoryCursorStaysIndexConditionInGenericPlans(t *testing.T) {
 		"PREPARE history_plan(text, timestamptz, uuid, int) AS " + listBattlesSQL,
 	} {
 		_, err := tx.Exec(ctx, statement)
-		testutil.Require(t, err == nil, func() { t.Fatal(statement, err) })
+		if err != nil {
+			t.Fatal(statement, err)
+		}
 	}
 	rows, err := tx.Query(ctx, "EXPLAIN (COSTS OFF) EXECUTE history_plan('', now(), gen_random_uuid(), 26)")
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	var plan strings.Builder
 	for rows.Next() {
 		var line string
-		testutil.Require(t, rows.Scan(&line) == nil, func() { t.Fatal("scan plan line") })
+		if rows.Scan(&line) != nil {
+			t.Fatal("scan plan line")
+		}
 		plan.WriteString(line + "\n")
 	}
 	rows.Close()

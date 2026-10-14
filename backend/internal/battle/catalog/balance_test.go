@@ -1,8 +1,6 @@
 package catalog
 
 import (
-	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
-
 	"testing"
 
 	service "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
@@ -14,9 +12,13 @@ import (
 // Mirror each equal-budget opening to expose side/turn-order bias.
 func TestFrontierEqualBudgetMatchups(t *testing.T) {
 	c, err := LoadCatalog("../../../scenarios", "../../../rulesets")
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	scenario, err := c.Resolve("frontier-siege-v2", [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	tests := []struct {
 		name        string
 		left, right []controller.RecruitmentOrder
@@ -29,7 +31,9 @@ func TestFrontierEqualBudgetMatchups(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			cost := func(orders []controller.RecruitmentOrder) int64 { return probeCost(definitions, orders) }
-			testutil.Require(t, cost(tc.left) == cost(tc.right), func() { t.Fatal("probe budgets differ") })
+			if cost(tc.left) != cost(tc.right) {
+				t.Fatal("probe budgets differ")
+			}
 			for _, mirrored := range []bool{false, true} {
 				left, right := tc.left, tc.right
 				if mirrored {
@@ -52,13 +56,17 @@ func probeCost(definitions map[string]game.UnitType, orders []controller.Recruit
 
 func runBalanceProbe(t *testing.T, scenario game.Scenario, left, right []controller.RecruitmentOrder, mirrored bool, cost int64) {
 	m, err := game.NewMatch("probe", scenario, 200)
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	plan := func(orders []controller.RecruitmentOrder) controller.PlanProposal {
 		empty := []controller.ConstructionOrder{}
 		return controller.PlanProposal{Name: "probe", SpendOrder: []string{"recruitment"}, RecruitmentOrders: &orders, ConstructionOrders: &empty, ActionWeights: map[string]int64{"attack": 1000, "defend": 1}}
 	}
 	_, err = m.AdvanceWithPlans(map[string]controller.PlanProposal{"a": plan(left), "b": plan(right)})
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	heals := 0
 	var last game.Transition
 	for !m.Finished() {
@@ -67,7 +75,9 @@ func runBalanceProbe(t *testing.T, scenario game.Scenario, left, right []control
 			plans = map[string]controller.PlanProposal{"a": plan([]controller.RecruitmentOrder{}), "b": plan([]controller.RecruitmentOrder{})}
 		}
 		last, err = m.AdvanceWithPlans(plans)
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
+		if err != nil {
+			t.Fatal(err)
+		}
 		for _, e := range last.Events {
 			if e.Type == "unit_healed" {
 				heals++

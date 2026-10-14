@@ -73,9 +73,13 @@ Tests are colocated with their Go or React implementation. The codebase includes
 - HTTP contract/status tests;
 - React component and typed API-client tests.
 
-`backend/internal/testutil.Require` shares fatal assertion checks while evaluating
-diagnostics only on failure. Larger balance, opening, and generation tests use
-named scenario helpers to keep setup, execution, and assertions readable.
+Go tests assert with plain `if` statements and `t.Fatal`. SonarQube's cognitive
+complexity rule (go:S3776, limit 15) applies to test code too, so a long test is
+split into named `check…` helpers with `t.Helper()` rather than hiding branches in
+an assertion wrapper. Run
+`go run github.com/uudashr/gocognit/cmd/gocognit@latest -over 15 .` in `backend/`
+before pushing. Larger balance, opening, and generation tests use named scenario
+helpers to keep setup, execution, and assertions readable.
 Ruleset and plan validation, recruitment, healing routes, and agent claims have
 separate helpers for their individual validation or execution phases; their
 owning packages and runtime contracts remain the same.

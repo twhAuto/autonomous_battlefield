@@ -10,7 +10,6 @@ import (
 
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
-	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
 )
 
 func TestDuplicateEventIndexMigrationUpAndDown(t *testing.T) {
@@ -20,13 +19,17 @@ func TestDuplicateEventIndexMigrationUpAndDown(t *testing.T) {
 	defer admin.Close()
 	schema := "event_index_" + strings.ReplaceAll(randomUUID(t), "-", "")
 	_, err := admin.ExecContext(ctx, "CREATE SCHEMA "+schema)
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer admin.ExecContext(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
 	config.RuntimeParams["search_path"] = schema
 	db := stdlib.OpenDB(*config)
 	defer db.Close()
 	provider, err := postgres.NewMigrationProvider(db)
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	steps := []struct {
 		migrate   func() error
@@ -38,7 +41,9 @@ func TestDuplicateEventIndexMigrationUpAndDown(t *testing.T) {
 		{func() error { _, err := provider.UpTo(ctx, 15); return err }, false},
 	}
 	for i, step := range steps {
-		testutil.Require(t, step.migrate() == nil, func() { t.Fatalf("step %d migration failed", i) })
+		if step.migrate() != nil {
+			t.Fatalf("step %d migration failed", i)
+		}
 		if got := indexExists(t, db, schema, "battle_events_cursor_idx"); got != step.duplicate {
 			t.Fatalf("step %d: duplicate index present = %t, want %t", i, got, step.duplicate)
 		}
@@ -52,6 +57,8 @@ func indexExists(t *testing.T, db *sql.DB, schema, name string) bool {
 	t.Helper()
 	var count int
 	err := db.QueryRow("SELECT count(*) FROM pg_indexes WHERE schemaname=$1 AND indexname=$2", schema, name).Scan(&count)
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	return count == 1
 }

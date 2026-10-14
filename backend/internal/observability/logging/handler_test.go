@@ -5,19 +5,19 @@ package logging
 
 import (
 	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
 	"net"
 
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"go.opentelemetry.io/otel/trace"
 	"log/slog"
 	"strings"
 	"testing"
 	"testing/slogtest"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 func decodeLogs(t *testing.T, data []byte) []map[string]any {
@@ -27,7 +27,9 @@ func decodeLogs(t *testing.T, data []byte) []map[string]any {
 		var row map[string]any
 		{
 			err := json.Unmarshal(line, &row)
-			testutil.Require(t, err == nil, func() { t.Fatal(err) })
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 		rows = append(rows, row)
 	}
@@ -39,7 +41,9 @@ func TestHandlerPreservesStructuredLogging(t *testing.T) {
 	handler := NewHandler(slog.NewJSONHandler(&output, nil))
 	{
 		err := slogtest.TestHandler(handler, func() []map[string]any { return decodeLogs(t, output.Bytes()) })
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -63,19 +67,30 @@ func TestReadableMessagesPreserveEventsAndFields(t *testing.T) {
 			logger := slog.New(NewHandler(slog.NewJSONHandler(&output, nil))).With("service", "engine", "worker_id", "engine-1")
 			logger.Info(tc.event, tc.attrs...)
 			row := decodeLogs(t, output.Bytes())[0]
-			testutil.Require(t, !(row["event"] != tc.event || row["service"] != "engine"), func() { t.Fatal(row) })
-			msg := row["msg"].(string)
-			for _, want := range append(tc.want, "[engine]") {
-				testutil.Require(t, strings.Contains(msg, want), func() { t.Fatalf("%q missing %q", msg, want) })
+			if row["event"] != tc.event || row["service"] != "engine" {
+				t.Fatal(row)
 			}
-			for _, forbidden := range []string{"PRIVATE-", "<nil>", "winner:"} {
-				testutil.Require(t, !(strings.Contains(msg, forbidden)), func() { t.Fatal(msg) })
-			}
-			{
-				_, ok := row["trace_id"]
-				testutil.Require(t, !(ok), func() { t.Fatal("invented trace ID") })
+			checkReadableMessage(t, row["msg"].(string), append(tc.want, "[engine]"))
+			if _, ok := row["trace_id"]; ok {
+				t.Fatal("invented trace ID")
 			}
 		})
+	}
+}
+
+// checkReadableMessage requires every wanted fragment and no private fields, nil
+// values or empty winner in a readable log message.
+func checkReadableMessage(t *testing.T, msg string, want []string) {
+	t.Helper()
+	for _, fragment := range want {
+		if !strings.Contains(msg, fragment) {
+			t.Fatalf("%q missing %q", msg, fragment)
+		}
+	}
+	for _, forbidden := range []string{"PRIVATE-", "<nil>", "winner:"} {
+		if strings.Contains(msg, forbidden) {
+			t.Fatal(msg)
+		}
 	}
 }
 
@@ -87,11 +102,17 @@ func TestHandlerCorrelatesActiveSpanWithoutLeakingAcrossCalls(t *testing.T) {
 	logger.WithGroup("details").With("status", 200).InfoContext(ctx, "http_request_completed", "path", "/v1/battles")
 	logger.Info("database_connected")
 	rows := decodeLogs(t, output.Bytes())
-	testutil.Require(t, !(rows[0]["trace_id"] != span.TraceID().String() || rows[0]["span_id"] != span.SpanID().String() || rows[0]["event"] != "http_request_completed"), func() { t.Fatal(rows[0]) })
-	testutil.Require(t, rows[0]["details"].(map[string]any)["status"] == float64(200), func() { t.Fatal(rows[0]) })
+	if rows[0]["trace_id"] != span.TraceID().String() || rows[0]["span_id"] != span.SpanID().String() || rows[0]["event"] != "http_request_completed" {
+		t.Fatal(rows[0])
+	}
+	if rows[0]["details"].(map[string]any)["status"] != float64(200) {
+		t.Fatal(rows[0])
+	}
 	{
 		_, ok := rows[1]["trace_id"]
-		testutil.Require(t, !(ok), func() { t.Fatal("trace leaked into unrelated log", rows[1]) })
+		if ok {
+			t.Fatal("trace leaked into unrelated log", rows[1])
+		}
 	}
 }
 
@@ -104,8 +125,12 @@ func TestHandlerPreservesFreeTextAndSiblingAttributes(t *testing.T) {
 	b.Info("battle_paused")
 	logger.Info("already readable_error text")
 	rows := decodeLogs(t, output.Bytes())
-	testutil.Require(t, !(!strings.Contains(rows[0]["msg"].(string), "battle: a") || !strings.Contains(rows[1]["msg"].(string), "battle: b")), func() { t.Fatal(rows) })
-	testutil.Require(t, !(rows[2]["msg"] != "already readable_error text" || rows[2]["event"] != nil), func() { t.Fatal(rows[2]) })
+	if !strings.Contains(rows[0]["msg"].(string), "battle: a") || !strings.Contains(rows[1]["msg"].(string), "battle: b") {
+		t.Fatal(rows)
+	}
+	if rows[2]["msg"] != "already readable_error text" || rows[2]["event"] != nil {
+		t.Fatal(rows[2])
+	}
 }
 
 type countingValue struct{ calls *int }
@@ -119,8 +144,12 @@ func TestHandlerResolvesValuesOnce(t *testing.T) {
 	logger.Info("database_connect_retry", "status", countingValue{&calls})
 	logger.Info("database_connect_retry")
 	rows := decodeLogs(t, output.Bytes())
-	testutil.Require(t, !(calls != 2 || rows[0]["attempt"] != float64(1) || rows[0]["status"] != float64(2) || rows[1]["attempt"] != float64(1)), func() { t.Fatal("values evaluated more than once", calls, rows) })
-	testutil.Require(t, !(!strings.Contains(rows[0]["msg"].(string), "attempt: 1") || !strings.Contains(rows[0]["msg"].(string), "HTTP status: 2")), func() { t.Fatal("summary and fields disagree", rows[0]) })
+	if calls != 2 || rows[0]["attempt"] != float64(1) || rows[0]["status"] != float64(2) || rows[1]["attempt"] != float64(1) {
+		t.Fatal("values evaluated more than once", calls, rows)
+	}
+	if !strings.Contains(rows[0]["msg"].(string), "attempt: 1") || !strings.Contains(rows[0]["msg"].(string), "HTTP status: 2") {
+		t.Fatal("summary and fields disagree", rows[0])
+	}
 }
 
 func TestHandlerRedactsErrorValuesUnderAnyKey(t *testing.T) {

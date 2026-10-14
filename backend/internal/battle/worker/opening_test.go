@@ -4,8 +4,6 @@
 package worker
 
 import (
-	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
-
 	"context"
 	"encoding/json"
 	"strings"
@@ -13,12 +11,15 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 func TestOpeningIsRecordedAndPersistedBeforeCombat(t *testing.T) {
 	for _, model := range []bool{false, true} {
-		checkOpeningPersistence(t, model)
+		t.Run(map[bool]string{false: "scripted", true: "model"}[model], func(t *testing.T) {
+			checkOpeningPersistence(t, model)
+		})
 	}
 }
 
@@ -33,20 +34,59 @@ func TestDoctrineBattleCompletesWithAcceptedModelStub(t *testing.T) {
 	}
 	repo := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}, acceptModels: true}
 	worker, _ := New(repo, repo, testWorkerConfig())
-	{
-		err := worker.process(context.Background(), job)
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err := worker.process(context.Background(), job); err != nil {
+		t.Fatal(err)
 	}
-	testutil.Require(t, !(repo.completed == nil || repo.completed.Tick != 20 || repo.saved[0].Tick != 0), func() { t.Fatal("full battle lifecycle failed") })
+	if repo.completed == nil || repo.completed.Tick != 20 || repo.saved[0].Tick != 0 {
+		t.Fatal("full battle lifecycle failed")
+	}
 	for _, state := range repo.completed.State.Factions {
-		testutil.Require(t, !(len(state.OwnedUpgradeIDs) != 1 || state.GoldSpent <= 0 || state.Gold < 0), func() { t.Fatalf("upgrade ownership/spending %+v", state) })
+		if len(state.OwnedUpgradeIDs) != 1 || state.GoldSpent <= 0 || state.Gold < 0 {
+			t.Fatalf("upgrade ownership/spending %+v", state)
+		}
 	}
 	for _, record := range repo.records {
-		testutil.Require(t, !(record.Status != "accepted" || record.ResolvedPlan == nil), func() { t.Fatal("stub decisions not used") })
+		if record.Status != "accepted" || record.ResolvedPlan == nil {
+			t.Fatal("stub decisions not used")
+		}
 	}
 }
 
 func checkOpeningPersistence(t *testing.T, model bool) {
+	job := openingJob(model)
+	repo := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}}
+	config := testWorkerConfig()
+	config.DecisionTimeout = time.Millisecond
+	worker, _ := New(repo, repo, config)
+	simulation, err := game.NewMatch(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, finished, err := worker.runTick(context.Background(), job.Lease, simulation)
+	if err != nil || finished {
+		t.Fatalf("opening %v %v", finished, err)
+	}
+	if len(repo.saved) != 1 || repo.saved[0].Tick != 0 || !repo.saved[0].State.OpeningComplete {
+		t.Fatal("opening not durable before tick one")
+	}
+	if len(repo.records) != 2 {
+		t.Fatal("missing simultaneous decisions")
+	}
+	for _, record := range repo.records {
+		checkOpeningRecord(t, job, record)
+	}
+	_, _, err = worker.runTick(context.Background(), job.Lease, simulation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if simulation.State().Tick != 1 || len(repo.records) != 2 {
+		t.Fatal("opening repeated")
+	}
+}
+
+// openingJob returns a two-tick doctrine battle between scripted factions; with model
+// set, the first faction is model-controlled instead.
+func openingJob(model bool) *queue.Job {
 	job := testJob(2)
 	job.Scenario.SnapshotVersion = game.DoctrineSnapshotVersion
 	job.Scenario.Ruleset.StartingGold = 180
@@ -58,32 +98,28 @@ func checkOpeningPersistence(t *testing.T, model bool) {
 	if model {
 		job.Scenario.Factions[0].Controller = game.ControllerConfig{Type: ai.ControllerModel, ProfileID: "test"}
 	}
-	repo := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}}
-	config := testWorkerConfig()
-	config.DecisionTimeout = time.Millisecond
-	worker, _ := New(repo, repo, config)
-	simulation, err := game.NewMatch(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
-	_, finished, err := worker.runTick(context.Background(), job.Lease, simulation)
-	testutil.Require(t, !(err != nil || finished), func() { t.Fatalf("opening %v %v", finished, err) })
-	testutil.Require(t, !(len(repo.saved) != 1 || repo.saved[0].Tick != 0 || !repo.saved[0].State.OpeningComplete), func() { t.Fatal("opening not durable before tick one") })
-	testutil.Require(t, len(repo.records) == 2, func() { t.Fatal("missing simultaneous decisions") })
-	for _, record := range repo.records {
-		testutil.Require(t, !(record.TargetTick != 0 || !record.Observation.Opening || len(record.Observation.View.State.Units) != 0 || record.ResolvedPlan == nil), func() { t.Fatal("opening decisions not frozen") })
-		expected := "Defend"
-		if record.FactionID == job.Scenario.Factions[0].ID {
-			expected = "Scout"
-		}
-		owner, opponent := job.Scenario.Factions[1], job.Scenario.Factions[0]
-		if record.FactionID == job.Scenario.Factions[0].ID {
-			owner, opponent = opponent, owner
-		}
-		raw, _ := json.Marshal(record.Observation)
-		testutil.Require(t, !(record.Observation.Background != owner.Background || record.Observation.FactionName != owner.Name || strings.Contains(string(raw), opponent.Background)), func() { t.Fatal("identity isolation", string(raw)) })
-		testutil.Require(t, record.Observation.Doctrine == expected, func() { t.Fatal("wrong doctrine exposed") })
-		testutil.Require(t, !(record.ControllerType == ai.ControllerModel && (record.Status != "fallback" || record.FallbackSource != "scripted_fallback")), func() { t.Fatal("opening timeout fallback") })
+	return job
+}
+
+// checkOpeningRecord requires an opening decision to be frozen at tick zero and to see
+// only its own faction's identity and doctrine.
+func checkOpeningRecord(t *testing.T, job *queue.Job, record ai.DecisionRecord) {
+	t.Helper()
+	if record.TargetTick != 0 || !record.Observation.Opening || len(record.Observation.View.State.Units) != 0 || record.ResolvedPlan == nil {
+		t.Fatal("opening decisions not frozen")
 	}
-	_, _, err = worker.runTick(context.Background(), job.Lease, simulation)
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
-	testutil.Require(t, !(simulation.State().Tick != 1 || len(repo.records) != 2), func() { t.Fatal("opening repeated") })
+	owner, opponent := job.Scenario.Factions[1], job.Scenario.Factions[0]
+	if record.FactionID == job.Scenario.Factions[0].ID {
+		owner, opponent = opponent, owner
+	}
+	raw, _ := json.Marshal(record.Observation)
+	if record.Observation.Background != owner.Background || record.Observation.FactionName != owner.Name || strings.Contains(string(raw), opponent.Background) {
+		t.Fatal("identity isolation", string(raw))
+	}
+	if record.Observation.Doctrine != owner.Doctrine {
+		t.Fatal("wrong doctrine exposed")
+	}
+	if record.ControllerType == ai.ControllerModel && (record.Status != "fallback" || record.FallbackSource != "scripted_fallback") {
+		t.Fatal("opening timeout fallback")
+	}
 }

@@ -57,9 +57,7 @@ autonomous_battlefield/
 │   │   ├── admin/              # Model-access handler, service, and repository
 │   │   ├── members/            # Player membership and reconciliation
 │   │   ├── generation/         # Faction background generation jobs and quotas
-│   │   ├── testutil/           # Shared assertions with lazy failure diagnostics
 │   │   ├── apierror/           # Stable JSON error envelope and codes for /v1
-│   │   ├── requestid/          # Request correlation ID carried in the context
 │   │   ├── observability/      # logging, metrics, tracing, requestid, redact (leaf packages)
 │   │   └── ...                 # app, authn, config, httpapi, postgres
 │   ├── test/                   # Cross-package tests and fixtures; no runtime code

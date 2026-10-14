@@ -132,29 +132,39 @@ func comparisonVariantReports(variants []ComparisonVariant) ([]VariantReport, er
 func comparisonObservations(cases []Case, limits ai.KnowledgeLimits) ([]ai.DecisionContext, error) {
 	observations := make([]ai.DecisionContext, len(cases))
 	for i, c := range cases {
-		var envelope struct {
-			Context ai.DecisionContext `json:"context"`
+		observation, err := caseObservation(c, limits)
+		if err != nil {
+			return nil, err
 		}
-		if len(c.ContextJSON) > 64<<10 || json.Unmarshal([]byte(c.ContextJSON), &envelope) != nil || envelope.Context.RequestID != c.RequestID || (envelope.Context.TargetTick == 0 && !envelope.Context.Opening) || envelope.Context.ExpectedVersion != 1 || len(envelope.Context.Legal.ActionKinds) == 0 {
-			return nil, fmt.Errorf("case %s needs a complete decision context with version 1", c.ID)
-		}
-		if c.KnowledgeRuleset != nil {
-			if err := game.ValidateRuleset(*c.KnowledgeRuleset); err != nil {
-				return nil, err
-			}
-			envelope.Context.Legal.Units = append([]game.UnitType(nil), c.KnowledgeRuleset.Units...)
-			var err error
-			envelope.Context.Knowledge, err = briefing.RetrieveKnowledge(*c.KnowledgeRuleset, envelope.Context, limits)
-			if err != nil {
-				return nil, err
-			}
-		}
-		if c.KnowledgeRuleset != nil {
-			envelope.Context.UnitReference = agentview.FreezeUnitReference(*c.KnowledgeRuleset, envelope.Context)
-		}
-		observations[i] = envelope.Context
+		observations[i] = observation
 	}
 	return observations, nil
+}
+
+// caseObservation decodes a case's decision context and, when the case carries a
+// knowledge ruleset, adds its units, knowledge cards and frozen unit reference.
+func caseObservation(c Case, limits ai.KnowledgeLimits) (ai.DecisionContext, error) {
+	var envelope struct {
+		Context ai.DecisionContext `json:"context"`
+	}
+	if len(c.ContextJSON) > 64<<10 || json.Unmarshal([]byte(c.ContextJSON), &envelope) != nil || envelope.Context.RequestID != c.RequestID || (envelope.Context.TargetTick == 0 && !envelope.Context.Opening) || envelope.Context.ExpectedVersion != 1 || len(envelope.Context.Legal.ActionKinds) == 0 {
+		return ai.DecisionContext{}, fmt.Errorf("case %s needs a complete decision context with version 1", c.ID)
+	}
+	observation := envelope.Context
+	if c.KnowledgeRuleset == nil {
+		return observation, nil
+	}
+	if err := game.ValidateRuleset(*c.KnowledgeRuleset); err != nil {
+		return ai.DecisionContext{}, err
+	}
+	observation.Legal.Units = append([]game.UnitType(nil), c.KnowledgeRuleset.Units...)
+	knowledge, err := briefing.RetrieveKnowledge(*c.KnowledgeRuleset, observation, limits)
+	if err != nil {
+		return ai.DecisionContext{}, err
+	}
+	observation.Knowledge = knowledge
+	observation.UnitReference = agentview.FreezeUnitReference(*c.KnowledgeRuleset, observation)
+	return observation, nil
 }
 
 func (r Runner) compareRepetition(ctx context.Context, cases []Case, observations []ai.DecisionContext, variants []ComparisonVariant, report *ComparisonReport, repetition int) error {
