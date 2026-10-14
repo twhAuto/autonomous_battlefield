@@ -1,3 +1,7 @@
+// Checks the database-enforced admission limits from migration 00011: per-player battle
+// allowances across connections, the shared CLI lease slots, the model-execution budget
+// shared with generation, and admin battles that skip allowances but count globally.
+
 package repo
 
 import (
@@ -18,7 +22,7 @@ func insertFriendBattle(p *Postgres, n int, owner string) error {
 }
 func limited(err error) bool { var e *pgconn.PgError; return errors.As(err, &e) && e.Code == "P0429" }
 
-func TestFriendsBattleAdmissionAcrossConnections(t *testing.T) {
+func TestBattleAdmissionAcrossConnections(t *testing.T) {
 	p := database(t)
 	// Independent pool connections stand in for separate replicas.
 	var wg sync.WaitGroup
