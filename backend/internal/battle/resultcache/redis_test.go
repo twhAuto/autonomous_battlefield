@@ -5,12 +5,14 @@ package resultcache
 
 import (
 	"context"
-	"github.com/alicebob/miniredis/v2"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 func newTestCache(t *testing.T) (*miniredis.Miniredis, *Cache) {
@@ -115,5 +117,65 @@ func TestDisabledAndInvalidConfiguration(t *testing.T) {
 		if err == nil || strings.Contains(err.Error(), "secret") {
 			t.Fatalf("invalid/redaction: %v", err)
 		}
+	}
+}
+
+// cacheOperations reads battlefield_result_cache_operations_total for one label pair.
+func cacheOperations(t *testing.T, operation, outcome string) float64 {
+	t.Helper()
+	families, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, family := range families {
+		if family.GetName() != "battlefield_result_cache_operations_total" {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			labels := map[string]string{}
+			for _, pair := range metric.GetLabel() {
+				labels[pair.GetName()] = pair.GetValue()
+			}
+			if labels["operation"] == operation && labels["outcome"] == outcome {
+				return metric.GetCounter().GetValue()
+			}
+		}
+	}
+	return 0
+}
+
+func TestOperationsAreCounted(t *testing.T) {
+	server, cache := newTestCache(t)
+	ctx := context.Background()
+	run := &service.BattleRun{ID: "counted", Status: "completed", Result: &game.Result{}}
+	before := map[string]float64{}
+	for _, key := range [][2]string{{"get", "miss"}, {"get", "hit"}, {"get", "error"}, {"set", "stored"}, {"set", "error"}} {
+		before[key[0]+"/"+key[1]] = cacheOperations(t, key[0], key[1])
+	}
+	_, _ = cache.Get(ctx, run.ID)
+	_ = cache.Set(ctx, run)
+	_, _ = cache.Get(ctx, run.ID)
+	server.Close()
+	_, _ = cache.Get(ctx, run.ID)
+	_ = cache.Set(ctx, run)
+	for key, want := range map[string]float64{"get/miss": 1, "get/hit": 1, "get/error": 1, "set/stored": 1, "set/error": 1} {
+		operation, outcome, _ := strings.Cut(key, "/")
+		if got := cacheOperations(t, operation, outcome) - before[key]; got != want {
+			t.Errorf("%s: counted %v, want %v", key, got, want)
+		}
+	}
+}
+
+func TestDisabledCacheCountsNothing(t *testing.T) {
+	cache, err := New("", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := cacheOperations(t, "get", "miss")
+	if run, err := cache.Get(context.Background(), "any"); run != nil || err != nil {
+		t.Fatal(run, err)
+	}
+	if cacheOperations(t, "get", "miss") != before {
+		t.Fatal("disabled cache recorded an operation")
 	}
 }

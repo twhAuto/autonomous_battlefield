@@ -51,6 +51,12 @@ var (
 		Name:      "ticks_total",
 		Help:      "Total battle ticks advanced by the engine worker.",
 	})
+	resultCacheOperations = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "battlefield",
+		Subsystem: "result_cache",
+		Name:      "operations_total",
+		Help:      "Completed-battle Redis cache operations by operation (get, set) and outcome (hit, miss, stored, error).",
+	}, []string{"operation", "outcome"})
 	engineReady = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "battlefield",
 		Subsystem: "engine",
@@ -68,6 +74,7 @@ func init() {
 		engineBattleDuration,
 		engineTicks,
 		engineReady,
+		resultCacheOperations,
 	)
 }
 
@@ -106,6 +113,13 @@ func ObserveEngineBattle(outcome string, duration time.Duration) {
 
 func ObserveEngineTick() {
 	engineTicks.Inc()
+}
+
+// ObserveResultCache records one completed-battle cache operation. The API answers
+// from PostgreSQL whenever the cache misses or fails, so errors here are visible only
+// through this metric.
+func ObserveResultCache(operation, outcome string) {
+	resultCacheOperations.WithLabelValues(operation, outcome).Inc()
 }
 
 func SetEngineReady(ready bool) {
