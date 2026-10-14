@@ -13,7 +13,7 @@ info:
     endpoints outside this contract, as is the internal worker plane served by the
     separate `cmd/aigateway` binary.
 
-    **Drift protection.** `backend/internal/apicontract` fails the build if the set of
+    **Drift protection.** `backend/test/apicontract` fails the build if the set of
     operations here differs from `authn.PublicAPIRoutes()`, the permission registry
     that `RoutePolicy` enforces. Add a route to both, or neither.
 

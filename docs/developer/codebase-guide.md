@@ -55,13 +55,15 @@ autonomous_battlefield/
 │   │   │                       # validation, profiles, prompts, model views, runners, providers,
 │   │   │                       # the AI gateway server, the agent worker and evaluations
 │   │   ├── admin/              # Model-access handler, service, and repository
-│   │   ├── apicontract/        # Tests keeping openapi.yaml in step with served routes
 │   │   ├── members/            # Player membership and reconciliation
 │   │   ├── generation/         # Faction background generation jobs and quotas
 │   │   ├── testutil/           # Shared assertions with lazy failure diagnostics
 │   │   ├── apierror/           # Stable JSON error envelope and codes for /v1
 │   │   ├── requestid/          # Request correlation ID carried in the context
 │   │   └── ...                 # app, authn, config, httpapi, postgres, logging, telemetry
+│   ├── test/                   # Module-wide checks with no runtime code:
+│   │   ├── apicontract/        # openapi.yaml stays in step with served routes
+│   │   └── boundaries/         # Forbidden dependencies and the generated component map
 │   ├── migrations/             # Embedded SQL migrations
 │   ├── content/                # Shared versioned unit and building libraries
 │   ├── rulesets/               # Versioned game rules
