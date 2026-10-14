@@ -1,8 +1,10 @@
 package members
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -151,5 +153,20 @@ func TestMemberRoutesAreUnavailableWithoutStore(t *testing.T) {
 	h := &Handler{Origin: "https://game.example"}
 	if request(h, "GET", "/v1/admin/members", "", authn.Admin, "https://game.example", "").Code != 503 {
 		t.Fatal("disabled management allowed")
+	}
+}
+
+func TestUnexpectedFailuresAreLoggedWithoutLeaking(t *testing.T) {
+	var logs bytes.Buffer
+	original := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	defer slog.SetDefault(original)
+	response := httptest.NewRecorder()
+	memberError(response, httptest.NewRequest(http.MethodGet, "/v1/admin/members", nil), errors.New("database down"))
+	if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "database down") {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(logs.String(), `"msg":"player_members_request_failed"`) || !strings.Contains(logs.String(), "database down") {
+		t.Fatalf("failure not logged: %s", logs.String())
 	}
 }

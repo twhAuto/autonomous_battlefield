@@ -69,7 +69,7 @@ func New(db postgres.Pool, catalog *catalog.Catalog, maxTicks uint64, options Op
 	}
 	router := httpapi.NewRouterWithMiddleware(
 		[]httpapi.Middleware{authenticationMiddleware},
-		authn.NewRoutes(authenticationManager), factionHandler, battleHandler, generationHandler, adminHandler, &members.Handler{Store: options.Members, Origin: authentication.Origin},
+		authn.NewRoutes(authenticationManager), factionHandler, battleHandler, generationHandler, adminHandler, members.NewHandler(options.Members, authentication.Origin),
 	)
 	// Tracing wraps access logging so completion logs share the request span.
 	return &App{httpHandler: tracing.HTTPHandler("battlefield-api.http", router)}

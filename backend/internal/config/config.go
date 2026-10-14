@@ -26,6 +26,7 @@ type APIConfig struct {
 	ResultCache ResultCache
 	Models      Models
 	Generation  generation.Config
+	Members     Members
 }
 
 // EngineConfig configures the battle engine.
@@ -146,6 +147,9 @@ func LoadAPI(path string) (APIConfig, error) {
 			return c, err
 		}
 		if c.Models, err = parseModels(raw, production); err != nil {
+			return c, err
+		}
+		if c.Members, err = parseMembersConfig(c.Auth); err != nil {
 			return c, err
 		}
 		c.Generation, err = parseBackgroundGeneration(raw)

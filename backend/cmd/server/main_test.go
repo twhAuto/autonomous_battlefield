@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
+	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 )
 
@@ -85,4 +87,22 @@ func cancelledContext() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	return ctx
+}
+
+func TestManagedPlayersDisabledStartsNothing(t *testing.T) {
+	store, stop, err := startManagedPlayers(context.Background(), nil, config.Members{}, nil)
+	if err != nil || store != nil || stop == nil {
+		t.Fatalf("store=%v stop=%v err=%v", store, stop != nil, err)
+	}
+	stop()
+	if repository := membersRepository(nil); repository != nil {
+		t.Fatal("a disabled store became a non-nil repository")
+	}
+}
+
+func TestManagedPlayersRejectInvalidConfiguredPlayer(t *testing.T) {
+	_, _, err := startManagedPlayers(context.Background(), nil, config.Members{Enabled: true}, map[string]authn.Role{"user@localhost": authn.Player})
+	if err == nil {
+		t.Fatal("invalid configured Player accepted")
+	}
 }
