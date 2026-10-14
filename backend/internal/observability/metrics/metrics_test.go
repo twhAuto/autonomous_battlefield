@@ -1,4 +1,5 @@
-// Checks application metrics are recorded and exposed through the Prometheus handler.
+// Checks application metrics are recorded with bounded labels and exposed through the
+// Prometheus handler.
 
 package metrics
 
@@ -38,6 +39,28 @@ func TestApplicationMetricsAreRecordedAndExposed(t *testing.T) {
 	} {
 		if !strings.Contains(response.Body.String(), metric) {
 			t.Fatalf("metrics output does not contain %q", metric)
+		}
+	}
+}
+
+func TestNonStandardMethodsShareOneLabel(t *testing.T) {
+	for _, method := range []string{"BREW", "brew", "PROPFIND", strings.Repeat("X", 4096)} {
+		ObserveHTTPRequest(method, "", http.StatusMethodNotAllowed, time.Millisecond)
+	}
+	ObserveHTTPRequest(http.MethodPatch, "", http.StatusMethodNotAllowed, time.Millisecond)
+
+	response := httptest.NewRecorder()
+	Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := response.Body.String()
+	if !strings.Contains(body, `battlefield_http_server_requests_total{code="405",method="other",route="unmatched"} 4`) {
+		t.Fatalf("non-standard methods not collapsed:\n%s", body)
+	}
+	if !strings.Contains(body, `battlefield_http_server_requests_total{code="405",method="PATCH",route="unmatched"} 1`) {
+		t.Fatal("standard method lost its label")
+	}
+	for _, leaked := range []string{"BREW", "brew", "PROPFIND", "XXXX"} {
+		if strings.Contains(body, leaked) {
+			t.Fatalf("method %q became a label", leaked)
 		}
 	}
 }

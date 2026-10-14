@@ -112,7 +112,7 @@ lifecycle probes and metrics scrapes bypass request instrumentation.
 | Metric | Type | Meaning |
 | --- | --- | --- |
 | `battlefield_http_server_requests_total` | Counter | API requests by method, normalized route pattern, and status code. |
-| `battlefield_http_server_request_duration_seconds` | Histogram | API request latency by method and normalized route pattern. |
+| `battlefield_http_server_request_duration_seconds` | Histogram | API request latency by method, normalized route pattern, and `success` or `error` (5xx) outcome. |
 | `battlefield_engine_battle_claims_total` | Counter | Initial and reclaimed battle claims. |
 | `battlefield_engine_battles_processed_total` | Counter | Processing attempts by `completed`, `failed`, `error`, `lease_lost`, or `requeued` outcome. |
 | `battlefield_engine_battle_processing_duration_seconds` | Histogram | Wall-clock processing duration by outcome. |
@@ -122,7 +122,9 @@ lifecycle probes and metrics scrapes bypass request instrumentation.
 
 The Prometheus Go client also publishes standard `go_*`, `process_*`, and
 `promhttp_*` metrics. Route labels use Go HTTP patterns such as
-`GET /v1/battles/{id}` rather than raw paths. Battle IDs, faction IDs, request
+`GET /v1/battles/{id}` rather than raw paths, or `unmatched` when no route matches.
+Method labels keep the nine standard HTTP methods and record any other method a
+client sends as `other`. Battle IDs, faction IDs, request
 IDs, pod names, and worker IDs are intentionally absent from application metric
 labels to avoid unbounded time-series cardinality. Pod identity is added only
 as the `scrape_pod` target label by Prometheus. That name deliberately avoids

@@ -1,7 +1,6 @@
-// Carries the per-request correlation identifier through a context. It is a leaf
-// package so that any handler package, including authn, can read it without an
-// import cycle through httpapi.
-
+// Package requestid carries the per-request correlation identifier through a context.
+// It is a leaf package so that any handler package, including authn, can read it
+// without an import cycle through httpapi.
 package requestid
 
 import "context"
