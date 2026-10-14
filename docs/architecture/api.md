@@ -452,4 +452,4 @@ list denies everyone. Invalid bodies return 400, a stale `version` returns 409, 
 persistence failures return 503. The policy restricts only new battle selections
 and background-generation admission; it cannot enable a profile whose credentials
 or runtime are unavailable. See
-[system architecture](system-architecture.md#source-ownership).
+[system architecture](system-architecture.md#model-access-and-role-preview).

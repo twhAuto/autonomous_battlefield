@@ -2,6 +2,11 @@
 
 [Codebase index](codebase-guide.md) · [System architecture](../architecture/system-architecture.md)
 
+Read by task: [packages](#package-guide) · [shared types](#important-shared-data-types) ·
+[persistence](#database-migrations-and-adapters) · [configuration](#configuration-and-authored-content) ·
+[access and containment](#limited-access-deployment-and-agent-containment) ·
+[content](#shared-content-catalog) · [integration tests](#end-to-end-api-integration-test)
+
 ## Backend organization
 
 ### Request-oriented features
@@ -10,10 +15,10 @@ Faction and battle HTTP features follow a handler → service → repository dep
 
 ```mermaid
 flowchart LR
-    Handler[HTTP handler<br/>transport and status codes]
-    Service[Service<br/>use cases and validation]
-    Contract[Repository interface<br/>required persistence operations]
-    Adapter[PostgreSQL adapter<br/>SQL and serialization]
+    Handler["HTTP handler: transport and status codes"]
+    Service["Service: use cases and validation"]
+    Contract["Repository interface: required persistence operations"]
+    Adapter["PostgreSQL adapter: SQL and serialization"]
 
     Handler --> Service --> Contract --> Adapter
 ```
@@ -506,6 +511,12 @@ views. To measure a local JSON context without adding private data to fixtures,
 run `BATTLEFIELD_CONTEXT_FIXTURE=/path/to/context.json go test ./internal/ai/agentview -run TestBattlefieldContextExternalFixture -v`
 from `backend`.
 
+Worker capacity is configured by `ai.agentConcurrency` in
+`backend/internal/config/ai.go` and passed by `backend/cmd/agent/main.go`.
+Migration `backend/migrations/00014_cli_concurrency.sql` sets the shared CLI lease
+capacity; `backend/internal/generation/repo/cli_capacity_integration_test.go` verifies
+concurrent admission across battle and generation jobs.
+
 ## Langfuse integration
 
 - `backend/internal/observability/tracing/ai.go` provides decision correlation, explicit AI
@@ -606,7 +617,32 @@ profile eligibility and the default-deny browser/route boundaries.
 Production k6 smoke-load credential binding is described in the
 [launch runbook](../operations/limited-launch.md).
 
-### Shared content catalog
+## Managed Player membership
+
+`backend/internal/members` contains the PostgreSQL membership/audit store, bounded
+Cloudflare group client, background reconciler and Admin-only HTTP routes. Its
+settings are parsed by `config.LoadAPI` (`internal/config/members.go`), which requires
+the already validated Cloudflare auth mode; `members.NewStore` checks every configured
+Player email before startup, and `Store.Start` imports them and runs the reconciler
+until the server stops. Unexpected failures are logged as
+`player_members_request_failed` with a fixed `reason` and any SQLSTATE, never the raw
+error, which can name database hosts and users, and are answered with 503. Its
+integration tests use isolated schemas through `TEST_DATABASE_URL` and exercise
+replica contention, concurrent removal/reinvitation, one-time import, promotion/
+offboarding and recovery.
+Migration 00013 persists membership versions, removed records and synchronization
+backoff. API startup initializes the store before readiness and cancels its worker
+before closing the pool. The authentication package accepts a Player resolver only
+after verifying the Access JWT; privileged and CI identities keep their existing path.
+
+`frontend/src/features/admin/pages/MembersPage.tsx` provides email invitations,
+removal, retry and a copyable game link with five-second status polling. App routing
+exposes it only to Admins with the session members capability, outside preview; the backend permission registry independently
+enforces every endpoint. Feature API and component tests cover the full flow.
+The shared application environment parser extracts a separate members Secret consumed
+only by API pods. See [Player invitations](../operations/player-invitations.md).
+
+## Shared content catalog
 
 - `backend/gamedata/content/core-v1.yaml` preserves the starter roster. `core-v2.yaml`
   adds siege/support units and defensive/production structures; rulesets reference
@@ -631,7 +667,7 @@ snapshot. See [content libraries](../developer/content-library.md) for authoring
 The faction API exchanges `{ id, name, doctrine, background? }`; edit requests use PUT.
 Battle setup selects generic profiles without blueprint compatibility filtering.
 
-### Doctrine profile implementation
+## Doctrine profile implementation
 
 - `backend/internal/faction/service/update.go` and the faction handler/repository
   implement validated name/doctrine/background updates. Creation and listing expose only profile fields.
@@ -644,7 +680,7 @@ Battle setup selects generic profiles without blueprint compatibility filtering.
 - Faction routes `/factions/new` and `/factions/:id/edit` share the doctrine editor.
   The decision panel displays opening plans and requested upgrades.
 
-### Faction backgrounds and generation
+## Faction backgrounds and generation
 
 - `backend/internal/generation/types.go`, `api/handler.go` and `repo/postgres.go` define normalized
   draft input, configuration, authenticated endpoints, PostgreSQL admission,
@@ -675,7 +711,7 @@ Battle setup selects generic profiles without blueprint compatibility filtering.
   escaping, delivery, hashing and opposing-profile isolation. Deterministic battle
   evaluations carry profile identity in their context and session.
 
-### Battle history implementation and verification
+## Battle history implementation and verification
 
 The battle API, service, and repository each contain a `history.go` adapter:
 HTTP query parsing and error mapping; summary types and cursor validation;
@@ -699,7 +735,7 @@ Run the Go coverage gate with disposable PostgreSQL integration coverage:
 (cd frontend && npm run build)
 ```
 
-#### Pagination query plans
+### Pagination query plans
 
 pgx caches prepared statements, and after five executions PostgreSQL may reuse a
 **generic plan** that cannot see parameter values. The history cursor is therefore
@@ -781,34 +817,3 @@ Startup and migration tests use the same PostgreSQL advisory-lock configuration
 in `internal/postgres.NewMigrationProvider`. The lock spans schemas within the
 database because role and public-schema permission changes are shared across
 test fixtures.
-
-## Managed Player membership
-
-`backend/internal/members` contains the PostgreSQL membership/audit store, bounded
-Cloudflare group client, background reconciler and Admin-only HTTP routes. Its
-settings are parsed by `config.LoadAPI` (`internal/config/members.go`), which requires
-the already validated Cloudflare auth mode; `members.NewStore` checks every configured
-Player email before startup, and `Store.Start` imports them and runs the reconciler
-until the server stops. Unexpected failures are logged as
-`player_members_request_failed` with a fixed `reason` and any SQLSTATE, never the raw
-error, which can name database hosts and users, and are answered with 503. Its
-integration tests use isolated schemas through `TEST_DATABASE_URL` and exercise
-replica contention, concurrent removal/reinvitation, one-time import, promotion/
-offboarding and recovery.
-Migration 00013 persists membership versions, removed records and synchronization
-backoff. API startup initializes the store before readiness and cancels its worker
-before closing the pool. The authentication package accepts a Player resolver only
-after verifying the Access JWT; privileged and CI identities keep their existing path.
-
-`frontend/src/features/admin/pages/MembersPage.tsx` provides email invitations,
-removal, retry and a copyable game link with five-second status polling. App routing
-exposes it only to Admins with the session members capability, outside preview; the backend permission registry independently
-enforces every endpoint. Feature API and component tests cover the full flow.
-The shared application environment parser extracts a separate members Secret consumed
-only by API pods. See [Player invitations](../operations/player-invitations.md).
-
-Worker capacity is configured by `ai.agentConcurrency` in
-`backend/internal/config/ai.go` and passed by `backend/cmd/agent/main.go`.
-Migration `backend/migrations/00014_cli_concurrency.sql` sets the shared CLI lease
-capacity; `backend/internal/generation/repo/cli_capacity_integration_test.go` verifies
-concurrent admission across battle and generation jobs.
