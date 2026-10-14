@@ -1,7 +1,7 @@
 # Builds the API, engine, AI gateway, and agent binaries and packages their runtime configuration
 # and authored game content in a non-root image.
 
-FROM golang:1.26.9-alpine AS build
+FROM golang:1.26.9-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS build
 
 WORKDIR /src
 
@@ -23,7 +23,7 @@ RUN CGO_ENABLED=0 go build \
     && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/agent ./cmd/agent \
     && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/ai-gateway ./cmd/aigateway
 
-FROM alpine:3.23
+FROM alpine:3.23@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0
 
 RUN apk upgrade --no-cache \
     && apk add --no-cache ca-certificates \

@@ -1,3 +1,6 @@
+-- Adds the singleton administrator model-access policy, a JSON provider and profile
+-- allowlist whose version rejects conflicting saves.
+
 -- +goose Up
 CREATE TABLE model_access_policy (
  id boolean PRIMARY KEY DEFAULT true CHECK (id),

@@ -54,7 +54,10 @@ repository defaults, policy reference validation, and source-URL normalization.
 checks publishing and admission rendering with stub external commands.
 [`scripts/test/test-registry-verification.sh`](../../scripts/test/test-registry-verification.sh)
 exercises publication and deployment signature checks, including Cosign 3 bundle
-summaries without annotations, retained legacy revisions, and rejected evidence. The Vite
+summaries without annotations, retained legacy revisions, and rejected evidence. [`scripts/test/test-base-image-pins.py`](../../scripts/test/test-base-image-pins.py)
+requires every Dockerfile base image to carry a digest; the
+[supply-chain runbook](../operations/supply-chain-runbook.md#base-image-pins) covers
+refreshing them. The Vite
 configuration and `frontend/vite.config.test.ts` cover development proxy overrides.
 
 Local launchers live under `scripts/dev` and `scripts/cd`; invoke those paths directly. `infra/deploy/` owns Kubernetes configuration; `infra/aws/` provisions cloud resources.

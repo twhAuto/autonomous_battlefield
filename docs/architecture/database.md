@@ -256,10 +256,17 @@ interleave DDL.
 
 Conventions:
 
-- Add a new numbered migration for every schema change; never edit one that may have
-  been applied to a shared database.
-- Include a `-- +goose Down` section. Guard data-dependent downgrades instead of
-  silently discarding rows.
+- Add a new numbered migration for every schema change; never change the SQL of one
+  that may have been applied to a shared database. Comment-only edits are safe: Goose
+  does not checksum files and comments never execute.
+- Start each file with a comment describing the change, and include one
+  `-- +goose Up` and one `-- +goose Down` section; wrap DO blocks and function bodies
+  in `StatementBegin`/`StatementEnd`. `migrations/embed_test.go` enforces these
+  rules and contiguous version numbers.
+- Guard data-dependent downgrades instead of silently discarding rows.
+  `migrations/round_trip_integration_test.go` runs every Down section on an empty
+  schema and requires the schema to rebuild identically. 00017's Down renames the
+  cluster-wide role, so the test takes the earlier migrations down only from 00016.
 - Grant `battlefield_ai_gateway` only the columns the AI gateway needs, in the same
   migration that adds them.
 - Update repository scanning, serialization and tests in the same change, and update

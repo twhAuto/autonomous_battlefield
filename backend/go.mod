@@ -2,8 +2,6 @@ module github.com/twh09/autonomous_battlefield/backend
 
 go 1.26.5
 
-require go.yaml.in/yaml/v3 v3.0.5
-
 require (
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/jackc/pgx/v5 v5.9.2
@@ -16,6 +14,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.45.0
 	go.opentelemetry.io/otel/sdk v1.45.0
 	go.opentelemetry.io/otel/trace v1.45.0
+	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/sync v0.23.0
 	golang.org/x/sys v0.48.0
 )
