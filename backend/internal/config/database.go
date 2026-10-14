@@ -17,14 +17,9 @@ type Database struct {
 }
 
 func parseDatabaseConfig(raw fileConfig) (Database, error) {
-	urlEnvironmentVariable := strings.TrimSpace(raw.Database.URLEnvironmentVariable)
-	if urlEnvironmentVariable == "" {
-		return Database{}, fmt.Errorf("database.urlEnvironmentVariable must not be empty")
-	}
-
-	url := strings.TrimSpace(os.Getenv(urlEnvironmentVariable))
+	url := strings.TrimSpace(os.Getenv(envDatabaseURL))
 	if url == "" {
-		return Database{}, fmt.Errorf("database connection URL environment variable %q must not be empty", urlEnvironmentVariable)
+		return Database{}, fmt.Errorf("environment variable %q must not be empty", envDatabaseURL)
 	}
 
 	connectTimeout, err := parseDuration("database.connectTimeout", raw.Database.ConnectTimeout)

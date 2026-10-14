@@ -39,7 +39,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	configuration, err := config.Load(options.configPath)
+	configuration, err := config.LoadAPI(options.configPath)
 	if err != nil {
 		logger.Error("configuration_load_failed", "config_path", options.configPath, "error", err)
 		os.Exit(1)
@@ -93,7 +93,7 @@ func parseOptions(arguments []string) (cliOptions, error) {
 	return cliOptions{configPath: *configPath, migrate: *migrate}, nil
 }
 
-func startServer(configuration config.Config) error {
+func startServer(configuration config.APIConfig) error {
 	memberConfig, err := members.LoadConfig(configuration.Auth.Roles)
 	if err != nil {
 		return err
@@ -156,7 +156,7 @@ func startServer(configuration config.Config) error {
 		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, fmt.Errorf("load scenario catalog: %w", err))
 	}
 	slog.Info("scenario_catalog_loaded", "path", configuration.API.ScenarioCatalogPath, "scenario_count", len(catalog.IDs()))
-	profiles := profile.NewCatalog(configuration.AI.Environment, configuration.AI.Profiles)
+	profiles := profile.NewCatalog(configuration.Models.Environment, configuration.Models.Profiles)
 	cache, err := resultcache.New(configuration.ResultCache.URL, configuration.ResultCache.TTL, configuration.ResultCache.Timeout)
 	if err != nil {
 		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
@@ -178,7 +178,7 @@ func startServer(configuration config.Config) error {
 		go func() { defer close(syncDone); store.Run(syncCtx) }()
 		defer func() { stopSync(); <-syncDone }()
 	}
-	application := app.New(db, catalog, configuration.API.MaxTicks, app.Options{Auth: configuration.Auth, Cache: cache, Generation: &configuration.AI.BackgroundGeneration, Profiles: profiles, Members: memberStore})
+	application := app.New(db, catalog, configuration.API.MaxTicks, app.Options{Auth: configuration.Auth, Cache: cache, Generation: &configuration.Generation, Profiles: profiles, Members: memberStore})
 	lifecycle.Activate(application.HTTPHandler(), db, nil)
 	slog.Info("api_ready", "address", server.Addr)
 

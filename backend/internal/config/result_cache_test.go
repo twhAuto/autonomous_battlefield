@@ -14,10 +14,9 @@ func TestResultCacheConfig(t *testing.T) {
 	if err != nil || got.URL != "" || got.TTL != time.Hour || got.Timeout != 100*time.Millisecond {
 		t.Fatalf("defaults: %+v %v", got, err)
 	}
-	raw.ResultCache.URLEnvironmentVariable = "TEST_RESULT_REDIS_URL"
 	raw.ResultCache.TTL = "30m"
 	raw.ResultCache.Timeout = "50ms"
-	t.Setenv("TEST_RESULT_REDIS_URL", "redis://localhost:6379/1")
+	t.Setenv("BATTLEFIELD_REDIS_URL", " redis://localhost:6379/1 ")
 	got, err = parseResultCacheConfig(raw)
 	if err != nil || got.URL != "redis://localhost:6379/1" || got.TTL != 30*time.Minute || got.Timeout != 50*time.Millisecond {
 		t.Fatalf("custom: %+v %v", got, err)

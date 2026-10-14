@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
@@ -222,6 +224,13 @@ type ModelProfile struct {
 	Available                       bool     `json:"available" yaml:"-"`
 	ToolCapability                  bool     `json:"toolCapability" yaml:"-"`
 	UnavailableReason               string   `json:"unavailableReason,omitempty" yaml:"-"`
+}
+
+// AvailabilityFlagSet reports whether the profile's availability variable is "true",
+// ignoring case and surrounding space. Configuration and the profile catalog both
+// decide availability through it.
+func (p ModelProfile) AvailabilityFlagSet() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv(p.AvailabilityEnvironmentVariable)), "true")
 }
 
 type ReferenceIdentity struct {

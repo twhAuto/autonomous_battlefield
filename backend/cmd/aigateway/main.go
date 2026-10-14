@@ -41,7 +41,7 @@ func main() {
 	}
 }
 
-func run(configuration config.Config) error {
+func run(configuration config.AIGatewayConfig) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	shutdownTracing, err := telemetry.ConfigureTracing(ctx, "battlefield-ai-gateway")
@@ -59,7 +59,7 @@ func run(configuration config.Config) error {
 	}
 	defer db.Close()
 	repository := battlerepo.NewPostgres(db)
-	server := mcpserver.New(repository, configuration.AI.CapabilitySecret, configuration.AI.AllowedOrigins).WithAgentSecret(configuration.AI.AgentSecret).WithGenerations(&generationrepo.Postgres{DB: db})
+	server := mcpserver.New(repository, configuration.Gateway.CapabilitySecret, configuration.Gateway.AllowedOrigins).WithAgentSecret(configuration.Gateway.AgentSecret).WithGenerations(&generationrepo.Postgres{DB: db})
 	notificationErrors := make(chan error, 1)
 	go func() {
 		notificationErrors <- postgres.ListenForNotifications(ctx, db, ai.DecisionReadyChannel, func(string) {
@@ -72,7 +72,7 @@ func run(configuration config.Config) error {
 	mux.Handle("/internal/agent/", http.StripPrefix("/internal/agent", server.AgentHandler(repository)))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("GET /readyz", readinessHandler(db, 2*time.Second))
-	httpServer := &http.Server{Addr: configuration.AI.AIGatewayAddress, Handler: telemetry.HTTPHandler("battlefield-ai-gateway.http", mux), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second}
+	httpServer := &http.Server{Addr: configuration.Gateway.Address, Handler: telemetry.HTTPHandler("battlefield-ai-gateway.http", mux), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second}
 	errorsChannel := make(chan error, 1)
 	go func() {
 		err := httpServer.ListenAndServe()

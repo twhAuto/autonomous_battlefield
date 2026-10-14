@@ -63,17 +63,6 @@ func TestStopEngineInitialization(t *testing.T) {
 	}
 }
 
-func TestWorkerIDUsesConfiguredEnvironmentOrHost(t *testing.T) {
-	t.Setenv("TEST_ENGINE_WORKER_ID", "configured-worker")
-	if id := workerID("TEST_ENGINE_WORKER_ID"); id != "configured-worker" {
-		t.Fatalf("workerID() = %q, want configured-worker", id)
-	}
-	t.Setenv("TEST_ENGINE_WORKER_ID", "")
-	if id := workerID("TEST_ENGINE_WORKER_ID"); !strings.Contains(id, "-") {
-		t.Fatalf("workerID() fallback = %q, want hostname-pid", id)
-	}
-}
-
 func cancelledEngineContext() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

@@ -59,8 +59,8 @@ func main() {
 	}
 }
 
-func run(configuration config.Config) error {
-	if err := agent.ProtectCredentials(); err != nil {
+func run(configuration config.AgentConfig) error {
+	if err := agent.ProtectCredentials(configuration.Production); err != nil {
 		return fmt.Errorf("protect agent credentials: %w", err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -74,7 +74,7 @@ func run(configuration config.Config) error {
 		defer cancel()
 		_ = shutdownTracing(shutdown)
 	}()
-	executor := &agent.Executor{PolicyPolling: true, MCPURL: configuration.AI.MCPURL, Secret: configuration.AI.AgentSecret, WorkerID: hostname(), Profiles: profile.NewRegistry(configuration.AI.Environment, configuration.AI.Profiles), PollInterval: time.Second, DecisionTimeout: configuration.AI.DecisionTimeout, Concurrency: configuration.AI.AgentConcurrency}
+	executor := &agent.Executor{PolicyPolling: true, MCPURL: configuration.Agent.MCPURL, Secret: configuration.Agent.Secret, WorkerID: hostname(), Profiles: profile.NewRegistry(configuration.Models.Environment, configuration.Models.Profiles), PollInterval: time.Second, DecisionTimeout: configuration.Models.DecisionTimeout, Concurrency: configuration.Agent.Concurrency}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		if !executor.Ready() {
@@ -83,7 +83,7 @@ func run(configuration config.Config) error {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
-	server := &http.Server{Addr: configuration.AI.AgentHealthAddress, Handler: telemetry.HTTPHandler("battlefield-agent.http", mux), ReadHeaderTimeout: 2 * time.Second}
+	server := &http.Server{Addr: configuration.Agent.HealthAddress, Handler: telemetry.HTTPHandler("battlefield-agent.http", mux), ReadHeaderTimeout: 2 * time.Second}
 	serverErrors := make(chan error, 1)
 	go func() {
 		err := server.ListenAndServe()

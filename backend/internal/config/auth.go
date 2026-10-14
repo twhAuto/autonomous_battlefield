@@ -18,13 +18,11 @@ const localPasswordMode = "local-password"
 
 const disabledDevelopmentMode = "disabled-development"
 
-func parseAuthConfig(raw fileConfig) (authn.Config, error) {
-	mode := strings.TrimSpace(os.Getenv("BATTLEFIELD_AUTH_MODE"))
-	environment := strings.TrimSpace(os.Getenv("BATTLEFIELD_ENV"))
-	if environment != "" && environment != "dev" && environment != "production" {
-		return authn.Config{}, fmt.Errorf("unknown runtime environment")
-	}
-	if environment == "production" && mode != authn.ModeCloudflare {
+var accessClientID = regexp.MustCompile(`^[a-f0-9]{32}\.access$`)
+
+func parseAuthConfig(raw fileConfig, production bool) (authn.Config, error) {
+	mode := strings.TrimSpace(os.Getenv(envAuthMode))
+	if production && mode != authn.ModeCloudflare {
 		return authn.Config{}, fmt.Errorf("production requires Cloudflare authentication")
 	}
 	if mode == authn.ModeCloudflare {
@@ -46,11 +44,11 @@ func parseCloudflareConfig() (authn.Config, error) {
 	if err != nil {
 		return authn.Config{}, err
 	}
-	if v := os.Getenv("BATTLEFIELD_AUTH_ENABLED"); v != "" && v != "true" {
+	if v := os.Getenv(envAuthEnabled); v != "" && v != "true" {
 		return authn.Config{}, fmt.Errorf("conflicting authentication settings")
 	}
 	ciClientID := os.Getenv("BATTLEFIELD_ACCESS_CI_CLIENT_ID")
-	if ciClientID != "" && !regexp.MustCompile(`^[a-f0-9]{32}\.access$`).MatchString(ciClientID) {
+	if ciClientID != "" && !accessClientID.MatchString(ciClientID) {
 		return authn.Config{}, fmt.Errorf("invalid Access CI client ID")
 	}
 	return authn.Config{Mode: authn.ModeCloudflare, Enabled: true, Issuer: issuer, Audience: audience, Origin: origin, Roles: roles, CIClientID: ciClientID}, nil
@@ -84,32 +82,28 @@ func parseLocalAuthConfig(raw fileConfig, mode string) (authn.Config, error) {
 	if mode != "" && mode != localPasswordMode && mode != disabledDevelopmentMode {
 		return authn.Config{}, fmt.Errorf("unknown authentication mode")
 	}
-	enabled, err := localAuthEnabled(raw, mode)
+	enabled, err := localAuthEnabled(mode)
 	if err != nil {
 		return authn.Config{}, err
 	}
-	ttl, err := parseOptionalDuration("auth.sessionTTL", raw.Auth.SessionTTL, 12*time.Hour, false)
+	ttl, err := parseOptionalDuration("auth.sessionTTL", raw.Auth.SessionTTL, 12*time.Hour)
 	if err != nil {
 		return authn.Config{}, err
 	}
-	secureEnv := environmentVariableName(raw.Auth.CookieSecureEnvironmentVariable, "BATTLEFIELD_AUTH_COOKIE_SECURE")
-	cookieSecure, err := parseBooleanEnvironmentVariable(secureEnv, false)
+	cookieSecure, err := parseBooleanEnvironmentVariable(envCookieSecure, false)
 	if err != nil {
 		return authn.Config{}, err
 	}
 	if !enabled {
 		return authn.Config{Mode: disabledDevelopmentMode, SessionTTL: ttl, CookieSecure: cookieSecure}, nil
 	}
-	usernameEnv := environmentVariableName(raw.Auth.UsernameEnvironmentVariable, "BATTLEFIELD_ADMIN_USERNAME")
-	passwordEnv := environmentVariableName(raw.Auth.PasswordEnvironmentVariable, "BATTLEFIELD_ADMIN_PASSWORD")
-	secretEnv := environmentVariableName(raw.Auth.SessionSecretEnvironmentVariable, "BATTLEFIELD_SESSION_SECRET")
-	result, err := loadAuthenticationSecrets(usernameEnv, passwordEnv, secretEnv, ttl, cookieSecure)
+	result, err := loadAuthenticationSecrets(ttl, cookieSecure)
 	result.Mode = localPasswordMode
 	return result, err
 }
 
-func localAuthEnabled(raw fileConfig, mode string) (bool, error) {
-	enabledEnv := environmentVariableName(raw.Auth.EnabledEnvironmentVariable, "BATTLEFIELD_AUTH_ENABLED")
+func localAuthEnabled(mode string) (bool, error) {
+	enabledEnv := envAuthEnabled
 	enabled, err := parseBooleanEnvironmentVariable(enabledEnv, false)
 	if mode == localPasswordMode {
 		if v := os.Getenv(enabledEnv); v != "" && v != "true" {
@@ -132,18 +126,18 @@ func localAuthEnabled(raw fileConfig, mode string) (bool, error) {
 	return enabled, nil
 }
 
-func loadAuthenticationSecrets(usernameEnv, passwordEnv, secretEnv string, ttl time.Duration, cookieSecure bool) (authn.Config, error) {
-	username := strings.TrimSpace(os.Getenv(usernameEnv))
-	password := os.Getenv(passwordEnv)
-	secret := os.Getenv(secretEnv)
+func loadAuthenticationSecrets(ttl time.Duration, cookieSecure bool) (authn.Config, error) {
+	username := strings.TrimSpace(os.Getenv(envAdminUsername))
+	password := os.Getenv(envAdminPassword)
+	secret := os.Getenv(envSessionSecret)
 	if username == "" {
-		return authn.Config{}, fmt.Errorf("authentication username environment variable %q must not be empty", usernameEnv)
+		return authn.Config{}, fmt.Errorf("environment variable %q must not be empty", envAdminUsername)
 	}
-	if len(password) < 12 {
-		return authn.Config{}, fmt.Errorf("authentication password environment variable %q must contain at least 12 characters", passwordEnv)
+	if err := requireSecret(envAdminPassword, password, 12); err != nil {
+		return authn.Config{}, err
 	}
-	if len(secret) < 32 {
-		return authn.Config{}, fmt.Errorf("authentication session secret environment variable %q must contain at least 32 characters", secretEnv)
+	if err := requireSecret(envSessionSecret, secret, minimumSecretBytes); err != nil {
+		return authn.Config{}, err
 	}
 	return authn.Config{
 		Enabled: true, Username: username, Password: password, SessionSecret: secret,

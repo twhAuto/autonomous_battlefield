@@ -767,8 +767,9 @@ in the [service authentication runbook](../operations/limited-launch.md#ci-servi
 
 ### Runtime security requirements
 
-- The AI gateway rejects capability secrets shorter than 32 bytes or equal to the development placeholder.
-- The AI gateway requires a worker secret of at least 32 bytes that differs from the capability secret.
+- Every binary validates `BATTLEFIELD_ENV` (unset, `dev` or `production`) at startup, so a misspelt value cannot disable production-only checks.
+- The AI gateway requires a capability secret and a worker secret of at least 32 bytes each, different from each other. Secrets copied unchanged from `.env.example` (`replace-with-…`) and the retired public development capability secret are rejected, as they are for the admin password and session secret.
+- In production, the API server and the agent refuse to start with an offered CLI profile unless `BATTLEFIELD_CLI_ISOLATION_VERIFIED=true`. They decide whether a profile is offered with the same availability check the profile catalog uses.
 - Production sessions use Access identity; direct-origin access is denied and network policy restricts private services.
 - Provider credentials belong to the decision agent, separate from the API and engine.
 - Model rationale remains untrusted display text; bounded length does not make it authoritative.
