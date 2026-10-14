@@ -25,6 +25,10 @@ const (
 	envAgentSecret           = "BATTLEFIELD_AGENT_SECRET"
 	envCapabilitySecret      = "BATTLEFIELD_MCP_CAPABILITY_SECRET"
 	envCLIIsolationVerified  = "BATTLEFIELD_CLI_ISOLATION_VERIFIED"
+	envManagedPlayers        = "BATTLEFIELD_MANAGED_PLAYERS"
+	envMembersAccountID      = "BATTLEFIELD_MEMBERS_ACCOUNT_ID"
+	envMembersGroupID        = "BATTLEFIELD_MEMBERS_GROUP_ID"
+	envMembersAPIToken       = "BATTLEFIELD_MEMBERS_API_TOKEN"
 	minimumSecretBytes       = 32
 	exampleSecretPlaceholder = "replace-with-"
 )

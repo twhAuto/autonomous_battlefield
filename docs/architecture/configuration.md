@@ -64,7 +64,10 @@ configuration and are not relocated.
 `BATTLEFIELD_MANAGED_PLAYERS` and `BATTLEFIELD_MEMBERS_ACCOUNT_ID`,
 `BATTLEFIELD_MEMBERS_GROUP_ID`, `BATTLEFIELD_MEMBERS_API_TOKEN` live in the private
 application `.env`. Environment extraction stages them in the separate
-`battlefield-members` Secret consumed only by API pods. Configuration delivery
+`battlefield-members` Secret consumed only by API pods. The API's configuration
+loader validates them with the rest of its settings: enabling managed Players
+requires Cloudflare authentication, a 32-character account ID, a group UUID and a
+single-line token. Configuration delivery
 restarts the API; invitation changes after activation are stored in PostgreSQL
 and need no deployment. See [Player invitations](../operations/player-invitations.md).
 

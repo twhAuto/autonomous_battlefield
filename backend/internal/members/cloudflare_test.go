@@ -81,47 +81,32 @@ func TestCloudflareFailuresAreSanitized(t *testing.T) {
 		}
 	}
 }
-func TestManagedConfig(t *testing.T) {
-	for _, key := range []string{"BATTLEFIELD_MANAGED_PLAYERS", "BATTLEFIELD_MEMBERS_ACCOUNT_ID", "BATTLEFIELD_MEMBERS_GROUP_ID", "BATTLEFIELD_MEMBERS_API_TOKEN"} {
-		t.Setenv(key, "")
-	}
-	if c, err := LoadConfig(nil); err != nil || c.Enabled {
-		t.Fatal(c, err)
-	}
-	t.Setenv("BATTLEFIELD_MANAGED_PLAYERS", "true")
-	if _, err := LoadConfig(nil); err == nil {
-		t.Fatal("incomplete accepted")
-	}
-	t.Setenv("BATTLEFIELD_AUTH_MODE", "cloudflare")
-	t.Setenv("BATTLEFIELD_MEMBERS_ACCOUNT_ID", strings.Repeat("a", 32))
-	t.Setenv("BATTLEFIELD_MEMBERS_GROUP_ID", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-	t.Setenv("BATTLEFIELD_MEMBERS_API_TOKEN", "token")
-	if c, err := LoadConfig(nil); err != nil || !c.Enabled {
-		t.Fatal(err)
-	}
-	for _, tt := range []struct{ k, v string }{{"BATTLEFIELD_MANAGED_PLAYERS", "yes"}, {"BATTLEFIELD_AUTH_MODE", "local-password"}, {"BATTLEFIELD_MEMBERS_ACCOUNT_ID", "../x"}, {"BATTLEFIELD_MEMBERS_GROUP_ID", "../x"}, {"BATTLEFIELD_MEMBERS_API_TOKEN", " "}, {"BATTLEFIELD_MEMBERS_API_TOKEN", "x\ny"}} {
-		t.Run(tt.k+tt.v, func(t *testing.T) {
-			t.Setenv(tt.k, tt.v)
-			if _, err := LoadConfig(nil); err == nil {
-				t.Fatal("unsafe config")
-			}
-		})
+func TestNewCloudflareUsesTheDefaultClient(t *testing.T) {
+	config := Config{AccountID: "account", GroupID: "group", Token: "token"}
+	if c := NewCloudflare(config); c.Config != config || c.Client != nil {
+		t.Fatalf("NewCloudflare() = %+v", c)
 	}
 }
 
-func TestConfiguredPlayersValidatedBeforeStartup(t *testing.T) {
-	t.Setenv("BATTLEFIELD_MANAGED_PLAYERS", "true")
-	t.Setenv("BATTLEFIELD_AUTH_MODE", " cloudflare ")
-	t.Setenv("BATTLEFIELD_MEMBERS_ACCOUNT_ID", strings.Repeat("a", 32))
-	t.Setenv("BATTLEFIELD_MEMBERS_GROUP_ID", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-	t.Setenv("BATTLEFIELD_MEMBERS_API_TOKEN", "token")
+func TestNewStoreValidatesConfiguredPlayers(t *testing.T) {
 	for _, email := range []string{"user@localhost", "user@[10.0.0.1]", strings.Repeat("x", 255) + "@example.com"} {
-		if _, err := LoadConfig(map[string]authn.Role{email: authn.Player}); err == nil || strings.Contains(err.Error(), email) {
+		if _, err := NewStore(nil, map[string]authn.Role{email: authn.Player}, nil); err == nil || strings.Contains(err.Error(), email) {
 			t.Fatal("invalid or leaking config", err)
 		}
 	}
-	if _, err := LoadConfig(map[string]authn.Role{"friend@example.com": authn.Player}); err != nil {
-		t.Fatal(err)
+	// Only Player emails are imported, so other roles are not checked here.
+	store, err := NewStore(nil, map[string]authn.Role{"friend@example.com": authn.Player, "owner@localhost": authn.Admin}, nil)
+	if err != nil || store == nil {
+		t.Fatal(store, err)
+	}
+}
+
+func TestRemovingAMalformedIDIsNotFound(t *testing.T) {
+	store := &Store{} // No database: the ID is rejected before a transaction opens.
+	for _, id := range []string{"", "member", "7f22e693-bacd-46bb-b942-64fa613cd38"} {
+		if err := store.Change(context.Background(), "admin", "", id, false); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("Change(%q) error = %v, want ErrNotFound", id, err)
+		}
 	}
 }
 

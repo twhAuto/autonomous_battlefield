@@ -94,6 +94,20 @@ func confirmSync(ctx context.Context, tx pgx.Tx, version int64) error {
 	return tx.Commit(ctx)
 }
 
+// Start imports the configured Players, then runs the group reconciler until the
+// returned stop function is called. stop waits for the reconciler to exit.
+func (s *Store) Start(ctx context.Context) (stop func(), err error) {
+	initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := s.Initialize(initCtx); err != nil {
+		return nil, err
+	}
+	syncCtx, stopSync := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() { defer close(done); s.Run(syncCtx) }()
+	return func() { stopSync(); <-done }, nil
+}
+
 // Run stops on process cancellation. Requests and transactions have their own
 // deadlines, and each API replica may safely run this loop.
 func (s *Store) Run(ctx context.Context) {

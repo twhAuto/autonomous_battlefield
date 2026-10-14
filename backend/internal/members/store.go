@@ -3,6 +3,7 @@ package members
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/mail"
 	"regexp"
 	"strings"
@@ -22,6 +23,21 @@ type Store struct {
 	Roles  map[string]authn.Role
 	Writer GroupWriter
 }
+
+// NewStore checks every configured Player email before the API starts, so a bad
+// BATTLEFIELD_ACCESS_ROLES entry fails startup rather than the first import.
+func NewStore(db *pgxpool.Pool, roles map[string]authn.Role, writer GroupWriter) (*Store, error) {
+	for email, role := range roles {
+		if role != authn.Player {
+			continue
+		}
+		if _, err := normalize(email); err != nil {
+			return nil, fmt.Errorf("BATTLEFIELD_ACCESS_ROLES contains an invalid Player email")
+		}
+	}
+	return &Store{DB: db, Roles: roles, Writer: writer}, nil
+}
+
 type Member struct {
 	ID      string    `json:"id"`
 	Email   string    `json:"email"`
@@ -34,6 +50,9 @@ type Member struct {
 func (s *Store) protected(email string) bool {
 	return s.Roles[email] == authn.Admin || s.Roles[email] == authn.Developer
 }
+
+// memberID guards removal so the uuid primary key is compared directly.
+var memberID = regexp.MustCompile(`^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$`)
 
 var emailDomain = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$`)
 
@@ -153,6 +172,9 @@ func (s *Store) List(ctx context.Context) ([]Member, string, error) {
 // Change serializes desired-state writes on the singleton row. Remote calls never
 // hold that row lock, so removing a member does not wait on Cloudflare.
 func (s *Store) Change(ctx context.Context, actor, email, id string, grant bool) error {
+	if !grant && !memberID.MatchString(id) {
+		return ErrNotFound
+	}
 	email, err := s.changeEmail(email, grant)
 	if err != nil {
 		return err
@@ -210,7 +232,7 @@ func (s *Store) prepareChange(ctx context.Context, tx pgx.Tx, email, id string, 
 	if grant {
 		err = tx.QueryRow(ctx, "SELECT id,desired_access FROM player_members WHERE email=$1", email).Scan(&id, &desired)
 	} else {
-		err = tx.QueryRow(ctx, "SELECT email,desired_access FROM player_members WHERE id::text=$1", id).Scan(&email, &desired)
+		err = tx.QueryRow(ctx, "SELECT email,desired_access FROM player_members WHERE id=$1", id).Scan(&email, &desired)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		if !grant {

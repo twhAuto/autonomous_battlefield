@@ -15,8 +15,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/app"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/catalog"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/resultcache"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
@@ -95,10 +97,6 @@ func parseOptions(arguments []string) (cliOptions, error) {
 }
 
 func startServer(configuration config.APIConfig) error {
-	memberConfig, err := members.LoadConfig(configuration.Auth.Roles)
-	if err != nil {
-		return err
-	}
 	shutdownSignal, stop := signal.NotifyContext(
 		context.Background(),
 		syscall.SIGINT,
@@ -163,23 +161,15 @@ func startServer(configuration config.APIConfig) error {
 		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
 	}
 	defer cache.Close()
-	var memberStore members.Repository
-	if memberConfig.Enabled {
-		store := &members.Store{DB: db, Roles: configuration.Auth.Roles, Writer: &members.Cloudflare{Config: memberConfig}}
-		initCtx, stopInit := context.WithTimeout(processContext, 10*time.Second)
-		err = store.Initialize(initCtx)
-		stopInit()
-		if err != nil {
-			return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
-		}
-		configuration.Auth.ResolvePlayer = store.Allowed
-		memberStore = store
-		syncCtx, stopSync := context.WithCancel(processContext)
-		syncDone := make(chan struct{})
-		go func() { defer close(syncDone); store.Run(syncCtx) }()
-		defer func() { stopSync(); <-syncDone }()
+	memberStore, stopMembers, err := startManagedPlayers(processContext, db, configuration.Members, configuration.Auth.Roles)
+	if err != nil {
+		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
 	}
-	application := app.New(db, catalog, configuration.API.MaxTicks, app.Options{Auth: configuration.Auth, Cache: cache, Generation: &configuration.Generation, Profiles: profiles, Members: memberStore})
+	defer stopMembers()
+	if memberStore != nil {
+		configuration.Auth.ResolvePlayer = memberStore.Allowed
+	}
+	application := app.New(db, catalog, configuration.API.MaxTicks, app.Options{Auth: configuration.Auth, Cache: cache, Generation: &configuration.Generation, Profiles: profiles, Members: membersRepository(memberStore)})
 	lifecycle.Activate(application.HTTPHandler(), db, nil)
 	slog.Info("api_ready", "address", server.Addr)
 
@@ -227,4 +217,27 @@ func stopAPIInitialization(
 		return nil
 	}
 	return fmt.Errorf("initialize API: %w", initializationError)
+}
+
+// startManagedPlayers imports configured Players and starts the Cloudflare group
+// reconciler. It returns a nil store and a no-op stop when managed Players are off.
+func startManagedPlayers(ctx context.Context, db *pgxpool.Pool, managed config.Members, roles map[string]authn.Role) (*members.Store, func(), error) {
+	if !managed.Enabled {
+		return nil, func() { /* Nothing was started. */ }, nil
+	}
+	store, err := members.NewStore(db, roles, members.NewCloudflare(members.Config{AccountID: managed.AccountID, GroupID: managed.GroupID, Token: managed.Token}))
+	if err != nil {
+		return nil, nil, err
+	}
+	stop, err := store.Start(ctx)
+	return store, stop, err
+}
+
+// membersRepository keeps a disabled feature a nil interface, which the handler
+// answers with 503, rather than an interface holding a nil *Store.
+func membersRepository(store *members.Store) members.Repository {
+	if store == nil {
+		return nil
+	}
+	return store
 }

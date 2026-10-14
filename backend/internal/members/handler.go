@@ -2,12 +2,12 @@ package members
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
@@ -21,6 +21,12 @@ type Repository interface {
 type Handler struct {
 	Store  Repository
 	Origin string
+}
+
+// NewHandler serves the Admin member routes. A nil store, when managed Players are
+// disabled, answers every route with 503.
+func NewHandler(store Repository, origin string) *Handler {
+	return &Handler{Store: store, Origin: origin}
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
@@ -49,15 +55,13 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		memberError(w, r, err)
 		return
 	}
-	_ = httpapi.WriteJSON(w, 200, map[string]any{"members": members, "syncError": lastError, "gameUrl": h.Origin})
+	_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"members": members, "syncError": lastError, "gameUrl": h.Origin})
 }
 func (h *Handler) grant(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Email string `json:"email"`
 	}
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&body) != nil || decoder.Decode(&struct{}{}) != io.EOF {
+	if httpapi.ReadJSON(w, r, &body) != nil {
 		memberError(w, r, ErrInvalid)
 		return
 	}
@@ -87,12 +91,38 @@ func (h *Handler) retry(w http.ResponseWriter, r *http.Request) {
 func memberError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, ErrInvalid):
-		apierror.Write(w, r, 400, ErrInvalid.Error())
+		apierror.Write(w, r, http.StatusBadRequest, ErrInvalid.Error())
 	case errors.Is(err, ErrProtected):
-		apierror.Write(w, r, 409, ErrProtected.Error())
+		apierror.Write(w, r, http.StatusConflict, ErrProtected.Error())
 	case errors.Is(err, ErrNotFound):
-		apierror.Write(w, r, 404, ErrNotFound.Error())
+		apierror.Write(w, r, http.StatusNotFound, ErrNotFound.Error())
 	default:
-		apierror.Write(w, r, 503, "Member access could not be updated or loaded. Try again.")
+		logRequestFailure(r, err)
+		apierror.Write(w, r, http.StatusServiceUnavailable, "Member access could not be updated or loaded. Try again.")
+	}
+}
+
+// logRequestFailure records a fixed category and SQLSTATE, never the raw error: a
+// pgx connection error can name the database user, host and database.
+func logRequestFailure(r *http.Request, err error) {
+	attrs := []any{"request_id", httpapi.RequestID(r.Context()), "reason", failureReason(err)}
+	var database *pgconn.PgError
+	if errors.As(err, &database) {
+		attrs = append(attrs, "sqlstate", database.Code)
+	}
+	slog.ErrorContext(r.Context(), "player_members_request_failed", attrs...)
+}
+
+func failureReason(err error) string {
+	var database *pgconn.PgError
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "deadline_exceeded"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.As(err, &database):
+		return "database_error"
+	default:
+		return "database_unavailable"
 	}
 }

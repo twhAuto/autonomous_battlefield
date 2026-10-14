@@ -44,3 +44,10 @@ __pycache__/
 .idea/
 *.swp
 .DS_Store
+
+# Binaries from a bare `go build ./cmd/<name>` run inside backend/.
+/backend/server
+/backend/engine
+/backend/agent
+/backend/aigateway
+/backend/aieval
