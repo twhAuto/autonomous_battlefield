@@ -110,7 +110,8 @@ func startEngine(configuration config.Config) error {
 	slog.Info("database_connected")
 
 	engineWorkerID := workerID(engineConfig.WorkerIDEnvironmentVariable)
-	engineWorker, err := worker.New(battlerepo.NewPostgres(db), worker.Config{KnowledgeRetrieval: configuration.Engine.KnowledgeRetrieval,
+	battles := battlerepo.NewPostgres(db)
+	engineWorker, err := worker.New(battles, battles, worker.Config{KnowledgeRetrieval: configuration.Engine.KnowledgeRetrieval,
 		WorkerID: engineWorkerID, PollInterval: engineConfig.PollInterval,
 		LeaseDuration: engineConfig.LeaseDuration, HeartbeatInterval: engineConfig.HeartbeatInterval, ShutdownTimeout: engineConfig.ShutdownTimeout,
 		MaxAttempts:     engineConfig.MaxAttempts,

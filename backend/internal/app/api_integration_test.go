@@ -126,7 +126,8 @@ func startIntegrationAPI(t *testing.T, db *pgxpool.Pool, issuer *accessIssuer) *
 
 func startIntegrationEngine(t *testing.T, db *pgxpool.Pool) {
 	t.Helper()
-	engine, err := worker.New(battlerepo.NewPostgres(db), worker.Config{
+	battles := battlerepo.NewPostgres(db)
+	engine, err := worker.New(battles, battles, worker.Config{
 		WorkerID: "api-integration", PollInterval: 50 * time.Millisecond, LeaseDuration: 30 * time.Second,
 		HeartbeatInterval: time.Second, ShutdownTimeout: 5 * time.Second, MaxAttempts: 3,
 	})

@@ -154,11 +154,10 @@ func (w *Worker) waitForWindowDecisions(ctx context.Context, lease queue.Lease, 
 		if pausedFor > 0 {
 			nextHeartbeat = time.Now().Add(w.config.HeartbeatInterval)
 		}
-		records, err := w.decisions.ListWindowDecisions(ctx, lease.BattleID, lease.Attempt, targetTick)
+		pending, err := w.decisions.CountPendingWindowDecisions(ctx, lease.BattleID, lease.Attempt, targetTick)
 		if err != nil {
 			return err
 		}
-		pending := pendingDecisionCount(records)
 		if pending == 0 || !time.Now().Before(deadline) {
 			return nil
 		}
@@ -171,16 +170,6 @@ func (w *Worker) waitForWindowDecisions(ctx context.Context, lease queue.Lease, 
 			return err
 		}
 	}
-}
-
-func pendingDecisionCount(records []ai.DecisionRecord) int {
-	count := 0
-	for _, record := range records {
-		if record.Status == "pending" || record.Status == "running" {
-			count++
-		}
-	}
-	return count
 }
 
 func (w *Worker) resolveDecisionPlans(ctx context.Context, lease queue.Lease, simulation *game.Match, targetTick uint64, baselines map[string]controller.PlanProposal, records []ai.DecisionRecord) (map[string]controller.PlanProposal, int, int, error) {

@@ -36,7 +36,7 @@ func TestBattleProgressUsesProductionLogger(t *testing.T) {
 			if failSave {
 				repo.saveErr = errWorkerRepository
 			}
-			worker, err := NewWithLogger(repo, testWorkerConfig(), logger)
+			worker, err := NewWithLogger(repo, nil, testWorkerConfig(), logger)
 			testutil.Require(t, err == nil, func() { t.Fatal(err) })
 			span := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID{1}, SpanID: trace.SpanID{2}})
 			err = worker.process(trace.ContextWithSpanContext(context.Background(), span), repo.job)
@@ -72,7 +72,7 @@ func TestDecisionWaitingLogsPendingCountAndRenewsLease(t *testing.T) {
 	config := testWorkerConfig()
 	config.HeartbeatInterval = 150 * time.Millisecond
 	config.DecisionTimeout = time.Second
-	worker, err := NewWithLogger(repo, config, slog.New(logging.NewHandler(slog.NewJSONHandler(&output, nil))))
+	worker, err := NewWithLogger(repo, repo, config, slog.New(logging.NewHandler(slog.NewJSONHandler(&output, nil))))
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	err = worker.waitForWindowDecisions(ctx, queue.Lease{BattleID: "battle-1", Attempt: 1}, 10)
 	testutil.Require(t, !(!errors.Is(err, context.Canceled) || repo.heartbeats != 1), func() { t.Fatalf("lease not renewed while waiting: %v, heartbeats=%d", err, repo.heartbeats) })
@@ -87,7 +87,7 @@ func TestDecisionWaitingLogsPendingCountAndRenewsLease(t *testing.T) {
 func TestResolvedDecisionWindowDoesNotReportWaiting(t *testing.T) {
 	var output bytes.Buffer
 	repo := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{"a": {Status: "accepted", TargetTick: 10}}}
-	worker, err := NewWithLogger(repo, testWorkerConfig(), slog.New(logging.NewHandler(slog.NewJSONHandler(&output, nil))))
+	worker, err := NewWithLogger(repo, repo, testWorkerConfig(), slog.New(logging.NewHandler(slog.NewJSONHandler(&output, nil))))
 	testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	{
 		err := worker.waitForWindowDecisions(context.Background(), queue.Lease{}, 10)

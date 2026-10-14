@@ -76,11 +76,7 @@ func (w *Worker) waitUntilNextTick(ctx context.Context, lease queue.Lease, deadl
 // waitWhilePaused retains and heartbeats the current lease so resuming
 // continues the same simulation instead of rebuilding it from tick zero.
 func (w *Worker) waitWhilePaused(ctx context.Context, lease queue.Lease) (time.Duration, error) {
-	repository, ok := w.repository.(pauseRepository)
-	if !ok {
-		return 0, nil
-	}
-	paused, err := repository.BattlePaused(ctx, lease)
+	paused, err := w.repository.BattlePaused(ctx, lease)
 	if err != nil || !paused {
 		return 0, err
 	}
@@ -97,7 +93,7 @@ func (w *Worker) waitWhilePaused(ctx context.Context, lease queue.Lease) (time.D
 			}
 			nextHeartbeat = time.Now().Add(w.config.HeartbeatInterval)
 		}
-		paused, err = repository.BattlePaused(ctx, lease)
+		paused, err = w.repository.BattlePaused(ctx, lease)
 		if err != nil {
 			return time.Since(started), err
 		}

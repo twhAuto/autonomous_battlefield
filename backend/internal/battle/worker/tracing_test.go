@@ -43,7 +43,7 @@ func TestDecisionsStoreTheirWindowSpanContext(t *testing.T) {
 		}
 	}
 	repository := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}}
-	worker, _ := NewWithLogger(repository, testWorkerConfig(), slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	worker, _ := NewWithLogger(repository, repository, testWorkerConfig(), slog.New(slog.NewJSONHandler(io.Discard, nil)))
 	if _, err := worker.resolveDecisionWindow(context.Background(), job.Lease, simulation); err != nil {
 		t.Fatal(err)
 	}

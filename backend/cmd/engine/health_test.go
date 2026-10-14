@@ -17,7 +17,7 @@ import (
 
 func TestEngineProbesFollowWorkerAndDatabaseLifecycle(t *testing.T) {
 	repository := &idleHealthRepository{claimed: make(chan struct{})}
-	engineWorker, err := worker.New(repository, worker.Config{
+	engineWorker, err := worker.New(repository, nil, worker.Config{
 		WorkerID: "health-test", PollInterval: time.Millisecond, LeaseDuration: time.Second,
 		HeartbeatInterval: 100 * time.Millisecond, ShutdownTimeout: time.Second, MaxAttempts: 3,
 	})

@@ -31,16 +31,18 @@ type Worker struct {
 	repository   Repository
 	config       Config
 	logger       *slog.Logger
-	decisions    ai.DecisionRepository
+	decisions    DecisionRepository
 	ready        atomic.Bool
 	shuttingDown atomic.Bool
 }
 
-func New(repository Repository, config Config) (*Worker, error) {
-	return NewWithLogger(repository, config, slog.Default())
+// New builds an engine worker. decisions runs AI decision windows; pass nil only for a
+// worker that should advance battles on scripted plans alone.
+func New(repository Repository, decisions DecisionRepository, config Config) (*Worker, error) {
+	return NewWithLogger(repository, decisions, config, slog.Default())
 }
 
-func NewWithLogger(repository Repository, config Config, logger *slog.Logger) (*Worker, error) {
+func NewWithLogger(repository Repository, decisions DecisionRepository, config Config, logger *slog.Logger) (*Worker, error) {
 	if config.KnowledgeRetrieval == (ai.KnowledgeLimits{}) {
 		config.KnowledgeRetrieval = ai.DefaultKnowledgeLimits()
 	}
@@ -56,11 +58,7 @@ func NewWithLogger(repository Repository, config Config, logger *slog.Logger) (*
 	if logger == nil {
 		logger = slog.Default()
 	}
-	worker := &Worker{repository: repository, config: config, logger: logger.With("worker_id", config.WorkerID)}
-	if decisions, ok := repository.(ai.DecisionRepository); ok {
-		worker.decisions = decisions
-	}
-	return worker, nil
+	return &Worker{repository: repository, decisions: decisions, config: config, logger: logger.With("worker_id", config.WorkerID)}, nil
 }
 
 func (w *Worker) Run(ctx context.Context) error {

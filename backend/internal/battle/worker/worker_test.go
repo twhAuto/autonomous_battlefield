@@ -26,7 +26,7 @@ func TestWorkerCompletesClaimedBattle(t *testing.T) {
 	repo.onComplete = cancel
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
-	worker, err := NewWithLogger(repo, testWorkerConfig(), logger)
+	worker, err := NewWithLogger(repo, nil, testWorkerConfig(), logger)
 	if err != nil {
 		t.Fatalf("New() returned an error: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestWorkerRequeuesAtTickBoundaryOnCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	repo := &fakeBattleRepository{job: testJob(100)}
 	repo.onSave = cancel
-	worker, err := New(repo, testWorkerConfig())
+	worker, err := New(repo, nil, testWorkerConfig())
 	if err != nil {
 		t.Fatalf("New() returned an error: %v", err)
 	}
@@ -82,13 +82,13 @@ func TestNewWorkerRejectsInvalidConfiguration(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			configuration := valid
 			test.mutate(&configuration)
-			if _, err := NewWithLogger(&fakeBattleRepository{}, configuration, nil); err == nil {
+			if _, err := NewWithLogger(&fakeBattleRepository{}, nil, configuration, nil); err == nil {
 				t.Fatal("NewWithLogger() accepted invalid configuration")
 			}
 		})
 	}
 
-	if _, err := NewWithLogger(&fakeBattleRepository{}, valid, nil); err != nil {
+	if _, err := NewWithLogger(&fakeBattleRepository{}, nil, valid, nil); err != nil {
 		t.Fatalf("NewWithLogger() rejected a nil logger: %v", err)
 	}
 }
@@ -98,7 +98,7 @@ func TestWorkerWaitsWhilePausedAndHeartbeatsLease(t *testing.T) {
 	config := testWorkerConfig()
 	config.HeartbeatInterval = time.Millisecond
 	config.LeaseDuration = 10 * time.Millisecond
-	worker, err := New(repository, config)
+	worker, err := New(repository, nil, config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestWorkerRunStopsOnCancellationAndClaimFailure(t *testing.T) {
 	t.Run("already cancelled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		worker, _ := New(&fakeBattleRepository{}, testWorkerConfig())
+		worker, _ := New(&fakeBattleRepository{}, nil, testWorkerConfig())
 		if err := worker.Run(ctx); err != nil {
 			t.Fatalf("Run() returned an error: %v", err)
 		}
@@ -122,14 +122,14 @@ func TestWorkerRunStopsOnCancellationAndClaimFailure(t *testing.T) {
 	})
 
 	t.Run("claim error", func(t *testing.T) {
-		worker, _ := New(&fakeBattleRepository{claimErr: errWorkerRepository}, testWorkerConfig())
+		worker, _ := New(&fakeBattleRepository{claimErr: errWorkerRepository}, nil, testWorkerConfig())
 		err := worker.Run(context.Background())
 		if !errors.Is(err, errWorkerRepository) {
 			t.Fatalf("Run() error = %v, want repository error", err)
 		}
 	})
 	t.Run("exhausted sweep error", func(t *testing.T) {
-		worker, _ := New(exhaustedSweepFailure{&fakeBattleRepository{}}, testWorkerConfig())
+		worker, _ := New(exhaustedSweepFailure{&fakeBattleRepository{}}, nil, testWorkerConfig())
 		err := worker.Run(context.Background())
 		if !errors.Is(err, errWorkerRepository) {
 			t.Fatalf("Run() error = %v, want repository error", err)
@@ -148,7 +148,7 @@ func (exhaustedSweepFailure) FailExhaustedBattles(context.Context, int) error {
 func TestWorkerProcessFailurePaths(t *testing.T) {
 	t.Run("invalid scenario is marked failed", func(t *testing.T) {
 		repository := &fakeBattleRepository{}
-		worker, _ := New(repository, testWorkerConfig())
+		worker, _ := New(repository, nil, testWorkerConfig())
 		job := &queue.Job{Lease: queue.Lease{BattleID: "bad", Owner: "worker-1"}, Scenario: battle.Scenario{}}
 		if err := worker.process(context.Background(), job); err != nil {
 			t.Fatalf("process() returned an error: %v", err)
@@ -160,7 +160,7 @@ func TestWorkerProcessFailurePaths(t *testing.T) {
 
 	t.Run("invalid scenario failure cannot be persisted", func(t *testing.T) {
 		repository := &fakeBattleRepository{failErr: errWorkerRepository}
-		worker, _ := New(repository, testWorkerConfig())
+		worker, _ := New(repository, nil, testWorkerConfig())
 		err := worker.process(context.Background(), &queue.Job{Lease: queue.Lease{BattleID: "bad"}})
 		if !errors.Is(err, errWorkerRepository) {
 			t.Fatalf("process() error = %v, want repository error", err)
@@ -169,7 +169,7 @@ func TestWorkerProcessFailurePaths(t *testing.T) {
 
 	t.Run("save tick", func(t *testing.T) {
 		repository := &fakeBattleRepository{saveErr: errWorkerRepository}
-		worker, _ := New(repository, testWorkerConfig())
+		worker, _ := New(repository, nil, testWorkerConfig())
 		err := worker.process(context.Background(), testJob(100))
 		if !errors.Is(err, errWorkerRepository) {
 			t.Fatalf("process() error = %v, want repository error", err)
@@ -178,7 +178,7 @@ func TestWorkerProcessFailurePaths(t *testing.T) {
 
 	t.Run("complete battle", func(t *testing.T) {
 		repository := &fakeBattleRepository{completeErr: errWorkerRepository}
-		worker, _ := New(repository, testWorkerConfig())
+		worker, _ := New(repository, nil, testWorkerConfig())
 		err := worker.process(context.Background(), testJob(1))
 		if !errors.Is(err, errWorkerRepository) {
 			t.Fatalf("process() error = %v, want repository error", err)
@@ -192,7 +192,7 @@ func TestWorkerShutdownHandoffs(t *testing.T) {
 
 	t.Run("persisted tick requeued", func(t *testing.T) {
 		repository := &fakeBattleRepository{}
-		worker, _ := New(repository, testWorkerConfig())
+		worker, _ := New(repository, nil, testWorkerConfig())
 		err := worker.persistTickAndRequeue(context.Background(), lease, transition)
 		if !errors.Is(err, context.Canceled) || !repository.requeued || len(repository.saved) != 1 {
 			t.Fatalf("persistTickAndRequeue() error = %v, repository = %#v", err, repository)
@@ -209,7 +209,7 @@ func TestWorkerShutdownHandoffs(t *testing.T) {
 		{name: "lease lost", repository: &fakeBattleRepository{requeueErr: queue.ErrLeaseLost}, want: queue.ErrLeaseLost},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			worker, _ := New(test.repository, testWorkerConfig())
+			worker, _ := New(test.repository, nil, testWorkerConfig())
 			err := worker.persistTickAndRequeue(context.Background(), lease, transition)
 			if !errors.Is(err, test.want) {
 				t.Fatalf("persistTickAndRequeue() error = %v, want %v", err, test.want)
@@ -227,7 +227,7 @@ func TestWorkerShutdownHandoffs(t *testing.T) {
 		{name: "lease lost", repository: &fakeBattleRepository{requeueErr: queue.ErrLeaseLost}, want: queue.ErrLeaseLost},
 	} {
 		t.Run("requeue "+test.name, func(t *testing.T) {
-			worker, _ := New(test.repository, testWorkerConfig())
+			worker, _ := New(test.repository, nil, testWorkerConfig())
 			err := worker.requeueAfterCancellation(context.Background(), lease)
 			if !errors.Is(err, test.want) {
 				t.Fatalf("requeueAfterCancellation() error = %v, want %v", err, test.want)
@@ -238,7 +238,7 @@ func TestWorkerShutdownHandoffs(t *testing.T) {
 
 func TestWorkerWaitsAndHeartbeats(t *testing.T) {
 	t.Run("deadline", func(t *testing.T) {
-		worker, _ := New(&fakeBattleRepository{}, testWorkerConfig())
+		worker, _ := New(&fakeBattleRepository{}, nil, testWorkerConfig())
 		if err := worker.waitUntilNextTick(context.Background(), queue.Lease{}, time.Now()); err != nil {
 			t.Fatalf("waitUntilNextTick() returned an error: %v", err)
 		}
@@ -250,7 +250,7 @@ func TestWorkerWaitsAndHeartbeats(t *testing.T) {
 		repository := &fakeBattleRepository{onHeartbeat: cancel}
 		configuration := testWorkerConfig()
 		configuration.HeartbeatInterval = time.Millisecond
-		worker, _ := New(repository, configuration)
+		worker, _ := New(repository, nil, configuration)
 		err := worker.waitUntilNextTick(ctx, queue.Lease{}, time.Now().Add(time.Minute))
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("waitUntilNextTick() error = %v, want cancellation after heartbeat", err)
@@ -264,7 +264,7 @@ func TestWorkerWaitsAndHeartbeats(t *testing.T) {
 		repository := &fakeBattleRepository{heartbeatErr: errWorkerRepository}
 		configuration := testWorkerConfig()
 		configuration.HeartbeatInterval = time.Millisecond
-		worker, _ := New(repository, configuration)
+		worker, _ := New(repository, nil, configuration)
 		err := worker.waitUntilNextTick(context.Background(), queue.Lease{}, time.Now().Add(time.Second))
 		if !errors.Is(err, errWorkerRepository) {
 			t.Fatalf("waitUntilNextTick() error = %v, want repository error", err)
@@ -274,7 +274,7 @@ func TestWorkerWaitsAndHeartbeats(t *testing.T) {
 	t.Run("cancelled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		worker, _ := New(&fakeBattleRepository{}, testWorkerConfig())
+		worker, _ := New(&fakeBattleRepository{}, nil, testWorkerConfig())
 		if err := worker.waitUntilNextTick(ctx, queue.Lease{}, time.Now().Add(time.Second)); !errors.Is(err, context.Canceled) {
 			t.Fatalf("waitUntilNextTick() error = %v, want context cancellation", err)
 		}
@@ -435,7 +435,7 @@ func TestDecisionWindowStopsWhenBattleWasStopped(t *testing.T) {
 		}
 	}
 	repository := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}, failModels: true, modelErrorCategory: "battle_stopped"}
-	worker, _ := New(repository, testWorkerConfig())
+	worker, _ := New(repository, repository, testWorkerConfig())
 	if _, err := worker.resolveDecisionWindow(context.Background(), job.Lease, simulation); !errors.Is(err, queue.ErrLeaseLost) {
 		t.Fatalf("error = %v, want queue.ErrLeaseLost", err)
 	}
@@ -448,6 +448,20 @@ func TestDecisionWindowStopsWhenBattleWasStopped(t *testing.T) {
 func (r *decisionBattleRepository) GetDecision(_ context.Context, id string) (ai.DecisionRecord, error) {
 	return r.records[id], nil
 }
+
+// CountPendingWindowDecisions counts the same window ListWindowDecisions returns, so
+// the fake's pending count can never disagree with its records.
+func (r *decisionBattleRepository) CountPendingWindowDecisions(ctx context.Context, battleID string, attempt int, targetTick uint64) (int, error) {
+	records, err := r.ListWindowDecisions(ctx, battleID, attempt, targetTick)
+	count := 0
+	for _, record := range records {
+		if record.Status == "pending" || record.Status == "running" {
+			count++
+		}
+	}
+	return count, err
+}
+
 func (r *decisionBattleRepository) ListWindowDecisions(_ context.Context, _ string, _ int, target uint64) ([]ai.DecisionRecord, error) {
 	values := []ai.DecisionRecord{}
 	for _, record := range r.records {
@@ -520,7 +534,7 @@ func runDecisionWindowFallbackCase(t *testing.T, model bool) {
 	}
 	repository := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}, failModels: model}
 	var logs bytes.Buffer
-	worker, _ := NewWithLogger(repository, testWorkerConfig(), slog.New(slog.NewJSONHandler(&logs, nil)))
+	worker, _ := NewWithLogger(repository, repository, testWorkerConfig(), slog.New(slog.NewJSONHandler(&logs, nil)))
 	plans, err := worker.resolveDecisionWindow(context.Background(), job.Lease, simulation)
 	if err != nil || len(plans) != 2 {
 		t.Fatalf("plans=%#v err=%v", plans, err)
@@ -621,7 +635,7 @@ func TestFallbackPreservesRunnerFailureCategory(t *testing.T) {
 			}
 			record := ai.DecisionRecord{ID: "request", Status: test.status, ErrorCategory: test.category, FactionID: job.Scenario.Factions[0].ID, TargetTick: 10, Version: 1}
 			repository := &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{record.ID: record}}
-			worker, err := New(repository, testWorkerConfig())
+			worker, err := New(repository, repository, testWorkerConfig())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -659,7 +673,7 @@ func (r *expiryTestRepository) ClaimBattle(ctx context.Context, _ string, _ time
 }
 func TestWorkerSweepsIndependentlyOfClaims(t *testing.T) {
 	repository := &expiryTestRepository{fakeBattleRepository: &fakeBattleRepository{}, swept: make(chan struct{})}
-	worker, _ := New(repository, testWorkerConfig())
+	worker, _ := New(repository, nil, testWorkerConfig())
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	if err := worker.Run(ctx); !errors.Is(err, errWorkerRepository) {
