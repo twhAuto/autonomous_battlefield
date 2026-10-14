@@ -1,42 +1,46 @@
-// Configures PostgreSQL connection pools and bounded startup retries with context-aware
-// cancellation.
-
+// Package postgres opens PostgreSQL connection pools, runs the embedded migrations and
+// listens for notifications. Repositories depend on its DBTX and Pool interfaces rather
+// than on pgx types.
 package postgres
 
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Options sizes a connection pool and overrides any pool settings in the URL.
+// MaxConnections must be greater than zero.
 type Options struct {
 	MaxConnections        int32
 	MinConnections        int32
 	MaxConnectionLifetime time.Duration
 }
 
-func NewPostgresDB(ctx context.Context, url string, options Options) (*pgxpool.Pool, error) {
-	poolConfig, err := postgresPoolConfig(url, options)
+// Connect opens a pool and pings the database once.
+func Connect(ctx context.Context, url string, options Options) (*pgxpool.Pool, error) {
+	poolConfig, err := parsePoolConfig(url, options)
 	if err != nil {
 		return nil, err
 	}
-	return newPostgresDB(ctx, poolConfig)
+	return connect(ctx, poolConfig)
 }
 
-// NewPostgresDBWithRetry waits for PostgreSQL while the process remains alive
+// ConnectWithRetry waits for PostgreSQL while the process remains alive
 // and responsive to cancellation. Configuration errors are returned
-// immediately; transient connection errors are retried until ctx is done.
-func NewPostgresDBWithRetry(
+// immediately; transient connection errors are logged as database_connect_retry
+// warnings and retried until ctx is done.
+func ConnectWithRetry(
 	ctx context.Context,
 	url string,
 	options Options,
 	attemptTimeout time.Duration,
 	retryInterval time.Duration,
-	onRetry func(attempt int, err error),
 ) (*pgxpool.Pool, error) {
-	poolConfig, err := postgresPoolConfig(url, options)
+	poolConfig, err := parsePoolConfig(url, options)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +53,7 @@ func NewPostgresDBWithRetry(
 
 	for attempt := 1; ; attempt++ {
 		attemptContext, cancel := context.WithTimeout(ctx, attemptTimeout)
-		pool, connectErr := newPostgresDB(attemptContext, poolConfig.Copy())
+		pool, connectErr := connect(attemptContext, poolConfig.Copy())
 		cancel()
 		if connectErr == nil {
 			return pool, nil
@@ -57,23 +61,19 @@ func NewPostgresDBWithRetry(
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("wait for PostgreSQL: %w", err)
 		}
-		if onRetry != nil {
-			onRetry(attempt, connectErr)
-		}
+		slog.WarnContext(ctx, "database_connect_retry", "attempt", attempt, "retry_in", retryInterval, "error", connectErr)
 
 		timer := time.NewTimer(retryInterval)
 		select {
 		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
+			timer.Stop()
 			return nil, fmt.Errorf("wait for PostgreSQL: %w", ctx.Err())
 		case <-timer.C:
 		}
 	}
 }
 
-func postgresPoolConfig(url string, options Options) (*pgxpool.Config, error) {
+func parsePoolConfig(url string, options Options) (*pgxpool.Config, error) {
 	poolConfig, err := pgxpool.ParseConfig(url)
 	if err != nil {
 		return nil, fmt.Errorf("parse PostgreSQL configuration: %w", err)
@@ -85,7 +85,7 @@ func postgresPoolConfig(url string, options Options) (*pgxpool.Config, error) {
 	return poolConfig, nil
 }
 
-func newPostgresDB(ctx context.Context, poolConfig *pgxpool.Config) (*pgxpool.Pool, error) {
+func connect(ctx context.Context, poolConfig *pgxpool.Config) (*pgxpool.Pool, error) {
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, fmt.Errorf("create PostgreSQL pool: %w", err)

@@ -16,7 +16,8 @@ import (
 const maxErrors = 256
 
 // Error renders err without the database user, database name, host or address that
-// pgx connection errors and network errors print. Every matching error in the tree,
+// pgx connection errors and network errors print. A connection string pgx cannot parse
+// is replaced as a whole, since pgx quotes it with only best-effort password masking. Every matching error in the tree,
 // including each branch of errors.Join, is rewritten; other text is kept, so
 // application errors stay readable and a SQLSTATE survives as its code. A typed-nil
 // error renders as "<nil>", and an error whose Error method panics never crashes the
@@ -43,6 +44,8 @@ func Error(err error) (text string) {
 	// the network error text nested inside it.
 	for _, node := range nodes {
 		switch e := node.(type) {
+		case *pgconn.ParseConfigError:
+			text = strings.ReplaceAll(text, e.Error(), "invalid database connection string")
 		case *pgconn.ConnectError:
 			text = strings.ReplaceAll(text, e.Error(), connectFailure(e))
 		case *net.OpError:
