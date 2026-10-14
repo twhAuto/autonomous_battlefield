@@ -1,78 +1,79 @@
-// Loads events for the selected battle attempt, polls the active attempt, and keeps a
-// bounded, deduplicated event buffer.
-
-import { useCallback, useEffect, useState } from 'react'
+// One cancellable request loop owns an attempt's initial page, polling, and manual
+// refreshes. Status changes resume from the cursor and fetch the terminal tail.
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { BattleApiError, BattleEvent, BattleRun, listBattleEvents } from '../api/battles'
 import { eventPageSize, eventPollIntervalMs } from './constants'
 import { type EventState } from '../types'
 
+type EventStream = {
+  scope: string; events: BattleEvent[]; cursor: number; hasMore: boolean
+  state: EventState; message: string; loaded: boolean
+}
+function emptyStream(scope: string): EventStream {
+  return { scope, events: [], cursor: 0, hasMore: false, state: 'idle', message: '', loaded: false }
+}
+
 export function useBattleEventStream(id: string, battleAttempt?: number, battleStatus?: BattleRun['status']) {
   const [selectedAttempt, setSelectedAttempt] = useState<number | null>(null)
-  const [events, setEvents] = useState<BattleEvent[]>([])
-  const [eventCursor, setEventCursor] = useState(0)
-  const [eventHasMore, setEventHasMore] = useState(false)
-  const [eventState, setEventState] = useState<EventState>('idle')
-  const [eventMessage, setEventMessage] = useState('')
-  const [eventPollVersion, setEventPollVersion] = useState(0)
+  const scope = `${id}:${selectedAttempt}`
+  const [stream, setStream] = useState(() => emptyStream(''))
+  const snapshot = useRef(stream)
+  const request = useRef<(after: number, reset: boolean) => Promise<void>>(async () => {})
 
   useEffect(() => {
-    if (battleAttempt === undefined) return
-    setSelectedAttempt(battleAttempt)
+    if (battleAttempt !== undefined) setSelectedAttempt(battleAttempt)
   }, [battleAttempt])
 
-  const loadEventPage = useCallback(async (after: number, reset: boolean, signal?: AbortSignal, latest = false) => {
+  useEffect(() => {
     if (selectedAttempt === null) return
-    setEventState('loading')
-    setEventMessage('')
-    try {
-      const page = await listBattleEvents(id, { attempt: selectedAttempt, after, limit: eventPageSize, latest }, signal)
-      setEvents((current) => mergeEvents(current, page.events, reset))
-      const nextCursor = page.events.at(-1)?.sequence ?? after
-      setEventCursor((current) => Math.max(current, nextCursor))
-      setEventHasMore(!latest && page.events.length === eventPageSize)
-      setEventState('idle')
-      setEventPollVersion((current) => current + 1)
-    } catch (error) {
-      if (signal?.aborted) return
-      setEventState('error')
-      setEventMessage(error instanceof BattleApiError ? error.message : 'Battle events could not be loaded.')
+    const attempt = selectedAttempt
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let inFlight = false
+    if (snapshot.current.scope !== scope) snapshot.current = emptyStream(scope)
+    const currentAttempt = attempt === battleAttempt
+    const active = battleStatus === 'queued' || battleStatus === 'running'
+
+    function publish(next: EventStream) {
+      snapshot.current = next
+      setStream(next)
     }
-  }, [id, selectedAttempt])
-
-  useEffect(() => {
-    if (selectedAttempt === null) return
-    const controller = new AbortController()
-    setEvents([])
-    setEventCursor(0)
-    setEventHasMore(false)
-    void loadEventPage(0, true, controller.signal, true)
-    return () => controller.abort()
-  }, [loadEventPage, selectedAttempt])
-
-  useEffect(() => {
-    const isCurrentAttempt = selectedAttempt === battleAttempt
-    const isActive = battleStatus === 'queued' || battleStatus === 'running'
-    if (!isCurrentAttempt || !isActive) return
-    const controller = new AbortController()
-    // A busy tick can produce more than one page of events. Drain full pages
-    // immediately, then return to the normal polling cadence once caught up.
-    const delay = eventHasMore ? 0 : eventPollIntervalMs
-    const timer = setTimeout(() => void loadEventPage(eventCursor, false, controller.signal), delay)
-    return () => {
-      controller.abort()
+    async function load(after: number, reset: boolean, latest = false) {
+      if (controller.signal.aborted || inFlight) return
+      inFlight = true
       clearTimeout(timer)
+      publish({ ...snapshot.current, state: 'loading', message: '' })
+      try {
+        const page = await listBattleEvents(id, { attempt, after, limit: eventPageSize, latest }, controller.signal)
+        if (controller.signal.aborted) return
+        const previous = snapshot.current
+        const nextCursor = page.events.at(-1)?.sequence ?? after
+        const cursor = reset ? nextCursor : Math.max(previous.cursor, nextCursor)
+        const hasMore = !latest && page.events.length === eventPageSize
+        publish({ scope, events: mergeEvents(previous.events, page.events, reset), cursor, hasMore, state: 'idle', message: '', loaded: true })
+        // Finish draining the current attempt even if it just became terminal.
+        if (currentAttempt && (active || hasMore)) {
+          timer = setTimeout(() => void load(cursor, false), hasMore ? 0 : eventPollIntervalMs)
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return
+        publish({ ...snapshot.current, state: 'error', message: error instanceof BattleApiError ? error.message : 'Battle events could not be loaded.' })
+      } finally {
+        inFlight = false
+      }
     }
-  }, [battleAttempt, battleStatus, eventCursor, eventHasMore, eventPollVersion, loadEventPage, selectedAttempt])
+    request.current = (after, reset) => load(after, reset)
+    const initial = snapshot.current
+    void load(initial.cursor, !initial.loaded, !initial.loaded)
+    return () => { controller.abort(); clearTimeout(timer) }
+  }, [id, selectedAttempt, scope, battleAttempt, battleStatus])
 
+  const loadEventPage = useCallback((after: number, reset: boolean) => request.current(after, reset), [])
+  const current = stream.scope === scope ? stream : emptyStream(scope)
   return {
-    selectedAttempt,
-    setSelectedAttempt,
-    events,
-    eventCursor,
-    eventHasMore,
-    eventState,
-    eventMessage,
-    loadEventPage,
+    selectedAttempt, setSelectedAttempt,
+    events: current.events, eventCursor: current.cursor, eventHasMore: current.hasMore,
+    eventState: current.state, eventMessage: current.message, loadEventPage,
   }
 }
 

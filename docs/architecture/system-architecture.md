@@ -139,6 +139,13 @@ ignored. Loading and failed faction views show feedback and retry controls in th
 map shell, including its expanded dialog; they never fall back to spectator data.
 The same faction's last successful view can remain visible during tick refreshes.
 
+Event loading uses one cancellable loop per selected attempt, serializing initial
+loads, polling, and manual refresh. A status change resumes from the saved cursor
+and drains full incremental pages, including the terminal tail. Historical
+attempts load on selection or manual refresh; late responses from abandoned
+attempts are ignored. Errors preserve the loaded buffer and allow retry. The
+browser retains at most 500 events, deduplicated by sequence.
+
 The inline map fits its board aspect ratio. Expanding moves the same map state
 into a native modal dialog with focus containment, Escape dismissal, scroll
 locking, and focus restoration. Perspective and entity selection survive this
