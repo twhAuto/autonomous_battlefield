@@ -18,6 +18,10 @@ state to the battle ID. `hooks/useFactionPerspective.ts` scopes map responses to
 the battle, attempt, and faction. Hook/page tests cover late responses, route
 changes, and retry; browser tests cover retry inside the expanded map.
 
+`frontend/src/features/battles/hooks/useBattleEventStream.ts` owns sequential event
+requests and the attempt-scoped buffer. Its colocated tests cover cancellation,
+manual refresh/polling overlap, terminal-tail draining, retry, and the buffer limit.
+
 | Field | Value |
 | --- | --- |
 | Status | Current |

@@ -78,6 +78,14 @@ While a faction view is unavailable, the map shows loading or retry feedback,
 keeping the selector and expanded dialog available. Only spectator mode renders
 the full map. Tick refreshes may retain the same faction's last successful view.
 
+`useBattleEventStream` owns one cancellable request loop per selected attempt.
+Initial loading, polling, and manual refresh cannot overlap. Status changes fetch
+from the retained cursor, including the final events after completion, stop, or
+failure. Full incremental pages for the current attempt drain immediately; live
+polling otherwise waits one second. Historical attempts load on selection and
+manual refresh. Errors retain loaded events and expose retry. The buffer remains
+deduplicated by sequence and bounded to the latest 500 events.
+
 `useBattleStatus` cancels polling when a control returns a terminal status.
 `useBattleStatus.test.ts` verifies that a late in-flight response cannot overwrite
 an operator stop or schedule further polls.
