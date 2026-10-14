@@ -6,7 +6,6 @@ package briefing
 import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
-	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
 
 	"encoding/json"
 	"fmt"
@@ -31,45 +30,67 @@ func knowledgeFixture() (game.Ruleset, ai.DecisionContext) {
 func TestKnowledgeSelectionAndBudgets(t *testing.T) {
 	r, c := knowledgeFixture()
 	for _, count := range []int{4, 16, 24} {
-		k, err := RetrieveKnowledge(r, c, ai.KnowledgeLimits{MaxUnitCards: count, MaxBytes: 65536})
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
-		testutil.Require(t, !(len(k.Cards) != count || !reflect.DeepEqual(k.SelectedIDs[:3], []string{"unit-20", "unit-19", "unit-18"})), func() { t.Fatalf("selection: %+v", k) })
-		payload, _ := json.Marshal(k)
-		testutil.Require(t, len(payload) == k.SerializedSize, func() { t.Fatal("size mismatch") })
-		testutil.Require(t, k.Truncated == (count < 24), func() { t.Fatal("truncation mismatch") })
+		checkKnowledgeCardBudget(t, r, c, count)
 	}
 	k, _ := RetrieveKnowledge(r, c, ai.KnowledgeLimits{MaxUnitCards: 24, MaxBytes: 1000})
-	testutil.Require(t, !(k == nil || !k.Truncated || k.SerializedSize > 1000), func() { t.Fatalf("byte budget: %+v", k) })
-	{
-		tiny, _ := RetrieveKnowledge(r, c, ai.KnowledgeLimits{MaxUnitCards: 1, MaxBytes: 1})
-		testutil.Require(t, tiny == nil, func() { t.Fatal("unrepresentable envelope") })
+	if k == nil || !k.Truncated || k.SerializedSize > 1000 {
+		t.Fatalf("byte budget: %+v", k)
 	}
-	{
-		_, err := RetrieveKnowledge(r, c, ai.KnowledgeLimits{})
-		testutil.Require(t, err != nil, func() { t.Fatal("invalid limits") })
+	if tiny, _ := RetrieveKnowledge(r, c, ai.KnowledgeLimits{MaxUnitCards: 1, MaxBytes: 1}); tiny != nil {
+		t.Fatal("unrepresentable envelope")
+	}
+	if _, err := RetrieveKnowledge(r, c, ai.KnowledgeLimits{}); err == nil {
+		t.Fatal("invalid limits")
 	}
 	r.Knowledge = nil
-	{
-		k, err := RetrieveKnowledge(r, c, ai.DefaultKnowledgeLimits())
-		testutil.Require(t, !(err != nil || k != nil), func() { t.Fatal("legacy rules") })
+	if k, err := RetrieveKnowledge(r, c, ai.DefaultKnowledgeLimits()); err != nil || k != nil {
+		t.Fatal("legacy rules")
+	}
+}
+
+// checkKnowledgeCardBudget requires exactly count cards, most relevant first, an
+// accurate serialized size, and truncation reported below the full 24 cards.
+func checkKnowledgeCardBudget(t *testing.T, r game.Ruleset, c ai.DecisionContext, count int) {
+	t.Helper()
+	k, err := RetrieveKnowledge(r, c, ai.KnowledgeLimits{MaxUnitCards: count, MaxBytes: 65536})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(k.Cards) != count || !reflect.DeepEqual(k.SelectedIDs[:3], []string{"unit-20", "unit-19", "unit-18"}) {
+		t.Fatalf("selection: %+v", k)
+	}
+	payload, _ := json.Marshal(k)
+	if len(payload) != k.SerializedSize {
+		t.Fatal("size mismatch")
+	}
+	if k.Truncated != (count < 24) {
+		t.Fatal("truncation mismatch")
 	}
 }
 func TestKnowledgeUsesVisibleContextAndFrozenRules(t *testing.T) {
 	r, c := knowledgeFixture()
 	first, _ := RetrieveKnowledge(r, c, ai.DefaultKnowledgeLimits())
 	again, _ := RetrieveKnowledge(r, c, ai.DefaultKnowledgeLimits())
-	testutil.Require(t, reflect.DeepEqual(first, again), func() { t.Fatal("nondeterministic") })
+	if !reflect.DeepEqual(first, again) {
+		t.Fatal("nondeterministic")
+	}
 	clone := game.CloneScenario(game.Scenario{Ruleset: r})
 	r.Knowledge.Cards[0].Role = "changed"
 	r.Knowledge.Mechanics = "changed"
 	frozen, _ := RetrieveKnowledge(clone.Ruleset, c, ai.DefaultKnowledgeLimits())
-	testutil.Require(t, reflect.DeepEqual(first, frozen), func() { t.Fatal("snapshot changed") })
+	if !reflect.DeepEqual(first, frozen) {
+		t.Fatal("snapshot changed")
+	}
 	c.View.State.Units = nil
 	k, _ := RetrieveKnowledge(clone.Ruleset, c, ai.KnowledgeLimits{MaxUnitCards: 1, MaxBytes: 65536})
-	testutil.Require(t, k.SelectedIDs[0] == "unit-18", func() { t.Fatal("selection inferred hidden enemy") })
+	if k.SelectedIDs[0] != "unit-18" {
+		t.Fatal("selection inferred hidden enemy")
+	}
 	c.Knowledge = first
 	h1, _ := decision.ObservationHash(c)
 	c.Knowledge = k
 	h2, _ := decision.ObservationHash(c)
-	testutil.Require(t, h1 != h2, func() { t.Fatal("knowledge excluded from hash") })
+	if h1 == h2 {
+		t.Fatal("knowledge excluded from hash")
+	}
 }

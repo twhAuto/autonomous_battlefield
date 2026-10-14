@@ -18,7 +18,6 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
-	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
 )
 
 type httpRepo struct {
@@ -55,6 +54,7 @@ func generationHTTP(t *testing.T, r generation.Repository, enabled bool) http.Ha
 	NewHandler(r, c, profiles).RegisterRoutes(mux)
 	return authn.RequireAuthentication(false, authn.NewManager(authn.Config{}), mux)
 }
+
 func TestGenerationEndpoints(t *testing.T) {
 	r := &httpRepo{}
 	h := generationHTTP(t, r, true)
@@ -78,48 +78,73 @@ func TestGenerationEndpoints(t *testing.T) {
 		req := httptest.NewRequest(tt.method, "/v1/faction-background-generations"+tt.path, strings.NewReader(tt.body))
 		req.Header.Set("Content-Type", "application/json")
 		h.ServeHTTP(w, req)
-		testutil.Require(t, w.Code == tt.status, func() { t.Fatalf("%s %s: %d %s", tt.method, tt.path, w.Code, w.Body.String()) })
-		if w.Code == 429 {
-			// The cooldown fields clients already read must survive alongside the envelope.
-			var o generation.Options
-			testutil.Require(t, !(json.Unmarshal(w.Body.Bytes(), &o) != nil || !o.Available || w.Header().Get("Retry-After") == ""), func() { t.Fatal(w.Body.String()) })
+		if w.Code != tt.status {
+			t.Fatalf("%s %s: %d %s", tt.method, tt.path, w.Code, w.Body.String())
 		}
-		if w.Code >= 400 {
-			var envelope struct {
-				Error apierror.ErrorBody `json:"error"`
-			}
-			err := json.Unmarshal(w.Body.Bytes(), &envelope)
-			testutil.Require(t, err == nil && envelope.Error.Code == apierror.DefaultCode(w.Code) && envelope.Error.Message != "", func() {
-				t.Fatalf("%s %s: error envelope = %s (%v)", tt.method, tt.path, w.Body.String(), err)
-			})
-			// Internal failures must not echo the underlying cause.
-			testutil.Require(t, w.Code != 500 || !strings.Contains(envelope.Error.Message, "database"), func() {
-				t.Fatalf("%s %s: leaked cause: %s", tt.method, tt.path, w.Body.String())
-			})
+		checkGenerationErrorBody(t, tt.method+" "+tt.path, w)
+	}
+	if r.actor != "local-development" {
+		t.Fatal(r.actor)
+	}
+}
+
+// checkGenerationErrorBody requires every failure to use the error envelope without
+// echoing internal causes, and a rate-limited response to keep its cooldown fields.
+func checkGenerationErrorBody(t *testing.T, request string, w *httptest.ResponseRecorder) {
+	t.Helper()
+	if w.Code == 429 {
+		// The cooldown fields clients already read must survive alongside the envelope.
+		var o generation.Options
+		if json.Unmarshal(w.Body.Bytes(), &o) != nil || !o.Available || w.Header().Get("Retry-After") == "" {
+			t.Fatal(w.Body.String())
 		}
 	}
-	testutil.Require(t, r.actor == "local-development", func() { t.Fatal(r.actor) })
-	r.err = nil
-	h = generationHTTP(t, r, false)
-	before := r.calls
+	if w.Code < 400 {
+		return
+	}
+	var envelope struct {
+		Error apierror.ErrorBody `json:"error"`
+	}
+	err := json.Unmarshal(w.Body.Bytes(), &envelope)
+	if err != nil || envelope.Error.Code != apierror.DefaultCode(w.Code) || envelope.Error.Message == "" {
+		t.Fatalf("%s: error envelope = %s (%v)", request, w.Body.String(), err)
+	}
+	// Internal failures must not echo the underlying cause.
+	if w.Code == 500 && strings.Contains(envelope.Error.Message, "database") {
+		t.Fatalf("%s: leaked cause: %s", request, w.Body.String())
+	}
+}
+
+func TestDisabledGenerationReservesNoQuota(t *testing.T) {
+	r := &httpRepo{}
+	h := generationHTTP(t, r, false)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest("POST", "/v1/faction-background-generations", strings.NewReader(`{"name":"A","doctrine":"d"}`)))
-	testutil.Require(t, !(w.Code != 503 || r.calls != before), func() { t.Fatal("disabled reserved quota", w.Code) })
+	if w.Code != 503 || r.calls != 0 {
+		t.Fatal("disabled reserved quota", w.Code)
+	}
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/v1/faction-background-generations/options", nil))
 	var o generation.Options
 	_ = json.Unmarshal(w.Body.Bytes(), &o)
-	testutil.Require(t, !(w.Code != 200 || o.Available || o.Reason == ""), func() { t.Fatal(o) })
+	if w.Code != 200 || o.Available || o.Reason == "" {
+		t.Fatal(o)
+	}
+}
+
+func TestGenerationRoutesRequireAnActor(t *testing.T) {
 	mux := http.NewServeMux()
-	NewHandler(r, generation.Config{}, nil).RegisterRoutes(mux)
+	NewHandler(&httpRepo{}, generation.Config{}, nil).RegisterRoutes(mux)
 	for _, method := range []string{"GET", "POST"} {
-		w = httptest.NewRecorder()
+		w := httptest.NewRecorder()
 		path := "/v1/faction-background-generations"
 		if method == "GET" {
 			path += "/job"
 		}
 		mux.ServeHTTP(w, httptest.NewRequest(method, path, nil))
-		testutil.Require(t, w.Code == 401, func() { t.Fatal(w.Code) })
+		if w.Code != 401 {
+			t.Fatal(w.Code)
+		}
 	}
 }
 
@@ -175,5 +200,7 @@ func TestCreateAdmitsWithTheConfiguredProfile(t *testing.T) {
 	w := httptest.NewRecorder()
 	generationHTTP(t, r, true).ServeHTTP(w, httptest.NewRequest("POST", "/v1/faction-background-generations", strings.NewReader(`{"name":"A","doctrine":"d","idempotencyKey":"key"}`)))
 	want := generation.Admission{ProfileID: "writer", ModelLabel: "operator configured", Runtime: "api"}
-	testutil.Require(t, w.Code == http.StatusAccepted && r.model == want, func() { t.Fatalf("status %d, admission %+v, want %+v", w.Code, r.model, want) })
+	if w.Code != http.StatusAccepted || r.model != want {
+		t.Fatalf("status %d, admission %+v, want %+v", w.Code, r.model, want)
+	}
 }

@@ -3,11 +3,6 @@
 package agent
 
 import (
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
-	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
-
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +11,9 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 )
 
 func TestGenerationWorkerScopesSessionAndReportsOutcomes(t *testing.T) {
@@ -26,36 +24,19 @@ func TestGenerationWorkerScopesSessionAndReportsOutcomes(t *testing.T) {
 	}
 }
 
+// generationReport is the generation-finish callback body the executor sends.
+type generationReport struct {
+	RequestID, Category string
+	Usage               ai.Usage
+	Metadata            map[string]any
+}
+
 func checkGenerationOutcome(t *testing.T, mode string) {
+	t.Helper()
 	profiles := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "writer", DisplayName: "Writer", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 12, MaxOutputTokens: 4000}})
-	var report struct {
-		RequestID, Category string
-		Usage               ai.Usage
-		Metadata            map[string]any
-	}
-	w := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", Profiles: profiles, Client: &http.Client{Transport: agentRoundTrip(func(r *http.Request) (*http.Response, error) {
-		testutil.Require(t, !(r.URL.Path != "/internal/agent/generation-finish" || r.Header.Get("Authorization") != "Bearer secret"), func() { t.Fatal(r.URL.Path) })
-		{
-			err := json.NewDecoder(r.Body).Decode(&report)
-			testutil.Require(t, err == nil, func() { t.Fatal(err) })
-		}
-		return agentResponse(204, ""), nil
-	})}}
-	w.RunnerFactory = func(p ai.ModelProfile) (ai.DecisionRunner, error) {
-		testutil.Require(t, !(p.MaxSteps != 3 || p.MaxOutputTokens != 1200), func() { t.Fatal("unbounded generation", p) })
-		if mode == "factory_failure" {
-			return nil, errors.New("unavailable")
-		}
-		return runnerFunc(func(ctx context.Context, s ai.DecisionSession) (ai.DecisionResult, error) {
-			testutil.Require(t, !(s.JobType != "faction_background" || s.MCPURL != "http://mcp/generation-mcp" || s.Doctrine != ""), func() { t.Fatal(s) })
-			id, err := capability.Verify("secret", s.CapabilityToken, time.Now())
-			testutil.Require(t, !(err != nil || id != "generation:draft"), func() { t.Fatal(id, err) })
-			if mode == "model_failure" {
-				return ai.DecisionResult{ErrorCategory: "invalid_output"}, errors.New("invalid")
-			}
-			return ai.DecisionResult{Accepted: true, Usage: ai.Usage{Requests: 2}}, nil
-		}), nil
-	}
+	var report generationReport
+	w := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", Profiles: profiles, Client: generationFinishClient(t, &report)}
+	w.RunnerFactory = generationRunnerFactory(t, mode)
 	token, _ := capability.Mint("secret", "generation:draft", time.Now().Add(time.Minute))
 	j := job{CapabilityToken: token, RequestID: "draft", ProfileID: "writer", JobType: "faction_background", ExecutionTimeoutSeconds: 120}
 	if mode == "missing_profile" {
@@ -69,6 +50,53 @@ func checkGenerationOutcome(t *testing.T, mode string) {
 	}
 	w.runGeneration(ctx, j)
 	want := map[string]string{"success": "", "model_failure": "invalid_output", "factory_failure": "provider_unavailable", "missing_profile": "profile_unavailable", "timeout": "timeout"}[mode]
-	testutil.Require(t, !(report.RequestID != "draft" || report.Category != want), func() { t.Fatal(report) })
-	testutil.Require(t, !(mode == "success" && (report.Usage.Requests != 2 || report.Metadata["promptVersion"] != prompts.GenerationVersion)), func() { t.Fatal(report) })
+	if report.RequestID != "draft" || report.Category != want {
+		t.Fatal(report)
+	}
+	if mode == "success" && (report.Usage.Requests != 2 || report.Metadata["promptVersion"] != prompts.GenerationVersion) {
+		t.Fatal(report)
+	}
+}
+
+// generationFinishClient records the authenticated generation-finish callback in report.
+func generationFinishClient(t *testing.T, report *generationReport) *http.Client {
+	return &http.Client{Transport: agentRoundTrip(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/internal/agent/generation-finish" || r.Header.Get("Authorization") != "Bearer secret" {
+			t.Fatal(r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(report); err != nil {
+			t.Fatal(err)
+		}
+		return agentResponse(204, ""), nil
+	})}
+}
+
+// generationRunnerFactory requires bounded generation profiles and fails as mode asks;
+// its runner requires a generation session with a draft-scoped capability.
+func generationRunnerFactory(t *testing.T, mode string) func(ai.ModelProfile) (ai.DecisionRunner, error) {
+	return func(p ai.ModelProfile) (ai.DecisionRunner, error) {
+		if p.MaxSteps != 3 || p.MaxOutputTokens != 1200 {
+			t.Fatal("unbounded generation", p)
+		}
+		if mode == "factory_failure" {
+			return nil, errors.New("unavailable")
+		}
+		return runnerFunc(func(ctx context.Context, s ai.DecisionSession) (ai.DecisionResult, error) {
+			checkGenerationSession(t, s)
+			if mode == "model_failure" {
+				return ai.DecisionResult{ErrorCategory: "invalid_output"}, errors.New("invalid")
+			}
+			return ai.DecisionResult{Accepted: true, Usage: ai.Usage{Requests: 2}}, nil
+		}), nil
+	}
+}
+
+func checkGenerationSession(t *testing.T, s ai.DecisionSession) {
+	if s.JobType != "faction_background" || s.MCPURL != "http://mcp/generation-mcp" || s.Doctrine != "" {
+		t.Fatal(s)
+	}
+	id, err := capability.Verify("secret", s.CapabilityToken, time.Now())
+	if err != nil || id != "generation:draft" {
+		t.Fatal(id, err)
+	}
 }

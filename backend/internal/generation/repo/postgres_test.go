@@ -18,7 +18,6 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
-	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
 )
 
 func database(t *testing.T) *Postgres {
@@ -29,7 +28,9 @@ func database(t *testing.T) *Postgres {
 	}
 	ctx := context.Background()
 	admin, err := pgxpool.New(ctx, raw)
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	schema := fmt.Sprintf("generation_test_%d", time.Now().UnixNano())
 	if _, err = admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
 		admin.Close()
@@ -37,16 +38,22 @@ func database(t *testing.T) *Postgres {
 	}
 	t.Cleanup(func() { _, _ = admin.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE"); admin.Close() })
 	u, err := url.Parse(raw)
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	q := u.Query()
 	q.Set("search_path", schema)
 	u.RawQuery = q.Encode()
 	{
 		_, err = postgres.Migrate(ctx, u.String(), 5*time.Second)
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	db, err := pgxpool.New(ctx, u.String())
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(db.Close)
 	return NewPostgres(db)
 }
@@ -59,27 +66,66 @@ var draft = generation.Input{Name: " Northwind ", Doctrine: " Defend the weak. "
 func admit(t *testing.T, p *Postgres, actor, key string, c generation.Config) generation.Job {
 	t.Helper()
 	j, _, err := p.Admit(context.Background(), actor, key, draft, c, writer)
-	testutil.Require(t, err == nil, func() { t.Fatal(err) })
+	if err != nil {
+		t.Fatal(err)
+	}
 	return j
 }
 func sqlExec(t *testing.T, p *Postgres, query string, args ...any) {
 	t.Helper()
 	{
 		_, err := p.db.Exec(context.Background(), query, args...)
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
+
 func TestAdmissionConcurrencyIdempotencyAndIsolation(t *testing.T) {
 	p := database(t)
 	ctx := context.Background()
 	c := generation.DefaultConfig()
+	if accepted := admitConcurrently(t, p, c, 12); accepted != 1 {
+		t.Fatalf("admitted %d", accepted)
+	}
+	o, err := p.Options(ctx, "one", c)
+	if err != nil || o.Remaining != 9 || o.ActiveJobID == "" || o.ResetAt.UTC().Hour() != 0 {
+		t.Fatalf("options %+v %v", o, err)
+	}
+	j := admit(t, p, "two", "same", c)
+	again := admit(t, p, "two", "same", c)
+	if j.ID != again.ID || j.Input.Name != "Northwind" {
+		t.Fatal("idempotency/normalization")
+	}
+	changed := draft
+	changed.Doctrine = "Attack"
+	if _, _, err = p.Admit(ctx, "two", "same", changed, c, writer); !errors.Is(err, generation.ErrConflict) {
+		t.Fatal(err)
+	}
+	if _, err = p.Get(ctx, "one", j.ID); !errors.Is(err, generation.ErrNotFound) {
+		t.Fatal("cross-account read", err)
+	}
+	for _, request := range []struct {
+		key   string
+		input generation.Input
+	}{{"bad", generation.Input{}}, {"", draft}, {strings.Repeat("k", 201), draft}} {
+		if _, _, err = p.Admit(ctx, "two", request.key, request.input, c, writer); !errors.Is(err, generation.ErrInvalid) {
+			t.Fatal(err)
+		}
+	}
+}
+
+// admitConcurrently sends n simultaneous admissions for one account with distinct keys
+// and returns how many were accepted; every rejection must be ErrLimited.
+func admitConcurrently(t *testing.T, p *Postgres, c generation.Config, n int) int {
+	t.Helper()
 	var wg sync.WaitGroup
-	results := make(chan error, 12)
-	for i := range 12 {
+	results := make(chan error, n)
+	for i := range n {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, _, e := p.Admit(ctx, "one", fmt.Sprint(i), draft, c, writer)
+			_, _, e := p.Admit(context.Background(), "one", fmt.Sprint(i), draft, c, writer)
 			results <- e
 		}()
 	}
@@ -89,87 +135,81 @@ func TestAdmissionConcurrencyIdempotencyAndIsolation(t *testing.T) {
 	for err := range results {
 		if err == nil {
 			accepted++
-		} else {
-			testutil.Require(t, errors.Is(err, generation.ErrLimited), func() { t.Fatal(err) })
+		} else if !errors.Is(err, generation.ErrLimited) {
+			t.Fatal(err)
 		}
 	}
-	testutil.Require(t, accepted == 1, func() { t.Fatalf("admitted %d", accepted) })
-	o, err := p.Options(ctx, "one", c)
-	testutil.Require(t, !(err != nil || o.Remaining != 9 || o.ActiveJobID == "" || o.ResetAt.UTC().Hour() != 0), func() { t.Fatalf("options %+v %v", o, err) })
-	j := admit(t, p, "two", "same", c)
-	again := admit(t, p, "two", "same", c)
-	testutil.Require(t, !(j.ID != again.ID || j.Input.Name != "Northwind"), func() { t.Fatal("idempotency/normalization") })
-	changed := draft
-	changed.Doctrine = "Attack"
-	{
-		_, _, err = p.Admit(ctx, "two", "same", changed, c, writer)
-		testutil.Require(t, errors.Is(err, generation.ErrConflict), func() { t.Fatal(err) })
-	}
-	{
-		_, err = p.Get(ctx, "one", j.ID)
-		testutil.Require(t, errors.Is(err, generation.ErrNotFound), func() { t.Fatal("cross-account read", err) })
-	}
-	{
-		_, _, err = p.Admit(ctx, "two", "bad", generation.Input{}, c, writer)
-		testutil.Require(t, errors.Is(err, generation.ErrInvalid), func() { t.Fatal(err) })
-	}
-	{
-		_, _, err = p.Admit(ctx, "two", "", draft, c, writer)
-		testutil.Require(t, errors.Is(err, generation.ErrInvalid), func() { t.Fatal(err) })
-	}
-	{
-		_, _, err = p.Admit(ctx, "two", strings.Repeat("k", 201), draft, c, writer)
-		testutil.Require(t, errors.Is(err, generation.ErrInvalid), func() { t.Fatal(err) })
-	}
+	return accepted
 }
+
 func TestLifecycleExpiryAndExecutionAccounting(t *testing.T) {
 	p := database(t)
-	ctx := context.Background()
 	c := generation.DefaultConfig()
+	checkQueuedExpiryKeepsCooldown(t, p, c)
+	sqlExec(t, p, "UPDATE faction_generation_accounts SET last_admitted_at=now()-interval '31 seconds'")
+	checkRunningTimeoutCountsAndIsNotRetried(t, p, c)
+}
+
+// checkQueuedExpiryKeepsCooldown lets a queued job expire unclaimed: it does not use
+// the daily allowance, but the admission cooldown still applies.
+func checkQueuedExpiryKeepsCooldown(t *testing.T, p *Postgres, c generation.Config) {
+	t.Helper()
+	ctx := context.Background()
 	j := admit(t, p, "one", "queued", c)
-	{
-		_, err := p.Claim(ctx, "worker", []string{"wrong-profile"})
-		testutil.Require(t, errors.Is(err, generation.ErrNotFound), func() { t.Fatal(err) })
+	if _, err := p.Claim(ctx, "worker", []string{"wrong-profile"}); !errors.Is(err, generation.ErrNotFound) {
+		t.Fatal(err)
 	}
 	sqlExec(t, p, "UPDATE faction_background_generations SET expires_at=now()-interval '1 second' WHERE id=$1", j.ID)
 	expired, err := p.Get(ctx, "one", j.ID)
-	testutil.Require(t, !(err != nil || expired.Status != "expired" || expired.ErrorCategory != "queue_timeout"), func() { t.Fatalf("%+v %v", expired, err) })
+	if err != nil || expired.Status != "expired" || expired.ErrorCategory != "queue_timeout" {
+		t.Fatalf("%+v %v", expired, err)
+	}
 	o, err := p.Options(ctx, "one", c)
-	testutil.Require(t, !(err != nil || o.Remaining != 9 || o.ActiveJobID != ""), func() { t.Fatalf("expiry accounting %+v %v", o, err) })
-	{
-		_, _, err = p.Admit(ctx, "one", "cooldown", draft, c, writer)
-		testutil.Require(t, errors.Is(err, generation.ErrLimited), func() { t.Fatal("expiry must retain cooldown", err) })
+	if err != nil || o.Remaining != 9 || o.ActiveJobID != "" {
+		t.Fatalf("expiry accounting %+v %v", o, err)
 	}
-	sqlExec(t, p, "UPDATE faction_generation_accounts SET last_admitted_at=now()-interval '31 seconds'")
-	j = admit(t, p, "one", "running", c)
-	running, err := p.Claim(ctx, "worker", []string{c.ProfileID})
-	testutil.Require(t, !(err != nil || running.ID != j.ID || running.StartedAt == nil || running.Status != "running"), func() { t.Fatalf("claim %+v %v", running, err) })
-	{
-		_, err = p.Claim(ctx, "other", []string{c.ProfileID})
-		testutil.Require(t, errors.Is(err, generation.ErrNotFound), func() { t.Fatal("double claim", err) })
-	}
-	{
-		v, err := p.Context(ctx, j.ID)
-		testutil.Require(t, !(err != nil || v.Input.Doctrine != "Defend the weak."), func() { t.Fatal(v, err) })
-	}
-	sqlExec(t, p, "UPDATE faction_background_generations SET expires_at=now()-interval '1 second' WHERE id=$1", j.ID)
-	{
-		ok, err := p.Submit(ctx, j.ID, "late")
-		testutil.Require(t, !(err != nil || ok), func() { t.Fatal("late submit", ok, err) })
-	}
-	expired, err = p.Get(ctx, "one", j.ID)
-	testutil.Require(t, !(err != nil || expired.Status != "failed" || expired.ErrorCategory != "timeout"), func() { t.Fatal(expired, err) })
-	{
-		_, err = p.Context(ctx, j.ID)
-		testutil.Require(t, errors.Is(err, generation.ErrNotFound), func() { t.Fatal(err) })
-	}
-	o, err = p.Options(ctx, "one", c)
-	testutil.Require(t, !(err != nil || o.Remaining != 8), func() { t.Fatal("started failure must count", o, err) })
-	{
-		_, err = p.Claim(ctx, "retry", []string{c.ProfileID})
-		testutil.Require(t, errors.Is(err, generation.ErrNotFound), func() { t.Fatal("running timeout retried", err) })
+	if _, _, err = p.Admit(ctx, "one", "cooldown", draft, c, writer); !errors.Is(err, generation.ErrLimited) {
+		t.Fatal("expiry must retain cooldown", err)
 	}
 }
+
+// checkRunningTimeoutCountsAndIsNotRetried claims a job once, lets it time out while
+// running, and requires the late submission to fail, the run to count against the
+// allowance, and the job not to be claimed again.
+func checkRunningTimeoutCountsAndIsNotRetried(t *testing.T, p *Postgres, c generation.Config) {
+	t.Helper()
+	ctx := context.Background()
+	j := admit(t, p, "one", "running", c)
+	running, err := p.Claim(ctx, "worker", []string{c.ProfileID})
+	if err != nil || running.ID != j.ID || running.StartedAt == nil || running.Status != "running" {
+		t.Fatalf("claim %+v %v", running, err)
+	}
+	if _, err = p.Claim(ctx, "other", []string{c.ProfileID}); !errors.Is(err, generation.ErrNotFound) {
+		t.Fatal("double claim", err)
+	}
+	if v, err := p.Context(ctx, j.ID); err != nil || v.Input.Doctrine != "Defend the weak." {
+		t.Fatal(v, err)
+	}
+	sqlExec(t, p, "UPDATE faction_background_generations SET expires_at=now()-interval '1 second' WHERE id=$1", j.ID)
+	if ok, err := p.Submit(ctx, j.ID, "late"); err != nil || ok {
+		t.Fatal("late submit", ok, err)
+	}
+	expired, err := p.Get(ctx, "one", j.ID)
+	if err != nil || expired.Status != "failed" || expired.ErrorCategory != "timeout" {
+		t.Fatal(expired, err)
+	}
+	if _, err = p.Context(ctx, j.ID); !errors.Is(err, generation.ErrNotFound) {
+		t.Fatal(err)
+	}
+	o, err := p.Options(ctx, "one", c)
+	if err != nil || o.Remaining != 8 {
+		t.Fatal("started failure must count", o, err)
+	}
+	if _, err = p.Claim(ctx, "retry", []string{c.ProfileID}); !errors.Is(err, generation.ErrNotFound) {
+		t.Fatal("running timeout retried", err)
+	}
+}
+
 func TestSubmissionLimitsDailyResetAndMetadata(t *testing.T) {
 	p := database(t)
 	ctx := context.Background()
@@ -177,26 +217,38 @@ func TestSubmissionLimitsDailyResetAndMetadata(t *testing.T) {
 	c.DailyAllowance = 2
 	consumeGenerationAllowance(t, p, ctx, c)
 	o, err := p.Options(ctx, "one", c)
-	testutil.Require(t, !(err != nil || o.Remaining != 0 || !o.RetryAt.Equal(o.ResetAt)), func() { t.Fatal(o, err) })
+	if err != nil || o.Remaining != 0 || !o.RetryAt.Equal(o.ResetAt) {
+		t.Fatal(o, err)
+	}
 	{
 		_, _, err = p.Admit(ctx, "one", "exhausted", draft, c, writer)
-		testutil.Require(t, errors.Is(err, generation.ErrLimited), func() { t.Fatal(err) })
+		if !errors.Is(err, generation.ErrLimited) {
+			t.Fatal(err)
+		}
 	}
 	sqlExec(t, p, "UPDATE faction_background_generations SET created_at=date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'-interval '1 second'")
 	sqlExec(t, p, "UPDATE faction_generation_accounts SET last_admitted_at=now()-interval '31 seconds'")
 	o, err = p.Options(ctx, "one", c)
-	testutil.Require(t, !(err != nil || o.Remaining != 2), func() { t.Fatal(o, err) })
+	if err != nil || o.Remaining != 2 {
+		t.Fatal(o, err)
+	}
 	j := admit(t, p, "one", "newday", c)
 	{
 		_, err = p.Claim(ctx, "worker", []string{c.ProfileID})
-		testutil.Require(t, err == nil, func() { t.Fatal(err) })
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	{
 		ok, err := p.Finish(ctx, j.ID, "", ai.Usage{}, nil)
-		testutil.Require(t, !(!ok || err != nil), func() { t.Fatal(ok, err) })
+		if !ok || err != nil {
+			t.Fatal(ok, err)
+		}
 	}
 	v, err := p.Get(ctx, "one", j.ID)
-	testutil.Require(t, !(err != nil || v.Status != "failed" || v.ErrorCategory != "no_submission"), func() { t.Fatal(v, err) })
+	if err != nil || v.Status != "failed" || v.ErrorCategory != "no_submission" {
+		t.Fatal(v, err)
+	}
 }
 func consumeGenerationAllowance(t *testing.T, p *Postgres, ctx context.Context, c generation.Config) {
 	for i := range 2 {
@@ -204,7 +256,9 @@ func consumeGenerationAllowance(t *testing.T, p *Postgres, ctx context.Context, 
 		j := admit(t, p, "one", fmt.Sprint(i), c)
 		{
 			_, err := p.Claim(ctx, "worker", []string{c.ProfileID})
-			testutil.Require(t, err == nil, func() { t.Fatal(err) })
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 		if i == 0 {
 			checkInvalidSubmissionLimit(t, p, ctx, j)
@@ -222,15 +276,21 @@ func checkInvalidSubmissionLimit(t *testing.T, p *Postgres, ctx context.Context,
 	for _, value := range []string{"", strings.Repeat("界", 1001), "  "} {
 		{
 			ok, err := p.Submit(ctx, j.ID, value)
-			testutil.Require(t, !(ok || !errors.Is(err, generation.ErrInvalid)), func() { t.Fatal(ok, err) })
+			if ok || !errors.Is(err, generation.ErrInvalid) {
+				t.Fatal(ok, err)
+			}
 		}
 	}
 	{
 		ok, err := p.Submit(ctx, j.ID, "Too late")
-		testutil.Require(t, !(ok || err != nil), func() { t.Fatal(ok, err) })
+		if ok || err != nil {
+			t.Fatal(ok, err)
+		}
 	}
 	v, err := p.Get(ctx, "one", j.ID)
-	testutil.Require(t, !(err != nil || v.ErrorCategory != "invalid_output"), func() { t.Fatal(v, err) })
+	if err != nil || v.ErrorCategory != "invalid_output" {
+		t.Fatal(v, err)
+	}
 }
 
 func checkSuccessfulSubmission(t *testing.T, p *Postgres, ctx context.Context, j generation.Job) {
@@ -239,19 +299,27 @@ func checkSuccessfulSubmission(t *testing.T, p *Postgres, ctx context.Context, j
 	for range 2 {
 		{
 			ok, err := p.Submit(ctx, j.ID, " "+value+" ")
-			testutil.Require(t, !(err != nil || !ok), func() { t.Fatal(ok, err) })
+			if err != nil || !ok {
+				t.Fatal(ok, err)
+			}
 		}
 	}
 	{
 		ok, err := p.Submit(ctx, j.ID, "Changed")
-		testutil.Require(t, !(err != nil || ok), func() { t.Fatal("result changed", ok, err) })
+		if err != nil || ok {
+			t.Fatal("result changed", ok, err)
+		}
 	}
 	for range 2 {
 		{
 			ok, err := p.Finish(ctx, j.ID, "", ai.Usage{}, map[string]any{"modelIdentifier": "actual-model"})
-			testutil.Require(t, !(err != nil || !ok), func() { t.Fatal(ok, err) })
+			if err != nil || !ok {
+				t.Fatal(ok, err)
+			}
 		}
 	}
 	v, err := p.Get(ctx, "one", j.ID)
-	testutil.Require(t, !(err != nil || v.Background != value || v.Status != "succeeded" || v.ModelLabel != "actual-model"), func() { t.Fatal(v, err) })
+	if err != nil || v.Background != value || v.Status != "succeeded" || v.ModelLabel != "actual-model" {
+		t.Fatal(v, err)
+	}
 }
