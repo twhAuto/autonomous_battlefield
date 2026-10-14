@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel"
 	sdk "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -19,7 +19,7 @@ func TestGenerationUsageDoesNotDoubleCountCache(t *testing.T) {
 	old := otel.GetTracerProvider()
 	otel.SetTracerProvider(provider)
 	t.Cleanup(func() { otel.SetTracerProvider(old); _ = provider.Shutdown(context.Background()) })
-	ctx := telemetry.DecisionContext(context.Background(), "request")
+	ctx := tracing.DecisionContext(context.Background(), "request")
 	_, span := generationSpan(ctx, ai.DecisionSession{Profile: ai.ModelProfile{Model: "test-model"}}, "cli_session")
 	cached, reasoning := int64(20), int64(4)
 	finishGeneration(span, ai.Usage{TokensReported: true, InputTokens: 30, OutputTokens: 10, CachedInputTokens: &cached, ReasoningOutputTokens: &reasoning}, false)

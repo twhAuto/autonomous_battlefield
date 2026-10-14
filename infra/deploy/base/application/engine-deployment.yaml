@@ -46,7 +46,7 @@ spec:
             - secretRef:
                 name: battlefield-runtime
           env:
-            - {name: BATTLEFIELD_ENVIRONMENT, value: local}
+            - {name: BATTLEFIELD_ENVIRONMENT, value: production}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

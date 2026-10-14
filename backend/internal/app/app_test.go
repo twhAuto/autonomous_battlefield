@@ -19,7 +19,7 @@ import (
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
-	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/logging"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"

@@ -18,19 +18,19 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel/attribute"
 )
 
 func (w *Worker) resolveDecisionWindow(ctx context.Context, lease queue.Lease, simulation *game.Match) (plans map[string]controller.PlanProposal, err error) {
 	targetTick := simulation.DecisionTargetTick()
 	// Decisions store this span's context, so each agent decision trace links here.
-	ctx, span := telemetry.StartSpan(ctx, "battlefield.engine.decision_window",
+	ctx, span := tracing.StartSpan(ctx, "battlefield.engine.decision_window",
 		attribute.String("battlefield.battle_id", lease.BattleID),
 		attribute.Int("battlefield.attempt", lease.Attempt),
 		attribute.Int64("battlefield.target_tick", int64(targetTick)),
 	)
-	defer func() { telemetry.EndSpan(span, err) }()
+	defer func() { tracing.EndSpan(span, err) }()
 	baselines := simulation.ScriptedPlans()
 	service := decision.NewService(w.decisions)
 	w.logger.InfoContext(ctx, "decision_window_started",
@@ -98,7 +98,7 @@ func (w *Worker) prepareDecision(ctx context.Context, lease queue.Lease, simulat
 		return err
 	}
 	decisionContext.ObservationHash = hash
-	traceparent, tracestate := telemetry.TraceContext(ctx)
+	traceparent, tracestate := tracing.TraceContext(ctx)
 	record, err := w.decisions.CreateOrReuseDecision(ctx, ai.CreateDecisionParams{ID: decisionContext.RequestID, BattleID: lease.BattleID, Attempt: lease.Attempt,
 		FactionID: factionID, TargetTick: targetTick, ControllerType: setup.Controller.Type, ProfileID: setup.Controller.ProfileID,
 		Provider: setup.Controller.Provider, Runtime: setup.Controller.Runtime, ModelIdentifier: setup.Controller.ModelIdentifier,

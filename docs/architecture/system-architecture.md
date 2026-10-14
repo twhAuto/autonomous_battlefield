@@ -857,7 +857,7 @@ migrations and rollback procedures belong to [deployment operations](../operatio
 - Every `/v1` error uses one JSON envelope, `{"error":{"code","message","requestId"}}`,
   written by `internal/apierror`. `requestId` equals the `X-Request-ID` header and
   the `request_id` log field, so a client-reported failure maps to one log line.
-  The identifier lives in the leaf `internal/requestid` package because `httpapi`
+  The identifier lives in the leaf `internal/observability/requestid` package because `httpapi`
   imports `authn`, which also writes errors. Codes are listed in the
   [API reference](api.md#errors).
 - HTTP completion logs carry `actor_id` and `actor_role` from authentication

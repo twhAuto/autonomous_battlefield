@@ -12,7 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 // FailExhaustedBattles fails queued or lease-expired battles that have used every
@@ -36,7 +36,7 @@ func (r *Postgres) FailExhaustedBattles(ctx context.Context, maxAttempts int) er
 }
 
 func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDuration time.Duration, maxAttempts int) (*queue.Job, error) {
-	ctx, span := telemetry.StartDatabaseSpan(ctx, "claim_battle")
+	ctx, span := tracing.StartDatabaseSpan(ctx, "claim_battle")
 	defer span.End()
 	var job queue.Job
 	var snapshot []byte

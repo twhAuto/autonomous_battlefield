@@ -64,7 +64,7 @@ spec:
                   key: BATTLEFIELD_CLI_ISOLATION_VERIFIED
                   optional: true
             - name: BATTLEFIELD_ENVIRONMENT
-              value: local
+              value: production
             - name: BATTLEFIELD_REDIS_URL
               valueFrom:
                 secretKeyRef:

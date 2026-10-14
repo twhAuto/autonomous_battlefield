@@ -375,14 +375,24 @@ both the handler and registry to the service; policy reads do not depend on HTTP
 - [`internal/config/config.go`](../../backend/internal/config/config.go) strictly decodes one YAML document, rejects unknown fields, and provides one loader and one result type per binary: `LoadAPI` → `APIConfig`, `LoadEngine` → `EngineConfig`, `LoadAgent` → `AgentConfig`, `LoadAIGateway` → `AIGatewayConfig`. [`environment.go`](../../backend/internal/config/environment.go) names every fixed environment variable and validates `BATTLEFIELD_ENV` for all four.
 - [`internal/postgres`](../../backend/internal/postgres) manages the `pgx` pool, embedded Goose migrations, startup retries, and `LISTEN/NOTIFY`. `DBTX` covers pools and transactions; `Pool` adds `Begin` for code that opens its own transactions, such as `app.New` and the generation repository.
 - [`internal/httpapi`](../../backend/internal/httpapi) provides bounded strict JSON, lifecycle/readiness routes, request IDs, routing, and access logging. The API uses all of it; the engine uses only `LifecycleHandler` for its probe and metrics port. A caller's `X-Request-ID` is kept only if it matches `[A-Za-z0-9._:-]{1,128}`; otherwise the server generates a 32-hex ID.
-- [`internal/logging`](../../backend/internal/logging) configures `LOG_LEVEL`,
-  formats readable operational messages while retaining stable event names, and
-  enriches logs with active trace/span IDs. `handler.go` preserves slog attribute
-  grouping; `messages.go` selects the operational fields shown in compact messages.
+- [`internal/observability`](../../backend/internal/observability) groups the leaf
+  packages every binary uses to observe itself. `test/boundaries` keeps each free of
+  other internal imports, so any package can use them without an import cycle:
+  - [`logging`](../../backend/internal/observability/logging) configures `LOG_LEVEL`
+    (an unrecognised value falls back to INFO and logs `log_level_invalid`), formats
+    readable operational messages while retaining stable event names, and enriches
+    logs with active trace/span IDs. `handler.go` preserves slog attribute grouping;
+    `messages.go` selects the operational fields shown in compact messages.
+  - [`metrics`](../../backend/internal/observability/metrics) defines the API and
+    engine Prometheus metrics with bounded labels; `metrics.Handler` serves them.
+  - [`tracing`](../../backend/internal/observability/tracing) configures OpenTelemetry
+    export (`tracing.Configure`), HTTP and database spans, durable trace-context
+    propagation through queued jobs, and AI decision tracing. Spans carry
+    `deployment.environment` from `BATTLEFIELD_ENVIRONMENT`.
+  - [`requestid`](../../backend/internal/observability/requestid) carries the HTTP
+    correlation ID in the request context for `httpapi` and `apierror`.
 - [`worker/progress.go`](../../backend/internal/battle/worker/progress.go) bounds
   battle and decision-wait updates to one per 15 seconds and supplies elapsed time.
-- [`internal/telemetry`](../../backend/internal/telemetry) defines API/engine Prometheus metrics and shared OpenTelemetry tracing, HTTP
-  instrumentation, and durable trace-context propagation.
 
 ## Important shared data types
 
@@ -492,7 +502,7 @@ from `backend`.
 
 ## Langfuse integration
 
-- `backend/internal/telemetry/ai.go` provides decision correlation, explicit AI
+- `backend/internal/observability/tracing/ai.go` provides decision correlation, explicit AI
   sampling and safe trace URLs alongside the existing infrastructure tracing.
 - `backend/internal/ai/runner/observability.go` emits generation observations;
   `codex_usage.go` parses terminal JSONL usage without retaining model reasoning.

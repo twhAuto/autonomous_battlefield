@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -42,7 +42,7 @@ func (s *Server) traceToolCall(ctx context.Context, method string, request mcp.R
 	default:
 		name = "unknown"
 	}
-	ctx, span := telemetry.StartAI(telemetry.DecisionContext(ctx, requestID), name, "tool")
+	ctx, span := tracing.StartAI(tracing.DecisionContext(ctx, requestID), name, "tool")
 	defer span.End()
 	result, err := next(ctx, method, request)
 	failed := err != nil
@@ -51,7 +51,7 @@ func (s *Server) traceToolCall(ctx context.Context, method string, request mcp.R
 		span.SetAttributes(attributes...)
 		failed = failed || rejected
 	}
-	telemetry.AIOutcome(span, failed, "tool_rejected")
+	tracing.AIOutcome(span, failed, "tool_rejected")
 	s.logSubmissionFailure(ctx, params, result, err)
 	return result, err
 }

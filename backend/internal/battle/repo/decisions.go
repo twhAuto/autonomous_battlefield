@@ -14,7 +14,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/briefing"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 type decisionRow interface{ Scan(...any) error }
@@ -25,7 +25,7 @@ observation, observation_hash, resolved_plan, fallback_source, error_category, u
 idempotency_key, traceparent, tracestate, created_at, resolved_at, lease_expires_at`
 
 func (r *Postgres) CreateOrReuseDecision(ctx context.Context, params ai.CreateDecisionParams) (ai.DecisionRecord, error) {
-	ctx, span := telemetry.StartDatabaseSpan(ctx, "create_decision")
+	ctx, span := tracing.StartDatabaseSpan(ctx, "create_decision")
 	defer span.End()
 	observation, err := json.Marshal(params.Observation)
 	if err != nil {
@@ -177,7 +177,7 @@ func (r *Postgres) ResolveDecisionFallback(ctx context.Context, id string, expec
 }
 
 func (r *Postgres) ClaimModelDecision(ctx context.Context, owner string, profileIDs []string, lease time.Duration) (ai.DecisionRecord, error) {
-	ctx, span := telemetry.StartDatabaseSpan(ctx, "claim_decision")
+	ctx, span := tracing.StartDatabaseSpan(ctx, "claim_decision")
 	defer span.End()
 	if len(profileIDs) == 0 {
 		return ai.DecisionRecord{}, ai.ErrNoDecision

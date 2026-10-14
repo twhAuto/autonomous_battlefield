@@ -24,7 +24,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/providers"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
@@ -61,7 +61,7 @@ func (e *Executor) Run(ctx context.Context) error {
 		return errors.New("agent concurrency must be at least one")
 	}
 	if e.Client == nil {
-		e.Client = telemetry.HTTPClient(nil)
+		e.Client = tracing.HTTPClient(nil)
 	}
 	if e.Profiles == nil {
 		return errors.New("agent profile registry is required")
@@ -194,14 +194,14 @@ func (e *Executor) claim(ctx context.Context, profileIDs []string) (job, bool, e
 }
 
 func (e *Executor) runJob(parent context.Context, job job) {
-	parent = telemetry.ContextWithTrace(parent, job.Traceparent, job.Tracestate)
-	parent = telemetry.WithDecisionMetadata(parent,
+	parent = tracing.ContextWithTrace(parent, job.Traceparent, job.Tracestate)
+	parent = tracing.WithDecisionMetadata(parent,
 		attribute.String("langfuse.session.id", job.BattleID),
 		attribute.String("langfuse.trace.metadata.battle_id", job.BattleID),
 		attribute.String("langfuse.trace.metadata.faction_id", job.FactionID),
 		attribute.Int("langfuse.trace.metadata.attempt", job.Attempt),
 		attribute.Int64("langfuse.trace.metadata.target_tick", int64(job.TargetTick)))
-	parent, span := telemetry.StartDecision(parent, job.RequestID)
+	parent, span := tracing.StartDecision(parent, job.RequestID)
 	span.SetAttributes(attribute.String("langfuse.trace.metadata.profile_id", job.ProfileID))
 	defer span.End()
 	started := time.Now()
@@ -235,14 +235,14 @@ func (e *Executor) runJob(parent context.Context, job job) {
 		result.ProviderData = map[string]any{}
 	}
 	if span.IsRecording() {
-		result.ProviderData["aiTraceId"] = telemetry.DecisionTraceID(job.RequestID)
+		result.ProviderData["aiTraceId"] = tracing.DecisionTraceID(job.RequestID)
 	}
-	telemetry.AIOutcome(span, err != nil || !result.Accepted, result.ErrorCategory)
+	tracing.AIOutcome(span, err != nil || !result.Accepted, result.ErrorCategory)
 	e.finishJob(parent, ctx, jobRun{logger: logger, started: started, requestID: job.RequestID, profile: profile}, result, err)
 }
 
 func (e *Executor) finishJob(parent, runContext context.Context, run jobRun, result ai.DecisionResult, runErr error) {
-	telemetry.AIOutcome(trace.SpanFromContext(parent), runErr != nil || !result.Accepted, result.ErrorCategory)
+	tracing.AIOutcome(trace.SpanFromContext(parent), runErr != nil || !result.Accepted, result.ErrorCategory)
 	if runErr != nil || !result.Accepted {
 		category := result.ErrorCategory
 		if category == "" {
@@ -265,7 +265,7 @@ func (e *Executor) finishJob(parent, runContext context.Context, run jobRun, res
 			result.ErrorCategory = "plan_not_submitted"
 			e.finishJob(parent, runContext, run, result, reportErr)
 		} else {
-			telemetry.AIOutcome(trace.SpanFromContext(parent), true, "usage_report_failed")
+			tracing.AIOutcome(trace.SpanFromContext(parent), true, "usage_report_failed")
 			run.logger.ErrorContext(parent, "decision_usage_report_failed", "error", reportErr)
 		}
 		return
@@ -274,7 +274,7 @@ func (e *Executor) finishJob(parent, runContext context.Context, run jobRun, res
 }
 
 func (e *Executor) reportJobFailure(ctx context.Context, logger *slog.Logger, started time.Time, requestID, category, outcome string, result ai.DecisionResult) {
-	telemetry.AIOutcome(trace.SpanFromContext(ctx), true, category)
+	tracing.AIOutcome(trace.SpanFromContext(ctx), true, category)
 	logger.WarnContext(ctx, "decision_runner_failed", "error_category", category, "runner_outcome", outcome, "duration_ms", time.Since(started).Milliseconds())
 	if err := e.fail(ctx, requestID, category, result); err != nil {
 		logger.ErrorContext(ctx, "decision_failure_report_failed", "error", err)

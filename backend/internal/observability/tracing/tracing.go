@@ -1,7 +1,7 @@
 // Configures optional OpenTelemetry export and carries trace context through HTTP
 // requests, database work, and queued jobs.
 
-package telemetry
+package tracing
 
 import (
 	"context"
@@ -25,7 +25,7 @@ import (
 
 const instrumentationName = "github.com/twh09/autonomous_battlefield/backend"
 
-func ConfigureTracing(ctx context.Context, service string) (func(context.Context) error, error) {
+func Configure(ctx context.Context, service string) (func(context.Context) error, error) {
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 	if strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")) == "" && strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")) == "" {
 		return func(context.Context) error { return nil }, nil

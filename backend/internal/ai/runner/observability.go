@@ -7,7 +7,7 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -21,7 +21,7 @@ func generationSpan(ctx context.Context, session ai.DecisionSession, scope strin
 	if session.JobType == "faction_background" {
 		promptVersion = prompts.GenerationVersion
 	}
-	return telemetry.StartAI(ctx, "battlefield.model."+scope, "generation",
+	return tracing.StartAI(ctx, "battlefield.model."+scope, "generation",
 		attribute.String("langfuse.observation.model.name", model),
 		attribute.String("langfuse.trace.metadata.profile_id", session.Profile.ID),
 		attribute.String("langfuse.trace.metadata.provider", session.Profile.Provider),
@@ -50,7 +50,7 @@ func finishGeneration(span trace.Span, usage ai.Usage, failed bool) {
 		span.SetAttributes(attribute.Int64("battlefield.reasoning_output_tokens", *usage.ReasoningOutputTokens))
 	}
 	span.SetAttributes(attribute.Bool("battlefield.tokens_reported", usage.TokensReported))
-	telemetry.AIOutcome(span, failed, "model_execution")
+	tracing.AIOutcome(span, failed, "model_execution")
 	span.End()
 }
 func sumOptional(total **int64, value *int64) {

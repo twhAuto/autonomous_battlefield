@@ -78,7 +78,12 @@ Links point from the engine attempt to the creating request, and from each
 decision to its decision window. See [trace lookup](../operations/observability.md#find-a-battle-trace)
 for operational queries.
 
-See [`internal/telemetry/tracing.go`](../../backend/internal/telemetry/tracing.go)
+Spans carry `deployment.environment` from `BATTLEFIELD_ENVIRONMENT`: the base manifests
+set `production` on the API, engine, AI gateway and agent, and a dev deployment rewrites it
+to `dev` along with `BATTLEFIELD_ENV`. A process started without it, such as a local
+`go run`, reports `local`.
+
+See [`internal/observability/tracing/tracing.go`](../../backend/internal/observability/tracing/tracing.go)
 for environment configuration and instrumentation, and the
 [collector configuration](../../infra/deploy/overlays/local/observability/otel-collector/config.yaml)
 for the in-cluster path. Prompts, credentials, capabilities, full observations,

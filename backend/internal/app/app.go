@@ -21,8 +21,8 @@ import (
 	generationrepo "github.com/twh09/autonomous_battlefield/backend/internal/generation/repo"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 	"github.com/twh09/autonomous_battlefield/backend/internal/members"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 // App is the application's composition root. It constructs and connects the
@@ -72,7 +72,7 @@ func New(db postgres.Pool, catalog *catalog.Catalog, maxTicks uint64, options Op
 		authn.NewRoutes(authenticationManager), factionHandler, battleHandler, generationHandler, adminHandler, &members.Handler{Store: options.Members, Origin: authentication.Origin},
 	)
 	// Tracing wraps access logging so completion logs share the request span.
-	return &App{httpHandler: telemetry.HTTPHandler("battlefield-api.http", router)}
+	return &App{httpHandler: tracing.HTTPHandler("battlefield-api.http", router)}
 }
 
 func (a *App) HTTPHandler() http.Handler {

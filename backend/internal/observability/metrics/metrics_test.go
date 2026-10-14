@@ -1,6 +1,6 @@
 // Checks application metrics are recorded and exposed through the Prometheus handler.
 
-package telemetry
+package metrics
 
 import (
 	"net/http"
@@ -22,7 +22,7 @@ func TestApplicationMetricsAreRecordedAndExposed(t *testing.T) {
 	SetEngineReady(false)
 
 	response := httptest.NewRecorder()
-	MetricsHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("metrics status = %d, want %d", response.Code, http.StatusOK)
 	}

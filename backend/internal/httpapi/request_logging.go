@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	"github.com/twh09/autonomous_battlefield/backend/internal/requestid"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/requestid"
 )
 
 // clientRequestID limits caller-supplied correlation IDs to characters that are safe to
@@ -40,7 +40,7 @@ func requestLogging(next http.Handler, logger *slog.Logger) http.Handler {
 		response := &loggingResponseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(response, r)
 		duration := time.Since(started)
-		telemetry.ObserveHTTPRequest(r.Method, r.Pattern, response.status, duration)
+		metrics.ObserveHTTPRequest(r.Method, r.Pattern, response.status, duration)
 
 		// Probes never reach this middleware: LifecycleHandler answers them first.
 		level := slog.LevelInfo

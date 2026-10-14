@@ -143,6 +143,12 @@ if ! grep -Fq "ghcr.io/twh09/autonomous-battlefield-backend@sha256:aaaaaaaa" "${
   echo "Registry deployment did not render immutable image digests." >&2
   exit 1
 fi
+# Every application workload labels its traces with the deployment environment.
+if [[ "$(grep -A1 'name: BATTLEFIELD_ENVIRONMENT' "${rendered}" | grep -c 'value: dev')" != 4 ]] ||
+  grep -A1 'name: BATTLEFIELD_ENVIRONMENT' "${rendered}" | grep -q 'value: \(production\|local\)'; then
+  echo "Dev deployment did not label all four workloads BATTLEFIELD_ENVIRONMENT=dev." >&2
+  exit 1
+fi
 rm -rf -- "${runtime_dir}"
 runtime_dir=""
 

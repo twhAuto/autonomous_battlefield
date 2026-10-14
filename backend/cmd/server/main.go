@@ -21,10 +21,11 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/resultcache"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
-	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
 	"github.com/twh09/autonomous_battlefield/backend/internal/members"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/logging"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 func main() {
@@ -106,7 +107,7 @@ func startServer(configuration config.APIConfig) error {
 	defer stop()
 	processContext, cancelProcess := context.WithCancel(shutdownSignal)
 	defer cancelProcess()
-	shutdownTracing, err := telemetry.ConfigureTracing(processContext, "battlefield-api")
+	shutdownTracing, err := tracing.Configure(processContext, "battlefield-api")
 	if err != nil {
 		return fmt.Errorf("configure tracing: %w", err)
 	}
@@ -116,7 +117,7 @@ func startServer(configuration config.APIConfig) error {
 		_ = shutdownTracing(ctx)
 	}()
 
-	lifecycle := httpapi.NewLifecycleHandler(telemetry.MetricsHandler())
+	lifecycle := httpapi.NewLifecycleHandler(metrics.Handler())
 	httpConfig := configuration.HTTP
 	server := &http.Server{
 		Addr:              httpConfig.Address,

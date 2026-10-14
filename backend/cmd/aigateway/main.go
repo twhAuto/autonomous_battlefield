@@ -20,9 +20,9 @@ import (
 	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	generationrepo "github.com/twh09/autonomous_battlefield/backend/internal/generation/repo"
-	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/logging"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 func main() {
@@ -44,7 +44,7 @@ func main() {
 func run(configuration config.AIGatewayConfig) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	shutdownTracing, err := telemetry.ConfigureTracing(ctx, "battlefield-ai-gateway")
+	shutdownTracing, err := tracing.Configure(ctx, "battlefield-ai-gateway")
 	if err != nil {
 		return fmt.Errorf("configure tracing: %w", err)
 	}
@@ -72,7 +72,7 @@ func run(configuration config.AIGatewayConfig) error {
 	mux.Handle("/internal/agent/", http.StripPrefix("/internal/agent", server.AgentHandler(repository)))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("GET /readyz", readinessHandler(db, 2*time.Second))
-	httpServer := &http.Server{Addr: configuration.Gateway.Address, Handler: telemetry.HTTPHandler("battlefield-ai-gateway.http", mux), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second}
+	httpServer := &http.Server{Addr: configuration.Gateway.Address, Handler: tracing.HTTPHandler("battlefield-ai-gateway.http", mux), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second}
 	errorsChannel := make(chan error, 1)
 	go func() {
 		err := httpServer.ListenAndServe()

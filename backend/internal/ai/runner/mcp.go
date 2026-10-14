@@ -13,7 +13,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 type bearerTransport struct {
@@ -51,7 +51,7 @@ func (s sdkSession) Close() error { return s.session.Close() }
 
 func (MCPClient) Connect(ctx context.Context, endpoint, token string) (DecisionToolSession, error) {
 	client := mcp.NewClient(&mcp.Implementation{Name: "battlefield-agent", Version: ai.ToolSchema}, nil)
-	httpClient := telemetry.HTTPClient(bearerTransport{token: token, base: http.DefaultTransport})
+	httpClient := tracing.HTTPClient(bearerTransport{token: token, base: http.DefaultTransport})
 	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: endpoint, HTTPClient: httpClient, MaxRetries: 1, DisableStandaloneSSE: true}, nil)
 	if err != nil {
 		return nil, err

@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 // toolArguments returns a call's arguments as JSON, defaulting to an empty object.
@@ -30,7 +30,7 @@ const maxResponseBytes = 4 << 20
 
 func doJSON(client *http.Client, request *http.Request, provider string, output any) error {
 	if client == nil {
-		client = telemetry.HTTPClient(nil)
+		client = tracing.HTTPClient(nil)
 	}
 	response, err := client.Do(request)
 	if err != nil {

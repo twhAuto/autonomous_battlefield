@@ -19,8 +19,8 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/cliisolation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
-	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/logging"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 func main() {
@@ -65,7 +65,7 @@ func run(configuration config.AgentConfig) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	shutdownTracing, err := telemetry.ConfigureTracing(ctx, "battlefield-agent")
+	shutdownTracing, err := tracing.Configure(ctx, "battlefield-agent")
 	if err != nil {
 		return fmt.Errorf("configure tracing: %w", err)
 	}
@@ -83,7 +83,7 @@ func run(configuration config.AgentConfig) error {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
-	server := &http.Server{Addr: configuration.Agent.HealthAddress, Handler: telemetry.HTTPHandler("battlefield-agent.http", mux), ReadHeaderTimeout: 2 * time.Second}
+	server := &http.Server{Addr: configuration.Agent.HealthAddress, Handler: tracing.HTTPHandler("battlefield-agent.http", mux), ReadHeaderTimeout: 2 * time.Second}
 	serverErrors := make(chan error, 1)
 	go func() {
 		err := server.ListenAndServe()
