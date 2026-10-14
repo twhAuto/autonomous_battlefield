@@ -63,7 +63,7 @@ pin and compatibility change; ordinary adoption preserves existing identities.
 Use a dedicated Linux or WSL Jenkins agent with:
 
 - Git.
-- Go 1.26.5 or newer.
+- A Go toolchain compatible with [`backend/go.mod`](../../backend/go.mod).
 - Node.js 24, npm, and Python 3 for deployment regression tests.
 - GCC and the C development toolchain required by `go test -race`.
 - Docker, with permission to use the Docker daemon.
