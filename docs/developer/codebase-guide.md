@@ -256,6 +256,11 @@ checkout permissions and also exercises the unreadable-template rejection in a
 real container. Jenkins runs this Docker-backed regression separately from the
 command-double deployment suite; see [Jenkins checks](ci.md#pull-request-verification).
 
+`scripts/ops/ghcr-retention-report.sh` collects running and rollback digests plus
+registry versions before publishing its advisory inventory. Its command-double
+regressions in `scripts/test/test-retention-report.py` cover failed collection,
+preserved previous reports and invocation outside the checkout.
+
 `scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh` are the driver-neutral
 entry points used by Jenkins. On main, `capture-rollback-images.sh` records the
 running images before rollout and `rollback-on-failed-verification.sh` decides
