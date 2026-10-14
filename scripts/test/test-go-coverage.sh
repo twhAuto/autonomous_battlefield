@@ -10,6 +10,11 @@ coverage_file="${GO_COVERAGE_FILE:-${backend_dir}/coverage.out}"
 coverage_summary_file="${GO_COVERAGE_SUMMARY_FILE:-${backend_dir}/coverage-total.txt}"
 minimum_coverage="${GO_COVERAGE_MIN:-80}"
 
+if [[ -z "${TEST_DATABASE_URL:-}" ]]; then
+  echo "TEST_DATABASE_URL must be set by with-test-postgres.sh; coverage may not skip database-backed tests." >&2
+  exit 1
+fi
+
 if ! command -v go >/dev/null 2>&1; then
   echo "Required command not found: go" >&2
   exit 1

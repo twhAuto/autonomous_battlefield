@@ -16,21 +16,25 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(cd "${script_dir}/../.." && pwd)"
 fixture_dir="${project_dir}/backend/test/performance/query-plans"
 
+# Check the exact harness-owned container and URL before running any migrations or
+# fixtures. Do not discover a target from other concurrent test runs.
+container="${TEST_POSTGRES_CONTAINER_ID:-}"
+harness_url='^postgres://battlefield_test:[0-9a-f]{48}@127\.0\.0\.1:([0-9]+)/battlefield_test\?sslmode=disable$'
+if [[ ! "${container}" =~ ^[0-9a-f]{64}$ || ! "${TEST_DATABASE_URL}" =~ ${harness_url} ]]; then
+  echo 'Query plans require the URL and container identity from with-test-postgres.sh.' >&2
+  exit 1
+fi
+port="${BASH_REMATCH[1]}"
+container_name="$(docker inspect --format '{{.Name}}' "${container}")"
+binding="$(docker port "${container}" 5432/tcp)"
+if [[ "${container_name}" != /battlefield-ci-postgres-* || "${binding}" != "127.0.0.1:${port}" ]]; then
+  echo 'The query-plan database does not match the disposable test container.' >&2
+  exit 1
+fi
+
 (cd "${project_dir}/backend" && go run github.com/pressly/goose/v3/cmd/goose@v3.27.1 \
   -dir migrations postgres "${TEST_DATABASE_URL}" up >/dev/null)
 
-# Several harness runs can be alive at once (e.g. Jenkins on a shared host), so pick
-# the container that publishes this URL's port rather than the first name match.
-port="$(sed -E 's#^[^@]*@[^:/]+:([0-9]+)/.*$#\1#' <<<"${TEST_DATABASE_URL}")"
-[[ "${port}" =~ ^[0-9]+$ ]] || { echo "Cannot read the port from TEST_DATABASE_URL." >&2; exit 1; }
-container=""
-for candidate in $(docker ps --filter name=battlefield-ci-postgres --format '{{.ID}}'); do
-  if docker port "${candidate}" 5432/tcp | grep -qE ":${port}\$"; then
-    container="${candidate}"
-    break
-  fi
-done
-[[ -n "${container}" ]] || { echo "No test PostgreSQL container publishes port ${port}." >&2; exit 1; }
 psql() { docker exec -i "${container}" psql -U battlefield_test -d battlefield_test -v ON_ERROR_STOP=1 -X -q "$@"; }
 
 psql < "${fixture_dir}/seed.sql"

@@ -117,6 +117,10 @@ autonomous_battlefield/
 └── docs/{game,developer,architecture,operations}/
 ```
 
+`scripts/test/test-database-harness.py` checks coverage admission and query-plan
+target validation with command doubles. The shared deployment regression gate
+runs it; real database checks use `scripts/test/with-test-postgres.sh`.
+
 ## Executable entry points
 
 The backend has five commands in one Go module: four runtime processes and the offline AI evaluation command. The application image contains the four runtime binaries.

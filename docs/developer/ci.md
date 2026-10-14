@@ -130,9 +130,9 @@ must each be at least 80%.
 Backend integration tests skip themselves unless `TEST_DATABASE_URL` is set, so
 code exercised only by those tests stays uncovered. Always measure through
 `with-test-postgres.sh`, which starts a throwaway PostgreSQL container and exports
-`TEST_DATABASE_URL` for the wrapped command. Invoking `test-go-coverage.sh`
-directly skips database tests (including much of `internal/generation`) but
-still fails if tests fail or aggregate coverage falls below 80%. The harness
+`TEST_DATABASE_URL` and its exact `TEST_POSTGRES_CONTAINER_ID` for the wrapped
+command. `test-go-coverage.sh` rejects a missing database URL before running Go,
+so a coverage invocation cannot silently omit database-backed tests. The harness
 requires Docker; if it cannot run, report that CI-equivalent coverage was not
 verified and label any measured figure as excluding database-backed tests.
 

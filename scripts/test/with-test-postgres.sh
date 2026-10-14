@@ -72,4 +72,5 @@ if [[ ! "${host_port}" =~ ^[0-9]+$ ]]; then
 fi
 
 export TEST_DATABASE_URL="postgres://${database_user}:${database_password}@127.0.0.1:${host_port}/${database_name}?sslmode=disable"
+export TEST_POSTGRES_CONTAINER_ID="${container_id}"
 "$@"
