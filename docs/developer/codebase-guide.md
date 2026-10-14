@@ -243,6 +243,11 @@ credentials and verified public test-image bytes. Its private diagnostic callbac
 extends the normal sanitized report only for fixture failures. See the
 [K3s platform runbook](../operations/k3s-platform.md) for job use and acceptance.
 
+`scripts/ci/generate-ai-manifest.sh` combines runtime metadata with an evaluation
+corpus digest based on contents and relative filenames, independent of checkout
+location. `scripts/test/test-ai-manifest.py` covers reproducibility and changes to
+corpus identity in the shared deployment regression gate.
+
 `scripts/ci/verify-frontend-image.py` starts an isolated frontend image with the
 production filesystem/user restrictions and verifies HTTP probes, index and entry
 assets. Local/PR builds and published-digest scanning invoke it before delivery.
