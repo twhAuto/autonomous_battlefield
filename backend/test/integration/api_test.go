@@ -118,7 +118,7 @@ func startIntegrationAPI(t *testing.T, db *pgxpool.Pool, issuer *accessIssuer) *
 		Mode: authn.ModeCloudflare, Issuer: issuer.server.URL, Audience: integrationAudience,
 		Origin: integrationOrigin, CIClientID: integrationCIClient, Roles: integrationRoles,
 	}})
-	lifecycle := httpapi.NewLifecycleHandler()
+	lifecycle := httpapi.NewLifecycleHandler(nil)
 	lifecycle.Activate(application.HTTPHandler(), db, nil)
 	server := httptest.NewServer(lifecycle)
 	t.Cleanup(server.Close)

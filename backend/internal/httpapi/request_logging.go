@@ -1,5 +1,5 @@
 // Wraps HTTP requests with correlation IDs, response status and timing logs, and
-// normalized- route metrics.
+// route-pattern metrics.
 
 package httpapi
 
@@ -9,7 +9,7 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"net/http"
-	"strings"
+	"regexp"
 	"sync/atomic"
 	"time"
 
@@ -18,7 +18,9 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
-var fallbackRequestID atomic.Uint64
+// clientRequestID limits caller-supplied correlation IDs to characters that are safe to
+// echo and log; anything else is replaced with a generated ID.
+var clientRequestID = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,128}$`)
 
 func requestLogging(next http.Handler, logger *slog.Logger) http.Handler {
 	if logger == nil {
@@ -40,13 +42,12 @@ func requestLogging(next http.Handler, logger *slog.Logger) http.Handler {
 		duration := time.Since(started)
 		telemetry.ObserveHTTPRequest(r.Method, r.Pattern, response.status, duration)
 
+		// Probes never reach this middleware: LifecycleHandler answers them first.
 		level := slog.LevelInfo
 		if response.status >= http.StatusInternalServerError {
 			level = slog.LevelError
 		} else if response.status >= http.StatusBadRequest {
 			level = slog.LevelWarn
-		} else if r.URL.Path == "/healthz" || r.URL.Path == "/livez" || r.URL.Path == "/readyz" || r.URL.Path == "/startupz" {
-			level = slog.LevelDebug
 		}
 		actor := authn.Actor{}
 		if verified := authenticated.Load(); verified != nil {
@@ -101,29 +102,13 @@ func (w *loggingResponseWriter) Write(payload []byte) (int, error) {
 func (w *loggingResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func acceptedRequestID(candidate string) string {
-	candidate = strings.TrimSpace(candidate)
-	if candidate != "" && len(candidate) <= 128 {
+	if clientRequestID.MatchString(candidate) {
 		return candidate
 	}
+	// crypto/rand.Read never fails (Go 1.24+).
 	var bytes [16]byte
-	if _, err := rand.Read(bytes[:]); err == nil {
-		return hex.EncodeToString(bytes[:])
-	}
-	return "local-" + time.Now().UTC().Format("20060102T150405.000000000") + "-" + stringID(fallbackRequestID.Add(1))
-}
-
-func stringID(value uint64) string {
-	const digits = "0123456789"
-	var buffer [20]byte
-	index := len(buffer)
-	for {
-		index--
-		buffer[index] = digits[value%10]
-		value /= 10
-		if value == 0 {
-			return string(buffer[index:])
-		}
-	}
+	_, _ = rand.Read(bytes[:])
+	return hex.EncodeToString(bytes[:])
 }
 
 // RequestID reports the correlation identifier the logging middleware attached.

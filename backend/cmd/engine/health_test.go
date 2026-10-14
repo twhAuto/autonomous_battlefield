@@ -24,7 +24,7 @@ func TestEngineProbesFollowWorkerAndDatabaseLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lifecycle := httpapi.NewLifecycleHandler()
+	lifecycle := httpapi.NewLifecycleHandler(nil)
 	check := func(path string, want int) {
 		t.Helper()
 		response := httptest.NewRecorder()

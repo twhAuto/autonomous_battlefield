@@ -34,7 +34,7 @@ import (
 func TestNewAPIComposesHTTPApplication(t *testing.T) {
 	application := New(appDatabase{}, &catalog.Catalog{}, 10_000, Options{})
 	response := httptest.NewRecorder()
-	lifecycle := httpapi.NewLifecycleHandler()
+	lifecycle := httpapi.NewLifecycleHandler(nil)
 	lifecycle.Activate(application.HTTPHandler(), appDatabase{}, nil)
 	lifecycle.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if response.Code != http.StatusOK {

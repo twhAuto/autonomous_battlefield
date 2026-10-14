@@ -8,6 +8,9 @@ operating targets. They are not a customer-facing service-level agreement.
 
 HTTP completion logs include `actor_id` and `actor_role` established by trusted
 authentication middleware, alongside method, resource path, status and request ID.
+The request ID is echoed in `X-Request-ID`. A caller-supplied value is kept only when it
+matches `[A-Za-z0-9._:-]{1,128}`, so it is safe to echo and log; otherwise the server
+generates one.
 An authentication observer carries identity to the outer request logger; rejected
 credentials leave identity empty. Tokens, cookies and email headers are not logged.
 These operational logs provide request attribution, not a tamper-proof audit store.
