@@ -5,78 +5,36 @@ package main
 
 import (
 	"context"
-	"errors"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/cmd/internal/startup"
+	"github.com/twh09/autonomous_battlefield/backend/cmd/internal/startup/database"
 	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/logging"
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
-	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
-	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
 func main() {
-	logger := logging.New("engine")
-	slog.SetDefault(logger)
-	options, err := parseOptions(os.Args[1:])
-	if errors.Is(err, flag.ErrHelp) {
-		return
-	}
-	if err != nil {
-		logger.Error("command_line_invalid", "error", err)
-		os.Exit(1)
-	}
-	configuration, err := config.LoadEngine(options.configPath)
-	if err != nil {
-		logger.Error("configuration_load_failed", "config_path", options.configPath, "error", err)
-		os.Exit(1)
-	}
-	if err := startEngine(configuration); err != nil {
-		logger.Error("engine_process_stopped", "error", err)
-		os.Exit(1)
-	}
+	slog.SetDefault(logging.New("engine"))
+	os.Exit(startup.Command[config.EngineConfig]{Name: "engine", Load: config.LoadEngine, Run: startEngine}.Main(os.Args[1:]))
 }
 
-type cliOptions struct {
-	configPath string
-}
-
-func parseOptions(arguments []string) (cliOptions, error) {
-	flags := flag.NewFlagSet("engine", flag.ContinueOnError)
-	configPath := flags.String("config", "config.yaml", "path to the YAML configuration file")
-	if err := flags.Parse(arguments); err != nil {
-		return cliOptions{}, err
-	}
-	if flags.NArg() != 0 {
-		return cliOptions{}, fmt.Errorf("unexpected positional arguments: %v", flags.Args())
-	}
-	return cliOptions{configPath: *configPath}, nil
-}
-
-func startEngine(configuration config.EngineConfig) error {
-	signalContext, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+// startEngine runs the battle worker until signalContext is cancelled, then drains it.
+func startEngine(signalContext context.Context, configuration config.EngineConfig) error {
 	runContext, cancelRun := context.WithCancel(signalContext)
 	defer cancelRun()
-	shutdownTracing, err := tracing.Configure(runContext, "battlefield-engine")
+	stopTracing, err := startup.Tracing(runContext, "battlefield-engine")
 	if err != nil {
-		return fmt.Errorf("configure tracing: %w", err)
+		return err
 	}
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = shutdownTracing(ctx)
-	}()
+	defer stopTracing()
 
 	engineConfig := configuration.Engine
 	lifecycle := httpapi.NewLifecycleHandler(metrics.Handler())
@@ -86,23 +44,12 @@ func startEngine(configuration config.EngineConfig) error {
 		WriteTimeout: 2 * time.Second, IdleTimeout: 30 * time.Second,
 		ErrorLog: slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
 	}
-	healthErrors := make(chan error, 1)
-	go func() {
-		slog.Info("engine_health_listening", "address", healthServer.Addr)
-		err := healthServer.ListenAndServe()
-		if errors.Is(err, http.ErrServerClosed) {
-			err = nil
-		}
-		healthErrors <- err
-		cancelRun()
-	}()
+	slog.Info("engine_health_listening", "address", healthServer.Addr)
+	healthErrors := startup.Serve(healthServer, cancelRun)
 
-	db, err := postgres.ConnectWithRetry(runContext, configuration.Database.URL, postgres.Options{
-		MaxConnections: configuration.Database.MaxConnections, MinConnections: configuration.Database.MinConnections,
-		MaxConnectionLifetime: configuration.Database.MaxConnectionLifetime,
-	}, configuration.Database.ConnectTimeout, time.Second)
+	db, err := database.Connect(runContext, configuration.Database)
 	if err != nil {
-		return stopEngineInitialization(healthServer, lifecycle, healthErrors, signalContext, engineConfig.ShutdownTimeout, err)
+		return startup.AbortStart(healthServer, lifecycle, healthErrors, signalContext, engineConfig.ShutdownTimeout, err)
 	}
 	defer db.Close()
 	slog.Info("database_connected")
@@ -116,7 +63,7 @@ func startEngine(configuration config.EngineConfig) error {
 		DecisionTimeout: configuration.DecisionTimeout,
 	})
 	if err != nil {
-		return stopEngineInitialization(healthServer, lifecycle, healthErrors, signalContext, engineConfig.ShutdownTimeout, err)
+		return startup.AbortStart(healthServer, lifecycle, healthErrors, signalContext, engineConfig.ShutdownTimeout, err)
 	}
 	lifecycle.Activate(http.NotFoundHandler(), db, engineWorker.Ready)
 	workerErrors := make(chan error, 1)
@@ -150,27 +97,4 @@ func startEngine(configuration config.EngineConfig) error {
 	}
 	slog.Info("engine_shutdown_completed", "worker_id", engineWorkerID)
 	return nil
-}
-
-func stopEngineInitialization(
-	healthServer *http.Server,
-	lifecycle *httpapi.LifecycleHandler,
-	healthErrors <-chan error,
-	signalContext context.Context,
-	shutdownTimeout time.Duration,
-	initializationError error,
-) error {
-	lifecycle.BeginShutdown()
-	shutdownContext, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancel()
-	if err := healthServer.Shutdown(shutdownContext); err != nil {
-		return fmt.Errorf("shutdown engine health server after initialization failure: %w", err)
-	}
-	if err := <-healthErrors; err != nil {
-		return fmt.Errorf("serve engine health: %w", err)
-	}
-	if signalContext.Err() != nil {
-		return nil
-	}
-	return fmt.Errorf("initialize engine: %w", initializationError)
 }
