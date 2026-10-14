@@ -4,6 +4,14 @@ package repo
 import (
 	"context"
 	"fmt"
+	"time"
+)
+
+// battleTimeout is the product limit on a battle's wall-clock lifetime, counted from
+// creation and including queued and paused time. Keep battleTimeoutMessage in step.
+const (
+	battleTimeout        = time.Hour
+	battleTimeoutMessage = "Battle timed out after one hour, including queued and paused time."
 )
 
 func (r *Postgres) ExpireBattles(ctx context.Context) error {
@@ -11,9 +19,9 @@ func (r *Postgres) ExpireBattles(ctx context.Context) error {
  WITH expired AS (
   UPDATE battle_runs
   SET status = 'failed', paused = false, error_code = 'battle_timeout',
-      error_message = 'Battle timed out after one hour, including queued and paused time.',
+      error_message = $2,
       lease_owner = NULL, lease_expires_at = NULL, completed_at = now(), updated_at = now()
-  WHERE status IN ('queued', 'running') AND created_at <= now() - interval '1 hour'
+  WHERE status IN ('queued', 'running') AND created_at <= now() - $1::interval
   RETURNING id
  )
  UPDATE battle_decisions AS decision
@@ -21,7 +29,7 @@ func (r *Postgres) ExpireBattles(ctx context.Context) error {
      lease_owner = NULL, lease_expires_at = NULL, resolved_at = now()
  FROM expired
  WHERE decision.battle_id = expired.id AND decision.status IN ('pending', 'running')
- `)
+ `, battleTimeout.String(), battleTimeoutMessage)
 	if err != nil {
 		return fmt.Errorf("expire battles: %w", err)
 	}

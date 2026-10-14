@@ -82,4 +82,5 @@ type healthDatabase struct{ err error }
 
 func (d *healthDatabase) Ping(context.Context) error { return d.err }
 
-func (r *idleHealthRepository) ExpireBattles(context.Context) error { return nil }
+func (r *idleHealthRepository) ExpireBattles(context.Context) error             { return nil }
+func (r *idleHealthRepository) FailExhaustedBattles(context.Context, int) error { return nil }

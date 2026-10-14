@@ -128,6 +128,21 @@ func TestWorkerRunStopsOnCancellationAndClaimFailure(t *testing.T) {
 			t.Fatalf("Run() error = %v, want repository error", err)
 		}
 	})
+	t.Run("exhausted sweep error", func(t *testing.T) {
+		worker, _ := New(exhaustedSweepFailure{&fakeBattleRepository{}}, testWorkerConfig())
+		err := worker.Run(context.Background())
+		if !errors.Is(err, errWorkerRepository) {
+			t.Fatalf("Run() error = %v, want repository error", err)
+		}
+	})
+}
+
+// exhaustedSweepFailure fails the pre-claim sweep, which must stop the claim loop just
+// as a claim failure does.
+type exhaustedSweepFailure struct{ *fakeBattleRepository }
+
+func (exhaustedSweepFailure) FailExhaustedBattles(context.Context, int) error {
+	return errWorkerRepository
 }
 
 func TestWorkerProcessFailurePaths(t *testing.T) {
@@ -621,7 +636,8 @@ func TestFallbackPreservesRunnerFailureCategory(t *testing.T) {
 	}
 }
 
-func (r *fakeBattleRepository) ExpireBattles(context.Context) error { return nil }
+func (r *fakeBattleRepository) FailExhaustedBattles(context.Context, int) error { return nil }
+func (r *fakeBattleRepository) ExpireBattles(context.Context) error             { return nil }
 
 // Expiry must run even when claiming work is blocked, and stop with the worker.
 type expiryTestRepository struct {

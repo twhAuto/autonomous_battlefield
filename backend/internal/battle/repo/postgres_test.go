@@ -241,13 +241,35 @@ func TestClaimBattleClaimsAndDecodesJob(t *testing.T) {
 	}
 }
 
+func TestFailExhaustedBattles(t *testing.T) {
+	db := &battleDB{}
+	if err := NewPostgres(db).FailExhaustedBattles(context.Background(), 3); err != nil || len(db.execArgs) != 1 || db.execArgs[0] != 3 {
+		t.Fatalf("err=%v args=%v", err, db.execArgs)
+	}
+	if err := NewPostgres(&battleDB{execErr: errDatabase}).FailExhaustedBattles(context.Background(), 3); !errors.Is(err, errDatabase) {
+		t.Fatalf("FailExhaustedBattles() error = %v, want %v", err, errDatabase)
+	}
+}
+
+func TestExpireBattlesPassesTheTimeoutPolicy(t *testing.T) {
+	db := &battleDB{}
+	if err := NewPostgres(db).ExpireBattles(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(db.execArgs) != 2 || db.execArgs[0] != "1h0m0s" || db.execArgs[1] != battleTimeoutMessage {
+		t.Fatalf("args=%v", db.execArgs)
+	}
+	if err := NewPostgres(&battleDB{execErr: errDatabase}).ExpireBattles(context.Background()); !errors.Is(err, errDatabase) {
+		t.Fatalf("ExpireBattles() error = %v, want %v", err, errDatabase)
+	}
+}
+
 func TestClaimBattleMapsQueueErrors(t *testing.T) {
 	tests := []struct {
 		name string
 		db   *battleDB
 		want error
 	}{
-		{name: "fail exhausted", db: &battleDB{execErr: errDatabase}, want: errDatabase},
 		{name: "empty", db: &battleDB{row: battleRow(func(...any) error { return pgx.ErrNoRows })}, want: queue.ErrNoBattleAvailable},
 		{name: "claim", db: &battleDB{row: battleRow(func(...any) error { return errDatabase })}, want: errDatabase},
 		{name: "scenario JSON", db: &battleDB{row: battleRow(func(destinations ...any) error {
