@@ -1,5 +1,6 @@
 // Decision-scoped AI observations use stable IDs across the worker and scoped MCP
 // server. No prompts, capabilities, model reasoning, or raw tool payloads are exported.
+
 package tracing
 
 import (

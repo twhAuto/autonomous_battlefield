@@ -78,18 +78,38 @@ func init() {
 	)
 }
 
-// MetricsHandler exposes both application metrics and the Go/process collectors
+// Handler exposes both application metrics and the Go/process collectors
 // registered by the Prometheus client.
 func Handler() http.Handler {
 	return promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{EnableOpenMetrics: true})
 }
 
+// ObserveHTTPRequest records one served API request under its route pattern, or
+// "unmatched" when no route matched.
 func ObserveHTTPRequest(method, route string, code int, duration time.Duration) {
 	if route == "" {
 		route = "unmatched"
 	}
+	method = requestMethod(method)
 	httpRequests.WithLabelValues(method, route, strconv.Itoa(code)).Inc()
 	httpRequestDuration.WithLabelValues(method, route, requestOutcome(code)).Observe(duration.Seconds())
+}
+
+// standardMethods are the request methods kept as metric labels.
+var standardMethods = map[string]bool{
+	http.MethodGet: true, http.MethodHead: true, http.MethodPost: true,
+	http.MethodPut: true, http.MethodPatch: true, http.MethodDelete: true,
+	http.MethodConnect: true, http.MethodOptions: true, http.MethodTrace: true,
+}
+
+// requestMethod collapses any non-standard method to "other". The server accepts any
+// method token a client sends, so a raw label would let callers create series without
+// limit.
+func requestMethod(method string) string {
+	if standardMethods[method] {
+		return method
+	}
+	return "other"
 }
 
 // requestOutcome collapses a response code into a bounded success/error label so
@@ -102,15 +122,18 @@ func requestOutcome(code int) string {
 	return "success"
 }
 
+// ObserveEngineClaim counts a battle claim, separating reclaimed expired leases.
 func ObserveEngineClaim(reclaimed bool) {
 	engineClaims.WithLabelValues(strconv.FormatBool(reclaimed)).Inc()
 }
 
+// ObserveEngineBattle records a battle attempt's terminal outcome and duration.
 func ObserveEngineBattle(outcome string, duration time.Duration) {
 	engineBattlesProcessed.WithLabelValues(outcome).Inc()
 	engineBattleDuration.WithLabelValues(outcome).Observe(duration.Seconds())
 }
 
+// ObserveEngineTick counts one advanced battle tick.
 func ObserveEngineTick() {
 	engineTicks.Inc()
 }
@@ -122,6 +145,7 @@ func ObserveResultCache(operation, outcome string) {
 	resultCacheOperations.WithLabelValues(operation, outcome).Inc()
 }
 
+// SetEngineReady reports whether this engine worker can claim battles.
 func SetEngineReady(ready bool) {
 	if ready {
 		engineReady.Set(1)
