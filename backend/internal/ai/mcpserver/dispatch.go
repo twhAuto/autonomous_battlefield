@@ -70,22 +70,22 @@ func (w *decisionWakeups) notify() {
 // is advisory: every awakened worker still atomically claims the durable row.
 func (s *Server) NotifyDecisionAvailable() { s.wakeups.notify() }
 
+// AgentRepository is what the agent control plane needs: the decision repository plus
+// the operator's AI switch, which gates every agent before it claims work.
+type AgentRepository interface {
+	ai.DecisionRepository
+	AgentEnabled(context.Context) (bool, error)
+}
+
 // AgentHandler is a non-MCP control plane used only to claim provider jobs and
 // report runner failures. It does not expose decision context or game state.
-func (s *Server) AgentHandler(repository ai.DecisionRepository) http.Handler {
+func (s *Server) AgentHandler(repository AgentRepository) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /enabled", func(w http.ResponseWriter, r *http.Request) {
 		if !s.requireAgentAuthorization(w, r) {
 			return
 		}
-		policy, ok := repository.(interface {
-			AgentEnabled(context.Context) (bool, error)
-		})
-		if !ok {
-			http.Error(w, "policy unavailable", 503)
-			return
-		}
-		enabled, err := policy.AgentEnabled(r.Context())
+		enabled, err := repository.AgentEnabled(r.Context())
 		if err != nil || !enabled {
 			http.Error(w, "AI disabled", 503)
 			return

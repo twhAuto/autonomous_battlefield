@@ -32,6 +32,12 @@ type fakeRepository struct {
 	failErr         error
 	usageErr        error
 	noDeadline      bool
+	agentDisabled   bool
+	policyErr       error
+}
+
+func (r *fakeRepository) AgentEnabled(context.Context) (bool, error) {
+	return !r.agentDisabled, r.policyErr
 }
 
 func (r *fakeRepository) CreateOrReuseDecision(context.Context, ai.CreateDecisionParams) (ai.DecisionRecord, error) {

@@ -544,8 +544,13 @@ Faction/battle service tests cover every role for own, other and legacy content.
 Migration `00011_friends_access.sql` owns row ownership, atomic admission triggers,
 AI execution counts, the original CLI lease, runtime stop policy and private usage view.
 Migration `00014_cli_concurrency.sql` expands that lease admission to four shared slots.
-`generation/repo/admission_limits_integration_test.go` tests cross-connection admission, paused
-limits, UTC reset, shared CLI slots and execution budgets against PostgreSQL.
+`backend/migrations/battle_admission_integration_test.go` tests the battle admission
+triggers against PostgreSQL: per-player and global caps across connections, paused
+battles still counting, the daily allowance and its UTC reset, and admin-exempt battles.
+`generation/repo/cli_capacity_integration_test.go` tests how generation claims hold and
+release the shared CLI slots alongside battle decisions, the per-battle execution budget
+and the AI kill switch. The AI gateway's agent control plane requires the operator switch
+(`mcpserver.AgentRepository.AgentEnabled`) and checks it before an agent claims work.
 Workers receive capabilities from the AI gateway instead of signing them. `worker/policy.go`
 cancels execution on the private stop switch; `credentials_linux.go` blocks procfs/
 ptrace reads of the worker's credentials; `runner/process_linux.go` kills CLI process
@@ -779,5 +784,5 @@ only by API pods. See [Player invitations](../operations/player-invitations.md).
 Worker capacity is configured by `ai.agentConcurrency` in
 `backend/internal/config/ai.go` and passed by `backend/cmd/agent/main.go`.
 Migration `backend/migrations/00014_cli_concurrency.sql` sets the shared CLI lease
-capacity; `backend/internal/generation/repo/admission_limits_integration_test.go` verifies
+capacity; `backend/internal/generation/repo/cli_capacity_integration_test.go` verifies
 concurrent admission across battle and generation jobs.
