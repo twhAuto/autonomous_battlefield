@@ -18,15 +18,15 @@ func parseBackgroundGeneration(raw fileConfig) (generation.Config, error) {
 		c.DailyAllowance = *v.DailyAllowance
 	}
 	var err error
-	c.Cooldown, err = parseOptionalDuration("ai.backgroundGeneration.cooldown", v.Cooldown, c.Cooldown, false)
+	c.Cooldown, err = parseOptionalDuration("ai.backgroundGeneration.cooldown", v.Cooldown, c.Cooldown)
 	if err != nil {
 		return c, err
 	}
-	c.QueueTimeout, err = parseOptionalDuration("ai.backgroundGeneration.queueTimeout", v.QueueTimeout, c.QueueTimeout, false)
+	c.QueueTimeout, err = parseOptionalDuration("ai.backgroundGeneration.queueTimeout", v.QueueTimeout, c.QueueTimeout)
 	if err != nil {
 		return c, err
 	}
-	c.ExecutionTimeout, err = parseOptionalDuration("ai.backgroundGeneration.executionTimeout", v.ExecutionTimeout, c.ExecutionTimeout, false)
+	c.ExecutionTimeout, err = parseOptionalDuration("ai.backgroundGeneration.executionTimeout", v.ExecutionTimeout, c.ExecutionTimeout)
 	if err != nil {
 		return c, err
 	}

@@ -7,6 +7,9 @@ metadata:
   name: battlefield-config
 data:
   config.yaml: |
+    # The *EnvironmentVariable keys are retired; older rollback targets still require
+    # some of them. Current binaries accept each only with the fixed name shown, so
+    # remove them once no rollback target predates the change.
     http:
       address: ":8080"
       readHeaderTimeout: 5s

@@ -15,7 +15,7 @@ import (
 )
 
 func TestRunRejectsInvalidDatabaseConnection(t *testing.T) {
-	configuration := config.Config{Database: config.Database{URL: "://bad", ConnectTimeout: time.Millisecond, MaxConnections: 1}, AI: config.AI{CapabilitySecret: "secret", AIGatewayAddress: ":8084"}}
+	configuration := config.AIGatewayConfig{Database: config.Database{URL: "://bad", ConnectTimeout: time.Millisecond, MaxConnections: 1}, Gateway: config.Gateway{CapabilitySecret: "secret", Address: ":8084"}}
 	if err := run(configuration); err == nil {
 		t.Fatal("invalid database accepted")
 	}

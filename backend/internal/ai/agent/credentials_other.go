@@ -2,13 +2,11 @@
 
 package agent
 
-import (
-	"errors"
-	"os"
-)
+import "errors"
 
-func ProtectCredentials() error {
-	if os.Getenv("BATTLEFIELD_ENV") == "production" {
+// ProtectCredentials refuses production on platforms without Linux process isolation.
+func ProtectCredentials(production bool) error {
+	if production {
 		return errors.New("production workers require Linux process isolation")
 	}
 	return nil

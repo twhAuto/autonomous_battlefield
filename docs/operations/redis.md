@@ -11,7 +11,6 @@ and AI gateway do not use this variable. The default configuration is:
 
 ```yaml
 resultCache:
-  urlEnvironmentVariable: BATTLEFIELD_REDIS_URL
   ttl: 1h
   timeout: 100ms
 ```

@@ -372,7 +372,7 @@ both the handler and registry to the service; policy reads do not depend on HTTP
 ### Shared infrastructure packages
 
 - [`internal/authn`](../../backend/internal/authn) provides Cloudflare JWT verification, explicit development login modes, role/ownership helpers, exact-origin mutations, a deny-by-default route access table, and mode-aware session/logout routes. `routeRules` in `authorization.go` is the one table of every public route: its `authn.Permission` (`play`, `inspect`, `admin`), whether it is `public` (no authentication; login and session), and whether the `ci` identity may call it. Identity routes under `/v1/auth/` carry no permission and skip `RoutePolicy`. `TestRouteRulesStayConsistent` rejects malformed, duplicate or over-broad rules. `authn.PublicAPIRoutes()` exposes the table; [`test/apicontract`](../../backend/test/apicontract) fails the build if [`docs/architecture/openapi.yaml`](../architecture/openapi.yaml) lists a different set. When adding a `/v1` route, add its rule to `routeRules` **and** document the operation in the OpenAPI contract in the same change. `cloudflare_test.go` exercises signatures, key rotation, forged headers, legacy cookies and role removal. `service_test.go` covers enrolled CI service JWTs, invalid claims, disabled enrollment and the read-only route boundary. CI uses a separate `ci` actor, never a human role.
-- [`internal/config/config.go`](../../backend/internal/config/config.go) strictly decodes one YAML document, rejects unknown fields, resolves environment variables, and provides process-specific loaders.
+- [`internal/config/config.go`](../../backend/internal/config/config.go) strictly decodes one YAML document, rejects unknown fields, and provides one loader and one result type per binary: `LoadAPI` → `APIConfig`, `LoadEngine` → `EngineConfig`, `LoadAgent` → `AgentConfig`, `LoadAIGateway` → `AIGatewayConfig`. [`environment.go`](../../backend/internal/config/environment.go) names every fixed environment variable and validates `BATTLEFIELD_ENV` for all four.
 - [`internal/postgres`](../../backend/internal/postgres) manages the `pgx` pool, embedded Goose migrations, startup retries, and `LISTEN/NOTIFY`.
 - [`internal/httpapi`](../../backend/internal/httpapi) provides bounded strict JSON, lifecycle/readiness routes, request IDs, routing, and access logging.
 - [`internal/logging`](../../backend/internal/logging) configures `LOG_LEVEL`,
@@ -449,12 +449,24 @@ cancellation without application DDL, then verifies successful migration after r
 | [`infra/deploy/base/infrastructure/configmap.yaml`](../../infra/deploy/base/infrastructure/configmap.yaml) | Cluster configuration equivalent |
 | [`infra/deploy/environments/deployment.env.example`](../../infra/deploy/environments/deployment.env.example) | Deployment environment profile template consumed by the shared resolver |
 
-`internal/config/config.go` owns shared types, strict decoding, common parsing
-helpers, and process loaders. Parsers and their concern-specific types live in
-`auth.go`, `ai.go`, `database.go`, `http.go`, `engine.go`, `result_cache.go`, and
-`generation.go` in the same package. There are no new package dependencies.
+`internal/config/config.go` owns the per-binary result types, strict decoding,
+common parsing helpers, and the loaders. Each loader parses only the sections its
+binary uses, so a binary can neither read a section it never parsed nor fail on
+another binary's settings: an invalid `ai.agentConcurrency` stops only the agent.
+Parsers and their concern-specific types live in `auth.go`, `ai.go` (`Models`,
+`Agent`, `Gateway`), `database.go`, `http.go`, `engine.go`, `result_cache.go`, and
+`generation.go` in the same package. `environment.go` holds the fixed environment
+variable names, `BATTLEFIELD_ENV` validation, and the shared secret check.
 
 Configuration is decoded with `yaml.KnownFields(true)`. Update the file-facing struct, parsed runtime struct, validation, examples, deployment ConfigMap, and tests together.
+
+Environment variable names are fixed in code. Model profiles are the exception: each
+one names its own credential, model and availability variables. The retired
+`*EnvironmentVariable` keys (`database.urlEnvironmentVariable`,
+`auth.sessionSecretEnvironmentVariable` and so on) are still accepted, but only when
+they repeat the fixed name. The deployed ConfigMap keeps them because older rollback
+targets require them. Remove them from the ConfigMap, then from `fileConfig`, once no
+rollback target predates the change.
 
 ## Agent context compaction
 

@@ -124,7 +124,7 @@ func evaluateProfile(environment string, profile ai.ModelProfile, purpose profil
 }
 
 func evaluateExternalCLIProfile(profile ai.ModelProfile, purpose profileRegistryPurpose) ai.ModelProfile {
-	if purpose != profileCatalog || !strings.EqualFold(strings.TrimSpace(os.Getenv(profile.AvailabilityEnvironmentVariable)), "true") {
+	if purpose != profileCatalog || !profile.AvailabilityFlagSet() {
 		profile.UnavailableReason = "host CLI agent is not connected"
 		return profile
 	}
@@ -147,7 +147,7 @@ func evaluateAPIProfile(environment string, profile ai.ModelProfile) ai.ModelPro
 	credential := strings.TrimSpace(os.Getenv(profile.CredentialEnvironmentVariable))
 	model := strings.TrimSpace(os.Getenv(profile.ModelEnvironmentVariable))
 	profile.ModelLabel = model
-	if environment == "cluster" && profile.AvailabilityEnvironmentVariable != "" && !strings.EqualFold(strings.TrimSpace(os.Getenv(profile.AvailabilityEnvironmentVariable)), "true") {
+	if environment == "cluster" && profile.AvailabilityEnvironmentVariable != "" && !profile.AvailabilityFlagSet() {
 		profile.UnavailableReason = "provider credentials are not configured"
 		return profile
 	}

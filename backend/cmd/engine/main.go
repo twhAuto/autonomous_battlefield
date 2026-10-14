@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -63,7 +62,7 @@ func parseOptions(arguments []string) (cliOptions, error) {
 	return cliOptions{configPath: *configPath}, nil
 }
 
-func startEngine(configuration config.Config) error {
+func startEngine(configuration config.EngineConfig) error {
 	signalContext, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	runContext, cancelRun := context.WithCancel(signalContext)
@@ -109,13 +108,13 @@ func startEngine(configuration config.Config) error {
 	defer db.Close()
 	slog.Info("database_connected")
 
-	engineWorkerID := workerID(engineConfig.WorkerIDEnvironmentVariable)
+	engineWorkerID := engineConfig.WorkerID
 	battles := battlerepo.NewPostgres(db)
 	engineWorker, err := worker.New(battles, battles, worker.Config{KnowledgeRetrieval: configuration.Engine.KnowledgeRetrieval,
 		WorkerID: engineWorkerID, PollInterval: engineConfig.PollInterval,
 		LeaseDuration: engineConfig.LeaseDuration, HeartbeatInterval: engineConfig.HeartbeatInterval, ShutdownTimeout: engineConfig.ShutdownTimeout,
 		MaxAttempts:     engineConfig.MaxAttempts,
-		DecisionTimeout: configuration.AI.DecisionTimeout,
+		DecisionTimeout: configuration.DecisionTimeout,
 	})
 	if err != nil {
 		return stopEngineInitialization(healthServer, lifecycle, healthErrors, signalContext, engineConfig.ShutdownTimeout, err)
@@ -175,15 +174,4 @@ func stopEngineInitialization(
 		return nil
 	}
 	return fmt.Errorf("initialize engine: %w", initializationError)
-}
-
-func workerID(environmentVariable string) string {
-	if id := os.Getenv(environmentVariable); id != "" {
-		return id
-	}
-	hostname, err := os.Hostname()
-	if err != nil || hostname == "" {
-		hostname = "engine"
-	}
-	return hostname + "-" + strconv.Itoa(os.Getpid())
 }
