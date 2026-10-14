@@ -5,6 +5,7 @@ package game
 
 import (
 	"fmt"
+
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
@@ -98,7 +99,7 @@ func (m *Match) applyPlans(plans map[string]controller.PlanProposal) error {
 	return nil
 }
 
-func (m *Match) selectTactics() (map[string]string, []Event, error) {
+func (m *Match) selectTactics() (map[string]string, []Event) {
 	tactics := make(map[string]string, 2)
 	events := make([]Event, 0, 2)
 	for _, factionID := range m.sortedFactionIDs() {
@@ -126,7 +127,7 @@ func (m *Match) selectTactics() (map[string]string, []Event, error) {
 		}
 		events = append(events, m.event("tactic_selected", map[string]any{"factionId": factionID, "tactic": tactic, "planName": plan.Name, "source": runtime.activeSource}))
 	}
-	return tactics, events, nil
+	return tactics, events
 }
 
 func (f *factionRuntime) scriptedPlan() controller.PlanProposal {
@@ -146,11 +147,7 @@ func normalizedPlan(value controller.PlanProposal, setup FactionSetup) controlle
 	if result.RecruitmentOrders == nil && len(result.RecruitmentPriorities) == 0 {
 		result.RecruitmentPriorities = append([]string(nil), setup.Blueprint.RecruitmentPriority...)
 	}
-	if len(result.ConstructionPriorities) == 0 {
-		// The owning slot is resolved by matching the faction when the plan is
-		// applied; scenario defaults are added in Match.normalizedFactionPlan.
-		result.ConstructionPriorities = nil
-	}
+	// Construction defaults depend on the faction's slot; normalizedFactionPlan adds them.
 	return result
 }
 

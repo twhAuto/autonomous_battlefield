@@ -5,8 +5,9 @@ package game
 
 import (
 	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"sort"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 func (m *Match) OpeningDue() bool {
@@ -56,14 +57,7 @@ func (m *Match) advanceOpening(plans map[string]controller.PlanProposal) (Transi
 	for _, id := range m.sortedFactionIDs() {
 		plan := m.factions[id].activePlan
 		events = append(events, m.event("plan_applied", map[string]any{"factionId": id, "name": plan.Name, "targetTick": uint64(0)}))
-		for _, kind := range plan.SpendOrder {
-			switch kind {
-			case "upgrades":
-				events = append(events, m.runUpgrades(id, plan)...)
-			case "recruitment":
-				events = append(events, m.runRecruitment(id, plan)...)
-			}
-		}
+		events = append(events, m.spend(id, plan, false)...)
 		state := m.factionState(id)
 		state.UnitsStarted = state.UnitsRecruited
 		state.UnitsRecruited = 0

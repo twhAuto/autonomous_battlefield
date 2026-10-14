@@ -1,4 +1,4 @@
-// Resolves autonomous treatment and movement toward friendly soldiers.
+// Resolves autonomous healing and healer movement toward friendly soldiers.
 package game
 
 import (
@@ -60,42 +60,6 @@ func (m *Match) followPatient(unit *Unit) []Event {
 		return patientRouteLess(routes[i], routes[j])
 	})
 	return m.moveAlong(unit, routes[0].path)
-}
-
-func (m *Match) positionsInRange(target Position, minimum, maximum int) map[Position]bool {
-	goals := map[Position]bool{}
-	for y := 0; y < m.scenario.Map.Height; y++ {
-		for x := 0; x < m.scenario.Map.Width; x++ {
-			p := Position{X: x, Y: y}
-			d := HexDistance(p, target)
-			if d >= minimum && d <= maximum && m.scenario.Map.Traversable(p) {
-				goals[p] = true
-			}
-		}
-	}
-	return goals
-}
-
-func (m *Match) routeTo(unit Unit, goals map[Position]bool) ([]Position, bool) {
-	if goals[unit.Position] {
-		return nil, true
-	}
-	occupied := m.occupied()
-	delete(occupied, unit.Position)
-	path := shortestPath(m.scenario.Map, unit.Position, goals, occupied)
-	return path, len(path) > 0
-}
-
-func (m *Match) moveAlong(unit *Unit, path []Position) []Event {
-	steps := min(unit.Movement, len(path))
-	if steps == 0 {
-		return nil
-	}
-	from := unit.Position
-	unit.MovementPath = append([]Position{unit.Position}, path[:steps]...)
-	unit.Position = path[steps-1]
-	unit.MovedFrom = &from
-	return []Event{m.event("unit_moved", map[string]any{"factionId": unit.FactionID, "unitId": unit.ID, "from": from, "to": unit.Position})}
 }
 
 func (m *Match) patientPath(unit Unit, patient Unit) ([]Position, bool) {
