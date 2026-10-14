@@ -1,17 +1,27 @@
-// Refreshes the selected faction's filtered view as ticks change; spectator rendering uses
-// the battle state supplied by the page.
-
+// Refreshes one faction's filtered view, retaining it across ticks but never across
+// battle, attempt, or perspective changes.
 import { useEffect, useState } from 'react'
 import { BattleRun, BattleView, getBattleView } from '../api/battles'
 
-/** Returns the fetched faction view, or null for spectator mode, unavailable data, or a failed request. */
 export function useFactionPerspective(id: string, battle: BattleRun | null, perspective: string) {
-  const [view, setView] = useState<BattleView | null>(null)
+  const scope = `${id}:${battle?.attempt}:${perspective}`
+  const enabled = battle !== null && perspective !== 'spectator'
+  const [result, setResult] = useState<{ scope: string; view: BattleView | null; message: string }>({ scope: '', view: null, message: '' })
+  const [retryVersion, setRetryVersion] = useState(0)
   useEffect(() => {
-    if (!battle || perspective === 'spectator') { setView(null); return }
+    if (!enabled) return
     const controller = new AbortController()
-    getBattleView(id, perspective, controller.signal).then(setView).catch(() => setView(null))
+    setResult(current => ({ scope, view: current.scope === scope ? current.view : null, message: '' }))
+    getBattleView(id, perspective, controller.signal).then(view => {
+      if (!controller.signal.aborted) setResult({ scope, view, message: '' })
+    }).catch(() => {
+      if (!controller.signal.aborted) setResult({ scope, view: null, message: 'Faction view could not be loaded.' })
+    })
     return () => controller.abort()
-  }, [battle?.currentTick, id, perspective])
-  return view
+  }, [battle?.currentTick, enabled, id, perspective, scope, retryVersion])
+  return {
+    view: enabled && result.scope === scope ? result.view : null,
+    message: enabled && result.scope === scope ? result.message : '',
+    retry: () => setRetryVersion(value => value + 1),
+  }
 }

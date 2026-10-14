@@ -133,6 +133,12 @@ fields and load failures cannot carry into another editor.
 
 ### Battle inspection
 
+Battle detail state resets when its route ID changes. Faction-perspective requests
+are scoped to battle ID, attempt, and faction, with late cancelled responses
+ignored. Loading and failed faction views show feedback and retry controls in the
+map shell, including its expanded dialog; they never fall back to spectator data.
+The same faction's last successful view can remain visible during tick refreshes.
+
 The inline map fits its board aspect ratio. Expanding moves the same map state
 into a native modal dialog with focus containment, Escape dismissal, scroll
 locking, and focus restoration. Perspective and entity selection survive this

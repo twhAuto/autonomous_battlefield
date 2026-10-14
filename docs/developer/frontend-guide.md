@@ -71,6 +71,13 @@ HTML report is archived by a step that fails rather than archiving nothing.
 
 The battle feature's `hooks/` directory owns status, event, decision-history, and faction-perspective requests. Each hook preserves its own polling cadence, retries, cancellation, and terminal-state handling. `components/AIDecisionPanel.tsx`, `components/EventConsole.tsx`, and `components/BattlePresentation.tsx` own the panels and visual presentation; shared UI state types live in `types.ts`. There is no WebSocket or server-sent-event client.
 
+`BattlePage` keys its detail component by battle ID, resetting controls and cached
+views when navigating between battles. Faction-view results belong to one battle,
+attempt, and perspective; cancelled requests cannot replace the current selection.
+While a faction view is unavailable, the map shows loading or retry feedback,
+keeping the selector and expanded dialog available. Only spectator mode renders
+the full map. Tick refreshes may retain the same faction's last successful view.
+
 `useBattleStatus` cancels polling when a control returns a terminal status.
 `useBattleStatus.test.ts` verifies that a late in-flight response cannot overwrite
 an operator stop or schedule further polls.
