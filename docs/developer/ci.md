@@ -66,6 +66,11 @@ isolate shared role/grant changes. A failed backend test stops the coverage run;
 the published `Unavailable` backend coverage result is not evidence of a low
 coverage percentage. Inspect the failing test before changing any coverage gate.
 
+The shared `scripts/test/test-deployment.sh` gate includes offline Helm bootstrap
+and Langfuse detection regressions. The chart-rendering validator
+`scripts/test/test-langfuse-security.py` remains an explicit chart-upgrade check;
+see [Langfuse operations](../operations/langfuse.md).
+
 ## Frontend image checks
 
 Both PR and main deployment-script checks run
