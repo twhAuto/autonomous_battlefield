@@ -110,7 +110,8 @@ The API stores this resolved value in `battle_runs.scenario_snapshot`. The engin
 [`redis.go`](../../backend/internal/battle/resultcache/redis.go) implements the
 service's `ResultCache` port. `cmd/server` constructs and closes it;
 `app.New` wires it (`app.Options.Cache`) beneath authentication. Service/config tests
-and `resultcache/redis_test.go` cover caching and failure behavior with an
+and `resultcache/redis_test.go` cover caching, failure behavior and the
+`battlefield_result_cache_operations_total` counter with an
 in-process Redis protocol server; no external Redis process is required.
 See [cache behavior](../architecture/system-architecture.md#completed-battle-result-caching) and
 [Redis operations](../operations/redis.md).
