@@ -154,26 +154,6 @@ missing factions return `404`. Deletion removes the faction from the active
 registry. Existing battle history remains readable because each battle stores
 an immutable scenario and participant snapshot.
 
-## Get a faction name
-
-```http
-GET /v1/factions/{id}/name
-```
-
-Example:
-
-```bash
-curl http://localhost:8080/v1/factions/4db8d152-1e04-4d10-8824-859c6ed72878/name
-```
-
-A successful request returns:
-
-```json
-{"name":"Northern Alliance"}
-```
-
-The endpoint returns `404 Not Found` when the faction does not exist and `500 Internal Server Error` for other storage failures.
-
 ## Queue a battle
 
 Both factions must already exist. The scenario ID refers to a strict YAML template in `backend/scenarios`; the API snapshots faction names/backgrounds/doctrines, the map, ruleset, and controller plans. New snapshots use `snapshotVersion: 2` and start with castles and gold. Older queued snapshots retain legacy initialization.

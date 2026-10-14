@@ -132,7 +132,6 @@ var routeRules = []routeRule{
 
 	{pattern: "GET /v1/factions", permission: PermissionPlay},
 	{pattern: "GET /v1/faction-rulesets", permission: PermissionPlay},
-	{pattern: "GET /v1/factions/{id}/name", permission: PermissionPlay},
 	{pattern: "POST /v1/factions", permission: PermissionPlay},
 	{pattern: "PUT /v1/factions/{id}", permission: PermissionPlay},
 	{pattern: "DELETE /v1/factions/{id}", permission: PermissionPlay},

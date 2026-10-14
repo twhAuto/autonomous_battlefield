@@ -24,13 +24,13 @@ func TestDoctrinePersistenceAndTickZeroAgainstPostgres(t *testing.T) {
 	ctx = authn.WithActor(ctx, authn.Actor{ID: "test-admin", Role: authn.Admin})
 	id := randomUUID(t)
 	t.Cleanup(func() { _, _ = db.Exec(context.Background(), `DELETE FROM factions WHERE id=$1`, id) })
-	profiles := factionservice.NewService(factionrepo.NewPostgres(db))
+	profiles := factionservice.NewService(factionrepo.NewPostgres(db), noRulesets{})
 	{
-		err := profiles.CreateFaction(ctx, factionservice.CreateInput{ID: id, Name: " A ", Doctrine: " Scout "})
+		err := profiles.CreateFaction(ctx, factionservice.ProfileInput{ID: id, Name: " A ", Doctrine: " Scout "})
 		testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	}
 	{
-		err := profiles.(factionservice.Updater).UpdateFaction(ctx, factionservice.CreateInput{ID: id, Name: "B", Doctrine: "Defend"})
+		err := profiles.UpdateFaction(ctx, factionservice.ProfileInput{ID: id, Name: "B", Doctrine: "Defend"})
 		testutil.Require(t, err == nil, func() { t.Fatal(err) })
 	}
 	stored, err := factionrepo.NewPostgres(db).GetFaction(ctx, id)
@@ -79,3 +79,8 @@ func TestDoctrinePersistenceAndTickZeroAgainstPostgres(t *testing.T) {
 	events, err := repo.ListBattleEvents(ctx, battleID, job.Lease.Attempt, 0, 100, true)
 	testutil.Require(t, !(err != nil || len(events) != 1), func() { t.Fatalf("duplicate opening events: %d %v", len(events), err) })
 }
+
+// noRulesets satisfies the faction service's catalog; this test lists no rulesets.
+type noRulesets struct{}
+
+func (noRulesets) Rulesets() []game.Ruleset { return nil }

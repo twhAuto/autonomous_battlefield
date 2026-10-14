@@ -66,13 +66,13 @@ func TestListFactions(t *testing.T) {
 func TestCreateFaction(t *testing.T) {
 	db := &fakeDB{}
 	repo := NewPostgres(db)
-	stored := faction.Faction{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind"}
+	stored := faction.Faction{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", OwnerID: "player-7"}
 
 	if err := repo.CreateFaction(context.Background(), stored); err != nil {
 		t.Fatalf("CreateFaction() returned an error: %v", err)
 	}
 
-	wantArguments := []any{stored.ID, stored.Name, stored.Doctrine, stored.Background, "legacy-admin"}
+	wantArguments := []any{stored.ID, stored.Name, stored.Doctrine, stored.Background, "player-7"}
 	if !reflect.DeepEqual(db.execArguments, wantArguments) {
 		t.Fatalf("Exec arguments = %#v, want %#v", db.execArguments, wantArguments)
 	}
