@@ -717,6 +717,10 @@ Re-measure with the disposable database (10k battles over ~90 days, 120k events)
 ./scripts/test/with-test-postgres.sh ./scripts/perf/run-query-plans.sh
 ```
 
+The runner verifies the harness container ID, test-container name, exact loopback
+URL shape, and published port before applying migrations or loading fixtures. It
+rejects standalone URLs and does not select another concurrent harness's database.
+
 Results on PostgreSQL 17.6, 2026-09-29, limit 26 (page size 25 plus one):
 
 | Query | Plan | Shared buffers | Time |
