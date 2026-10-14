@@ -23,6 +23,7 @@
 .topbar__status { display: flex; align-items: center; gap: 10px; color: var(--muted); font: 500 12px 'DM Mono', monospace; letter-spacing: .12em; }
 .logout-button { margin-left: 8px; padding: 7px 9px; color: #a9afa3; background: transparent; border: 1px solid var(--line); font: 500 12px 'DM Mono', monospace; letter-spacing: .12em; }
 .logout-button:hover { color: var(--lime); border-color: rgba(216,255,104,.45); }
+.logout-error { margin: 0; padding: 16px clamp(24px, 5vw, 76px); color: var(--ink); background: var(--lime); }
 .topbar__divider { width: 1px; height: 14px; margin: 0 6px; background: var(--line); }
 .primary-nav { display: flex; align-items: center; gap: 28px; margin-left: auto; margin-right: clamp(24px, 4vw, 58px); }
 .primary-nav a { position: relative; padding: 31px 0; color: #858d80; text-decoration: none; font: 500 12px 'DM Mono', monospace; letter-spacing: .12em; text-transform: uppercase; }
@@ -45,7 +46,6 @@ footer { display: flex; justify-content: space-between; padding: 28px clamp(24px
 @media (max-width: 460px) {
   .brand > span:last-child { display: none; }
   .primary-nav { gap: 12px; }
-  footer span:last-child { display: none; }
 }
 
 @media (max-width: 1100px) {

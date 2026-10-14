@@ -34,6 +34,27 @@ test('navigation, focus, responsive forms and logout', async ({ page, isMobile }
   await expect(page.getByRole('heading', { name: 'Identify commander.' })).toBeVisible()
   await expect(page.locator('.login-card__eyebrow')).toHaveText('OrdinalFrontier')
 })
+test('failed logout stays visible and can be retried', async ({ page, isMobile }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  let attempts = 0
+  await page.route('**/v1/auth/logout', route => {
+    attempts += 1
+    return attempts === 1 ? route.abort('failed') : route.fulfill({ status: 204 })
+  })
+  await page.goto('/')
+  if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click()
+  await page.getByRole('button', { name: 'Log out admin' }).click()
+  await expect(page.getByRole('alert')).toHaveText('Logout could not be confirmed. Try Log out again.')
+  await expect(page.getByRole('alert')).toBeInViewport()
+  await expect(page.getByRole('heading', { name: 'Main menu' })).toBeVisible()
+  await page.getByRole('button', { name: 'Log out admin' }).click()
+  await expect(page.getByRole('heading', { name: 'Identify commander.' })).toBeVisible()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  expect(attempts).toBe(2)
+  expect(errors).toEqual([])
+})
+
 for (const [width, height] of [[15, 11], [25, 17]]) {
   test(`map ${width}x${height}, expansion, focus and result clarity`, async ({ page, api, isMobile }) => {
     api.width = width; api.height = height

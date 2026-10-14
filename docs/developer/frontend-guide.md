@@ -30,6 +30,12 @@ Routes: `/` (Home), `/battles/new`, `/battles`, `/battles/:id`, `/factions`,
 mount only for Admins outside role preview; `/admin/members` also requires the
 session's `members` capability. Unknown paths render a not-found page.
 
+The shell waits for a successful logout response before showing the signed-out
+screen. If logout fails, it retains the current screen and shows an accessible
+retry message; it cannot confirm that the server session ended. Component tests
+cover local-password and Access sessions, and browser tests cover retry on desktop
+and mobile. The footer displays the product name without a hardcoded build number.
+
 Feature-specific API clients live in `src/features/<feature>/api`; common HTTP transport lives in `src/shared/api`. Page components should consume typed client functions rather than duplicating `fetch` calls.
 
 `features/factions/presentation/availability.ts` derives background-writer status
