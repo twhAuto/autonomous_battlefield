@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 )
 
@@ -161,12 +163,31 @@ func TestUnexpectedFailuresAreLoggedWithoutLeaking(t *testing.T) {
 	original := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
 	defer slog.SetDefault(original)
-	response := httptest.NewRecorder()
-	memberError(response, httptest.NewRequest(http.MethodGet, "/v1/admin/members", nil), errors.New("database down"))
-	if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "database down") {
-		t.Fatalf("response = %d %s", response.Code, response.Body.String())
-	}
-	if !strings.Contains(logs.String(), `"msg":"player_members_request_failed"`) || !strings.Contains(logs.String(), "database down") {
-		t.Fatalf("failure not logged: %s", logs.String())
+	secret := "failed to connect to `user=battlefield database=battlefield host=10.0.0.5`"
+	for _, tc := range []struct {
+		err      error
+		reason   string
+		sqlstate string
+	}{
+		{errors.New(secret), "database_unavailable", ""},
+		{fmt.Errorf("list: %w", &pgconn.PgError{Code: "57P01", Message: secret}), "database_error", "57P01"},
+		{fmt.Errorf("%s: %w", secret, context.DeadlineExceeded), "deadline_exceeded", ""},
+	} {
+		logs.Reset()
+		response := httptest.NewRecorder()
+		memberError(response, httptest.NewRequest(http.MethodGet, "/v1/admin/members", nil), tc.err)
+		if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "10.0.0.5") {
+			t.Fatalf("response = %d %s", response.Code, response.Body.String())
+		}
+		got := logs.String()
+		if !strings.Contains(got, `"msg":"player_members_request_failed"`) || !strings.Contains(got, `"reason":"`+tc.reason+`"`) {
+			t.Fatalf("failure not categorized as %s: %s", tc.reason, got)
+		}
+		if tc.sqlstate != "" && !strings.Contains(got, `"sqlstate":"`+tc.sqlstate+`"`) {
+			t.Fatalf("SQLSTATE missing: %s", got)
+		}
+		if strings.Contains(got, "10.0.0.5") || strings.Contains(got, "user=battlefield") {
+			t.Fatalf("log leaked connection details: %s", got)
+		}
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
@@ -96,7 +97,32 @@ func memberError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, ErrNotFound):
 		apierror.Write(w, r, http.StatusNotFound, ErrNotFound.Error())
 	default:
-		slog.ErrorContext(r.Context(), "player_members_request_failed", "request_id", httpapi.RequestID(r.Context()), "error", err)
+		logRequestFailure(r, err)
 		apierror.Write(w, r, http.StatusServiceUnavailable, "Member access could not be updated or loaded. Try again.")
+	}
+}
+
+// logRequestFailure records a fixed category and SQLSTATE, never the raw error: a
+// pgx connection error can name the database user, host and database.
+func logRequestFailure(r *http.Request, err error) {
+	attrs := []any{"request_id", httpapi.RequestID(r.Context()), "reason", failureReason(err)}
+	var database *pgconn.PgError
+	if errors.As(err, &database) {
+		attrs = append(attrs, "sqlstate", database.Code)
+	}
+	slog.ErrorContext(r.Context(), "player_members_request_failed", attrs...)
+}
+
+func failureReason(err error) string {
+	var database *pgconn.PgError
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "deadline_exceeded"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.As(err, &database):
+		return "database_error"
+	default:
+		return "database_unavailable"
 	}
 }

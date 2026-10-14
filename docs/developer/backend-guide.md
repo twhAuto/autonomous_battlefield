@@ -779,7 +779,8 @@ Cloudflare group client, background reconciler and Admin-only HTTP routes. Its
 settings are parsed by `config.LoadAPI` (`internal/config/members.go`), which requires
 the already validated Cloudflare auth mode; `members.NewStore` checks every configured
 Player email before startup. Unexpected failures are logged as
-`player_members_request_failed` and answered with 503. Its
+`player_members_request_failed` with a fixed `reason` and any SQLSTATE, never the raw
+error, which can name database hosts and users, and are answered with 503. Its
 integration tests use isolated schemas through `TEST_DATABASE_URL` and exercise
 replica contention, concurrent removal/reinvitation, one-time import, promotion/
 offboarding and recovery.
