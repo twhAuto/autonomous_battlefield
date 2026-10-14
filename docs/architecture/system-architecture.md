@@ -714,6 +714,10 @@ strings (RFC 7519 section 4.1.3), matched exactly and case-sensitively to the
 configured audience. Invalid types and arrays with non-string entries are rejected.
 Missing or unverifiable credentials deny access. Access owns
 sessions and logout; the application issues no production auth cookie.
+The frontend requests logout before changing its session display; a failed request
+keeps the current screen visible with a retry message rather than implying the
+session ended. A successful Access logout response directs the browser to
+`/cdn-cgi/access/logout`.
 
 Players, Developers and Admins share gameplay/faction reads. Mutation ownership is
 stored in PostgreSQL and taken from the authenticated request, never client JSON.

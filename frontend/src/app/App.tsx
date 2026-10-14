@@ -19,7 +19,7 @@ import { authenticationRequiredEvent, setRequestPreviewRole } from '../shared/ap
 import { SessionContext } from '../features/auth/SessionContext'
 import '../styles.css'
 
-function AppLayout({ actorID, admin, onLogout }: Readonly<{ actorID: string; admin: boolean; onLogout(): void }>) {
+function AppLayout({ actorID, admin, logoutError, onLogout }: Readonly<{ actorID: string; admin: boolean; logoutError: string; onLogout(): void }>) {
   const location = useLocation()
   const preview = useContext(RolePreviewContext)
   const mobile = useMobile()
@@ -77,11 +77,11 @@ function AppLayout({ actorID, admin, onLogout }: Readonly<{ actorID: string; adm
       </header>
 
       {preview.role && <output className="role-preview-banner"><span>Viewing as {preview.role === 'player' ? 'Player' : 'Developer'} · Read-only preview using your own account. Your administrator permissions are unchanged.</span><button type="button" onClick={() => preview.setRole(null)}>Exit preview</button></output>}
+      {logoutError && <p className="logout-error" role="alert">{logoutError}</p>}
       <main id="main-content" tabIndex={-1} className={isBattleDetail ? 'main-content--battle' : undefined}><Outlet /></main>
 
       <footer>
         <span>OrdinalFrontier / COMMAND INTERFACE</span>
-        <span>BUILD 0.3.0</span>
       </footer>
     </div>
   )
@@ -108,6 +108,7 @@ export default function App({ authentication = authenticationClient, initialSess
   const changePreviewRole = useCallback((role: PreviewRole | null) => { setRequestPreviewRole(role); setPreviewRole(role) }, [])
   useEffect(() => () => setRequestPreviewRole(null), [])
   const [sessionError, setSessionError] = useState('')
+  const [logoutError, setLogoutError] = useState('')
   const [sessionAttempt, setSessionAttempt] = useState(0)
 
   useEffect(() => {
@@ -129,10 +130,12 @@ export default function App({ authentication = authenticationClient, initialSess
 
   async function logout() {
     changePreviewRole(null)
+    setLogoutError('')
     try {
       await authentication.logout()
-    } finally {
       setSession(previous => ({ enabled: true, authenticated: false, mode: previous?.mode }))
+    } catch {
+      setLogoutError('Logout could not be confirmed. Try Log out again.')
     }
   }
 
@@ -165,7 +168,7 @@ export default function App({ authentication = authenticationClient, initialSess
 
   return (
     <RolePreviewContext.Provider value={previewContext}><SessionContext.Provider value={effectiveSession ?? session}><Routes key={previewRole ?? 'admin'}>
-      <Route element={<AppLayout actorID={session.actor?.id ?? 'local-development'} admin={canAdmin && !previewRole} onLogout={logout} />}>
+      <Route element={<AppLayout actorID={session.actor?.id ?? 'local-development'} admin={canAdmin && !previewRole} logoutError={logoutError} onLogout={logout} />}>
         <Route index element={<HomePage />} />
         <Route path="factions/new" element={<CreateFactionPage />} />
  <Route path="factions/:id/edit" element={<CreateFactionPage />} />

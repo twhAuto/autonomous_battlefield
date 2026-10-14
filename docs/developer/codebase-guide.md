@@ -5,6 +5,10 @@ the application shell and login page; `frontend/index.html` owns browser metadat
 and `frontend/public/ordinalfrontier.svg` is the matching favicon. Historical
 repository/package paths and deployment identifiers remain compatible.
 
+`frontend/src/app/App.tsx` owns session transitions and logout feedback. Its component
+tests and `frontend/e2e/usability.spec.ts` cover failed logout and retry; see the
+[frontend guide](frontend-guide.md#frontend-organization) for the behavior.
+
 | Field | Value |
 | --- | --- |
 | Status | Current |
