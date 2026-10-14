@@ -357,3 +357,34 @@ func TestRejectNonConventionalEmailDomains(t *testing.T) {
 		}
 	}
 }
+
+func TestStartImportsThenReconcilesUntilStopped(t *testing.T) {
+	base := testStore(t)
+	synced := make(chan []string, 1)
+	store, err := NewStore(base.DB, base.Roles, groupFunc(func(_ context.Context, emails []string) error {
+		select {
+		case synced <- emails:
+		default:
+		}
+		return nil
+	}))
+	must(t, err)
+	must(t, store.Change(context.Background(), "admin", "friend@example.com", "", true))
+	stop, err := store.Start(context.Background())
+	must(t, err)
+	select {
+	case emails := <-synced:
+		if strings.Join(emails, ",") != "friend@example.com,seed@example.com" {
+			t.Fatalf("synced %v", emails)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("reconciler never wrote the group")
+	}
+	stop() // Returns only after the reconciler exits.
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := store.Start(cancelled); err == nil {
+		t.Fatal("Start succeeded with a cancelled context")
+	}
+}

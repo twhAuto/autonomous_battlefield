@@ -223,21 +223,14 @@ func stopAPIInitialization(
 // reconciler. It returns a nil store and a no-op stop when managed Players are off.
 func startManagedPlayers(ctx context.Context, db *pgxpool.Pool, managed config.Members, roles map[string]authn.Role) (*members.Store, func(), error) {
 	if !managed.Enabled {
-		return nil, func() {}, nil
+		return nil, func() { /* Nothing was started. */ }, nil
 	}
 	store, err := members.NewStore(db, roles, members.NewCloudflare(members.Config{AccountID: managed.AccountID, GroupID: managed.GroupID, Token: managed.Token}))
 	if err != nil {
 		return nil, nil, err
 	}
-	initCtx, stopInit := context.WithTimeout(ctx, 10*time.Second)
-	defer stopInit()
-	if err = store.Initialize(initCtx); err != nil {
-		return nil, nil, err
-	}
-	syncCtx, stopSync := context.WithCancel(ctx)
-	syncDone := make(chan struct{})
-	go func() { defer close(syncDone); store.Run(syncCtx) }()
-	return store, func() { stopSync(); <-syncDone }, nil
+	stop, err := store.Start(ctx)
+	return store, stop, err
 }
 
 // membersRepository keeps a disabled feature a nil interface, which the handler

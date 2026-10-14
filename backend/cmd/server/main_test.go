@@ -13,6 +13,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
+	"github.com/twh09/autonomous_battlefield/backend/internal/members"
 )
 
 func TestParseOptionsDefaultsToStartingServer(t *testing.T) {
@@ -97,6 +98,9 @@ func TestManagedPlayersDisabledStartsNothing(t *testing.T) {
 	stop()
 	if repository := membersRepository(nil); repository != nil {
 		t.Fatal("a disabled store became a non-nil repository")
+	}
+	if repository := membersRepository(&members.Store{}); repository == nil {
+		t.Fatal("an enabled store became a nil repository")
 	}
 }
 

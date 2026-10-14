@@ -81,6 +81,13 @@ func TestCloudflareFailuresAreSanitized(t *testing.T) {
 		}
 	}
 }
+func TestNewCloudflareUsesTheDefaultClient(t *testing.T) {
+	config := Config{AccountID: "account", GroupID: "group", Token: "token"}
+	if c := NewCloudflare(config); c.Config != config || c.Client != nil {
+		t.Fatalf("NewCloudflare() = %+v", c)
+	}
+}
+
 func TestNewStoreValidatesConfiguredPlayers(t *testing.T) {
 	for _, email := range []string{"user@localhost", "user@[10.0.0.1]", strings.Repeat("x", 255) + "@example.com"} {
 		if _, err := NewStore(nil, map[string]authn.Role{email: authn.Player}, nil); err == nil || strings.Contains(err.Error(), email) {
