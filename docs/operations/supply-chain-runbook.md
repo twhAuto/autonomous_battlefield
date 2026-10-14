@@ -88,8 +88,14 @@ missing registered cluster.
 
 - Quarterly, in a disposable environment: restore database backups into a replacement
   Kind cluster, register its verified identity, and restore the last known-good digest pair.
-- Quarterly: rotate the MCP capability secret and application authentication secret.
+- Quarterly: exercise MCP capability-secret rotation and authentication credential
+  rotation for the configured mode. Production uses the
+  [Access service-token rotation procedure](limited-launch.md#expiry-monitoring-and-rotation);
+  password/session-signing secrets belong only to local-password development.
 - Quarterly: exercise engine lease reclaim, duplicate submission, PostgreSQL restart, AI gateway outage, provider timeout/429, failed migration, failed rollout, and rollback.
-- Before production: restore RDS from backup, disrupt an EKS pod and node, and complete Terraform teardown in a disposable account.
+- Before an AWS production deployment: restore RDS from backup, disrupt an EKS
+  pod and node, and complete Terraform teardown in a disposable account. This
+  applies to the [AWS reference](deployment.md#moving-the-deployment-to-aws), not
+  the current Kind/K3s delivery gate.
 
 Archive the command transcript, timestamps, digest pair, recovery point/recovery time, smoke/load results, failures, and follow-up tickets. The included Kind failure script automates only the safe disposable-cluster subset; failed-migration and RDS restore drills remain explicitly reviewed manual operations.
