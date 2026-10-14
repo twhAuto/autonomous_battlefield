@@ -120,6 +120,8 @@ autonomous_battlefield/
 `scripts/test/test-database-harness.py` checks coverage admission and query-plan
 target validation with command doubles. The shared deployment regression gate
 runs it; real database checks use `scripts/test/with-test-postgres.sh`.
+The same gate includes the offline Helm bootstrap checks in `test-ensure-helm.py`
+and Langfuse installation detection/override checks in `test-langfuse-detection.sh`.
 
 ## Executable entry points
 
