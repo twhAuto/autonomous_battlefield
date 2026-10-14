@@ -322,6 +322,7 @@ func TestLoadAIGatewayRejectsExampleAndSharedSecrets(t *testing.T) {
 	for _, tc := range []struct{ agent, capability string }{
 		{strings.Repeat("w", 32), ""},
 		{strings.Repeat("w", 32), "replace-with-at-least-32-random-characters"},
+		{strings.Repeat("w", 32), retiredPublicSecret},
 		{"replace-with-at-least-32-random-characters", strings.Repeat("m", 32)},
 		{strings.Repeat("s", 32), strings.Repeat("s", 32)},
 	} {

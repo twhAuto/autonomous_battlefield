@@ -41,9 +41,14 @@ func runtimeProduction() (bool, error) {
 	return false, fmt.Errorf("environment variable %q must be dev or production", envRuntime)
 }
 
-// requireSecret rejects short values and the placeholders copied from .env.example.
+// retiredPublicSecret was the built-in local capability secret. It is published in the
+// repository history, so a key signed with it is forgeable.
+const retiredPublicSecret = "local-development-capability-secret-change-me"
+
+// requireSecret rejects short values, the placeholders copied from .env.example, and
+// the retired public development secret.
 func requireSecret(name, value string, minimum int) error {
-	if len(value) < minimum || strings.HasPrefix(value, exampleSecretPlaceholder) {
+	if len(value) < minimum || strings.HasPrefix(value, exampleSecretPlaceholder) || value == retiredPublicSecret {
 		return fmt.Errorf("environment variable %q must contain an independent secret of at least %d characters", name, minimum)
 	}
 	return nil
