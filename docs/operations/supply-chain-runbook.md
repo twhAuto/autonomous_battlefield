@@ -11,6 +11,11 @@ the SHA-256 of the battle prompts as assembled for a fixed sample session
 (`promptSourceSha256`), the tool schema version, and the digest of the game content
 embedded in the binary (`gameDataBundleSha256`, schema `battlefield.ai-build-manifest.v2`).
 It does not run evaluations or call a model provider.
+`evaluationBundleSha256` hashes the corpus contents and relative filenames in
+byte-sorted order. Identical corpora produce the same digest across checkout
+paths; changing a file's content or relative name changes its identity. This
+replaces the former checkout-path-dependent digest for newly generated manifests;
+existing attestations remain attached to their original image subjects.
 
 Retention automation must begin in report-only mode. Before deletion it must subtract every digest referenced by a live environment, the recorded rollback pair, a release, an active incident, or a legal hold. Package deletion is not enabled by this repository.
 Cosign v3 OCI referrers and the Kyverno-compatible legacy `.sig` and `.att`

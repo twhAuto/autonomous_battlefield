@@ -864,7 +864,8 @@ isolation does not eliminate the common host failure domain.
 Application configuration is separated into workload-specific Secrets and a
 non-secret ConfigMap. Deployment identity stays outside application Secrets;
 see the [configuration model](configuration.md). Production image admission
-requires verified image provenance. Registry publication, controller provisioning,
+requires verified image provenance. AI build manifests include a checkout-independent
+evaluation corpus digest over file contents and relative names. Registry publication, controller provisioning,
 migrations and rollback procedures belong to [deployment operations](../operations/deployment.md),
 [K3s delivery](../operations/k3s-delivery.md), and the
 [supply-chain runbook](../operations/supply-chain-runbook.md).
