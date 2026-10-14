@@ -208,8 +208,10 @@ Create these narrowly scoped Jenkins credentials before enabling main delivery:
 | `battlefield-gemini-api-key` | secret text | manual Gemini evaluation only |
 
 Never expose signing or provider credentials to pull-request stages. Configure a
-second Pipeline job using `infra/jenkins/Jenkinsfile.assurance`; schedule only its `nightly`
-mode. All other modes require an operator trigger and explicit bounds. AWS
+second Pipeline job using `infra/jenkins/Jenkinsfile.assurance` and run it on demand; it
+has no schedule, because production is not kept running. Its `offline` mode runs the
+security and policy checks, a two-minute fuzz and the deterministic AI evaluations;
+the other modes also require explicit bounds. AWS
 promotion additionally requires an assumed agent role or other short-lived AWS
 credential source; do not store long-lived access keys in the repository.
 
