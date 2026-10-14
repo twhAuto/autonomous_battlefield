@@ -13,11 +13,11 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 func (e *Executor) runGeneration(parent context.Context, job job) {
-	parent, span := telemetry.StartDecision(parent, job.RequestID)
+	parent, span := tracing.StartDecision(parent, job.RequestID)
 	defer span.End()
 	duration := time.Duration(job.ExecutionTimeoutSeconds) * time.Second
 	if duration <= 0 {
@@ -49,7 +49,7 @@ func (e *Executor) runGeneration(parent context.Context, job job) {
 	if ctx.Err() != nil {
 		category = "timeout"
 	}
-	telemetry.AIOutcome(span, category != "", category)
+	tracing.AIOutcome(span, category != "", category)
 	payload, _ := json.Marshal(map[string]any{"requestId": job.RequestID, "category": category, "usage": result.Usage, "metadata": metadata})
 	reportCtx, reportCancel := context.WithTimeout(context.WithoutCancel(parent), 5*time.Second)
 	defer reportCancel()

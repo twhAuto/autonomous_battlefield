@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
 )
 
 func TestRequestLoggingRecordsResponseAndCorrelationID(t *testing.T) {
@@ -106,7 +106,7 @@ func TestRequestMetricsUseNormalizedRoutePattern(t *testing.T) {
 	)
 
 	response := httptest.NewRecorder()
-	telemetry.MetricsHandler().ServeHTTP(
+	metrics.Handler().ServeHTTP(
 		response,
 		httptest.NewRequest(http.MethodGet, "/metrics", nil),
 	)

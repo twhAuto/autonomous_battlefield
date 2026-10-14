@@ -9,7 +9,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
 )
 
 // keyPrefix versions cached entries. Bump it whenever service.BattleRun's JSON shape
@@ -59,11 +59,11 @@ func (c *Cache) Get(ctx context.Context, id string) (*service.BattleRun, error) 
 	run, err := c.get(ctx, id)
 	switch {
 	case err != nil:
-		telemetry.ObserveResultCache("get", "error")
+		metrics.ObserveResultCache("get", "error")
 	case run == nil:
-		telemetry.ObserveResultCache("get", "miss")
+		metrics.ObserveResultCache("get", "miss")
 	default:
-		telemetry.ObserveResultCache("get", "hit")
+		metrics.ObserveResultCache("get", "hit")
 	}
 	return run, err
 }
@@ -102,9 +102,9 @@ func (c *Cache) Set(ctx context.Context, run *service.BattleRun) error {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 	if err := c.client.Set(ctx, keyPrefix+run.ID, data, c.ttl).Err(); err != nil {
-		telemetry.ObserveResultCache("set", "error")
+		metrics.ObserveResultCache("set", "error")
 		return err
 	}
-	telemetry.ObserveResultCache("set", "stored")
+	metrics.ObserveResultCache("set", "stored")
 	return nil
 }

@@ -56,9 +56,10 @@ introduce a new boundary.
 | [`generation/api`](../../backend/internal/generation/api) | ✓ |  |  |  |  |
 | [`generation/repo`](../../backend/internal/generation/repo) | ✓ |  | ✓ |  |  |
 | [`httpapi`](../../backend/internal/httpapi) | ✓ | ✓ |  |  |  |
-| [`logging`](../../backend/internal/logging) | ✓ | ✓ | ✓ | ✓ |  |
 | [`members`](../../backend/internal/members) | ✓ |  |  |  |  |
+| [`observability/logging`](../../backend/internal/observability/logging) | ✓ | ✓ | ✓ | ✓ |  |
+| [`observability/metrics`](../../backend/internal/observability/metrics) | ✓ | ✓ |  |  |  |
+| [`observability/requestid`](../../backend/internal/observability/requestid) | ✓ | ✓ | ✓ | ✓ |  |
+| [`observability/tracing`](../../backend/internal/observability/tracing) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`postgres`](../../backend/internal/postgres) | ✓ | ✓ | ✓ |  |  |
-| [`requestid`](../../backend/internal/requestid) | ✓ | ✓ | ✓ | ✓ |  |
-| [`telemetry`](../../backend/internal/telemetry) | ✓ | ✓ | ✓ | ✓ | ✓ |
 <!-- component-map:end -->

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel"
 	sdk "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -187,7 +187,7 @@ func assertCompactToolSpan(t *testing.T, span sdk.ReadOnlySpan, token string) {
 			t.Fatal("single-copy byte measurements missing or inconsistent", sizes)
 		}
 	}
-	if span.SpanContext().TraceID().String() != telemetry.DecisionTraceID("sample") {
+	if span.SpanContext().TraceID().String() != tracing.DecisionTraceID("sample") {
 		t.Fatal("tool trace correlation lost")
 	}
 	encoded, _ := json.Marshal(span.Attributes())

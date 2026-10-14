@@ -60,7 +60,8 @@ autonomous_battlefield/
 │   │   ├── testutil/           # Shared assertions with lazy failure diagnostics
 │   │   ├── apierror/           # Stable JSON error envelope and codes for /v1
 │   │   ├── requestid/          # Request correlation ID carried in the context
-│   │   └── ...                 # app, authn, config, httpapi, postgres, logging, telemetry
+│   │   ├── observability/      # logging, metrics, tracing, requestid (leaf packages)
+│   │   └── ...                 # app, authn, config, httpapi, postgres
 │   ├── test/                   # Cross-package tests and fixtures; no runtime code
 │   │   ├── apicontract/        # openapi.yaml stays in step with served routes
 │   │   ├── boundaries/         # Forbidden dependencies and the generated component map

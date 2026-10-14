@@ -20,7 +20,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 var (
@@ -187,8 +187,8 @@ func (s *battleService) ListDecisionHistory(ctx context.Context, battleID string
 	result := make([]DecisionHistory, 0, len(records))
 	for _, record := range records {
 		traceURL := ""
-		if id, ok := record.ProviderMetadata["aiTraceId"].(string); ok && id == telemetry.DecisionTraceID(record.ID) {
-			traceURL = telemetry.DecisionTraceURL(record.ID)
+		if id, ok := record.ProviderMetadata["aiTraceId"].(string); ok && id == tracing.DecisionTraceID(record.ID) {
+			traceURL = tracing.DecisionTraceURL(record.ID)
 		}
 		result = append(result, DecisionHistory{TraceURL: traceURL, RequestID: record.ID, FactionID: record.FactionID, TargetTick: record.TargetTick, Status: record.Status, ControllerType: record.ControllerType, ProfileID: record.ProfileID, Provider: record.Provider, Runtime: record.Runtime, ModelIdentifier: record.ModelIdentifier, FallbackSource: record.FallbackSource, ErrorCategory: record.ErrorCategory, ResolvedPlan: record.ResolvedPlan, Usage: record.Usage, CreatedAt: record.CreatedAt, ResolvedAt: record.ResolvedAt})
 	}
@@ -224,7 +224,7 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		return nil, fmt.Errorf("build initial battle state: %w", err)
 	}
 	initialState := match.State()
-	traceparent, tracestate := telemetry.TraceContext(ctx)
+	traceparent, tracestate := tracing.TraceContext(ctx)
 	err = s.battles.CreateBattle(ctx, CreateBattleParams{
 		ID:               input.ID,
 		ScenarioID:       resolved.ID,

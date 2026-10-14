@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/logging"
 	"go.opentelemetry.io/otel/trace"
 )
 

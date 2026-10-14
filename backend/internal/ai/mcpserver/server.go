@@ -15,7 +15,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -182,6 +182,6 @@ func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest,
 			slog.String("decision_status", result.Status), slog.Int("validation_error_count", len(result.Errors)))
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("battlefield.submission.accepted", result.Accepted))
-	telemetry.AIOutcome(trace.SpanFromContext(ctx), err != nil || !result.Accepted, "submission_rejected")
+	tracing.AIOutcome(trace.SpanFromContext(ctx), err != nil || !result.Accepted, "submission_rejected")
 	return nil, result, err
 }

@@ -1,7 +1,7 @@
 // Checks trace propagation, optional exporter setup, sampling validation, and
 // HTTP/consumer/database instrumentation.
 
-package telemetry
+package tracing
 
 import (
 	"context"
@@ -36,9 +36,9 @@ func TestTraceContextRoundTrip(t *testing.T) {
 func TestConfigureTracingDisabledWithoutEndpoint(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
 	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")
-	shutdown, err := ConfigureTracing(context.Background(), "test")
+	shutdown, err := Configure(context.Background(), "test")
 	if err != nil || shutdown == nil {
-		t.Fatalf("ConfigureTracing() error = %v, shutdown nil = %t", err, shutdown == nil)
+		t.Fatalf("Configure() error = %v, shutdown nil = %t", err, shutdown == nil)
 	}
 	if err := shutdown(context.Background()); err != nil {
 		t.Fatalf("shutdown() error = %v", err)
@@ -49,9 +49,9 @@ func TestConfigureTracingRejectsInvalidSamplingRatio(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318")
 	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")
 	t.Setenv("OTEL_TRACES_SAMPLER_ARG", "invalid")
-	shutdown, err := ConfigureTracing(context.Background(), "test")
+	shutdown, err := Configure(context.Background(), "test")
 	if err == nil || shutdown != nil {
-		t.Fatalf("ConfigureTracing() error = %v, shutdown nil = %t", err, shutdown == nil)
+		t.Fatalf("Configure() error = %v, shutdown nil = %t", err, shutdown == nil)
 	}
 }
 
@@ -62,9 +62,9 @@ func TestConfigureTracingWithExporter(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")
 	t.Setenv("OTEL_TRACES_SAMPLER_ARG", "0")
 	t.Setenv("BATTLEFIELD_ENVIRONMENT", "test")
-	shutdown, err := ConfigureTracing(context.Background(), "test-service")
+	shutdown, err := Configure(context.Background(), "test-service")
 	if err != nil || shutdown == nil {
-		t.Fatalf("ConfigureTracing() error = %v, shutdown nil = %t", err, shutdown == nil)
+		t.Fatalf("Configure() error = %v, shutdown nil = %t", err, shutdown == nil)
 	}
 	if err := shutdown(context.Background()); err != nil {
 		t.Fatalf("shutdown() error = %v", err)

@@ -3,8 +3,10 @@
 package logging
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
 )
 
@@ -36,5 +38,18 @@ func TestConfiguredLevel(t *testing.T) {
 				t.Fatal("incorrect level", tc.raw)
 			}
 		})
+	}
+}
+
+func TestInvalidLevelIsReported(t *testing.T) {
+	var output bytes.Buffer
+	newLogger(&output, "api", " verbose ")
+	if !strings.Contains(output.String(), `"event":"log_level_invalid"`) || !strings.Contains(output.String(), `"value":"verbose"`) || !strings.Contains(output.String(), `"level":"WARN"`) || !strings.Contains(output.String(), `"fallback_level":"INFO"`) {
+		t.Fatalf("invalid level not reported: %s", output.String())
+	}
+	output.Reset()
+	newLogger(&output, "api", "debug")
+	if output.Len() != 0 {
+		t.Fatalf("valid level logged a warning: %s", output.String())
 	}
 }

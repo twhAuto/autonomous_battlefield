@@ -19,9 +19,10 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
-	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/logging"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 func main() {
@@ -67,7 +68,7 @@ func startEngine(configuration config.EngineConfig) error {
 	defer stop()
 	runContext, cancelRun := context.WithCancel(signalContext)
 	defer cancelRun()
-	shutdownTracing, err := telemetry.ConfigureTracing(runContext, "battlefield-engine")
+	shutdownTracing, err := tracing.Configure(runContext, "battlefield-engine")
 	if err != nil {
 		return fmt.Errorf("configure tracing: %w", err)
 	}
@@ -78,7 +79,7 @@ func startEngine(configuration config.EngineConfig) error {
 	}()
 
 	engineConfig := configuration.Engine
-	lifecycle := httpapi.NewLifecycleHandler(telemetry.MetricsHandler())
+	lifecycle := httpapi.NewLifecycleHandler(metrics.Handler())
 	healthServer := &http.Server{
 		Addr: engineConfig.HealthAddress, Handler: lifecycle,
 		ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 2 * time.Second,

@@ -1,7 +1,7 @@
-// Package telemetry owns the application's bounded-cardinality Prometheus
+// Package metrics owns the application's bounded-cardinality Prometheus
 // metrics. Metric labels must describe a finite set of values; identifiers such
 // as request IDs, battle IDs, faction IDs, and worker IDs do not belong here.
-package telemetry
+package metrics
 
 import (
 	"net/http"
@@ -80,7 +80,7 @@ func init() {
 
 // MetricsHandler exposes both application metrics and the Go/process collectors
 // registered by the Prometheus client.
-func MetricsHandler() http.Handler {
+func Handler() http.Handler {
 	return promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{EnableOpenMetrics: true})
 }
 

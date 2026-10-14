@@ -12,7 +12,8 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -68,7 +69,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	defer func() { cancelExpiry(); <-expiryDone }()
 
 	w.ready.Store(true)
-	telemetry.SetEngineReady(true)
+	metrics.SetEngineReady(true)
 	w.logger.InfoContext(ctx, "battle_worker_ready",
 		"poll_interval", w.config.PollInterval,
 		"lease_duration", w.config.LeaseDuration,
@@ -76,7 +77,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	)
 	defer func() {
 		w.ready.Store(false)
-		telemetry.SetEngineReady(false)
+		metrics.SetEngineReady(false)
 		w.logger.Info("battle_worker_stopped")
 	}()
 	return w.claimBattles(ctx)
@@ -122,8 +123,8 @@ func (w *Worker) claimBattles(ctx context.Context) error {
 }
 
 func (w *Worker) processClaimedBattle(ctx context.Context, job *queue.Job) {
-	telemetry.ObserveEngineClaim(job.Lease.Attempt > 1)
-	jobContext, span := telemetry.StartBattleProcess(ctx, job.Traceparent, job.Tracestate,
+	metrics.ObserveEngineClaim(job.Lease.Attempt > 1)
+	jobContext, span := tracing.StartBattleProcess(ctx, job.Traceparent, job.Tracestate,
 		attribute.String("battlefield.battle_id", job.Lease.BattleID),
 		attribute.Int("battlefield.attempt", job.Lease.Attempt),
 	)
@@ -159,7 +160,7 @@ func (w *Worker) process(ctx context.Context, job *queue.Job) (resultErr error) 
 		if errors.Is(resultErr, queue.ErrLeaseLost) {
 			outcome = "lease_lost"
 		}
-		telemetry.ObserveEngineBattle(outcome, time.Since(started))
+		metrics.ObserveEngineBattle(outcome, time.Since(started))
 	}()
 
 	simulation, err := game.NewMatch(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
@@ -207,7 +208,7 @@ func (w *Worker) runTick(ctx context.Context, lease queue.Lease, simulation *gam
 		return pausedTickResult(err)
 	}
 	tickStarted = tickStarted.Add(pausedFor)
-	telemetry.ObserveEngineTick()
+	metrics.ObserveEngineTick()
 	if transition.Finished {
 		outcome, err := w.completeBattle(ctx, lease, transition)
 		return outcome, true, err
