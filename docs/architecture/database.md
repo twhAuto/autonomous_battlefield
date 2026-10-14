@@ -260,13 +260,15 @@ Conventions:
   that may have been applied to a shared database. Comment-only edits are safe: Goose
   does not checksum files and comments never execute.
 - Start each file with a comment describing the change, and include one
-  `-- +goose Up` and one `-- +goose Down` section; wrap DO blocks and function bodies
-  in `StatementBegin`/`StatementEnd`. `migrations/embed_test.go` enforces these
-  rules and contiguous version numbers.
+  `-- +goose Up` and one `-- +goose Down` section; wrap every dollar-quoted DO block
+  and function body in `StatementBegin`/`StatementEnd`. `migrations/embed_test.go`
+  enforces these rules and contiguous version numbers.
 - Guard data-dependent downgrades instead of silently discarding rows.
-  `migrations/round_trip_integration_test.go` runs every Down section on an empty
-  schema and requires the schema to rebuild identically. 00017's Down renames the
-  cluster-wide role, so the test takes the earlier migrations down only from 00016.
+  `migrations/round_trip_integration_test.go` applies migrations one at a time,
+  recording the schema after each (columns with type, nullability and default,
+  indexes, views, constraints, functions and triggers), then runs each Down and
+  requires exactly the previous version's schema. 00017's Down renames the
+  cluster-wide role, so the earlier migrations are taken down only from 00016.
 - Grant `battlefield_ai_gateway` only the columns the AI gateway needs, in the same
   migration that adds them.
 - Update repository scanning, serialization and tests in the same change, and update

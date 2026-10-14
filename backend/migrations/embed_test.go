@@ -1,6 +1,6 @@
 // Checks every embedded migration follows the Goose file conventions: contiguous
-// version numbers, an Up and a Down section, balanced statement blocks, and a header
-// comment.
+// version numbers, an Up and a Down section, dollar-quoted bodies inside balanced
+// statement blocks, and a header comment.
 
 package migrations
 
@@ -57,6 +57,9 @@ func conventionProblem(sql string) string {
 	// one StatementBegin/StatementEnd pair for Goose to send it as one statement.
 	open := false
 	for _, line := range strings.Split(sql, "\n") {
+		if strings.Contains(line, "$$") && !open {
+			return "dollar-quoted body outside a StatementBegin/StatementEnd block"
+		}
 		switch strings.TrimSpace(line) {
 		case "-- +goose StatementBegin":
 			if open {
@@ -77,6 +80,14 @@ func conventionProblem(sql string) string {
 }
 
 func TestConventionProblemDetectsEachViolation(t *testing.T) {
+	castleSiege, err := fs.ReadFile(Files, "00003_castle_siege_state.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unwrapped := strings.NewReplacer("-- +goose StatementBegin\n", "", "-- +goose StatementEnd\n", "").Replace(string(castleSiege))
+	if conventionProblem(unwrapped) == "" {
+		t.Fatal("00003 accepted without its StatementBegin/StatementEnd directives")
+	}
 	valid := "-- Adds a table.\n-- +goose Up\n-- +goose StatementBegin\nDO $$ BEGIN END $$;\n-- +goose StatementEnd\n-- +goose Down\nSELECT 1;\n"
 	if problem := conventionProblem(valid); problem != "" {
 		t.Fatalf("valid migration rejected: %s", problem)
@@ -89,6 +100,8 @@ func TestConventionProblemDetectsEachViolation(t *testing.T) {
 		"unclosed block": "-- Adds.\n-- +goose Up\n-- +goose StatementBegin\nDO $$ $$;\n-- +goose Down\n",
 		"nested block":   "-- Adds.\n-- +goose Up\n-- +goose StatementBegin\n-- +goose StatementBegin\n-- +goose StatementEnd\n-- +goose Down\n",
 		"stray end":      "-- Adds.\n-- +goose Up\n-- +goose StatementEnd\n-- +goose Down\n",
+		"unwrapped DO":   "-- Adds.\n-- +goose Up\nDO $$ BEGIN PERFORM 1; END $$;\n-- +goose Down\nSELECT 1;\n",
+		"unwrapped body": "-- Adds.\n-- +goose Up\nCREATE FUNCTION f() RETURNS int LANGUAGE sql AS $$\nSELECT 1;\n$$;\n-- +goose Down\n",
 	} {
 		if conventionProblem(sql) == "" {
 			t.Errorf("%s accepted", name)
