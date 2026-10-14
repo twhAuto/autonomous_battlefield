@@ -46,6 +46,7 @@ autonomous_battlefield/
 ├── .github/pull_request_template.md # PR sections, including the required AI-assistance record
 ├── backend/
 │   ├── cmd/{server,engine,aigateway,agent,aieval}/ # Startup and command wiring
+│   │   └── internal/startup/   # Flags, tracing, listener and pool wiring shared by cmd/*
 │   ├── internal/
 │   │   ├── battle/{api,service,catalog,worker,repo,resultcache}/
 │   │   ├── faction/{api,service,repo}/
@@ -108,10 +109,19 @@ The backend has five commands in one Go module: four runtime processes and the o
 | API | [`backend/cmd/server/main.go`](../../backend/cmd/server/main.go) | Flags, configuration, migrations, PostgreSQL startup, catalog loading, application wiring, HTTP lifecycle |
 | Engine | [`backend/cmd/engine/main.go`](../../backend/cmd/engine/main.go) | Configuration, PostgreSQL startup, worker construction, health server, signals, graceful requeue/shutdown |
 | AI gateway | [`backend/cmd/aigateway/main.go`](../../backend/cmd/aigateway/main.go) | Restricted repository construction, PostgreSQL notification listener, MCP tool and agent dispatch routes, HTTP lifecycle |
-| Agent | [`backend/cmd/agent/main.go`](../../backend/cmd/agent/main.go) | Profile registry, decision worker, health endpoint, signals, shutdown |
+| Agent | [`backend/cmd/agent/main.go`](../../backend/cmd/agent/main.go) | Profile registry, decision worker, health endpoint, signals, and a shutdown that waits up to 20 seconds for in-flight jobs to report |
 | AI evaluation | [`backend/cmd/aieval/main.go`](../../backend/cmd/aieval/main.go) | Evaluation case execution, pricing inputs, reports, and runtime provenance via `-mode metadata` |
 
 `cmd` packages should remain thin. Domain and use-case behavior belongs under `internal`; entry points should focus on composition and process lifecycle.
+[`backend/cmd/internal/startup`](../../backend/cmd/internal/startup) holds the wiring they
+share. `startup.Command` is each binary's whole lifecycle: it parses `-config` and the
+binary's own flags (rejecting positional arguments), loads the configuration, cancels
+the context passed to the binary's `Run` on SIGINT or SIGTERM, logs
+`<name>_process_stopped` on failure, and returns the exit code, so every `main` is one
+line and every `Run` is testable with an ordinary context. The package also covers
+tracing setup and flush, serving a listener in the background, and stopping a
+half-started process. Its `database` subpackage opens the PostgreSQL pool, kept separate
+so the agent, which has no database access, never imports it.
 
 ### Which packages each binary links
 
