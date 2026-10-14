@@ -14,12 +14,12 @@ to inspect metrics while testing.
 # Representative load: 20 viewers for 10 minutes against two scripted battles.
 # Set the load explicitly; run-k6.sh otherwise applies its 3-viewer, 30 s smoke defaults.
 ADMIN_USERNAME=... ADMIN_PASSWORD=... DEPLOY_ENV=dev K6_VUS=20 K6_DURATION=10m \
-  ./scripts/perf/run-k6.sh tests/performance/k6-representative.js
+  ./scripts/perf/run-k6.sh backend/test/performance/k6-representative.js
 
 # Saturation: K6_STAGES replaces the fixed viewer count and duration.
 ADMIN_USERNAME=... ADMIN_PASSWORD=... DEPLOY_ENV=dev \
   K6_STAGES=30s:100,60s:100,30s:300,60s:300,30s:600,60s:600,20s:0 \
-  ./scripts/perf/run-k6.sh tests/performance/k6-representative.js
+  ./scripts/perf/run-k6.sh backend/test/performance/k6-representative.js
 
 # Failure drills: requires BF_DISPOSABLE=1 in the dev profile; restore it afterwards.
 DEPLOY_ENV=dev RUN_DESTRUCTIVE_KIND_DRILLS=I_UNDERSTAND_THIS_RESTARTS_DISPOSABLE_KIND_WORKLOADS \
@@ -31,7 +31,7 @@ database, run a battle with one model controller, and restore it to `true`.
 New model decisions are stored as `failed` with `ai_disabled_or_budget` and are
 never claimed, so no provider is called even for an API profile.
 
-`tests/performance/k6-representative.js` queues the admitted number of
+`backend/test/performance/k6-representative.js` queues the admitted number of
 scripted battles (two per person) and replays the battle page: each viewer
 polls status, the next event page, and decision history once a second, and
 browses history once the battle settles. It records two battle metrics from

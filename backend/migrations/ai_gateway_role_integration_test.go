@@ -1,36 +1,27 @@
 // Checks the AI gateway role migration keeps login-role membership and grants the full
 // privilege set in every schema, including when the cluster-wide rename already ran.
 
-package repo
+package migrations_test
 
 import (
 	"context"
 	"database/sql"
-	"os"
 	"strings"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3/lock"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
 func TestAIGatewayRoleMigrationKeepsMembershipAndGrants(t *testing.T) {
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("TEST_DATABASE_URL is not set")
-	}
-	config, err := pgx.ParseConfig(url)
-	if err != nil {
-		t.Fatal("invalid test database configuration")
-	}
+	config := testDatabaseConfig(t)
 	admin := stdlib.OpenDB(*config)
 	defer admin.Close()
 	ctx := context.Background()
 	suffix := strings.ReplaceAll(randomUUID(t), "-", "")
 	schema, login := "gateway_role_"+suffix, "gateway_login_"+suffix
-	if _, err = admin.ExecContext(ctx, `CREATE SCHEMA `+schema); err != nil {
+	if _, err := admin.ExecContext(ctx, `CREATE SCHEMA `+schema); err != nil {
 		t.Fatal(err)
 	}
 	defer admin.ExecContext(ctx, `DROP SCHEMA `+schema+` CASCADE`)

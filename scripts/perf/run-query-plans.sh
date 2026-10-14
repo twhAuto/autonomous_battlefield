@@ -14,7 +14,7 @@ set -Eeuo pipefail
 : "${TEST_DATABASE_URL:?Run through scripts/test/with-test-postgres.sh}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(cd "${script_dir}/../.." && pwd)"
-fixture_dir="${project_dir}/tests/performance/query-plans"
+fixture_dir="${project_dir}/backend/test/performance/query-plans"
 
 (cd "${project_dir}/backend" && go run github.com/pressly/goose/v3/cmd/goose@v3.27.1 \
   -dir migrations postgres "${TEST_DATABASE_URL}" up >/dev/null)

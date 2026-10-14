@@ -50,7 +50,7 @@ while IFS= read -r -d '' changed_file; do
       ;;
     infra/local/*|infra/sonarqube/*|sonar-project.properties)
       ;;
-    scripts/test/*|tests/*)
+    scripts/test/*|backend/test/*)
       ;;
     backend/*_test.go|frontend/src/*.test.ts|frontend/src/*.test.tsx|frontend/src/test/*)
       ;;

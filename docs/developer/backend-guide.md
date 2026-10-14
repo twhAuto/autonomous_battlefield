@@ -180,7 +180,7 @@ SQL concurrency behavior is part of the application's correctness. Changes to st
 
 The root package holds only the contracts every AI component shares. Behaviour lives
 in subpackages that import those contracts; the root imports none of them, which
-`internal/boundaries` enforces.
+`test/boundaries` enforces.
 
 | Package | Responsibility |
 | --- | --- |
@@ -371,7 +371,7 @@ both the handler and registry to the service; policy reads do not depend on HTTP
 
 ### Shared infrastructure packages
 
-- [`internal/authn`](../../backend/internal/authn) provides Cloudflare JWT verification, explicit development login modes, role/ownership helpers, exact-origin mutations, a deny-by-default route access table, and mode-aware session/logout routes. `routeRules` in `authorization.go` is the one table of every public route: its `authn.Permission` (`play`, `inspect`, `admin`), whether it is `public` (no authentication; login and session), and whether the `ci` identity may call it. Identity routes under `/v1/auth/` carry no permission and skip `RoutePolicy`. `TestRouteRulesStayConsistent` rejects malformed, duplicate or over-broad rules. `authn.PublicAPIRoutes()` exposes the table; [`internal/apicontract`](../../backend/internal/apicontract) fails the build if [`docs/architecture/openapi.yaml`](../architecture/openapi.yaml) lists a different set. When adding a `/v1` route, add its rule to `routeRules` **and** document the operation in the OpenAPI contract in the same change. `cloudflare_test.go` exercises signatures, key rotation, forged headers, legacy cookies and role removal. `service_test.go` covers enrolled CI service JWTs, invalid claims, disabled enrollment and the read-only route boundary. CI uses a separate `ci` actor, never a human role.
+- [`internal/authn`](../../backend/internal/authn) provides Cloudflare JWT verification, explicit development login modes, role/ownership helpers, exact-origin mutations, a deny-by-default route access table, and mode-aware session/logout routes. `routeRules` in `authorization.go` is the one table of every public route: its `authn.Permission` (`play`, `inspect`, `admin`), whether it is `public` (no authentication; login and session), and whether the `ci` identity may call it. Identity routes under `/v1/auth/` carry no permission and skip `RoutePolicy`. `TestRouteRulesStayConsistent` rejects malformed, duplicate or over-broad rules. `authn.PublicAPIRoutes()` exposes the table; [`test/apicontract`](../../backend/test/apicontract) fails the build if [`docs/architecture/openapi.yaml`](../architecture/openapi.yaml) lists a different set. When adding a `/v1` route, add its rule to `routeRules` **and** document the operation in the OpenAPI contract in the same change. `cloudflare_test.go` exercises signatures, key rotation, forged headers, legacy cookies and role removal. `service_test.go` covers enrolled CI service JWTs, invalid claims, disabled enrollment and the read-only route boundary. CI uses a separate `ci` actor, never a human role.
 - [`internal/config/config.go`](../../backend/internal/config/config.go) strictly decodes one YAML document, rejects unknown fields, resolves environment variables, and provides process-specific loaders.
 - [`internal/postgres`](../../backend/internal/postgres) manages the `pgx` pool, embedded Goose migrations, startup retries, and `LISTEN/NOTIFY`.
 - [`internal/httpapi`](../../backend/internal/httpapi) provides bounded strict JSON, lifecycle/readiness routes, request IDs, routing, and access logging.
@@ -425,6 +425,10 @@ server binary. The [database guide](../architecture/database.md) owns the schema
 migration history, roles, triggers and migration conventions.
 
 Schema changes should be made with a new migration, then reflected in repository scan/serialization logic and tests. Do not edit an already-applied migration to evolve a shared database.
+
+Tests for an individual migration's upgrade, downgrade or backfill live beside the SQL in
+`backend/migrations` (`*_integration_test.go`, package `migrations_test`). Each migrates a
+private schema to the version before the change and checks the data it leaves behind.
 
 `internal/postgres.NewMigrationProvider` configures embedded Goose migrations with
 the same database-wide advisory session lock for application startup and tests
@@ -670,7 +674,7 @@ stays an index condition in both plan types. The earlier
 `$2 IS NULL OR (created_at, id) < ($2, $3)` form became a filter in generic plans,
 so a deep page walked every newer row. `TestBattleHistoryCursorStaysIndexConditionInGenericPlans`
 guards this. Keep `listBattlesSQL` and the copy in
-`tests/performance/query-plans/explain.sql` in sync.
+`backend/test/performance/query-plans/explain.sql` in sync.
 
 Re-measure with the disposable database (10k battles over ~90 days, 120k events):
 
@@ -709,7 +713,7 @@ for the runtime contract.
 
 ## End-to-end API integration test
 
-`backend/internal/app/api_integration_test.go` runs the assembled API, including
+`backend/test/integration/api_test.go` runs the assembled API, including
 the lifecycle handler, behind a real HTTP server. It uses a PostgreSQL schema of
 its own through `TEST_DATABASE_URL`, and skips when that variable is unset. It
 uses the production Cloudflare Access verifier. A local test issuer publishes a

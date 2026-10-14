@@ -23,7 +23,7 @@ mkdir -p \
   "${runtime_dir}/infra/deploy/overlays/local/logging-collector" \
   "${runtime_dir}/infra/deploy/overlays/local/observability" \
   "${runtime_dir}/legacy" \
-  "${runtime_dir}/tests/performance" \
+  "${runtime_dir}/backend/test/performance" \
   "${runtime_dir}/scripts/test" \
   "${runtime_dir}/scripts/cd"
 cp "${project_dir}/scripts/cd/detect-deployment-components.sh" \
@@ -33,7 +33,7 @@ printf 'initial\n' >"${runtime_dir}/README.md"
 printf '0.1.0\n' >"${runtime_dir}/VERSION"
 printf 'legacy\n' >"${runtime_dir}/legacy/obsolete.conf"
 printf 'package legacy\n' >"${runtime_dir}/backend/legacy.go"
-printf '// performance scenario\n' >"${runtime_dir}/tests/performance/seed.js"
+printf '// performance scenario\n' >"${runtime_dir}/backend/test/performance/seed.js"
 printf '# coverage runner\n' >"${runtime_dir}/scripts/test/test-go-coverage.sh"
 git -C "${runtime_dir}" add .
 git -C "${runtime_dir}" commit --quiet -m initial
@@ -164,11 +164,13 @@ assert_detection "none" "docs/architecture.md"
 assert_detection "none" "infra/sonarqube/rules.properties"
 assert_detection "none" "infra/local/compose.yaml"
 assert_detection "all" "infra/deploy/policy/kubernetes/workload.rego"
-assert_detection "none" "tests/performance/query-plans/seed.sql"
+assert_detection "none" "backend/test/performance/query-plans/seed.sql"
 assert_detection "none" "scripts/test/test-go-coverage.sh"
 assert_detection "none" "scripts/ci/lint-go.sh"
 assert_detection "none" "scripts/ci/coverage-check-summary.sh"
-assert_detection "none" "tests/performance/k6-smoke.js"
+assert_detection "none" "backend/test/performance/k6-smoke.js"
+assert_detection "none" "backend/test/boundaries/doc.go"
+assert_detection "none" "backend/migrations/doctrine_integration_test.go"
 for runner in fuzz-smoke test-ai-evals test-backend test-go-race test-kind-deployment with-test-postgres; do
   assert_detection "none" "scripts/test/${runner}.sh"
 done
@@ -178,7 +180,7 @@ assert_detection "none" "frontend/src/app/App.test.tsx"
 assert_detection "none" "frontend/src/test/setup.ts"
 assert_mixed_detection "migration,backend,application" "backend/internal/app/app.go" "backend/internal/app/app_test.go"
 assert_mixed_detection "frontend,application" "frontend/src/app/App.tsx" "frontend/src/app/App.test.tsx"
-assert_mixed_detection "frontend,application" "frontend/src/app/App.tsx" "tests/performance/k6-smoke.js"
+assert_mixed_detection "frontend,application" "frontend/src/app/App.tsx" "backend/test/performance/k6-smoke.js"
 assert_detection "all" "scripts/ci/build-images.sh"
 assert_detection "all" "scripts/ci/with-ghcr-auth.sh" 1
 assert_detection "all" "scripts/cd/deploy.sh"
@@ -190,11 +192,11 @@ assert_mixed_detection "all" \
 assert_deletion "all" "legacy/obsolete.conf"
 assert_deletion "migration,backend,application" "backend/legacy.go"
 assert_rename "all" "README.md" "platform/config.yaml"
-assert_rename "none" "README.md" "tests/README.md"
-assert_rename "migration,backend,application" "backend/legacy.go" "tests/legacy.go"
+assert_rename "none" "README.md" "backend/test/README.md"
+assert_rename "migration,backend,application" "backend/legacy.go" "backend/test/legacy.go"
 assert_rename "migration,backend,application" "backend/legacy.go" "backend/legacy_test.go"
-assert_rename "frontend,application" "tests/performance/seed.js" "frontend/src/seed.tsx"
-assert_rename "frontend,application" "tests/performance/seed.js" "frontend/src/seed.js"
+assert_rename "frontend,application" "backend/test/performance/seed.js" "frontend/src/seed.tsx"
+assert_rename "frontend,application" "backend/test/performance/seed.js" "frontend/src/seed.js"
 assert_rename "none" "scripts/test/test-go-coverage.sh" "scripts/test/coverage-fixture.sh"
 
 unknown_base="0000000000000000000000000000000000000000"
