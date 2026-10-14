@@ -44,8 +44,5 @@ func cause(err error) string {
 	if errors.As(err, &lookup) {
 		return "lookup failed: " + lookup.Err
 	}
-	if err == nil {
-		return "failed"
-	}
 	return err.Error()
 }

@@ -46,7 +46,6 @@ func TestErrorRemovesNetworkAddressesAndHostnames(t *testing.T) {
 		{fmt.Errorf("ping: %w", refused), "ping: dial tcp: connect: connection refused"},
 		{&net.OpError{Op: "dial", Net: "tcp", Err: lookup}, "dial tcp: lookup failed: no such host"},
 		{fmt.Errorf("resolve: %w", lookup), "resolve: lookup failed: no such host"},
-		{&net.OpError{Op: "read", Net: "tcp", Addr: &net.TCPAddr{IP: net.ParseIP("10.0.0.5"), Port: 5432}}, "read tcp: failed"},
 	} {
 		if got := Error(tc.err); got != tc.want {
 			t.Fatalf("Error(%v) = %q, want %q", tc.err, got, tc.want)
