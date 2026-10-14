@@ -4,6 +4,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"go.yaml.in/yaml/v3"
 )
 
 func TestLoadReadsConfigFile(t *testing.T) {
@@ -537,5 +539,62 @@ func TestAgentConcurrencyConfiguration(t *testing.T) {
 				t.Fatalf("concurrency=%d error=%v", cfg.Agent.Concurrency, err)
 			}
 		})
+	}
+}
+
+const retiredPathsHTTP = `http:
+  address: ":9000"
+  readHeaderTimeout: 2s
+  readTimeout: 3s
+  writeTimeout: 4s
+  idleTimeout: 30s
+  shutdownTimeout: 5s
+`
+
+func TestRetiredCatalogPathsAcceptOnlyOlderImageLocations(t *testing.T) {
+	accepted := writeConfigFile(t, retiredPathsHTTP+`
+api:
+  scenarioCatalogPath: /app/scenarios
+  rulesetCatalogPath: " /app/rulesets "
+`)
+	if _, err := LoadAPI(accepted); err != nil {
+		t.Fatalf("older image catalog paths rejected: %v", err)
+	}
+	for _, body := range []string{"api:\n  scenarioCatalogPath: scenarios\n", "api:\n  rulesetCatalogPath: /data/rulesets\n"} {
+		if _, err := LoadAPI(writeConfigFile(t, retiredPathsHTTP+body)); err == nil || !strings.Contains(err.Error(), "is retired") {
+			t.Fatalf("catalog path %q accepted: %v", body, err)
+		}
+	}
+}
+
+// TestBaseConfigMapKeepsRolledBackImagesWorking loads the cluster ConfigMap through the
+// current loader and requires the catalog paths that pre-embedding images need after
+// an image-only rollback.
+func TestBaseConfigMapKeepsRolledBackImagesWorking(t *testing.T) {
+	manifest, err := os.ReadFile(filepath.Join("..", "..", "..", "infra", "deploy", "base", "infrastructure", "configmap.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var configMap struct {
+		Data map[string]string `yaml:"data"`
+	}
+	if err := yaml.Unmarshal(manifest, &configMap); err != nil {
+		t.Fatal(err)
+	}
+	// decode is the strict decoder every binary uses, so this also proves current
+	// images accept the ConfigMap.
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(configMap.Data["config.yaml"]), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := decode(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw.API.ScenarioCatalogPath != "/app/scenarios" || raw.API.RulesetCatalogPath != "/app/rulesets" {
+		t.Fatalf("rollback catalog paths = %q, %q", raw.API.ScenarioCatalogPath, raw.API.RulesetCatalogPath)
+	}
+	if err := errors.Join(checkLegacyVariableKeys(raw), checkRetiredCatalogPaths(raw)); err != nil {
+		t.Fatal(err)
 	}
 }

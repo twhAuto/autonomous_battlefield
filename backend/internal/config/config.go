@@ -77,7 +77,10 @@ type fileConfig struct {
 		MaxConnectionLifetime  string `yaml:"maxConnectionLifetime"`
 	} `yaml:"database"`
 	API struct {
-		MaxTicks uint64 `yaml:"maxTicks"`
+		// Retired: game content is embedded (see checkRetiredCatalogPaths).
+		ScenarioCatalogPath string `yaml:"scenarioCatalogPath"`
+		RulesetCatalogPath  string `yaml:"rulesetCatalogPath"`
+		MaxTicks            uint64 `yaml:"maxTicks"`
 	} `yaml:"api"`
 	Auth struct {
 		EnabledEnvironmentVariable       string `yaml:"enabledEnvironmentVariable"`
@@ -198,6 +201,9 @@ func load[T any](path string, parse func(raw fileConfig, production bool) (T, er
 	if err == nil {
 		err = checkLegacyVariableKeys(raw)
 	}
+	if err == nil {
+		err = checkRetiredCatalogPaths(raw)
+	}
 	if err != nil {
 		return zero, fmt.Errorf("validate config file %q: %w", path, err)
 	}
@@ -237,6 +243,27 @@ func decode(path string) (fileConfig, error) {
 		return fileConfig{}, fmt.Errorf("decode trailing content in config file %q: %w", path, err)
 	}
 	return raw, nil
+}
+
+// retiredCatalogPaths are the only accepted values of the retired catalog path keys:
+// where images built before game content was embedded keep it. The base ConfigMap
+// keeps them so an image-only rollback to such an image still finds its content,
+// since those images resolve a missing path beside /etc/battlefield/config.yaml.
+var retiredCatalogPaths = []struct{ field, fixed string }{
+	{"api.scenarioCatalogPath", "/app/scenarios"},
+	{"api.rulesetCatalogPath", "/app/rulesets"},
+}
+
+// checkRetiredCatalogPaths rejects any other value, which current binaries would
+// silently ignore.
+func checkRetiredCatalogPaths(raw fileConfig) error {
+	for i, value := range []string{raw.API.ScenarioCatalogPath, raw.API.RulesetCatalogPath} {
+		key := retiredCatalogPaths[i]
+		if value := strings.TrimSpace(value); value != "" && value != key.fixed {
+			return fmt.Errorf("%s is retired because game content is embedded; remove it (older images use only %s)", key.field, key.fixed)
+		}
+	}
+	return nil
 }
 
 func parseAPIConfig(raw fileConfig) (API, error) {
