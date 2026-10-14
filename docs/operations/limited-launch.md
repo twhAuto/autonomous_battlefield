@@ -7,6 +7,12 @@ invitations live in PostgreSQL. No email list is committed to Git. This
 runbook describes the implemented deployment path; it does not certify that a
 live tunnel, firewall, or VM has been provisioned.
 
+Use [Owner-only Access](#owner-only-access) for initial protection,
+[sessions and roles](#sessions-roles-and-removal) for access changes,
+[CI service authentication](#ci-service-authentication) for delivery credentials,
+and [validation and recovery](#validation-and-recovery) for acceptance checks.
+CLI enablement has a separate [isolation gate](#isolated-cli-vm-enable-only-in-the-last-phase).
+
 ## Local development
 
 Local development uses `./scripts/cd/deploy-local.sh` and the project-root `.env`.

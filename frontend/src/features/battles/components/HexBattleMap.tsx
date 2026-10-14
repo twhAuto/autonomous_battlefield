@@ -11,12 +11,13 @@ type Entity = BattleUnit | BattleBuilding
 const size = 24
 const root3 = Math.sqrt(3)
 
-export function HexBattleMap({ map, state, visiblePositions, factionNames, toolbarControls }: Readonly<{
+export function HexBattleMap({ map, state, visiblePositions, factionNames, toolbarControls, placeholder }: Readonly<{
   map: BattleMap
   state: BattleState
   visiblePositions: HexPosition[]
   factionNames: Map<string, string>
   toolbarControls?: ReactNode
+  placeholder?: ReactNode
 }>) {
   const markerId = useId()
   const mobile = useMobile()
@@ -85,7 +86,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
   const content = (
     <section className="map-panel" aria-label="Castle siege map">
       <div className="map-toolbar">
-        <span>HEX TACTICAL MAP · TICK {state.tick}</span>
+        <span>HEX TACTICAL MAP{!placeholder && ` · TICK ${state.tick}`}</span>
         <div className="map-toolbar__controls">
           {toolbarControls}
           <div className="map-zoom-controls"><button type="button" aria-label="Pan map with arrow keys" onKeyDown={event => {
@@ -101,6 +102,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
           </div>
         </div>
       </div>
+      {placeholder ? <div className="entity-details">{placeholder}</div> : <>
       <section ref={viewport} className={`map-viewport${mobile && !expanded ? ' map-viewport--overview' : ''}`} style={expanded ? undefined : { aspectRatio: `${width} / ${height}` }} aria-label="Map navigation">
         <svg
           viewBox={`0 0 ${width} ${height}`}
@@ -169,6 +171,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
       <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-site" /> Build site</span><span><i className="legend-fog" /> Outside vision</span><span><i className="legend-movement" /> Movement (faction color)</span><span><i className="legend-attack" /> Attack (faction color)</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
       <EntityLegend types={entities.map((entity) => entity.type)} />
       <EntityDetails selected={selected} naming={naming} />
+      </>}
     </section>
   )
   return <>{!expanded && content}<dialog ref={dialog} className="expanded-map" aria-label="Expanded battlefield map" onKeyDown={trapFocus} onCancel={event => { event.preventDefault(); setExpanded(false) }} onClose={() => setExpanded(false)}>{expanded && content}</dialog></>

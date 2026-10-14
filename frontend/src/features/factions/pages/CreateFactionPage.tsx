@@ -20,6 +20,11 @@ export const doctrineTemplates = {
 /** Renders the profile form and optional background generator, loading the faction when editing. */
 export function CreateFactionPage() {
  const { id } = useParams()
+ return <FactionEditor key={id ?? 'new'} id={id} />
+}
+
+// Form state belongs to one route identity, including loading and save errors.
+function FactionEditor({ id }: Readonly<{ id?: string }>) {
  const navigate = useNavigate()
  const [deleting, setDeleting] = useState(false)
  const [deleteError, setDeleteError] = useState('')
@@ -34,7 +39,7 @@ export function CreateFactionPage() {
  const [loadFailed, setLoadFailed] = useState(false)
  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
  const [message, setMessage] = useState('')
- // Cancel the previous load when the route changes or the page unmounts to avoid stale form updates.
+ // Cancel this route-keyed editor’s load on unmount to avoid stale form updates.
  useEffect(() => {
  if (!id) return
  const controller = new AbortController()

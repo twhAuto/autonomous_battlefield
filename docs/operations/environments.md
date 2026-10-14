@@ -50,25 +50,13 @@ changes. NetworkPolicies reconcile independently during production CD. Normal ap
 activate public access. See [limited launch](limited-launch.md) for network and
 Access requirements.
 
-## Migrate configuration files
-
-The one-time conversion tool reads the old profile as data without executing it:
-```bash
-python3 scripts/ops/consolidate-config.py dev
-python3 scripts/ops/consolidate-config.py dev --apply
-```
-Use `production` on the server. A pre-existing dev root `.env` is authoritative.
-Production conflicting inputs fail for resolution. After validation, conversion
-removes the old profile and split inputs; it creates no backups or runtime
-fallbacks and does not modify databases or workloads.
-
 ## Other managed credentials and validation
 
 Production smoke checks use an enrolled Access service identity with read-only
 permissions. Keep only its
 `BATTLEFIELD_ACCESS_CI_CLIENT_ID` in the application `.env`; the Client Secret stays
 in the Jenkins service credential. See the [CI service runbook](limited-launch.md#ci-service-authentication). Database migration backups and verified image
-rollback remain operational features, independent of configuration-file migration.
+rollback remain operational features.
 Failure drills still require a separately registered disposable dev cluster,
 matching UID and explicit acknowledgement; production is forbidden.
 

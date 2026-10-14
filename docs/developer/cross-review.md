@@ -229,6 +229,6 @@ branch/PR/head, goal, checks already run, unresolved findings and the next step.
 Use that handoff and repository state instead of replaying the long conversation.
 Starting a new chat is a user/client action; this script does not create chats.
 
-No usage ledger, token accounting or cost-report comments are added. Existing
-private CLI diagnostics may contain provider-supplied usage fields; the runner
-does not aggregate or publish them.
+Usage accounting stays in private review metadata and the local `--usage`
+summary described above. The runner does not add token or cost reports to PR
+comments.

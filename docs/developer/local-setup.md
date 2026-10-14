@@ -8,8 +8,9 @@ credential precedence and cluster identity checks. For production, see
 ## WSL setup and normal use
 
 Requirements: Docker, Kind, kubectl, Bash, curl, Python 3, Node.js 24 and npm.
-Backend development and Go checks require Go 1.26.9 or newer, matching the backend
-image. Run commands from the repository root unless a command changes directory
+Backend development and Go checks require a toolchain compatible with
+[`backend/go.mod`](../../backend/go.mod). Container builds use the version pinned
+in the [backend Dockerfile](../../backend/Dockerfile). Run commands from the repository root unless a command changes directory
 explicitly.
 
 For a fresh checkout, create the dev cluster and its registration:

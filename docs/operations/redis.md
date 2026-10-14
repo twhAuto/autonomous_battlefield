@@ -42,9 +42,10 @@ your configured in-cluster Redis client instead.
    still serve them. Restart Redis and reload to repopulate the cache.
 
 The backend suite tests cache hits without database reads, expiry, corrupt entries,
-Redis read/write failures, and unchanged HTTP authentication. No browser change or
-new result endpoint is required. Simultaneous cold reads may query PostgreSQL more
-than once; request coalescing and cache-specific metrics are not included yet.
+Redis read/write failures, and unchanged HTTP authentication. Simultaneous cold
+reads may query PostgreSQL more than once; request coalescing is not implemented.
+`battlefield_result_cache_operations_total` reports cache hits, misses, stores and
+errors when Redis is configured; see [application metrics](../architecture/observability.md#application-metrics).
 
 ## Kubernetes
 

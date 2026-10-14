@@ -173,15 +173,20 @@ the existing foundation-only behavior. This is separate from `backup_uuid`: a
 partition on the Ubuntu SSD is suitable for application storage, but is not a
 second-drive backup.
 
-For the inspected server, the selected inventory additions are:
+Add the existing ext4 partition's verified UUID and mount path to the inventory.
+The following is an example fragment; replace the UUID with the one confirmed
+during inspection:
 
 ```json
-"data_uuid": "75db9b1d-5c46-4e5b-bd94-5391b2a35411",
-"data_mount": "/srv/battlefield-data"
+{
+  "data_uuid": "75db9b1d-5c46-4e5b-bd94-5391b2a35411",
+  "data_mount": "/srv/battlefield-data"
+}
 ```
 
-These are properties of the existing inventory JSON object, not a replacement
-inventory. Keep the machine identity, operator, SSH key and encrypted inputs.
+Merge these two keys into the existing inventory JSON object; do not replace the
+whole file with this example. Keep the machine identity, operator, SSH key and
+encrypted inputs.
 Use the same `server.sh plan`, `apply` and `verify` commands described above;
 first adoption requires the ordinary sudo prompt. No new token or key is needed.
 `plan` inspects storage without changing its mount, fstab or permissions. `verify`

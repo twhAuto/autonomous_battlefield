@@ -3,14 +3,31 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CreateFactionPage, doctrineTemplates } from './CreateFactionPage'
 vi.mock('../components/BackgroundGenerator', () => ({ BackgroundGenerator: () => null }))
 const id='7f22e693-bacd-46bb-b942-64fa613cd388'
-function show(path='/factions/new') {return render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/factions/new" element={<CreateFactionPage/>}/><Route path="/factions/:id/edit" element={<CreateFactionPage/>}/></Routes></MemoryRouter>)}
+function show(path='/factions/new') {return render(<MemoryRouter initialEntries={[path]}><Link to="/factions/new">New faction</Link><Routes><Route path="/factions/new" element={<CreateFactionPage/>}/><Route path="/factions/:id/edit" element={<CreateFactionPage/>}/></Routes></MemoryRouter>)}
 describe('faction doctrine',()=>{
  beforeEach(()=>{vi.stubGlobal('fetch',vi.fn());vi.spyOn(crypto,'randomUUID').mockReturnValue(id)})
+ it('starts a fresh form when navigating from editing to creation',async()=>{
+ vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({factions:[{id,name:'A',doctrine:'Scout',background:'Old roots'}]})))
+ const user=userEvent.setup();show(`/factions/${id}/edit`)
+ expect(await screen.findByLabelText('Faction name')).toHaveValue('A')
+ await user.click(screen.getByRole('link',{name:'New faction'}))
+ expect(screen.getByLabelText('Faction name')).toHaveValue('')
+ expect(screen.getByLabelText('Doctrine')).toHaveValue(doctrineTemplates.Balanced)
+ expect(screen.getByLabelText('Background (optional)')).toHaveValue('')
+ })
+ it('does not carry an edit load failure into creation',async()=>{
+ vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({factions:[]})))
+ const user=userEvent.setup();show(`/factions/${id}/edit`)
+ await screen.findByText('Faction not found.')
+ await user.click(screen.getByRole('link',{name:'New faction'}))
+ expect(screen.getByLabelText('Faction name')).toHaveValue('')
+ expect(screen.queryByText('Faction not found.')).not.toBeInTheDocument()
+ })
  it('creates a generic profile without loading catalogs',async()=>{
  vi.mocked(fetch).mockResolvedValue(new Response(null,{status:201}))
  const user=userEvent.setup();show()

@@ -13,6 +13,7 @@ build_identity="${BUILD_TAG:-${BUILD_NUMBER:-local-$$}}"
 container_name="battlefield-ci-postgres-$(printf '%s' "${build_identity}" | tr -cs '[:alnum:].-' '-')"
 database_name="battlefield_test"
 database_user="battlefield_test"
+# run-query-plans.sh validates this 24-byte / 48-hex credential shape; update both together.
 database_password="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
 container_id=""
 
@@ -72,4 +73,5 @@ if [[ ! "${host_port}" =~ ^[0-9]+$ ]]; then
 fi
 
 export TEST_DATABASE_URL="postgres://${database_user}:${database_password}@127.0.0.1:${host_port}/${database_name}?sslmode=disable"
+export TEST_POSTGRES_CONTAINER_ID="${container_id}"
 "$@"

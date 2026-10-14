@@ -3,7 +3,7 @@
 
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { BattlePage } from './BattlePage'
 import {
@@ -60,6 +60,7 @@ function serveControlledBattle(control: typeof pauseBattle, initial: BattleRun, 
 function renderBattle(role: 'admin' | 'player' = 'admin', actorID = 'admin') {
   return render(<MemoryRouter initialEntries={[`/battles/${battleID}`]}>
     <SessionContext.Provider value={{ enabled: true, authenticated: true, actor: { id: actorID, role } }}>
+      <Link to="/battles/another">Another battle</Link>
       <Routes><Route path="/battles/:id" element={<BattlePage />} /></Routes>
     </SessionContext.Provider>
   </MemoryRouter>)
@@ -203,6 +204,36 @@ it('requests a faction perspective when one is selected', async () => {
   renderBattle()
   await user.selectOptions(await screen.findByRole('combobox', { name: 'Perspective' }), north)
   await waitFor(() => expect(getBattleView).toHaveBeenCalledWith(battleID, north, expect.any(AbortSignal)))
+})
+
+it('withholds the full map while a faction view loads or fails and supports retry', async () => {
+  const user = userEvent.setup()
+  let reject!: (error: Error) => void
+  vi.mocked(getBattleView).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail }))
+  renderBattle()
+  await user.selectOptions(await screen.findByRole('combobox', { name: 'Perspective' }), north)
+  expect(screen.queryByRole('region', { name: 'Map navigation' })).not.toBeInTheDocument()
+  expect(screen.getByText('Loading faction view…')).toHaveRole('status')
+  await act(async () => reject(new Error('Offline')))
+  expect(screen.getByRole('alert')).toHaveTextContent('Faction view could not be loaded.')
+  expect(screen.queryByRole('region', { name: 'Map navigation' })).not.toBeInTheDocument()
+  const battle = runningBattle()
+  vi.mocked(getBattleView).mockResolvedValue({ map: battle.map, state: battle.state, visiblePositions: [{ x: 1, y: 1 }] })
+  await user.click(screen.getByRole('button', { name: 'Retry faction view' }))
+  expect(await screen.findByRole('region', { name: 'Map navigation' })).toBeInTheDocument()
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Perspective' }), 'spectator')
+  expect(document.querySelectorAll('.hex-tile--fog')).toHaveLength(0)
+})
+
+it('drops the previous battle and its controls when navigating to another battle', async () => {
+  const user = userEvent.setup()
+  vi.mocked(getBattle).mockResolvedValueOnce(runningBattle()).mockImplementation(() => new Promise(() => {}))
+  renderBattle()
+  await screen.findByRole('button', { name: 'PAUSE' })
+  await user.click(screen.getByRole('link', { name: 'Another battle' }))
+  expect(screen.getByText('Locating battle')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'PAUSE' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('region', { name: 'Map navigation' })).not.toBeInTheDocument()
 })
 
 it('announces the winner for a completed battle', async () => {
