@@ -60,11 +60,12 @@ autonomous_battlefield/
 │   │   ├── testutil/           # Shared assertions with lazy failure diagnostics
 │   │   ├── apierror/           # Stable JSON error envelope and codes for /v1
 │   │   ├── requestid/          # Request correlation ID carried in the context
-│   │   ├── observability/      # logging, metrics, tracing, requestid (leaf packages)
+│   │   ├── observability/      # logging, metrics, tracing, requestid, redact (leaf packages)
 │   │   └── ...                 # app, authn, config, httpapi, postgres
 │   ├── test/                   # Cross-package tests and fixtures; no runtime code
 │   │   ├── apicontract/        # openapi.yaml stays in step with served routes
 │   │   ├── boundaries/         # Forbidden dependencies and the generated component map
+│   │   ├── conventions/        # Source checks, such as span errors going through tracing.RecordError
 │   │   ├── integration/        # End-to-end API and engine run against PostgreSQL
 │   │   └── performance/        # k6 scenarios and query-plan SQL fixtures
 │   ├── migrations/             # Embedded SQL migrations and their PostgreSQL tests

@@ -59,6 +59,7 @@ introduce a new boundary.
 | [`members`](../../backend/internal/members) | ✓ |  |  |  |  |
 | [`observability/logging`](../../backend/internal/observability/logging) | ✓ | ✓ | ✓ | ✓ |  |
 | [`observability/metrics`](../../backend/internal/observability/metrics) | ✓ | ✓ |  |  |  |
+| [`observability/redact`](../../backend/internal/observability/redact) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`observability/requestid`](../../backend/internal/observability/requestid) | ✓ | ✓ | ✓ | ✓ |  |
 | [`observability/tracing`](../../backend/internal/observability/tracing) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`postgres`](../../backend/internal/postgres) | ✓ | ✓ | ✓ |  |  |

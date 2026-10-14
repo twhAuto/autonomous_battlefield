@@ -13,6 +13,14 @@ matches `[A-Za-z0-9._:-]{1,128}`, so it is safe to echo and log; otherwise the s
 generates one.
 An authentication observer carries identity to the outer request logger; rejected
 credentials leave identity empty. Tokens, cookies and email headers are not logged.
+Error text passes through `observability/redact` before it reaches a log or a span.
+A pgx connection error (database user, database name, host) becomes "failed to connect
+to the database", keeping any SQLSTATE, and network errors lose their address and
+hostname, in every branch of a wrapped or joined error; other error text is kept for
+debugging. A typed-nil error logs as `<nil>`. The logging handler redacts every
+error-valued attribute under any key, so call sites keep logging `"error", err`. Spans
+record errors through `tracing.RecordError` (also used by `tracing.EndSpan`), and
+`backend/test/conventions` fails the build if code calls `span.RecordError` directly.
 These operational logs provide request attribution, not a tamper-proof audit store.
 
 ## Signal path

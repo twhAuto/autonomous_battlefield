@@ -1,5 +1,5 @@
 // Enriches structured log events with readable messages and active trace IDs while
-// preserving their original fields.
+// preserving their original fields, and redacts connection identities from errors.
 
 package logging
 
@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/redact"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -108,8 +109,13 @@ func isEvent(message string) bool {
 	return true
 }
 
+// resolveAttr also renders error values through redact, so no log line, whatever its
+// key, carries the database user, host or address a connection error prints.
 func resolveAttr(a slog.Attr) slog.Attr {
 	a.Value = a.Value.Resolve()
+	if err, ok := a.Value.Any().(error); ok && a.Value.Kind() == slog.KindAny {
+		a.Value = slog.StringValue(redact.Error(err))
+	}
 	if a.Value.Kind() == slog.KindGroup {
 		attrs := slices.Clone(a.Value.Group())
 		for i := range attrs {

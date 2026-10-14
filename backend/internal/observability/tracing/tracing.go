@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/redact"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -109,11 +110,19 @@ func StartSpan(ctx context.Context, name string, attributes ...attribute.KeyValu
 
 // EndSpan marks the span failed when err is non-nil, then ends it.
 func EndSpan(span trace.Span, err error) {
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-	}
+	RecordError(span, err)
 	span.End()
+}
+
+// RecordError marks the span failed with err's text, redacted like log errors so
+// traces never carry database connection identities.
+func RecordError(span trace.Span, err error) {
+	if err == nil {
+		return
+	}
+	text := redact.Error(err)
+	span.RecordError(errors.New(text))
+	span.SetStatus(codes.Error, text)
 }
 
 // StartDatabaseSpan records the operation name without capturing SQL text,
