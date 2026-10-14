@@ -108,3 +108,17 @@ func TestErrorSurvivesTypedNilAndPanickingErrors(t *testing.T) {
 		t.Fatalf("panicking error = %q", got)
 	}
 }
+
+func TestErrorWithholdsTreesTooLargeToWalk(t *testing.T) {
+	branches := make([]error, maxErrors)
+	for i := range branches {
+		branches[i] = &net.OpError{Op: "dial", Net: "tcp", Addr: &net.TCPAddr{IP: net.IPv4(10, 0, byte(i/256), byte(i%256)), Port: 5432}, Err: errors.New("connect: connection refused")}
+	}
+	// The join plus maxErrors branches is one error more than the walk visits.
+	if got := Error(errors.Join(branches...)); got != "<error text withheld: too many wrapped errors>" {
+		t.Fatalf("Error(large join) = %.80q, want it withheld", got)
+	}
+	if got := Error(errors.Join(branches[:maxErrors-1]...)); strings.Contains(got, "10.0.") {
+		t.Fatal("a join within the limit kept an address")
+	}
+}
