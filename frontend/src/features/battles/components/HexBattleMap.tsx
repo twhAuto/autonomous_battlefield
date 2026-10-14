@@ -37,7 +37,8 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
   // Colors follow the participant roster sorted by ID, never the perspective's state: a
   // faction view lists only its own faction, and each faction must keep its color.
   const roster = factionNames.size > 0 ? [...factionNames.keys()] : (state.factions ?? []).map((faction) => faction.factionId)
-  const colors = new Map([...roster].sort().map((factionId, index) => [factionId, index === 0 ? '#69d2ff' : '#ff6b55']))
+  // Code-unit order, not localeCompare: it must match the backend's byte-order ID sort.
+  const colors = new Map([...roster].sort((a, b) => (a < b ? -1 : Number(a > b))).map((factionId, index) => [factionId, index === 0 ? '#69d2ff' : '#ff6b55']))
   const width = root3 * size * (map.width + 0.5) + 48
   const height = size * (1.5 * (map.height - 1) + 2) + 48
 
