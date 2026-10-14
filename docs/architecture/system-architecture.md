@@ -6,11 +6,15 @@ uses `autonomous-battlefield` and `battlefield` as technical identifiers.
 | Field | Value |
 | --- | --- |
 | Status | Current |
-| Last reviewed | 2026-10-03 |
 | Audience | Contributors reviewing or extending system behavior |
 | Scope | Runtime components, data flows, durability, security, and deployment topology |
 
 For a package-by-package explanation of the implementation, see the [codebase guide](../developer/codebase-guide.md).
+
+Jump to [components](#3-runtime-components), [boundaries](#4-architectural-boundaries),
+[flows](#5-core-runtime-flows), [decision contracts](#7-decision-contracts-and-lifecycle),
+[persistence](#8-persistence-and-durability), [security](#9-security-and-trust-boundaries),
+[deployment](#11-deployment-topology), or [limitations](#19-current-limitations-and-follow-up-questions).
 
 ## 1. Purpose
 
@@ -33,13 +37,13 @@ and reliability objectives. Operational instructions remain in
 flowchart LR
     User[Browser user]
     UI[React frontend]
-    API[Go API<br/>cmd/server]
-    Engine[Battle engine<br/>cmd/engine]
+    API["Go API: cmd/server"]
+    Engine["Battle engine: cmd/engine"]
     DB[(PostgreSQL)]
     Cache[(Optional Redis)]
-    Gateway[AI gateway<br/>cmd/aigateway]
-    Agent[Decision agent<br/>cmd/agent]
-    Provider[OpenAI / Gemini API<br/>or Codex / Antigravity / Claude CLI]
+    Gateway["AI gateway: cmd/aigateway"]
+    Agent["Decision agent: cmd/agent"]
+    Provider["OpenAI / Gemini API: or Codex / Antigravity / Claude CLI"]
 
     User --> UI
     UI -->|HTTP /v1| API
@@ -87,7 +91,10 @@ The API and engine entry points compose `httpapi.LifecycleHandler` around applic
 ### Source ownership
 
 See the [backend guide](../developer/backend-guide.md#backend-organization) for package
-boundaries, frontend ownership, and launcher locations.
+boundaries, the [frontend guide](../developer/frontend-guide.md) for browser ownership,
+and the [codebase guide](../developer/codebase-guide.md#executable-entry-points) for launchers.
+
+### Browser delivery
 
 The Vite development proxy defaults to `http://localhost:8080` and accepts a
 server-only `DEV_API_PROXY_TARGET` override from the frontend env files or shell.
@@ -99,167 +106,34 @@ Every Nginx response carries `frame-ancestors 'none'` CSP, `X-Frame-Options: DEN
 cannot be framed for clickjacking. The CSP deliberately leaves script and connect
 sources open because `VITE_API_URL` may name a separate API origin.
 
-The administrator-only `/admin` control center uses `GET /v1/admin/model-access` and
-`PUT /v1/admin/model-access` to manage provider and individual profile access, including
-allowed roles. Migration `00012_model_access.sql` adds a singleton PostgreSQL
-policy row. Version checks reject conflicting saves with HTTP 409. Each API
-selection reads the durable policy with a bounded timeout, so replicas and restarts
-share settings; read failures make models unavailable. The policy can restrict
-access but cannot activate missing credentials or deployment-disabled runtimes.
-Role overrides supersede configured `allowedRoles`; an explicit empty role list
-denies everyone. Players can select API or CLI profiles only when explicitly included
-in the profile’s allowed roles; default roles remain Admin and Developer. Disables apply to
-new battle selection and background-generation admission; already accepted jobs
-and frozen controller snapshots continue unchanged. This is not an emergency stop.
-
-Role preview keeps the administrator's authenticated session and identity while
-applying Player or Developer read permissions. The browser sends
-`X-Battlefield-Preview-Role`; authentication validates the real administrator before
-preview middleware substitutes the effective role ahead of route authorization.
-Both transport and server reject mutations during preview. Navigation and inspection
-use the effective role, and switching roles remounts route content to clear privileged
-cached views. Exit preview restores the administrator view; logout/session expiry
-also clears preview. This previews the administrator's own ownership, not another
-person's account. There are no invitations, fabricated audit events, or budget controls.
-
-Frontend feature clients, including faction ruleset discovery, use the shared
-HTTP transport to report network failures consistently while preserving request
-cancellation. Feature clients own HTTP status messages; protected requests also
-notify the application when authentication is required.
-
-The faction editor scopes local form state to its route identity. Navigating to
-another faction or to creation resets the form and cancels the prior load, so
-fields and load failures cannot carry into another editor.
-
 ### Battle inspection
 
-Battle detail state resets when its route ID changes. Faction-perspective requests
-are scoped to battle ID, attempt, and faction, with late cancelled responses
-ignored. Loading and failed faction views show feedback and retry controls in the
-map shell, including its expanded dialog; they never fall back to spectator data.
-The same faction's last successful view can remain visible during tick refreshes.
+Battle detail state is scoped to the battle, attempt, and selected perspective.
+Cancelled faction-view requests cannot replace the current selection, and loading
+or failed faction views never fall back to spectator data. The perspective selector
+controls presentation; server-side role and ownership checks remain the access boundary.
 
-Event loading uses one cancellable loop per selected attempt, serializing initial
-loads, polling, and manual refresh. A status change resumes from the saved cursor
-and drains full incremental pages, including the terminal tail. Historical
-attempts load on selection or manual refresh; late responses from abandoned
-attempts are ignored. Errors preserve the loaded buffer and allow retry. The
-browser retains at most 500 events, deduplicated by sequence.
+The browser loads events through one cancellable cursor loop per selected attempt,
+retaining at most 500 events, deduplicated by sequence. Historical attempts load on
+selection or manual refresh. Errors retain loaded events and expose retry.
 
-The inline map fits its board aspect ratio. Expanding moves the same map state
-into a native modal dialog with focus containment, Escape dismissal, scroll
-locking, and focus restoration. Perspective and entity selection survive this
-transition. Opening or resizing fits the board; live tick updates preserve the
-camera. Pointer and keyboard panning remain local UI state. A native “Pan with
-arrow keys” toolbar button provides keyboard panning without making the map container
-an application landmark. On mobile the inline
-overview permits page scrolling, with dragging enabled in the expanded map.
+Participant background and doctrine come from the persisted scenario, not the
+editable faction directory. Player summaries use the spectator snapshot independently
+of map perspective. The presentation accepts multiple participants; battle creation,
+scenario spawns, opponent selection, and castle-destruction victory rules still
+require two factions.
 
-Terminal battles display a result without inactive transport controls. Tick
-progress describes usage of the requested maximum, not completion percentage.
-Event presets and exact-type filtering operate on loaded history without changing
-cursor requests, attempt selection, or server records. Key events is the default;
-All events includes unknown types. Summaries are derived from existing payloads,
-with original fields and JSON inside Details. Mobile shows ten matching rows at
-a time and uses page scrolling. A separate polite status announces loaded counts.
+Historical decision context is scoped by battle, attempt, and request. The service
+projects only the saved observation's public fields; provider metadata, capability
+tokens, private reasoning, and tool-call traces are excluded. The displayed initial
+context is a reconstructed projection, not the original provider payload. Legacy
+rows without saved observations return `context: null`. Plans describe intent;
+events provide execution evidence. A running decision does not prove MCP connectivity.
 
-The frontend hides identifier displays and copy controls; UUID generation,
-API requests, and routes retain their existing identifiers. Navigation is Stage
-battle, Factions, then Battle history, with creation accessible from Factions.
-Background generation availability distinguishes failed status reads,
-unavailable service, exhausted allowance, cooldown, and active work using existing
-fields. Quota/reset details appear only for an available service. Retry reads do
-not activate providers or configure credentials, and manual editing stays enabled.
-Controller menus show available profiles; unavailable integrations have a separate
-status disclosure. Existing inspection permissions govern model/execution details.
-Faction deletion is offered only in the authorized editor's Danger zone. It keeps
-the named registry-removal confirmation, disables repeat submissions, leaves failed
-deletions on the editor, and navigates to the directory after success.
-
-The SVG map uses compact directional arrows beneath entity icons, matching the
-acting faction's unit color. Movement remains dashed and subdued; attacks use solid
-lines with a subtle traveling highlight, and tower fire uses a thicker stroke. Endpoints clear entity outlines; paths too short to fit an
-arrowhead are omitted. Indicators follow the current battle snapshot, and reduced
-motion preferences retain static lines without the traveling highlight. Health
-bars update their green fill and numeric HP immediately; lost HP appears red for
-300 ms before shrinking over 500 ms. Healing immediately covers the red layer.
-Reduced motion disables the damage trail transition. Defeated units leave the live roster immediately. Per-tick `unitDeaths` records
-provide a fading cross/ring in the fallen unit's faction color at its confirmed
-death position for 900 ms, or a
-static marker for reduced motion. Faction views expose allied deaths and visible
-enemy deaths only; disappearance from vision never creates a death marker.
-
-Unit snapshots include optional `movementPath` coordinates (start plus each hex
-actually traversed during the tick). The engine records these for normal, siege,
-retreat, and support movement and clears them with the other per-tick actions.
-Snapshot and faction-view copies own their route arrays; enemy routes crossing
-hidden hexes are omitted from faction views. No database migration is required.
-The map draws these routes and animates existing units along them at 220 ms per
-step, capped at 700 ms. Animation requires the recorded start to match the last
-displayed position; initial loads, discontinuous snapshots, and reduced-motion
-preferences show the current position immediately. New updates cancel any prior
-animation. Older snapshots can animate adjacent endpoint-only moves, but the UI
-does not infer missing multi-hex routes.
-
-Tracking attacks retain immediate damage. Their arrows follow the target's rendered
-walking position; missing/destroyed targets use a short impact marker at the stored
-hit position. Attacking units nudge 0.75 pixels forward and back over 200 ms on a
-separate transform layer, while towers remain stationary. Fixed-location shots
-show a fading impact ring for hits or a muted cross for misses, without a damage
-tracer on misses. Polling and map controls do not replay these effects, and reduced
-motion disables them.
-
-Optional `attackMode` capabilities default to `tracking`; newly resolved core-v2
-catapults use `position`. Position attacks lock the existing priority-selected hex
-after economy/tactics and before towers. On the unit's speed-ordered turn, retreat
-cancels the shot; otherwise a living enemy occupying the locked hex takes normal
-damage. Empty or friendly-only hexes miss, without splash or friendly fire. A unit
-without an initial aim moves normally and cannot acquire a late shot. Speed remains
-turn order, not attack frequency. Existing resolved snapshots without the capability
-retain tracking behavior. Per-tick `attackOutcome` and attack event impact metadata
-make hits and misses explicit; faction projections suppress hidden impact positions
-and targets. Event history remains the existing administrator-wide view.
-
-The battle page keeps progress/outcome and controls in a compact toolbar above
-the map. `BattleInspector` owns the native System/player dropdown and the shared inner tab
-(Overview, Decisions, Units, Faction), independently of map perspective. System
-shows a current-player comparison and the attempt-selectable event stream.
-Player headers show current gold, living units, castle health, and snapshot tick;
-Overview groups buildings and economy totals, Units groups living entities with
-individual HP/coordinates, and Faction shows the saved profile. Navigation stays
-fixed above a single scrolling content region. The inspector and map have matching
-desktop heights and scroll together with the page; the inspector moves below the
-map at narrow widths. Hidden sections remain mounted to preserve filters and
-expanded decisions across tab changes; historical context requests run only in
-an active, expanded decision. New history rows do not collapse existing details.
-
-The player summary derives from the full spectator state, including under a
-faction map perspective. Null collection slices from Go JSON are handled safely;
-missing faction state displays unavailable values, while empty armies show zero.
-Battle participant responses include background and doctrine from the persisted
-scenario, not the current editable faction directory.
-
-`GET /v1/battles/{id}/decisions/{requestId}/context?attempt=N` reads the persisted
-observation through the existing decision repository. The service checks battle,
-attempt, request, and observation scope. An explicit response projection exposes
-only historical identity, economy, faction-visible view, legal choices, prior
-plan, memory, and knowledge; internal provider metadata and capabilities are
-excluded. For saved observations, `initialContext` contains the current reconstructed projection
-and `availableUnitDetails` holds the frozen reference snapshot, clearly labelled
-as optional in the inspector. Legacy rows without observations return `context: null`. No migration
-is needed. The browser loads on expansion, caches by battle/attempt/request, and
-aborts and ignores obsolete responses. Decision history also rejects responses
-from an obsolete battle/attempt. The inspector labels observation ticks and
-separates historical context from its current-resource header. Plans describe
-intent; events provide execution evidence. A running decision does not imply
-verified MCP connectivity. Private reasoning and tool-call traces are not exposed.
-
-Dropdown options and comparison rows iterate participant IDs without a two-slot assumption.
-Three-way simulation remains separate work: battle creation and scenario/map
-spawns require two factions, movement selects a single opponent, and destroying
-a castle currently ends the match. Supporting three players requires revisiting
-those contracts, elimination/winner rules, and map faction colors as well as the
-creation form.
+See the [frontend guide](../developer/frontend-guide.md#battle-data-lifecycle) for
+request lifecycle, inspector state, map layout, and animation;
+the [API contract](api.md#expanded-battlefield-data) for snapshot and context fields;
+and [game rules](../game/game-rules.md) for movement and attack resolution.
 
 ### Deterministic simulation boundary
 
@@ -753,6 +627,62 @@ The local password login retains signed HttpOnly/SameSite cookies for developmen
 Missing auth mode and enable flags fail startup; explicit legacy enable flags remain
 supported only in development. Local cookie logout does not revoke copied tokens.
 
+### Managed Player invitations
+
+Optional Admin → Members routes persist Player grants/removals and audit events in
+PostgreSQL. Migration 00013 adds `player_members`, `player_membership_sync`, and
+`player_membership_audit`. The singleton imports configured Players once, retaining
+removed-member tombstones across restarts. Every initialization also durably
+revokes and audits prior Player invitations for configured privileged identities,
+so subsequent privileged-role removal cannot resurrect Player access. Admin/Developer roles and CI identities
+continue through their existing authentication paths; membership cannot elevate roles.
+After signature/issuer/audience/time validation, Player authentication reads current
+desired access and confirmed membership version with a two-second deadline and no
+positive cache. Lookup failure denies access; `issuer|subject` ownership is unchanged.
+
+The API process starts a cancellable reconciler when `BATTLEFIELD_MANAGED_PLAYERS`
+is enabled. A transaction advisory lock serializes remote writes across replicas;
+repeatable-read transactions reject concurrent edits before confirming a grant.
+Mutations lock only the singleton desired-state row, not the remote worker lock,
+so removals commit while a Cloudflare call is in flight. A successful PUT confirms
+current versions; failures persist bounded retry backoff. Restart recovery and
+one-minute full-list reconciliation repair ambiguous writes and dedicated-group drift.
+
+The API alone receives `battlefield-members`; its token can manage Access groups
+within the configured account, while code only calls the configured group endpoint.
+The browser sees emails, access/sync status and a game URL, never the token. Empty
+membership sends an explicitly deny-all group. No policy edits or account-wide
+session revocation are automated. New grants stay inactive until confirmed; removals
+block subsequent API requests immediately, without cancelling already accepted work.
+See [Player invitations](../operations/player-invitations.md) for activation, policy
+separation, credential rotation, rollback limitations and live acceptance checks.
+
+### Model access and role preview
+
+The administrator-only `/admin` control center uses `GET /v1/admin/model-access` and
+`PUT /v1/admin/model-access` to manage provider and individual profile access, including
+allowed roles. Migration `00012_model_access.sql` adds a singleton PostgreSQL
+policy row. Version checks reject conflicting saves with HTTP 409. Each API
+selection reads the durable policy with a bounded timeout, so replicas and restarts
+share settings; read failures make models unavailable. The policy can restrict
+access but cannot activate missing credentials or deployment-disabled runtimes.
+Role overrides supersede configured `allowedRoles`; an explicit empty role list
+denies everyone. Players can select API or CLI profiles only when explicitly included
+in the profile’s allowed roles; default roles remain Admin and Developer. Disables apply to
+new battle selection and background-generation admission; already accepted jobs
+and frozen controller snapshots continue unchanged. This is not an emergency stop.
+
+Role preview keeps the administrator's authenticated session and identity while
+applying Player or Developer read permissions. The browser sends
+`X-Battlefield-Preview-Role`; authentication validates the real administrator before
+preview middleware substitutes the effective role ahead of route authorization.
+Both transport and server reject mutations during preview. Navigation and inspection
+use the effective role, and switching roles remounts route content to clear privileged
+cached views. Exit preview restores the administrator view; logout/session expiry
+also clears preview. This previews the administrator's own ownership, not another
+person's account. Role preview does not invite users, fabricate audit events, or
+provide budget controls.
+
 ### Model-facing capability
 
 The AI gateway mints each model session an HMAC-signed token containing one request ID and expiry. Workers cannot mint capabilities and never receive the signing secret. The gateway's MCP endpoints verify the signature, expiry, and equality between the authorized and supplied request IDs.
@@ -1165,36 +1095,6 @@ battle processing. It atomically marks expired battles failed with
 using the existing `battle_stopped` cancellation category. History and tick
 state remain available; active admission slots are released but daily usage is
 not refunded. While the engine is offline, expiry waits for restart.
-
-## Managed Player invitations
-
-Optional Admin → Members routes persist Player grants/removals and audit events in
-PostgreSQL. Migration 00013 adds `player_members`, `player_membership_sync`, and
-`player_membership_audit`. The singleton imports configured Players once, retaining
-removed-member tombstones across restarts. Every initialization also durably
-revokes and audits prior Player invitations for configured privileged identities,
-so subsequent privileged-role removal cannot resurrect Player access. Admin/Developer roles and CI identities
-continue through their existing authentication paths; membership cannot elevate roles.
-After signature/issuer/audience/time validation, Player authentication reads current
-desired access and confirmed membership version with a two-second deadline and no
-positive cache. Lookup failure denies access; `issuer|subject` ownership is unchanged.
-
-The API process starts a cancellable reconciler when `BATTLEFIELD_MANAGED_PLAYERS`
-is enabled. A transaction advisory lock serializes remote writes across replicas;
-repeatable-read transactions reject concurrent edits before confirming a grant.
-Mutations lock only the singleton desired-state row, not the remote worker lock,
-so removals commit while a Cloudflare call is in flight. A successful PUT confirms
-current versions; failures persist bounded retry backoff. Restart recovery and
-one-minute full-list reconciliation repair ambiguous writes and dedicated-group drift.
-
-The API alone receives `battlefield-members`; its token can manage Access groups
-within the configured account, while code only calls the configured group endpoint.
-The browser sees emails, access/sync status and a game URL, never the token. Empty
-membership sends an explicitly deny-all group. No policy edits or account-wide
-session revocation are automated. New grants stay inactive until confirmed; removals
-block subsequent API requests immediately, without cancelling already accepted work.
-See [Player invitations](../operations/player-invitations.md) for activation, policy
-separation, credential rotation, rollback limitations and live acceptance checks.
 
 ## Related guides
 
