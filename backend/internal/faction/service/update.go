@@ -1,33 +1,17 @@
-// Adds profile editing through optional update contracts, reusing the same normalization
-// as faction creation.
+// Edits faction profiles under the same normalization as creation; only the owner or
+// an Admin may edit.
 
 package service
 
-import (
-	"context"
+import "context"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
-)
-
-type Updater interface {
-	UpdateFaction(context.Context, CreateInput) error
-}
-type UpdateRepository interface {
-	UpdateFaction(context.Context, faction.Faction) error
-}
-
-func (s *service) UpdateFaction(ctx context.Context, input CreateInput) error {
+func (s *service) UpdateFaction(ctx context.Context, input ProfileInput) error {
 	stored, err := normalizeFaction(input)
 	if err != nil {
 		return err
 	}
-
 	if err := s.authorize(ctx, stored.ID); err != nil {
 		return err
 	}
-	repository, ok := s.repository.(UpdateRepository)
-	if !ok {
-		return ErrInvalidFaction
-	}
-	return repository.UpdateFaction(ctx, stored)
+	return s.repository.UpdateFaction(ctx, stored)
 }

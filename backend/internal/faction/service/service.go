@@ -6,11 +6,11 @@ package service
 import (
 	"context"
 	"errors"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"regexp"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
@@ -23,7 +23,8 @@ var (
 
 var uuidPattern = regexp.MustCompile(`^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$`)
 
-type CreateInput struct {
+// ProfileInput is the editable faction profile, used for both creation and editing.
+type ProfileInput struct {
 	Background string
 	Doctrine   string
 	ID         string
@@ -31,9 +32,10 @@ type CreateInput struct {
 }
 
 type Service interface {
-	GetFactionName(ctx context.Context, id string) (string, error)
 	ListFactions(ctx context.Context) ([]faction.Faction, error)
-	CreateFaction(ctx context.Context, input CreateInput) error
+	ListRulesets() []game.Ruleset
+	CreateFaction(ctx context.Context, input ProfileInput) error
+	UpdateFaction(ctx context.Context, input ProfileInput) error
 	DeleteFaction(ctx context.Context, id string) error
 }
 
@@ -41,21 +43,13 @@ type RulesetCatalog interface {
 	Rulesets() []game.Ruleset
 }
 
-type RulesetLister interface {
-	ListRulesets() []game.Ruleset
-}
-
 type service struct {
 	repository Repository
 	catalog    RulesetCatalog
 }
 
-func (s *service) GetFactionName(ctx context.Context, id string) (string, error) {
-	faction, err := s.repository.GetFaction(ctx, id)
-	if err != nil {
-		return "", err
-	}
-	return faction.Name, nil
+func NewService(repository Repository, catalog RulesetCatalog) Service {
+	return &service{repository: repository, catalog: catalog}
 }
 
 func (s *service) ListFactions(ctx context.Context) ([]faction.Faction, error) {
@@ -63,17 +57,18 @@ func (s *service) ListFactions(ctx context.Context) ([]faction.Faction, error) {
 }
 
 func (s *service) ListRulesets() []game.Ruleset {
-	if s.catalog == nil {
-		return []game.Ruleset{}
+	if rulesets := s.catalog.Rulesets(); rulesets != nil {
+		return rulesets
 	}
-	return s.catalog.Rulesets()
+	return []game.Ruleset{}
 }
 
-func (s *service) CreateFaction(ctx context.Context, input CreateInput) error {
+func (s *service) CreateFaction(ctx context.Context, input ProfileInput) error {
 	stored, err := normalizeFaction(input)
 	if err != nil {
 		return err
 	}
+	stored.OwnerID = authn.Owner(ctx)
 	err = s.repository.CreateFaction(ctx, stored)
 	if errors.Is(err, ErrFactionAlreadyExists) {
 		// A retry of the same caller's identical request succeeds, matching battle
@@ -83,7 +78,7 @@ func (s *service) CreateFaction(ctx context.Context, input CreateInput) error {
 			// An unverified retry must surface as a server error, not a conflict.
 			return getErr
 		}
-		if getErr == nil && existing != nil && existing.OwnerID == authn.Owner(ctx) && existing.Name == stored.Name &&
+		if getErr == nil && existing != nil && existing.OwnerID == stored.OwnerID && existing.Name == stored.Name &&
 			existing.Doctrine == stored.Doctrine && existing.Background == stored.Background {
 			return nil
 		}
@@ -92,7 +87,7 @@ func (s *service) CreateFaction(ctx context.Context, input CreateInput) error {
 }
 
 // normalizeFaction keeps creation and editing subject to the same profile rules.
-func normalizeFaction(input CreateInput) (faction.Faction, error) {
+func normalizeFaction(input ProfileInput) (faction.Faction, error) {
 	stored := faction.Faction{
 		ID:         input.ID,
 		Name:       strings.TrimSpace(input.Name),
@@ -114,14 +109,6 @@ func (s *service) DeleteFaction(ctx context.Context, id string) error {
 		return err
 	}
 	return s.repository.DeleteFaction(ctx, id)
-}
-
-func NewService(repository Repository, catalogs ...RulesetCatalog) Service {
-	var catalog RulesetCatalog
-	if len(catalogs) > 0 {
-		catalog = catalogs[0]
-	}
-	return &service{repository: repository, catalog: catalog}
 }
 
 func (s *service) authorize(ctx context.Context, id string) error {

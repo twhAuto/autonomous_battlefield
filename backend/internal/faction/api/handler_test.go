@@ -19,30 +19,6 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 )
 
-func TestGetFactionNameReturnsJSON(t *testing.T) {
-	factionService := &fakeFactionService{factionName: "Northwind"}
-	handler := NewHandler(factionService)
-	request := httptest.NewRequest(http.MethodGet, "/v1/factions/7f22e693-bacd-46bb-b942-64fa613cd388/name", nil)
-	response := httptest.NewRecorder()
-
-	handler.GetFactionName(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
-	}
-	if contentType := response.Header().Get("Content-Type"); contentType != "application/json" {
-		t.Fatalf("Content-Type = %q, want %q", contentType, "application/json")
-	}
-
-	var body map[string]string
-	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
-		t.Fatalf("decode response body: %v", err)
-	}
-	if body["name"] != "Northwind" {
-		t.Fatalf("name = %q, want %q", body["name"], "Northwind")
-	}
-}
-
 func TestCreateFactionRoute(t *testing.T) {
 	factionService := &fakeFactionService{}
 	router := newFactionTestRouter(factionService)
@@ -90,7 +66,7 @@ func TestListFactionsReturnsJSON(t *testing.T) {
 }
 
 func TestListRulesetsReturnsDesignCatalog(t *testing.T) {
-	service := &fakeRulesetService{fakeFactionService: &fakeFactionService{}, rulesets: []game.Ruleset{{ID: "castle-siege-v1", DesignBudget: 120}}}
+	service := &fakeFactionService{rulesets: []game.Ruleset{{ID: "castle-siege-v1", DesignBudget: 120}}}
 	router := httpapi.NewRouter(NewHandler(service))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/faction-rulesets", nil))
@@ -111,36 +87,22 @@ func TestListFactionsReturnsEmptyArray(t *testing.T) {
 	}
 }
 
-func TestFactionReadsMapServiceErrors(t *testing.T) {
-	t.Run("list", func(t *testing.T) {
-		response := httptest.NewRecorder()
-		NewHandler(&fakeFactionService{listErr: errors.New("database unavailable")}).ListFactions(
-			response,
-			httptest.NewRequest(http.MethodGet, "/v1/factions", nil),
-		)
-		if response.Code != http.StatusInternalServerError {
-			t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
-		}
-	})
+func TestListFactionsMapsServiceErrors(t *testing.T) {
+	response := httptest.NewRecorder()
+	NewHandler(&fakeFactionService{listErr: errors.New("database unavailable")}).ListFactions(
+		response,
+		httptest.NewRequest(http.MethodGet, "/v1/factions", nil),
+	)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+	}
+}
 
-	for _, test := range []struct {
-		name   string
-		err    error
-		status int
-	}{
-		{name: "missing", err: factionservice.ErrFactionNotFound, status: http.StatusNotFound},
-		{name: "internal", err: errors.New("database unavailable"), status: http.StatusInternalServerError},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			response := httptest.NewRecorder()
-			NewHandler(&fakeFactionService{getErr: test.err}).GetFactionName(
-				response,
-				httptest.NewRequest(http.MethodGet, "/v1/factions/id/name", nil),
-			)
-			if response.Code != test.status {
-				t.Fatalf("status = %d, want %d", response.Code, test.status)
-			}
-		})
+func TestFactionNameRouteIsGone(t *testing.T) {
+	response := httptest.NewRecorder()
+	newFactionTestRouter(&fakeFactionService{}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/factions/7f22e693-bacd-46bb-b942-64fa613cd388/name", nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}
 }
 
@@ -209,36 +171,33 @@ func TestDeleteFactionRouteAndErrors(t *testing.T) {
 }
 
 type fakeFactionService struct {
-	createdFaction *factionservice.CreateInput
+	createdFaction *factionservice.ProfileInput
 	createErr      error
-	factionName    string
+	updatedFaction factionservice.ProfileInput
+	updateErr      error
 	factions       []faction.Faction
-	getErr         error
+	rulesets       []game.Ruleset
 	listErr        error
 	deletedID      string
 	deleteErr      error
 }
 
-type fakeRulesetService struct {
-	*fakeFactionService
-	rulesets []game.Ruleset
-}
-
-func (s *fakeRulesetService) ListRulesets() []game.Ruleset { return s.rulesets }
-
 func newFactionTestRouter(factions factionservice.Service) http.Handler {
 	return httpapi.NewRouter(NewHandler(factions))
 }
 
-func (s *fakeFactionService) GetFactionName(context.Context, string) (string, error) {
-	return s.factionName, s.getErr
+func (s *fakeFactionService) ListRulesets() []game.Ruleset { return s.rulesets }
+
+func (s *fakeFactionService) UpdateFaction(_ context.Context, input factionservice.ProfileInput) error {
+	s.updatedFaction = input
+	return s.updateErr
 }
 
 func (s *fakeFactionService) ListFactions(context.Context) ([]faction.Faction, error) {
 	return s.factions, s.listErr
 }
 
-func (s *fakeFactionService) CreateFaction(_ context.Context, input factionservice.CreateInput) error {
+func (s *fakeFactionService) CreateFaction(_ context.Context, input factionservice.ProfileInput) error {
 	s.createdFaction = &input
 	return s.createErr
 }
