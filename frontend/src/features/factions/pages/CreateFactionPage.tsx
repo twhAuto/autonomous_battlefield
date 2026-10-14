@@ -20,6 +20,11 @@ export const doctrineTemplates = {
 /** Renders the profile form and optional background generator, loading the faction when editing. */
 export function CreateFactionPage() {
  const { id } = useParams()
+ return <FactionEditor key={id ?? 'new'} id={id} />
+}
+
+// Form state belongs to one route identity, including loading and save errors.
+function FactionEditor({ id }: Readonly<{ id?: string }>) {
  const navigate = useNavigate()
  const [deleting, setDeleting] = useState(false)
  const [deleteError, setDeleteError] = useState('')

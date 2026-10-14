@@ -9,6 +9,10 @@ repository/package paths and deployment identifiers remain compatible.
 tests and `frontend/e2e/usability.spec.ts` cover failed logout and retry; see the
 [frontend guide](frontend-guide.md#frontend-organization) for the behavior.
 
+`frontend/src/features/factions/pages/CreateFactionPage.tsx` provides a route-keyed
+editor; its colocated tests cover fresh form state when leaving an edit route for
+creation, including recovery from a failed load.
+
 | Field | Value |
 | --- | --- |
 | Status | Current |

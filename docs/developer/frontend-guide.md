@@ -38,6 +38,10 @@ and mobile. The footer displays the product name without a hardcoded build numbe
 
 Feature-specific API clients live in `src/features/<feature>/api`; common HTTP transport lives in `src/shared/api`. Page components should consume typed client functions rather than duplicating `fetch` calls.
 
+`CreateFactionPage` keys its editor by route identity. Switching between creation
+and editing, or between factions, starts fresh form, loading, and error state and
+cancels the previous editor's load.
+
 `features/factions/presentation/availability.ts` derives background-writer status
 from existing availability, quota, cooldown, and active-job fields. Retrying status
 never configures a provider. Identifiers are generated internally and retained in

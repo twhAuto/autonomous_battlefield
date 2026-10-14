@@ -127,6 +127,10 @@ HTTP transport to report network failures consistently while preserving request
 cancellation. Feature clients own HTTP status messages; protected requests also
 notify the application when authentication is required.
 
+The faction editor scopes local form state to its route identity. Navigating to
+another faction or to creation resets the form and cancels the prior load, so
+fields and load failures cannot carry into another editor.
+
 ### Battle inspection
 
 The inline map fits its board aspect ratio. Expanding moves the same map state
