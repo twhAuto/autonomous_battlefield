@@ -23,6 +23,10 @@ kubectl --context "${KUBERNETES_CONTEXT:-kind-battlefield}" get deployments \
   --namespace "${KUBERNETES_NAMESPACE:-battlefield}" \
   -o jsonpath='{range .items[*].spec.template.spec.containers[*]}{.image}{"\n"}{end}' | \
   sed -n 's/.*@\(sha256:[0-9a-f]\{64\}\).*/\1/p' >"${protected_file}"
+if [[ ! -s "${protected_file}" ]]; then
+  echo "Retention inventory incomplete: no digest-pinned running images found; previous report preserved." >&2
+  exit 1
+fi
 rollback_file="${project_dir}/artifacts/deployment/rollback-images.env"
 if [[ -f "${rollback_file}" ]]; then
   sed -n 's/.*@\(sha256:[0-9a-f]\{64\}\).*/\1/p' "${rollback_file}" >>"${protected_file}"

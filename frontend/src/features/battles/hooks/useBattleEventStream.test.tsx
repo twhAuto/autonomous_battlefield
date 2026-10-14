@@ -90,3 +90,17 @@ it('ignores an obsolete rejection and does not poll a historical attempt', async
   await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
   expect(listBattleEvents).toHaveBeenCalledTimes(2)
 })
+
+it('retries the latest page after an initial load failure, then resumes incrementally', async () => {
+  vi.mocked(listBattleEvents).mockRejectedValueOnce(new BattleApiError('Offline', 503))
+    .mockResolvedValueOnce(page(1, 900, 50)).mockResolvedValueOnce(page(1, 950))
+  const { result } = renderHook(() => useBattleEventStream('battle', 1, 'completed'))
+  await waitFor(() => expect(result.current.eventState).toBe('error'))
+  await act(async () => result.current.loadEventPage(0, false))
+  expect(listBattleEvents).toHaveBeenLastCalledWith('battle', expect.objectContaining({ latest: true }), expect.any(AbortSignal))
+  expect(result.current.events[0].sequence).toBe(900)
+  expect(result.current.eventHasMore).toBe(false)
+  await act(async () => result.current.loadEventPage(result.current.eventCursor, false))
+  expect(listBattleEvents).toHaveBeenLastCalledWith('battle', expect.objectContaining({ after: 949, latest: false }), expect.any(AbortSignal))
+  expect(result.current.events.at(-1)?.sequence).toBe(950)
+})

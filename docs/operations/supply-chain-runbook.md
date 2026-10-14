@@ -33,7 +33,13 @@ the checkout's `artifacts/retention/` (`REPORT_DIR` overrides the destination;
 relative overrides resolve from the caller's directory; `GHCR_OWNER` overrides
 the package owner). The rollback file also resolves from the checkout. A failed
 cluster or registry read stops collection before publishing any report files,
-preserving the previous inventory and its timestamp. It does not delete registry versions. Treat missing
+preserving the previous inventory and its timestamp. A successful cluster read
+with no digest-pinned running images also fails before publication, even if rollback
+digests exist; tag-only or empty deployments cannot establish a protected set.
+Publication copies files into the report directory and is not an atomic directory
+replacement. A local write failure can leave mixed files; use only a completed
+command result and inspect all inputs before a retention decision. It does not
+delete registry versions. Treat missing
 cluster or rollback evidence as incomplete inventory before making any deletion
 decision; the report is advisory, not an automated retention policy.
 

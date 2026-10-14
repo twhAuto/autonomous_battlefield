@@ -184,8 +184,9 @@ during inspection:
 }
 ```
 
-These are properties of the existing inventory JSON object, not a replacement
-inventory. Keep the machine identity, operator, SSH key and encrypted inputs.
+Merge these two keys into the existing inventory JSON object; do not replace the
+whole file with this example. Keep the machine identity, operator, SSH key and
+encrypted inputs.
 Use the same `server.sh plan`, `apply` and `verify` commands described above;
 first adoption requires the ordinary sudo prompt. No new token or key is needed.
 `plan` inspects storage without changing its mount, fstab or permissions. `verify`

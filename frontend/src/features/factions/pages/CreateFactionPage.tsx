@@ -39,7 +39,7 @@ function FactionEditor({ id }: Readonly<{ id?: string }>) {
  const [loadFailed, setLoadFailed] = useState(false)
  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
  const [message, setMessage] = useState('')
- // Cancel the previous load when the route changes or the page unmounts to avoid stale form updates.
+ // Cancel this route-keyed editor’s load on unmount to avoid stale form updates.
  useEffect(() => {
  if (!id) return
  const controller = new AbortController()

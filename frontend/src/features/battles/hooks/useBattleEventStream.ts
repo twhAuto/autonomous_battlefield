@@ -62,7 +62,10 @@ export function useBattleEventStream(id: string, battleAttempt?: number, battleS
         inFlight = false
       }
     }
-    request.current = (after, reset) => load(after, reset)
+    request.current = (after, reset) => {
+      const initial = !snapshot.current.loaded
+      return load(after, reset || initial, initial)
+    }
     const initial = snapshot.current
     void load(initial.cursor, !initial.loaded, !initial.loaded)
     return () => { controller.abort(); clearTimeout(timer) }

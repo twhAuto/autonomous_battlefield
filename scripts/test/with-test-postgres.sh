@@ -13,6 +13,7 @@ build_identity="${BUILD_TAG:-${BUILD_NUMBER:-local-$$}}"
 container_name="battlefield-ci-postgres-$(printf '%s' "${build_identity}" | tr -cs '[:alnum:].-' '-')"
 database_name="battlefield_test"
 database_user="battlefield_test"
+# run-query-plans.sh validates this 24-byte / 48-hex credential shape; update both together.
 database_password="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
 container_id=""
 

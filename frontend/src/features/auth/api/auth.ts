@@ -64,6 +64,8 @@ async function logout(): Promise<void> {
     method: 'POST',
     credentials: 'same-origin',
   })
+  // An expired session is already signed out; other failures still need retry.
+  if (response.status === 401) return
   if (!response.ok) throw new AuthenticationError('Logout could not be completed.', response.status)
   if (response.headers.get('Content-Type')?.includes('application/json')) { const body = await response.json() as { logoutUrl?: string }; if (body.logoutUrl === '/cdn-cgi/access/logout') window.location.assign(body.logoutUrl) }
 }

@@ -96,6 +96,9 @@ and the [codebase guide](../developer/codebase-guide.md#executable-entry-points)
 
 ### Browser delivery
 
+The shell treats logout HTTP 401 as an already unauthenticated session. Other
+request failures keep the current screen and expose retry; they do not confirm logout.
+
 The Vite development proxy defaults to `http://localhost:8080` and accepts a
 server-only `DEV_API_PROXY_TARGET` override from the frontend env files or shell.
 Production/browser API routing continues to use `VITE_API_URL` and Nginx.
@@ -114,7 +117,9 @@ or failed faction views never fall back to spectator data. The perspective selec
 controls presentation; server-side role and ownership checks remain the access boundary.
 
 The browser loads events through one cancellable cursor loop per selected attempt,
-retaining at most 500 events, deduplicated by sequence. Historical attempts load on
+retaining at most 500 events, deduplicated by sequence. Retrying an initial failure
+loads the latest page; retries after a successful load resume from the cursor.
+Historical attempts load on
 selection or manual refresh. Errors retain loaded events and expose retry.
 
 Participant background and doctrine come from the persisted scenario, not the

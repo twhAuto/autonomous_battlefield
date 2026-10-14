@@ -139,7 +139,8 @@ code exercised only by those tests stays uncovered. Always measure through
 command. `test-go-coverage.sh` rejects a missing database URL before running Go,
 so a coverage invocation cannot silently omit database-backed tests. The harness
 requires Docker; if it cannot run, report that CI-equivalent coverage was not
-verified and label any measured figure as excluding database-backed tests.
+verified. The supported coverage command cannot produce a figure without the
+harness-provided database; a plain Go test run is not equivalent evidence.
 
 The source-security stage logs each failed check and its report path. Inspect the
 matching file under the build's archived `artifacts/security/` directory to

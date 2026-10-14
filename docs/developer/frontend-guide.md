@@ -41,9 +41,9 @@ Routes: `/` (Home), `/battles/new`, `/battles`, `/battles/:id`, `/factions`,
 mount only for Admins outside role preview; `/admin/members` also requires the
 session's `members` capability. Unknown paths render a not-found page.
 
-The shell waits for a successful logout response before showing the signed-out
-screen. If logout fails, it retains the current screen and shows an accessible
-retry message; it cannot confirm that the server session ended. Component tests
+The shell shows the signed-out screen after a successful logout or an HTTP 401
+confirming that the session is no longer authenticated. If the request otherwise
+fails, it retains the current screen and shows an accessible retry message; it cannot confirm that the server session ended. Component tests
 cover local-password and Access sessions, and browser tests cover retry on desktop
 and mobile. The footer displays the product name without a hardcoded build number.
 
@@ -77,7 +77,8 @@ views when navigating between battles. Faction-view results belong to one battle
 attempt, and perspective; cancelled requests cannot replace the current selection.
 While a faction view is unavailable, the map shows loading or retry feedback,
 keeping the selector and expanded dialog available. Only spectator mode renders
-the full map. Tick refreshes may retain the same faction's last successful view.
+the full map. While a tick refresh is loading, the same faction's last successful
+view remains visible. A failed refresh replaces it with the retry placeholder.
 
 `useBattleEventStream` owns one cancellable request loop per selected attempt.
 Initial loading, polling, and manual refresh cannot overlap. Status changes fetch
@@ -85,7 +86,10 @@ from the retained cursor, including the final events after completion, stop, or
 failure. Full incremental pages for the current attempt drain immediately; live
 polling otherwise waits one second. Historical attempts load on selection and
 manual refresh. Errors retain loaded events and expose retry. The buffer remains
-deduplicated by sequence and bounded to the latest 500 events.
+deduplicated by sequence and bounded to the latest 500 events. Retrying a failed
+initial load still requests the latest page; after a successful load, retries
+resume from the retained cursor. Errors pause polling until manual retry or a
+battle status change.
 
 `useBattleStatus` cancels polling when a control returns a terminal status.
 `useBattleStatus.test.ts` verifies that a late in-flight response cannot overwrite
@@ -154,7 +158,9 @@ than completion. `components/FactionSummaries.tsx` shows each
 participant's decision activity, gold, and living unit count using existing
 spectator state and current-attempt decision polling, independent of map
 perspective. Paused and terminal states override decision activity, polling errors
-show unavailable status, and missing metrics display a dash. The display accepts
+show unavailable status, and missing metrics display a dash. Null collection
+slices from Go JSON are handled safely: missing faction state is unavailable,
+while an empty army displays zero living units. The display accepts
 any participant count; battle creation and engine faction limits are unchanged.
 
 The inline map fits its board aspect ratio. Expanding moves the same map state

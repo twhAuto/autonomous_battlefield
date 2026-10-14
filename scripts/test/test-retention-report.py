@@ -38,6 +38,9 @@ import os, pathlib, sys
 name = pathlib.Path(sys.argv[0]).name
 if name == 'kubectl':
     if os.environ.get('FAIL_READ') == 'cluster': sys.exit(7)
+    if os.environ.get('FAIL_READ') == 'empty': sys.exit(0)
+    if os.environ.get('FAIL_READ') == 'tags':
+        print('example/backend:latest'); sys.exit(0)
     print('example/backend@sha256:' + 'a' * 64)
 elif os.environ.get('FAIL_READ') == 'registry' and 'frontend' in sys.argv[-1]:
     sys.exit(8)
@@ -71,7 +74,7 @@ else:
                          [RUNNING, ROLLBACK])
 
     def test_failed_read_does_not_publish_a_partial_report(self):
-        for failure in ('cluster', 'registry'):
+        for failure in ('cluster', 'registry', 'empty', 'tags'):
             with self.subTest(failure=failure):
                 self.env.update(FAIL_READ=failure, REPORT_DIR=str(self.report))
                 result = self.run_report()
@@ -86,7 +89,7 @@ else:
                     'autonomous-battlefield-frontend-versions.json': '[{"id":43}]\n'}
         for name, content in original.items():
             (self.report / name).write_text(content)
-        for failure in ('cluster', 'registry'):
+        for failure in ('cluster', 'registry', 'empty', 'tags'):
             with self.subTest(failure=failure):
                 self.env.update(FAIL_READ=failure, REPORT_DIR=str(self.report))
                 self.assertNotEqual(self.run_report().returncode, 0)
