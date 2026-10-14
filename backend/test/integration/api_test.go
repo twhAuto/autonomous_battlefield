@@ -27,6 +27,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/twh09/autonomous_battlefield/backend/gamedata"
 	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 	"github.com/twh09/autonomous_battlefield/backend/internal/app"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
@@ -110,7 +111,7 @@ func isolatedAPIDatabase(t *testing.T) *pgxpool.Pool {
 
 func startIntegrationAPI(t *testing.T, db *pgxpool.Pool, issuer *accessIssuer) *integrationAPI {
 	t.Helper()
-	scenarios, err := catalog.LoadCatalog("../../scenarios", "../../rulesets")
+	scenarios, err := catalog.LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatalf("LoadCatalog() returned an error: %v", err)
 	}

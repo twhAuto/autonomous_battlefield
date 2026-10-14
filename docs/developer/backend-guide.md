@@ -459,8 +459,9 @@ cancellation without application DDL, then verifies successful migration after r
 | --- | --- |
 | [`backend/config.yaml`](../../backend/config.yaml) | Local process configuration and model-profile definitions |
 | [`.env.example`](../../.env.example) | Shared dev/production application settings schema |
-| [`backend/rulesets`](../../backend/rulesets) | Versioned unit, building, economy, and combat values |
-| [`backend/scenarios`](../../backend/scenarios) | Map layout, timing, scripted plans, and fallbacks |
+| [`backend/gamedata/content`](../../backend/gamedata/content) | Versioned unit, upgrade, building and knowledge-card libraries |
+| [`backend/gamedata/rulesets`](../../backend/gamedata/rulesets) | Library selections, starting gold, building limits and combat values |
+| [`backend/gamedata/scenarios`](../../backend/gamedata/scenarios) | Map layout, timing, scripted plans, fallbacks and content restrictions |
 | [`infra/deploy/base/infrastructure/configmap.yaml`](../../infra/deploy/base/infrastructure/configmap.yaml) | Cluster configuration equivalent |
 | [`infra/deploy/environments/deployment.env.example`](../../infra/deploy/environments/deployment.env.example) | Deployment environment profile template consumed by the shared resolver |
 
@@ -607,10 +608,10 @@ Production k6 smoke-load credential binding is described in the
 
 ### Shared content catalog
 
-- `backend/content/core-v1.yaml` preserves the starter roster. `core-v2.yaml`
+- `backend/gamedata/content/core-v1.yaml` preserves the starter roster. `core-v2.yaml`
   adds siege/support units and defensive/production structures; rulesets reference
   a versioned library instead of duplicating stats.
-- `backend/scenarios/frontier-siege-v2.yaml` supplies the expanded 25×17 authored
+- `backend/gamedata/scenarios/frontier-siege-v2.yaml` supplies the expanded 25×17 authored
   map and mixed scripted plans, selected through `castle-siege-v2`.
 - `backend/internal/ai/decision/validate.go` validates typed construction and recruitment
   sources against frozen legal choices. The worker exposes structure definitions

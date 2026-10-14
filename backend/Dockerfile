@@ -1,5 +1,5 @@
-# Builds the API, engine, AI gateway, and agent binaries and packages their runtime configuration
-# and authored game content in a non-root image.
+# Builds the API, engine, AI gateway, and agent binaries and packages them with their runtime
+# configuration in a non-root image. Game content and migrations are embedded in the binaries.
 
 FROM golang:1.26.9-alpine AS build
 
@@ -40,9 +40,6 @@ COPY --from=build --chown=battlefield:battlefield /out/ai-gateway /app/ai-gatewa
 # image-only rollbacks to older images keep working. Remove with that command.
 COPY --from=build --chown=battlefield:battlefield /out/ai-gateway /app/mcp
 COPY --chown=battlefield:battlefield config.yaml /app/config.yaml
-COPY --chown=battlefield:battlefield scenarios /app/scenarios
-COPY --chown=battlefield:battlefield rulesets /app/rulesets
-COPY --chown=battlefield:battlefield content /app/content
 
 USER battlefield
 

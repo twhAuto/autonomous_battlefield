@@ -15,8 +15,6 @@ database:
   minConnections: 1
   maxConnectionLifetime: 30m
 api:
-  scenarioCatalogPath: scenarios
-  rulesetCatalogPath: rulesets
   maxTicks: 10000
 auth:
   sessionTTL: 12h

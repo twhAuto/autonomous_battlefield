@@ -8,9 +8,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"path/filepath"
+	"io/fs"
+	"path"
 	"strings"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 type rulesetFile struct {
@@ -53,7 +55,7 @@ type contentLibrary struct {
 	Knowledge *game.RulesKnowledge `yaml:"knowledge"`
 }
 
-func resolveLibrary(directory string, source rulesetFile) (game.Ruleset, error) {
+func resolveLibrary(fsys fs.FS, source rulesetFile) (game.Ruleset, error) {
 	r := source.Ruleset
 	if source.Library == nil {
 		return r, nil
@@ -69,8 +71,7 @@ func resolveLibrary(directory string, source rulesetFile) (game.Ruleset, error) 
 		return r, fmt.Errorf("library selection cannot be mixed with inline units, upgrades, structures or knowledge")
 	}
 	var library contentLibrary
-	path := filepath.Join(filepath.Dir(directory), "content", ref.ID+"-v"+ref.Version+".yaml")
-	if err := decodeOne(path, &library); err != nil {
+	if err := decodeOne(fsys, path.Join(contentDirectory, ref.ID+"-v"+ref.Version+".yaml"), &library); err != nil {
 		return r, err
 	}
 	if library.ID != ref.ID || library.Version != ref.Version {

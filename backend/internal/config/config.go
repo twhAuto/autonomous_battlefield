@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -51,9 +50,7 @@ type AIGatewayConfig struct {
 }
 
 type API struct {
-	ScenarioCatalogPath string
-	RulesetCatalogPath  string
-	MaxTicks            uint64
+	MaxTicks uint64
 }
 
 // fileConfig mirrors the YAML file. The *EnvironmentVariable keys are retired: they may
@@ -80,6 +77,7 @@ type fileConfig struct {
 		MaxConnectionLifetime  string `yaml:"maxConnectionLifetime"`
 	} `yaml:"database"`
 	API struct {
+		// Retired: game content is embedded (see checkRetiredCatalogPaths).
 		ScenarioCatalogPath string `yaml:"scenarioCatalogPath"`
 		RulesetCatalogPath  string `yaml:"rulesetCatalogPath"`
 		MaxTicks            uint64 `yaml:"maxTicks"`
@@ -137,7 +135,7 @@ func LoadAPI(path string) (APIConfig, error) {
 		if c.Database, err = parseDatabaseConfig(raw); err != nil {
 			return c, err
 		}
-		if c.API, err = parseAPIConfig(raw, path); err != nil {
+		if c.API, err = parseAPIConfig(raw); err != nil {
 			return c, err
 		}
 		if c.Auth, err = parseAuthConfig(raw, production); err != nil {
@@ -203,6 +201,9 @@ func load[T any](path string, parse func(raw fileConfig, production bool) (T, er
 	if err == nil {
 		err = checkLegacyVariableKeys(raw)
 	}
+	if err == nil {
+		err = checkRetiredCatalogPaths(raw)
+	}
 	if err != nil {
 		return zero, fmt.Errorf("validate config file %q: %w", path, err)
 	}
@@ -244,21 +245,28 @@ func decode(path string) (fileConfig, error) {
 	return raw, nil
 }
 
-func parseAPIConfig(raw fileConfig, path string) (API, error) {
-	catalogPath := strings.TrimSpace(raw.API.ScenarioCatalogPath)
-	if catalogPath == "" {
-		catalogPath = "scenarios"
+// retiredCatalogPaths are the only accepted values of the retired catalog path keys:
+// where images built before game content was embedded keep it. The base ConfigMap
+// keeps them so an image-only rollback to such an image still finds its content,
+// since those images resolve a missing path beside /etc/battlefield/config.yaml.
+var retiredCatalogPaths = []struct{ field, fixed string }{
+	{"api.scenarioCatalogPath", "/app/scenarios"},
+	{"api.rulesetCatalogPath", "/app/rulesets"},
+}
+
+// checkRetiredCatalogPaths rejects any other value, which current binaries would
+// silently ignore.
+func checkRetiredCatalogPaths(raw fileConfig) error {
+	for i, value := range []string{raw.API.ScenarioCatalogPath, raw.API.RulesetCatalogPath} {
+		key := retiredCatalogPaths[i]
+		if value := strings.TrimSpace(value); value != "" && value != key.fixed {
+			return fmt.Errorf("%s is retired because game content is embedded; remove it (older images use only %s)", key.field, key.fixed)
+		}
 	}
-	if !filepath.IsAbs(catalogPath) {
-		catalogPath = filepath.Join(filepath.Dir(path), catalogPath)
-	}
-	rulesetPath := strings.TrimSpace(raw.API.RulesetCatalogPath)
-	if rulesetPath == "" {
-		rulesetPath = "rulesets"
-	}
-	if !filepath.IsAbs(rulesetPath) {
-		rulesetPath = filepath.Join(filepath.Dir(path), rulesetPath)
-	}
+	return nil
+}
+
+func parseAPIConfig(raw fileConfig) (API, error) {
 	maxTicks := raw.API.MaxTicks
 	if maxTicks == 0 {
 		maxTicks = 10_000
@@ -266,7 +274,7 @@ func parseAPIConfig(raw fileConfig, path string) (API, error) {
 	if maxTicks > 10_000 {
 		return API{}, fmt.Errorf("api.maxTicks must not exceed 10000")
 	}
-	return API{ScenarioCatalogPath: catalogPath, RulesetCatalogPath: rulesetPath, MaxTicks: maxTicks}, nil
+	return API{MaxTicks: maxTicks}, nil
 }
 
 func parseOptionalDuration(field, value string, fallback time.Duration) (time.Duration, error) {

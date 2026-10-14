@@ -642,10 +642,13 @@ AWS promotion copies verified images to ECR without rebuilding.
   `server -migrate` mode. Never let every API replica race to migrate.
 - Pass an explicit configuration path in containers, for example
   `-config /etc/battlefield/config.yaml`.
-- Scenario paths are resolved relative to the configuration file. If the
-  ConfigMap is mounted under `/etc/battlefield`, set
-  `api.scenarioCatalogPath` to an absolute image path such as
-  `/app/scenarios`.
+- Scenarios, rulesets and content libraries are embedded in the server binary
+  (`backend/gamedata`). The base ConfigMap still sets the retired
+  `api.scenarioCatalogPath: /app/scenarios` and `api.rulesetCatalogPath:
+  /app/rulesets`: images built before embedding resolve a missing path beside
+  `/etc/battlefield/config.yaml`, so an image-only rollback to one would otherwise
+  fail to load its catalog. Current binaries accept only those two values; remove
+  the keys once no rollback target predates `backend/gamedata`.
 - Use `/startupz`, `/livez`, and `/readyz` for startup, liveness, and readiness
   respectively. The API serves them on port 8080 and the engine on port 8081.
 - Startup remains unavailable until PostgreSQL and application initialization
