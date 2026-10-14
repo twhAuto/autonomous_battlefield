@@ -25,12 +25,15 @@ verification layout.
 
 ### Run a retention inventory
 
-Run `./scripts/ops/ghcr-retention-report.sh` from the repository root with a
+Run `scripts/ops/ghcr-retention-report.sh` with a
 registered deployment environment and `GH_TOKEN` carrying `read:packages` access.
 The shared environment resolver verifies the selected cluster. The script writes
 package-version inventories and protected running/rollback digests under
-`artifacts/retention/` (`REPORT_DIR` overrides the destination; `GHCR_OWNER`
-overrides the package owner). It does not delete registry versions. Treat missing
+the checkout's `artifacts/retention/` (`REPORT_DIR` overrides the destination;
+relative overrides resolve from the caller's directory; `GHCR_OWNER` overrides
+the package owner). The rollback file also resolves from the checkout. A failed
+cluster or registry read stops collection before publishing any report files,
+preserving the previous inventory and its timestamp. It does not delete registry versions. Treat missing
 cluster or rollback evidence as incomplete inventory before making any deletion
 decision; the report is advisory, not an automated retention policy.
 

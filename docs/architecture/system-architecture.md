@@ -869,6 +869,9 @@ evaluation corpus digest over file contents and relative names. Registry publica
 migrations and rollback procedures belong to [deployment operations](../operations/deployment.md),
 [K3s delivery](../operations/k3s-delivery.md), and the
 [supply-chain runbook](../operations/supply-chain-runbook.md).
+The advisory retention inventory publishes only after cluster and registry reads
+succeed; a failed collection preserves the previous report. Registry deletion is
+not automated.
 
 ## 12. Observability
 
