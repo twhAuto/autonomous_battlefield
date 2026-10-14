@@ -7,13 +7,11 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
 )
 
@@ -46,30 +44,20 @@ func randomUUID(t *testing.T) string {
 // migratedSchema returns a pool on a private schema migrated to the latest version.
 func migratedSchema(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	config := testDatabaseConfig(t)
-	admin := stdlib.OpenDB(*config)
-	t.Cleanup(func() { _ = admin.Close() })
-	ctx := context.Background()
-	schema := "schema_" + strings.ReplaceAll(randomUUID(t), "-", "")
-	if _, err := admin.ExecContext(ctx, `CREATE SCHEMA `+schema); err != nil {
+	db, config := privateSchema(t)
+	provider, err := postgres.NewMigrationProvider(db)
+	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _, _ = admin.ExecContext(context.Background(), `DROP SCHEMA `+schema+` CASCADE`) })
+	if _, err = provider.Up(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	poolConfig, err := pgxpool.ParseConfig(config.ConnString())
 	if err != nil {
 		t.Fatal(err)
 	}
-	poolConfig.ConnConfig.RuntimeParams["search_path"] = schema
-	migrator := stdlib.OpenDB(*poolConfig.ConnConfig)
-	defer migrator.Close()
-	provider, err := postgres.NewMigrationProvider(migrator)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = provider.Up(ctx); err != nil {
-		t.Fatal(err)
-	}
-	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	poolConfig.ConnConfig.RuntimeParams["search_path"] = config.RuntimeParams["search_path"]
+	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
