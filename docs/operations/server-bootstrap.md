@@ -173,11 +173,15 @@ the existing foundation-only behavior. This is separate from `backup_uuid`: a
 partition on the Ubuntu SSD is suitable for application storage, but is not a
 second-drive backup.
 
-For the inspected server, the selected inventory additions are:
+Add the existing ext4 partition's verified UUID and mount path to the inventory.
+The following is an example fragment; replace the UUID with the one confirmed
+during inspection:
 
 ```json
-"data_uuid": "75db9b1d-5c46-4e5b-bd94-5391b2a35411",
-"data_mount": "/srv/battlefield-data"
+{
+  "data_uuid": "75db9b1d-5c46-4e5b-bd94-5391b2a35411",
+  "data_mount": "/srv/battlefield-data"
+}
 ```
 
 These are properties of the existing inventory JSON object, not a replacement
