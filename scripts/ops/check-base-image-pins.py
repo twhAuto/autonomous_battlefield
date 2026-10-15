@@ -30,9 +30,16 @@ def pins(path: Path) -> list[tuple[int, str, str, str]]:
     return found
 
 
+RESOLVE_TIMEOUT_SECONDS = 120
+
+
 def resolve(reference: str) -> str | None:
-    result = subprocess.run(['docker', 'buildx', 'imagetools', 'inspect', reference],
-                            capture_output=True, text=True, timeout=120)
+    """Return the tag's current index digest, or None if it cannot be resolved."""
+    try:
+        result = subprocess.run(['docker', 'buildx', 'imagetools', 'inspect', reference],
+                                capture_output=True, text=True, timeout=RESOLVE_TIMEOUT_SECONDS)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     match = DIGEST.search(result.stdout) if result.returncode == 0 else None
     return match.group(1) if match else None
 

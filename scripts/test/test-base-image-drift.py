@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Check the on-demand base-image drift report with a synthetic docker command."""
+import contextlib
+import importlib.util
+import io
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 PINNED = 'sha256:' + 'a' * 64
@@ -62,6 +67,29 @@ class BaseImageDriftTests(unittest.TestCase):
     def test_no_pins_fails(self):
         (self.root / 'backend/Dockerfile').write_text('FROM scratch\n')
         self.assertEqual(self.run_check({}).returncode, 2)
+
+    def test_missing_docker_reports_unresolved(self):
+        self.env['PATH'] = str(self.root / 'empty-bin')
+        result = subprocess.run([sys.executable, str(self.script)], env=self.env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stderr.count('UNRESOLVED'), 2)
+
+    def test_timed_out_lookup_reports_unresolved_and_checks_remaining_pins(self):
+        spec = importlib.util.spec_from_file_location('pins', self.script)
+        pins = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(pins)
+        calls = []
+
+        def run(arguments, **_):
+            calls.append(arguments[-1])
+            if arguments[-1] == 'golang:1.26-alpine':
+                raise subprocess.TimeoutExpired(arguments, pins.RESOLVE_TIMEOUT_SECONDS)
+            return subprocess.CompletedProcess(arguments, 0, f'Digest:    {PINNED}\n', '')
+        with mock.patch.object(pins.subprocess, 'run', run), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(pins.main(), 2)
+        self.assertEqual(calls, ['golang:1.26-alpine', 'alpine:3.23'])
+        self.assertIn('UNRESOLVED backend/Dockerfile:2 golang:1.26-alpine', errors.getvalue())
 
 
 if __name__ == '__main__':
