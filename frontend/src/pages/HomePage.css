@@ -1,7 +1,6 @@
 /* Home page command menu and introductory content. */
 .hero { position: relative; padding: 96px 0 74px; border-bottom: 1px solid var(--line); }
-.hero__eyebrow { display: flex; justify-content: space-between; color: var(--muted); font: 500 12px 'DM Mono', monospace; letter-spacing: .18em; }
-.hero__eyebrow { justify-content: flex-start; gap: 14px; color: var(--lime); }
+.hero__eyebrow { display: flex; justify-content: flex-start; gap: 14px; color: var(--lime); font: 500 12px 'DM Mono', monospace; letter-spacing: .18em; }
 .hero__eyebrow span { color: var(--muted); }
 .hero h1 { max-width: 900px; margin: 24px 0 26px; font-size: clamp(50px, 7.6vw, 100px); line-height: .93; letter-spacing: -.06em; font-weight: 500; }
 .hero h1 em { color: var(--lime); font-family: Georgia, serif; font-weight: 400; }
@@ -20,7 +19,7 @@
 .menu-card__number { position: absolute; top: 28px; left: 32px; color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .15em; }
 .menu-card__eyebrow { color: var(--lime); font: 12px 'DM Mono', monospace; letter-spacing: .18em; }
 .menu-card h3 { margin: 12px 0 12px; font-size: clamp(28px, 3vw, 42px); line-height: 1; font-weight: 500; letter-spacing: -.04em; }
-.menu-card p { max-width: 380px; margin: 0; color: #858d80; font-size: 14px; line-height: 1.65; }
+.menu-card p { max-width: 380px; margin: 0; color: #aeb6a9; font-size: 14px; line-height: 1.65; }
 .menu-card__arrow { position: absolute; right: 32px; bottom: 31px; color: var(--lime); font-size: 25px; }
 
 @media (max-width: 780px) {
@@ -38,7 +37,6 @@
 .command-menu--compact .menu-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .command-menu--compact .menu-card { min-height: 230px; }
 .command-menu--compact .menu-card h2 { margin: 0 0 12px; font-size: 28px; }
-.menu-card p { color: #aeb6a9; }
 @media (max-width: 780px) {
   .command-menu--compact .menu-grid { grid-template-columns: 1fr; }
   .command-menu--compact .menu-card { min-height: 180px; }
