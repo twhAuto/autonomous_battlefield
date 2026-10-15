@@ -14,9 +14,9 @@
 .map-zoom-controls { gap: 6px; }
 .map-perspective-control { gap: 9px; }
 .map-perspective-control label { color: #9da8b0; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
-.map-perspective-control select { min-width: 220px; height: 32px; }
+.map-perspective-control select { min-width: 220px; height: 32px; padding: 0 10px; color: #dce2d5; background: var(--ink); border: 1px solid #454d41; }
 .map-zoom-controls button:last-child { font-size: 12px; padding-inline: 10px; }
-.map-viewport { height: min(64vh, 620px); overflow: hidden; touch-action: none; }
+.map-viewport { overflow: hidden; touch-action: none; }
 .map-viewport svg { cursor: grab; height: 100%; width: 100%; }
 .map-viewport svg:active { cursor: grabbing; }
 .hex-tile { stroke: #35414a; stroke-width: 1; }
@@ -58,12 +58,8 @@
 .map-legend .legend-movement { border-color: #aab3b8; border-style: dashed; }
 .map-legend .legend-attack { border-color: #aab3b8; }
 .legend-ground { background: #172127; }.legend-rock { background: #46505a; }.legend-site { background: #273c31; }.legend-fog { background: #070a0d; }
-.entity-details { flex-wrap: wrap; overflow-wrap: anywhere; align-items: center; border-top: 1px solid #303a42; display: flex; gap: 18px; min-height: 54px; padding: 12px 16px; }
+.entity-details, .map-placeholder { flex-wrap: wrap; overflow-wrap: anywhere; align-items: center; border-top: 1px solid #303a42; display: flex; gap: 18px; min-height: 54px; padding: 12px 16px; }
 .entity-details span { color: #9da8b0; }
-
-@media (max-width: 760px) {
-  .map-viewport { height: 460px; }
-}
 
 .unit-direction--healing { stroke: #65e6c4; stroke-dasharray: 2 3; stroke-width: 3; }
 .unit-direction--tower { stroke-width: 2; }
@@ -86,9 +82,7 @@
   .unit-death { animation: none; }
 }
 .map-zoom-controls button { min-width: 44px; }
-.map-viewport { height: auto; }
 .map-toolbar__controls, .map-zoom-controls { flex-wrap: wrap; }
-.map-perspective-control select { color: #dce2d5; background: var(--ink); border: 1px solid #454d41; padding: 0 10px; }
 .map-viewport--overview { touch-action: pan-y; }
 .map-viewport--overview svg { cursor: default; }
 .expanded-map { width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; padding: 0; border: 0; color: #ecf0e5; background: var(--ink); }
@@ -96,4 +90,4 @@
 .expanded-map .map-panel { min-height: 100%; display: flex; flex-direction: column; margin: 0; }
 .expanded-map .map-viewport { height: max(240px, 60dvh); flex: 1 0 240px; }
 .expanded-map .map-toolbar { flex-wrap: wrap; }
-.expanded-map .entity-details { flex-shrink: 0; }
+.expanded-map .entity-details, .expanded-map .map-placeholder { flex-shrink: 0; }

@@ -120,7 +120,8 @@ The browser loads events through one cancellable cursor loop per selected attemp
 retaining at most 500 events, deduplicated by sequence. Retrying an initial failure
 loads the latest page; retries after a successful load resume from the cursor.
 Historical attempts load on
-selection or manual refresh. Errors retain loaded events and expose retry.
+selection or manual refresh. Errors retain loaded events and expose retry; the live
+current attempt also retries automatically with backoff capped at 30 seconds.
 
 Participant background and doctrine come from the persisted scenario, not the
 editable faction directory. Player summaries use the spectator snapshot independently
@@ -800,7 +801,7 @@ Application configuration is separated into workload-specific Secrets and a
 non-secret ConfigMap. Deployment identity stays outside application Secrets;
 see the [configuration model](configuration.md). Production image admission
 requires verified image provenance. AI build manifests include a checkout-independent
-evaluation corpus digest over file contents and relative names. Registry publication, controller provisioning,
+evaluation corpus digest over the tracked files' contents and relative names. Registry publication, controller provisioning,
 migrations and rollback procedures belong to [deployment operations](../operations/deployment.md),
 [K3s delivery](../operations/k3s-delivery.md), and the
 [supply-chain runbook](../operations/supply-chain-runbook.md).

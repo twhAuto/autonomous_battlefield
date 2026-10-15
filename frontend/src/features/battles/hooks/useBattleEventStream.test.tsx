@@ -104,3 +104,51 @@ it('retries the latest page after an initial load failure, then resumes incremen
   expect(listBattleEvents).toHaveBeenLastCalledWith('battle', expect.objectContaining({ after: 949, latest: false }), expect.any(AbortSignal))
   expect(result.current.events.at(-1)?.sequence).toBe(950)
 })
+
+it('retries a live attempt after a transient failure and resumes from the cursor', async () => {
+  vi.useFakeTimers()
+  vi.mocked(listBattleEvents).mockResolvedValueOnce(page(1, 1))
+    .mockRejectedValueOnce(new BattleApiError('Offline', 503)).mockResolvedValueOnce(page(1, 2))
+  const { result } = renderHook(() => useBattleEventStream('battle', 1, 'running'))
+  await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+  expect(result.current.eventState).toBe('error')
+  await act(async () => { await vi.advanceTimersByTimeAsync(1999) })
+  expect(listBattleEvents).toHaveBeenCalledTimes(2)
+  await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+  expect(listBattleEvents).toHaveBeenLastCalledWith('battle', expect.objectContaining({ after: 1, latest: false }), expect.any(AbortSignal))
+  expect(result.current.eventState).toBe('idle')
+  expect(result.current.events.map(event => event.sequence)).toEqual([1, 2])
+})
+
+it('caps the retry delay while a live attempt keeps failing', async () => {
+  vi.useFakeTimers()
+  vi.mocked(listBattleEvents).mockRejectedValue(new BattleApiError('Offline', 503))
+  renderHook(() => useBattleEventStream('battle', 1, 'running'))
+  // Retries follow 2 s, 4 s, 8 s, 16 s, then the 30 s cap; each still asks for the latest page.
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+  expect(listBattleEvents).toHaveBeenCalledTimes(6)
+  await act(async () => { await vi.advanceTimersByTimeAsync(29_999) })
+  expect(listBattleEvents).toHaveBeenCalledTimes(6)
+  await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+  expect(listBattleEvents).toHaveBeenCalledTimes(7)
+  expect(listBattleEvents).toHaveBeenLastCalledWith('battle', expect.objectContaining({ latest: true }), expect.any(AbortSignal))
+})
+
+it('waits for a manual retry after a terminal attempt fails', async () => {
+  vi.useFakeTimers()
+  vi.mocked(listBattleEvents).mockRejectedValue(new BattleApiError('Offline', 503))
+  const { result } = renderHook(() => useBattleEventStream('battle', 1, 'completed'))
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+  expect(result.current.eventState).toBe('error')
+  expect(listBattleEvents).toHaveBeenCalledTimes(1)
+})
+
+it('follows a new current attempt without requesting the previous one again', async () => {
+  vi.mocked(listBattleEvents).mockImplementation(async (_id, options) => page(options.attempt, 1))
+  const { result, rerender } = renderHook(({ attempt }) => useBattleEventStream('battle', attempt, 'completed'), { initialProps: { attempt: 1 } })
+  await waitFor(() => expect(result.current.events[0]?.attempt).toBe(1))
+  rerender({ attempt: 2 })
+  await waitFor(() => expect(result.current.events[0]?.attempt).toBe(2))
+  expect(result.current.selectedAttempt).toBe(2)
+  expect(vi.mocked(listBattleEvents).mock.calls.map(([, options]) => options.attempt)).toEqual([1, 2])
+})

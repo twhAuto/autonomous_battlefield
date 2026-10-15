@@ -19,7 +19,7 @@ body { margin: 0; min-width: 320px; min-height: 100vh; }
 button, input, select { font: inherit; }
 button { cursor: pointer; }
 .status-dot { width: 6px; height: 6px; background: var(--lime); border-radius: 50%; box-shadow: 0 0 10px var(--lime); }
-.section-label { display: flex; justify-content: space-between; color: var(--muted); font: 500 12px 'DM Mono', monospace; letter-spacing: .18em; }
+.section-label { display: flex; justify-content: space-between; padding-bottom: 18px; color: var(--muted); border-bottom: 1px solid var(--line); font: 500 12px 'DM Mono', monospace; letter-spacing: .18em; }
 
 .page-header { padding: 48px 0 42px; border-bottom: 1px solid var(--line); }
 .page-header .hero__eyebrow { margin-top: 48px; }
@@ -28,7 +28,6 @@ button { cursor: pointer; }
 .back-link { color: var(--muted); text-decoration: none; font: 500 12px 'DM Mono', monospace; letter-spacing: .15em; }
 .back-link:hover, .text-link:hover { color: var(--lime); }
 .text-link { display: inline-block; margin-top: 9px; color: #b8c0b1; font: 500 12px 'DM Mono', monospace; letter-spacing: .08em; text-decoration: none; text-transform: uppercase; }
-.section-label { padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 
 .directory-title { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; }
 .compact-action { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 16px; color: var(--lime); background: transparent; border: 1px solid rgba(216,255,104,.45); text-decoration: none; font: 500 12px 'DM Mono', monospace; letter-spacing: .12em; transition: color .2s, background .2s; }
