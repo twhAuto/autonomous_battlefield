@@ -238,8 +238,8 @@ command-double deployment suite; see [Jenkins checks](ci.md#pull-request-verific
 `scripts/ops/ghcr-retention-report.sh` collects running and rollback digests plus
 registry versions, then swaps the complete inventory into place by directory rename.
 Its command-double regressions in `scripts/test/test-retention-report.py` cover
-failed collection, a failed swap, preserved previous reports and invocation
-outside the checkout.
+failed collection, failed or interrupted swaps, concurrent runs, preserved previous
+reports and invocation outside the checkout.
 
 `scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh` are the driver-neutral
 entry points used by Jenkins. On main, `capture-rollback-images.sh` records the

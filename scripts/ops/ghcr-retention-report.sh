@@ -15,12 +15,25 @@ for command in gh kubectl; do
 done
 : "${GH_TOKEN:?GH_TOKEN with read:packages is required}"
 
-# Stage beside the report so publication is a rename on the same filesystem.
+# Stage beside the report so publication is a rename on the same filesystem, and
+# serialize runs that share a destination.
 report_parent="$(dirname -- "${report_dir}")"
 mkdir -p -- "${report_parent}"
+exec 9>>"${report_parent}/.retention.lock"
+if ! flock -n 9; then
+  echo "Another retention report run is using ${report_parent}." >&2
+  exit 1
+fi
 staging="$(mktemp -d "${report_parent}/.retention-staging.XXXXXX")"
 retired="${staging/.retention-staging./.retention-retired.}"
-trap 'rm -rf -- "${staging}" "${retired}"' EXIT
+# The previous report is deleted only after a successful swap; otherwise keep it.
+cleanup() {
+  rm -rf -- "${staging}"
+  if [[ -e "${retired}" ]]; then
+    echo "Previous retention report kept at ${retired}." >&2
+  fi
+}
+trap cleanup EXIT
 protected_file="${staging}/protected-digests.txt"
 # Collect all inputs before publishing; failed reads must preserve the last report.
 kubectl --context "${KUBERNETES_CONTEXT:-kind-battlefield}" get deployments \
@@ -52,15 +65,18 @@ Never delete a digest listed in protected-digests.txt, a release, an incident/le
 or any subject whose signature/attestation referrers have not been inventoried.
 EOF
 
-# Swap the complete staged directory into place: readers never see a mix of old and
-# new files, and a failed swap restores the previous report.
+# Swap the complete staged directory into place, so the destination never holds a
+# mix of old and new files. It is briefly absent between the two renames.
 if [[ -e "${report_dir}" ]]; then
   mv -T -- "${report_dir}" "${retired}"
 fi
-if ! mv -T -- "${staging}" "${report_dir}"; then
-  if [[ -e "${retired}" ]]; then
-    mv -T -- "${retired}" "${report_dir}"
-  fi
-  echo "Could not publish the retention report; previous report preserved." >&2
-  exit 1
+if mv -T -- "${staging}" "${report_dir}"; then
+  rm -rf -- "${retired}"
+  exit 0
 fi
+if [[ -e "${retired}" ]] && mv -T -- "${retired}" "${report_dir}"; then
+  echo "Could not publish the retention report; previous report restored." >&2
+else
+  echo "Could not publish the retention report." >&2
+fi
+exit 1

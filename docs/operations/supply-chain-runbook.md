@@ -39,10 +39,14 @@ cluster or registry read stops collection before publishing any report files,
 preserving the previous inventory and its timestamp. A successful cluster read
 with no digest-pinned running images also fails before publication, even if rollback
 digests exist; tag-only or empty deployments cannot establish a protected set.
-The report is staged in a sibling directory and swapped into place by rename, so
-the directory always holds one complete inventory; files from earlier runs that
-the script no longer writes are removed. If the swap fails, the previous report is
-restored. It does not delete registry versions. Treat missing
+The report is staged in a sibling directory and swapped into place by two renames,
+so the destination never holds a mix of old and new files, though it is briefly
+absent between them. Files from earlier runs that the script no longer writes are
+removed. A lock beside the destination refuses a concurrent run. If the swap fails,
+the previous report is restored. If restoring also fails, or the run is
+interrupted mid-swap, the previous report stays beside the destination as
+`.retention-retired.*`, and the script names it when it can. It does not delete
+registry versions. Treat missing
 cluster or rollback evidence as incomplete inventory before making any deletion
 decision; the report is advisory, not an automated retention policy.
 
