@@ -9,8 +9,12 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
 )
 
+// keyPrefix versions cached entries. Bump it whenever service.BattleRun's JSON shape
+// changes, so entries written by the previous shape are ignored instead of decoding
+// with missing fields until their TTL expires.
 const keyPrefix = "battlefield:completed-battle:v1:"
 
 type Cache struct {
@@ -52,6 +56,19 @@ func (c *Cache) Get(ctx context.Context, id string) (*service.BattleRun, error) 
 	if c.client == nil {
 		return nil, nil
 	}
+	run, err := c.get(ctx, id)
+	switch {
+	case err != nil:
+		metrics.ObserveResultCache("get", "error")
+	case run == nil:
+		metrics.ObserveResultCache("get", "miss")
+	default:
+		metrics.ObserveResultCache("get", "hit")
+	}
+	return run, err
+}
+
+func (c *Cache) get(ctx context.Context, id string) (*service.BattleRun, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 	data, err := c.client.Get(ctx, keyPrefix+id).Bytes()
@@ -84,5 +101,10 @@ func (c *Cache) Set(ctx context.Context, run *service.BattleRun) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
-	return c.client.Set(ctx, keyPrefix+run.ID, data, c.ttl).Err()
+	if err := c.client.Set(ctx, keyPrefix+run.ID, data, c.ttl).Err(); err != nil {
+		metrics.ObserveResultCache("set", "error")
+		return err
+	}
+	metrics.ObserveResultCache("set", "stored")
+	return nil
 }

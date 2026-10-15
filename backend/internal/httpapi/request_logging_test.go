@@ -10,11 +10,12 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
 )
 
 func TestRequestLoggingRecordsResponseAndCorrelationID(t *testing.T) {
@@ -77,11 +78,16 @@ func TestLoggingResponseWriterAndRequestIDHelpers(t *testing.T) {
 	if _, err := writer.Write([]byte("ok")); err != nil || writer.status != http.StatusOK || writer.bytes != 2 {
 		t.Fatalf("writer = %#v, error = %v", writer, err)
 	}
-	if acceptedRequestID(strings.Repeat("x", 129)) == strings.Repeat("x", 129) {
-		t.Fatal("acceptedRequestID() accepted an oversized ID")
+	for _, accepted := range []string{"a", "req-1.2_3:4", strings.Repeat("x", 128)} {
+		if got := acceptedRequestID(accepted); got != accepted {
+			t.Fatalf("acceptedRequestID(%q) = %q, want it kept", accepted, got)
+		}
 	}
-	if stringID(0) != "0" || stringID(12345) != "12345" {
-		t.Fatalf("stringID() results = %q, %q", stringID(0), stringID(12345))
+	generated := regexp.MustCompile(`^[0-9a-f]{32}$`)
+	for _, rejected := range []string{"", " padded ", strings.Repeat("x", 129), "has space", `quote"`, "naïve", "line\nbreak"} {
+		if got := acceptedRequestID(rejected); got == rejected || !generated.MatchString(got) {
+			t.Fatalf("acceptedRequestID(%q) = %q, want a generated 32-hex ID", rejected, got)
+		}
 	}
 	if RequestID(context.Background()) != "" {
 		t.Fatal("RequestID() returned a value for an empty context")
@@ -100,7 +106,7 @@ func TestRequestMetricsUseNormalizedRoutePattern(t *testing.T) {
 	)
 
 	response := httptest.NewRecorder()
-	telemetry.MetricsHandler().ServeHTTP(
+	metrics.Handler().ServeHTTP(
 		response,
 		httptest.NewRequest(http.MethodGet, "/metrics", nil),
 	)

@@ -1,13 +1,11 @@
 package api
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
-	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 )
 
@@ -17,20 +15,10 @@ func (h *Handler) GetDecisionContext(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, r, http.StatusBadRequest, "invalid battle attempt")
 		return
 	}
-	service, ok := h.battles.(battleservice.DecisionContextService)
-	if !ok {
-		apierror.Write(w, r, http.StatusNotFound, "decision context not found")
+	result, err := h.battles.GetDecisionContext(r.Context(), r.PathValue("id"), r.PathValue("requestId"), attempt)
+	if writeError(w, r, err, []errorCase{invalidError("invalid decision query"), errorFor(http.StatusNotFound, "decision context not found", ai.ErrDecisionNotFound)},
+		failure{message: "could not load decision context"}) {
 		return
 	}
-	result, err := service.GetDecisionContext(r.Context(), r.PathValue("id"), r.PathValue("requestId"), attempt)
-	switch {
-	case errors.Is(err, battleservice.ErrInvalidBattle):
-		apierror.Write(w, r, http.StatusBadRequest, "invalid decision query")
-	case errors.Is(err, ai.ErrDecisionNotFound):
-		apierror.Write(w, r, http.StatusNotFound, "decision context not found")
-	case err != nil:
-		apierror.Write(w, r, http.StatusInternalServerError, "could not load decision context")
-	default:
-		_ = httpapi.WriteJSON(w, http.StatusOK, result)
-	}
+	_ = httpapi.WriteJSON(w, http.StatusOK, result)
 }

@@ -60,16 +60,6 @@ func (m *Match) runUnit(unit *Unit, tactics map[string]string) ([]Event, *string
 	return m.attackTarget(unit, target, tactics)
 }
 
-func (m *Match) moveUnit(unit *Unit) []Event {
-	from := unit.Position
-	m.moveTowardCastle(unit)
-	if unit.Position == from {
-		return nil
-	}
-	unit.MovedFrom = &from
-	return []Event{m.event("unit_moved", map[string]any{"factionId": unit.FactionID, "unitId": unit.ID, "from": from, "to": unit.Position})}
-}
-
 func (m *Match) attackTarget(unit *Unit, target *attackTarget, tactics map[string]string) ([]Event, *string) {
 	attacker := *unit
 	if target.building != nil {
@@ -230,35 +220,6 @@ func attackTargetPriority(kind string) int {
 		return 1
 	}
 	return 2
-}
-
-func (m *Match) moveTowardCastle(unit *Unit) {
-	castle := m.castle(m.opponentID(unit.FactionID))
-	if castle == nil {
-		return
-	}
-	goals := make(map[Position]bool)
-	for y := 0; y < m.scenario.Map.Height; y++ {
-		for x := 0; x < m.scenario.Map.Width; x++ {
-			position := Position{X: x, Y: y}
-			distance := HexDistance(position, castle.Position)
-			if m.scenario.Map.Traversable(position) && distance >= unit.MinimumRange && distance <= unit.Range {
-				goals[position] = true
-			}
-		}
-	}
-	occupied := m.occupied()
-	delete(occupied, unit.Position)
-	path := shortestPath(m.scenario.Map, unit.Position, goals, occupied)
-	// An occupied castle perimeter must not prevent approaching enemy blockers.
-	if len(path) == 0 && !goals[unit.Position] {
-		path = shortestPath(m.scenario.Map, unit.Position, m.enemyApproachGoals(*unit), occupied)
-	}
-	steps := min(unit.Movement, len(path))
-	if steps > 0 {
-		unit.MovementPath = append([]Position{unit.Position}, path[:steps]...)
-		unit.Position = path[steps-1]
-	}
 }
 
 func (m *Match) damage(attacker Unit, defense int64, attackerTactic, targetTactic string) int64 {

@@ -21,14 +21,14 @@ var (
 	ErrInvalid  = errors.New("invalid generation input")
 )
 
+// Config sets availability, the model profile and the per-account allowance.
 type Config struct {
-	Runtime          string        `yaml:"-"`
-	Enabled          bool          `yaml:"enabled"`
-	ProfileID        string        `yaml:"profileId"`
-	DailyAllowance   int           `yaml:"dailyAllowance"`
-	Cooldown         time.Duration `yaml:"-"`
-	QueueTimeout     time.Duration `yaml:"-"`
-	ExecutionTimeout time.Duration `yaml:"-"`
+	Enabled          bool
+	ProfileID        string
+	DailyAllowance   int
+	Cooldown         time.Duration
+	QueueTimeout     time.Duration
+	ExecutionTimeout time.Duration
 }
 
 func DefaultConfig() Config {
@@ -82,11 +82,23 @@ type Options struct {
 	RetryAt     time.Time `json:"retryAt"`
 	ActiveJobID string    `json:"activeJobId,omitempty"`
 }
-type Repository interface {
-	Options(context.Context, string, Config) (Options, error)
-	Admit(context.Context, string, string, Input, Config, string) (Job, Options, error)
-	Get(context.Context, string, string) (Job, error)
+
+// Admission names the model profile a queued job runs with.
+type Admission struct {
+	ProfileID  string
+	ModelLabel string
+	// Runtime is the profile's runtime, "api" or "cli"; CLI jobs share the CLI lease capacity.
+	Runtime string
 }
+
+// Repository serves the API: allowance, admission and job reads, scoped to an actor.
+type Repository interface {
+	Options(ctx context.Context, actor string, quota Config) (Options, error)
+	Admit(ctx context.Context, actor, idempotencyKey string, input Input, quota Config, model Admission) (Job, Options, error)
+	Get(ctx context.Context, actor, id string) (Job, error)
+}
+
+// WorkerRepository serves the AI gateway's generation worker.
 type WorkerRepository interface {
 	Claim(context.Context, string, []string) (Job, error)
 	Context(context.Context, string) (Job, error)

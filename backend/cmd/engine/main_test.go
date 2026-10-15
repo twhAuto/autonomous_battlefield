@@ -1,81 +1,59 @@
-// Checks engine flag parsing, startup cleanup, and worker identity selection.
+// Checks the engine stops cleanly when its probe listener fails or a signal arrives
+// before the database is ready.
 
 package main
 
 import (
 	"context"
-	"errors"
-	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
+	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 )
 
-func TestParseOptions(t *testing.T) {
-	options, err := parseOptions([]string{"-config", "engine.yaml"})
-	if err != nil {
-		t.Fatalf("parseOptions() returned an error: %v", err)
-	}
-	if options.configPath != "engine.yaml" {
-		t.Fatalf("configPath = %q, want engine.yaml", options.configPath)
+func TestStartEngineStopsWhenItsListenerFails(t *testing.T) {
+	err := startEngine(context.Background(), engineConfig("bad address"))
+	if err == nil || !strings.Contains(err.Error(), "serve:") {
+		t.Fatalf("error = %v, want the listener failure", err)
 	}
 }
 
-func TestParseOptionsRejectsPositionals(t *testing.T) {
-	if _, err := parseOptions([]string{"run"}); err == nil {
-		t.Fatal("parseOptions() returned no error")
+func TestStartEngineStopsCleanlyOnSignalBeforeTheDatabaseIsReady(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if err := startEngine(ctx, engineConfig("127.0.0.1:0")); err != nil {
+		t.Fatalf("shutdown while waiting for the database returned %v", err)
 	}
 }
 
-func TestStopEngineInitialization(t *testing.T) {
-	initializationError := errors.New("initialization failed")
-	for _, test := range []struct {
-		name         string
-		signal       context.Context
-		serverError  error
-		wantNil      bool
-		wantContains string
-	}{
-		{name: "initialization error", signal: context.Background(), wantContains: "initialize engine"},
-		{name: "signal cancellation", signal: cancelledEngineContext(), wantNil: true},
-		{name: "server error", signal: context.Background(), serverError: errors.New("serve failed"), wantContains: "serve engine health"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			healthErrors := make(chan error, 1)
-			healthErrors <- test.serverError
-			err := stopEngineInitialization(
-				&http.Server{},
-				httpapi.NewLifecycleHandler(http.NotFoundHandler()),
-				healthErrors,
-				test.signal,
-				time.Second,
-				initializationError,
-			)
-			if test.wantNil && err != nil {
-				t.Fatalf("stopEngineInitialization() error = %v, want nil", err)
-			}
-			if !test.wantNil && (err == nil || !strings.Contains(err.Error(), test.wantContains)) {
-				t.Fatalf("stopEngineInitialization() error = %v, want text %q", err, test.wantContains)
-			}
-		})
+// engineConfig serves probes on address and points at a closed database port.
+func engineConfig(address string) config.EngineConfig {
+	return config.EngineConfig{
+		Engine:   config.Engine{HealthAddress: address, ShutdownTimeout: time.Second},
+		Database: config.Database{URL: "postgres://battlefield@127.0.0.1:1/battlefield?sslmode=disable", MaxConnections: 1, ConnectTimeout: 10 * time.Millisecond},
 	}
 }
 
-func TestWorkerIDUsesConfiguredEnvironmentOrHost(t *testing.T) {
-	t.Setenv("TEST_ENGINE_WORKER_ID", "configured-worker")
-	if id := workerID("TEST_ENGINE_WORKER_ID"); id != "configured-worker" {
-		t.Fatalf("workerID() = %q, want configured-worker", id)
-	}
-	t.Setenv("TEST_ENGINE_WORKER_ID", "")
-	if id := workerID("TEST_ENGINE_WORKER_ID"); !strings.Contains(id, "-") {
-		t.Fatalf("workerID() fallback = %q, want hostname-pid", id)
+func TestStartEngineReportsTracingConfigurationErrors(t *testing.T) {
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
+	t.Setenv("OTEL_TRACES_SAMPLER_ARG", "2")
+	if err := startEngine(context.Background(), engineConfig("127.0.0.1:0")); err == nil || !strings.Contains(err.Error(), "configure tracing") {
+		t.Fatalf("error = %v", err)
 	}
 }
 
-func cancelledEngineContext() context.Context {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	return ctx
+func TestStartEngineStopsWhenTheWorkerCannotBeBuilt(t *testing.T) {
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	configuration := engineConfig("127.0.0.1:0")
+	configuration.Database.URL = url
+	configuration.Database.ConnectTimeout = 5 * time.Second
+	// A zero poll interval is not a valid worker configuration.
+	if err := startEngine(context.Background(), configuration); err == nil || !strings.Contains(err.Error(), "initialize:") {
+		t.Fatalf("error = %v, want the worker initialization failure", err)
+	}
 }

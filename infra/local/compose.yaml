@@ -34,7 +34,7 @@ services:
       retries: 10
 
   dbhub:
-    image: bytebase/dbhub:latest
+    image: bytebase/dbhub:1.5.0
     profiles:
       - tools
     init: true

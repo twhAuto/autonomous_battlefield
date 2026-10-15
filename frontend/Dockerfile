@@ -1,7 +1,8 @@
 # Builds the Vite frontend and serves its static output with unprivileged Nginx and the
 # runtime API proxy template.
 
-FROM node:24-alpine AS build
+# Base image: node:24-alpine
+FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 
 WORKDIR /src
 
@@ -15,7 +16,8 @@ ENV VITE_API_URL=${VITE_API_URL}
 
 RUN npm run build
 
-FROM ghcr.io/nginx/nginx-unprivileged:1.30.4-alpine3.24-slim@sha256:bcf91d2c73ab64fa1c4ac7fbac5ac523057c8af7d553ab9251c7aef38c260979
+# Base image: ghcr.io/nginx/nginx-unprivileged:1.30.4-alpine3.24-slim
+FROM ghcr.io/nginx/nginx-unprivileged@sha256:bcf91d2c73ab64fa1c4ac7fbac5ac523057c8af7d553ab9251c7aef38c260979
 
 USER root
 

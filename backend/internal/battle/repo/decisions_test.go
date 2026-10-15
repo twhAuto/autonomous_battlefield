@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/briefing"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
@@ -82,7 +83,21 @@ func TestDecisionListAndMutations(t *testing.T) {
 	if err := repository.RecordDecisionUsage(context.Background(), "id", ai.Usage{Requests: 1}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.RecordDecisionValidation(context.Background(), "id"); err != nil {
+}
+
+func TestRecordDecisionValidationReturnsUpdatedCount(t *testing.T) {
+	db := &battleDB{}
+	repository := NewPostgres(db)
+	if failures, err := repository.RecordDecisionValidation(context.Background(), "closed"); err != nil || failures != 0 {
+		t.Fatalf("closed decision: failures=%d err=%v", failures, err)
+	}
+	db.row = battleRow(func(destinations ...any) error { *(destinations[0].(*int)) = 3; return nil })
+	if failures, err := repository.RecordDecisionValidation(context.Background(), "open"); err != nil || failures != 3 || !strings.Contains(db.queryRowSQL, "RETURNING") {
+		t.Fatalf("open decision: failures=%d err=%v", failures, err)
+	}
+	want := errors.New("database")
+	db.row = battleRow(func(...any) error { return want })
+	if _, err := repository.RecordDecisionValidation(context.Background(), "open"); !errors.Is(err, want) {
 		t.Fatal(err)
 	}
 }
@@ -146,7 +161,7 @@ func TestFactionMemoryQueryScopesAndLimitsBeforeRead(t *testing.T) {
 			t.Fatalf("unscoped query: %s", db.querySQL)
 		}
 	}
-	if len(db.queryArgs) != 5 || db.queryArgs[4] != ai.FactionMemoryLimit {
+	if len(db.queryArgs) != 5 || db.queryArgs[4] != briefing.FactionMemoryLimit {
 		t.Fatal("unbounded query")
 	}
 	db.queryErr = errors.New("unavailable")
@@ -157,5 +172,21 @@ func TestFactionMemoryQueryScopesAndLimitsBeforeRead(t *testing.T) {
 	db.rows = &battleRows{scans: []battleRow{func(...any) error { return errors.New("scan") }}}
 	if _, err := NewPostgres(db).ListFactionMemory(context.Background(), "b", 1, "f", 20); err == nil {
 		t.Fatal("scan failure lost")
+	}
+}
+
+func TestCountPendingWindowDecisions(t *testing.T) {
+	db := &battleDB{row: battleRow(func(destinations ...any) error { *(destinations[0].(*int)) = 2; return nil })}
+	count, err := NewPostgres(db).CountPendingWindowDecisions(context.Background(), "battle", 1, 10)
+	if err != nil || count != 2 {
+		t.Fatalf("count=%d err=%v", count, err)
+	}
+	// The poll must stay cheap: count unresolved rows only, never the frozen observations.
+	if !strings.Contains(db.queryRowSQL, "count(*)") || !strings.Contains(db.queryRowSQL, "status IN ('pending','running')") || strings.Contains(db.queryRowSQL, "observation") {
+		t.Fatalf("query=%s", db.queryRowSQL)
+	}
+	want := errors.New("database")
+	if _, err := NewPostgres(&battleDB{row: battleRow(func(...any) error { return want })}).CountPendingWindowDecisions(context.Background(), "battle", 1, 10); !errors.Is(err, want) {
+		t.Fatal(err)
 	}
 }

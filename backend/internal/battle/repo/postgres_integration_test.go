@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
 	battle "github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
@@ -29,7 +29,7 @@ func TestBattleRepositoryLifecycleAgainstPostgres(t *testing.T) {
 	if job.Lease.BattleID != battleID || job.Lease.Attempt != 1 {
 		t.Fatalf("claimed job = %#v", job)
 	}
-	if _, err := repo.ClaimBattle(ctx, "worker-2", 30*time.Second, 3); err != worker.ErrNoBattleAvailable {
+	if _, err := repo.ClaimBattle(ctx, "worker-2", 30*time.Second, 3); err != queue.ErrNoBattleAvailable {
 		t.Fatalf("second ClaimBattle() error = %v, want ErrNoBattleAvailable", err)
 	}
 
@@ -64,12 +64,12 @@ func TestBattleRepositoryLifecycleAgainstPostgres(t *testing.T) {
 	if run.Status != "completed" || run.CurrentTick != 2 || run.Result == nil || run.Result.Reason != "tick_limit" {
 		t.Fatalf("run = %#v", run)
 	}
-	if err := repo.RequeueBattle(ctx, job.Lease); err != worker.ErrBattleLeaseLost {
+	if err := repo.RequeueBattle(ctx, job.Lease); err != queue.ErrLeaseLost {
 		t.Fatalf("stale RequeueBattle() error = %v, want ErrBattleLeaseLost", err)
 	}
 }
 
-func createAndClaimBattle(t *testing.T, ctx context.Context, repo *Postgres, battleID string) *worker.BattleJob {
+func createAndClaimBattle(t *testing.T, ctx context.Context, repo *Postgres, battleID string) *queue.Job {
 	t.Helper()
 	scenario := repositoryTestScenario()
 	if err := repo.CreateBattle(ctx, battleservice.CreateBattleParams{ID: battleID, ScenarioID: scenario.ID, ScenarioDigest: "digest", ScenarioSnapshot: scenario, RequestedTicks: 2}); err != nil {
@@ -103,7 +103,7 @@ func TestBattleRepositoryReclaimsExpiredLeaseAndRejectsStaleWorker(t *testing.T)
 	if second.Lease.Attempt != 2 || second.Lease.Owner != "worker-2" {
 		t.Fatalf("reclaimed lease = %#v", second.Lease)
 	}
-	if err := repo.HeartbeatBattle(ctx, first.Lease, time.Second); err != worker.ErrBattleLeaseLost {
+	if err := repo.HeartbeatBattle(ctx, first.Lease, time.Second); err != queue.ErrLeaseLost {
 		t.Fatalf("stale HeartbeatBattle() error = %v, want ErrBattleLeaseLost", err)
 	}
 	if err := repo.RequeueBattle(ctx, second.Lease); err != nil {
@@ -124,7 +124,10 @@ func TestBattleRepositoryFailsExhaustedAttempts(t *testing.T) {
 		t.Fatalf("ClaimBattle() returned an error: %v", err)
 	}
 	time.Sleep(10 * time.Millisecond)
-	if _, err := repo.ClaimBattle(ctx, "worker-2", time.Second, 1); err != worker.ErrNoBattleAvailable {
+	if err := repo.FailExhaustedBattles(ctx, 1); err != nil {
+		t.Fatalf("FailExhaustedBattles() returned an error: %v", err)
+	}
+	if _, err := repo.ClaimBattle(ctx, "worker-2", time.Second, 1); err != queue.ErrNoBattleAvailable {
 		t.Fatalf("second ClaimBattle() error = %v, want ErrNoBattleAvailable", err)
 	}
 	run, err := repo.GetBattle(ctx, battleID)
@@ -146,9 +149,9 @@ func integrationDatabase(t *testing.T) (context.Context, *pgxpool.Pool) {
 	if _, err := postgres.Migrate(ctx, url, 5*time.Second); err != nil {
 		t.Fatalf("postgres.Migrate() returned an error: %v", err)
 	}
-	db, err := postgres.NewPostgresDB(ctx, url, postgres.Options{MaxConnections: 4, MinConnections: 0, MaxConnectionLifetime: time.Minute})
+	db, err := postgres.Connect(ctx, url, postgres.Options{MaxConnections: 4, MinConnections: 0, MaxConnectionLifetime: time.Minute})
 	if err != nil {
-		t.Fatalf("postgres.NewPostgresDB() returned an error: %v", err)
+		t.Fatalf("postgres.Connect() returned an error: %v", err)
 	}
 	t.Cleanup(db.Close)
 	return ctx, db
@@ -160,7 +163,7 @@ func repositoryTestScenario() battle.Scenario {
 	ruleset := battle.Ruleset{ID: "castle-siege-v1", Version: "1", DesignBudget: 120, StartingGold: 60, Units: []battle.UnitType{{ID: "vanguard", Cost: 35, Health: 10, Attack: 5, Speed: 2, Movement: 1, Range: 1, Vision: 2}}, Upgrades: []battle.Upgrade{{ID: "arsenal", Cost: 20, AttackBonus: 2}}, Buildings: battle.BuildingRules{CastleHealth: 300, CastleDefense: 8, CastleVision: 4, CastleIncome: 10, EconomyCost: 50, EconomyHealth: 60, EconomyDefense: 2, EconomyVision: 2, EconomyIncome: 10, MaximumEconomyCount: 2}, Combat: battle.CombatRules{MinimumDamage: 1, DefendAttackPercent: 50, DefendDamageTakenPercent: 50, LootPercent: 50}}
 	gameMap := battle.Map{Kind: "authored", Width: 15, Height: 11, Rows: []string{"...............", ".......#.......", "..b....#....b..", "...............", ".......#.......", "...............", ".......#.......", "...............", "..b....#....b..", ".......#.......", "..............."}, CastleSpawns: [2]battle.Position{{X: 1, Y: 5}, {X: 13, Y: 5}}, EconomySites: [2][]battle.Position{{{X: 2, Y: 2}, {X: 2, Y: 8}}, {{X: 12, Y: 2}, {X: 12, Y: 8}}}}
 	return battle.Scenario{
-		ID: "integration", RulesVersion: "1", RulesetID: ruleset.ID, DecisionIntervalTicks: 10, DecisionLeadTicks: 2, Map: gameMap, Ruleset: ruleset,
+		ID: "integration", RulesVersion: "1", RulesetID: ruleset.ID, DecisionIntervalTicks: 10, Map: gameMap, Ruleset: ruleset,
 		Factions: []battle.FactionSetup{
 			{ID: "faction-a", Name: "A", Blueprint: blueprint, FallbackPlan: plan, ScriptedPlans: []controller.PlanProposal{plan}},
 			{ID: "faction-b", Name: "B", Blueprint: blueprint, FallbackPlan: plan, ScriptedPlans: []controller.PlanProposal{plan}},

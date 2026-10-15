@@ -6,20 +6,20 @@ package service
 import (
 	"context"
 	"errors"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 func TestCreateFaction(t *testing.T) {
 	repo := &fakeFactionRepository{}
-	service := NewService(repo)
+	service := NewService(repo, fakeRulesets{})
 
-	err := service.CreateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), CreateInput{
+	err := service.CreateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), ProfileInput{
 		ID:   "7f22e693-bacd-46bb-b942-64fa613cd388",
 		Name: "  Northwind  ", Doctrine: "  Hold the line.  ",
 	})
@@ -27,7 +27,7 @@ func TestCreateFaction(t *testing.T) {
 		t.Fatalf("CreateFaction() returned an error: %v", err)
 	}
 
-	want := &faction.Faction{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", Doctrine: "Hold the line."}
+	want := &faction.Faction{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", Doctrine: "Hold the line.", OwnerID: "test-admin"}
 	if !reflect.DeepEqual(repo.createdFaction, want) {
 		t.Fatalf("created faction = %#v, want %#v", repo.createdFaction, want)
 	}
@@ -36,21 +36,21 @@ func TestCreateFaction(t *testing.T) {
 func TestFactionWritesRejectInvalidInput(t *testing.T) {
 	tests := []struct {
 		name  string
-		input CreateInput
+		input ProfileInput
 	}{
 		{name: "empty input"},
-		{name: "invalid ID", input: CreateInput{ID: "not-a-uuid", Name: "Northwind", Doctrine: "Hold the line."}},
-		{name: "empty name", input: CreateInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "  "}},
+		{name: "invalid ID", input: ProfileInput{ID: "not-a-uuid", Name: "Northwind", Doctrine: "Hold the line."}},
+		{name: "empty name", input: ProfileInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "  "}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &fakeFactionRepository{}
-			service := NewService(repo)
+			service := NewService(repo, fakeRulesets{})
 
-			for operation, write := range map[string]func(context.Context, CreateInput) error{
+			for operation, write := range map[string]func(context.Context, ProfileInput) error{
 				"create": service.CreateFaction,
-				"update": service.(Updater).UpdateFaction,
+				"update": service.UpdateFaction,
 			} {
 				if err := write(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), tt.input); !errors.Is(err, ErrInvalidFaction) {
 					t.Fatalf("%s error = %v, want ErrInvalidFaction", operation, err)
@@ -65,9 +65,9 @@ func TestFactionWritesRejectInvalidInput(t *testing.T) {
 
 func TestCreateFactionReturnsAlreadyExists(t *testing.T) {
 	repo := &fakeFactionRepository{createErr: ErrFactionAlreadyExists}
-	service := NewService(repo)
+	service := NewService(repo, fakeRulesets{})
 
-	err := service.CreateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), CreateInput{
+	err := service.CreateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), ProfileInput{
 		ID:   "7f22e693-bacd-46bb-b942-64fa613cd388",
 		Name: "Northwind", Doctrine: "Hold the line.",
 	})
@@ -81,20 +81,20 @@ var errLookup = errors.New("database unavailable")
 func TestCreateFactionReplaysIdenticalRetry(t *testing.T) {
 	const id = "7f22e693-bacd-46bb-b942-64fa613cd388"
 	original := faction.Faction{ID: id, Name: "Northwind", Doctrine: "Hold the line.", Background: "Frost clans.", OwnerID: "self"}
-	retry := CreateInput{ID: id, Name: " Northwind ", Doctrine: "Hold the line.", Background: "Frost clans."}
+	retry := ProfileInput{ID: id, Name: " Northwind ", Doctrine: "Hold the line.", Background: "Frost clans."}
 	tests := []struct {
 		name    string
 		stored  faction.Faction
 		caller  string
-		input   CreateInput
+		input   ProfileInput
 		getErr  error
 		wantErr error
 	}{
 		{name: "identical retry replays", stored: original, caller: "self", input: retry},
 		{name: "other caller conflicts", stored: original, caller: "other", input: retry, wantErr: ErrFactionAlreadyExists},
-		{name: "changed name conflicts", stored: original, caller: "self", input: CreateInput{ID: id, Name: "Southreach", Doctrine: retry.Doctrine, Background: retry.Background}, wantErr: ErrFactionAlreadyExists},
-		{name: "changed doctrine conflicts", stored: original, caller: "self", input: CreateInput{ID: id, Name: retry.Name, Doctrine: "Attack.", Background: retry.Background}, wantErr: ErrFactionAlreadyExists},
-		{name: "changed background conflicts", stored: original, caller: "self", input: CreateInput{ID: id, Name: retry.Name, Doctrine: retry.Doctrine}, wantErr: ErrFactionAlreadyExists},
+		{name: "changed name conflicts", stored: original, caller: "self", input: ProfileInput{ID: id, Name: "Southreach", Doctrine: retry.Doctrine, Background: retry.Background}, wantErr: ErrFactionAlreadyExists},
+		{name: "changed doctrine conflicts", stored: original, caller: "self", input: ProfileInput{ID: id, Name: retry.Name, Doctrine: "Attack.", Background: retry.Background}, wantErr: ErrFactionAlreadyExists},
+		{name: "changed background conflicts", stored: original, caller: "self", input: ProfileInput{ID: id, Name: retry.Name, Doctrine: retry.Doctrine}, wantErr: ErrFactionAlreadyExists},
 		{name: "lookup failure surfaces", stored: original, caller: "self", input: retry, getErr: errLookup, wantErr: errLookup},
 		{name: "deleted before lookup conflicts", stored: original, caller: "self", input: retry, getErr: ErrFactionNotFound, wantErr: ErrFactionAlreadyExists},
 	}
@@ -103,7 +103,7 @@ func TestCreateFactionReplaysIdenticalRetry(t *testing.T) {
 			stored := tt.stored
 			repo := &fakeFactionRepository{createErr: ErrFactionAlreadyExists, storedFaction: &stored, getErr: tt.getErr}
 			ctx := authn.WithActor(context.Background(), authn.Actor{ID: tt.caller, Role: authn.Player})
-			if err := NewService(repo).CreateFaction(ctx, tt.input); !errors.Is(err, tt.wantErr) {
+			if err := NewService(repo, fakeRulesets{}).CreateFaction(ctx, tt.input); !errors.Is(err, tt.wantErr) {
 				t.Fatalf("CreateFaction() error = %v, want %v", err, tt.wantErr)
 			}
 		})
@@ -112,28 +112,28 @@ func TestCreateFactionReplaysIdenticalRetry(t *testing.T) {
 
 func TestDoctrineValidationAndUpdate(t *testing.T) {
 	repo := &fakeFactionRepository{}
-	service := NewService(repo)
+	service := NewService(repo, fakeRulesets{})
 	for _, doctrine := range []string{"", "  ", strings.Repeat("界", 4001)} {
-		input := CreateInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "A", Doctrine: doctrine}
+		input := ProfileInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "A", Doctrine: doctrine}
 		if err := service.CreateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); !errors.Is(err, ErrInvalidFaction) {
 			t.Fatalf("create: %v", err)
 		}
-		if err := service.(Updater).UpdateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); !errors.Is(err, ErrInvalidFaction) {
+		if err := service.UpdateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); !errors.Is(err, ErrInvalidFaction) {
 			t.Fatalf("update: %v", err)
 		}
 	}
-	input := CreateInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: " A ", Doctrine: " " + strings.Repeat("界", 4000) + " "}
+	input := ProfileInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: " A ", Doctrine: " " + strings.Repeat("界", 4000) + " "}
 	if err := service.CreateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.(Updater).UpdateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); err != nil {
+	if err := service.UpdateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); err != nil {
 		t.Fatal(err)
 	}
 	if repo.createdFaction.Name != "A" || repo.createdFaction.Doctrine != strings.Repeat("界", 4000) {
 		t.Fatal("profile not trimmed")
 	}
 	repo.createErr = ErrFactionNotFound
-	if err := service.(Updater).UpdateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); !errors.Is(err, ErrFactionNotFound) {
+	if err := service.UpdateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); !errors.Is(err, ErrFactionNotFound) {
 		t.Fatal(err)
 	}
 }
@@ -144,7 +144,7 @@ func TestListFactions(t *testing.T) {
 		{ID: "4db8d152-1e04-4d10-8824-859c6ed72878", Name: "Verdant Accord"},
 	}
 	repo := &fakeFactionRepository{factions: want}
-	service := NewService(repo)
+	service := NewService(repo, fakeRulesets{})
 
 	got, err := service.ListFactions(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}))
 	if err != nil {
@@ -156,35 +156,30 @@ func TestListFactions(t *testing.T) {
 }
 
 func TestListRulesets(t *testing.T) {
-	withoutCatalog := NewService(&fakeFactionRepository{})
-	if got := withoutCatalog.(RulesetLister).ListRulesets(); len(got) != 0 {
-		t.Fatalf("rulesets without catalog = %#v", got)
+	if got := NewService(&fakeFactionRepository{}, fakeRulesets{}).ListRulesets(); got == nil || len(got) != 0 {
+		t.Fatalf("rulesets from an empty catalog = %#v, want an empty slice", got)
 	}
 	ruleset := game.Ruleset{ID: "castle-siege-v1"}
-	withCatalog := NewService(&fakeFactionRepository{}, fakeRulesets{ruleset: ruleset})
-	if got := withCatalog.(RulesetLister).ListRulesets(); len(got) != 1 || got[0].ID != ruleset.ID {
+	if got := NewService(&fakeFactionRepository{}, fakeRulesets{rulesets: []game.Ruleset{ruleset}}).ListRulesets(); len(got) != 1 || got[0].ID != ruleset.ID {
 		t.Fatalf("rulesets = %#v", got)
 	}
 }
 
-func TestGetFactionName(t *testing.T) {
-	repo := &fakeFactionRepository{storedFaction: &faction.Faction{Name: "Northwind", Doctrine: "Hold the line."}}
-	service := NewService(repo)
-	name, err := service.GetFactionName(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), "id")
-	if err != nil || name != "Northwind" {
-		t.Fatalf("GetFactionName() = %q, %v", name, err)
+func TestCreateFactionRecordsTheCallerAsOwner(t *testing.T) {
+	repo := &fakeFactionRepository{}
+	ctx := authn.WithActor(context.Background(), authn.Actor{ID: "player-7", Role: authn.Player})
+	if err := NewService(repo, fakeRulesets{}).CreateFaction(ctx, ProfileInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "A", Doctrine: "Scout"}); err != nil {
+		t.Fatal(err)
 	}
-
-	repo.getErr = ErrFactionNotFound
-	if _, err := service.GetFactionName(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), "missing"); !errors.Is(err, ErrFactionNotFound) {
-		t.Fatalf("GetFactionName() error = %v, want ErrFactionNotFound", err)
+	if repo.createdFaction.OwnerID != "player-7" {
+		t.Fatalf("owner = %q, want player-7", repo.createdFaction.OwnerID)
 	}
 }
 
 func TestDeleteFaction(t *testing.T) {
 	id := "7f22e693-bacd-46bb-b942-64fa613cd388"
 	repo := &fakeFactionRepository{}
-	service := NewService(repo)
+	service := NewService(repo, fakeRulesets{})
 	if err := service.DeleteFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), id); err != nil || repo.deletedID != id {
 		t.Fatalf("deleted=%q err=%v", repo.deletedID, err)
 	}
@@ -207,9 +202,9 @@ type fakeFactionRepository struct {
 	deleteErr      error
 }
 
-type fakeRulesets struct{ ruleset game.Ruleset }
+type fakeRulesets struct{ rulesets []game.Ruleset }
 
-func (f fakeRulesets) Rulesets() []game.Ruleset { return []game.Ruleset{f.ruleset} }
+func (f fakeRulesets) Rulesets() []game.Ruleset { return f.rulesets }
 
 func (r *fakeFactionRepository) GetFaction(context.Context, string) (*faction.Faction, error) {
 	return r.storedFaction, r.getErr
@@ -235,27 +230,27 @@ func (r *fakeFactionRepository) UpdateFaction(ctx context.Context, stored factio
 
 func TestBackgroundCreationAndEditing(t *testing.T) {
 	repo := &fakeFactionRepository{}
-	s := NewService(repo)
+	s := NewService(repo, fakeRulesets{})
 	for _, background := range []string{"", " Old roots. ", " " + strings.Repeat("😀", 1000) + " "} {
-		input := CreateInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Name", Doctrine: "Doctrine", Background: background}
+		input := ProfileInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Name", Doctrine: "Doctrine", Background: background}
 		if err := s.CreateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); err != nil {
 			t.Fatal(err)
 		}
 		if repo.createdFaction.Background != strings.TrimSpace(background) {
 			t.Fatal("background not preserved")
 		}
-		if err := s.(Updater).UpdateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); err != nil {
+		if err := s.UpdateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); err != nil {
 			t.Fatal(err)
 		}
 		if repo.createdFaction.Background != strings.TrimSpace(background) {
 			t.Fatal("background edit not preserved")
 		}
 	}
-	input := CreateInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Name", Doctrine: "Doctrine", Background: strings.Repeat("😀", 1001)}
+	input := ProfileInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Name", Doctrine: "Doctrine", Background: strings.Repeat("😀", 1001)}
 	if err := s.CreateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); !errors.Is(err, ErrInvalidFaction) {
 		t.Fatal(err)
 	}
-	if err := s.(Updater).UpdateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); !errors.Is(err, ErrInvalidFaction) {
+	if err := s.UpdateFaction(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), input); !errors.Is(err, ErrInvalidFaction) {
 		t.Fatal(err)
 	}
 }
@@ -274,10 +269,10 @@ func checkFactionOwnership(t *testing.T, role authn.Role, owner string) {
 	t.Helper()
 	const id = "7f22e693-bacd-46bb-b942-64fa613cd388"
 	repo := &fakeFactionRepository{storedFaction: &faction.Faction{ID: id, OwnerID: owner}}
-	s := NewService(repo)
+	s := NewService(repo, fakeRulesets{})
 	ctx := authn.WithActor(context.Background(), authn.Actor{ID: "self", Role: role})
 	allowed := role == authn.Admin || owner == "self"
-	e := s.(Updater).UpdateFaction(ctx, CreateInput{ID: id, Name: "New", Doctrine: "Defend"})
+	e := s.UpdateFaction(ctx, ProfileInput{ID: id, Name: "New", Doctrine: "Defend"})
 	if (e == nil) != allowed || (!allowed && repo.createdFaction != nil) {
 		t.Fatalf("edit %s %s: %v", role, owner, e)
 	}

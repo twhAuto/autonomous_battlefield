@@ -28,13 +28,13 @@ func validateProposal(proposal PlanProposal, actionKinds map[string]struct{}) er
 	if err := validateSpendOrder(proposal.SpendOrder); err != nil {
 		return err
 	}
-	if err := validateRecruitmentPriorities(proposal.UpgradeOrders); err != nil {
-		return fmt.Errorf("upgrade orders: %w", err)
+	if err := validateUniqueNames("upgrade orders", proposal.UpgradeOrders); err != nil {
+		return err
 	}
 	if err := validateRecruitmentOrders(proposal); err != nil {
 		return err
 	}
-	if err := validateRecruitmentPriorities(proposal.RecruitmentPriorities); err != nil {
+	if err := validateUniqueNames("recruitment priorities", proposal.RecruitmentPriorities); err != nil {
 		return err
 	}
 	if err := validateConstructionPriorities(proposal.ConstructionPriorities); err != nil {
@@ -81,13 +81,14 @@ func validateSpendOrder(spendOrder []string) error {
 	return nil
 }
 
-func validateRecruitmentPriorities(priorities []string) error {
-	seenRecruitment := make(map[string]bool, len(priorities))
-	for _, unitType := range priorities {
-		if strings.TrimSpace(unitType) == "" || seenRecruitment[unitType] {
-			return fmt.Errorf("%w: recruitment priorities must be unique and non-empty", ErrInvalidPlan)
+// validateUniqueNames rejects empty or repeated entries in the named list.
+func validateUniqueNames(field string, names []string) error {
+	seen := make(map[string]bool, len(names))
+	for _, name := range names {
+		if strings.TrimSpace(name) == "" || seen[name] {
+			return fmt.Errorf("%w: %s must be unique and non-empty", ErrInvalidPlan, field)
 		}
-		seenRecruitment[unitType] = true
+		seen[name] = true
 	}
 	return nil
 }

@@ -8,8 +8,21 @@ operating targets. They are not a customer-facing service-level agreement.
 
 HTTP completion logs include `actor_id` and `actor_role` established by trusted
 authentication middleware, alongside method, resource path, status and request ID.
+The request ID is echoed in `X-Request-ID`. A caller-supplied value is kept only when it
+matches `[A-Za-z0-9._:-]{1,128}`, so it is safe to echo and log; otherwise the server
+generates one.
 An authentication observer carries identity to the outer request logger; rejected
 credentials leave identity empty. Tokens, cookies and email headers are not logged.
+Error text passes through `observability/redact` before it reaches a log or a span.
+A pgx connection error (database user, database name, host) becomes "failed to connect
+to the database", keeping any SQLSTATE; a connection string pgx cannot parse becomes
+"invalid database connection string", since pgx quotes it with only best-effort
+password masking; and network errors lose their address and
+hostname, in every branch of a wrapped or joined error; other error text is kept for
+debugging. A typed-nil error logs as `<nil>`. The logging handler redacts every
+error-valued attribute under any key, so call sites keep logging `"error", err`. Spans
+record errors through `tracing.RecordError` (also used by `tracing.EndSpan`), and
+`backend/test/conventions` fails the build if code calls `span.RecordError` directly.
 These operational logs provide request attribution, not a tamper-proof audit store.
 
 ## Signal path
@@ -75,7 +88,12 @@ Links point from the engine attempt to the creating request, and from each
 decision to its decision window. See [trace lookup](../operations/observability.md#find-a-battle-trace)
 for operational queries.
 
-See [`internal/telemetry/tracing.go`](../../backend/internal/telemetry/tracing.go)
+Spans carry `deployment.environment` from `BATTLEFIELD_ENVIRONMENT`: the base manifests
+set `production` on the API, engine, AI gateway and agent, and a dev deployment rewrites it
+to `dev` along with `BATTLEFIELD_ENV`. A process started without it, such as a local
+`go run`, reports `local`.
+
+See [`internal/observability/tracing/tracing.go`](../../backend/internal/observability/tracing/tracing.go)
 for environment configuration and instrumentation, and the
 [collector configuration](../../infra/deploy/overlays/local/observability/otel-collector/config.yaml)
 for the in-cluster path. Prompts, credentials, capabilities, full observations,
@@ -94,16 +112,19 @@ lifecycle probes and metrics scrapes bypass request instrumentation.
 | Metric | Type | Meaning |
 | --- | --- | --- |
 | `battlefield_http_server_requests_total` | Counter | API requests by method, normalized route pattern, and status code. |
-| `battlefield_http_server_request_duration_seconds` | Histogram | API request latency by method and normalized route pattern. |
+| `battlefield_http_server_request_duration_seconds` | Histogram | API request latency by method, normalized route pattern, and `success` or `error` (5xx) outcome. |
 | `battlefield_engine_battle_claims_total` | Counter | Initial and reclaimed battle claims. |
 | `battlefield_engine_battles_processed_total` | Counter | Processing attempts by `completed`, `failed`, `error`, `lease_lost`, or `requeued` outcome. |
 | `battlefield_engine_battle_processing_duration_seconds` | Histogram | Wall-clock processing duration by outcome. |
 | `battlefield_engine_ticks_total` | Counter | Successfully advanced simulation ticks. |
 | `battlefield_engine_worker_ready` | Gauge | `1` while the worker can claim work, otherwise `0`. |
+| `battlefield_result_cache_operations_total` | Counter | API completed-battle Redis cache operations by `operation` (`get`, `set`) and `outcome` (`hit`, `miss`, `stored`, `error`). The API falls back to PostgreSQL on any cache miss or failure, so a rising `error` count is the only sign of an unhealthy cache. Recorded only when a Redis URL is configured. |
 
 The Prometheus Go client also publishes standard `go_*`, `process_*`, and
 `promhttp_*` metrics. Route labels use Go HTTP patterns such as
-`GET /v1/battles/{id}` rather than raw paths. Battle IDs, faction IDs, request
+`GET /v1/battles/{id}` rather than raw paths, or `unmatched` when no route matches.
+Method labels keep the nine standard HTTP methods and record any other method a
+client sends as `other`. Battle IDs, faction IDs, request
 IDs, pod names, and worker IDs are intentionally absent from application metric
 labels to avoid unbounded time-series cardinality. Pod identity is added only
 as the `scrape_pod` target label by Prometheus. That name deliberately avoids

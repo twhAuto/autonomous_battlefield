@@ -12,8 +12,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/briefing"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 type decisionRow interface{ Scan(...any) error }
@@ -24,7 +25,7 @@ observation, observation_hash, resolved_plan, fallback_source, error_category, u
 idempotency_key, traceparent, tracestate, created_at, resolved_at, lease_expires_at`
 
 func (r *Postgres) CreateOrReuseDecision(ctx context.Context, params ai.CreateDecisionParams) (ai.DecisionRecord, error) {
-	ctx, span := telemetry.StartDatabaseSpan(ctx, "create_decision")
+	ctx, span := tracing.StartDatabaseSpan(ctx, "create_decision")
 	defer span.End()
 	observation, err := json.Marshal(params.Observation)
 	if err != nil {
@@ -76,6 +77,18 @@ func (r *Postgres) GetDecision(ctx context.Context, id string) (ai.DecisionRecor
 		return ai.DecisionRecord{}, ai.ErrDecisionNotFound
 	}
 	return record, err
+}
+
+// CountPendingWindowDecisions counts a decision window's unresolved rows without reading
+// their frozen observations. The engine polls it while models work, then reads the full
+// window once. battle_decisions_window_idx serves the filter.
+func (r *Postgres) CountPendingWindowDecisions(ctx context.Context, battleID string, attempt int, targetTick uint64) (int, error) {
+	var count int
+	err := r.db.QueryRow(ctx, `SELECT count(*) FROM battle_decisions WHERE battle_id=$1 AND attempt=$2 AND target_tick=$3 AND status IN ('pending','running')`, battleID, attempt, targetTick).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count pending decisions: %w", err)
+	}
+	return count, nil
 }
 
 func (r *Postgres) ListWindowDecisions(ctx context.Context, battleID string, attempt int, targetTick uint64) ([]ai.DecisionRecord, error) {
@@ -164,7 +177,7 @@ func (r *Postgres) ResolveDecisionFallback(ctx context.Context, id string, expec
 }
 
 func (r *Postgres) ClaimModelDecision(ctx context.Context, owner string, profileIDs []string, lease time.Duration) (ai.DecisionRecord, error) {
-	ctx, span := telemetry.StartDatabaseSpan(ctx, "claim_decision")
+	ctx, span := tracing.StartDatabaseSpan(ctx, "claim_decision")
 	defer span.End()
 	if len(profileIDs) == 0 {
 		return ai.DecisionRecord{}, ai.ErrNoDecision
@@ -203,12 +216,17 @@ func (r *Postgres) RecordDecisionUsage(ctx context.Context, id string, usage ai.
 	return err
 }
 
-func (r *Postgres) RecordDecisionValidation(ctx context.Context, id string) error {
-	_, err := r.db.Exec(ctx, `UPDATE battle_decisions
+func (r *Postgres) RecordDecisionValidation(ctx context.Context, id string) (int, error) {
+	var failures int
+	err := r.db.QueryRow(ctx, `UPDATE battle_decisions
 		SET provider_metadata=jsonb_set(provider_metadata, '{validationFailures}',
 			to_jsonb(COALESCE((provider_metadata->>'validationFailures')::integer, 0) + 1), true)
-		WHERE id=$1 AND status IN ('pending','running')`, id)
-	return err
+		WHERE id=$1 AND status IN ('pending','running')
+		RETURNING (provider_metadata->>'validationFailures')::integer`, id).Scan(&failures)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return failures, err
 }
 
 func scanDecision(row decisionRow) (ai.DecisionRecord, error) {
@@ -248,7 +266,7 @@ func (r *Postgres) ListFactionMemory(ctx context.Context, battleID string, attem
 	rows, err := r.db.Query(ctx, `SELECT `+decisionColumns+` FROM battle_decisions
         WHERE battle_id=$1 AND attempt=$2 AND faction_id=$3 AND target_tick<$4
           AND status IN ('accepted','fallback') AND resolved_plan IS NOT NULL
-        ORDER BY target_tick DESC LIMIT $5`, battleID, attempt, factionID, beforeTick, ai.FactionMemoryLimit)
+        ORDER BY target_tick DESC LIMIT $5`, battleID, attempt, factionID, beforeTick, briefing.FactionMemoryLimit)
 	if err != nil {
 		return nil, fmt.Errorf("list faction memory: %w", err)
 	}
@@ -264,7 +282,7 @@ func (r *Postgres) ListFactionMemory(ctx context.Context, battleID string, attem
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return ai.BuildFactionMemory(records, battleID, attempt, factionID, beforeTick), nil
+	return briefing.BuildFactionMemory(records, battleID, attempt, factionID, beforeTick), nil
 }
 
 func (r *Postgres) AgentEnabled(ctx context.Context) (bool, error) {

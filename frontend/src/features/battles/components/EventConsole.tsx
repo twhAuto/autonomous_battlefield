@@ -20,7 +20,7 @@ export function EventConsole({ battleAttempt, selectedAttempt, setSelectedAttemp
   eventHasMore: boolean
   eventState: EventState
   eventMessage: string
-  loadEventPage: (after: number, reset: boolean, signal?: AbortSignal) => Promise<void>
+  loadEventPage: (after: number, reset: boolean) => Promise<void>
 }>) {
   const [eventType, setEventType] = useState('all')
   const [preset, setPreset] = useState<EventPreset>('key')

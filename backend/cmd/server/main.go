@@ -5,118 +5,74 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/twh09/autonomous_battlefield/backend/cmd/internal/startup"
+	"github.com/twh09/autonomous_battlefield/backend/cmd/internal/startup/database"
+	"github.com/twh09/autonomous_battlefield/backend/gamedata"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/app"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/catalog"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/resultcache"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
-	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
 	"github.com/twh09/autonomous_battlefield/backend/internal/members"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/logging"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 func main() {
-	logger := logging.New("api")
-	slog.SetDefault(logger)
-	options, err := parseOptions(os.Args[1:])
-	if errors.Is(err, flag.ErrHelp) {
-		return
+	slog.SetDefault(logging.New("api"))
+	os.Exit(command().Main(os.Args[1:]))
+}
+
+// command runs the API, or with -migrate applies pending migrations and exits.
+func command() startup.Command[config.APIConfig] {
+	var migrate bool
+	return startup.Command[config.APIConfig]{
+		Name: "api",
+		Flags: func(flags *flag.FlagSet) {
+			flags.BoolVar(&migrate, "migrate", false, "apply pending database migrations and exit")
+		},
+		Load: config.LoadAPI,
+		Run: func(ctx context.Context, configuration config.APIConfig) error {
+			if migrate {
+				return applyMigrations(ctx, configuration.Database)
+			}
+			return startServer(ctx, configuration)
+		},
 	}
+}
+
+func applyMigrations(ctx context.Context, database config.Database) error {
+	slog.Info("database_migration_started")
+	applied, err := postgres.Migrate(ctx, database.URL, database.ConnectTimeout)
 	if err != nil {
-		logger.Error("command_line_invalid", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("database migration: %w", err)
 	}
-
-	configuration, err := config.Load(options.configPath)
-	if err != nil {
-		logger.Error("configuration_load_failed", "config_path", options.configPath, "error", err)
-		os.Exit(1)
-	}
-
-	if options.migrate {
-		logger.Info("database_migration_started")
-		migrationContext, stop := signal.NotifyContext(
-			context.Background(),
-			syscall.SIGINT,
-			syscall.SIGTERM,
-		)
-		defer stop()
-
-		applied, err := postgres.Migrate(
-			migrationContext,
-			configuration.Database.URL,
-			configuration.Database.ConnectTimeout,
-		)
-		if err != nil {
-			logger.Error("database_migration_failed", "error", err)
-			os.Exit(1)
-		}
-		logger.Info("database_migration_completed", "applied", applied)
-		return
-	}
-
-	if err := startServer(configuration); err != nil {
-		logger.Error("api_process_stopped", "error", err)
-		os.Exit(1)
-	}
+	slog.Info("database_migration_completed", "applied", applied)
+	return nil
 }
 
-type cliOptions struct {
-	configPath string
-	migrate    bool
-}
-
-func parseOptions(arguments []string) (cliOptions, error) {
-	flags := flag.NewFlagSet("server", flag.ContinueOnError)
-	configPath := flags.String("config", "config.yaml", "path to the YAML configuration file")
-	migrate := flags.Bool("migrate", false, "apply pending database migrations and exit")
-
-	if err := flags.Parse(arguments); err != nil {
-		return cliOptions{}, err
-	}
-	if flags.NArg() != 0 {
-		return cliOptions{}, fmt.Errorf("unexpected positional arguments: %v", flags.Args())
-	}
-
-	return cliOptions{configPath: *configPath, migrate: *migrate}, nil
-}
-
-func startServer(configuration config.Config) error {
-	memberConfig, err := members.LoadConfig(configuration.Auth.Roles)
+// startServer serves the API until shutdownSignal is cancelled. Probes answer from the
+// start; the application is activated once the database and catalog are ready.
+func startServer(shutdownSignal context.Context, configuration config.APIConfig) error {
+	processContext, cancelProcess := context.WithCancel(shutdownSignal)
+	defer cancelProcess()
+	stopTracing, err := startup.Tracing(processContext, "battlefield-api")
 	if err != nil {
 		return err
 	}
-	shutdownSignal, stop := signal.NotifyContext(
-		context.Background(),
-		syscall.SIGINT,
-		syscall.SIGTERM,
-	)
-	defer stop()
-	processContext, cancelProcess := context.WithCancel(shutdownSignal)
-	defer cancelProcess()
-	shutdownTracing, err := telemetry.ConfigureTracing(processContext, "battlefield-api")
-	if err != nil {
-		return fmt.Errorf("configure tracing: %w", err)
-	}
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = shutdownTracing(ctx)
-	}()
+	defer stopTracing()
 
-	lifecycle := httpapi.NewLifecycleHandler(telemetry.MetricsHandler())
+	lifecycle := httpapi.NewLifecycleHandler(metrics.Handler())
 	httpConfig := configuration.HTTP
 	server := &http.Server{
 		Addr:              httpConfig.Address,
@@ -127,58 +83,36 @@ func startServer(configuration config.Config) error {
 		IdleTimeout:       httpConfig.IdleTimeout,
 		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
 	}
-	serverErrors := make(chan error, 1)
-	go func() {
-		slog.Info("api_health_listening", "address", server.Addr)
-		err := server.ListenAndServe()
-		if errors.Is(err, http.ErrServerClosed) {
-			err = nil
-		}
-		serverErrors <- err
-		cancelProcess()
-	}()
+	slog.Info("api_health_listening", "address", server.Addr)
+	serverErrors := startup.Serve(server, cancelProcess)
 
-	db, err := postgres.NewPostgresDBWithRetry(processContext, configuration.Database.URL, postgres.Options{
-		MaxConnections:        configuration.Database.MaxConnections,
-		MinConnections:        configuration.Database.MinConnections,
-		MaxConnectionLifetime: configuration.Database.MaxConnectionLifetime,
-	}, configuration.Database.ConnectTimeout, time.Second, func(attempt int, err error) {
-		slog.Warn("database_connect_retry", "attempt", attempt, "retry_in", time.Second, "error", err)
-	})
+	db, err := database.Connect(processContext, configuration.Database)
 	if err != nil {
-		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
+		return startup.AbortStart(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
 	}
 	defer db.Close()
 	slog.Info("database_connected")
 
-	catalog, err := catalog.LoadCatalog(configuration.API.ScenarioCatalogPath, configuration.API.RulesetCatalogPath)
+	catalog, err := catalog.LoadCatalog(gamedata.Files)
 	if err != nil {
-		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, fmt.Errorf("load scenario catalog: %w", err))
+		return startup.AbortStart(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, fmt.Errorf("load scenario catalog: %w", err))
 	}
-	slog.Info("scenario_catalog_loaded", "path", configuration.API.ScenarioCatalogPath, "scenario_count", len(catalog.IDs()))
-	profiles := ai.NewProfileCatalog(configuration.AI.Environment, configuration.AI.Profiles)
+	slog.Info("scenario_catalog_loaded", "scenario_count", len(catalog.IDs()))
+	profiles := profile.NewCatalog(configuration.Models.Environment, configuration.Models.Profiles)
 	cache, err := resultcache.New(configuration.ResultCache.URL, configuration.ResultCache.TTL, configuration.ResultCache.Timeout)
 	if err != nil {
-		return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
+		return startup.AbortStart(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
 	}
 	defer cache.Close()
-	var memberStore members.Repository
-	if memberConfig.Enabled {
-		store := &members.Store{DB: db, Roles: configuration.Auth.Roles, Writer: &members.Cloudflare{Config: memberConfig}}
-		initCtx, stopInit := context.WithTimeout(processContext, 10*time.Second)
-		err = store.Initialize(initCtx)
-		stopInit()
-		if err != nil {
-			return stopAPIInitialization(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
-		}
-		configuration.Auth.ResolvePlayer = store.Allowed
-		memberStore = store
-		syncCtx, stopSync := context.WithCancel(processContext)
-		syncDone := make(chan struct{})
-		go func() { defer close(syncDone); store.Run(syncCtx) }()
-		defer func() { stopSync(); <-syncDone }()
+	memberStore, stopMembers, err := startManagedPlayers(processContext, db, configuration.Members, configuration.Auth.Roles)
+	if err != nil {
+		return startup.AbortStart(server, lifecycle, serverErrors, shutdownSignal, httpConfig.ShutdownTimeout, err)
 	}
-	application := app.NewAPIWithMembers(db, catalog, configuration.API.MaxTicks, configuration.Auth, cache, configuration.AI.BackgroundGeneration, app.MemberOptions{Store: memberStore, Profiles: []*ai.ProfileRegistry{profiles}})
+	defer stopMembers()
+	if memberStore != nil {
+		configuration.Auth.ResolvePlayer = memberStore.Allowed
+	}
+	application := app.New(db, catalog, configuration.API.MaxTicks, app.Options{Auth: configuration.Auth, Cache: cache, Generation: &configuration.Generation, Profiles: profiles, Members: membersRepository(memberStore)})
 	lifecycle.Activate(application.HTTPHandler(), db, nil)
 	slog.Info("api_ready", "address", server.Addr)
 
@@ -205,25 +139,25 @@ func startServer(configuration config.Config) error {
 	return nil
 }
 
-func stopAPIInitialization(
-	server *http.Server,
-	lifecycle *httpapi.LifecycleHandler,
-	serverErrors <-chan error,
-	shutdownSignal context.Context,
-	shutdownTimeout time.Duration,
-	initializationError error,
-) error {
-	lifecycle.BeginShutdown()
-	shutdownContext, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancel()
-	if err := server.Shutdown(shutdownContext); err != nil {
-		return fmt.Errorf("shutdown API after initialization failure: %w", err)
+// startManagedPlayers imports configured Players and starts the Cloudflare group
+// reconciler. It returns a nil store and a no-op stop when managed Players are off.
+func startManagedPlayers(ctx context.Context, db *pgxpool.Pool, managed config.Members, roles map[string]authn.Role) (*members.Store, func(), error) {
+	if !managed.Enabled {
+		return nil, func() { /* Nothing was started. */ }, nil
 	}
-	if err := <-serverErrors; err != nil {
-		return fmt.Errorf("serve API: %w", err)
+	store, err := members.NewStore(db, roles, members.NewCloudflare(members.Config{AccountID: managed.AccountID, GroupID: managed.GroupID, Token: managed.Token}))
+	if err != nil {
+		return nil, nil, err
 	}
-	if shutdownSignal.Err() != nil {
+	stop, err := store.Start(ctx)
+	return store, stop, err
+}
+
+// membersRepository keeps a disabled feature a nil interface, which the handler
+// answers with 503, rather than an interface holding a nil *Store.
+func membersRepository(store *members.Store) members.Repository {
+	if store == nil {
 		return nil
 	}
-	return fmt.Errorf("initialize API: %w", initializationError)
+	return store
 }

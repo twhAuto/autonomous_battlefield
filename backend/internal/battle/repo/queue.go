@@ -8,15 +8,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5"
-	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
-func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDuration time.Duration, maxAttempts int) (*worker.BattleJob, error) {
-	ctx, span := telemetry.StartDatabaseSpan(ctx, "claim_battle")
-	defer span.End()
+// FailExhaustedBattles fails queued or lease-expired battles that have used every
+// attempt, so they end as attempts_exhausted instead of waiting forever. ClaimBattle
+// never claims them; the engine runs this before each claim.
+func (r *Postgres) FailExhaustedBattles(ctx context.Context, maxAttempts int) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE battle_runs
 		SET status = 'failed', error_code = 'attempts_exhausted',
@@ -28,12 +30,17 @@ func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDurati
 		  AND attempt >= $1
 	`, maxAttempts)
 	if err != nil {
-		return nil, fmt.Errorf("fail exhausted battles: %w", err)
+		return fmt.Errorf("fail exhausted battles: %w", err)
 	}
+	return nil
+}
 
-	var job worker.BattleJob
+func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDuration time.Duration, maxAttempts int) (*queue.Job, error) {
+	ctx, span := tracing.StartDatabaseSpan(ctx, "claim_battle")
+	defer span.End()
+	var job queue.Job
 	var snapshot []byte
-	err = r.db.QueryRow(ctx, `
+	err := r.db.QueryRow(ctx, `
 		WITH candidate AS (
 			SELECT id
 			FROM battle_runs
@@ -58,7 +65,7 @@ func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDurati
 		&job.Traceparent, &job.Tracestate,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, worker.ErrNoBattleAvailable
+		return nil, queue.ErrNoBattleAvailable
 	}
 	if err != nil {
 		return nil, fmt.Errorf("claim battle: %w", err)
@@ -70,7 +77,7 @@ func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDurati
 	return &job, nil
 }
 
-func (r *Postgres) HeartbeatBattle(ctx context.Context, lease worker.BattleLease, leaseDuration time.Duration) error {
+func (r *Postgres) HeartbeatBattle(ctx context.Context, lease queue.Lease, leaseDuration time.Duration) error {
 	tag, err := r.db.Exec(ctx, `
 		UPDATE battle_runs
 		SET lease_expires_at = now() + $4::interval, updated_at = now()
@@ -80,7 +87,7 @@ func (r *Postgres) HeartbeatBattle(ctx context.Context, lease worker.BattleLease
 		return fmt.Errorf("heartbeat battle %q: %w", lease.BattleID, err)
 	}
 	if tag.RowsAffected() == 0 {
-		return worker.ErrBattleLeaseLost
+		return queue.ErrLeaseLost
 	}
 	return nil
 }
@@ -88,7 +95,7 @@ func (r *Postgres) HeartbeatBattle(ctx context.Context, lease worker.BattleLease
 // BattlePaused reports operator control state only while the caller still owns
 // the active lease. This prevents a stale worker from waiting on a battle that
 // has been stopped or reclaimed.
-func (r *Postgres) BattlePaused(ctx context.Context, lease worker.BattleLease) (bool, error) {
+func (r *Postgres) BattlePaused(ctx context.Context, lease queue.Lease) (bool, error) {
 	var paused bool
 	err := r.db.QueryRow(ctx, `
 		SELECT paused
@@ -96,7 +103,7 @@ func (r *Postgres) BattlePaused(ctx context.Context, lease worker.BattleLease) (
 		WHERE id = $1 AND status = 'running' AND attempt = $2 AND lease_owner = $3
 	`, lease.BattleID, lease.Attempt, lease.Owner).Scan(&paused)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return false, worker.ErrBattleLeaseLost
+		return false, queue.ErrLeaseLost
 	}
 	if err != nil {
 		return false, fmt.Errorf("read battle %q pause state: %w", lease.BattleID, err)
@@ -104,7 +111,7 @@ func (r *Postgres) BattlePaused(ctx context.Context, lease worker.BattleLease) (
 	return paused, nil
 }
 
-func (r *Postgres) FailBattle(ctx context.Context, lease worker.BattleLease, code, message string) error {
+func (r *Postgres) FailBattle(ctx context.Context, lease queue.Lease, code, message string) error {
 	tag, err := r.db.Exec(ctx, `
 		UPDATE battle_runs
 		SET status = 'failed', paused = false, error_code = $4, error_message = $5,
@@ -116,12 +123,12 @@ func (r *Postgres) FailBattle(ctx context.Context, lease worker.BattleLease, cod
 		return fmt.Errorf("fail battle %q: %w", lease.BattleID, err)
 	}
 	if tag.RowsAffected() == 0 {
-		return worker.ErrBattleLeaseLost
+		return queue.ErrLeaseLost
 	}
 	return nil
 }
 
-func (r *Postgres) RequeueBattle(ctx context.Context, lease worker.BattleLease) error {
+func (r *Postgres) RequeueBattle(ctx context.Context, lease queue.Lease) error {
 	tag, err := r.db.Exec(ctx, `
 		UPDATE battle_runs
 		SET status = 'queued', current_tick = 0, current_state = initial_state,
@@ -132,7 +139,7 @@ func (r *Postgres) RequeueBattle(ctx context.Context, lease worker.BattleLease) 
 		return fmt.Errorf("requeue battle %q: %w", lease.BattleID, err)
 	}
 	if tag.RowsAffected() == 0 {
-		return worker.ErrBattleLeaseLost
+		return queue.ErrLeaseLost
 	}
 	return nil
 }

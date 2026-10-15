@@ -5,6 +5,9 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
@@ -31,6 +34,11 @@ type DecisionSession struct {
 }
 
 type DecisionResult struct {
+	// Accepted means different things per runtime. API runners set it from the
+	// gateway's submission result, so it means the plan was accepted. CLI runners set
+	// it when the CLI ends successfully, which proves nothing about submission; the
+	// agent executor then reports usage, and the gateway rejects that report unless
+	// the decision is accepted, turning the result into plan_not_submitted.
 	Accepted      bool
 	ErrorCategory string
 	Usage         Usage
@@ -50,9 +58,16 @@ type ModelTurnResult struct {
 	Usage     Usage
 }
 
+// Message is one entry in a provider-neutral conversation. Role is "user",
+// "assistant" or "tool". An assistant message carries any text and the tool calls it
+// requested; a tool message answers one call, identified by ToolCallID and Name, with
+// the result in Content.
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content"`
+	ToolCalls  []ToolCall `json:"toolCalls,omitempty"`
+	ToolCallID string     `json:"toolCallId,omitempty"`
+	Name       string     `json:"name,omitempty"`
 }
 
 type ToolDefinition struct {
@@ -65,6 +80,9 @@ type ToolCall struct {
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments"`
+	// Signature is opaque provider state, such as a Gemini thought signature, that
+	// must be sent back with the call in later requests of the same conversation.
+	Signature string `json:"signature,omitempty"`
 }
 
 type Usage struct {
@@ -206,4 +224,72 @@ type ModelProfile struct {
 	Available                       bool     `json:"available" yaml:"-"`
 	ToolCapability                  bool     `json:"toolCapability" yaml:"-"`
 	UnavailableReason               string   `json:"unavailableReason,omitempty" yaml:"-"`
+}
+
+// AvailabilityFlagSet reports whether the profile's availability variable is "true",
+// ignoring case and surrounding space. Configuration and the profile catalog both
+// decide availability through it.
+func (p ModelProfile) AvailabilityFlagSet() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv(p.AvailabilityEnvironmentVariable)), "true")
+}
+
+type ReferenceIdentity struct {
+	RulesetID      string `json:"rulesetId"`
+	RulesetVersion string `json:"rulesetVersion"`
+	Digest         string `json:"digest"`
+}
+
+type UnitReferenceSnapshot struct {
+	ReferenceIdentity
+	Units []UnitDetail `json:"units"`
+}
+
+type UnitDetail struct {
+	UnitID string         `json:"unitId"`
+	Stats  game.UnitType  `json:"stats"`
+	Card   *game.UnitCard `json:"card,omitempty"`
+}
+
+type KnowledgeLimits struct {
+	MaxUnitCards int `json:"maxUnitCards" yaml:"maxUnitCards"`
+	MaxBytes     int `json:"maxBytes" yaml:"maxBytes"`
+}
+
+func DefaultKnowledgeLimits() KnowledgeLimits { return KnowledgeLimits{16, 16 << 10} }
+
+func (l KnowledgeLimits) Validate() error {
+	if l.MaxUnitCards <= 0 || l.MaxBytes <= 0 {
+		return fmt.Errorf("knowledgeRetrieval limits must be positive")
+	}
+	return nil
+}
+
+type RetrievedCard struct {
+	game.UnitCard
+	Stats game.UnitType `json:"stats"`
+}
+
+type DecisionKnowledge struct {
+	RulesetID      string          `json:"rulesetId"`
+	RulesetVersion string          `json:"rulesetVersion"`
+	Digest         string          `json:"digest"`
+	Limits         KnowledgeLimits `json:"limits"`
+	Mechanics      string          `json:"mechanics,omitempty"`
+	Cards          []RetrievedCard `json:"cards"`
+	SelectedIDs    []string        `json:"selectedIds"`
+	SerializedSize int             `json:"serializedSize"`
+	Truncated      bool            `json:"truncated"`
+}
+
+// FactionMemoryEntry contains only historical facts from a faction's authorized
+// observation and its resolved plan. It never carries nested memory or raw text
+// from providers. Status distinguishes accepted plans from engine fallbacks.
+type FactionMemoryEntry struct {
+	ObservationTick   uint64                  `json:"observationTick"`
+	TargetTick        uint64                  `json:"targetTick"`
+	Status            string                  `json:"status"`
+	Economy           EconomyContext          `json:"economy"`
+	OwnUnits          int                     `json:"ownUnits"`
+	VisibleEnemyUnits int                     `json:"visibleEnemyUnits"`
+	Plan              controller.PlanProposal `json:"plan"`
 }

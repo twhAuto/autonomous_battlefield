@@ -1,4 +1,4 @@
-# Deployment learning guide
+# Application deployment
 
 Application CD uses `deploy.sh`, `rollback.sh` and `smoke-test.sh` in `scripts/cd/`.
 The registered driver selects Kind or K3s. See [K3s delivery](k3s-delivery.md) for
@@ -7,22 +7,20 @@ controller ownership, private gateway checks and the separate production cutover
 Rollback records include applied migration versions; a changed ledger requires
 reviewed database recovery before automatic image rollback.
 
+Start with the [environment guide](environments.md) to register a target and
+configure its private inputs. The registered driver selects the manifests and
+cluster checks; the `local` overlay name below refers to shared Kind manifests.
+AWS assets are an unapplied reference: an AWS overlay, account-specific provisioning,
+and acceptance evidence remain outstanding.
 
-Deployment targets are now explicit: WSL dev and server production. Start with
-the [environment setup and transition guide](environments.md). The `local` overlay
-name below denotes shared Kind manifests used by both environments.
-
-This guide records the deployment direction for Autonomous Battlefield and the
-recommended path from local Kubernetes to AWS. The goal is to learn the native
-Kubernetes concepts first while keeping the application portable enough to run
-on Amazon EKS without rewriting it.
-
-The application has production-shaped container images and a staged local
-Kubernetes deployment. The AWS infrastructure reference is in `infra/aws`; the application still needs
-an AWS overlay and account-specific provisioning and verification.
-
-See [AWS promotion limits](jenkins.md#aws-promotion-limits) before using the
-optional assurance job to copy images to ECR.
+| Task | Start here |
+| --- | --- |
+| Deploy or troubleshoot development Kind | [First local session](#first-local-kubernetes-session) |
+| Prepare public production access | [Limited-access production](#limited-access-production) and [launch runbook](limited-launch.md) |
+| Deliver to K3s or move retained data | [K3s delivery](k3s-delivery.md) |
+| Understand pipeline and rollback gates | [Jenkins delivery](jenkins.md#production-delivery) |
+| Verify registry image inputs | [Verified registry delivery](#verified-registry-delivery) |
+| Assess the AWS reference | [Moving to AWS](#moving-the-deployment-to-aws) |
 
 ## Limited-access production
 
@@ -44,30 +42,17 @@ signature/provenance checks. Missing approval requires operator recovery.
 
 ## Deployment direction
 
-Use the same application containers and core Kubernetes resources locally and
-on AWS:
-
-See the [system context](../architecture/system-architecture.md#2-system-context)
-for the API, engine, AI gateway, agent, PostgreSQL, and optional Redis topology.
-PostgreSQL remains the durable queue in both deployment environments.
-
-For a first AWS deployment, use:
-
-- Amazon ECR for container images.
-- Amazon EKS for Kubernetes.
-- Amazon RDS for PostgreSQL.
-- An Application Load Balancer for HTTPS ingress.
-- AWS Secrets Manager for database credentials.
-- CloudWatch or OpenTelemetry for operational signals.
-- Route 53 and ACM when a public domain and TLS certificate are needed.
-
-Keep PostgreSQL outside EKS in AWS. Running a production database inside the
-cluster introduces storage, backup, failover, and upgrade responsibilities that
-are separate from the application-deployment exercise.
+The application uses shared container images and Kubernetes resources. PostgreSQL
+remains the durable queue across environments; see the
+[system context](../architecture/system-architecture.md#2-system-context).
+Current Kind/K3s delivery is described below. The [AWS reference](#moving-the-deployment-to-aws)
+is a separate provisioning and verification effort, not an active delivery target.
 
 ## Portable base and environment overlays
 
-Start with native YAML resources and organize them with Kustomize:
+Application manifests use Kustomize. This tree shows the shared base and Kind
+overlays; [K3s delivery](k3s-delivery.md#deliver-and-verify) describes the additional
+K3s compositions and retained-storage overrides:
 
 ```text
 infra/deploy/
@@ -93,9 +78,9 @@ infra/deploy/
         └── gateway/        Local Gateway API routes through Envoy Gateway
 ```
 
-The base should contain standard Kubernetes behavior. Provider-specific
-annotations, resource identifiers, and secret integrations belong in the AWS
-overlay.
+The base contains standard Kubernetes resources. Provider-specific annotations,
+resource identifiers, and secret integrations belong in environment overlays. The
+AWS column below describes the intended mapping, not a verified deployment.
 
 | Portable Kubernetes resource | Local implementation | AWS implementation |
 | --- | --- | --- |
@@ -124,21 +109,10 @@ kubectl kustomize infra/deploy/overlays/local/gateway
 
 ## Why Helm comes later
 
-Do not begin by translating every resource into a Helm template. First write,
-deploy, inspect, and troubleshoot the Kubernetes resources directly. This keeps
-the revision exercise focused on what Kubernetes itself is doing.
-
-Add a Helm chart later when one or more of these becomes true:
-
-- Other users need to install the application as a packaged release.
-- Many deployments need configurable domains, images, replicas, resources, and
-  feature settings.
-- The project needs chart versions and Helm install, upgrade, and rollback
-  workflows.
-- Kustomize overlays become repetitive or difficult to maintain.
-
-Converting working resources into a chart is then a useful packaging exercise,
-not a prerequisite for the first deployment.
+Application delivery currently uses Kustomize, not an application Helm chart.
+Keep changes in the owning base/overlay and validate their rendered manifests.
+The optional [self-hosted Langfuse service](langfuse.md) has a separate Helm
+installation; its packaging does not change application delivery.
 
 ## First local Kubernetes session
 
@@ -395,7 +369,7 @@ understood.
 
 #### Change-to-deployment mapping
 
-Changes under `scripts/test/` and `tests/`, Go `*_test.go` files, React/TypeScript `*.test.ts` and `*.test.tsx` files under `frontend/src`, and frontend test setup do not select application deployment components. These changes still run the normal CI quality gates. Renames inspect both old and new paths, so moving production code into a test path still selects the production component. Unknown paths retain the conservative full-deployment fallback.
+Changes under `scripts/test/` and `backend/test/`, Go `*_test.go` files, React/TypeScript `*.test.ts` and `*.test.tsx` files under `frontend/src`, and frontend test setup do not select application deployment components. These changes still run the normal CI quality gates. Renames inspect both old and new paths, so moving production code into a test path still selects the production component. Unknown paths retain the conservative full-deployment fallback.
 
 The path classifier evaluates the following rules from top to bottom for each
 path, so an earlier documentation rule takes precedence over a broader source
@@ -408,7 +382,7 @@ folder rule. Multiple changed paths contribute the union of their components;
 | `infra/jenkins/Jenkinsfile.assurance` | `all` | Backend and frontend images |
 | `infra/ansible/**`, other `infra/jenkins/**`, `infra/libvirt/**`, `infra/k3s/**`, `scripts/infra/**`, `scripts/ci/run-platform.sh`, `scripts/ci/run-vm.sh`, or `scripts/ci/run-k3s.sh` (explicit platform provisioning) | `none` | None |
 | `infra/local/**`, `infra/sonarqube/**` or `sonar-project.properties` | `none` | None |
-| `scripts/test/**` and `tests/**` | `none` | None |
+| `scripts/test/**` and `backend/test/**` | `none` | None |
 | Go `backend/**/*_test.go`, frontend `src/**/*.test.ts`, `src/**/*.test.tsx`, or `src/test/**` | `none` | None |
 | `scripts/ci/lint-go.sh` or `scripts/ci/coverage-check-summary.sh` | `none` | None |
 | `backend/**` | `migration,backend,application` | Backend image |
@@ -632,8 +606,8 @@ changes alone do not select application components or run an infrastructure appl
 [Contributor CI](../developer/ci.md#pull-request-verification) describes PR verification.
 [Jenkins production delivery](jenkins.md#production-delivery) owns the main stage
 sequence, credentials, publication, verification, and digest rollback workflow. Main deploys
-to the registered production cluster, now K3s after the initial cutover; local
-Kind dev loads its own images.
+to the registered production cluster using its configured driver; local Kind
+development loads its own images.
 AWS promotion copies verified images to ECR without rebuilding.
 
 ## Repository-specific requirements
@@ -642,10 +616,13 @@ AWS promotion copies verified images to ECR without rebuilding.
   `server -migrate` mode. Never let every API replica race to migrate.
 - Pass an explicit configuration path in containers, for example
   `-config /etc/battlefield/config.yaml`.
-- Scenario paths are resolved relative to the configuration file. If the
-  ConfigMap is mounted under `/etc/battlefield`, set
-  `api.scenarioCatalogPath` to an absolute image path such as
-  `/app/scenarios`.
+- Scenarios, rulesets and content libraries are embedded in the server binary
+  (`backend/gamedata`). The base ConfigMap still sets the retired
+  `api.scenarioCatalogPath: /app/scenarios` and `api.rulesetCatalogPath:
+  /app/rulesets`: images built before embedding resolve a missing path beside
+  `/etc/battlefield/config.yaml`, so an image-only rollback to one would otherwise
+  fail to load its catalog. Current binaries accept only those two values; remove
+  the keys once no rollback target predates `backend/gamedata`.
 - Use `/startupz`, `/livez`, and `/readyz` for startup, liveness, and readiness
   respectively. The API serves them on port 8080 and the engine on port 8081.
 - Startup remains unavailable until PostgreSQL and application initialization
@@ -656,8 +633,10 @@ AWS promotion copies verified images to ECR without rebuilding.
   immediately.
 - Frontend Nginx resolves the API Service at request time, so temporary absence
   of the API DNS record does not prevent the frontend container from starting.
-- Set `terminationGracePeriodSeconds` longer than the configured ten-second
-  graceful-shutdown deadline.
+- Set `terminationGracePeriodSeconds` longer than each process's shutdown deadline.
+  API and engine timeouts come from their configuration; the agent currently
+  waits up to 20 seconds for its health server and in-flight jobs. Check the
+  workload manifest whenever changing these timeouts.
 - The engine can have multiple replicas because work is claimed through durable
   database leases. Each pod still requires a unique worker identity; its pod
   name or UID can be injected with the Downward API.
@@ -666,10 +645,11 @@ AWS promotion copies verified images to ECR without rebuilding.
   engine pod.
 - Keep `DATABASE_URL` out of Git, image layers, ConfigMaps, logs, and command
   examples containing real credentials.
-- Keep the administrator password and session-signing secret out of Git,
-  images, ConfigMaps, and command examples. Public HTTPS deployments must set
-  `BATTLEFIELD_AUTH_COOKIE_SECURE=true`; all API replicas must share the same
-  signing secret for stateless session validation.
+- Production requires Cloudflare Access identity verification; follow the
+  [launch runbook](limited-launch.md). Password/cookie authentication is only for
+  explicit development mode. In that mode, keep the administrator password and
+  signing secret out of Git, images, ConfigMaps, and examples; replicas share the
+  signing secret, and HTTPS development uses `BATTLEFIELD_AUTH_COOKIE_SECURE=true`.
 
 ## Scaling and reliability exercises
 
@@ -687,13 +667,12 @@ Once one replica works, exercise these behaviors deliberately:
   available during disruption.
 - Recreate the entire cluster and application from committed configuration.
 
-## Moving the deployment to AWS
+## Verified registry delivery
 
-The implementation root is [`infra/aws`](../../infra/aws). It creates budget alerts before the network and runtime resources, then provisions VPC networking, immutable ECR repositories, EKS, encrypted RDS PostgreSQL with managed master credentials and backups, Secrets Manager placeholders, control-plane logging, and an OIDC provider for IRSA.
+The registered environment selects Kind or K3s. These image and provenance checks
+apply before delivery; they do not provision a cluster.
 
-GHCR remains the build source of truth. `scripts/cd/promote-to-ecr.sh` copies the already verified subject and OCI referrers with ORAS, proves that the ECR subject digest is unchanged, then verifies the Cosign signature plus CycloneDX, SLSA-provenance, and AI-manifest attestations. It never rebuilds an image.
-
-Registry-backed Kind deployment uses full digest inputs:
+Registry-backed delivery uses full digest inputs:
 
 ```bash
 DEPLOY_ENV=production IMAGE_SOURCE=registry \
@@ -713,9 +692,38 @@ installation. Each repository receives separate tag and digest patterns, so a
 similarly prefixed repository name does not accidentally match. See
 [Kyverno image-reference matching](https://kyverno.io/docs/policy-types/cluster-policy/verify-images/overview/).
 
-The production environment resolver requires `ENFORCE_SUPPLY_CHAIN_POLICY=1`, which installs the Jenkins-only Kyverno verification policy. The tagged Kyverno manifest is installed with server-side apply so its large CRDs do not exceed Kubernetes' client-side last-applied annotation limit. Deployment waits for the admission controller's `Available` condition and prints pod, Deployment, and controller-log diagnostics on timeout. For private GHCR verification, the stage's temporary Docker authentication is copied into a `battlefield-ghcr` pull Secret in the `kyverno` namespace and referenced only by the verification policy. Cosign publishes modern OCI 1.1 referrers for promotion plus legacy digest-tag signature and attestation mirrors for Kyverno 1.15 admission discovery; both sets cover the same digest and use the same key. Publication and GHCR deployment use `cosign verify --new-bundle-format=false` to check the signed full-commit `revision` in the legacy signature. Cosign 3.0.2 modern bundle signatures omit this annotation; their summarized verification output has `optional: null` and cannot satisfy the revision check for reused images. Attestations still use the modern verification path. If a configuration-only rollout reports a missing revision annotation, use the corrected verifier rather than bypassing verification or inventing an expected revision. Existing images with the published legacy mirror need no rebuild. Unsigned local Kind development remains available through `IMAGE_SOURCE=local` and is never treated as promotion evidence.
+The production resolver requires `ENFORCE_SUPPLY_CHAIN_POLICY=1` and installs the
+Jenkins-managed image verification policy. On Kind, the helper also installs the
+pinned Kyverno controller using server-side apply, avoiding the client-side
+annotation size limit on its CRDs. On K3s, the platform owns the controller;
+application delivery does not install or replace it. Both paths wait for admission
+controller availability and report pod, Deployment, and log diagnostics on failure.
 
-The AWS step should reuse the tested images and base resources:
+For private GHCR verification, the temporary Docker authentication becomes a
+`battlefield-ghcr` pull Secret in the `kyverno` namespace, referenced by the policy.
+Cosign publishes OCI 1.1 referrers for promotion and legacy digest-tag signature
+and attestation mirrors for Kyverno 1.15 discovery. Both cover the same digest and
+use the same key.
+
+Publication and GHCR delivery use `cosign verify --new-bundle-format=false` to
+check the full-commit `revision` in the legacy signature. Cosign 3.0.2 modern
+bundle signatures omit this annotation; their summarized output has
+`optional: null` and cannot satisfy the reused-image revision check. Attestations
+still use modern verification. If a configuration-only rollout reports a missing
+revision annotation, use the corrected verifier; do not bypass verification or
+invent a revision. Images with the published legacy mirror need no rebuild.
+Unsigned Kind development through `IMAGE_SOURCE=local` is not promotion evidence.
+
+## Moving the deployment to AWS
+
+The implementation root is [`infra/aws`](../../infra/aws). It creates budget alerts before the network and runtime resources, then provisions VPC networking, immutable ECR repositories, EKS, encrypted RDS PostgreSQL with managed master credentials and backups, Secrets Manager placeholders, control-plane logging, and an OIDC provider for IRSA.
+
+GHCR remains the build source of truth. `scripts/cd/promote-to-ecr.sh` copies the already verified subject and OCI referrers with ORAS, proves that the ECR subject digest is unchanged, then verifies the Cosign signature plus CycloneDX, SLSA-provenance, and AI-manifest attestations. It never rebuilds an image.
+
+Reuse tested images and base resources. See
+[AWS promotion limits](jenkins.md#aws-promotion-limits) before copying images to ECR.
+Keep production PostgreSQL outside EKS in managed RDS; account-specific ingress,
+identity and recovery configuration remain necessary.
 
 An AWS account is required before this stage, including billing verification.
 Secure the root user with MFA, avoid using it for daily administration, and use
@@ -757,27 +765,23 @@ Budget alerts are notifications, not guaranteed spending limits.
 
 ## Doctrine profile rollout
 
-Deploy API, engine, AI gateway, agent, and frontend from the same revision. Startup migration
-00008 preserves existing faction IDs/names and legacy blueprints, backfills balanced
-doctrine, and permits tick-zero decisions. New battles use snapshot version 2;
-existing queued battles retain their snapshotted legacy rules. No data reset is needed.
-Obsolete clients posting blueprint-based faction bodies must be updated.
+Deploy API, engine, AI gateway, agent, and frontend from the same revision. Use the
+migration Job and backup gate described above; do not manually replay historical
+migrations. The [database migration inventory](../architecture/database.md)
+identifies the doctrine (`00008`) and background-generation (`00009`) changes.
+Existing battles keep their frozen rules and faction snapshots.
 
-The migration down path deliberately refuses a lossy rollback when doctrine-only
-profiles or opening decisions exist. Restore a pre-rollout database backup if a full
-application/database rollback is required. Validate the rollout by creating/editing
-a doctrine, staging a battle, and observing opening decisions and purchase events at
-tick zero before tick one. Purchases should reduce the same gold balance throughout.
+Migration `00008` deliberately refuses a lossy down migration when doctrine-only
+profiles or opening decisions exist. If application/database rollback is required,
+use reviewed recovery from a compatible backup and the migration ledger checks;
+an image rollback alone does not reverse the schema. Validate compatibility by
+creating/editing a doctrine and observing tick-zero opening purchases in a battle.
 
 ### Faction background generation rollout
 
-Deploy API, AI gateway, engine/agent workers and frontend from the same revision. Apply
-migration `00009_faction_background.sql` before rollout. It preserves existing
-factions (empty background), legacy blueprints and historical battle snapshots.
-Migration runners use a PostgreSQL advisory session lock to serialize startup.
-Restart host CLI workers too: old workers advertise battle support only and cannot
-execute background jobs. The internal MCP service must route `/generation-mcp`;
-it should not be exposed through public ingress.
+Update host CLI workers with the application: workers that only advertise battle
+support cannot execute background jobs. Keep `/generation-mcp` reachable only on
+the internal MCP service, never public ingress.
 
 Configure the writer in `backend/config.yaml` or the deployment ConfigMap:
 
@@ -816,13 +820,14 @@ prompts. API models have a hard three-turn limit. CLI jobs are deadline-bound an
 instructed to use at most three turns; native CLI internal provider-turn counts
 are not available to enforce separately. Three invalid submissions fail the job.
 
-### Elasticsearch and Kibana rollout recovery
+## Elasticsearch and Kibana rollout recovery
 
-Elasticsearch uses the 10Gi `battlefield-elasticsearch-data` PVC with the Kind
-`standard` storage class. Pod replacement retains log indices and Kibana saved
-objects; deleting the cluster or its backing storage does not. The first rollout
-from the previous `emptyDir` configuration starts with empty storage. Export or
-snapshot any data that must be preserved before that transition.
+Kind uses a 10Gi `battlefield-elasticsearch-data` PVC with the `standard` storage
+class. K3s requests 20Gi through `battlefield-retained`; see the
+[K3s storage contract](k3s-delivery.md#deliver-and-verify). Pod replacement preserves
+stored indices and Kibana objects. Storage loss or cluster recreation requires
+recovery; never treat a PVC request as a backup. When transferring storage, export
+or snapshot data first and follow the target's recovery procedure.
 
 The deployment helper waits for Elasticsearch and the other observability
 workloads, restarts Kibana against the ready Elasticsearch instance, waits for
@@ -838,7 +843,7 @@ After a manual recovery, recreate only the setup job with
 and `kubectl -n battlefield apply -f infra/deploy/overlays/local/observability/kibana/setup-job.yaml`,
 then confirm completion before running production smoke verification.
 
-Before the first hardened production delivery, complete the
+Before enabling production delivery on a new or rebuilt environment, complete the
 [Jenkins agent isolation and recovery setup](jenkins.md#production-hardening-rollout)
 and [trusted kubelet monitoring setup](observability.md#production-kubelet-tls).
 Run `./scripts/test/test-deployment.sh` before opening a deployment PR.

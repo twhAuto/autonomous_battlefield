@@ -12,8 +12,9 @@ documents for detail instead of repeating them:
 [Frontier Siege](frontier-siege.md) for the roster, structures, and map, and the
 [system architecture](../architecture/system-architecture.md#52-strategy-decision-window) for how
 decisions are requested, stored, and timed out. Values below are for the
-`frontier-siege-v2` scenario (`backend/scenarios/frontier-siege-v2.yaml`, ruleset
-`backend/rulesets/castle-siege-v2.yaml`, content `backend/content/core-v2.yaml`).
+`frontier-siege-v2` scenario (`backend/gamedata/scenarios/frontier-siege-v2.yaml`,
+ruleset `backend/gamedata/rulesets/castle-siege-v2.yaml`, content
+`backend/gamedata/content/core-v2.yaml`).
 
 ## Battle loop
 
@@ -71,7 +72,9 @@ are not carried forward.
 ## Plan submission
 
 At each window the engine asks every faction's controller for a plan, based on a
-frozen, fog-of-war observation of that faction's view:
+frozen, fog-of-war observation of that faction's view. It shows enemy units and
+buildings only inside the faction's vision (enemy castles are always shown) and
+never the opponent's gold, upgrades or production totals:
 
 - A **scripted** controller submits its deterministic plan immediately.
 - A **model** controller receives the observation through MCP tools and must

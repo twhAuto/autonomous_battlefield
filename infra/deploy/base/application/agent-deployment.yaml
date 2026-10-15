@@ -24,7 +24,7 @@ spec:
             - secretRef:
                 name: battlefield-runtime
           env:
-            - {name: BATTLEFIELD_ENVIRONMENT, value: local}
+            - {name: BATTLEFIELD_ENVIRONMENT, value: production}
             - {name: BATTLEFIELD_AGENT_SECRET, valueFrom: {secretKeyRef: {name: battlefield-ai, key: BATTLEFIELD_AGENT_SECRET}}}
             - {name: OPENAI_API_KEY, valueFrom: {secretKeyRef: {name: battlefield-ai, key: OPENAI_API_KEY}}}
             - {name: OPENAI_MODEL, valueFrom: {secretKeyRef: {name: battlefield-ai, key: OPENAI_MODEL}}}

@@ -3,7 +3,7 @@ package eval
 import (
 	"encoding/json"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
 )
 
 func countUnitDetailCalls(calls []string) int {
@@ -17,6 +17,6 @@ func countUnitDetailCalls(calls []string) int {
 }
 func evaluationContextBytes(value Case) int {
 	c := evaluationObservation(value)
-	payload, _ := json.Marshal(map[string]any{"context": ai.AgentObservation(c)})
+	payload, _ := json.Marshal(map[string]any{"context": agentview.Observation(c)})
 	return len(payload)
 }

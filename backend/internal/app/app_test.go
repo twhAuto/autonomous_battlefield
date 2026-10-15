@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -18,7 +19,7 @@ import (
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
-	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/logging"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -31,9 +32,9 @@ import (
 )
 
 func TestNewAPIComposesHTTPApplication(t *testing.T) {
-	application := NewAPI(appDatabase{}, &catalog.Catalog{}, 10_000)
+	application := New(appDatabase{}, &catalog.Catalog{}, 10_000, Options{})
 	response := httptest.NewRecorder()
-	lifecycle := httpapi.NewLifecycleHandler()
+	lifecycle := httpapi.NewLifecycleHandler(nil)
 	lifecycle.Activate(application.HTTPHandler(), appDatabase{}, nil)
 	lifecycle.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if response.Code != http.StatusOK {
@@ -42,10 +43,10 @@ func TestNewAPIComposesHTTPApplication(t *testing.T) {
 }
 
 func TestNewAPIWithAuthenticationProtectsApplicationRoutes(t *testing.T) {
-	application := NewAPIWithAuthentication(appDatabase{}, &catalog.Catalog{}, 10_000, authn.Config{
+	application := New(appDatabase{}, &catalog.Catalog{}, 10_000, Options{Auth: authn.Config{
 		Enabled: true, Username: "admin", Password: "a-long-test-password",
 		SessionSecret: "a-test-session-secret-with-32-characters", SessionTTL: time.Hour,
-	})
+	}})
 	response := httptest.NewRecorder()
 	application.HTTPHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/factions", nil))
 	if response.Code != http.StatusUnauthorized || response.Header().Get("X-Request-ID") == "" {
@@ -62,7 +63,7 @@ func TestNewAPIWithAuthenticationProtectsApplicationRoutes(t *testing.T) {
 // revealed; the auth routes bypass that policy, so a wrong method on them reaches
 // ServeMux, whose plain-text 405 the router replaces.
 func TestAssembledAPIReturnsTheEnvelopeForUnmatchedRequests(t *testing.T) {
-	handler := NewAPI(appDatabase{}, &catalog.Catalog{}, 10_000).HTTPHandler()
+	handler := New(appDatabase{}, &catalog.Catalog{}, 10_000, Options{}).HTTPHandler()
 
 	for _, denied := range [][2]string{{http.MethodGet, "/v1/no-such-route"}, {http.MethodPatch, "/v1/factions"}, {http.MethodGet, "/v1/auth/no-such-route"}} {
 		response := httptest.NewRecorder()
@@ -107,6 +108,9 @@ func (appDatabase) Exec(context.Context, string, ...any) (pgconn.CommandTag, err
 }
 func (appDatabase) Query(context.Context, string, ...any) (pgx.Rows, error) { return nil, nil }
 func (appDatabase) QueryRow(context.Context, string, ...any) pgx.Row        { return nil }
+func (appDatabase) Begin(context.Context) (pgx.Tx, error) {
+	return nil, errors.New("no transactions in app tests")
+}
 
 type cachedBattle struct{ reads int }
 
@@ -120,7 +124,7 @@ func TestCachedResultHTTPAndAuthentication(t *testing.T) {
 	const id = "abcdefab-1234-1234-1234-123456789012"
 	cache := &cachedBattle{}
 	// appDatabase.QueryRow returns nil: this request must be served entirely from cache.
-	application := NewAPIWithResultCache(appDatabase{}, &catalog.Catalog{}, 100, authn.Config{}, cache)
+	application := New(appDatabase{}, &catalog.Catalog{}, 100, Options{Cache: cache})
 	response := httptest.NewRecorder()
 	application.HTTPHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/battles/"+id, nil))
 	var result struct {
@@ -135,7 +139,7 @@ func TestCachedResultHTTPAndAuthentication(t *testing.T) {
 	if response.Code != http.StatusOK || result.ID != id || result.Status != "completed" || result.CurrentTick != 42 || result.Result == nil || cache.reads != 1 {
 		t.Fatalf("cached HTTP response: %s", response.Body.String())
 	}
-	protected := NewAPIWithResultCache(appDatabase{}, &catalog.Catalog{}, 100, authn.Config{Enabled: true, SessionSecret: "test-secret-with-at-least-32-characters", SessionTTL: time.Hour}, cache)
+	protected := New(appDatabase{}, &catalog.Catalog{}, 100, Options{Auth: authn.Config{Enabled: true, SessionSecret: "test-secret-with-at-least-32-characters", SessionTTL: time.Hour}, Cache: cache})
 	response = httptest.NewRecorder()
 	protected.HTTPHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/battles/"+id, nil))
 	if response.Code != http.StatusUnauthorized || cache.reads != 1 {
@@ -158,7 +162,7 @@ func TestAccessLogSharesIncomingTrace(t *testing.T) {
 		otel.SetTextMapPropagator(previousPropagator)
 		_ = provider.Shutdown(context.Background())
 	})
-	application := NewAPIWithAuthentication(appDatabase{}, &catalog.Catalog{}, 10_000, authn.Config{Enabled: true})
+	application := New(appDatabase{}, &catalog.Catalog{}, 10_000, Options{Auth: authn.Config{Enabled: true}})
 	request := httptest.NewRequest(http.MethodGet, "/v1/factions", nil)
 	request.Header.Set("traceparent", "00-01000000000000000000000000000000-0200000000000000-01")
 	request.Header.Set("X-Request-ID", "request-123")

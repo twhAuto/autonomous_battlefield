@@ -24,7 +24,7 @@ func TestUnitsAdvanceWhenCastleApproachesAreOccupied(t *testing.T) {
 	occupied := m.occupied()
 	delete(occupied, attacker.Position)
 	for range 6 {
-		m.moveTowardCastle(&m.state.Units[index])
+		m.moveUnit(&m.state.Units[index])
 		if m.targetInRange(m.state.Units[index]) != nil {
 			break
 		}
@@ -51,7 +51,7 @@ func TestBlockedUnitCannotWalkThroughNeighbors(t *testing.T) {
 	for i, p := range Neighbors(unit.Position) {
 		m.state.Units = append(m.state.Units, Unit{ID: fmt.Sprintf("ally-%d", i), FactionID: unit.FactionID, Position: p, Health: 70})
 	}
-	m.moveTowardCastle(&m.state.Units[0])
+	m.moveUnit(&m.state.Units[0])
 	if m.state.Units[0].Position != unit.Position {
 		t.Fatal("unit crossed occupied neighbors")
 	}

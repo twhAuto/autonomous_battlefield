@@ -14,6 +14,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
@@ -23,6 +24,7 @@ type fakeRepository struct {
 	submitted       ai.PlanSubmission
 	failures        int
 	usage           int
+	validations     int
 	claimErr        error
 	claimedProfiles []string
 	claimFn         func([]string) (ai.DecisionRecord, error)
@@ -30,6 +32,12 @@ type fakeRepository struct {
 	failErr         error
 	usageErr        error
 	noDeadline      bool
+	agentDisabled   bool
+	policyErr       error
+}
+
+func (r *fakeRepository) AgentEnabled(context.Context) (bool, error) {
+	return !r.agentDisabled, r.policyErr
 }
 
 func (r *fakeRepository) CreateOrReuseDecision(context.Context, ai.CreateDecisionParams) (ai.DecisionRecord, error) {
@@ -63,6 +71,10 @@ func (r *fakeRepository) ClaimModelDecision(_ context.Context, _ string, profile
 func (r *fakeRepository) FinishDecisionFailure(context.Context, string, string, ai.Usage, map[string]any) error {
 	r.failures++
 	return r.failErr
+}
+func (r *fakeRepository) RecordDecisionValidation(context.Context, string) (int, error) {
+	r.validations++
+	return r.validations, nil
 }
 func (r *fakeRepository) RecordDecisionUsage(context.Context, string, ai.Usage, map[string]any) error {
 	r.usage++
@@ -140,7 +152,7 @@ func TestMCPRejectsMissingCapabilityAndForeignOrigin(t *testing.T) {
 	if missing.Code != http.StatusUnauthorized {
 		t.Fatal(missing.Code)
 	}
-	token, _ := ai.MintCapability("secret", "request", time.Now().Add(time.Minute))
+	token, _ := capability.Mint("secret", "request", time.Now().Add(time.Minute))
 	foreignRequest := httptest.NewRequest(http.MethodPost, "http://server", nil)
 	foreignRequest.Header.Set("Authorization", "Bearer "+token)
 	foreignRequest.Header.Set("Origin", "https://evil.example")
@@ -167,7 +179,7 @@ func FuzzMCPRequestBody(f *testing.F) {
 		if len(body) > 64<<10 {
 			t.Skip()
 		}
-		token, err := ai.MintCapability("secret", "request", time.Now().Add(time.Minute))
+		token, err := capability.Mint("secret", "request", time.Now().Add(time.Minute))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -185,4 +197,65 @@ func FuzzMCPRequestBody(f *testing.F) {
 
 func (r *fakeRepository) ListFactionMemory(context.Context, string, int, string, uint64) ([]ai.FactionMemoryEntry, error) {
 	return nil, nil
+}
+
+func TestCapabilityHandlerScopesEachEndpointToItsOwnTokens(t *testing.T) {
+	server := New(&fakeRepository{}, "secret", []string{"https://allowed.example"})
+	mint := func(id string, ttl time.Duration) string {
+		token, _ := capability.Mint("secret", id, time.Now().Add(ttl))
+		return token
+	}
+	battle, generationToken := mint("battle-request", time.Minute), mint(generationLeasePrefix+"draft", time.Minute)
+	for name, tc := range map[string]struct {
+		generationScope bool
+		authorization   string
+		origin          string
+		code            int
+		requestID       string
+	}{
+		"battle token on battle endpoint":         {false, "Bearer " + battle, "", http.StatusOK, "battle-request"},
+		"generation token on generation endpoint": {true, "Bearer " + generationToken, "https://allowed.example", http.StatusOK, "draft"},
+		"generation token on battle endpoint":     {false, "Bearer " + generationToken, "", http.StatusUnauthorized, ""},
+		"battle token on generation endpoint":     {true, "Bearer " + battle, "", http.StatusUnauthorized, ""},
+		"missing authorization":                   {false, "", "", http.StatusUnauthorized, ""},
+		"token without bearer scheme":             {true, generationToken, "", http.StatusUnauthorized, ""},
+		"token signed with another secret": {false, "Bearer " + func() string {
+			token, _ := capability.Mint("other", "battle-request", time.Now().Add(time.Minute))
+			return token
+		}(), "", http.StatusUnauthorized, ""},
+		"expired token": {false, "Bearer " + mint("battle-request", -time.Second), "", http.StatusUnauthorized, ""},
+		"foreign origin with a valid battle token":  {false, "Bearer " + battle, "https://evil.example", http.StatusForbidden, ""},
+		"foreign origin with a valid generation id": {true, "Bearer " + generationToken, "https://evil.example", http.StatusForbidden, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var reached string
+			transport := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				reached, _ = r.Context().Value(requestIDKey{}).(string)
+			})
+			request := httptest.NewRequest(http.MethodPost, "http://server", nil)
+			if tc.authorization != "" {
+				request.Header.Set("Authorization", tc.authorization)
+			}
+			if tc.origin != "" {
+				request.Header.Set("Origin", tc.origin)
+			}
+			response := httptest.NewRecorder()
+			server.capabilityHandler(tc.generationScope, transport).ServeHTTP(response, request)
+			if response.Code != tc.code || reached != tc.requestID {
+				t.Fatalf("code=%d reached=%q, want %d %q", response.Code, reached, tc.code, tc.requestID)
+			}
+		})
+	}
+}
+
+func TestMCPRejectsGenerationCapability(t *testing.T) {
+	generationID := generationLeasePrefix + "draft"
+	token, _ := capability.Mint("secret", generationID, time.Now().Add(time.Minute))
+	request := httptest.NewRequest(http.MethodPost, "http://server", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	response := httptest.NewRecorder()
+	New(&fakeRepository{}, "secret", nil).Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatal(response.Code)
+	}
 }

@@ -10,15 +10,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
+	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
+
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	factionservice "github.com/twh09/autonomous_battlefield/backend/internal/faction/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 var (
@@ -107,6 +109,10 @@ type Service interface {
 	PauseBattle(context.Context, string) (*BattleRun, error)
 	ResumeBattle(context.Context, string) (*BattleRun, error)
 	ListBattleEvents(context.Context, string, *int, uint64, int, bool) (BattleEventPage, error)
+	ModelProfileService
+	DecisionHistoryService
+	PerspectiveService
+	DecisionContextService
 }
 
 type ModelProfileService interface {
@@ -136,10 +142,6 @@ type DecisionHistoryService interface {
 	ListDecisionHistory(context.Context, string, int) ([]DecisionHistory, error)
 }
 
-type decisionHistoryRepository interface {
-	ListBattleDecisions(context.Context, string, int) ([]ai.DecisionRecord, error)
-}
-
 type PerspectiveService interface {
 	GetFactionView(context.Context, string, string) (game.View, error)
 }
@@ -153,21 +155,23 @@ type battleService struct {
 	factions    factionRepository
 	catalog     ScenarioCatalog
 	maxTicks    uint64
-	profiles    *ai.ProfileRegistry
+	profiles    *profile.Registry
 	resultCache ResultCache
 }
 
-func NewService(battles Repository, factions factionRepository, catalog ScenarioCatalog, maxTicks uint64, registries ...*ai.ProfileRegistry) Service {
-	return NewServiceWithResultCache(battles, factions, catalog, maxTicks, nil, registries...)
+// Options configures optional battle service dependencies. A nil Profiles uses the
+// local registry; a nil Cache disables caching of terminal battle snapshots.
+type Options struct {
+	Cache    ResultCache
+	Profiles *profile.Registry
 }
 
-// NewServiceWithResultCache enables optional caching of terminal battle snapshots.
-func NewServiceWithResultCache(battles Repository, factions factionRepository, catalog ScenarioCatalog, maxTicks uint64, cache ResultCache, registries ...*ai.ProfileRegistry) Service {
-	registry := ai.NewProfileRegistry("local", nil)
-	if len(registries) > 0 && registries[0] != nil {
-		registry = registries[0]
+func NewService(battles Repository, factions factionRepository, catalog ScenarioCatalog, maxTicks uint64, options Options) Service {
+	registry := options.Profiles
+	if registry == nil {
+		registry = profile.NewRegistry("local", nil)
 	}
-	return &battleService{battles: battles, factions: factions, catalog: catalog, maxTicks: maxTicks, profiles: registry, resultCache: cache}
+	return &battleService{battles: battles, factions: factions, catalog: catalog, maxTicks: maxTicks, profiles: registry, resultCache: options.Cache}
 }
 
 func (s *battleService) ListModelProfiles() []ai.ModelProfile { return s.profiles.List() }
@@ -176,19 +180,15 @@ func (s *battleService) ListDecisionHistory(ctx context.Context, battleID string
 	if !battleUUIDPattern.MatchString(battleID) || attempt < 1 {
 		return nil, ErrInvalidBattle
 	}
-	repository, ok := s.battles.(decisionHistoryRepository)
-	if !ok {
-		return []DecisionHistory{}, nil
-	}
-	records, err := repository.ListBattleDecisions(ctx, battleID, attempt)
+	records, err := s.battles.ListBattleDecisions(ctx, battleID, attempt)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]DecisionHistory, 0, len(records))
 	for _, record := range records {
 		traceURL := ""
-		if id, ok := record.ProviderMetadata["aiTraceId"].(string); ok && id == telemetry.DecisionTraceID(record.ID) {
-			traceURL = telemetry.DecisionTraceURL(record.ID)
+		if id, ok := record.ProviderMetadata["aiTraceId"].(string); ok && id == tracing.DecisionTraceID(record.ID) {
+			traceURL = tracing.DecisionTraceURL(record.ID)
 		}
 		result = append(result, DecisionHistory{TraceURL: traceURL, RequestID: record.ID, FactionID: record.FactionID, TargetTick: record.TargetTick, Status: record.Status, ControllerType: record.ControllerType, ProfileID: record.ProfileID, Provider: record.Provider, Runtime: record.Runtime, ModelIdentifier: record.ModelIdentifier, FallbackSource: record.FallbackSource, ErrorCategory: record.ErrorCategory, ResolvedPlan: record.ResolvedPlan, Usage: record.Usage, CreatedAt: record.CreatedAt, ResolvedAt: record.ResolvedAt})
 	}
@@ -205,7 +205,7 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		return nil, err
 	}
 
-	resolved, digest, err := s.catalog.Resolve(input.ScenarioID, identities)
+	resolved, err := s.catalog.Resolve(input.ScenarioID, identities)
 	if err != nil {
 		return nil, err
 	}
@@ -215,18 +215,16 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 	for index := range resolved.Factions {
 		resolved.Factions[index].Controller = controllers[index]
 	}
-	payload, err := json.Marshal(resolved)
+	digest, err := ScenarioDigest(resolved)
 	if err != nil {
-		return nil, fmt.Errorf("marshal resolved scenario: %w", err)
+		return nil, err
 	}
-	hash := sha256.Sum256(payload)
-	digest = hex.EncodeToString(hash[:])
 	match, err := game.NewMatch(input.ID, resolved, input.TickCount)
 	if err != nil {
 		return nil, fmt.Errorf("build initial battle state: %w", err)
 	}
 	initialState := match.State()
-	traceparent, tracestate := telemetry.TraceContext(ctx)
+	traceparent, tracestate := tracing.TraceContext(ctx)
 	err = s.battles.CreateBattle(ctx, CreateBattleParams{
 		ID:               input.ID,
 		ScenarioID:       resolved.ID,
@@ -254,6 +252,17 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		RequestedTicks: input.TickCount,
 		Status:         "queued",
 	}, nil
+}
+
+// ScenarioDigest fingerprints a battle's frozen scenario, including its controllers. A
+// create retry is a replay only when the digest matches the stored battle.
+func ScenarioDigest(scenario game.Scenario) (string, error) {
+	payload, err := json.Marshal(scenario)
+	if err != nil {
+		return "", fmt.Errorf("marshal resolved scenario: %w", err)
+	}
+	hash := sha256.Sum256(payload)
+	return hex.EncodeToString(hash[:]), nil
 }
 
 // replayCreate returns the stored battle when a create retry repeats the same
@@ -306,7 +315,7 @@ func (s *battleService) authorizeController(ctx context.Context, controller game
 	if controller.Type == ai.ControllerModel {
 		if _, hasActor := authn.ActorFromContext(ctx); hasActor {
 			p, e := s.profiles.Require(controller.ProfileID)
-			if e == nil && !ai.ProfileAllowed(ctx, p) {
+			if e == nil && !profile.Allowed(ctx, p) {
 				return authn.ErrForbidden
 			}
 		}

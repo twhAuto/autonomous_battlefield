@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
 )
 
@@ -23,7 +24,7 @@ func TestCodexLiveDecision(t *testing.T) {
 	repository := &fakeRepository{record: record}
 	server := httptest.NewServer(New(repository, "synthetic-secret", nil).Handler())
 	defer server.Close()
-	token, err := ai.MintCapability("synthetic-secret", record.ID, time.Now().Add(3*time.Minute))
+	token, err := capability.Mint("synthetic-secret", record.ID, time.Now().Add(3*time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}

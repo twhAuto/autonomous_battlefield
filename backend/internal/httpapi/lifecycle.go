@@ -28,12 +28,10 @@ type LifecycleHandler struct {
 	timeout   time.Duration
 }
 
-func NewLifecycleHandler(metrics ...http.Handler) *LifecycleHandler {
-	handler := &LifecycleHandler{timeout: readinessTimeout}
-	if len(metrics) > 0 {
-		handler.metrics = metrics[0]
-	}
-	return handler
+// NewLifecycleHandler serves the process probes; a nil metrics handler answers
+// /metrics with 404.
+func NewLifecycleHandler(metrics http.Handler) *LifecycleHandler {
+	return &LifecycleHandler{timeout: readinessTimeout, metrics: metrics}
 }
 
 // Activate marks startup complete and enables application traffic. The ready

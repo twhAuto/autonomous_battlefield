@@ -3,9 +3,10 @@
 package game
 
 import (
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"reflect"
 	"testing"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 func TestExplicitRecruitmentOrders(t *testing.T) {

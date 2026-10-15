@@ -7,6 +7,9 @@ metadata:
   name: battlefield-config
 data:
   config.yaml: |
+    # The *EnvironmentVariable keys are retired; older rollback targets still require
+    # some of them. Current binaries accept each only with the fixed name shown, so
+    # remove them once no rollback target predates the change.
     http:
       address: ":8080"
       readHeaderTimeout: 5s
@@ -21,6 +24,8 @@ data:
       minConnections: 1
       maxConnectionLifetime: 30m
     api:
+      # Retired: game content is embedded in current images. Older rollback targets
+      # read it from these paths; current binaries accept only these values.
       scenarioCatalogPath: /app/scenarios
       rulesetCatalogPath: /app/rulesets
       maxTicks: 10000

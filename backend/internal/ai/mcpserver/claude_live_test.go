@@ -8,7 +8,8 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/clienv"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/cliisolation"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
 )
 
@@ -19,14 +20,14 @@ func TestClaudeLiveDecision(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	if err := clienv.CheckClaudeAuth(ctx); err != nil {
+	if err := cliisolation.CheckClaudeAuth(ctx); err != nil {
 		t.Fatal(err)
 	}
 	record := ai.DecisionRecord{ID: "synthetic-claude-decision", Version: 1, TargetTick: 73, Status: "running", Runtime: "cli", Observation: ai.DecisionContext{SchemaVersion: ai.ContextSchema, RequestID: "synthetic-claude-decision", TargetTick: 73, ExpectedVersion: 1, Economy: ai.EconomyContext{Gold: 150}, Legal: ai.LegalChoices{ActionKinds: []string{"attack", "defend"}}}}
 	repository := &fakeRepository{record: record}
 	server := httptest.NewServer(New(repository, "synthetic-secret", nil).Handler())
 	defer server.Close()
-	token, err := ai.MintCapability("synthetic-secret", record.ID, time.Now().Add(2*time.Minute))
+	token, err := capability.Mint("synthetic-secret", record.ID, time.Now().Add(2*time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}

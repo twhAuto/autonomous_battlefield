@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 )
 
 type claudeUsage struct {
@@ -38,7 +39,7 @@ func claudeArguments(directory, prompt, model string, session ai.DecisionSession
 		return nil, err
 	}
 	allowed := []string{}
-	for _, name := range ai.SessionToolNames(session) {
+	for _, name := range prompts.SessionToolNames(session) {
 		allowed = append(allowed, "mcp__battlefield__"+name)
 	}
 	return withModel([]string{"--print", prompt, "--restricted", "--tools", "", "--allowedTools", strings.Join(allowed, ","),

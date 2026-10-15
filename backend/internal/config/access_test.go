@@ -6,7 +6,6 @@ import (
 )
 
 func TestProductionAccessConfiguration(t *testing.T) {
-	t.Setenv("BATTLEFIELD_ENV", "production")
 	t.Setenv("BATTLEFIELD_AUTH_MODE", "cloudflare")
 	t.Setenv("BATTLEFIELD_AUTH_ENABLED", "")
 	t.Setenv("BATTLEFIELD_ACCESS_ISSUER", "https://friends.cloudflareaccess.com")
@@ -14,7 +13,7 @@ func TestProductionAccessConfiguration(t *testing.T) {
 	t.Setenv("BATTLEFIELD_PUBLIC_ORIGIN", "https://battle.example.com")
 	t.Setenv("BATTLEFIELD_ACCESS_ROLES", `{"admin":["owner@example.com"],"player":["friend@example.com"]}`)
 	t.Setenv("BATTLEFIELD_ACCESS_CI_CLIENT_ID", "0123456789abcdef0123456789abcdef.access")
-	cfg, e := parseAuthConfig(fileConfig{})
+	cfg, e := parseAuthConfig(fileConfig{}, true)
 	if e != nil || !cfg.Enabled || cfg.SessionSecret != "" || cfg.CIClientID != "0123456789abcdef0123456789abcdef.access" {
 		t.Fatal(cfg, e)
 	}
@@ -29,47 +28,64 @@ func TestProductionAccessConfiguration(t *testing.T) {
 	} {
 		t.Run(tt.key+tt.value, func(t *testing.T) {
 			t.Setenv(tt.key, tt.value)
-			if _, e := parseAuthConfig(fileConfig{}); e == nil {
+			if _, e := parseAuthConfig(fileConfig{}, true); e == nil {
 				t.Fatal("unsafe configuration accepted")
 			}
 		})
 	}
 }
 func TestExplicitDevelopmentMode(t *testing.T) {
-	t.Setenv("BATTLEFIELD_ENV", "dev")
 	t.Setenv("BATTLEFIELD_AUTH_MODE", "")
 	t.Setenv("BATTLEFIELD_AUTH_ENABLED", "")
-	if _, e := parseAuthConfig(fileConfig{}); e == nil {
+	if _, e := parseAuthConfig(fileConfig{}, false); e == nil {
 		t.Fatal("implicit anonymous access")
 	}
 	t.Setenv("BATTLEFIELD_AUTH_MODE", "disabled-development")
-	if cfg, e := parseAuthConfig(fileConfig{}); e != nil || cfg.Enabled {
+	if cfg, e := parseAuthConfig(fileConfig{}, false); e != nil || cfg.Enabled {
 		t.Fatal(cfg, e)
 	}
 	t.Setenv("BATTLEFIELD_AUTH_ENABLED", "true")
-	if _, e := parseAuthConfig(fileConfig{}); e == nil {
+	if _, e := parseAuthConfig(fileConfig{}, false); e == nil {
 		t.Fatal("conflicting settings")
 	}
 }
 func TestCLIProductionGateAndProfileRoles(t *testing.T) {
-	t.Setenv("BATTLEFIELD_ENV", "production")
 	t.Setenv("BATTLEFIELD_CLI_ISOLATION_VERIFIED", "")
 	p := ai.ModelProfile{ID: "cli", Runtime: "cli", Enabled: true, MaxSteps: 3, Model: "pinned", SupportedVersionPrefix: "1."}
-	if e := validateAIProfile(p); e == nil {
+	if e := validateAIProfile(p, true); e == nil {
 		t.Fatal("unverified CLI enabled")
 	}
+	if e := validateAIProfile(p, false); e != nil {
+		t.Fatal("development rejected an unverified CLI", e)
+	}
 	t.Setenv("BATTLEFIELD_CLI_ISOLATION_VERIFIED", "true")
-	if e := validateAIProfile(p); e != nil {
+	if e := validateAIProfile(p, true); e != nil {
 		t.Fatal(e)
 	}
 	p.AllowedRoles = []string{"player"}
-	if e := validateAIProfile(p); e != nil {
+	if e := validateAIProfile(p, true); e != nil {
 		t.Fatal("explicit player CLI access rejected", e)
 	}
 	for _, roles := range [][]string{{"root"}, {"admin", "admin"}} {
 		p.AllowedRoles = roles
-		if e := validateAIProfile(p); e == nil {
+		if e := validateAIProfile(p, true); e == nil {
 			t.Fatal(roles)
+		}
+	}
+}
+
+// The gate must read availability exactly as the profile catalog does; otherwise a
+// value the catalog treats as available could skip the gate.
+func TestCLIProductionGateReadsAvailabilityLikeTheCatalog(t *testing.T) {
+	t.Setenv("BATTLEFIELD_CLI_ISOLATION_VERIFIED", "")
+	p := ai.ModelProfile{ID: "cli", Runtime: "cli", Enabled: true, MaxSteps: 3, Model: "pinned", SupportedVersionPrefix: "1.", AvailabilityEnvironmentVariable: "TEST_CLI_AVAILABLE"}
+	for value, gated := range map[string]bool{"true": true, " TRUE ": true, "false": false, "": false} {
+		t.Setenv("TEST_CLI_AVAILABLE", value)
+		if p.AvailabilityFlagSet() != gated {
+			t.Fatalf("catalog availability for %q = %t, want %t", value, !gated, gated)
+		}
+		if err := validateAIProfile(p, true); (err != nil) != gated {
+			t.Fatalf("availability %q: gate error = %v, want gated=%t", value, err, gated)
 		}
 	}
 }

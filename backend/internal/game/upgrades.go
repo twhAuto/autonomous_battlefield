@@ -4,8 +4,9 @@
 package game
 
 import (
-	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"slices"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 func (m *Match) runUpgrades(id string, plan controller.PlanProposal) []Event {

@@ -10,20 +10,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/worker"
 	"github.com/twh09/autonomous_battlefield/backend/internal/httpapi"
 )
 
 func TestEngineProbesFollowWorkerAndDatabaseLifecycle(t *testing.T) {
 	repository := &idleHealthRepository{claimed: make(chan struct{})}
-	engineWorker, err := worker.New(repository, worker.Config{
+	engineWorker, err := worker.New(repository, nil, worker.Config{
 		WorkerID: "health-test", PollInterval: time.Millisecond, LeaseDuration: time.Second,
 		HeartbeatInterval: 100 * time.Millisecond, ShutdownTimeout: time.Second, MaxAttempts: 3,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	lifecycle := httpapi.NewLifecycleHandler()
+	lifecycle := httpapi.NewLifecycleHandler(nil)
 	check := func(path string, want int) {
 		t.Helper()
 		response := httptest.NewRecorder()
@@ -71,14 +72,15 @@ type idleHealthRepository struct {
 	claimed chan struct{}
 }
 
-func (r *idleHealthRepository) ClaimBattle(ctx context.Context, _ string, _ time.Duration, _ int) (*worker.BattleJob, error) {
+func (r *idleHealthRepository) ClaimBattle(ctx context.Context, _ string, _ time.Duration, _ int) (*queue.Job, error) {
 	close(r.claimed)
 	<-ctx.Done()
-	return nil, worker.ErrNoBattleAvailable
+	return nil, queue.ErrNoBattleAvailable
 }
 
 type healthDatabase struct{ err error }
 
 func (d *healthDatabase) Ping(context.Context) error { return d.err }
 
-func (r *idleHealthRepository) ExpireBattles(context.Context) error { return nil }
+func (r *idleHealthRepository) ExpireBattles(context.Context) error             { return nil }
+func (r *idleHealthRepository) FailExhaustedBattles(context.Context, int) error { return nil }

@@ -251,7 +251,7 @@ func RequireAuthentication(enabled bool, authenticator Authenticator, next http.
 		})
 	}
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if !strings.HasPrefix(request.URL.Path, "/v1/") || isPublicAuthenticationPath(request.URL.Path) {
+		if !strings.HasPrefix(request.URL.Path, "/v1/") || publicPaths[request.URL.Path] {
 			next.ServeHTTP(response, request)
 			return
 		}
@@ -263,10 +263,6 @@ func RequireAuthentication(enabled bool, authenticator Authenticator, next http.
 		}
 		next.ServeHTTP(response, request.WithContext(WithActor(request.Context(), actor)))
 	})
-}
-
-func isPublicAuthenticationPath(path string) bool {
-	return path == "/v1/auth/login" || path == "/v1/auth/session"
 }
 
 const localDevelopmentActor = "local-development"

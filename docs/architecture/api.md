@@ -4,15 +4,12 @@ The machine-readable contract is [`openapi.yaml`](openapi.yaml): it lists every 
 route, request body, response shape, and error code, and CI checks it against the
 routes the API actually serves. This guide explains behavior in more depth.
 
-Run the application using the [local setup](../../README.md#run-locally).
-Paths below are relative to the API origin (`http://localhost:8080` locally).
-Examples assume authentication is disabled; when enabled, log in and send the
-returned session cookie with protected requests.
-
-
-When authentication is enabled, all `/v1` routes except login and session
-discovery require the signed session cookie. Lifecycle and metrics endpoints
-remain public for infrastructure probes.
+Run the application using [local setup](../developer/local-setup.md). Paths below
+are relative to the API origin: `http://battlefield.localhost:8888` through the
+Kind gateway, or `http://localhost:8080` for a standalone API process. Request
+examples omit authentication headers; use the credentials required by the selected
+mode, described in [authentication and permissions](#limited-access-authentication-and-permissions).
+Lifecycle and metrics endpoints remain public for infrastructure probes.
 
 ## Errors
 
@@ -64,6 +61,9 @@ authentication mode. Lifecycle endpoints (`/startupz`, `/livez`, `/healthz`,
 alone; `/metrics` is outside the API contract.
 
 ## Administrator session
+
+This login flow applies to local-password development mode. Cloudflare production
+uses Access identity instead; see [authentication and permissions](#limited-access-authentication-and-permissions).
 
 ```http
 POST /v1/auth/login
@@ -154,29 +154,9 @@ missing factions return `404`. Deletion removes the faction from the active
 registry. Existing battle history remains readable because each battle stores
 an immutable scenario and participant snapshot.
 
-## Get a faction name
-
-```http
-GET /v1/factions/{id}/name
-```
-
-Example:
-
-```bash
-curl http://localhost:8080/v1/factions/4db8d152-1e04-4d10-8824-859c6ed72878/name
-```
-
-A successful request returns:
-
-```json
-{"name":"Northern Alliance"}
-```
-
-The endpoint returns `404 Not Found` when the faction does not exist and `500 Internal Server Error` for other storage failures.
-
 ## Queue a battle
 
-Both factions must already exist. The scenario ID refers to a strict YAML template in `backend/scenarios`; the API snapshots faction names/backgrounds/doctrines, the map, ruleset, and controller plans. New snapshots use `snapshotVersion: 2` and start with castles and gold. Older queued snapshots retain legacy initialization.
+Both factions must already exist. The scenario ID refers to a strict YAML template in `backend/gamedata/scenarios`; the API snapshots faction names/backgrounds/doctrines, the map, ruleset, and controller plans. New snapshots use `snapshotVersion: 2` and start with castles and gold. Older queued snapshots retain legacy initialization.
 
 The frontend discovers available templates through `GET /v1/scenarios`, which returns scenario IDs, rules versions, scenario-specific maximum ticks, tick pacing, and decision timing. `castle-siege-v1` allows at most 500 ticks.
 
@@ -247,8 +227,8 @@ invalid-plan, fallback, latency, normalized usage, and plan-diversity metrics.
 GET /v1/battles?status=completed&limit=25
 ```
 
-This service-wide list uses the same administrator session as the other battle
-routes. Omit `status` for all battles, or choose `queued`, `running`, `paused`,
+This service-wide list is available to authenticated Players, Developers and
+Admins; Player responses omit inspection-only fields. Omit `status` for all battles, or choose `queued`, `running`, `paused`,
 `completed`, `failed`, or `stopped`. Paused means an active queued/running
 battle with its pause flag set; queued and running filters exclude paused runs.
 
@@ -325,6 +305,26 @@ payload (`attackerId`, `targetId`, `targetType`, `damage`, `remainingHealth`).
 Expanded-scenario `unit_recruited` events include `sourceBuildingId`.
 [Frontier Siege](../game/frontier-siege.md) documents action timing and limits.
 
+### Attack targeting and outcomes
+
+Unit definitions and runtime unit state support optional `attackMode` values
+`tracking` and `position`; omission retains tracking. Unit and building action state
+includes optional `attackOutcome: hit | miss`, cleared with other per-tick actions.
+`attackTargetPosition` is the actual impact hex for fixed-position shots; tracking
+renderers may follow the visible `attackTargetId` instead. A miss has no target ID.
+
+`unit_attacked` and `building_attacked` events additionally include `attackMode`,
+`outcome: hit`, and `impactPosition: {x, y}`. `unit_attack_missed` carries
+`attackerId`, `attackMode: position`, `outcome: miss`, and `impactPosition`, with no
+damage. Faction state projections omit hidden target/impact action fields. Existing
+administrator event history keeps its current visibility model. No migration is
+required; omitted metadata in older snapshots remains supported.
+
+Battle state optionally includes `unitDeaths: [{id, factionId, type, position}]`
+for confirmed unit deaths in the current tick, cleared at the next tick. Faction
+views include allied deaths and enemy deaths at currently visible positions.
+Older snapshots omit the field; clients must not infer death from disappearance.
+
 ## Page through battle events
 
 ```http
@@ -341,7 +341,7 @@ listing when nonempty. Background is trimmed and limited to 1,000 Unicode
 characters (not UTF-8 bytes); missing background means empty. New battle snapshots
 freeze it alongside name and doctrine. Historical snapshots are not rewritten.
 
-These endpoints require the normal authenticated session. With authentication
+These endpoints require the identity for the configured authentication mode. With authentication
 disabled, all clients share the `local-development` actor and its allowance.
 
 | Route | Contract |
@@ -371,35 +371,21 @@ submissions close the job with `invalid_output`.
 The internal claim endpoint accepts `jobTypes: ["battle_decision",
 "faction_background"]` and executable `profileIds`. Omitted job types mean
 battle decisions only. Battle decisions receive priority. Generation capabilities
-are separate from battle capabilities; `/generation-mcp` exposes only
+are separate from battle capabilities, and each MCP endpoint returns 401 for the
+other kind; `/generation-mcp` exposes only
 `get_background_context` and `submit_faction_background`. Neither tool receives
 battle data. Workers report actual configured model, prompt version, usage, and
 failure category to `/internal/agent/generation-finish`.
 
-### Attack targeting and outcomes
-
-Unit definitions and runtime unit state support optional `attackMode` values
-`tracking` and `position`; omission retains tracking. Unit and building action state
-includes optional `attackOutcome: hit | miss`, cleared with other per-tick actions.
-`attackTargetPosition` is the actual impact hex for fixed-position shots; tracking
-renderers may follow the visible `attackTargetId` instead. A miss has no target ID.
-
-`unit_attacked` and `building_attacked` events additionally include `attackMode`,
-`outcome: hit`, and `impactPosition: {x, y}`. `unit_attack_missed` carries
-`attackerId`, `attackMode: position`, `outcome: miss`, and `impactPosition`, with no
-damage. Faction state projections omit hidden target/impact action fields. Existing
-administrator event history keeps its current visibility model. No migration is
-required; omitted metadata in older snapshots remains supported.
-
-Battle state optionally includes `unitDeaths: [{id, factionId, type, position}]`
-for confirmed unit deaths in the current tick, cleared at the next tick. Faction
-views include allied deaths and enemy deaths at currently visible positions.
-Older snapshots omit the field; clients must not infer death from disappearance.
-
 ## Limited-access authentication and permissions
 
-Production uses Cloudflare Access JWTs on every `/v1` request and never accepts the
-legacy app cookie. `POST /v1/auth/login` returns 404 in Cloudflare mode.
+| Mode | Identity for protected requests |
+| --- | --- |
+| `local-password` | Signed application cookie from the [administrator login](#administrator-session). Login and session discovery are public. |
+| `cloudflare` | Cloudflare Access identity verified by the API. The application login cookie is not accepted. |
+| `disabled-development` | Shared local development identity; never a production mode. |
+
+Production uses Cloudflare Access JWTs for protected `/v1` requests. `POST /v1/auth/login` returns 404 in Cloudflare mode.
 `GET /v1/auth/session` returns `mode`, `authenticated`, an actor containing `id`,
 `email`, `role`, and `capabilities`. `POST /v1/auth/logout` returns
 `{"logoutUrl":"/cdn-cgi/access/logout"}` for browser navigation. Unsafe browser
@@ -466,4 +452,4 @@ list denies everyone. Invalid bodies return 400, a stale `version` returns 409, 
 persistence failures return 503. The policy restricts only new battle selections
 and background-generation admission; it cannot enable a profile whose credentials
 or runtime are unavailable. See
-[system architecture](system-architecture.md#source-ownership).
+[system architecture](system-architecture.md#model-access-and-role-preview).

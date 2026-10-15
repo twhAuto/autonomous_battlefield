@@ -18,6 +18,9 @@ type Cloudflare struct {
 	Client *http.Client
 }
 
+// NewCloudflare writes the configured Player group with a default 10-second client.
+func NewCloudflare(config Config) *Cloudflare { return &Cloudflare{Config: config} }
+
 // remoteError contains only fixed categories and an HTTP status, never a URL,
 // credential, response body or underlying transport error.
 type remoteError struct {

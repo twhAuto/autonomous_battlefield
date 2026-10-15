@@ -1,6 +1,6 @@
 # Default backend process settings: listeners, database access, battle timing, AI
-# profiles, and background-generation limits. Secrets are read through named environment
-# variables.
+# profiles, and background-generation limits. Secrets and URLs come from fixed environment
+# variables listed in internal/config/environment.go.
 
 http:
   address: "127.0.0.1:8080"
@@ -10,24 +10,15 @@ http:
   idleTimeout: 60s
   shutdownTimeout: 10s
 database:
-  urlEnvironmentVariable: DATABASE_URL
   connectTimeout: 5s
   maxConnections: 10
   minConnections: 1
   maxConnectionLifetime: 30m
 api:
-  scenarioCatalogPath: scenarios
-  rulesetCatalogPath: rulesets
   maxTicks: 10000
 auth:
-  enabledEnvironmentVariable: BATTLEFIELD_AUTH_ENABLED
-  usernameEnvironmentVariable: BATTLEFIELD_ADMIN_USERNAME
-  passwordEnvironmentVariable: BATTLEFIELD_ADMIN_PASSWORD
-  sessionSecretEnvironmentVariable: BATTLEFIELD_SESSION_SECRET
-  cookieSecureEnvironmentVariable: BATTLEFIELD_AUTH_COOKIE_SECURE
   sessionTTL: 12h
 engine:
-  # Enable only after the API and all agent runners support MCP tools v6.
   healthAddress: "127.0.0.1:8081"
   pollInterval: 1s
   leaseDuration: 30s
@@ -37,7 +28,6 @@ engine:
   knowledgeRetrieval:
     maxUnitCards: 16
     maxBytes: 16384
-  workerIdEnvironmentVariable: ENGINE_WORKER_ID
 ai:
   backgroundGeneration:
     enabled: true
@@ -52,7 +42,6 @@ ai:
   aiGatewayAddress: "127.0.0.1:8084"
   mcpUrl: http://127.0.0.1:8084/mcp
   decisionTimeout: 2m
-  capabilitySecretEnvironmentVariable: BATTLEFIELD_MCP_CAPABILITY_SECRET
   allowedOrigins:
     - http://127.0.0.1:8083
     - http://localhost:8083
@@ -114,6 +103,5 @@ ai:
 
 # Optional API-only cache; an unset/empty URL disables Redis.
 resultCache:
-  urlEnvironmentVariable: BATTLEFIELD_REDIS_URL
   ttl: 1h
   timeout: 100ms

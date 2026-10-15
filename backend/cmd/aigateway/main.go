@@ -5,61 +5,43 @@ package main
 
 import (
 	"context"
-	"errors"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/cmd/internal/startup"
+	"github.com/twh09/autonomous_battlefield/backend/cmd/internal/startup/database"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/mcpserver"
 	battlerepo "github.com/twh09/autonomous_battlefield/backend/internal/battle/repo"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
-	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
-	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
+	generationrepo "github.com/twh09/autonomous_battlefield/backend/internal/generation/repo"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/logging"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"github.com/twh09/autonomous_battlefield/backend/internal/postgres"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
 )
 
 func main() {
-	logger := logging.New("ai-gateway")
-	slog.SetDefault(logger)
-	configPath := flag.String("config", "config.yaml", "path to YAML configuration")
-	flag.Parse()
-	configuration, err := config.LoadAIGateway(*configPath)
-	if err != nil {
-		logger.Error("configuration_load_failed", "error", err)
-		os.Exit(1)
-	}
-	if err := run(configuration); err != nil {
-		logger.Error("ai_gateway_process_stopped", "error", err)
-		os.Exit(1)
-	}
+	slog.SetDefault(logging.New("ai-gateway"))
+	os.Exit(startup.Command[config.AIGatewayConfig]{Name: "ai_gateway", Load: config.LoadAIGateway, Run: run}.Main(os.Args[1:]))
 }
 
-func run(configuration config.Config) error {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-	shutdownTracing, err := telemetry.ConfigureTracing(ctx, "battlefield-ai-gateway")
+// run serves the MCP tools and agent dispatch API until ctx is cancelled.
+func run(ctx context.Context, configuration config.AIGatewayConfig) error {
+	stopTracing, err := startup.Tracing(ctx, "battlefield-ai-gateway")
 	if err != nil {
-		return fmt.Errorf("configure tracing: %w", err)
+		return err
 	}
-	defer func() {
-		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = shutdownTracing(shutdown)
-	}()
-	db, err := postgres.NewPostgresDBWithRetry(ctx, configuration.Database.URL, postgres.Options{MaxConnections: configuration.Database.MaxConnections, MinConnections: configuration.Database.MinConnections, MaxConnectionLifetime: configuration.Database.MaxConnectionLifetime}, configuration.Database.ConnectTimeout, time.Second, nil)
+	defer stopTracing()
+	db, err := database.Connect(ctx, configuration.Database)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 	repository := battlerepo.NewPostgres(db)
-	server := mcpserver.New(repository, configuration.AI.CapabilitySecret, configuration.AI.AllowedOrigins).WithAgentSecret(configuration.AI.AgentSecret).WithGenerations(&generation.Postgres{DB: db})
+	server := mcpserver.New(repository, configuration.Gateway.CapabilitySecret, configuration.Gateway.AllowedOrigins).WithAgentSecret(configuration.Gateway.AgentSecret).WithGenerations(generationrepo.NewPostgres(db))
 	notificationErrors := make(chan error, 1)
 	go func() {
 		notificationErrors <- postgres.ListenForNotifications(ctx, db, ai.DecisionReadyChannel, func(string) {
@@ -72,15 +54,8 @@ func run(configuration config.Config) error {
 	mux.Handle("/internal/agent/", http.StripPrefix("/internal/agent", server.AgentHandler(repository)))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("GET /readyz", readinessHandler(db, 2*time.Second))
-	httpServer := &http.Server{Addr: configuration.AI.AIGatewayAddress, Handler: telemetry.HTTPHandler("battlefield-ai-gateway.http", mux), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second}
-	errorsChannel := make(chan error, 1)
-	go func() {
-		err := httpServer.ListenAndServe()
-		if errors.Is(err, http.ErrServerClosed) {
-			err = nil
-		}
-		errorsChannel <- err
-	}()
+	httpServer := &http.Server{Addr: configuration.Gateway.Address, Handler: tracing.HTTPHandler("battlefield-ai-gateway.http", mux), ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second}
+	errorsChannel := startup.Serve(httpServer, nil)
 	slog.InfoContext(ctx, "ai_gateway_ready", "address", httpServer.Addr)
 	select {
 	case err := <-errorsChannel:

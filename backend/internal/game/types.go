@@ -169,7 +169,6 @@ type Scenario struct {
 	MaximumTicks          uint64          `json:"maximumTicks"`
 	TickDuration          time.Duration   `json:"tickDuration"`
 	DecisionIntervalTicks controller.Tick `json:"decisionIntervalTicks"`
-	DecisionLeadTicks     controller.Tick `json:"-"` // Deprecated compatibility field; production decisions have no lead phase.
 	Map                   Map             `json:"map"`
 	Ruleset               Ruleset         `json:"ruleset"`
 	Factions              []FactionSetup  `json:"factions"`

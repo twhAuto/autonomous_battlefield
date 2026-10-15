@@ -28,6 +28,7 @@ configuring, deploying, observing and recovering environments.
 | --- | --- |
 | [Local setup](developer/local-setup.md) | Kind development, credentials, model controllers and standalone services |
 | [Codebase guide](developer/codebase-guide.md) | Source ownership, entry points and change paths |
+| [Component map](developer/component-map.md) | Generated table of which internal packages each backend binary links |
 | [Backend](developer/backend-guide.md) | Go packages, persistence, worker behavior and backend verification |
 | [Frontend](developer/frontend-guide.md) | React features, state, shared components and browser tests |
 | [Tooling](developer/tooling-guide.md) | Script ownership, test layout and CI implementation |

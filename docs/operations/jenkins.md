@@ -3,6 +3,11 @@
 For contributor checks and local reproduction, see [continuous integration](../developer/ci.md).
 This guide covers controller and agent administration, credentials, delivery and recovery.
 
+Jump to [agent requirements](#jenkins-agent-requirements),
+[credentials](#delivery-assurance-credentials), [SonarQube](#configure-local-sonarqube),
+[branch protection](#configure-github-integration-branch-protection),
+[delivery](#production-delivery), or [troubleshooting](#troubleshooting-setup-and-pipeline-waits).
+
 The production Jenkins controller runs on the server at `192.168.1.126` (Jenkins port `8080`).
 For initial setup or migration of an existing server, complete the
 [host registration](server-bootstrap.md).
@@ -63,12 +68,14 @@ pin and compatibility change; ordinary adoption preserves existing identities.
 Use a dedicated Linux or WSL Jenkins agent with:
 
 - Git.
-- Go 1.26.5 or newer.
+- A Go toolchain compatible with [`backend/go.mod`](../../backend/go.mod).
 - Node.js 24, npm, and Python 3 for deployment regression tests.
 - GCC and the C development toolchain required by `go test -race`.
 - Docker, with permission to use the Docker daemon.
 - `kubectl`, `kind`, `curl`, and AWS CLI for the optional promotion job.
 - Access to the registered production cluster (K3s after the initial cutover) through the dedicated `battlefield-production` context. The `battlefield-production-kubeconfig` file credential must match that profile's live cluster UID.
+
+### Build workspace and Docker
 
 The agent needs Docker access to build images and run the pinned Trivy scanner.
 It also needs enough free space and inode quota in its Jenkins workspace for
@@ -84,6 +91,8 @@ the extracted predicate is compatible with Cosign's `slsaprovenance` schema.
 Docker daemon access is effectively privileged host access. Do not run untrusted
 fork pull requests on this agent, and do not use the Jenkins controller itself
 as the long-term build agent.
+
+### Pinned tools and registry access
 
 Security scanners, Kubeconform, Conftest, Syft, Cosign, ORAS, k6, and ZAP run
 from versions pinned in `scripts/ci/tool-versions.env`. This is also the default
@@ -113,6 +122,8 @@ agent user's persistent `~/.docker/config.json`. `BUILDX_CONFIG` remains on the
 agent so the named Buildx builder can be reused without persisting registry
 authentication.
 
+### Image naming and source metadata
+
 Image repository defaults are shared by publication and policy rendering in
 `scripts/lib/image-metadata.sh`. `REGISTRY_NAMESPACE` changes the namespace;
 `PUBLISHED_BACKEND_IMAGE` and `PUBLISHED_FRONTEND_IMAGE` override individual full
@@ -136,6 +147,8 @@ The PR deployment-script stage and main deployment-scope stage also run
 verify that each component excludes local environment files while retaining
 source and examples, using the existing Docker-enabled Jenkins agent.
 
+### Source security checks
+
 The source-security stage first requests a full npm audit from a digest-pinned
 Node container. If the npm advisory endpoint remains unavailable after its
 bounded retry, the stage requires a passing Trivy lockfile scan covering all
@@ -152,6 +165,8 @@ directories. Vitest creates and removes temporary coverage files during the
 parallel frontend stage; scanning those files can otherwise fail with a
 `stat frontend/coverage/.tmp/coverage-*.json: no such file or directory` error.
 Frontend source and dependency lockfiles remain included in the scan.
+
+### Browser tests and reports
 
 Frontend Vitest runs are capped at two workers with a 15-second per-test timeout
 in `frontend/vite.config.ts`. This gives DOM interaction tests headroom while
@@ -177,6 +192,8 @@ a separate step that runs only when `frontend/playwright-report/index.html` exis
 and does not allow an empty archive, so a missing browser-test report cannot pass
 unnoticed. Builds that never reach the frontend stages log that no report was
 produced instead of failing.
+
+### Runtime assurance networking
 
 Development k6 and ZAP containers use host networking on the Linux agent and map
 `battlefield.localhost` to `127.0.0.1`, matching kind's loopback-only gateway
@@ -208,8 +225,10 @@ Create these narrowly scoped Jenkins credentials before enabling main delivery:
 | `battlefield-gemini-api-key` | secret text | manual Gemini evaluation only |
 
 Never expose signing or provider credentials to pull-request stages. Configure a
-second Pipeline job using `infra/jenkins/Jenkinsfile.assurance`; schedule only its `nightly`
-mode. All other modes require an operator trigger and explicit bounds. AWS
+second Pipeline job using `infra/jenkins/Jenkinsfile.assurance` and run it on demand; it
+has no schedule, because production is not kept running. Its `offline` mode runs the
+security and policy checks, a two-minute fuzz and the deterministic AI evaluations;
+the other modes also require explicit bounds. AWS
 promotion additionally requires an assumed agent role or other short-lived AWS
 credential source; do not store long-lived access keys in the repository.
 

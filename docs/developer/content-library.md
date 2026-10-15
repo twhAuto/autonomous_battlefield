@@ -1,7 +1,7 @@
 # Content libraries and scenario selections
 
 Author reusable unit, upgrade, and building definitions in
-`backend/content/<id>-v<version>.yaml`. The shipped `core-v1.yaml` contains the
+`backend/gamedata/content/<id>-v<version>.yaml`. The shipped `core-v1.yaml` contains the
 three starter units, their knowledge cards, three upgrades, and castle/economy
 building definitions. The version pins the whole library; unit IDs remain stable
 within it. `core-v2.yaml` additionally supplies siege/support units and
@@ -32,9 +32,11 @@ combat:
   lootPercent: 50
 ```
 
-Library IDs and versions use letters, digits, dashes, or underscores. The content
-folder must be beside the configured ruleset folder. Docker images include it at
-`/app/content`. Missing files, version mismatches, unknown/duplicate selections,
+Library IDs and versions use letters, digits, dashes, or underscores. The
+`content/`, `rulesets/` and `scenarios/` folders under `backend/gamedata` are
+embedded in the server binary (`gamedata.Files`), so a content change ships only
+with a new build. A scenario's `rulesVersion` must equal its ruleset's `version`.
+Missing files, version mismatches, unknown/duplicate selections,
 invalid definitions, and incomplete unit knowledge fail catalog startup. Library
 references cannot be mixed with inline unit, upgrade, knowledge, or building-stat
 definitions. Inline rulesets remain supported for older fixtures and authoring.

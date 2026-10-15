@@ -3,13 +3,14 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"net/http/httptest"
-	"strings"
-	"testing"
 )
 
 func TestPlayerProjectionAfterSharedCachedRead(t *testing.T) {

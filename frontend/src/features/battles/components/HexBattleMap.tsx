@@ -11,12 +11,13 @@ type Entity = BattleUnit | BattleBuilding
 const size = 24
 const root3 = Math.sqrt(3)
 
-export function HexBattleMap({ map, state, visiblePositions, factionNames, toolbarControls }: Readonly<{
+export function HexBattleMap({ map, state, visiblePositions, factionNames, toolbarControls, placeholder }: Readonly<{
   map: BattleMap
   state: BattleState
   visiblePositions: HexPosition[]
   factionNames: Map<string, string>
   toolbarControls?: ReactNode
+  placeholder?: ReactNode
 }>) {
   const markerId = useId()
   const mobile = useMobile()
@@ -34,7 +35,11 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
   const entities: Entity[] = [...(state.buildings ?? []), ...liveUnits]
   const naming = { entities: entityIndex(state), factionNames }
   const selected = entities.find((entity) => entity.id === selectedId)
-  const colors = new Map(state.factions?.map((faction, index) => [faction.factionId, index === 0 ? '#69d2ff' : '#ff6b55']))
+  // Colors follow the participant roster sorted by ID, never the perspective's state: a
+  // faction view lists only its own faction, and each faction must keep its color.
+  const roster = factionNames.size > 0 ? [...factionNames.keys()] : (state.factions ?? []).map((faction) => faction.factionId)
+  // Code-unit order, not localeCompare: it must match the backend's byte-order ID sort.
+  const colors = new Map([...roster].sort((a, b) => (a < b ? -1 : Number(a > b))).map((factionId, index) => [factionId, index === 0 ? '#69d2ff' : '#ff6b55']))
   const width = root3 * size * (map.width + 0.5) + 48
   const height = size * (1.5 * (map.height - 1) + 2) + 48
 
@@ -81,7 +86,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
   const content = (
     <section className="map-panel" aria-label="Castle siege map">
       <div className="map-toolbar">
-        <span>HEX TACTICAL MAP · TICK {state.tick}</span>
+        <span>HEX TACTICAL MAP{!placeholder && ` · TICK ${state.tick}`}</span>
         <div className="map-toolbar__controls">
           {toolbarControls}
           <div className="map-zoom-controls"><button type="button" aria-label="Pan map with arrow keys" onKeyDown={event => {
@@ -97,6 +102,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
           </div>
         </div>
       </div>
+      {placeholder ? <div className="entity-details">{placeholder}</div> : <>
       <section ref={viewport} className={`map-viewport${mobile && !expanded ? ' map-viewport--overview' : ''}`} style={expanded ? undefined : { aspectRatio: `${width} / ${height}` }} aria-label="Map navigation">
         <svg
           viewBox={`0 0 ${width} ${height}`}
@@ -165,6 +171,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
       <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-site" /> Build site</span><span><i className="legend-fog" /> Outside vision</span><span><i className="legend-movement" /> Movement (faction color)</span><span><i className="legend-attack" /> Attack (faction color)</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
       <EntityLegend types={entities.map((entity) => entity.type)} />
       <EntityDetails selected={selected} naming={naming} />
+      </>}
     </section>
   )
   return <>{!expanded && content}<dialog ref={dialog} className="expanded-map" aria-label="Expanded battlefield map" onKeyDown={trapFocus} onCancel={event => { event.preventDefault(); setExpanded(false) }} onClose={() => setExpanded(false)}>{expanded && content}</dialog></>

@@ -1,41 +1,8 @@
 // Package members manages invitations without granting privileged roles.
 package members
 
-import (
-	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
-	"os"
-	"regexp"
-	"strings"
-)
-
+// Config holds the Cloudflare credentials for the dedicated Player Access group. The
+// config package loads and validates them.
 type Config struct {
-	Enabled                   bool
 	AccountID, GroupID, Token string
-}
-
-// LoadConfig is called only by the API, never migrations, engine or workers.
-func LoadConfig(roles map[string]authn.Role) (Config, error) {
-	flag := os.Getenv("BATTLEFIELD_MANAGED_PLAYERS")
-	if flag != "" && flag != "true" && flag != "false" {
-		return Config{}, fmt.Errorf("invalid BATTLEFIELD_MANAGED_PLAYERS boolean")
-	}
-	c := Config{Enabled: flag == "true"}
-	if !c.Enabled {
-		return c, nil
-	}
-	c.AccountID = os.Getenv("BATTLEFIELD_MEMBERS_ACCOUNT_ID")
-	c.GroupID = os.Getenv("BATTLEFIELD_MEMBERS_GROUP_ID")
-	c.Token = os.Getenv("BATTLEFIELD_MEMBERS_API_TOKEN")
-	if strings.TrimSpace(os.Getenv("BATTLEFIELD_AUTH_MODE")) != "cloudflare" || !regexp.MustCompile(`^[a-f0-9]{32}$`).MatchString(c.AccountID) || !regexp.MustCompile(`^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$`).MatchString(c.GroupID) || strings.TrimSpace(c.Token) == "" || strings.ContainsAny(c.Token, "\r\n") {
-		return Config{}, fmt.Errorf("managed Players require Cloudflare authentication, account ID, group UUID and API token")
-	}
-	for email, role := range roles {
-		if role == authn.Player {
-			if _, err := normalize(email); err != nil {
-				return Config{}, fmt.Errorf("BATTLEFIELD_ACCESS_ROLES contains an invalid Player email")
-			}
-		}
-	}
-	return c, nil
 }

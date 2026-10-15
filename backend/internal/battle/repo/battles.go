@@ -13,11 +13,11 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 	battleservice "github.com/twh09/autonomous_battlefield/backend/internal/battle/service"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 func (r *Postgres) CreateBattle(ctx context.Context, params battleservice.CreateBattleParams) error {
-	ctx, span := telemetry.StartDatabaseSpan(ctx, "create_battle")
+	ctx, span := tracing.StartDatabaseSpan(ctx, "create_battle")
 	defer span.End()
 	snapshot, err := json.Marshal(params.ScenarioSnapshot)
 	if err != nil {

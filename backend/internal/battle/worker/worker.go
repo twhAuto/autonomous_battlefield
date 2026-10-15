@@ -5,13 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
-	"go.opentelemetry.io/otel/attribute"
 	"log/slog"
 	"sync/atomic"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/metrics"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type Config struct {
@@ -29,16 +32,18 @@ type Worker struct {
 	repository   Repository
 	config       Config
 	logger       *slog.Logger
-	decisions    ai.DecisionRepository
+	decisions    DecisionRepository
 	ready        atomic.Bool
 	shuttingDown atomic.Bool
 }
 
-func New(repository Repository, config Config) (*Worker, error) {
-	return NewWithLogger(repository, config, slog.Default())
+// New builds an engine worker. decisions runs AI decision windows; pass nil only for a
+// worker that should advance battles on scripted plans alone.
+func New(repository Repository, decisions DecisionRepository, config Config) (*Worker, error) {
+	return NewWithLogger(repository, decisions, config, slog.Default())
 }
 
-func NewWithLogger(repository Repository, config Config, logger *slog.Logger) (*Worker, error) {
+func NewWithLogger(repository Repository, decisions DecisionRepository, config Config, logger *slog.Logger) (*Worker, error) {
 	if config.KnowledgeRetrieval == (ai.KnowledgeLimits{}) {
 		config.KnowledgeRetrieval = ai.DefaultKnowledgeLimits()
 	}
@@ -54,11 +59,7 @@ func NewWithLogger(repository Repository, config Config, logger *slog.Logger) (*
 	if logger == nil {
 		logger = slog.Default()
 	}
-	worker := &Worker{repository: repository, config: config, logger: logger.With("worker_id", config.WorkerID)}
-	if decisions, ok := repository.(ai.DecisionRepository); ok {
-		worker.decisions = decisions
-	}
-	return worker, nil
+	return &Worker{repository: repository, decisions: decisions, config: config, logger: logger.With("worker_id", config.WorkerID)}, nil
 }
 
 func (w *Worker) Run(ctx context.Context) error {
@@ -68,7 +69,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	defer func() { cancelExpiry(); <-expiryDone }()
 
 	w.ready.Store(true)
-	telemetry.SetEngineReady(true)
+	metrics.SetEngineReady(true)
 	w.logger.InfoContext(ctx, "battle_worker_ready",
 		"poll_interval", w.config.PollInterval,
 		"lease_duration", w.config.LeaseDuration,
@@ -76,7 +77,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	)
 	defer func() {
 		w.ready.Store(false)
-		telemetry.SetEngineReady(false)
+		metrics.SetEngineReady(false)
 		w.logger.Info("battle_worker_stopped")
 	}()
 	return w.claimBattles(ctx)
@@ -103,8 +104,11 @@ func (w *Worker) claimBattles(ctx context.Context) error {
 			w.shuttingDown.Store(true)
 			return nil
 		}
+		if err := w.repository.FailExhaustedBattles(ctx, w.config.MaxAttempts); err != nil {
+			return fmt.Errorf("claim battle: %w", err)
+		}
 		job, err := w.repository.ClaimBattle(ctx, w.config.WorkerID, w.config.LeaseDuration, w.config.MaxAttempts)
-		if errors.Is(err, ErrNoBattleAvailable) {
+		if errors.Is(err, queue.ErrNoBattleAvailable) {
 			if !wait(ctx, w.config.PollInterval) {
 				w.shuttingDown.Store(true)
 				return nil
@@ -118,9 +122,9 @@ func (w *Worker) claimBattles(ctx context.Context) error {
 	}
 }
 
-func (w *Worker) processClaimedBattle(ctx context.Context, job *BattleJob) {
-	telemetry.ObserveEngineClaim(job.Lease.Attempt > 1)
-	jobContext, span := telemetry.StartBattleProcess(ctx, job.Traceparent, job.Tracestate,
+func (w *Worker) processClaimedBattle(ctx context.Context, job *queue.Job) {
+	metrics.ObserveEngineClaim(job.Lease.Attempt > 1)
+	jobContext, span := tracing.StartBattleProcess(ctx, job.Traceparent, job.Tracestate,
 		attribute.String("battlefield.battle_id", job.Lease.BattleID),
 		attribute.Int("battlefield.attempt", job.Lease.Attempt),
 	)
@@ -136,27 +140,27 @@ func (w *Worker) processClaimedBattle(ctx context.Context, job *BattleJob) {
 	if processErr == nil {
 		return
 	}
-	span.RecordError(processErr)
+	tracing.RecordError(span, processErr)
 	attributes := []any{"battle_id", job.Lease.BattleID, "attempt", job.Lease.Attempt, "error", processErr}
 	switch {
 	case errors.Is(processErr, context.Canceled):
 		// Graceful requeue paths log their successful handoff directly.
-	case errors.Is(processErr, ErrBattleLeaseLost):
+	case errors.Is(processErr, queue.ErrLeaseLost):
 		w.logger.WarnContext(jobContext, "battle_lease_lost", attributes...)
 	default:
 		w.logger.ErrorContext(jobContext, "battle_processing_stopped", attributes...)
 	}
 }
 
-func (w *Worker) process(ctx context.Context, job *BattleJob) (resultErr error) {
+func (w *Worker) process(ctx context.Context, job *queue.Job) (resultErr error) {
 	started := time.Now()
 	ctx = context.WithValue(ctx, battleStartedKey{}, started)
 	outcome := "error"
 	defer func() {
-		if errors.Is(resultErr, ErrBattleLeaseLost) {
+		if errors.Is(resultErr, queue.ErrLeaseLost) {
 			outcome = "lease_lost"
 		}
-		telemetry.ObserveEngineBattle(outcome, time.Since(started))
+		metrics.ObserveEngineBattle(outcome, time.Since(started))
 	}()
 
 	simulation, err := game.NewMatch(job.Lease.BattleID, job.Scenario, job.RequestedTicks)
@@ -171,7 +175,7 @@ func (w *Worker) process(ctx context.Context, job *BattleJob) (resultErr error) 
 	return resultErr
 }
 
-func (w *Worker) runBattle(ctx context.Context, job *BattleJob, simulation *game.Match) (string, error) {
+func (w *Worker) runBattle(ctx context.Context, job *queue.Job, simulation *game.Match) (string, error) {
 	var progress progressLog
 	for {
 		outcome, finished, err := w.runTick(ctx, job.Lease, simulation)
@@ -186,7 +190,7 @@ func (w *Worker) runBattle(ctx context.Context, job *BattleJob, simulation *game
 	}
 }
 
-func (w *Worker) runTick(ctx context.Context, lease BattleLease, simulation *game.Match) (string, bool, error) {
+func (w *Worker) runTick(ctx context.Context, lease queue.Lease, simulation *game.Match) (string, bool, error) {
 	if ctx.Err() != nil {
 		outcome, err := requeueOutcome(w.requeueAfterCancellation(ctx, lease))
 		return outcome, true, err
@@ -204,7 +208,7 @@ func (w *Worker) runTick(ctx context.Context, lease BattleLease, simulation *gam
 		return pausedTickResult(err)
 	}
 	tickStarted = tickStarted.Add(pausedFor)
-	telemetry.ObserveEngineTick()
+	metrics.ObserveEngineTick()
 	if transition.Finished {
 		outcome, err := w.completeBattle(ctx, lease, transition)
 		return outcome, true, err
@@ -212,7 +216,7 @@ func (w *Worker) runTick(ctx context.Context, lease BattleLease, simulation *gam
 	return w.persistRunningTick(ctx, lease, simulation, transition, tickStarted)
 }
 
-func (w *Worker) advanceSimulation(ctx context.Context, lease BattleLease, simulation *game.Match) (game.Transition, error) {
+func (w *Worker) advanceSimulation(ctx context.Context, lease queue.Lease, simulation *game.Match) (game.Transition, error) {
 	if !simulation.DecisionWindowDue() || w.decisions == nil {
 		return simulation.Advance()
 	}
@@ -223,7 +227,7 @@ func (w *Worker) advanceSimulation(ctx context.Context, lease BattleLease, simul
 	return simulation.AdvanceWithPlans(plans)
 }
 
-func (w *Worker) persistRunningTick(ctx context.Context, lease BattleLease, simulation *game.Match, transition game.Transition, tickStarted time.Time) (string, bool, error) {
+func (w *Worker) persistRunningTick(ctx context.Context, lease queue.Lease, simulation *game.Match, transition game.Transition, tickStarted time.Time) (string, bool, error) {
 	if ctx.Err() != nil {
 		outcome, err := requeueOutcome(w.persistTickAndRequeue(ctx, lease, transition))
 		return outcome, true, err
@@ -247,7 +251,7 @@ func (w *Worker) persistRunningTick(ctx context.Context, lease BattleLease, simu
 	return "", false, nil
 }
 
-func (w *Worker) failInvalidScenario(ctx context.Context, lease BattleLease, scenarioErr error) error {
+func (w *Worker) failInvalidScenario(ctx context.Context, lease queue.Lease, scenarioErr error) error {
 	w.logger.ErrorContext(ctx, "battle_scenario_invalid",
 		"battle_id", lease.BattleID,
 		"attempt", lease.Attempt,
@@ -266,7 +270,7 @@ func (w *Worker) failInvalidScenario(ctx context.Context, lease BattleLease, sce
 	return nil
 }
 
-func (w *Worker) completeBattle(ctx context.Context, lease BattleLease, transition game.Transition) (string, error) {
+func (w *Worker) completeBattle(ctx context.Context, lease queue.Lease, transition game.Transition) (string, error) {
 	completeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.config.ShutdownTimeout)
 	defer cancel()
 	if err := w.repository.CompleteBattle(completeCtx, lease, transition); err != nil {

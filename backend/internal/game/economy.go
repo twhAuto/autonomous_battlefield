@@ -5,18 +5,19 @@ package game
 
 import (
 	"fmt"
+
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 func (m *Match) runEconomy(productionWindow bool) []Event {
 	events := make([]Event, 0, 8)
-	for slot, setup := range m.scenario.Factions {
-		events = append(events, m.runFactionEconomy(slot, setup.ID, productionWindow)...)
+	for _, setup := range m.scenario.Factions {
+		events = append(events, m.runFactionEconomy(setup.ID, productionWindow)...)
 	}
 	return events
 }
 
-func (m *Match) runFactionEconomy(slot int, factionID string, productionWindow bool) []Event {
+func (m *Match) runFactionEconomy(factionID string, productionWindow bool) []Event {
 	castle := m.castle(factionID)
 	if castle == nil || castle.Health <= 0 {
 		return nil
@@ -29,13 +30,20 @@ func (m *Match) runFactionEconomy(slot int, factionID string, productionWindow b
 	if !productionWindow {
 		return events
 	}
-	plan := m.factions[factionID].activePlan
+	return append(events, m.spend(factionID, m.factions[factionID].activePlan, true)...)
+}
+
+// spend buys in the plan's spend order. The opening allows no construction.
+func (m *Match) spend(factionID string, plan controller.PlanProposal, construction bool) []Event {
+	events := []Event{}
 	for _, kind := range plan.SpendOrder {
 		switch kind {
 		case "upgrades":
 			events = append(events, m.runUpgrades(factionID, plan)...)
 		case "construction":
-			events = append(events, m.runConstruction(slot, factionID, plan)...)
+			if construction {
+				events = append(events, m.runConstruction(factionID, plan)...)
+			}
 		case "recruitment":
 			events = append(events, m.runRecruitment(factionID, plan)...)
 		}
@@ -54,9 +62,10 @@ func (m *Match) incomeFor(factionID string, castleIncome int64) int64 {
 	return income
 }
 
-func (m *Match) runConstruction(_ int, factionID string, plan controller.PlanProposal) []Event {
-	events := make([]Event, 0, len(plan.ConstructionPriorities))
-	for _, order := range constructionOrders(plan) {
+func (m *Match) runConstruction(factionID string, plan controller.PlanProposal) []Event {
+	orders := constructionOrders(plan)
+	events := make([]Event, 0, len(orders))
+	for _, order := range orders {
 		coordinate := order.Position
 		site := Position{X: coordinate.X, Y: coordinate.Y}
 		building, reason := m.buildStructureAt(factionID, order.BuildingType, site, plan.ReserveGold)
@@ -71,19 +80,13 @@ func (m *Match) runConstruction(_ int, factionID string, plan controller.PlanPro
 
 func (m *Match) buildEconomyBuildingAt(factionID string, site Position, reserve int64) (Building, string) {
 	rules := m.scenario.Ruleset.Buildings
-	state := m.factionState(factionID)
 	if m.economyCount(factionID) >= rules.MaximumEconomyCount {
 		return Building{}, "maximum_reached"
 	}
-	if m.buildingAt(site) != nil {
-		return Building{}, "site_occupied"
+	state, reason := m.payForBuilding(factionID, site, rules.EconomyCost, reserve)
+	if reason != "" {
+		return Building{}, reason
 	}
-	if state.Gold-rules.EconomyCost < reserve {
-		return Building{}, "reserve_required"
-	}
-	state.Gold -= rules.EconomyCost
-	state.GoldSpent += rules.EconomyCost
-	state.BuildingsBuilt++
 	building := Building{ID: fmt.Sprintf("%s:economy:%03d", factionID, state.BuildingsBuilt), FactionID: factionID, Type: BuildingEconomy, Position: site, Health: rules.EconomyHealth, MaxHealth: rules.EconomyHealth, Defense: rules.EconomyDefense, Vision: rules.EconomyVision, Cost: rules.EconomyCost, Income: rules.EconomyIncome + m.factions[factionID].economyBonus}
 	m.state.Buildings = append(m.state.Buildings, building)
 	return building, ""
@@ -96,21 +99,16 @@ func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) [
 	}
 	definitions := UnitTypesByID(m.scenario.Ruleset)
 	events := make([]Event, 0, 6)
-	orders := expandedRecruitmentOrders(plan.RecruitmentOrders)
+	explicit := plan.RecruitmentOrders != nil
+	queue := expandRecruitmentOrders(plan.RecruitmentOrders)
 	purchased := 0
-	attempted := 0
-	sourceIDs := expandedRecruitmentSources(plan.RecruitmentOrders)
 	// Explicit orders and expanded rosters bound the loop; legacy priorities
 	// continue until reserve or castle spawn constraints stop recruitment.
-	for (purchased < 6 || len(m.scenario.Ruleset.Structures) == 0) && (plan.RecruitmentOrders == nil || attempted < len(orders)) {
-		source := castle
-		if plan.RecruitmentOrders != nil {
-			source = m.recruitmentSource(factionID, sourceIDs[attempted])
-			attempted++
-		}
-		priorities := plan.RecruitmentPriorities
-		if plan.RecruitmentOrders != nil {
-			priorities = orders[attempted-1 : attempted]
+	for attempt := 0; (purchased < 6 || len(m.scenario.Ruleset.Structures) == 0) && (!explicit || attempt < len(queue)); attempt++ {
+		source, priorities := castle, plan.RecruitmentPriorities
+		if explicit {
+			source = m.recruitmentSource(factionID, queue[attempt].SourceBuildingID)
+			priorities = []string{queue[attempt].UnitType}
 		}
 		event, bought, stop := m.attemptRecruitment(factionID, source, definitions, priorities, plan.ReserveGold)
 		events = append(events, event)
@@ -120,19 +118,41 @@ func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) [
 		if bought {
 			purchased++
 		}
-
 	}
 	return events
 }
 
-func (m *Match) recruitmentSpawn(castle Position) (Position, bool) {
-	occupied := m.occupied()
-	for _, candidate := range Neighbors(castle) {
-		if m.scenario.Map.InBounds(candidate) && m.scenario.Map.Traversable(candidate) && !occupied[candidate] {
-			return candidate, true
-		}
+func (m *Match) recruitmentSpawn(source Position) (Position, bool) {
+	if spawns := freeNeighbors(m.scenario.Map, source, m.occupied()); len(spawns) > 0 {
+		return spawns[0], true
 	}
 	return Position{}, false
+}
+
+// freeNeighbors lists the unoccupied ground hexes around center in Neighbors order.
+func freeNeighbors(gameMap Map, center Position, occupied map[Position]bool) []Position {
+	free := make([]Position, 0, 6)
+	for _, candidate := range Neighbors(center) {
+		if gameMap.InBounds(candidate) && gameMap.Traversable(candidate) && !occupied[candidate] {
+			free = append(free, candidate)
+		}
+	}
+	return free
+}
+
+// payForBuilding checks the site and reserve, then charges the faction.
+func (m *Match) payForBuilding(factionID string, site Position, cost, reserve int64) (*FactionState, string) {
+	if m.buildingAt(site) != nil {
+		return nil, "site_occupied"
+	}
+	state := m.factionState(factionID)
+	if state.Gold-cost < reserve {
+		return nil, "reserve_required"
+	}
+	state.Gold -= cost
+	state.GoldSpent += cost
+	state.BuildingsBuilt++
+	return state, ""
 }
 
 func affordableUnit(definitions map[string]UnitType, priorities []string, gold, reserve int64) UnitType {
@@ -155,27 +175,15 @@ func (m *Match) economyCount(id string) int {
 	return count
 }
 
-func expandedRecruitmentOrders(orders *[]controller.RecruitmentOrder) []string {
+// expandRecruitmentOrders turns each order into Count single-unit orders.
+func expandRecruitmentOrders(orders *[]controller.RecruitmentOrder) []controller.RecruitmentOrder {
 	if orders == nil {
 		return nil
 	}
-	result := []string{}
+	result := []controller.RecruitmentOrder{}
 	for _, order := range *orders {
 		for i := 0; i < order.Count; i++ {
-			result = append(result, order.UnitType)
-		}
-	}
-	return result
-}
-
-func expandedRecruitmentSources(orders *[]controller.RecruitmentOrder) []string {
-	if orders == nil {
-		return nil
-	}
-	result := []string{}
-	for _, order := range *orders {
-		for i := 0; i < order.Count; i++ {
-			result = append(result, order.SourceBuildingID)
+			result = append(result, controller.RecruitmentOrder{SourceBuildingID: order.SourceBuildingID, UnitType: order.UnitType, Count: 1})
 		}
 	}
 	return result

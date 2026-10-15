@@ -16,7 +16,7 @@ fi
 mkdir -p "${project_dir}/artifacts/fuzz"
 targets=(
   './internal/httpapi:FuzzReadJSON'
-  './internal/ai:FuzzVerifyCapability'
+  './internal/ai/capability:FuzzVerify'
   './internal/ai/mcpserver:FuzzMCPRequestBody'
   './internal/battle/api:FuzzEventCursorQuery'
   './internal/battle/catalog:FuzzScenarioYAML'

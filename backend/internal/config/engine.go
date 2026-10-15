@@ -3,6 +3,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -10,14 +12,15 @@ import (
 )
 
 type Engine struct {
-	KnowledgeRetrieval          ai.KnowledgeLimits
-	HealthAddress               string
-	PollInterval                time.Duration
-	LeaseDuration               time.Duration
-	HeartbeatInterval           time.Duration
-	ShutdownTimeout             time.Duration
-	MaxAttempts                 int
-	WorkerIDEnvironmentVariable string
+	KnowledgeRetrieval ai.KnowledgeLimits
+	HealthAddress      string
+	PollInterval       time.Duration
+	LeaseDuration      time.Duration
+	HeartbeatInterval  time.Duration
+	ShutdownTimeout    time.Duration
+	MaxAttempts        int
+	// WorkerID names this engine in leases; it defaults to the hostname and process ID.
+	WorkerID string
 }
 
 func parseEngineConfig(raw fileConfig) (Engine, error) {
@@ -25,19 +28,19 @@ func parseEngineConfig(raw fileConfig) (Engine, error) {
 	if healthAddress == "" {
 		healthAddress = ":8081"
 	}
-	pollInterval, err := parseOptionalDuration("engine.pollInterval", raw.Engine.PollInterval, time.Second, false)
+	pollInterval, err := parseOptionalDuration("engine.pollInterval", raw.Engine.PollInterval, time.Second)
 	if err != nil {
 		return Engine{}, err
 	}
-	leaseDuration, err := parseOptionalDuration("engine.leaseDuration", raw.Engine.LeaseDuration, 30*time.Second, false)
+	leaseDuration, err := parseOptionalDuration("engine.leaseDuration", raw.Engine.LeaseDuration, 30*time.Second)
 	if err != nil {
 		return Engine{}, err
 	}
-	heartbeatInterval, err := parseOptionalDuration("engine.heartbeatInterval", raw.Engine.HeartbeatInterval, 10*time.Second, false)
+	heartbeatInterval, err := parseOptionalDuration("engine.heartbeatInterval", raw.Engine.HeartbeatInterval, 10*time.Second)
 	if err != nil {
 		return Engine{}, err
 	}
-	shutdownTimeout, err := parseOptionalDuration("engine.shutdownTimeout", raw.Engine.ShutdownTimeout, 10*time.Second, false)
+	shutdownTimeout, err := parseOptionalDuration("engine.shutdownTimeout", raw.Engine.ShutdownTimeout, 10*time.Second)
 	if err != nil {
 		return Engine{}, err
 	}
@@ -50,10 +53,6 @@ func parseEngineConfig(raw fileConfig) (Engine, error) {
 	}
 	if maxAttempts < 1 {
 		return Engine{}, fmt.Errorf("engine.maxAttempts must be positive")
-	}
-	workerEnv := strings.TrimSpace(raw.Engine.WorkerIDEnvironmentVariable)
-	if workerEnv == "" {
-		workerEnv = "ENGINE_WORKER_ID"
 	}
 	limits := ai.DefaultKnowledgeLimits()
 	if raw.Engine.KnowledgeRetrieval.MaxUnitCards != nil {
@@ -68,6 +67,17 @@ func parseEngineConfig(raw fileConfig) (Engine, error) {
 	return Engine{KnowledgeRetrieval: limits,
 		HealthAddress: healthAddress, PollInterval: pollInterval, LeaseDuration: leaseDuration,
 		HeartbeatInterval: heartbeatInterval, ShutdownTimeout: shutdownTimeout,
-		MaxAttempts: maxAttempts, WorkerIDEnvironmentVariable: workerEnv,
+		MaxAttempts: maxAttempts, WorkerID: workerID(),
 	}, nil
+}
+
+func workerID() string {
+	if id := strings.TrimSpace(os.Getenv(envEngineWorkerID)); id != "" {
+		return id
+	}
+	hostname, err := os.Hostname()
+	if err != nil || hostname == "" {
+		hostname = "engine"
+	}
+	return hostname + "-" + strconv.Itoa(os.Getpid())
 }

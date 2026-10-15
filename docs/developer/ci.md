@@ -66,6 +66,11 @@ isolate shared role/grant changes. A failed backend test stops the coverage run;
 the published `Unavailable` backend coverage result is not evidence of a low
 coverage percentage. Inspect the failing test before changing any coverage gate.
 
+The shared `scripts/test/test-deployment.sh` gate includes offline Helm bootstrap
+and Langfuse detection regressions. The chart-rendering validator
+`scripts/test/test-langfuse-security.py` remains an explicit chart-upgrade check;
+see [Langfuse operations](../operations/langfuse.md).
+
 ## Frontend image checks
 
 Both PR and main deployment-script checks run
@@ -122,7 +127,7 @@ final `Jenkinsfile` validation.
 Backend Go statement coverage must be at least 80% in aggregate across the
 module, as reported by the `total:` line from `go tool cover`. The gate is a
 single repository-wide number, not a per-package floor, so thin wiring in
-`cmd/*` and `internal/postgres` may sit below 80% while the module passes. A low
+`cmd/*` may sit below 80% while the module passes. A low
 per-package figure is not a gate failure, and the aggregate is not licence to
 leave new behavior untested. Frontend statements, branches, functions and lines
 must each be at least 80%.
@@ -130,11 +135,12 @@ must each be at least 80%.
 Backend integration tests skip themselves unless `TEST_DATABASE_URL` is set, so
 code exercised only by those tests stays uncovered. Always measure through
 `with-test-postgres.sh`, which starts a throwaway PostgreSQL container and exports
-`TEST_DATABASE_URL` for the wrapped command. Invoking `test-go-coverage.sh`
-directly skips database tests (including much of `internal/generation`) but
-still fails if tests fail or aggregate coverage falls below 80%. The harness
+`TEST_DATABASE_URL` and its exact `TEST_POSTGRES_CONTAINER_ID` for the wrapped
+command. `test-go-coverage.sh` rejects a missing database URL before running Go,
+so a coverage invocation cannot silently omit database-backed tests. The harness
 requires Docker; if it cannot run, report that CI-equivalent coverage was not
-verified and label any measured figure as excluding database-backed tests.
+verified. The supported coverage command cannot produce a figure without the
+harness-provided database; a plain Go test run is not equivalent evidence.
 
 The source-security stage logs each failed check and its report path. Inspect the
 matching file under the build's archived `artifacts/security/` directory to

@@ -13,8 +13,8 @@ import (
 type Handler struct{ Service *Service }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/admin/model-access", authn.Permit("admin", h.get))
-	mux.HandleFunc("PUT /v1/admin/model-access", authn.Permit("admin", h.save))
+	mux.HandleFunc("GET /v1/admin/model-access", authn.Permit(authn.PermissionAdmin, h.get))
+	mux.HandleFunc("PUT /v1/admin/model-access", authn.Permit(authn.PermissionAdmin, h.save))
 }
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {

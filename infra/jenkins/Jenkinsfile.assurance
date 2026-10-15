@@ -1,12 +1,17 @@
 // Separate Jenkins entry point for offline assurance, load tests, disposable-cluster
 // failure drills, bounded provider evaluations, and verified AWS image promotion.
 
+// The only accepted MODE values. A job keeps its stored parameter definition until this
+// pipeline next runs, so a build can still pass a retired value such as "nightly";
+// validation rejects it instead of letting every stage skip and the build pass.
+def MODES = ['offline', 'load', 'failure-drills', 'provider-eval', 'aws-promotion']
+
 pipeline {
     // Shares the existing agent with CI and delivery for this owner-operated project.
     agent { label 'battlefield-production' }
 
     parameters {
-        choice(name: 'MODE', choices: ['nightly', 'load', 'failure-drills', 'provider-eval', 'aws-promotion'], description: 'Assurance workflow to run')
+        choice(name: 'MODE', choices: MODES, description: 'Assurance workflow to run')
         choice(name: 'AI_PROVIDER', choices: ['openai', 'gemini'], description: 'Provider for an explicitly paid evaluation')
         string(name: 'AI_MODEL', defaultValue: '', description: 'Model with a reviewed entry in backend/evals/pricing.yaml')
         string(name: 'AI_CASE_COUNT', defaultValue: '1', description: 'Explicit fixed-corpus provider case budget')
@@ -44,6 +49,9 @@ pipeline {
         stage('Validate explicit limits') {
             steps {
                 script {
+                    if (!(params.MODE in MODES)) {
+                        error("Unsupported MODE '${params.MODE}'; choose one of ${MODES.join(', ')}.")
+                    }
                     if (params.MODE == 'provider-eval' && !params.AI_MODEL) {
                         error('Provider evaluation requires a model with reviewed pricing.')
                     }
@@ -51,8 +59,8 @@ pipeline {
             }
         }
 
-        stage('Nightly offline assurance') {
-            when { expression { params.MODE == 'nightly' } }
+        stage('Offline assurance') {
+            when { expression { params.MODE == 'offline' } }
             steps {
                 sh './scripts/ci/security-and-policy.sh'
                 sh 'FUZZ_SECONDS=120 ./scripts/test/fuzz-smoke.sh'

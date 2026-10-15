@@ -12,7 +12,8 @@ func (m *Match) View(factionID string) (View, error) {
 }
 
 // ProjectView applies v1 fog-of-war to a persisted state snapshot. Terrain is
-// always returned; hostile non-castle entities are omitted outside vision.
+// always returned; hostile non-castle entities are omitted outside vision, and only
+// the viewing faction's own economy and production totals are included.
 func ProjectView(gameMap Map, source State, factionID string) (View, error) {
 	if factionID == "" {
 		positions := allPositions(gameMap)
@@ -52,6 +53,14 @@ func visiblePositionsForFaction(gameMap Map, state State, factionID string) map[
 
 func visibleState(source State, factionID string, visible map[Position]bool) State {
 	state := CloneState(source)
+	// Economy and production totals are private: a faction sees only its own.
+	state.Factions = state.Factions[:0]
+	for _, faction := range source.Factions {
+		if faction.FactionID == factionID {
+			faction.OwnedUpgradeIDs = append([]string(nil), faction.OwnedUpgradeIDs...)
+			state.Factions = append(state.Factions, faction)
+		}
+	}
 	state.UnitDeaths = state.UnitDeaths[:0]
 	for _, death := range source.UnitDeaths {
 		if death.FactionID == factionID || visible[death.Position] {

@@ -27,7 +27,7 @@ spec:
                 name: battlefield-runtime
           env:
             - {name: BATTLEFIELD_AGENT_SECRET, valueFrom: {secretKeyRef: {name: battlefield-ai, key: BATTLEFIELD_AGENT_SECRET}}}
-            - {name: BATTLEFIELD_ENVIRONMENT, value: local}
+            - {name: BATTLEFIELD_ENVIRONMENT, value: production}
             - {name: DATABASE_URL, valueFrom: {secretKeyRef: {name: battlefield-database, key: AI_GATEWAY_DATABASE_URL}}}
             - {name: BATTLEFIELD_MCP_CAPABILITY_SECRET, valueFrom: {secretKeyRef: {name: battlefield-ai, key: BATTLEFIELD_MCP_CAPABILITY_SECRET}}}
           ports: [{name: http, containerPort: 8084}]

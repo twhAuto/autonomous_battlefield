@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 func (w *Worker) Ready() bool { return w.ready.Load() && !w.shuttingDown.Load() }
@@ -27,7 +29,7 @@ func requeueOutcome(err error) (string, error) {
 	return "error", err
 }
 
-func (w *Worker) persistTickAndRequeue(ctx context.Context, lease BattleLease, transition game.Transition) error {
+func (w *Worker) persistTickAndRequeue(ctx context.Context, lease queue.Lease, transition game.Transition) error {
 	w.shuttingDown.Store(true)
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.config.ShutdownTimeout)
 	defer cancel()
@@ -35,7 +37,7 @@ func (w *Worker) persistTickAndRequeue(ctx context.Context, lease BattleLease, t
 		return err
 	}
 	if err := w.repository.RequeueBattle(shutdownCtx, lease); err != nil {
-		if errors.Is(err, ErrBattleLeaseLost) {
+		if errors.Is(err, queue.ErrLeaseLost) {
 			return err
 		}
 		return fmt.Errorf("requeue during shutdown: %w", err)
@@ -48,7 +50,7 @@ func (w *Worker) persistTickAndRequeue(ctx context.Context, lease BattleLease, t
 	return context.Canceled
 }
 
-func (w *Worker) waitUntilNextTick(ctx context.Context, lease BattleLease, deadline time.Time) error {
+func (w *Worker) waitUntilNextTick(ctx context.Context, lease queue.Lease, deadline time.Time) error {
 	for {
 		pausedFor, err := w.waitWhilePaused(ctx, lease)
 		if err != nil {
@@ -73,12 +75,8 @@ func (w *Worker) waitUntilNextTick(ctx context.Context, lease BattleLease, deadl
 
 // waitWhilePaused retains and heartbeats the current lease so resuming
 // continues the same simulation instead of rebuilding it from tick zero.
-func (w *Worker) waitWhilePaused(ctx context.Context, lease BattleLease) (time.Duration, error) {
-	repository, ok := w.repository.(pauseRepository)
-	if !ok {
-		return 0, nil
-	}
-	paused, err := repository.BattlePaused(ctx, lease)
+func (w *Worker) waitWhilePaused(ctx context.Context, lease queue.Lease) (time.Duration, error) {
+	paused, err := w.repository.BattlePaused(ctx, lease)
 	if err != nil || !paused {
 		return 0, err
 	}
@@ -95,7 +93,7 @@ func (w *Worker) waitWhilePaused(ctx context.Context, lease BattleLease) (time.D
 			}
 			nextHeartbeat = time.Now().Add(w.config.HeartbeatInterval)
 		}
-		paused, err = repository.BattlePaused(ctx, lease)
+		paused, err = w.repository.BattlePaused(ctx, lease)
 		if err != nil {
 			return time.Since(started), err
 		}
@@ -104,12 +102,12 @@ func (w *Worker) waitWhilePaused(ctx context.Context, lease BattleLease) (time.D
 	return time.Since(started), nil
 }
 
-func (w *Worker) requeueAfterCancellation(ctx context.Context, lease BattleLease) error {
+func (w *Worker) requeueAfterCancellation(ctx context.Context, lease queue.Lease) error {
 	w.shuttingDown.Store(true)
 	requeueCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.config.ShutdownTimeout)
 	defer cancel()
 	if err := w.repository.RequeueBattle(requeueCtx, lease); err != nil {
-		if errors.Is(err, ErrBattleLeaseLost) {
+		if errors.Is(err, queue.ErrLeaseLost) {
 			return err
 		}
 		return fmt.Errorf("requeue during shutdown: %w", err)

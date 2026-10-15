@@ -5,30 +5,7 @@ the application shell and login page; `frontend/index.html` owns browser metadat
 and `frontend/public/ordinalfrontier.svg` is the matching favicon. Historical
 repository/package paths and deployment identifiers remain compatible.
 
-| Field | Value |
-| --- | --- |
-| Status | Current |
-| Last reviewed | 2026-10-03 |
-| Audience | Contributors navigating or modifying the implementation |
-| Scope | Repository layout, entry points, packages, dependencies, tests, and reading paths |
-
 For runtime boundaries, data flows, durability, and security decisions, see the [system architecture](../architecture/system-architecture.md).
-
-AI-created work branches start from the latest fetched `origin/dev` and target
-`dev` in pull requests, unless the user explicitly requests otherwise. Promotion
-to `main` is separate. See [agent branch guidance](../../AGENTS.md#branches-and-pull-requests)
-and the [Jenkins workflow](../operations/jenkins.md#configure-github-integration-branch-protection).
-Run applicable local checks before opening a PR, and complete the PR template's
-AI-assistance section required by the
-[AI development policy](ai-development-policy.md). The repo's
-[raise-pr](../../.agents/skills/raise-pr/SKILL.md),
-[triage-ci](../../.agents/skills/triage-ci/SKILL.md),
-[release-and-recover](../../.agents/skills/release-and-recover/SKILL.md),
-[write-project-docs](../../.agents/skills/write-project-docs/SKILL.md), and
-[track-backlog](../../.agents/skills/track-backlog/SKILL.md) skills cover
-PRs, CI, releases, docs, and backlog work. Claude Code discovers the same
-skills through `.claude/skills/` symlinks. Jenkins verifies both `dev` and `main`
-PR targets on the existing shared `battlefield-production` agent.
 
 Use the focused guides for implementation details:
 
@@ -36,6 +13,10 @@ Use the focused guides for implementation details:
 - [Backend guide](backend-guide.md): package ownership, persistence, configuration, AI execution, and membership.
 - [Frontend guide](frontend-guide.md): feature ownership, shared contracts, styles, and browser behavior.
 - [Tooling guide](tooling-guide.md): deployment scripts, test commands, assurance, and cross-review.
+
+On this page: [repository map](#repository-map) · [executables](#executable-entry-points) ·
+[infrastructure](#infrastructure-and-delivery-entry-points) · [change paths](#common-change-paths) ·
+[reading order](#suggested-reading-order) · [contribution workflow](#contribution-workflow)
 
 ## Repository map
 
@@ -46,24 +27,30 @@ autonomous_battlefield/
 ├── .github/pull_request_template.md # PR sections, including the required AI-assistance record
 ├── backend/
 │   ├── cmd/{server,engine,aigateway,agent,aieval}/ # Startup and command wiring
+│   │   └── internal/startup/   # Flags, tracing, listener and pool wiring shared by cmd/*
 │   ├── internal/
 │   │   ├── battle/{api,service,catalog,worker,repo,resultcache}/
 │   │   ├── faction/{api,service,repo}/
 │   │   ├── game/               # Deterministic state transitions
 │   │   │   └── controller/     # Infrastructure-free controller contracts
-│   │   ├── ai/                 # Decision execution, providers, MCP, evaluations
+│   │   ├── ai/                 # Shared decision contracts; subpackages for capability tokens,
+│   │   │                       # validation, profiles, prompts, model views, runners, providers,
+│   │   │                       # the AI gateway server, the agent worker and evaluations
 │   │   ├── admin/              # Model-access handler, service, and repository
-│   │   ├── apicontract/        # Tests keeping openapi.yaml in step with served routes
 │   │   ├── members/            # Player membership and reconciliation
 │   │   ├── generation/         # Faction background generation jobs and quotas
-│   │   ├── testutil/           # Shared assertions with lazy failure diagnostics
 │   │   ├── apierror/           # Stable JSON error envelope and codes for /v1
-│   │   ├── requestid/          # Request correlation ID carried in the context
-│   │   └── ...                 # app, authn, config, httpapi, postgres, logging, telemetry
-│   ├── migrations/             # Embedded SQL migrations
-│   ├── content/                # Shared versioned unit and building libraries
-│   ├── rulesets/               # Versioned game rules
-│   ├── scenarios/              # Authored battle templates
+│   │   ├── observability/      # logging, metrics, tracing, requestid, redact (leaf packages)
+│   │   └── ...                 # app, authn, config, httpapi, postgres
+│   ├── test/                   # Cross-package tests and fixtures; no runtime code
+│   │   ├── apicontract/        # openapi.yaml stays in step with served routes
+│   │   ├── boundaries/         # Forbidden dependencies and the generated component map
+│   │   ├── conventions/        # Source checks, such as span errors going through tracing.RecordError
+│   │   ├── integration/        # End-to-end API and engine run against PostgreSQL
+│   │   └── performance/        # k6 scenarios and query-plan SQL fixtures
+│   ├── migrations/             # Embedded SQL migrations and their PostgreSQL tests
+│   ├── gamedata/               # Game content embedded in the server: content libraries,
+│   │                           # rulesets and scenarios, plus their bundle digest
 │   └── evals/                  # Evaluation cases and pricing configuration
 ├── frontend/src/
 │   ├── app/                    # Application shell, routes, integration tests
@@ -91,9 +78,14 @@ autonomous_battlefield/
 │   ├── ops/                    # Operational reports and failure drills
 │   ├── review/                 # Codex/Claude cross-review runner
 │   └── lib/                    # Shared script functions
-├── tests/performance/          # k6 scenarios and query-plan SQL fixtures
 └── docs/{game,developer,architecture,operations}/
 ```
+
+`scripts/test/test-database-harness.py` checks coverage admission and query-plan
+target validation with command doubles. The shared deployment regression gate
+runs it; real database checks use `scripts/test/with-test-postgres.sh`.
+The same gate includes the offline Helm bootstrap checks in `test-ensure-helm.py`
+and Langfuse installation detection/override checks in `test-langfuse-detection.sh`.
 
 ## Executable entry points
 
@@ -104,14 +96,33 @@ The backend has five commands in one Go module: four runtime processes and the o
 | API | [`backend/cmd/server/main.go`](../../backend/cmd/server/main.go) | Flags, configuration, migrations, PostgreSQL startup, catalog loading, application wiring, HTTP lifecycle |
 | Engine | [`backend/cmd/engine/main.go`](../../backend/cmd/engine/main.go) | Configuration, PostgreSQL startup, worker construction, health server, signals, graceful requeue/shutdown |
 | AI gateway | [`backend/cmd/aigateway/main.go`](../../backend/cmd/aigateway/main.go) | Restricted repository construction, PostgreSQL notification listener, MCP tool and agent dispatch routes, HTTP lifecycle |
-| Agent | [`backend/cmd/agent/main.go`](../../backend/cmd/agent/main.go) | Profile registry, decision worker, health endpoint, signals, shutdown |
+| Agent | [`backend/cmd/agent/main.go`](../../backend/cmd/agent/main.go) | Profile registry, decision worker, health endpoint, signals, and a shutdown that waits up to 20 seconds for in-flight jobs to report |
 | AI evaluation | [`backend/cmd/aieval/main.go`](../../backend/cmd/aieval/main.go) | Evaluation case execution, pricing inputs, reports, and runtime provenance via `-mode metadata` |
 
 `cmd` packages should remain thin. Domain and use-case behavior belongs under `internal`; entry points should focus on composition and process lifecycle.
+[`backend/cmd/internal/startup`](../../backend/cmd/internal/startup) holds the wiring they
+share. `startup.Command` is each binary's whole lifecycle: it parses `-config` and the
+binary's own flags (rejecting positional arguments), loads the configuration, cancels
+the context passed to the binary's `Run` on SIGINT or SIGTERM, logs
+`<name>_process_stopped` on failure, and returns the exit code, so every `main` is one
+line and every `Run` is testable with an ordinary context. The package also covers
+tracing setup and flush, serving a listener in the background, and stopping a
+half-started process. Its `database` subpackage opens the PostgreSQL pool, kept separate
+so the agent, which has no database access, never imports it.
+
+### Which packages each binary links
+
+Most `internal` packages are shared, so a package's folder doesn't say which process
+runs it. The generated [component map](component-map.md) lists the binaries that link
+each internal package, and the rules that keep them apart.
+
+## Infrastructure and delivery entry points
 
 The [server rebuild contract](../operations/server-rebuild-contract.md) connects
 the host, CI, VM, K3s and CLI entry points to state ownership, rebuild prerequisites
 and recovery verification. Its linked runbooks own the operational procedures.
+
+### Host foundation
 
 Host bootstrap enters through [`scripts/infra/server.sh`](../../scripts/infra/server.sh).
 Its Python wrapper validates private inventory, SSH/machine identity, secret imports
@@ -121,7 +132,7 @@ and the host lock; `control-tools.py` installs the hash-locked Ansible environme
 regressions exercise the pinned Ansible password handshake without root access.
 `infra/ansible/site.yml` separates foundation setup, private input reconciliation
 and verification. The optional `data_storage` role owns the existing ext4 mount,
-scoped directories and future K3s libvirt guard; its standalone `files/storage.py`
+scoped directories and K3s libvirt guard; its standalone `files/storage.py`
 handles mount identity, fstab preservation and the immutable storage contract.
 `test-data-storage.py` covers negative paths; `rehearse-data-storage.py` verifies
 privileged behavior only in an owned disposable guest.
@@ -136,6 +147,8 @@ before resuming checks. The pinned Ubuntu image is in
 `infra/ansible/rehearsal-image.json`. See the
 [bootstrap guide](../operations/server-bootstrap.md) for the rehearsal command.
 
+### CI services
+
 `server.sh ci-*` dispatches to `scripts/infra/ci-bootstrap.py` for private CI
 registration, source fingerprints and external Ansible execution. `infra/ansible/ci.yml`
 and its `ci_services` role manage the pinned controller, Sonar Compose service,
@@ -148,6 +161,8 @@ missing-job-only Job DSL. Platform jobs reuse `seed-platform.py` rather than a
 second pipeline definition. `test-ci-bootstrap.py` covers the boundaries;
 `run-ci-bootstrap-rehearsal.py` and its UUID-guarded guest fixture exercise actual
 services. See [CI bootstrap](../operations/ci-bootstrap.md).
+
+### Reviewed host and VM jobs
 
 `infra/jenkins/Jenkinsfile.platform` and `scripts/ci/run-platform.sh` enter the reviewed host
 workflow in `scripts/infra/platform.py`. It binds a private plan receipt to the
@@ -181,6 +196,8 @@ subprocess `--help` check for foundation, VM, K3s and delivery entry points with
 ordinary Python path settings and a separate working directory. See the
 [VM runbook](../operations/k3s-vm.md) for Jenkins and Ansible handoff details.
 
+### K3s platform
+
 `infra/jenkins/Jenkinsfile.k3s` and `scripts/ci/run-k3s.sh` run the reviewed guest workflow in
 `scripts/infra/k3s.py`; `k3s-config.py` validates cluster settings and renders the
 private platform/probe manifests. `infra/k3s/` holds settings and asset checksums.
@@ -202,6 +219,13 @@ credentials and verified public test-image bytes. Its private diagnostic callbac
 extends the normal sanitized report only for fixture failures. See the
 [K3s platform runbook](../operations/k3s-platform.md) for job use and acceptance.
 
+### Image verification and delivery
+
+`scripts/ci/generate-ai-manifest.sh` combines runtime metadata with an evaluation
+corpus digest based on contents and relative filenames, independent of checkout
+location. `scripts/test/test-ai-manifest.py` covers reproducibility and changes to
+corpus identity in the shared deployment regression gate.
+
 `scripts/ci/verify-frontend-image.py` starts an isolated frontend image with the
 production filesystem/user restrictions and verifies HTTP probes, index and entry
 assets. Local/PR builds and published-digest scanning invoke it before delivery.
@@ -209,6 +233,11 @@ assets. Local/PR builds and published-digest scanning invoke it before delivery.
 checkout permissions and also exercises the unreadable-template rejection in a
 real container. Jenkins runs this Docker-backed regression separately from the
 command-double deployment suite; see [Jenkins checks](ci.md#pull-request-verification).
+
+`scripts/ops/ghcr-retention-report.sh` collects running and rollback digests plus
+registry versions before publishing its advisory inventory. Its command-double
+regressions in `scripts/test/test-retention-report.py` cover failed collection,
+preserved previous reports and invocation outside the checkout.
 
 `scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh` are the driver-neutral
 entry points used by Jenkins. On main, `capture-rollback-images.sh` records the
@@ -231,79 +260,6 @@ convergence, private readiness, migration state and retained claims. The offline
 unchanged images after rollback, missing claims and changed migrations; overall
 acceptance also requires owned-VM cleanup. See [its runbook](../operations/k3s-delivery.md#disposable-delivery-rehearsal)
 for the remaining public and CLI bridge acceptance checks.
-
-## Common change paths
-
-### Add a battle API field
-
-1. Decide whether the source of truth is `game.State`, `BattleRun`, or derived presentation data.
-2. Update the service type/use case.
-3. Update repository serialization or query scanning if persisted.
-4. Update the handler response.
-5. Update `frontend/src/features/battles/api/battles.ts`.
-6. Update the consuming page/component and both backend/frontend tests.
-
-### Add a plan field
-
-1. Add it to `controller.PlanProposal`.
-2. Add bounds and semantic validation.
-3. Add it to the MCP submission schema/input mapping.
-4. Apply it deterministically in `game.Match`.
-5. Update scenario YAML if scripted/fallback values need it.
-6. Update decision persistence, API/frontend types, display, and tests.
-
-### Change model role access
-
-Admin model-access role validation applies equally to API and CLI profiles.
-`backend/internal/admin/service_test.go` covers saving and revoking Player CLI
-access through the durable policy; the admin page tests cover the Player checkbox
-and persistence across reloads. Player catalog tests retain gameplay-only projection
-while exposing explicitly approved, available CLI profiles.
-
-### Add a model provider
-
-1. Add a provider adapter implementing `ai.TurnProvider`, or a CLI branch implementing `DecisionRunner` behavior.
-2. Extend profile validation and availability rules.
-3. Extend the agent's default runner factory.
-4. Add environment/configuration and deployment secret fields.
-5. Add provider contract, refusal, usage, and tool-call tests.
-6. Keep the MCP tool surface unchanged unless the domain contract itself changes.
-
-### Add durable battle behavior
-
-1. Add a forward-only migration.
-2. Update repository interfaces only with operations required by a use case.
-3. Implement guarded SQL using battle attempt and lease ownership where applicable.
-4. Update service/worker behavior.
-5. Add stale-owner, retry, and shutdown tests.
-
-## Suggested reading order
-
-### Learn the whole request-to-battle path
-
-1. [`backend/internal/game/types.go`](../../backend/internal/game/types.go)
-2. [`backend/internal/game/match.go`](../../backend/internal/game/match.go)
-3. [`backend/internal/battle/service/service.go`](../../backend/internal/battle/service/service.go)
-4. [`backend/internal/battle/worker/worker.go`](../../backend/internal/battle/worker/worker.go)
-5. [`backend/internal/battle/repo/battles.go`](../../backend/internal/battle/repo/battles.go) and [`queue.go`](../../backend/internal/battle/repo/queue.go)
-6. [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx)
-
-### Learn the AI decision path
-
-1. [`backend/internal/ai/types.go`](../../backend/internal/ai/types.go)
-2. [`backend/internal/battle/worker/decisions.go`](../../backend/internal/battle/worker/decisions.go), starting at `resolveDecisionWindow`
-3. [`backend/internal/battle/repo/decisions.go`](../../backend/internal/battle/repo/decisions.go)
-4. [`backend/internal/ai/mcpserver/dispatch.go`](../../backend/internal/ai/mcpserver/dispatch.go) (claims), then [`server.go`](../../backend/internal/ai/mcpserver/server.go) (tools)
-5. [`backend/internal/ai/worker/worker.go`](../../backend/internal/ai/worker/worker.go)
-6. [`backend/internal/ai/runner/api.go`](../../backend/internal/ai/runner/api.go)
-7. [`backend/internal/ai/providers/openai.go`](../../backend/internal/ai/providers/openai.go) or [`gemini.go`](../../backend/internal/ai/providers/gemini.go)
-
-### Learn application composition
-
-1. [`backend/cmd/server/main.go`](../../backend/cmd/server/main.go)
-2. [`backend/internal/app/app.go`](../../backend/internal/app/app.go)
-3. A feature's `api`, `service`, and `repo` packages in that order
-4. The matching frontend API client and page
 
 ### CLI VM lifecycle and host bundle
 
@@ -373,3 +329,101 @@ policy, registered K3s routing and failure paths; `rehearse-https.py` and
 with synthetic secrets in a disposable VM, including the runbook's exact
 ownership archival command and re-registration after a capture/node change. See the
 [local HTTPS runbook](../operations/local-https-platform.md).
+
+## Common change paths
+
+### Add a battle API field
+
+1. Decide whether the source of truth is `game.State`, `BattleRun`, or derived presentation data.
+2. Update the service type/use case.
+3. Update repository serialization or query scanning if persisted.
+4. Update the handler response.
+5. Update `frontend/src/features/battles/api/battles.ts`.
+6. Update the consuming page/component and both backend/frontend tests.
+
+### Add a plan field
+
+1. Add it to `controller.PlanProposal`.
+2. Add bounds and semantic validation.
+3. Add it to the MCP submission schema/input mapping.
+4. Apply it deterministically in `game.Match`.
+5. Update scenario YAML if scripted/fallback values need it.
+6. Update decision persistence, API/frontend types, display, and tests.
+
+### Change model role access
+
+Admin model-access role validation applies equally to API and CLI profiles.
+`backend/internal/admin/service_test.go` covers saving and revoking Player CLI
+access through the durable policy; the admin page tests cover the Player checkbox
+and persistence across reloads. Player catalog tests retain gameplay-only projection
+while exposing explicitly approved, available CLI profiles.
+
+### Add a model provider
+
+1. Add a provider adapter implementing `ai.TurnProvider`, or a CLI branch implementing `DecisionRunner` behavior.
+2. Extend profile validation and availability rules.
+3. Extend the agent's default runner factory.
+4. Add environment/configuration and deployment secret fields.
+5. Add provider contract, refusal, usage, and tool-call tests.
+6. Keep the MCP tool surface unchanged unless the domain contract itself changes.
+
+### Add durable battle behavior
+
+1. Add a forward-only migration.
+2. Update repository interfaces only with operations required by a use case.
+3. Implement guarded SQL using battle attempt and lease ownership where applicable.
+4. Update service/worker behavior.
+5. Add stale-owner, retry, and shutdown tests.
+
+## Suggested reading order
+
+### Learn the whole request-to-battle path
+
+1. [`backend/internal/game/types.go`](../../backend/internal/game/types.go)
+2. [`backend/internal/game/match.go`](../../backend/internal/game/match.go)
+3. [`backend/internal/battle/service/service.go`](../../backend/internal/battle/service/service.go)
+4. [`backend/internal/battle/worker/worker.go`](../../backend/internal/battle/worker/worker.go)
+5. [`backend/internal/battle/repo/battles.go`](../../backend/internal/battle/repo/battles.go) and [`queue.go`](../../backend/internal/battle/repo/queue.go)
+6. [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx)
+
+### Learn the AI decision path
+
+1. [`backend/internal/ai/types.go`](../../backend/internal/ai/types.go)
+2. [`backend/internal/battle/worker/decisions.go`](../../backend/internal/battle/worker/decisions.go), starting at `resolveDecisionWindow`
+3. [`backend/internal/battle/repo/decisions.go`](../../backend/internal/battle/repo/decisions.go)
+4. [`backend/internal/ai/mcpserver/dispatch.go`](../../backend/internal/ai/mcpserver/dispatch.go) (claims), then [`server.go`](../../backend/internal/ai/mcpserver/server.go) (tools)
+5. [`backend/internal/ai/agent/executor.go`](../../backend/internal/ai/agent/executor.go)
+6. [`backend/internal/ai/runner/api.go`](../../backend/internal/ai/runner/api.go)
+7. [`backend/internal/ai/providers/openai.go`](../../backend/internal/ai/providers/openai.go) or [`gemini.go`](../../backend/internal/ai/providers/gemini.go)
+
+### Learn application composition
+
+1. [`backend/cmd/server/main.go`](../../backend/cmd/server/main.go)
+2. [`backend/internal/app/app.go`](../../backend/internal/app/app.go)
+3. A feature's `api`, `service`, and `repo` packages in that order
+4. The matching frontend API client and page
+
+## Contribution workflow
+
+AI-created work branches start from the latest fetched `origin/dev` and target
+`dev` in pull requests, unless the user explicitly requests otherwise. Promotion
+to `main` is separate. See [agent branch guidance](../../AGENTS.md#branches-and-pull-requests)
+and the [Jenkins workflow](../operations/jenkins.md#configure-github-integration-branch-protection).
+Run applicable local checks before opening a PR, and complete the PR template's
+AI-assistance section required by the
+[AI development policy](ai-development-policy.md). The repo's
+[raise-pr](../../.agents/skills/raise-pr/SKILL.md),
+[triage-ci](../../.agents/skills/triage-ci/SKILL.md),
+[release-and-recover](../../.agents/skills/release-and-recover/SKILL.md),
+[write-project-docs](../../.agents/skills/write-project-docs/SKILL.md), and
+[track-backlog](../../.agents/skills/track-backlog/SKILL.md) skills cover
+PRs, CI, releases, docs, and backlog work. Claude Code discovers the same
+skills through `.claude/skills/` symlinks. Jenkins verifies both `dev` and `main`
+PR targets on the existing shared `battlefield-production` agent.
+For a user-selected PR stack, review and Sonar preview instructions use each
+PR's actual target branch. Jenkins verification stages only run for PRs targeting
+`dev` or `main`; work-branch targets are skipped. Each stacked PR needs verification
+after retargeting to `dev`. A manual Sonar preview against an unmerged stack base
+is separate evidence; the next Jenkins preview resets that project against its
+new target. CI evidence identifies both the tested head and target commit; a
+passing run for an older pair does not verify the current tree.

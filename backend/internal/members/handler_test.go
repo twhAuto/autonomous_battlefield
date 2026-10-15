@@ -1,13 +1,17 @@
 package members
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 )
 
@@ -54,7 +58,7 @@ func memberRoutes() []memberRoute {
 
 func TestMemberRoutesRequireAdmin(t *testing.T) {
 	f := &fakeRepository{}
-	h := &Handler{Store: f, Origin: "https://game.example"}
+	h := NewHandler(f, "https://game.example")
 	for _, tt := range memberRoutes() {
 		for _, role := range []authn.Role{"", authn.Player, authn.Developer, authn.CI} {
 			w := request(h, tt.method, tt.path, tt.body, role, "https://game.example", "")
@@ -70,7 +74,7 @@ func TestMemberRoutesRequireAdmin(t *testing.T) {
 
 func TestMemberRoutesServeAdmin(t *testing.T) {
 	f := &fakeRepository{}
-	h := &Handler{Store: f, Origin: "https://game.example"}
+	h := NewHandler(f, "https://game.example")
 	for _, tt := range memberRoutes() {
 		w := request(h, tt.method, tt.path, tt.body, authn.Admin, "https://game.example", "")
 		if w.Code != 200 && w.Code != 202 {
@@ -89,7 +93,7 @@ func TestMemberRoutesServeAdmin(t *testing.T) {
 }
 
 func TestMemberRouteWritesEnforceOrigin(t *testing.T) {
-	h := &Handler{Store: &fakeRepository{}, Origin: "https://game.example"}
+	h := NewHandler(&fakeRepository{}, "https://game.example")
 	for _, tt := range memberRoutes() {
 		if tt.method == "GET" {
 			continue
@@ -101,7 +105,7 @@ func TestMemberRouteWritesEnforceOrigin(t *testing.T) {
 }
 
 func TestMemberRoutesAreHiddenDuringPreview(t *testing.T) {
-	h := &Handler{Store: &fakeRepository{}, Origin: "https://game.example"}
+	h := NewHandler(&fakeRepository{}, "https://game.example")
 	for _, tt := range memberRoutes() {
 		if request(h, tt.method, tt.path, tt.body, authn.Admin, "https://game.example", "player").Code != 403 {
 			t.Fatal("preview bypass", tt.method, tt.path)
@@ -110,7 +114,7 @@ func TestMemberRoutesAreHiddenDuringPreview(t *testing.T) {
 }
 
 func TestMemberGrantRejectsInvalidBodies(t *testing.T) {
-	h := &Handler{Store: &fakeRepository{}, Origin: "https://game.example"}
+	h := NewHandler(&fakeRepository{}, "https://game.example")
 	for _, body := range []string{`{"email":"x","role":"admin"}`, `{"email":"x"}{}`, strings.Repeat("x", 4097)} {
 		if request(h, "POST", "/v1/admin/members", body, authn.Admin, "https://game.example", "").Code != 400 {
 			t.Fatal("body accepted", body)
@@ -120,7 +124,7 @@ func TestMemberGrantRejectsInvalidBodies(t *testing.T) {
 
 func TestMemberErrorsMapToSafeResponses(t *testing.T) {
 	f := &fakeRepository{}
-	h := &Handler{Store: f, Origin: "https://game.example"}
+	h := NewHandler(f, "https://game.example")
 	for _, tt := range []struct {
 		err  error
 		code int
@@ -135,7 +139,7 @@ func TestMemberErrorsMapToSafeResponses(t *testing.T) {
 
 func TestMemberServiceFailuresAreUnavailable(t *testing.T) {
 	f := &fakeRepository{err: errors.New("db")}
-	h := &Handler{Store: f, Origin: "https://game.example"}
+	h := NewHandler(f, "https://game.example")
 	if request(h, "GET", "/v1/admin/members", "", authn.Admin, "https://game.example", "").Code != 503 {
 		t.Fatal("read error hidden")
 	}
@@ -148,8 +152,43 @@ func TestMemberServiceFailuresAreUnavailable(t *testing.T) {
 }
 
 func TestMemberRoutesAreUnavailableWithoutStore(t *testing.T) {
-	h := &Handler{Origin: "https://game.example"}
+	h := NewHandler(nil, "https://game.example")
 	if request(h, "GET", "/v1/admin/members", "", authn.Admin, "https://game.example", "").Code != 503 {
 		t.Fatal("disabled management allowed")
+	}
+}
+
+func TestUnexpectedFailuresAreLoggedWithoutLeaking(t *testing.T) {
+	var logs bytes.Buffer
+	original := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	defer slog.SetDefault(original)
+	secret := "failed to connect to `user=battlefield database=battlefield host=10.0.0.5`"
+	for _, tc := range []struct {
+		err      error
+		reason   string
+		sqlstate string
+	}{
+		{errors.New(secret), "database_unavailable", ""},
+		{fmt.Errorf("list: %w", &pgconn.PgError{Code: "57P01", Message: secret}), "database_error", "57P01"},
+		{fmt.Errorf("%s: %w", secret, context.DeadlineExceeded), "deadline_exceeded", ""},
+		{fmt.Errorf("%s: %w", secret, context.Canceled), "canceled", ""},
+	} {
+		logs.Reset()
+		response := httptest.NewRecorder()
+		memberError(response, httptest.NewRequest(http.MethodGet, "/v1/admin/members", nil), tc.err)
+		if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "10.0.0.5") {
+			t.Fatalf("response = %d %s", response.Code, response.Body.String())
+		}
+		got := logs.String()
+		if !strings.Contains(got, `"msg":"player_members_request_failed"`) || !strings.Contains(got, `"reason":"`+tc.reason+`"`) {
+			t.Fatalf("failure not categorized as %s: %s", tc.reason, got)
+		}
+		if tc.sqlstate != "" && !strings.Contains(got, `"sqlstate":"`+tc.sqlstate+`"`) {
+			t.Fatalf("SQLSTATE missing: %s", got)
+		}
+		if strings.Contains(got, "10.0.0.5") || strings.Contains(got, "user=battlefield") {
+			t.Fatalf("log leaked connection details: %s", got)
+		}
 	}
 }

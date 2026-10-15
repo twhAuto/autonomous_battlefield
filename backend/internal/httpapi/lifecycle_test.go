@@ -11,7 +11,7 @@ import (
 )
 
 func TestLifecycleHandlerTransitions(t *testing.T) {
-	lifecycle := NewLifecycleHandler()
+	lifecycle := NewLifecycleHandler(nil)
 
 	assertStatus(t, lifecycle, "/livez", http.StatusOK)
 	assertStatus(t, lifecycle, "/startupz", http.StatusServiceUnavailable)
@@ -35,7 +35,7 @@ func TestLifecycleHandlerTransitions(t *testing.T) {
 }
 
 func TestLifecycleReadinessChecksWorkerAndDatabase(t *testing.T) {
-	lifecycle := NewLifecycleHandler()
+	lifecycle := NewLifecycleHandler(nil)
 	workerReady := false
 	databaseError := error(nil)
 	lifecycle.Activate(

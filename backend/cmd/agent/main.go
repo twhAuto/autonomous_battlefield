@@ -1,4 +1,4 @@
-// Starts the model-agent process, wiring executable profiles, the job worker, health
+// Starts the model-agent process, wiring executable profiles, the job executor, health
 // checks, and graceful shutdown.
 
 package main
@@ -11,99 +11,123 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/clienv"
-	aiworker "github.com/twh09/autonomous_battlefield/backend/internal/ai/worker"
+	"github.com/twh09/autonomous_battlefield/backend/cmd/internal/startup"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agent"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/cliisolation"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
-	"github.com/twh09/autonomous_battlefield/backend/internal/logging"
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/logging"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 )
 
 func main() {
-	logger := logging.New("agent")
-	slog.SetDefault(logger)
-	configPath := flag.String("config", "config.yaml", "path to YAML configuration")
-	checkAntigravityAuth := flag.Bool("check-antigravity-auth", false, "check isolated Antigravity keyring login without model inference")
-	checkClaudeAuth := flag.Bool("check-claude-auth", false, "check Claude subscription login without model inference")
-	flag.Parse()
-	if *checkClaudeAuth {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		if err := clienv.CheckClaudeAuth(ctx); err != nil {
-			logger.Error("claude_auth_unavailable", "error", err)
-			os.Exit(1)
-		}
-		return
-	}
-	if *checkAntigravityAuth {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		if err := clienv.CheckAntigravityAuth(ctx); err != nil {
-			logger.Error("antigravity_auth_unavailable", "error", err)
-			os.Exit(1)
-		}
-		return
-	}
-	configuration, err := config.LoadAgent(*configPath)
-	if err != nil {
-		logger.Error("configuration_load_failed", "error", err)
-		os.Exit(1)
-	}
-	if err := run(configuration); err != nil {
-		logger.Error("agent_process_stopped", "error", err)
-		os.Exit(1)
+	slog.SetDefault(logging.New("agent"))
+	os.Exit(command(cliisolation.CheckClaudeAuth, cliisolation.CheckAntigravityAuth).Main(os.Args[1:]))
+}
+
+// authCheckTimeout bounds a subscription login check, which runs no model inference.
+const authCheckTimeout = 15 * time.Second
+
+// command runs the agent, or with a -check-*-auth flag only runs that subscription
+// CLI's login check and exits.
+func command(claudeAuth, antigravityAuth func(context.Context) error) startup.Command[config.AgentConfig] {
+	var checkAntigravityAuth, checkClaudeAuth bool
+	return startup.Command[config.AgentConfig]{
+		Name: "agent",
+		Flags: func(flags *flag.FlagSet) {
+			flags.BoolVar(&checkAntigravityAuth, "check-antigravity-auth", false, "check isolated Antigravity keyring login without model inference")
+			flags.BoolVar(&checkClaudeAuth, "check-claude-auth", false, "check Claude subscription login without model inference")
+		},
+		Before: func(ctx context.Context) (bool, error) {
+			switch {
+			case checkClaudeAuth:
+				return true, checkAuth(ctx, "Claude", claudeAuth)
+			case checkAntigravityAuth:
+				return true, checkAuth(ctx, "Antigravity", antigravityAuth)
+			}
+			return false, nil
+		},
+		Load: config.LoadAgent,
+		Run:  run,
 	}
 }
 
-func run(configuration config.Config) error {
-	if err := aiworker.ProtectCredentials(); err != nil {
-		return fmt.Errorf("protect worker credentials: %w", err)
+func checkAuth(ctx context.Context, cli string, check func(context.Context) error) error {
+	ctx, cancel := context.WithTimeout(ctx, authCheckTimeout)
+	defer cancel()
+	if err := check(ctx); err != nil {
+		return fmt.Errorf("%s auth unavailable: %w", cli, err)
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-	shutdownTracing, err := telemetry.ConfigureTracing(ctx, "battlefield-agent")
+	return nil
+}
+
+// shutdownTimeout bounds stopping the health server and waiting for in-flight jobs to
+// report their outcomes, within Kubernetes' default 30-second grace period.
+const shutdownTimeout = 20 * time.Second
+
+// run executes agent jobs until ctx is cancelled, then waits for in-flight jobs.
+func run(ctx context.Context, configuration config.AgentConfig) error {
+	if err := agent.ProtectCredentials(configuration.Production); err != nil {
+		return fmt.Errorf("protect agent credentials: %w", err)
+	}
+	stopTracing, err := startup.Tracing(ctx, "battlefield-agent")
 	if err != nil {
-		return fmt.Errorf("configure tracing: %w", err)
+		return err
 	}
-	defer func() {
-		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = shutdownTracing(shutdown)
-	}()
-	worker := &aiworker.Worker{PolicyPolling: true, MCPURL: configuration.AI.MCPURL, Secret: configuration.AI.AgentSecret, WorkerID: hostname(), Profiles: ai.NewProfileRegistry(configuration.AI.Environment, configuration.AI.Profiles), PollInterval: time.Second, DecisionTimeout: configuration.AI.DecisionTimeout, Concurrency: configuration.AI.AgentConcurrency}
+	defer stopTracing()
+	executor := &agent.Executor{PolicyPolling: true, MCPURL: configuration.Agent.MCPURL, Secret: configuration.Agent.Secret, WorkerID: hostname(), Profiles: profile.NewRegistry(configuration.Models.Environment, configuration.Models.Profiles), PollInterval: time.Second, DecisionTimeout: configuration.Models.DecisionTimeout, Concurrency: configuration.Agent.Concurrency}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		if !worker.Ready() {
+		if !executor.Ready() {
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
-	server := &http.Server{Addr: configuration.AI.AgentHealthAddress, Handler: telemetry.HTTPHandler("battlefield-agent.http", mux), ReadHeaderTimeout: 2 * time.Second}
-	serverErrors := make(chan error, 1)
-	go func() {
-		err := server.ListenAndServe()
-		if errors.Is(err, http.ErrServerClosed) {
-			err = nil
-		}
-		serverErrors <- err
-	}()
-	workerErrors := make(chan error, 1)
-	go func() { workerErrors <- worker.Run(ctx) }()
+	server := &http.Server{
+		Addr: configuration.Agent.HealthAddress, Handler: tracing.HTTPHandler("battlefield-agent.http", mux),
+		ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 2 * time.Second,
+		WriteTimeout: 2 * time.Second, IdleTimeout: 30 * time.Second,
+	}
+	return serveUntilStopped(ctx, server, executor, shutdownTimeout)
+}
+
+// jobRunner is the part of agent.Executor the process lifecycle needs.
+type jobRunner interface {
+	Run(context.Context) error
+}
+
+// serveUntilStopped runs the health server and the executor until either fails or ctx
+// is cancelled. After cancellation it stops the health server and then waits for the
+// executor: jobs report their outcome after cancellation, so exiting earlier would
+// leave them running until their leases expire.
+func serveUntilStopped(ctx context.Context, server *http.Server, executor jobRunner, timeout time.Duration) error {
+	serverErrors := startup.Serve(server, nil)
+	executorErrors := make(chan error, 1)
+	go func() { executorErrors <- executor.Run(ctx) }()
 	select {
 	case err := <-serverErrors:
 		return err
-	case err := <-workerErrors:
+	case err := <-executorErrors:
 		return err
 	case <-ctx.Done():
 	}
-	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdown, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return server.Shutdown(shutdown)
+	if err := server.Shutdown(shutdown); err != nil {
+		return fmt.Errorf("shut down agent health server: %w", err)
+	}
+	select {
+	case err := <-executorErrors:
+		if errors.Is(err, context.Canceled) {
+			return nil
+		}
+		return err
+	case <-shutdown.Done():
+		return fmt.Errorf("agent jobs did not finish: %w", shutdown.Err())
+	}
 }
 
 func hostname() string {

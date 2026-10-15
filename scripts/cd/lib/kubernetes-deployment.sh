@@ -332,8 +332,10 @@ cluster_deploy_prepare_overlays() {
     cp -R "${project_dir}/infra/deploy/overlays/local/logging-collector" \
       "${runtime_dir}/infra/deploy/overlays/local/"
   fi
+  # Base manifests describe production; a dev deployment rewrites BATTLEFIELD_ENV and the
+  # trace environment label (BATTLEFIELD_ENVIRONMENT) on every application workload.
   if deployment_component_selected application && [[ "${DEPLOY_ENV:-dev}" == dev ]]; then
-    sed -i 's/value: production/value: dev/' "${runtime_dir}/infra/deploy/base/application/api-deployment.yaml"
+    sed -i 's/value: production/value: dev/' "${runtime_dir}"/infra/deploy/base/application/{api,engine,ai-gateway,agent}-deployment.yaml
   fi
   if deployment_component_selected migration && [[ "${DEPLOY_ENV:-dev}" == dev ]]; then
     sed -i 's/value: production/value: dev/' "${runtime_dir}/infra/deploy/base/migration/job.yaml"

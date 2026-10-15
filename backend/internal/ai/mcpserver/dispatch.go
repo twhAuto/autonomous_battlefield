@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
 	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 )
 
@@ -69,22 +70,22 @@ func (w *decisionWakeups) notify() {
 // is advisory: every awakened worker still atomically claims the durable row.
 func (s *Server) NotifyDecisionAvailable() { s.wakeups.notify() }
 
+// AgentRepository is what the agent control plane needs: the decision repository plus
+// the operator's AI switch, which gates every agent before it claims work.
+type AgentRepository interface {
+	ai.DecisionRepository
+	AgentEnabled(context.Context) (bool, error)
+}
+
 // AgentHandler is a non-MCP control plane used only to claim provider jobs and
 // report runner failures. It does not expose decision context or game state.
-func (s *Server) AgentHandler(repository ai.DecisionRepository) http.Handler {
+func (s *Server) AgentHandler(repository AgentRepository) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /enabled", func(w http.ResponseWriter, r *http.Request) {
 		if !s.requireAgentAuthorization(w, r) {
 			return
 		}
-		policy, ok := repository.(interface {
-			AgentEnabled(context.Context) (bool, error)
-		})
-		if !ok {
-			http.Error(w, "policy unavailable", 503)
-			return
-		}
-		enabled, err := policy.AgentEnabled(r.Context())
+		enabled, err := repository.AgentEnabled(r.Context())
 		if err != nil || !enabled {
 			http.Error(w, "AI disabled", 503)
 			return
@@ -135,7 +136,7 @@ func (s *Server) writeDecisionClaim(w http.ResponseWriter, r *http.Request, work
 		http.Error(w, "missing execution deadline", 503)
 		return
 	}
-	token, err := ai.MintCapability(s.secret, record.ID, *record.LeaseExpiresAt)
+	token, err := capability.Mint(s.secret, record.ID, *record.LeaseExpiresAt)
 	if err != nil {
 		http.Error(w, "capability unavailable", 503)
 		return
@@ -330,7 +331,7 @@ func (s *Server) claimAfterGeneration(w http.ResponseWriter, r *http.Request, re
 
 func (s *Server) WithAgentSecret(secret string) *Server { s.agentSecret = secret; return s }
 func (s *Server) mint(id string, ttl time.Duration) string {
-	token, _ := ai.MintCapability(s.secret, id, time.Now().Add(ttl))
+	token, _ := capability.Mint(s.secret, id, time.Now().Add(ttl))
 	return token
 }
 

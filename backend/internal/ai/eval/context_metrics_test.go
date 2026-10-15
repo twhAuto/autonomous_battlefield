@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
@@ -47,7 +48,7 @@ func TestComparisonCountsActualLookupCalls(t *testing.T) {
 	c := caseIdentity(fixture)
 	rules := game.Ruleset{ID: "r", Version: "1", Units: []game.UnitType{{ID: "ranger", Cost: 10}}}
 	c.Legal.Units = rules.Units
-	c.UnitReference = ai.FreezeUnitReference(rules, c)
+	c.UnitReference = agentview.FreezeUnitReference(rules, c)
 	payload, _ := json.Marshal(map[string]any{"context": c})
 	fixture.ContextJSON = string(payload)
 	variants := []ComparisonVariant{{ID: "compact", Runtime: "api", NewRunner: func() ai.DecisionRunner { return sampleRunner{rename: "lookup", lookup: true} }}}

@@ -13,7 +13,7 @@ info:
     endpoints outside this contract, as is the internal worker plane served by the
     separate `cmd/aigateway` binary.
 
-    **Drift protection.** `backend/internal/apicontract` fails the build if the set of
+    **Drift protection.** `backend/test/apicontract` fails the build if the set of
     operations here differs from `authn.PublicAPIRoutes()`, the permission registry
     that `RoutePolicy` enforces. Add a route to both, or neither.
 
@@ -237,29 +237,6 @@ paths:
         '204':
           description: Deleted.
         '400': {$ref: '#/components/responses/InvalidRequest'}
-        '401': {$ref: '#/components/responses/AuthenticationRequired'}
-        '403': {$ref: '#/components/responses/PermissionDenied'}
-        '404': {$ref: '#/components/responses/NotFound'}
-        '500': {$ref: '#/components/responses/Internal'}
-
-  /v1/factions/{id}/name:
-    parameters:
-      - {$ref: '#/components/parameters/FactionId'}
-    get:
-      tags: [Factions]
-      operationId: getFactionName
-      summary: Get a faction's display name
-      responses:
-        '200':
-          description: The name.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [name]
-                properties:
-                  name: {type: string}
-              example: {name: Northern Alliance}
         '401': {$ref: '#/components/responses/AuthenticationRequired'}
         '403': {$ref: '#/components/responses/PermissionDenied'}
         '404': {$ref: '#/components/responses/NotFound'}

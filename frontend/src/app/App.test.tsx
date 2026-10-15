@@ -106,6 +106,41 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Identify commander.' })).toBeInTheDocument()
   })
 
+  it.each(['local-password', 'cloudflare'])('keeps the %s session visible when logout fails and allows retry', async (mode) => {
+    const authentication: AuthenticationClient = {
+      session: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn().mockRejectedValueOnce(new Error('Request failed')).mockResolvedValueOnce(undefined),
+    }
+    const user = userEvent.setup()
+    render(<MemoryRouter><App authentication={authentication} initialSession={{
+      enabled: true, authenticated: true, mode, actor: { id: 'test-admin', role: 'admin' },
+    }} /></MemoryRouter>)
+
+    await user.click(screen.getByRole('button', { name: 'Log out test-admin' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Logout could not be confirmed. Try Log out again.')
+    expect(screen.getByRole('heading', { name: 'Main menu' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Identify commander|Sign in to Battlefield/ })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Log out test-admin' }))
+    expect(await screen.findByRole('heading', { name: mode === 'cloudflare' ? 'Sign in to Battlefield' : 'Identify commander.' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(authentication.logout).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['local-password', 'cloudflare'])('signs out an expired %s session when logout returns 401', async (mode) => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 401 }))
+    const user = userEvent.setup()
+    render(<MemoryRouter><App initialSession={{
+      enabled: true, authenticated: true, mode, actor: { id: 'test-admin', role: 'admin' },
+    }} /></MemoryRouter>)
+
+    await user.click(screen.getByRole('button', { name: 'Log out test-admin' }))
+    expect(await screen.findByRole('heading', { name: mode === 'cloudflare' ? 'Sign in to Battlefield' : 'Identify commander.' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
   it('offers faction and battle operations on the main menu', () => {
     renderApp()
 	const menu = screen.getByRole('heading', { name: 'Main menu' }).closest('section')!

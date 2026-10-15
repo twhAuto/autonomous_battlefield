@@ -6,14 +6,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
-	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
 // Explicit opt-in: uses the local subscription login and synthetic data only.
@@ -37,14 +40,14 @@ func TestAntigravityLiveDecision(t *testing.T) {
 		rules.Knowledge.Cards = append(rules.Knowledge.Cards, game.UnitCard{UnitID: id, Role: "soldier", Guidance: strings.Repeat("\t", 980) + " Verification word: juniper."})
 	}
 	record.Observation.Legal.Units = rules.Units
-	record.Observation.UnitReference = ai.FreezeUnitReference(rules, record.Observation)
+	record.Observation.UnitReference = agentview.FreezeUnitReference(rules, record.Observation)
 
 	repository := &fakeRepository{record: record}
 	server := httptest.NewServer(New(repository, "synthetic-secret", nil).Handler())
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	token, err := ai.MintCapability("synthetic-secret", record.ID, time.Now().Add(2*time.Minute))
+	token, err := capability.Mint("synthetic-secret", record.ID, time.Now().Add(2*time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}

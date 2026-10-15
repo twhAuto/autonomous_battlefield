@@ -7,16 +7,13 @@ import (
 	"errors"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 type DecisionContextService interface {
 	GetDecisionContext(context.Context, string, string, int) (SavedDecisionContext, error)
-}
-
-type decisionContextRepository interface {
-	GetDecision(context.Context, string) (ai.DecisionRecord, error)
 }
 
 type SavedDecisionContext struct {
@@ -49,11 +46,7 @@ func (s *battleService) GetDecisionContext(ctx context.Context, battleID, reques
 	if !battleUUIDPattern.MatchString(battleID) || !battleUUIDPattern.MatchString(requestID) || attempt < 1 {
 		return SavedDecisionContext{}, ErrInvalidBattle
 	}
-	repository, ok := s.battles.(decisionContextRepository)
-	if !ok {
-		return SavedDecisionContext{}, ai.ErrDecisionNotFound
-	}
-	record, err := repository.GetDecision(ctx, requestID)
+	record, err := s.battles.GetDecision(ctx, requestID)
 	if err != nil {
 		return SavedDecisionContext{}, err
 	}
@@ -75,8 +68,8 @@ func (s *battleService) GetDecisionContext(ctx context.Context, battleID, reques
 		Economy: observation.Economy, View: observation.View, Legal: observation.Legal,
 		ActivePlan: observation.ActivePlan, Memory: observation.Memory,
 	}
-	compact := ai.CompactContext(observation)
-	result.InitialContext = ai.AgentObservation(observation)
+	compact := agentview.Compact(observation)
+	result.InitialContext = agentview.Observation(observation)
 	result.AvailableUnitDetails = observation.UnitReference
 	result.Context.Legal = compact.Legal
 	result.Context.Knowledge = compact.Knowledge

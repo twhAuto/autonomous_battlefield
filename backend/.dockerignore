@@ -12,3 +12,6 @@ coverage/
 **/.env.*
 !.env.example
 !**/.env.example
+
+# Module-wide tests and load fixtures are not part of any binary.
+test/

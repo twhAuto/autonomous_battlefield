@@ -4,12 +4,12 @@
 package api
 
 import (
-	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
 
@@ -66,29 +66,8 @@ func (h *Handler) setBattlePaused(w http.ResponseWriter, r *http.Request, paused
 	} else {
 		run, err = h.battles.ResumeBattle(r.Context(), r.PathValue("id"))
 	}
-	if errors.Is(err, authn.ErrForbidden) {
-		apierror.Write(w, r, 403, permissionDeniedMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrLimited) {
-		apierror.Write(w, r, 429, battleAllowanceMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrInvalidBattle) {
-		apierror.Write(w, r, http.StatusBadRequest, invalidBattleIDMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrBattleNotFound) {
-		apierror.Write(w, r, http.StatusNotFound, battleNotFoundMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrBattleNotActive) {
-		apierror.Write(w, r, http.StatusConflict, "battle is not active")
-		return
-	}
-	if err != nil {
-		slog.ErrorContext(r.Context(), "battle_control_failed", "request_id", httpapi.RequestID(r.Context()), "battle_id", r.PathValue("id"), "paused", paused, "error", err)
-		apierror.Write(w, r, http.StatusInternalServerError, "could not update battle control")
+	if writeError(w, r, err, []errorCase{forbiddenError, limitedError, invalidError(invalidBattleIDMessage), notFoundError, notActiveError},
+		failure{"battle_control_failed", "could not update battle control", []any{"battle_id", r.PathValue("id"), "paused", paused}}) {
 		return
 	}
 	event := "battle_resumed"
@@ -101,29 +80,8 @@ func (h *Handler) setBattlePaused(w http.ResponseWriter, r *http.Request, paused
 
 func (h *Handler) StopBattle(w http.ResponseWriter, r *http.Request) {
 	run, err := h.battles.StopBattle(r.Context(), r.PathValue("id"))
-	if errors.Is(err, authn.ErrForbidden) {
-		apierror.Write(w, r, 403, permissionDeniedMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrLimited) {
-		apierror.Write(w, r, 429, battleAllowanceMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrInvalidBattle) {
-		apierror.Write(w, r, http.StatusBadRequest, invalidBattleIDMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrBattleNotFound) {
-		apierror.Write(w, r, http.StatusNotFound, battleNotFoundMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrBattleNotActive) {
-		apierror.Write(w, r, http.StatusConflict, "battle is not active")
-		return
-	}
-	if err != nil {
-		slog.ErrorContext(r.Context(), "battle_stop_failed", "request_id", httpapi.RequestID(r.Context()), "battle_id", r.PathValue("id"), "error", err)
-		apierror.Write(w, r, http.StatusInternalServerError, "could not stop battle")
+	if writeError(w, r, err, []errorCase{forbiddenError, limitedError, invalidError(invalidBattleIDMessage), notFoundError, notActiveError},
+		failure{"battle_stop_failed", "could not stop battle", []any{"battle_id", r.PathValue("id")}}) {
 		return
 	}
 	slog.InfoContext(r.Context(), "battle_stopped", "request_id", httpapi.RequestID(r.Context()), "battle_id", run.ID, "attempt", run.Attempt, "current_tick", run.CurrentTick)
@@ -131,71 +89,27 @@ func (h *Handler) StopBattle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListDecisions(w http.ResponseWriter, r *http.Request) {
-	service, ok := h.battles.(battleservice.DecisionHistoryService)
-	if !ok {
-		_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"decisions": []any{}})
-		return
-	}
 	attempt, err := strconv.Atoi(r.URL.Query().Get("attempt"))
 	if err != nil {
 		apierror.Write(w, r, http.StatusBadRequest, "invalid battle attempt")
 		return
 	}
-	decisions, err := service.ListDecisionHistory(r.Context(), r.PathValue("id"), attempt)
-	if errors.Is(err, authn.ErrForbidden) {
-		apierror.Write(w, r, 403, permissionDeniedMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrLimited) {
-		apierror.Write(w, r, 429, battleAllowanceMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrInvalidBattle) {
-		apierror.Write(w, r, http.StatusBadRequest, "invalid decision query")
-		return
-	}
-	if err != nil {
-		apierror.Write(w, r, http.StatusInternalServerError, "could not list decisions")
+	decisions, err := h.battles.ListDecisionHistory(r.Context(), r.PathValue("id"), attempt)
+	if writeError(w, r, err, []errorCase{forbiddenError, limitedError, invalidError("invalid decision query")},
+		failure{message: "could not list decisions"}) {
 		return
 	}
 	_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"decisions": decisions})
 }
 
 func (h *Handler) ListModelProfiles(w http.ResponseWriter, r *http.Request) {
-	service, ok := h.battles.(battleservice.ModelProfileService)
-	if !ok {
-		_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"profiles": []any{}})
-		return
-	}
-	_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"profiles": visibleProfiles(r, service.ListModelProfiles())})
+	_ = httpapi.WriteJSON(w, http.StatusOK, map[string]any{"profiles": visibleProfiles(r, h.battles.ListModelProfiles())})
 }
 
 func (h *Handler) GetFactionView(w http.ResponseWriter, r *http.Request) {
-	service, ok := h.battles.(battleservice.PerspectiveService)
-	if !ok {
-		apierror.Write(w, r, http.StatusNotImplemented, "perspective views unavailable")
-		return
-	}
-	view, err := service.GetFactionView(r.Context(), r.PathValue("id"), r.PathValue("factionId"))
-	if errors.Is(err, authn.ErrForbidden) {
-		apierror.Write(w, r, 403, permissionDeniedMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrLimited) {
-		apierror.Write(w, r, 429, battleAllowanceMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrInvalidBattle) || errors.Is(err, battleservice.ErrInvalidPerspective) {
-		apierror.Write(w, r, http.StatusBadRequest, "invalid battle perspective")
-		return
-	}
-	if errors.Is(err, battleservice.ErrBattleNotFound) {
-		apierror.Write(w, r, http.StatusNotFound, battleNotFoundMessage)
-		return
-	}
-	if err != nil {
-		slog.ErrorContext(r.Context(), "battle_view_failed", "request_id", httpapi.RequestID(r.Context()), "battle_id", r.PathValue("id"), "faction_id", r.PathValue("factionId"), "error", err)
-		apierror.Write(w, r, http.StatusInternalServerError, "could not get battle view")
+	view, err := h.battles.GetFactionView(r.Context(), r.PathValue("id"), r.PathValue("factionId"))
+	if writeError(w, r, err, []errorCase{forbiddenError, limitedError, invalidError("invalid battle perspective", battleservice.ErrInvalidPerspective), notFoundError},
+		failure{"battle_view_failed", "could not get battle view", []any{"battle_id", r.PathValue("id"), "faction_id", r.PathValue("factionId")}}) {
 		return
 	}
 	_ = httpapi.WriteJSON(w, http.StatusOK, view)
@@ -227,37 +141,12 @@ func (h *Handler) CreateBattle(w http.ResponseWriter, r *http.Request) {
 		participants[index] = battleservice.ParticipantInput{FactionID: participant.FactionID, Controller: game.ControllerConfig{Type: participant.Controller.Type, ProfileID: participant.Controller.ProfileID}}
 	}
 	run, err := h.battles.CreateBattle(r.Context(), battleservice.CreateBattleInput{ID: request.ID, ScenarioID: request.ScenarioID, Participants: participants, TickCount: request.TickCount})
-	if errors.Is(err, authn.ErrForbidden) {
-		apierror.Write(w, r, 403, permissionDeniedMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrLimited) {
-		apierror.Write(w, r, 429, battleAllowanceMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrInvalidBattle) {
-		apierror.Write(w, r, http.StatusBadRequest, "invalid battle")
-		return
-	}
-	if errors.Is(err, battleservice.ErrBattleFactionMissing) || errors.Is(err, battleservice.ErrScenarioNotFound) {
-		apierror.Write(w, r, http.StatusNotFound, "battle dependency not found")
-		return
-	}
-	if errors.Is(err, battleservice.ErrIncompatibleFaction) || errors.Is(err, game.ErrInvalidBlueprint) {
-		apierror.Write(w, r, http.StatusUnprocessableEntity, "invalid battle configuration or unavailable controller")
-		return
-	}
-	if errors.Is(err, battleservice.ErrModelProfileUnavailable) {
-		apierror.Write(w, r, http.StatusUnprocessableEntity, "invalid battle configuration or unavailable controller")
-		return
-	}
-	if errors.Is(err, battleservice.ErrBattleAlreadyExists) {
-		apierror.WriteCode(w, r, http.StatusConflict, apierror.CodeAlreadyExists, "battle already exists")
-		return
-	}
-	if err != nil {
-		slog.ErrorContext(r.Context(), "battle_enqueue_failed", "request_id", httpapi.RequestID(r.Context()), "battle_id", request.ID, "error", err)
-		apierror.Write(w, r, http.StatusInternalServerError, "could not create battle")
+	if writeError(w, r, err, []errorCase{
+		forbiddenError, limitedError, invalidError("invalid battle"),
+		errorFor(http.StatusNotFound, "battle dependency not found", battleservice.ErrBattleFactionMissing, battleservice.ErrScenarioNotFound),
+		errorFor(http.StatusUnprocessableEntity, "invalid battle configuration or unavailable controller", battleservice.ErrIncompatibleFaction, game.ErrInvalidBlueprint, battleservice.ErrModelProfileUnavailable),
+		{errs: []error{battleservice.ErrBattleAlreadyExists}, status: http.StatusConflict, code: apierror.CodeAlreadyExists, message: "battle already exists"},
+	}, failure{"battle_enqueue_failed", "could not create battle", []any{"battle_id", request.ID}}) {
 		return
 	}
 	if run == nil {
@@ -278,56 +167,21 @@ func (h *Handler) CreateBattle(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) GetBattle(w http.ResponseWriter, r *http.Request) {
 	run, err := h.battles.GetBattle(r.Context(), r.PathValue("id"))
-	if errors.Is(err, authn.ErrForbidden) {
-		apierror.Write(w, r, 403, permissionDeniedMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrLimited) {
-		apierror.Write(w, r, 429, battleAllowanceMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrInvalidBattle) {
-		apierror.Write(w, r, http.StatusBadRequest, "invalid battle ID")
-		return
-	}
-	if errors.Is(err, battleservice.ErrBattleNotFound) {
-		apierror.Write(w, r, http.StatusNotFound, battleNotFoundMessage)
-		return
-	}
-	if err != nil {
-		slog.ErrorContext(r.Context(), "battle_status_read_failed", "request_id", httpapi.RequestID(r.Context()), "battle_id", r.PathValue("id"), "error", err)
-		apierror.Write(w, r, http.StatusInternalServerError, "could not get battle")
+	if writeError(w, r, err, []errorCase{forbiddenError, limitedError, invalidError(invalidBattleIDMessage), notFoundError},
+		failure{"battle_status_read_failed", "could not get battle", []any{"battle_id", r.PathValue("id")}}) {
 		return
 	}
 	_ = httpapi.WriteJSON(w, http.StatusOK, battleResponseFor(r, run))
 }
 
 func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
-	limit, after, attempt, latest, ok := parseEventQuery(w, r)
+	query, ok := parseEventQuery(w, r)
 	if !ok {
 		return
 	}
-
-	page, err := h.battles.ListBattleEvents(r.Context(), r.PathValue("id"), attempt, after, limit, latest)
-	if errors.Is(err, authn.ErrForbidden) {
-		apierror.Write(w, r, 403, permissionDeniedMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrLimited) {
-		apierror.Write(w, r, 429, battleAllowanceMessage)
-		return
-	}
-	if errors.Is(err, battleservice.ErrInvalidBattle) {
-		apierror.Write(w, r, http.StatusBadRequest, "invalid event query")
-		return
-	}
-	if errors.Is(err, battleservice.ErrBattleNotFound) {
-		apierror.Write(w, r, http.StatusNotFound, battleNotFoundMessage)
-		return
-	}
-	if err != nil {
-		slog.ErrorContext(r.Context(), "battle_events_read_failed", "request_id", httpapi.RequestID(r.Context()), "battle_id", r.PathValue("id"), "error", err)
-		apierror.Write(w, r, http.StatusInternalServerError, "could not list battle events")
+	page, err := h.battles.ListBattleEvents(r.Context(), r.PathValue("id"), query.attempt, query.after, query.limit, query.latest)
+	if writeError(w, r, err, []errorCase{forbiddenError, limitedError, invalidError("invalid event query"), notFoundError},
+		failure{"battle_events_read_failed", "could not list battle events", []any{"battle_id", r.PathValue("id")}}) {
 		return
 	}
 	if authn.IsPlayer(r.Context()) {
@@ -338,14 +192,23 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	_ = httpapi.WriteJSON(w, http.StatusOK, page)
 }
 
-func parseEventQuery(w http.ResponseWriter, r *http.Request) (int, uint64, *int, bool, bool) {
+// eventQuery holds the parsed ListEvents query parameters.
+type eventQuery struct {
+	limit   int
+	after   uint64
+	attempt *int
+	latest  bool
+}
+
+// parseEventQuery writes a 400 and reports false when a parameter is malformed.
+func parseEventQuery(w http.ResponseWriter, r *http.Request) (eventQuery, bool) {
 	query := r.URL.Query()
 	limit := 100
 	if raw := query.Get("limit"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil {
 			apierror.Write(w, r, http.StatusBadRequest, "invalid event limit")
-			return 0, 0, nil, false, false
+			return eventQuery{}, false
 		}
 		limit = parsed
 	}
@@ -354,7 +217,7 @@ func parseEventQuery(w http.ResponseWriter, r *http.Request) (int, uint64, *int,
 		parsed, err := strconv.ParseUint(raw, 10, 64)
 		if err != nil {
 			apierror.Write(w, r, http.StatusBadRequest, "invalid event cursor")
-			return 0, 0, nil, false, false
+			return eventQuery{}, false
 		}
 		after = parsed
 	}
@@ -363,7 +226,7 @@ func parseEventQuery(w http.ResponseWriter, r *http.Request) (int, uint64, *int,
 		parsed, err := strconv.Atoi(raw)
 		if err != nil {
 			apierror.Write(w, r, http.StatusBadRequest, "invalid battle attempt")
-			return 0, 0, nil, false, false
+			return eventQuery{}, false
 		}
 		attempt = &parsed
 	}
@@ -372,12 +235,12 @@ func parseEventQuery(w http.ResponseWriter, r *http.Request) (int, uint64, *int,
 		parsed, err := strconv.ParseBool(raw)
 		if err != nil {
 			apierror.Write(w, r, http.StatusBadRequest, "invalid latest-events flag")
-			return 0, 0, nil, false, false
+			return eventQuery{}, false
 		}
 		latest = parsed
 	}
 
-	return limit, after, attempt, latest, true
+	return eventQuery{limit: limit, after: after, attempt: attempt, latest: latest}, true
 }
 
 func battleResponse(run *battleservice.BattleRun) any {
@@ -416,7 +279,7 @@ func visibleProfiles(r *http.Request, profiles []ai.ModelProfile) any {
 	if authn.IsPlayer(r.Context()) {
 		result := []map[string]any{}
 		for _, p := range profiles {
-			if ai.ProfileAllowed(r.Context(), p) && p.Available {
+			if profile.Allowed(r.Context(), p) && p.Available {
 				result = append(result, map[string]any{"id": p.ID, "displayName": p.DisplayName, "modelLabel": p.ModelLabel, "runtime": p.Runtime, "available": true})
 			}
 		}
@@ -427,7 +290,7 @@ func visibleProfiles(r *http.Request, profiles []ai.ModelProfile) any {
 	}
 	result := []ai.ModelProfile{}
 	for _, p := range profiles {
-		if ai.ProfileAllowed(r.Context(), p) {
+		if profile.Allowed(r.Context(), p) {
 			result = append(result, p)
 		}
 	}

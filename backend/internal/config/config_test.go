@@ -4,6 +4,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"go.yaml.in/yaml/v3"
 )
 
 func TestLoadReadsConfigFile(t *testing.T) {
@@ -24,9 +26,9 @@ http:
   shutdownTimeout: 5s
 `)
 
-	configuration, err := Load(path)
+	configuration, err := LoadAPI(path)
 	if err != nil {
-		t.Fatalf("Load() returned an error: %v", err)
+		t.Fatalf("LoadAPI() returned an error: %v", err)
 	}
 
 	if configuration.HTTP.Address != ":9000" {
@@ -35,8 +37,8 @@ http:
 	if configuration.HTTP.ReadTimeout != 3*time.Second {
 		t.Fatalf("ReadTimeout = %v, want %v", configuration.HTTP.ReadTimeout, 3*time.Second)
 	}
-	if filepath.Base(configuration.API.RulesetCatalogPath) != "rulesets" || filepath.Base(configuration.API.ScenarioCatalogPath) != "scenarios" {
-		t.Fatalf("catalog paths = %#v", configuration.API)
+	if configuration.API.MaxTicks != 10_000 {
+		t.Fatalf("MaxTicks = %d, want the 10000 default", configuration.API.MaxTicks)
 	}
 }
 
@@ -51,9 +53,9 @@ http:
   shutdownTimeout: 10s
 `)
 
-	_, err := Load(path)
+	_, err := LoadAPI(path)
 	if err == nil {
-		t.Fatal("Load() returned no error")
+		t.Fatal("LoadAPI() returned no error")
 	}
 	if !strings.Contains(err.Error(), "http.idleTimeout") {
 		t.Fatalf("error %q does not identify http.idleTimeout", err)
@@ -72,9 +74,9 @@ http:
   unknownTimeout: 1s
 `)
 
-	_, err := Load(path)
+	_, err := LoadAPI(path)
 	if err == nil {
-		t.Fatal("Load() returned no error")
+		t.Fatal("LoadAPI() returned no error")
 	}
 }
 
@@ -88,22 +90,13 @@ http:
   idleTimeout: 60s
   shutdownTimeout: 10s
 auth:
-  enabledEnvironmentVariable: TEST_AUTH_ENABLED
-  usernameEnvironmentVariable: TEST_AUTH_USERNAME
-  passwordEnvironmentVariable: TEST_AUTH_PASSWORD
-  sessionSecretEnvironmentVariable: TEST_AUTH_SECRET
-  cookieSecureEnvironmentVariable: TEST_AUTH_SECURE
   sessionTTL: 4h
 `)
-	t.Setenv("TEST_AUTH_ENABLED", "true")
-	t.Setenv("TEST_AUTH_USERNAME", "admin")
-	t.Setenv("TEST_AUTH_PASSWORD", "a-long-test-password")
-	t.Setenv("TEST_AUTH_SECRET", "a-test-session-secret-with-32-characters")
-	t.Setenv("TEST_AUTH_SECURE", "true")
+	setLocalPasswordEnvironment(t)
 
-	configuration, err := Load(path)
+	configuration, err := LoadAPI(path)
 	if err != nil {
-		t.Fatalf("Load() returned an error: %v", err)
+		t.Fatalf("LoadAPI() returned an error: %v", err)
 	}
 	if !configuration.Auth.Enabled || configuration.Auth.Username != "admin" || configuration.Auth.SessionTTL != 4*time.Hour || !configuration.Auth.CookieSecure {
 		t.Fatalf("Auth = %#v", configuration.Auth)
@@ -111,21 +104,8 @@ auth:
 }
 
 func TestAuthenticationConfigurationValidation(t *testing.T) {
-	valid := func() fileConfig {
-		var raw fileConfig
-		raw.Auth.EnabledEnvironmentVariable = "TEST_AUTH_ENABLED"
-		raw.Auth.UsernameEnvironmentVariable = "TEST_AUTH_USERNAME"
-		raw.Auth.PasswordEnvironmentVariable = "TEST_AUTH_PASSWORD"
-		raw.Auth.SessionSecretEnvironmentVariable = "TEST_AUTH_SECRET"
-		raw.Auth.CookieSecureEnvironmentVariable = "TEST_AUTH_SECURE"
-		return raw
-	}
-	t.Setenv("TEST_AUTH_ENABLED", "true")
-	t.Setenv("TEST_AUTH_USERNAME", "admin")
-	t.Setenv("TEST_AUTH_PASSWORD", "a-long-test-password")
-	t.Setenv("TEST_AUTH_SECRET", "a-test-session-secret-with-32-characters")
-	t.Setenv("TEST_AUTH_SECURE", "true")
-	if _, err := parseAuthConfig(valid()); err != nil {
+	setLocalPasswordEnvironment(t)
+	if _, err := parseAuthConfig(fileConfig{}, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -134,22 +114,24 @@ func TestAuthenticationConfigurationValidation(t *testing.T) {
 		env   string
 		value string
 	}{
-		{name: "enabled flag", env: "TEST_AUTH_ENABLED", value: "sometimes"},
-		{name: "username", env: "TEST_AUTH_USERNAME", value: ""},
-		{name: "password", env: "TEST_AUTH_PASSWORD", value: "short"},
-		{name: "session secret", env: "TEST_AUTH_SECRET", value: "short"},
-		{name: "secure flag", env: "TEST_AUTH_SECURE", value: "sometimes"},
+		{name: "enabled flag", env: envAuthEnabled, value: "sometimes"},
+		{name: "username", env: envAdminUsername, value: ""},
+		{name: "password", env: envAdminPassword, value: "short"},
+		{name: "example password", env: envAdminPassword, value: "replace-with-at-least-12-characters"},
+		{name: "session secret", env: envSessionSecret, value: "short"},
+		{name: "example session secret", env: envSessionSecret, value: "replace-with-at-least-32-random-characters"},
+		{name: "secure flag", env: envCookieSecure, value: "sometimes"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv(test.env, test.value)
-			if _, err := parseAuthConfig(valid()); err == nil {
+			if _, err := parseAuthConfig(fileConfig{}, false); err == nil {
 				t.Fatal("invalid authentication configuration accepted")
 			}
 		})
 	}
 
-	t.Setenv("TEST_AUTH_ENABLED", "false")
-	disabled, err := parseAuthConfig(valid())
+	t.Setenv(envAuthEnabled, "false")
+	disabled, err := parseAuthConfig(fileConfig{}, false)
 	if err != nil || disabled.Enabled {
 		t.Fatalf("disabled auth=%#v err=%v", disabled, err)
 	}
@@ -188,20 +170,18 @@ engine:
 func TestParseDatabaseConfigValidation(t *testing.T) {
 	valid := func() fileConfig {
 		var raw fileConfig
-		raw.Database.URLEnvironmentVariable = "TEST_DATABASE_URL"
 		raw.Database.ConnectTimeout = "1s"
 		raw.Database.MaxConnections = 2
 		raw.Database.MinConnections = 1
 		raw.Database.MaxConnectionLifetime = "1m"
 		return raw
 	}
-	t.Setenv("TEST_DATABASE_URL", "postgres://localhost/database")
+	t.Setenv(envDatabaseURL, "postgres://localhost/database")
 
 	tests := []struct {
 		name   string
 		mutate func(*fileConfig)
 	}{
-		{name: "environment variable name", mutate: func(raw *fileConfig) { raw.Database.URLEnvironmentVariable = "" }},
 		{name: "connect timeout", mutate: func(raw *fileConfig) { raw.Database.ConnectTimeout = "" }},
 		{name: "connection lifetime", mutate: func(raw *fileConfig) { raw.Database.MaxConnectionLifetime = "bad" }},
 		{name: "max connections", mutate: func(raw *fileConfig) { raw.Database.MaxConnections = 0 }},
@@ -218,18 +198,19 @@ func TestParseDatabaseConfigValidation(t *testing.T) {
 		})
 	}
 
-	t.Setenv("TEST_DATABASE_URL", "")
+	t.Setenv(envDatabaseURL, "")
 	if _, err := parseDatabaseConfig(valid()); err == nil {
 		t.Fatal("parseDatabaseConfig() accepted an empty database URL")
 	}
 }
 
 func TestParseEngineConfigValidationAndDefaults(t *testing.T) {
+	t.Setenv(envEngineWorkerID, "")
 	configuration, err := parseEngineConfig(fileConfig{})
 	if err != nil {
 		t.Fatalf("parseEngineConfig() returned an error: %v", err)
 	}
-	if configuration.HealthAddress != ":8081" || configuration.MaxAttempts != 3 || configuration.WorkerIDEnvironmentVariable != "ENGINE_WORKER_ID" {
+	if configuration.HealthAddress != ":8081" || configuration.MaxAttempts != 3 || !strings.Contains(configuration.WorkerID, "-") {
 		t.Fatalf("default engine config = %#v", configuration)
 	}
 
@@ -253,10 +234,21 @@ func TestParseEngineConfigValidationAndDefaults(t *testing.T) {
 	}
 }
 
-func TestParseAIConfigDefaultsProfilesAndValidation(t *testing.T) {
-	configuration, err := parseAIConfig(fileConfig{})
-	if err != nil || configuration.AgentHealthAddress != ":8083" || configuration.AIGatewayAddress != ":8084" || configuration.DecisionTimeout != 2*time.Minute || configuration.CapabilitySecret == "" {
-		t.Fatalf("AI=%#v err=%v", configuration, err)
+func TestEngineWorkerIDUsesEnvironmentOrHost(t *testing.T) {
+	t.Setenv(envEngineWorkerID, " configured-worker ")
+	if id := workerID(); id != "configured-worker" {
+		t.Fatalf("workerID() = %q, want configured-worker", id)
+	}
+	t.Setenv(envEngineWorkerID, "")
+	if id := workerID(); !strings.Contains(id, "-") {
+		t.Fatalf("workerID() fallback = %q, want hostname-pid", id)
+	}
+}
+
+func TestParseModelsDefaultsProfilesAndValidation(t *testing.T) {
+	configuration, err := parseModels(fileConfig{}, false)
+	if err != nil || configuration.Environment != "local" || configuration.DecisionTimeout != 2*time.Minute {
+		t.Fatalf("Models=%#v err=%v", configuration, err)
 	}
 	valid := func() fileConfig {
 		var raw fileConfig
@@ -265,7 +257,7 @@ func TestParseAIConfigDefaultsProfilesAndValidation(t *testing.T) {
 		raw.AI.Profiles = []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", MaxSteps: 3, MaxOutputTokens: 100}}
 		return raw
 	}
-	if parsed, err := parseAIConfig(valid()); err != nil || len(parsed.Profiles) != 1 {
+	if parsed, err := parseModels(valid(), false); err != nil || len(parsed.Profiles) != 1 {
 		t.Fatal(err)
 	}
 	for _, mutate := range []func(*fileConfig){func(raw *fileConfig) { raw.AI.Environment = "remote" }, func(raw *fileConfig) { raw.AI.DecisionTimeout = "bad" }, func(raw *fileConfig) { raw.AI.Profiles[0].MaxSteps = 0 }, func(raw *fileConfig) { raw.AI.Profiles[0].MaxOutputTokens = 0 }, func(raw *fileConfig) { raw.AI.Profiles = append(raw.AI.Profiles, raw.AI.Profiles[0]) }, func(raw *fileConfig) {
@@ -278,71 +270,149 @@ func TestParseAIConfigDefaultsProfilesAndValidation(t *testing.T) {
 	}} {
 		raw := valid()
 		mutate(&raw)
-		if _, err := parseAIConfig(raw); err == nil {
-			t.Fatal("invalid AI config accepted")
+		if _, err := parseModels(raw, false); err == nil {
+			t.Fatal("invalid model configuration accepted")
 		}
 	}
 }
 
-func TestParseAIConfigAcceptsLegacyGatewayAddressKey(t *testing.T) {
+func TestAIGatewayAddressAcceptsLegacyKey(t *testing.T) {
 	for _, tc := range []struct{ current, legacy, want string }{
 		{"", "", ":8084"},
 		{":9000", "", ":9000"},
 		{"", ":9001", ":9001"},
 		{":9002", ":9002", ":9002"},
 	} {
-		var raw fileConfig
-		raw.AI.AIGatewayAddress, raw.AI.LegacyMCPAddress = tc.current, tc.legacy
-		parsed, err := parseAIConfig(raw)
-		if err != nil || parsed.AIGatewayAddress != tc.want {
-			t.Fatalf("aiGatewayAddress=%q mcpAddress=%q: got %q, %v; want %q", tc.current, tc.legacy, parsed.AIGatewayAddress, err, tc.want)
+		address, err := aiGatewayAddress(tc.current, tc.legacy)
+		if err != nil || address != tc.want {
+			t.Fatalf("aiGatewayAddress=%q mcpAddress=%q: got %q, %v; want %q", tc.current, tc.legacy, address, err, tc.want)
 		}
 	}
-	var raw fileConfig
-	raw.AI.AIGatewayAddress, raw.AI.LegacyMCPAddress = ":9000", ":9001"
-	if _, err := parseAIConfig(raw); err == nil {
+	if _, err := aiGatewayAddress(":9000", ":9001"); err == nil {
 		t.Fatal("conflicting gateway address keys accepted")
 	}
 }
 
-func TestLoadAgentAndAIGatewayRequireClusterCapability(t *testing.T) {
-	path := writeEngineConfigFile(t, `ai:
-  environment: cluster
-  capabilitySecretEnvironmentVariable: TEST_CAPABILITY_SECRET
-`)
-	t.Setenv("BATTLEFIELD_AGENT_SECRET", "")
-	t.Setenv("TEST_CAPABILITY_SECRET", "")
+func TestLoadAgentAndAIGatewayRequireSecrets(t *testing.T) {
+	path := writeEngineConfigFile(t, "ai:\n  environment: cluster\n")
+	t.Setenv(envAgentSecret, "")
+	t.Setenv(envCapabilitySecret, "")
 	if _, err := LoadAgent(path); err == nil {
 		t.Fatal("agent accepted missing secret")
 	}
 	if _, err := LoadAIGateway(path); err == nil {
 		t.Fatal("AI gateway accepted missing secret")
 	}
-	t.Setenv("BATTLEFIELD_AGENT_SECRET", strings.Repeat("w", 32))
-	t.Setenv("TEST_CAPABILITY_SECRET", "secret")
-	if _, err := LoadAgent(path); err != nil {
-		t.Fatal(err)
+	t.Setenv(envAgentSecret, strings.Repeat("w", 32))
+	t.Setenv(envCapabilitySecret, "secret")
+	agentConfig, err := LoadAgent(path)
+	if err != nil || agentConfig.Agent.Secret != strings.Repeat("w", 32) {
+		t.Fatalf("agent=%#v err=%v", agentConfig.Agent, err)
 	}
 	if _, err := LoadAIGateway(path); err == nil {
 		t.Fatal("AI gateway accepted a short capability secret")
 	}
-	t.Setenv("TEST_CAPABILITY_SECRET", strings.Repeat("m", 32))
-	if _, err := LoadAIGateway(path); err != nil {
-		t.Fatal(err)
+	t.Setenv(envCapabilitySecret, strings.Repeat("m", 32))
+	gateway, err := LoadAIGateway(path)
+	if err != nil || gateway.Gateway.CapabilitySecret != strings.Repeat("m", 32) || gateway.Gateway.Address != ":8084" {
+		t.Fatalf("gateway=%#v err=%v", gateway.Gateway, err)
 	}
 }
 
-func TestLoadAIGatewayRejectsLocalDevelopmentCapabilitySecret(t *testing.T) {
-	path := writeEngineConfigFile(t, `ai:
-  environment: local
-  capabilitySecretEnvironmentVariable: TEST_CAPABILITY_SECRET
-`)
-	t.Setenv("BATTLEFIELD_AGENT_SECRET", strings.Repeat("w", 32))
-	for _, secret := range []string{"", localDevelopmentCapabilitySecret} {
-		t.Setenv("TEST_CAPABILITY_SECRET", secret)
+func TestLoadAIGatewayRejectsExampleAndSharedSecrets(t *testing.T) {
+	path := writeEngineConfigFile(t, "ai:\n  environment: local\n")
+	for _, tc := range []struct{ agent, capability string }{
+		{strings.Repeat("w", 32), ""},
+		{strings.Repeat("w", 32), "replace-with-at-least-32-random-characters"},
+		{strings.Repeat("w", 32), retiredPublicSecret},
+		{"replace-with-at-least-32-random-characters", strings.Repeat("m", 32)},
+		{strings.Repeat("s", 32), strings.Repeat("s", 32)},
+	} {
+		t.Setenv(envAgentSecret, tc.agent)
+		t.Setenv(envCapabilitySecret, tc.capability)
 		if _, err := LoadAIGateway(path); err == nil {
-			t.Fatalf("AI gateway accepted capability secret %q", secret)
+			t.Fatalf("AI gateway accepted agent=%q capability=%q", tc.agent, tc.capability)
 		}
+	}
+}
+
+func TestEveryLoaderRejectsUnknownRuntimeEnvironment(t *testing.T) {
+	apiPath := writeConfigFile(t, validHTTP)
+	enginePath := writeEngineConfigFile(t, "")
+	t.Setenv(envAgentSecret, strings.Repeat("w", 32))
+	t.Setenv(envCapabilitySecret, strings.Repeat("m", 32))
+	loaders := map[string]func() error{
+		"api":     func() error { _, err := LoadAPI(apiPath); return err },
+		"engine":  func() error { _, err := LoadEngine(enginePath); return err },
+		"agent":   func() error { _, err := LoadAgent(enginePath); return err },
+		"gateway": func() error { _, err := LoadAIGateway(enginePath); return err },
+	}
+	for name, load := range loaders {
+		t.Setenv(envRuntime, "dev")
+		if err := load(); err != nil {
+			t.Fatalf("%s rejected dev: %v", name, err)
+		}
+		for _, value := range []string{"prod", "Production", "staging"} {
+			t.Setenv(envRuntime, value)
+			if err := load(); err == nil || !strings.Contains(err.Error(), envRuntime) {
+				t.Fatalf("%s accepted %s=%q (err=%v)", name, envRuntime, value, err)
+			}
+		}
+	}
+}
+
+func TestRuntimeProduction(t *testing.T) {
+	for value, want := range map[string]bool{"": false, "dev": false, "production": true, " production ": true} {
+		t.Setenv(envRuntime, value)
+		if got, err := runtimeProduction(); err != nil || got != want {
+			t.Fatalf("%q: production=%t err=%v, want %t", value, got, err, want)
+		}
+	}
+}
+
+func TestLegacyVariableKeysMustNameTheFixedVariable(t *testing.T) {
+	if _, err := LoadEngine(writeEngineConfigFile(t, "engine:\n  workerIdEnvironmentVariable: ENGINE_WORKER_ID\n")); err != nil {
+		t.Fatalf("matching legacy key rejected: %v", err)
+	}
+	for _, yaml := range []string{
+		"engine:\n  workerIdEnvironmentVariable: OTHER_WORKER_ID\n",
+		"resultCache:\n  urlEnvironmentVariable: OTHER_REDIS_URL\n",
+		"auth:\n  sessionSecretEnvironmentVariable: OTHER_SECRET\n",
+		"ai:\n  capabilitySecretEnvironmentVariable: OTHER_CAPABILITY\n",
+	} {
+		_, err := LoadEngine(writeEngineConfigFile(t, yaml))
+		if err == nil || !strings.Contains(err.Error(), "no longer configurable") {
+			t.Fatalf("legacy key accepted: %q (err=%v)", yaml, err)
+		}
+	}
+	var raw fileConfig
+	raw.Database.URLEnvironmentVariable = "TEST_DATABASE_URL"
+	if err := checkLegacyVariableKeys(raw); err == nil {
+		t.Fatal("renamed database URL variable accepted")
+	}
+}
+
+func TestLoadersParseOnlyTheirOwnSections(t *testing.T) {
+	// An agent-only setting must not stop the engine or the gateway from starting.
+	path := writeEngineConfigFile(t, "ai:\n  agentConcurrency: 9\n")
+	t.Setenv(envAgentSecret, strings.Repeat("w", 32))
+	t.Setenv(envCapabilitySecret, strings.Repeat("m", 32))
+	if _, err := LoadEngine(path); err != nil {
+		t.Fatalf("engine rejected an agent setting: %v", err)
+	}
+	if _, err := LoadAIGateway(path); err != nil {
+		t.Fatalf("gateway rejected an agent setting: %v", err)
+	}
+	if _, err := LoadAgent(path); err == nil {
+		t.Fatal("agent accepted an invalid concurrency")
+	}
+}
+
+func TestLoadAPIAttributesResultCacheErrorsToTheFile(t *testing.T) {
+	path := writeConfigFile(t, validHTTP+"resultCache:\n  ttl: 0s\n")
+	_, err := LoadAPI(path)
+	if err == nil || !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "resultCache.ttl") {
+		t.Fatalf("error %v does not name the file and field", err)
 	}
 }
 
@@ -359,18 +429,37 @@ func TestDecodeRejectsMultipleDocumentsAndMissingFile(t *testing.T) {
 	}
 }
 
-func writeConfigFile(t *testing.T, contents string) string {
-	if _, ok := os.LookupEnv("BATTLEFIELD_AUTH_ENABLED"); !ok {
-		t.Setenv("BATTLEFIELD_AUTH_ENABLED", "false")
-	}
-	if _, ok := os.LookupEnv("BATTLEFIELD_AGENT_SECRET"); !ok {
-		t.Setenv("BATTLEFIELD_AGENT_SECRET", strings.Repeat("w", 32))
-	}
+const validHTTP = "http:\n  address: \":8080\"\n  readHeaderTimeout: 1s\n  readTimeout: 2s\n  writeTimeout: 2s\n  idleTimeout: 30s\n  shutdownTimeout: 1s\n"
+
+func setLocalPasswordEnvironment(t *testing.T) {
 	t.Helper()
-	t.Setenv("TEST_DATABASE_URL", "postgres://battlefield:secret@localhost:5432/battlefield")
+	t.Setenv(envAuthMode, "")
+	t.Setenv(envAuthEnabled, "true")
+	t.Setenv(envAdminUsername, "admin")
+	t.Setenv(envAdminPassword, "a-long-test-password")
+	t.Setenv(envSessionSecret, "a-test-session-secret-with-32-characters")
+	t.Setenv(envCookieSecure, "true")
+}
+
+// clearSharedEnvironment keeps a developer's or CI runner's settings out of the tests.
+func clearSharedEnvironment(t *testing.T) {
+	t.Helper()
+	t.Setenv(envRuntime, "")
+	t.Setenv(envAuthMode, "")
+	t.Setenv(envDatabaseURL, "postgres://battlefield:secret@localhost:5432/battlefield")
+}
+
+func writeConfigFile(t *testing.T, contents string) string {
+	t.Helper()
+	clearSharedEnvironment(t)
+	if _, ok := os.LookupEnv(envAuthEnabled); !ok {
+		t.Setenv(envAuthEnabled, "false")
+	}
+	if _, ok := os.LookupEnv(envAgentSecret); !ok {
+		t.Setenv(envAgentSecret, strings.Repeat("w", 32))
+	}
 	contents += `
 database:
-  urlEnvironmentVariable: TEST_DATABASE_URL
   connectTimeout: 5s
   maxConnections: 10
   minConnections: 1
@@ -386,10 +475,9 @@ database:
 
 func writeEngineConfigFile(t *testing.T, contents string) string {
 	t.Helper()
-	t.Setenv("TEST_DATABASE_URL", "postgres://battlefield:secret@localhost:5432/battlefield")
+	clearSharedEnvironment(t)
 	contents += `
 database:
-  urlEnvironmentVariable: TEST_DATABASE_URL
   connectTimeout: 5s
   maxConnections: 10
   minConnections: 1
@@ -403,25 +491,25 @@ database:
 }
 
 func TestBackgroundGenerationConfiguration(t *testing.T) {
-	const base = "http:\n  address: \":8080\"\n  readHeaderTimeout: 1s\n  readTimeout: 2s\n  writeTimeout: 2s\n  idleTimeout: 30s\n  shutdownTimeout: 1s\n"
-	c, err := Load(writeConfigFile(t, base))
+	const base = validHTTP
+	c, err := LoadAPI(writeConfigFile(t, base))
 	if err != nil {
 		t.Fatal(err)
 	}
-	g := c.AI.BackgroundGeneration
+	g := c.Generation
 	if !g.Enabled || g.ProfileID != "codex-subscription-local" || g.DailyAllowance != 10 || g.Cooldown != 30*time.Second || g.QueueTimeout != 5*time.Minute || g.ExecutionTimeout != 2*time.Minute {
 		t.Fatal(g)
 	}
-	c, err = Load(writeConfigFile(t, base+"ai:\n  backgroundGeneration:\n    enabled: false\n    profileId: custom-writer\n    dailyAllowance: 7\n    cooldown: 45s\n    queueTimeout: 3m\n    executionTimeout: 1m\n"))
+	c, err = LoadAPI(writeConfigFile(t, base+"ai:\n  backgroundGeneration:\n    enabled: false\n    profileId: custom-writer\n    dailyAllowance: 7\n    cooldown: 45s\n    queueTimeout: 3m\n    executionTimeout: 1m\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	g = c.AI.BackgroundGeneration
+	g = c.Generation
 	if g.Enabled || g.ProfileID != "custom-writer" || g.DailyAllowance != 7 || g.Cooldown != 45*time.Second || g.QueueTimeout != 3*time.Minute || g.ExecutionTimeout != time.Minute {
 		t.Fatal(g)
 	}
 	for _, field := range []string{"dailyAllowance: 0", "cooldown: 0s", "cooldown: nonsense", "queueTimeout: -1s", "executionTimeout: nonsense"} {
-		if _, err := Load(writeConfigFile(t, base+"ai:\n  backgroundGeneration:\n    "+field+"\n")); err == nil {
+		if _, err := LoadAPI(writeConfigFile(t, base+"ai:\n  backgroundGeneration:\n    "+field+"\n")); err == nil {
 			t.Fatal("invalid generation config accepted", field)
 		}
 	}
@@ -440,7 +528,6 @@ func TestAgentConcurrencyConfiguration(t *testing.T) {
 		{"too many", "ai: {agentConcurrency: 5}", 0, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("BATTLEFIELD_AGENT_SECRET", strings.Repeat("a", 32))
 			cfg, err := LoadAgent(writeConfigFile(t, tc.yaml))
 			if tc.invalid {
 				if err == nil {
@@ -448,9 +535,66 @@ func TestAgentConcurrencyConfiguration(t *testing.T) {
 				}
 				return
 			}
-			if err != nil || cfg.AI.AgentConcurrency != tc.want {
-				t.Fatalf("concurrency=%d error=%v", cfg.AI.AgentConcurrency, err)
+			if err != nil || cfg.Agent.Concurrency != tc.want {
+				t.Fatalf("concurrency=%d error=%v", cfg.Agent.Concurrency, err)
 			}
 		})
+	}
+}
+
+const retiredPathsHTTP = `http:
+  address: ":9000"
+  readHeaderTimeout: 2s
+  readTimeout: 3s
+  writeTimeout: 4s
+  idleTimeout: 30s
+  shutdownTimeout: 5s
+`
+
+func TestRetiredCatalogPathsAcceptOnlyOlderImageLocations(t *testing.T) {
+	accepted := writeConfigFile(t, retiredPathsHTTP+`
+api:
+  scenarioCatalogPath: /app/scenarios
+  rulesetCatalogPath: " /app/rulesets "
+`)
+	if _, err := LoadAPI(accepted); err != nil {
+		t.Fatalf("older image catalog paths rejected: %v", err)
+	}
+	for _, body := range []string{"api:\n  scenarioCatalogPath: scenarios\n", "api:\n  rulesetCatalogPath: /data/rulesets\n"} {
+		if _, err := LoadAPI(writeConfigFile(t, retiredPathsHTTP+body)); err == nil || !strings.Contains(err.Error(), "is retired") {
+			t.Fatalf("catalog path %q accepted: %v", body, err)
+		}
+	}
+}
+
+// TestBaseConfigMapKeepsRolledBackImagesWorking loads the cluster ConfigMap through the
+// current loader and requires the catalog paths that pre-embedding images need after
+// an image-only rollback.
+func TestBaseConfigMapKeepsRolledBackImagesWorking(t *testing.T) {
+	manifest, err := os.ReadFile(filepath.Join("..", "..", "..", "infra", "deploy", "base", "infrastructure", "configmap.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var configMap struct {
+		Data map[string]string `yaml:"data"`
+	}
+	if err := yaml.Unmarshal(manifest, &configMap); err != nil {
+		t.Fatal(err)
+	}
+	// decode is the strict decoder every binary uses, so this also proves current
+	// images accept the ConfigMap.
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(configMap.Data["config.yaml"]), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := decode(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw.API.ScenarioCatalogPath != "/app/scenarios" || raw.API.RulesetCatalogPath != "/app/rulesets" {
+		t.Fatalf("rollback catalog paths = %q, %q", raw.API.ScenarioCatalogPath, raw.API.RulesetCatalogPath)
+	}
+	if err := errors.Join(checkLegacyVariableKeys(raw), checkRetiredCatalogPaths(raw)); err != nil {
+		t.Fatal(err)
 	}
 }

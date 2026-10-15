@@ -66,3 +66,15 @@ func TestValidatePlanProposalBoundsObservableRationale(t *testing.T) {
 		t.Fatalf("oversized rationale error = %v", err)
 	}
 }
+
+func TestDuplicateListsNameTheirField(t *testing.T) {
+	for field, plan := range map[string]PlanProposal{
+		"upgrade orders":         {Name: "p", UpgradeOrders: []string{"arsenal", "arsenal"}},
+		"recruitment priorities": {Name: "p", RecruitmentPriorities: []string{"ranger", ""}},
+	} {
+		err := ValidatePlanProposal(plan, []string{"attack"})
+		if !errors.Is(err, ErrInvalidPlan) || !strings.Contains(err.Error(), field+" must be unique") || strings.Contains(err.Error(), "recruitment") != (field == "recruitment priorities") {
+			t.Fatalf("%s: error = %v", field, err)
+		}
+	}
+}

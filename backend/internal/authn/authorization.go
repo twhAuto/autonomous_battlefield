@@ -78,15 +78,27 @@ func BrowserProtection(origin string, next http.Handler) http.Handler {
 	})
 }
 
+// Permission is the access level a route requires.
+type Permission string
+
+const (
+	// PermissionPlay admits players and anyone who can inspect.
+	PermissionPlay Permission = "play"
+	// PermissionInspect admits developers and administrators.
+	PermissionInspect Permission = "inspect"
+	// PermissionAdmin admits administrators only.
+	PermissionAdmin Permission = "admin"
+)
+
 // Permit checks a registered route. An unassigned permission always denies access.
-func Permit(permission string, next http.HandlerFunc) http.HandlerFunc {
+func Permit(permission Permission, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		a, ok := ActorFromContext(r.Context())
 		if !ok {
 			apierror.Write(w, r, 401, "authentication required")
 			return
 		}
-		allowed := (permission == "play" && (a.Role == Player || a.CanInspect())) || (permission == "inspect" && a.CanInspect()) || (permission == "admin" && a.Role == Admin)
+		allowed := (permission == PermissionPlay && (a.Role == Player || a.CanInspect())) || (permission == PermissionInspect && a.CanInspect()) || (permission == PermissionAdmin && a.Role == Admin)
 		if !allowed {
 			apierror.Write(w, r, 403, permissionDeniedMessage)
 			return
@@ -95,50 +107,117 @@ func Permit(permission string, next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// routePermissions is the complete public API permission registry. RoutePolicy denies
-// any /v1 route not listed here, and the OpenAPI contract test checks the published
-// specification against it, so the two cannot drift apart.
-var routePermissions = []struct {
-	permission string
-	patterns   []string
-}{
-	{permission: "play", patterns: []string{"GET /v1/factions", "GET /v1/faction-rulesets", "GET /v1/factions/{id}/name", "POST /v1/factions", "PUT /v1/factions/{id}", "DELETE /v1/factions/{id}", "GET /v1/scenarios", "GET /v1/model-profiles", "POST /v1/battles", "GET /v1/battles", "GET /v1/battles/{id}", "POST /v1/battles/{id}/stop", "POST /v1/battles/{id}/pause", "POST /v1/battles/{id}/resume", "GET /v1/battles/{id}/factions/{factionId}/view", "GET /v1/battles/{id}/events", "GET /v1/faction-background-generations/options", "POST /v1/faction-background-generations", "GET /v1/faction-background-generations/{id}"}},
-	{permission: "inspect", patterns: []string{"GET /v1/battles/{id}/decisions", "GET /v1/battles/{id}/decisions/{requestId}/context"}},
-	{permission: "admin", patterns: []string{"GET /v1/admin/model-access", "PUT /v1/admin/model-access", "GET /v1/admin/members", "POST /v1/admin/members", "DELETE /v1/admin/members/{id}", "POST /v1/admin/members/retry"}},
+// routeRule is one public API route and every access decision made about it.
+type routeRule struct {
+	// pattern is "METHOD /path" as registered on the router.
+	pattern string
+	// permission is required by RoutePolicy. Identity routes leave it empty: they
+	// establish or describe identity, so RoutePolicy passes their paths through.
+	permission Permission
+	// public routes are served without authentication.
+	public bool
+	// ci routes are the only ones the CI service identity may call. CI matches the
+	// exact method and path, so these patterns must not contain wildcards.
+	ci bool
 }
 
-// authenticationRoutes bypass RoutePolicy: they establish or describe identity.
-var authenticationRoutes = []string{"GET /v1/auth/session", "POST /v1/auth/login", "POST /v1/auth/logout"}
+// routeRules is the complete public API access policy. RoutePolicy denies any /v1
+// route not listed here, RequireAuthentication admits only the public ones without
+// an identity, and the OpenAPI contract test checks the published specification
+// against it, so the policy cannot drift between those places.
+var routeRules = []routeRule{
+	{pattern: "GET /v1/auth/session", public: true, ci: true},
+	{pattern: "POST /v1/auth/login", public: true},
+	{pattern: "POST /v1/auth/logout"},
 
-// PublicAPIRoutes lists every "METHOD /path" pattern the public API serves: the
-// permission registry plus the authentication routes that bypass it.
+	{pattern: "GET /v1/factions", permission: PermissionPlay},
+	{pattern: "GET /v1/faction-rulesets", permission: PermissionPlay},
+	{pattern: "POST /v1/factions", permission: PermissionPlay},
+	{pattern: "PUT /v1/factions/{id}", permission: PermissionPlay},
+	{pattern: "DELETE /v1/factions/{id}", permission: PermissionPlay},
+	{pattern: "GET /v1/scenarios", permission: PermissionPlay, ci: true},
+	{pattern: "GET /v1/model-profiles", permission: PermissionPlay},
+	{pattern: "POST /v1/battles", permission: PermissionPlay},
+	{pattern: "GET /v1/battles", permission: PermissionPlay},
+	{pattern: "GET /v1/battles/{id}", permission: PermissionPlay},
+	{pattern: "POST /v1/battles/{id}/stop", permission: PermissionPlay},
+	{pattern: "POST /v1/battles/{id}/pause", permission: PermissionPlay},
+	{pattern: "POST /v1/battles/{id}/resume", permission: PermissionPlay},
+	{pattern: "GET /v1/battles/{id}/factions/{factionId}/view", permission: PermissionPlay},
+	{pattern: "GET /v1/battles/{id}/events", permission: PermissionPlay},
+	{pattern: "GET /v1/faction-background-generations/options", permission: PermissionPlay},
+	{pattern: "POST /v1/faction-background-generations", permission: PermissionPlay},
+	{pattern: "GET /v1/faction-background-generations/{id}", permission: PermissionPlay},
+
+	{pattern: "GET /v1/battles/{id}/decisions", permission: PermissionInspect},
+	{pattern: "GET /v1/battles/{id}/decisions/{requestId}/context", permission: PermissionInspect},
+
+	{pattern: "GET /v1/admin/model-access", permission: PermissionAdmin},
+	{pattern: "PUT /v1/admin/model-access", permission: PermissionAdmin},
+	{pattern: "GET /v1/admin/members", permission: PermissionAdmin},
+	{pattern: "POST /v1/admin/members", permission: PermissionAdmin},
+	{pattern: "DELETE /v1/admin/members/{id}", permission: PermissionAdmin},
+	{pattern: "POST /v1/admin/members/retry", permission: PermissionAdmin},
+}
+
+// PublicAPIRoutes lists every "METHOD /path" pattern the public API serves.
 func PublicAPIRoutes() []string {
-	routes := append([]string{}, authenticationRoutes...)
-	for _, group := range routePermissions {
-		routes = append(routes, group.patterns...)
+	routes := make([]string, 0, len(routeRules))
+	for _, rule := range routeRules {
+		routes = append(routes, rule.pattern)
 	}
 	return routes
 }
 
-// RoutePolicy is the complete public API permission registry. Unregistered routes deny.
+// rulePaths returns the paths of the rules selected by keep. Identity and public
+// routes are matched by path for every method, so another method on the same path
+// reaches the handler and receives its method-not-allowed response.
+func rulePaths(keep func(routeRule) bool) map[string]bool {
+	paths := map[string]bool{}
+	for _, rule := range routeRules {
+		if keep(rule) {
+			_, path, _ := strings.Cut(rule.pattern, " ")
+			paths[path] = true
+		}
+	}
+	return paths
+}
+
+func rulePatterns(keep func(routeRule) bool) map[string]bool {
+	patterns := map[string]bool{}
+	for _, rule := range routeRules {
+		if keep(rule) {
+			patterns[rule.pattern] = true
+		}
+	}
+	return patterns
+}
+
+var (
+	publicPaths   = rulePaths(func(rule routeRule) bool { return rule.public })
+	identityPaths = rulePaths(func(rule routeRule) bool { return rule.permission == "" })
+	ciPatterns    = rulePatterns(func(rule routeRule) bool { return rule.ci })
+)
+
+// RoutePolicy enforces routeRules. Unregistered /v1 routes deny.
 func RoutePolicy(next http.Handler) http.Handler {
 	mux := http.NewServeMux()
-	for _, group := range routePermissions {
-		for _, pattern := range group.patterns {
-			mux.HandleFunc(pattern, Permit(group.permission, next.ServeHTTP))
+	for _, rule := range routeRules {
+		if rule.permission != "" {
+			mux.HandleFunc(rule.pattern, Permit(rule.permission, next.ServeHTTP))
 		}
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { apierror.Write(w, r, 403, permissionDeniedMessage) })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if actor, ok := ActorFromContext(r.Context()); ok && actor.Role == CI {
-			if r.Method == http.MethodGet && (r.URL.Path == "/v1/auth/session" || r.URL.Path == "/v1/scenarios") {
+			if ciPatterns[r.Method+" "+r.URL.Path] {
 				next.ServeHTTP(w, r)
 			} else {
 				apierror.Write(w, r, http.StatusForbidden, permissionDeniedMessage)
 			}
 			return
 		}
-		if r.URL.Path == "/v1/auth/login" || r.URL.Path == "/v1/auth/session" || r.URL.Path == "/v1/auth/logout" || !strings.HasPrefix(r.URL.Path, "/v1/") {
+		if identityPaths[r.URL.Path] || !strings.HasPrefix(r.URL.Path, "/v1/") {
 			next.ServeHTTP(w, r)
 			return
 		}

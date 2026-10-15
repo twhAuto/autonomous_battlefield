@@ -3,11 +3,12 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
 )
 
 type unitDetailsInput struct {
@@ -18,14 +19,14 @@ type unitDetailsInput struct {
 
 func (s *Server) getUnitDetails(ctx context.Context, _ *mcp.CallToolRequest, input unitDetailsInput) (*mcp.CallToolResult, any, error) {
 	if err := authorizedRequestID(ctx, input.RequestID); err != nil {
-		return nil, ai.UnitDetailsResponse{}, err
+		return nil, agentview.UnitDetailsResponse{}, err
 	}
 	s.logger.InfoContext(ctx, "unit_details_requested", "request_id", input.RequestID)
 	observation, err := s.decisions.GetContext(ctx, input.RequestID)
 	if err != nil {
-		return nil, ai.UnitDetailsResponse{}, err
+		return nil, agentview.UnitDetailsResponse{}, err
 	}
-	value, err := ai.LookupUnitDetailsPage(observation, input.UnitIDs, input.GuidanceOffset)
+	value, err := agentview.LookupUnitDetailsPage(observation, input.UnitIDs, input.GuidanceOffset)
 	if err != nil {
 		return nil, value, err
 	}

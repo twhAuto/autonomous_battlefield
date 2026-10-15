@@ -12,7 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/twh09/autonomous_battlefield/backend/internal/telemetry"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -30,7 +33,7 @@ const (
 
 type Server struct {
 	generations    generation.WorkerRepository
-	decisions      *ai.DecisionService
+	decisions      *decision.Service
 	secret         string
 	agentSecret    string
 	allowedOrigins map[string]bool
@@ -50,25 +53,35 @@ func NewWithLogger(repository ai.DecisionRepository, secret string, origins []st
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Server{decisions: ai.NewDecisionService(repository), secret: secret, allowedOrigins: allowed, wakeups: newDecisionWakeups(), logger: logger}
+	return &Server{decisions: decision.NewService(repository), secret: secret, allowedOrigins: allowed, wakeups: newDecisionWakeups(), logger: logger}
 }
 
 func (s *Server) Handler() http.Handler {
 	transport := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s.mcpServer() }, &mcp.StreamableHTTPOptions{
 		Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 64 << 10, PropagateRequestCancellation: true,
 	})
+	return s.capabilityHandler(false, transport)
+}
+
+// capabilityHandler is the only authentication path for the model-facing MCP endpoints.
+// It checks the origin and the capability token, then scopes the request to the
+// token's request ID. Battle and generation tokens are signed with the same secret,
+// so each endpoint accepts only its own kind: generation IDs carry
+// generationLeasePrefix, which is stripped before the tools see the ID.
+func (s *Server) capabilityHandler(generationScope bool, transport http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin := strings.TrimSpace(r.Header.Get("Origin")); origin != "" && !s.allowedOrigins[origin] {
 			http.Error(w, "origin not allowed", http.StatusForbidden)
 			return
 		}
-		authorization := strings.TrimSpace(r.Header.Get("Authorization"))
-		if !strings.HasPrefix(authorization, bearerPrefix) {
+		token, ok := strings.CutPrefix(strings.TrimSpace(r.Header.Get("Authorization")), bearerPrefix)
+		if !ok {
 			http.Error(w, "missing capability", http.StatusUnauthorized)
 			return
 		}
-		requestID, err := ai.VerifyCapability(s.secret, strings.TrimSpace(strings.TrimPrefix(authorization, bearerPrefix)), time.Now())
-		if err != nil {
+		requestID, err := capability.Verify(s.secret, strings.TrimSpace(token), time.Now())
+		requestID, isGeneration := strings.CutPrefix(requestID, generationLeasePrefix)
+		if err != nil || isGeneration != generationScope {
 			http.Error(w, "invalid capability", http.StatusUnauthorized)
 			return
 		}
@@ -133,7 +146,7 @@ func (s *Server) getDecisionContext(ctx context.Context, _ *mcp.CallToolRequest,
 		return nil, getContextOutput{}, err
 	}
 	recordContextSize(ctx, value)
-	payload, err := json.Marshal(getContextOutput{Context: ai.AgentObservation(value)})
+	payload, err := json.Marshal(getContextOutput{Context: agentview.Observation(value)})
 	if err != nil {
 		return nil, getContextOutput{}, err
 	}
@@ -169,6 +182,6 @@ func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest,
 			slog.String("decision_status", result.Status), slog.Int("validation_error_count", len(result.Errors)))
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("battlefield.submission.accepted", result.Accepted))
-	telemetry.AIOutcome(trace.SpanFromContext(ctx), err != nil || !result.Accepted, "submission_rejected")
+	tracing.AIOutcome(trace.SpanFromContext(ctx), err != nil || !result.Accepted, "submission_rejected")
 	return nil, result, err
 }

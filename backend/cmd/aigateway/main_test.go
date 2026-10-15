@@ -8,6 +8,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,8 +17,8 @@ import (
 )
 
 func TestRunRejectsInvalidDatabaseConnection(t *testing.T) {
-	configuration := config.Config{Database: config.Database{URL: "://bad", ConnectTimeout: time.Millisecond, MaxConnections: 1}, AI: config.AI{CapabilitySecret: "secret", AIGatewayAddress: ":8084"}}
-	if err := run(configuration); err == nil {
+	configuration := config.AIGatewayConfig{Database: config.Database{URL: "://bad", ConnectTimeout: time.Millisecond, MaxConnections: 1}, Gateway: config.Gateway{CapabilitySecret: "secret", Address: ":8084"}}
+	if err := run(context.Background(), configuration); err == nil {
 		t.Fatal("invalid database accepted")
 	}
 }
@@ -43,5 +45,29 @@ func TestReadinessFollowsDatabaseAvailability(t *testing.T) {
 				t.Fatalf("status = %d, want %d", recorder.Code, tc.want)
 			}
 		})
+	}
+}
+
+func TestRunReportsTracingConfigurationErrors(t *testing.T) {
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
+	t.Setenv("OTEL_TRACES_SAMPLER_ARG", "2")
+	if err := run(context.Background(), config.AIGatewayConfig{}); err == nil || !strings.Contains(err.Error(), "configure tracing") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestRunServesUntilCancelled(t *testing.T) {
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	configuration := config.AIGatewayConfig{
+		Database: config.Database{URL: url, MaxConnections: 2, ConnectTimeout: 5 * time.Second},
+		Gateway:  config.Gateway{CapabilitySecret: strings.Repeat("c", 32), AgentSecret: strings.Repeat("a", 32), Address: "127.0.0.1:0"},
+	}
+	if err := run(ctx, configuration); err != nil {
+		t.Fatalf("gateway stopped with %v, want a clean shutdown", err)
 	}
 }

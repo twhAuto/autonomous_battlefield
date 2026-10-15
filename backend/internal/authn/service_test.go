@@ -118,7 +118,7 @@ func TestCIReadOnlyRouteBoundary(t *testing.T) {
 			}
 		})
 	}
-	for _, permission := range []string{"play", "inspect", "admin", "unknown"} {
+	for _, permission := range []Permission{PermissionPlay, PermissionInspect, PermissionAdmin, "unknown"} {
 		response := httptest.NewRecorder()
 		req := httptest.NewRequest("GET", "/", nil).WithContext(WithActor(context.Background(), actor))
 		Permit(permission, next).ServeHTTP(response, req)

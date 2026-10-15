@@ -2,14 +2,11 @@
 package catalog
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
+	"io/fs"
+	"path"
 	"sort"
 	"strings"
 	"time"
@@ -21,6 +18,13 @@ import (
 )
 
 var ErrInvalidScenario = errors.New("invalid scenario")
+
+// Directories within a catalog file system.
+const (
+	contentDirectory  = "content"
+	rulesetDirectory  = "rulesets"
+	scenarioDirectory = "scenarios"
+)
 
 type Catalog struct {
 	templates map[string]template
@@ -42,33 +46,29 @@ type template struct {
 	ScriptedPlans         []controller.PlanProposal `yaml:"scriptedPlans"`
 }
 
-// LoadCatalog loads scenarios and rulesets. Without the optional path, the
-// rulesets directory beside the scenario directory is used.
-func LoadCatalog(scenarioDirectory string, rulesetDirectory ...string) (*Catalog, error) {
-	rulesPath := filepath.Join(filepath.Dir(scenarioDirectory), "rulesets")
-	if len(rulesetDirectory) > 0 {
-		rulesPath = rulesetDirectory[0]
-	}
-	rulesets, err := loadRulesets(rulesPath)
+// LoadCatalog loads the scenarios, rulesets and content libraries in fsys, laid out
+// as scenarios/, rulesets/ and content/ like the embedded gamedata.Files.
+func LoadCatalog(fsys fs.FS) (*Catalog, error) {
+	rulesets, err := loadRulesets(fsys)
 	if err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(scenarioDirectory)
+	entries, err := fs.ReadDir(fsys, scenarioDirectory)
 	if err != nil {
-		return nil, fmt.Errorf("read scenario directory %q: %w", scenarioDirectory, err)
+		return nil, fmt.Errorf("read scenario directory: %w", err)
 	}
 	catalog := &Catalog{templates: make(map[string]template), rulesets: rulesets}
 	for _, entry := range entries {
 		if entry.IsDir() || !isYAML(entry.Name()) {
 			continue
 		}
-		path := filepath.Join(scenarioDirectory, entry.Name())
+		file := path.Join(scenarioDirectory, entry.Name())
 		var value template
-		if err := decodeOne(path, &value); err != nil {
+		if err := decodeOne(fsys, file, &value); err != nil {
 			return nil, err
 		}
 		if err := validateTemplate(value, rulesets); err != nil {
-			return nil, fmt.Errorf("%w: scenario %q: %v", ErrInvalidScenario, path, err)
+			return nil, fmt.Errorf("%w: scenario %q: %v", ErrInvalidScenario, file, err)
 		}
 		if _, exists := catalog.templates[value.ID]; exists {
 			return nil, fmt.Errorf("%w: duplicate scenario ID %q", ErrInvalidScenario, value.ID)
@@ -76,7 +76,7 @@ func LoadCatalog(scenarioDirectory string, rulesetDirectory ...string) (*Catalog
 		catalog.templates[value.ID] = value
 	}
 	if len(catalog.templates) == 0 {
-		return nil, fmt.Errorf("%w: directory %q contains no YAML scenarios", ErrInvalidScenario, scenarioDirectory)
+		return nil, fmt.Errorf("%w: %s contains no YAML scenarios", ErrInvalidScenario, scenarioDirectory)
 	}
 	return catalog, nil
 }
@@ -94,6 +94,7 @@ func (c *Catalog) Summaries() []battleservice.ScenarioSummary {
 	result := make([]battleservice.ScenarioSummary, 0, len(c.templates))
 	for _, id := range c.IDs() {
 		value := c.templates[id]
+		// validateTemplate already restricted every loaded template successfully.
 		restricted, _ := restrictRuleset(c.rulesets[value.RulesetID], value)
 		result = append(result, battleservice.ScenarioSummary{AllowedUnits: unitIDs(restricted), AllowedUpgrades: upgradeIDs(restricted), AllowedBuildings: buildingIDs(restricted), ID: value.ID, RulesVersion: value.RulesVersion, RulesetID: value.RulesetID, MaximumTicks: value.MaximumTicks, TickDuration: value.TickDuration, DecisionIntervalTicks: value.DecisionIntervalTicks, MapWidth: value.Map.Width, MapHeight: value.Map.Height})
 	}
@@ -118,54 +119,52 @@ func (c *Catalog) Ruleset(id string) (game.Ruleset, bool) {
 	return cloneRuleset(value), ok
 }
 
-func (c *Catalog) Resolve(id string, identities [2]battleservice.FactionIdentity) (game.Scenario, string, error) {
+// Resolve assembles a validated scenario for two factions. The battle service attaches
+// controllers and computes the battle's digest with battleservice.ScenarioDigest.
+func (c *Catalog) Resolve(id string, identities [2]battleservice.FactionIdentity) (game.Scenario, error) {
 	tmpl, ok := c.templates[id]
 	if !ok {
-		return game.Scenario{}, "", fmt.Errorf("%w: %q", battleservice.ErrScenarioNotFound, id)
+		return game.Scenario{}, fmt.Errorf("%w: %q", battleservice.ErrScenarioNotFound, id)
 	}
 	ruleset, err := restrictRuleset(c.rulesets[tmpl.RulesetID], tmpl)
 	if err != nil {
-		return game.Scenario{}, "", err
+		return game.Scenario{}, err
 	}
 	factions := make([]game.FactionSetup, 2)
 	for index, identity := range identities {
 
 		factions[index] = game.FactionSetup{ID: identity.ID, Name: identity.Name, Doctrine: identity.Doctrine, Background: identity.Background, FallbackPlan: controller.ClonePlanProposal(tmpl.FallbackPlan), ScriptedPlans: controller.ClonePlanProposals(tmpl.ScriptedPlans)}
 	}
+	// validateTemplateTiming already parsed every loaded template's duration.
 	duration, _ := time.ParseDuration(tmpl.TickDuration)
 	resolved := game.Scenario{SnapshotVersion: game.DoctrineSnapshotVersion, ID: tmpl.ID, RulesVersion: tmpl.RulesVersion, RulesetID: tmpl.RulesetID, MaximumTicks: tmpl.MaximumTicks, TickDuration: duration, DecisionIntervalTicks: tmpl.DecisionIntervalTicks, Map: game.CloneMap(tmpl.Map), Ruleset: cloneRuleset(ruleset), Factions: factions}
 	if _, err := game.NewMatch("scenario-validation", resolved, 1); err != nil {
-		return game.Scenario{}, "", fmt.Errorf("%w: scenario %q: %v", ErrInvalidScenario, id, err)
+		return game.Scenario{}, fmt.Errorf("%w: scenario %q: %v", ErrInvalidScenario, id, err)
 	}
-	payload, err := json.Marshal(resolved)
-	if err != nil {
-		return game.Scenario{}, "", fmt.Errorf("marshal resolved scenario %q: %w", id, err)
-	}
-	digest := sha256.Sum256(payload)
-	return resolved, hex.EncodeToString(digest[:]), nil
+	return resolved, nil
 }
 
-func loadRulesets(directory string) (map[string]game.Ruleset, error) {
-	entries, err := os.ReadDir(directory)
+func loadRulesets(fsys fs.FS) (map[string]game.Ruleset, error) {
+	entries, err := fs.ReadDir(fsys, rulesetDirectory)
 	if err != nil {
-		return nil, fmt.Errorf("read ruleset directory %q: %w", directory, err)
+		return nil, fmt.Errorf("read ruleset directory: %w", err)
 	}
 	result := make(map[string]game.Ruleset)
 	for _, entry := range entries {
 		if entry.IsDir() || !isYAML(entry.Name()) {
 			continue
 		}
-		path := filepath.Join(directory, entry.Name())
+		file := path.Join(rulesetDirectory, entry.Name())
 		var source rulesetFile
-		if err := decodeOne(path, &source); err != nil {
+		if err := decodeOne(fsys, file, &source); err != nil {
 			return nil, err
 		}
-		value, err := resolveLibrary(directory, source)
+		value, err := resolveLibrary(fsys, source)
 		if err != nil {
-			return nil, fmt.Errorf("ruleset %q: %w", path, err)
+			return nil, fmt.Errorf("ruleset %q: %w", file, err)
 		}
 		if err := game.ValidateRuleset(value); err != nil {
-			return nil, fmt.Errorf("ruleset %q: %w", path, err)
+			return nil, fmt.Errorf("ruleset %q: %w", file, err)
 		}
 		if _, exists := result[value.ID]; exists {
 			return nil, fmt.Errorf("duplicate ruleset ID %q", value.ID)
@@ -173,7 +172,7 @@ func loadRulesets(directory string) (map[string]game.Ruleset, error) {
 		result[value.ID] = value
 	}
 	if len(result) == 0 {
-		return nil, fmt.Errorf("directory %q contains no YAML rulesets", directory)
+		return nil, fmt.Errorf("%s contains no YAML rulesets", rulesetDirectory)
 	}
 	return result, nil
 }
@@ -182,10 +181,16 @@ func validateTemplate(value template, rulesets map[string]game.Ruleset) error {
 	if strings.TrimSpace(value.ID) == "" || strings.TrimSpace(value.RulesVersion) == "" || strings.TrimSpace(value.RulesetID) == "" {
 		return errors.New("ID, rules version, and ruleset ID are required")
 	}
-	if _, ok := rulesets[value.RulesetID]; !ok {
+	ruleset, ok := rulesets[value.RulesetID]
+	if !ok {
 		return fmt.Errorf("unknown ruleset %q", value.RulesetID)
 	}
-	restricted, err := restrictRuleset(rulesets[value.RulesetID], value)
+	// Battles and the API report the scenario's rules version, so it must name the
+	// version of the ruleset it actually uses.
+	if value.RulesVersion != ruleset.Version {
+		return fmt.Errorf("rules version %q does not match ruleset %q version %q", value.RulesVersion, value.RulesetID, ruleset.Version)
+	}
+	restricted, err := restrictRuleset(ruleset, value)
 	if err != nil {
 		return err
 	}
@@ -209,29 +214,30 @@ func validateTemplate(value template, rulesets map[string]game.Ruleset) error {
 	return nil
 }
 
-func decodeOne(path string, destination any) error {
-	file, err := os.Open(path)
+// decodeOne strictly decodes the single YAML document at name in fsys.
+func decodeOne(fsys fs.FS, name string, destination any) error {
+	file, err := fsys.Open(name)
 	if err != nil {
-		return fmt.Errorf("open catalog file %q: %w", path, err)
+		return fmt.Errorf("open catalog file %q: %w", name, err)
 	}
 	defer file.Close()
 	decoder := yaml.NewDecoder(file)
 	decoder.KnownFields(true)
 	if err := decoder.Decode(destination); err != nil {
-		return fmt.Errorf("decode catalog file %q: %w", path, err)
+		return fmt.Errorf("decode catalog file %q: %w", name, err)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return fmt.Errorf("catalog file %q must contain one YAML document", path)
+			return fmt.Errorf("catalog file %q must contain one YAML document", name)
 		}
-		return fmt.Errorf("decode trailing catalog content %q: %w", path, err)
+		return fmt.Errorf("decode trailing catalog content %q: %w", name, err)
 	}
 	return nil
 }
 
 func isYAML(name string) bool {
-	extension := strings.ToLower(filepath.Ext(name))
+	extension := strings.ToLower(path.Ext(name))
 	return extension == ".yaml" || extension == ".yml"
 }
 

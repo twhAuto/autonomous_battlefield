@@ -1,36 +1,60 @@
-// Loads shared configuration and coordinates process-specific validation.
+// Loads each backend binary's configuration from one strict YAML file and the
+// environment. Every loader returns only the sections its binary uses, so a binary can
+// neither read a section it never parsed nor fail on settings that belong to another.
 package config
 
 import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/authn"
+	"github.com/twh09/autonomous_battlefield/backend/internal/generation"
 	"go.yaml.in/yaml/v3"
 )
 
-type Config struct {
+// APIConfig configures the API server.
+type APIConfig struct {
 	HTTP        HTTPServer
 	Database    Database
 	API         API
 	Auth        authn.Config
 	ResultCache ResultCache
-	Engine      Engine
-	AI          AI
+	Models      Models
+	Generation  generation.Config
+	Members     Members
+}
+
+// EngineConfig configures the battle engine.
+type EngineConfig struct {
+	Database        Database
+	Engine          Engine
+	DecisionTimeout time.Duration
+}
+
+// AgentConfig configures the outbound model agent.
+type AgentConfig struct {
+	// Production requires Linux process isolation for CLI credentials.
+	Production bool
+	Models     Models
+	Agent      Agent
+}
+
+// AIGatewayConfig configures the AI gateway.
+type AIGatewayConfig struct {
+	Database Database
+	Gateway  Gateway
 }
 
 type API struct {
-	ScenarioCatalogPath string
-	RulesetCatalogPath  string
-	MaxTicks            uint64
+	MaxTicks uint64
 }
 
+// fileConfig mirrors the YAML file. The *EnvironmentVariable keys are retired: they may
+// only repeat the fixed variable name (see checkLegacyVariableKeys).
 type fileConfig struct {
 	ResultCache struct {
 		URLEnvironmentVariable string `yaml:"urlEnvironmentVariable"`
@@ -53,6 +77,7 @@ type fileConfig struct {
 		MaxConnectionLifetime  string `yaml:"maxConnectionLifetime"`
 	} `yaml:"database"`
 	API struct {
+		// Retired: game content is embedded (see checkRetiredCatalogPaths).
 		ScenarioCatalogPath string `yaml:"scenarioCatalogPath"`
 		RulesetCatalogPath  string `yaml:"rulesetCatalogPath"`
 		MaxTicks            uint64 `yaml:"maxTicks"`
@@ -102,121 +127,91 @@ type fileConfig struct {
 	} `yaml:"ai"`
 }
 
-func Load(path string) (Config, error) {
-	return LoadAPI(path)
+func LoadAPI(path string) (APIConfig, error) {
+	return load(path, func(raw fileConfig, production bool) (c APIConfig, err error) {
+		if c.HTTP, err = parseHTTPConfig(raw); err != nil {
+			return c, err
+		}
+		if c.Database, err = parseDatabaseConfig(raw); err != nil {
+			return c, err
+		}
+		if c.API, err = parseAPIConfig(raw); err != nil {
+			return c, err
+		}
+		if c.Auth, err = parseAuthConfig(raw, production); err != nil {
+			return c, err
+		}
+		if c.ResultCache, err = parseResultCacheConfig(raw); err != nil {
+			return c, err
+		}
+		if c.Models, err = parseModels(raw, production); err != nil {
+			return c, err
+		}
+		if c.Members, err = parseMembersConfig(c.Auth); err != nil {
+			return c, err
+		}
+		c.Generation, err = parseBackgroundGeneration(raw)
+		return c, err
+	})
 }
 
-func LoadAPI(path string) (Config, error) {
+func LoadEngine(path string) (EngineConfig, error) {
+	return load(path, func(raw fileConfig, _ bool) (c EngineConfig, err error) {
+		if c.Database, err = parseDatabaseConfig(raw); err != nil {
+			return c, err
+		}
+		if c.Engine, err = parseEngineConfig(raw); err != nil {
+			return c, err
+		}
+		c.DecisionTimeout, err = parseDecisionTimeout(raw)
+		return c, err
+	})
+}
+
+func LoadAgent(path string) (AgentConfig, error) {
+	return load(path, func(raw fileConfig, production bool) (c AgentConfig, err error) {
+		c.Production = production
+		if c.Models, err = parseModels(raw, production); err != nil {
+			return c, err
+		}
+		c.Agent, err = parseAgent(raw)
+		return c, err
+	})
+}
+
+func LoadAIGateway(path string) (AIGatewayConfig, error) {
+	return load(path, func(raw fileConfig, _ bool) (c AIGatewayConfig, err error) {
+		if c.Database, err = parseDatabaseConfig(raw); err != nil {
+			return c, err
+		}
+		c.Gateway, err = parseGateway(raw)
+		return c, err
+	})
+}
+
+// load decodes the file, validates what every binary shares, and attributes any
+// validation error to the file.
+func load[T any](path string, parse func(raw fileConfig, production bool) (T, error)) (T, error) {
+	var zero T
 	raw, err := decode(path)
 	if err != nil {
-		return Config{}, err
+		return zero, err
 	}
-
-	httpConfig, err := parseHTTPConfig(raw)
+	production, err := runtimeProduction()
+	if err == nil {
+		err = checkLegacyVariableKeys(raw)
+	}
+	if err == nil {
+		err = checkRetiredCatalogPaths(raw)
+	}
 	if err != nil {
-		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
+		return zero, fmt.Errorf("validate config file %q: %w", path, err)
 	}
-	databaseConfig, err := parseDatabaseConfig(raw)
+	configuration, err := parse(raw, production)
 	if err != nil {
-		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
+		return zero, fmt.Errorf("validate config file %q: %w", path, err)
 	}
-	apiConfig, err := parseAPIConfig(raw, path)
-	if err != nil {
-		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
-	}
-	authConfig, err := parseAuthConfig(raw)
-	if err != nil {
-		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
-	}
-	aiConfig, err := parseAIConfig(raw)
-	if err != nil {
-		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
-	}
-	cache, err := parseResultCacheConfig(raw)
-	if err != nil {
-		return Config{}, err
-	}
-	return Config{ResultCache: cache, HTTP: httpConfig, Database: databaseConfig, API: apiConfig, Auth: authConfig, AI: aiConfig}, nil
-}
-
-func environmentVariableName(configured, fallback string) string {
-	if name := strings.TrimSpace(configured); name != "" {
-		return name
-	}
-	return fallback
-}
-
-func parseBooleanEnvironmentVariable(name string, defaultValue bool) (bool, error) {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return defaultValue, nil
-	}
-	parsed, err := strconv.ParseBool(value)
-	if err != nil {
-		return false, fmt.Errorf("environment variable %q must be true or false", name)
-	}
-	return parsed, nil
-}
-
-func LoadEngine(path string) (Config, error) {
-	raw, err := decode(path)
-	if err != nil {
-		return Config{}, err
-	}
-	databaseConfig, err := parseDatabaseConfig(raw)
-	if err != nil {
-		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
-	}
-	engineConfig, err := parseEngineConfig(raw)
-	if err != nil {
-		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
-	}
-	aiConfig, err := parseAIConfig(raw)
-	if err != nil {
-		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
-	}
-	return Config{Database: databaseConfig, Engine: engineConfig, AI: aiConfig}, nil
-}
-
-func LoadAgent(path string) (Config, error) {
-	raw, err := decode(path)
-	if err != nil {
-		return Config{}, err
-	}
-	aiConfig, err := parseAIConfig(raw)
-	if err != nil {
-		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
-	}
-	aiConfig.AgentSecret = os.Getenv("BATTLEFIELD_AGENT_SECRET")
-	if len(aiConfig.AgentSecret) < 32 {
-		return Config{}, fmt.Errorf("agent secret must contain at least 32 bytes")
-	}
-	aiConfig.CapabilitySecret = ""
-
-	return Config{AI: aiConfig}, nil
-}
-
-func LoadAIGateway(path string) (Config, error) {
-	raw, err := decode(path)
-	if err != nil {
-		return Config{}, err
-	}
-	databaseConfig, err := parseDatabaseConfig(raw)
-	if err != nil {
-		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
-	}
-	aiConfig, err := parseAIConfig(raw)
-	if err != nil {
-		return Config{}, fmt.Errorf("validate config file %q: %w", path, err)
-	}
-	if len(aiConfig.CapabilitySecret) < 32 || aiConfig.CapabilitySecret == localDevelopmentCapabilitySecret {
-		return Config{}, fmt.Errorf("capability secret environment variable %q must contain an independent secret of at least 32 bytes", aiConfig.CapabilitySecretEnv)
-	}
-	aiConfig.AgentSecret = os.Getenv("BATTLEFIELD_AGENT_SECRET")
-	if len(aiConfig.AgentSecret) < 32 || aiConfig.AgentSecret == aiConfig.CapabilitySecret {
-		return Config{}, fmt.Errorf("the AI gateway requires a distinct agent secret of at least 32 bytes")
-	}
-	return Config{Database: databaseConfig, AI: aiConfig}, nil
+	return configuration, nil
 }
 
 func stringOrDefault(value, fallback string) string {
@@ -250,21 +245,28 @@ func decode(path string) (fileConfig, error) {
 	return raw, nil
 }
 
-func parseAPIConfig(raw fileConfig, path string) (API, error) {
-	catalogPath := strings.TrimSpace(raw.API.ScenarioCatalogPath)
-	if catalogPath == "" {
-		catalogPath = "scenarios"
+// retiredCatalogPaths are the only accepted values of the retired catalog path keys:
+// where images built before game content was embedded keep it. The base ConfigMap
+// keeps them so an image-only rollback to such an image still finds its content,
+// since those images resolve a missing path beside /etc/battlefield/config.yaml.
+var retiredCatalogPaths = []struct{ field, fixed string }{
+	{"api.scenarioCatalogPath", "/app/scenarios"},
+	{"api.rulesetCatalogPath", "/app/rulesets"},
+}
+
+// checkRetiredCatalogPaths rejects any other value, which current binaries would
+// silently ignore.
+func checkRetiredCatalogPaths(raw fileConfig) error {
+	for i, value := range []string{raw.API.ScenarioCatalogPath, raw.API.RulesetCatalogPath} {
+		key := retiredCatalogPaths[i]
+		if value := strings.TrimSpace(value); value != "" && value != key.fixed {
+			return fmt.Errorf("%s is retired because game content is embedded; remove it (older images use only %s)", key.field, key.fixed)
+		}
 	}
-	if !filepath.IsAbs(catalogPath) {
-		catalogPath = filepath.Join(filepath.Dir(path), catalogPath)
-	}
-	rulesetPath := strings.TrimSpace(raw.API.RulesetCatalogPath)
-	if rulesetPath == "" {
-		rulesetPath = "rulesets"
-	}
-	if !filepath.IsAbs(rulesetPath) {
-		rulesetPath = filepath.Join(filepath.Dir(path), rulesetPath)
-	}
+	return nil
+}
+
+func parseAPIConfig(raw fileConfig) (API, error) {
 	maxTicks := raw.API.MaxTicks
 	if maxTicks == 0 {
 		maxTicks = 10_000
@@ -272,10 +274,10 @@ func parseAPIConfig(raw fileConfig, path string) (API, error) {
 	if maxTicks > 10_000 {
 		return API{}, fmt.Errorf("api.maxTicks must not exceed 10000")
 	}
-	return API{ScenarioCatalogPath: catalogPath, RulesetCatalogPath: rulesetPath, MaxTicks: maxTicks}, nil
+	return API{MaxTicks: maxTicks}, nil
 }
 
-func parseOptionalDuration(field, value string, fallback time.Duration, allowZero bool) (time.Duration, error) {
+func parseOptionalDuration(field, value string, fallback time.Duration) (time.Duration, error) {
 	if strings.TrimSpace(value) == "" {
 		return fallback, nil
 	}
@@ -283,7 +285,7 @@ func parseOptionalDuration(field, value string, fallback time.Duration, allowZer
 	if err != nil {
 		return 0, fmt.Errorf("%s must be a valid duration: %w", field, err)
 	}
-	if duration < 0 || (!allowZero && duration == 0) {
+	if duration <= 0 {
 		return 0, fmt.Errorf("%s must be greater than zero", field)
 	}
 	return duration, nil

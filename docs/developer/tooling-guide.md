@@ -54,7 +54,11 @@ repository defaults, policy reference validation, and source-URL normalization.
 checks publishing and admission rendering with stub external commands.
 [`scripts/test/test-registry-verification.sh`](../../scripts/test/test-registry-verification.sh)
 exercises publication and deployment signature checks, including Cosign 3 bundle
-summaries without annotations, retained legacy revisions, and rejected evidence. The Vite
+summaries without annotations, retained legacy revisions, and rejected evidence. [`scripts/test/test-base-image-pins.py`](../../scripts/test/test-base-image-pins.py)
+requires every Dockerfile base image to be pinned by digest under a
+`# Base image: name:tag` comment; the
+[supply-chain runbook](../operations/supply-chain-runbook.md#base-image-pins) covers
+refreshing them. The Vite
 configuration and `frontend/vite.config.test.ts` cover development proxy overrides.
 
 Local launchers live under `scripts/dev` and `scripts/cd`; invoke those paths directly. `infra/deploy/` owns Kubernetes configuration; `infra/aws/` provisions cloud resources.
@@ -73,9 +77,13 @@ Tests are colocated with their Go or React implementation. The codebase includes
 - HTTP contract/status tests;
 - React component and typed API-client tests.
 
-`backend/internal/testutil.Require` shares fatal assertion checks while evaluating
-diagnostics only on failure. Larger balance, opening, and generation tests use
-named scenario helpers to keep setup, execution, and assertions readable.
+Go tests assert with plain `if` statements and `t.Fatal`. SonarQube's cognitive
+complexity rule (go:S3776, limit 15) applies to test code too, so a long test is
+split into named `check…` helpers with `t.Helper()` rather than hiding branches in
+an assertion wrapper. Run
+`go run github.com/uudashr/gocognit/cmd/gocognit@latest -over 15 .` in `backend/`
+before pushing. Larger balance, opening, and generation tests use named scenario
+helpers to keep setup, execution, and assertions readable.
 Ruleset and plan validation, recruitment, healing routes, and agent claims have
 separate helpers for their individual validation or execution phases; their
 owning packages and runtime contracts remain the same.
@@ -84,9 +92,9 @@ Battle inspector regions use labelled sections, and asynchronous loading message
 use native `output` elements. Component tests verify the resulting accessibility
 roles rather than requiring redundant explicit role attributes.
 
-Package-specific PostgreSQL integration tests remain beside their adapters and require `TEST_DATABASE_URL`; the isolated PostgreSQL harness supplies it. `scripts/test` contains reusable test runners and deployment script tests. Invoke the canonical runners in `scripts/test/` directly; `scripts/ci/` owns build, analysis and assurance commands. `scripts/test/test-kind-deployment.sh` checks selected-overlay staging, preservation of registered auth paths across child preflight checks, auth-only Secret inputs, collector configuration with Langfuse enabled and disabled, real Kustomize renders, and rollout failure handling. It loads the deployment environment helpers with explicit Langfuse overrides so overlay tests do not query a live cluster. `scripts/test/test-security-launchers.sh` checks scanner artifact paths, failure propagation, and the shared Trivy pin using scanner stubs. `scripts/lib/access_service.py` validates private CI credentials, destination binding and expiry; `scripts/ops/verify-access-service.py` verifies private denial and public service authentication without redirects. `scripts/test/test-access-service.py` tests those boundaries, and `test-runtime-assurance.sh` exercises service credential mounting and k6 requests. Performance scenarios and SQL fixtures live in `tests/performance`; their launchers live in `scripts/perf`. AI cases remain in `backend/evals`. Application browser tests already live in `frontend/e2e`, with deterministic API fixtures and desktop/mobile Chromium projects.
+Package-specific PostgreSQL integration tests remain beside their adapters and require `TEST_DATABASE_URL`; the isolated PostgreSQL harness supplies it. `scripts/test` contains reusable test runners and deployment script tests. Invoke the canonical runners in `scripts/test/` directly; `scripts/ci/` owns build, analysis and assurance commands. `scripts/test/test-kind-deployment.sh` checks selected-overlay staging, preservation of registered auth paths across child preflight checks, auth-only Secret inputs, collector configuration with Langfuse enabled and disabled, real Kustomize renders, and rollout failure handling. It loads the deployment environment helpers with explicit Langfuse overrides so overlay tests do not query a live cluster. `scripts/test/test-security-launchers.sh` checks scanner artifact paths, failure propagation, and the shared Trivy pin using scanner stubs. `scripts/lib/access_service.py` validates private CI credentials, destination binding and expiry; `scripts/ops/verify-access-service.py` verifies private denial and public service authentication without redirects. `scripts/test/test-access-service.py` tests those boundaries, and `test-runtime-assurance.sh` exercises service credential mounting and k6 requests. Performance scenarios and SQL fixtures live in `backend/test/performance`; their launchers live in `scripts/perf`. AI cases remain in `backend/evals`. Application browser tests already live in `frontend/e2e`, with deterministic API fixtures and desktop/mobile Chromium projects.
 
-Merge-blocking gates require at least 80% Go statement coverage in aggregate across the module — one repository-wide total from `go tool cover`, not a per-package floor, so thin wiring in `cmd/*` and `internal/postgres` may sit below 80% while the module passes — and at least 80% frontend statements, branches, functions, and lines. Measure through the PostgreSQL harness; a coverage run without `TEST_DATABASE_URL` skips tests that require the database and omits the code exercised only by those tests:
+Merge-blocking gates require at least 80% Go statement coverage in aggregate across the module — one repository-wide total from `go tool cover`, not a per-package floor, so thin wiring in `cmd/*` may sit below 80% while the module passes — and at least 80% frontend statements, branches, functions, and lines. Measure through the PostgreSQL harness; a coverage run without `TEST_DATABASE_URL` skips tests that require the database and omits the code exercised only by those tests:
 
 ```bash
 ./scripts/test/with-test-postgres.sh ./scripts/test/test-backend.sh

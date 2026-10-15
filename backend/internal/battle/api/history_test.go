@@ -3,8 +3,6 @@
 package api
 
 import (
-	"github.com/twh09/autonomous_battlefield/backend/internal/testutil"
-
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -33,15 +31,25 @@ func TestListBattleHistoryHTTP(t *testing.T) {
 			NewHandler(service).RegisterRoutes(mux)
 			response := httptest.NewRecorder()
 			mux.ServeHTTP(response, httptest.NewRequest("GET", "/v1/battles"+test.query, nil))
-			testutil.Require(t, !(response.Code != test.status || service.historyInput.Limit != test.limit), func() { t.Fatalf("code=%d body=%s input=%+v", response.Code, response.Body, service.historyInput) })
-			if test.status == 200 {
-				var page battleservice.BattleHistoryPage
-				{
-					err := json.Unmarshal(response.Body.Bytes(), &page)
-					testutil.Require(t, !(err != nil || page.Battles == nil || page.NextCursor != nil), func() { t.Fatalf("body=%s err=%v", response.Body, err) })
-				}
+			if response.Code != test.status || service.historyInput.Limit != test.limit {
+				t.Fatalf("code=%d body=%s input=%+v", response.Code, response.Body, service.historyInput)
 			}
-			testutil.Require(t, !(test.name == "filter and cursor" && (service.historyInput.Status != "paused" || service.historyInput.Cursor != "abc")), func() { t.Fatal(service.historyInput) })
+			if test.status == 200 {
+				checkEmptyHistoryPage(t, response)
+			}
+			if test.name == "filter and cursor" && (service.historyInput.Status != "paused" || service.historyInput.Cursor != "abc") {
+				t.Fatal(service.historyInput)
+			}
 		})
+	}
+}
+
+// checkEmptyHistoryPage requires a last page that encodes its empty list as [] rather
+// than null.
+func checkEmptyHistoryPage(t *testing.T, response *httptest.ResponseRecorder) {
+	t.Helper()
+	var page battleservice.BattleHistoryPage
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || page.Battles == nil || page.NextCursor != nil {
+		t.Fatalf("body=%s err=%v", response.Body, err)
 	}
 }

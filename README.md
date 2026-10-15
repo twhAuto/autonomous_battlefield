@@ -22,7 +22,9 @@ Repository paths and deployment resources use the technical name
 
 The normal development environment uses Kind on Linux or WSL with Docker access.
 Install Docker, Kind, kubectl, Bash, curl, Python 3, Node.js 24 and npm.
-Go 1.26.9 or newer, matching the backend image, is required for backend development.
+Backend development requires a Go toolchain compatible with
+[`backend/go.mod`](backend/go.mod). Container builds use the version pinned in the
+[backend Dockerfile](backend/Dockerfile).
 
 From the repository root:
 
@@ -48,7 +50,7 @@ cluster registration, optional model controllers and standalone development serv
 | [`frontend/`](frontend/) | React application, component tests and browser tests |
 | [`infra/`](infra/README.md) | Deployment manifests and policies, local services, platform provisioning and auxiliary pipelines |
 | [`scripts/`](scripts/) | Development, CI, deployment, verification and operations commands |
-| [`tests/performance/`](tests/performance/) | Load scenarios and query-plan SQL fixtures; launchers are in `scripts/perf/` |
+| [`backend/test/performance/`](backend/test/performance/) | Load scenarios and query-plan SQL fixtures; launchers are in `scripts/perf/` |
 | [`docs/`](docs/README.md) | Game rules, developer guides, architecture and operations runbooks |
 
 Go and React unit tests live beside the code they exercise. The root `Jenkinsfile`

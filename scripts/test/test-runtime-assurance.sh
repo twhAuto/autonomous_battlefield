@@ -10,7 +10,7 @@ trap 'rm -rf -- "${test_dir}"' EXIT
 
 # Exercise the real launchers in an isolated workspace, including paths with spaces.
 fixture="${test_dir}/project with spaces"
-mkdir -p "${fixture}/scripts/"{perf,security,ci,lib} "${fixture}/tests/performance" "${test_dir}/bin"
+mkdir -p "${fixture}/scripts/"{perf,security,ci,lib} "${fixture}/backend/test/performance" "${test_dir}/bin"
 cp "${project_dir}/scripts/lib/access_service.py" "${fixture}/scripts/lib/"
 cp "${project_dir}/scripts/perf/run-k6.sh" "${fixture}/scripts/perf/"
 cp "${project_dir}/scripts/security/zap-baseline.sh" "${fixture}/scripts/security/"
@@ -18,7 +18,7 @@ cp "${project_dir}/scripts/ci/tool-versions.env" "${fixture}/scripts/ci/"
 cat >"${fixture}/scripts/lib/deployment-environment.sh" <<'STUB'
 battlefield_env_preflight() { :; }
 STUB
-touch "${fixture}/tests/performance/k6-smoke.js" "${fixture}/tests/performance/custom scenario.js"
+touch "${fixture}/backend/test/performance/k6-smoke.js" "${fixture}/backend/test/performance/custom scenario.js"
 
 cat >"${test_dir}/bin/docker" <<'STUB'
 #!/usr/bin/env node
@@ -54,7 +54,7 @@ if ('TARGET_URL' in env) {
     assert.ok(!('K6_STAGES' in env));
   }
   assert.ok(args.includes('--summary-export=/reports/k6-summary.json'));
-  assert.equal(args.at(-1), '/work/' + expected('EXPECTED_SCENARIO', 'tests/performance/k6-smoke.js'));
+  assert.equal(args.at(-1), '/work/' + expected('EXPECTED_SCENARIO', 'backend/test/performance/k6-smoke.js'));
   reportDir = mounts.find((m) => m.endsWith(':/reports')).slice(0, -':/reports'.length);
   assert.equal(env.SSL_CERT_FILE, '/certs/ca-bundle.crt');
   assert.ok(mounts.includes(`${fs.realpathSync(expected('K6_CA_BUNDLE', '/etc/ssl/certs/ca-certificates.crt'))}:/certs/ca-bundle.crt:ro`));
@@ -101,8 +101,8 @@ for report in json md html; do
 done
 TARGET_URL=http://custom.example:9000 K6_VUS=5 K6_DURATION=2s K6_BATTLES=1 K6_BATTLE_TICKS=90 \
   ADMIN_USERNAME=test ADMIN_PASSWORD='dummy password' \
-  EXPECTED_SCENARIO='tests/performance/custom scenario.js' \
-  bash "${fixture}/scripts/perf/run-k6.sh" 'tests/performance/custom scenario.js'
+  EXPECTED_SCENARIO='backend/test/performance/custom scenario.js' \
+  bash "${fixture}/scripts/perf/run-k6.sh" 'backend/test/performance/custom scenario.js'
 K6_STAGES=10s:5,10s:0 K6_DURATION=2s bash "${fixture}/scripts/perf/run-k6.sh"
 ZAP_TARGET_URL=http://custom.example:9000 ZAP_SPIDER_MINUTES=1 \
   bash "${fixture}/scripts/security/zap-baseline.sh"
@@ -144,7 +144,7 @@ DEPLOY_ENV=production KUBERNETES_CONTEXT=test KUBERNETES_NAMESPACE=battlefield T
 grep -q 'requires Cloudflare authentication' "${test_dir}/error"
 
 # Exercise the real k6 scenario with HTTP doubles without requiring k6 locally.
-node --input-type=module - "${project_dir}/tests/performance/k6-smoke.js" <<'JS'
+node --input-type=module - "${project_dir}/backend/test/performance/k6-smoke.js" <<'JS'
 import fs from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';

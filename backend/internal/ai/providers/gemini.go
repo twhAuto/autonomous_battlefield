@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 )
@@ -26,6 +28,7 @@ type geminiCandidate struct {
 				Name string         `json:"name"`
 				Args map[string]any `json:"args"`
 			} `json:"functionCall"`
+			ThoughtSignature string `json:"thoughtSignature"`
 		} `json:"parts"`
 	} `json:"content"`
 }
@@ -35,19 +38,19 @@ func (p *Gemini) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	if err != nil {
 		return ai.ModelTurnResult{}, err
 	}
-	transcript := modelTranscript(turn)
 	body, err := json.Marshal(map[string]any{
-		"contents":         []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": transcript}}}},
-		"tools":            []any{map[string]any{"functionDeclarations": declarations}},
-		"toolConfig":       map[string]any{"functionCallingConfig": map[string]any{"mode": "ANY"}},
-		"generationConfig": map[string]any{"maxOutputTokens": turn.MaxTokens},
+		"systemInstruction": map[string]any{"parts": []any{map[string]any{"text": turn.SystemPrompt}}},
+		"contents":          geminiContents(turn.Messages),
+		"tools":             []any{map[string]any{"functionDeclarations": declarations}},
+		"toolConfig":        map[string]any{"functionCallingConfig": map[string]any{"mode": "ANY"}},
+		"generationConfig":  map[string]any{"maxOutputTokens": turn.MaxTokens},
 	})
 	if err != nil {
 		return ai.ModelTurnResult{}, err
 	}
 	endpoint := p.Endpoint
 	if endpoint == "" {
-		endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + p.Model + ":generateContent"
+		endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + url.PathEscape(p.Model) + ":generateContent"
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
@@ -82,6 +85,64 @@ func (p *Gemini) NextTurn(ctx context.Context, turn ai.ModelTurnRequest) (ai.Mod
 	return result, err
 }
 
+// geminiContents sends the conversation as alternating user and model turns. Earlier
+// calls become functionCall parts with their thought signatures, and their results
+// become functionResponse parts grouped into the following user turn, in call order.
+func geminiContents(messages []ai.Message) []map[string]any {
+	var contents []map[string]any
+	var responses []any
+	flush := func() {
+		if len(responses) > 0 {
+			contents = append(contents, map[string]any{"role": "user", "parts": responses})
+			responses = nil
+		}
+	}
+	for _, message := range messages {
+		switch message.Role {
+		case "tool":
+			responses = append(responses, map[string]any{"functionResponse": map[string]any{"name": message.Name, "response": geminiResponse(message.Content)}})
+		case "assistant":
+			flush()
+			if parts := geminiModelParts(message); len(parts) > 0 {
+				contents = append(contents, map[string]any{"role": "model", "parts": parts})
+			}
+		default:
+			flush()
+			contents = append(contents, map[string]any{"role": "user", "parts": []any{map[string]any{"text": message.Content}}})
+		}
+	}
+	flush()
+	return contents
+}
+
+func geminiModelParts(message ai.Message) []any {
+	var parts []any
+	if strings.TrimSpace(message.Content) != "" {
+		parts = append(parts, map[string]any{"text": message.Content})
+	}
+	for _, call := range message.ToolCalls {
+		var args map[string]any
+		if json.Unmarshal(toolArguments(call), &args) != nil || args == nil {
+			args = map[string]any{}
+		}
+		part := map[string]any{"functionCall": map[string]any{"name": call.Name, "args": args}}
+		if call.Signature != "" {
+			part["thoughtSignature"] = call.Signature
+		}
+		parts = append(parts, part)
+	}
+	return parts
+}
+
+// geminiResponse wraps a tool result as the JSON object functionResponse requires.
+func geminiResponse(content string) map[string]any {
+	var object map[string]any
+	if json.Unmarshal([]byte(content), &object) == nil && object != nil {
+		return object
+	}
+	return map[string]any{"result": content}
+}
+
 func geminiToolDeclarations(tools []ai.ToolDefinition) ([]map[string]any, error) {
 	declarations := make([]map[string]any, 0, len(tools))
 	for _, tool := range tools {
@@ -107,7 +168,7 @@ func geminiResult(candidates []geminiCandidate, inputTokens, outputTokens int64)
 			result.Text += part.Text
 			if part.FunctionCall != nil {
 				arguments, _ := json.Marshal(part.FunctionCall.Args)
-				result.ToolCalls = append(result.ToolCalls, ai.ToolCall{Name: part.FunctionCall.Name, Arguments: arguments})
+				result.ToolCalls = append(result.ToolCalls, ai.ToolCall{Name: part.FunctionCall.Name, Arguments: arguments, Signature: part.ThoughtSignature})
 			}
 		}
 	}

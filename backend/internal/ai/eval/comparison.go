@@ -19,7 +19,12 @@ import (
 	"time"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/briefing"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/capability"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/mcpserver"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/prompts"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
@@ -81,7 +86,7 @@ func (r Runner) Compare(ctx context.Context, cases []Case, variants []Comparison
 	if err := options.KnowledgeRetrieval.Validate(); err != nil {
 		return ComparisonReport{}, err
 	}
-	report := ComparisonReport{SchemaVersion: "battlefield.ai-comparison.v1", PromptVersion: ai.PromptVersion, CorpusVersion: r.CorpusVersion, Options: options, Passed: true}
+	report := ComparisonReport{SchemaVersion: "battlefield.ai-comparison.v1", PromptVersion: prompts.Version, CorpusVersion: r.CorpusVersion, Options: options, Passed: true}
 	if len(cases) == 0 || len(cases) > 20 || len(variants) < 1 || len(variants) > 8 || options.Repetitions < 1 || options.Repetitions > 10 || options.MaxSteps < 1 || options.MaxSteps > 16 || options.MaxTokens < 1 || options.MaxTokens > 65536 || options.Timeout <= 0 || options.Timeout > 5*time.Minute {
 		return report, errors.New("comparison requires bounded cases, variants, repetitions, steps, tokens and timeout")
 	}
@@ -127,29 +132,39 @@ func comparisonVariantReports(variants []ComparisonVariant) ([]VariantReport, er
 func comparisonObservations(cases []Case, limits ai.KnowledgeLimits) ([]ai.DecisionContext, error) {
 	observations := make([]ai.DecisionContext, len(cases))
 	for i, c := range cases {
-		var envelope struct {
-			Context ai.DecisionContext `json:"context"`
+		observation, err := caseObservation(c, limits)
+		if err != nil {
+			return nil, err
 		}
-		if len(c.ContextJSON) > 64<<10 || json.Unmarshal([]byte(c.ContextJSON), &envelope) != nil || envelope.Context.RequestID != c.RequestID || (envelope.Context.TargetTick == 0 && !envelope.Context.Opening) || envelope.Context.ExpectedVersion != 1 || len(envelope.Context.Legal.ActionKinds) == 0 {
-			return nil, fmt.Errorf("case %s needs a complete decision context with version 1", c.ID)
-		}
-		if c.KnowledgeRuleset != nil {
-			if err := game.ValidateRuleset(*c.KnowledgeRuleset); err != nil {
-				return nil, err
-			}
-			envelope.Context.Legal.Units = append([]game.UnitType(nil), c.KnowledgeRuleset.Units...)
-			var err error
-			envelope.Context.Knowledge, err = ai.RetrieveKnowledge(*c.KnowledgeRuleset, envelope.Context, limits)
-			if err != nil {
-				return nil, err
-			}
-		}
-		if c.KnowledgeRuleset != nil {
-			envelope.Context.UnitReference = ai.FreezeUnitReference(*c.KnowledgeRuleset, envelope.Context)
-		}
-		observations[i] = envelope.Context
+		observations[i] = observation
 	}
 	return observations, nil
+}
+
+// caseObservation decodes a case's decision context and, when the case carries a
+// knowledge ruleset, adds its units, knowledge cards and frozen unit reference.
+func caseObservation(c Case, limits ai.KnowledgeLimits) (ai.DecisionContext, error) {
+	var envelope struct {
+		Context ai.DecisionContext `json:"context"`
+	}
+	if len(c.ContextJSON) > 64<<10 || json.Unmarshal([]byte(c.ContextJSON), &envelope) != nil || envelope.Context.RequestID != c.RequestID || (envelope.Context.TargetTick == 0 && !envelope.Context.Opening) || envelope.Context.ExpectedVersion != 1 || len(envelope.Context.Legal.ActionKinds) == 0 {
+		return ai.DecisionContext{}, fmt.Errorf("case %s needs a complete decision context with version 1", c.ID)
+	}
+	observation := envelope.Context
+	if c.KnowledgeRuleset == nil {
+		return observation, nil
+	}
+	if err := game.ValidateRuleset(*c.KnowledgeRuleset); err != nil {
+		return ai.DecisionContext{}, err
+	}
+	observation.Legal.Units = append([]game.UnitType(nil), c.KnowledgeRuleset.Units...)
+	knowledge, err := briefing.RetrieveKnowledge(*c.KnowledgeRuleset, observation, limits)
+	if err != nil {
+		return ai.DecisionContext{}, err
+	}
+	observation.Knowledge = knowledge
+	observation.UnitReference = agentview.FreezeUnitReference(*c.KnowledgeRuleset, observation)
+	return observation, nil
 }
 
 func (r Runner) compareRepetition(ctx context.Context, cases []Case, observations []ai.DecisionContext, variants []ComparisonVariant, report *ComparisonReport, repetition int) error {
@@ -194,7 +209,7 @@ func (r Runner) compareSample(ctx context.Context, c Case, observation ai.Decisi
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = server.Serve(listener) }()
 	defer server.Close()
-	token, _ := ai.MintCapability(secret, c.RequestID, time.Now().Add(options.Timeout+time.Second))
+	token, _ := capability.Mint(secret, c.RequestID, time.Now().Add(options.Timeout+time.Second))
 	started := time.Now()
 	result, runErr := variant.NewRunner().Run(ctx, ai.DecisionSession{Doctrine: observation.Doctrine, FactionName: observation.FactionName, Background: observation.Background, RequestID: c.RequestID, MCPURL: "http://" + listener.Addr().String(), CapabilityToken: token, Profile: ai.ModelProfile{MaxSteps: options.MaxSteps, MaxOutputTokens: options.MaxTokens}})
 	repository.mu.Lock()
@@ -204,10 +219,10 @@ func (r Runner) compareSample(ctx context.Context, c Case, observation ai.Decisi
 	if !accepted && category == "" {
 		category = "missing_submission"
 	}
-	hash, _ := ai.ObservationHash(observation)
-	entry := CaseReport{Usage: &result.Usage, ID: c.ID, Category: c.Category, Profile: variant.ID, Model: variant.Model, PromptVersion: ai.PromptVersion, ToolSchemaVersion: ai.ToolSchema, RulesVersion: c.RulesVersion, Passed: accepted && runErr == nil, Accepted: accepted, ErrorCategory: category, DurationMS: time.Since(started).Milliseconds(), InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests, ToolCalls: append([]string(nil), repository.calls...)}
+	hash, _ := decision.ObservationHash(observation)
+	entry := CaseReport{Usage: &result.Usage, ID: c.ID, Category: c.Category, Profile: variant.ID, Model: variant.Model, PromptVersion: prompts.Version, ToolSchemaVersion: ai.ToolSchema, RulesVersion: c.RulesVersion, Passed: accepted && runErr == nil, Accepted: accepted, ErrorCategory: category, DurationMS: time.Since(started).Milliseconds(), InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, Requests: result.Usage.Requests, ToolCalls: append([]string(nil), repository.calls...)}
 	entry.UnitDetailCalls = int(reads.calls.Load())
-	payload, _ := json.Marshal(map[string]any{"context": ai.AgentObservation(observation)})
+	payload, _ := json.Marshal(map[string]any{"context": agentview.Observation(observation)})
 	entry.ContextBytes = len(payload)
 	entry.Outcome = "rejected"
 	if accepted {
@@ -263,12 +278,12 @@ func (r *comparisonRepository) SubmitDecisionPlan(_ context.Context, s ai.PlanSu
 	r.record.Version++
 	return ai.SubmissionResult{Accepted: true, Status: "accepted"}, nil
 }
-func (r *comparisonRepository) RecordDecisionValidation(context.Context, string) error {
+func (r *comparisonRepository) RecordDecisionValidation(context.Context, string) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.validationFailures++
 	r.calls = append(r.calls, "submit_strategy_plan")
-	return nil
+	return r.validationFailures, nil
 }
 func (r *comparisonRepository) FinishDecisionFailure(_ context.Context, _ string, category string, _ ai.Usage, _ map[string]any) error {
 	r.mu.Lock()
