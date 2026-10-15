@@ -127,6 +127,30 @@ class VerificationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'localhost'):
             verify.verify('http://attacker.invalid:8080', ORIGIN, credentials(), ISSUER)
 
+    def test_connection_failures_retry_briefly_but_statuses_do_not(self):
+        client, requests = self.client()
+        send = client.open.side_effect
+        failures = {'/livez': 2}
+        def flaky(request, timeout):
+            if failures.get(request.selector, 0):
+                failures[request.selector] -= 1
+                raise urllib.error.URLError('connection reset')
+            return send(request, timeout)
+        client.open.side_effect = flaky
+        with patch.object(verify.urllib.request, 'build_opener', return_value=client), \
+                patch.object(verify.time, 'sleep') as sleep:
+            verify.verify('http://127.0.0.1:18081', ORIGIN, credentials(), ISSUER)
+        self.assertEqual(sleep.call_count, 2)
+        client.open.side_effect = unittest.mock.Mock(side_effect=urllib.error.URLError('down'))
+        with patch.object(verify.time, 'sleep') as sleep, \
+                self.assertRaisesRegex(ValueError, '/livez: connection or TLS verification failed'):
+            verify.check(client, ORIGIN, '/livez', (200,))
+        self.assertEqual(sleep.call_count, verify.CONNECT_ATTEMPTS - 1)
+        client.open.side_effect = lambda request, timeout: Response(503)
+        with patch.object(verify.time, 'sleep') as sleep, self.assertRaisesRegex(ValueError, 'received 503'):
+            verify.check(client, ORIGIN, '/livez', (200,))
+        sleep.assert_not_called()
+
     def test_redirect_is_not_followed(self):
         # Exercise urllib's actual redirect machinery without network I/O.
         class Redirect(urllib.request.HTTPSHandler):
