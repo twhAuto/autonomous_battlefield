@@ -15,8 +15,12 @@ for command in gh kubectl; do
 done
 : "${GH_TOKEN:?GH_TOKEN with read:packages is required}"
 
-staging="$(mktemp -d)"
-trap 'rm -rf -- "${staging}"' EXIT
+# Stage beside the report so publication is a rename on the same filesystem.
+report_parent="$(dirname -- "${report_dir}")"
+mkdir -p -- "${report_parent}"
+staging="$(mktemp -d "${report_parent}/.retention-staging.XXXXXX")"
+retired="${staging/.retention-staging./.retention-retired.}"
+trap 'rm -rf -- "${staging}" "${retired}"' EXIT
 protected_file="${staging}/protected-digests.txt"
 # Collect all inputs before publishing; failed reads must preserve the last report.
 kubectl --context "${KUBERNETES_CONTEXT:-kind-battlefield}" get deployments \
@@ -48,6 +52,15 @@ Never delete a digest listed in protected-digests.txt, a release, an incident/le
 or any subject whose signature/attestation referrers have not been inventoried.
 EOF
 
-mkdir -p "${report_dir}"
-cp -- "${staging}/protected-digests.txt" "${staging}/"*-versions.json "${report_dir}/"
-cp -- "${staging}/README.txt" "${report_dir}/README.txt"
+# Swap the complete staged directory into place: readers never see a mix of old and
+# new files, and a failed swap restores the previous report.
+if [[ -e "${report_dir}" ]]; then
+  mv -T -- "${report_dir}" "${retired}"
+fi
+if ! mv -T -- "${staging}" "${report_dir}"; then
+  if [[ -e "${retired}" ]]; then
+    mv -T -- "${retired}" "${report_dir}"
+  fi
+  echo "Could not publish the retention report; previous report preserved." >&2
+  exit 1
+fi

@@ -48,9 +48,16 @@ else:
     print('[{"id":1}]')
 ''')
             stub.chmod(0o755)
+        # Fails only the swap of the staged report into place; other moves are real.
+        mv = bin_dir / 'mv'
+        mv.write_text('#!/usr/bin/env python3\nimport os, sys\n'
+                      "if os.environ.get('FAIL_PUBLISH') and any('.retention-staging.' in arg for arg in sys.argv):\n"
+                      "    sys.exit(9)\n"
+                      "os.execv(os.environ['REAL_MV'], ['mv', *sys.argv[1:]])\n")
+        mv.chmod(0o755)
         self.env = {**os.environ, 'PATH': str(bin_dir) + os.pathsep + os.environ['PATH'],
-                    'GH_TOKEN': 'synthetic-test-token'}
-        for name in ('REPORT_DIR', 'FAIL_READ'):
+                    'GH_TOKEN': 'synthetic-test-token', 'REAL_MV': shutil.which('mv')}
+        for name in ('REPORT_DIR', 'FAIL_READ', 'FAIL_PUBLISH'):
             self.env.pop(name, None)
         self.report = self.root / 'artifacts/retention'
 
@@ -94,6 +101,31 @@ else:
                 self.env.update(FAIL_READ=failure, REPORT_DIR=str(self.report))
                 self.assertNotEqual(self.run_report().returncode, 0)
                 self.assertEqual({p.name: p.read_text() for p in self.report.iterdir()}, original)
+
+    def previous_report(self):
+        self.report.mkdir()
+        original = {'README.txt': 'Previous successful inventory\n', 'stale-notes.txt': 'old\n'}
+        for name, content in original.items():
+            (self.report / name).write_text(content)
+        return original
+
+    def test_refresh_replaces_the_whole_report_directory(self):
+        self.previous_report()
+        result = self.run_report()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(sorted(p.name for p in self.report.iterdir()),
+                         ['README.txt', 'autonomous-battlefield-backend-versions.json',
+                          'autonomous-battlefield-frontend-versions.json', 'protected-digests.txt'])
+        self.assertEqual(sorted(p.name for p in self.report.parent.iterdir()), ['deployment', 'retention'])
+
+    def test_failed_swap_restores_previous_report(self):
+        original = self.previous_report()
+        self.env['FAIL_PUBLISH'] = '1'
+        result = self.run_report()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('previous report preserved', result.stderr)
+        self.assertEqual({p.name: p.read_text() for p in self.report.iterdir()}, original)
+        self.assertEqual(sorted(p.name for p in self.report.parent.iterdir()), ['deployment', 'retention'])
 
 
 if __name__ == '__main__':
