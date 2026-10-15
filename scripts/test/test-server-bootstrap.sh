@@ -23,6 +23,8 @@ ANSIBLE_CONFIG="${project_dir}/infra/ansible/ansible.cfg" "${BATTLEFIELD_TEST_AN
   -i "${project_dir}/infra/ansible/syntax-inventory.ini" \
   "${project_dir}/infra/ansible/cli.yml" --syntax-check
 python3 "${project_dir}/scripts/test/test-cli-bootstrap.py"
+# Pinned Ansible Python, so the job/bootstrap worker environment equivalence check runs.
+"${BATTLEFIELD_TEST_ANSIBLE_BIN}/python" "${project_dir}/scripts/test/test-cli-worker.py"
 ANSIBLE_CONFIG="${project_dir}/infra/ansible/ansible.cfg" "${BATTLEFIELD_TEST_ANSIBLE_BIN}/ansible-playbook" \
   -i "${project_dir}/infra/ansible/syntax-inventory.ini" \
   "${project_dir}/infra/ansible/cli-vm.yml" --syntax-check

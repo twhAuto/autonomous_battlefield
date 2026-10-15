@@ -105,6 +105,13 @@ provide an update/rollback command; changing these registered inputs needs a
 separate reviewed workflow. Deleting ownership markers bypasses this protection
 and is unsupported.
 
+The worker's `BATTLEFIELD_AGENT_SECRET` is not taken from the Vault. Bootstrap
+substitutes the value from the host's production `.env`
+(`~/.config/autonomous-battlefield/production/.env`), read on the host and passed to
+Ansible in a private vars file. [`battlefield-platform/cli`](cli-worker.md) applies
+the same substitution and updates the ownership marker, so a secret rotation
+reaches the worker without breaking these checks.
+
 ## Install services on a fresh, already provisioned CLI VM
 
 For an existing isolated VM with no host bundle, register a new rendered bundle.
@@ -171,7 +178,8 @@ a freshly bootstrapped worker; keep its profiles disabled and the API's CLI
 availability false until a reviewed configuration-update and rollback workflow
 is available.
 
-Do not hand-edit `/etc/battlefield-agent/worker.env` or `config.yaml`: worker
+Do not hand-edit `/etc/battlefield-agent/worker.env` or `config.yaml`; use
+[`battlefield-platform/cli`](cli-worker.md) to sync the worker secret. Worker
 environment drift fails preflight, and an apply restores configuration drift from
 the registered snapshot. Re-registering with new inputs, including
 `adopt_existing: true`, cannot update an owned installation: the marker binds the

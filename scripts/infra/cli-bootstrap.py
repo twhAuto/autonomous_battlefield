@@ -24,6 +24,7 @@ def load(name, path):
 
 boundary = load('cli_boundary', ROOT / 'infra/ansible/module_utils/battlefield_cli.py')
 renderer = load('cli_renderer', ROOT / 'scripts/ops/render-agent-vm-host.py')
+PRODUCTION_ENV = '.config/autonomous-battlefield/production/.env'
 UUID = r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
 SHA = r'[0-9a-f]{64}'
 
@@ -326,6 +327,13 @@ def playbook(args, data, report, server):
             if not vault.read_bytes().startswith(b'$ANSIBLE_VAULT;'):
                 raise ValueError('Expected encrypted CLI Vault inputs')
             command += ['-e', json.dumps({'cli_vault_file': str(vault)}), *server.password_args(args.vault_password_file)]
+        if guest is not None:
+            # A private vars file keeps the secret out of argv; the directory is removed on exit.
+            secrets = Path(directory) / 'worker-secret.json'
+            fd = os.open(secrets, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            with os.fdopen(fd, 'w') as stream:
+                json.dump({'cli_worker_secret': worker_secret(args, data, config, server)}, stream)
+            command += ['-e', '@' + str(secrets)]
         if action == 'plan':
             command += ['--check', '--diff']
         if args.become_password_file:
@@ -344,6 +352,29 @@ def playbook(args, data, report, server):
                 server.run_playbook(command, lock, env)
         else:
             subprocess.run(command, env=env, check=True)
+
+
+def worker_secret(args, data, config, server):
+    """The production worker secret, read on the host; the CLI guest uses the same value."""
+    worker = load('cli_worker', ROOT / 'scripts/infra/cli-worker.py')
+    path = config['host']['home'] + '/' + PRODUCTION_ENV
+    if args.local:
+        return worker.production_worker_secret(path)
+    code = inspect.getsource(worker.production_worker_secret).replace(
+        'def production_worker_secret(path=PRODUCTION_ENV):', 'def production_worker_secret(path):') + '''
+import json, re, sys
+from pathlib import Path
+SECRET_KEY, SECRET = 'BATTLEFIELD_AGENT_SECRET', re.compile(r'[A-Za-z0-9_+/=-]{32,512}')
+PUBLISHED, RETIRED = ('replace-with-',), 'local-development-capability-secret-change-me'
+try:
+    print(production_worker_secret(json.load(sys.stdin)['path']))
+except (OSError, ValueError, KeyError):
+    print('')
+'''
+    secret = server.remote_python(data, code, json.dumps({'path': path}).encode(), False).strip()
+    if not secret:
+        raise ValueError('The host production env file has no valid BATTLEFIELD_AGENT_SECRET')
+    return secret
 
 
 def guest_ssh(data, key, local, server, known_hosts=None):
