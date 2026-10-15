@@ -222,9 +222,10 @@ extends the normal sanitized report only for fixture failures. See the
 ### Image verification and delivery
 
 `scripts/ci/generate-ai-manifest.sh` combines runtime metadata with an evaluation
-corpus digest based on contents and relative filenames, independent of checkout
-location. `scripts/test/test-ai-manifest.py` covers reproducibility and changes to
-corpus identity in the shared deployment regression gate.
+corpus digest over the Git-tracked files under `backend/evals` (contents and relative
+filenames), independent of checkout location. `scripts/test/test-ai-manifest.py`
+covers reproducibility, untracked files and changes to corpus identity in the shared
+deployment regression gate.
 
 `scripts/ci/verify-frontend-image.py` starts an isolated frontend image with the
 production filesystem/user restrictions and verifies HTTP probes, index and entry
@@ -235,9 +236,10 @@ real container. Jenkins runs this Docker-backed regression separately from the
 command-double deployment suite; see [Jenkins checks](ci.md#pull-request-verification).
 
 `scripts/ops/ghcr-retention-report.sh` collects running and rollback digests plus
-registry versions before publishing its advisory inventory. Its command-double
-regressions in `scripts/test/test-retention-report.py` cover failed collection,
-preserved previous reports and invocation outside the checkout.
+registry versions, then swaps the complete inventory into place by directory rename.
+Its command-double regressions in `scripts/test/test-retention-report.py` cover
+failed collection, failed or interrupted swaps, concurrent runs, preserved previous
+reports and invocation outside the checkout.
 
 `scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh` are the driver-neutral
 entry points used by Jenkins. On main, `capture-rollback-images.sh` records the

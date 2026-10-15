@@ -9,13 +9,16 @@ AI manifest generation requires the backend Go toolchain and module dependencies
 from `backend/` to obtain the runtime prompt version (including its content digest),
 the SHA-256 of the battle prompts as assembled for a fixed sample session
 (`promptSourceSha256`), the tool schema version, and the digest of the game content
-embedded in the binary (`gameDataBundleSha256`, schema `battlefield.ai-build-manifest.v2`).
+embedded in the binary (`gameDataBundleSha256`), under schema `battlefield.ai-build-manifest.v3`.
 It does not run evaluations or call a model provider.
-`evaluationBundleSha256` hashes the corpus contents and relative filenames in
-byte-sorted order. Identical corpora produce the same digest across checkout
-paths; changing a file's content or relative name changes its identity. This
-replaces the former checkout-path-dependent digest for newly generated manifests;
-existing attestations remain attached to their original image subjects.
+`evaluationBundleSha256` hashes the Git-tracked files under `backend/evals` (contents
+and relative filenames, byte-sorted). Identical committed corpora produce the same
+digest across checkout paths; untracked local files are ignored, and changing a
+tracked file's content or name changes the digest. The generator fails if no
+evaluation files are tracked. Schema v3 marks this definition: v2 manifests hashed
+every file present, and v1 also included the checkout path, so compare digests only
+between manifests with the same schema version. Existing attestations remain
+attached to their original image subjects.
 
 Retention automation must begin in report-only mode. Before deletion it must subtract every digest referenced by a live environment, the recorded rollback pair, a release, an active incident, or a legal hold. Package deletion is not enabled by this repository.
 Cosign v3 OCI referrers and the Kyverno-compatible legacy `.sig` and `.att`
@@ -36,10 +39,14 @@ cluster or registry read stops collection before publishing any report files,
 preserving the previous inventory and its timestamp. A successful cluster read
 with no digest-pinned running images also fails before publication, even if rollback
 digests exist; tag-only or empty deployments cannot establish a protected set.
-Publication copies files into the report directory and is not an atomic directory
-replacement. A local write failure can leave mixed files; use only a completed
-command result and inspect all inputs before a retention decision. It does not
-delete registry versions. Treat missing
+The report is staged in a sibling directory and swapped into place by two renames,
+so the destination never holds a mix of old and new files, though it is briefly
+absent between them. Files from earlier runs that the script no longer writes are
+removed. A lock beside the destination refuses a concurrent run. If the swap fails,
+the previous report is restored. If restoring also fails, or the run is
+interrupted mid-swap, the previous report stays beside the destination as
+`.retention-retired.*`, and the script names it when it can. It does not delete
+registry versions. Treat missing
 cluster or rollback evidence as incomplete inventory before making any deletion
 decision; the report is advisory, not an automated retention policy.
 

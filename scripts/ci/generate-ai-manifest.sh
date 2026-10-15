@@ -15,9 +15,15 @@ if [[ ! "${game_data_hash}" =~ ^[0-9a-f]{64}$ ]]; then
   echo "aieval metadata did not report a game content digest" >&2
   exit 1
 fi
-# Hash relative names as well as content, independently of the CI checkout path.
-evaluation_hash="$(cd "${project_dir}/backend/evals" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+# Hash the committed corpus only: relative names and content, independently of the
+# checkout path and of untracked local files.
+evaluation_files="$(git -C "${project_dir}/backend/evals" ls-files -- . | wc -l)"
+if [[ "${evaluation_files}" -eq 0 ]]; then
+  echo "No tracked evaluation files under backend/evals" >&2
+  exit 1
+fi
+evaluation_hash="$(cd "${project_dir}/backend/evals" && git ls-files -z -- . | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
 revision="$(git -C "${project_dir}" rev-parse HEAD)"
 
-printf '{\n  "schemaVersion": "battlefield.ai-build-manifest.v2",\n  "revision": "%s",\n  "promptVersion": "%s",\n  "promptSourceSha256": "%s",\n  "toolSchemaVersion": "%s",\n  "gameDataBundleSha256": "%s",\n  "evaluationCorpusVersion": "2026-09-03.v1",\n  "evaluationBundleSha256": "%s",\n  "supportedProfileTypes": ["openai-api", "gemini-api", "codex-cli", "antigravity-cli", "claude-cli", "scripted"]\n}\n' \
+printf '{\n  "schemaVersion": "battlefield.ai-build-manifest.v3",\n  "revision": "%s",\n  "promptVersion": "%s",\n  "promptSourceSha256": "%s",\n  "toolSchemaVersion": "%s",\n  "gameDataBundleSha256": "%s",\n  "evaluationCorpusVersion": "2026-09-03.v1",\n  "evaluationBundleSha256": "%s",\n  "supportedProfileTypes": ["openai-api", "gemini-api", "codex-cli", "antigravity-cli", "claude-cli", "scripted"]\n}\n' \
   "${revision}" "${prompt_version}" "${prompt_hash}" "${tool_schema_version}" "${game_data_hash}" "${evaluation_hash}" >"${output}"
