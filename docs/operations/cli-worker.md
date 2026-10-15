@@ -70,8 +70,12 @@ Apply repairs only what is needed:
 - **`sync-worker-config`:** applies [`infra/deploy/agent-vm/managed-settings.json`](../../infra/deploy/agent-vm/managed-settings.json) to `/etc/battlefield-agent/config.yaml`. That is `agentConcurrency` (parallel CLI decisions, 1–4; currently 4) and each CLI profile's `model`. Only those fields change. The job updates the guest file, its ownership-marker fingerprint and the host's registered copy (`cli.guest/config.yaml`) together, then restarts the worker. A restart ends any CLI decision in progress, which falls back for that turn; apply when no CLI battle is active.
 
 Secret sync only proceeds when `worker.env` still matches its registered fingerprint
-and contains only the three expected settings. Config sync only proceeds when the
-guest config matches the host's registered copy. Any other drift, such as a changed
+and contains only the three expected settings. A drifted `worker.env` blocks every
+guest action, including restarts, so the worker never restarts on settings nobody
+reviewed. Config sync only proceeds when the guest config matches the host's
+registered copy. If a run is interrupted after updating the guest but before the
+registered copy, the next plan proposes the sync again, and it completes without
+rewriting the guest. `apply` performs exactly the reviewed repairs. Any other drift, such as a changed
 isolation flag, is reported and left untouched; it needs a reviewed bootstrap change.
 
 To change a CLI model or the concurrency, edit `managed-settings.json` and the matching

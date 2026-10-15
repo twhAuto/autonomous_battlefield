@@ -33,7 +33,7 @@ def healthy(**overrides):
               'bridge_reachable': True, 'gateway_accepts_worker_secret': True, 'automation_key': True,
               'guest': {'reachable': True, 'identity_matches': True, 'secret_matches': True, 'marker_matches': True,
                         'worker_active': True, 'worker_enabled': True, 'worker_health': 204,
-                        'config_registered': True, 'config_current': True}}
+                        'config_registered': True, 'config_current': True, 'config_pending': False}}
     if 'guest' in overrides:
         checks['guest'] = overrides.pop('guest')
     for key, value in overrides.items():
@@ -95,6 +95,10 @@ class PlanningTests(unittest.TestCase):
             (healthy(identity_matches=False, secret_matches=False), []),
             (healthy(config_current=False), ['sync-worker-config']),
             (healthy(config_registered=False, config_current=False), []),
+            # A drifted worker environment blocks every guest repair, including config.
+            (healthy(marker_matches=False, config_current=False, worker_health=0), []),
+            # An interrupted config sync is planned again so it can finish.
+            (healthy(config_registered=False, config_pending=True, config_current=False), ['sync-worker-config']),
             (healthy(stale_host_files=['/etc/systemd/system/battlefield-cli-vm-start.service']), ['install-host-units']),
             (healthy(guest={'reachable': False}), ['reach-guest']),
         ]
@@ -210,6 +214,38 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(registered.read_text(), sent[0]['content'])
         self.assertIn('gemini-3.8-flash-medium', registered.read_text())
         self.assertEqual(registered.stat().st_mode & 0o777, 0o600)
+
+
+class ApplyTests(unittest.TestCase):
+    def worker_with(self, guest):
+        instance = object.__new__(worker.Worker)
+        calls = []
+        instance.sudo = lambda command: calls.append(('sudo', command[-1]))
+        instance.gateway = lambda path, secret=None: 204
+        instance.wait_for = lambda condition, seconds, message: None
+        instance.inspect = lambda secret: {'guest': guest}
+        instance.guest_python = lambda code, payload: calls.append(('guest', 'config' if code is worker.GUEST_CONFIG_SYNC else 'secret')) or {}
+        instance.ssh = lambda key, remote, data=None, timeout=120: calls.append(('ssh', remote)) or mock.Mock(returncode=0)
+        instance.sync_config = lambda: calls.append(('guest', 'config'))
+        instance.private = lambda path: Path(path)
+        return instance, calls
+
+    def test_environment_drift_keeps_host_repairs_away_from_the_guest(self):
+        guest = healthy(marker_matches=False, worker_health=0)['guest']
+        instance, calls = self.worker_with(guest)
+        instance.apply(['restart-bridge'], SECRET)
+        self.assertEqual(calls, [('sudo', 'battlefield-mcp-bridge.service')])
+        with self.assertRaisesRegex(ValueError, 'differs from its registered content'):
+            instance.apply(['restart-bridge', 'sync-worker-config'], SECRET)
+
+    def test_apply_runs_exactly_the_planned_guest_repairs(self):
+        guest = healthy(worker_health=0, worker_enabled=False, config_current=False)['guest']
+        instance, calls = self.worker_with(guest)
+        instance.apply(['enable-worker'], SECRET)
+        self.assertEqual(calls, [('ssh', 'sudo -n systemctl enable battlefield-worker')])
+        calls.clear()
+        instance.apply(['sync-worker-config'], SECRET)
+        self.assertEqual(calls, [('guest', 'config'), ('ssh', 'sudo -n systemctl restart battlefield-worker')])
 
 
 class ExecuteTests(unittest.TestCase):
@@ -407,6 +443,18 @@ class GuestScriptTests(unittest.TestCase):
         self.run_script(code, {'content': updated, 'expected_sha256': hashlib.sha256(CONFIG.encode()).hexdigest()})
         self.assertEqual(config.read_text(), updated)
         self.assertEqual(config.stat().st_mode & 0o777, 0o644)
+        self.assertEqual(json.loads(self.marker.read_text())['files']['/etc/battlefield-agent/config.yaml'],
+                         hashlib.sha256(updated.encode()).hexdigest())
+
+    def test_config_sync_resumes_after_the_guest_was_already_updated(self):
+        config = self.root / 'config.yaml'
+        updated = worker.desired_config(CONFIG, SETTINGS)
+        config.write_text(updated)
+        code = worker.GUEST_CONFIG_SYNC.replace("pathlib.Path('/etc/battlefield-agent/config.yaml')", f"pathlib.Path({str(config)!r})")
+        before = config.stat().st_mtime_ns
+        result = self.run_script(code, {'content': updated, 'expected_sha256': hashlib.sha256(CONFIG.encode()).hexdigest()})
+        self.assertFalse(result['changed'])
+        self.assertEqual(config.stat().st_mtime_ns, before)
         self.assertEqual(json.loads(self.marker.read_text())['files']['/etc/battlefield-agent/config.yaml'],
                          hashlib.sha256(updated.encode()).hexdigest())
 
