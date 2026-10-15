@@ -9,6 +9,8 @@ private key stays on the workstation.
 
 [Terraform VM provisioning](k3s-vm.md) uses the separate `battlefield-platform/vm`
 job, and the [K3s platform job](k3s-platform.md) owns guest configuration.
+`battlefield-platform/cli` keeps the CLI worker VM, bridge and worker secret in order;
+see [CLI worker operations](cli-worker.md).
 [CI service administration](ci-bootstrap.md) and
 [application delivery](k3s-delivery.md) have their own workflows. The host job
 does not migrate Docker/PostgreSQL or deploy K3s. Scheduled backups and retention
@@ -89,6 +91,7 @@ these paths in their trusted `main` checkout:
 | `battlefield-platform/host` | `infra/jenkins/Jenkinsfile.platform` |
 | `battlefield-platform/vm` | `infra/jenkins/Jenkinsfile.vm` |
 | `battlefield-platform/k3s` | `infra/jenkins/Jenkinsfile.k3s` |
+| `battlefield-platform/cli` | `infra/jenkins/Jenkinsfile.cli` |
 | `battlefield-assurance` | `infra/jenkins/Jenkinsfile.assurance` |
 
 Repository moves do not update existing Jenkins job configuration automatically.

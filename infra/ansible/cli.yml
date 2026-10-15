@@ -39,21 +39,27 @@
         cli_guest_configuration: "{{ lookup('ansible.builtin.file', cli_config_source) | from_yaml }}"
       no_log: true
       when: cli_kind == 'guest'
+    # The worker secret always comes from the production application .env (passed in a
+    # private vars file), so a rotation reaches the guest; cli-worker.py does the same.
+    - name: Combine the encrypted worker environment with the production worker secret
+      ansible.builtin.set_fact:
+        cli_environment: "{{ cli_vault.bootstrap_inputs.cli_worker_environment | b64decode | cli_with_worker_secret(cli_worker_secret) }}"
+      no_log: true
+      when: cli_kind == 'guest'
     - name: Validate the worker-only secret and private transport
       ansible.builtin.assert:
         that:
           - >-
-            (cli_vault.bootstrap_inputs.cli_worker_environment | b64decode) |
+            cli_environment |
             cli_guest_inputs_valid(cli_guest_configuration,
             cli_adopt_existing, cli_artifact_names)
       no_log: true
       when: cli_kind == 'guest'
-    - name: Bind the encrypted environment to the adoption contract
+    - name: Bind the worker environment to the adoption contract
       ansible.builtin.set_fact:
-        cli_environment: "{{ cli_vault.bootstrap_inputs.cli_worker_environment | b64decode }}"
         cli_files: >-
           {{ cli_files + [{'dest': '/etc/battlefield-agent/worker.env', 'mode': '0400',
-          'sha256': cli_vault.bootstrap_inputs.cli_worker_environment | b64decode | hash('sha256')}] }}
+          'sha256': cli_environment | hash('sha256')}] }}
       no_log: true
       when: cli_kind == 'guest'
     - name: Validate CLI ownership with secret-safe failure diagnostics

@@ -438,6 +438,15 @@ pipeline {
                         }
                     }
                 }
+                stage('CLI worker check') {
+                    steps {
+                        // Read-only. A down or out-of-sync CLI worker marks the build unstable but
+                        // never fails delivery or triggers rollback; repair it with battlefield-platform/cli.
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                            sh 'mkdir -p artifacts && python3 scripts/infra/cli-worker.py verify --report artifacts/cli-worker-verify.json'
+                        }
+                    }
+                }
             }
         }
     }

@@ -91,7 +91,7 @@ def guest_playbook(action, inventory=None, success=True, extra_env=None, expecte
     env.update(extra_env or {})
     binary = run(str(ROOT / 'scripts/infra/server.sh'), 'tools') + '/ansible-playbook'
     command = [binary, '-i', str(inventory or PRIVATE / 'guest-inventory.json'), str(ROOT / 'infra/ansible/cli.yml'),
-               '-e', json.dumps({'cli_action': action, 'cli_vault_file': str(PRIVATE / 'inputs.vault')}),
+               '-e', json.dumps({'cli_action': action, 'cli_vault_file': str(PRIVATE / 'inputs.vault'), 'cli_worker_secret': SECRET}),
                '--vault-password-file', str(PRIVATE / 'password')]
     if action == 'plan': command += ['--check', '--diff']
     result = subprocess.run(command, capture_output=True, text=True, env=env, timeout=600)
@@ -156,6 +156,11 @@ http.server.HTTPServer(('127.0.0.1',28084),Handler).serve_forever()
     (PRIVATE/'kubeconfig').write_text('fixture namespace identity; kubectl stub used only inside disposable VM')
     (PRIVATE/'password').write_text('fixture-vault-password')
     (PRIVATE/'worker.env').write_text('BATTLEFIELD_AGENT_SECRET='+SECRET+'\nBATTLEFIELD_ENV=production\nBATTLEFIELD_CLI_ISOLATION_VERIFIED=false\n')
+    # Bootstrap takes the worker secret from the production application env, as on the real host.
+    production = Path.home() / '.config/autonomous-battlefield/production'
+    production.mkdir(mode=0o700, parents=True, exist_ok=True)
+    (production / '.env').write_text('BATTLEFIELD_AGENT_SECRET=' + SECRET + '\n')
+    (production / '.env').chmod(0o600)
     binary = run(str(ROOT / 'scripts/infra/server.sh'), 'tools') + '/ansible-vault'
     payload = {'bootstrap_inputs':{'cli_worker_environment':base64.b64encode((PRIVATE/'worker.env').read_bytes()).decode()}}
     subprocess.run([binary,'encrypt','--output',str(PRIVATE/'inputs.vault'),'--vault-password-file',str(PRIVATE/'password')],
