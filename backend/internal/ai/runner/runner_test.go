@@ -269,7 +269,7 @@ func TestCLIRunnerBuildsRestrictedCodexInvocation(t *testing.T) {
 
 func TestAntigravityRunnerUsesIsolatedConfiguration(t *testing.T) {
 	executor := &inspectAntigravityExecutor{t: t}
-	result, err := (CLIRunner{Connector: errorConnector{session: contextFixtureSession{}}, Provider: "antigravity-cli", Model: "gemini-3.7-flash-medium", Executor: executor}).Run(context.Background(), ai.DecisionSession{RequestID: "request", MCPURL: "http://mcp/mcp", CapabilityToken: "secret-token"})
+	result, err := (CLIRunner{Connector: errorConnector{session: contextFixtureSession{}}, Provider: "antigravity-cli", Model: "gemini-3.8-flash-medium", Executor: executor}).Run(context.Background(), ai.DecisionSession{RequestID: "request", MCPURL: "http://mcp/mcp", CapabilityToken: "secret-token"})
 	if err != nil || !result.Accepted || result.Usage.InputTokens != 12 || result.Usage.OutputTokens != 4 {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
@@ -296,7 +296,7 @@ func (e *inspectAntigravityExecutor) Run(_ context.Context, name string, args, e
 	if !strings.Contains(joined, `"targetTick":73`) || !strings.Contains(joined, "BEGIN_BATTLEFIELD_CONTEXT") {
 		e.t.Fatal("authorized context missing from prompt")
 	}
-	if name != "agy" || !strings.Contains(joined, "--model gemini-3.7-flash-medium") || !strings.Contains(joined, "--disable-slash-commands") || strings.Contains(joined, "skip-permissions") || strings.Contains(joined, "secret-token") {
+	if name != "agy" || !strings.Contains(joined, "--model gemini-3.8-flash-medium") || !strings.Contains(joined, "--disable-slash-commands") || strings.Contains(joined, "skip-permissions") || strings.Contains(joined, "secret-token") {
 		e.t.Fatalf("unsafe invocation: %s %v", name, args)
 	}
 	for _, v := range env {

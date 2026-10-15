@@ -195,7 +195,7 @@ write_agent_config() {
       printf '      displayName: Antigravity / Google subscription\n'
       printf '      provider: antigravity-cli\n'
       printf '      runtime: cli\n'
-      printf '      model: gemini-3.7-flash-medium\n'
+      printf '      model: gemini-3.8-flash-medium\n'
       printf '      scope: local\n'
       printf '      supportedVersionPrefix: 1.2.\n'
       printf '      maxSteps: 3\n'

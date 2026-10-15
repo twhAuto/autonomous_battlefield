@@ -67,10 +67,16 @@ Apply repairs only what is needed:
 - **`sync-worker-secret`:** replaces only the `BATTLEFIELD_AGENT_SECRET` line of `/etc/battlefield-agent/worker.env` with the value from `~/.config/autonomous-battlefield/production/.env`. It also updates the bootstrap ownership marker's fingerprint for that file and restarts `battlefield-worker`.
 - **`restart-worker`:** restarts an inactive or unhealthy worker.
 - **`enable-worker`:** re-enables a worker that is running but disabled, so it survives a reboot.
+- **`sync-worker-config`:** applies [`infra/deploy/agent-vm/managed-settings.json`](../../infra/deploy/agent-vm/managed-settings.json) to `/etc/battlefield-agent/config.yaml`. That is `agentConcurrency` (parallel CLI decisions, 1–4; currently 4) and each CLI profile's `model`. Only those fields change. The job updates the guest file, its ownership-marker fingerprint and the host's registered copy (`cli.guest/config.yaml`) together, then restarts the worker. A restart ends any CLI decision in progress, which falls back for that turn; apply when no CLI battle is active.
 
 Secret sync only proceeds when `worker.env` still matches its registered fingerprint
-and contains only the three expected settings. Any other drift, such as a changed
+and contains only the three expected settings. Config sync only proceeds when the
+guest config matches the host's registered copy. Any other drift, such as a changed
 isolation flag, is reported and left untouched; it needs a reviewed bootstrap change.
+
+To change a CLI model or the concurrency, edit `managed-settings.json` and the matching
+profile in the application ConfigMap (a test keeps their models equal), merge and
+promote, then run `apply`.
 
 `reach-guest` means the job cannot log in with the automation key. Run the
 authorization step, then plan again. A guest whose machine or hardware identity
