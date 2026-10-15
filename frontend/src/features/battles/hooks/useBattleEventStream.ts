@@ -1,8 +1,9 @@
 // One cancellable request loop owns an attempt's initial page, polling, and manual
-// refreshes. Status changes resume from the cursor and fetch the terminal tail.
+// refreshes. Status changes resume from the cursor and fetch the terminal tail; a live
+// attempt retries failed requests with bounded backoff.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BattleApiError, BattleEvent, BattleRun, listBattleEvents } from '../api/battles'
-import { eventPageSize, eventPollIntervalMs } from './constants'
+import { eventPageSize, eventPollIntervalMs, eventRetryMaxMs } from './constants'
 import { type EventState } from '../types'
 
 type EventStream = {
@@ -14,15 +15,17 @@ function emptyStream(scope: string): EventStream {
 }
 
 export function useBattleEventStream(id: string, battleAttempt?: number, battleStatus?: BattleRun['status']) {
-  const [selectedAttempt, setSelectedAttempt] = useState<number | null>(null)
+  const [selectedAttempt, setSelectedAttempt] = useState<number | null>(battleAttempt ?? null)
+  const [followedAttempt, setFollowedAttempt] = useState(battleAttempt)
+  // Follow a new current attempt during render, so no effect runs for the old one.
+  if (battleAttempt !== undefined && battleAttempt !== followedAttempt) {
+    setFollowedAttempt(battleAttempt)
+    setSelectedAttempt(battleAttempt)
+  }
   const scope = `${id}:${selectedAttempt}`
   const [stream, setStream] = useState(() => emptyStream(''))
   const snapshot = useRef(stream)
   const request = useRef<(after: number, reset: boolean) => Promise<void>>(async () => {})
-
-  useEffect(() => {
-    if (battleAttempt !== undefined) setSelectedAttempt(battleAttempt)
-  }, [battleAttempt])
 
   useEffect(() => {
     if (selectedAttempt === null) return
@@ -30,6 +33,7 @@ export function useBattleEventStream(id: string, battleAttempt?: number, battleS
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
     let inFlight = false
+    let failures = 0
     if (snapshot.current.scope !== scope) snapshot.current = emptyStream(scope)
     const currentAttempt = attempt === battleAttempt
     const active = battleStatus === 'queued' || battleStatus === 'running'
@@ -50,6 +54,7 @@ export function useBattleEventStream(id: string, battleAttempt?: number, battleS
         const nextCursor = page.events.at(-1)?.sequence ?? after
         const cursor = reset ? nextCursor : Math.max(previous.cursor, nextCursor)
         const hasMore = !latest && page.events.length === eventPageSize
+        failures = 0
         publish({ scope, events: mergeEvents(previous.events, page.events, reset), cursor, hasMore, state: 'idle', message: '', loaded: true })
         // Finish draining the current attempt even if it just became terminal.
         if (currentAttempt && (active || hasMore)) {
@@ -58,16 +63,26 @@ export function useBattleEventStream(id: string, battleAttempt?: number, battleS
       } catch (error) {
         if (controller.signal.aborted) return
         publish({ ...snapshot.current, state: 'error', message: error instanceof BattleApiError ? error.message : 'Battle events could not be loaded.' })
+        retryLater()
       } finally {
         inFlight = false
       }
+    }
+    function retryLater() {
+      if (!currentAttempt || !active) return
+      failures += 1
+      timer = setTimeout(() => void resume(), Math.min(eventPollIntervalMs * 2 ** failures, eventRetryMaxMs))
+    }
+    // Until a page has loaded, every request (including a retry) fetches the latest page.
+    function resume() {
+      const { cursor, loaded } = snapshot.current
+      return load(cursor, !loaded, !loaded)
     }
     request.current = (after, reset) => {
       const initial = !snapshot.current.loaded
       return load(after, reset || initial, initial)
     }
-    const initial = snapshot.current
-    void load(initial.cursor, !initial.loaded, !initial.loaded)
+    void resume()
     return () => { controller.abort(); clearTimeout(timer) }
   }, [id, selectedAttempt, scope, battleAttempt, battleStatus])
 

@@ -20,6 +20,17 @@ describe('faction doctrine',()=>{
  expect(screen.getByLabelText('Doctrine')).toHaveValue(doctrineTemplates.Balanced)
  expect(screen.getByLabelText('Background (optional)')).toHaveValue('')
  })
+ it('loads the next faction when navigating between edit routes',async()=>{
+ const other='0b6f5d4e-3c2b-4a19-8e7d-6c5b4a3f2e1d'
+ vi.mocked(fetch).mockImplementation(async()=>new Response(JSON.stringify({factions:[{id,name:'A',doctrine:'Scout',background:'Old roots'},{id:other,name:'B',doctrine:'Hold',background:''}]})))
+ const user=userEvent.setup()
+ render(<MemoryRouter initialEntries={[`/factions/${id}/edit`]}><Link to={`/factions/${other}/edit`}>Edit B</Link><Routes><Route path="/factions/:id/edit" element={<CreateFactionPage/>}/></Routes></MemoryRouter>)
+ expect(await screen.findByLabelText('Faction name')).toHaveValue('A')
+ await user.click(screen.getByRole('link',{name:'Edit B'}))
+ await waitFor(()=>expect(screen.getByLabelText('Faction name')).toHaveValue('B'))
+ expect(screen.getByLabelText('Doctrine')).toHaveValue('Hold')
+ expect(screen.getByLabelText('Background (optional)')).toHaveValue('')
+ })
  it('does not carry an edit load failure into creation',async()=>{
  vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({factions:[]})))
  const user=userEvent.setup();show(`/factions/${id}/edit`)
