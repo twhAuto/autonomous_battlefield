@@ -10,7 +10,7 @@ The Google subscription profile uses `agy` (Antigravity CLI), replacing the reti
 4. In another terminal run `./scripts/dev/run-k8s-cli-agent.sh antigravity`, or use `both` for Codex and Antigravity. Keep this terminal open during battles.
 5. Select the Antigravity subscription profile in the battle form. Verify a decision at a planning tick submits a strategy and reports usage.
 
-The pinned model is `gemini-3.7-flash-medium`. Model access depends on the signed-in account; consult `agy models` when diagnosing availability. Change the model consistently in `backend/config.yaml`, `infra/deploy/base/infrastructure/configmap.yaml`, and the host launcher if selecting another supported model.
+The pinned model is `gemini-3.8-flash-medium`. Model access depends on the signed-in account; consult `agy models` when diagnosing availability. Change the model consistently in `backend/config.yaml`, `infra/deploy/base/infrastructure/configmap.yaml`, `infra/deploy/agent-vm/managed-settings.json` (applied to the CLI VM by [`battlefield-platform/cli`](cli-worker.md)), and the host launcher if selecting another supported model. A retired model fails the decision within seconds with error category `cli` and no tokens.
 
 ## Isolation and troubleshooting
 

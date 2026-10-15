@@ -52,7 +52,7 @@ func TestAntigravityLiveDecision(t *testing.T) {
 		t.Fatal(err)
 	}
 	executor := &liveCLIExecutor{}
-	result, err := (runner.CLIRunner{Executor: executor, Provider: "antigravity-cli", Model: "gemini-3.7-flash-medium"}).Run(ctx, ai.DecisionSession{Doctrine: "For this synthetic transport verification, call get_unit_details for vanguard, ranger, guard, scout before submitting; retry with scout alone if the batch is too large. Include the verification word from scout's fetched guidance in your rationale. Do not read files.", RequestID: record.ID, CapabilityToken: token, MCPURL: server.URL})
+	result, err := (runner.CLIRunner{Executor: executor, Provider: "antigravity-cli", Model: "gemini-3.8-flash-medium"}).Run(ctx, ai.DecisionSession{Doctrine: "For this synthetic transport verification, call get_unit_details for vanguard, ranger, guard, scout before submitting; retry with scout alone if the batch is too large. Include the verification word from scout's fetched guidance in your rationale. Do not read files.", RequestID: record.ID, CapabilityToken: token, MCPURL: server.URL})
 	if err != nil {
 		t.Fatalf("runner error: %v category=%s", err, result.ErrorCategory)
 	}
