@@ -18,8 +18,7 @@
 .login-card h1 { margin: 16px 0 12px; font-size: clamp(40px, 7vw, 62px); line-height: .98; letter-spacing: -.05em; font-weight: 500; }
 .login-card > p { margin: 0 0 36px; color: var(--muted); line-height: 1.65; }
 .login-card label { margin-top: 22px; }
-.login-card input { width: 100%; margin-bottom: 8px; padding: 15px 14px; outline: 0; color: #fff; background: #111510; border: 1px solid #454d41; }
+.login-card input { width: 100%; margin-bottom: 8px; padding: 15px 14px; outline: 0; color: #fff; background: #111510; border: 1px solid #454d41; font-size: 16px; }
 .login-card input:focus { border-color: var(--lime); }
 .login-card .submit-button { margin-top: 28px; }
 .login-card__error { margin: 18px 0 0; color: #ff9e85; font-size: 12px; }
-.login-card input { font-size: 16px; }
