@@ -102,7 +102,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
           </div>
         </div>
       </div>
-      {placeholder ? <div className="entity-details">{placeholder}</div> : <>
+      {placeholder ? <div className="map-placeholder">{placeholder}</div> : <>
       <section ref={viewport} className={`map-viewport${mobile && !expanded ? ' map-viewport--overview' : ''}`} style={expanded ? undefined : { aspectRatio: `${width} / ${height}` }} aria-label="Map navigation">
         <svg
           viewBox={`0 0 ${width} ${height}`}

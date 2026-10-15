@@ -88,8 +88,11 @@ polling otherwise waits one second. Historical attempts load on selection and
 manual refresh. Errors retain loaded events and expose retry. The buffer remains
 deduplicated by sequence and bounded to the latest 500 events. Retrying a failed
 initial load still requests the latest page; after a successful load, retries
-resume from the retained cursor. Errors pause polling until manual retry or a
-battle status change.
+resume from the retained cursor. After a failed request on the live current attempt,
+the hook retries automatically after 2, 4, 8 and 16 seconds, then every 30 seconds
+until a request succeeds or the battle settles. Terminal and historical attempts wait
+for manual retry. A new current attempt is followed during render, so no request is
+sent for the attempt it replaces.
 
 `useBattleStatus` cancels polling when a control returns a terminal status.
 `useBattleStatus.test.ts` verifies that a late in-flight response cannot overwrite

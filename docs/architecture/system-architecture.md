@@ -120,7 +120,8 @@ The browser loads events through one cancellable cursor loop per selected attemp
 retaining at most 500 events, deduplicated by sequence. Retrying an initial failure
 loads the latest page; retries after a successful load resume from the cursor.
 Historical attempts load on
-selection or manual refresh. Errors retain loaded events and expose retry.
+selection or manual refresh. Errors retain loaded events and expose retry; the live
+current attempt also retries automatically with backoff capped at 30 seconds.
 
 Participant background and doctrine come from the persisted scenario, not the
 editable faction directory. Player summaries use the spectator snapshot independently
