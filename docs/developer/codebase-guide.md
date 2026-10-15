@@ -235,6 +235,10 @@ checkout permissions and also exercises the unreadable-template rejection in a
 real container. Jenkins runs this Docker-backed regression separately from the
 command-double deployment suite; see [Jenkins checks](ci.md#pull-request-verification).
 
+`scripts/ops/check-base-image-pins.py` reports, on demand, whether each Dockerfile
+base-image digest still matches its recorded tag; `scripts/test/test-base-image-drift.py`
+covers it with a docker double in the shared deployment regression gate.
+
 `scripts/ops/ghcr-retention-report.sh` collects running and rollback digests plus
 registry versions, then swaps the complete inventory into place by directory rename.
 Its command-double regressions in `scripts/test/test-retention-report.py` cover

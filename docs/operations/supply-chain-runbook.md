@@ -64,8 +64,11 @@ Nothing updates the digests automatically. Refresh them when
 `scripts/ci/scan-published-images.sh` reports a fixable vulnerability in a base
 image, when moving to a new tag, and at least monthly:
 
-1. Resolve the multi-platform index digest of each tag, for example
-   `docker buildx imagetools inspect golang:1.26.9-alpine`, and take its `Digest:`.
+1. Run `scripts/ops/check-base-image-pins.py` on a machine with Docker Buildx and
+   registry access. It resolves each recorded tag's multi-platform index digest
+   (`docker buildx imagetools inspect name:tag`) and prints `CURRENT` or `STALE`
+   for every pin without editing files. It exits 1 if any pin is stale and 2 if a
+   tag cannot be resolved. It is an on-demand check, not a scheduled job.
 2. Replace the digest on the `FROM` line, and the tag in the comment above it if
    moving to a new tag.
 3. Run `./scripts/test/test-deployment.sh`, then raise the change as a normal PR
