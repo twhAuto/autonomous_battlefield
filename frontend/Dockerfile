@@ -2,7 +2,7 @@
 # runtime API proxy template.
 
 # Base image: node:24-alpine
-FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
+FROM node@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS build
 
 WORKDIR /src
 
@@ -17,7 +17,7 @@ ENV VITE_API_URL=${VITE_API_URL}
 RUN npm run build
 
 # Base image: ghcr.io/nginx/nginx-unprivileged:1.30.4-alpine3.24-slim
-FROM ghcr.io/nginx/nginx-unprivileged@sha256:bcf91d2c73ab64fa1c4ac7fbac5ac523057c8af7d553ab9251c7aef38c260979
+FROM ghcr.io/nginx/nginx-unprivileged@sha256:7bbe8940bc478e5618e6d4cfbeda406e5b4217cacc06faacd665aca5e468595e
 
 USER root
 
