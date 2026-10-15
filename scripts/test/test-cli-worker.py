@@ -32,7 +32,8 @@ def healthy(**overrides):
               'boot_start_enabled': True, 'bridge_watchdog_active': True, 'watchdog_enabled': True, 'stale_host_files': [],
               'bridge_reachable': True, 'gateway_accepts_worker_secret': True, 'automation_key': True,
               'guest': {'reachable': True, 'identity_matches': True, 'secret_matches': True, 'marker_matches': True,
-                        'worker_active': True, 'worker_enabled': True, 'worker_health': 204}}
+                        'worker_active': True, 'worker_enabled': True, 'worker_health': 204,
+                        'config_registered': True, 'config_current': True, 'config_pending': False}}
     if 'guest' in overrides:
         checks['guest'] = overrides.pop('guest')
     for key, value in overrides.items():
@@ -92,6 +93,12 @@ class PlanningTests(unittest.TestCase):
             # Drift beyond the secret, or another machine, is reported but never repaired.
             (healthy(marker_matches=False, secret_matches=False), []),
             (healthy(identity_matches=False, secret_matches=False), []),
+            (healthy(config_current=False), ['sync-worker-config']),
+            (healthy(config_registered=False, config_current=False), []),
+            # A drifted worker environment blocks every guest repair, including config.
+            (healthy(marker_matches=False, config_current=False, worker_health=0), []),
+            # An interrupted config sync is planned again so it can finish.
+            (healthy(config_registered=False, config_pending=True, config_current=False), ['sync-worker-config']),
             (healthy(stale_host_files=['/etc/systemd/system/battlefield-cli-vm-start.service']), ['install-host-units']),
             (healthy(guest={'reachable': False}), ['reach-guest']),
         ]
@@ -130,6 +137,115 @@ class PlanningTests(unittest.TestCase):
         self.assertIn('virsh -c qemu:///system start battlefield-agent', files[worker.LIBEXEC + '/start-cli-vm'][1])
         self.assertIn('battlefield-agent-firewall.service', files['/etc/systemd/system/battlefield-cli-vm-start.service'][1])
         self.assertEqual({mode for mode, _ in files.values()}, {'0755', '0644'})
+
+
+CONFIG = """ai:
+  environment: local
+  agentHealthAddress: 127.0.0.1:8083
+  mcpUrl: http://192.168.234.1:18084/mcp
+  profiles:
+    - id: claude-subscription-local
+      provider: claude-cli
+      runtime: cli
+      model: sonnet
+      enabled: true
+    - id: gemini-subscription-local
+      provider: antigravity-cli
+      runtime: cli
+      model: gemini-3.7-flash-medium
+      enabled: true
+"""
+SETTINGS = {'agentConcurrency': 4, 'models': {'claude-subscription-local': 'sonnet', 'gemini-subscription-local': 'gemini-3.8-flash-medium'}}
+
+
+class ConfigTests(unittest.TestCase):
+    def test_managed_fields_change_and_nothing_else(self):
+        import yaml
+        updated = yaml.safe_load(worker.desired_config(CONFIG, SETTINGS))
+        original = yaml.safe_load(CONFIG)
+        self.assertEqual(updated['ai'].pop('agentConcurrency'), 4)
+        self.assertEqual(updated['ai']['profiles'][1].pop('model'), 'gemini-3.8-flash-medium')
+        original['ai']['profiles'][1].pop('model')
+        self.assertEqual(updated, original)
+
+    def test_matching_settings_leave_the_file_byte_identical(self):
+        current = worker.desired_config(CONFIG, SETTINGS)
+        self.assertIs(worker.desired_config(current, SETTINGS), current)
+
+    def test_unknown_profiles_and_invalid_settings_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'does not have'):
+            worker.desired_config(CONFIG, {'agentConcurrency': 2, 'models': {'codex-subscription-local': 'gpt'}})
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        for bad in ({'agentConcurrency': 5, 'models': {'a': 'b'}}, {'agentConcurrency': 2, 'models': {}},
+                    {'agentConcurrency': True, 'models': {'a': 'b'}}, {'agentConcurrency': 2, 'models': {'a': 'bad model'}}):
+            path = Path(directory.name) / 'settings.json'
+            path.write_text(json.dumps(bad))
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                worker.managed_settings(path)
+
+    def test_managed_settings_match_the_application_profile_catalog(self):
+        import yaml
+        settings = worker.managed_settings()
+        catalog = {}
+        for document in yaml.safe_load_all((ROOT / 'infra/deploy/base/infrastructure/configmap.yaml').read_text()):
+            if document and document.get('kind') == 'ConfigMap':
+                for value in document['data'].values():
+                    if 'profiles' in value:
+                        catalog = {p['id']: p['model'] for p in yaml.safe_load(value)['ai']['profiles'] if p['runtime'] == 'cli'}
+        self.assertEqual(settings['models'], catalog)
+        template = yaml.safe_load((ROOT / 'infra/deploy/agent-vm/config.yaml').read_text())['ai']
+        self.assertEqual(template['agentConcurrency'], settings['agentConcurrency'])
+        self.assertEqual({p['id']: p['model'] for p in template['profiles']}, settings['models'])
+
+    def test_sync_config_updates_guest_then_the_registered_copy(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        registered = Path(directory.name) / 'config.yaml'
+        registered.write_text(CONFIG)
+        registered.chmod(0o600)
+        instance = object.__new__(worker.Worker)
+        instance.registered_config = registered
+        sent = []
+        instance.guest_python = lambda code, payload: sent.append(payload) or {'changed': True}
+        with mock.patch.object(worker, 'managed_settings', lambda: SETTINGS):
+            instance.sync_config()
+        self.assertEqual(sent[0]['expected_sha256'], hashlib.sha256(CONFIG.encode()).hexdigest())
+        self.assertEqual(registered.read_text(), sent[0]['content'])
+        self.assertIn('gemini-3.8-flash-medium', registered.read_text())
+        self.assertEqual(registered.stat().st_mode & 0o777, 0o600)
+
+
+class ApplyTests(unittest.TestCase):
+    def worker_with(self, guest):
+        instance = object.__new__(worker.Worker)
+        calls = []
+        instance.sudo = lambda command: calls.append(('sudo', command[-1]))
+        instance.gateway = lambda path, secret=None: 204
+        instance.wait_for = lambda condition, seconds, message: None
+        instance.inspect = lambda secret: {'guest': guest}
+        instance.guest_python = lambda code, payload: calls.append(('guest', 'config' if code is worker.GUEST_CONFIG_SYNC else 'secret')) or {}
+        instance.ssh = lambda key, remote, data=None, timeout=120: calls.append(('ssh', remote)) or mock.Mock(returncode=0)
+        instance.sync_config = lambda: calls.append(('guest', 'config'))
+        instance.private = lambda path: Path(path)
+        return instance, calls
+
+    def test_environment_drift_keeps_host_repairs_away_from_the_guest(self):
+        guest = healthy(marker_matches=False, worker_health=0)['guest']
+        instance, calls = self.worker_with(guest)
+        instance.apply(['restart-bridge'], SECRET)
+        self.assertEqual(calls, [('sudo', 'battlefield-mcp-bridge.service')])
+        with self.assertRaisesRegex(ValueError, 'differs from its registered content'):
+            instance.apply(['restart-bridge', 'sync-worker-config'], SECRET)
+
+    def test_apply_runs_exactly_the_planned_guest_repairs(self):
+        guest = healthy(worker_health=0, worker_enabled=False, config_current=False)['guest']
+        instance, calls = self.worker_with(guest)
+        instance.apply(['enable-worker'], SECRET)
+        self.assertEqual(calls, [('ssh', 'sudo -n systemctl enable battlefield-worker')])
+        calls.clear()
+        instance.apply(['sync-worker-config'], SECRET)
+        self.assertEqual(calls, [('guest', 'config'), ('ssh', 'sudo -n systemctl restart battlefield-worker')])
 
 
 class ExecuteTests(unittest.TestCase):
@@ -262,6 +378,7 @@ class GuestScriptTests(unittest.TestCase):
             '/etc/battlefield-agent/worker.env': hashlib.sha256(self.env.read_bytes()).hexdigest()}}))
         (self.root / 'machine-id').write_text('0' * 32 + '\n')
         (self.root / 'product_uuid').write_text('ABCDEF\n')
+        (self.root / 'config.yaml').write_text(CONFIG)
         bin_dir = self.root / 'bin'
         bin_dir.mkdir()
         systemctl = bin_dir / 'systemctl'
@@ -275,6 +392,7 @@ class GuestScriptTests(unittest.TestCase):
                 .replace("pathlib.Path('/etc/battlefield-cli-bootstrap/guest.json')", f"pathlib.Path({str(self.marker)!r})")
                 .replace("pathlib.Path('/etc/machine-id')", f"pathlib.Path({str(self.root / 'machine-id')!r})")
                 .replace("pathlib.Path('/sys/class/dmi/id/product_uuid')", f"pathlib.Path({str(self.root / 'product_uuid')!r})")
+                .replace("pathlib.Path('/etc/battlefield-agent/config.yaml')", f"pathlib.Path({str(self.root / 'config.yaml')!r})")
                 .replace('str(path)', "'/etc/battlefield-agent/worker.env'"))
         return code
 
@@ -314,6 +432,31 @@ class GuestScriptTests(unittest.TestCase):
         self.marker.write_text(json.dumps({'files': {'/etc/battlefield-agent/worker.env': hashlib.sha256(content.encode()).hexdigest()}}))
         self.assertIn('unexpected settings', self.run_failing(worker.GUEST_SYNC, {'secret': SECRET}))
         self.assertEqual(self.env.read_text(), content)
+
+    def test_config_sync_refuses_drift_and_updates_the_marker(self):
+        config = self.root / 'config.yaml'
+        config.write_text(CONFIG)
+        code = worker.GUEST_CONFIG_SYNC.replace("pathlib.Path('/etc/battlefield-agent/config.yaml')", f"pathlib.Path({str(config)!r})")
+        updated = worker.desired_config(CONFIG, SETTINGS)
+        self.assertIn('differs from its registered content', self.run_failing(code, {'content': updated, 'expected_sha256': '0' * 64}))
+        self.assertEqual(config.read_text(), CONFIG)
+        self.run_script(code, {'content': updated, 'expected_sha256': hashlib.sha256(CONFIG.encode()).hexdigest()})
+        self.assertEqual(config.read_text(), updated)
+        self.assertEqual(config.stat().st_mode & 0o777, 0o644)
+        self.assertEqual(json.loads(self.marker.read_text())['files']['/etc/battlefield-agent/config.yaml'],
+                         hashlib.sha256(updated.encode()).hexdigest())
+
+    def test_config_sync_resumes_after_the_guest_was_already_updated(self):
+        config = self.root / 'config.yaml'
+        updated = worker.desired_config(CONFIG, SETTINGS)
+        config.write_text(updated)
+        code = worker.GUEST_CONFIG_SYNC.replace("pathlib.Path('/etc/battlefield-agent/config.yaml')", f"pathlib.Path({str(config)!r})")
+        before = config.stat().st_mtime_ns
+        result = self.run_script(code, {'content': updated, 'expected_sha256': hashlib.sha256(CONFIG.encode()).hexdigest()})
+        self.assertFalse(result['changed'])
+        self.assertEqual(config.stat().st_mtime_ns, before)
+        self.assertEqual(json.loads(self.marker.read_text())['files']['/etc/battlefield-agent/config.yaml'],
+                         hashlib.sha256(updated.encode()).hexdigest())
 
     def test_inspect_compares_digests_without_returning_the_secret(self):
         result = self.run_script(worker.GUEST_INSPECT, {'secret_sha256': hashlib.sha256(b'old-old-old-old-old-old-old-old-old').hexdigest()})

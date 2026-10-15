@@ -116,7 +116,7 @@ data:
           displayName: Antigravity / Google subscription
           provider: antigravity-cli
           runtime: cli
-          model: gemini-3.7-flash-medium
+          model: gemini-3.8-flash-medium
           availabilityEnvironmentVariable: GEMINI_CLI_PROFILE_AVAILABLE
           supportedVersionPrefix: 1.2.
           scope: local

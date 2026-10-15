@@ -48,6 +48,10 @@ RETIRED = 'local-development-capability-secret-change-me'
 HOST_UNITS = ['battlefield-agent-firewall', 'battlefield-mcp-bridge', 'battlefield-mcp-proxy', 'squid']
 LIBEXEC = '/usr/local/libexec/battlefield'
 RECEIPT_SECONDS = 1800
+MANAGED_SETTINGS = ROOT / 'infra/deploy/agent-vm/managed-settings.json'
+GUEST_CONFIG = '/etc/battlefield-agent/config.yaml'
+MODEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,79}')
+GUEST_REPAIRS = {'sync-worker-secret', 'restart-worker', 'enable-worker', 'sync-worker-config'}
 
 
 def production_worker_secret(path=PRODUCTION_ENV):
@@ -71,6 +75,34 @@ def with_worker_secret(environment, secret):
     if len(pattern.findall(environment)) != 1:
         raise ValueError('The worker environment must contain exactly one ' + SECRET_KEY + ' line')
     return pattern.sub(lambda _: SECRET_KEY + '=' + secret, environment)
+
+
+def managed_settings(path=MANAGED_SETTINGS):
+    """Reviewed worker settings this job owns: concurrency and the CLI profile models."""
+    settings = json.loads(Path(path).read_text())
+    concurrency, models = settings.get('agentConcurrency'), settings.get('models')
+    if (set(settings) != {'agentConcurrency', 'models'} or type(concurrency) is not int or not 1 <= concurrency <= 4
+            or not isinstance(models, dict) or not models
+            or not all(isinstance(k, str) and isinstance(v, str) and MODEL.fullmatch(v) for k, v in models.items())):
+        raise ValueError('Managed CLI worker settings need agentConcurrency 1-4 and profile models')
+    return settings
+
+
+def desired_config(current, settings):
+    """Apply only the managed fields; return the current text unchanged when they already match."""
+    import yaml
+    config = yaml.safe_load(current)
+    ai = config['ai']
+    profiles = {profile['id']: profile for profile in ai['profiles']}
+    if set(settings['models']) - set(profiles):
+        raise ValueError('Managed settings name a profile the worker configuration does not have')
+    if ai.get('agentConcurrency', 1) == settings['agentConcurrency'] and all(
+            profiles[name].get('model') == model for name, model in settings['models'].items()):
+        return current
+    ai['agentConcurrency'] = settings['agentConcurrency']
+    for name, model in settings['models'].items():
+        profiles[name]['model'] = model
+    return yaml.safe_dump(config, sort_keys=False, default_flow_style=False)
 
 
 def host_files(bridge_port):
@@ -162,6 +194,7 @@ print(json.dumps({
     'machine_id': pathlib.Path('/etc/machine-id').read_text().strip(),
     'domain_uuid': pathlib.Path('/sys/class/dmi/id/product_uuid').read_text().strip().lower(),
     'secret_matches': len(secret) == 1 and hashlib.sha256(secret[0]).hexdigest() == expected,
+    'config_sha256': hashlib.sha256(pathlib.Path('/etc/battlefield-agent/config.yaml').read_bytes()).hexdigest(),
     'marker_matches': (not files) or files.get('/etc/battlefield-agent/worker.env') == hashlib.sha256(env).hexdigest(),
     'worker_active': unit('is-active') == 'active',
     'worker_enabled': unit('is-enabled') == 'enabled',
@@ -213,6 +246,41 @@ print(json.dumps({'changed': changed}))
 '''
 
 
+GUEST_CONFIG_SYNC = r'''
+import hashlib, json, os, pathlib, sys, tempfile, yaml
+request = json.loads(sys.stdin.read())
+path = pathlib.Path('/etc/battlefield-agent/config.yaml')
+updated = request['content']
+yaml.safe_load(updated)
+current = hashlib.sha256(path.read_bytes()).hexdigest()
+target = hashlib.sha256(updated.encode()).hexdigest()
+# Resuming an interrupted sync finds the target content already in place.
+if current not in (request['expected_sha256'], target):
+    raise SystemExit('worker configuration differs from its registered content; not changed')
+def publish(target, content, mode):
+    fd, temporary = tempfile.mkstemp(dir=target.parent, prefix='.battlefield-')
+    try:
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+    except BaseException:
+        pathlib.Path(temporary).unlink(missing_ok=True)
+        raise
+if current != target:
+    publish(path, updated, 0o644)
+marker = pathlib.Path('/etc/battlefield-cli-bootstrap/guest.json')
+if marker.exists():
+    data = json.loads(marker.read_text())
+    if data['files'].get('/etc/battlefield-agent/config.yaml') != target:
+        data['files']['/etc/battlefield-agent/config.yaml'] = target
+        publish(marker, json.dumps(data, indent=2) + '\n', 0o600)
+print(json.dumps({'changed': current != target}))
+'''
+
+
 class Worker:
     def __init__(self, args):
         self.args = args
@@ -224,6 +292,8 @@ class Worker:
         known = self.config['guest'].get('known_hosts_file') or HOME / '.local/state/battlefield/cli-vm/known_hosts'
         self.known_hosts = self.private(known)
         self.port = self.config['host']['bridge_port']
+        # The host's registered copy of the guest config, which bootstrap reconciles against.
+        self.registered_config = self.private(self.config['guest']['config'])
 
     @staticmethod
     def private(path):
@@ -298,6 +368,13 @@ class Worker:
                 guest['reachable'] = True
                 guest['identity_matches'] = (guest.pop('machine_id') == self.config['guest']['machine_id']
                                              and guest.pop('domain_uuid') == self.config['host']['domain_uuid'])
+                registered = self.registered_config.read_text()
+                desired = desired_config(registered, managed_settings())
+                actual = guest.pop('config_sha256')
+                guest['config_registered'] = actual == hashlib.sha256(registered.encode()).hexdigest()
+                guest['config_current'] = desired == registered
+                # An interrupted sync left the guest updated but the registered copy behind.
+                guest['config_pending'] = not guest['config_current'] and actual == hashlib.sha256(desired.encode()).hexdigest()
             checks['guest'] = guest
         return checks
 
@@ -313,14 +390,8 @@ class Worker:
         guest = checks['guest'] or {}
         if checks['domain'] == 'running' and not guest.get('reachable'):
             needed.append('reach-guest')
-        if guest.get('reachable') and guest['identity_matches'] and guest['marker_matches']:
-            # Other worker environment drift is never repaired here; it needs a reviewed change.
-            if not guest['secret_matches']:
-                needed.append('sync-worker-secret')
-            elif not guest['worker_active'] or guest['worker_health'] != 204:
-                needed.append('restart-worker')
-            if not guest['worker_enabled']:
-                needed.append('enable-worker')
+        if guest.get('reachable') and guest['identity_matches']:
+            needed += guest_repairs(guest)
         return needed
 
     @staticmethod
@@ -385,18 +456,41 @@ class Worker:
             raise ValueError('The CLI guest is not reachable with the automation key; run cli-worker.py authorize')
         if not guest['identity_matches']:
             raise ValueError('The CLI guest identity differs from the registration; nothing was changed in the guest')
-        if not guest['marker_matches']:
+        if not guest['marker_matches'] and set(repairs) & GUEST_REPAIRS:
             raise ValueError('The CLI worker environment differs from its registered content; nothing was changed in the guest')
-        key = self.private(AUTOMATION_KEY)
-        if not guest['secret_matches']:
-            self.guest_python(GUEST_SYNC, {'secret': secret})
-        elif not guest['worker_active'] or guest['worker_health'] != 204:
-            if self.ssh(key, 'sudo -n systemctl restart battlefield-worker').returncode:
-                raise ValueError('Could not restart the CLI worker')
-        if not guest['worker_enabled'] and self.ssh(key, 'sudo -n systemctl enable battlefield-worker').returncode:
-            raise ValueError('Could not enable the CLI worker for reboot')
+        self.repair_guest([r for r in repairs if r in GUEST_REPAIRS], secret)
         self.wait_for(lambda: (self.inspect(secret)['guest'] or {}).get('worker_health') == 204, 90,
                       'The CLI worker did not report healthy after the repair')
+
+    def repair_guest(self, repairs, secret):
+        """Perform exactly the reviewed guest repairs, in a safe order."""
+        key = self.private(AUTOMATION_KEY)
+        restart = 'restart-worker' in repairs
+        if 'sync-worker-config' in repairs:
+            self.sync_config()
+            restart = True
+        if 'sync-worker-secret' in repairs:
+            self.guest_python(GUEST_SYNC, {'secret': secret})  # Restarts the worker itself.
+            restart = False
+        if restart and self.ssh(key, 'sudo -n systemctl restart battlefield-worker').returncode:
+            raise ValueError('Could not restart the CLI worker')
+        if 'enable-worker' in repairs and self.ssh(key, 'sudo -n systemctl enable battlefield-worker').returncode:
+            raise ValueError('Could not enable the CLI worker for reboot')
+
+    def sync_config(self):
+        """Change the guest config, then the host's registered copy, so bootstrap stays consistent."""
+        registered = self.registered_config.read_text()
+        updated = desired_config(registered, managed_settings())
+        self.guest_python(GUEST_CONFIG_SYNC, {'content': updated,
+                                              'expected_sha256': hashlib.sha256(registered.encode()).hexdigest()})
+        fd, temporary = tempfile.mkstemp(dir=self.registered_config.parent, prefix='.config-')
+        try:
+            with os.fdopen(fd, 'w') as stream:
+                stream.write(updated)
+            os.replace(temporary, self.registered_config)
+        except BaseException:
+            Path(temporary).unlink(missing_ok=True)
+            raise
 
     def authorize(self):
         """One-time operator step: create the Jenkins key and authorize it for vm-admin."""
@@ -424,6 +518,26 @@ def host_units_missing(checks):
                 or not checks['bridge_watchdog_active'] or not checks['watchdog_enabled'])
 
 
+def guest_repairs(guest):
+    """Drift beyond the secret or the managed settings is never repaired; it needs a reviewed change.
+
+    A drifted worker environment blocks every guest action, so nothing restarts the
+    worker on settings nobody reviewed.
+    """
+    if not guest['marker_matches']:
+        return []
+    needed = []
+    if not guest['secret_matches']:
+        needed.append('sync-worker-secret')
+    elif not guest['worker_active'] or guest['worker_health'] != 204:
+        needed.append('restart-worker')
+    if not guest['worker_enabled']:
+        needed.append('enable-worker')
+    if (guest['config_registered'] or guest['config_pending']) and not guest['config_current']:
+        needed.append('sync-worker-config')
+    return needed
+
+
 def guest_problems(guest):
     if guest is None:
         return []
@@ -435,6 +549,8 @@ def guest_problems(guest):
         (guest['secret_matches'], 'CLI worker secret differs from production'),
         (guest['worker_active'] and guest['worker_health'] == 204, 'CLI worker service is not healthy'),
         (guest['worker_enabled'], 'CLI worker service is not enabled for reboot'),
+        (guest['config_registered'] or guest['config_pending'], 'CLI worker configuration differs from its registered content; inspect it, it is not repaired automatically'),
+        (guest['config_current'], 'CLI worker settings differ from infra/deploy/agent-vm/managed-settings.json'),
     ]
     return [message for ok, message in checks if not ok]
 
