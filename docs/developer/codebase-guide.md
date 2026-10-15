@@ -280,6 +280,15 @@ configuration validation. `test-cli-vm.py` exercises layout, approval and handof
 failures; `rehearse-cli-vm.py`/`rehearse-cli-vm-guest.py` run the actual nested VM
 lifecycle with UUID-bound disposable cleanup. See [CLI VM platform](../operations/cli-vm-platform.md).
 
+`scripts/infra/cli-worker.py` keeps the registered worker running: it verifies the
+VM, host bridge, gateway credential and guest worker. It repairs them under a
+reviewed plan receipt, syncing the worker secret from the production `.env` and
+installing the boot-start and bridge-watchdog units. `infra/jenkins/Jenkinsfile.cli`
+and `scripts/ci/run-cli-worker.sh` run it as `battlefield-platform/cli`; the main
+pipeline runs its read-only `verify`. `cli-bootstrap.py` substitutes the same secret
+through the `cli_with_worker_secret` filter. `test-cli-worker.py` runs the real guest
+scripts against temporary files. See [CLI worker operations](../operations/cli-worker.md).
+
 
 `scripts/infra/cli-bootstrap.py`, dispatched by `server.sh cli-*`, registers the
 public host bundle, captures existing guest artifacts with an encrypted worker

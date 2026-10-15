@@ -338,6 +338,7 @@ class VMTests(unittest.TestCase):
                 self.definitions = {'job/battlefield-platform/config.xml': seed.folder_xml(),
                     'job/battlefield-platform/job/host/config.xml': seed.job_xml('host'),
                     'job/battlefield-platform/job/k3s/config.xml': None,
+                    'job/battlefield-platform/job/cli/config.xml': None,
                     'job/battlefield-platform/job/vm/config.xml':
                         b'<flow-definition><description>unowned</description></flow-definition>' if foreign_vm else None}
             def request(self, path, data=None, **kwargs):
@@ -358,7 +359,15 @@ class VMTests(unittest.TestCase):
                     seed.seed_jobs(client)
                     self.assertEqual(client.writes, [('job/battlefield-platform/job/host/config.xml', seed.job_xml('host')),
                         ('job/battlefield-platform/createItem?name=vm', seed.job_xml('vm')),
-                        ('job/battlefield-platform/createItem?name=k3s', seed.job_xml('k3s'))])
+                        ('job/battlefield-platform/createItem?name=k3s', seed.job_xml('k3s')),
+                        ('job/battlefield-platform/createItem?name=cli', seed.job_xml('cli'))])
+
+    def test_cli_job_reads_its_jenkinsfile_from_main_and_defaults_to_verify(self):
+        job = ET.fromstring(seed.job_xml('cli'))
+        self.assertEqual(job.findtext('definition/scriptPath'), 'infra/jenkins/Jenkinsfile.cli')
+        self.assertEqual(job.findtext('definition/scm/branches/hudson.plugins.git.BranchSpec/name'), '*/main')
+        self.assertEqual([item.text for item in job.iter('string')], ['verify', 'plan', 'apply'])
+        self.assertEqual(job.find('triggers').findall('*'), [])
 
     def test_vm_job_uses_trusted_main_and_explicit_replacement_default(self):
         job = ET.fromstring(seed.job_xml('vm'))

@@ -1,0 +1,495 @@
+#!/usr/bin/env python3
+"""Keep the registered CLI worker running and in sync with production (AB-139, AB-162).
+
+Runs on the physical host, as the operator Jenkins also runs as. `verify` only reads.
+`plan` records the repairs it would make in a short-lived receipt; `apply` re-checks
+that plan, consumes the receipt, repairs, then verifies. `authorize` is the one-time
+operator step that lets Jenkins reach the VM with a dedicated key. The worker secret
+always comes from the production application .env, so a rotation reaches the worker
+on the next apply. No secret is printed, logged, written to a report or put in argv.
+"""
+import argparse
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+HOME = Path(os.environ.get('BATTLEFIELD_CLI_HOME', str(Path.home())))
+CLI_CONFIG = HOME / '.config/autonomous-battlefield/server/cli.json'
+PRODUCTION_ENV = HOME / '.config/autonomous-battlefield/production/.env'
+AUTOMATION_KEY = HOME / '.ssh/battlefield-cli-automation'
+GUEST = 'vm-admin@192.168.234.2'
+DOMAIN = 'battlefield-agent'
+WORKER_ENV = '/etc/battlefield-agent/worker.env'
+MARKER = '/etc/battlefield-cli-bootstrap/guest.json'
+SECRET_KEY = 'BATTLEFIELD_AGENT_SECRET'
+SECRET = re.compile(r'[A-Za-z0-9_+/=-]{32,512}')
+PUBLISHED = ('replace-with-',)
+RETIRED = 'local-development-capability-secret-change-me'
+HOST_UNITS = ['battlefield-agent-firewall', 'battlefield-mcp-bridge', 'battlefield-mcp-proxy', 'squid']
+LIBEXEC = '/usr/local/libexec/battlefield'
+RECEIPT_SECONDS = 1800
+
+
+def production_worker_secret(path=PRODUCTION_ENV):
+    """Read BATTLEFIELD_AGENT_SECRET from the literal production env file and validate it."""
+    values = {}
+    for line in Path(path).read_text().splitlines():
+        if line.strip() and not line.lstrip().startswith('#') and '=' in line:
+            key, value = line.split('=', 1)
+            if key in values:
+                raise ValueError('Duplicate setting in the production env file')
+            values[key] = value
+    secret = values.get(SECRET_KEY, '')
+    if not SECRET.fullmatch(secret) or secret.startswith(PUBLISHED) or secret == RETIRED:
+        raise ValueError(SECRET_KEY + ' in the production env file is missing, malformed or a published placeholder')
+    return secret
+
+
+def with_worker_secret(environment, secret):
+    """Replace the worker secret line; bootstrap and this job build identical bytes."""
+    pattern = re.compile(r'(?m)^' + SECRET_KEY + r'=.*$')
+    if len(pattern.findall(environment)) != 1:
+        raise ValueError('The worker environment must contain exactly one ' + SECRET_KEY + ' line')
+    return pattern.sub(lambda _: SECRET_KEY + '=' + secret, environment)
+
+
+def host_files(bridge_port):
+    """AB-162 boot start and the bridge watchdog, owned by this job rather than bootstrap."""
+    start = f'''#!/bin/sh
+# Start the CLI VM after boot. libvirt autostart can fail while the host firewall is
+# still settling (ebtables rule errors), and nothing retries it.
+set -u
+for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  state=$(virsh -c qemu:///system domstate {DOMAIN} 2>/dev/null)
+  [ "$state" = running ] && exit 0
+  virsh -c qemu:///system start {DOMAIN} >/dev/null 2>&1 && exit 0
+  sleep 10
+done
+echo "{DOMAIN} did not start after 12 attempts" >&2
+exit 1
+'''
+    watchdog = '''#!/bin/sh
+# kubectl port-forward stays bound to the gateway pod it started with and keeps
+# listening after a rollout replaces it. Restart the bridge when it stops answering.
+set -u
+port="$1"
+failures=0
+while :; do
+  sleep 15
+  if curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:${port}/readyz"; then
+    failures=0
+    continue
+  fi
+  failures=$((failures + 1))
+  if [ "$failures" -ge 3 ]; then
+    echo "MCP bridge unreachable for 3 checks; restarting battlefield-mcp-bridge" >&2
+    systemctl restart battlefield-mcp-bridge.service || true
+    failures=0
+    sleep 30
+  fi
+done
+'''
+    start_unit = f'''[Unit]
+Description=Start the Battlefield CLI VM after libvirt and the host firewall are ready
+Wants=network-online.target
+After=network-online.target libvirtd.service virtqemud.service nftables.service battlefield-agent-firewall.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart={LIBEXEC}/start-cli-vm
+
+[Install]
+WantedBy=multi-user.target
+'''
+    watchdog_unit = f'''[Unit]
+Description=Restart the Battlefield MCP bridge when it loses the AI gateway
+After=battlefield-mcp-bridge.service
+
+[Service]
+ExecStart={LIBEXEC}/mcp-bridge-watchdog {int(bridge_port)}
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+'''
+    return {
+        LIBEXEC + '/start-cli-vm': ('0755', start),
+        LIBEXEC + '/mcp-bridge-watchdog': ('0755', watchdog),
+        '/etc/systemd/system/battlefield-cli-vm-start.service': ('0644', start_unit),
+        '/etc/systemd/system/battlefield-mcp-bridge-watchdog.service': ('0644', watchdog_unit),
+    }
+
+
+GUEST_INSPECT = r'''
+import hashlib, json, pathlib, subprocess, sys, urllib.request
+expected = json.loads(sys.stdin.read())['secret_sha256']
+env = pathlib.Path('/etc/battlefield-agent/worker.env').read_bytes()
+secret = [line.split(b'=', 1)[1] for line in env.splitlines() if line.startswith(b'BATTLEFIELD_AGENT_SECRET=')]
+marker = pathlib.Path('/etc/battlefield-cli-bootstrap/guest.json')
+try:
+    files = json.loads(marker.read_text())['files'] if marker.exists() else {}
+except ValueError:
+    files = {}
+def unit(*args):
+    return subprocess.run(['systemctl', *args, 'battlefield-worker'], capture_output=True, text=True).stdout.strip()
+try:
+    health = urllib.request.urlopen('http://127.0.0.1:8083/healthz', timeout=5).status
+except Exception:
+    health = 0
+print(json.dumps({
+    'machine_id': pathlib.Path('/etc/machine-id').read_text().strip(),
+    'domain_uuid': pathlib.Path('/sys/class/dmi/id/product_uuid').read_text().strip().lower(),
+    'secret_matches': len(secret) == 1 and hashlib.sha256(secret[0]).hexdigest() == expected,
+    'marker_matches': (not files) or files.get('/etc/battlefield-agent/worker.env') == hashlib.sha256(env).hexdigest(),
+    'worker_active': unit('is-active') == 'active',
+    'worker_enabled': unit('is-enabled') == 'enabled',
+    'worker_health': health,
+}))
+'''
+
+GUEST_SYNC = r'''
+import hashlib, json, os, pathlib, re, subprocess, sys, tempfile
+secret = json.loads(sys.stdin.read())['secret']
+path = pathlib.Path('/etc/battlefield-agent/worker.env')
+current = path.read_text()
+pattern = re.compile(r'(?m)^BATTLEFIELD_AGENT_SECRET=.*$')
+if len(pattern.findall(current)) != 1:
+    raise SystemExit('worker environment must contain exactly one BATTLEFIELD_AGENT_SECRET line')
+updated = pattern.sub(lambda _: 'BATTLEFIELD_AGENT_SECRET=' + secret, current)
+def publish(target, content, mode):
+    fd, temporary = tempfile.mkstemp(dir=target.parent, prefix='.battlefield-')
+    try:
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+    except BaseException:
+        pathlib.Path(temporary).unlink(missing_ok=True)
+        raise
+changed = updated != current
+if changed:
+    publish(path, updated, 0o400)
+marker = pathlib.Path('/etc/battlefield-cli-bootstrap/guest.json')
+if marker.exists():
+    data = json.loads(marker.read_text())
+    digest = hashlib.sha256(updated.encode()).hexdigest()
+    if data.get('files', {}).get(str(path)) != digest:
+        data['files'][str(path)] = digest
+        publish(marker, json.dumps(data, indent=2) + '\n', 0o600)
+subprocess.run(['systemctl', 'restart', 'battlefield-worker'], check=True)
+print(json.dumps({'changed': changed}))
+'''
+
+
+class Worker:
+    def __init__(self, args):
+        self.args = args
+        self.bootstrap = load('cli_bootstrap', ROOT / 'scripts/infra/cli-bootstrap.py')
+        self.config = self.bootstrap.validate(json.loads(self.private(CLI_CONFIG).read_text()))
+        if self.config['guest'] is None:
+            raise ValueError('No CLI guest is registered; run the CLI bootstrap adoption first')
+        # Registrations captured through the managed VM handoff pin the guest host key there.
+        known = self.config['guest'].get('known_hosts_file') or HOME / '.local/state/battlefield/cli-vm/known_hosts'
+        self.known_hosts = self.private(known)
+        self.port = self.config['host']['bridge_port']
+
+    @staticmethod
+    def private(path):
+        path = Path(path)
+        metadata = path.lstat()
+        if not path.is_file() or path.is_symlink() or metadata.st_uid != os.getuid() or metadata.st_mode & 0o077:
+            raise ValueError(f'{path} must be a regular file owned by this user with mode 0600 or stricter')
+        return path
+
+    def run(self, command, *, data=None, timeout=60, check=False):
+        result = subprocess.run(command, input=data, capture_output=True, timeout=timeout)
+        if check and result.returncode:
+            raise ValueError('Command failed: ' + shlex.join(command[:3]))
+        return result
+
+    def ssh(self, key, remote, data=None, timeout=120):
+        command = ['ssh', '-i', str(key), '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes',
+                   '-o', 'StrictHostKeyChecking=yes', '-o', 'UserKnownHostsFile=' + str(self.known_hosts),
+                   '-o', 'ConnectTimeout=10', GUEST, remote]
+        return self.run(command, data=data, timeout=timeout)
+
+    def guest_python(self, code, payload):
+        key = self.private(AUTOMATION_KEY)
+        result = self.ssh(key, 'sudo -n python3 -c ' + shlex.quote(code), json.dumps(payload).encode())
+        if result.returncode:
+            raise ValueError('The CLI guest command failed; check the automation key, vm-admin sudo and the worker files')
+        return json.loads(result.stdout)
+
+    def gateway(self, path, secret=None):
+        request = urllib.request.Request(f'http://127.0.0.1:{self.port}{path}')
+        if secret:
+            request.add_header('Authorization', 'Bearer ' + secret)
+        try:
+            return urllib.request.urlopen(request, timeout=5).status
+        except urllib.error.HTTPError as error:
+            return error.code
+        except OSError:
+            return 0
+
+    def domain_state(self):
+        result = self.run(['virsh', '-c', 'qemu:///system', 'domstate', DOMAIN])
+        return result.stdout.decode().strip() if result.returncode == 0 else 'unknown'
+
+    def unit_state(self, unit, query='is-active'):
+        return self.run(['systemctl', query, unit]).stdout.decode().strip()
+
+    def host_files_current(self):
+        stale = []
+        for path, (mode, content) in host_files(self.port).items():
+            target = Path(path)
+            if not target.is_file() or target.read_text() != content or oct(target.stat().st_mode & 0o777)[2:] != mode.lstrip('0'):
+                stale.append(path)
+        return stale
+
+    def inspect(self, secret):
+        checks = {'domain': self.domain_state(), 'host_units': {u: self.unit_state(u) for u in HOST_UNITS},
+                  'boot_start_enabled': self.unit_state('battlefield-cli-vm-start', 'is-enabled') == 'enabled',
+                  'bridge_watchdog_active': self.unit_state('battlefield-mcp-bridge-watchdog') == 'active',
+                  'stale_host_files': self.host_files_current(),
+                  'bridge_readyz': self.gateway('/readyz')}
+        enabled = self.gateway('/internal/agent/enabled', secret)
+        checks['gateway_accepts_worker_secret'] = enabled in (204, 503)
+        checks['automation_key'] = AUTOMATION_KEY.is_file()
+        checks['guest'] = None
+        if checks['domain'] == 'running' and checks['automation_key']:
+            try:
+                guest = self.guest_python(GUEST_INSPECT, {'secret_sha256': hashlib.sha256(secret.encode()).hexdigest()})
+            except (ValueError, subprocess.TimeoutExpired):
+                guest = {'reachable': False}
+            else:
+                guest['reachable'] = True
+                guest['identity_matches'] = (guest.pop('machine_id') == self.config['guest']['machine_id']
+                                             and guest.pop('domain_uuid') == self.config['host']['domain_uuid'])
+            checks['guest'] = guest
+        return checks
+
+    @staticmethod
+    def repairs(checks):
+        needed = []
+        if checks['stale_host_files'] or not checks['boot_start_enabled'] or not checks['bridge_watchdog_active']:
+            needed.append('install-host-units')
+        if checks['domain'] != 'running':
+            needed.append('start-vm')
+        if checks['bridge_readyz'] != 200:
+            needed.append('restart-bridge')
+        guest = checks['guest'] or {}
+        if checks['domain'] == 'running' and not guest.get('reachable'):
+            needed.append('reach-guest')
+        if guest.get('reachable') and (not guest['secret_matches'] or not guest['marker_matches']):
+            needed.append('sync-worker-secret')
+        elif guest.get('reachable') and (not guest['worker_active'] or guest['worker_health'] != 204):
+            needed.append('restart-worker')
+        return needed
+
+    @staticmethod
+    def problems(checks):
+        """Everything that keeps CLI battles from running, in operator terms."""
+        found = [f'host unit {u} is {s}' for u, s in checks['host_units'].items() if s != 'active']
+        if checks['domain'] != 'running':
+            found.append(f'CLI VM is {checks["domain"]}')
+        if checks['bridge_readyz'] != 200:
+            found.append('MCP bridge does not reach the AI gateway')
+        elif not checks['gateway_accepts_worker_secret']:
+            found.append('AI gateway rejects the production worker secret')
+        if not checks['automation_key']:
+            found.append('Jenkins automation key is missing; run cli-worker.py authorize once')
+        guest = checks['guest']
+        if guest is not None:
+            if not guest.get('reachable'):
+                found.append('CLI guest is not reachable with the automation key')
+            else:
+                if not guest['identity_matches']:
+                    found.append('CLI guest identity differs from the registration')
+                if not guest['secret_matches']:
+                    found.append('CLI worker secret differs from production')
+                if not guest['worker_active'] or guest['worker_health'] != 204:
+                    found.append('CLI worker service is not healthy')
+        if not checks['boot_start_enabled'] or not checks['bridge_watchdog_active'] or checks['stale_host_files']:
+            found.append('boot start or bridge watchdog is not installed')
+        return found
+
+    def sudo(self, command):
+        """Host root operations, with the sudo password on stdin rather than argv."""
+        password = b''
+        if self.args.become_password_file:
+            password = self.private(self.args.become_password_file).read_bytes().rstrip(b'\n') + b'\n'
+        prefix = ['sudo', '-S', '-p', ''] if password else ['sudo', '-n']
+        result = self.run(prefix + command, data=password, timeout=120)
+        if result.returncode:
+            raise ValueError('Host sudo command failed: ' + ' '.join(command[:2]))
+
+    def install_host_units(self):
+        with tempfile.TemporaryDirectory(prefix='battlefield-cli-units-') as directory:
+            os.chmod(directory, 0o755)
+            self.sudo(['install', '-d', '-m', '0755', LIBEXEC])
+            for path, (mode, content) in host_files(self.port).items():
+                staged = Path(directory) / Path(path).name
+                staged.write_text(content)
+                staged.chmod(0o644)
+                self.sudo(['install', '-m', mode, '-o', 'root', '-g', 'root', str(staged), path])
+        self.sudo(['systemctl', 'daemon-reload'])
+        self.sudo(['systemctl', 'enable', 'battlefield-cli-vm-start.service'])
+        self.sudo(['systemctl', 'enable', 'battlefield-mcp-bridge-watchdog.service'])
+        self.sudo(['systemctl', 'restart', 'battlefield-mcp-bridge-watchdog.service'])
+
+    def wait_for(self, condition, seconds, message):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            if condition():
+                return
+            time.sleep(5)
+        raise ValueError(message)
+
+    def apply(self, repairs, secret):
+        if 'install-host-units' in repairs:
+            self.install_host_units()
+        if 'start-vm' in repairs:
+            self.run(['virsh', '-c', 'qemu:///system', 'start', DOMAIN], check=True)
+            self.wait_for(lambda: self.ssh(self.private(AUTOMATION_KEY), 'true', timeout=30).returncode == 0,
+                          240, 'The CLI VM started but did not accept SSH within 4 minutes')
+        if 'restart-bridge' in repairs:
+            self.sudo(['systemctl', 'restart', 'battlefield-mcp-bridge.service'])
+            self.wait_for(lambda: self.gateway('/readyz') == 200, 60, 'The MCP bridge did not reach the AI gateway after a restart')
+        guest = self.inspect(secret)['guest'] or {}
+        if not guest.get('reachable'):
+            raise ValueError('The CLI guest is not reachable with the automation key; run cli-worker.py authorize')
+        if not guest['identity_matches']:
+            raise ValueError('The CLI guest identity differs from the registration; nothing was changed in the guest')
+        if not guest['secret_matches'] or not guest['marker_matches']:
+            self.guest_python(GUEST_SYNC, {'secret': secret})
+        elif not guest['worker_active'] or guest['worker_health'] != 204:
+            key = self.private(AUTOMATION_KEY)
+            if self.ssh(key, 'sudo -n systemctl restart battlefield-worker').returncode:
+                raise ValueError('Could not restart the CLI worker')
+        self.wait_for(lambda: (self.inspect(secret)['guest'] or {}).get('worker_health') == 204, 90,
+                      'The CLI worker did not report healthy after the repair')
+
+    def authorize(self):
+        """One-time operator step: create the Jenkins key and authorize it for vm-admin."""
+        admin_key = self.private(self.config['guest']['identity_file'])
+        if not AUTOMATION_KEY.exists():
+            self.run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', 'battlefield-cli-automation',
+                      '-f', str(AUTOMATION_KEY)], check=True)
+        public = Path(str(AUTOMATION_KEY) + '.pub').read_text().strip()
+        if not re.fullmatch(r'ssh-ed25519 [A-Za-z0-9+/=]+ battlefield-cli-automation', public):
+            raise ValueError('Unexpected automation public key')
+        install = ('umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; '
+                   'read -r key; grep -qxF "$key" ~/.ssh/authorized_keys || printf "%s\\n" "$key" >> ~/.ssh/authorized_keys')
+        command = ['ssh', '-i', str(admin_key), '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=yes',
+                   '-o', 'UserKnownHostsFile=' + str(self.known_hosts), GUEST, install]
+        if subprocess.run(command, input=(public + '\n').encode(), timeout=120).returncode:
+            raise ValueError('Could not authorize the automation key; unlock the admin key in ssh-agent and retry')
+        if self.ssh(self.private(AUTOMATION_KEY), 'sudo -n true', timeout=30).returncode:
+            raise ValueError('The automation key logs in but vm-admin needs passwordless sudo for the CLI job')
+        print('Authorized the Jenkins automation key for vm-admin on the CLI VM. Revoke it by removing the '
+              '"battlefield-cli-automation" line from ~vm-admin/.ssh/authorized_keys.')
+
+
+def trusted_revision(expected):
+    platform = load('platform', ROOT / 'scripts/infra/platform.py')
+    platform.trusted_revision(expected)
+
+
+def write_report(path, value):
+    path = Path(path)
+    fd = os.open(path, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
+    with os.fdopen(fd, 'w') as stream:
+        json.dump(value, stream, indent=2, sort_keys=True)
+        stream.write('\n')
+
+
+def execute(args):
+    worker = Worker(args)
+    if args.action == 'authorize':
+        worker.authorize()
+        return 0
+    secret = production_worker_secret()
+    report = {'schema': 1, 'action': args.action}
+    if args.action == 'verify':
+        checks = worker.inspect(secret)
+        report.update(checks=checks, problems=worker.problems(checks))
+        write_report(args.report, report)
+        for problem in report['problems']:
+            print('CLI worker: ' + problem, file=sys.stderr)
+        return 3 if report['problems'] else 0
+    trusted_revision(args.revision)
+    lock = load('operation_lock', ROOT / 'scripts/infra/operation-lock.py')
+    with lock.acquire():
+        checks = worker.inspect(secret)
+        repairs = worker.repairs(checks)
+        receipt = Path(args.receipt)
+        if args.action == 'plan':
+            write_report(receipt, {'schema': 1, 'revision': args.revision, 'created': time.time(), 'repairs': repairs})
+            report.update(checks=checks, repairs=repairs, problems=worker.problems(checks))
+        else:
+            saved = json.loads(worker.private(receipt).read_text())
+            age = time.time() - saved.get('created', 0)
+            if saved.get('revision') != args.revision or not 0 <= age <= RECEIPT_SECONDS:
+                raise ValueError('Plan revision changed or the plan expired; run and review a new plan')
+            if saved.get('repairs') != repairs:
+                raise ValueError('The CLI worker changed since the reviewed plan; run and review a new plan')
+            receipt.unlink()  # A failure or interruption consumes the approval.
+            if repairs:
+                worker.apply(repairs, secret)
+            checks = worker.inspect(secret)
+            report.update(applied=repairs, checks=checks, problems=worker.problems(checks))
+        write_report(args.report, report)
+    if args.action == 'apply' and report['problems']:
+        raise ValueError('CLI worker still has problems after apply: ' + '; '.join(report['problems']))
+    print(f'CLI worker {args.action} completed; report written')
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=['authorize', 'plan', 'apply', 'verify'])
+    parser.add_argument('--revision', help='Reviewed origin/main revision (plan/apply)')
+    parser.add_argument('--receipt', help='Private plan receipt path (plan/apply)')
+    parser.add_argument('--report', help='Secret-free JSON report path (plan/apply/verify)')
+    parser.add_argument('--become-password-file', help='Private host sudo password file (apply)')
+    args = parser.parse_args()
+    if args.action != 'authorize' and not args.report:
+        parser.error('--report is required')
+    if args.action in ('plan', 'apply') and not (args.revision and args.receipt):
+        parser.error('plan and apply require --revision and --receipt')
+    os.umask(0o077)
+    return execute(args)
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except (ValueError, OSError, subprocess.SubprocessError) as error:
+        print('CLI worker: ' + (str(error) if isinstance(error, ValueError) else 'Operation failed; no private output published'), file=sys.stderr)
+        sys.exit(1)

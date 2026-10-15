@@ -46,9 +46,18 @@ def validate_guest(environment, config, adopt, artifacts):
         raise AnsibleFilterError('Invalid guest inputs: require only the worker control secret, fixed private transport, declared tools, unique profile IDs/version prefixes, and disabled profiles/isolation for a fresh install') from None
 
 
+def with_worker_secret(environment, secret):
+    """Use the production worker secret, as scripts/infra/cli-worker.py does on the guest."""
+    pattern = re.compile(r'(?m)^BATTLEFIELD_AGENT_SECRET=.*$')
+    if not isinstance(environment, str) or not isinstance(secret, str) or len(pattern.findall(environment)) != 1:
+        raise AnsibleFilterError('Worker environment must contain exactly one BATTLEFIELD_AGENT_SECRET line') from None
+    return pattern.sub(lambda _: 'BATTLEFIELD_AGENT_SECRET=' + secret, environment)
+
+
 class FilterModule:
     def filters(self):
-        return {'cli_guest_inputs_valid': validate_guest, 'cli_version_failures': version_failures}
+        return {'cli_guest_inputs_valid': validate_guest, 'cli_version_failures': version_failures,
+                'cli_with_worker_secret': with_worker_secret}
 
 
 def version_failures(results):
