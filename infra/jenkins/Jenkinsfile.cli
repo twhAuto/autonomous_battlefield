@@ -33,10 +33,14 @@ pipeline {
                     withCredentials([file(credentialsId: 'host-sudo-password', variable: 'PLATFORM_SUDO_PASSWORD')]) {
                         script {
                             def action = params.ACTION == 'verify' ? 'verify' : 'plan'
-                            withEnv(["PLATFORM_ACTION=${action}"]) {
-                                sh './scripts/ci/run-cli-worker.sh'
+                            // Archive the report even when the step fails: a failed run's report is the diagnosis.
+                            try {
+                                withEnv(["PLATFORM_ACTION=${action}"]) {
+                                    sh './scripts/ci/run-cli-worker.sh'
+                                }
+                            } finally {
+                                archiveArtifacts artifacts: "artifacts/cli-${action}.json", allowEmptyArchive: true
                             }
-                            archiveArtifacts artifacts: "artifacts/cli-${action}.json", allowEmptyArchive: false
                             if (params.ACTION == 'apply') {
                                 timeout(time: 10, unit: 'MINUTES') {
                                     input message: "Review cli-plan.json repairs and revision ${env.PLATFORM_REVISION}. Apply this plan?", ok: 'Apply reviewed plan', submitter: 'whtan'
@@ -45,10 +49,13 @@ pipeline {
                                 if (current.GIT_COMMIT != env.PLATFORM_REVISION) {
                                     error('main changed during review; start a new plan.')
                                 }
-                                withEnv(['PLATFORM_ACTION=apply']) {
-                                    sh './scripts/ci/run-cli-worker.sh'
+                                try {
+                                    withEnv(['PLATFORM_ACTION=apply']) {
+                                        sh './scripts/ci/run-cli-worker.sh'
+                                    }
+                                } finally {
+                                    archiveArtifacts artifacts: 'artifacts/cli-apply.json', allowEmptyArchive: true
                                 }
-                                archiveArtifacts artifacts: 'artifacts/cli-apply.json', allowEmptyArchive: false
                             }
                         }
                     }

@@ -29,8 +29,8 @@ worker = load('cli_worker', ROOT / 'scripts/infra/cli-worker.py')
 
 def healthy(**overrides):
     checks = {'domain': 'running', 'host_units': {u: 'active' for u in worker.HOST_UNITS},
-              'boot_start_enabled': True, 'bridge_watchdog_active': True, 'stale_host_files': [],
-              'bridge_readyz': 200, 'gateway_accepts_worker_secret': True, 'automation_key': True,
+              'boot_start_enabled': True, 'bridge_watchdog_active': True, 'watchdog_enabled': True, 'stale_host_files': [],
+              'bridge_reachable': True, 'gateway_accepts_worker_secret': True, 'automation_key': True,
               'guest': {'reachable': True, 'identity_matches': True, 'secret_matches': True, 'marker_matches': True,
                         'worker_active': True, 'worker_enabled': True, 'worker_health': 204}}
     if 'guest' in overrides:
@@ -83,11 +83,15 @@ class PlanningTests(unittest.TestCase):
     def test_each_failure_maps_to_its_repair(self):
         cases = [
             (healthy(domain='shut off', guest=None), ['start-vm']),
-            (healthy(bridge_readyz=0), ['restart-bridge']),
+            (healthy(bridge_reachable=False), ['restart-bridge']),
             (healthy(secret_matches=False), ['sync-worker-secret']),
-            (healthy(marker_matches=False), ['sync-worker-secret']),
             (healthy(worker_health=0), ['restart-worker']),
+            (healthy(worker_enabled=False), ['enable-worker']),
             (healthy(boot_start_enabled=False), ['install-host-units']),
+            (healthy(watchdog_enabled=False), ['install-host-units']),
+            # Drift beyond the secret, or another machine, is reported but never repaired.
+            (healthy(marker_matches=False, secret_matches=False), []),
+            (healthy(identity_matches=False, secret_matches=False), []),
             (healthy(stale_host_files=['/etc/systemd/system/battlefield-cli-vm-start.service']), ['install-host-units']),
             (healthy(guest={'reachable': False}), ['reach-guest']),
         ]
@@ -96,7 +100,7 @@ class PlanningTests(unittest.TestCase):
                 self.assertEqual(worker.Worker.repairs(checks), expected)
 
     def test_problems_describe_todays_outage(self):
-        checks = healthy(domain='shut off', guest=None, bridge_readyz=0, boot_start_enabled=False)
+        checks = healthy(domain='shut off', guest=None, bridge_reachable=False, boot_start_enabled=False)
         problems = worker.Worker.problems(checks)
         self.assertIn('CLI VM is shut off', problems)
         self.assertIn('MCP bridge does not reach the AI gateway', problems)
@@ -104,6 +108,21 @@ class PlanningTests(unittest.TestCase):
         mismatch = worker.Worker.problems(healthy(secret_matches=False, gateway_accepts_worker_secret=False))
         self.assertIn('CLI worker secret differs from production', mismatch)
         self.assertIn('AI gateway rejects the production worker secret', mismatch)
+        drift = worker.Worker.problems(healthy(marker_matches=False, worker_enabled=False))
+        self.assertIn('CLI worker environment differs from its registered content; inspect it, it is not repaired automatically', drift)
+        self.assertIn('CLI worker service is not enabled for reboot', drift)
+        self.assertIn('boot start or bridge watchdog is not installed', worker.Worker.problems(healthy(watchdog_enabled=False)))
+
+    def test_inspect_treats_any_2xx_gateway_readiness_as_reachable(self):
+        instance = object.__new__(worker.Worker)
+        instance.port, instance.config = 28084, {'guest': {}, 'host': {}}
+        instance.domain_state = lambda: 'shut off'
+        instance.unit_state = lambda unit, query='is-active': 'enabled' if query == 'is-enabled' else 'active'
+        instance.host_files_current = lambda: []
+        for status, reachable in ((204, True), (200, True), (503, False), (0, False)):
+            instance.gateway = lambda path, secret=None, status=status: status if path == '/readyz' else 401
+            with self.subTest(status=status), mock.patch.object(worker, 'AUTOMATION_KEY', Path('/nonexistent')):
+                self.assertIs(instance.inspect(SECRET)['bridge_reachable'], reachable)
 
     def test_host_files_render_the_bridge_port_and_boot_retry(self):
         files = worker.host_files(28084)
@@ -198,6 +217,18 @@ class ExecuteTests(unittest.TestCase):
             worker.execute(self.args('apply'))
         self.assertEqual(self.applied, [])
 
+    def test_failed_apply_still_writes_its_report(self):
+        self.checks = healthy(secret_matches=False)
+        worker.execute(self.args('plan'))
+        def fail(repairs, secret):
+            raise ValueError('The CLI worker did not report healthy after the repair')
+        worker.Worker.apply = lambda self, repairs, secret: fail(repairs, secret)
+        with self.assertRaisesRegex(ValueError, 'did not report healthy'):
+            worker.execute(self.args('apply'))
+        report = json.loads((self.directory / 'apply.json').read_text())
+        self.assertEqual(report['error'], 'The CLI worker did not report healthy after the repair')
+        self.assertNotIn(SECRET, json.dumps(report))
+
 
 class HostTests(unittest.TestCase):
     def test_sudo_password_goes_to_stdin_not_argv(self):
@@ -263,6 +294,26 @@ class GuestScriptTests(unittest.TestCase):
         self.assertEqual(files['/etc/battlefield-agent/worker.env'], hashlib.sha256(content.encode()).hexdigest())
         self.assertIn('restart battlefield-worker', self.calls.read_text())
         self.assertFalse(self.run_script(worker.GUEST_SYNC, {'secret': SECRET})['changed'])
+
+    def run_failing(self, code, payload):
+        result = subprocess.run([sys.executable, '-c', self.script(code)], input=json.dumps(payload).encode(),
+                                capture_output=True, env=self.process_env, timeout=30)
+        self.assertNotEqual(result.returncode, 0)
+        return result.stderr.decode()
+
+    def test_sync_refuses_drift_from_the_registered_file(self):
+        original = self.env.read_text()
+        self.env.write_text(original.replace('ISOLATION_VERIFIED=true', 'ISOLATION_VERIFIED=false'))
+        self.assertIn('differs from its registered content', self.run_failing(worker.GUEST_SYNC, {'secret': SECRET}))
+        self.assertIn('ISOLATION_VERIFIED=false', self.env.read_text())
+        self.assertFalse(self.calls.exists())
+
+    def test_sync_refuses_unexpected_settings_even_when_registered(self):
+        content = self.env.read_text() + 'HTTPS_PROXY=http://attacker.invalid\n'
+        self.env.write_text(content)
+        self.marker.write_text(json.dumps({'files': {'/etc/battlefield-agent/worker.env': hashlib.sha256(content.encode()).hexdigest()}}))
+        self.assertIn('unexpected settings', self.run_failing(worker.GUEST_SYNC, {'secret': SECRET}))
+        self.assertEqual(self.env.read_text(), content)
 
     def test_inspect_compares_digests_without_returning_the_secret(self):
         result = self.run_script(worker.GUEST_INSPECT, {'secret_sha256': hashlib.sha256(b'old-old-old-old-old-old-old-old-old').hexdigest()})

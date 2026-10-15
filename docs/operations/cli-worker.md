@@ -57,7 +57,7 @@ Open `battlefield-platform/cli` → **Build with Parameters**.
 | --- | --- |
 | `verify` (default) | Read-only. Fails and lists every problem: VM state, host units, bridge reachability, whether the gateway accepts the production worker secret, guest identity, worker secret match, worker health, and the boot/watchdog units. |
 | `plan` | Records the repairs that `apply` would make, in a private receipt valid for 30 minutes. |
-| `apply` | Plans, pauses for `whtan` to approve, re-checks that the plan still matches and consumes the receipt. It then repairs, verifies, and fails if anything remains. |
+| `apply` | Plans, pauses for `whtan` to approve, re-checks that the plan still matches and consumes the receipt. It then repairs, verifies, and fails if anything remains. Reports are archived even when the run fails. |
 
 Apply repairs only what is needed:
 
@@ -66,6 +66,11 @@ Apply repairs only what is needed:
 - **`restart-bridge`:** restarts `battlefield-mcp-bridge`. Its `kubectl port-forward` stays bound to the gateway pod it started with, so it stops working after every gateway rollout until restarted. The watchdog does this automatically once installed.
 - **`sync-worker-secret`:** replaces only the `BATTLEFIELD_AGENT_SECRET` line of `/etc/battlefield-agent/worker.env` with the value from `~/.config/autonomous-battlefield/production/.env`. It also updates the bootstrap ownership marker's fingerprint for that file and restarts `battlefield-worker`.
 - **`restart-worker`:** restarts an inactive or unhealthy worker.
+- **`enable-worker`:** re-enables a worker that is running but disabled, so it survives a reboot.
+
+Secret sync only proceeds when `worker.env` still matches its registered fingerprint
+and contains only the three expected settings. Any other drift, such as a changed
+isolation flag, is reported and left untouched; it needs a reviewed bootstrap change.
 
 `reach-guest` means the job cannot log in with the automation key. Run the
 authorization step, then plan again. A guest whose machine or hardware identity

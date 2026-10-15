@@ -174,6 +174,15 @@ import hashlib, json, os, pathlib, re, subprocess, sys, tempfile
 secret = json.loads(sys.stdin.read())['secret']
 path = pathlib.Path('/etc/battlefield-agent/worker.env')
 current = path.read_text()
+marker = pathlib.Path('/etc/battlefield-cli-bootstrap/guest.json')
+registered = json.loads(marker.read_text())['files'].get(str(path)) if marker.exists() else None
+# Only a secret rotation is in scope: refuse any other drift from the registered file.
+if registered is not None and hashlib.sha256(current.encode()).hexdigest() != registered:
+    raise SystemExit('worker environment differs from its registered content; not changed')
+pairs = dict(line.split('=', 1) for line in current.splitlines() if line and not line.startswith('#'))
+if (set(pairs) != {'BATTLEFIELD_AGENT_SECRET', 'BATTLEFIELD_ENV', 'BATTLEFIELD_CLI_ISOLATION_VERIFIED'}
+        or pairs['BATTLEFIELD_ENV'] != 'production' or pairs['BATTLEFIELD_CLI_ISOLATION_VERIFIED'] not in ('true', 'false')):
+    raise SystemExit('worker environment has unexpected settings; not changed')
 pattern = re.compile(r'(?m)^BATTLEFIELD_AGENT_SECRET=.*$')
 if len(pattern.findall(current)) != 1:
     raise SystemExit('worker environment must contain exactly one BATTLEFIELD_AGENT_SECRET line')
@@ -193,7 +202,6 @@ def publish(target, content, mode):
 changed = updated != current
 if changed:
     publish(path, updated, 0o400)
-marker = pathlib.Path('/etc/battlefield-cli-bootstrap/guest.json')
 if marker.exists():
     data = json.loads(marker.read_text())
     digest = hashlib.sha256(updated.encode()).hexdigest()
@@ -275,7 +283,8 @@ class Worker:
                   'boot_start_enabled': self.unit_state('battlefield-cli-vm-start', 'is-enabled') == 'enabled',
                   'bridge_watchdog_active': self.unit_state('battlefield-mcp-bridge-watchdog') == 'active',
                   'stale_host_files': self.host_files_current(),
-                  'bridge_readyz': self.gateway('/readyz')}
+                  'watchdog_enabled': self.unit_state('battlefield-mcp-bridge-watchdog', 'is-enabled') == 'enabled',
+                  'bridge_reachable': self.gateway('/readyz') // 100 == 2}
         enabled = self.gateway('/internal/agent/enabled', secret)
         checks['gateway_accepts_worker_secret'] = enabled in (204, 503)
         checks['automation_key'] = AUTOMATION_KEY.is_file()
@@ -295,19 +304,23 @@ class Worker:
     @staticmethod
     def repairs(checks):
         needed = []
-        if checks['stale_host_files'] or not checks['boot_start_enabled'] or not checks['bridge_watchdog_active']:
+        if host_units_missing(checks):
             needed.append('install-host-units')
         if checks['domain'] != 'running':
             needed.append('start-vm')
-        if checks['bridge_readyz'] != 200:
+        if not checks['bridge_reachable']:
             needed.append('restart-bridge')
         guest = checks['guest'] or {}
         if checks['domain'] == 'running' and not guest.get('reachable'):
             needed.append('reach-guest')
-        if guest.get('reachable') and (not guest['secret_matches'] or not guest['marker_matches']):
-            needed.append('sync-worker-secret')
-        elif guest.get('reachable') and (not guest['worker_active'] or guest['worker_health'] != 204):
-            needed.append('restart-worker')
+        if guest.get('reachable') and guest['identity_matches'] and guest['marker_matches']:
+            # Other worker environment drift is never repaired here; it needs a reviewed change.
+            if not guest['secret_matches']:
+                needed.append('sync-worker-secret')
+            elif not guest['worker_active'] or guest['worker_health'] != 204:
+                needed.append('restart-worker')
+            if not guest['worker_enabled']:
+                needed.append('enable-worker')
         return needed
 
     @staticmethod
@@ -316,24 +329,14 @@ class Worker:
         found = [f'host unit {u} is {s}' for u, s in checks['host_units'].items() if s != 'active']
         if checks['domain'] != 'running':
             found.append(f'CLI VM is {checks["domain"]}')
-        if checks['bridge_readyz'] != 200:
+        if not checks['bridge_reachable']:
             found.append('MCP bridge does not reach the AI gateway')
         elif not checks['gateway_accepts_worker_secret']:
             found.append('AI gateway rejects the production worker secret')
         if not checks['automation_key']:
             found.append('Jenkins automation key is missing; run cli-worker.py authorize once')
-        guest = checks['guest']
-        if guest is not None:
-            if not guest.get('reachable'):
-                found.append('CLI guest is not reachable with the automation key')
-            else:
-                if not guest['identity_matches']:
-                    found.append('CLI guest identity differs from the registration')
-                if not guest['secret_matches']:
-                    found.append('CLI worker secret differs from production')
-                if not guest['worker_active'] or guest['worker_health'] != 204:
-                    found.append('CLI worker service is not healthy')
-        if not checks['boot_start_enabled'] or not checks['bridge_watchdog_active'] or checks['stale_host_files']:
+        found += guest_problems(checks['guest'])
+        if host_units_missing(checks):
             found.append('boot start or bridge watchdog is not installed')
         return found
 
@@ -349,12 +352,10 @@ class Worker:
 
     def install_host_units(self):
         with tempfile.TemporaryDirectory(prefix='battlefield-cli-units-') as directory:
-            os.chmod(directory, 0o755)
             self.sudo(['install', '-d', '-m', '0755', LIBEXEC])
             for path, (mode, content) in host_files(self.port).items():
                 staged = Path(directory) / Path(path).name
                 staged.write_text(content)
-                staged.chmod(0o644)
                 self.sudo(['install', '-m', mode, '-o', 'root', '-g', 'root', str(staged), path])
         self.sudo(['systemctl', 'daemon-reload'])
         self.sudo(['systemctl', 'enable', 'battlefield-cli-vm-start.service'])
@@ -378,18 +379,22 @@ class Worker:
                           240, 'The CLI VM started but did not accept SSH within 4 minutes')
         if 'restart-bridge' in repairs:
             self.sudo(['systemctl', 'restart', 'battlefield-mcp-bridge.service'])
-            self.wait_for(lambda: self.gateway('/readyz') == 200, 60, 'The MCP bridge did not reach the AI gateway after a restart')
+            self.wait_for(lambda: self.gateway('/readyz') // 100 == 2, 60, 'The MCP bridge did not reach the AI gateway after a restart')
         guest = self.inspect(secret)['guest'] or {}
         if not guest.get('reachable'):
             raise ValueError('The CLI guest is not reachable with the automation key; run cli-worker.py authorize')
         if not guest['identity_matches']:
             raise ValueError('The CLI guest identity differs from the registration; nothing was changed in the guest')
-        if not guest['secret_matches'] or not guest['marker_matches']:
+        if not guest['marker_matches']:
+            raise ValueError('The CLI worker environment differs from its registered content; nothing was changed in the guest')
+        key = self.private(AUTOMATION_KEY)
+        if not guest['secret_matches']:
             self.guest_python(GUEST_SYNC, {'secret': secret})
         elif not guest['worker_active'] or guest['worker_health'] != 204:
-            key = self.private(AUTOMATION_KEY)
             if self.ssh(key, 'sudo -n systemctl restart battlefield-worker').returncode:
                 raise ValueError('Could not restart the CLI worker')
+        if not guest['worker_enabled'] and self.ssh(key, 'sudo -n systemctl enable battlefield-worker').returncode:
+            raise ValueError('Could not enable the CLI worker for reboot')
         self.wait_for(lambda: (self.inspect(secret)['guest'] or {}).get('worker_health') == 204, 90,
                       'The CLI worker did not report healthy after the repair')
 
@@ -412,6 +417,26 @@ class Worker:
             raise ValueError('The automation key logs in but vm-admin needs passwordless sudo for the CLI job')
         print('Authorized the Jenkins automation key for vm-admin on the CLI VM. Revoke it by removing the '
               '"battlefield-cli-automation" line from ~vm-admin/.ssh/authorized_keys.')
+
+
+def host_units_missing(checks):
+    return bool(checks['stale_host_files'] or not checks['boot_start_enabled']
+                or not checks['bridge_watchdog_active'] or not checks['watchdog_enabled'])
+
+
+def guest_problems(guest):
+    if guest is None:
+        return []
+    if not guest.get('reachable'):
+        return ['CLI guest is not reachable with the automation key']
+    checks = [
+        (guest['identity_matches'], 'CLI guest identity differs from the registration'),
+        (guest['marker_matches'], 'CLI worker environment differs from its registered content; inspect it, it is not repaired automatically'),
+        (guest['secret_matches'], 'CLI worker secret differs from production'),
+        (guest['worker_active'] and guest['worker_health'] == 204, 'CLI worker service is not healthy'),
+        (guest['worker_enabled'], 'CLI worker service is not enabled for reboot'),
+    ]
+    return [message for ok, message in checks if not ok]
 
 
 def trusted_revision(expected):
@@ -444,29 +469,38 @@ def execute(args):
     trusted_revision(args.revision)
     lock = load('operation_lock', ROOT / 'scripts/infra/operation-lock.py')
     with lock.acquire():
-        checks = worker.inspect(secret)
-        repairs = worker.repairs(checks)
-        receipt = Path(args.receipt)
-        if args.action == 'plan':
-            write_report(receipt, {'schema': 1, 'revision': args.revision, 'created': time.time(), 'repairs': repairs})
-            report.update(checks=checks, repairs=repairs, problems=worker.problems(checks))
-        else:
-            saved = json.loads(worker.private(receipt).read_text())
-            age = time.time() - saved.get('created', 0)
-            if saved.get('revision') != args.revision or not 0 <= age <= RECEIPT_SECONDS:
-                raise ValueError('Plan revision changed or the plan expired; run and review a new plan')
-            if saved.get('repairs') != repairs:
-                raise ValueError('The CLI worker changed since the reviewed plan; run and review a new plan')
-            receipt.unlink()  # A failure or interruption consumes the approval.
-            if repairs:
-                worker.apply(repairs, secret)
-            checks = worker.inspect(secret)
-            report.update(applied=repairs, checks=checks, problems=worker.problems(checks))
+        try:
+            report.update(reviewed_change(worker, args, secret))
+        except ValueError as error:
+            report['error'] = str(error)  # Still publish what was checked when a repair fails.
+            write_report(args.report, report)
+            raise
         write_report(args.report, report)
     if args.action == 'apply' and report['problems']:
         raise ValueError('CLI worker still has problems after apply: ' + '; '.join(report['problems']))
     print(f'CLI worker {args.action} completed; report written')
     return 0
+
+
+def reviewed_change(worker, args, secret):
+    """plan records repairs in a receipt; apply re-checks that exact plan, consumes it, repairs."""
+    checks = worker.inspect(secret)
+    repairs = worker.repairs(checks)
+    receipt = Path(args.receipt)
+    if args.action == 'plan':
+        write_report(receipt, {'schema': 1, 'revision': args.revision, 'created': time.time(), 'repairs': repairs})
+        return {'checks': checks, 'repairs': repairs, 'problems': worker.problems(checks)}
+    saved = json.loads(worker.private(receipt).read_text())
+    age = time.time() - saved.get('created', 0)
+    if saved.get('revision') != args.revision or not 0 <= age <= RECEIPT_SECONDS:
+        raise ValueError('Plan revision changed or the plan expired; run and review a new plan')
+    if saved.get('repairs') != repairs:
+        raise ValueError('The CLI worker changed since the reviewed plan; run and review a new plan')
+    receipt.unlink()  # A failure or interruption consumes the approval.
+    if repairs:
+        worker.apply(repairs, secret)
+    checks = worker.inspect(secret)
+    return {'applied': repairs, 'checks': checks, 'problems': worker.problems(checks)}
 
 
 def main():
