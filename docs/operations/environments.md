@@ -17,7 +17,7 @@ environment, run the following on its server:
 Create the private production `.env` from the shared template and fill in its own
 database and provider credentials. Use `BATTLEFIELD_AUTH_MODE=cloudflare`,
 Access issuer/audience/public origin and role assignments. Production rejects
-development login modes. Use distinct worker and MCP capability secrets of at least 32 bytes.
+development login modes. Use distinct, randomly generated worker and MCP capability secrets of at least 32 bytes; values copied from `.env.example` are rejected.
 Keep provider availability false until intentionally configured; CLI availability
 requires verified isolation.
 

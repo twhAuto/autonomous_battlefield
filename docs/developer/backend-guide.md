@@ -602,7 +602,7 @@ release inputs, provider login and end-to-end verification.
 owns host and guest service bootstrap. See [CLI VM platform](../operations/cli-vm-platform.md)
 and [CLI bootstrap](../operations/cli-bootstrap.md).
 `verify-agent-isolation.py` tests its guest boundary. `ai-policy.sh` is the private
-operator stop/status/usage interface. `verify-access-service.py` checks the restricted CI service identity during production smoke.
+operator stop/status/usage interface. `verify-access-service.py` checks the restricted CI service identity during production smoke. It retries a connection failure up to three times, 5 s apart, because the tunnel can briefly hold connections to replaced pods after a rollout; an unexpected HTTP status fails immediately.
 `scripts/test/test-limited-launch.py` verifies
 rendered routing and isolation artifacts without modifying infrastructure.
 See [limited-access launch](../operations/limited-launch.md) for setup and live verification.

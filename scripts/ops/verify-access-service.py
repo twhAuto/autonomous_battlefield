@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
@@ -17,14 +18,25 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+# Right after a rollout the tunnel can still hold connections to replaced pods, so a
+# connection failure is retried briefly. An unexpected HTTP status never is.
+CONNECT_ATTEMPTS = 4
+CONNECT_RETRY_SECONDS = 5
+
+
 def check(client, base, path, expected, headers=None, data=None):
-    request = urllib.request.Request(base + path, headers=headers or {}, data=data)
-    try:
-        response = client.open(request, timeout=15)
-    except urllib.error.HTTPError as error:
-        response = error
-    except OSError:
-        raise ValueError(f'{path}: connection or TLS verification failed') from None
+    for attempt in range(1, CONNECT_ATTEMPTS + 1):
+        request = urllib.request.Request(base + path, headers=headers or {}, data=data)
+        try:
+            response = client.open(request, timeout=15)
+            break
+        except urllib.error.HTTPError as error:
+            response = error
+            break
+        except OSError:
+            if attempt == CONNECT_ATTEMPTS:
+                raise ValueError(f'{path}: connection or TLS verification failed') from None
+            time.sleep(CONNECT_RETRY_SECONDS)
     with response:
         if response.status not in expected:
             raise ValueError(f'{path}: expected {expected}, received {response.status}; check Access policy, CI identity and credential expiry')

@@ -44,7 +44,12 @@ function validate(values, environment) {
     try { url = new URL(values.get(key)); } catch { throw new Error(`Invalid database URL: ${key}`); }
     if (!['postgres:','postgresql:'].includes(url.protocol) || !url.hostname) throw new Error(`Invalid database URL: ${key}`);
   }
-  for (const key of ['BATTLEFIELD_AGENT_SECRET','BATTLEFIELD_MCP_CAPABILITY_SECRET']) requireLength(key,32);
+  for (const key of ['BATTLEFIELD_AGENT_SECRET','BATTLEFIELD_MCP_CAPABILITY_SECRET']) {
+    requireLength(key,32);
+    // Mirrors requireSecret in backend/internal/config: the binaries refuse these
+    // published values, so reject them before any deployment changes the cluster.
+    if (values.get(key).startsWith('replace-with-') || values.get(key) === 'local-development-capability-secret-change-me') throw new Error(`${key} uses a published placeholder; generate a random secret.`);
+  }
   if (values.get('BATTLEFIELD_AGENT_SECRET') === values.get('BATTLEFIELD_MCP_CAPABILITY_SECRET')) throw new Error('Worker and capability secrets must be distinct.');
   for (const [key,value] of values) {
     if ((key.endsWith('_AVAILABLE') || key.endsWith('_VERIFIED') || ['BATTLEFIELD_AUTH_ENABLED','BATTLEFIELD_AUTH_COOKIE_SECURE'].includes(key)) && value && !['true','false'].includes(value)) throw new Error(`Invalid boolean: ${key}`);
