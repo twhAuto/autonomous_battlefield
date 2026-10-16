@@ -33,17 +33,18 @@ nested stages. Within an active `Main delivery` run, image and deployment stages
 can still appear as skipped when the changed-component classifier determines
 that they are unnecessary; those skips are intentional and remain visible.
 
-PRs targeting `dev` or `main`, main delivery and assurance use the existing
-`battlefield-production` agent. Direct pushes to non-`main` branches skip delivery.
-By design, builds share one host and Docker daemon; no separate CI VM or agent
-label is required. Keep the assurance job pinned to trusted main. Delivery stays main-only and production credentials are bound only
-in the stages that need them, but these controls do not isolate PR code from the
-shared host. See the [shared-agent tradeoff](../operations/jenkins.md#production-hardening-rollout).
+PRs targeting `dev` or `main`, main delivery and assurance all run on the shared
+`battlefield-production` agent; see the
+[shared-agent tradeoff](../operations/jenkins.md#production-hardening-rollout).
+Pushes to `dev` and work branches run no pipeline: a merged `dev` head is first
+built by the next `dev`→`main` promotion PR.
 
-The `dev` and `main` branches must require pull requests, the Jenkins and
-Coverage checks, and disallow direct pushes. Jenkins sees a `main` update rather
-than a distinct "PR merged" pipeline condition, so the branch rule is what makes
-a `main` update equivalent to an approved merge.
+Only `main` is protected. Its ruleset requires a pull request and the `Jenkins` and
+`Coverage` checks, and blocks direct pushes; Jenkins sees a `main` update rather
+than a distinct "PR merged" event, so that rule is what makes a `main` update
+equivalent to an approved merge. `dev` has no ruleset: work branches still open
+pull requests into `dev`, but Jenkins results there are advisory and maintainers
+may push directly. See [branch protection](../operations/jenkins.md#configure-github-integration-branch-protection).
 
 ## Pull-request verification
 
@@ -124,6 +125,17 @@ final `Jenkinsfile` validation.
 
 ### Coverage gate details
 
+This section owns the coverage rule; other guides link here.
+
+```bash
+./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
+(cd frontend && npm test -- --coverage)
+```
+
+Jenkins runs `./scripts/test/test-backend.sh` under the same harness, which runs
+`test-go-coverage.sh` and then the Go race checks. Start a focused change with the
+affected package's tests, and run the applicable gate before declaring it complete.
+
 Backend Go statement coverage must be at least 80% in aggregate across the
 module, as reported by the `total:` line from `go tool cover`. The gate is a
 single repository-wide number, not a per-package floor, so thin wiring in
@@ -141,6 +153,8 @@ so a coverage invocation cannot silently omit database-backed tests. The harness
 requires Docker; if it cannot run, report that CI-equivalent coverage was not
 verified. The supported coverage command cannot produce a figure without the
 harness-provided database; a plain Go test run is not equivalent evidence.
+
+### Source-security failures
 
 The source-security stage logs each failed check and its report path. Inspect the
 matching file under the build's archived `artifacts/security/` directory to

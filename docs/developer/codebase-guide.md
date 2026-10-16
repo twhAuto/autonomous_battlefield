@@ -1,18 +1,14 @@
 # OrdinalFrontier Codebase Guide
 
-The public product name is OrdinalFrontier. Its wordmark and O emblem appear in
-the application shell and login page; `frontend/index.html` owns browser metadata
-and `frontend/public/ordinalfrontier.svg` is the matching favicon. Historical
-repository/package paths and deployment identifiers remain compatible.
+Use this guide to find where code lives and where to start a change. For runtime
+boundaries, data flows, durability and security, see the
+[system architecture](../architecture/system-architecture.md). The focused guides
+own the detail:
 
-For runtime boundaries, data flows, durability, and security decisions, see the [system architecture](../architecture/system-architecture.md).
-
-Use the focused guides for implementation details:
-
-- [Local setup](local-setup.md) and [continuous integration](ci.md): development environment and verification workflow.
-- [Backend guide](backend-guide.md): package ownership, persistence, configuration, AI execution, and membership.
-- [Frontend guide](frontend-guide.md): feature ownership, shared contracts, styles, and browser behavior.
-- [Tooling guide](tooling-guide.md): deployment scripts, test commands, assurance, and cross-review.
+- [Local setup](local-setup.md) and [continuous integration](ci.md): development environment and verification.
+- [Backend guide](backend-guide.md): package ownership, persistence, configuration and AI execution.
+- [Frontend guide](frontend-guide.md): feature ownership, shared contracts and styles.
+- [Tooling guide](tooling-guide.md): scripts, test layout, platform automation and CI implementation.
 
 On this page: [repository map](#repository-map) · [executables](#executable-entry-points) ·
 [infrastructure](#infrastructure-and-delivery-entry-points) · [change paths](#common-change-paths) ·
@@ -81,12 +77,6 @@ autonomous_battlefield/
 └── docs/{game,developer,architecture,operations}/
 ```
 
-`scripts/test/test-database-harness.py` checks coverage admission and query-plan
-target validation with command doubles. The shared deployment regression gate
-runs it; real database checks use `scripts/test/with-test-postgres.sh`.
-The same gate includes the offline Helm bootstrap checks in `test-ensure-helm.py`
-and Langfuse installation detection/override checks in `test-langfuse-detection.sh`.
-
 ## Executable entry points
 
 The backend has five commands in one Go module: four runtime processes and the offline AI evaluation command. The application image contains the four runtime binaries.
@@ -118,233 +108,29 @@ each internal package, and the rules that keep them apart.
 
 ## Infrastructure and delivery entry points
 
-The [server rebuild contract](../operations/server-rebuild-contract.md) connects
-the host, CI, VM, K3s and CLI entry points to state ownership, rebuild prerequisites
-and recovery verification. Its linked runbooks own the operational procedures.
+Each area has one entry point and one runbook. The
+[server rebuild contract](../operations/server-rebuild-contract.md) connects them to
+state ownership and recovery; the [tooling guide](tooling-guide.md#platform-automation)
+lists their helpers, offline tests and disposable rehearsals.
 
-### Host foundation
+| Area | Entry point | Jenkins job | Runbook |
+| --- | --- | --- | --- |
+| Ubuntu host foundation | [`scripts/infra/server.sh`](../../scripts/infra/server.sh) → `infra/ansible/site.yml` | `battlefield-platform/host` (`infra/jenkins/Jenkinsfile.platform`) | [Server bootstrap](../operations/server-bootstrap.md), [platform jobs](../operations/platform-jobs.md) |
+| Jenkins and SonarQube | `server.sh ci-*` → `scripts/infra/ci-bootstrap.py`, `infra/ansible/ci.yml` | None; runs outside Jenkins | [CI bootstrap](../operations/ci-bootstrap.md) |
+| K3s VM | `scripts/infra/vm.py` → `infra/libvirt` (Terraform) | `battlefield-platform/vm` (`Jenkinsfile.vm`) | [K3s VM](../operations/k3s-vm.md) |
+| K3s platform | `scripts/infra/k3s.py` → `infra/ansible/k3s.yml`, `infra/k3s/` | `battlefield-platform/k3s` (`Jenkinsfile.k3s`) | [K3s platform](../operations/k3s-platform.md) |
+| Application delivery | `scripts/cd/deploy.sh`, `smoke-test.sh`, `rollback.sh` | Main pipeline (`Jenkinsfile`) | [Deployment](../operations/deployment.md), [K3s delivery](../operations/k3s-delivery.md) |
+| Image signing and evidence | `scripts/ci/` publish, scan, attest and sign scripts | Main pipeline | [Supply chain](../operations/supply-chain-runbook.md) |
+| CLI worker VM | `scripts/infra/cli-vm.py` → `infra/ansible/cli-vm.yml` | None | [CLI VM platform](../operations/cli-vm-platform.md) |
+| CLI worker services | `server.sh cli-*` → `scripts/infra/cli-bootstrap.py`, `infra/ansible/cli.yml` | None | [CLI bootstrap](../operations/cli-bootstrap.md) |
+| CLI worker repair and upgrade | `scripts/infra/cli-worker.py` | `battlefield-platform/cli` (`Jenkinsfile.cli`) | [CLI worker operations](../operations/cli-worker.md) |
+| Cloudflare tunnel, DNS and Access | `scripts/infra/cloudflare.py` → `infra/ansible/cloudflare.yml` | None | [Cloudflare platform](../operations/cloudflare-platform.md) |
+| Local HTTPS and retained CA | `scripts/infra/https.py` → `infra/ansible/https.yml` | None | [Local HTTPS](../operations/local-https-platform.md) |
 
-Host bootstrap enters through [`scripts/infra/server.sh`](../../scripts/infra/server.sh).
-Its Python wrapper validates private inventory, SSH/machine identity, secret imports
-and the host lock; `control-tools.py` installs the hash-locked Ansible environment.
-`inspect-host.py` discovers the target's traditional sudo executable, which
-`server.py` binds into both SSH and local Ansible inventories. Synthetic prompt
-regressions exercise the pinned Ansible password handshake without root access.
-`infra/ansible/site.yml` separates foundation setup, private input reconciliation
-and verification. The optional `data_storage` role owns the existing ext4 mount,
-scoped directories and K3s libvirt guard; its standalone `files/storage.py`
-handles mount identity, fstab preservation and the immutable storage contract.
-`test-data-storage.py` covers negative paths; `rehearse-data-storage.py` verifies
-privileged behavior only in an owned disposable guest.
-`scripts/test/test-server-bootstrap.sh` exercises real Ansible
-with synthetic inputs, the shared `foundation/tasks/virtualization-preflight.yml`
-package guard, the interruption checkpoint, offline rehearsal safety tests and
-storage regressions. The opt-in `scripts/infra/rehearse-server.py` owns disposable
-VM creation/cleanup; `scripts/test/rehearse-server-guest.py` runs the privileged
-fixture only inside its UUID-matched guest and temporarily installs its embedded
-Ansible interruption callback there. The host runner waits for a changed boot ID
-before resuming checks. The pinned Ubuntu image is in
-`infra/ansible/rehearsal-image.json`. See the
-[bootstrap guide](../operations/server-bootstrap.md) for the rehearsal command.
-
-### CI services
-
-`server.sh ci-*` dispatches to `scripts/infra/ci-bootstrap.py` for private CI
-registration, source fingerprints and external Ansible execution. `infra/ansible/ci.yml`
-and its `ci_services` role manage the pinned controller, Sonar Compose service,
-agent and tools. The role's `tasks/agent-launcher.yml` checks the installed group
-launcher as the operator before any controller drain. `ci-runtime.py` implements
-secret-safe preflight, build draining,
-maintenance backups and service API initialization/verification. `infra/jenkins`
-contains the checksum/dependency lock, scoped JCasC/bootstrap definitions and
-missing-job-only Job DSL. Platform jobs reuse `seed-platform.py` rather than a
-second pipeline definition. `test-ci-bootstrap.py` covers the boundaries;
-`run-ci-bootstrap-rehearsal.py` and its UUID-guarded guest fixture exercise actual
-services. See [CI bootstrap](../operations/ci-bootstrap.md).
-
-### Reviewed host and VM jobs
-
-`infra/jenkins/Jenkinsfile.platform` and `scripts/ci/run-platform.sh` enter the reviewed host
-workflow in `scripts/infra/platform.py`. It binds a private plan receipt to the
-trusted revision and inputs and uses `operation-lock.py` for exclusion and child
-cancellation through a shared supervisor that defers startup signals until the
-child can be reaped. Deployment scripts validate inherited locks with its `--check`
-mode. `infra/ansible/callback_plugins/battlefield_report.py` emits task outcomes
-without module output and hashes available task/loop diffs. Reports use an
-application-specific machine fingerprint. `setup-platform.py` registers/seals inputs and
-opens the SSH tunnel; `seed-platform.py` validates plugins/pipeline and reconciles
-owned folder/job/file credentials without triggering a build. Plugin pins live in
-`infra/jenkins/platform-plugins.json`; `test-platform.py` exercises lock, receipt,
-setup and real callback behavior. See [platform jobs](../operations/platform-jobs.md).
-
-`infra/libvirt` defines the dedicated VM/network and separate OS/data lifecycles.
-`infra/jenkins/Jenkinsfile.vm` and `scripts/ci/run-vm.sh` invoke `scripts/infra/vm.py`, which shares
-the host operation lock and trusted-main check. `vm-policy.py` validates capacity
-settings, resource actions and approval receipts; `vm-tools.py` installs verified
-tools/images in a private cache and resolves the shared Ubuntu release pin. `vm-state.py` copies encrypted snapshots to the
-registered second disk and validates resource identity during state recovery.
-`test-vm.py` exercises negative paths; `check-vm-terraform.py` verifies format and
-the pinned provider schema, mocked-provider contracts and real local-backend
-lock contention without contacting libvirt; provider-cache initialization is serialized
-across concurrent CI checks. The opt-in `rehearse-vm.py` uses the shared
-rehearsal VM lifecycle with a larger outer guest, while `rehearse-vm-guest.py`
-exercises actual Terraform, replacement, recovery and reboot inside it. The foundation, VM
-and K3s rehearsal entry points remove their own script directory from Python's
-import path before loading `uuid` in the shared fixture, so local `platform.py` cannot
-shadow the standard library. `test-server-rehearsal.py` runs a shared real
-subprocess `--help` check for foundation, VM, K3s and delivery entry points with
-ordinary Python path settings and a separate working directory. See the
-[VM runbook](../operations/k3s-vm.md) for Jenkins and Ansible handoff details.
-
-### K3s platform
-
-`infra/jenkins/Jenkinsfile.k3s` and `scripts/ci/run-k3s.sh` run the reviewed guest workflow in
-`scripts/infra/k3s.py`; `k3s-config.py` validates cluster settings and renders the
-private platform/probe manifests. `infra/k3s/` holds settings and asset checksums.
-`infra/ansible/k3s.yml` combines `k3s_storage` (stable disk ownership, fstab,
-first-use initialization and startup guard) and `k3s_runtime` (managed K3s,
-firewall, pinned controllers and readiness/identity probes with bounded API
-reconnect retries). Its firewall helper
-records the applied table and detects live rule drift without relying on service
-activity alone. The custom
-`battlefield_k3s_manifest` module uses server-side Kubernetes diff/apply, including
-check-mode drift detection and temporary-path-independent diff headers. Its
-controller filter rejects unknown Jobs and retains the Envoy certificate
-Job under a specification-derived name for convergence and safe Job upgrades. Registry tasks are opaque and marked no-log.
-
-`test-k3s.py` tests destructive-operation guards, network validation and review
-boundaries. `rehearse-k3s.py` runs the actual roles in a generated disposable VM;
-`k3s-registry-fixture.py` supplies an authenticated TLS registry with synthetic
-credentials and verified public test-image bytes. Its private diagnostic callback
-extends the normal sanitized report only for fixture failures. See the
-[K3s platform runbook](../operations/k3s-platform.md) for job use and acceptance.
-
-### Image verification and delivery
-
-`scripts/ci/generate-ai-manifest.sh` combines runtime metadata with an evaluation
-corpus digest over the Git-tracked files under `backend/evals` (contents and relative
-filenames), independent of checkout location. `scripts/test/test-ai-manifest.py`
-covers reproducibility, untracked files and changes to corpus identity in the shared
-deployment regression gate.
-
-`scripts/ci/verify-frontend-image.py` starts an isolated frontend image with the
-production filesystem/user restrictions and verifies HTTP probes, index and entry
-assets. Local/PR builds and published-digest scanning invoke it before delivery.
-`scripts/test/test-frontend-image.sh` builds tracked frontend inputs with private
-checkout permissions and also exercises the unreadable-template rejection in a
-real container. Jenkins runs this Docker-backed regression separately from the
-command-double deployment suite; see [Jenkins checks](ci.md#pull-request-verification).
-
-`scripts/ops/check-base-image-pins.py` reports, on demand, whether each Dockerfile
-base-image digest still matches its recorded tag; `scripts/test/test-base-image-drift.py`
-covers it with a docker double in the shared deployment regression gate.
-
-`scripts/ops/ghcr-retention-report.sh` collects running and rollback digests plus
-registry versions, then swaps the complete inventory into place by directory rename.
-Its command-double regressions in `scripts/test/test-retention-report.py` cover
-failed collection, failed or interrupted swaps, concurrent runs, preserved previous
-reports and invocation outside the checkout.
-
-`scripts/cd/deploy.sh`, `smoke-test.sh` and `rollback.sh` are the driver-neutral
-entry points used by Jenkins. On main, `capture-rollback-images.sh` records the
-running images before rollout and `rollback-on-failed-verification.sh` decides
-whether a failed smoke test may call `rollback.sh`; the `Jenkinsfile` keeps only
-stage wiring and shared helper functions. `cd/lib/kubernetes-deployment.sh` stages
-selected shared overlays and composes `infra/deploy/overlays/k3s` when the profile selects K3s. `lib/k3s-delivery.py`
-performs read-only platform/retained-volume checks. `production_recovery.py`
-binds verified images to the applied database migration ledger. The required
-`test-k3s-delivery.py` suite exercises the real commands with isolated external
-command doubles, alongside the existing Kind and registry rejection suites.
-See [K3s delivery](../operations/k3s-delivery.md) for registration and migration.
-
-The disposable K3s application rehearsal is `scripts/infra/rehearse-k3s-delivery.py`.
-It reuses the platform roles and owned-VM fixture, runs signed-image delivery with
-synthetic application inputs, and optionally deploys two distinct signed releases
-before restoring the previous exact image pair. Checkpoints verify healthy image
-convergence, private readiness, migration state and retained claims. The offline
-`test-k3s-delivery-rehearsal.py` suite rejects false recovery evidence, including
-unchanged images after rollback, missing claims and changed migrations; overall
-acceptance also requires owned-VM cleanup. See [its runbook](../operations/k3s-delivery.md#disposable-delivery-rehearsal)
-for the remaining public and CLI bridge acceptance checks.
-
-### CLI VM lifecycle and host bundle
-
-`scripts/infra/cli-vm.py` is the trusted-main operator entry point for reviewed
-VM plan/apply/verify. `infra/ansible/cli-vm.yml` calls `library/battlefield_cli_vm.py`;
-`module_utils/battlefield_cli_vm.py` owns privileged creation/adoption and immutable
-local state, while `battlefield_cli_vm_policy.py` checks layout and receipts.
-`infra/deploy/agent-vm/domain.xml`, `network.xml` and `filter.xml` declare the fixed
-layout. The wrapper uses the shared operation lock and existing sudo selection.
-Its generated host-local handoff is consumed by `cli-bootstrap.py` before guest
-configuration validation. `test-cli-vm.py` exercises layout, approval and handoff
-failures; `rehearse-cli-vm.py`/`rehearse-cli-vm-guest.py` run the actual nested VM
-lifecycle with UUID-bound disposable cleanup. See [CLI VM platform](../operations/cli-vm-platform.md).
-
-`scripts/infra/cli-worker.py` keeps the registered worker running: it verifies the
-VM, host bridge, gateway credential and guest worker. It repairs them under a
-reviewed plan receipt, syncing the worker secret from the production `.env`,
-installing the boot-start and bridge-watchdog units, and upgrading the worker to the
-`/app/agent` binary of the deployed backend image after draining it. `infra/jenkins/Jenkinsfile.cli`
-and `scripts/ci/run-cli-worker.sh` run it as `battlefield-platform/cli`; the main
-pipeline runs its read-only `verify`. `cli-bootstrap.py` substitutes the same secret
-through the `cli_with_worker_secret` filter. `test-cli-worker.py` runs the real guest
-scripts against temporary files. See [CLI worker operations](../operations/cli-worker.md).
-
-
-`scripts/infra/cli-bootstrap.py`, dispatched by `server.sh cli-*`, registers the
-public host bundle, captures existing guest artifacts with an encrypted worker
-environment and installed isolation helper, and builds the two-target Ansible inventory. `infra/ansible/cli.yml`
-preflights both targets before the `cli_host`/`cli_guest` roles and stops guest
-installation on host failure. The shared
-`module_utils/battlefield_cli.py` validates immutable ownership, managed files and
-libvirt isolation; `battlefield_cli_guard.py` checks live target metadata and the
-firewall, including the narrowly scoped unmodified Squid package-default
-exception. `filter_plugins/cli_bootstrap.py` enforces worker-only inputs, fresh
-profile gating and safe version failure labels. `test-cli-bootstrap.py` covers the guards; the optional
-`run-cli-bootstrap-rehearsal.py`/`rehearse-cli-bootstrap.py` pair verifies actual
-Ansible service lifecycle only in a UUID-bound disposable guest.
-
-
-`scripts/ops/render-agent-vm-host.py` renders the dedicated systemd, Caddy and
-firewall files from `infra/deploy/agent-vm/host` into a new directory without touching
-services. The loopback bridge defaults to 28084, separate from Jenkins smoke
-ports; `--bridge-port` validates an unprivileged port and substitutes the same
-value in the Kubernetes forward and Caddy upstream. Guest-facing ports and the
-MCP Host header remain fixed. `scripts/test/test-agent-vm-host.py` checks the
-matched default/CLI override, invalid-input rejection, isolation configuration
-and refusal to overwrite a reviewed bundle. See the [CLI worker verification runbook](../operations/agent-vm.md).
-
-### Cloudflare capture and lifecycle
-
-`scripts/infra/cloudflare.py` handles encrypted capture, fresh-create preparation
-and trusted-main plan/apply/verify under the controller and host locks.
-`infra/ansible/cloudflare.yml` invokes `library/battlefield_cloudflare.py` locally;
-`module_utils/battlefield_cloudflare.py` owns the bounded API client, paginated
-inventory, receipts, journal and private handoff. Its companion
-`battlefield_cloudflare_policy.py` validates the narrow Access/tunnel/DNS contract.
-Existing delivery, runtime player memberships and service-token secrets stay in
-their existing ownership boundaries. `scripts/test/test-cloudflare.py` covers the
-synthetic lifecycle, sanitized real API response shapes and negative cases, including
-actual Ansible checks that remote strings remain literal JSON. The playbook passes
-only a private input-file path into the module. `scripts/infra/rehearse-cloudflare.py`
-exercises a uniquely named idle cloud fixture with ID-bound cleanup and preservation
-checks. See [Cloudflare platform](../operations/cloudflare-platform.md).
-
-### Native local HTTPS lifecycle
-
-`scripts/infra/https.py` provides host-local encrypted capture and reviewed
-plan/apply/verify through `infra/ansible/https.yml`. Its root-side
-`https-runtime.py` owns the narrow Caddyfile parser, retained CA validation,
-root-only ownership/receipts and install/adopt/migrate operations. Literal
-private JSON enters Ansible only as a file path. Migration derives routing from
-the registered K3s production profile, redirects the application alias to the
-public Access-protected origin and retargets monitoring without replacing the
-shared Caddy binary or touching the CLI proxy. `test-local-https.py` covers
-policy, registered K3s routing and failure paths; `rehearse-https.py` and
-`scripts/test/rehearse-https-guest.py` exercise the actual lifecycle and reboot
-with synthetic secrets in a disposable VM, including the runbook's exact
-ownership archival command and re-registration after a capture/node change. See the
-[local HTTPS runbook](../operations/local-https-platform.md).
+Main delivery never runs host, VM, K3s, CLI, Cloudflare or HTTPS provisioning; it
+only runs a read-only CLI worker check. Those are reviewed, operator-started
+workflows that coordinate with production rollout through the shared host operator
+lock (`scripts/infra/operation-lock.py`).
 
 ## Common change paths
 
@@ -368,14 +154,6 @@ ownership archival command and re-registration after a capture/node change. See 
 4. Apply it deterministically in `game.Match`.
 5. Update scenario YAML if scripted/fallback values need it.
 6. Update decision persistence, API/frontend types, display, and tests.
-
-### Change model role access
-
-Admin model-access role validation applies equally to API and CLI profiles.
-`backend/internal/admin/service_test.go` covers saving and revoking Player CLI
-access through the durable policy; the admin page tests cover the Player checkbox
-and persistence across reloads. Player catalog tests retain gameplay-only projection
-while exposing explicitly approved, available CLI profiles.
 
 ### Add a model provider
 
@@ -425,25 +203,16 @@ while exposing explicitly approved, available CLI profiles.
 
 ## Contribution workflow
 
-AI-created work branches start from the latest fetched `origin/dev` and target
-`dev` in pull requests, unless the user explicitly requests otherwise. Promotion
-to `main` is separate. See [agent branch guidance](../../AGENTS.md#branches-and-pull-requests)
-and the [Jenkins workflow](../operations/jenkins.md#configure-github-integration-branch-protection).
-Run applicable local checks before opening a PR, and complete the PR template's
-AI-assistance section required by the
-[AI development policy](ai-development-policy.md). The repo's
-[raise-pr](../../.agents/skills/raise-pr/SKILL.md),
-[triage-ci](../../.agents/skills/triage-ci/SKILL.md),
-[release-and-recover](../../.agents/skills/release-and-recover/SKILL.md),
-[write-project-docs](../../.agents/skills/write-project-docs/SKILL.md), and
-[track-backlog](../../.agents/skills/track-backlog/SKILL.md) skills cover
-PRs, CI, releases, docs, and backlog work. Claude Code discovers the same
-skills through `.claude/skills/` symlinks. Jenkins verifies both `dev` and `main`
-PR targets on the existing shared `battlefield-production` agent.
-For a user-selected PR stack, review and Sonar preview instructions use each
-PR's actual target branch. Jenkins verification stages only run for PRs targeting
-`dev` or `main`; work-branch targets are skipped. Each stacked PR needs verification
-after retargeting to `dev`. A manual Sonar preview against an unmerged stack base
-is separate evidence; the next Jenkins preview resets that project against its
-new target. CI evidence identifies both the tested head and target commit; a
-passing run for an older pair does not verify the current tree.
+Branch and pull-request rules live in [`AGENTS.md`](../../AGENTS.md#branches-and-pull-requests):
+work branches start from the latest `origin/dev` and target `dev`; promotion to
+`main` is a separate release. Run the checks in [continuous integration](ci.md)
+before opening a PR, and complete the PR template's AI-assistance section required
+by the [AI development policy](ai-development-policy.md). The skills in
+[`.agents/skills/`](../../.agents/skills/) (linked for Claude Code from
+`.claude/skills/`) cover PRs, CI triage, releases, docs and backlog work, and
+[cross-review](cross-review.md) covers agent review.
+
+For a PR stack, each PR's review and Sonar preview use its actual target branch.
+Jenkins verifies only PRs targeting `dev` or `main`, so a stacked PR needs
+verification after it is retargeted to `dev`. CI evidence names both the tested
+head and target commit; a pass for an older pair does not verify the current tree.

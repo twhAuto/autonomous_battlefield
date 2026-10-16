@@ -22,7 +22,7 @@ The frontend is a React/Vite single-page application.
 | [`features/battles/pages/CreateBattlePage.tsx`](../../frontend/src/features/battles/pages/CreateBattlePage.tsx) | Scenario, participants, controllers, and tick-limit selection |
 | [`features/battles/pages/BattleHistoryPage.tsx`](../../frontend/src/features/battles/pages/BattleHistoryPage.tsx) | Status-filtered history table/cards, cursor navigation, refresh, and detail links |
 | [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx) | Route-level composition, selected perspective/panel, and control actions |
-| [`features/auth/pages/LoginPage.tsx`](../../frontend/src/features/auth/pages/LoginPage.tsx) | Single-administrator credential form and error state |
+| [`features/auth/pages/LoginPage.tsx`](../../frontend/src/features/auth/pages/LoginPage.tsx) | Local-password login form used only in the development auth mode |
 | [`features/admin/pages/AdminSettingsPage.tsx`](../../frontend/src/features/admin/pages/AdminSettingsPage.tsx) | Persistent provider/profile switches, allowed roles, save/conflict states, and entry to read-only role preview |
 | [`features/battles/components/HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx) | Hex-map visualization, movement routes, tracking arrows, attack outcomes, and accessible unit animation |
 | [`features/battles/components/PlayerStatusPanel.tsx`](../../frontend/src/features/battles/components/PlayerStatusPanel.tsx) | Null-safe spectator summaries, economy/building overview, and grouped living units |
@@ -144,87 +144,38 @@ rows initially; Show more reveals loaded rows. A polite status announces counts.
 
 ## Map layout and motion
 
-The battle toolbar places compact tick progress on the left, faction summaries in
-the flexible middle, and the outcome above Play/Pause/Stop on the right. Faction
-cards share available width with a 160px minimum before wrapping into equal-height
-rows. Progress, faction summaries, and controls stretch to matching outer heights;
-the toolbar and map layout stack at 1000px. Controls and inspector share a 340px
-desktop column and a 14px gutter, aligning their left and right borders.
-`features/battles/battles.css` overrides the legacy fixed map height at the battle-layout
-specificity; browser tests assert the rendered aspect ratio to prevent regression.
-The inspector's desktop content scrolls internally; mobile uses page scrolling.
-Above 1000px the inspector stretches to the map's grid-row height. Size
-containment prevents event content from enlarging that row; the map determines
-the shared height. Stacked and events-only layouts keep independent heights.
-Terminal battles hide Play/Pause/Stop and label tick usage as a maximum rather
-than completion. `components/FactionSummaries.tsx` shows each
-participant's decision activity, gold, and living unit count using existing
-spectator state and current-attempt decision polling, independent of map
-perspective. Paused and terminal states override decision activity, polling errors
-show unavailable status, and missing metrics display a dash. Null collection
-slices from Go JSON are handled safely: missing faction state is unavailable,
-while an empty army displays zero living units. The display accepts
-any participant count; battle creation and engine faction limits are unchanged.
+[`HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx)
+draws the SVG map: entity icons, HP bars, movement routes, tracking and
+fixed-position attack markers, tower fire, healing lines and death markers.
+`features/battles/battles.css` and `map.css` own the battle layout; browser tests
+assert the rendered map aspect ratio. Layout values, breakpoints and animation
+timings live in the CSS and components with their tests, not in this guide.
 
-The inline map fits its board aspect ratio. Expanding moves the same map state
-into a native modal dialog with focus containment, Escape dismissal, scroll
-locking, and focus restoration. Perspective and entity selection survive this
-transition. Opening or resizing fits the board; live tick updates preserve the
-camera. Pointer and keyboard panning remain local UI state. A native “Pan with
-arrow keys” toolbar button provides keyboard panning without making the map container
-an application landmark. On mobile the inline
-overview permits page scrolling, with dragging enabled in the expanded map.
+- Animation follows server data only. A unit moves along its recorded
+  `movementPath` when the path starts at its last displayed position; otherwise it
+  jumps. The UI never infers multi-hex routes.
+- Effects such as attack nudges, impact markers and death markers come from the
+  current tick's state; polling and map controls do not replay them. Reduced-motion
+  preferences disable motion and transitions.
+- Faction views show allied deaths and visible enemy deaths only; disappearance
+  from vision never creates a death marker.
+- The expanded map is a native modal dialog that keeps perspective and selection.
+  Opening, closing or resizing it fits the board again; live tick updates keep the
+  current camera. Keyboard panning uses the native "Pan with arrow keys" button.
 
-The SVG map uses compact directional arrows beneath entity icons, matching the
-acting faction's unit color. Movement remains dashed and subdued; attacks use solid
-lines with a subtle traveling highlight, and tower fire uses a thicker stroke. Endpoints clear entity outlines; paths too short to fit an
-arrowhead are omitted. Indicators follow the current battle snapshot, and reduced
-motion preferences retain static lines without the traveling highlight. Health
-bars update their green fill and numeric HP immediately; lost HP appears red for
-300 ms before shrinking over 500 ms. Healing immediately covers the red layer.
-Reduced motion disables the damage trail transition. Defeated units leave the live roster immediately. Per-tick `unitDeaths` records
-provide a fading cross/ring in the fallen unit's faction color at its confirmed
-death position for 900 ms, or a
-static marker for reduced motion. Faction views expose allied deaths and visible
-enemy deaths only; disappearance from vision never creates a death marker.
-
-Unit snapshots include optional `movementPath` coordinates (start plus each hex
-actually traversed during the tick). The engine records these for normal, siege,
-retreat, and support movement and clears them with the other per-tick actions.
-Snapshot and faction-view copies own their route arrays; enemy routes crossing
-hidden hexes are omitted from faction views. No database migration is required.
-The map draws these routes and animates existing units along them at 220 ms per
-step, capped at 700 ms. Animation requires the recorded start to match the last
-displayed position; initial loads, discontinuous snapshots, and reduced-motion
-preferences show the current position immediately. New updates cancel any prior
-animation. Older snapshots can animate adjacent endpoint-only moves, but the UI
-does not infer missing multi-hex routes.
-
-Tracking attacks retain immediate damage. Their arrows follow the target's rendered
-walking position; missing/destroyed targets use a short impact marker at the stored
-hit position. Attacking units nudge 0.75 pixels forward and back over 200 ms on a
-separate transform layer, while towers remain stationary. Fixed-location shots
-show a fading impact ring for hits or a muted cross for misses, without a damage
-tracer on misses. Polling and map controls do not replay these effects, and reduced
-motion disables them.
+`FactionSummaries.tsx` shows each participant's decision activity, gold and living
+units from spectator state, independent of map perspective. Paused and terminal
+battles override decision activity, and Go `null` collections are treated as empty.
 
 ## Entity presentation
 
-`components/EntityIcon.tsx` supplies local SVG artwork for all seven core unit
-and five building types, reused by the map, player roster, building overview,
-and a collapsible legend of types present in the displayed map. Map markers keep
-faction-colored backgrounds and HP bars, with a separate selection/focus ring.
-`presentation/entities.ts` owns type labels, entity indexing, and readable
-references such as `Iron Legion · Ranger #12` (or `Ranger #12` inside that player's
-panel). It uses the sequence embedded in generated IDs, so deaths, polling,
-reordering, and historical event pages do not renumber entities. Opaque IDs use
-available entity metadata plus an eight-character ID; unknown references use
-`Entity · <short ID>`. Event metadata is scoped to the current attempt; older
-attempts resolve generated IDs directly. Full IDs remain in tooltips and raw
-inspection payloads. Structured recruitment sources and unit/building types use
-the same helpers, while freeform AI prose and raw JSON remain unchanged.
-Presentation tests cover naming stability, unknown types/IDs, historical attempts,
-raw payload preservation, icon distinctions, and keyboard selection.
+[`EntityIcon.tsx`](../../frontend/src/features/battles/components/EntityIcon.tsx)
+supplies the SVG artwork for the seven unit and five building types, reused by the
+map, roster, building overview and legend. `presentation/entities.ts` owns type
+labels and readable references such as `Iron Legion · Ranger #12`, derived from the
+sequence embedded in generated IDs so deaths, polling and older attempts never
+renumber entities. Full IDs stay in tooltips and raw payloads; freeform AI prose
+and raw JSON are shown unchanged.
 
 ## Shared HTTP transport
 
@@ -262,27 +213,19 @@ shared rules require desktop/mobile browser checks as well as component tests.
 
 ## Verification
 
-`frontend/e2e/fixtures.ts` intercepts the complete API boundary for application
-Playwright tests. `e2e/usability.spec.ts` runs against a local Vite server in
-desktop and mobile Chromium, including destructive cases only against fixtures.
-`e2e/staging.spec.ts` submits the battle setup form end to end: the fixture serves
-`POST /v1/battles`, records the request body, and then serves the new battle as
-queued under its own generated identifier, so the journey continues into the live
-battle view. It also covers a rejected creation and a retry after recovery.
-`e2e/admin.spec.ts` verifies model-access saves and Player role preview on desktop
-and mobile using API fixtures.
-Map keyboard tests focus the native “Pan with arrow keys” button; pointer panning
-continues through the map viewport. Admin settings split per-model access controls
-into `ModelAccessCard` and use native outputs for loading and save status.
-See [frontend commands](../../frontend/README.md#commands) for browser setup,
-coverage, and reports. Jenkins archives failure screenshots, traces, and HTML
-reports alongside coverage without changing the 80% coverage thresholds; the
-HTML report is archived by a step that fails rather than archiving nothing.
+`frontend/e2e/fixtures.ts` intercepts the complete API boundary for Playwright
+tests, which run against a local Vite server in desktop and mobile Chromium:
 
-Component and route tests cover three-player navigation, keyboard focus,
-retained sections, null opening collections, recruitment updates, unit grouping,
-legacy profiles, lazy context loading/cache/retry, obsolete response cancellation,
-and stable decision expansion. Backend tests cover scope and public projection.
+- `e2e/usability.spec.ts` covers navigation, layout reflow, map controls and
+  destructive actions against fixtures only.
+- `e2e/staging.spec.ts` submits the battle setup form end to end, continues into
+  the live battle view, and covers a rejected creation and a retry.
+- `e2e/admin.spec.ts` covers model-access saves and Player role preview.
+
+See [frontend commands](../../frontend/README.md#commands) for browser setup,
+coverage and reports, and [coverage gate details](ci.md#coverage-gate-details) for
+thresholds. Jenkins archives failure screenshots, traces and the HTML report; a
+missing report fails the stage.
 
 The frontend build enables TypeScript `noUnusedLocals` and `noUnusedParameters`
-to reject unused local declarations and parameters alongside strict type checks.
+alongside strict type checks.

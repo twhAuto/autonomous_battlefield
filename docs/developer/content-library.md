@@ -93,15 +93,10 @@ Both faction-visible AI context and knowledge retrieval use the resolved roster.
 Engine and AI gateway purchase validation reject excluded units. The same rule applies
 to explicit purchase orders and legacy recruitment priorities.
 
-Run backend coverage and frontend coverage/build before deployment:
-
-```sh
-./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
-(cd frontend && npm test -- --coverage && npm run build)
-```
-
-Follow [local setup](local-setup.md) to rebuild content, catalog code, engine, and UI together. Use a new battle to test new
-selections; old battles retain their saved definitions.
+Run the [coverage gates](ci.md#coverage-gate-details) and the frontend build before
+deployment, then follow [local setup](local-setup.md) to rebuild content, catalog
+code, engine and UI together. Use a new battle to test new selections; old battles
+retain their saved definitions.
 
 ## Expanded content fields
 
