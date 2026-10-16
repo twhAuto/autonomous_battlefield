@@ -172,13 +172,26 @@ class ConfigTests(unittest.TestCase):
         current = worker.desired_config(CONFIG, SETTINGS)
         self.assertIs(worker.desired_config(current, SETTINGS), current)
 
+    def test_null_concurrency_removes_the_setting_for_older_workers(self):
+        import yaml
+        older = dict(SETTINGS, agentConcurrency=None)
+        with_concurrency = worker.desired_config(CONFIG, SETTINGS)
+        removed = worker.desired_config(with_concurrency, older)
+        self.assertNotIn('agentConcurrency', yaml.safe_load(removed)['ai'])
+        self.assertIs(worker.desired_config(removed, older), removed)
+        self.assertNotIn('agentConcurrency', yaml.safe_load(worker.desired_config(CONFIG, older))['ai'])
+        explicit_null = CONFIG.replace('  agentHealthAddress:', '  agentConcurrency: null\n  agentHealthAddress:').replace('gemini-3.7-flash-medium', 'gemini-3.8-flash-medium')
+        self.assertIn('agentConcurrency', yaml.safe_load(explicit_null)['ai'])
+        self.assertNotIn('agentConcurrency', yaml.safe_load(worker.desired_config(explicit_null, older))['ai'])
+
     def test_unknown_profiles_and_invalid_settings_are_rejected(self):
         with self.assertRaisesRegex(ValueError, 'does not have'):
             worker.desired_config(CONFIG, {'agentConcurrency': 2, 'models': {'codex-subscription-local': 'gpt'}})
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         for bad in ({'agentConcurrency': 5, 'models': {'a': 'b'}}, {'agentConcurrency': 2, 'models': {}},
-                    {'agentConcurrency': True, 'models': {'a': 'b'}}, {'agentConcurrency': 2, 'models': {'a': 'bad model'}}):
+                    {'agentConcurrency': True, 'models': {'a': 'b'}}, {'agentConcurrency': 2, 'models': {'a': 'bad model'}},
+                    {'agentConcurrency': 0, 'models': {'a': 'b'}}, {'models': {'a': 'b'}}):
             path = Path(directory.name) / 'settings.json'
             path.write_text(json.dumps(bad))
             with self.subTest(bad=bad), self.assertRaises(ValueError):
@@ -195,8 +208,9 @@ class ConfigTests(unittest.TestCase):
                         catalog = {p['id']: p['model'] for p in yaml.safe_load(value)['ai']['profiles'] if p['runtime'] == 'cli'}
         self.assertEqual(settings['models'], catalog)
         template = yaml.safe_load((ROOT / 'infra/deploy/agent-vm/config.yaml').read_text())['ai']
-        self.assertEqual(template['agentConcurrency'], settings['agentConcurrency'])
         self.assertEqual({p['id']: p['model'] for p in template['profiles']}, settings['models'])
+        if settings['agentConcurrency'] is not None:
+            self.assertEqual(template['agentConcurrency'], settings['agentConcurrency'])
 
     def test_sync_config_updates_guest_then_the_registered_copy(self):
         directory = tempfile.TemporaryDirectory()
