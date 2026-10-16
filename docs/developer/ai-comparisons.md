@@ -249,7 +249,8 @@ restart host CLI agents for updated embedded instructions.
 Identical memory plans reference `#/activePlan`. Omitted state battle ID/tick and
 own-faction gold/upgrades inherit the matching root values described in the
 prompt. API/Gemini delivery removes identity text already supplied verbatim in
-the system prompt; direct MCP/Codex and inspector JSON retain it. The reviewed
+the decision prompt's untrusted faction identity block (not the system prompt);
+direct MCP/Codex and inspector JSON retain it. The reviewed
 11,883-byte sample becomes 11,235 bytes, with another 704 bytes removed during
 API/Gemini delivery. These measure context bytes only, excluding the prompt's
 reference instructions and provider/CLI scaffolding; use reported total input
@@ -261,7 +262,7 @@ All decisions use one current compact format, identified as
 branches or format rollout flags. Deploy the backend and frontend normally and
 restart host CLI agents to pick up embedded prompt changes. Stored observations
 and validation hashes are never rewritten. The inspector reconstructs the current
-format from saved data under “Reconstructed agent context”; it is not a recording
+format from saved data under “Agent context (reconstructed)”; it is not a recording
 of original input. The inspector uses section labels without explanatory notices.
 
 The reviewed tick-200 sample measured 36,166 bytes before and 26,187 after these
@@ -318,9 +319,11 @@ verification word present only at the end of fetched guidance:
 (cd backend && BATTLEFIELD_LIVE_AGY=1 go test ./internal/ai/mcpserver -run '^TestAntigravityLiveDecision$' -v -count=1)
 ```
 
-The inspector's **Initial agent context** is the initial projection. **Unit details
-available on demand** shows stored reference data, not a history of actual tool
-reads. Legacy decisions retain their historical inspector presentation.
+The inspector's **Agent context (reconstructed)** is the initial projection,
+rebuilt from the saved observation. **On-demand unit reference** shows stored
+reference data, not a history of actual tool reads. Any decision with a saved
+observation is shown in the current format; only decisions without one show an
+empty context.
 
 New per-case reports also retain the runner's `usage` object: its scope, reported
 input/output, optional cached/reasoning subsets, model-call count and CLI-invocation

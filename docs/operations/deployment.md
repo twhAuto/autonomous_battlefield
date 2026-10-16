@@ -350,7 +350,7 @@ DEPLOY_COMPONENTS=observability ./scripts/cd/deploy.sh "$(git rev-parse HEAD)"
 ```
 
 Supported components are `infrastructure`, `migration`, `backend`, `frontend`,
-`application`, `observability`, and `gateway`. Selecting `backend` also runs the
+`application`, `observability`, `gateway`, and `network-policy`. Selecting `backend` also runs the
 migration gate and applies the application overlay; selecting `frontend` also
 applies the application overlay. `all` preserves the original full-deployment
 behavior and `none` exits without changing the cluster. Empty entries, trailing
@@ -390,7 +390,7 @@ folder rule. Multiple changed paths contribute the union of their components;
 | `infra/deploy/base/infrastructure/**` or `infra/deploy/overlays/{local,k3s}/infrastructure/**` | `infrastructure` | None |
 | `infra/deploy/base/migration/**` or `infra/deploy/overlays/{local,k3s}/migration/**` | `migration` | None; uses the deployed backend image |
 | `infra/deploy/base/application/**` or `infra/deploy/overlays/{local,k3s}/application/**` | `application` | None; preserves deployed image tags |
-| `infra/deploy/overlays/{local,k3s}/observability/**` or `infra/deploy/overlays/{local,k3s}/logging-collector/**` | `observability` | None |
+| `infra/deploy/langfuse/**`, `infra/deploy/overlays/{local,k3s}/observability/**` or `infra/deploy/overlays/{local,k3s}/logging-collector/**` | `observability` | None |
 | `infra/deploy/overlays/{local,k3s}/gateway/**` | `gateway` | None |
 | `VERSION` | `migration,backend,frontend,application` | Both application images |
 | CI image build or scan scripts | `all` | Both application images |
@@ -419,8 +419,9 @@ Every nonempty production deployment reconciles ingress policies before applicat
 explicit `network-policy` selection performs that reconciliation without application
 rollouts. The tunnel itself is activated separately.
 
-Only the existing named CI test wrappers are exempt; new CI scripts still use
-the unknown-path fallback until explicitly classified.
+In `scripts/ci/`, only the platform launchers listed above, `lint-go.sh` and
+`coverage-check-summary.sh` are exempt; new CI scripts still use the unknown-path
+fallback until explicitly classified.
 
 Renames are evaluated as one deletion plus one addition, so both the old and new
 locations influence the result. Renaming a production Go file to `*_test.go`

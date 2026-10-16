@@ -354,8 +354,11 @@ ownership archival command and re-registration after a capture/node change. See 
 2. Update the service type/use case.
 3. Update repository serialization or query scanning if persisted.
 4. Update the handler response.
-5. Update `frontend/src/features/battles/api/battles.ts`.
-6. Update the consuming page/component and both backend/frontend tests.
+5. Document the field in [`openapi.yaml`](../architecture/openapi.yaml) and, when its
+   behavior needs explanation, in the [HTTP API reference](../architecture/api.md).
+   The contract test checks routes, not field shapes.
+6. Update `frontend/src/features/battles/api/battles.ts`.
+7. Update the consuming page/component and both backend/frontend tests.
 
 ### Add a plan field
 
@@ -385,7 +388,8 @@ while exposing explicitly approved, available CLI profiles.
 
 ### Add durable battle behavior
 
-1. Add a forward-only migration.
+1. Add a new numbered migration with Up and Down sections; never edit one that may
+   already be applied (see the [migration conventions](../architecture/database.md#migrations)).
 2. Update repository interfaces only with operations required by a use case.
 3. Implement guarded SQL using battle attempt and lease ownership where applicable.
 4. Update service/worker behavior.

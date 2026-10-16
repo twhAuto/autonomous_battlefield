@@ -97,9 +97,13 @@ Package-specific PostgreSQL integration tests remain beside their adapters and r
 Merge-blocking gates require at least 80% Go statement coverage in aggregate across the module — one repository-wide total from `go tool cover`, not a per-package floor, so thin wiring in `cmd/*` may sit below 80% while the module passes — and at least 80% frontend statements, branches, functions, and lines. Measure through the PostgreSQL harness; a coverage run without `TEST_DATABASE_URL` skips tests that require the database and omits the code exercised only by those tests:
 
 ```bash
-./scripts/test/with-test-postgres.sh ./scripts/test/test-backend.sh
+./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
 (cd frontend && npm test -- --coverage)
 ```
+
+`test-go-coverage.sh` measures the backend gate. Jenkins runs
+`./scripts/test/test-backend.sh` under the same harness, which runs that coverage
+script and then the Go race checks (`test-go-race.sh`).
 
 For a focused change, start with the affected package tests. Before completing implementation work, run the applicable repository coverage gate.
 

@@ -123,10 +123,9 @@ See [cache behavior](../architecture/system-architecture.md#completed-battle-res
 
 ### `internal/battle/api`: battle HTTP delivery
 
-[`handler.go`](../../backend/internal/battle/api/handler.go) registers and implements:
-
-Battle, scenario, and profile routes are documented in the
-[HTTP API reference](../architecture/api.md). This handler owns JSON decoding,
+[`handler.go`](../../backend/internal/battle/api/handler.go) registers the battle,
+scenario, and profile routes documented in the
+[HTTP API reference](../architecture/api.md). It owns JSON decoding,
 cursor/attempt parsing, HTTP status mapping, and response encoding for those routes.
 [`errors.go`](../../backend/internal/battle/api/errors.go) holds the shared service-error
 mapping (`writeError`): forbidden is 403, allowance 429, invalid 400, not found 404, and not
@@ -578,8 +577,10 @@ battles still counting, the daily allowance and its UTC reset, and admin-exempt 
 release the shared CLI slots alongside battle decisions, the per-battle execution budget
 and the AI kill switch. The AI gateway's agent control plane requires the operator switch
 (`mcpserver.AgentRepository.AgentEnabled`) and checks it before an agent claims work.
-Workers receive capabilities from the AI gateway instead of signing them. `worker/policy.go`
-cancels execution on the private stop switch; `credentials_linux.go` blocks procfs/
+Workers receive capabilities from the AI gateway instead of signing them. In
+`internal/ai/agent`, [`policy.go`](../../backend/internal/ai/agent/policy.go)
+cancels execution on the private stop switch and
+[`credentials_linux.go`](../../backend/internal/ai/agent/credentials_linux.go) blocks procfs/
 ptrace reads of the worker's credentials; `runner/process_linux.go` kills CLI process
 groups. Local credentials remain available only to the appropriate CLI login.
 

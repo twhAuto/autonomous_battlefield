@@ -40,8 +40,9 @@ explains the literal file format, source selection, Secret rendering and restart
 including the distinction between deployment and standalone processes.
 
 [`backend/config.yaml`](../../backend/config.yaml) defines local process settings;
-unknown fields and invalid values fail startup. Catalog paths are relative to
-that file. From `backend/`, `go run ./cmd/server -config /path/to/config.yaml`
+unknown fields and invalid values fail startup. Scenarios, rulesets and content
+are embedded from `backend/gamedata`, so editing them requires rebuilding the
+server. From `backend/`, `go run ./cmd/server -config /path/to/config.yaml`
 selects another configuration. `go run ./cmd/server -migrate` applies embedded
 migrations and exits; normal server startup does not apply them.
 
@@ -55,7 +56,8 @@ an existing login and a running local bridge in a second terminal:
 ./scripts/dev/run-k8s-cli-agent.sh codex
 ```
 
-The helper also accepts `antigravity`, `claude`, `both` and `auto`.
+The helper also accepts `antigravity`, `claude`, `both` (Codex and Antigravity),
+`all` (all three CLIs) and `auto` (every available authenticated CLI).
 See [Antigravity setup](../operations/antigravity-cli.md),
 [Claude setup](../operations/claude-cli.md) and
 [profile availability](../operations/deployment.md#1-prepare-private-dev-secret-files).

@@ -503,6 +503,13 @@ paths:
         - name: limit
           in: query
           schema: {type: integer, minimum: 1, maximum: 500, default: 100}
+        - name: latest
+          in: query
+          description: |
+            When true, returns the most recent `limit` events of the attempt, still
+            ordered by ascending sequence. Cannot be combined with a nonzero `after`
+            (`400`).
+          schema: {type: boolean, default: false}
       responses:
         '200':
           description: Events ordered by sequence.
@@ -1458,6 +1465,18 @@ components:
           oneOf:
             - {type: object, additionalProperties: true}
             - {type: 'null'}
+        initialContext:
+          description: |
+            Optional. The current agent projection, reconstructed from the saved
+            observation; not a recording of the original model input.
+          type: object
+          additionalProperties: true
+        availableUnitDetails:
+          description: |
+            Optional. The frozen unit reference the model could look up for this
+            decision; not a record of lookups it made.
+          type: object
+          additionalProperties: true
 
     GenerationInput:
       type: object
@@ -1470,7 +1489,7 @@ components:
     CreateGenerationRequest:
       type: object
       additionalProperties: false
-      required: [name, doctrine]
+      required: [name, doctrine, idempotencyKey]
       properties:
         name: {type: string}
         doctrine: {type: string}
@@ -1478,8 +1497,12 @@ components:
           description: Optional inspiration.
           type: string
         idempotencyKey:
-          description: Client-generated. A repeat with the same input replays the original job.
+          description: |
+            Client-generated. A repeat with the same input replays the original job.
+            Must not be blank and must be at most 200 bytes (UTF-8); otherwise the
+            request returns `400 invalid_request`.
           type: string
+          minLength: 1
 
     GenerationOptions:
       type: object
