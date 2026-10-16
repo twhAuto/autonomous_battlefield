@@ -46,7 +46,7 @@ configuring, deploying, observing and recovering environments.
 | [Database](architecture/database.md) | Schema, process access, claim and admission rules, and migrations |
 | [Configuration](architecture/configuration.md) | Environment files, identity and Secret boundaries |
 | [Observability](architecture/observability.md) | Signal paths, telemetry contracts and reliability objectives |
-| [HTTP API](architecture/api.md) | Authentication, routes, errors and examples |
+| [HTTP API](architecture/api.md) | Authentication, permissions, errors, retries and battle-data behavior |
 | [OpenAPI](architecture/openapi.yaml) | Machine-readable HTTP contract |
 
 ## Environment and application operations

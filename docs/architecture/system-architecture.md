@@ -138,7 +138,8 @@ events provide execution evidence. A running decision does not prove MCP connect
 
 See the [frontend guide](../developer/frontend-guide.md#battle-data-lifecycle) for
 request lifecycle, inspector state, map layout, and animation;
-the [API contract](api.md#expanded-battlefield-data) for snapshot and context fields;
+the [OpenAPI contract](openapi.yaml) for state, event and context fields, and the
+[HTTP API reference](api.md#battle-state-and-fog-of-war) for fog-of-war projection;
 and [game rules](../game/game-rules.md) for movement and attack resolution.
 
 ### Deterministic simulation boundary
@@ -954,9 +955,12 @@ before entering an empty battle long poll; jobs admitted during that poll are
 checked on the next claim. The AI gateway write timeout leaves room beyond the maximum
 20-second poll so a durable claim can be delivered. Claims use `FOR UPDATE SKIP LOCKED` and
 never reclaim running generation jobs. Generation capabilities are namespaced
-separately and authorize only the draft's two tools on `/generation-mcp`. Each
-endpoint accepts only its own kind: `/mcp` rejects generation capabilities and
-`/generation-mcp` rejects battle capabilities.
+separately and authorize only the draft's two tools on `/generation-mcp`,
+`get_background_context` and `submit_faction_background`, neither of which
+receives battle data. Each endpoint accepts only its own kind: `/mcp` rejects
+generation capabilities and `/generation-mcp` rejects battle capabilities. Workers
+report the configured model, prompt version, usage and failure category to
+`/internal/agent/generation-finish`.
 The restricted AI gateway database role receives SELECT/UPDATE on generation jobs,
 without faction-table or battle-state access.
 
