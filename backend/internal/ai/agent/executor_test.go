@@ -369,6 +369,25 @@ func TestServiceURLDerivesControlAndGenerationEndpoints(t *testing.T) {
 	}
 }
 
+// signallingRunner reports each start on started, then waits for finish. Both waits
+// honor cancellation: after Resume, finished jobs are re-claimed until the test cancels,
+// and a blocking send on a full started channel would never see that cancellation.
+func signallingRunner(started chan<- struct{}, finish <-chan struct{}) ai.DecisionRunner {
+	return runnerFunc(func(ctx context.Context, _ ai.DecisionSession) (ai.DecisionResult, error) {
+		select {
+		case started <- struct{}{}:
+		case <-ctx.Done():
+			return ai.DecisionResult{}, ctx.Err()
+		}
+		select {
+		case <-finish:
+			return ai.DecisionResult{Accepted: true}, nil
+		case <-ctx.Done():
+			return ai.DecisionResult{}, ctx.Err()
+		}
+	})
+}
+
 func TestDrainStopsNewClaimsAndLetsRunningDecisionsFinish(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -385,15 +404,7 @@ func TestDrainStopsNewClaimsAndLetsRunningDecisionsFinish(t *testing.T) {
 	finish := make(chan struct{})
 	profiles := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
 	worker := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", WorkerID: "agent", Profiles: profiles, PollInterval: time.Millisecond, DecisionTimeout: time.Second, Concurrency: 1, Client: client, RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
-		return runnerFunc(func(ctx context.Context, _ ai.DecisionSession) (ai.DecisionResult, error) {
-			started <- struct{}{}
-			select {
-			case <-finish:
-			case <-ctx.Done():
-				return ai.DecisionResult{}, ctx.Err()
-			}
-			return ai.DecisionResult{Accepted: true}, nil
-		}), nil
+		return signallingRunner(started, finish), nil
 	}}
 	done := make(chan error, 1)
 	go func() { done <- worker.Run(ctx) }()
