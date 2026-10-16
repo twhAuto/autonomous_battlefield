@@ -1,14 +1,30 @@
 # Environment configuration model
 
-Both environments use the same application schema in [.env.example](../../.env.example).
-Application files contain literal `KEY=value` lines: do not quote values, interpolate
-variables, or source them as shell scripts. The shared parser rejects unknown and
-duplicate settings. Each environment has its own credentials.
+Use this reference to choose where a setting belongs and understand how it reaches
+the application. For setup commands, use [local development](../developer/local-setup.md)
+or [production environment operations](../operations/environments.md).
 
-Production supports an explicit `BF_DRIVER=kind|k3s`; older profiles default to
-Kind. Dev remains the local Kind workflow. K3s registration and its controller,
-storage, TLS and cutover requirements are in [K3s delivery](../operations/k3s-delivery.md).
-The profile pins the driver as well as the context and namespace UID.
+## Configuration sources
+
+Deployment scripts and backend binaries read different inputs. The scripts turn
+private application files into Kubernetes Secrets; binaries read their selected
+YAML file and process environment at startup.
+
+| Source | Consumer | Selection and responsibility |
+| --- | --- | --- |
+| Application `.env` | Deployment scripts | Dev uses the project-root file; production uses the file beside its deployment profile. Supplies credentials and environment-specific settings using [`.env.example`](../../.env.example). Exported application credentials do not override this file during deployment. |
+| `deployment.env` | Deployment scripts | `DEPLOY_ENV` selects `dev` or `production`; `BATTLEFIELD_ENV_FILE` can select another profile for that environment. Pins deployment identity and infrastructure endpoints using the [deployment template](../../infra/deploy/environments/deployment.env.example). |
+| Backend YAML, such as [`backend/config.yaml`](../../backend/config.yaml) | API, engine, agent and AI gateway binaries | `-config` selects one file; the default is `config.yaml` relative to the process working directory. Defines listeners, timeouts, limits and model profiles. It is not merged with a deployment profile. |
+| Kubernetes `battlefield-config` ConfigMap | Backend pods | Supplies the YAML mounted at `/etc/battlefield/config.yaml`, selected by the pod's `-config` argument. Its source is the [deployment ConfigMap](../../infra/deploy/base/infrastructure/configmap.yaml), not the local `backend/config.yaml`. |
+| Process environment | Backend binaries | Supplies settings such as `DATABASE_URL`, authentication and provider credentials. Pods receive these from manifests and Secrets; standalone processes inherit them from their launcher. Binaries do not load `.env` or `deployment.env` themselves. |
+
+YAML and environment variables have distinct fields rather than a general
+“environment overrides YAML” rule. The [backend loaders](../../backend/internal/config)
+validate each binary's settings and reject unknown YAML keys. For example,
+database pool limits come from YAML, while the connection URL comes from
+`DATABASE_URL`. Editing the project-root `.env` alone has no effect on a directly
+launched `go run ./cmd/server` process. The registered CLI VM has a separate
+[managed worker configuration workflow](../operations/cli-worker.md).
 
 ## File layout
 
@@ -28,48 +44,47 @@ Production:
 └── tunnel-credentials.json
 ```
 
-The application `.env` holds database URLs, authentication, provider settings,
-worker and MCP capability credentials, and optional Redis/logging/telemetry settings.
-`deployment.env` holds only deployment identity, Docker endpoint, cluster UID,
-gateway URL, kubeconfig path, and production tunnel settings. See the
-[deployment template](../../infra/deploy/environments/deployment.env.example).
-Paths within the deployment profile are relative to that file.
-Directories use mode 700; credential files use mode 600.
+Application files contain literal `KEY=value` lines: do not quote values,
+interpolate variables, or source them as shell scripts. The
+[shared parser](../../scripts/lib/application-env.cjs) rejects unknown and duplicate
+settings. Each environment has its own credentials; private directories use mode
+700 and credential files use mode 600.
 
-`BATTLEFIELD_ENV_FILE` can select a different deployment profile.
-Production always reads `.env` beside that profile; dev always reads the
-project-root `.env`. Application credential exports do not override the file.
-The resolver verifies the selected environment and pinned cluster UID. It rejects
-conflicting cluster, URL, secret-file, and image-source overrides. Jenkins may
-bind its deployment kubeconfig; the live UID must still match.
+The deployment profile holds the driver, context, cluster identity, gateway URL,
+kubeconfig path and applicable Docker, tunnel and kubelet TLS settings. File paths
+inside it are relative to the profile. Production supports `BF_DRIVER=kind|k3s`;
+older profiles default to Kind. Dev uses local Kind. See
+[K3s delivery](../operations/k3s-delivery.md) for K3s registration requirements.
+
+The [environment resolver](../../scripts/lib/deployment-environment.sh) verifies
+the selected environment and the registered `kube-system` namespace UID before
+deployment. It rejects conflicting cluster, URL, secret-file and image-source
+overrides. Jenkins may bind its deployment kubeconfig; the live UID must still match.
 
 ## Secret rendering and restart behavior
 
-Deployment renders distinct database, auth, AI, API-only cache and runtime Kubernetes Secrets
-using explicit field classification. Cluster and tunnel settings never enter
-application Secrets. Temporary files are removed on exit. Application and
-infrastructure configuration are applied together; application pods restart
-when configuration is reapplied, even if images did not change.
+Deployment classifies application fields into database, auth, AI, cache, runtime
+and managed-Player Secrets. Pod manifests select which values each process
+receives; cache and managed-Player settings are API-only. Deployment identity and
+tunnel settings never enter application Secrets. Rendering uses temporary files
+that are removed on exit.
+
+Use the setup guides' configuration-delivery workflow after changing `.env`.
+It reapplies infrastructure and application configuration and restarts application
+pods even when images are unchanged. Backend YAML and environment settings are
+loaded at startup; standalone processes must also be restarted after changes.
 Editing a password file does not rotate the PostgreSQL role.
 
 ## Credential ownership
 
-Kubernetes-generated observability credentials remain in Kubernetes, CI
-credentials remain in Jenkins, and database backups remain under the configured
-backup storage. Shared SSH and Cloudflare account credentials are not application
-configuration and are not relocated.
+Kubernetes-generated observability credentials remain in Kubernetes; CI credentials
+remain in Jenkins. Shared SSH and Cloudflare account credentials belong to their
+platform workflows. Database backups remain under the configured backup storage.
 
 ## Optional managed Players
 
-`BATTLEFIELD_MANAGED_PLAYERS` and `BATTLEFIELD_MEMBERS_ACCOUNT_ID`,
-`BATTLEFIELD_MEMBERS_GROUP_ID`, `BATTLEFIELD_MEMBERS_API_TOKEN` live in the private
-application `.env`. Environment extraction stages them in the separate
-`battlefield-members` Secret consumed only by API pods. The API's configuration
-loader validates them with the rest of its settings: enabling managed Players
-requires Cloudflare authentication, a 32-character account ID, a group UUID and a
-single-line token. Configuration delivery
-restarts the API; invitation changes after activation are stored in PostgreSQL
-and need no deployment. See [Player invitations](../operations/player-invitations.md).
-
-For setup and validation, use [local development](../developer/local-setup.md)
-or [production environment operations](../operations/environments.md).
+Managed-Player configuration belongs in the private application `.env` and is
+rendered into `battlefield-members`, consumed only by API pods. The
+[Player invitation activation guide](../operations/player-invitations.md#one-time-activation)
+lists the required settings and validation rules. Once enabled, invitation changes
+are stored in PostgreSQL and need no deployment.

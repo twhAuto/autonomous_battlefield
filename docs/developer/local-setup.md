@@ -34,14 +34,10 @@ database password for existing PVCs with missing credentials.
 
 ### Application settings
 
-The Git-ignored root `.env` uses the schema in [`.env.example`](../../.env.example).
-Values are literal `KEY=value`: no quotes, interpolation or shell commands.
-Do not source the file. Shell credential exports do not override it. Existing
-values are preserved and validated. Deployment creates separate Kubernetes
-Secrets and restarts the affected workloads. Editing a database password does
-not rotate its PostgreSQL role; retain the current password for existing data.
-The [configuration model](../architecture/configuration.md) explains the separate
-machine profile, kubeconfig and production inputs.
+Edit the Git-ignored root `.env` using [`.env.example`](../../.env.example), then
+rerun `./scripts/cd/deploy-local.sh`. The [configuration model](../architecture/configuration.md)
+explains the literal file format, source selection, Secret rendering and restart rules,
+including the distinction between deployment and standalone processes.
 
 [`backend/config.yaml`](../../backend/config.yaml) defines local process settings;
 unknown fields and invalid values fail startup. Catalog paths are relative to
