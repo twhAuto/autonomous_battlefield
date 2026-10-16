@@ -414,33 +414,46 @@ The service validates decision version, target tick, general plan bounds, and co
 
 ### Explicit recruitment orders
 
+The shared model prompt requests ordered `{unitType, count, sourceBuildingId?}`
+purchases through `recruitmentOrders`. These are purchases for one production
+window, not army ratios. MCP and engine validation enforce legal unit IDs, positive
+counts and at most six units per window across all sources, matching the six
+castle-adjacent spawn positions. The engine buys in order, keeps reserve gold and
+stops at the first unaffordable unit or blocked castle spawn; unavailable explicit
+sources and blocked Barracks orders are skipped. There is no substitution, extra
+purchasing or queue, and a reused plan applies its quantities again at the next
+window.
 
-The shared model prompt requests ordered `{unitType, count, sourceBuildingId?}` purchases through
-`recruitmentOrders`. MCP and engine validation enforce legal unit IDs, positive
-counts, and a six-unit per-window maximum. The engine executes only the requested
-sequence, preserving reserve gold and spawn occupancy. Unavailable explicit sources
-and blocked Barracks orders are skipped; blocked castle spawns or an unaffordable
-purchase stop remaining purchases. The six-unit limit spans all sources. Empty orders mean no buying; missing orders retain legacy
-priority behavior. Orders are deep-copied and persisted with plans, faction memory,
-and decision hashes. The UI shows requested quantities; recruitment events report
-actual spending. See [explicit unit purchases](../developer/ai-comparisons.md#explicit-unit-purchases)
-for partial-order and reuse semantics.
+An explicit empty `recruitmentOrders: []` buys nothing. An absent or null field
+keeps the legacy behavior of repeatedly buying the first affordable unit from
+`recruitmentPriorities`; nonempty priorities and explicit orders together are
+rejected. Omitting `recruitment` from a nonempty `spendOrder` also skips buying.
+Orders are deep-copied and persisted with plans, faction memory and decision
+hashes. The decision panel shows requested quantities; `unit_recruited` events
+record actual purchases.
 
 ### Versioned unit knowledge
 
-
 Optional ruleset knowledge is frozen in the resolved scenario JSON alongside unit
-statistics, and participates in the scenario content hash. At each decision
-window the engine retrieves unit cards using only the faction-visible context.
-Selection runs before observation hashing and persistence. API MCP reads and host
-CLI inline delivery consume that identical persisted knowledge. Retrieval has no
-external service dependency and does not change engine combat or plan validation.
+statistics, and participates in the scenario content hash. Card authoring rules are
+in [content libraries](../developer/content-library.md). At each decision window
+the engine retrieves unit cards using only the faction-visible context, once,
+before observation hashing and persistence. API MCP reads and host CLI inline
+delivery consume that identical persisted knowledge. Retrieval has no external
+service dependency and does not change engine combat or plan validation.
 
-`engine.knowledgeRetrieval` controls positive card and byte limits (defaults 16
-and 16384). Effective limits, selected source IDs, content digest, byte size, and
-truncation accompany decision knowledge. Old scenarios without knowledge remain
-valid. See [AI comparisons](../developer/ai-comparisons.md#unit-knowledge-retrieval)
-for authoring, configuration, and evaluation details.
+Selection orders candidates by visible enemy types, own deployed types, explicit
+recruitment-order types, legacy recruitment priorities, then other legal units by
+increasing cost, with unit ID breaking ties. It never uses hidden enemy state.
+`engine.knowledgeRetrieval` sets positive `maxUnitCards` and `maxBytes` limits
+(defaults 16 and 16384); the byte budget covers mechanics, cards and metadata. If
+even the metadata cannot fit, knowledge is omitted; if mechanics cannot fit, they
+are omitted and truncation is recorded. Otherwise retrieval keeps priority order
+and stops before a whole card would exceed either limit. Persisted contexts record
+source IDs, the ruleset-content digest, effective limits, serialized size and
+truncation. Configuration changes affect decisions prepared after an engine
+restart; retries reuse persisted decisions. Old scenarios without knowledge remain
+valid.
 
 ### Compact unit context and exact lookup
 
@@ -448,7 +461,6 @@ All new decisions use `battlefield.decision-context.v4`. Before hashing, the eng
 freezes all legal or visible unit definitions and available cards in the persisted
 observation's `unitReference` JSON field. This reference is independent of the
 legacy automatic card budget. Full observations continue to drive validation.
-No database migration is required: observations are stored as JSON.
 
 The explicit `agentview.Context` projection emits unit ID, cost, class, role, strengths,
 and weaknesses in `legal.units`, plus `referenceUnits` for visible types that are
@@ -468,17 +480,16 @@ nonempty IDs and returns base stats, guidance when present, and source
 identity/digest. Hidden and unknown IDs both return `available: false`. Responses
 above 1800 serialized JSON bytes return a recoverable tool error asking for fewer
 IDs. For a single long card, `nextGuidanceOffset` explicitly marks continuation;
-pass it as `guidanceOffset` with the same unit ID to read the remainder. Every page
-contains complete base stats. Text-only JSON delivery avoids duplicate CLI resource
+pass it as `guidanceOffset` with the same unit ID to read the remainder; offsets
+count UTF-8 bytes of the frozen guidance. Every page contains complete base stats. Text-only JSON delivery avoids duplicate CLI resource
 rendering. Overview text is not repeated in lookup results. All reference content remains untrusted data.
 
 The saved-context inspector shows the reconstructed initial projection
 (**Agent context (reconstructed)**) separately from the stored reference details
 (**On-demand unit reference**). Availability does not establish
 that the model fetched them. Evaluation reports count lookup calls and aggregate
-input tokens across turns, alongside latency, acceptance, fallback, and diversity.
-See [compact context rollout](../developer/ai-comparisons.md#compact-unit-context)
-for deployment order and checks.
+input tokens across turns, alongside latency, acceptance, fallback, and diversity;
+see [AI comparisons](../developer/ai-comparisons.md#reading-reports).
 
 ### Submission-shape failures and fallback attribution
 
