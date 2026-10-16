@@ -96,7 +96,7 @@ The backend has five commands in one Go module: four runtime processes and the o
 | API | [`backend/cmd/server/main.go`](../../backend/cmd/server/main.go) | Flags, configuration, migrations, PostgreSQL startup, catalog loading, application wiring, HTTP lifecycle |
 | Engine | [`backend/cmd/engine/main.go`](../../backend/cmd/engine/main.go) | Configuration, PostgreSQL startup, worker construction, health server, signals, graceful requeue/shutdown |
 | AI gateway | [`backend/cmd/aigateway/main.go`](../../backend/cmd/aigateway/main.go) | Restricted repository construction, PostgreSQL notification listener, MCP tool and agent dispatch routes, HTTP lifecycle |
-| Agent | [`backend/cmd/agent/main.go`](../../backend/cmd/agent/main.go) | Profile registry, decision worker, health endpoint, signals, and a shutdown that waits up to 20 seconds for in-flight jobs to report |
+| Agent | [`backend/cmd/agent/main.go`](../../backend/cmd/agent/main.go) | Profile registry, decision worker, health and drain-status endpoints, `-check-config`, drain/resume on `SIGUSR1`/`SIGUSR2` ([`drain_unix.go`](../../backend/cmd/agent/drain_unix.go)), and a shutdown that waits up to 20 seconds for in-flight jobs to report |
 | AI evaluation | [`backend/cmd/aieval/main.go`](../../backend/cmd/aieval/main.go) | Evaluation case execution, pricing inputs, reports, and runtime provenance via `-mode metadata` |
 
 `cmd` packages should remain thin. Domain and use-case behavior belongs under `internal`; entry points should focus on composition and process lifecycle.
@@ -282,8 +282,9 @@ lifecycle with UUID-bound disposable cleanup. See [CLI VM platform](../operation
 
 `scripts/infra/cli-worker.py` keeps the registered worker running: it verifies the
 VM, host bridge, gateway credential and guest worker. It repairs them under a
-reviewed plan receipt, syncing the worker secret from the production `.env` and
-installing the boot-start and bridge-watchdog units. `infra/jenkins/Jenkinsfile.cli`
+reviewed plan receipt, syncing the worker secret from the production `.env`,
+installing the boot-start and bridge-watchdog units, and upgrading the worker to the
+`/app/agent` binary of the deployed backend image after draining it. `infra/jenkins/Jenkinsfile.cli`
 and `scripts/ci/run-cli-worker.sh` run it as `battlefield-platform/cli`; the main
 pipeline runs its read-only `verify`. `cli-bootstrap.py` substitutes the same secret
 through the `cli_with_worker_secret` filter. `test-cli-worker.py` runs the real guest

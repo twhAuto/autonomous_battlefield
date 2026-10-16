@@ -442,8 +442,11 @@ pipeline {
                     steps {
                         // Read-only. A down or out-of-sync CLI worker marks the build unstable but
                         // never fails delivery or triggers rollback; repair it with battlefield-platform/cli.
+                        // Registry access reads the worker binary of the release just deployed.
                         catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-                            sh 'mkdir -p artifacts && python3 scripts/infra/cli-worker.py verify --report artifacts/cli-worker-verify.json'
+                            withGhcr {
+                                sh 'mkdir -p artifacts && ./scripts/ci/with-ghcr-auth.sh python3 scripts/infra/cli-worker.py verify --report artifacts/cli-worker-verify.json'
+                            }
                         }
                     }
                 }

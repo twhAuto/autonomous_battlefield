@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -46,9 +47,66 @@ type Executor struct {
 	RunnerFactory                            func(ai.ModelProfile) (ai.DecisionRunner, error)
 	Logger                                   *slog.Logger
 	ready                                    atomic.Bool
+	// slots guards draining and active: a claim starts only while not draining, so
+	// once Drain returns, active only falls and reaching zero means the worker is idle.
+	slots    sync.Mutex
+	draining bool
+	active   int
 }
 
 func (e *Executor) Ready() bool { return e.ready.Load() }
+
+// Status is the worker's drain state: whether it has stopped claiming, how many claims
+// or decisions are still in progress, and its configured concurrency.
+type Status struct {
+	Draining    bool `json:"draining"`
+	Active      int  `json:"active"`
+	Concurrency int  `json:"concurrency"`
+}
+
+func (e *Executor) Status() Status {
+	e.slots.Lock()
+	defer e.slots.Unlock()
+	return Status{Draining: e.draining, Active: e.active, Concurrency: e.Concurrency}
+}
+
+// Drain stops new claims. Claims and decisions already in progress finish normally,
+// so an operator can restart the worker once Status reports no active work.
+func (e *Executor) Drain() {
+	e.setDraining(true)
+}
+
+// Resume undoes Drain, for example when an upgrade is abandoned.
+func (e *Executor) Resume() {
+	e.setDraining(false)
+}
+
+func (e *Executor) setDraining(draining bool) {
+	e.slots.Lock()
+	changed := e.draining != draining
+	e.draining = draining
+	e.slots.Unlock()
+	if changed {
+		e.logger().Info("agent_worker_draining", "worker_id", e.WorkerID, "draining", draining)
+	}
+}
+
+// acquire reserves a slot for one claim and the decision it may return.
+func (e *Executor) acquire() bool {
+	e.slots.Lock()
+	defer e.slots.Unlock()
+	if e.draining {
+		return false
+	}
+	e.active++
+	return true
+}
+
+func (e *Executor) release() {
+	e.slots.Lock()
+	e.active--
+	e.slots.Unlock()
+}
 
 // serviceURL resolves a path on the AI gateway that serves the configured /mcp
 // endpoint, such as the agent dispatch API or the generation MCP endpoint.
@@ -89,27 +147,33 @@ func (e *Executor) Run(ctx context.Context) error {
 
 func (e *Executor) runClaimLoop(ctx context.Context, profileIDs []string) error {
 	for ctx.Err() == nil {
-		if len(profileIDs) == 0 {
+		if len(profileIDs) == 0 || !e.acquire() {
 			if !waitFor(ctx, e.PollInterval) {
 				return nil
 			}
 			continue
 		}
-		job, ok, err := e.claim(ctx, profileIDs)
+		err := e.claimAndRun(ctx, profileIDs)
+		e.release()
 		if err != nil {
-			if err := e.handleClaimError(ctx, err); err != nil {
-				return err
-			}
-			continue
+			return err
 		}
-		if !ok {
-			continue
-		}
-		e.logger().InfoContext(ctx, "decision_claimed", "worker_id", e.WorkerID, "request_id", job.RequestID, "profile_id", job.ProfileID)
-		// Each claim loop owns one concurrency slot, so a leased decision is
-		// always executed immediately instead of waiting behind another job.
-		e.runClaimedJob(ctx, job)
 	}
+	return nil
+}
+
+func (e *Executor) claimAndRun(ctx context.Context, profileIDs []string) error {
+	job, ok, err := e.claim(ctx, profileIDs)
+	if err != nil {
+		return e.handleClaimError(ctx, err)
+	}
+	if !ok {
+		return nil
+	}
+	e.logger().InfoContext(ctx, "decision_claimed", "worker_id", e.WorkerID, "request_id", job.RequestID, "profile_id", job.ProfileID)
+	// Each claim loop owns one concurrency slot, so a leased decision is
+	// always executed immediately instead of waiting behind another job.
+	e.runClaimedJob(ctx, job)
 	return nil
 }
 
