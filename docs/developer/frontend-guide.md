@@ -159,8 +159,9 @@ timings live in the CSS and components with their tests, not in this guide.
   preferences disable motion and transitions.
 - Faction views show allied deaths and visible enemy deaths only; disappearance
   from vision never creates a death marker.
-- The expanded map is a native modal dialog that keeps perspective, selection and
-  camera. Keyboard panning uses the native "Pan with arrow keys" button.
+- The expanded map is a native modal dialog that keeps perspective and selection.
+  Opening, closing or resizing it fits the board again; live tick updates keep the
+  current camera. Keyboard panning uses the native "Pan with arrow keys" button.
 
 `FactionSummaries.tsx` shows each participant's decision activity, gold and living
 units from spectator state, independent of map perspective. Paused and terminal
