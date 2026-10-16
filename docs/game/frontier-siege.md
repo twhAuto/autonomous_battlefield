@@ -92,7 +92,7 @@ all sources. Barracks place recruits on adjacent free ground with the same costs
 and reserve. An unavailable source or a blocked Barracks order is skipped without
 substitution; a blocked castle spawn or the first unaffordable order stops the
 remaining purchases. Unfilled purchases are not queued. The plan fields are
-described in the [API reference](../architecture/api.md#expanded-battlefield-data).
+the `StrategyPlan` schema in the [OpenAPI contract](../architecture/openapi.yaml).
 
 Scripted Frontier plans build rear income, a forward tower, and a forward Barracks
 as budget permits, then use an active forward source for reinforcements. They

@@ -87,8 +87,9 @@ never the opponent's gold, upgrades or production totals:
 
 A plan sets tactical `actionWeights` (attack vs. defend), spending (recruitment,
 construction, and upgrade orders, `spendOrder`, `reserveGold`), and optional
-`targetBonuses`. Plans cannot be applied outside a window. The plan contract is in
-[the API reference](../architecture/api.md) and the MCP tool schema.
+`targetBonuses`. Plans cannot be applied outside a window. The plan fields are the
+`StrategyPlan` schema in the [OpenAPI contract](../architecture/openapi.yaml); models
+submit them through the MCP tool schema.
 
 ## Tick order
 
@@ -133,7 +134,7 @@ removed, and the attacker's faction collects loot.
 
 Separately from the rules, operators can stop a battle, and unfinished battles
 expire (fail with `battle_timeout`) one hour after creation. See the
-[API reference](../architecture/api.md) for battle status and controls.
+[API reference](../architecture/api.md#status-and-controls) for battle status and controls.
 
 ## Not supported
 

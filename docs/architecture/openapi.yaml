@@ -4,9 +4,10 @@ info:
   version: 1.0.0
   summary: Public /v1 API for factions, battles, background generation, and administration.
   description: |
-    Machine-readable contract for the public `/v1` API. The prose guide in
-    [api.md](./api.md) explains behavior in more depth; this document is the
-    authoritative list of routes, request bodies, response shapes, and error codes.
+    Machine-readable contract for the public `/v1` API: every route, request body,
+    response shape, error code, and battle state and event payload. The prose guide
+    in [api.md](./api.md) owns behavior a schema cannot express, such as
+    permissions, retries, admission limits and fog of war.
 
     **Scope.** Every `/v1` route the API serves is listed here. The process probes
     (`/startupz`, `/livez`, `/healthz`, `/readyz`) and `/metrics` are infrastructure
@@ -1209,9 +1210,11 @@ components:
 
     BattleState:
       description: |
-        Simulation state at `tick`. Units and buildings carry many optional fields
-        (attack mode and outcome, movement paths, heal targets, and so on); absent
-        fields retain legacy behavior. See api.md for the full field list.
+        Simulation state at `tick`. Optional unit and building fields appear only in
+        rulesets that use them, and older snapshots may omit them; an absent field
+        keeps the behavior it had before the field existed. Faction views remove
+        action targets and routes outside current vision; see
+        [api.md](./api.md#battle-state-and-fog-of-war).
 
         The arrays are `null`, not `[]`, when empty — for example a newly queued
         battle whose units have not yet been recruited. Treat `null` as empty.
@@ -1220,45 +1223,142 @@ components:
       properties:
         battleId: {type: string}
         tick: {type: integer}
+        openingComplete:
+          description: True once the one-time opening purchase has run. Omitted until then.
+          type: boolean
         factions:
           type: [array, 'null']
-          items:
-            type: object
-            required: [factionId, gold]
-            properties:
-              factionId: {type: string}
-              gold: {type: integer}
-              goldEarned: {type: integer}
-              goldSpent: {type: integer}
-              goldLooted: {type: integer}
-            additionalProperties: true
+          items: {$ref: '#/components/schemas/FactionState'}
         units:
           type: [array, 'null']
-          items:
-            type: object
-            required: [id, factionId, type, position]
-            properties:
-              id: {type: string}
-              factionId: {type: string}
-              type: {type: string}
-              position: {$ref: '#/components/schemas/Position'}
-            additionalProperties: true
+          items: {$ref: '#/components/schemas/Unit'}
         buildings:
           type: [array, 'null']
-          items:
-            type: object
-            required: [id, factionId, type, position]
-            properties:
-              id: {type: string}
-              factionId: {type: string}
-              type: {type: string}
-              position: {$ref: '#/components/schemas/Position'}
-            additionalProperties: true
+          items: {$ref: '#/components/schemas/Building'}
         unitDeaths:
-          description: Confirmed deaths in the current tick. Clients must not infer death from disappearance.
+          description: |
+            Confirmed unit deaths in the current tick, cleared at the next tick.
+            Omitted when there are none and in older snapshots. Clients must not infer
+            death from disappearance.
           type: [array, 'null']
-          items: {type: object, additionalProperties: true}
-      additionalProperties: true
+          items: {$ref: '#/components/schemas/UnitDeath'}
+
+    FactionState:
+      type: object
+      required: [factionId, gold, recruitmentCursor, goldEarned, goldSpent, goldLooted, unitsStarted, unitsRecruited, unitsLost, buildingsBuilt, buildingsDestroyed]
+      properties:
+        factionId: {type: string}
+        gold: {type: integer}
+        ownedUpgradeIds: {type: array, items: {type: string}}
+        recruitmentCursor:
+          description: Position in a legacy `recruitmentPriorities` rotation.
+          type: integer
+        goldEarned: {type: integer}
+        goldSpent: {type: integer}
+        goldLooted: {type: integer}
+        unitsStarted: {type: integer}
+        unitsRecruited: {type: integer}
+        unitsLost: {type: integer}
+        buildingsBuilt: {type: integer}
+        buildingsDestroyed: {type: integer}
+
+    AttackMode:
+      description: |
+        `tracking` (the default when omitted) hits the chosen target wherever it is;
+        `position` aims at the target's hex at the start of the tick and misses if
+        nothing is there when the shot lands.
+      type: string
+      enum: [tracking, position]
+
+    AttackOutcome:
+      description: Set for the tick in which the entity attacked; cleared with other per-tick actions.
+      type: string
+      enum: [hit, miss]
+
+    Unit:
+      description: |
+        Statistics are copied from the ruleset at recruitment, with upgrades applied.
+        The fields from `movementPath` onward describe what the unit did in the
+        current tick and are cleared at the next one.
+      type: object
+      required: [id, factionId, type, position, health, maxHealth, attack, defense, speed, movement, range, vision, cost, readyAtTick]
+      properties:
+        id: {type: string}
+        factionId: {type: string}
+        type: {type: string}
+        position: {$ref: '#/components/schemas/Position'}
+        health: {type: integer}
+        maxHealth: {type: integer}
+        attack: {type: integer}
+        defense: {type: integer}
+        speed: {type: integer}
+        movement: {type: integer}
+        range: {type: integer}
+        vision: {type: integer}
+        cost: {type: integer}
+        readyAtTick:
+          description: First tick on which the unit can act.
+          type: integer
+        class: {type: string, examples: [infantry, mobile, siege, support]}
+        minimumRange: {type: integer}
+        buildingPriority:
+          description: Prefers buildings over units when choosing targets.
+          type: boolean
+        buildingDamageBonus: {type: integer}
+        bonusAgainstClass: {type: string}
+        classDamageBonus: {type: integer}
+        healAmount: {type: integer}
+        attackMode: {$ref: '#/components/schemas/AttackMode'}
+        movementPath:
+          description: The origin followed by each hex traversed this tick, ending at the destination.
+          type: array
+          items: {$ref: '#/components/schemas/Position'}
+        movedFrom: {$ref: '#/components/schemas/Position'}
+        attackTargetId:
+          description: Absent on a miss.
+          type: string
+        attackTargetPosition:
+          description: The impact hex for a `position` shot; the target's hex for a tracking attack.
+          allOf: [{$ref: '#/components/schemas/Position'}]
+        attackOutcome: {$ref: '#/components/schemas/AttackOutcome'}
+        healTargetId: {type: string}
+        healTargetPosition: {$ref: '#/components/schemas/Position'}
+
+    Building:
+      description: |
+        Castles, economy buildings, and the structures a ruleset defines. Only
+        attacking structures such as towers carry `attack`, `range`, and the
+        per-tick action fields.
+      type: object
+      required: [id, factionId, type, position, health, maxHealth, defense, vision, cost, income]
+      properties:
+        id: {type: string}
+        factionId: {type: string}
+        type: {type: string, examples: [castle, economy, barracks, watchtower, defense_tower]}
+        position: {$ref: '#/components/schemas/Position'}
+        health: {type: integer}
+        maxHealth: {type: integer}
+        defense: {type: integer}
+        vision: {type: integer}
+        cost: {type: integer}
+        income: {type: integer}
+        attack: {type: integer}
+        range: {type: integer}
+        readyAtTick:
+          description: First tick on which the structure can attack or recruit.
+          type: integer
+        attackTargetId: {type: string}
+        attackTargetPosition: {$ref: '#/components/schemas/Position'}
+        attackOutcome: {$ref: '#/components/schemas/AttackOutcome'}
+
+    UnitDeath:
+      type: object
+      required: [id, factionId, type, position]
+      properties:
+        id: {type: string}
+        factionId: {type: string}
+        type: {type: string}
+        position: {$ref: '#/components/schemas/Position'}
 
     BattleResult:
       type: object
@@ -1387,6 +1487,32 @@ components:
           type: [string, 'null']
 
     BattleEvent:
+      description: |
+        `data` depends on `type`. Players receive every event with an empty `data`
+        object; Developers and Admins receive the payloads below. Positions are
+        `{x, y}` objects.
+
+        | `type` | `data` fields |
+        | --- | --- |
+        | `battle_started` | `battleId`, `scenarioId`, `rulesVersion`, `rulesetId`, `maximumTicks` |
+        | `plan_applied` | `factionId`, `name`, `targetTick`, and `source` after the opening |
+        | `tactic_selected` | `factionId`, `tactic`, `planName`, `source` |
+        | `opening_completed` | none |
+        | `income_collected` | `factionId`, `amount`, `balance` |
+        | `upgrade_purchased` | `factionId`, `upgradeId`, `cost`, `balance` |
+        | `building_constructed` | `factionId`, `buildingId`, `buildingType`, `position`, `cost` |
+        | `unit_recruited` | `factionId`, `unitId`, `unitType`, `position`, `readyAtTick`, `cost`, and `sourceBuildingId` in rulesets with structures |
+        | `production_skipped` | `factionId`, `kind` (`upgrades`, `construction` or `recruitment`), `reason`, plus `upgradeId` or `position` where relevant |
+        | `unit_moved` | `factionId`, `unitId`, `from`, `to` |
+        | `unit_attacked`, `building_attacked` | `attackerId`, `targetId`, `targetType`, `damage`, `remainingHealth`, `attackMode`, `outcome: hit`, `impactPosition` |
+        | `unit_attack_missed` | `attackerId`, `attackMode: position`, `outcome: miss`, `impactPosition` |
+        | `unit_healed` | `factionId`, `healerId`, `targetId`, `amount` (health actually restored), `remainingHealth` |
+        | `unit_destroyed` | `unitId`, `factionId` |
+        | `building_destroyed` | `buildingId`, `factionId`, `buildingType` |
+        | `castle_destroyed` | `castleId`, `factionId`, `destroyedByFactionId` |
+        | `loot_collected` | `factionId`, `sourceId`, `amount`, `balance` |
+        | `tick_completed` | `tick` |
+        | `battle_completed` | `winnerFactionId` (null for a draw), `reason` (`castle_destroyed` or `tick_limit`), `ticksRun` |
       type: object
       required: [attempt, sequence, tick, type, data, createdAt]
       properties:
@@ -1395,7 +1521,6 @@ components:
         tick: {type: integer}
         type: {type: string, examples: [unit_moved, unit_recruited, unit_attacked, unit_healed]}
         data:
-          description: Event-type-specific payload.
           type: object
           additionalProperties: true
         createdAt: {type: string, format: date-time}
@@ -1438,14 +1563,62 @@ components:
         modelIdentifier: {type: string}
         fallbackSource: {type: string}
         errorCategory: {type: string}
-        resolvedPlan:
-          description: The plan the engine applied.
-          type: object
-          additionalProperties: true
+        resolvedPlan: {$ref: '#/components/schemas/StrategyPlan'}
         usage: {$ref: '#/components/schemas/Usage'}
         traceUrl: {type: string}
         createdAt: {type: string, format: date-time}
         resolvedAt: {type: string, format: date-time}
+
+    StrategyPlan:
+      description: |
+        The plan the engine applied, from the model, the scripted controller, or a
+        fallback. Optional order fields distinguish an explicit empty array (do
+        nothing) from omission (legacy behavior).
+      type: object
+      required: [name]
+      properties:
+        name: {type: string}
+        rationale: {type: string}
+        actionWeights: {type: object, additionalProperties: {type: integer}}
+        targetBonuses: {type: object, additionalProperties: {type: integer}}
+        reserveGold: {type: integer}
+        spendOrder: {type: array, items: {type: string}}
+        upgradeOrders: {type: array, items: {type: string}}
+        constructionOrders:
+          description: |
+            At most eight typed orders. Omit to keep legacy `constructionPriorities`;
+            supplying both typed orders and nonempty legacy priorities is rejected.
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            required: [buildingType, position]
+            properties:
+              buildingType: {type: string, examples: [defense_tower]}
+              position: {$ref: '#/components/schemas/Position'}
+        recruitmentOrders:
+          description: |
+            Executed in order. At most six units in total across all orders; omit to
+            keep legacy `recruitmentPriorities`.
+          type: array
+          maxItems: 6
+          items:
+            type: object
+            required: [unitType, count]
+            properties:
+              unitType: {type: string}
+              count: {type: integer, minimum: 1, maximum: 6}
+              sourceBuildingId:
+                description: A recruitment source from the decision context; omit for the castle.
+                type: string
+        constructionPriorities:
+          description: Legacy coordinate-only economy construction.
+          type: array
+          items: {$ref: '#/components/schemas/Position'}
+        recruitmentPriorities:
+          description: Legacy unit rotation.
+          type: array
+          items: {type: string}
 
     SavedDecisionContext:
       type: object
