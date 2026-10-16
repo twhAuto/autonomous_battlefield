@@ -92,8 +92,10 @@ promote, then run `apply`.
 
 The release is the `/app/agent` binary in the backend image that the in-cluster
 `battlefield-agent` deployment runs. The job reads that deployment's digest-pinned
-image reference, pulls the image by digest and copies the binary into a private
-cache, `~/.cache/autonomous-battlefield/cli-worker/<digest>`. The digest pins the
+image reference through the registered kubeconfig and context in `cli.json`, after
+checking that the cluster's `kube-system` UID matches the registration. It then
+pulls the image by digest and atomically copies the binary into a private cache,
+`~/.cache/autonomous-battlefield/cli-worker/<digest>`. The digest pins the
 image content, so the copy matches production. Plan proposes `upgrade-worker` when
 the guest binary is the registered one and differs from the release. An apply after
 each backend release therefore upgrades the worker to the same code. If the release
@@ -109,7 +111,8 @@ upgrade.
 4. Replaces `/usr/local/bin/battlefield-agent` and its ownership-marker fingerprint,
    then restarts the worker.
 5. Waits up to 90 seconds for the new worker to report healthy and not draining. If
-   it does not, the job reinstalls the registered binary from the host copy and fails.
+   it does not, or step 4 fails, the job reinstalls the registered binary from the
+   host copy and fails. If that restore fails too, it resumes claims and reports it.
 6. Only then records the release as the registered artifact: the host copy in
    `cli.guest/battlefield-agent` and its SHA-256 in `cli.json`, which the CLI
    bootstrap checks.

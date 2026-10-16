@@ -62,6 +62,7 @@ STAGED_BINARY = '/var/lib/battlefield-cli-upgrade/battlefield-agent'
 # The in-cluster agent runs the same /app/agent binary from the deployed backend image.
 RELEASE_DEPLOYMENT = ['-n', 'battlefield', 'get', 'deployment', 'battlefield-agent',
                       '-o', 'jsonpath={.spec.template.spec.containers[0].image}']
+CLUSTER_IDENTITY = ['get', 'namespace', 'kube-system', '-o', 'jsonpath={.metadata.uid}']
 RELEASE_IMAGE = re.compile(r'[a-z0-9][a-z0-9./_-]*@sha256:([0-9a-f]{64})')
 RELEASE_CACHE = HOME / '.cache/autonomous-battlefield/cli-worker'
 RELEASE_MAX_BYTES = 512 * 1024 * 1024
@@ -538,16 +539,24 @@ class Worker:
     def release(self):
         """The worker binary in the backend image production runs, or None if unreadable."""
         try:
-            result = self.run(['kubectl', *RELEASE_DEPLOYMENT], timeout=30)
-            image = result.stdout.decode().strip()
-            match = RELEASE_IMAGE.fullmatch(image)
-            if result.returncode or not match:
+            # Only the registered production cluster, never the ambient kubectl context.
+            if self.kubectl(CLUSTER_IDENTITY) != self.config['host']['kube_system_uid']:
+                return None
+            image = self.kubectl(RELEASE_DEPLOYMENT)
+            match = RELEASE_IMAGE.fullmatch(image or '')
+            if not match:
                 return None
             path = self.release_binary(image, match.group(1))
             return {'image': image, 'digest': match.group(1), 'path': path,
                     'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
         except (ValueError, OSError, subprocess.SubprocessError, tarfile.TarError):
             return None
+
+    def kubectl(self, arguments):
+        host = self.config['host']
+        result = self.run(['/usr/bin/kubectl', '--kubeconfig=' + host['kubeconfig'], '--context=' + host['context'],
+                           '--request-timeout=15s', *arguments], timeout=30)
+        return result.stdout.decode().strip() if result.returncode == 0 else None
 
     def release_binary(self, image, digest):
         """Copy /app/agent out of the digest-pinned image once, into a private cache.
@@ -577,9 +586,7 @@ class Worker:
             content = archive_file.extractfile(member).read()
         for old in RELEASE_CACHE.iterdir():
             old.unlink()  # Keep only the release production runs now.
-        fd = os.open(cached, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        with os.fdopen(fd, 'wb') as stream:
-            stream.write(content)
+        write_private(cached, content)  # Atomic: an interrupted copy never becomes the cached release.
         return cached
 
     @staticmethod
@@ -677,6 +684,7 @@ class Worker:
         if 'sync-worker-secret' in repairs:
             self.guest_python(GUEST_SYNC, {'secret': secret})  # Restarts the worker itself.
             restart = False
+            guest = dict(guest, worker_active=True)  # It can claim now, so later restarts must drain.
         if 'upgrade-worker' in repairs:
             self.upgrade_worker(guest)  # Drains, restarts and verifies the new binary.
             guest = dict(guest, worker_active=True, drain_supported=True)
@@ -726,12 +734,13 @@ class Worker:
             self.wait_for(settled, DRAIN_SECONDS, 'CLI decisions were still running after 5 minutes; nothing was changed')
             return
         self.signal_worker('SIGUSR1')
-        try:
-            self.wait_for(lambda: (self.guest_python(GUEST_ACTIVITY, {})['status'] or {}).get('active') == 0,
-                          DRAIN_SECONDS, 'drain timed out')
-        except ValueError:
-            self.signal_worker('SIGUSR2')
-            raise ValueError('CLI decisions were still running after 5 minutes; the worker resumed claiming and nothing was changed')
+        with self.resuming_on_failure(guest):
+            try:
+                self.wait_for(lambda: (self.guest_python(GUEST_ACTIVITY, {})['status'] or {}).get('active') == 0,
+                              DRAIN_SECONDS, 'drain timed out')
+            except ValueError as error:
+                raise ValueError('CLI decisions were still running after 5 minutes; the worker resumed claiming '
+                                 'and nothing was changed') from error
 
     def stage_binary(self, content):
         command = 'sudo -n sh -c ' + shlex.quote(f'umask 077; mkdir -p {Path(STAGED_BINARY).parent}; cat > {STAGED_BINARY}')
@@ -752,14 +761,16 @@ class Worker:
         self.stage_binary(content)
         self.guest_python(GUEST_CHECK_RELEASE, {'binary': STAGED_BINARY, 'sha256': release['sha256']})
         self.drain(guest)
-        with self.resuming_on_failure(guest):
+        try:
             self.guest_python(GUEST_INSTALL, {'source': STAGED_BINARY, 'expected_sha256': registered,
                                               'target_sha256': release['sha256']})
-        try:
             self.wait_for(self.release_healthy, 90, 'not healthy')
-        except ValueError:
-            self.restore_binary(registered, release['sha256'])
-            raise ValueError('The upgraded CLI worker did not become healthy; the registered worker binary was restored')
+        except Exception as error:
+            # The install may have replaced the binary before failing, so always restore.
+            with self.resuming_on_failure(guest):
+                self.restore_binary(registered, release['sha256'])
+            raise ValueError('The CLI worker upgrade failed to install or become healthy; '
+                             'the registered worker binary was restored') from error
         self.register_binary(content, release['sha256'])
 
     def release_healthy(self):

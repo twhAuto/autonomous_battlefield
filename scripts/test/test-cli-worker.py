@@ -174,6 +174,7 @@ class PlanningTests(unittest.TestCase):
         instance.domain_state = lambda: 'shut off'
         instance.unit_state = lambda unit, query='is-active': 'enabled' if query == 'is-enabled' else 'active'
         instance.host_files_current = lambda: []
+        instance.release = lambda: None
         for status, reachable in ((204, True), (200, True), (503, False), (0, False)):
             instance.gateway = lambda path, secret=None, status=status: status if path == '/readyz' else 401
             with self.subTest(status=status), mock.patch.object(worker, 'AUTOMATION_KEY', Path('/nonexistent')):
@@ -309,6 +310,12 @@ class ApplyTests(unittest.TestCase):
         instance.apply(['sync-worker-config'], SECRET)
         self.assertEqual(calls, [('guest', 'config'), ('ssh', 'sudo -n systemctl restart battlefield-worker')])
 
+    def test_a_worker_started_by_the_secret_sync_is_drained_before_the_upgrade(self):
+        instance, calls = self.worker_with(healthy(worker_active=False, secret_matches=False, binary_current=False)['guest'])
+        instance.upgrade_worker = lambda guest: calls.append(('upgrade', guest['worker_active']))
+        instance.apply(['sync-worker-secret', 'upgrade-worker'], SECRET)
+        self.assertEqual(calls, [('guest', 'secret'), ('upgrade', True)])
+
     def test_resume_signals_a_draining_worker(self):
         instance, calls = self.worker_with(healthy(draining=True)['guest'])
         instance.apply(['resume-worker'], SECRET)
@@ -355,6 +362,15 @@ class DrainTests(unittest.TestCase):
         busy = {'status': {'draining': True, 'active': 1}}
         instance, calls = self.worker_with([busy, busy])
         with self.assertRaisesRegex(ValueError, 'resumed claiming and nothing was changed'):
+            instance.drain(healthy()['guest'])
+        self.assertEqual(calls, ['SIGUSR1', 'SIGUSR2'])
+
+    def test_an_ssh_timeout_while_draining_resumes_claims(self):
+        instance, calls = self.worker_with([{}])
+        def timeout(code, payload):
+            raise subprocess.TimeoutExpired('ssh', 120)
+        instance.guest_python = timeout
+        with self.assertRaises(subprocess.TimeoutExpired):
             instance.drain(healthy()['guest'])
         self.assertEqual(calls, ['SIGUSR1', 'SIGUSR2'])
 
@@ -428,7 +444,27 @@ class UpgradeTests(unittest.TestCase):
         self.assertEqual(self.artifact.read_bytes(), self.old)
         self.assertEqual(json.loads(self.registration.read_text())['guest']['artifacts']['battlefield-agent']['sha256'], old)
 
-    def test_a_failed_install_resumes_the_drained_worker(self):
+    def test_a_failed_install_restores_the_registered_binary(self):
+        # The install can replace the binary and then fail to restart the worker.
+        instance, steps = self.worker_with()
+        signals = []
+        instance.signal_worker = signals.append
+        installs = []
+        def install(code, payload):
+            if code is worker.GUEST_INSTALL:
+                installs.append(payload['target_sha256'])
+                if len(installs) == 1:
+                    raise ValueError('The CLI guest command failed')
+            return {}
+        instance.guest_python = install
+        with self.assertRaisesRegex(ValueError, 'registered worker binary was restored'):
+            instance.upgrade_worker(healthy(binary_current=False)['guest'])
+        self.assertEqual(installs, [hashlib.sha256(self.new).hexdigest(), hashlib.sha256(self.old).hexdigest()])
+        self.assertEqual(signals, [])  # The restored worker restarted, so it is not draining.
+        self.assertEqual(json.loads(self.registration.read_text())['guest']['artifacts']['battlefield-agent']['sha256'],
+                         hashlib.sha256(self.old).hexdigest())
+
+    def test_a_failed_restore_still_resumes_claims(self):
         instance, steps = self.worker_with()
         signals = []
         instance.signal_worker = signals.append
@@ -458,17 +494,21 @@ class ReleaseTests(unittest.TestCase):
             tar.addfile(info, io.BytesIO(b'worker binary'))
         self.archive = archive.getvalue()
 
-    def worker_with(self, image, present=False):
+    def worker_with(self, image, present=False, cluster='cluster-uid'):
         instance = object.__new__(worker.Worker)
         instance.private = worker.Worker.private
+        instance.config = {'host': {'kubeconfig': '/home/operator/kubeconfig', 'context': 'battlefield-production',
+                                    'kube_system_uid': 'cluster-uid'}}
         commands = []
 
         def run(command, data=None, timeout=60, check=False):
+            if command[0] == '/usr/bin/kubectl':
+                commands.append(['kubectl', command[1], command[2], command[-1]])
+                return mock.Mock(returncode=0, stdout=(cluster if 'kube-system' in command else image).encode())
             commands.append(command[:3])
-            stdout = {'kubectl': image.encode(), 'cp': self.archive, 'create': b'container\n'}
-            key = command[0] if command[0] == 'kubectl' else command[1]
+            stdout = {'cp': self.archive, 'create': b'container\n'}
             failed = command[1:3] == ['image', 'inspect'] and not present
-            return mock.Mock(returncode=1 if failed else 0, stdout=stdout.get(key, b''))
+            return mock.Mock(returncode=1 if failed else 0, stdout=stdout.get(command[1], b''))
         instance.run = run
         return instance, commands
 
@@ -485,7 +525,22 @@ class ReleaseTests(unittest.TestCase):
         self.assertIn(['docker', 'image', 'rm'], commands)  # Only an image this job pulled is removed.
         commands.clear()
         self.assertEqual(instance.release()['sha256'], release['sha256'])
-        self.assertEqual(commands, [['kubectl', '-n', 'battlefield']])
+        registered = ['kubectl', '--kubeconfig=/home/operator/kubeconfig', '--context=battlefield-production']
+        self.assertEqual(commands, [registered + ['jsonpath={.metadata.uid}'],
+                                    registered + ['jsonpath={.spec.template.spec.containers[0].image}']])
+
+    def test_another_cluster_is_never_treated_as_production(self):
+        instance, commands = self.worker_with('ghcr.io/x/backend@sha256:' + 'c' * 64, cluster='other-uid')
+        self.assertIsNone(instance.release())
+        self.assertEqual(len(commands), 1)  # Stopped after the identity check.
+
+    def test_an_interrupted_cache_write_leaves_no_release_behind(self):
+        image = 'ghcr.io/x/backend@sha256:' + 'd' * 64
+        instance, commands = self.worker_with(image)
+        with mock.patch.object(worker.os, 'replace', side_effect=OSError('disk full')):
+            self.assertIsNone(instance.release())
+        self.assertEqual(list(self.cache.iterdir()), [])
+        self.assertEqual(instance.release()['sha256'], hashlib.sha256(b'worker binary').hexdigest())
 
     def test_a_cached_image_is_kept(self):
         instance, commands = self.worker_with('ghcr.io/x/backend@sha256:' + 'b' * 64, present=True)
