@@ -141,15 +141,24 @@ kubectl port-forward --namespace battlefield \
 curl --fail http://localhost:8080/metrics
 ```
 
-## Local versus production
+## Storage and access by environment
 
-The local Prometheus TSDB and Grafana database use `emptyDir`; their data is
-lost when their pods are replaced. Prometheus retains up to 30 days only while
-its pod remains intact. Elasticsearch log indices and Kibana saved objects use
-the 10Gi `battlefield-elasticsearch-data` PVC (`standard` storage class), retaining
-data across pod replacement. This is not a backup against cluster or disk loss.
-The setup Job recreates checked-in saved objects,
-but does not restore logs.
+Development Kind and production K3s run the same stack; the
+[architecture environments table](../architecture/observability.md#environments)
+summarizes the differences and the accepted access risk.
+
+- **Metrics, dashboards and traces:** the Prometheus TSDB, Grafana database and
+  Tempo storage use `emptyDir` in both environments, so their data is lost when a
+  pod is replaced. Prometheus keeps up to 30 days only while its pod remains intact.
+- **Logs and Kibana objects:** Elasticsearch indices and Kibana saved objects use
+  the `battlefield-elasticsearch-data` PVC: 10 Gi on Kind's `standard` class, and
+  20 Gi on `battlefield-retained` in production, which survives pod and guest-OS
+  replacement. Neither is a backup against cluster or disk loss. The setup Job
+  recreates checked-in saved objects but does not restore logs.
+- **Access:** on Kind, use `grafana.localhost` and `kibana.localhost` through the
+  loopback gateway. In production, use `grafana.home.arpa` and `kibana.home.arpa`
+  from the host network; the [local HTTPS workflow](local-https-platform.md) owns
+  those routes. Neither is published through the Cloudflare tunnel.
 
 The deployment helper waits for Elasticsearch, restarts and waits for Kibana,
 then applies `kibana/setup-job.yaml` separately from the observability overlay.
@@ -169,8 +178,10 @@ load-balancer metrics so the availability SLI covers failures that never reach
 the API, retain Kubernetes workload and container metrics with an EKS-compatible
 collector, use durable retention and lifecycle policies, encrypt log transport
 and storage, configure authenticated least-privilege Grafana and Kibana access,
-and route alerts to an owned notification channel. The unauthenticated local
-Elastic configuration must not be reused in a shared or production cluster.
+and route alerts to an owned notification channel. The unauthenticated Elastic
+and anonymous Grafana configuration is accepted only for the private,
+single-operator K3s cluster; do not reuse it on a shared cluster or one reachable
+from untrusted networks.
 
 ## Find a battle trace
 
@@ -222,8 +233,11 @@ through the generated Prometheus ConfigMap. Normal CA and node-IP SAN verificati
 remain enabled; missing or invalid trust stops staging before workload changes.
 Prometheus keeps only `nodes/metrics` permission, never broad `nodes/proxy` access.
 
-For a registered Kind production environment, collect the current public serving certificates
-through the trusted Docker daemon, after environment and cluster UID validation:
+For K3s, the platform job exports the cluster's serving CA and
+[K3s registration](k3s-delivery.md#prepare-a-separate-registration) copies it into the
+profile as `kubelet-ca.crt`. For a registered Kind production environment, collect
+the current public serving certificates through the trusted Docker daemon, after
+environment and cluster UID validation:
 
 ```bash
 ./scripts/ops/export-kind-kubelet-ca.sh

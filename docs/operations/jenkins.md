@@ -396,7 +396,7 @@ Runs. Configure this once:
 1. In **Manage Jenkins > Plugins**, install **GitHub Checks** and restart Jenkins
    if requested. The existing Checks API plugin alone is not a GitHub publisher.
 2. In GitHub, open **Settings > Developer settings > GitHub Apps > New GitHub
-   App**. Use a unique name such as `Jenkins Autonomous Battlefield`.
+   App**. Use a unique name such as `Jenkins OrdinalFrontier`.
 3. Grant these repository permissions:
    - Checks: **Read and write**.
    - Commit statuses: **Read and write**.

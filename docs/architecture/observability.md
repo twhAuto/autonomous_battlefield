@@ -1,10 +1,13 @@
 # Observability architecture
 
-Autonomous Battlefield exposes Prometheus metrics from the API and engine and
-ships local metrics, tracing, and logging stacks for the `kind` deployment. Prometheus
-and Grafana provide metrics; Fluent Bit, Elasticsearch, and Kibana provide
-centralized logs. The dashboard and objectives in this guide are internal
-operating targets. They are not a customer-facing service-level agreement.
+OrdinalFrontier exposes Prometheus metrics from the API and engine and ships one
+metrics, tracing, and logging stack. Prometheus and Grafana provide metrics;
+Fluent Bit, Elasticsearch, and Kibana provide centralized logs; the OpenTelemetry
+Collector and Tempo provide traces. Development Kind and production K3s deploy the
+same manifests (`infra/deploy/overlays/local/observability`, which the K3s overlay
+reuses); [environments](#environments) lists the differences. The dashboard and
+objectives in this guide are internal operating targets. They are not a
+customer-facing service-level agreement.
 
 HTTP completion logs include `actor_id` and `actor_role` established by trusted
 authentication middleware, alongside method, resource path, status and request ID.
@@ -47,9 +50,27 @@ it does not receive the broader `nodes/proxy` permission. Grafana receives no
 Kubernetes credentials. It uses internal Prometheus and Tempo Services as
 its metrics and trace data sources.
 
-The local stack deliberately does not include Alertmanager. Prometheus evaluates
-the checked-in alert rules and shows their state, but notifications require an
-Alertmanager or another production alert-delivery integration.
+The stack deliberately does not include Alertmanager in either environment.
+Prometheus evaluates the checked-in alert rules and shows their state, but
+notifications require an Alertmanager or another alert-delivery integration.
+
+## Environments
+
+| Aspect | Development (Kind) | Production (K3s) |
+| --- | --- | --- |
+| Prometheus, Grafana, Tempo data | `emptyDir`; lost when a pod is replaced (Prometheus keeps up to 30 days while its pod lives) | Same |
+| Elasticsearch indices and Kibana saved objects | 10 Gi `standard` PVC | 20 Gi PVC on the retained `battlefield-retained` storage class |
+| Kubelet scrape TLS | Skips verification (node-local certificate) | Verified with the exported kubelet CA |
+| Access | `grafana.localhost` / `kibana.localhost` through the loopback Kind gateway | `grafana.home.arpa` / `kibana.home.arpa` through the host's private HTTPS aliases; never through the public tunnel |
+
+Grafana serves an anonymous read-only Viewer, and Elasticsearch and Kibana run
+without authentication. In production this is an accepted risk for a private,
+single-operator cluster: anyone who can reach the private aliases on the host
+network can read dashboards and logs, and can change Kibana saved objects. Logs
+exclude credentials, tokens and full observations (see
+[structured logs](#structured-logs)). Revisit this before granting anyone else
+network access to the host, or before using a shared cluster. Retained storage is
+not a backup; see [observability operations](../operations/observability.md#storage-and-access-by-environment).
 
 Fluent Bit runs once per node and tails API, engine, agent, AI gateway, frontend, and migration
 container logs from the `battlefield` namespace. It enriches each record with
@@ -140,15 +161,15 @@ The Kubernetes dashboard combines two complementary metric sources:
 | `kube-state-metrics` | What Kubernetes says should exist and whether workload objects are healthy | `kube_pod_status_phase`, `kube_pod_container_status_ready`, `kube_pod_container_status_restarts_total`, `kube_deployment_status_replicas_available` |
 | kubelet cAdvisor endpoint | What CPU, memory, and network resources containers are actually consuming | `container_cpu_usage_seconds_total`, `container_memory_working_set_bytes`, `container_network_receive_bytes_total`, `container_network_transmit_bytes_total` |
 
-The local kube-state-metrics deployment watches only the `battlefield`
+The kube-state-metrics deployment watches only the `battlefield`
 namespace and only the workload resource types listed in its manifest. It does
 not read Secrets or cluster-wide application objects. Prometheus scrapes
-cAdvisor directly from each local kubelet over HTTPS with service-account
+cAdvisor directly from each kubelet over HTTPS with service-account
 authentication, so no privileged cAdvisor DaemonSet or host mounts are
-required. The Kind-only scrape skips serving-certificate verification because
-the kubelet certificate is node-local rather than signed by the API CA mounted
-in the Prometheus pod; this exception must not be carried into an external
-cluster without a trusted kubelet CA.
+required. On Kind the scrape skips serving-certificate verification because the
+kubelet certificate is node-local rather than signed by the API CA mounted in the
+Prometheus pod. Production verifies it against an exported kubelet CA; see
+[production kubelet TLS](../operations/observability.md#production-kubelet-tls).
 
 Workload telemetry explains pod health and resource use; it does not directly
 measure whether a user request succeeded.
