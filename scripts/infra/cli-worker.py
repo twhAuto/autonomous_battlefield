@@ -78,13 +78,18 @@ def with_worker_secret(environment, secret):
 
 
 def managed_settings(path=MANAGED_SETTINGS):
-    """Reviewed worker settings this job owns: concurrency and the CLI profile models."""
+    """Reviewed worker settings this job owns: concurrency and the CLI profile models.
+
+    agentConcurrency null means the setting must be absent: the adopted worker binary
+    predates it and rejects a config that contains it. Set 1-4 once the worker supports it.
+    """
     settings = json.loads(Path(path).read_text())
     concurrency, models = settings.get('agentConcurrency'), settings.get('models')
-    if (set(settings) != {'agentConcurrency', 'models'} or type(concurrency) is not int or not 1 <= concurrency <= 4
+    if (set(settings) != {'agentConcurrency', 'models'}
+            or not (concurrency is None or (type(concurrency) is int and 1 <= concurrency <= 4))
             or not isinstance(models, dict) or not models
             or not all(isinstance(k, str) and isinstance(v, str) and MODEL.fullmatch(v) for k, v in models.items())):
-        raise ValueError('Managed CLI worker settings need agentConcurrency 1-4 and profile models')
+        raise ValueError('Managed CLI worker settings need agentConcurrency null or 1-4, and profile models')
     return settings
 
 
@@ -96,10 +101,14 @@ def desired_config(current, settings):
     profiles = {profile['id']: profile for profile in ai['profiles']}
     if set(settings['models']) - set(profiles):
         raise ValueError('Managed settings name a profile the worker configuration does not have')
-    if ai.get('agentConcurrency', 1) == settings['agentConcurrency'] and all(
+    concurrency = settings['agentConcurrency']
+    if ai.get('agentConcurrency') == concurrency and all(
             profiles[name].get('model') == model for name, model in settings['models'].items()):
         return current
-    ai['agentConcurrency'] = settings['agentConcurrency']
+    if concurrency is None:
+        ai.pop('agentConcurrency', None)
+    else:
+        ai['agentConcurrency'] = concurrency
     for name, model in settings['models'].items():
         profiles[name]['model'] = model
     return yaml.safe_dump(config, sort_keys=False, default_flow_style=False)
