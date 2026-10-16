@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Autonomous Battlefield API
+  title: OrdinalFrontier API
   version: 1.0.0
   summary: Public /v1 API for factions, battles, background generation, and administration.
   description: |

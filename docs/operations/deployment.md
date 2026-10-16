@@ -300,7 +300,7 @@ Do not create a Git tag for every Jenkins or GitHub Actions build. Create an
 annotated Git tag only for an intentional release, using the value in `VERSION`:
 
 ```bash
-git tag -a "v$(<VERSION)" -m "Autonomous Battlefield v$(<VERSION)"
+git tag -a "v$(<VERSION)" -m "OrdinalFrontier v$(<VERSION)"
 git push origin "v$(<VERSION)"
 ```
 
