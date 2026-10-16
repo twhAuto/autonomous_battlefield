@@ -577,9 +577,11 @@ For `main`, the pipeline performs:
    smoke load and ZAP baseline checks.
 7. An atomic update of the private, cluster-bound recovery image record after
    all rollout and runtime checks pass.
-8. A read-only CLI worker check (`cli-worker.py verify`). A down or out-of-sync
-   CLI worker marks the build unstable, never failed, and never triggers rollback;
-   repair it with [`battlefield-platform/cli`](cli-worker.md).
+8. A read-only CLI worker check (`cli-worker.py verify`, with GHCR access to read
+   the deployed worker release). A down or out-of-sync CLI worker marks the build
+   unstable, never failed, and never triggers rollback; repair it with
+   [`battlefield-platform/cli`](cli-worker.md). A worker older than the release is
+   only a notice.
 
 See [deployment component mapping](deployment.md#change-to-deployment-mapping)
 for the paths that select each rollout stage and

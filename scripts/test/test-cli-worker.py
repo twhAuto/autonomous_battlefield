@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""CLI worker job: secret sourcing, repair planning, receipts, guest scripts and redaction."""
+"""CLI worker job: secret sourcing, repair planning, upgrades, receipts, guest scripts and redaction."""
 import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import unittest
@@ -31,9 +33,12 @@ def healthy(**overrides):
     checks = {'domain': 'running', 'host_units': {u: 'active' for u in worker.HOST_UNITS},
               'boot_start_enabled': True, 'bridge_watchdog_active': True, 'watchdog_enabled': True, 'stale_host_files': [],
               'bridge_reachable': True, 'gateway_accepts_worker_secret': True, 'automation_key': True,
+              'release': {'image_digest': 'd' * 64},
               'guest': {'reachable': True, 'identity_matches': True, 'secret_matches': True, 'marker_matches': True,
                         'worker_active': True, 'worker_enabled': True, 'worker_health': 204,
-                        'config_registered': True, 'config_current': True, 'config_pending': False}}
+                        'config_registered': True, 'config_current': True, 'config_pending': False,
+                        'release_known': True, 'binary_registered': True, 'binary_current': True, 'binary_pending': False,
+                        'drain_supported': True, 'draining': False, 'config_needs_upgrade': False}}
     if 'guest' in overrides:
         checks['guest'] = overrides.pop('guest')
     for key, value in overrides.items():
@@ -101,6 +106,19 @@ class PlanningTests(unittest.TestCase):
             (healthy(config_registered=False, config_pending=True, config_current=False), ['sync-worker-config']),
             (healthy(stale_host_files=['/etc/systemd/system/battlefield-cli-vm-start.service']), ['install-host-units']),
             (healthy(guest={'reachable': False}), ['reach-guest']),
+            # A registered binary older than production is upgraded; the upgrade restarts it anyway.
+            (healthy(binary_current=False), ['upgrade-worker']),
+            (healthy(binary_current=False, worker_health=0), ['upgrade-worker']),
+            (healthy(binary_current=False, secret_matches=False), ['sync-worker-secret', 'upgrade-worker']),
+            # An interrupted upgrade is planned again so the registration catches up.
+            (healthy(binary_registered=False, binary_pending=True), ['upgrade-worker']),
+            # An unknown release or an unregistered binary is never replaced.
+            (healthy(binary_current=False, release_known=False), []),
+            (healthy(binary_current=False, binary_registered=False), []),
+            (healthy(draining=True), ['resume-worker']),
+            # Concurrency waits for a binary that accepts it, unless this apply upgrades first.
+            (healthy(config_current=False, config_needs_upgrade=True, binary_current=False, release_known=False), []),
+            (healthy(config_current=False, config_needs_upgrade=True, binary_current=False), ['upgrade-worker', 'sync-worker-config']),
         ]
         for checks, expected in cases:
             with self.subTest(expected=expected):
@@ -120,12 +138,43 @@ class PlanningTests(unittest.TestCase):
         self.assertIn('CLI worker service is not enabled for reboot', drift)
         self.assertIn('boot start or bridge watchdog is not installed', worker.Worker.problems(healthy(watchdog_enabled=False)))
 
+    def test_binary_drift_and_draining_are_problems_but_an_older_release_is_a_notice(self):
+        self.assertIn('CLI worker binary differs from its registered release; inspect it, it is not repaired automatically',
+                      worker.Worker.problems(healthy(binary_registered=False, binary_current=False)))
+        self.assertIn('CLI worker is draining and claims no new decisions', worker.Worker.problems(healthy(draining=True)))
+        self.assertIn('CLI worker settings need the production worker release; apply upgrades it first',
+                      worker.Worker.problems(healthy(config_current=False, config_needs_upgrade=True)))
+        older = healthy(binary_current=False)
+        self.assertEqual(worker.Worker.problems(older), [])
+        self.assertEqual(worker.notices(older), ['CLI worker binary differs from the production release; run apply to upgrade it'])
+        self.assertEqual(worker.notices(healthy(binary_pending=True, binary_registered=False)),
+                         ['CLI worker binary differs from the production release; run apply to upgrade it'])
+        self.assertIn('unknown', worker.notices(healthy(release_known=False, binary_current=False))[0])
+        self.assertEqual(worker.notices(healthy()), [])
+        self.assertEqual(worker.notices(healthy(guest=None)), [])
+
+    def test_binary_checks_compare_registration_and_release(self):
+        instance = object.__new__(worker.Worker)
+        instance.config = {'guest': {'artifacts': {'battlefield-agent': {'sha256': 'old'}}}}
+        instance.release_info = {'sha256': 'new'}
+        with mock.patch.object(worker, 'managed_settings', lambda: SETTINGS):
+            older = instance.binary_checks('old', None)
+            self.assertEqual((older['binary_registered'], older['binary_current'], older['binary_pending']), (True, False, False))
+            self.assertEqual((older['drain_supported'], older['draining'], older['config_needs_upgrade']), (False, False, True))
+            pending = instance.binary_checks('new', {'draining': True, 'active': 0, 'concurrency': 1})
+            self.assertEqual((pending['binary_registered'], pending['binary_current'], pending['binary_pending']), (False, True, True))
+            self.assertEqual((pending['drain_supported'], pending['draining'], pending['config_needs_upgrade']), (True, True, False))
+            instance.release_info = None
+            unknown = instance.binary_checks('old', None)
+            self.assertEqual((unknown['release_known'], unknown['binary_current']), (False, False))
+
     def test_inspect_treats_any_2xx_gateway_readiness_as_reachable(self):
         instance = object.__new__(worker.Worker)
         instance.port, instance.config = 28084, {'guest': {}, 'host': {}}
         instance.domain_state = lambda: 'shut off'
         instance.unit_state = lambda unit, query='is-active': 'enabled' if query == 'is-enabled' else 'active'
         instance.host_files_current = lambda: []
+        instance.release = lambda: None
         for status, reachable in ((204, True), (200, True), (503, False), (0, False)):
             instance.gateway = lambda path, secret=None, status=status: status if path == '/readyz' else 401
             with self.subTest(status=status), mock.patch.object(worker, 'AUTOMATION_KEY', Path('/nonexistent')):
@@ -240,7 +289,7 @@ class ApplyTests(unittest.TestCase):
         instance.inspect = lambda secret: {'guest': guest}
         instance.guest_python = lambda code, payload: calls.append(('guest', 'config' if code is worker.GUEST_CONFIG_SYNC else 'secret')) or {}
         instance.ssh = lambda key, remote, data=None, timeout=120: calls.append(('ssh', remote)) or mock.Mock(returncode=0)
-        instance.sync_config = lambda: calls.append(('guest', 'config'))
+        instance.sync_config = lambda check=False: calls.append(('guest', 'config'))
         instance.private = lambda path: Path(path)
         return instance, calls
 
@@ -253,13 +302,257 @@ class ApplyTests(unittest.TestCase):
             instance.apply(['restart-bridge', 'sync-worker-config'], SECRET)
 
     def test_apply_runs_exactly_the_planned_guest_repairs(self):
-        guest = healthy(worker_health=0, worker_enabled=False, config_current=False)['guest']
+        guest = healthy(worker_health=0, worker_enabled=False, config_current=False, drain_supported=False, worker_active=False)['guest']
         instance, calls = self.worker_with(guest)
         instance.apply(['enable-worker'], SECRET)
         self.assertEqual(calls, [('ssh', 'sudo -n systemctl enable battlefield-worker')])
         calls.clear()
         instance.apply(['sync-worker-config'], SECRET)
         self.assertEqual(calls, [('guest', 'config'), ('ssh', 'sudo -n systemctl restart battlefield-worker')])
+
+    def test_a_worker_started_by_the_secret_sync_is_drained_before_the_upgrade(self):
+        instance, calls = self.worker_with(healthy(worker_active=False, secret_matches=False, binary_current=False)['guest'])
+        instance.upgrade_worker = lambda guest: calls.append(('upgrade', guest['worker_active']))
+        instance.apply(['sync-worker-secret', 'upgrade-worker'], SECRET)
+        self.assertEqual(calls, [('guest', 'secret'), ('upgrade', True)])
+
+    def test_resume_signals_a_draining_worker(self):
+        instance, calls = self.worker_with(healthy(draining=True)['guest'])
+        instance.apply(['resume-worker'], SECRET)
+        self.assertEqual(calls, [('ssh', 'sudo -n systemctl kill --kill-whom=main --signal=SIGUSR2 battlefield-worker')])
+
+    def test_config_sync_drains_first_and_resumes_if_the_sync_fails(self):
+        instance, calls = self.worker_with(healthy(config_current=False)['guest'])
+        instance.drain = lambda guest: calls.append(('drain', guest['drain_supported']))
+        instance.apply(['sync-worker-config'], SECRET)
+        self.assertEqual(calls, [('drain', True), ('guest', 'config'), ('ssh', 'sudo -n systemctl restart battlefield-worker')])
+        calls.clear()
+        def failing(check=False):
+            raise ValueError('the worker rejects the managed settings; not changed')
+        instance.sync_config = failing
+        with self.assertRaisesRegex(ValueError, 'rejects the managed settings'):
+            instance.apply(['sync-worker-config'], SECRET)
+        self.assertEqual(calls, [('drain', True), ('ssh', 'sudo -n systemctl kill --kill-whom=main --signal=SIGUSR2 battlefield-worker')])
+
+
+class DrainTests(unittest.TestCase):
+    def worker_with(self, activities):
+        instance = object.__new__(worker.Worker)
+        calls = []
+        readings = iter(activities)
+        instance.private = lambda path: Path(path)
+        instance.ssh = lambda key, remote, data=None, timeout=120: calls.append(remote.rsplit('=', 1)[-1].split()[0]) or mock.Mock(returncode=0)
+        instance.guest_python = lambda code, payload: next(readings)
+
+        def wait_for(condition, seconds, message):
+            for _ in range(len(activities)):
+                if condition():
+                    return
+            raise ValueError(message)
+        instance.wait_for = wait_for
+        return instance, calls
+
+    def test_a_drainable_worker_stops_claiming_until_idle(self):
+        busy, idle = {'status': {'draining': True, 'active': 1}}, {'status': {'draining': True, 'active': 0}}
+        instance, calls = self.worker_with([busy, idle])
+        instance.drain(healthy()['guest'])
+        self.assertEqual(calls, ['SIGUSR1'])
+
+    def test_a_drain_timeout_resumes_claims_and_changes_nothing(self):
+        busy = {'status': {'draining': True, 'active': 1}}
+        instance, calls = self.worker_with([busy, busy])
+        with self.assertRaisesRegex(ValueError, 'resumed claiming and nothing was changed'):
+            instance.drain(healthy()['guest'])
+        self.assertEqual(calls, ['SIGUSR1', 'SIGUSR2'])
+
+    def test_an_ssh_timeout_while_draining_resumes_claims(self):
+        instance, calls = self.worker_with([{}])
+        def timeout(code, payload):
+            raise subprocess.TimeoutExpired('ssh', 120)
+        instance.guest_python = timeout
+        with self.assertRaises(subprocess.TimeoutExpired):
+            instance.drain(healthy()['guest'])
+        self.assertEqual(calls, ['SIGUSR1', 'SIGUSR2'])
+
+    def test_an_older_worker_is_never_signalled_and_must_stay_idle_twice(self):
+        # SIGUSR1 would stop a worker without drain support, so only its processes are watched.
+        instance, calls = self.worker_with([{'children': 0}, {'children': 1}, {'children': 0}, {'children': 0}])
+        instance.drain(healthy(drain_supported=False)['guest'])
+        self.assertEqual(calls, [])
+        for readings in ([{'children': 1}, {'children': 0}, {'children': 1}], [{'children': None}, {'children': None}]):
+            instance, calls = self.worker_with(readings)
+            with self.subTest(readings=readings), self.assertRaisesRegex(ValueError, 'nothing was changed'):
+                instance.drain(healthy(drain_supported=False)['guest'])
+
+    def test_an_inactive_worker_needs_no_drain(self):
+        instance, calls = self.worker_with([])
+        instance.drain(healthy(worker_active=False)['guest'])
+        self.assertEqual(calls, [])
+
+
+class UpgradeTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.old, self.new = b'old worker', b'new worker'
+        self.artifact = self.root / 'battlefield-agent'
+        self.artifact.write_bytes(self.old)
+        self.release = self.root / 'release'
+        self.release.write_bytes(self.new)
+        self.registration = self.root / 'cli.json'
+        self.registration.write_text(json.dumps({'guest': {'artifacts': {'battlefield-agent': {
+            'path': str(self.artifact), 'sha256': hashlib.sha256(self.old).hexdigest()}}}}))
+        patch = mock.patch.object(worker, 'CLI_CONFIG', self.registration)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def worker_with(self, healthy_after=True):
+        instance = object.__new__(worker.Worker)
+        instance.config = json.loads(self.registration.read_text())
+        instance.bootstrap = mock.Mock(validate=lambda value: value)
+        instance.release_info = {'path': self.release, 'sha256': hashlib.sha256(self.new).hexdigest()}
+        instance.private = lambda path: Path(path)
+        steps = []
+        instance.ssh = lambda key, remote, data=None, timeout=120: steps.append(('stage', hashlib.sha256(data).hexdigest())) or mock.Mock(returncode=0)
+        names = {id(worker.GUEST_CHECK_RELEASE): 'check', id(worker.GUEST_INSTALL): 'install'}
+        instance.guest_python = lambda code, payload: steps.append((names[id(code)], payload.get('target_sha256', payload.get('sha256')))) or {}
+        instance.drain = lambda guest: steps.append(('drain', None))
+        instance.release_healthy = lambda: healthy_after
+
+        def wait_for(condition, seconds, message):
+            if not condition():
+                raise ValueError(message)
+        instance.wait_for = wait_for
+        return instance, steps
+
+    def test_upgrade_validates_drains_installs_then_registers(self):
+        instance, steps = self.worker_with()
+        instance.upgrade_worker(healthy(binary_current=False)['guest'])
+        new, old = hashlib.sha256(self.new).hexdigest(), hashlib.sha256(self.old).hexdigest()
+        self.assertEqual(steps, [('stage', new), ('check', new), ('drain', None), ('install', new)])
+        self.assertEqual(self.artifact.read_bytes(), self.new)
+        self.assertEqual(json.loads(self.registration.read_text())['guest']['artifacts']['battlefield-agent']['sha256'], new)
+        self.assertNotEqual(old, new)
+
+    def test_an_unhealthy_release_restores_the_registered_binary_and_keeps_the_registration(self):
+        instance, steps = self.worker_with(healthy_after=False)
+        with self.assertRaisesRegex(ValueError, 'registered worker binary was restored'):
+            instance.upgrade_worker(healthy(binary_current=False)['guest'])
+        new, old = hashlib.sha256(self.new).hexdigest(), hashlib.sha256(self.old).hexdigest()
+        self.assertEqual(steps[-2:], [('stage', old), ('install', old)])
+        self.assertEqual(self.artifact.read_bytes(), self.old)
+        self.assertEqual(json.loads(self.registration.read_text())['guest']['artifacts']['battlefield-agent']['sha256'], old)
+
+    def test_a_failed_install_restores_the_registered_binary(self):
+        # The install can replace the binary and then fail to restart the worker.
+        instance, steps = self.worker_with()
+        signals = []
+        instance.signal_worker = signals.append
+        installs = []
+        def install(code, payload):
+            if code is worker.GUEST_INSTALL:
+                installs.append(payload['target_sha256'])
+                if len(installs) == 1:
+                    raise ValueError('The CLI guest command failed')
+            return {}
+        instance.guest_python = install
+        with self.assertRaisesRegex(ValueError, 'registered worker binary was restored'):
+            instance.upgrade_worker(healthy(binary_current=False)['guest'])
+        self.assertEqual(installs, [hashlib.sha256(self.new).hexdigest(), hashlib.sha256(self.old).hexdigest()])
+        self.assertEqual(signals, [])  # The restored worker restarted, so it is not draining.
+        self.assertEqual(json.loads(self.registration.read_text())['guest']['artifacts']['battlefield-agent']['sha256'],
+                         hashlib.sha256(self.old).hexdigest())
+
+    def test_a_failed_restore_still_resumes_claims(self):
+        instance, steps = self.worker_with()
+        signals = []
+        instance.signal_worker = signals.append
+        def install(code, payload):
+            if code is worker.GUEST_INSTALL:
+                raise ValueError('The CLI guest command failed')
+            return {}
+        instance.guest_python = install
+        with self.assertRaisesRegex(ValueError, 'guest command failed'):
+            instance.upgrade_worker(healthy(binary_current=False)['guest'])
+        self.assertEqual(signals, ['SIGUSR2'])
+        self.assertEqual(self.artifact.read_bytes(), self.old)
+
+
+class ReleaseTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.cache = Path(directory.name) / 'cache'
+        patch = mock.patch.object(worker, 'RELEASE_CACHE', self.cache)
+        patch.start()
+        self.addCleanup(patch.stop)
+        archive = io.BytesIO()
+        with tarfile.open(fileobj=archive, mode='w') as tar:
+            info = tarfile.TarInfo('agent')
+            info.size = len(b'worker binary')
+            tar.addfile(info, io.BytesIO(b'worker binary'))
+        self.archive = archive.getvalue()
+
+    def worker_with(self, image, present=False, cluster='cluster-uid'):
+        instance = object.__new__(worker.Worker)
+        instance.private = worker.Worker.private
+        instance.config = {'host': {'kubeconfig': '/home/operator/kubeconfig', 'context': 'battlefield-production',
+                                    'kube_system_uid': 'cluster-uid'}}
+        commands = []
+
+        def run(command, data=None, timeout=60, check=False):
+            if command[0] == '/usr/bin/kubectl':
+                commands.append(['kubectl', command[1], command[2], command[-1]])
+                return mock.Mock(returncode=0, stdout=(cluster if 'kube-system' in command else image).encode())
+            commands.append(command[:3])
+            stdout = {'cp': self.archive, 'create': b'container\n'}
+            failed = command[1:3] == ['image', 'inspect'] and not present
+            return mock.Mock(returncode=1 if failed else 0, stdout=stdout.get(command[1], b''))
+        instance.run = run
+        return instance, commands
+
+    def test_extracts_the_worker_from_the_deployed_digest_once(self):
+        digest = 'a' * 64
+        image = 'ghcr.io/twh09/autonomous-battlefield-backend@sha256:' + digest
+        instance, commands = self.worker_with(image)
+        release = instance.release()
+        self.assertEqual(release['digest'], digest)
+        self.assertEqual(release['sha256'], hashlib.sha256(b'worker binary').hexdigest())
+        self.assertEqual(release['path'], self.cache / digest)
+        self.assertEqual(release['path'].stat().st_mode & 0o777, 0o600)
+        self.assertIn(['docker', 'pull', '--quiet'], commands)
+        self.assertIn(['docker', 'image', 'rm'], commands)  # Only an image this job pulled is removed.
+        commands.clear()
+        self.assertEqual(instance.release()['sha256'], release['sha256'])
+        registered = ['kubectl', '--kubeconfig=/home/operator/kubeconfig', '--context=battlefield-production']
+        self.assertEqual(commands, [registered + ['jsonpath={.metadata.uid}'],
+                                    registered + ['jsonpath={.spec.template.spec.containers[0].image}']])
+
+    def test_another_cluster_is_never_treated_as_production(self):
+        instance, commands = self.worker_with('ghcr.io/x/backend@sha256:' + 'c' * 64, cluster='other-uid')
+        self.assertIsNone(instance.release())
+        self.assertEqual(len(commands), 1)  # Stopped after the identity check.
+
+    def test_an_interrupted_cache_write_leaves_no_release_behind(self):
+        image = 'ghcr.io/x/backend@sha256:' + 'd' * 64
+        instance, commands = self.worker_with(image)
+        with mock.patch.object(worker.os, 'replace', side_effect=OSError('disk full')):
+            self.assertIsNone(instance.release())
+        self.assertEqual(list(self.cache.iterdir()), [])
+        self.assertEqual(instance.release()['sha256'], hashlib.sha256(b'worker binary').hexdigest())
+
+    def test_a_cached_image_is_kept(self):
+        instance, commands = self.worker_with('ghcr.io/x/backend@sha256:' + 'b' * 64, present=True)
+        instance.release()
+        self.assertNotIn(['docker', 'pull', '--quiet'], commands)
+        self.assertNotIn(['docker', 'image', 'rm'], commands)
+
+    def test_a_tag_or_unreadable_image_is_unknown(self):
+        for image in ('ghcr.io/x/backend:latest', ''):
+            instance, _ = self.worker_with(image)
+            with self.subTest(image=image):
+                self.assertIsNone(instance.release())
 
 
 class ExecuteTests(unittest.TestCase):
@@ -347,6 +640,22 @@ class ExecuteTests(unittest.TestCase):
             worker.execute(self.args('apply'))
         self.assertEqual(self.applied, [])
 
+    def test_a_new_release_after_the_plan_needs_a_new_plan(self):
+        self.checks = healthy(binary_current=False)
+        worker.execute(self.args('plan'))
+        self.assertEqual(json.loads((self.directory / 'receipt.json').read_text())['release'], {'image_digest': 'd' * 64})
+        self.checks = healthy(binary_current=False, release={'image_digest': 'e' * 64})
+        with self.assertRaisesRegex(ValueError, 'changed since the reviewed plan'):
+            worker.execute(self.args('apply'))
+        self.assertEqual(self.applied, [])
+
+    def test_verify_reports_an_older_release_as_a_notice_not_a_failure(self):
+        self.checks = healthy(binary_current=False)
+        with contextlib.redirect_stderr(io.StringIO()) as stderr:
+            self.assertEqual(worker.execute(self.args('verify')), 0)
+        self.assertIn('CLI worker notice: CLI worker binary differs from the production release', stderr.getvalue())
+        self.assertEqual(len(json.loads((self.directory / 'verify.json').read_text())['notices']), 1)
+
     def test_failed_apply_still_writes_its_report(self):
         self.checks = healthy(secret_matches=False)
         worker.execute(self.args('plan'))
@@ -393,6 +702,11 @@ class GuestScriptTests(unittest.TestCase):
         (self.root / 'machine-id').write_text('0' * 32 + '\n')
         (self.root / 'product_uuid').write_text('ABCDEF\n')
         (self.root / 'config.yaml').write_text(CONFIG)
+        # Stands in for the worker: -check-config fails without the secret or for concurrency 9.
+        self.binary = self.root / 'battlefield-agent'
+        self.binary.write_text('#!/bin/sh\n[ "$1" = -check-config ] || exit 2\n[ -n "$BATTLEFIELD_AGENT_SECRET" ] || exit 1\n'
+                               '! grep -q "agentConcurrency: 9" "$3"\n')
+        self.binary.chmod(0o755)
         bin_dir = self.root / 'bin'
         bin_dir.mkdir()
         systemctl = bin_dir / 'systemctl'
@@ -407,6 +721,9 @@ class GuestScriptTests(unittest.TestCase):
                 .replace("pathlib.Path('/etc/machine-id')", f"pathlib.Path({str(self.root / 'machine-id')!r})")
                 .replace("pathlib.Path('/sys/class/dmi/id/product_uuid')", f"pathlib.Path({str(self.root / 'product_uuid')!r})")
                 .replace("pathlib.Path('/etc/battlefield-agent/config.yaml')", f"pathlib.Path({str(self.root / 'config.yaml')!r})")
+                .replace("pathlib.Path('/usr/local/bin/battlefield-agent')", f"pathlib.Path({str(self.binary)!r})")
+                .replace("check_config('/usr/local/bin/battlefield-agent'", f"check_config({str(self.binary)!r}")
+                .replace("check_config(binary, '/etc/battlefield-agent/config.yaml')", f"check_config(binary, {str(self.root / 'config.yaml')!r})")
                 .replace('str(path)', "'/etc/battlefield-agent/worker.env'"))
         return code
 
@@ -482,6 +799,55 @@ class GuestScriptTests(unittest.TestCase):
         mismatch = self.run_script(worker.GUEST_INSPECT, {'secret_sha256': hashlib.sha256(SECRET.encode()).hexdigest()})
         self.assertFalse(mismatch['secret_matches'])
         self.assertNotIn('old-old', json.dumps(result))
+        self.assertEqual(result['binary_sha256'], hashlib.sha256(self.binary.read_bytes()).hexdigest())
+        self.assertIsNone(result['status'])
+
+    def staged(self, content):
+        path = self.root / 'staged'
+        path.write_bytes(content)
+        return path
+
+    def test_install_swaps_the_binary_updates_the_marker_and_restarts(self):
+        old, new = self.binary.read_bytes(), self.binary.read_bytes() + b'# release\n'
+        old_sha, new_sha = hashlib.sha256(old).hexdigest(), hashlib.sha256(new).hexdigest()
+        source = self.staged(new)
+        payload = {'source': str(source), 'expected_sha256': old_sha, 'target_sha256': new_sha}
+        self.assertTrue(self.run_script(worker.GUEST_INSTALL, payload)['changed'])
+        self.assertEqual(self.binary.read_bytes(), new)
+        self.assertEqual(self.binary.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(json.loads(self.marker.read_text())['files']['/usr/local/bin/battlefield-agent'], new_sha)
+        self.assertIn('restart battlefield-worker', self.calls.read_text())
+        self.assertFalse(source.exists())
+        # Resuming finds the release in place and only restarts.
+        self.assertFalse(self.run_script(worker.GUEST_INSTALL, payload)['changed'])
+
+    def test_install_refuses_an_unregistered_binary_or_a_corrupt_stage(self):
+        old = self.binary.read_bytes()
+        payload = {'source': str(self.staged(b'release')), 'expected_sha256': '0' * 64, 'target_sha256': hashlib.sha256(b'release').hexdigest()}
+        self.assertIn('differs from its registered release', self.run_failing(worker.GUEST_INSTALL, payload))
+        payload = {'source': str(self.staged(b'corrupt')), 'expected_sha256': hashlib.sha256(old).hexdigest(), 'target_sha256': hashlib.sha256(b'release').hexdigest()}
+        self.assertIn('does not match the release', self.run_failing(worker.GUEST_INSTALL, payload))
+        self.assertEqual(self.binary.read_bytes(), old)
+        self.assertFalse(self.calls.exists())
+
+    def test_release_check_verifies_the_digest_and_the_installed_config(self):
+        release = self.staged(self.binary.read_bytes())
+        digest = hashlib.sha256(release.read_bytes()).hexdigest()
+        self.assertTrue(self.run_script(worker.GUEST_CHECK_RELEASE, {'binary': str(release), 'sha256': digest})['valid'])
+        self.assertIn('does not match the release', self.run_failing(worker.GUEST_CHECK_RELEASE, {'binary': str(release), 'sha256': '0' * 64}))
+        (self.root / 'config.yaml').write_text(CONFIG.replace('  agentHealthAddress:', '  agentConcurrency: 9\n  agentHealthAddress:'))
+        self.assertIn('rejects the installed configuration', self.run_failing(worker.GUEST_CHECK_RELEASE, {'binary': str(release), 'sha256': digest}))
+
+    def test_config_sync_check_refuses_settings_the_worker_rejects(self):
+        config = self.root / 'config.yaml'
+        rejected = CONFIG.replace('  agentHealthAddress:', '  agentConcurrency: 9\n  agentHealthAddress:')
+        request = {'content': rejected, 'check': True, 'expected_sha256': hashlib.sha256(CONFIG.encode()).hexdigest()}
+        self.assertIn('rejects the managed settings', self.run_failing(worker.GUEST_CONFIG_SYNC, request))
+        self.assertEqual(config.read_text(), CONFIG)
+        self.assertEqual([path.name for path in self.root.iterdir() if path.name.startswith('.battlefield')], [])
+        accepted = worker.desired_config(CONFIG, SETTINGS)
+        self.run_script(worker.GUEST_CONFIG_SYNC, dict(request, content=accepted))
+        self.assertEqual(config.read_text(), accepted)
 
 
 if __name__ == '__main__':

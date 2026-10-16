@@ -178,8 +178,11 @@ a freshly bootstrapped worker; keep its profiles disabled and the API's CLI
 availability false until a reviewed configuration-update and rollback workflow
 is available.
 
-Do not hand-edit `/etc/battlefield-agent/worker.env` or `config.yaml`; use
-[`battlefield-platform/cli`](cli-worker.md) to sync the worker secret. Worker
+Do not hand-edit `/etc/battlefield-agent/worker.env` or `config.yaml`, or replace
+the worker binary; use [`battlefield-platform/cli`](cli-worker.md) to sync the
+worker secret and managed settings and to upgrade the worker. It updates the
+ownership marker and the registration (`cli.json` and the `cli.guest/` copies) with
+each change, so bootstrap stays consistent. Worker
 environment drift fails preflight, and an apply restores configuration drift from
 the registered snapshot. Re-registering with new inputs, including
 `adopt_existing: true`, cannot update an owned installation: the marker binds the

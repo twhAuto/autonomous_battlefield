@@ -6,11 +6,15 @@ Runs on the physical host, as the operator Jenkins also runs as. `verify` only r
 that plan, consumes the receipt, repairs, then verifies. `authorize` is the one-time
 operator step that lets Jenkins reach the VM with a dedicated key. The worker secret
 always comes from the production application .env, so a rotation reaches the worker
-on the next apply. No secret is printed, logged, written to a report or put in argv.
+on the next apply. The worker binary comes from the backend image production runs, so
+an apply after a release upgrades the worker to the same code. No secret is printed,
+logged, written to a report or put in argv.
 """
 import argparse
+import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -18,6 +22,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import urllib.error
@@ -51,7 +56,18 @@ RECEIPT_SECONDS = 1800
 MANAGED_SETTINGS = ROOT / 'infra/deploy/agent-vm/managed-settings.json'
 GUEST_CONFIG = '/etc/battlefield-agent/config.yaml'
 MODEL = re.compile(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,79}')
-GUEST_REPAIRS = {'sync-worker-secret', 'restart-worker', 'enable-worker', 'sync-worker-config'}
+GUEST_REPAIRS = {'sync-worker-secret', 'restart-worker', 'enable-worker', 'sync-worker-config', 'upgrade-worker', 'resume-worker'}
+WORKER_BINARY = '/usr/local/bin/battlefield-agent'
+STAGED_BINARY = '/var/lib/battlefield-cli-upgrade/battlefield-agent'
+# The in-cluster agent runs the same /app/agent binary from the deployed backend image.
+RELEASE_DEPLOYMENT = ['-n', 'battlefield', 'get', 'deployment', 'battlefield-agent',
+                      '-o', 'jsonpath={.spec.template.spec.containers[0].image}']
+CLUSTER_IDENTITY = ['get', 'namespace', 'kube-system', '-o', 'jsonpath={.metadata.uid}']
+RELEASE_IMAGE = re.compile(r'[a-z0-9][a-z0-9./_-]*@sha256:([0-9a-f]{64})')
+RELEASE_CACHE = HOME / '.cache/autonomous-battlefield/cli-worker'
+RELEASE_MAX_BYTES = 512 * 1024 * 1024
+# Decisions time out after two minutes by default; five minutes also covers a claim in flight.
+DRAIN_SECONDS = 300
 
 
 def production_worker_secret(path=PRODUCTION_ENV):
@@ -201,6 +217,10 @@ try:
     health = urllib.request.urlopen('http://127.0.0.1:8083/healthz', timeout=5).status
 except Exception:
     health = 0
+try:
+    status = json.load(urllib.request.urlopen('http://127.0.0.1:8083/status', timeout=5))
+except Exception:
+    status = None  # Workers older than the drain support have no status endpoint.
 print(json.dumps({
     'machine_id': pathlib.Path('/etc/machine-id').read_text().strip(),
     'domain_uuid': pathlib.Path('/sys/class/dmi/id/product_uuid').read_text().strip().lower(),
@@ -210,6 +230,8 @@ print(json.dumps({
     'worker_active': unit('is-active') == 'active',
     'worker_enabled': unit('is-enabled') == 'enabled',
     'worker_health': health,
+    'binary_sha256': hashlib.sha256(pathlib.Path('/usr/local/bin/battlefield-agent').read_bytes()).hexdigest(),
+    'status': status,
 }))
 '''
 
@@ -257,8 +279,36 @@ print(json.dumps({'changed': changed}))
 '''
 
 
+# Validates a configuration with a worker binary, in the worker's environment. The
+# environment reaches the binary as process environment, never argv.
+GUEST_CHECK_CONFIG = r'''
+def check_config(binary, config):
+    env = {'PATH': '/usr/bin:/bin'}
+    for line in pathlib.Path('/etc/battlefield-agent/worker.env').read_text().splitlines():
+        if line and not line.startswith('#') and '=' in line:
+            key, value = line.split('=', 1)
+            env[key] = value
+    result = subprocess.run([str(binary), '-check-config', '-config', str(config)], env=env, capture_output=True, timeout=30)
+    return result.returncode == 0
+'''
+
+GUEST_PUBLISH = r'''
+def publish(target, content, mode):
+    fd, temporary = tempfile.mkstemp(dir=target.parent, prefix='.battlefield-')
+    try:
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, 'wb' if isinstance(content, bytes) else 'w') as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+    except BaseException:
+        pathlib.Path(temporary).unlink(missing_ok=True)
+        raise
+'''
+
 GUEST_CONFIG_SYNC = r'''
-import hashlib, json, os, pathlib, sys, tempfile, yaml
+import hashlib, json, os, pathlib, subprocess, sys, tempfile, yaml
 request = json.loads(sys.stdin.read())
 path = pathlib.Path('/etc/battlefield-agent/config.yaml')
 updated = request['content']
@@ -268,18 +318,18 @@ target = hashlib.sha256(updated.encode()).hexdigest()
 # Resuming an interrupted sync finds the target content already in place.
 if current not in (request['expected_sha256'], target):
     raise SystemExit('worker configuration differs from its registered content; not changed')
-def publish(target, content, mode):
-    fd, temporary = tempfile.mkstemp(dir=target.parent, prefix='.battlefield-')
+''' + GUEST_PUBLISH + GUEST_CHECK_CONFIG + r'''
+# A worker with -check-config validates the settings before they replace the working file.
+if request.get('check') and current != target:
+    fd, candidate = tempfile.mkstemp(dir=path.parent, prefix='.battlefield-check-')
     try:
-        os.fchmod(fd, mode)
         with os.fdopen(fd, 'w') as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, target)
-    except BaseException:
-        pathlib.Path(temporary).unlink(missing_ok=True)
-        raise
+            stream.write(updated)
+        valid = check_config('/usr/local/bin/battlefield-agent', candidate)
+    finally:
+        pathlib.Path(candidate).unlink(missing_ok=True)
+    if not valid:
+        raise SystemExit('the worker rejects the managed settings; not changed')
 if current != target:
     publish(path, updated, 0o644)
 marker = pathlib.Path('/etc/battlefield-cli-bootstrap/guest.json')
@@ -290,6 +340,82 @@ if marker.exists():
         publish(marker, json.dumps(data, indent=2) + '\n', 0o600)
 print(json.dumps({'changed': current != target}))
 '''
+
+# Drain state from the worker, plus a process count for workers without a status endpoint.
+GUEST_ACTIVITY = r'''
+import json, pathlib, subprocess, urllib.request
+def show(prop):
+    return subprocess.run(['systemctl', 'show', '-p', prop, '--value', 'battlefield-worker'], capture_output=True, text=True).stdout.strip()
+try:
+    health = urllib.request.urlopen('http://127.0.0.1:8083/healthz', timeout=5).status
+except Exception:
+    health = 0
+try:
+    status = json.load(urllib.request.urlopen('http://127.0.0.1:8083/status', timeout=5))
+except Exception:
+    status = None
+main, group = show('MainPID'), show('ControlGroup')
+# CLI decisions run as child processes of the worker. An unreadable count is never idle.
+try:
+    processes = pathlib.Path('/sys/fs/cgroup' + group + '/cgroup.procs').read_text().split()
+    children = len([p for p in processes if p != main])
+except OSError:
+    children = None
+print(json.dumps({'health': health, 'status': status, 'children': children}))
+'''
+
+GUEST_CHECK_RELEASE = r'''
+import hashlib, json, os, pathlib, subprocess, sys
+request = json.loads(sys.stdin.read())
+binary = pathlib.Path(request['binary'])
+if hashlib.sha256(binary.read_bytes()).hexdigest() != request['sha256']:
+    raise SystemExit('staged worker binary does not match the release; nothing was changed')
+binary.chmod(0o700)
+''' + GUEST_CHECK_CONFIG + r'''
+if not check_config(binary, '/etc/battlefield-agent/config.yaml'):
+    raise SystemExit('the new worker binary rejects the installed configuration; nothing was changed')
+print(json.dumps({'valid': True}))
+'''
+
+GUEST_INSTALL = r'''
+import hashlib, json, os, pathlib, subprocess, sys, tempfile
+request = json.loads(sys.stdin.read())
+target = pathlib.Path('/usr/local/bin/battlefield-agent')
+source = pathlib.Path(request['source'])
+current = hashlib.sha256(target.read_bytes()).hexdigest()
+wanted = request['target_sha256']
+# Resuming an interrupted install finds the target binary already in place.
+if current not in (request['expected_sha256'], wanted):
+    raise SystemExit('worker binary differs from its registered release; not changed')
+''' + GUEST_PUBLISH + r'''
+if current != wanted:
+    content = source.read_bytes()
+    if hashlib.sha256(content).hexdigest() != wanted:
+        raise SystemExit('staged worker binary does not match the release; not changed')
+    publish(target, content, 0o755)
+marker = pathlib.Path('/etc/battlefield-cli-bootstrap/guest.json')
+if marker.exists():
+    data = json.loads(marker.read_text())
+    if data['files'].get('/usr/local/bin/battlefield-agent') != wanted:
+        data['files']['/usr/local/bin/battlefield-agent'] = wanted
+        publish(marker, json.dumps(data, indent=2) + '\n', 0o600)
+subprocess.run(['systemctl', 'restart', 'battlefield-worker'], check=True)
+source.unlink(missing_ok=True)
+print(json.dumps({'changed': current != wanted}))
+'''
+
+
+def write_private(path, content):
+    """Atomically replace a private host file, keeping mode 0600."""
+    path = Path(path)
+    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix='.' + path.name + '-')
+    try:
+        with os.fdopen(fd, 'wb' if isinstance(content, bytes) else 'w') as stream:
+            stream.write(content)
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
 
 
 class Worker:
@@ -305,6 +431,7 @@ class Worker:
         self.port = self.config['host']['bridge_port']
         # The host's registered copy of the guest config, which bootstrap reconciles against.
         self.registered_config = self.private(self.config['guest']['config'])
+        self.release_info = None
 
     @staticmethod
     def private(path):
@@ -369,6 +496,8 @@ class Worker:
         enabled = self.gateway('/internal/agent/enabled', secret)
         checks['gateway_accepts_worker_secret'] = enabled in (204, 503)
         checks['automation_key'] = AUTOMATION_KEY.is_file()
+        self.release_info = self.release()
+        checks['release'] = {'image_digest': self.release_info['digest']} if self.release_info else None
         checks['guest'] = None
         if checks['domain'] == 'running' and checks['automation_key']:
             try:
@@ -386,8 +515,79 @@ class Worker:
                 guest['config_current'] = desired == registered
                 # An interrupted sync left the guest updated but the registered copy behind.
                 guest['config_pending'] = not guest['config_current'] and actual == hashlib.sha256(desired.encode()).hexdigest()
+                guest.update(self.binary_checks(guest.pop('binary_sha256'), guest.pop('status')))
             checks['guest'] = guest
         return checks
+
+    def binary_checks(self, binary, status):
+        """Compare the guest binary with its registration and the production release."""
+        registered = self.config['guest']['artifacts']['battlefield-agent']['sha256']
+        release = self.release_info['sha256'] if self.release_info else None
+        current = binary == release
+        return {
+            'release_known': release is not None,
+            'binary_registered': binary == registered,
+            'binary_current': current,
+            # An interrupted upgrade left the guest updated but the registration behind.
+            'binary_pending': current and registered != release,
+            'drain_supported': isinstance(status, dict),
+            'draining': isinstance(status, dict) and status.get('draining') is True,
+            # Older workers reject agentConcurrency, so a set value waits for the upgrade.
+            'config_needs_upgrade': managed_settings()['agentConcurrency'] is not None and not current,
+        }
+
+    def release(self):
+        """The worker binary in the backend image production runs, or None if unreadable."""
+        try:
+            # Only the registered production cluster, never the ambient kubectl context.
+            if self.kubectl(CLUSTER_IDENTITY) != self.config['host']['kube_system_uid']:
+                return None
+            image = self.kubectl(RELEASE_DEPLOYMENT)
+            match = RELEASE_IMAGE.fullmatch(image or '')
+            if not match:
+                return None
+            path = self.release_binary(image, match.group(1))
+            return {'image': image, 'digest': match.group(1), 'path': path,
+                    'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+        except (ValueError, OSError, subprocess.SubprocessError, tarfile.TarError):
+            return None
+
+    def kubectl(self, arguments):
+        host = self.config['host']
+        result = self.run(['/usr/bin/kubectl', '--kubeconfig=' + host['kubeconfig'], '--context=' + host['context'],
+                           '--request-timeout=15s', *arguments], timeout=30)
+        return result.stdout.decode().strip() if result.returncode == 0 else None
+
+    def release_binary(self, image, digest):
+        """Copy /app/agent out of the digest-pinned image once, into a private cache.
+
+        The digest pins the image content, so the copy is exactly what production runs.
+        """
+        RELEASE_CACHE.mkdir(mode=0o700, parents=True, exist_ok=True)
+        cached = RELEASE_CACHE / digest
+        if cached.exists():
+            return self.private(cached)
+        present = self.run(['docker', 'image', 'inspect', image]).returncode == 0
+        if not present:
+            self.run(['docker', 'pull', '--quiet', image], timeout=600, check=True)
+        try:
+            container = self.run(['docker', 'create', image, '/app/agent'], check=True).stdout.decode().strip()
+            try:
+                archive = self.run(['docker', 'cp', container + ':/app/agent', '-'], timeout=300, check=True).stdout
+            finally:
+                self.run(['docker', 'rm', container])
+        finally:
+            if not present:
+                self.run(['docker', 'image', 'rm', image])
+        with tarfile.open(fileobj=io.BytesIO(archive)) as archive_file:
+            member = archive_file.getmember('agent')
+            if not member.isreg() or not 0 < member.size <= RELEASE_MAX_BYTES:
+                raise ValueError('The production image has no usable worker binary')
+            content = archive_file.extractfile(member).read()
+        for old in RELEASE_CACHE.iterdir():
+            old.unlink()  # Keep only the release production runs now.
+        write_private(cached, content)  # Atomic: an interrupted copy never becomes the cached release.
+        return cached
 
     @staticmethod
     def repairs(checks):
@@ -469,39 +669,142 @@ class Worker:
             raise ValueError('The CLI guest identity differs from the registration; nothing was changed in the guest')
         if not guest['marker_matches'] and set(repairs) & GUEST_REPAIRS:
             raise ValueError('The CLI worker environment differs from its registered content; nothing was changed in the guest')
-        self.repair_guest([r for r in repairs if r in GUEST_REPAIRS], secret)
+        self.repair_guest([r for r in repairs if r in GUEST_REPAIRS], secret, guest)
         self.wait_for(lambda: (self.inspect(secret)['guest'] or {}).get('worker_health') == 204, 90,
                       'The CLI worker did not report healthy after the repair')
 
-    def repair_guest(self, repairs, secret):
-        """Perform exactly the reviewed guest repairs, in a safe order."""
+    def repair_guest(self, repairs, secret, guest):
+        """Perform exactly the reviewed guest repairs, in a safe order.
+
+        A worker with the wrong secret claims nothing, so the secret sync restarts it
+        without draining. Restarts for a new binary or settings wait for running decisions.
+        """
         key = self.private(AUTOMATION_KEY)
         restart = 'restart-worker' in repairs
-        if 'sync-worker-config' in repairs:
-            self.sync_config()
-            restart = True
         if 'sync-worker-secret' in repairs:
             self.guest_python(GUEST_SYNC, {'secret': secret})  # Restarts the worker itself.
             restart = False
+            guest = dict(guest, worker_active=True)  # It can claim now, so later restarts must drain.
+        if 'upgrade-worker' in repairs:
+            self.upgrade_worker(guest)  # Drains, restarts and verifies the new binary.
+            guest = dict(guest, worker_active=True, drain_supported=True)
+        if 'sync-worker-config' in repairs:
+            self.drain(guest)
+            with self.resuming_on_failure(guest):
+                self.sync_config(check=guest['binary_current'] or 'upgrade-worker' in repairs)
+            restart = True
+        if 'resume-worker' in repairs and not restart:
+            self.signal_worker('SIGUSR2')
         if restart and self.ssh(key, 'sudo -n systemctl restart battlefield-worker').returncode:
             raise ValueError('Could not restart the CLI worker')
         if 'enable-worker' in repairs and self.ssh(key, 'sudo -n systemctl enable battlefield-worker').returncode:
             raise ValueError('Could not enable the CLI worker for reboot')
 
-    def sync_config(self):
-        """Change the guest config, then the host's registered copy, so bootstrap stays consistent."""
+    def signal_worker(self, signal):
+        command = 'sudo -n systemctl kill --kill-whom=main --signal=' + signal + ' battlefield-worker'
+        if self.ssh(self.private(AUTOMATION_KEY), command).returncode:
+            raise ValueError('Could not signal the CLI worker')
+
+    @contextlib.contextmanager
+    def resuming_on_failure(self, guest):
+        """Never leave a drained worker idle: resume claims if the next step fails."""
+        try:
+            yield
+        except BaseException:
+            if guest['worker_active'] and guest['drain_supported']:
+                with contextlib.suppress(ValueError, OSError, subprocess.SubprocessError):
+                    self.signal_worker('SIGUSR2')
+            raise
+
+    def drain(self, guest):
+        """Wait until no CLI decision is running, so a restart cancels nothing.
+
+        A worker with drain support stops claiming first, and resumes if the wait times
+        out. An older worker cannot stop claiming: the job waits for it to be idle and
+        restarts at once, so a decision claimed in that moment can still fall back.
+        """
+        if not guest['worker_active']:
+            return
+        if not guest['drain_supported']:
+            idle = []
+
+            def settled():
+                idle.append(self.guest_python(GUEST_ACTIVITY, {})['children'] == 0)
+                return idle[-2:] == [True, True]
+            self.wait_for(settled, DRAIN_SECONDS, 'CLI decisions were still running after 5 minutes; nothing was changed')
+            return
+        self.signal_worker('SIGUSR1')
+        with self.resuming_on_failure(guest):
+            try:
+                self.wait_for(lambda: (self.guest_python(GUEST_ACTIVITY, {})['status'] or {}).get('active') == 0,
+                              DRAIN_SECONDS, 'drain timed out')
+            except ValueError as error:
+                raise ValueError('CLI decisions were still running after 5 minutes; the worker resumed claiming '
+                                 'and nothing was changed') from error
+
+    def stage_binary(self, content):
+        command = 'sudo -n sh -c ' + shlex.quote(f'umask 077; mkdir -p {Path(STAGED_BINARY).parent}; cat > {STAGED_BINARY}')
+        if self.ssh(self.private(AUTOMATION_KEY), command, content, timeout=300).returncode:
+            raise ValueError('Could not copy the worker binary to the CLI guest')
+
+    def upgrade_worker(self, guest):
+        """Install the production release: validate, drain, swap, verify, then register.
+
+        A release that fails verification is replaced by the registered binary again, and
+        the registration only changes after the new worker is healthy.
+        """
+        release = self.release_info
+        registered = self.config['guest']['artifacts']['battlefield-agent']['sha256']
+        content = Path(release['path']).read_bytes()
+        if hashlib.sha256(content).hexdigest() != release['sha256']:
+            raise ValueError('The cached worker release changed; run a new plan')
+        self.stage_binary(content)
+        self.guest_python(GUEST_CHECK_RELEASE, {'binary': STAGED_BINARY, 'sha256': release['sha256']})
+        self.drain(guest)
+        try:
+            self.guest_python(GUEST_INSTALL, {'source': STAGED_BINARY, 'expected_sha256': registered,
+                                              'target_sha256': release['sha256']})
+            self.wait_for(self.release_healthy, 90, 'not healthy')
+        except Exception as error:
+            # The install may have replaced the binary before failing, so always restore.
+            with self.resuming_on_failure(guest):
+                self.restore_binary(registered, release['sha256'])
+            raise ValueError('The CLI worker upgrade failed to install or become healthy; '
+                             'the registered worker binary was restored') from error
+        self.register_binary(content, release['sha256'])
+
+    def release_healthy(self):
+        activity = self.guest_python(GUEST_ACTIVITY, {})
+        return activity['health'] == 204 and isinstance(activity['status'], dict) and not activity['status']['draining']
+
+    def restore_binary(self, registered, failed):
+        artifact = self.private(self.config['guest']['artifacts']['battlefield-agent']['path']).read_bytes()
+        if hashlib.sha256(artifact).hexdigest() != registered:
+            raise ValueError('The upgraded CLI worker failed and the registered binary copy is unusable; '
+                             'restore it with the CLI bootstrap')
+        self.stage_binary(artifact)
+        self.guest_python(GUEST_INSTALL, {'source': STAGED_BINARY, 'expected_sha256': failed, 'target_sha256': registered})
+
+    def register_binary(self, content, digest):
+        """Record the installed release where the CLI bootstrap expects it."""
+        artifact = self.private(self.config['guest']['artifacts']['battlefield-agent']['path'])
+        write_private(artifact, content)
+        registration = json.loads(self.private(CLI_CONFIG).read_text())
+        registration['guest']['artifacts']['battlefield-agent']['sha256'] = digest
+        self.config = self.bootstrap.validate(registration)
+        write_private(CLI_CONFIG, json.dumps(registration, indent=2) + '\n')
+
+    def sync_config(self, check=False):
+        """Change the guest config, then the host's registered copy, so bootstrap stays consistent.
+
+        check validates the settings with the installed worker first; only the
+        production release supports that.
+        """
         registered = self.registered_config.read_text()
         updated = desired_config(registered, managed_settings())
-        self.guest_python(GUEST_CONFIG_SYNC, {'content': updated,
+        self.guest_python(GUEST_CONFIG_SYNC, {'content': updated, 'check': check,
                                               'expected_sha256': hashlib.sha256(registered.encode()).hexdigest()})
-        fd, temporary = tempfile.mkstemp(dir=self.registered_config.parent, prefix='.config-')
-        try:
-            with os.fdopen(fd, 'w') as stream:
-                stream.write(updated)
-            os.replace(temporary, self.registered_config)
-        except BaseException:
-            Path(temporary).unlink(missing_ok=True)
-            raise
+        write_private(self.registered_config, updated)
 
     def authorize(self):
         """One-time operator step: create the Jenkins key and authorize it for vm-admin."""
@@ -538,15 +841,26 @@ def guest_repairs(guest):
     if not guest['marker_matches']:
         return []
     needed = []
+    upgrade = needs_upgrade(guest)
     if not guest['secret_matches']:
         needed.append('sync-worker-secret')
-    elif not guest['worker_active'] or guest['worker_health'] != 204:
+    elif not upgrade and (not guest['worker_active'] or guest['worker_health'] != 204):
         needed.append('restart-worker')
+    elif not upgrade and guest['draining']:
+        needed.append('resume-worker')
+    if upgrade:
+        needed.append('upgrade-worker')
     if not guest['worker_enabled']:
         needed.append('enable-worker')
-    if (guest['config_registered'] or guest['config_pending']) and not guest['config_current']:
+    if ((guest['config_registered'] or guest['config_pending']) and not guest['config_current']
+            and (upgrade or not guest['config_needs_upgrade'])):
         needed.append('sync-worker-config')
     return needed
+
+
+def needs_upgrade(guest):
+    """Upgrade a registered binary that differs from production, or finish an interrupted upgrade."""
+    return guest['release_known'] and (guest['binary_pending'] or (guest['binary_registered'] and not guest['binary_current']))
 
 
 def guest_problems(guest):
@@ -562,8 +876,23 @@ def guest_problems(guest):
         (guest['worker_enabled'], 'CLI worker service is not enabled for reboot'),
         (guest['config_registered'] or guest['config_pending'], 'CLI worker configuration differs from its registered content; inspect it, it is not repaired automatically'),
         (guest['config_current'], 'CLI worker settings differ from infra/deploy/agent-vm/managed-settings.json'),
+        (guest['binary_registered'] or guest['binary_current'], 'CLI worker binary differs from its registered release; inspect it, it is not repaired automatically'),
+        (not guest['draining'], 'CLI worker is draining and claims no new decisions'),
+        (guest['config_current'] or not guest['config_needs_upgrade'], 'CLI worker settings need the production worker release; apply upgrades it first'),
     ]
     return [message for ok, message in checks if not ok]
+
+
+def notices(checks):
+    """Worth acting on, but not a failure: a release does not stop the old worker from working."""
+    guest = checks['guest'] or {}
+    if not (guest.get('reachable') and guest.get('identity_matches')):
+        return []
+    if not guest['release_known']:
+        return ['Could not read the production worker release, so the upgrade status is unknown']
+    if not guest['binary_current'] or guest['binary_pending']:
+        return ['CLI worker binary differs from the production release; run apply to upgrade it']
+    return []
 
 
 def trusted_revision(expected):
@@ -588,8 +917,10 @@ def execute(args):
     report = {'schema': 1, 'action': args.action}
     if args.action == 'verify':
         checks = worker.inspect(secret)
-        report.update(checks=checks, problems=worker.problems(checks))
+        report.update(checks=checks, problems=worker.problems(checks), notices=notices(checks))
         write_report(args.report, report)
+        for notice in report['notices']:
+            print('CLI worker notice: ' + notice, file=sys.stderr)
         for problem in report['problems']:
             print('CLI worker: ' + problem, file=sys.stderr)
         return 3 if report['problems'] else 0
@@ -615,19 +946,21 @@ def reviewed_change(worker, args, secret):
     repairs = worker.repairs(checks)
     receipt = Path(args.receipt)
     if args.action == 'plan':
-        write_report(receipt, {'schema': 1, 'revision': args.revision, 'created': time.time(), 'repairs': repairs})
-        return {'checks': checks, 'repairs': repairs, 'problems': worker.problems(checks)}
+        write_report(receipt, {'schema': 1, 'revision': args.revision, 'created': time.time(), 'repairs': repairs,
+                               'release': checks.get('release')})
+        return {'checks': checks, 'repairs': repairs, 'problems': worker.problems(checks), 'notices': notices(checks)}
     saved = json.loads(worker.private(receipt).read_text())
     age = time.time() - saved.get('created', 0)
     if saved.get('revision') != args.revision or not 0 <= age <= RECEIPT_SECONDS:
         raise ValueError('Plan revision changed or the plan expired; run and review a new plan')
-    if saved.get('repairs') != repairs:
+    # The release is part of the plan: a new delivery means a different worker binary.
+    if saved.get('repairs') != repairs or saved.get('release') != checks.get('release'):
         raise ValueError('The CLI worker changed since the reviewed plan; run and review a new plan')
     receipt.unlink()  # A failure or interruption consumes the approval.
     if repairs:
         worker.apply(repairs, secret)
     checks = worker.inspect(secret)
-    return {'applied': repairs, 'checks': checks, 'problems': worker.problems(checks)}
+    return {'applied': repairs, 'checks': checks, 'problems': worker.problems(checks), 'notices': notices(checks)}
 
 
 def main():
