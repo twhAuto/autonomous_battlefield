@@ -1,9 +1,8 @@
-# Game rules (v1)
+# Game rules
 
 | Field | Value |
 | --- | --- |
 | Status | Current: describes implemented engine behavior |
-| Last reviewed | 2026-09-29 |
 | Audience | Contributors and AI agents who need the rules in one place |
 | Source of truth | `backend/internal/game` (engine); this page summarizes it |
 
@@ -136,9 +135,9 @@ Separately from the rules, operators can stop a battle, and unfinished battles
 expire (fail with `battle_timeout`) one hour after creation. See the
 [API reference](../architecture/api.md) for battle status and controls.
 
-## Explicitly deferred
+## Not supported
 
-These are not part of v1. Adding any of them changes the rules above:
+These are not supported. Adding any of them changes the rules above:
 
 - more than two factions (creation, spawns, movement, and winner rules assume two);
 - direct player commands, formations, or unit control during a battle;
