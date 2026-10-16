@@ -4,7 +4,7 @@
 variants through the production runner, a loopback AI gateway tool server and the
 submission validator, then reports how each variant behaved. This guide covers
 running comparisons and reading their reports. The
-[decision contracts](../architecture/system-architecture.md#7-decision-contracts-and-lifecycle)
+[decision contracts](../architecture/ai-decisions.md)
 own the prompt, memory, knowledge and context behavior being compared.
 
 ## Before comparing

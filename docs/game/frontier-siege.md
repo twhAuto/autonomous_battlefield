@@ -69,7 +69,8 @@ themselves, other support units, siege engines, buildings, or dead troops. Other
 they approach reachable injured soldiers, preferring the shortest route, then the
 largest missing fraction and ID. With no injured soldier reachable, they follow
 a Vanguard (otherwise another soldier), preferring its friendly-castle side.
-They hold if no route exists. Treatment replaces movement and attacking. Arsenal
+They hold if no route exists. Treatment replaces movement and attacking, and is
+not an attack, so the minimum-damage rule never applies to it. Arsenal
 does not grant attack or improve healing; Plating still adds defense.
 
 ## Structures and orders

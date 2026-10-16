@@ -64,6 +64,11 @@ Faction deletion is offered only in the authorized editor's Danger zone. It keep
 the named registry-removal confirmation, disables repeat submissions, leaves failed
 deletions on the editor, and navigates to the directory after success.
 
+A generated background stays in an editable preview until **Use background**;
+**Discard** and errors leave the current profile fields intact, and saving the
+faction remains a separate explicit action. Manual background editing works while
+generation is disabled.
+
 `CreateFactionPage` keys its editor by route identity. Switching between creation
 and editing, or between factions, starts fresh form, loading, and error state and
 cancels the previous editor's load.
@@ -101,6 +106,13 @@ It also returns `lastUpdated`, the time of the most recent successful status res
 or control result; `BattleHeader` shows it beside the connection badge, which already
 reports reconnecting and error states.
 
+`BattleHistoryPage` fetches on entry, filter or page navigation, retry, and manual
+refresh; it does not poll. URL parameters keep the status filter, current cursor,
+and prior cursors for Previous and browser navigation, and refresh returns to the
+newest page with the same filter. Detail links carry the originating URL in router
+state, and direct detail visits link back to the unfiltered archive. Obsolete
+requests are aborted and their results ignored.
+
 ## Inspector and historical context
 
 `BattlePage` owns map perspective and controls. `components/BattleInspector.tsx`
@@ -128,7 +140,8 @@ observation scope through repository `GetDecision`. Its public projection includ
 historical identity, economy, faction-visible view, legal choices, prior plan,
 memory, and knowledge; provider metadata and capabilities are excluded.
 `initialContext` is a reconstructed projection, and `availableUnitDetails` is the
-frozen reference snapshot, labelled as optional. Legacy observations can return
+frozen reference snapshot; the inspector labels them **Agent context
+(reconstructed)** and **On-demand unit reference**. Legacy observations can return
 `context: null`. Participant background and doctrine come from the scenario snapshot.
 
 The inspector distinguishes observation ticks from its current-resource header.
@@ -179,7 +192,10 @@ and raw JSON are shown unchanged.
 
 ## Shared HTTP transport
 
-`shared/api/request.ts` accepts API paths and applies the configured base URL. `createApiClient` preserves abort errors and wraps network failures in the feature's error type. Authentication disables global unauthorized notifications so login/session failures are handled locally. Feature clients, including faction ruleset discovery, use this common error handling and retain HTTP status messages; battle stop/pause/resume share one response mapper.
+`shared/api/request.ts` accepts API paths and applies the configured base URL
+(`VITE_API_URL` in builds). The Vite development proxy defaults to
+`http://localhost:8080`; set the server-only `DEV_API_PROXY_TARGET` in the frontend
+env files or shell to point it elsewhere. `createApiClient` preserves abort errors and wraps network failures in the feature's error type. Authentication disables global unauthorized notifications so login/session failures are handled locally. Feature clients, including faction ruleset discovery, use this common error handling and retain HTTP status messages; battle stop/pause/resume share one response mapper.
 
 ## Responsive navigation and forms
 

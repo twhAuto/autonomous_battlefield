@@ -121,6 +121,27 @@ for the in-cluster path. Prompts, credentials, capabilities, full observations,
 and raw provider responses are excluded from span attributes. Tempo storage is
 also disposable; it is not an audit archive.
 
+## AI observations in Langfuse
+
+The agent worker starts a separate, fully sampled trace for each decision request,
+linked to the engine's `battlefield.engine.decision_window` span; battle creation
+and engine processing are also always sampled. Stable request-derived trace and
+root IDs let the capability-scoped AI gateway attach server-side tool observations
+even when a CLI does not propagate trace headers. API runners emit one generation
+per model attempt; CLI runners emit one aggregate session generation. Decision
+roots carry no duplicate billable token usage. The worker stores a trace marker
+with the provider metadata, and additive usage fields stay in the decision's JSON
+usage payload. Older decisions keep their original interpretation and get no
+invented link.
+
+The collector keeps Tempo for infrastructure and optionally forwards only AI
+observations to a self-hosted Langfuse Helm release. Langfuse owns dedicated
+PostgreSQL, Valkey, ClickHouse/Keeper and SeaweedFS storage. Only the collector
+receives its ingestion credentials. The API reads an optional public URL/project
+ConfigMap for inspector links. Export is asynchronous and does not participate in
+decision acceptance or timeout enforcement. See [Langfuse operations](../operations/langfuse.md)
+for deployment order, sampling, privacy, persistence and token-accounting limits.
+
 ## Application metrics
 
 The API and engine expose `/metrics` on their existing operational ports. The

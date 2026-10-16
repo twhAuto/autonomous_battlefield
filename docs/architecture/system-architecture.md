@@ -12,9 +12,9 @@ uses `autonomous-battlefield` and `battlefield` as technical identifiers.
 For a package-by-package explanation of the implementation, see the [codebase guide](../developer/codebase-guide.md).
 
 Jump to [components](#3-runtime-components), [boundaries](#4-architectural-boundaries),
-[flows](#5-core-runtime-flows), [decision contracts](#7-decision-contracts-and-lifecycle),
-[persistence](#8-persistence-and-durability), [security](#9-security-and-trust-boundaries),
-[deployment](#11-deployment-topology), or [limitations](#19-current-limitations-and-follow-up-questions).
+[flows](#5-core-runtime-flows), [AI decisions](#6-ai-decisions),
+[persistence](#7-persistence-and-durability), [security](#8-security-and-trust-boundaries),
+[deployment](#10-deployment-topology), or [limitations](#13-current-limitations-and-follow-up-questions).
 
 ## 1. Purpose
 
@@ -25,9 +25,11 @@ The central architectural rule is:
 > Models propose bounded strategy plans. The deterministic engine validates and applies those plans and remains the only component that controls battlefield-state mutation.
 
 This document describes the system's runtime boundaries and interactions. The
+[AI decisions](ai-decisions.md) page owns the engine–model contract;
+[database](database.md) owns schema and coordination rules;
 [configuration model](configuration.md) owns environment files and Secret
-boundaries; [observability architecture](observability.md) owns telemetry contracts
-and reliability objectives. Operational instructions remain in
+boundaries; and [observability architecture](observability.md) owns telemetry
+contracts and reliability objectives. Operational instructions remain in
 [deployment](../operations/deployment.md) and
 [observability operations](../operations/observability.md).
 
@@ -70,7 +72,7 @@ PostgreSQL is the durable coordination point. The API and engine do not call eac
 | Decision agent | Model-decision claims and API or CLI model execution | AI gateway, model provider |
 | Redis (optional) | Disposable completed battle read cache; no engine or readiness dependency | Memory, API-only connection |
 | PostgreSQL | Factions, battle queue, event history, snapshots, leases, and model decisions | Persistent storage |
-| Scenario catalog | Authored map, timing, fallback plans, unit/building rules, and combat rules | Embedded in the server binary (`backend/gamedata`), loaded by the API at startup and frozen into battle rows |
+| Scenario catalog | Authored map, timing, fallback plans, unit/building rules, and combat rules, resolved from versioned [content libraries](../developer/content-library.md) | Embedded in the server binary (`backend/gamedata`), validated at API startup and frozen into battle rows |
 
 The backend commands are `cmd/server`, `cmd/engine`, `cmd/aigateway`, `cmd/agent`, and `cmd/aieval`. The first four are runtime processes; `aieval` runs deterministic offline cases or explicitly enabled live comparisons and produces reports.
 
@@ -96,68 +98,37 @@ and the [codebase guide](../developer/codebase-guide.md#executable-entry-points)
 
 ### Browser delivery
 
-The shell treats logout HTTP 401 as an already unauthenticated session. Other
-request failures keep the current screen and expose retry; they do not confirm logout.
-
-The Vite development proxy defaults to `http://localhost:8080` and accepts a
-server-only `DEV_API_PROXY_TARGET` override from the frontend env files or shell.
-Production/browser API routing continues to use `VITE_API_URL` and Nginx.
-Nginx requires revalidation of the SPA entry document after rollouts and returns
-404 for missing hashed assets instead of routing those requests to HTML.
-Every Nginx response carries `frame-ancestors 'none'` CSP, `X-Frame-Options: DENY`,
-`nosniff`, a strict-origin referrer policy and HSTS, so the admin and gameplay UI
-cannot be framed for clickjacking. The CSP deliberately leaves script and connect
-sources open because `VITE_API_URL` may name a separate API origin.
+The frontend is a static build served by Nginx. Nginx requires revalidation of the
+SPA entry document after rollouts and returns 404 for missing hashed assets instead
+of routing those requests to HTML. Every Nginx response carries
+`frame-ancestors 'none'` CSP, `X-Frame-Options: DENY`, `nosniff`, a strict-origin
+referrer policy and HSTS, so the admin and gameplay UI cannot be framed for
+clickjacking. The CSP deliberately leaves script and connect sources open because
+`VITE_API_URL` may name a separate API origin.
 
 ### Battle inspection
 
-Battle detail state is scoped to the battle, attempt, and selected perspective.
-Cancelled faction-view requests cannot replace the current selection, and loading
-or failed faction views never fall back to spectator data. The perspective selector
-controls presentation; server-side role and ownership checks remain the access boundary.
-
-The browser loads events through one cancellable cursor loop per selected attempt,
-retaining at most 500 events, deduplicated by sequence. Retrying an initial failure
-loads the latest page; retries after a successful load resume from the cursor.
-Historical attempts load on
-selection or manual refresh. Errors retain loaded events and expose retry; the live
-current attempt also retries automatically with backoff capped at 30 seconds.
-
-Participant background and doctrine come from the persisted scenario, not the
-editable faction directory. Player summaries use the spectator snapshot independently
-of map perspective. The presentation accepts multiple participants; battle creation,
+The browser presents a battle from one selected perspective, but the perspective
+selector controls presentation only: server-side role and ownership checks remain
+the access boundary, and faction views are projected on the server. Participant
+background and doctrine come from the persisted scenario, not the editable faction
+directory. The presentation accepts multiple participants; battle creation,
 scenario spawns, opponent selection, and castle-destruction victory rules still
 require two factions.
-
-Historical decision context is scoped by battle, attempt, and request. The service
-projects only the saved observation's public fields; provider metadata, capability
-tokens, private reasoning, and tool-call traces are excluded. The displayed initial
-context is a reconstructed projection, not the original provider payload. Legacy
-rows without saved observations return `context: null`. Plans describe intent;
-events provide execution evidence. A running decision does not prove MCP connectivity.
 
 See the [frontend guide](../developer/frontend-guide.md#battle-data-lifecycle) for
 request lifecycle, inspector state, map layout, and animation;
 the [OpenAPI contract](openapi.yaml) for state, event and context fields, and the
 [HTTP API reference](api.md#battle-state-and-fog-of-war) for fog-of-war projection;
-and [game rules](../game/game-rules.md) for movement and attack resolution.
+[saved decision context](ai-decisions.md#saved-decision-context) for what the
+inspector can show of a model's input; and [game rules](../game/game-rules.md) for
+movement and attack resolution.
 
 ### Deterministic simulation boundary
 
 The simulation receives a resolved scenario and optional plans, then produces deterministic state transitions and events. It does not access PostgreSQL, HTTP, environment variables, or model providers.
 
-The engine owns orchestration around this pure domain: leases, retries, pauses, decision deadlines, persistence, and shutdown handling.
-
-### Blocked castle approaches
-
-
-Unit movement prefers a complete path to a position within attack range of the
-opposing castle. If occupied approach tiles prevent that route, the engine searches
-for reachable attack positions around living enemy units and buildings. This
-prevents occupied castle perimeters from freezing both armies. Paths still exclude
-occupied and impassable tiles, and execution remains bounded by unit movement.
-Movement and attack targeting use authoritative engine state; faction sight filters
-AI observations rather than controlling these engine paths.
+The engine owns orchestration around this pure domain: leases, retries, pauses, decision deadlines, persistence, and shutdown handling. Movement and attack targeting use authoritative engine state; faction sight filters AI observations rather than controlling these engine paths.
 
 ### Public application boundary
 
@@ -267,6 +238,13 @@ The engine creates a decision row for every faction:
 
 Using the same durable record shape supports consistent history and scripted-versus-model evaluation.
 
+The first worker transition is an opening decision at tick zero, using the same
+durable records, deadlines, and attempt/requeue semantics. The worker persists the
+opening state and events through `SaveTick` before tick one, and the persisted
+`openingComplete` flag prevents repeated spending. Battles stored before doctrine
+snapshots (`snapshotVersion` below 2) keep their starting blueprints, initial
+upgrade bonuses and original decision schedule.
+
 ### 5.3 Timeout and fallback
 
 The battle must make progress even if a model does not answer.
@@ -289,273 +267,34 @@ At the decision deadline:
 - Stopping releases the battle lease and fails outstanding decisions with `battle_stopped`.
 - A stopped or reclaimed battle prevents the previous engine owner from making further guarded writes.
 
-## 6. Model execution
+### 5.5 Battle expiry
 
-`internal/ai/agent` (`agent.Executor`) owns decision claims, concurrency, timeouts, and outcome reporting. Agents use `ai.agentConcurrency` execution slots (1–4; 1 when omitted). The K3s API worker and the CLI VM template both set 4. API jobs are bounded only by their slots and the per-battle decision budget. PostgreSQL serializes admission on the policy row and caps active CLI leases at `runtime_policy.cli_concurrency` (1–4, default 4), shared across all workers, battle decisions and generation jobs. API jobs do not consume CLI leases. A completed submission retains the CLI lease until the worker reports completion or its execution deadline expires. Claim responses carry the database lease deadline, so network delays cannot extend a worker’s allotted execution time. Keep the database, AI gateway and VM clocks synchronized. It selects an `APIRunner` or `CLIRunner` from `internal/ai/runner`; both implement the same provider-neutral decision-runner contract.
+Unfinished battles expire one hour after creation, including queued and paused
+time. The engine sweeps at startup and every minute independently of active
+battle processing. It atomically marks expired battles failed with
+`battle_timeout`, clears their leases, and cancels pending/running decisions
+using the existing `battle_stopped` cancellation category. History and tick
+state remain available; active admission slots are released but daily usage is
+not refunded. While the engine is offline, expiry waits for restart.
 
-### API runtime
+## 6. AI decisions
 
-`APIRunner` in `internal/ai/runner/api.go` runs the shared API tool loop:
+Each faction's controller is either scripted or a model profile. For a model, the
+decision agent claims the durable decision, runs an API tool loop or an isolated
+subscription CLI against the AI gateway's MCP tools, and the gateway validates and
+records one submitted plan. The engine applies whatever the decision resolved to,
+accepted or fallback, exactly like a scripted plan. Background drafting for
+faction profiles reuses the same workers, runners and capability model with a
+separate tool set.
 
-1. connects to MCP with a request-scoped capability;
-2. accepts the battle tool set `get_decision_context`, `get_unit_details`, and `submit_strategy_plan`;
-3. asks the configured provider for a tool-calling turn;
-4. rejects unsupported tools or a turn with no tool call;
-5. records the turn's text and tool calls as one assistant message with call IDs, and each result as a tool message answering its call;
-6. stops after an accepted submission or the configured step limit.
+[AI decisions](ai-decisions.md) owns this contract: runners and CLI isolation,
+prompt provenance and faction memory, the decision context and unit knowledge, plan
+validation, fallback error categories, and background generation.
 
-Provider adapters send this history in each API's native form: OpenAI receives the
-system prompt as `instructions` and the conversation as Responses input items
-(`function_call` and `function_call_output` matched by `call_id`); Gemini receives
-`systemInstruction`, model turns with `functionCall` parts (echoing each call's thought
-signature) and results as `functionResponse` parts. The policy therefore arrives with
-system authority, separate from untrusted battlefield data.
-
-OpenAI Responses and Gemini GenerateContent adapters normalize provider tool calls, refusals, and usage into common types.
-
-### CLI runtime
-
-The CLI runner starts Codex or Antigravity CLI in a new temporary directory with the
-settings below; the [Claude profile](#claude-profile) uses its own provider restrictions.
-
-- an empty workspace;
-- a request-scoped MCP bearer token;
-- only the session's battlefield tools enabled (three for battle decisions, two for background generation);
-- shell, file, browser, app, image, plugin, skill, and multi-agent capabilities disabled where supported;
-- no approval prompts;
-- the allowlisted profile model passed explicitly with `--model`;
-- a pre-validated CLI version family.
-
-In development Codex uses the existing host login without copying it; production uses only a dedicated VM login. Antigravity uses the host OS keyring or a private temporary copy of its native `antigravity-oauth-token` login file, with a temporary HOME and XDG directories. Both CLI subprocess environments exclude worker control credentials, provider keys and personal CLI overrides. Linux workers disable dumpability to block parent environment/memory reads from same-user children; CLI process groups are killed on cancellation and output capture is bounded at 4 MiB. Generated permissions allow the session's battlefield MCP tools and deny file, command, and URL operations; slash-command expansion is disabled. A headless account-usage probe must succeed before advertising the profile. JSON result envelopes must report SUCCESS with no denied actions. Explicit permission rules are used without strict mode, which overrides MCP allows in CLI 1.1.27. The MCP usage endpoint verifies that a plan is accepted before acknowledging completion; missing submissions trigger a worker failure and fallback. Usage counters are recorded for accepted plans. Subscription credentials are not placed in Kubernetes.
-
-CLI context responses include explicit target-tick and version metadata alongside the full structured context. CLI prompts require copying those values and making a substantive tactical or production decision. Name-only CLI plans are rejected; after three invalid submissions the decision is failed so the battle can fall back. AI gateway logs record context byte counts and validation field/code pairs without dumping observations or credentials. Usage reporting retries transient failures up to three times.
-
-Antigravity CLI offloads larger MCP tool responses to local files. Because battlefield CLI sessions deny file reads, the host now fetches the request-scoped context through the MCP SDK and embeds the validated JSON directly in the Antigravity prompt (maximum 64 KiB). The model submits through MCP without fetching the large response again. This keeps existing file restrictions and avoids blind tick guessing when the CLI hides an offloaded response.
-
-### Claude profile
-
-The `claude-cli` provider exposes `claude-subscription-local` using Claude Code
-2.1.267 and the `sonnet` alias. The host retains its native subscription login;
-only allowlisted transport environment variables reach the subprocess. Restricted
-mode, empty built-in tools, disabled hooks and settings discovery, strict MCP
-configuration, and `dontAsk` permissions constrain it to explicitly approved
-battlefield tools. A private temporary MCP file holds the request capability and
-is removed on exit. Session persistence is disabled. Server-side capabilities and
-submission validation remain authoritative for battle and faction-generation jobs.
-The API advertises the profile only while `CLAUDE_CLI_PROFILE_AVAILABLE=true`;
-production additionally requires the existing VM isolation verification flag.
-Claude stdout is parsed as a complete JSON document with stderr excluded. The
-VM profile defaults to disabled.
-Native HOME is retained: user-level instruction memory is not explicitly disabled,
-so reproducible comparisons need a dedicated account without personal memory.
-Claude terminal results report aggregate CLI usage, including cache reads/writes
-in total input tokens; errors and permission denials fail the decision. The
-`sonnet` alias follows the subscription's default Sonnet model, so operators need
-an explicit model ID for reproducible comparisons. See [Claude operations](../operations/claude-cli.md).
-
-## 7. Decision contracts and lifecycle
-
-### Shared prompt provenance and faction memory
-
-API, Codex, Antigravity, and Claude CLI use one embedded decision policy assembled by
-`internal/ai/prompts/prompts.go`. Only context delivery differs: tool fetch versus
-Antigravity host-prefetched JSON. The persisted `prompts.Version` includes a SHA-256
-digest of the battle prompts as assembled for a fixed sample session (system prompt, tool delivery and inline delivery), so wording, order and wiring changes all produce a new version. Version v7 moved faction-authored name/background/doctrine into JSON-escaped untrusted decision context; they never extend the system instructions. Version v8 orders the decision prompt from most to least stable (shared policy, then the faction identity block, then the per-request ID and any inline context), so the prefix repeated across one faction's decisions includes its identity and stays eligible for provider prompt caching. Version v9 restores the identity block's guidance, lost in v7: doctrine is the faction's strategic preferences and background its perspective, below core rules, legal choices, tool restrictions and observation privacy.
-Each prompt purpose has one current `.txt` file; Git preserves previous revisions.
-The build manifest reads the runtime prompt version, bundle digest, tool schema and
-embedded game-content digest (`gameDataBundleSha256`: every file under
-`backend/gamedata`, including the knowledge cards models receive) through
-`go run ./cmd/aieval -mode metadata`, requiring Go during manifest generation. Both API and CLI
-model submissions require a substantive plan and stop after three validation
-rejections.
-
-Before hashing a decision observation, the engine reads at most three earlier
-resolved records scoped in SQL to the same battle, attempt, and faction.
-`BuildFactionMemory` produces historical economy/unit counts and resolved plans,
-with observation ticks and accepted/fallback status, bounded to 8 KiB. These
-snapshots describe state before the historical decisions, not attributed effects.
-Memory is embedded in the frozen observation JSON and included in its hash;
-no separate mutable scratchpad or database migration is required. Read failures
-are logged and the engine proceeds without optional history. Reuse requires
-matching prompt/tool versions and profile/provider/runtime/model identifiers as
-well as observation hashes. Attempts never read memory from previous attempts.
-
-`aieval -mode compare` runs matched, repeated synthetic decisions through the
-production AI gateway tool server and validator with isolated loopback repositories and API/CLI runners.
-It verifies persisted acceptance rather than trusting CLI success, and records
-context hashes, prompt provenance, validation failures, latency, usage and
-canonical plan diversity. This measures individual decisions; win rate remains
-null. CLI internal token/turn budgets differ from API enforcement and are labeled
-in reports. See [AI comparisons](../developer/ai-comparisons.md).
-
-### Bounded context
-
-A decision context contains:
-
-- battle, faction, request, target-tick, and version identifiers;
-- a fog-of-war faction view: terrain, the faction's own entities, visible enemies, enemy castles, and only the faction's own gold, upgrades and production totals;
-- current and projected economy values;
-- legal action kinds, unit/building definitions, construction sites, and owned recruitment sources;
-- the currently active plan;
-- optional bounded faction memory and retrieved unit knowledge;
-- a hash of the observation excluding request-specific fields.
-
-### Submitted strategy
-
-A model or scripted controller can propose:
-
-- a short name and operator-visible rationale;
-- fixed-point attack and defend weights;
-- target-specific bonuses;
-- reserve gold and spend ordering;
-- typed construction orders (or legacy economy-site priorities);
-- explicit ordered unit purchases with quantities (legacy plans may use recruitment priorities).
-
-The service validates decision version, target tick, general plan bounds, and context-specific units and sites before persistence.
-
-### Explicit recruitment orders
-
-The shared model prompt requests ordered `{unitType, count, sourceBuildingId?}`
-purchases through `recruitmentOrders`. These are purchases for one production
-window, not army ratios. MCP and engine validation enforce legal unit IDs, positive
-counts and at most six units per window across all sources, matching the six
-castle-adjacent spawn positions. The engine buys in order, keeps reserve gold and
-stops at the first unaffordable unit or blocked castle spawn; unavailable explicit
-sources and blocked Barracks orders are skipped. There is no substitution, extra
-purchasing or queue, and a reused plan applies its quantities again at the next
-window.
-
-An explicit empty `recruitmentOrders: []` buys nothing. An absent or null field
-keeps the legacy behavior of repeatedly buying the first affordable unit from
-`recruitmentPriorities`; nonempty priorities and explicit orders together are
-rejected. Omitting `recruitment` from a nonempty `spendOrder` also skips buying.
-Orders are deep-copied and persisted with plans, faction memory and decision
-hashes. The decision panel shows requested quantities; `unit_recruited` events
-record actual purchases.
-
-### Versioned unit knowledge
-
-Optional ruleset knowledge is frozen in the resolved scenario JSON alongside unit
-statistics, and participates in the scenario content hash. Card authoring rules are
-in [content libraries](../developer/content-library.md). At each decision window
-the engine retrieves unit cards using only the faction-visible context, once,
-before observation hashing and persistence. API MCP reads and host CLI inline
-delivery consume that identical persisted knowledge. Retrieval has no external
-service dependency and does not change engine combat or plan validation.
-
-Selection orders candidates by visible enemy types, own deployed types, explicit
-recruitment-order types, legacy recruitment priorities, then other legal units by
-increasing cost, with unit ID breaking ties. It never uses hidden enemy state.
-`engine.knowledgeRetrieval` sets positive `maxUnitCards` and `maxBytes` limits
-(defaults 16 and 16384); the byte budget covers mechanics, cards and metadata. If
-even the metadata cannot fit, knowledge is omitted; if mechanics cannot fit, they
-are omitted and truncation is recorded. Otherwise retrieval keeps priority order
-and stops before a whole card would exceed either limit. Persisted contexts record
-source IDs, the ruleset-content digest, effective limits, serialized size and
-truncation. Configuration changes affect decisions prepared after an engine
-restart; retries reuse persisted decisions. Old scenarios without knowledge remain
-valid.
-
-### Compact unit context and exact lookup
-
-All new decisions use `battlefield.decision-context.v4`. Before hashing, the engine
-freezes all legal or visible unit definitions and available cards in the persisted
-observation's `unitReference` JSON field. This reference is independent of the
-legacy automatic card budget. Full observations continue to drive validation.
-
-The explicit `agentview.Context` projection emits unit ID, cost, class, role, strengths,
-and weaknesses in `legal.units`, plus `referenceUnits` for visible types that are
-not recruitable. It keeps knowledge mechanics and source identity but omits cards,
-base statistics, and the stored reference snapshot. Battlefield observations,
-including effective unit stats, remain intact. API delivery and CLI prefetch use
-the same projection. Older saved observations are also projected into the current format without rewriting storage.
-MCP tools v7 delivers `get_decision_context` as one JSON text block with the
-existing `context` envelope, without a duplicate structured-content copy. API
-runners parse the same text. Agents are instructed to reuse a successful frozen
-snapshot; retries remain available after failed or unreadable responses and
-existing step, timeout, and submission limits are unchanged.
-
-MCP tools v6 adds `get_unit_details(requestId, unitIds)`. The request capability
-and frozen legal/visible set scope every lookup. A batch contains 1–4 distinct
-nonempty IDs and returns base stats, guidance when present, and source
-identity/digest. Hidden and unknown IDs both return `available: false`. Responses
-above 1800 serialized JSON bytes return a recoverable tool error asking for fewer
-IDs. For a single long card, `nextGuidanceOffset` explicitly marks continuation;
-pass it as `guidanceOffset` with the same unit ID to read the remainder; offsets
-count UTF-8 bytes of the frozen guidance. Every page contains complete base stats. Text-only JSON delivery avoids duplicate CLI resource
-rendering. Overview text is not repeated in lookup results. All reference content remains untrusted data.
-
-The saved-context inspector shows the reconstructed initial projection
-(**Agent context (reconstructed)**) separately from the stored reference details
-(**On-demand unit reference**). Availability does not establish
-that the model fetched them. Evaluation reports count lookup calls and aggregate
-input tokens across turns, alongside latency, acceptance, fallback, and diversity;
-see [AI comparisons](../developer/ai-comparisons.md#reading-reports).
-
-### Submission-shape failures and fallback attribution
-
-
-The shared decision instructions require a flat MCP argument object with all
-required fields, including empty objects/arrays where appropriate. Antigravity
-can otherwise stop after SDK schema errors without reaching the typed plan
-handler. MCP receiving middleware records `decision_tool_input_rejected` with
-only the authenticated request ID, allowlisted missing field names, and a
-nested-plan flag; argument values and raw SDK errors are excluded.
-
-When a runner fails before the deadline, the engine carries its error category
-into the fallback record instead of replacing it with `timeout`.
-
-| Error category | Raised by | Meaning |
-| --- | --- | --- |
-| `timeout`, `refusal`, `rate_limit`, `provider` | API runner | Provider deadline, safety refusal, HTTP 429, or other provider failure |
-| `mcp_connect`, `mcp_discovery`, `mcp_tool`, `mcp_context` | API/CLI runner | MCP session, tool-list, tool-call, or Antigravity context-prefetch failure |
-| `unauthorized_tool`, `no_progress`, `step_limit` | API runner | Model requested a tool outside the session set, returned no tool call, or exceeded the profile's step limit |
-| `cli`, `cli_permission`, `cli_isolation`, `cli_provider` | CLI runner | Non-success CLI result, denied tool action, sandbox setup failure, or unsupported CLI provider |
-| `validation_limit` | Decision service | Third rejected API/CLI submission for the same request |
-| `plan_not_submitted` | Agent worker | Runner reported success but MCP holds no accepted plan |
-| `profile_unavailable`, `capability`, `provider_unavailable` | Agent worker | Claimed profile is not executable locally, the claim carried no capability, or no runner could be built for the profile |
-| `runner` | Agent worker | Runner failed without a more specific category |
-| `decision_budget` | PostgreSQL admission trigger | The battle's model execution budget is exhausted at claim time |
-| `ai_disabled_or_budget` | PostgreSQL insert trigger | AI execution was stopped, or the battle's budget was already spent, when the decision was created; the engine falls back at once |
-| `battle_stopped` | Battle stop route / expiry sweep | Battle stopped or expired while the decision was open |
-
-Background-generation jobs share the worker and runner categories above except
-`validation_limit`, `plan_not_submitted`, `runner`, `decision_budget` and
-`battle_stopped`, and add their own:
-
-| Error category | Meaning |
-| --- | --- |
-| `execution_error` | Runner failed or did not submit, without a more specific category |
-| `invalid_output` | Third empty or over-length background submission |
-| `timeout` | Execution deadline passed while the job was running |
-| `queue_timeout` | Job expired before any worker claimed it (status `expired`) |
-
-Unresolved requests that reach the deadline retain the timeout category. CLI terminal
-success remains subject to the worker's accepted-plan check.
-
-### State machine
-
-```mermaid
-stateDiagram-v2
-    [*] --> pending: decision created
-    pending --> running: agent claims lease
-    running --> running: expired lease reclaimed
-    pending --> accepted: scripted or model submission
-    running --> accepted: model submission
-    pending --> fallback: engine deadline
-    running --> fallback: engine deadline
-    running --> failed: runner failure or battle stop
-    failed --> fallback: engine resolves usable plan
-    accepted --> [*]
-    fallback --> [*]
-```
-
-An accepted submission is idempotent when it repeats the stored idempotency key. Optimistic version checks prevent late or duplicate workers from overwriting another resolution.
-
-## 8. Persistence and durability
+## 7. Persistence and durability
 
 PostgreSQL schema, access and coordination rules are in the [database guide](database.md).
-This section covers the completed-result cache and battle retries.
+This section covers the completed-result cache, battle retries and history reads.
 
 ### Completed battle result caching
 
@@ -595,7 +334,7 @@ Each claim increments `attempt`. Once a queued or lease-expired battle has used
 `attempts_exhausted` instead of starting another attempt. A stored scenario that
 cannot construct a match fails immediately with `invalid_scenario` and is not
 retried. Together with `battle_timeout` (see
-[current limitations](#19-current-limitations-and-follow-up-questions)), these are
+[battle expiry](#55-battle-expiry)), these are
 the engine's terminal battle error codes.
 
 See [engine capacity and recovery limits](observability.md#engine-capacity-and-recovery-limits)
@@ -604,7 +343,16 @@ for serial queue processing, claim timing, shutdown handoffs and database failur
 Decision wake-ups use the `battlefield_decision_ready` PostgreSQL channel, with the
 profile ID as payload.
 
-## 9. Security and trust boundaries
+### Battle history reads
+
+`GET /v1/battles` projects participant identities and controllers from the
+immutable scenario snapshot in a single query, with lifecycle timestamps,
+progress, status and a compact outcome. It does not load simulation states or use
+the completed-result cache. Keyset pagination on `battle_runs_history_idx`
+(`created_at DESC, id DESC`) fetches one extra row to detect the next page; status
+filters read current values, so membership may change between requests.
+
+## 8. Security and trust boundaries
 
 ### Access identity, roles and owners
 
@@ -751,7 +499,7 @@ in the [service authentication runbook](../operations/limited-launch.md#ci-servi
 The [access and isolation runbook](../operations/limited-launch.md) owns credential
 provisioning, network verification and enablement procedures.
 
-## 10. Configuration and profile availability
+## 9. Configuration and profile availability
 
 The common YAML configuration defines HTTP, database, API, authentication, engine, and AI settings. Each process loads only the sections it needs. Authentication names the environment variables holding its enable flag, credentials, signing secret, and Secure-cookie flag; the API fails startup when enabled secrets are missing or too short. Development application settings live in the Git-ignored project-root `.env`; the deployer separates them into database, authentication, and AI Kubernetes Secrets. Production uses the same application schema in a private `.env` beside `deployment.env`.
 
@@ -783,7 +531,7 @@ Key runtime settings and their defaults:
 
 The API catalog advertises profiles users may select. In cluster mode, an operator flag can advertise a host-connected CLI even though the API pod cannot execute it. An agent advertises only profiles it can execute; claims include those IDs so heterogeneous agents do not lease incompatible work. The worker ID and profile list are self-reported: this is a scheduling filter, not an authorization boundary, because the AI gateway does not bind the worker secret to a placement or profile set.
 
-## 11. Deployment topology
+## 10. Deployment topology
 
 Kubernetes hosts the runtime processes; battle rules and database coordination do
 not depend on Kubernetes APIs. Local development uses Kind. Production runs K3s
@@ -819,11 +567,14 @@ evaluation corpus digest over the tracked files' contents and relative names. Re
 migrations and rollback procedures belong to [deployment operations](../operations/deployment.md),
 [K3s delivery](../operations/k3s-delivery.md), and the
 [supply-chain runbook](../operations/supply-chain-runbook.md).
+The image-verification admission webhook fails closed on missing or invalid
+evidence; see [admission verification](../operations/limited-launch.md#validation-and-recovery)
+for the configured retrieval timeout.
 The advisory retention inventory publishes only after cluster and registry reads
 succeed; a failed collection preserves the previous report. Registry deletion is
 not automated.
 
-## 12. Observability
+## 11. Observability
 
 - Processes emit structured JSON logs with stable `event` identifiers and readable
   `msg` summaries containing selected operational fields. The shared logging
@@ -831,12 +582,11 @@ not automated.
   those fields into user attribute groups. `LOG_LEVEL` defaults to INFO.
 - API logs carry or generate `X-Request-ID`. Tracing wraps access logging so
   completion logs, including authentication rejections, share the request span.
-- Every `/v1` error uses one JSON envelope, `{"error":{"code","message","requestId"}}`,
-  written by `internal/apierror`. `requestId` equals the `X-Request-ID` header and
-  the `request_id` log field, so a client-reported failure maps to one log line.
-  The identifier lives in the leaf `internal/observability/requestid` package because `httpapi`
-  imports `authn`, which also writes errors. Codes are listed in the
-  [API reference](api.md#errors).
+- Every `/v1` error uses one JSON envelope written by `internal/apierror`; its
+  `requestId` equals the `X-Request-ID` header and the `request_id` log field, so a
+  client-reported failure maps to one log line. The identifier lives in the leaf
+  `internal/observability/requestid` package because `httpapi` imports `authn`,
+  which also writes errors. See the [API reference](api.md#errors).
 - HTTP completion logs carry `actor_id` and `actor_role` from authentication
   middleware, providing request attribution rather than a tamper-proof audit
   store. Tokens, cookies and email headers are not logged. See
@@ -853,8 +603,10 @@ not automated.
 - Local Prometheus discovers nodes and scrapes each kubelet's cAdvisor endpoint
   using service-account authentication and the narrow `nodes/metrics`
   permission; it does not receive general kubelet proxy access.
+- AI decisions are traced in full and can be forwarded to an optional self-hosted
+  Langfuse; see [AI observations](observability.md#ai-observations-in-langfuse).
 
-## 13. Decisions and trade-offs
+## 12. Decisions and trade-offs
 
 ### Determinism over direct model control
 
@@ -876,253 +628,20 @@ The same small, auditable MCP tool surface supports API and subscription CLI mod
 
 The UI polls the API, the engine polls battle rows, and agents long-poll the AI gateway. PostgreSQL notifications reduce model-claim latency without becoming a correctness dependency. Higher scale may justify push delivery or a dedicated broker.
 
-## 14. Shared content library and scenario restrictions
-
-
-Catalog startup resolves ruleset library references from the sibling `content`
-directory. Libraries version unit definitions, upgrades, existing castle/economy
-building roles, and unit cards together. Rulesets select content and own global
-balance rules; scenarios can narrow units, upgrades, and buildings. Invalid
-references, incompatible authored plans, and invalid definitions fail startup.
-
-Scenario summaries expose effective allowed IDs. Faction profiles are independent
-of rulesets and scenarios. The backend validates purchases against the selected scenario. The resolved scenario contains
-full definitions, filtered cards, and library provenance; its hash and persisted
-JSON freeze these across later catalog edits. AI legal choices, retrieval, and
-purchase validation consume the same resolved roster. Excluding economy buildings
-disables economy production; legal construction sites remain when other structures are allowed. No schema migration
-or runtime content service is required. See the
-[content authoring guide](../developer/content-library.md).
-
-## 15. Faction doctrine and opening purchases
-
-New battle snapshots use version 2. Factions contain identity and doctrine, independent
-of model profiles and scenario catalogs. The owning doctrine is frozen in each
-decision context, included in observation hashes, and delivered to API and CLI
-runners beneath core rules using the versioned doctrine prompt template. Opponent
-doctrines are absent from agent observations.
-
-The first worker transition is an opening decision at tick zero. Both contexts
-are prepared from castles and starting gold before either plan is applied. Opening
-permits zero to six recruited units and one-time upgrades, with no construction,
-income, or combat. The worker persists opening state and events through `SaveTick`
-before tick one. Opening units become ready at tick one. Accepted decisions and
-fallbacks use the existing durable records, deadlines, and attempt/requeue semantics.
-The persisted `openingComplete` state and engine phase prevent repeated spending.
-
-Gold is the only resource: Castle Siege starts with 180; unspent gold carries forward.
-`upgradeOrders` is an ordered array of legal IDs executed at the `upgrades` position
-in `spendOrder`. Already-owned IDs are skipped free; the first unaffordable upgrade
-stops that category, respecting reserves. Attack/defense bonuses update living units
-and future recruits. Economy bonuses update existing and future economy buildings;
-new bonuses affect the next income collection. In-battle income still precedes spending.
-
-Scripted controllers and opening fallback ignore doctrine. They buy legal units
-round-robin in sorted ID order, skipping unaffordable types, until six purchases or
-no affordable type remains. Legacy snapshots without version 2 retain their starting
-blueprints, initial upgrade bonuses, and original decision schedule.
-
-### Faction identity and background drafts
-
-Faction identity now consists of name, explicit strategic doctrine, and an
-optional background (trimmed, at most 1,000 Unicode characters). Backend validation,
-MCP descriptions, and the writer prompt share faction limit constants; the
-frontend editor and preview share matching feature constants. Background-generation
-provenance uses a `faction-background-v2` digest covering the rendered system
-instructions (including the character limit) and embedded request instructions. Battle creation
-copies all three into its immutable scenario snapshot. Missing background in old
-snapshots decodes as empty. Only the owning profile enters each decision context,
-observation hash, durable decision provenance, and API/CLI untrusted decision context.
-The shared `battlefield-agent` identity context (introduced in v7) JSON-escapes profile fields and
-asks the agent to act as the faction's commanding voice. Core rules take
-precedence over doctrine; background supplies perspective beneath doctrine.
-Scripted controllers do not interpret history or map keywords to tactical weights.
-
-The API's `internal/generation` package owns durable background draft admission.
-PostgreSQL serializes each actor's admissions by locking
-`faction_generation_accounts`; a partial unique index also prevents multiple
-active jobs. `faction_background_generations` stores input, idempotency hash,
-profile, quota admission day via `created_at`, expiry, result, prompt version,
-usage, timing, and model metadata. Reads/admissions/claims expire stale rows.
-Queued and running expiry both consume the original admission day’s allowance.
-No in-memory counter or browser state is authoritative for allowance.
-
-Generation workers reuse the agent execution infrastructure with an advertised
-`faction_background` job type and executable profile IDs. Legacy claims without
-job types remain battle-only. Battle claims take priority; generation starts only
-when a worker owns a free execution slot. Workers check ready background jobs
-before entering an empty battle long poll; jobs admitted during that poll are
-checked on the next claim. The AI gateway write timeout leaves room beyond the maximum
-20-second poll so a durable claim can be delivered. Claims use `FOR UPDATE SKIP LOCKED` and
-never reclaim running generation jobs. Generation capabilities are namespaced
-separately and authorize only the draft's two tools on `/generation-mcp`,
-`get_background_context` and `submit_faction_background`, neither of which
-receives battle data. Each endpoint accepts only its own kind: `/mcp` rejects
-generation capabilities and `/generation-mcp` rejects battle capabilities. Workers
-report the configured model, prompt version, usage and failure category to
-`/internal/agent/generation-finish`.
-The restricted AI gateway database role receives SELECT/UPDATE on generation jobs,
-without faction-table or battle-state access.
-
-One operator-configured profile selects the writer independently of battle
-models. API execution has at most three provider turns. Native CLI execution uses
-the generation-only prompt/tool surface, a three-turn instruction and three
-invalid-submission cap, and the same execution deadline; native CLI internal
-provider calls are not exposed as individually enforceable turns by the runner.
-There is no automatic model fallback. Model-returned prose alone is insufficient:
-a valid server-accepted tool submission is required for success.
-
-The frontend keeps generated text in an editable preview until Use background;
-Discard and errors leave current profile fields intact. Saving is a separate
-explicit action. Manual background editing works while generation is disabled.
-
-
-## 16. Battle history reads
-
-The authenticated `GET /v1/battles` route passes through the battle API,
-service, and PostgreSQL repository. A single query projects participant
-identities/controllers from the immutable scenario snapshot and reads lifecycle
-timestamps, progress, status, and a compact outcome. It does not load simulation
-states or use the terminal-result cache. History is service-wide: every
-authenticated Player, Developer, or Admin sees all battles, and ownership only
-restricts mutations.
-
-The `battle_runs_history_idx` index orders `created_at DESC, id DESC`.
-Migration `00010_battle_history.sql` adds it without rewriting existing data;
-rollback drops only the index. Keyset pagination uses the last displayed
-creation time and UUID, with one extra fetched row to detect the next page.
-Status filtering reads current values, so membership may change between requests.
-
-The React `/battles` page fetches on entry, filter/page navigation, retry, and
-manual refresh. It does not poll. URL parameters preserve the status, current
-cursor, and prior cursors for Previous/browser navigation; refresh returns to
-the newest page with the same filter. Detail links carry the originating URL
-in router state, and direct detail visits link back to the unfiltered archive.
-Obsolete requests are aborted and their results ignored.
-
-### Frontier Siege capabilities
-
-The optional `frontier-siege-v2` scenario resolves `core` version `2` through
-`castle-siege-v2`, with seven units, three additional structure types, and a 25×17
-map. Unit definitions and runtime units carry optional class, minimum range,
-building priority, damage bonus, and healing fields; omitted capabilities preserve
-ordinary v1 behavior. `Ruleset.structures` describes extra building types while
-legacy castle/economy stats remain in `BuildingRules`. `maximumBuildingCount`
-limits all living non-castle structures; the economy limit remains separate.
-
-Tick ordering is income/production, faction tactics, position-attack aim capture,
-tower attacks in building-ID
-order, then unit turns by speed/ID. New tower attacks and Barracks sources activate
-on the next tick. Healing takes a unit action and never enters minimum-damage
-combat. Siege approaches structure firing positions; Herbalists approach allied
-soldiers. Shared pathfinding enforces terrain and occupancy. Authored map bounds
-are now odd widths 15–41 and heights 11–31 with two to eight mirrored construction
-sites per side. Existing authored maps remain valid.
-
-Typed `constructionOrders` and optional recruitment `sourceBuildingId` flow
-through controller cloning/validation, frozen worker observations, MCP submissions,
-and persisted decisions. Missing construction orders preserve legacy defaults;
-explicit empty arrays disable construction. These fields were introduced as
-optional in tool schema `battlefield.mcp-tools.v5` and remain optional through
-the current `battlefield.mcp-tools.v7`. All capability data is serialized in
-existing scenario and state JSON, requiring no database migration. Faction
-projections strip hidden action targets; spectators retain the complete event
-stream. The frontend renders healing and tower actions and displays recruitment
-origins in decision history.
-A frontend presentation layer derives readable entity names from existing IDs and
-state metadata; it does not change API payloads, persistence, or engine identity.
-Generated IDs retain their embedded sequence in labels even after an entity dies
-or an older attempt is inspected. Current-state metadata is only used for events
-from that attempt. The map uses its displayed perspective's entity metadata and
-local SVG unit/building icons; roster, event fields, and decision recruitment
-sources share naming helpers. Full IDs remain available through tooltips and raw
-inspection views, and freeform model text is preserved.
-See [Game rules](../game/game-rules.md) for the consolidated battle rules and [Frontier Siege](../game/frontier-siege.md) for the roster, map, and balance probes.
-
-## 17. Compact battlefield view
-
-The agent view groups units, buildings and statistics in `view.state.factions`:
-each group has `factionId`, optional `stats`, `units` and `buildings`. Entities
-inherit ownership from their group. Missing faction statistics are not invented
-when only entities are observed. Full entity IDs, targets and recruitment source
-references remain unchanged. `view.buildingProfiles` shares identical effective
-building properties only when the profile map and references reduce total size;
-health, location, readiness and combat observations remain individual. Unit
-profiles remain shared across groups. Persisted state and the game's regular
-view types retain flat entity arrays.
-
-The current projection also replaces an identical historical plan with
-`planRef: "#/activePlan"`, only when smaller. Repeated state battle ID/tick and
-own-faction gold/upgrades inherit their top-level values only when equal;
-differing historical/enemy facts stay explicit. The prompt documents these rules.
-API and Antigravity CLI delivery omit exact copies of faction identity already present
-in the untrusted identity context. They retain mismatches and all original identity wording.
-Direct MCP/Codex delivery and the inspector remain self-contained. Persistence
-and validation hashes are not changed by any projection.
-
-Decision context v4 additionally compresses the agent-facing battlefield view.
-`view.unitProfiles` stores identical effective-stat sets once; individual units
-reference a profile and retain health, positions, readiness, movement and combat
-observations. Profiles use observed modified stats, independently of catalog
-base-stat lookup. `view.visibleRowRanges` encodes visible cells with inclusive
-x ranges per y row, preserving visible empty cells and gaps. Each encoding is
-used only if it reduces serialized size; inline units and `visiblePositions`
-remain valid in v4. Persisted observations and validation remain unchanged.
-The inspector uses “Agent context (reconstructed)” and “On-demand unit reference”
-section labels without explanatory notices. Reconstruction can differ
-from original input. Evaluation and tool responses use the same projection.
-
-## 18. Optional Langfuse AI observability
-
-The agent worker starts a separate, fully sampled trace for each decision request,
-linked to the engine's `battlefield.engine.decision_window` span; battle creation
-and engine processing are also always sampled (see
-[distributed traces](observability.md#distributed-traces)).
-Stable request-derived trace/root IDs let the capability-scoped AI gateway attach
-server-side tool observations even when a CLI does not propagate trace headers.
-API runners emit one generation per model attempt; CLI runners emit one aggregate
-session generation. Decision roots carry no duplicate billable token usage.
-The worker stores a trace marker with existing provider metadata, and additive
-usage fields remain in the existing JSON usage payload. No database migration is
-required. Legacy history retains its original interpretation and no invented link.
-
-The collector keeps Tempo for infrastructure and optionally forwards only AI
-observations to a self-hosted Langfuse Helm release. Langfuse owns dedicated
-PostgreSQL, Valkey, ClickHouse/Keeper and SeaweedFS storage. Only the collector
-receives its ingestion credentials. The API reads an optional public URL/project
-ConfigMap for inspector links. Export is asynchronous and does not participate in
-decision acceptance or timeout enforcement. See [Langfuse operations](../operations/langfuse.md)
-for deployment order, sampling, privacy, persistence and token-accounting limits.
-
-## 19. Current limitations and follow-up questions
+## 13. Current limitations and follow-up questions
 
 - Production identity is delegated entirely to Cloudflare Access, so Access rule removal and session revocation are deployment responsibilities that offline JWT verification cannot observe. The development password login remains single-administrator and is not player identity.
 - Public battle updates use polling rather than push delivery.
-  A terminal battle-control response cancels status polling and invalidates
-  in-flight responses so stale running status cannot overwrite an operator stop.
 - Load and failover behavior needs testing before increasing engine, AI gateway, or agent replicas.
 - Antigravity decisions prefetch the context into the prompt and refuse contexts over 64 KiB, because the CLI offloads large tool results to files it cannot read. Large late-game contexts therefore fall back for that profile.
 - All worker placements share one control-plane secret, and claims self-report their profile IDs. A compromised worker could claim another placement's profiles. The secret cannot be rotated without changing every holder at once; the CLI VM's copy is replaced through the managed [`battlefield-platform/cli`](../operations/cli-worker.md) job.
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
 
-The image-verification admission webhook fails closed on missing or invalid
-evidence. See [admission verification](../operations/limited-launch.md#validation-and-recovery)
-for the configured retrieval timeout.
-
-### Battle expiry
-
-Unfinished battles expire one hour after creation, including queued and paused
-time. The engine sweeps at startup and every minute independently of active
-battle processing. It atomically marks expired battles failed with
-`battle_timeout`, clears their leases, and cancels pending/running decisions
-using the existing `battle_stopped` cancellation category. History and tick
-state remain available; active admission slots are released but daily usage is
-not refunded. While the engine is offline, expiry waits for restart.
-
 ## Related guides
 
 - [Codebase guide](../developer/codebase-guide.md): packages, source ownership and implementation change paths.
 - [Contributor CI](../developer/ci.md) and [cross-review](../developer/cross-review.md): development verification and review workflow.
+- [AI decisions](ai-decisions.md): runners, decision context, plan validation and fallback attribution.
 - [Database](database.md): schema, process access, claim and admission rules, and migrations.
 - [Observability architecture](observability.md): signal paths, telemetry contracts and reliability objectives.
 - [Deployment](../operations/deployment.md) and [Jenkins operations](../operations/jenkins.md): rollout, verification and recovery.

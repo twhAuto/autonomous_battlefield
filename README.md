@@ -66,7 +66,7 @@ Start with the [documentation index](docs/README.md) for the full guide catalogu
 | --- | --- |
 | Run or change the application | [Local setup](docs/developer/local-setup.md), [codebase guide](docs/developer/codebase-guide.md) |
 | Understand gameplay | [Game rules](docs/game/game-rules.md), [Frontier Siege](docs/game/frontier-siege.md) |
-| Understand the system | [System architecture](docs/architecture/system-architecture.md), [database](docs/architecture/database.md) |
+| Understand the system | [System architecture](docs/architecture/system-architecture.md), [AI decisions](docs/architecture/ai-decisions.md), [database](docs/architecture/database.md) |
 | Use the API | [HTTP reference](docs/architecture/api.md), [OpenAPI](docs/architecture/openapi.yaml) |
 | Author game content or compare controllers | [Content authoring](docs/developer/content-library.md), [AI comparisons](docs/developer/ai-comparisons.md) |
 | Deploy, operate or recover an environment | [Environment operations](docs/operations/environments.md), [deployment](docs/operations/deployment.md) |

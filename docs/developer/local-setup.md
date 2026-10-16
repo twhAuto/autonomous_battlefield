@@ -62,7 +62,7 @@ See [Antigravity setup](../operations/antigravity-cli.md),
 [Claude setup](../operations/claude-cli.md) and
 [profile availability](../operations/deployment.md#1-prepare-private-dev-secret-files).
 Configured model/version prefixes live in `backend/config.yaml`; the
-[execution contract](../architecture/system-architecture.md#6-model-execution)
+[execution contract](../architecture/ai-decisions.md#model-execution)
 explains their isolation boundaries.
 
 ## Standalone development services
