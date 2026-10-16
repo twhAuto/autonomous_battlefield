@@ -102,7 +102,9 @@ def desired_config(current, settings):
     if set(settings['models']) - set(profiles):
         raise ValueError('Managed settings name a profile the worker configuration does not have')
     concurrency = settings['agentConcurrency']
-    if ai.get('agentConcurrency') == concurrency and all(
+    # null requires the key itself to be absent; an explicit `agentConcurrency: null` still breaks older workers.
+    concurrency_matches = ('agentConcurrency' not in ai) if concurrency is None else ai.get('agentConcurrency') == concurrency
+    if concurrency_matches and all(
             profiles[name].get('model') == model for name, model in settings['models'].items()):
         return current
     if concurrency is None:

@@ -180,6 +180,9 @@ class ConfigTests(unittest.TestCase):
         self.assertNotIn('agentConcurrency', yaml.safe_load(removed)['ai'])
         self.assertIs(worker.desired_config(removed, older), removed)
         self.assertNotIn('agentConcurrency', yaml.safe_load(worker.desired_config(CONFIG, older))['ai'])
+        explicit_null = CONFIG.replace('  agentHealthAddress:', '  agentConcurrency: null\n  agentHealthAddress:').replace('gemini-3.7-flash-medium', 'gemini-3.8-flash-medium')
+        self.assertIn('agentConcurrency', yaml.safe_load(explicit_null)['ai'])
+        self.assertNotIn('agentConcurrency', yaml.safe_load(worker.desired_config(explicit_null, older))['ai'])
 
     def test_unknown_profiles_and_invalid_settings_are_rejected(self):
         with self.assertRaisesRegex(ValueError, 'does not have'):
