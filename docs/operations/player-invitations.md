@@ -36,6 +36,10 @@ emails. Admin/Developer identities and their MFA policies remain operator-manage
    BATTLEFIELD_MEMBERS_API_TOKEN=<private-api-token>
    ```
 
+   Enabling managed Players requires `BATTLEFIELD_AUTH_MODE=cloudflare`, a
+   32-character lowercase hexadecimal account ID, a lowercase group UUID, and a
+   nonblank, single-line API token. Invalid settings fail API startup.
+
    Keep `BATTLEFIELD_ACCESS_ROLES` with the existing Admin/Developer assignments.
    Its Player emails are imported **once** at first managed startup. Imported
    Players wait for successful synchronization before becoming active. Later
