@@ -9,7 +9,7 @@ private key stays on the workstation.
 
 [Terraform VM provisioning](k3s-vm.md) uses the separate `battlefield-platform/vm`
 job, and the [K3s platform job](k3s-platform.md) owns guest configuration.
-`battlefield-platform/cli` keeps the CLI worker VM, bridge and worker secret in order;
+`battlefield-platform/cli` keeps the CLI worker VM, bridge, worker secret and worker release in order;
 see [CLI worker operations](cli-worker.md).
 [CI service administration](ci-bootstrap.md) and
 [application delivery](k3s-delivery.md) have their own workflows. The host job

@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -31,14 +32,16 @@ func main() {
 const authCheckTimeout = 15 * time.Second
 
 // command runs the agent, or with a -check-*-auth flag only runs that subscription
-// CLI's login check and exits.
+// CLI's login check and exits. -check-config loads and validates the configuration
+// and exits, so an upgrade can test a new binary against the installed configuration.
 func command(claudeAuth, antigravityAuth func(context.Context) error) startup.Command[config.AgentConfig] {
-	var checkAntigravityAuth, checkClaudeAuth bool
+	var checkAntigravityAuth, checkClaudeAuth, checkConfig bool
 	return startup.Command[config.AgentConfig]{
 		Name: "agent",
 		Flags: func(flags *flag.FlagSet) {
 			flags.BoolVar(&checkAntigravityAuth, "check-antigravity-auth", false, "check isolated Antigravity keyring login without model inference")
 			flags.BoolVar(&checkClaudeAuth, "check-claude-auth", false, "check Claude subscription login without model inference")
+			flags.BoolVar(&checkConfig, "check-config", false, "validate the configuration and exit without running")
 		},
 		Before: func(ctx context.Context) (bool, error) {
 			switch {
@@ -50,7 +53,13 @@ func command(claudeAuth, antigravityAuth func(context.Context) error) startup.Co
 			return false, nil
 		},
 		Load: config.LoadAgent,
-		Run:  run,
+		Run: func(ctx context.Context, configuration config.AgentConfig) error {
+			if checkConfig {
+				slog.Info("agent_configuration_valid", "concurrency", configuration.Agent.Concurrency)
+				return nil
+			}
+			return run(ctx, configuration)
+		},
 	}
 }
 
@@ -86,12 +95,24 @@ func run(ctx context.Context, configuration config.AgentConfig) error {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	// Drain state for the CLI worker job, which upgrades and restarts only an idle worker.
+	mux.HandleFunc("GET /status", statusHandler(executor.Status))
+	stopDrainSignals := handleDrainSignals(executor)
+	defer stopDrainSignals()
 	server := &http.Server{
 		Addr: configuration.Agent.HealthAddress, Handler: tracing.HTTPHandler("battlefield-agent.http", mux),
 		ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 2 * time.Second,
 		WriteTimeout: 2 * time.Second, IdleTimeout: 30 * time.Second,
 	}
 	return serveUntilStopped(ctx, server, executor, shutdownTimeout)
+}
+
+// statusHandler serves the worker's drain state as JSON.
+func statusHandler(status func() agent.Status) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(status())
+	}
 }
 
 // jobRunner is the part of agent.Executor the process lifecycle needs.

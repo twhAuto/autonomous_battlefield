@@ -834,7 +834,7 @@ not automated.
   elapsed wall time. Per-tick persistence events require DEBUG logging.
 - Agent and AI gateway logs cover decision claims, tool access, validation, provider outcome, usage, and latency.
 - Full combat detail lives in `battle_events` rather than normal process logs.
-- API and engine expose lifecycle checks; the agent exposes `/healthz`; the AI gateway exposes `/healthz` for liveness and `/readyz`, which pings PostgreSQL, for readiness.
+- API and engine expose lifecycle checks; the agent exposes `/healthz` and `/status` (drain state: `draining`, `active`, `concurrency`; `SIGUSR1` stops new claims and `SIGUSR2` resumes them); the AI gateway exposes `/healthz` for liveness and `/readyz`, which pings PostgreSQL, for readiness.
 - Prometheus, Grafana, Elasticsearch, Kibana, and Fluent Bit are provided for the local Kubernetes environment.
 - Local Prometheus discovers nodes and scrapes each kubelet's cAdvisor endpoint
   using service-account authentication and the narrow `nodes/metrics`

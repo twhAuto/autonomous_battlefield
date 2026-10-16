@@ -7,8 +7,11 @@ isolated `battlefield-agent` VM. Three things must hold for those battles to run
 - The host MCP bridge reaches the current AI gateway pod.
 - The worker holds the same `BATTLEFIELD_AGENT_SECRET` as production.
 
+The worker binary should also match the release production runs, so it speaks the
+same protocol as the gateway and supports current settings.
+
 Application delivery does not touch the VM. The manually started Jenkins job
-`battlefield-platform/cli` keeps all three in order. It runs
+`battlefield-platform/cli` keeps all of this in order. It runs
 [`scripts/infra/cli-worker.py`](../../scripts/infra/cli-worker.py) on
 `battlefield-production` as the registered operator. It needs the CLI VM and guest
 already registered through [CLI VM provisioning](cli-vm-platform.md) and
@@ -47,7 +50,8 @@ python3 scripts/infra/seed-platform.py --jobs-only
 
 It asks privately for a Jenkins API token (`--token-file` accepts a private file instead).
 
-The job uses only the existing `host-sudo-password` folder credential.
+The job uses the existing `host-sudo-password` folder credential and the global
+`battlefield-ghcr` registry credential, which it needs to read the worker release.
 
 ## Verify, plan and apply
 
@@ -55,8 +59,8 @@ Open `battlefield-platform/cli` → **Build with Parameters**.
 
 | Action | Effect |
 | --- | --- |
-| `verify` (default) | Read-only. Fails and lists every problem: VM state, host units, bridge reachability, whether the gateway accepts the production worker secret, guest identity, worker secret match, worker health, and the boot/watchdog units. |
-| `plan` | Records the repairs that `apply` would make, in a private receipt valid for 30 minutes. |
+| `verify` (default) | Read-only. Fails and lists every problem: VM state, host units, bridge reachability, whether the gateway accepts the production worker secret, guest identity, worker secret match, worker health, binary drift, a worker left draining, and the boot/watchdog units. A worker binary older than the production release is a notice: it is listed but does not fail. |
+| `plan` | Records the repairs that `apply` would make, and the production release digest, in a private receipt valid for 30 minutes. |
 | `apply` | Plans, pauses for `whtan` to approve, re-checks that the plan still matches and consumes the receipt. It then repairs, verifies, and fails if anything remains. Reports are archived even when the run fails. |
 
 Apply repairs only what is needed:
@@ -67,7 +71,9 @@ Apply repairs only what is needed:
 - **`sync-worker-secret`:** replaces only the `BATTLEFIELD_AGENT_SECRET` line of `/etc/battlefield-agent/worker.env` with the value from `~/.config/autonomous-battlefield/production/.env`. It also updates the bootstrap ownership marker's fingerprint for that file and restarts `battlefield-worker`.
 - **`restart-worker`:** restarts an inactive or unhealthy worker.
 - **`enable-worker`:** re-enables a worker that is running but disabled, so it survives a reboot.
-- **`sync-worker-config`:** applies [`infra/deploy/agent-vm/managed-settings.json`](../../infra/deploy/agent-vm/managed-settings.json) to `/etc/battlefield-agent/config.yaml`. That is `agentConcurrency` (parallel CLI decisions) and each CLI profile's `model`. `agentConcurrency` is currently `null`, which removes the setting: the adopted worker binary on the VM predates it, rejects a config containing it, and runs one decision at a time. Set it to 1–4 only after the worker binary is upgraded (AB-139 phase 2). Only those fields change. The job updates the guest file, its ownership-marker fingerprint and the host's registered copy (`cli.guest/config.yaml`) together, then restarts the worker. A restart ends any CLI decision in progress, which falls back for that turn; apply when no CLI battle is active.
+- **`resume-worker`:** resumes claims on a worker that an interrupted run left draining.
+- **`upgrade-worker`:** installs the production worker release; see [worker upgrades](#worker-upgrades).
+- **`sync-worker-config`:** applies [`infra/deploy/agent-vm/managed-settings.json`](../../infra/deploy/agent-vm/managed-settings.json) to `/etc/battlefield-agent/config.yaml`. That is `agentConcurrency` (parallel CLI decisions) and each CLI profile's `model`. `null` removes `agentConcurrency`, so the worker runs one decision at a time. Workers older than the drain support reject the setting, so a value of 1–4 is applied only once the worker runs the production release, or in the same apply that upgrades it. Only those fields change. When the worker runs the production release, it validates the new settings (`-check-config`) before they replace the file. The job drains the worker, then updates the guest file, its ownership-marker fingerprint and the host's registered copy (`cli.guest/config.yaml`) together, and restarts the worker.
 
 Secret sync only proceeds when `worker.env` still matches its registered fingerprint
 and contains only the three expected settings. A drifted `worker.env` blocks every
@@ -81,6 +87,58 @@ isolation flag, is reported and left untouched; it needs a reviewed bootstrap ch
 To change a CLI model or the concurrency, edit `managed-settings.json` and the matching
 profile in the application ConfigMap (a test keeps their models equal), merge and
 promote, then run `apply`.
+
+## Worker upgrades
+
+The release is the `/app/agent` binary in the backend image that the in-cluster
+`battlefield-agent` deployment runs. The job reads that deployment's digest-pinned
+image reference through the registered kubeconfig and context in `cli.json`, after
+checking that the cluster's `kube-system` UID matches the registration. It then
+pulls the image by digest and atomically copies the binary into a private cache,
+`~/.cache/autonomous-battlefield/cli-worker/<digest>`. The digest pins the
+image content, so the copy matches production. Plan proposes `upgrade-worker` when
+the guest binary is the registered one and differs from the release. An apply after
+each backend release therefore upgrades the worker to the same code. If the release
+cannot be read, verify reports the upgrade status as unknown and plan proposes no
+upgrade.
+
+`upgrade-worker` performs these steps in order:
+
+1. Copies the release to the guest and checks its SHA-256.
+2. Runs the new binary with `-check-config` against the installed configuration and
+   worker environment. A rejected configuration stops the upgrade with nothing changed.
+3. Drains the worker (below).
+4. Replaces `/usr/local/bin/battlefield-agent` and its ownership-marker fingerprint,
+   then restarts the worker.
+5. Waits up to 90 seconds for the new worker to report healthy and not draining. If
+   it does not, or step 4 fails, the job reinstalls the registered binary from the
+   host copy and fails. If that restore fails too, it resumes claims and reports it.
+6. Only then records the release as the registered artifact: the host copy in
+   `cli.guest/battlefield-agent` and its SHA-256 in `cli.json`, which the CLI
+   bootstrap checks.
+
+If a run stops after step 4, the next plan proposes the upgrade again. That run
+finds the release installed and finishes the registration. A guest binary that
+matches neither the registration nor the release is reported and never replaced.
+
+### Draining
+
+Restarting the worker cancels running decisions, which then fall back for that turn.
+Before a restart for a new binary or new settings, the job waits until no CLI
+decision is running, for at most five minutes:
+
+- **Workers with drain support** (from this release on) serve `GET /status` on the
+  guest's health port with `draining`, `active` and `concurrency`. The job sends
+  `SIGUSR1`, so the worker stops claiming and finishes running decisions, then
+  waits for `active` to reach 0. On a timeout, or if a later step fails, it sends
+  `SIGUSR2` to resume claims and reports that nothing was changed.
+- **Older workers** cannot stop claiming, and `SIGUSR1` would stop them. The job
+  never signals them. It waits until the worker has no child processes in two checks
+  in a row, then restarts at once. A decision claimed in that moment still falls back.
+  This applies only to the first upgrade from the adopted binary.
+
+Secret syncs and restarts of an unhealthy worker do not drain: such a worker cannot
+claim decisions.
 
 `reach-guest` means the job cannot log in with the automation key. Run the
 authorization step, then plan again. A guest whose machine or hardware identity
@@ -102,10 +160,13 @@ consistent with the job's changes.
 
 After production rollout, the main pipeline runs `cli-worker.py verify`. A
 problem marks the build **unstable** and archives `cli-worker-verify.json`. It
-never fails delivery or triggers a rollback. Repair with this job.
+never fails delivery or triggers a rollback. Repair with this job. A worker binary
+older than the new release only prints a notice; run `apply` to upgrade it.
 
 ## Not covered yet
 
-Worker binary releases, CLI tool updates, drain before restart and rollback remain
-AB-139 phase 2. Provider subscription logins are still interactive inside the worker
-account.
+- Updating the provider CLIs (`codex`, `claude`, `agy`) on the guest.
+- A manual rollback to an earlier worker release. A failed upgrade restores the
+  registered binary automatically, but a release that passes its health check
+  stays installed until a later release replaces it.
+- Provider subscription logins, which are still interactive inside the worker account.

@@ -5,13 +5,18 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agent"
 	"github.com/twh09/autonomous_battlefield/backend/internal/config"
 )
 
@@ -137,4 +142,36 @@ func TestRunReportsTracingConfigurationErrors(t *testing.T) {
 func invalidTracing(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
 	t.Setenv("OTEL_TRACES_SAMPLER_ARG", "2")
+}
+
+func TestCheckConfigValidatesWithoutRunning(t *testing.T) {
+	t.Setenv("BATTLEFIELD_AGENT_SECRET", strings.Repeat("s", 32))
+	directory := t.TempDir()
+	valid, invalid := filepath.Join(directory, "valid.yaml"), filepath.Join(directory, "invalid.yaml")
+	if err := os.WriteFile(valid, []byte("ai:\n  agentConcurrency: 4\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(invalid, []byte("ai:\n  agentConcurrency: 9\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unused := func(context.Context) error { t.Fatal("an auth check ran"); return nil }
+	// Running the worker would block on its claim loop, so returning proves it did not run.
+	if code := command(unused, unused).Main([]string{"-check-config", "-config", valid}); code != 0 {
+		t.Fatalf("valid configuration exited %d", code)
+	}
+	if code := command(unused, unused).Main([]string{"-check-config", "-config", invalid}); code != 1 {
+		t.Fatalf("invalid configuration exited %d, want 1", code)
+	}
+}
+
+func TestStatusHandlerReportsDrainState(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	statusHandler(func() agent.Status { return agent.Status{Draining: true, Active: 2, Concurrency: 4} })(recorder, httptest.NewRequest(http.MethodGet, "/status", nil))
+	var status agent.Status
+	if err := json.NewDecoder(recorder.Body).Decode(&status); err != nil || status != (agent.Status{Draining: true, Active: 2, Concurrency: 4}) {
+		t.Fatalf("status = %+v, %v", status, err)
+	}
+	if recorder.Header().Get("Content-Type") != "application/json" {
+		t.Fatal("status is not JSON")
+	}
 }

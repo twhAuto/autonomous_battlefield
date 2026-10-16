@@ -1,4 +1,4 @@
-// AB-139/AB-162: keep the registered CLI worker running and in sync with production.
+// AB-139/AB-162: keep the registered CLI worker running, upgraded and in sync with production.
 pipeline {
     agent { label 'battlefield-production' }
     options {
@@ -6,10 +6,10 @@ pipeline {
         disableConcurrentBuilds()
         buildDiscarder(logRotator(numToKeepStr: '20'))
         timestamps()
-        timeout(time: 30, unit: 'MINUTES')
+        timeout(time: 45, unit: 'MINUTES')
     }
     parameters {
-        choice(name: 'ACTION', choices: ['verify', 'plan', 'apply'], description: 'verify only reads. apply creates a fresh plan and pauses for owner review before repairing the CLI VM, bridge or worker.')
+        choice(name: 'ACTION', choices: ['verify', 'plan', 'apply'], description: 'verify only reads. apply creates a fresh plan and pauses for owner review before repairing or upgrading the CLI VM, bridge or worker.')
     }
     stages {
         stage('Trusted checkout') {
@@ -30,13 +30,15 @@ pipeline {
             steps {
                 // Same resource as the main production rollout, so repairs never overlap a deployment.
                 lock(resource: 'battlefield-production-platform') {
-                    withCredentials([file(credentialsId: 'host-sudo-password', variable: 'PLATFORM_SUDO_PASSWORD')]) {
+                    // GHCR reads the worker binary from the backend image production runs.
+                    withCredentials([file(credentialsId: 'host-sudo-password', variable: 'PLATFORM_SUDO_PASSWORD'),
+                                     usernamePassword(credentialsId: 'battlefield-ghcr', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
                         script {
                             def action = params.ACTION == 'verify' ? 'verify' : 'plan'
                             // Archive the report even when the step fails: a failed run's report is the diagnosis.
                             try {
                                 withEnv(["PLATFORM_ACTION=${action}"]) {
-                                    sh './scripts/ci/run-cli-worker.sh'
+                                    sh './scripts/ci/with-ghcr-auth.sh ./scripts/ci/run-cli-worker.sh'
                                 }
                             } finally {
                                 archiveArtifacts artifacts: "artifacts/cli-${action}.json", allowEmptyArchive: true
@@ -51,7 +53,7 @@ pipeline {
                                 }
                                 try {
                                     withEnv(['PLATFORM_ACTION=apply']) {
-                                        sh './scripts/ci/run-cli-worker.sh'
+                                        sh './scripts/ci/with-ghcr-auth.sh ./scripts/ci/run-cli-worker.sh'
                                     }
                                 } finally {
                                     archiveArtifacts artifacts: 'artifacts/cli-apply.json', allowEmptyArchive: true

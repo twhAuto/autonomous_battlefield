@@ -368,3 +368,72 @@ func TestServiceURLDerivesControlAndGenerationEndpoints(t *testing.T) {
 		}
 	}
 }
+
+// signallingRunner reports each start on started, then waits for finish. Both waits
+// honor cancellation: after Resume, finished jobs are re-claimed until the test cancels,
+// and a blocking send on a full started channel would never see that cancellation.
+func signallingRunner(started chan<- struct{}, finish <-chan struct{}) ai.DecisionRunner {
+	return runnerFunc(func(ctx context.Context, _ ai.DecisionSession) (ai.DecisionResult, error) {
+		select {
+		case started <- struct{}{}:
+		case <-ctx.Done():
+			return ai.DecisionResult{}, ctx.Err()
+		}
+		select {
+		case <-finish:
+			return ai.DecisionResult{Accepted: true}, nil
+		case <-ctx.Done():
+			return ai.DecisionResult{}, ctx.Err()
+		}
+	})
+}
+
+func TestDrainStopsNewClaimsAndLetsRunningDecisionsFinish(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var claims atomic.Int32
+	client := &http.Client{Transport: agentRoundTrip(func(request *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(request.URL.Path, "/claim") {
+			id := claims.Add(1)
+			body, _ := json.Marshal(job{CapabilityToken: "server-issued-capability", RequestID: fmt.Sprintf("request-%d", id), ProfileID: "profile"})
+			return agentResponse(http.StatusOK, string(body)), nil
+		}
+		return agentResponse(http.StatusNoContent, ""), nil
+	})}
+	started := make(chan struct{}, 4)
+	finish := make(chan struct{})
+	profiles := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
+	worker := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", WorkerID: "agent", Profiles: profiles, PollInterval: time.Millisecond, DecisionTimeout: time.Second, Concurrency: 1, Client: client, RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
+		return signallingRunner(started, finish), nil
+	}}
+	done := make(chan error, 1)
+	go func() { done <- worker.Run(ctx) }()
+	<-started
+	worker.Drain()
+	if status := worker.Status(); !status.Draining || status.Active != 1 || status.Concurrency != 1 {
+		t.Fatalf("status while draining a running decision = %+v", status)
+	}
+	close(finish)
+	deadline := time.Now().Add(2 * time.Second)
+	for worker.Status().Active != 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the running decision did not finish after drain")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	claimed := claims.Load()
+	time.Sleep(20 * time.Millisecond)
+	if claims.Load() != claimed {
+		t.Fatal("a draining worker claimed new work")
+	}
+	worker.Resume()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a resumed worker did not claim again")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
