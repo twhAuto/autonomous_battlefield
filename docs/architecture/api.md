@@ -221,7 +221,7 @@ and its payload. Players receive the same events with an empty `data` object.
 `GET /v1/battles/{id}/decisions?attempt=N` lists completed decisions with the
 `resolvedPlan` the engine applied (the `StrategyPlan` schema). Plans use IDs from
 the decision context, such as recruitment sources and construction sites, never
-guessed ones; the [decision contracts](system-architecture.md#7-decision-contracts-and-lifecycle)
+guessed ones; the [decision contracts](ai-decisions.md#submitted-plans)
 describe how plans are validated.
 
 `GET /v1/battles/{id}/decisions/{requestId}/context?attempt=N` returns the saved

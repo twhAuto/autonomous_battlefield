@@ -269,7 +269,7 @@ isolation and saved-login probing for the Codex, Claude, and Antigravity CLIs be
 profile discovery and execution. All three inherit only login and transport
 variables; Antigravity additionally gets a private home holding only its permission
 configuration, MCP server, and copied login token. `cmd/agent -check-antigravity-auth` supports the
-host launcher's preflight. See [CLI runtime](../architecture/system-architecture.md#cli-runtime)
+host launcher's preflight. See [CLI runtime](../architecture/ai-decisions.md#cli-runtime)
 for context delivery and accepted-plan enforcement.
 
 ### `internal/ai/providers`: external API adapters
@@ -494,9 +494,9 @@ Where to start for each cross-cutting feature. The linked page owns its behavior
 
 | Feature | Backend | Frontend | Key tests | Behavior owner |
 | --- | --- | --- | --- | --- |
-| Agent context projection | `ai/agentview`: `agent_context.go`, `battlefield_context.go` (v4 view), `faction_groups.go`, `context_duplicates.go`, `session_context.go` | `features/battles/components/DecisionContextPanel.tsx` | `agentview` tests, including `TestBattlefieldContextExternalFixture` (below) | [Decision contracts](../architecture/system-architecture.md#7-decision-contracts-and-lifecycle) |
+| Agent context projection | `ai/agentview`: `agent_context.go`, `battlefield_context.go` (v4 view), `faction_groups.go`, `context_duplicates.go`, `session_context.go` | `features/battles/components/DecisionContextPanel.tsx` | `agentview` tests, including `TestBattlefieldContextExternalFixture` (below) | [Compact battlefield view](../architecture/ai-decisions.md#compact-battlefield-view) |
 | AI observability | `observability/tracing/ai.go`, `ai/runner/observability.go`, `ai/runner/codex_usage.go`, `ai/mcpserver/tool_logging.go`, `context_telemetry.go` | `AIDecisionPanel` trace links and usage | `context_transport_test.go`; `scripts/test/test-cli-agent.py` | [Langfuse operations](../operations/langfuse.md) |
-| Access and roles | `authn/cloudflare.go`, `audience.go`, `diagnostics.go`, `authorization.go`, `preview.go` | `features/auth/SessionContext.tsx`, `RolePreviewContext.ts` | `config/access_test.go`, `battle/api/player_test.go`, [`test/integration`](#end-to-end-api-integration-test) | [Security boundaries](../architecture/system-architecture.md#9-security-and-trust-boundaries) |
+| Access and roles | `authn/cloudflare.go`, `audience.go`, `diagnostics.go`, `authorization.go`, `preview.go` | `features/auth/SessionContext.tsx`, `RolePreviewContext.ts` | `config/access_test.go`, `battle/api/player_test.go`, [`test/integration`](#end-to-end-api-integration-test) | [Security boundaries](../architecture/system-architecture.md#8-security-and-trust-boundaries) |
 | Admission and AI limits | Triggers in migrations `00011`, `00014`, `00016`; `ai/agent/policy.go`, `credentials_linux.go`; `ai/runner/process_linux.go` | — | `migrations/battle_admission_integration_test.go`, `generation/repo/cli_capacity_integration_test.go` | [Database](../architecture/database.md#admission-triggers) |
 | Managed Players | `internal/members`, `config/members.go` | `features/admin/pages/MembersPage.tsx` | `internal/members` integration tests | [Player invitations](../operations/player-invitations.md) |
 | Content catalog | `battle/catalog/library.go`, `restrictions.go`; `ai/decision/validate.go` | `ExpansionMap.test.tsx` | `game/expansion_test.go`; catalog `expansion_test.go`, `balance_test.go` | [Content libraries](content-library.md), [Frontier Siege](../game/frontier-siege.md) |

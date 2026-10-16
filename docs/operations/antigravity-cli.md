@@ -14,7 +14,7 @@ The pinned model is `gemini-3.8-flash-medium`. Model access depends on the signe
 
 ## Isolation and troubleshooting
 
-See [CLI runtime](../architecture/system-architecture.md#cli-runtime) for isolation,
+See [CLI runtime](../architecture/ai-decisions.md#cli-runtime) for isolation,
 context delivery, and submission enforcement.
 
 Before enabling the profile, the launcher runs a bounded account-usage probe under the same isolation. If this fails, confirm interactive sign-in in the same WSL session. A native token file must be a regular file, not a symlink. Temporary token refreshes are not persisted back to the host; if the saved login expires, sign in again with `agy`. CLI execution errors and unsuccessful or missing result envelopes fail the decision. Account authentication does not by itself establish model access or successful MCP submission.

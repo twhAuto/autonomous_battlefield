@@ -49,7 +49,7 @@ text is limited to 4096 UTF-8 bytes and each card field to 1024. Cards are filte
 to the selected roster; tactical text is advice, not a guaranteed counter. Numerical
 unit facts always come from the selected definitions. All library entries are
 validated, including unused ones. How cards are selected for a decision is in the
-[decision contracts](../architecture/system-architecture.md#versioned-unit-knowledge).
+[decision contracts](../architecture/ai-decisions.md#versioned-unit-knowledge).
 
 The shipped `ranged-skirmish-v1` scenario demonstrates a restricted roster:
 Vanguard and Ranger, Plating only, and no economy construction. It shares the
@@ -92,6 +92,9 @@ version, and a content digest. Battle creation resolves all definitions into the
 existing scenario JSON snapshot; no runtime library lookup or database migration
 is required. Library metadata and the resolved selection participate in the battle
 snapshot hash. Editing files cannot change an existing battle's saved rules.
+Catalog loading runs at API startup: invalid library references, invalid
+definitions, and authored plans incompatible with a scenario's selection fail
+startup rather than a later battle.
 
 Both faction-visible AI context and knowledge retrieval use the resolved roster.
 Engine and AI gateway purchase validation reject excluded units. The same rule applies

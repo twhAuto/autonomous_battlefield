@@ -33,8 +33,12 @@ Keep documentation synchronized with every implementation change:
 - Runtime components, boundaries, data flows, persistence, security, configuration,
   deployment or operational behavior: update
   `docs/architecture/system-architecture.md` and affected operations guides.
+- Model runners, prompts, MCP tools, decision context, plan validation or
+  background generation: update `docs/architecture/ai-decisions.md`.
 - Schema, migrations, database roles, grants or triggers: update
   `docs/architecture/database.md`.
+- API routes or fields: update `docs/architecture/openapi.yaml`; update
+  `docs/architecture/api.md` when permissions, retries or other behavior change.
 - Packages, entry points, important types, routes, migrations, frontend areas,
   tests or common workflows: update `docs/developer/codebase-guide.md`.
 - Setup steps, capabilities, commands, ports or documentation entry points: update
