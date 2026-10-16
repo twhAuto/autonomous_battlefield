@@ -142,10 +142,15 @@ asynchronously with bounded queues. Collector failure does not prevent strategy
 submission, but queue overflow or shutdown can lose telemetry. No sampling or
 export mechanism can reconstruct usage missing from a CLI response.
 
-To stop Langfuse export, set `LANGFUSE_ENABLED=0` in the registered profile
-and redeploy observability. Keep the Helm release, Secrets and volumes for
-historical inspection. Disable the trace links by removing the
-`battlefield-langfuse-links` ConfigMap and restarting the API if desired.
+Langfuse runs only on Kind; the K3s delivery profile rejects it. Deployment
+enables export whenever the `battlefield-langfuse-links` ConfigMap exists. To stop
+export, delete that ConfigMap (which also removes inspector trace links), restart
+the API, and redeploy observability, for example with
+`DEPLOY_COMPONENTS=observability ./scripts/cd/deploy-local.sh`.
+`LANGFUSE_ENABLED` is not a profile setting: the deployment profile rejects it.
+Setting `LANGFUSE_ENABLED=0` in a deployment command's environment disables export
+for that run only. Keep the Helm release, Secrets and volumes for historical
+inspection.
 
 ## Validation commands
 

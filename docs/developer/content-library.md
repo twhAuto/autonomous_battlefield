@@ -10,7 +10,7 @@ within it. `core-v2.yaml` additionally supplies siege/support units and
 New abilities beyond these capabilities still require engine support.
 
 A ruleset references a library and selects content while retaining ownership of
-starting gold, design budget, combat percentages, and building limits:
+starting gold, combat percentages, and building limits:
 
 ```yaml
 id: example-v1

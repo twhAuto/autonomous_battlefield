@@ -40,9 +40,9 @@ Kibana.
 
 For a compact timeline, select `@timestamp` and `msg`; expand rows for structured
 correlation fields. Use DEBUG only while diagnosing tick or health-request details,
-then restore INFO and restart the process. Copy a log's `trace_id` into Grafana
-Explore's Tempo trace-ID search; sampling can leave a logged trace without stored
-span data. See [structured logs](../architecture/observability.md#structured-logs)
+then restore INFO and restart the process. Paste a log's `trace_id` into the
+**Trace ID** box of the Battle Traces dashboard; sampling can leave a logged trace
+without stored span data. See [structured logs](../architecture/observability.md#structured-logs)
 for event semantics and excluded sensitive fields.
 
 Useful KQL filters include:
@@ -174,10 +174,13 @@ Elastic configuration must not be reused in a shared or production cluster.
 
 ## Find a battle trace
 
-In Grafana Explore, select **Tempo** and search for the service or trace ID.
-Links point from the later trace to the earlier one: the engine trace links to
-the creating request, and each decision links to its decision window. To follow a
-battle end to end in TraceQL:
+Open **Autonomous Battlefield / Battle Traces** and enter a **Battle ID** to list
+its engine and decision traces, or a **Trace ID** to draw one trace. The anonymous
+Viewer cannot open Grafana Explore and the login form is disabled, so the TraceQL
+queries below apply only where Grafana has been configured with Editor access; the
+dashboard panels cover the same searches. Links point from the later trace to the earlier one:
+the engine trace links to the creating request, and each decision links to its
+decision window. To follow a battle end to end in TraceQL:
 
 - `{ span."battlefield.battle_id" = "<battle ID>" }` finds the engine trace; its
   root's link opens the creating request.

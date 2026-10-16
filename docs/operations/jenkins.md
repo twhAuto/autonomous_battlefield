@@ -234,12 +234,11 @@ credential source; do not store long-lived access keys in the repository.
 
 ## Required Jenkins plugins
 
-- Pipeline.
-- Git.
-- GitHub Branch Source.
-- GitHub Checks (which installs Checks API as a dependency).
-- Credentials Binding.
-- SonarQube Scanner for Jenkins.
+The pinned controller plugin set, including Pipeline, Git, GitHub Branch Source,
+GitHub Checks, Credentials Binding, Lockable Resources, Job DSL and SonarQube
+Scanner, is in [`infra/jenkins/controller-lock.json`](../../infra/jenkins/controller-lock.json);
+the [CI bootstrap](ci-bootstrap.md) installs it. Platform jobs add the pins in
+[`infra/jenkins/platform-plugins.json`](../../infra/jenkins/platform-plugins.json).
 
 Keep Jenkins core and plugins patched. The pipeline invokes command-line tools
 that are installed on the agent rather than downloading toolchains dynamically.
@@ -407,7 +406,7 @@ Runs. Configure this once:
 4. Jenkins is currently local, so disable the app webhook. Periodic multibranch
    scanning remains the trigger. Add an HTTPS Jenkins webhook URL later if the
    controller becomes reachable from GitHub.
-5. Install the app only on `twh09/autonomous_battlefield`, then generate and
+5. Install the app only on `twhAuto/autonomous_battlefield`, then generate and
    download a private key from the app settings.
 6. Convert the key to the PKCS#8 form expected by Jenkins:
 
@@ -419,7 +418,7 @@ Runs. Configure this once:
 
 7. In **Manage Jenkins > Credentials**, add a global credential whose kind is
    **GitHub App**. Enter the app ID and paste the converted private key. Set its
-   repository owner to `twh09` if that advanced field is shown.
+   repository owner to `twhAuto` if that advanced field is shown.
 8. Open the `autonomous-battlefield` Multibranch Pipeline configuration. In its
    GitHub branch source, replace the current scan/checkout credential with this
    GitHub App credential, validate it, save, and run **Scan Repository Now**.
@@ -443,7 +442,8 @@ Use the main pipeline's `APPLY_CONFIGURATION` parameter after editing only `.env
 1. In Jenkins, select **New Item** and **Multibranch Pipeline**.
 2. Add a **GitHub** branch source.
 3. Set the repository URL to
-   `https://github.com/twh09/autonomous_battlefield.git`.
+   `https://github.com/twhAuto/autonomous_battlefield.git` (the seeded job's value in
+   [`infra/jenkins/repository.groovy`](../../infra/jenkins/repository.groovy)).
 4. Configure GitHub scan and checkout credentials if required.
 5. Under **Behaviors**, configure **Discover branches** to exclude branches
    that are also filed as pull requests, and configure **Discover pull requests
@@ -539,9 +539,9 @@ as the configured agent account. Do not run the dev bootstrap on this machine.
 If the production cluster is missing, recover its data and registered identity;
 do not recreate it as a daily startup step.
 
-Use the [server transition and recovery guide](environments.md) for registration,
-the `battlefield-production` agent label, dedicated kubeconfig credential, and
-pre-rollout database export. WSL requires only Docker and its dev cluster for
+Use [environment operations](environments.md) for production registration and
+configuration, and [K3s delivery](k3s-delivery.md) for the dedicated kubeconfig
+credential and database export and restore. WSL requires only Docker and its dev cluster for
 local iteration; local Jenkins and SonarQube need not be started.
 
 ## Troubleshooting setup and pipeline waits

@@ -93,9 +93,12 @@ Application rollout or smoke-test failure can restore that verified pair with
 `scripts/cd/rollback.sh`; database migrations are not reversed. See
 [Jenkins production delivery](jenkins.md#production-delivery).
 
-A lost registered cluster requires explicit recovery. Follow
-[environment validation and recovery](environments.md#other-managed-credentials-and-validation)
-to restore the database and verify the replacement cluster before registration.
+A lost registered cluster requires explicit recovery. The
+[server rebuild contract](server-rebuild-contract.md#ownership-locking-and-recovery-objectives)
+defines what can be recovered. There is no separate lost-cluster restore runbook:
+register the replacement cluster and restore a verified database dump using the
+registration and dump/restore steps in
+[K3s delivery](k3s-delivery.md#adoption-and-cutover-boundary).
 Then authenticate to GHCR and deploy the verified stored digest pair. Restoring
 images does not restore PostgreSQL data; normal bootstrap refuses to recreate a
 missing registered cluster.

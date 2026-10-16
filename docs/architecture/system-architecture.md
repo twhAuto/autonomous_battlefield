@@ -54,7 +54,7 @@ flowchart LR
     DB -.->|LISTEN/NOTIFY wake-up| Gateway
     Agent -->|claim work, MCP tools, result metadata| Gateway
     Agent <-->|model turns or isolated CLI process| Provider
-    Gateway -->|decision-table-only access| DB
+    Gateway -->|restricted role: decisions, generation jobs, admission| DB
 ```
 
 PostgreSQL is the durable coordination point. The API and engine do not call each other directly, and the engine and agent do not call each other directly. Each workload can fail or restart while preserving battle and decision state.
@@ -472,8 +472,9 @@ pass it as `guidanceOffset` with the same unit ID to read the remainder. Every p
 contains complete base stats. Text-only JSON delivery avoids duplicate CLI resource
 rendering. Overview text is not repeated in lookup results. All reference content remains untrusted data.
 
-The saved-context inspector exposes the exact initial projection separately from
-reference details labelled available on demand. Availability does not establish
+The saved-context inspector shows the reconstructed initial projection
+(**Agent context (reconstructed)**) separately from the stored reference details
+(**On-demand unit reference**). Availability does not establish
 that the model fetched them. Evaluation reports count lookup calls and aggregate
 input tokens across turns, alongside latency, acceptance, fallback, and diversity.
 See [compact context rollout](../developer/ai-comparisons.md#compact-unit-context)
@@ -503,6 +504,7 @@ into the fallback record instead of replacing it with `timeout`.
 | `profile_unavailable`, `capability`, `provider_unavailable` | Agent worker | Claimed profile is not executable locally, the claim carried no capability, or no runner could be built for the profile |
 | `runner` | Agent worker | Runner failed without a more specific category |
 | `decision_budget` | PostgreSQL admission trigger | The battle's model execution budget is exhausted at claim time |
+| `ai_disabled_or_budget` | PostgreSQL insert trigger | AI execution was stopped, or the battle's budget was already spent, when the decision was created; the engine falls back at once |
 | `battle_stopped` | Battle stop route / expiry sweep | Battle stopped or expired while the decision was open |
 
 Background-generation jobs share the worker and runner categories above except
@@ -1051,8 +1053,8 @@ base-stat lookup. `view.visibleRowRanges` encodes visible cells with inclusive
 x ranges per y row, preserving visible empty cells and gaps. Each encoding is
 used only if it reduces serialized size; inline units and `visiblePositions`
 remain valid in v4. Persisted observations and validation remain unchanged.
-The inspector uses “Reconstructed agent context” and “Unit details available on
-demand” section labels without explanatory notices. Reconstruction can differ
+The inspector uses “Agent context (reconstructed)” and “On-demand unit reference”
+section labels without explanatory notices. Reconstruction can differ
 from original input. Evaluation and tool responses use the same projection.
 
 ## 18. Optional Langfuse AI observability
@@ -1085,7 +1087,7 @@ for deployment order, sampling, privacy, persistence and token-accounting limits
   in-flight responses so stale running status cannot overwrite an operator stop.
 - Load and failover behavior needs testing before increasing engine, AI gateway, or agent replicas.
 - Antigravity decisions prefetch the context into the prompt and refuse contexts over 64 KiB, because the CLI offloads large tool results to files it cannot read. Large late-game contexts therefore fall back for that profile.
-- All worker placements share one control-plane secret, and claims self-report their profile IDs. A compromised worker could claim another placement's profiles. The secret cannot be rotated without changing every holder at once, and the CLI VM's `worker.env` cannot be changed through the managed workflow.
+- All worker placements share one control-plane secret, and claims self-report their profile IDs. A compromised worker could claim another placement's profiles. The secret cannot be rotated without changing every holder at once; the CLI VM's copy is replaced through the managed [`battlefield-platform/cli`](../operations/cli-worker.md) job.
 - Rigorous controller experiments may need experiment identity, model parameters, and cost normalization beyond the current evaluation view.
 
 The image-verification admission webhook fails closed on missing or invalid

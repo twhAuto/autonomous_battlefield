@@ -181,7 +181,7 @@ Content-Type: application/json
 }
 ```
 
-A valid request returns `202 Accepted`, a queued status, and `Location: /v1/battles/{id}`. Invalid input returns `400` and a missing scenario or faction returns `404`.
+A valid request returns `202 Accepted`, a queued status, and `Location: /v1/battles/{id}`. Malformed input returns `400` and a missing scenario or faction returns `404`. A well-formed request that cannot run returns `422` with `validation_failed`: an incompatible faction, an invalid blueprint, or an unavailable model profile.
 
 The client-supplied `id` makes retries safe. Repeating a request with the same `id` returns `202` and the existing battle when the caller, resolved scenario, and `tickCount` all match the original; its `status` is then the battle's current status. Reusing an `id` with a different caller, scenario, or `tickCount` returns `409`. If the existing battle cannot be read to verify a retry, the request fails with `500` rather than `409`, so a client does not abandon an ID that may already hold its battle.
 
@@ -191,8 +191,8 @@ returns credential values or credential environment-variable names.
 
 At ticks 10, 20, 30, and so on, the engine freezes the prior state, creates one
 fog-of-war-bounded decision per faction, waits up to two minutes for model plans,
-then advances the deterministic simulation with the resolved plans. See
-[strategy windows and production](system-architecture.md#explicit-recruitment-orders).
+then advances the deterministic simulation with the resolved plans. See the
+[strategy decision window](system-architecture.md#52-strategy-decision-window).
 Late plans cannot overwrite the fallback selected by the engine. Completed
 decision metadata is available from
 `GET /v1/battles/{id}/decisions?attempt={attempt}`.
@@ -208,7 +208,10 @@ missing decision, returns 404; invalid queries return 400 and read failures 500.
 The route uses the existing battle API authentication boundary.
 
 The JSON response has `requestId`, `battleId`, `factionId`, `attempt`, `targetTick`,
-`observationTick`, and `context`. `context` is null for legacy records without a
+`observationTick`, and `context`, plus optional `initialContext` (the current agent
+projection, reconstructed from the saved observation rather than recorded at the
+time) and `availableUnitDetails` (the frozen unit reference the model could look up,
+not a record of lookups it made). `context` is null for legacy records without a
 saved observation. Otherwise it includes `factionName`, `background`, `doctrine`,
 `opening`, `ownedUpgradeIds`, `economy`, `view`, `legal`, `activePlan`, and optional
 `memory`/`knowledge`. `view` is the saved faction-visible battlefield, not current
@@ -331,8 +334,7 @@ Older snapshots omit the field; clients must not infer death from disappearance.
 GET /v1/battles/{id}/events?attempt=1&after=0&limit=100
 ```
 
-`attempt` defaults to the battle's current attempt, `after` is the last event sequence already observed, and `limit` defaults to 100 with a maximum of 500. Events are ordered by sequence and the response includes `nextCursor`.
-
+`attempt` defaults to the battle's current attempt, `after` is the last event sequence already observed, and `limit` defaults to 100 with a maximum of 500. Events are ordered by sequence and the response includes `nextCursor`. Add `latest=true` to fetch the most recent `limit` events instead (still in ascending order); it cannot be combined with a nonzero `after`.
 
 ## Faction background generation
 

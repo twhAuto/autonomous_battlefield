@@ -5,7 +5,7 @@ and React frontend. Create factions, choose scripted or AI controllers, and watc
 them compete on authored hex maps. AI controllers propose strategy plans; the game
 engine validates and executes them.
 
-- Create reusable factions with editable backgrounds, doctrines and opening armies.
+- Create reusable factions with editable names, backgrounds and strategic doctrines.
 - Run two-faction castle-siege battles with autonomous combat, economies and fog of war.
 - Inspect live battles, saved results, events and AI decision history.
 - Manage invited players and model access through Player, Developer and Admin roles.

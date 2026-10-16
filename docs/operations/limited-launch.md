@@ -75,7 +75,7 @@ CLI jobs from your personal home directory.
    Only the tunnel's outbound connection should expose the application. Block
    inbound direct access on **both IPv4 and IPv6**, including forwarded container
    ports. Keep SSH restricted to the operator's private management network.
-   the AI gateway, databases, Kubernetes, Jenkins, SonarQube and monitoring stay private.
+   The AI gateway, databases, Kubernetes, Jenkins, SonarQube and monitoring stay private.
 
 The rendered NetworkPolicies allow the tunnel to reach frontend/API and frontend
 to reach API. The API policy also permits same-namespace Prometheus pods matching
@@ -193,7 +193,8 @@ then select Player in the profile’s allowed roles under Admin → Models & acc
 and save. Without an admin policy override, configured `allowedRoles` supplies the
 default (for example `[player, developer, admin]`).
 Unlisted roles cannot select it. Background generation checks the same eligibility;
-its CLI profile is unavailable to Players unless explicitly allowed. All quotas also apply to Admin.
+its CLI profile is unavailable to Players unless explicitly allowed. Background-generation
+allowances also apply to Admin; battle allowances do not (see [limits](#limits-and-the-stop-switch)).
 
 Cloudflare mode issues no application auth cookie and ignores old application
 cookies. Logout returns the documented `/cdn-cgi/access/logout` destination and
@@ -376,10 +377,11 @@ References: [Access JWT validation](https://developers.cloudflare.com/cloudflare
 [libvirt network filters](https://libvirt.org/formatnwfilter.html),
 [Linux process dumpability](https://man7.org/linux/man-pages/man2/PR_SET_DUMPABLE.2const.html).
 
-Production k6 smoke load uses the same Jenkins Access Secret file credential as
-origin verification, bound separately for its stage. The launcher requires
-Cloudflare mode and passes the JWT by environment variable to k6, which sends
-the Access assertion header on requests. Password login remains development-only.
+Production k6 smoke load uses the same `battlefield-production-access-service-token`
+file credential as origin verification, bound separately for its stage. The launcher
+requires Cloudflare mode, validates the file and mounts it read-only into k6; see
+[CI service authentication](#ci-service-authentication). Password login remains
+development-only.
 
 The image-verification admission webhook allows 30 seconds per request for
 registry signature and attestation retrieval (`webhookConfiguration.timeoutSeconds`).

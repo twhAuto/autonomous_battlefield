@@ -289,7 +289,7 @@ Process entry points wire the shared `httpapi.LifecycleHandler`, which owns all
 health probes. Application routing does not register a second set of probes.
 Engine readiness requires both a running worker and a successful database ping;
 worker shutdown or database failure makes readiness fail while liveness remains
-available. See the [codebase guide](../developer/backend-guide.md#process-health-ownership)
+available. See the [backend guide](../developer/backend-guide.md#process-health-ownership)
 for source ownership and lifecycle tests.
 
 
