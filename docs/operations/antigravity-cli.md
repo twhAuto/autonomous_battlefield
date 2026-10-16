@@ -21,8 +21,24 @@ Before enabling the profile, the launcher runs a bounded account-usage probe und
 
 Restart the bridge after deployment or CLI configuration changes. Ctrl+C removes the advertised availability. Production does not need an Antigravity installation or subscription login: this is a host development bridge, and no server deployment is performed by installing it.
 
-For `plan_not_submitted` or malformed MCP arguments, use the
-[missing-plan troubleshooting guide](../developer/ai-comparisons.md#troubleshooting-a-missing-antigravity-plan).
+### Missing plans
+
+`plan_not_submitted` means the CLI finished without a plan the AI gateway accepted;
+it does not by itself mean the decision deadline expired. The SDK can reject a
+malformed tool call before the plan handler runs. The gateway then logs
+`decision_tool_input_rejected` with the authenticated request ID, the missing
+required field names and whether a nested `plan` wrapper was sent, never argument
+values or raw error text. Workers are instructed to submit one flat
+tool-arguments object with every required field, using `{}`/`[]` rather than
+omitting unused objects and arrays. A written plan or a CLI `SUCCESS` result is not
+enough: the MCP tool must return `accepted=true`, within the existing
+three-submission limit. When a runner fails before the deadline, the fallback keeps
+its failure category; decisions still unresolved at the deadline record `timeout`.
+
+After changing embedded prompts, rebuild and restart the host agent; after backend
+changes, redeploy. For dev, run `./scripts/cd/deploy-local.sh`, then restart
+`./scripts/dev/run-k8s-cli-agent.sh` before starting a new battle.
+
 A `cli_permission` failure means the result reported a denied action; verify the
 installed version against the configured prefix before restarting the bridge.
 

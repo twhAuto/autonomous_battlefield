@@ -44,8 +44,12 @@ definitions. Inline rulesets remain supported for older fixtures and authoring.
 Library `units` and `upgrades` use the same fields as resolved rulesets. A building
 entry has `id`, `kind`, `health`, `defense`, `vision`, `income`, and `cost`. Library
 `knowledge` contains `mechanics` and one card for every library unit when present.
-Cards are filtered to the selected roster. Numerical unit facts always come from
-the selected definitions. All library entries are validated, including unused ones.
+Each card has `unitId`, `role`, `strengths`, `weaknesses` and `guidance`. Mechanics
+text is limited to 4096 UTF-8 bytes and each card field to 1024. Cards are filtered
+to the selected roster; tactical text is advice, not a guaranteed counter. Numerical
+unit facts always come from the selected definitions. All library entries are
+validated, including unused ones. How cards are selected for a decision is in the
+[decision contracts](../architecture/system-architecture.md#versioned-unit-knowledge).
 
 The shipped `ranged-skirmish-v1` scenario demonstrates a restricted roster:
 Vanguard and Ranger, Plating only, and no economy construction. It shares the
