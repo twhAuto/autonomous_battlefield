@@ -298,9 +298,15 @@ Saved strategy plans may contain `constructionOrders` as
 `[{"buildingType":"defense_tower","position":{"x":9,"y":7}}]` and
 `recruitmentOrders` as
 `[{"unitType":"catapult","count":1,"sourceBuildingId":"a:barracks:003"}]`.
-Use actual IDs from the decision context, never guessed source IDs. Typed
-construction replaces nonempty legacy construction priorities; an explicit empty
-array means no construction. Omitting a recruitment source uses the castle.
+Use actual IDs from the decision context, never guessed source IDs. A plan may
+contain at most eight typed construction orders; legal building types are in
+`legal.buildings`, and `legal.economySites` (named for compatibility) lists the
+sites usable for any structure. An explicit empty array means no construction.
+Omitting `constructionOrders` keeps the legacy coordinate-only
+`constructionPriorities`, which build economy buildings; supplying typed orders
+together with nonempty legacy priorities is rejected. A recruitment
+`sourceBuildingId` must come from `legal.recruitmentSources`; omitting it uses the
+castle.
 
 The new `unit_healed` event contains `factionId`, `healerId`, `targetId`, actual
 `amount`, and `remainingHealth`. `building_attacked` uses the existing attack
