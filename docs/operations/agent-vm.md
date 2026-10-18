@@ -164,8 +164,27 @@ codex -c 'cli_auth_credentials_store="file"' login --device-auth
 codex login status
 ```
 
+For an enabled Claude profile, use the same shell and transport variables, then
+sign in with the Claude subscription by opening the printed URL in any browser and
+pasting the code back:
+
+```bash
+claude auth login
+claude auth status --json
+```
+
+The status must show `"loggedIn": true` and `"authMethod": "claude.ai"`; the worker
+rejects API-key and Console logins. A worker whose saved login has lapsed reports
+`"loggedIn": false` and fails every Claude decision even though its version and
+profile are correct, so check this status first when Claude decisions fail. The
+worker checks logins when it starts, so after signing in again return to vm-admin
+and run `sudo systemctl restart battlefield-worker`. Worker logs are under the
+`battlefield-worker` unit.
+
 Return to vm-admin with `exit`. This login step is deliberately interactive;
-never bake login tokens into the image or rendered bundle.
+type the commands one at a time rather than pasting them with the SSH command,
+because lines pasted ahead of the remote shell or a `sudo` prompt are lost. Never
+bake login tokens into the image or rendered bundle.
 
 ## Verify before advertising availability
 
