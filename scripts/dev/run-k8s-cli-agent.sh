@@ -42,6 +42,14 @@ kube() {
   kubectl --context "${kube_context}" --namespace "${namespace}" "$@"
 }
 
+# Background kubectl itself rather than the kube function, so $! names the forward
+# that cleanup stops and not a wrapper subshell that would leave it running.
+start_port_forward() {
+  local log="$1"
+  shift
+  kubectl --context "${kube_context}" --namespace "${namespace}" port-forward --address 127.0.0.1 "$@" >"${log}" 2>&1 &
+}
+
 set_profile_flags() {
   local codex_value="$1"
   local gemini_value="$2"
@@ -270,7 +278,7 @@ write_agent_config
 
 
 echo "Forwarding the Kubernetes AI gateway to http://127.0.0.1:${gateway_port}..."
-kube port-forward --address 127.0.0.1 service/battlefield-ai-gateway "${gateway_port}:8084" >"${runtime_dir}/port-forward.log" 2>&1 &
+start_port_forward "${runtime_dir}/port-forward.log" service/battlefield-ai-gateway "${gateway_port}:8084"
 port_forward_pid=$!
 wait_for_endpoint "http://127.0.0.1:${gateway_port}/healthz" "${port_forward_pid}" "AI gateway port-forward" "${runtime_dir}/port-forward.log"
 
@@ -278,7 +286,7 @@ LANGFUSE_ENABLED="$(battlefield_env_langfuse_enabled)"
 if [[ "${LANGFUSE_ENABLED}" == 1 ]]; then
   otel_port="${HOST_OTEL_PORT:-14318}"
   otel_health_port="${HOST_OTEL_HEALTH_PORT:-14333}"
-  kube port-forward --address 127.0.0.1 service/battlefield-otel-collector "${otel_port}:4318" "${otel_health_port}:13133" >"${runtime_dir}/otel-forward.log" 2>&1 &
+  start_port_forward "${runtime_dir}/otel-forward.log" service/battlefield-otel-collector "${otel_port}:4318" "${otel_health_port}:13133"
   otel_forward_pid=$!
   wait_for_endpoint "http://127.0.0.1:${otel_health_port}/" "${otel_forward_pid}" "Collector port-forward" "${runtime_dir}/otel-forward.log"
   export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:${otel_port}"

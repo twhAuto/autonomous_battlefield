@@ -127,6 +127,25 @@ wait_for_endpoint http://127.0.0.1:18084/healthz 123 'AI gateway port-forward'
 """
         subprocess.run(['bash', '-ec', script], check=True)
 
+    def test_forward_pid_is_the_kubectl_process_cleanup_stops(self):
+        with tempfile.TemporaryDirectory() as runtime:
+            fake = Path(runtime, 'kubectl')
+            fake.write_text('#!/usr/bin/env bash\necho "$$ $*" >"$(dirname "$0")/kubectl.pid"\nexec sleep 60\n')
+            fake.chmod(0o755)
+            script = FUNCTIONS + r"""
+kube_context=fixture; namespace=battlefield
+start_port_forward "$1/forward.log" service/battlefield-ai-gateway 18084:8084
+forward_pid=$!
+for _ in {1..100}; do [[ -s "$1/kubectl.pid" ]] && break; sleep 0.05; done
+read -r kubectl_pid arguments <"$1/kubectl.pid"
+kill "$forward_pid"
+wait "$forward_pid" || true
+[[ "$kubectl_pid" == "$forward_pid" ]]
+[[ "$arguments" == "--context fixture --namespace battlefield port-forward --address 127.0.0.1 service/battlefield-ai-gateway 18084:8084" ]]
+"""
+            subprocess.run(['bash', '-ec', script, '_', runtime], check=True,
+                           env={**os.environ, 'PATH': runtime + os.pathsep + os.environ['PATH']})
+
     def test_host_wait_allows_both_serial_auth_probes(self):
         self.assertIn('"${agent_pid}" "Host agent" "" 300', SOURCE)
         script = FUNCTIONS + r"""
