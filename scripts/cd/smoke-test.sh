@@ -68,49 +68,41 @@ kube() {
   kubectl --context "${kube_context}" "$@"
 }
 
+# Background kubectl itself rather than the kube function, so cleanup stops the
+# forward and not only a wrapper subshell that would leave it running.
+start_port_forward() {
+  local log="$1"
+  shift
+  kubectl --context "${kube_context}" port-forward "$@" >"${log}" 2>&1 &
+  pids+=("$!")
+}
+
 if [[ "${CLUSTER_DRIVER:-kind}" == k3s && "${SMOKE_TEST_OBSERVABILITY}" == 1 ]]; then
   # Access the new cluster explicitly; localhost:8888 may still serve old Kind.
   gateway_service="$(kube -n envoy-gateway-system get services \
     -l gateway.envoyproxy.io/owning-gateway-name=battlefield-local,gateway.envoyproxy.io/owning-gateway-namespace=battlefield \
     -o jsonpath='{.items[*].metadata.name}')"
   [[ "${gateway_service}" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo 'Expected one managed application gateway service.' >&2; exit 1; }
-  kube -n envoy-gateway-system port-forward "service/${gateway_service}" "${gateway_port}:80" \
-    >"${runtime_dir}/gateway-port-forward.log" 2>&1 &
-  pids+=("$!")
+  start_port_forward "${runtime_dir}/gateway-port-forward.log" \
+    --namespace envoy-gateway-system "service/${gateway_service}" "${gateway_port}:80"
 fi
 
 if [[ "${SMOKE_TEST_OBSERVABILITY}" == 1 ]]; then
-  kube port-forward \
-    --namespace "${namespace}" \
-    service/battlefield-prometheus \
-    "${prometheus_port}:9090" \
-    >"${runtime_dir}/prometheus-port-forward.log" 2>&1 &
-  pids+=("$!")
+  start_port_forward "${runtime_dir}/prometheus-port-forward.log" \
+    --namespace "${namespace}" service/battlefield-prometheus "${prometheus_port}:9090"
 fi
 
 if [[ "${SMOKE_TEST_OBSERVABILITY}" == 1 ]]; then
-  kube port-forward \
-    --namespace "${namespace}" \
-    service/battlefield-tempo \
-    "${tempo_port}:3200" \
-    >"${runtime_dir}/tempo-port-forward.log" 2>&1 &
-  pids+=("$!")
+  start_port_forward "${runtime_dir}/tempo-port-forward.log" \
+    --namespace "${namespace}" service/battlefield-tempo "${tempo_port}:3200"
 fi
 
-kube port-forward \
-  --namespace "${namespace}" \
-  service/battlefield-api \
-  "${api_port}:8080" \
-  >"${runtime_dir}/api-port-forward.log" 2>&1 &
-pids+=("$!")
+start_port_forward "${runtime_dir}/api-port-forward.log" \
+  --namespace "${namespace}" service/battlefield-api "${api_port}:8080"
 
 if [[ "${SMOKE_TEST_OBSERVABILITY}" == 1 ]]; then
-  kube port-forward \
-    --namespace "${namespace}" \
-    service/battlefield-elasticsearch \
-    "${elasticsearch_port}:9200" \
-    >"${runtime_dir}/elasticsearch-port-forward.log" 2>&1 &
-  pids+=("$!")
+  start_port_forward "${runtime_dir}/elasticsearch-port-forward.log" \
+    --namespace "${namespace}" service/battlefield-elasticsearch "${elasticsearch_port}:9200"
 fi
 
 wait_for_url() {
@@ -255,8 +247,8 @@ prepare_application_session() {
 
 if [[ "${DEPLOY_ENV}" == production ]]; then
   frontend_port="${SMOKE_TEST_FRONTEND_PORT:-18085}"
-  kube port-forward --namespace "${namespace}" service/battlefield-frontend "${frontend_port}:8080" >"${runtime_dir}/frontend-port-forward.log" 2>&1 &
-  pids+=("$!")
+  start_port_forward "${runtime_dir}/frontend-port-forward.log" \
+    --namespace "${namespace}" service/battlefield-frontend "${frontend_port}:8080"
   wait_for_url "Frontend liveness through private port forward" "http://127.0.0.1:${frontend_port}/livez"
 else
   wait_for_url "Frontend liveness through Gateway API" "${TARGET_URL}/livez"

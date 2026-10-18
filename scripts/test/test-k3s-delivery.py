@@ -128,6 +128,15 @@ elif 'apply' in args and '-f' in args and args[args.index('-f')+1]=='-': sys.std
         self.calls=[json.loads(line) for line in self.log.read_text().splitlines()]
         return result
 
+    def live_forwards(self):
+        fake=str(self.bins/'kubectl').encode()
+        live=[]
+        for entry in Path('/proc').iterdir():
+            try: arguments=(entry/'cmdline').read_bytes().split(b'\0')
+            except OSError: continue
+            if fake in arguments and b'port-forward' in arguments: live.append(entry.name)
+        return live
+
     def test_k3s_full_delivery_uses_retained_overlays_without_kind_or_controller_install(self):
         self.run_script('deploy.sh','f'*40)
         self.assertFalse(any(c[0]=='kind' for c in self.calls))
@@ -245,6 +254,8 @@ elif 'apply' in args and '-f' in args and args[args.index('-f')+1]=='-': sys.std
         self.assertTrue(any('service/envoy-battlefield-local' in c and '18888:80' in c for c in forwards))
         self.assertFalse(any('8888:80' in c for c in forwards))
         self.assertTrue(any('--context' in c and 'fixture' in c for c in forwards))
+        # Cleanup must stop the kubectl forwards themselves, not only wrapper subshells.
+        self.assertEqual(self.live_forwards(),[])
         for services in ('','one two'):
             self.run_script('smoke-test.sh',ok=False,GATEWAY_SERVICES=services)
             self.assertFalse(any('port-forward' in c for c in self.calls))
