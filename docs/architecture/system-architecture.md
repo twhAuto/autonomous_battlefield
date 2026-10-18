@@ -36,7 +36,7 @@ contracts and reliability objectives. Operational instructions remain in
 ## 2. System context
 
 ```mermaid
-flowchart LR
+flowchart TB
     User[Browser user]
     UI[React frontend]
     API["Go API: cmd/server"]
@@ -49,14 +49,14 @@ flowchart LR
 
     User --> UI
     UI -->|HTTP /v1| API
-    API -->|factions, battle runs, cache misses| DB
     API -->|completed battle snapshots with TTL| Cache
-    Engine -->|claim battles, persist ticks| DB
-    Engine -->|create and resolve decisions| DB
+    API -->|factions, battle runs, cache misses| DB
+    Engine -->|claim battles, persist ticks, create and resolve decisions| DB
     DB -.->|LISTEN/NOTIFY wake-up| Gateway
+    Gateway -->|restricted role: decisions, generation jobs, admission| DB
+    Gateway ~~~ Agent
     Agent -->|claim work, MCP tools, result metadata| Gateway
     Agent <-->|model turns or isolated CLI process| Provider
-    Gateway -->|restricted role: decisions, generation jobs, admission| DB
 ```
 
 PostgreSQL is the durable coordination point. The API and engine do not call each other directly, and the engine and agent do not call each other directly. Each workload can fail or restart while preserving battle and decision state.
