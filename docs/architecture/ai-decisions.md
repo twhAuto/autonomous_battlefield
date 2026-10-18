@@ -36,7 +36,12 @@ another resolution.
 
 `internal/ai/agent` (`agent.Executor`) owns decision claims, concurrency, timeouts,
 and outcome reporting. Agents use `ai.agentConcurrency` execution slots (1–4; 1
-when omitted). The K3s API worker and the CLI VM template both set 4. API jobs are
+when omitted). The K3s API worker and the CLI VM template both set 4, but the
+managed CLI VM's
+[`managed-settings.json`](../../infra/deploy/agent-vm/managed-settings.json)
+currently sets `agentConcurrency: null`, which removes the key, so the managed VM
+runs one CLI job at a time until that setting is raised
+([CLI worker operations](../operations/cli-worker.md)). API jobs are
 bounded only by their slots and the per-battle decision budget. PostgreSQL
 serializes admission on the policy row and caps active CLI leases at
 `runtime_policy.cli_concurrency` (1–4, default 4), shared across all workers,
@@ -91,8 +96,10 @@ process groups are killed on cancellation and output capture is bounded at 4 MiB
 Generated permissions allow the session's battlefield MCP tools and deny file,
 command, and URL operations; slash-command expansion is disabled. A headless
 account-usage probe must succeed before advertising the profile. JSON result
-envelopes must report SUCCESS with no denied actions. Explicit permission rules are
-used without strict mode, which overrides MCP allows in CLI 1.1.27. The MCP usage
+envelopes must report SUCCESS with no denied actions. Antigravity's strict
+tool-permission mode is not used: when tested on Antigravity CLI 1.1.27 it denied
+even explicitly allowed MCP calls, so the explicit allow and deny rules enforce the
+restrictions instead. The MCP usage
 endpoint verifies that a plan is accepted before acknowledging completion; missing
 submissions trigger a worker failure and fallback. Usage counters are recorded for
 accepted plans, and usage reporting retries transient failures up to three times.
@@ -138,23 +145,20 @@ operators need an explicit model ID for reproducible comparisons. See
 
 API, Codex, Antigravity, and Claude CLI use one embedded decision policy assembled
 by `internal/ai/prompts/prompts.go`. Only context delivery differs: tool fetch
-versus Antigravity host-prefetched JSON. The persisted `prompts.Version` includes a
-SHA-256 digest of the battle prompts as assembled for a fixed sample session
-(system prompt, tool delivery and inline delivery), so wording, order and wiring
-changes all produce a new version. Each prompt purpose has one current `.txt`
-file; Git preserves previous revisions.
+versus Antigravity host-prefetched JSON. The persisted `prompts.Version`
+(`battlefield-agent-v9.<digest>`) includes a SHA-256 digest of the battle prompts
+as assembled for a fixed sample session (system prompt, tool delivery and inline
+delivery), so wording, order and wiring changes all produce a new version. Each
+prompt purpose has one current `.txt` file; Git preserves previous revisions.
 
-Recent versions changed how faction identity reaches the model:
-
-- **v7** moved faction-authored name, background and doctrine into JSON-escaped
-  untrusted decision context; they never extend the system instructions.
-- **v8** orders the decision prompt from most to least stable (shared policy, the
-  faction identity block, then the per-request ID and any inline context), so the
-  prefix repeated across one faction's decisions stays eligible for provider
-  prompt caching.
-- **v9** restores the identity block's guidance: doctrine is the faction's
-  strategic preferences and background its perspective, below core rules, legal
-  choices, tool restrictions and observation privacy.
+The decision prompt is ordered from most to least stable: the shared policy, the
+faction identity block, then the per-request ID and any inline context, so the
+prefix repeated across one faction's decisions stays eligible for provider prompt
+caching. Faction-authored name, background and doctrine arrive JSON-escaped in that
+untrusted identity block and never extend the system instructions. The block tells
+the model that doctrine is the faction's strategic preferences and background its
+perspective. Core rules, legal choices, tool restrictions and observation privacy
+take precedence over doctrine, and doctrine over background.
 
 The build manifest reads the runtime prompt version, bundle digest, tool schema and
 embedded game-content digest (`gameDataBundleSha256`: every file under

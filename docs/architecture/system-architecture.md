@@ -327,21 +327,53 @@ See [Redis operations](../operations/redis.md) for setup and verification.
 
 Every mutating battle write includes battle ID, attempt, and lease owner. A mismatched write fails with lease loss.
 
-A reclaimed battle starts a new deterministic attempt from `initial_state`; events from earlier attempts remain available by attempt number. When an observation hash matches a previously resolved decision for the same faction and target tick, the decision repository can reuse that plan.
+A reclaimed battle starts a new deterministic attempt at tick 0 from
+`initial_state`; it does not resume the last persisted tick. Events from earlier
+attempts remain available by attempt number. When an observation hash matches a
+previously resolved decision for the same faction and target tick, the decision
+repository can reuse that plan.
 
-Each claim increments `attempt`. Once a queued or lease-expired battle has used
-`engine.maxAttempts` (default 3), the next claim pass marks it `failed` with
-`attempts_exhausted` instead of starting another attempt. A stored scenario that
-cannot construct a match fails immediately with `invalid_scenario` and is not
-retried. Together with `battle_timeout` (see
-[battle expiry](#55-battle-expiry)), these are
-the engine's terminal battle error codes.
+Each claim increments `attempt`, including a claim after a graceful-shutdown
+requeue (the requeue itself preserves the count). Once a queued or lease-expired
+battle has used `engine.maxAttempts` (default 3), the next claim pass marks it
+`failed` with `attempts_exhausted` instead of starting another attempt, so repeated
+rolling restarts during one battle can exhaust its retry budget. A stored scenario
+that cannot construct a match fails immediately with `invalid_scenario` and is not
+retried. Together with `battle_timeout` (see [battle expiry](#55-battle-expiry)),
+these are the engine's terminal battle error codes.
 
-See [engine capacity and recovery limits](observability.md#engine-capacity-and-recovery-limits)
-for serial queue processing, claim timing, shutdown handoffs and database failures.
+### Engine capacity and recovery
 
-Decision wake-ups use the `battlefield_decision_ready` PostgreSQL channel, with the
-profile ID as payload.
+Each engine worker processes one battle synchronously before claiming another;
+the application manifest defaults to one engine replica. Additional admitted
+battles queue. The default admission limit is four unfinished battles globally,
+and queued time counts toward the one-hour battle expiry. Queue delay therefore
+depends on battle duration, decision waits, pauses and available engine replicas;
+admission does not guarantee that a battle finishes before expiry.
+
+Crash recovery has two gates: the previous lease must expire (30 seconds by
+default), and an available worker must make its next claim. Claims select eligible
+battles by creation time and ID. An engine already processing another battle
+does not interrupt it to reclaim an orphan, so recovery can take longer than the
+lease duration.
+
+Database errors returned by the claim operation terminate the worker loop and
+cause the engine process to exit with an error; Kubernetes restarts the container.
+A database interruption that reaches this path can therefore trigger lease
+recovery and a fresh attempt. Restart timing and recovery are separate: a ready
+replacement still has to satisfy the claim gates above.
+
+The API and engines share PostgreSQL. Inspect database CPU and throttling, query
+latency and connection-pool pressure alongside API pod usage when assessing
+capacity. Adding API replicas does not remove shared database work; the limiting
+resource and sustainable request rate depend on the workload and resource limits.
+Use [reliability testing](../operations/reliability-testing.md) to measure them.
+
+These contracts come from the
+[worker loop](../../backend/internal/battle/worker/worker.go),
+[claim and requeue operations](../../backend/internal/battle/repo/queue.go),
+[expiry sweep](../../backend/internal/battle/repo/expiry.go) and
+[engine entry point](../../backend/cmd/engine/main.go).
 
 ### Battle history reads
 
@@ -576,35 +608,24 @@ not automated.
 
 ## 11. Observability
 
-- Processes emit structured JSON logs with stable `event` identifiers and readable
-  `msg` summaries containing selected operational fields. The shared logging
-  handler attaches `trace_id` and `span_id` from active contexts without moving
-  those fields into user attribute groups. `LOG_LEVEL` defaults to INFO.
-- API logs carry or generate `X-Request-ID`. Tracing wraps access logging so
-  completion logs, including authentication rejections, share the request span.
-- Every `/v1` error uses one JSON envelope written by `internal/apierror`; its
-  `requestId` equals the `X-Request-ID` header and the `request_id` log field, so a
-  client-reported failure maps to one log line. The identifier lives in the leaf
-  `internal/observability/requestid` package because `httpapi` imports `authn`,
-  which also writes errors. See the [API reference](api.md#errors).
-- HTTP completion logs carry `actor_id` and `actor_role` from authentication
-  middleware, providing request attribution rather than a tamper-proof audit
-  store. Tokens, cookies and email headers are not logged. See
-  [observability architecture](observability.md#structured-logs) for the full field list.
-- Engine logs cover battle claims, lease loss, decision windows, fallbacks, requeues,
-  and completion. Running battles and pending decision windows report progress
-  immediately at their first reporting point and at most every 15 seconds
-  thereafter. Waiting updates include pending faction counts; completion includes
-  elapsed wall time. Per-tick persistence events require DEBUG logging.
-- Agent and AI gateway logs cover decision claims, tool access, validation, provider outcome, usage, and latency.
-- Full combat detail lives in `battle_events` rather than normal process logs.
-- API and engine expose lifecycle checks; the agent exposes `/healthz` and `/status` (drain state: `draining`, `active`, `concurrency`; `SIGUSR1` stops new claims and `SIGUSR2` resumes them); the AI gateway exposes `/healthz` for liveness and `/readyz`, which pings PostgreSQL, for readiness.
-- Prometheus, Grafana, Elasticsearch, Kibana, and Fluent Bit are provided for the local Kubernetes environment.
-- Local Prometheus discovers nodes and scrapes each kubelet's cAdvisor endpoint
-  using service-account authentication and the narrow `nodes/metrics`
-  permission; it does not receive general kubelet proxy access.
-- AI decisions are traced in full and can be forwarded to an optional self-hosted
-  Langfuse; see [AI observations](observability.md#ai-observations-in-langfuse).
+Development Kind and production K3s run the same observability stack, and the
+[observability architecture](observability.md) owns its detail:
+
+- **Logs:** structured JSON with stable `event` identifiers, request IDs and
+  actor attribution, shipped by Fluent Bit to Elasticsearch and Kibana. Full
+  combat detail stays in `battle_events`, not process logs.
+- **Metrics:** the API and engine expose Prometheus metrics; Prometheus also
+  scrapes kube-state-metrics and kubelet cAdvisor, and Grafana shows dashboards
+  and checked-in alert rules.
+- **Traces:** OpenTelemetry spans from all four processes go through the collector
+  to Tempo, linked across battle creation, engine attempts and decisions. AI
+  observations can also go to an optional self-hosted Langfuse.
+- **Health:** every process exposes health endpoints; the agent also reports drain
+  state.
+
+Every `/v1` error's `requestId` equals the `X-Request-ID` header and the
+`request_id` log field, so a client-reported failure maps to one log line (see
+[API errors](api.md#errors)).
 
 ## 12. Decisions and trade-offs
 
