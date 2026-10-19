@@ -38,9 +38,8 @@ JENKINS = 'http://127.0.0.1:8080/'
 NODE = 'battlefield-local'
 CREDENTIALS = {
     'github-app-battlefield': 'githubApp', 'battlefield-ghcr': 'usernamePassword',
-    'battlefield-local-secret-env': 'file', 'battlefield-cosign-key': 'file',
-    'battlefield-cosign-password': 'string', 'battlefield-cosign-public-key': 'file',
-    'battlefield-production-kubeconfig': 'file', 'battlefield-production-access-token': 'file',
+    'battlefield-cosign-key': 'file', 'battlefield-cosign-password': 'string',
+    'battlefield-cosign-public-key': 'file', 'battlefield-production-kubeconfig': 'file',
     'battlefield-production-access-service-token': 'file',
 }
 FOLDER_CREDENTIALS = ('host-inventory', 'host-inputs', 'host-vault-password', 'host-sudo-password')
