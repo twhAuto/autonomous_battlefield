@@ -162,9 +162,11 @@ A second label or executor on this host would not provide that isolation.
 
 ## Credentials
 
-CI bootstrap imports these global credentials from `ci-credentials.json`; see
-[clean installation inputs](ci-bootstrap.md#clean-installation-inputs) for their
-value shapes.
+CI bootstrap creates these global credentials. All except
+`sonarqube-battlefield-token` come from `ci-credentials.json` on a fresh install;
+bootstrap generates the Sonar token itself, or imports it from the separate
+encrypted `ci_sonar_token` input. [Clean installation inputs](ci-bootstrap.md#clean-installation-inputs)
+is the authoritative input schema.
 
 | ID | Kind | Used for |
 | --- | --- | --- |
