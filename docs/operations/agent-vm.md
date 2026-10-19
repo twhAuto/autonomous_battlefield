@@ -1,6 +1,6 @@
 # Production CLI worker verification and recovery
 
-Use this guide with the [limited-launch gates](limited-launch.md#isolated-cli-vm-enable-only-in-the-last-phase).
+Use this guide with the [isolation gate](#isolation-gate) below.
 Run commands from the repository root unless a step says otherwise. Keep CLI
 availability false until isolation checks pass. Use the provisioning and service
 runbooks below before verification; stop active test battles before restarting
@@ -186,6 +186,91 @@ type the commands one at a time rather than pasting them with the SSH command,
 because lines pasted ahead of the remote shell or a `sudo` prompt are lost. Never
 bake login tokens into the image or rendered bundle.
 
+## Isolation gate
+
+No CLI profile may be advertised until this gate passes. It sets the VM's
+boundary, sizing and secret rules and the checks that must be recorded before
+`BATTLEFIELD_CLI_ISOLATION_VERIFIED=true` is set. The
+[production access runbook](access.md) owns the surrounding access and limit
+controls.
+
+Use Ubuntu's KVM/libvirt on the server. Docker containers share the host kernel;
+the public CLI worker belongs in a dedicated VM. Start with 2 vCPU, 4 GiB memory,
+24 GiB disk. Verify virtualization support, free memory/disk, and host headroom
+while the game, database, observability, and one CLI execute together. This is
+a one-slot starting size, not validated four-CLI capacity. Before selecting four
+slots, test four processes together and increase guest/service limits if measured
+headroom is insufficient. Leave CLI disabled if the host cannot sustain this.
+
+Use [CLI VM provisioning and adoption](cli-vm-platform.md) to create or adopt
+the isolated VM, then [CLI worker bootstrap](cli-bootstrap.md) to install or adopt
+its host and guest services. These reviewed workflows own image verification,
+capacity checks, the isolated network/NIC filter and interruption recovery.
+Neither workflow enables public CLI availability or provisions provider logins.
+Keep retained disks, provider homes and the existing administration identity.
+
+The VM has **no default route, NAT, DNS server, host mounts or Docker socket**.
+`bf-agent0` is `192.168.234.1/24`; the guest is `192.168.234.2`. The external NIC
+filter permits only guest connections to the host proxy at 3128 and AI gateway bridge at
+18084, plus operator SSH from the host. IPv6 is dropped. The proxy resolves approved
+provider/update names; direct guest DNS and direct internet traffic are unnecessary.
+
+The service bootstrap installs dedicated Squid, Caddy, firewall and loopback
+bridge configuration. Review the exact provider allowlist and verify actual login
+and inference; never broadly permit HTTPS or remove the private-IP deny. The
+proxy resolves approved names, and HTTPS package updates use it.
+
+Caddy binds `192.168.234.1:18084` and forwards to the loopback-only kubectl bridge,
+setting upstream Host to `127.0.0.1:8084`. The renderer defaults to port 28084,
+separate from Jenkins smoke ports 18081–18085. Preserve the verified bridge/proxy
+pair and the narrow firewall exception for smoke forwards on `127.0.0.1:18084`.
+The kubeconfig and deployment credentials never enter the VM. Verify unauthenticated
+bridge requests return 401, then verify a real accepted plan: authentication runs
+before the SDK Host check, so 401 alone is insufficient. Obtain the verified worker
+and version-matched CLI/helper using the
+[pinned release inputs](#pinned-release-inputs), then let the service
+bootstrap install them. Check actual CLI versions before enabling profiles.
+
+The service bootstrap installs `/etc/battlefield-agent/worker.env` as
+**root:root 0400**, containing only
+`BATTLEFIELD_AGENT_SECRET`, `BATTLEFIELD_ENV=production`, and the isolation flag
+once verified. Never put the capability-signing secret, database URLs, API server
+passwords, personal files, SSH keys, or deployment credentials in the worker's home.
+Configure CLI login interactively as `battlefield-worker` inside the VM using its
+dedicated home `/var/lib/battlefield-worker`. Linux workers disable dumpability to
+block same-user subprocess reads of parent environment/memory; CLI children receive
+an explicit allowlist of transport/login settings and their scoped capability.
+
+For initial boundary checks, keep **all VM profiles disabled** and the
+**API's CLI availability false**, then start the worker and execute:
+
+```bash
+# Inside the VM, as battlefield-worker; use the real worker PID and real private IPs:
+python3 verify-agent-isolation.py --worker-pid "$WORKER_PID" \
+  --blocked-host "$HOME_ROUTER_IP" --blocked-host "$ADMIN_SERVICE_IP"
+```
+
+Also test actual provider requests through the proxy, inspect the attached libvirt
+filter, try private IPv6 destinations when present, and load-test a two-model-faction
+battle with the single slot. One faction can fall back if both cannot finish before
+the opening/window deadline; the battle must continue and the slot must never overlap.
+Existing bounded deadlines deliberately take precedence over waiting indefinitely.
+Test malicious faction text requesting extra tools, another request ID, files, and
+network destinations. The server must reject unrelated MCP contexts and the VM
+boundary must hold regardless of how the model responds.
+
+After the initial boundary checks, a freshly bootstrapped managed worker remains
+disabled until a reviewed update workflow is available. Do not hand-edit its
+environment or profiles; see the [managed profile enablement boundary](cli-bootstrap.md#managed-profile-enablement-boundary).
+For an existing enabled installation adopted with matching files, confirm its
+previously recorded isolation evidence and complete the
+[accepted-plan and launch checks](#verify-before-advertising-availability).
+Only after recording the required checks, set `BATTLEFIELD_CLI_ISOLATION_VERIFIED=true`
+in the API's private AI configuration and enable the desired CLI availability flag.
+Production startup rejects advertised CLI profiles without this flag. The flag is
+an operator attestation, not an automatic proof of isolation. Invite Developers
+only after these checks; invite Players earlier while CLI remains off.
+
 ## Verify before advertising availability
 
 Inside the VM, test an allowed HTTPS destination through Squid and a denied one:
@@ -224,7 +309,7 @@ sudo nft list table inet battlefield_agent
 sudo systemctl is-active battlefield-agent-firewall battlefield-mcp-bridge battlefield-mcp-proxy squid
 ```
 
-Complete the remaining isolation gates in the limited-launch guide. A freshly
+Complete the remaining checks in the [isolation gate](#isolation-gate). A freshly
 bootstrapped managed worker must remain disabled: bootstrap cannot change its
 registered environment or profile configuration. Follow the
 [managed profile enablement boundary](cli-bootstrap.md#managed-profile-enablement-boundary);
@@ -287,8 +372,9 @@ a maintenance window, then repeat its health and accepted-plan checks.
 
 For a planned restart test, stop battles, reboot during a maintenance window, then
 repeat listener, firewall, health and accepted-plan checks. Verify the VM/network
-and all four host services are enabled. Follow the limited-launch cancellation and
-two-player tests before broader access. Keep durable configuration, release digests
+and all four host services are enabled. Repeat the isolation gate's
+two-model-faction test and the [stop-switch](access.md#limits-and-the-stop-switch)
+cancellation check before broader access. Keep durable configuration, release digests
 and the host bundle in operator records; keep secrets in private stores. This guide
 and the generator replace ad hoc unit-file editing, not the verification gates.
 

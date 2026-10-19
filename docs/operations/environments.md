@@ -47,7 +47,7 @@ Tunnel activation is a separate, explicit operation:
 It validates production settings, generates resources temporarily, updates the
 tunnel Secret, and rolls the connector only when its config, credentials, or image
 changes. NetworkPolicies reconcile independently during production CD. Normal application deployments do not
-activate public access. See [limited launch](limited-launch.md) for network and
+activate public access. See [production access](access.md) for network and
 Access requirements.
 
 ## Other managed credentials and validation
@@ -55,7 +55,7 @@ Access requirements.
 Production smoke checks use an enrolled Access service identity with read-only
 permissions. Keep only its
 `BATTLEFIELD_ACCESS_CI_CLIENT_ID` in the application `.env`; the Client Secret stays
-in the Jenkins service credential. See the [CI service runbook](limited-launch.md#ci-service-authentication). Database migration backups and verified image
+in the Jenkins service credential. See the [CI service runbook](access.md#ci-service-identity). Database migration backups and verified image
 rollback remain operational features.
 Failure drills still require a separately registered disposable dev cluster,
 matching UID and explicit acknowledgement; production is forbidden.

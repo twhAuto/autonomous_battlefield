@@ -196,7 +196,7 @@ only `.env`, run the `main` pipeline with `APPLY_CONFIGURATION`.
 
 Provision the `battlefield-production-access-service-token` file and the
 production `BATTLEFIELD_ACCESS_CI_CLIENT_ID` before delivery. The
-[CI service authentication](limited-launch.md#ci-service-authentication) procedure
+[CI service identity](access.md#ci-service-identity) procedure
 covers the JSON schema, the Cloudflare Service Auth policy, expiry monitoring and
 rotation. Jenkins validates the credential's local metadata before rollout, then
 tests read-only service access through the public hostname; it needs no copied

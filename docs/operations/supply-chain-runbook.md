@@ -86,6 +86,13 @@ image, when moving to a new tag, and at least monthly:
 
 For suspected compromise, stop promotion, revoke Jenkins access, remove the key from admission trust, inventory every subject it signed, and restore only digests independently verified and re-signed by the incident key. Never delete evidence during the investigation.
 
+## Admission verification
+
+The Kyverno image-verification webhook allows 30 seconds per request to fetch
+registry signatures and attestations (`webhookConfiguration.timeoutSeconds`).
+Verification stays enforced with `failurePolicy: Fail`; the timeout never waives
+missing or invalid evidence.
+
 ## Rollback and cluster recreation
 
 Jenkins records the previous backend/frontend digest pair before rollout.
@@ -109,7 +116,7 @@ missing registered cluster.
   Kind cluster, register its verified identity, and restore the last known-good digest pair.
 - Quarterly: exercise MCP capability-secret rotation and authentication credential
   rotation for the configured mode. Production uses the
-  [Access service-token rotation procedure](limited-launch.md#expiry-monitoring-and-rotation);
+  [Access service-token rotation procedure](access.md#expiry-and-rotation);
   password/session-signing secrets belong only to local-password development.
 - Quarterly: exercise engine lease reclaim, duplicate submission, PostgreSQL restart, AI gateway outage, provider timeout/429, failed migration, failed rollout, and rollback.
 - Before an AWS production deployment: restore RDS from backup, disrupt an EKS

@@ -25,7 +25,7 @@ unauthenticated caller receives `401` with a session body rather than an error.
 Unsafe browser requests must send the configured `Origin`, and nonempty bodies
 must be `application/json`. Missing or invalid credentials return `401`; a missing
 role or permission never grants access. See the
-[launch runbook](../operations/limited-launch.md) for the production setup.
+[production access runbook](../operations/access.md) for the production setup.
 
 ### Administrator session
 
