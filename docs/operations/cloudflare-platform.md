@@ -140,7 +140,7 @@ All files are private to the operator and must stay outside Git, artifacts and
 shared backups. Keep this controller state with its encrypted capture for recovery;
 changing controllers does not move it automatically. For fresh delivery, consume
 the handoff values through the existing [production profile](environments.md) and
-[limited launch](limited-launch.md) procedures, retaining the other application
+[production access](access.md) procedures, retaining the other application
 secrets, roles and pinned cloudflared image. The existing renderer enforces Access
 at the connector, validates the API audience and uses a final 404 catch-all. The
 new workflow does not modify Kubernetes, `.env`, Jenkins credentials or live routing.

@@ -39,6 +39,21 @@ rerun `./scripts/cd/deploy-local.sh`. The [configuration model](../architecture/
 explains the literal file format, source selection, Secret rendering and restart rules,
 including the distinction between deployment and standalone processes.
 
+The deployment sets `BATTLEFIELD_ENV=dev`. In `.env`, choose
+`BATTLEFIELD_AUTH_MODE=local-password` with `BATTLEFIELD_ADMIN_USERNAME`, a
+`BATTLEFIELD_ADMIN_PASSWORD` of at least 12 characters and a random
+`BATTLEFIELD_SESSION_SECRET` of at least 32 bytes. To skip login on localhost, use
+`disabled-development` instead. The legacy `BATTLEFIELD_AUTH_ENABLED` flag, if
+kept, must agree with the mode (`false` for `disabled-development`). Production
+accepts neither mode.
+
+Setup generates independent random `BATTLEFIELD_MCP_CAPABILITY_SECRET` and
+`BATTLEFIELD_AGENT_SECRET` values of at least 32 bytes each; the AI gateway needs
+both and refuses to start without them, and workers need only the agent secret.
+The local Kubernetes CLI launcher reads the worker secret from the `battlefield-ai`
+Secret and keeps its bridge on loopback. CLI logins stay on your workstation, so
+never use that launcher to serve public CLI jobs from your home directory.
+
 [`backend/config.yaml`](../../backend/config.yaml) defines local process settings;
 unknown fields and invalid values fail startup. Scenarios, rulesets and content
 are embedded from `backend/gamedata`, so editing them requires rebuilding the

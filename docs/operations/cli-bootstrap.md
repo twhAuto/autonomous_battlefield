@@ -16,7 +16,7 @@ existing parent directories must be root-owned and not writable by group/others.
 The guard rejects an unsafe shared directory rather than changing its permissions.
 The controller needs trusted SSH entries for the physical host
 and, for guest operations, the VM; host-side execution uses the existing VM admin
-key. Keep Player CLI access disabled until the [CLI isolation gates](limited-launch.md#isolated-cli-vm-enable-only-in-the-last-phase)
+key. Keep Player CLI access disabled until the [CLI isolation gates](agent-vm.md#isolation-gate)
 pass. Installation or a healthy worker is not evidence that these gates passed.
 
 ## Adopt the existing installation

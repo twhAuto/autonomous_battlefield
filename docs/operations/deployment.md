@@ -16,7 +16,7 @@ and acceptance evidence remain outstanding.
 | Task | Start here |
 | --- | --- |
 | Deploy or troubleshoot development Kind | [First local session](#first-local-kubernetes-session) |
-| Prepare public production access | [Limited-access production](#limited-access-production) and [launch runbook](limited-launch.md) |
+| Prepare public production access | [Limited-access production](#limited-access-production) and [production access runbook](access.md) |
 | Deliver to K3s or move retained data | [K3s delivery](k3s-delivery.md) |
 | Understand pipeline and rollback gates | [Jenkins delivery](jenkins.md#production-delivery) |
 | Verify registry image inputs | [Verified registry delivery](#verified-registry-delivery) |
@@ -24,7 +24,7 @@ and acceptance evidence remain outstanding.
 
 ## Limited-access production
 
-For `play.ordinalfrontier.com`, follow [limited-access launch](limited-launch.md). Production
+For `play.ordinalfrontier.com`, follow [production access](access.md). Production
 requires Cloudflare mode and an Access application audience/issuer/origin and private
 role assignments. The API manifest fails startup on missing authentication config;
 development staging explicitly substitutes the dev environment. The tunnel exposes
@@ -34,7 +34,7 @@ Production migrations create and inspect a PostgreSQL backup before applying SQL
 Production smoke requires `BATTLEFIELD_ACCESS_SERVICE_TOKEN_FILE` with dedicated CI
 service credentials. It checks private readiness/identity denial and authenticates
 through the public hostname. Provision the credential and CI client ID using the
-[CI service runbook](limited-launch.md#ci-service-authentication) before delivery.
+[CI service runbook](access.md#ci-service-identity) before delivery.
 Production rollback requires an exact previously verified Access-compatible backend
 digest in `BATTLEFIELD_ACCESS_COMPATIBLE_BACKEND_DIGEST`, loaded from a private
 cluster-bound record of a previous successful verification, in addition to image
@@ -647,7 +647,7 @@ AWS promotion copies verified images to ECR without rebuilding.
 - Keep `DATABASE_URL` out of Git, image layers, ConfigMaps, logs, and command
   examples containing real credentials.
 - Production requires Cloudflare Access identity verification; follow the
-  [launch runbook](limited-launch.md). Password/cookie authentication is only for
+  [production access runbook](access.md). Password/cookie authentication is only for
   explicit development mode. In that mode, keep the administrator password and
   signing secret out of Git, images, ConfigMaps, and examples; replicas share the
   signing secret, and HTTPS development uses `BATTLEFIELD_AUTH_COOKIE_SECURE=true`.

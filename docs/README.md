@@ -56,7 +56,7 @@ configuring, deploying, observing and recovering environments.
 | --- | --- |
 | [Environments](operations/environments.md) | Registering environments and managing configuration |
 | [Deployment](operations/deployment.md) | Staged delivery, migration gates, smoke checks and rollback |
-| [Limited-access launch](operations/limited-launch.md) | Access protection, roles, CLI isolation and CI service authentication |
+| [Production access](operations/access.md) | Access requirements, tunnel, roles, AI limits, CI service identity and access recovery |
 | [Player invitations](operations/player-invitations.md) | Activating and recovering managed Player membership |
 | [Observability operations](operations/observability.md) | Metrics, dashboards, logs and diagnostics |
 | [Reliability testing](operations/reliability-testing.md) | Disposable load tests, capacity checks and failure drills |

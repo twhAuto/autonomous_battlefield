@@ -132,7 +132,7 @@ The engine owns orchestration around this pure domain: leases, retries, pauses, 
 
 ### Public application boundary
 
-Production requires Cloudflare Access on the whole application hostname through a named Tunnel. The API independently verifies the Access JWT and maps issuer/subject identity and verified email to a role on every request. Privileged roles remain configured; optionally managed Player membership is read from PostgreSQL. No legacy password/cookie fallback is accepted. Explicit local-password and disabled-development modes remain development-only. Exact-origin mutation checks and a deny-by-default route permission registry wrap every application API. The browser never connects to the engine, AI gateway or PostgreSQL. See [limited-access launch](../operations/limited-launch.md).
+Production requires Cloudflare Access on the whole application hostname through a named Tunnel. The API independently verifies the Access JWT and maps issuer/subject identity and verified email to a role on every request. Privileged roles remain configured; optionally managed Player membership is read from PostgreSQL. No legacy password/cookie fallback is accepted. Explicit local-password and disabled-development modes remain development-only. Exact-origin mutation checks and a deny-by-default route permission registry wrap every application API. The browser never connects to the engine, AI gateway or PostgreSQL. See [limited-access launch](../operations/access.md).
 
 ### Model boundary
 
@@ -516,7 +516,7 @@ scenario-catalog routes. It cannot control
 battles or use admin/inspection routes. Human roles and direct-origin denial
 remain independent. The application receives the client ID, while the client
 secret stays with the verification tooling. Credential setup and rotation live
-in the [service authentication runbook](../operations/limited-launch.md#ci-service-authentication).
+in the [service authentication runbook](../operations/access.md#ci-service-identity).
 
 ### Runtime security requirements
 
@@ -528,7 +528,7 @@ in the [service authentication runbook](../operations/limited-launch.md#ci-servi
 - Model rationale remains untrusted display text; bounded length does not make it authoritative.
 - CLI isolation depends on the configured, validated provider version family.
 
-The [access and isolation runbook](../operations/limited-launch.md) owns credential
+The [production access runbook](../operations/access.md) owns credential
 provisioning, network verification and enablement procedures.
 
 ## 9. Configuration and profile availability
@@ -600,7 +600,7 @@ migrations and rollback procedures belong to [deployment operations](../operatio
 [K3s delivery](../operations/k3s-delivery.md), and the
 [supply-chain runbook](../operations/supply-chain-runbook.md).
 The image-verification admission webhook fails closed on missing or invalid
-evidence; see [admission verification](../operations/limited-launch.md#validation-and-recovery)
+evidence; see [admission verification](../operations/supply-chain-runbook.md#admission-verification)
 for the configured retrieval timeout.
 The advisory retention inventory publishes only after cluster and registry reads
 succeed; a failed collection preserves the previous report. Registry deletion is
