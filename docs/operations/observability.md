@@ -235,9 +235,9 @@ Prometheus keeps only `nodes/metrics` permission, never broad `nodes/proxy` acce
 
 For K3s, the platform job exports the cluster's serving CA and
 [K3s registration](k3s-delivery.md#prepare-a-separate-registration) copies it into the
-profile as `kubelet-ca.crt`. For a registered Kind production environment, collect
-the current public serving certificates through the trusted Docker daemon, after
-environment and cluster UID validation:
+profile as `kubelet-ca.crt`. Only the retained Kind recovery profile needs the
+Kind path: collect the current public serving certificates through the trusted
+Docker daemon, after environment and cluster UID validation:
 
 ```bash
 ./scripts/ops/export-kind-kubelet-ca.sh

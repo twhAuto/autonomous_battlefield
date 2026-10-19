@@ -105,7 +105,7 @@ A lost registered cluster requires explicit recovery. The
 defines what can be recovered. There is no separate lost-cluster restore runbook:
 register the replacement cluster and restore a verified database dump using the
 registration and dump/restore steps in
-[K3s delivery](k3s-delivery.md#adoption-and-cutover-boundary).
+[K3s delivery](k3s-delivery.md#move-production-to-a-new-cluster).
 Then authenticate to GHCR and deploy the verified stored digest pair. Restoring
 images does not restore PostgreSQL data; normal bootstrap refuses to recreate a
 missing registered cluster.

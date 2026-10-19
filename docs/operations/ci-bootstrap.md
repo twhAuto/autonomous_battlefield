@@ -21,7 +21,8 @@ current controller, Sonar containers, agent or their data.
 Complete [host registration](server-bootstrap.md) first. Keep the existing Jenkins
 administrator API token in `~/.config/jenkins/token`, owned by your user with mode
 `0600`. An API token is needed only by the external operator; do not paste it into
-chat or commit it. The default administrator login is `whtan`.
+chat or commit it. The default administrator login is the registered Jenkins
+administrator ([registered facts](server-rebuild-contract.md#registered-facts)).
 
 Before registration, confirm the server is the supported native Jenkins plus
 Sonar Compose layout:

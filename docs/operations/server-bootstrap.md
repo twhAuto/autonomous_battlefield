@@ -173,13 +173,12 @@ the existing foundation-only behavior. This is separate from `backup_uuid`: a
 partition on the Ubuntu SSD is suitable for application storage, but is not a
 second-drive backup.
 
-Add the existing ext4 partition's verified UUID and mount path to the inventory.
-The following is an example fragment; replace the UUID with the one confirmed
-during inspection:
+Add the existing ext4 partition's verified UUID and mount path to the inventory,
+using the UUID confirmed during inspection:
 
 ```json
 {
-  "data_uuid": "75db9b1d-5c46-4e5b-bd94-5391b2a35411",
+  "data_uuid": "<data-uuid>",
   "data_mount": "/srv/battlefield-data"
 }
 ```
@@ -225,19 +224,18 @@ and retained data images in the reported `images` directory.
 [K3s platform configuration](k3s-platform.md) owns mounting retained data
 **inside** the guest before K3s and configuring its persistent-volume path.
 Neither VM provisioning nor application/database
-migration is performed by this host role. The separate
-[application cutover](k3s-delivery.md#adoption-and-cutover-boundary) moves the
-application to K3s while retaining the old Kind data.
+migration is performed by this host role; moving application data between
+clusters is a separate [K3s delivery procedure](k3s-delivery.md#move-production-to-a-new-cluster).
 
 The root-installed `/etc/battlefield-data-storage/guard.py` provides the
 read-only command consumers must run on the host **before storage mutations**:
 
 ```bash
 sudo /etc/battlefield-data-storage/guard.py guard \
-  75db9b1d-5c46-4e5b-bd94-5391b2a35411 /srv/battlefield-data twh09
+  <data-uuid> /srv/battlefield-data <operator>
 ```
 
-Use inventory values on other hosts. Success emits no output; failure is nonzero.
+Use the inventory's values ([registered facts](server-rebuild-contract.md#registered-facts)). Success emits no output; failure is nonzero.
 Do not create a libvirt pool or allocate image files after a failed guard. The
 guard checks the ownership contract, exact mount UUID, writable ext4 filesystem
 and image-directory filesystem. It is also installed as a separate executable in
@@ -275,8 +273,7 @@ separate from the unprivileged CI suite.
 
 Scheduled backup and retention are not configured. Pre-migration database dumps
 remain enabled. If backup automation is added, the target is the server's second
-physical disk only; the earlier 100 GB / 7 daily / 4 weekly proposal is a planning
-baseline, not an active policy.
+physical disk only.
 
 Leave `backup_uuid` empty until the intended filesystem is inspected. Once set,
 inspection reports whether it identifies a unique existing ext4 filesystem on a

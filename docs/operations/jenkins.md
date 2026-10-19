@@ -16,8 +16,8 @@ Related guides own the surrounding procedures:
 
 ## Controller
 
-The production Jenkins controller runs on the server at `192.168.1.126`, port
-`8080`. Its state persists under `/var/lib/jenkins`, and the native service starts
+The production Jenkins controller runs on the registered server (see
+[registered facts](server-rebuild-contract.md#registered-facts)), port `8080`. Its state persists under `/var/lib/jenkins`, and the native service starts
 at boot. Routine diagnostics:
 
 ```bash

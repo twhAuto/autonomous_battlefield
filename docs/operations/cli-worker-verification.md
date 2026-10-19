@@ -53,7 +53,7 @@ liveness check, so choosing it requires changing `SMOKE_TEST_FRONTEND_PORT` in t
 Jenkins job first. The bridge reads the registered production kubeconfig;
 restarting it after K3s profile adoption retargets the connection without
 reinstalling the worker or copying cluster credentials into the VM. See
-[cutover and recovery](k3s-delivery.md#adoption-and-cutover-boundary).
+[moving production to a new cluster](k3s-delivery.md#move-production-to-a-new-cluster).
 
 The host units keep their pre-rename names (`battlefield-mcp-bridge` and
 `battlefield-mcp-proxy`), and the bridge still forwards `service/battlefield-mcp`.
