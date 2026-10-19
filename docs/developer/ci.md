@@ -35,7 +35,7 @@ that they are unnecessary; those skips are intentional and remain visible.
 
 PRs targeting `dev` or `main`, main delivery and assurance all run on the shared
 `battlefield-production` agent; see the
-[shared-agent tradeoff](../operations/jenkins.md#production-hardening-rollout).
+[shared-agent tradeoff](../operations/jenkins.md#shared-ci-and-production-agent).
 Pushes to `dev` and work branches run no pipeline: a merged `dev` head is first
 built by the next `dev`→`main` promotion PR.
 
@@ -44,7 +44,20 @@ Only `main` is protected. Its ruleset requires a pull request and the `Jenkins` 
 than a distinct "PR merged" event, so that rule is what makes a `main` update
 equivalent to an approved merge. `dev` has no ruleset: work branches still open
 pull requests into `dev`, but Jenkins results there are advisory and maintainers
-may push directly. See [branch protection](../operations/jenkins.md#configure-github-integration-branch-protection).
+may push directly. See [branch protection](../operations/jenkins.md#main-branch-protection).
+
+Work branches start from the latest fetched `origin/dev` and open PRs into `dev`
+([agent branch guidance](../../AGENTS.md#branches-and-pull-requests)). A
+`dev`-to-`main` promotion is a separate release PR. After it merges, bring `dev` up
+to date so the next promotion contains only new work:
+
+```bash
+git switch main
+git pull --ff-only origin main
+git switch dev
+git merge main
+git push origin dev
+```
 
 ## Pull-request verification
 
@@ -67,10 +80,129 @@ isolate shared role/grant changes. A failed backend test stops the coverage run;
 the published `Unavailable` backend coverage result is not evidence of a low
 coverage percentage. Inspect the failing test before changing any coverage gate.
 
-The shared `scripts/test/test-deployment.sh` gate includes offline Helm bootstrap
-and Langfuse detection regressions. The chart-rendering validator
-`scripts/test/test-langfuse-security.py` remains an explicit chart-upgrade check;
-see [Langfuse operations](../operations/langfuse.md).
+All deployment regression suites run through `./scripts/test/test-deployment.sh`
+on both PR and `main` builds, using fixtures and no production secrets. It covers
+tunnel preparation, policy boundaries, recovery approval, authenticated capture,
+per-replica scrape checks, offline Helm bootstrap and Langfuse detection. The
+chart-rendering validator `scripts/test/test-langfuse-security.py` remains an
+explicit chart-upgrade check; see [Langfuse operations](../operations/langfuse.md).
+
+## What the pipeline runs
+
+This section explains the tools and checks behind the stages above, for
+diagnosing a failure. Agent setup and credentials are in
+[Jenkins operations](../operations/jenkins.md).
+
+### Pinned tools and registry access
+
+Security scanners, Kubeconform, Conftest, Syft, Cosign, ORAS, k6 and ZAP run from
+the versions pinned in `scripts/ci/tool-versions.env`, which is also the default
+Trivy pin for local image scans (`TRIVY_IMAGE` overrides it locally). The
+source-security stage owns the shared manifest rendering, schema checks and policy
+checks on both PR and `main` builds; the deployment-script checks exercise
+staging, component selection and scanner launchers separately.
+`SECURITY_ARTIFACT_DIR` relocates the security reports, including the rendered
+manifest that Trivy and Conftest consume.
+
+Pipelines place `GOCACHE`, `GOTMPDIR` and temporary files in Jenkins's
+workspace-associated temporary directory, share that Go cache across parallel
+stages, and remove it before archiving build evidence.
+
+`main` builds publish to the private GHCR packages
+`autonomous-battlefield-backend` and `autonomous-battlefield-frontend`, which
+inherit repository access. The publishing script creates or reuses a
+`docker-container` Buildx builder named `battlefield-jenkins`; that driver keeps
+BuildKit SBOM and provenance attestations even when the daemon uses the classic
+image store. Provenance is emitted as SLSA v0.2 so the extracted predicate matches
+Cosign's `slsaprovenance` schema.
+
+Cosign publishes each signature and signed attestation as a v3 OCI 1.1 referrer
+and also as a legacy digest-tag mirror. The referrers are the portable promotion
+evidence; the mirror exists because the pinned Kyverno 1.15 admission verifier
+discovers `.sig` and `.att` tags, not referrer-only evidence. Both forms are signed
+with the same Jenkins-managed key and cover the same digest.
+
+[`scripts/ci/with-ghcr-auth.sh`](../../scripts/ci/with-ghcr-auth.sh) gives
+publishing, image scanning and startup checks, signing, deployment, rollback and
+AWS promotion a mode-700 temporary `DOCKER_CONFIG`. It logs in through standard
+input, forwards arguments and exit status, and removes the credentials on success,
+failure or cancellation, so GHCR credentials never reach the agent's
+`~/.docker/config.json`. Docker may still warn that the temporary configuration is
+unencrypted. `BUILDX_CONFIG` stays on the agent so the named builder can be reused.
+[`test-registry-auth.sh`](../../scripts/test/test-registry-auth.sh) checks this
+lifecycle with a stub Docker command and never contacts a registry.
+
+### Image naming and source metadata
+
+Publication and policy rendering share the image repository defaults in
+`scripts/lib/image-metadata.sh`. `REGISTRY_NAMESPACE` changes the namespace, and
+`PUBLISHED_BACKEND_IMAGE` and `PUBLISHED_FRONTEND_IMAGE` override individual
+repository names, which must omit tags, digests and wildcards. Registry
+credentials must still grant access to the chosen repositories.
+
+Image source labels come from Git `origin`, normalizing HTTPS and common SSH URLs;
+`SOURCE_URL=https://github.com/your-org/your-repo` overrides the label.
+Credential-bearing or unsupported URLs are rejected without printing them.
+Publishing requires a source URL; local builds without an origin omit the label.
+
+`test-image-metadata.sh` runs the real build, publish and policy-rendering scripts
+with stub Docker and Kubernetes commands, covering repository overrides, preserved
+images, source metadata and invalid input. `test-docker-context.sh` builds
+synthetic scratch contexts to check that each component excludes local environment
+files while keeping source and examples. PR and `main` builds run both.
+
+### Source security
+
+The source-security stage first runs a full npm audit from a digest-pinned Node
+container. If the npm advisory endpoint is still unavailable after a bounded retry,
+the stage requires a passing Trivy lockfile scan of all frontend dependencies,
+including development and unfixed vulnerabilities. A definitive npm vulnerability
+report is never replaced by that fallback. The archived `npm-audit-mode.json`
+records which path supplied the evidence, and npm debug logs are archived under
+`artifacts/security/npm-logs/` (paths printed by npm are inside the container).
+
+The Trivy source scan skips the generated `artifacts`, `frontend/coverage`,
+`frontend/playwright-report` and `frontend/test-results` directories, because
+Vitest creates and removes temporary coverage files during the parallel frontend
+stage. Scanning them can otherwise fail with
+`stat frontend/coverage/.tmp/coverage-*.json: no such file or directory`. Frontend
+source and lockfiles stay in the scan.
+
+### Browser tests and reports
+
+Vitest runs with at most two workers and a 15-second per-test timeout
+(`frontend/vite.config.ts`), and Testing Library's async queries wait up to five
+seconds (`frontend/src/test/setup.ts`). That gives DOM tests headroom while other
+builds share the agent; every assertion and the 80% coverage gates still apply.
+
+Both frontend stages install the lockfile-matched Chromium with
+`npx playwright install chromium` and run `npm run test:e2e` after coverage and
+build. The suite starts a Vite server on port 4173, intercepts every API route with
+deterministic fixtures, and covers desktop and mobile Chromium with one worker in
+CI; it needs no shared database or live AI. Each stage then asserts
+`test -s playwright-report/index.html`, so a run without a report fails in the
+stage.
+
+An always-run post step archives `frontend/test-results/**/*`, including failure
+screenshots and traces, and allows an empty archive because those paths depend on
+which stages ran. `frontend/playwright-report/**/*` is archived separately, only
+when `index.html` exists, and does not allow an empty archive. Builds that never
+reach the frontend stages log that no report was produced.
+
+### k6 and ZAP networking
+
+Development k6 and ZAP containers use host networking on the Linux agent and map
+`battlefield.localhost` to `127.0.0.1`, matching kind's loopback-only gateway, so
+the Docker daemon must run on the agent's host. Both run with the invoking user's
+UID and GID so their bind-mounted reports stay writable and owned by Jenkins; ZAP
+uses container-local `/tmp` for its home and working directory. `TARGET_URL` and
+`ZAP_TARGET_URL` override the targets. A refused connection to `172.17.0.1:8888`
+means an outdated launcher is using the Docker bridge gateway.
+
+`./scripts/test/test-runtime-assurance.sh` checks launcher networking, report
+ownership, target overrides and failure propagation without starting scanners or
+contacting a deployment. Production k6 and ZAP are described under
+[production delivery](../operations/jenkins.md#production-k6-and-zap).
 
 ## Frontend image checks
 
@@ -159,6 +291,30 @@ harness-provided database; a plain Go test run is not equivalent evidence.
 The source-security stage logs each failed check and its report path. Inspect the
 matching file under the build's archived `artifacts/security/` directory to
 separate dependency findings from rendered-manifest or workload-policy failures.
+
+## Local SonarQube
+
+The repository includes a SonarQube Community Build and PostgreSQL Compose stack
+for local analysis. It is separate from the application database and from the
+registered server's [managed deployment](../operations/jenkins.md#sonarqube-server),
+and it does not configure Jenkins.
+
+```bash
+docker compose -f infra/sonarqube/compose.yaml up -d
+curl --fail http://localhost:9000/api/system/status
+```
+
+On a fresh instance, sign in as `admin` / `admin`, change the password, and create
+a private analysis token; keep it out of Git. The containers use `unless-stopped`,
+so they restart with Docker. Data lives in named volumes; stop the stack without
+losing it, and resume it with `up -d`:
+
+```bash
+docker compose -f infra/sonarqube/compose.yaml stop
+```
+
+Do not run `docker compose down -v` unless you intend to erase the SonarQube
+database and configuration.
 
 ## Observability rule checks
 
