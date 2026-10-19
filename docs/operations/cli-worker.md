@@ -41,8 +41,7 @@ unit below starts it automatically.
 
 ## Seed the job
 
-After this change reaches `main`, create the job with the existing platform
-installer. `--jobs-only` reuses the folder credentials and starts no build:
+Create the job with the existing platform installer from a checkout of `main`. `--jobs-only` reuses the folder credentials and starts no build:
 
 ```bash
 python3 scripts/infra/seed-platform.py --jobs-only
@@ -127,7 +126,7 @@ Restarting the worker cancels running decisions, which then fall back for that t
 Before a restart for a new binary or new settings, the job waits until no CLI
 decision is running, for at most five minutes:
 
-- **Workers with drain support** (from this release on) serve `GET /status` on the
+- **Workers with drain support** serve `GET /status` on the
   guest's health port with `draining`, `active` and `concurrency`. The job sends
   `SIGUSR1`, so the worker stops claiming and finishes running decisions, then
   waits for `active` to reach 0. On a timeout, or if a later step fails, it sends
@@ -135,7 +134,7 @@ decision is running, for at most five minutes:
 - **Older workers** cannot stop claiming, and `SIGUSR1` would stop them. The job
   never signals them. It waits until the worker has no child processes in two checks
   in a row, then restarts at once. A decision claimed in that moment still falls back.
-  This applies only to the first upgrade from the adopted binary.
+  This applies only to upgrading a worker that predates drain support.
 
 Secret syncs and restarts of an unhealthy worker do not drain: such a worker cannot
 claim decisions.

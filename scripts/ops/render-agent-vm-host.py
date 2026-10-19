@@ -44,7 +44,7 @@ def main():
                         help="Free host loopback port (default: 28084); keep separate from Jenkins smoke ports")
     args = parser.parse_args()
     render(args.output, args.user, args.home, args.kubeconfig, args.context, args.bridge_port)
-    print(f"Rendered {args.output}. No services changed. Follow docs/operations/agent-vm.md.")
+    print(f"Rendered {args.output}. No services changed. Follow docs/operations/cli-worker-verification.md.")
 
 
 if __name__ == "__main__":
