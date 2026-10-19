@@ -352,9 +352,9 @@ Separately test the public hostname with allowed and denied Google identities,
 MFA, six-hour user-session expiry, logout, account removal, and direct-origin
 IPv4/IPv6 probes. Use real
 browser sessions for human-role checks; do not copy browser JWTs into scripts or
-Jenkins. Remove any leftover `battlefield-production-access-token` credential after
-checking all Jenkins jobs for references. Keep the service-token credential and
-tunnel credentials, which serve different purposes.
+Jenkins. Keep the service-token credential and tunnel credentials, which serve
+different purposes; the retired browser-JWT credential is covered in
+[CI bootstrap](ci-bootstrap.md).
 
 If authentication fails, keep the application unavailable while repairing the
 Access configuration. Rollbacks must retain production Cloudflare mode and current
@@ -391,8 +391,7 @@ waive missing or invalid evidence.
 ## CI service authentication
 
 Jenkins uses the Secret file credential `battlefield-production-access-service-token`
-for credential preflight, deployment smoke, and k6 smoke load. The
-`battlefield-production-access-token` browser JWT credential is not used.
+for credential preflight, deployment smoke, and k6 smoke load.
 Service authentication does not grant a Player, Developer or Admin role. The API
 validates the signed Access application JWT (RS256, fixed issuer and audience,
 expiry, issuance time and signing keys), requires its `common_name` to exactly

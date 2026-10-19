@@ -54,12 +54,10 @@ if (configuration.mode == 'install' && !new File(j.rootDir, 'battlefield-bootstr
 def expected = [
     'github-app-battlefield': GitHubAppCredentials,
     'battlefield-ghcr': UsernamePasswordCredentialsImpl,
-    'battlefield-local-secret-env': FileCredentialsImpl,
     'battlefield-cosign-key': FileCredentialsImpl,
     'battlefield-cosign-password': StringCredentialsImpl,
     'battlefield-cosign-public-key': FileCredentialsImpl,
     'battlefield-production-kubeconfig': FileCredentialsImpl,
-    'battlefield-production-access-token': FileCredentialsImpl,
     'battlefield-production-access-service-token': FileCredentialsImpl,
     'sonarqube-battlefield-token': StringCredentialsImpl
 ]

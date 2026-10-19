@@ -135,13 +135,18 @@ these files with the same `seal` command above before `ci-plan`/`ci-apply`.
 | `github-app-battlefield` | `{"type":"githubApp","appId":"NUMERIC_ID","privateKey":"PEM_CONTENT"}` |
 | `battlefield-ghcr` | `{"type":"usernamePassword","username":"LOGIN","password":"TOKEN"}` |
 | `battlefield-cosign-password` | `{"type":"string","value":"PASSPHRASE"}` |
-| `battlefield-local-secret-env`, `battlefield-cosign-key`, `battlefield-cosign-public-key`, `battlefield-production-kubeconfig`, `battlefield-production-access-token`, `battlefield-production-access-service-token` | `{"type":"file","value":"FILE_CONTENT"}` |
+| `battlefield-cosign-key`, `battlefield-cosign-public-key`, `battlefield-production-kubeconfig`, `battlefield-production-access-service-token` | `{"type":"file","value":"FILE_CONTENT"}` |
 | `host-inventory`, `host-inputs`, `host-vault-password`, `host-sudo-password` | The same file shape, installed only in the owned `battlefield-platform` folder; `host-inputs` must already be Ansible Vault ciphertext |
 
 Keep this JSON and each input file outside Git, mode `0600`. Values are file
 contents, not paths; JSON-escape newlines when preparing PEM/configuration files.
 The platform inputs have the same meanings as the [platform seeder](platform-jobs.md).
 Do not use fixture credentials outside the disposable rehearsal.
+
+Earlier releases also required `battlefield-local-secret-env` and
+`battlefield-production-access-token`. No pipeline uses them; remove both keys from
+`ci-credentials.json` (a fresh install rejects unknown IDs) and delete any leftover
+copies from **Manage Jenkins > Credentials**. Adoption ignores them.
 
 Fresh Jenkins starts with authentication required, signup disabled and the chosen
 administrator. Sonar's initial `admin` password is replaced through its API and a
