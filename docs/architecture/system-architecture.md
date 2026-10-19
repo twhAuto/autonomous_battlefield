@@ -503,7 +503,7 @@ an isolated VM and reach it through an authenticated private bridge. Their
 provider egress is allowlisted; provider login state stays inside the worker
 boundary. Development bridges bind to loopback. Workers poll the durable operator
 AI switch and cancel work on stop or loss of policy connectivity. The
-[worker operations guide](../operations/agent-vm.md) owns addresses, proxy settings,
+[worker operations guide](../operations/cli-worker-verification.md) owns addresses, proxy settings,
 firewall rules and service installation.
 
 ### Production automation identity

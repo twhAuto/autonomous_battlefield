@@ -16,7 +16,7 @@ The launcher toggles `CLAUDE_CLI_PROFILE_AVAILABLE` in the cluster while connect
 then clears it on exit. Keep its environment-file default `false`. Production
 uses the existing dedicated agent VM and requires
 `BATTLEFIELD_CLI_ISOLATION_VERIFIED=true` before advertising any CLI profile.
-Sign the VM worker in with the [provider login steps](agent-vm.md#provider-login).
+Sign the VM worker in with the [provider login steps](cli-worker-verification.md#provider-login).
 Do not install or mount Claude credentials inside the API or AI gateway containers.
 
 The runner uses [Claude's CLI restrictions](https://code.claude.com/docs/en/cli-reference):

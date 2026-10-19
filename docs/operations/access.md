@@ -12,7 +12,7 @@ access recovery. Related guides own the rest:
 - [Cloudflare platform](cloudflare-platform.md): capturing, adopting or creating
   the tunnel, DNS record, Access application and policies.
 - [Player invitations](player-invitations.md): managed Player membership.
-- [CLI worker verification](agent-vm.md#isolation-gate): the isolation gate that
+- [CLI worker verification](cli-worker-verification.md#isolation-gate): the isolation gate that
   must pass before any CLI profile is advertised.
 
 These procedures describe the implemented path; they do not prove that a live

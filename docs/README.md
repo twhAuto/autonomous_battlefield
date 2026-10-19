@@ -81,7 +81,7 @@ configuring, deploying, observing and recovering environments.
 | [CLI VM platform](operations/cli-vm-platform.md) | Isolated worker VM creation and adoption |
 | [CLI bootstrap](operations/cli-bootstrap.md) | Worker service, proxy and firewall configuration |
 | [CLI worker operations](operations/cli-worker.md) | Jenkins job that keeps the CLI VM, bridge, worker secret and worker release in order |
-| [CLI worker verification](operations/agent-vm.md) | Pinned artifacts, provider login, isolation, concurrency and recovery |
+| [CLI worker verification](operations/cli-worker-verification.md) | Start here for the CLI worker: what runs where, isolation boundary and gate, provider login, concurrency and troubleshooting |
 | [Antigravity CLI](operations/antigravity-cli.md) | Subscription login, local bridge and troubleshooting |
 | [Claude CLI](operations/claude-cli.md) | Subscription login, provider restrictions and troubleshooting |
 

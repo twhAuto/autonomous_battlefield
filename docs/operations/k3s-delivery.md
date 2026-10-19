@@ -252,7 +252,7 @@ point at different clusters.
    `./scripts/ops/prepare-limited-production.sh` with the default production
    profile before activating its tunnel. Do not copy the old cluster's
    recovery record into the new profile.
-5. Retarget the existing [CLI VM bridge](agent-vm.md) to the production kubeconfig.
+5. Retarget the existing [CLI VM bridge](cli-worker-verification.md) to the production kubeconfig.
    Inspect the effective systemd unit and drop-ins. If the path/context are
    unchanged, restarting the bridge makes it read the adopted kubeconfig; no
    unit rewrite is necessary. Keep the existing matched 28084 bridge/Caddy pair
