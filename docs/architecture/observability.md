@@ -9,25 +9,6 @@ reuses); [environments](#environments) lists the differences. The dashboard and
 objectives in this guide are internal operating targets. They are not a
 customer-facing service-level agreement.
 
-HTTP completion logs include `actor_id` and `actor_role` established by trusted
-authentication middleware, alongside method, resource path, status and request ID.
-The request ID is echoed in `X-Request-ID`. A caller-supplied value is kept only when it
-matches `[A-Za-z0-9._:-]{1,128}`, so it is safe to echo and log; otherwise the server
-generates one.
-An authentication observer carries identity to the outer request logger; rejected
-credentials leave identity empty. Tokens, cookies and email headers are not logged.
-Error text passes through `observability/redact` before it reaches a log or a span.
-A pgx connection error (database user, database name, host) becomes "failed to connect
-to the database", keeping any SQLSTATE; a connection string pgx cannot parse becomes
-"invalid database connection string", since pgx quotes it with only best-effort
-password masking; and network errors lose their address and
-hostname, in every branch of a wrapped or joined error; other error text is kept for
-debugging. A typed-nil error logs as `<nil>`. The logging handler redacts every
-error-valued attribute under any key, so call sites keep logging `"error", err`. Spans
-record errors through `tracing.RecordError` (also used by `tracing.EndSpan`), and
-`backend/test/conventions` fails the build if code calls `span.RecordError` directly.
-These operational logs provide request attribution, not a tamper-proof audit store.
-
 ## Signal path
 
 ```text
@@ -131,8 +112,7 @@ even when a CLI does not propagate trace headers. API runners emit one generatio
 per model attempt; CLI runners emit one aggregate session generation. Decision
 roots carry no duplicate billable token usage. The worker stores a trace marker
 with the provider metadata, and additive usage fields stay in the decision's JSON
-usage payload. Older decisions keep their original interpretation and get no
-invented link.
+usage payload.
 
 The collector keeps Tempo for infrastructure and optionally forwards only AI
 observations to a self-hosted Langfuse Helm release. Langfuse owns dedicated
@@ -193,52 +173,9 @@ Prometheus pod. Production verifies it against an exported kubelet CA; see
 [production kubelet TLS](../operations/observability.md#production-kubelet-tls).
 
 Workload telemetry explains pod health and resource use; it does not directly
-measure whether a user request succeeded.
-
-## Engine capacity and recovery limits
-
-Each engine worker processes one battle synchronously before claiming another;
-the application manifest defaults to one engine replica. Additional admitted
-battles queue. The default admission limit is four unfinished battles globally,
-and queued time counts toward the one-hour battle expiry. Queue delay therefore
-depends on battle duration, decision waits, pauses and available engine replicas;
-admission does not guarantee that a battle finishes before expiry.
-
-Crash recovery has two gates: the previous lease must expire (30 seconds by
-default), and an available worker must make its next claim. Claims select eligible
-battles by creation time and ID. An engine already processing another battle
-does not interrupt it to reclaim an orphan, so recovery can take longer than the
-lease duration.
-
-Every claim starts a new attempt at tick 0 from the frozen initial state. It does
-not resume the last persisted tick. Earlier attempt events remain inspectable,
-and matching resolved decisions can be reused as described in
-[battle retries](system-architecture.md#battle-retries).
-
-Every claim consumes an attempt, including a claim after a successful graceful
-shutdown requeue. Requeueing preserves the attempt count. With
-`engine.maxAttempts: 3`, an interrupted third attempt is marked `failed` with
-`attempts_exhausted` on a subsequent claim pass instead of being claimed again.
-Repeated rolling restarts during a battle can therefore exhaust its retry budget.
-
-Database errors returned by the claim operation terminate the worker loop and
-cause the engine process to exit with an error; Kubernetes restarts the container.
-A database interruption that reaches this path can consequently trigger lease
-recovery and a fresh attempt. Restart timing and recovery are separate: a ready
-replacement still has to satisfy the claim gates above.
-
-The API and engines share PostgreSQL. Inspect database CPU and throttling, query
-latency and connection-pool pressure alongside API pod usage when assessing
-capacity. Adding API replicas does not remove shared database work; the limiting
-resource and sustainable request rate depend on the workload and resource limits.
-Use [reliability testing](../operations/reliability-testing.md) to measure them.
-
-These contracts come from the
-[worker loop](../../backend/internal/battle/worker/worker.go),
-[claim and requeue operations](../../backend/internal/battle/repo/queue.go),
-[expiry sweep](../../backend/internal/battle/repo/expiry.go) and
-[engine entry point](../../backend/cmd/engine/main.go). Historical queue timings
-and load measurements are kept separately from these runtime contracts.
+measure whether a user request succeeded. For engine queueing, claim timing and
+crash recovery, which shape the battle-processing metrics, see
+[engine capacity and recovery](system-architecture.md#engine-capacity-and-recovery).
 
 ## Proposed SLIs and SLOs
 
@@ -315,8 +252,7 @@ Startup logs without a span omit these fields. Sampling can mean
 a logged trace ID has no stored trace. HTTP logs include `duration_ms` while
 retaining the older `duration` field for compatibility.
 
-Automation should filter on `event`; the provisioned AI search also matches
-legacy records that used event identifiers in `msg`.
+Automation should filter on `event`.
 
 `decision_window_started` records the configured timeout,
 `decision_context_served` confirms observation retrieval,
@@ -325,15 +261,46 @@ legacy records that used event identifiers in `msg`.
 Operational logs intentionally exclude capability tokens, credentials, full
 observations, prompts, and CLI output.
 
+### Request attribution and redaction
+
+HTTP completion logs include `actor_id` and `actor_role` established by trusted
+authentication middleware, alongside method, resource path, status and request ID.
+An authentication observer carries identity to the outer request logger; rejected
+credentials leave identity empty. Tokens, cookies and email headers are not logged.
+These logs provide request attribution, not a tamper-proof audit store.
+
+The request ID is echoed in `X-Request-ID`. A caller-supplied value is kept only
+when it matches `[A-Za-z0-9._:-]{1,128}`, so it is safe to echo and log; otherwise
+the server generates one.
+
+Error text passes through `observability/redact` before it reaches a log or a span:
+
+- A pgx connection error (database user, database name, host) becomes "failed to
+  connect to the database", keeping any SQLSTATE.
+- A connection string pgx cannot parse becomes "invalid database connection
+  string", because pgx quotes it with only best-effort password masking.
+- Network errors lose their address and hostname.
+
+Redaction applies to every branch of a wrapped or joined error; other error text is
+kept for debugging, and a typed-nil error logs as `<nil>`. The logging handler
+redacts every error-valued attribute under any key, so call sites keep logging
+`"error", err`. Spans record errors through `tracing.RecordError` (also used by
+`tracing.EndSpan`), and `backend/test/conventions` fails the build if code calls
+`span.RecordError` directly.
+
 ## Health endpoints
 
-Process entry points wire the shared `httpapi.LifecycleHandler`, which owns all
-health probes. Application routing does not register a second set of probes.
-Engine readiness requires both a running worker and a successful database ping;
-worker shutdown or database failure makes readiness fail while liveness remains
-available. See the [backend guide](../developer/backend-guide.md#process-health-ownership)
-for source ownership and lifecycle tests.
+The API and engine entry points wire the shared `httpapi.LifecycleHandler`, which
+owns their startup, liveness, readiness and metrics endpoints. Application routing
+does not register a second set of probes. Engine readiness requires both a running
+worker and a successful database ping; worker shutdown or database failure makes
+readiness fail while liveness remains available.
 
+The agent and AI gateway serve their own `/healthz`. The agent also serves `/status`
+with its drain state (`draining`, `active`, `concurrency`), and the AI gateway's
+`/readyz` pings PostgreSQL for its readiness probe. See the
+[backend guide](../developer/backend-guide.md#process-health-ownership) for source
+ownership and lifecycle tests.
 
 For stack deployment, access, storage recovery and trusted kubelet certificates,
 see the [observability runbook](../operations/observability.md).

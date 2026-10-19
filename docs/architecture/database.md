@@ -1,17 +1,13 @@
 # Database
 
-| Field | Value |
-| --- | --- |
-| Status | Current: describes migrations `00001`–`00017` |
-| Audience | Contributors and operators who need the schema, access model and coordination rules |
-| Source of truth | [`backend/migrations`](../../backend/migrations) and the PostgreSQL adapters in `backend/internal` |
-
 PostgreSQL is the system of record and the only coordination channel between the
 API, the battle engine and the AI gateway. Processes never call each other to hand
 over work: they claim rows, hold leases and record results in the database. This
 page owns the schema, database access, coordination patterns and migration
-conventions. [System architecture](system-architecture.md) describes the runtime
-flows that use them; operations runbooks own backup, restore and migration gates.
+conventions; the SQL in [`backend/migrations`](../../backend/migrations) is the
+source of truth. [System architecture](system-architecture.md) describes the
+runtime flows that use them; operations runbooks own backup, restore and migration
+gates.
 
 ## Deployment and access
 
@@ -46,7 +42,8 @@ schema lifecycle. Grants (restated in full by `00017`):
 The role has no access to battle events, battle state, factions, membership or
 policy tables beyond these columns. When `AI_GATEWAY_DATABASE_URL` is absent, the
 deployment scripts use the pre-rename `MCP_DATABASE_URL` if present, and otherwise
-reuse `DATABASE_URL`, which is acceptable only for local development; production must supply the restricted login
+reuse `DATABASE_URL`, which is acceptable only for local development. Production
+must supply the restricted login
 ([deployment configuration](../operations/deployment.md)).
 
 ## Schema
