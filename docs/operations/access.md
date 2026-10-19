@@ -190,9 +190,10 @@ nobody and grants nothing to non-admin callers.
 - **Managed Player:** use **Admin → Members** as described in
   [Player invitations](player-invitations.md); new API requests are blocked
   immediately.
-- **Configured role:** remove the Access Allow rule, revoke the identity's Access
-  sessions, remove its role assignment, and roll out the updated auth configuration
-  to **every API replica**. Offline JWT checks cannot detect Access revocation, so
+- **Configured role:** remove the Access Allow rule (a
+  [manual policy change](#policy-changes-and-the-cloudflare-workflow)), revoke the
+  identity's Access sessions, remove its role assignment, and roll out the updated
+  auth configuration to **every API replica**. Offline JWT checks cannot detect Access revocation, so
   check that access is denied after the rollout and allow for Cloudflare's
   revocation propagation.
 
@@ -203,9 +204,10 @@ Never fall back to anonymous or password mode during an authentication incident.
 PostgreSQL serializes admission across replicas:
 
 - 20 battles per identity per UTC day, 2 unfinished per identity and 4 unfinished
-  globally. Admin battles skip the per-identity limits but count toward the global
-  total, so a busy Admin can delay Player battles. Queued, running and paused
-  battles are all unfinished.
+  globally. Admin battles bypass all three limits, so an Admin can exceed the
+  global total, but they still count as unfinished when other identities' battles
+  are admitted, so a busy Admin can delay Player battles. Queued, running and
+  paused battles are all unfinished.
 - A retry with the same battle ID, scenario snapshot, ticks and owner returns the
   existing battle; different inputs conflict.
 - Background generation allows 10 jobs per identity per UTC day, including for
@@ -263,9 +265,8 @@ enrolled.
    such as one year. Save the Client ID, Client Secret and actual expiry privately.
 2. In the Access application for `play.ordinalfrontier.com`, add a **Service Auth**
    policy that includes only this token. Keep the existing user policies and MFA;
-   never use Bypass or allow all service tokens. The Cloudflare workflow refuses to
-   run against drifted configuration, so then capture and adopt the change as
-   described in [Cloudflare platform](cloudflare-platform.md#capture-and-adopt-the-current-production-configuration).
+   never use Bypass or allow all service tokens. This is a manual policy change;
+   see [policy changes and the Cloudflare workflow](#policy-changes-and-the-cloudflare-workflow).
 3. Add `BATTLEFIELD_ACCESS_CI_CLIENT_ID=<client-id>` to the production `.env`. The
    Client Secret stays only in Jenkins, never in `.env` or Kubernetes.
 4. Create a private file (`chmod 600`) with the actual values and the Cloudflare
@@ -316,9 +317,25 @@ no Cloudflare management privileges.
   period, update the Jenkins JSON (and `expires_at` if the token was renewed), run
   a `main` verification, then retire the old secret. No application change is
   needed.
-- **Replace the token:** update the Service Auth policy and re-capture it, change
-  the client ID in `.env`, update the Jenkins file, and run `main` with
-  **APPLY_CONFIGURATION=true**.
+- **Replace the token:** update the Service Auth policy (a manual policy change; see
+  below), change the client ID in `.env`, update the Jenkins file, and run `main`
+  with **APPLY_CONFIGURATION=true**.
+
+### Policy changes and the Cloudflare workflow
+
+The [Cloudflare workflow](cloudflare-platform.md) is not a policy editor or
+credential rotator. Once it has adopted the application, it records the captured
+inputs and the referenced service-token identities, and its plan, apply and verify
+refuse to run when either differs. Adding or replacing a Service Auth policy or
+token by hand therefore puts the workflow in that state: a new capture produces
+different inputs and fails with *Owned configuration or physical host changed;
+explicit recovery required*. The repository has no supported procedure yet for
+updating the recorded ownership after an intentional policy change.
+
+Before a manual policy change, record it in the ticket, and expect the workflow
+to need an operator-directed ownership recovery afterwards. Never delete the
+controller state or retry a name match to force it through. Rotating the secret of
+an existing token changes neither the policy nor its identity.
 
 References: [service tokens, rotation and expiry notifications](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/),
 [service-token application JWT claims](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/application-token/).
