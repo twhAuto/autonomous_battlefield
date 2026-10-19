@@ -845,7 +845,7 @@ and `kubectl -n battlefield apply -f infra/deploy/overlays/local/observability/k
 then confirm completion before running production smoke verification.
 
 Before enabling production delivery on a new or rebuilt environment, complete the
-[Jenkins agent isolation and recovery setup](jenkins.md#production-hardening-rollout)
+[Jenkins agent isolation and recovery setup](jenkins.md#shared-ci-and-production-agent)
 and [trusted kubelet monitoring setup](observability.md#production-kubelet-tls).
 Run `./scripts/test/test-deployment.sh` before opening a deployment PR.
 
