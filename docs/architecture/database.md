@@ -243,6 +243,28 @@ single-row tables (`id boolean PRIMARY KEY CHECK (id)`). `agent_execution_leases
 holds a decision or generation ID without a foreign key, because one table serves
 both job types.
 
+### Indexes
+
+Every table also has its primary-key index (`PK` above). The other indexes, from the
+same migrated schema, are:
+
+| Table | Index | Columns and condition | Serves |
+| --- | --- | --- | --- |
+| `battle_runs` | `battle_runs_unpaused_claim_idx` | `(status, lease_expires_at, created_at, id)` where `status` is `queued` or `running` and not `paused` | Engine battle claims |
+| `battle_runs` | `battle_runs_claim_idx` | Same columns where `status` is `queued` or `running`, paused or not | The original claim index (`00002`); claims have used the unpaused index since `00006` |
+| `battle_runs` | `battle_runs_history_idx` | `(created_at DESC, id DESC)` | Battle history pages, newest first |
+| `battle_runs` | `battle_runs_owner_created` | `(owner_id, created_at)` | Per-owner admission counts |
+| `battle_events` | primary key | `(battle_id, attempt, sequence)` | Idempotent inserts and event paging |
+| `battle_decisions` | `battle_decisions_battle_id_attempt_faction_id_target_tick_key` | Unique `(battle_id, attempt, faction_id, target_tick)` | One decision per faction per window |
+| `battle_decisions` | `battle_decisions_window_idx` | `(battle_id, attempt, target_tick, faction_id)` | Decision-window lookups |
+| `battle_decisions` | `battle_decisions_agent_claim_idx` | `(status, lease_expires_at, created_at, id)` where `controller_type = 'model'` and `status` is `pending` or `running` | Worker decision claims |
+| `faction_background_generations` | `faction_background_generations_actor_id_idempotency_key_key` | Unique `(actor_id, idempotency_key)` | Idempotent job creation |
+| `faction_background_generations` | `faction_generation_one_active` | Unique `(actor_id)` where `status` is `queued` or `running` | One active job per actor |
+| `faction_background_generations` | `faction_generation_queue` | `(created_at)` where `status = 'queued'` | Oldest-first generation claims |
+| `faction_background_generations` | `faction_generation_quota` | `(actor_id, created_at)` | Daily allowance counts |
+| `agent_execution_leases` | `agent_execution_expiry` | `(expires_at)` | Pruning and counting active CLI leases |
+| `player_members` | `player_members_email_key` | Unique `(email)` | One membership per email |
+
 ## Coordination patterns
 
 ### Claims and leases
