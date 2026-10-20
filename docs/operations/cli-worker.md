@@ -60,7 +60,7 @@ Open `battlefield-platform/cli` → **Build with Parameters**.
 | --- | --- |
 | `verify` (default) | Read-only. Fails and lists every problem: VM state, host units, bridge reachability, whether the gateway accepts the production worker secret, guest identity, worker secret match, worker health, binary drift, a worker left draining, and the boot/watchdog units. A worker binary older than the production release is a notice: it is listed but does not fail. |
 | `plan` | Records the repairs that `apply` would make, and the production release digest, in a private receipt valid for 30 minutes. |
-| `apply` | Plans, pauses for `whtan` to approve, re-checks that the plan still matches and consumes the receipt. It then repairs, verifies, and fails if anything remains. Reports are archived even when the run fails. |
+| `apply` | Plans, pauses for the registered approver to approve, re-checks that the plan still matches and consumes the receipt. It then repairs, verifies, and fails if anything remains. Reports are archived even when the run fails. |
 
 Apply repairs only what is needed:
 

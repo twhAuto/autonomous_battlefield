@@ -204,8 +204,9 @@ new review instead of silently accepting a different cluster or capture.
 ## Workstation trust and DNS
 
 Each workstation must resolve the four names to the Ubuntu server's LAN address
-(currently `192.168.1.126`) through its existing local DNS or hosts file. This
-workflow does not replace workstation/network DNS. Confirm resolution with
+(`<host>`; see [registered facts](server-rebuild-contract.md#registered-facts))
+through its existing local DNS or hosts file. This workflow does not replace
+workstation or network DNS. Confirm resolution with
 `getent hosts battlefield.home.arpa grafana.home.arpa kibana.home.arpa sonarqube.home.arpa`.
 The public application hostname continues to use normal public DNS.
 
@@ -216,7 +217,7 @@ to a browser. On Linux/WSL, verify without disabling TLS validation:
 
 ```bash
 curl --cacert "$private_dir/https-inputs.vault.root.crt" \
-  --resolve battlefield.home.arpa:443:192.168.1.126 \
+  --resolve battlefield.home.arpa:443:<host> \
   --dump-header - --output /dev/null https://battlefield.home.arpa/
 ```
 

@@ -49,25 +49,27 @@ and mounts it before K3s starts. Routine provisioning never formats this volume.
 
 ## Install or upgrade the Jenkins job
 
-After the reviewed change is promoted to `main`, use the existing
-[platform setup procedure](platform-jobs.md) to seed both `host` and `vm`. Existing
+Use the [platform setup procedure](platform-jobs.md) to seed both `host` and `vm`
+from `main`. Existing
 folder credentials are retained. For an already configured folder, an
 administrator can update only the job definitions through a strict SSH tunnel:
 
 ```bash
 ssh -N -L 127.0.0.1:18080:127.0.0.1:8080 \
   -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-  -i ~/.ssh/battlefield-automation twh09@192.168.1.126
+  -i ~/.ssh/battlefield-automation <operator>@<host>
 ```
+
+Substitute the registered operator and host ([registered facts](server-rebuild-contract.md#registered-facts)).
 
 In another workstation terminal, from the reviewed checkout:
 
 ```bash
-python3 scripts/infra/seed-platform.py --jobs-only \
-  --url http://127.0.0.1:18080 --user whtan
+python3 scripts/infra/seed-platform.py --jobs-only --url http://127.0.0.1:18080
 ```
 
-The API token is prompted without echo. No credential rotation, build or apply is
+`--user` defaults to the registered Jenkins administrator. The API token is
+prompted without echo. No credential rotation, build or apply is
 triggered. The new `battlefield-platform/vm` job uses existing `host-inventory`,
 `host-sudo-password` and `host-vault-password` folder credentials. It does not
 read the application credential bundle. Stop the tunnel after seeding.
@@ -78,8 +80,8 @@ read the application credential bundle. Stop the tunnel after seeding.
 2. Review archived `vm-plan.json`: revision, CPU/memory/storage/network settings
    and resource actions. The first plan creates the dedicated network, pool,
    base image, OS/data/seed volumes and domain. Other domains must not appear.
-3. Run `ACTION=apply`. This creates a fresh plan and pauses for `whtan` to approve
-   its artifact. The approval expires after ten minutes. A merge to main does
+3. Run `ACTION=apply`. This creates a fresh plan and pauses for the registered approver to
+   approve its artifact. The approval expires after ten minutes. A merge to main does
    not trigger this job.
 4. After approval, the runner rechecks the revision, inputs, canonical state,
    saved-plan hash and a fresh plan. Drift or a changed main requires a new review.
