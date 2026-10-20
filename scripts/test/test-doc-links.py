@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Fail when a tracked Markdown file links to a missing file or heading anchor.
 
-Checks relative links and images, including `#anchor` fragments, against GitHub's
+Checks relative links, images and reference-link definitions, including `#anchor`
+fragments, against GitHub's
 heading slugs (lowercase, punctuation removed, spaces to hyphens, `-1`, `-2` for
 repeats). External URLs and links inside code spans, fenced code blocks and HTML
 comments are skipped, so placeholders in examples and templates are not links.
@@ -16,19 +17,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 LINK = re.compile(r'!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)')
 HEADING = re.compile(r'^(#{1,6})\s+(.*?)\s*#*\s*$')
-FENCE = re.compile(r'^\s*(```|~~~)')
+FENCE = re.compile(r'^ {0,3}(`{3,}|~{3,})(.*)$')
+DEFINITION = re.compile(r'^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)>?(?:\s+(?:"[^"]*"|\'[^\']*\'|\([^)]*\)))?\s*$')
 
 
 def prose_lines(text: str):
     """Yield (line number, line) outside fenced code blocks and HTML comments."""
-    fenced = False
+    fence = None  # (character, length) of the open fence
     text = re.sub(r'<!--.*?-->', lambda m: '\n' * m.group(0).count('\n'), text, flags=re.S)
     for number, line in enumerate(text.splitlines(), 1):
-        if FENCE.match(line):
-            fenced = not fenced
+        match = FENCE.match(line)
+        if fence is None and match and not (match.group(1)[0] == '`' and '`' in match.group(2)):
+            fence = (match.group(1)[0], len(match.group(1)))
             continue
-        if not fenced:
-            yield number, line
+        if fence is not None:
+            # A closing fence uses the same character, is at least as long and has no info string.
+            if match and match.group(1)[0] == fence[0] and len(match.group(1)) >= fence[1] and not match.group(2).strip():
+                fence = None
+            continue
+        yield number, line
 
 
 def slug(heading: str) -> str:
@@ -54,7 +61,9 @@ def broken_links(files: list[Path], root: Path) -> list[str]:
     cache, problems = {}, []
     for path in files:
         for number, line in prose_lines(path.read_text(encoding='utf-8')):
-            for target in LINK.findall(re.sub(r'`[^`]*`', '', line)):
+            prose = re.sub(r'`[^`]*`', '', line)
+            definition = DEFINITION.match(prose)
+            for target in ([definition.group(1)] if definition else []) + LINK.findall(prose):
                 if re.match(r'^[a-z][a-z0-9+.-]*:', target, re.I):
                     continue
                 file_part, _, fragment = target.partition('#')
@@ -75,6 +84,9 @@ def self_test() -> None:
     assert slug('The `battlefield_ai_gateway` role') == 'the-battlefield_ai_gateway-role'
     assert slug('AB-144 — Phase 2: owner walkthrough') == 'ab-144--phase-2-owner-walkthrough'
     assert anchors('# A\n## Setup\n## Setup\n```\n# not a heading\n```\n### `main` branch\n') == {'a', 'setup', 'setup-1', 'main-branch'}
+    nested = '````markdown\n```bash\n# inside\n```\n# still inside\n````\n# After\n'
+    assert anchors(nested) == {'after'}, anchors(nested)
+    assert anchors('~~~\n```\n# inside\n~~~\n# Out\n') == {'out'}
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         (root / 'docs').mkdir()
@@ -84,11 +96,16 @@ def self_test() -> None:
             '[ok](guide.md#run-it) [self](#page) [web](https://example.com/x#y)\n'
             '# Page\n`[code](missing.md)`\n<!-- [comment](NOTION_URL) -->\n'
             '```\n[fenced](missing.md)\n```\n'
-            '[gone](missing.md) [bad](guide.md#nope) ![image](missing.png)\n')
+            '[gone](missing.md) [bad](guide.md#nope) ![image](missing.png)\n'
+            '````md\n```\n[nested](missing.md)\n```\n````\n'
+            '[Ref][r1] [Other][r2]\n'
+            '[r1]: guide.md#run-it\n[r2]: missing-ref.md "Title"\n[r3]: guide.md#gone\n')
         assert broken_links([page], root) == [
             'docs/page.md:8: missing target missing.md',
             'docs/page.md:8: missing anchor guide.md#nope',
             'docs/page.md:8: missing target missing.png',
+            'docs/page.md:16: missing target missing-ref.md',
+            'docs/page.md:17: missing anchor guide.md#gone',
         ], broken_links([page], root)
 
 
