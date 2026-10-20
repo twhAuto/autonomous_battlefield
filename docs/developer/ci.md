@@ -83,7 +83,8 @@ coverage percentage. Inspect the failing test before changing any coverage gate.
 All deployment regression suites run through `./scripts/test/test-deployment.sh`
 on both PR and `main` builds, using fixtures and no production secrets. It covers
 tunnel preparation, policy boundaries, recovery approval, authenticated capture,
-per-replica scrape checks, offline Helm bootstrap and Langfuse detection. The
+per-replica scrape checks, offline Helm bootstrap, Langfuse detection and internal
+documentation links and anchors. The
 chart-rendering validator `scripts/test/test-langfuse-security.py` remains an
 explicit chart-upgrade check; see [Langfuse operations](../operations/langfuse.md).
 

@@ -64,7 +64,7 @@ Start with the [documentation index](docs/README.md) for the full guide catalogu
 
 | I want to… | Start here |
 | --- | --- |
-| Run or change the application | [Local setup](docs/developer/local-setup.md), [codebase guide](docs/developer/codebase-guide.md) |
+| Run or change the application | [Local setup](docs/developer/local-setup.md), [local Kubernetes deployment](docs/developer/local-kubernetes.md), [codebase guide](docs/developer/codebase-guide.md) |
 | Understand gameplay | [Game rules](docs/game/game-rules.md), [Frontier Siege](docs/game/frontier-siege.md) |
 | Understand the system | [System architecture](docs/architecture/system-architecture.md), [AI decisions](docs/architecture/ai-decisions.md), [database](docs/architecture/database.md) |
 | Use the API | [HTTP reference](docs/architecture/api.md), [OpenAPI](docs/architecture/openapi.yaml) |
