@@ -15,18 +15,28 @@ applied.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> pending: decision created
-    pending --> running: agent claims lease
-    running --> running: expired lease reclaimed
-    pending --> accepted: scripted or model submission
-    running --> accepted: model submission
-    pending --> fallback: engine deadline
-    running --> fallback: engine deadline
-    running --> failed: runner failure or battle stop
-    failed --> fallback: engine resolves usable plan
+    [*] --> pending: created
+    [*] --> failed: created while AI is stopped or budget is spent
+    pending --> accepted: scripted plan
+    pending --> running: worker claims
+    running --> running: lease expired, reclaimed
+    running --> accepted: model submits plan
+    pending --> fallback: deadline
+    running --> fallback: deadline
+    pending --> failed: budget spent at claim, battle stopped or expired
+    running --> failed: runner failed, battle stopped or expired
+    failed --> fallback: battle continues
+    failed --> [*]: battle ended
     accepted --> [*]
     fallback --> [*]
 ```
+
+Scripted controllers resolve their decision directly from `pending`. A model plan
+can only arrive from `running`: the worker gets the request capability that
+authorizes `submit_strategy_plan` when it claims the decision, and claiming moves
+it to `running`. When the window closes without an accepted plan, the engine
+records the fallback plan; a `failed` decision is resolved the same way unless its
+battle has already been stopped or expired.
 
 An accepted submission is idempotent when it repeats the stored idempotency key.
 Optimistic version checks prevent late or duplicate workers from overwriting
