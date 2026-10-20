@@ -31,6 +31,9 @@ it does not receive the broader `nodes/proxy` permission. Grafana receives no
 Kubernetes credentials. It uses internal Prometheus and Tempo Services as
 its metrics and trace data sources.
 
+Grafana provisions three dashboards: **Autonomous Battlefield Overview**,
+**Kubernetes Workloads** and **Battle Traces**.
+
 The stack deliberately does not include Alertmanager in either environment.
 Prometheus evaluates the checked-in alert rules and shows their state, but
 notifications require an Alertmanager or another alert-delivery integration.
@@ -53,17 +56,14 @@ exclude credentials, tokens and full observations (see
 network access to the host, or before using a shared cluster. Retained storage is
 not a backup; see [observability operations](../operations/observability.md#storage-and-access-by-environment).
 
-Fluent Bit runs once per node and tails API, engine, agent, AI gateway, frontend, and migration
-container logs from the `battlefield` namespace. It enriches each record with
-pod, container, and label metadata and sends daily
-`battlefield-app-YYYY.MM.DD` indices to Elasticsearch. JSON application logs
-are merged into searchable fields; plain-text frontend logs retain their `log`
-field. Keeping infrastructure logs out of the application index also prevents
-field-mapping collisions with their different schemas. The collector runs in
-the dedicated `battlefield-logging` namespace so its required read-only node
-log mounts do not weaken the application namespace's Pod Security policy. Its
-Role can read pods in the `battlefield` namespace only, and its own logs are
-outside the configured input path.
+Fluent Bit runs once per node and tails API, engine, agent, AI gateway, frontend
+and migration container logs from the `battlefield` namespace. It adds pod,
+container and label metadata and writes daily `battlefield-app-YYYY.MM.DD`
+indices. JSON application logs become searchable fields; plain-text frontend logs
+keep their `log` field. Infrastructure logs stay out of this index. The collector
+runs in its own `battlefield-logging` namespace, so its read-only node log mounts
+do not weaken the application namespace's Pod Security policy; its Role reads pods
+in `battlefield` only.
 
 ## Distributed traces
 
@@ -99,28 +99,20 @@ See [`internal/observability/tracing/tracing.go`](../../backend/internal/observa
 for environment configuration and instrumentation, and the
 [collector configuration](../../infra/deploy/overlays/local/observability/otel-collector/config.yaml)
 for the in-cluster path. Prompts, credentials, capabilities, full observations,
-and raw provider responses are excluded from span attributes. Tempo storage is
-also disposable; it is not an audit archive.
+and raw provider responses are excluded from span attributes. Tempo keeps traces
+for 24 hours on disposable storage; it is not an audit archive.
 
 ## AI observations in Langfuse
 
-The agent worker starts a separate, fully sampled trace for each decision request,
-linked to the engine's `battlefield.engine.decision_window` span; battle creation
-and engine processing are also always sampled. Stable request-derived trace and
-root IDs let the capability-scoped AI gateway attach server-side tool observations
-even when a CLI does not propagate trace headers. API runners emit one generation
-per model attempt; CLI runners emit one aggregate session generation. Decision
-roots carry no duplicate billable token usage. The worker stores a trace marker
-with the provider metadata, and additive usage fields stay in the decision's JSON
-usage payload.
-
-The collector keeps Tempo for infrastructure and optionally forwards only AI
-observations to a self-hosted Langfuse Helm release. Langfuse owns dedicated
-PostgreSQL, Valkey, ClickHouse/Keeper and SeaweedFS storage. Only the collector
-receives its ingestion credentials. The API reads an optional public URL/project
-ConfigMap for inspector links. Export is asynchronous and does not participate in
-decision acceptance or timeout enforcement. See [Langfuse operations](../operations/langfuse.md)
-for deployment order, sampling, privacy, persistence and token-accounting limits.
+Langfuse is optional. When it is installed, the collector forwards only AI
+observations (decision roots, model calls and MCP tool spans) to a self-hosted
+Langfuse release; Tempo keeps everything else. Only the collector holds the
+ingestion credentials, and the API reads an optional public URL and project for
+inspector links. Export is asynchronous and never takes part in decision
+acceptance or timeouts. Decision trace IDs are derived from the request ID, so the
+AI gateway's tool spans join the right trace even when a CLI does not propagate
+trace headers. [Langfuse operations](../operations/langfuse.md) owns installation,
+sampling, privacy, storage and token accounting.
 
 ## Application metrics
 
@@ -148,10 +140,9 @@ The Prometheus Go client also publishes standard `go_*`, `process_*`, and
 Method labels keep the nine standard HTTP methods and record any other method a
 client sends as `other`. Battle IDs, faction IDs, request
 IDs, pod names, and worker IDs are intentionally absent from application metric
-labels to avoid unbounded time-series cardinality. Pod identity is added only
-as the `scrape_pod` target label by Prometheus. That name deliberately avoids
-colliding with kube-state-metrics' `pod` label, which identifies the workload
-being described rather than the exporter pod.
+labels to avoid unbounded time-series cardinality. Prometheus adds pod identity
+only as the `scrape_pod` target label, which stays distinct from kube-state-metrics'
+`pod` label for the workload being described.
 
 ## Kubernetes workload metrics
 
@@ -162,15 +153,11 @@ The Kubernetes dashboard combines two complementary metric sources:
 | `kube-state-metrics` | What Kubernetes says should exist and whether workload objects are healthy | `kube_pod_status_phase`, `kube_pod_container_status_ready`, `kube_pod_container_status_restarts_total`, `kube_deployment_status_replicas_available` |
 | kubelet cAdvisor endpoint | What CPU, memory, and network resources containers are actually consuming | `container_cpu_usage_seconds_total`, `container_memory_working_set_bytes`, `container_network_receive_bytes_total`, `container_network_transmit_bytes_total` |
 
-The kube-state-metrics deployment watches only the `battlefield`
-namespace and only the workload resource types listed in its manifest. It does
-not read Secrets or cluster-wide application objects. Prometheus scrapes
-cAdvisor directly from each kubelet over HTTPS with service-account
-authentication, so no privileged cAdvisor DaemonSet or host mounts are
-required. On Kind the scrape skips serving-certificate verification because the
-kubelet certificate is node-local rather than signed by the API CA mounted in the
-Prometheus pod. Production verifies it against an exported kubelet CA; see
-[production kubelet TLS](../operations/observability.md#production-kubelet-tls).
+kube-state-metrics watches only the `battlefield` namespace and the workload types
+in its manifest; it does not read Secrets. cAdvisor is scraped directly from each
+kubelet as described in the [signal path](#signal-path), so no privileged
+DaemonSet or host mounts are needed. Kubelet certificate handling differs by
+environment; see [production kubelet TLS](../operations/observability.md#production-kubelet-tls).
 
 Workload telemetry explains pod health and resource use; it does not directly
 measure whether a user request succeeded. For engine queueing, claim timing and
@@ -192,22 +179,16 @@ The availability objective has a request-based 0.1% error budget. It should not
 be translated directly into “minutes of downtime,” because requests are not
 uniformly distributed over time.
 
-An SLA should be added only when there is an external commitment. It needs an
-explicit service boundary, measurement source, calendar window, maintenance
-and dependency exclusions, reporting rules, and remedies. The internal SLOs
-above should be tested and adjusted before any such contract is made.
-
 ## Alerts
 
-Prometheus loads `alerts.yml` from the local observability overlay. It includes:
+Prometheus loads `alerts.yml` from the local observability overlay:
 
-- fast availability-budget burn over 5-minute and 1-hour windows at 14.4 times
-  the sustainable burn rate;
-- persistent availability-budget burn over 30-minute and 6-hour windows at six
-  times the sustainable burn rate;
-- an application metrics target down for five minutes; and
-- any failed, errored, or lease-lost battle processing outcome within 15
-  minutes.
+| Alert | Fires when | Severity |
+| --- | --- | --- |
+| `BattlefieldAPIAvailabilityBudgetBurnFast` | The 5xx ratio over both 5 minutes and 1 hour exceeds 14.4 times the budget, for 2 minutes | critical |
+| `BattlefieldAPIAvailabilityBudgetBurnSlow` | The 5xx ratio over both 30 minutes and 6 hours exceeds 6 times the budget, for 15 minutes | warning |
+| `BattlefieldMetricsTargetDown` | An application metrics target cannot be scraped for 5 minutes | warning |
+| `BattlefieldEngineProcessingFailure` | Any `failed`, `error` or `lease_lost` processing outcome in the last 15 minutes | warning |
 
 The multi-window availability alerts reduce noise from a brief bad sample while
 still detecting both acute and sustained failures. Their thresholds are based
@@ -230,15 +211,11 @@ for filtering and expanded inspection. For example:
 [engine] Waiting for faction decisions; battle: castle-42; attempt: 1; target tick: 130; pending factions: 2; elapsed (ms): 0; remaining (ms): 119999
 ```
 
-The engine emits the first progress update after a successful running tick,
-then at most once every 15 seconds as ticks finish. Updates contain the current
-and requested ticks plus elapsed wall time. A pending decision window emits an
-immediate waiting update and repeats at most every 15 seconds with the pending
-faction count and remaining timeout. Resolved windows produce no waiting
-message. Pauses and resumes retain their own lifecycle events; elapsed battle
-time includes pauses and decision waits. Completion includes ticks run, elapsed
-time, winner (when present), and reason. Full combat events remain in
-`battle_events`.
+The engine logs progress after the first running tick and then at most every 15
+seconds. A waiting decision window logs at once and then at most every 15 seconds
+with the pending faction count and remaining timeout. Elapsed time includes pauses
+and decision waits. Completion logs ticks run, elapsed time, winner and reason;
+full combat events stay in `battle_events`.
 
 `LOG_LEVEL` controls backend process logging (`DEBUG`, `INFO`, `WARN`, `ERROR`;
 case-insensitive). It defaults to INFO, including for invalid values. DEBUG adds
@@ -290,11 +267,10 @@ redacts every error-valued attribute under any key, so call sites keep logging
 
 ## Health endpoints
 
-The API and engine entry points wire the shared `httpapi.LifecycleHandler`, which
-owns their startup, liveness, readiness and metrics endpoints. Application routing
-does not register a second set of probes. Engine readiness requires both a running
-worker and a successful database ping; worker shutdown or database failure makes
-readiness fail while liveness remains available.
+The API and engine share one handler for startup, liveness, readiness and metrics
+(see [lifecycle probes](api.md#lifecycle-probes)). Engine readiness requires both a
+running worker and a successful database ping; worker shutdown or database failure
+makes readiness fail while liveness remains available.
 
 The agent and AI gateway serve their own `/healthz`. The agent also serves `/status`
 with its drain state (`draining`, `active`, `concurrency`), and the AI gateway's
