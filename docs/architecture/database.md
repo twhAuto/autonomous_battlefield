@@ -64,38 +64,52 @@ must supply the restricted login
 | `friend_ai_usage` (view) | Model usage per identity across decisions and generation jobs | Private reporting view |
 | `goose_db_version` | Goose's applied-migration ledger | Production recovery records compare it before approving an image rollback |
 
+These diagrams show every column of every table, generated from the schema after
+migration `00017` with keys marked `PK` and `FK`. Update them with any schema
+change. Battles snapshot faction data instead of referencing `factions`, so
+deleting a faction never changes a battle.
+
+### Battles
+
 ```mermaid
 erDiagram
     BATTLE_RUNS ||--o{ BATTLE_EVENTS : "records (cascade)"
     BATTLE_RUNS ||--o{ BATTLE_DECISIONS : "coordinates (cascade)"
-    FACTION_GENERATION_ACCOUNTS ||--o{ FACTION_BACKGROUND_GENERATIONS : "owns"
-    PLAYER_MEMBERS ||--o{ PLAYER_MEMBERSHIP_AUDIT : "audited by"
-
-    FACTIONS {
-        uuid id PK
-        text name
-        text doctrine
-        text background
-        text owner_id
-    }
     BATTLE_RUNS {
         uuid id PK
         text scenario_id
+        text scenario_digest
         jsonb scenario_snapshot
-        jsonb current_state
+        bigint requested_ticks
+        bigint current_tick
         text status
         int attempt
         text lease_owner
+        timestamptz lease_expires_at
+        jsonb result
+        text error_code
+        text error_message
+        timestamptz created_at
+        timestamptz started_at
+        timestamptz completed_at
+        timestamptz updated_at
+        jsonb initial_state
+        jsonb current_state
         bool paused
+        text traceparent
+        text tracestate
         text owner_id
         int ai_executions
+        bool admission_exempt
     }
     BATTLE_EVENTS {
         uuid battle_id PK,FK
         int attempt PK
         bigint sequence PK
         bigint tick
+        text type
         jsonb payload
+        timestamptz created_at
     }
     BATTLE_DECISIONS {
         uuid id PK
@@ -103,41 +117,124 @@ erDiagram
         int attempt
         uuid faction_id
         bigint target_tick
-        text status
         bigint version
+        text status
+        text controller_type
+        text profile_id
+        text provider
+        text runtime
+        text model_identifier
+        text prompt_version
+        text tool_schema_version
         jsonb observation
+        text observation_hash
         jsonb resolved_plan
+        text fallback_source
+        text error_category
+        jsonb usage
+        jsonb provider_metadata
+        text idempotency_key
         text lease_owner
+        timestamptz lease_expires_at
+        timestamptz created_at
+        timestamptz resolved_at
+        text traceparent
+        text tracestate
+    }
+```
+
+### Factions, generation and AI policy
+
+```mermaid
+erDiagram
+    FACTION_GENERATION_ACCOUNTS ||--o{ FACTION_BACKGROUND_GENERATIONS : "owns"
+    FACTIONS {
+        uuid id PK
+        text name
+        timestamptz created_at
+        text ruleset_id
+        jsonb blueprint
+        text doctrine
+        text background
+        text owner_id
     }
     FACTION_GENERATION_ACCOUNTS {
         text actor_id PK
+        timestamptz last_admitted_at
     }
     FACTION_BACKGROUND_GENERATIONS {
         uuid id PK
         text actor_id FK
+        text idempotency_key
+        text input_hash
+        jsonb input
+        text profile_id
+        text model_label
+        text prompt_version
         text status
-        text runtime
+        text background
+        text error_category
+        timestamptz created_at
+        timestamptz started_at
+        timestamptz finished_at
+        timestamptz expires_at
+        int execution_seconds
         text worker_id
-    }
-    PLAYER_MEMBERS {
-        uuid id PK
-        text email
-        bool desired_access
-    }
-    PLAYER_MEMBERSHIP_AUDIT {
-        bigint id PK
-        uuid member_id FK
-        text action
+        jsonb usage
+        jsonb metadata
+        int submissions
+        text runtime
     }
     RUNTIME_POLICY {
         bool id PK
         bool ai_enabled
+        int daily_battles
+        int user_unfinished
+        int global_unfinished
         int decision_executions
         int cli_concurrency
     }
     AGENT_EXECUTION_LEASES {
         uuid id PK
         timestamptz expires_at
+    }
+    MODEL_ACCESS_POLICY {
+        bool id PK
+        bigint version
+        jsonb policy
+        text updated_by
+        timestamptz updated_at
+    }
+```
+
+### Player membership
+
+```mermaid
+erDiagram
+    PLAYER_MEMBERS ||--o{ PLAYER_MEMBERSHIP_AUDIT : "audited by"
+    PLAYER_MEMBERS {
+        uuid id PK
+        text email
+        bool desired_access
+        bigint version
+        bigint synced_version
+        timestamptz updated_at
+    }
+    PLAYER_MEMBERSHIP_AUDIT {
+        bigint id PK
+        uuid member_id FK
+        text actor_id
+        text action
+        timestamptz created_at
+    }
+    PLAYER_MEMBERSHIP_SYNC {
+        bool id PK
+        bool initialized
+        bigint version
+        bigint synced_version
+        int attempts
+        timestamptz next_attempt
+        text last_error
     }
 ```
 
