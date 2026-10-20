@@ -41,8 +41,14 @@ Production:
 ├── .env
 ├── deployment.env
 ├── kubeconfig
+├── kubelet-ca.crt
+├── recovery.json
 └── tunnel-credentials.json
 ```
+
+`kubelet-ca.crt` is the trusted kubelet serving CA for production monitoring, and
+`recovery.json` is the verified-release record that Jenkins writes after each
+successful delivery; never edit it by hand.
 
 Application files contain literal `KEY=value` lines: do not quote values,
 interpolate variables, or source them as shell scripts. The
@@ -70,9 +76,10 @@ receives; cache and managed-Player settings are API-only. Deployment identity an
 tunnel settings never enter application Secrets. Rendering uses temporary files
 that are removed on exit.
 
-Use the setup guides' configuration-delivery workflow after changing `.env`.
-It reapplies infrastructure and application configuration and restarts application
-pods even when images are unchanged. Backend YAML and environment settings are
+After changing `.env`, rerun `./scripts/cd/deploy-local.sh` in dev, or run the
+`main` pipeline with `APPLY_CONFIGURATION=true` in production. Both reapply
+infrastructure and application configuration and restart application pods even
+when images are unchanged. Backend YAML and environment settings are
 loaded at startup; standalone processes must also be restarted after changes.
 Editing a password file does not rotate the PostgreSQL role.
 
@@ -80,7 +87,9 @@ Editing a password file does not rotate the PostgreSQL role.
 
 Kubernetes-generated observability credentials remain in Kubernetes; CI credentials
 remain in Jenkins. Shared SSH and Cloudflare account credentials belong to their
-platform workflows. Database backups remain under the configured backup storage.
+platform workflows. The
+[server rebuild contract](../operations/server-rebuild-contract.md#state-and-credential-locations)
+lists every state and credential location, including database backups.
 
 ## Optional managed Players
 
