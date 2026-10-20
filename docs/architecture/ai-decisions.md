@@ -214,8 +214,9 @@ rejected submissions.
 `recruitmentOrders` lists `{unitType, count, sourceBuildingId?}` purchases for one
 production window, at most six units in total (the six castle-adjacent spawn
 positions). The engine buys in order, keeps reserve gold, and stops at the first
-unaffordable unit or blocked spawn; there is no substitution or queue, and a reused
-plan buys again at the next window. An empty list buys nothing. Likewise, an empty
+unaffordable unit or blocked castle spawn; an unavailable source or a blocked
+Barracks skips that order and moves on. There is no substitution or queue, and a
+reused plan buys again at the next window. An empty list buys nothing. Likewise, an empty
 `constructionOrders` list builds nothing, while omitting it keeps the default
 construction. Older plans may use `recruitmentPriorities` instead; a plan cannot
 use both.
