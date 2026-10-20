@@ -219,44 +219,77 @@ sequenceDiagram
     participant Match as Game library (internal/game)
     participant DB as PostgreSQL
     participant Gateway as AI gateway
-    participant Agent as Agent worker
+    participant Agent as Agent worker + runner
     participant Model as Model provider / CLI
 
+    Note over Gateway,Agent: Before the window: each agent slot holds an open claim
+    Agent->>Gateway: POST /internal/agent/claim (long poll, waits up to 5 s)
+    Gateway->>DB: Claim query finds nothing, so the request is held
+
+    Note over Engine,DB: 1. Engine opens the window
     Engine->>Match: DecisionSnapshot(faction)
     Match-->>Engine: Visible view + economy + legal choices
-    Engine->>DB: Create/reuse durable decision row
-    DB-->>Gateway: pg_notify advisory wake-up
-    Agent->>Gateway: Claim compatible work with shared secret
-    Gateway->>DB: Atomic decision lease claim
-    DB-->>Gateway: Request ID and profile
-    Gateway-->>Agent: Claimed job + server-minted request capability
+    Engine->>DB: INSERT pending row + pg_notify, in one statement
+    DB-->>Gateway: Notification after commit (no data, only "look now")
+
+    Note over DB,Agent: 2. Gateway claims the row for the waiting agent
+    Gateway->>DB: FOR UPDATE SKIP LOCKED: pending to running + lease
+    Gateway-->>Agent: Answer the held claim: job + request capability token
+
+    Note over Gateway,Model: 3. Model works only through the gateway's MCP tools
     Agent->>Model: Start bounded tool loop
-    Model->>Agent: Request get_decision_context
-    Agent->>Gateway: Execute tool call
+    Model->>Agent: get_decision_context
+    Agent->>Gateway: MCP call with capability token
     Gateway->>DB: Read frozen observation
-    DB-->>Gateway: Decision context
-    Gateway-->>Agent: Bounded context
+    Gateway-->>Agent: Faction-visible context
     Agent-->>Model: Tool result
     opt Unit details needed
-        Model->>Agent: Request get_unit_details
-        Agent->>Gateway: Execute scoped lookup
-        Gateway->>DB: Read frozen reference snapshot
-        DB-->>Gateway: Authorized reference data
-        Gateway-->>Agent: Inline base stats and guidance page
-        Agent-->>Model: Tool result (continuation available for long guidance)
+        Model->>Agent: get_unit_details
+        Agent->>Gateway: MCP call with capability token
+        Gateway-->>Agent: Frozen base stats and guidance
+        Agent-->>Model: Tool result
     end
-    Model->>Agent: Request submit_strategy_plan
-    Agent->>Gateway: Execute tool call
-    Gateway->>Gateway: Validate request, version, tick, plan, units, and sites
-    Gateway->>DB: Atomic versioned submission
-    DB-->>Gateway: Accepted or rejected
+    Model->>Agent: submit_strategy_plan
+    Agent->>Gateway: MCP call with capability token
+    Gateway->>Gateway: Validate request, version, tick, plan, units and sites
+    Gateway->>DB: UPDATE to accepted if the version still matches
     Gateway-->>Agent: Structured result
-    Agent->>Gateway: Report usage or failure metadata
-    loop Until resolved or timeout
-        Engine->>DB: Read decisions and heartbeat battle lease
+    Agent->>Gateway: Report usage or failure
+
+    Note over Engine,DB: 4. Engine collects plans (nobody notifies it)
+    loop Every 100 ms until no row is pending or running, or the deadline passes
+        Engine->>DB: Count unresolved rows in the window + heartbeat lease
     end
+    Engine->>DB: Read the window, write a fallback for unresolved rows
     Engine->>Match: AdvanceWithPlans(resolved plans)
 ```
+
+How the plan travels:
+
+1. **Agents wait first.** Each agent concurrency slot keeps one claim request open
+   at the gateway. The gateway holds it for up to the agent's wait (5 seconds by
+   default, 20 at most) and then answers `204`; the agent reissues it at once.
+2. **The engine writes the row.** The same statement that inserts a pending model
+   decision calls `pg_notify('battlefield_decision_ready', ...)`, so PostgreSQL
+   delivers the notification only after the row is committed.
+3. **The gateway claims it.** Its `LISTEN` connection wakes every held claim
+   request. Each runs the locked claim query; `SKIP LOCKED` gives each row to one
+   request, and the rest keep waiting. The winner's response is the job itself, with
+   a capability token valid only for that decision until its lease ends.
+4. **The model submits through the gateway.** The runner (an API tool loop or a CLI
+   configured with the gateway's MCP URL) calls the tools with the token. The
+   gateway validates the plan and sets the row to `accepted`.
+5. **The engine reads the row.** The engine is never called. It counts the
+   window's unresolved rows every 100 ms (`battle_decisions_window_idx`, one query
+   for all factions) until none remain or `ai.decisionTimeout` (2 minutes by
+   default) passes, then reads the window once and falls back for anything
+   unresolved.
+
+The engine, gateway and agent never call each other about a decision; they share
+only its row. The notification only saves latency: if it is lost, the next claim
+request finds the row within one long poll. A plan arriving at the deadline races
+the fallback, and the `version` check lets exactly one write win (see
+[timeout and fallback](#53-timeout-and-fallback)).
 
 The engine creates a decision row for every faction:
 
@@ -366,11 +399,21 @@ these are the engine's terminal battle error codes.
 ### Engine capacity and recovery
 
 Each engine worker processes one battle synchronously before claiming another;
-the application manifest defaults to one engine replica. Additional admitted
-battles queue. The default admission limit is four unfinished battles globally,
-and queued time counts toward the one-hour battle expiry. Queue delay therefore
-depends on battle duration, decision waits, pauses and available engine replicas;
-admission does not guarantee that a battle finishes before expiry.
+the application manifest defaults to one engine replica, so **only one battle runs
+at a time** and other admitted battles queue. While it runs, the engine also holds
+it through every decision wait (up to the decision timeout) and through any pause:
+a paused running battle keeps its lease and blocks the engine until resumed or
+stopped. Paused battles that are still queued are skipped at claim.
+
+The default admission limit is four unfinished battles globally, and queued time
+counts toward the one-hour battle expiry. Queue delay therefore depends on battle
+duration, decision waits, pauses and available engine replicas; admission does not
+guarantee that a battle finishes before expiry.
+
+Claims use `FOR UPDATE SKIP LOCKED` and leases, so more engine replicas run more
+battles in parallel without code changes. Each running battle adds its own state
+writes, heartbeats and decision polls to PostgreSQL, and model battles share the
+agent's concurrency slots, so those become the next limits.
 
 Crash recovery has two gates: the previous lease must expire (30 seconds by
 default), and an available worker must make its next claim. Claims select eligible
