@@ -175,18 +175,19 @@ sequenceDiagram
     participant API as Public API
     participant DB as PostgreSQL
     participant Engine as Battle engine
-    participant Match as Deterministic match
+    participant Match as Game library (internal/game)
 
     User->>UI: Select factions and controllers
     UI->>API: POST /v1/battles
     API->>API: Validate IDs, profiles, and tick limit
     API->>API: Resolve ruleset + scenario + faction snapshots
-    API->>Match: Build once to validate initial state
+    API->>Match: game.NewMatch (in-process)
+    Match-->>API: Validated initial state
     API->>DB: Insert queued battle_run
     API-->>UI: 202 Accepted
     Engine->>DB: Claim with FOR UPDATE SKIP LOCKED
     DB-->>Engine: Scenario snapshot + lease attempt
-    Engine->>Match: Construct match
+    Engine->>Match: game.NewMatch from snapshot
     loop Each tick
         Engine->>Match: Advance or AdvanceWithPlans
         Match-->>Engine: State transition + events
@@ -197,6 +198,10 @@ sequenceDiagram
     API->>DB: Read durable state
     API-->>UI: Current presentation data
 ```
+
+The game library is the deterministic `internal/game` package compiled into the
+API and engine binaries, not a separate service. The API builds the match once to
+validate the request and store its initial state; only the engine advances it.
 
 Battle execution is asynchronous from the creation request. Each battle stores a
 complete resolved scenario and initial state, so later edits to factions or catalog
@@ -211,7 +216,7 @@ so on.
 ```mermaid
 sequenceDiagram
     participant Engine as Battle engine
-    participant Match as Deterministic match
+    participant Match as Game library (internal/game)
     participant DB as PostgreSQL
     participant Gateway as AI gateway
     participant Agent as Agent worker
