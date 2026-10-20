@@ -85,6 +85,6 @@ platform workflows. Database backups remain under the configured backup storage.
 
 Managed-Player configuration belongs in the private application `.env` and is
 rendered into `battlefield-members`, consumed only by API pods. The
-[Player invitation activation guide](../operations/player-invitations.md#one-time-activation)
+[Player invitation activation guide](../operations/player-invitations.md#enable-managed-players)
 lists the required settings and validation rules. Once enabled, invitation changes
 are stored in PostgreSQL and need no deployment.

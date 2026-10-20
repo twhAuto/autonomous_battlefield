@@ -51,7 +51,7 @@ errors when Redis is configured; see [application metrics](../architecture/obser
 
 The API Deployment optionally reads `BATTLEFIELD_REDIS_URL` from the
 `battlefield-cache` Secret. Existing clusters continue without Redis when the Secret
-is absent. This change does not provision a Kubernetes Redis server; supply an
+is absent. Deployment does not provision a Kubernetes Redis server; supply an
 instance reachable by API pods. Use a dedicated cache database per environment,
 authenticated access, and `rediss://` when the connection requires TLS.
 

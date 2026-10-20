@@ -42,9 +42,12 @@ The supported contract is deliberately narrow: one exact hostname, local tunnel,
 proxied CNAME, explicit email/group human rules and explicit service-token rules.
 Bypass policies, wildcard/additional application domains, nested/broad groups,
 unknown security fields and conflicting resources stop the operation. Existing
-App Launcher and unrelated resources are outside ownership. A TXT/CAA or other additional DNS record at the application hostname is also
-refused; this contract owns one CNAME exclusively. Configuration drift
-is refused; this is not a general Access policy editor or credential rotator.
+App Launcher and unrelated resources are outside ownership. A TXT/CAA or other
+additional DNS record at the application hostname is also refused; this contract
+owns one CNAME exclusively. Configuration drift is refused; this is not a general
+Access policy editor or credential rotator. After an intentional manual policy or
+service-token change there is no supported way yet to update the recorded
+ownership; see [policy changes and the Cloudflare workflow](access.md#policy-changes-and-the-cloudflare-workflow).
 
 ## Capture and adopt the current production configuration
 

@@ -193,9 +193,9 @@ nobody and grants nothing to non-admin callers.
 - **Configured role:** remove the Access Allow rule (a
   [manual policy change](#policy-changes-and-the-cloudflare-workflow)), revoke the
   identity's Access sessions, remove its role assignment, and roll out the updated
-  auth configuration to **every API replica**. Offline JWT checks cannot detect Access revocation, so
-  check that access is denied after the rollout and allow for Cloudflare's
-  revocation propagation.
+  auth configuration to **every API replica**. Offline JWT checks cannot detect
+  Access revocation, so check that access is denied after the rollout and allow
+  for Cloudflare's revocation propagation.
 
 Never fall back to anonymous or password mode during an authentication incident.
 

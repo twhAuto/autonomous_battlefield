@@ -31,8 +31,9 @@ Sonar Compose layout:
    Sonar/PostgreSQL image digests with `infra/jenkins/controller-lock.json`.
    Missing required plugins can be installed by this role; existing required
    plugins must already match their pins. Additional unrelated plugins remain.
-2. Ensure the ten documented global credentials, the owned `battlefield-platform`
-   folder and its four credentials already exist. Use the existing
+2. Ensure the seven global credentials listed under
+   [clean installation inputs](#clean-installation-inputs), the Jenkins Sonar token,
+   the owned `battlefield-platform` folder and its four credentials already exist. Use the existing
    [platform seeder](platform-jobs.md) for that folder and
    [Jenkins credential setup](jenkins.md) for missing external identities.
 3. For a restored controller, restore the complete matching home, including keys,
