@@ -424,6 +424,27 @@ model, prompt version, usage and failure category to
 receives SELECT/UPDATE on generation jobs, without faction-table or battle-state
 access.
 
+The writer is configured in `ai.backgroundGeneration` in `backend/config.yaml` or
+the deployment ConfigMap; the deployed defaults are:
+
+```yaml
+ai:
+  backgroundGeneration:
+    enabled: true
+    profileId: codex-subscription-local
+    dailyAllowance: 10
+    cooldown: 30s
+    queueTimeout: 5m
+    executionTimeout: 2m
+```
+
+The profile uses its existing model, credentials, version validation and
+availability settings, so the default subscription writer needs its CLI profile
+enabled and a connected worker. An invalid or unavailable profile rejects admission
+before quota is reserved; a profile whose worker goes offline after admission
+leaves a queued job until it expires. With generation disabled, players can still
+write and save backgrounds by hand.
+
 One operator-configured profile selects the writer independently of battle
 models. API execution has at most three provider turns. Native CLI execution uses
 the generation-only prompt/tool surface, a three-turn instruction, a three

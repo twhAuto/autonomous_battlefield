@@ -27,6 +27,7 @@ configuring, deploying, observing and recovering environments.
 | Guide | Use it for |
 | --- | --- |
 | [Local setup](developer/local-setup.md) | Kind development, credentials, model controllers and standalone services |
+| [Local Kubernetes deployment](developer/local-kubernetes.md) | Building, deploying, inspecting and removing the dev Kind deployment stage by stage |
 | [Codebase guide](developer/codebase-guide.md) | Source ownership, entry points and change paths |
 | [Component map](developer/component-map.md) | Generated table of which internal packages each backend binary links |
 | [Backend](developer/backend-guide.md) | Go packages, persistence, worker behavior and backend verification |
@@ -55,7 +56,7 @@ configuring, deploying, observing and recovering environments.
 | Guide | Use it for |
 | --- | --- |
 | [Environments](operations/environments.md) | Registering environments and managing configuration |
-| [Deployment](operations/deployment.md) | Staged delivery, migration gates, smoke checks and rollback |
+| [Deployment](operations/deployment.md) | How delivery works: overlays, deployment components, image identity and releases, registry verification, runtime requirements, AWS reference |
 | [Production access](operations/access.md) | Access requirements, tunnel, roles, AI limits, CI service identity and access recovery |
 | [Player invitations](operations/player-invitations.md) | Activating and recovering managed Player membership |
 | [Observability operations](operations/observability.md) | Metrics, dashboards, logs and diagnostics |

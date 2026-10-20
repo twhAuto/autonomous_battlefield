@@ -30,7 +30,9 @@ Registration never overwrites an existing profile or kubeconfig.
 Open `http://battlefield.localhost:8888`. Edit the root `.env`, then rerun
 `./scripts/cd/deploy-local.sh`. For a missing `.env`, preparation recovers existing
 Kubernetes credentials or generates initial dev secrets. It never invents a
-database password for existing PVCs with missing credentials.
+database password for existing PVCs with missing credentials. To run, inspect or
+diagnose each deployment stage yourself, follow the
+[local Kubernetes walkthrough](local-kubernetes.md).
 
 ### Application settings
 
@@ -75,7 +77,7 @@ The helper also accepts `antigravity`, `claude`, `both` (Codex and Antigravity),
 `all` (all three CLIs) and `auto` (every available authenticated CLI).
 See [Antigravity setup](../operations/antigravity-cli.md),
 [Claude setup](../operations/claude-cli.md) and
-[profile availability](../operations/deployment.md#1-prepare-private-dev-secret-files).
+[subscription CLI details](local-kubernetes.md#subscription-clis).
 Configured model/version prefixes live in `backend/config.yaml`; the
 [execution contract](../architecture/ai-decisions.md#model-execution)
 explains their isolation boundaries.
