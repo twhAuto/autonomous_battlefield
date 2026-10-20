@@ -5,23 +5,19 @@ The host-local Ansible workflow manages native `caddy.service` on
 CLI VM's `battlefield-mcp-proxy.service`. Both proxies use `/usr/bin/caddy`;
 this workflow neither upgrades that shared binary nor replaces either unit.
 
-Before migration, the local application, Grafana and Kibana names route to
-retained Kind on `127.0.0.1:8888`. Its application replicas are zero after the K3s
-migration, so the application alias returns 503 while the old monitoring pages
-still respond. `--mode migrate` sets the destinations below; they take effect only
-after a reviewed `apply --mode migrate`, not when code merges or ordinary main
-delivery runs:
+The four local HTTPS names route to these destinations. Route changes take effect
+only through a reviewed `apply --mode migrate`, never when code merges or ordinary
+`main` delivery runs:
 
-| Local HTTPS name | Reviewed destination |
+| Local HTTPS name | Destination |
 | --- | --- |
 | `battlefield.home.arpa` | HTTP 307 to the registered production `BF_URL`, currently `https://play.ordinalfrontier.com`, preserving path/query and Cloudflare Access login |
 | `grafana.home.arpa` | Registered K3s private NodePort 30080, Host `grafana.localhost` |
 | `kibana.home.arpa` | Same K3s gateway, Host `kibana.localhost` |
 | `sonarqube.home.arpa` | Existing `127.0.0.1:9000` |
 
-No local application authentication fallback or Cloudflare bypass is added.
-Historical Kind logs remain on retained Kind storage; current K3s monitoring
-has its own data. Neither cluster nor any workload is deleted or scaled here.
+No local application authentication fallback or Cloudflare bypass is added. The
+workflow never deletes or scales a cluster or workload.
 
 ## Prerequisites and capture
 
@@ -77,8 +73,8 @@ must not be treated as disposable cache.
 ## Review and apply
 
 Use a clean checkout at the full reviewed `origin/main` SHA. Capture itself may
-run read-only from a staged source snapshot; mutation may not. The following
-example is for the current Kind-to-K3s route correction:
+run read-only from a staged source snapshot; mutation may not. To change routes
+to the registered K3s destinations:
 
 ```bash
 revision="$(git rev-parse origin/main)"
@@ -92,8 +88,8 @@ python3 scripts/infra/https.py plan --mode migrate --k3s-routes \
 cluster UID, ready single-node identity and private Envoy gateway, and derives
 the gateway address and public origin. It does not copy Kubernetes credentials
 into the HTTPS capture. Review `changes`, `routes`, `ca_sha256`, current `tls`
-and `target_upstreams`. For migration, the current application can show 503;
-the desired application must be the public redirect, with Grafana and Kibana
+and `target_upstreams`. A retired upstream can show 503; the desired application
+must be the public redirect, with Grafana and Kibana
 using the registered K3s address. SonarQube and extra supported local routes
 must remain unchanged.
 
@@ -148,7 +144,6 @@ including the node UID. A new capture, `adopt` without routing followed by
 `migrate --k3s-routes`, or a reviewed K3s rebuild therefore requires explicit
 re-registration. An unchanged installation should keep using its original
 Vault and routing options; do not re-capture as part of routine verification.
-For the initial Kind correction above, start directly with `--mode migrate`.
 
 For an intentional change, keep Jenkins main/platform jobs idle throughout:
 

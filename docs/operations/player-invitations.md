@@ -5,11 +5,10 @@ An administrator grants an exact email, shares the game URL, and the player asks
 Cloudflare for a one-time email code. The application does not send invitation
 emails. Admin/Developer identities and their MFA policies remain operator-managed.
 
-## One-time activation
+## Enable managed Players
 
-1. Deploy the reviewed migration and API/frontend changes through the normal
-   pipeline, leaving `BATTLEFIELD_MANAGED_PLAYERS=false` initially. Keep the
-   production database backup, including the three new membership tables.
+1. Start with `BATTLEFIELD_MANAGED_PLAYERS=false` on a deployed release. Keep the
+   production database backup, which includes the membership tables.
 2. In Cloudflare Zero Trust → Integrations → Identity providers, add **One-time
    PIN**. Enable it alongside the existing identity provider on the Access
    application covering the entire `play.ordinalfrontier.com` hostname. Disable
@@ -22,7 +21,9 @@ emails. Admin/Developer identities and their MFA policies remain operator-manage
    managed Players**, **Require → Login Methods → One-time PIN**. Login Methods
    must be a Require rule, not an additional Include rule. Keep Admin/Developer
    MFA and CI service policies separate. Remove any older Player-specific Allow
-   rules during activation so this group is the sole Player admission path.
+   rules so this group is the sole Player admission path. These are manual Access
+   policy changes; see
+   [policy changes and the Cloudflare workflow](access.md#policy-changes-and-the-cloudflare-workflow).
 5. Create a private API token with **Access: Organizations, Identity Providers,
    and Groups Write**, scoped to the relevant account. Cloudflare does not scope
    this permission to a single group. The application restricts its requests to

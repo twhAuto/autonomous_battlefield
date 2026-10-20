@@ -32,11 +32,11 @@ the correlation fields needed to follow one decision across the
 engine, AI gateway, and in-cluster agent: `battle_id`, `request_id`,
 `faction_id`, `target_tick`, `profile_id`, `decision_status`,
 `error_category`, `fallback_source`, and `duration_ms`. The collector includes
-the API, engine, agent, AI gateway, frontend, and migration workloads. A subscription
-CLI agent runs on the host, so its process-local messages remain in the bridge
-terminal; its claims, MCP tool calls, submissions, failures, and final engine
-resolution are recorded by Kubernetes services and therefore appear in
-Kibana.
+the API, engine, agent, AI gateway, frontend, and migration workloads. A
+subscription CLI worker runs outside Kubernetes (the development bridge terminal,
+or the CLI VM's `battlefield-worker` journal in production), so its process-local
+messages stay there; its claims, MCP tool calls, submissions, failures and final
+engine resolution are recorded by Kubernetes services and appear in Kibana.
 
 For a compact timeline, select `@timestamp` and `msg`; expand rows for structured
 correlation fields. Use DEBUG only while diagnosing tick or health-request details,
@@ -48,7 +48,7 @@ for event semantics and excluded sensitive fields.
 Useful KQL filters include:
 
 ```text
-event: decision_* OR msg: decision_*
+event: decision_*
 decision_status: fallback
 error_category: timeout
 battle_id: "<battle UUID>"
@@ -259,7 +259,7 @@ After adding nodes or rotating serving certificates, refresh the approved bundle
 and redeploy observability. A trust failure is a deployment failure, not a reason
 to disable certificate verification.
 
-API scrape verification now checks every nonterminating API pod against its
+API scrape verification checks every nonterminating API pod against its
 actual IP and current readiness, the deployment generation and desired replica
 count, and a successful scrape within 60 seconds. Missing discovery, a failed
 replica, stale results, or incomplete HPA rollout cannot pass on another pod's
