@@ -277,5 +277,5 @@ roles. A `PUT` must list every configured provider and profile, with no extras, 
 roles drawn once each from `admin`, `developer` and `player`; an empty
 `allowedRoles` denies everyone. A stale `version` returns `409`. The policy
 restricts only new battle selections and generation admissions, and cannot enable a
-profile whose credentials or runtime are unavailable. See [model access and role
-preview](system-architecture.md#model-access-and-role-preview).
+profile whose credentials or runtime are unavailable. See
+[model access and role preview](system-architecture.md#model-access-and-role-preview).
