@@ -19,6 +19,9 @@ LINK = re.compile(r'!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)')
 HEADING = re.compile(r'^(#{1,6})\s+(.*?)\s*#*\s*$')
 FENCE = re.compile(r'^ {0,3}(`{3,}|~{3,})(.*)$')
 DEFINITION = re.compile(r'^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)>?(?:\s+(?:"[^"]*"|\'[^\']*\'|\([^)]*\)))?\s*$')
+# A definition may put its destination on the following line.
+DEFINITION_LABEL = re.compile(r'^ {0,3}\[[^\]]+\]:\s*$')
+DESTINATION = re.compile(r'^\s*<?([^\s>]+)>?(?:\s+(?:"[^"]*"|\'[^\']*\'|\([^)]*\)))?\s*$')
 
 
 def prose_lines(text: str):
@@ -60,10 +63,17 @@ def anchors(text: str) -> set[str]:
 def broken_links(files: list[Path], root: Path) -> list[str]:
     cache, problems = {}, []
     for path in files:
+        pending_label = None
         for number, line in prose_lines(path.read_text(encoding='utf-8')):
             prose = re.sub(r'`[^`]*`', '', line)
+            targets = []
+            if pending_label is not None and pending_label == number - 1:
+                destination = DESTINATION.match(prose)
+                if destination:
+                    targets.append(destination.group(1))
+            pending_label = number if DEFINITION_LABEL.match(prose) else None
             definition = DEFINITION.match(prose)
-            for target in ([definition.group(1)] if definition else []) + LINK.findall(prose):
+            for target in targets + ([definition.group(1)] if definition else []) + LINK.findall(prose):
                 if re.match(r'^[a-z][a-z0-9+.-]*:', target, re.I):
                     continue
                 file_part, _, fragment = target.partition('#')
@@ -99,13 +109,16 @@ def self_test() -> None:
             '[gone](missing.md) [bad](guide.md#nope) ![image](missing.png)\n'
             '````md\n```\n[nested](missing.md)\n```\n````\n'
             '[Ref][r1] [Other][r2]\n'
-            '[r1]: guide.md#run-it\n[r2]: missing-ref.md "Title"\n[r3]: guide.md#gone\n')
+            '[r1]: guide.md#run-it\n[r2]: missing-ref.md "Title"\n[r3]: guide.md#gone\n'
+            '[r4]:\n  guide.md#run-it\n[r5]:\n  missing-next.md\n[r6]:\n  <guide.md#absent> "T"\n')
         assert broken_links([page], root) == [
             'docs/page.md:8: missing target missing.md',
             'docs/page.md:8: missing anchor guide.md#nope',
             'docs/page.md:8: missing target missing.png',
             'docs/page.md:16: missing target missing-ref.md',
             'docs/page.md:17: missing anchor guide.md#gone',
+            'docs/page.md:21: missing target missing-next.md',
+            'docs/page.md:23: missing anchor guide.md#absent',
         ], broken_links([page], root)
 
 
