@@ -68,13 +68,78 @@ must supply the restricted login
 erDiagram
     BATTLE_RUNS ||--o{ BATTLE_EVENTS : "records (cascade)"
     BATTLE_RUNS ||--o{ BATTLE_DECISIONS : "coordinates (cascade)"
-    FACTION_GENERATION_ACCOUNTS ||--o{ FACTION_BACKGROUND_GENERATIONS : owns
+    FACTION_GENERATION_ACCOUNTS ||--o{ FACTION_BACKGROUND_GENERATIONS : "owns"
     PLAYER_MEMBERS ||--o{ PLAYER_MEMBERSHIP_AUDIT : "audited by"
-```
 
-Only these tables have foreign keys. Battles snapshot faction data instead of
-referencing `factions`, and `battle_decisions.faction_id` is snapshot data, so
-deleting a faction never changes a battle. The other tables stand alone.
+    FACTIONS {
+        uuid id PK
+        text name
+        text doctrine
+        text background
+        text owner_id
+    }
+    BATTLE_RUNS {
+        uuid id PK
+        text scenario_id
+        jsonb scenario_snapshot
+        jsonb current_state
+        text status
+        int attempt
+        text lease_owner
+        bool paused
+        text owner_id
+        int ai_executions
+    }
+    BATTLE_EVENTS {
+        uuid battle_id PK,FK
+        int attempt PK
+        bigint sequence PK
+        bigint tick
+        jsonb payload
+    }
+    BATTLE_DECISIONS {
+        uuid id PK
+        uuid battle_id FK
+        int attempt
+        uuid faction_id
+        bigint target_tick
+        text status
+        bigint version
+        jsonb observation
+        jsonb resolved_plan
+        text lease_owner
+    }
+    FACTION_GENERATION_ACCOUNTS {
+        text actor_id PK
+    }
+    FACTION_BACKGROUND_GENERATIONS {
+        uuid id PK
+        text actor_id FK
+        text status
+        text runtime
+        text worker_id
+    }
+    PLAYER_MEMBERS {
+        uuid id PK
+        text email
+        bool desired_access
+    }
+    PLAYER_MEMBERSHIP_AUDIT {
+        bigint id PK
+        uuid member_id FK
+        text action
+    }
+    RUNTIME_POLICY {
+        bool id PK
+        bool ai_enabled
+        int decision_executions
+        int cli_concurrency
+    }
+    AGENT_EXECUTION_LEASES {
+        uuid id PK
+        timestamptz expires_at
+    }
+```
 
 `runtime_policy`, `model_access_policy` and `player_membership_sync` are
 single-row tables (`id boolean PRIMARY KEY CHECK (id)`). `agent_execution_leases.id`
