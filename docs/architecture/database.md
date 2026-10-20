@@ -273,13 +273,14 @@ Conventions:
 
 The [backend guide](../developer/backend-guide.md#database-migrations-and-adapters)
 covers adapter structure and migration tests. Production migrations save and
-validate a database backup first; see [deployment](../operations/deployment.md) for
-the migration gate and inspection steps and [K3s delivery](../operations/k3s-delivery.md)
-for backup, restore and recovery records.
+validate a database backup first. [Jenkins production delivery](../operations/jenkins.md#production-delivery)
+owns the migration gate, the [local walkthrough](../developer/local-kubernetes.md#migration-gate)
+shows how to inspect it, and [K3s delivery](../operations/k3s-delivery.md) covers
+backup, restore and recovery records.
 
 ## Related guides
 
 - [System architecture](system-architecture.md): runtime flows built on these tables.
 - [Backend guide](../developer/backend-guide.md): repository packages and query-plan results.
-- [Deployment](../operations/deployment.md): database configuration, migration gate and inspection.
+- [Deployment](../operations/deployment.md) and [local Kubernetes deployment](../developer/local-kubernetes.md): delivery, migration gate and inspection.
 - [K3s delivery](../operations/k3s-delivery.md): backup, restore and data recovery.

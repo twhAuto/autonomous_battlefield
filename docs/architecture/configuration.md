@@ -52,8 +52,9 @@ settings. Each environment has its own credentials; private directories use mode
 
 The deployment profile holds the driver, context, cluster identity, gateway URL,
 kubeconfig path and applicable Docker, tunnel and kubelet TLS settings. File paths
-inside it are relative to the profile. Production supports `BF_DRIVER=kind|k3s`;
-older profiles default to Kind. Dev uses local Kind. See
+inside it are relative to the profile. Production uses `BF_DRIVER=k3s`; a profile
+without `BF_DRIVER` selects Kind, which only the retained recovery profile uses.
+Dev uses local Kind. See
 [K3s delivery](../operations/k3s-delivery.md) for K3s registration requirements.
 
 The [environment resolver](../../scripts/lib/deployment-environment.sh) verifies

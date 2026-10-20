@@ -183,6 +183,29 @@ and anonymous Grafana configuration is accepted only for the private,
 single-operator K3s cluster; do not reuse it on a shared cluster or one reachable
 from untrusted networks.
 
+## Elasticsearch and Kibana recovery
+
+Kind uses a 10Gi `battlefield-elasticsearch-data` PVC with the `standard` storage
+class. K3s requests 20Gi through `battlefield-retained`; see the
+[K3s storage contract](k3s-delivery.md#deliver-and-verify). Pod replacement preserves
+stored indices and Kibana objects. Storage loss or cluster recreation requires
+recovery; never treat a PVC request as a backup. When transferring storage, export
+or snapshot data first and follow the target's recovery procedure.
+
+The deployment helper waits for Elasticsearch and the other observability
+workloads, restarts Kibana against the ready Elasticsearch instance, waits for
+Kibana's rollout, then applies its setup job separately. Applying the observability
+Kustomization alone does not create the setup job. Each observability rollout
+briefly restarts Kibana. The setup job has a 300-second deadline, bounded HTTP
+requests, and separate pods for retries so failed-attempt logs remain available.
+The helper detects both successful and failed Job conditions and prints job, pod,
+and container diagnostics on failure. Finished jobs are retained for 300 seconds.
+
+After a manual recovery, recreate only the setup job with
+`kubectl -n battlefield delete job battlefield-kibana-setup --ignore-not-found`
+and `kubectl -n battlefield apply -f infra/deploy/overlays/local/observability/kibana/setup-job.yaml`,
+then confirm completion before running production smoke verification.
+
 ## Find a battle trace
 
 Open **Autonomous Battlefield / Battle Traces** and enter a **Battle ID** to list
