@@ -1,4 +1,4 @@
-# Autonomous Battlefield agent guidance
+# OrdinalFrontier agent guidance
 
 ## Branches and pull requests
 
@@ -46,6 +46,8 @@ Keep documentation synchronized with every implementation change:
 - Skip mechanical edits for internal changes that alter no documented behavior,
   but verify the docs remain accurate. Check links, diagrams, examples, paths and
   commands in every affected document against the working tree.
+  `python3 scripts/test/test-doc-links.py` checks every internal Markdown link and
+  heading anchor; `./scripts/test/test-deployment.sh` runs it on every PR.
 
 ## Test coverage quality gate
 

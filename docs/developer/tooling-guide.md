@@ -76,6 +76,8 @@ production-to-test renames.
 - `scripts/ci/verify-frontend-image.py` starts a built frontend image with production
   filesystem and user restrictions and checks its probes and assets;
   `test-frontend-image.sh` builds the real Dockerfile from private-permission inputs.
+- `test-doc-links.py` fails on a tracked Markdown link to a missing file or heading
+  anchor (GitHub slug rules); external URLs, code and HTML comments are skipped.
 - `test-base-image-pins.py` requires every Dockerfile base image to be pinned by
   digest under a `# Base image: name:tag` comment; `scripts/ops/check-base-image-pins.py`
   reports stale pins on demand. See the
