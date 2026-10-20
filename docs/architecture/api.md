@@ -43,8 +43,7 @@ deleting a faction, and stopping, pausing or resuming a battle, require ownershi
 or the Admin role. Players can read shared factions, battles, events and history,
 but receive gameplay-only responses: events without payloads, battles without
 inspection fields, and a reduced model-profile list. Decision history and saved
-decision context require Developer or Admin. A route without an assigned
-permission is denied.
+decision context require Developer or Admin.
 
 Selecting a model controller, for a battle or for background generation, requires
 an enabled, verified profile and a role allowed by the
@@ -53,15 +52,17 @@ approval for each API and CLI profile.
 
 ### Admission limits
 
-| Limit | Value |
+| Limit | Default |
 | --- | --- |
 | Battles per person per UTC day | 20 |
 | Unfinished battles per person | 2 |
 | Unfinished battles across the service | 4 |
 | Background generations per person per UTC day | 10 |
 
-Exceeding a limit returns `429`. Admin battles skip the per-person battle limits
-but still count toward the service-wide total. Paused battles are unfinished. A
+Operators can change these defaults in `runtime_policy` and the background
+generation configuration. Exceeding a limit returns `429`. Admin battles bypass all
+three battle limits, including the service-wide one, but still count as unfinished
+when other people's battles are admitted. Paused battles are unfinished. A
 retry that reuses a request's identifier with the same inputs and identity
 returns the work already admitted rather than consuming another allowance.
 
@@ -114,8 +115,8 @@ above is the one `/v1` non-success that is not an envelope.
 | `GET /livez` | `200` with `ok` while the HTTP process runs. `/healthz` is a compatibility alias. |
 | `GET /readyz` | `200` with `ok` when PostgreSQL responds within one second, otherwise `503`. |
 
-Failures use the error envelope, but probes rely on the status alone. These routes and `/metrics` are outside the
-OpenAPI contract.
+Failures use the error envelope, but probes rely on the status alone. These routes
+and `/metrics` are outside the OpenAPI contract.
 
 ## Factions
 
@@ -138,8 +139,7 @@ Both factions must exist, and the scenario ID names a template in
 Queueing snapshots each faction's name, background and doctrine, the map, the
 ruleset, and the controller plans, so later faction edits do not change the
 battle. Battle detail participants show these historical values, not the current
-profile. New snapshots (`snapshotVersion: 2`) start with castles and gold; older
-queued snapshots keep their legacy initialization.
+profile.
 
 Malformed input returns `400`, and a missing scenario or faction `404`. A
 well-formed request that cannot run returns `422 validation_failed`: an
@@ -152,11 +152,10 @@ the `id` with different values returns `409`. If the existing battle cannot be
 read to check a retry, the request fails with `500` rather than `409`, so a client
 does not abandon an `id` that may already hold its battle.
 
-At each decision interval (`decisionIntervalTicks`, ten in every current
-scenario) the engine freezes the prior state, opens one fog-of-war-bounded
-decision per faction, waits up to two minutes for model plans, then advances with
-the resolved plans. Late plans cannot overwrite the fallback the engine chose. See
-the [strategy decision window](system-architecture.md#52-strategy-decision-window).
+Every `decisionIntervalTicks` the engine pauses for each faction's plan, so a
+model-controlled battle can wait at a window; a late plan never replaces the
+fallback the engine chose. See the
+[strategy decision window](system-architecture.md#52-strategy-decision-window).
 
 ### Browse battle history
 
@@ -252,7 +251,7 @@ Queued jobs expire after five minutes, and running jobs time out after two; both
 keep their charge on the original admission day, as do failures. Expired jobs are
 never rerun automatically. Three invalid submissions from the model close the job
 with `invalid_output`. How workers claim and run these jobs is described in
-[system architecture](system-architecture.md#agent-control-plane).
+[AI decisions](ai-decisions.md#background-generation).
 
 ## Player membership administration
 
@@ -272,11 +271,11 @@ accepts a role or returns Cloudflare credentials. See
 
 ## Model access administration
 
-Both routes require Admin outside role preview and return `no-store`. A provider
-or profile without a stored entry defaults to enabled, with the profile's
-configured roles. A `PUT` must list every configured provider and profile, with no extras,
-and roles drawn once each from `admin`, `developer` and `player`; an empty
+Both routes require Admin outside role preview and return `no-store`. A provider or
+profile without a stored entry defaults to enabled, with the profile's configured
+roles. A `PUT` must list every configured provider and profile, with no extras, and
+roles drawn once each from `admin`, `developer` and `player`; an empty
 `allowedRoles` denies everyone. A stale `version` returns `409`. The policy
-restricts only new battle selections and generation admissions, and cannot enable
-a profile whose credentials or runtime are unavailable. See
-[model access and role preview](system-architecture.md#model-access-and-role-preview).
+restricts only new battle selections and generation admissions, and cannot enable a
+profile whose credentials or runtime are unavailable. See [model access and role
+preview](system-architecture.md#model-access-and-role-preview).
