@@ -14,29 +14,34 @@ applied.
 ## Decision lifecycle
 
 ```mermaid
-stateDiagram-v2
-    [*] --> pending: created
-    [*] --> failed: created while AI is stopped or budget is spent
-    pending --> accepted: scripted plan
-    pending --> running: worker claims
-    running --> running: lease expired, reclaimed
-    running --> accepted: model submits plan
-    pending --> fallback: deadline
-    running --> fallback: deadline
-    pending --> failed: budget spent at claim, battle stopped or expired
-    running --> failed: runner failed, battle stopped or expired
-    failed --> fallback: battle continues
-    failed --> [*]: battle ended
-    accepted --> [*]
-    fallback --> [*]
+flowchart TD
+    start((" ")) -->|created| pending([pending])
+    pending -->|scripted| accepted([accepted])
+    pending -->|claimed| running([running])
+    running -->|submitted| accepted
+    pending -->|stopped| failed([failed])
+    running -->|error| failed
+    start -->|blocked| failed
+    pending --- deadline{{deadline}}
+    running --- deadline
+    deadline --> fallback([fallback])
+    failed -->|battle continues| fallback
+    failed -->|battle ended| done((" "))
+    accepted --> done
+    fallback --> done
 ```
 
-Scripted controllers resolve their decision directly from `pending`. A model plan
-can only arrive from `running`: the worker gets the request capability that
-authorizes `submit_strategy_plan` when it claims the decision, and claiming moves
-it to `running`. When the window closes without an accepted plan, the engine
-records the fallback plan; a `failed` decision is resolved the same way unless its
-battle has already been stopped or expired.
+| Transition | When |
+| --- | --- |
+| created → `pending` | The engine opens a decision window for a faction. |
+| blocked → `failed` | The decision is created while AI is stopped or the battle's model budget is spent (`ai_disabled_or_budget`). |
+| `pending` → `accepted` (scripted) | A scripted controller's plan is submitted directly by the engine. |
+| `pending` → `running` (claimed) | A worker claims a model decision and receives its request capability. An expired lease is reclaimed and stays `running`. |
+| `running` → `accepted` (submitted) | The model submits a valid plan with that capability. A model cannot submit from `pending`, because the capability is issued only by the claim. |
+| `pending` → `failed` (stopped) | The budget runs out at claim time (`decision_budget`), or the battle is stopped or expires (`battle_stopped`). |
+| `running` → `failed` (error) | The runner fails, or the battle is stopped or expires. |
+| deadline → `fallback` | The window closes without an accepted plan; the engine records its fallback plan. |
+| `failed` → `fallback` | While the battle continues, the engine resolves a failed decision with its fallback plan. A failed decision whose battle has ended stays `failed`. |
 
 An accepted submission is idempotent when it repeats the stored idempotency key.
 Optimistic version checks prevent late or duplicate workers from overwriting
