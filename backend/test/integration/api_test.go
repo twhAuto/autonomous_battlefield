@@ -42,7 +42,7 @@ const (
 	integrationAudience = "battlefield-integration"
 	integrationOrigin   = "https://battlefield.test"
 	integrationCIClient = "integration-ci.access"
-	integrationScenario = "ranged-skirmish-v1"
+	integrationScenario = "castle-siege"
 )
 
 // Each identity maps to the role it receives from the configured role table.
@@ -216,7 +216,7 @@ func checkMalformedBattleInput(t *testing.T, api *integrationAPI, alice *integra
 		"oversized body":       {`{"id":"` + strings.Repeat("x", 70<<10) + `"}`, http.StatusBadRequest, apierror.CodeInvalidRequest},
 		"non-UUID ID":          {valid(func(b map[string]any) { b["id"] = "battle-1" }), http.StatusBadRequest, apierror.CodeInvalidRequest},
 		"zero ticks":           {valid(func(b map[string]any) { b["tickCount"] = 0 }), http.StatusBadRequest, apierror.CodeInvalidRequest},
-		"ticks above scenario": {valid(func(b map[string]any) { b["tickCount"] = 501 }), http.StatusBadRequest, apierror.CodeInvalidRequest},
+		"ticks above scenario": {valid(func(b map[string]any) { b["tickCount"] = 801 }), http.StatusBadRequest, apierror.CodeInvalidRequest},
 		"same faction twice":   {valid(func(b map[string]any) { b["participants"] = battleBody("", blue, blue, 3)["participants"] }), http.StatusBadRequest, apierror.CodeInvalidRequest},
 		"unknown scenario":     {valid(func(b map[string]any) { b["scenarioId"] = "no-such-scenario" }), http.StatusNotFound, apierror.CodeNotFound},
 		"unknown faction":      {valid(func(b map[string]any) { b["participants"] = battleBody("", blue, randomID(t), 3)["participants"] }), http.StatusNotFound, apierror.CodeNotFound},

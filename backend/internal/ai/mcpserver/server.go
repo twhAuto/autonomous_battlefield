@@ -97,7 +97,7 @@ type getContextOutput struct {
 }
 
 type submitPlanInput struct {
-	UpgradeOrders          []string                        `json:"upgradeOrders,omitempty" jsonschema:"Ordered one-time upgrade purchases. Include upgrades in spendOrder. Already-owned upgrades are skipped without charging."`
+	UpgradeOrders          []string                        `json:"upgradeOrders,omitempty" jsonschema:"Ordered one-time upgrade-level purchases. Prerequisites must be owned or ordered earlier; exclusiveGroup permits one choice per battle. Include upgrades in spendOrder. Already-owned levels are skipped without charging."`
 	ConstructionOrders     *[]controller.ConstructionOrder `json:"constructionOrders,omitempty" jsonschema:"Typed construction purchases: buildingType and position from legal choices. Use [] to build nothing; leave constructionPriorities empty."`
 	RecruitmentOrders      *[]controller.RecruitmentOrder  `json:"recruitmentOrders,omitempty" jsonschema:"Explicit ordered purchases for this production window. Use [] to buy nothing; at most six units total. Leave recruitmentPriorities empty when using orders."`
 	RequestID              string                          `json:"requestId"`

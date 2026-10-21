@@ -362,7 +362,7 @@ paths:
             schema: {$ref: '#/components/schemas/CreateBattleRequest'}
             example:
               id: 7f22e693-bacd-46bb-b942-64fa613cd388
-              scenarioId: castle-siege-v1
+              scenarioId: castle-siege
               participants:
                 - factionId: 4db8d152-1e04-4d10-8824-859c6ed72878
                   controller: {type: model, profileId: gemini-api-balanced}
@@ -1099,13 +1099,39 @@ components:
       required: [id]
       properties:
         id: {type: string}
+        upgrades:
+          type: array
+          items: {$ref: '#/components/schemas/UpgradeRule'}
       additionalProperties: true
 
+    UpgradeRule:
+      type: object
+      required: [id, cost, attackBonus, defenseBonus, economyIncomeBonus]
+      description: A one-time purchase with incremental bonuses. Level and specialization metadata describe the shared catalog; old snapshots may omit it.
+      properties:
+        id: {type: string}
+        cost: {type: integer, minimum: 1}
+        track: {type: string}
+        level: {type: integer, minimum: 1, maximum: 3}
+        requiresUpgradeId: {type: string, description: Must be owned or ordered earlier in the same plan.}
+        targetUnit: {type: string, description: Applies only to this unit type.}
+        targetClass: {type: string, description: Applies only to this class; mutually exclusive with targetUnit.}
+        exclusiveGroup: {type: string, description: Only one upgrade ID in this group may be chosen per battle.}
+        movementBonus: {type: integer, minimum: 0}
+        rangeBonus: {type: integer, minimum: 0}
+        healAmountBonus: {type: integer, minimum: 0}
+        healRangeBonus: {type: integer, minimum: 0}
+        buildingDamageBonus: {type: integer, minimum: 0}
+        attackBonus: {type: integer, minimum: 0}
+        defenseBonus: {type: integer, minimum: 0}
+        economyIncomeBonus: {type: integer, minimum: 0}
+
     ScenarioSummary:
+      description: A map layout with shared battle settings and the full shared content catalog.
       type: object
       required: [id, rulesVersion, rulesetId, tickDuration, decisionIntervalTicks, maximumTicks, mapWidth, mapHeight]
       properties:
-        id: {type: string, examples: [castle-siege-v1]}
+        id: {type: string, examples: [castle-siege]}
         rulesVersion: {type: string}
         rulesetId: {type: string}
         tickDuration: {type: string, examples: [1s]}
@@ -1308,6 +1334,13 @@ components:
         bonusAgainstClass: {type: string}
         classDamageBonus: {type: integer}
         healAmount: {type: integer}
+        healRange: {type: integer, description: Treatment range; omitted means one hex for legacy healers.}
+        scout: {type: boolean}
+        preferredTargetClass: {type: string}
+        armorPiercing: {type: integer, description: Defense ignored against units only.}
+        repairAmount: {type: integer}
+        repairCost: {type: integer}
+        repairCharges: {type: integer, description: Remaining lifetime repair actions; omitted means zero in state snapshots.}
         attackMode: {$ref: '#/components/schemas/AttackMode'}
         movementPath:
           description: The origin followed by each hex traversed this tick, ending at the destination.
@@ -1321,7 +1354,7 @@ components:
           description: The impact hex for a `position` shot; the target's hex for a tracking attack.
           allOf: [{$ref: '#/components/schemas/Position'}]
         attackOutcome: {$ref: '#/components/schemas/AttackOutcome'}
-        healTargetId: {type: string}
+        healTargetId: {type: string, description: Treatment or repair target.}
         healTargetPosition: {$ref: '#/components/schemas/Position'}
 
     Building:
@@ -1499,10 +1532,11 @@ components:
         | `tactic_selected` | `factionId`, `tactic`, `planName`, `source` |
         | `opening_completed` | none |
         | `income_collected` | `factionId`, `amount`, `balance` |
-        | `upgrade_purchased` | `factionId`, `upgradeId`, `cost`, `balance` |
+        | `unit_repaired` | `factionId`, `engineerId`, `targetId`, `amount`, `cost`, `balance`, `remainingHealth`, `repairCharges` |
+        | `upgrade_purchased` | `factionId`, `upgradeId`, `cost`, `balance`; leveled entries also include `track`, `level`, `attackBonus`, `defenseBonus`, `economyIncomeBonus` (incremental effects) |
         | `building_constructed` | `factionId`, `buildingId`, `buildingType`, `position`, `cost` |
         | `unit_recruited` | `factionId`, `unitId`, `unitType`, `position`, `readyAtTick`, `cost`, and `sourceBuildingId` in rulesets with structures |
-        | `production_skipped` | `factionId`, `kind` (`upgrades`, `construction` or `recruitment`), `reason`, plus `upgradeId` or `position` where relevant |
+        | `production_skipped` | `factionId`, `kind` (`upgrades`, `construction` or `recruitment`), `reason`, plus `upgradeId` or `position` where relevant; upgrade reasons include `prerequisite_required`, `exclusive_choice_owned` and `reserve_required` |
         | `unit_moved` | `factionId`, `unitId`, `from`, `to` |
         | `unit_attacked`, `building_attacked` | `attackerId`, `targetId`, `targetType`, `damage`, `remainingHealth`, `attackMode`, `outcome: hit`, `impactPosition` |
         | `unit_attack_missed` | `attackerId`, `attackMode: position`, `outcome: miss`, `impactPosition` |
@@ -1583,7 +1617,7 @@ components:
         targetBonuses: {type: object, additionalProperties: {type: integer}}
         reserveGold: {type: integer}
         spendOrder: {type: array, items: {type: string}}
-        upgradeOrders: {type: array, items: {type: string}}
+        upgradeOrders: {type: array, items: {type: string}, description: Ordered unique purchase IDs. Prerequisites must be owned or ordered earlier; already owned levels are skipped free. exclusiveGroup permits one choice per battle.}
         constructionOrders:
           description: |
             At most eight typed orders. Omit to keep legacy `constructionPriorities`;

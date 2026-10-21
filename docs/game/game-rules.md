@@ -10,10 +10,10 @@ This page is the single entry point for the battle rules. It links to the owning
 documents for detail instead of repeating them:
 [Frontier Siege](frontier-siege.md) for the roster, structures, and map, and the
 [system architecture](../architecture/system-architecture.md#52-strategy-decision-window) for how
-decisions are requested, stored, and timed out. Values below are for the
-`frontier-siege-v2` scenario (`backend/gamedata/scenarios/frontier-siege-v2.yaml`,
-ruleset `backend/gamedata/rulesets/castle-siege-v2.yaml`, content
-`backend/gamedata/content/core-v2.yaml`).
+decisions are requested, stored, and timed out. All maps use the shared
+`backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v3.yaml`
+roster and `backend/gamedata/battlefield.yaml` timing/controller configuration.
+Scenario files contain only map identity and geometry.
 
 ## Battle loop
 
@@ -39,25 +39,44 @@ A battle is created with a requested tick count (at most the scenario's
   and each living economy building, and unspent gold carries forward.
 - **Loot:** destroying an enemy unit or building awards 50% of its cost to the
   attacker's faction.
-- **Upgrades** cost 20 gold each and are owned once: Arsenal (+2 attack), Plating
-  (+2 defense), Industry (+2 economy-building income). A plan's upgrade orders run
-  in order at the `upgrades` step of its `spendOrder`; an upgrade already owned is
-  skipped at no cost, and the first one that would take gold below `reserveGold`
-  stops upgrade buying for that window. Attack and defense bonuses apply at once to
-  living units and to future recruits (Herbalists gain no attack); the income bonus
-  applies to existing and future economy buildings from the next collection.
+- **Upgrade purchases** run in order at the `upgrades` step of a plan's
+  `spendOrder`. Owned purchase IDs are skipped free. The first purchase that
+  would take gold below `reserveGold` stops upgrade buying for that window.
+  Bonuses apply to current and future eligible entities. Industry applies
+  from the next income collection. Historical saved battles retain their
+  original one-time upgrade definitions.
+
+In the **current shared ruleset**, each of those upgrade tracks has three sequential levels.
+Levels I, II and III cost **20, 50 and 100 gold** respectively (170 total per
+track), and each adds +2 for a cumulative +2/+4/+6 bonus. Buy prerequisites
+first; multiple levels may be purchased in one production window when affordable.
+Each level is owned once, and repeating a purchased level is free and adds no
+further bonus. Skipping a prerequisite or requesting an unknown level rejects
+the submitted plan before spending.
+
+The effects and exceptions remain the same: Arsenal includes siege but does not
+add attack or healing to Herbalists; Plating affects units, not buildings; Industry
+affects economy buildings, not the castle. Upgrades last for that battle only.
+
+Four independent specialization pairs cost 60 gold per choice: Vanguard defense
+or attack, Ranger range or movement, Herbalist treatment strength or reach, and
+siege movement or building damage. Each pair permits one choice per faction per
+battle, with no switching/refund. These unit-scoped bonuses stack with general
+upgrade levels. See the [specialization table](frontier-siege.md#specializations).
 
 ## Units and buildings
 
-Seven unit types (Vanguard, Striker, Ranger, Catapult, Battering Ram, Pikeman,
-Herbalist) and four structures (Economy, Defense Tower, Watchtower, Forward
+Eleven unit types (Vanguard, Striker, Ranger, Catapult, Battering Ram, Pikeman,
+Herbalist, Scout, Raider Cavalry, Engineer and Crossbowman) and four structures (Economy, Defense Tower, Watchtower, Forward
 Barracks). Stats, costs, capabilities, targeting, and building limits (four
 non-castle buildings, at most two economy) are in
 [Frontier Siege](frontier-siege.md#unit-roster).
 
 ## Production windows
 
-Factions spend gold only at **production windows**. All purchases for a window
+Factions purchase troops, buildings and upgrades at **production windows**.
+Engineers may also spend 2 gold on a repair action during a normal unit turn,
+respecting the active plan's reserve. Each Engineer has 12 lifetime repair charges. All purchases for a window
 happen at once; there is no persistent production queue, and unfilled purchases
 are not carried forward.
 

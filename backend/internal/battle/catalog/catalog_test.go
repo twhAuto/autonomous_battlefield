@@ -4,7 +4,6 @@
 package catalog
 
 import (
-	"bytes"
 	"errors"
 	"io/fs"
 	"os"
@@ -24,13 +23,13 @@ func TestCatalogLoadsRulesetAndResolvesBlueprints(t *testing.T) {
 		t.Fatal(err)
 	}
 	blueprint := game.Blueprint{Units: []game.UnitSelection{{Type: "vanguard", Count: 1}, {Type: "striker", Count: 1}, {Type: "ranger", Count: 1}}, UpgradeIDs: []string{"arsenal"}, RecruitmentPriority: []string{"vanguard", "striker", "ranger"}}
-	identities := [2]battleservice.FactionIdentity{{ID: "faction-a", Name: "A", RulesetID: "castle-siege-v1", Blueprint: blueprint}, {ID: "faction-b", Name: "B", RulesetID: "castle-siege-v1", Blueprint: blueprint}}
-	first, err := catalog.Resolve("castle-siege-v1", identities)
+	identities := [2]battleservice.FactionIdentity{{ID: "faction-a", Name: "A", RulesetID: "castle-siege", Blueprint: blueprint}, {ID: "faction-b", Name: "B", RulesetID: "castle-siege", Blueprint: blueprint}}
+	first, err := catalog.Resolve("castle-siege", identities)
 	if err != nil {
 		t.Fatal(err)
 	}
 	digest := digestOf(t, first)
-	second, err := catalog.Resolve("castle-siege-v1", identities)
+	second, err := catalog.Resolve("castle-siege", identities)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,13 +37,13 @@ func TestCatalogLoadsRulesetAndResolvesBlueprints(t *testing.T) {
 	if digest == "" || digest != nextDigest || first.Map.Width != 15 || second.Map.Height != 11 {
 		t.Fatalf("unexpected resolutions: %#v", first)
 	}
-	if summaries := catalog.Summaries(); len(summaries) != 3 || summaries[0].RulesetID != "castle-siege-v1" || summaries[0].MapWidth != 15 || summaries[0].MaximumTicks != 500 {
+	if summaries := catalog.Summaries(); len(summaries) != 2 || summaries[0].RulesetID != "battlefield" || summaries[0].MapWidth != 15 || summaries[0].MaximumTicks != 800 {
 		t.Fatalf("summaries = %#v", summaries)
 	}
-	if rulesets := catalog.Rulesets(); len(rulesets) != 2 || rulesets[0].DesignBudget != 0 || rulesets[0].StartingGold != 180 {
+	if rulesets := catalog.Rulesets(); len(rulesets) != 1 || rulesets[0].DesignBudget != 0 || rulesets[0].StartingGold != 220 {
 		t.Fatalf("rulesets = %#v", rulesets)
 	}
-	if ruleset, ok := catalog.Ruleset("castle-siege-v1"); !ok || ruleset.ID != "castle-siege-v1" {
+	if ruleset, ok := catalog.Ruleset("battlefield"); !ok || ruleset.ID != "battlefield" {
 		t.Fatalf("Ruleset() = %#v, %v", ruleset, ok)
 	}
 	if _, ok := catalog.Ruleset("missing"); ok {
@@ -54,7 +53,7 @@ func TestCatalogLoadsRulesetAndResolvesBlueprints(t *testing.T) {
 
 func TestCatalogRejectsUnknownScenarioField(t *testing.T) {
 	dir := copyGameData(t)
-	contents, err := fs.ReadFile(gamedata.Files, "scenarios/castle-siege-v1.yaml")
+	contents, err := fs.ReadFile(gamedata.Files, "scenarios/castle-siege.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,18 +66,20 @@ func TestCatalogRejectsUnknownScenarioField(t *testing.T) {
 	}
 }
 
-func TestCatalogRejectsScenarioRulesVersionMismatch(t *testing.T) {
-	dir := copyGameData(t)
-	contents, err := fs.ReadFile(gamedata.Files, "scenarios/castle-siege-v1.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	contents = bytes.Replace(contents, []byte(`rulesVersion: "1"`), []byte(`rulesVersion: "2"`), 1)
-	if err := os.WriteFile(filepath.Join(dir, "scenarios", "castle-siege-v1.yaml"), contents, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := LoadCatalog(os.DirFS(dir)); !errors.Is(err, ErrInvalidScenario) || !strings.Contains(err.Error(), "rules version") {
-		t.Fatalf("mismatched rules version: %v", err)
+func TestMapsCannotOverrideSharedRules(t *testing.T) {
+	for _, field := range []string{"rulesVersion: 1", "rulesetId: other", "allowedUnits: [ranger]", "allowedUpgrades: []", "allowedBuildings: []", "maximumTicks: 10", "fallbackPlan: {}"} {
+		t.Run(field, func(t *testing.T) {
+			dir := copyGameData(t)
+			p := filepath.Join(dir, "scenarios/castle-siege.yaml")
+			data, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeCatalogFile(t, dir, "scenarios/castle-siege.yaml", string(data)+"\n"+field+"\n")
+			if _, err = LoadCatalog(os.DirFS(dir)); err == nil {
+				t.Fatal("map override accepted")
+			}
+		})
 	}
 }
 
@@ -110,7 +111,7 @@ func TestCatalogAcceptsGenericFaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = catalog.Resolve("castle-siege-v1", [2]battleservice.FactionIdentity{{ID: "a", Name: "A", Doctrine: "Defend", RulesetID: "other"}, {ID: "b", Name: "B", Doctrine: "Attack", RulesetID: "other"}})
+	_, err = catalog.Resolve("castle-siege", [2]battleservice.FactionIdentity{{ID: "a", Name: "A", Doctrine: "Defend", RulesetID: "other"}, {ID: "b", Name: "B", Doctrine: "Attack", RulesetID: "other"}})
 	if err != nil {
 		t.Fatalf("error = %v", err)
 	}
@@ -128,7 +129,7 @@ func TestCatalogReturnsNotFound(t *testing.T) {
 }
 
 func FuzzScenarioYAML(f *testing.F) {
-	seed, err := fs.ReadFile(gamedata.Files, "scenarios/castle-siege-v1.yaml")
+	seed, err := fs.ReadFile(gamedata.Files, "scenarios/castle-siege.yaml")
 	if err != nil {
 		f.Fatal(err)
 	}
@@ -149,7 +150,7 @@ func TestDoctrineSnapshotIsIndependentOfFutureProfileEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	identities := [2]battleservice.FactionIdentity{{ID: "a", Name: "A", Doctrine: "Scout", Background: "Old roots"}, {ID: "b", Name: "B", Doctrine: "Defend"}}
-	first, err := catalog.Resolve("castle-siege-v1", identities)
+	first, err := catalog.Resolve("castle-siege", identities)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +158,7 @@ func TestDoctrineSnapshotIsIndependentOfFutureProfileEdits(t *testing.T) {
 	identities[0].Name = "Edited"
 	identities[0].Doctrine = "Attack"
 	identities[0].Background = "A new history"
-	updatedScenario, err := catalog.Resolve("castle-siege-v1", identities)
+	updatedScenario, err := catalog.Resolve("castle-siege", identities)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,19 +192,19 @@ func TestCatalogRejectsBrokenContentAtStartup(t *testing.T) {
 			writeCatalogFile(t, dir, "rulesets/broken.yaml", "id: [")
 		}},
 		{"missing library version", "content/core-v9.yaml", func(t *testing.T, dir string) {
-			editedRuleset(t, dir, "other.yaml", `id: other`, `  version: "1"`, `  version: "9"`)
+			editedRuleset(t, dir, "other.yaml", `id: other`, `  version: "3"`, `  version: "9"`)
 		}},
 		{"invalid ruleset values", "ruleset \"rulesets/other.yaml\"", func(t *testing.T, dir string) {
-			editedRuleset(t, dir, "other.yaml", `id: other`, `startingGold: 180`, `startingGold: -1`)
+			editedRuleset(t, dir, "other.yaml", `id: other`, `startingGold: 220`, `startingGold: -1`)
 		}},
-		{"duplicate ruleset", `duplicate ruleset ID "castle-siege-v1"`, func(t *testing.T, dir string) {
-			copyCatalogFile(t, dir, "rulesets/castle-siege-v1.yaml", "rulesets/copy.yaml")
+		{"duplicate ruleset", `duplicate ruleset ID "battlefield"`, func(t *testing.T, dir string) {
+			copyCatalogFile(t, dir, "rulesets/battlefield.yaml", "rulesets/copy.yaml")
 		}},
 		{"no rulesets", "rulesets contains no YAML rulesets", func(t *testing.T, dir string) {
 			replaceWithNotes(t, dir, "rulesets")
 		}},
-		{"duplicate scenario", `duplicate scenario ID "castle-siege-v1"`, func(t *testing.T, dir string) {
-			copyCatalogFile(t, dir, "scenarios/castle-siege-v1.yaml", "scenarios/copy.yaml")
+		{"duplicate scenario", `duplicate scenario ID "castle-siege"`, func(t *testing.T, dir string) {
+			copyCatalogFile(t, dir, "scenarios/castle-siege.yaml", "scenarios/copy.yaml")
 		}},
 		{"no scenarios", "scenarios contains no YAML scenarios", func(t *testing.T, dir string) {
 			replaceWithNotes(t, dir, "scenarios")
@@ -228,7 +229,7 @@ func TestCatalogSkipsFoldersAndNonYAMLFiles(t *testing.T) {
 		}
 	}
 	catalog, err := LoadCatalog(os.DirFS(dir))
-	if err != nil || len(catalog.IDs()) != 3 || len(catalog.Rulesets()) != 2 {
+	if err != nil || len(catalog.IDs()) != 2 || len(catalog.Rulesets()) != 1 {
 		t.Fatalf("catalog = %v, %v", catalog, err)
 	}
 }
@@ -249,15 +250,15 @@ func copyCatalogFile(t *testing.T, dir, from, to string) {
 	writeCatalogFile(t, dir, to, string(data))
 }
 
-// editedRuleset adds castle-siege-v1 as a new ruleset file under a new ID, with one
+// editedRuleset adds castle-siege as a new ruleset file under a new ID, with one
 // line replaced.
 func editedRuleset(t *testing.T, dir, name, id, old, replacement string) {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(dir, "rulesets", "castle-siege-v1.yaml"))
+	data, err := os.ReadFile(filepath.Join(dir, "rulesets", "battlefield.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := strings.Replace(string(data), "id: castle-siege-v1", id, 1)
+	text := strings.Replace(string(data), "id: battlefield", id, 1)
 	if !strings.Contains(text, old) {
 		t.Fatalf("ruleset has no %q", old)
 	}
@@ -274,4 +275,27 @@ func replaceWithNotes(t *testing.T, dir, folder string) {
 		t.Fatal(err)
 	}
 	writeCatalogFile(t, dir, folder+"/README.md", "notes")
+}
+
+func TestSharedBattleConfigurationRejectsInvalidContent(t *testing.T) {
+	for _, change := range []func(string){
+		func(dir string) { writeCatalogFile(t, dir, "battlefield.yaml", "rulesetId: missing\n") },
+		func(dir string) { writeCatalogFile(t, dir, "battlefield.yaml", "id: map\nrulesetId: battlefield\n") },
+		func(dir string) {
+			editedRuleset(t, dir, "other.yaml", "id: other", "startingGold: 220", "startingGold: 220")
+		},
+		func(dir string) {
+			data, err := os.ReadFile(filepath.Join(dir, "battlefield.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeCatalogFile(t, dir, "battlefield.yaml", strings.ReplaceAll(string(data), "[industry, arsenal, plating, industry_2, arsenal_2, plating_2, industry_3, arsenal_3, plating_3]", "[arsenal_3]"))
+		},
+	} {
+		dir := copyGameData(t)
+		change(dir)
+		if _, err := LoadCatalog(os.DirFS(dir)); err == nil {
+			t.Fatal("invalid shared configuration accepted")
+		}
+	}
 }

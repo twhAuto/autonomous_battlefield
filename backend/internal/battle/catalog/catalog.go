@@ -32,9 +32,6 @@ type Catalog struct {
 }
 
 type template struct {
-	AllowedUnits          []string                  `yaml:"allowedUnits"`
-	AllowedUpgrades       []string                  `yaml:"allowedUpgrades"`
-	AllowedBuildings      []string                  `yaml:"allowedBuildings"`
 	ID                    string                    `yaml:"id"`
 	RulesVersion          string                    `yaml:"rulesVersion"`
 	RulesetID             string                    `yaml:"rulesetId"`
@@ -46,10 +43,19 @@ type template struct {
 	ScriptedPlans         []controller.PlanProposal `yaml:"scriptedPlans"`
 }
 
+type mapFile struct {
+	ID  string   `yaml:"id"`
+	Map game.Map `yaml:"map"`
+}
+
 // LoadCatalog loads the scenarios, rulesets and content libraries in fsys, laid out
 // as scenarios/, rulesets/ and content/ like the embedded gamedata.Files.
 func LoadCatalog(fsys fs.FS) (*Catalog, error) {
 	rulesets, err := loadRulesets(fsys)
+	if err != nil {
+		return nil, err
+	}
+	defaults, err := loadSharedDefaults(fsys, rulesets)
 	if err != nil {
 		return nil, err
 	}
@@ -63,10 +69,12 @@ func LoadCatalog(fsys fs.FS) (*Catalog, error) {
 			continue
 		}
 		file := path.Join(scenarioDirectory, entry.Name())
-		var value template
-		if err := decodeOne(fsys, file, &value); err != nil {
+		var authored mapFile
+		if err := decodeOne(fsys, file, &authored); err != nil {
 			return nil, err
 		}
+		value := defaults
+		value.ID, value.Map = authored.ID, authored.Map
 		if err := validateTemplate(value, rulesets); err != nil {
 			return nil, fmt.Errorf("%w: scenario %q: %v", ErrInvalidScenario, file, err)
 		}
@@ -94,9 +102,8 @@ func (c *Catalog) Summaries() []battleservice.ScenarioSummary {
 	result := make([]battleservice.ScenarioSummary, 0, len(c.templates))
 	for _, id := range c.IDs() {
 		value := c.templates[id]
-		// validateTemplate already restricted every loaded template successfully.
-		restricted, _ := restrictRuleset(c.rulesets[value.RulesetID], value)
-		result = append(result, battleservice.ScenarioSummary{AllowedUnits: unitIDs(restricted), AllowedUpgrades: upgradeIDs(restricted), AllowedBuildings: buildingIDs(restricted), ID: value.ID, RulesVersion: value.RulesVersion, RulesetID: value.RulesetID, MaximumTicks: value.MaximumTicks, TickDuration: value.TickDuration, DecisionIntervalTicks: value.DecisionIntervalTicks, MapWidth: value.Map.Width, MapHeight: value.Map.Height})
+		shared := c.rulesets[value.RulesetID]
+		result = append(result, battleservice.ScenarioSummary{AllowedUnits: unitIDs(shared), AllowedUpgrades: upgradeIDs(shared), AllowedBuildings: buildingIDs(shared), ID: value.ID, RulesVersion: value.RulesVersion, RulesetID: value.RulesetID, MaximumTicks: value.MaximumTicks, TickDuration: value.TickDuration, DecisionIntervalTicks: value.DecisionIntervalTicks, MapWidth: value.Map.Width, MapHeight: value.Map.Height})
 	}
 	return result
 }
@@ -126,10 +133,7 @@ func (c *Catalog) Resolve(id string, identities [2]battleservice.FactionIdentity
 	if !ok {
 		return game.Scenario{}, fmt.Errorf("%w: %q", battleservice.ErrScenarioNotFound, id)
 	}
-	ruleset, err := restrictRuleset(c.rulesets[tmpl.RulesetID], tmpl)
-	if err != nil {
-		return game.Scenario{}, err
-	}
+	ruleset := c.rulesets[tmpl.RulesetID]
 	factions := make([]game.FactionSetup, 2)
 	for index, identity := range identities {
 
@@ -190,11 +194,7 @@ func validateTemplate(value template, rulesets map[string]game.Ruleset) error {
 	if value.RulesVersion != ruleset.Version {
 		return fmt.Errorf("rules version %q does not match ruleset %q version %q", value.RulesVersion, value.RulesetID, ruleset.Version)
 	}
-	restricted, err := restrictRuleset(ruleset, value)
-	if err != nil {
-		return err
-	}
-	if err := validateSelectedPlans(value, restricted); err != nil {
+	if err := validateSelectedPlans(value, ruleset); err != nil {
 		return err
 	}
 	if err := validateTemplateTiming(value); err != nil {
@@ -265,4 +265,23 @@ func validateTemplateTiming(value template) error {
 		return errors.New("decision interval must be positive")
 	}
 	return nil
+}
+
+func loadSharedDefaults(fsys fs.FS, rulesets map[string]game.Ruleset) (template, error) {
+	if len(rulesets) != 1 {
+		return template{}, fmt.Errorf("exactly one shared ruleset is required")
+	}
+	var defaults template
+	if err := decodeOne(fsys, "battlefield.yaml", &defaults); err != nil {
+		return template{}, err
+	}
+	if defaults.ID != "" || defaults.Map.Width != 0 || defaults.RulesVersion != "" {
+		return template{}, fmt.Errorf("battlefield config must not define a map or rules version")
+	}
+	ruleset, ok := rulesets[defaults.RulesetID]
+	if !ok {
+		return template{}, fmt.Errorf("unknown shared ruleset %q", defaults.RulesetID)
+	}
+	defaults.RulesVersion = ruleset.Version
+	return defaults, nil
 }

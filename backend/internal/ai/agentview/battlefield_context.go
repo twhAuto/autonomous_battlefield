@@ -32,7 +32,7 @@ func contextObject(value any) map[string]json.RawMessage {
 }
 
 // Keep unknown/new unit fields on the individual observation by default.
-var effectiveProfileFields = []string{"type", "class", "maxHealth", "attack", "defense", "speed", "movement", "range", "vision", "cost", "attackMode", "minimumRange", "buildingPriority", "buildingDamageBonus", "bonusAgainstClass", "classDamageBonus", "healAmount"}
+var effectiveProfileFields = []string{"type", "class", "maxHealth", "attack", "defense", "speed", "movement", "range", "vision", "cost", "attackMode", "minimumRange", "buildingPriority", "buildingDamageBonus", "bonusAgainstClass", "classDamageBonus", "healAmount", "healRange", "scout", "preferredTargetClass", "armorPiercing", "repairAmount", "repairCost"}
 
 type visibleRow struct {
 	Y       int      `json:"y"`
@@ -47,6 +47,9 @@ func compactBattlefieldView(view game.View) map[string]json.RawMessage {
 	profileIDs := map[string]string{}
 	for _, unit := range view.State.Units {
 		item := contextObject(unit)
+		if unit.RepairAmount > 0 {
+			item["repairCharges"] = contextJSON(unit.RepairCharges)
+		}
 		profile := map[string]json.RawMessage{}
 		for _, key := range effectiveProfileFields {
 			if value, exists := item[key]; exists {

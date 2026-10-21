@@ -12,18 +12,19 @@ import (
 )
 
 type factionRuntime struct {
-	setup        FactionSetup
-	activePlan   controller.PlanProposal
-	activeSource string
-	planIndex    int
-	unitSequence int
-	attackBonus  int64
-	defenseBonus int64
-	economyBonus int64
-	damageDealt  int64
-	damageTaken  int64
-	attackTicks  uint64
-	defendTicks  uint64
+	setup          FactionSetup
+	activePlan     controller.PlanProposal
+	activeSource   string
+	planIndex      int
+	unitSequence   int
+	scopedUpgrades []Upgrade
+	attackBonus    int64
+	defenseBonus   int64
+	economyBonus   int64
+	damageDealt    int64
+	damageTaken    int64
+	attackTicks    uint64
+	defendTicks    uint64
 }
 
 type Match struct {

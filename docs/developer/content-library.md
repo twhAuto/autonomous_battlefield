@@ -1,137 +1,86 @@
-# Content libraries and scenario selections
+# Shared content and map authoring
 
-Author reusable unit, upgrade, and building definitions in
-`backend/gamedata/content/<id>-v<version>.yaml`. The shipped `core-v1.yaml` contains the
-three starter units, their knowledge cards, three upgrades, and castle/economy
-building definitions. The version pins the whole library; unit IDs remain stable
-within it. `core-v2.yaml` additionally supplies siege/support units and
-`defense_tower`, `watchtower`, and `barracks` roles. See
-[Frontier Siege](../game/frontier-siege.md) for the complete roster and map.
-New abilities beyond these capabilities still require engine support.
+Every live map uses one shared ruleset. The catalog embeds and validates:
 
-A ruleset references a library and selects content while retaining ownership of
-starting gold, combat percentages, and building limits:
+- `backend/gamedata/battlefield.yaml`: shared ruleset ID, tick limit, tick duration,
+  decision interval, fallback and scripted plans.
+- `backend/gamedata/rulesets/battlefield.yaml`: shared starting gold, combat rules,
+  building limits and content-library reference.
+- `backend/gamedata/content/core-v3.yaml`: all units, upgrades, buildings and AI knowledge.
+- `backend/gamedata/scenarios/*.yaml`: map ID and geometry only.
 
-```yaml
-id: example-v1
-version: "1"
-startingGold: 180
-library:
-  id: core
-  version: "1"
-  units: [vanguard, ranger]
-  upgrades: [plating, industry]
-  castle: castle
-  economy: economy
-buildings:
-  maximumEconomyCount: 2
-combat:
-  minimumDamage: 1
-  defendAttackPercent: 80
-  defendDamageTakenPercent: 70
-  lootPercent: 50
-```
-
-Library IDs and versions use letters, digits, dashes, or underscores. The
-`content/`, `rulesets/` and `scenarios/` folders under `backend/gamedata` are
-embedded in the server binary (`gamedata.Files`), so a content change ships only
-with a new build. A scenario's `rulesVersion` must equal its ruleset's `version`.
-Missing files, version mismatches, unknown/duplicate selections,
-invalid definitions, and incomplete unit knowledge fail catalog startup. Library
-references cannot be mixed with inline unit, upgrade, knowledge, or building-stat
-definitions. Inline rulesets remain supported for older fixtures and authoring.
-
-Library `units` and `upgrades` use the same fields as resolved rulesets. A building
-entry has `id`, `kind`, `health`, `defense`, `vision`, `income`, and `cost`. Library
-`knowledge` contains `mechanics` and one card for every library unit when present.
-Each card has `unitId`, `role`, `strengths`, `weaknesses` and `guidance`. Mechanics
-text is limited to 4096 UTF-8 bytes and each card field to 1024. Cards are filtered
-to the selected roster; tactical text is advice, not a guaranteed counter. Numerical
-unit facts always come from the selected definitions. All library entries are
-validated, including unused ones. How cards are selected for a decision is in the
-[decision contracts](../architecture/ai-decisions.md#versioned-unit-knowledge).
-
-The shipped `ranged-skirmish-v1` scenario demonstrates a restricted roster:
-Vanguard and Ranger, Plating only, and no economy construction. It shares the
-original ruleset and map layout; the original scenario retains its full roster.
+The shipped maps are `castle-siege` (15×11) and `frontier-siege` (25×17). The
+former restricted ranged-skirmish entry duplicated Castle Siege geometry and is
+removed. Map selection never filters available content. The API retains scenario
+IDs and content-summary fields for clients; every summary reports the same shared
+roster and upgrade catalog. The faction-rulesets endpoint returns one ruleset.
 
 ## Scenario restrictions
 
-Add these optional fields to a normal scenario file (alongside its map, timing,
-fallback, and scripted plans):
+Maps no longer support content restrictions, timing, controller plans or ruleset
+references. Those fields are rejected by strict YAML decoding. A new map file
+contains only `id` and `map`, with authored rows, dimensions, castle spawns and
+construction sites. Copy a shipped map and edit its geometry; all current and
+future shared units and upgrades are available automatically.
 
-```yaml
-rulesetId: example-v1
-allowedUnits: [ranger]
-allowedUpgrades: []
-allowedBuildings: [castle]
-```
-
-An omitted/null list inherits the ruleset choices. An explicit empty upgrade list
-allows no upgrades. At least one unit and the selected castle building are required;
-empty unit/building lists are rejected. A scenario can only narrow its ruleset.
-Excluding its economy building sets the maximum economy count to zero and disables
-default economy construction. Construction sites remain legal when other structure
-types are allowed; excluding every constructible type removes legal sites.
-The map still uses the existing castle spawns and economy-site geometry.
-
-Explicit scripted/fallback recruitment orders or priorities must use allowed
-units. Explicit construction sites are rejected when economy buildings are disabled.
-Generic scripted plans with unspecified recruitment use deterministic round-robin
-purchases from the sorted legal combat roster (excluding healers), capped at six
-units and available gold. Explicit orders can recruit healers.
-Faction profiles have no ruleset binding. Scenario restrictions constrain both
-opening and subsequent purchases, including upgrades. `startingGold` funds opening
-units and upgrades; unspent gold carries forward. There is no design-point budget.
+The compact map's two sites naturally constrain construction more than Frontier's
+six sites. Shared building caps and costs are unchanged by map selection.
 
 ## Versioning and runtime behavior
 
-When adding or balancing library content, publish a new library version and point
-a new ruleset/scenario version at it. A library-backed ruleset carries source ID,
-version, and a content digest. Battle creation resolves all definitions into the
-existing scenario JSON snapshot; no runtime library lookup or database migration
-is required. Library metadata and the resolved selection participate in the battle
-snapshot hash. Editing files cannot change an existing battle's saved rules.
-Catalog loading runs at API startup: invalid library references, invalid
-definitions, and authored plans incompatible with a scenario's selection fail
-startup rather than a later battle.
+There is exactly one live ruleset and one active library reference. To change
+content, publish its new library version and update the shared reference once.
+Do not duplicate maps for each ruleset version. Libraries supply all units,
+upgrades and valid non-castle structures; there are no selection lists.
 
-Both faction-visible AI context and knowledge retrieval use the resolved roster.
-Engine and AI gateway purchase validation reject excluded units. The same rule applies
-to explicit purchase orders and legacy recruitment priorities.
+The shared ruleset points to the library using `library.id`, `library.version`,
+`library.castle` and `library.economy`. It owns starting gold, building limits and
+combat percentages. Inline rulesets remain readable for self-contained fixtures.
+Content IDs/versions allow letters, digits, dashes and underscores. Invalid stats,
+unknown fields, missing files, multiple live rulesets, duplicate IDs or invalid
+plans fail catalog startup.
 
-Run the [coverage gates](ci.md#coverage-gate-details) and the frontend build before
-deployment, then follow [local setup](local-setup.md) to rebuild content, catalog
-code, engine and UI together. Use a new battle to test new selections; old battles
-retain their saved definitions.
+Battle creation freezes the complete resolved scenario, including map, rules,
+content digest, timing and plans, in PostgreSQL JSON. Workers replay that snapshot;
+there is no lookup of a historical live catalog and no database migration. Older
+v1/v2 authored files exist only under catalog test fixtures, where the original
+v1 transition hash remains pinned. Existing saved battles are unaffected.
 
 ## Expanded content fields
 
-Unit definitions optionally accept `class` (`infantry`, `mobile`, `siege`, or
-`support`), `minimumRange`, `buildingPriority`, `buildingDamageBonus`,
-`bonusAgainstClass`, `classDamageBonus`, and `healAmount`. Positive healing requires
-support class, zero attack, adjacent range, and no attack bonuses. Extra building
-roles use their kind as ID; towers require positive `attack` and `range`, while
-Watchtowers/Barracks have neither attack nor income.
+Unit definitions support class, minimum attack range, building priority/damage,
+class bonuses and healing. Specialist fields are `scout`, `preferredTargetClass`,
+`armorPiercing`, `repairAmount`, `repairCost`, `repairCharges` and `healRange`.
+A repair unit must be non-attacking support with positive cost/charges and no
+healing or offensive capabilities. See [gameplay](../game/frontier-siege.md) for
+precise behavior, prices and tradeoffs.
 
-Select additional library structures using
-`library.structures: [defense_tower, watchtower, barracks]` and set
-`buildings.maximumBuildingCount` (1–8). Inline rulesets can instead specify resolved
-`structures` definitions. `maximumEconomyCount` retains its 0–2 range. All live
-non-castle buildings share the overall limit. Scenario `allowedBuildings` filters
-extra structures individually and still requires the selected castle.
-
-Authored maps accept odd widths 15–41, odd heights 11–31, and two to eight mirrored
-construction sites per faction. The `economySites` name is retained for wire and
-snapshot compatibility; all constructible types can use these faction-owned sites.
-The supplied Frontier map uses six sites per side and a four-building limit.
+`knowledge.mechanics` is limited to 4096 UTF-8 bytes and each card field to 1024.
+Provide one card per unit with `unitId`, `role`, `strengths`, `weaknesses` and
+`guidance`. Facts come from definitions; advice is not a guaranteed matchup result.
+The [AI decision contract](../architecture/ai-decisions.md#versioned-unit-knowledge)
+describes bounded knowledge retrieval.
 
 ### Attack targeting capability
 
-Unit definitions accept optional `attackMode: tracking | position`; omitted values
-mean tracking for backward compatibility. `core-v2.yaml` selects `position` for
-catapults. A position attacker locks a target hex before combat and resolves on its
-speed-ordered turn, allowing faster units to evade. Hits use the current enemy
-occupant and normal damage rules; misses cause no damage. Units that retreat cancel
-their shot. Invalid mode values fail ruleset validation. Changes affect newly
-resolved scenario snapshots; existing persisted snapshots keep their capabilities.
+Optional `attackMode: tracking | position` defaults to tracking for old snapshots.
+Catapults aim at a hex before unit turns and hit its current enemy occupant on their
+speed-ordered turn; a moved target can evade. Retreat cancels the aimed shot.
+
+## Upgrade tracks
+
+Arsenal, Plating and Industry use `track`, `level` (1–3) and `requiresUpgradeId`.
+Each track/level is unique; level I has no prerequisite and later levels require
+the preceding level with a strictly greater price. Each entry is one purchase ID
+with incremental effects: 20/50/100 gold buys total +2/+4/+6 bonuses.
+
+Specializations use either `targetUnit` or `targetClass`, plus `exclusiveGroup`.
+At most one choice in each group can be owned or ordered in a plan. Scoped fields
+include attack/defense, `movementBonus`, `rangeBonus`, `healAmountBonus`,
+`healRangeBonus` and `buildingDamageBonus`. Healing effects require healer targets;
+economy bonuses remain faction-wide. Existing and future matching units receive
+each effect once. The engine and AI submission validator enforce the same choices.
+
+Run the [coverage gates](ci.md#coverage-gate-details), frontend build and document
+link check when changing content. Use a new battle to exercise shared content;
+saved battles retain their original definitions.

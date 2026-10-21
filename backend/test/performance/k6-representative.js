@@ -70,7 +70,7 @@ export function setup() {
     const id = crypto.randomUUID();
     const response = http.post(`${baseURL}/v1/battles`, JSON.stringify({
       id,
-      scenarioId: 'frontier-siege-v2',
+      scenarioId: 'frontier-siege',
       participants: factionIds.map((factionId) => ({ factionId, controller: { type: 'scripted' } })),
       tickCount: battleTicks,
     }), jsonParams(cookies, 'queue battle'));

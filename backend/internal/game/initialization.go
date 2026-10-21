@@ -93,7 +93,21 @@ func newFactionRuntime(scenario Scenario, setup FactionSetup) (*factionRuntime, 
 		return nil, err
 	}
 	attack, defense, economy := upgradeBonuses(scenario.Ruleset, setup.Blueprint)
-	return &factionRuntime{setup: setup, activePlan: normalizedPlan(setup.FallbackPlan, setup), activeSource: "scripted_fallback", attackBonus: attack, defenseBonus: defense, economyBonus: economy}, nil
+	runtime := &factionRuntime{setup: setup, activePlan: normalizedPlan(setup.FallbackPlan, setup), activeSource: "scripted_fallback", attackBonus: attack, defenseBonus: defense, economyBonus: economy}
+	runtime.scopedUpgrades = blueprintScopedUpgrades(scenario.Ruleset, setup.Blueprint)
+	return runtime, nil
+}
+
+func blueprintScopedUpgrades(ruleset Ruleset, blueprint Blueprint) []Upgrade {
+	var upgrades []Upgrade
+	definitions := UpgradesByID(ruleset)
+	for _, id := range blueprint.UpgradeIDs {
+		u := definitions[id]
+		if u.TargetUnit != "" || u.TargetClass != "" {
+			upgrades = append(upgrades, u)
+		}
+	}
+	return upgrades
 }
 
 func (m *Match) addCastle(slot int, factionID string, occupied map[Position]bool) Building {
@@ -124,10 +138,14 @@ func (m *Match) addStartingUnits(setup FactionSetup, runtime *factionRuntime, sp
 
 func (f *factionRuntime) newUnit(definition UnitType, position Position, ready uint64) Unit {
 	attack := definition.Attack + f.attackBonus
-	if definition.HealAmount > 0 {
+	if definition.HealAmount > 0 || definition.RepairAmount > 0 {
 		attack = 0
 	}
-	return Unit{AttackMode: definition.AttackMode, Class: definition.Class, MinimumRange: definition.MinimumRange, BuildingPriority: definition.BuildingPriority, BuildingDamageBonus: definition.BuildingDamageBonus, BonusAgainstClass: definition.BonusAgainstClass, ClassDamageBonus: definition.ClassDamageBonus, HealAmount: definition.HealAmount, ID: fmt.Sprintf("%s:%s:%03d", f.setup.ID, definition.ID, f.unitSequence), FactionID: f.setup.ID, Type: definition.ID, Position: position, Health: definition.Health, MaxHealth: definition.Health, Attack: attack, Defense: definition.Defense + f.defenseBonus, Speed: definition.Speed, Movement: definition.Movement, Range: definition.Range, Vision: definition.Vision, Cost: definition.Cost, ReadyAtTick: ready}
+	unit := Unit{Scout: definition.Scout, PreferredTargetClass: definition.PreferredTargetClass, ArmorPiercing: definition.ArmorPiercing, RepairAmount: definition.RepairAmount, RepairCost: definition.RepairCost, RepairCharges: definition.RepairCharges, HealRange: definition.HealRange, AttackMode: definition.AttackMode, Class: definition.Class, MinimumRange: definition.MinimumRange, BuildingPriority: definition.BuildingPriority, BuildingDamageBonus: definition.BuildingDamageBonus, BonusAgainstClass: definition.BonusAgainstClass, ClassDamageBonus: definition.ClassDamageBonus, HealAmount: definition.HealAmount, ID: fmt.Sprintf("%s:%s:%03d", f.setup.ID, definition.ID, f.unitSequence), FactionID: f.setup.ID, Type: definition.ID, Position: position, Health: definition.Health, MaxHealth: definition.Health, Attack: attack, Defense: definition.Defense + f.defenseBonus, Speed: definition.Speed, Movement: definition.Movement, Range: definition.Range, Vision: definition.Vision, Cost: definition.Cost, ReadyAtTick: ready}
+	for _, u := range f.scopedUpgrades {
+		applyUnitUpgrade(&unit, u)
+	}
+	return unit
 }
 
 func validateFactionPlans(scenario Scenario, setup FactionSetup) error {

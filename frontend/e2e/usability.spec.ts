@@ -25,7 +25,7 @@ test('navigation, focus, responsive forms and logout', async ({ page, isMobile }
   }
   await expect(page.getByRole('button', { name: 'Generate a new faction identifier' })).toHaveCount(0)
   await page.goto('/battles/new')
-  await expect(page.getByLabel('Combat scenario')).toBeInViewport()
+  await expect(page.getByLabel('Combat map')).toBeInViewport()
   await page.getByText('AI integration status', { exact: true }).click()
   await expect(page.getByText('Offline AI', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Controller', { exact: true }).first().locator('option')).toHaveCount(1)

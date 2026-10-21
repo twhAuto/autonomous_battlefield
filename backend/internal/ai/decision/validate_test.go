@@ -77,3 +77,27 @@ func TestOpeningSubmissionValidatesUpgrades(t *testing.T) {
 		}
 	}
 }
+
+func TestUpgradePrerequisitesUseFrozenOwnership(t *testing.T) {
+	r := ai.DecisionRecord{Runtime: "api", Observation: ai.DecisionContext{Legal: ai.LegalChoices{ActionKinds: []string{"attack"}, Upgrades: []game.Upgrade{
+		{ID: "arsenal", Track: "arsenal", Level: 1, Cost: 20},
+		{ID: "arsenal_2", Track: "arsenal", Level: 2, RequiresUpgradeID: "arsenal", Cost: 50},
+	}}}}
+	s := ai.PlanSubmission{IdempotencyKey: "levels", Plan: controller.PlanProposal{Name: "upgrade", SpendOrder: []string{"upgrades"}, UpgradeOrders: []string{"arsenal_2"}}}
+	if issues := ValidateSubmission(r, s); len(issues) == 0 {
+		t.Fatal("missing prerequisite accepted")
+	}
+	r.Observation.OwnedUpgradeIDs = []string{"arsenal"}
+	if issues := ValidateSubmission(r, s); len(issues) != 0 {
+		t.Fatal(issues)
+	}
+	r.Observation.OwnedUpgradeIDs = nil
+	s.Plan.UpgradeOrders = []string{"arsenal", "arsenal_2"}
+	if issues := ValidateSubmission(r, s); len(issues) != 0 {
+		t.Fatal(issues)
+	}
+	s.Plan.UpgradeOrders = []string{"arsenal_2", "arsenal"}
+	if issues := ValidateSubmission(r, s); len(issues) == 0 {
+		t.Fatal("reversed levels accepted")
+	}
+}

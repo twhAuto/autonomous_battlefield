@@ -3,14 +3,14 @@ import { test, expect, factionId, rivalId } from './fixtures'
 test('stages a battle end to end and opens the queued engagement', async ({ page, api, isMobile }) => {
   await page.goto('/battles/new')
   await expect(page.getByRole('heading', { name: 'Stage a battle' })).toBeVisible()
-  await expect(page.getByLabel('Combat scenario')).toHaveValue('castle-siege-v1')
+  await expect(page.getByLabel('Combat map')).toHaveValue('castle-siege')
   // Both slots prefill from the faction directory, and each excludes the other's choice.
   await expect(page.getByLabel('Slot one')).toHaveValue(factionId)
   await expect(page.getByLabel('Slot two')).toHaveValue(rivalId)
 
   const ticks = page.getByLabel('Maximum ticks')
-  await ticks.fill('501')
-  await expect(page.getByText('Enter a whole number from 1 to 500.')).toBeVisible()
+  await ticks.fill('801')
+  await expect(page.getByText('Enter a whole number from 1 to 800.')).toBeVisible()
   await expect(page.getByRole('button', { name: /DEPLOY COMBATANTS/ })).toBeDisabled()
   await ticks.fill('120')
   await expect(page.getByRole('button', { name: /DEPLOY COMBATANTS/ })).toBeEnabled()
@@ -23,7 +23,7 @@ test('stages a battle end to end and opens the queued engagement', async ({ page
   await expect(page.getByRole('progressbar', { name: 'Tick limit used' })).toBeVisible()
   expect(api.writes).toEqual(['POST /v1/battles'])
   expect(api.created).toMatchObject({
-    scenarioId: 'castle-siege-v1',
+    scenarioId: 'castle-siege',
     tickCount: 120,
     participants: [
       { factionId, controller: { type: 'scripted' } },
