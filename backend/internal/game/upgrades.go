@@ -12,7 +12,7 @@ import (
 
 func (m *Match) runUpgrades(id string, plan controller.PlanProposal) []Event {
 	events := []Event{}
-	state, runtime := m.factionState(id), m.factions[id]
+	state := m.factionState(id)
 	definitions := UpgradesByID(m.scenario.Ruleset)
 	for _, upgradeID := range plan.UpgradeOrders {
 		if slices.Contains(state.OwnedUpgradeIDs, upgradeID) {
@@ -34,23 +34,7 @@ func (m *Match) runUpgrades(id string, plan controller.PlanProposal) []Event {
 			events = append(events, m.event("production_skipped", map[string]any{"factionId": id, "kind": "upgrades", "upgradeId": upgradeID, "reason": "reserve_required"}))
 			break
 		}
-		state.Gold -= upgrade.Cost
-		state.GoldSpent += upgrade.Cost
-		state.OwnedUpgradeIDs = append(state.OwnedUpgradeIDs, upgradeID)
-		if upgrade.TargetUnit != "" || upgrade.TargetClass != "" {
-			runtime.scopedUpgrades = append(runtime.scopedUpgrades, upgrade)
-		} else {
-			runtime.attackBonus += upgrade.AttackBonus
-			runtime.defenseBonus += upgrade.DefenseBonus
-			runtime.economyBonus += upgrade.EconomyIncomeBonus
-		}
-		m.applyUpgradeToEntities(id, upgrade)
-		data := map[string]any{"factionId": id, "upgradeId": upgradeID, "cost": upgrade.Cost, "balance": state.Gold}
-		if upgrade.Level > 0 {
-			data["track"], data["level"] = upgrade.Track, upgrade.Level
-			data["attackBonus"], data["defenseBonus"], data["economyIncomeBonus"] = upgrade.AttackBonus, upgrade.DefenseBonus, upgrade.EconomyIncomeBonus
-		}
-		events = append(events, m.event("upgrade_purchased", data))
+		events = append(events, m.purchaseUpgrade(id, upgrade))
 	}
 	return events
 }
@@ -88,4 +72,25 @@ func (m *Match) applyUpgradeToEntities(id string, upgrade Upgrade) {
 		}
 	}
 
+}
+
+func (m *Match) purchaseUpgrade(id string, upgrade Upgrade) Event {
+	state, runtime := m.factionState(id), m.factions[id]
+	state.Gold -= upgrade.Cost
+	state.GoldSpent += upgrade.Cost
+	state.OwnedUpgradeIDs = append(state.OwnedUpgradeIDs, upgrade.ID)
+	if upgrade.TargetUnit != "" || upgrade.TargetClass != "" {
+		runtime.scopedUpgrades = append(runtime.scopedUpgrades, upgrade)
+	} else {
+		runtime.attackBonus += upgrade.AttackBonus
+		runtime.defenseBonus += upgrade.DefenseBonus
+		runtime.economyBonus += upgrade.EconomyIncomeBonus
+	}
+	m.applyUpgradeToEntities(id, upgrade)
+	data := map[string]any{"factionId": id, "upgradeId": upgrade.ID, "cost": upgrade.Cost, "balance": state.Gold}
+	if upgrade.Level > 0 {
+		data["track"], data["level"] = upgrade.Track, upgrade.Level
+		data["attackBonus"], data["defenseBonus"], data["economyIncomeBonus"] = upgrade.AttackBonus, upgrade.DefenseBonus, upgrade.EconomyIncomeBonus
+	}
+	return m.event("upgrade_purchased", data)
 }

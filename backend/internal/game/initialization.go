@@ -94,13 +94,20 @@ func newFactionRuntime(scenario Scenario, setup FactionSetup) (*factionRuntime, 
 	}
 	attack, defense, economy := upgradeBonuses(scenario.Ruleset, setup.Blueprint)
 	runtime := &factionRuntime{setup: setup, activePlan: normalizedPlan(setup.FallbackPlan, setup), activeSource: "scripted_fallback", attackBonus: attack, defenseBonus: defense, economyBonus: economy}
-	for _, id := range setup.Blueprint.UpgradeIDs {
-		u := UpgradesByID(scenario.Ruleset)[id]
+	runtime.scopedUpgrades = blueprintScopedUpgrades(scenario.Ruleset, setup.Blueprint)
+	return runtime, nil
+}
+
+func blueprintScopedUpgrades(ruleset Ruleset, blueprint Blueprint) []Upgrade {
+	var upgrades []Upgrade
+	definitions := UpgradesByID(ruleset)
+	for _, id := range blueprint.UpgradeIDs {
+		u := definitions[id]
 		if u.TargetUnit != "" || u.TargetClass != "" {
-			runtime.scopedUpgrades = append(runtime.scopedUpgrades, u)
+			upgrades = append(upgrades, u)
 		}
 	}
-	return runtime, nil
+	return upgrades
 }
 
 func (m *Match) addCastle(slot int, factionID string, occupied map[Position]bool) Building {

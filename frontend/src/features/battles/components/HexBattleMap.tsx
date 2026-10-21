@@ -188,8 +188,9 @@ function EntityDetails({ selected, naming }: Readonly<{ selected?: Entity; namin
     ? ` · moved from (${selected.movedFrom.x}, ${selected.movedFrom.y})`
     : ''
   const attacking = selected.attackTargetId ? ` · attacking ${entityName(selected.attackTargetId, naming)}` : ''
+  const supportAction = 'repairAmount' in selected && selected.repairAmount ? 'repairing' : 'treating'
   const treating = 'healTargetId' in selected && selected.healTargetId
-    ? ` · ${'repairAmount' in selected && selected.repairAmount ? 'repairing' : 'treating'} ${entityName(selected.healTargetId, naming)}`
+    ? ` · ${supportAction} ${entityName(selected.healTargetId, naming)}`
     : ''
   return <div className="entity-details" aria-live="polite">
     <strong title={selected.id}>{entityName(selected.id, naming)}</strong>
@@ -364,13 +365,19 @@ function entityStats(entity: Entity) {
   const stats = [`Defense ${entity.defense}`, `Vision ${entity.vision}`]
   const minimumRange = 'minimumRange' in entity && entity.minimumRange ? `${entity.minimumRange}–` : ''
   if (entity.attack) stats.push(`Attack ${entity.attack}`, `Range ${minimumRange}${entity.range}`)
+  stats.push(...specialistStats(entity))
+  if ('buildingDamageBonus' in entity && entity.buildingDamageBonus) stats.push(`+${entity.buildingDamageBonus} vs buildings`)
+  if ('classDamageBonus' in entity && entity.classDamageBonus) stats.push(`+${entity.classDamageBonus} vs ${entity.bonusAgainstClass}`)
+  if (entity.type === 'barracks') stats.push('Forward recruitment')
+  return stats.join(' · ')
+}
+
+function specialistStats(entity: Entity) {
+  const stats: string[] = []
   if ('healAmount' in entity && entity.healAmount) stats.push(`Treat ${entity.healAmount} HP · range ${entity.healRange || 1}`)
   if ('repairAmount' in entity && entity.repairAmount) stats.push(`Repair ${entity.repairAmount} HP · ${entity.repairCost} gold · ${entity.repairCharges ?? 0} charges`)
   if ('armorPiercing' in entity && entity.armorPiercing) stats.push(`Ignore ${entity.armorPiercing} unit defense`)
   if ('scout' in entity && entity.scout) stats.push('Reconnaissance · retreats from nearby enemies')
   if ('preferredTargetClass' in entity && entity.preferredTargetClass) stats.push(`Prefers ${entity.preferredTargetClass} targets`)
-  if ('buildingDamageBonus' in entity && entity.buildingDamageBonus) stats.push(`+${entity.buildingDamageBonus} vs buildings`)
-  if ('classDamageBonus' in entity && entity.classDamageBonus) stats.push(`+${entity.classDamageBonus} vs ${entity.bonusAgainstClass}`)
-  if (entity.type === 'barracks') stats.push('Forward recruitment')
-  return stats.join(' · ')
+  return stats
 }

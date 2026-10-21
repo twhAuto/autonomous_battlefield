@@ -100,7 +100,11 @@ func (m *Match) runEngineer(unit *Unit) []Event {
 			return m.moveAlong(unit, path)
 		}
 	}
-	// With no repair target, follow an allied siege engine, using stable IDs.
+	return m.followAlliedSiege(unit)
+}
+
+// With no repair target, follow an allied siege engine, using stable IDs.
+func (m *Match) followAlliedSiege(unit *Unit) []Event {
 	siege := []Unit{}
 	for _, u := range m.state.Units {
 		if u.Health > 0 && u.FactionID == unit.FactionID && u.Class == "siege" {

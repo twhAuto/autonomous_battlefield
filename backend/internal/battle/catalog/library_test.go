@@ -33,17 +33,7 @@ func TestEveryMapUsesSharedContent(t *testing.T) {
 		} else if !reflect.DeepEqual(baseline, s.Ruleset) {
 			t.Fatal("map changes content")
 		}
-		m, err := game.NewMatch("shared", s, 20)
-		if err != nil {
-			t.Fatal(err)
-		}
-		snapshot, err := m.DecisionSnapshot("a")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(snapshot.LegalUnits, s.Ruleset.Units) || !reflect.DeepEqual(snapshot.LegalUpgrades, s.Ruleset.Upgrades) {
-			t.Fatal("AI missing shared content")
-		}
+		checkSharedDecisionContent(t, s)
 		summary := c.Summaries()[i]
 		if !reflect.DeepEqual(summary.AllowedUnits, unitIDs(baseline)) || !reflect.DeepEqual(summary.AllowedUpgrades, upgradeIDs(baseline)) || !reflect.DeepEqual(summary.AllowedBuildings, buildingIDs(baseline)) {
 			t.Fatal("summary differs from shared catalog")
@@ -177,4 +167,19 @@ func legacyScenario(t *testing.T, id string) game.Scenario {
 	}
 	// Resolve uses the stored plans and rules; cloned empty slices match historical snapshots.
 	return s
+}
+
+func checkSharedDecisionContent(t *testing.T, s game.Scenario) {
+	t.Helper()
+	m, err := game.NewMatch("shared", s, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := m.DecisionSnapshot("a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(snapshot.LegalUnits, s.Ruleset.Units) || !reflect.DeepEqual(snapshot.LegalUpgrades, s.Ruleset.Upgrades) {
+		t.Fatal("AI missing shared content")
+	}
 }

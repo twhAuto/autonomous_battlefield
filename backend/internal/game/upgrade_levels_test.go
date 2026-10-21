@@ -3,6 +3,7 @@ package game
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
@@ -66,7 +67,7 @@ func TestUpgradeLevelValidation(t *testing.T) {
 	}
 }
 
-func TestUpgradeLevelsPartialPurchaseAndReplay(t *testing.T) {
+func TestUpgradeLevelsPartialPurchase(t *testing.T) {
 	m := doctrineMatch(t)
 	id := m.FactionIDs()[0]
 	m.scenario.Ruleset.Upgrades = levelUpgrades()
@@ -91,8 +92,12 @@ func TestUpgradeLevelsPartialPurchaseAndReplay(t *testing.T) {
 	if len(m.runUpgrades(id, plan)) != 0 || m.factionState(id).Gold != 10 {
 		t.Fatal("max-level repeat charged")
 	}
+}
+
+func TestUpgradeLevelsRejectMissingPrerequisitesBeforeMutation(t *testing.T) {
 	// Missing prerequisites cannot be applied even by an internal spending call.
 	fresh := doctrineMatch(t)
+	id := fresh.FactionIDs()[0]
 	fresh.scenario.Ruleset.Upgrades = levelUpgrades()
 	skipped := fresh.runUpgrades(id, controller.PlanProposal{UpgradeOrders: []string{"arsenal_3"}})
 	if len(skipped) != 1 || skipped[0].Data["reason"] != "prerequisite_required" || fresh.factions[id].attackBonus != 0 {
@@ -106,8 +111,16 @@ func TestUpgradeLevelsPartialPurchaseAndReplay(t *testing.T) {
 	if _, err := fresh.AdvanceWithPlans(map[string]controller.PlanProposal{id: bad}); err == nil || !reflect.DeepEqual(before, fresh.State()) {
 		t.Fatal("invalid opening mutated state")
 	}
+}
+
+func TestUpgradeLevelsSnapshotReplay(t *testing.T) {
 	// Snapshot serialization retains prerequisites; replay produces identical transitions.
 	original := doctrineMatch(t)
+	id := original.FactionIDs()[0]
+	plan := noPurchases()
+	plan.UpgradeOrders = []string{"arsenal", "arsenal_2", "arsenal_3"}
+	plan.SpendOrder = []string{"upgrades"}
+	plan.ReserveGold = 10
 	original.scenario.Ruleset.Upgrades = levelUpgrades()
 	payload, err := json.Marshal(original.scenario)
 	if err != nil {
@@ -125,7 +138,7 @@ func TestUpgradeLevelsPartialPurchaseAndReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plans := map[string]controller.PlanProposal{id: plan, m.FactionIDs()[1]: noPurchases()}
+	plans := map[string]controller.PlanProposal{id: plan, original.FactionIDs()[1]: noPurchases()}
 	ta, ea := a.AdvanceWithPlans(plans)
 	tb, eb := b.AdvanceWithPlans(plans)
 	if ea != nil || eb != nil || !reflect.DeepEqual(ta, tb) {
@@ -136,37 +149,10 @@ func TestUpgradeLevelsPartialPurchaseAndReplay(t *testing.T) {
 func TestThreeLevelEffectsOnExistingAndFutureEntities(t *testing.T) {
 	m := doctrineMatch(t)
 	id := m.FactionIDs()[0]
-	m.scenario.Ruleset.Upgrades = nil
+	m.scenario.Ruleset.Upgrades = allGeneralUpgradeLevels()
 	orders := []string{}
-	for _, track := range []string{"arsenal", "plating", "industry"} {
-		for _, u := range levelUpgrades() {
-			suffix := ""
-			if u.Level == 2 {
-				suffix = "_2"
-			}
-			if u.Level == 3 {
-				suffix = "_3"
-			}
-			u.ID = track + suffix
-			u.Track = track
-			if u.Level == 2 {
-				u.RequiresUpgradeID = track
-			}
-			if u.Level == 3 {
-				u.RequiresUpgradeID = track + "_2"
-			}
-			u.AttackBonus = 0
-			switch track {
-			case "arsenal":
-				u.AttackBonus = 2
-			case "plating":
-				u.DefenseBonus = 2
-			case "industry":
-				u.EconomyIncomeBonus = 2
-			}
-			m.scenario.Ruleset.Upgrades = append(m.scenario.Ruleset.Upgrades, u)
-			orders = append(orders, u.ID)
-		}
+	for _, upgrade := range m.scenario.Ruleset.Upgrades {
+		orders = append(orders, upgrade.ID)
 	}
 	m.factionState(id).Gold = 2000
 	ranger := UnitTypesByID(m.scenario.Ruleset)["ranger"]
@@ -197,4 +183,26 @@ func TestThreeLevelEffectsOnExistingAndFutureEntities(t *testing.T) {
 	if *m.castle(id) != castle || m.incomeFor(id, castle.Income) != 42 {
 		t.Fatal("castle changed or income incorrect")
 	}
+}
+
+func allGeneralUpgradeLevels() []Upgrade {
+	var upgrades []Upgrade
+	for _, track := range []string{"arsenal", "plating", "industry"} {
+		for _, u := range levelUpgrades() {
+			u.ID = strings.ReplaceAll(u.ID, "arsenal", track)
+			u.RequiresUpgradeID = strings.ReplaceAll(u.RequiresUpgradeID, "arsenal", track)
+			u.Track = track
+			u.AttackBonus = 0
+			switch track {
+			case "arsenal":
+				u.AttackBonus = 2
+			case "plating":
+				u.DefenseBonus = 2
+			case "industry":
+				u.EconomyIncomeBonus = 2
+			}
+			upgrades = append(upgrades, u)
+		}
+	}
+	return upgrades
 }

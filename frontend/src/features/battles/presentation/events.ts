@@ -16,13 +16,16 @@ export function matchesPreset(event: BattleEvent, preset: EventPreset) {
 export function eventSummary(event: BattleEvent, naming: EntityNaming) {
   const label = (key: string, fallback: string) => typeof event.data[key] === 'string' ? eventStringLabel(key, event.data[key] as string, naming) : fallback
   const actor = label('factionId', 'A faction')
+  const upgradeCost = typeof event.data.cost === 'number' ? ` for ${event.data.cost} gold` : ''
+  const repairAmount = typeof event.data.amount === 'number' ? `${event.data.amount} HP` : 'an unknown amount'
+  const repairCost = typeof event.data.cost === 'number' ? `${event.data.cost} gold` : 'unknown cost'
   const amount = typeof event.data.amount === 'number' ? `${event.data.amount} gold` : 'gold'
   switch (event.type) {
     case 'battle_created': case 'battle_queued': case 'battle_started': case 'battle_paused': case 'battle_resumed': case 'battle_stopped': case 'battle_failed': return `The battle ${event.type.slice(7)}.`
     case 'opening_completed': return 'The opening phase ended.'
-    case 'upgrade_purchased': case 'upgrade_applied': return `${actor} ${event.type === 'upgrade_purchased' ? 'purchased' : 'applied'} ${upgradeLabel(label('upgradeId', 'an upgrade'))}${typeof event.data.cost === 'number' ? ` for ${event.data.cost} gold` : ''}.`
+    case 'upgrade_purchased': case 'upgrade_applied': return `${actor} ${event.type === 'upgrade_purchased' ? 'purchased' : 'applied'} ${upgradeLabel(label('upgradeId', 'an upgrade'))}${upgradeCost}.`
     case 'unit_attack_missed': return `${label('attackerId', 'A unit')} missed its target.`
-    case 'unit_repaired': return `${label('engineerId', 'An engineer')} repaired ${label('targetId', 'an ally')} for ${event.data.amount} HP (${event.data.cost} gold).`
+    case 'unit_repaired': return `${label('engineerId', 'An engineer')} repaired ${label('targetId', 'an ally')} for ${repairAmount} (${repairCost}).`
     case 'unit_healed': return `${label('healerId', 'A healer')} treated ${label('targetId', 'an ally')}.`
     case 'building_attacked': case 'tower_attacked': return `${label('attackerId', 'A building')} attacked ${label('targetId', 'its target')}.`
     case 'unit_attacked': {

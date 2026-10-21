@@ -55,21 +55,10 @@ func LoadCatalog(fsys fs.FS) (*Catalog, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(rulesets) != 1 {
-		return nil, fmt.Errorf("exactly one shared ruleset is required")
-	}
-	var defaults template
-	if err := decodeOne(fsys, "battlefield.yaml", &defaults); err != nil {
+	defaults, err := loadSharedDefaults(fsys, rulesets)
+	if err != nil {
 		return nil, err
 	}
-	if defaults.ID != "" || defaults.Map.Width != 0 || defaults.RulesVersion != "" {
-		return nil, fmt.Errorf("battlefield config must not define a map or rules version")
-	}
-	ruleset, ok := rulesets[defaults.RulesetID]
-	if !ok {
-		return nil, fmt.Errorf("unknown shared ruleset %q", defaults.RulesetID)
-	}
-	defaults.RulesVersion = ruleset.Version
 	entries, err := fs.ReadDir(fsys, scenarioDirectory)
 	if err != nil {
 		return nil, fmt.Errorf("read scenario directory: %w", err)
@@ -276,4 +265,23 @@ func validateTemplateTiming(value template) error {
 		return errors.New("decision interval must be positive")
 	}
 	return nil
+}
+
+func loadSharedDefaults(fsys fs.FS, rulesets map[string]game.Ruleset) (template, error) {
+	if len(rulesets) != 1 {
+		return template{}, fmt.Errorf("exactly one shared ruleset is required")
+	}
+	var defaults template
+	if err := decodeOne(fsys, "battlefield.yaml", &defaults); err != nil {
+		return template{}, err
+	}
+	if defaults.ID != "" || defaults.Map.Width != 0 || defaults.RulesVersion != "" {
+		return template{}, fmt.Errorf("battlefield config must not define a map or rules version")
+	}
+	ruleset, ok := rulesets[defaults.RulesetID]
+	if !ok {
+		return template{}, fmt.Errorf("unknown shared ruleset %q", defaults.RulesetID)
+	}
+	defaults.RulesVersion = ruleset.Version
+	return defaults, nil
 }

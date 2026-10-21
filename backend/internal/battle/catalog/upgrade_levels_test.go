@@ -27,14 +27,7 @@ func TestFrontierThreeLevelCatalogAndScriptedBattle(t *testing.T) {
 	if !reflect.DeepEqual(old.Map, s.Map) {
 		t.Fatal("map geometry changed")
 	}
-	for _, track := range []string{"arsenal", "plating", "industry"} {
-		defs := game.UpgradesByID(s.Ruleset)
-		for i, id := range []string{track, track + "_2", track + "_3"} {
-			if defs[id].Cost != []int64{20, 50, 100}[i] || defs[id].Level != i+1 {
-				t.Fatalf("bad catalog entry %+v", defs[id])
-			}
-		}
-	}
+	checkThreeLevelCatalog(t, s.Ruleset)
 	m, err := game.NewMatch("levels", s, 100)
 	if err != nil {
 		t.Fatal(err)
@@ -69,42 +62,59 @@ func TestFrontierUpgradeBalanceProbe(t *testing.T) {
 	}
 	for _, track := range []string{"arsenal", "plating"} {
 		for _, mirror := range []bool{false, true} {
-			upgraded := []controller.RecruitmentOrder{{UnitType: "vanguard", Count: 2}, {UnitType: "ranger", Count: 1}}
-			army := []controller.RecruitmentOrder{{UnitType: "vanguard", Count: 4}, {UnitType: "ranger", Count: 1}}
-			if probeCost(game.UnitTypesByID(s.Ruleset), upgraded)+70 != probeCost(game.UnitTypesByID(s.Ruleset), army) {
-				t.Fatal("unequal budgets")
-			}
-			plan := func(units []controller.RecruitmentOrder, upgrades []string) controller.PlanProposal {
-				empty := []controller.ConstructionOrder{}
-				return controller.PlanProposal{Name: "probe", RecruitmentOrders: &units, ConstructionOrders: &empty, UpgradeOrders: upgrades, SpendOrder: []string{"upgrades", "recruitment"}, ActionWeights: map[string]int64{"attack": 1000, "defend": 1}}
-			}
-			a, b := plan(upgraded, []string{track, track + "_2"}), plan(army, nil)
-			if mirror {
-				a, b = b, a
-			}
-			m, err := game.NewMatch("probe", s, 200)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err = m.AdvanceWithPlans(map[string]controller.PlanProposal{"a": a, "b": b}); err != nil {
-				t.Fatal(err)
-			}
-			var last game.Transition
-			for !m.Finished() {
-				var plans map[string]controller.PlanProposal
-				if m.DecisionWindowDue() {
-					plans = map[string]controller.PlanProposal{"a": plan([]controller.RecruitmentOrder{}, nil), "b": plan([]controller.RecruitmentOrder{}, nil)}
-				}
-				last, err = m.AdvanceWithPlans(plans)
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			winner := "draw"
-			if last.Result.WinnerFactionID != nil {
-				winner = *last.Result.WinnerFactionID
-			}
-			t.Logf("track=%s mirrored=%v budget=170 winner=%s ticks=%d survivors=%d/%d", track, mirror, winner, last.Tick, last.Result.Factions[0].UnitsRemaining, last.Result.Factions[1].UnitsRemaining)
+			runUpgradeBalanceProbe(t, s, track, mirror)
 		}
 	}
+}
+
+func checkThreeLevelCatalog(t *testing.T, ruleset game.Ruleset) {
+	t.Helper()
+	for _, track := range []string{"arsenal", "plating", "industry"} {
+		defs := game.UpgradesByID(ruleset)
+		for i, id := range []string{track, track + "_2", track + "_3"} {
+			if defs[id].Cost != []int64{20, 50, 100}[i] || defs[id].Level != i+1 {
+				t.Fatalf("bad catalog entry %+v", defs[id])
+			}
+		}
+	}
+}
+
+func runUpgradeBalanceProbe(t *testing.T, s game.Scenario, track string, mirror bool) {
+	t.Helper()
+	upgraded := []controller.RecruitmentOrder{{UnitType: "vanguard", Count: 2}, {UnitType: "ranger", Count: 1}}
+	army := []controller.RecruitmentOrder{{UnitType: "vanguard", Count: 4}, {UnitType: "ranger", Count: 1}}
+	if probeCost(game.UnitTypesByID(s.Ruleset), upgraded)+70 != probeCost(game.UnitTypesByID(s.Ruleset), army) {
+		t.Fatal("unequal budgets")
+	}
+	plan := func(units []controller.RecruitmentOrder, upgrades []string) controller.PlanProposal {
+		empty := []controller.ConstructionOrder{}
+		return controller.PlanProposal{Name: "probe", RecruitmentOrders: &units, ConstructionOrders: &empty, UpgradeOrders: upgrades, SpendOrder: []string{"upgrades", "recruitment"}, ActionWeights: map[string]int64{"attack": 1000, "defend": 1}}
+	}
+	a, b := plan(upgraded, []string{track, track + "_2"}), plan(army, nil)
+	if mirror {
+		a, b = b, a
+	}
+	m, err := game.NewMatch("probe", s, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = m.AdvanceWithPlans(map[string]controller.PlanProposal{"a": a, "b": b}); err != nil {
+		t.Fatal(err)
+	}
+	var last game.Transition
+	for !m.Finished() {
+		var plans map[string]controller.PlanProposal
+		if m.DecisionWindowDue() {
+			plans = map[string]controller.PlanProposal{"a": plan([]controller.RecruitmentOrder{}, nil), "b": plan([]controller.RecruitmentOrder{}, nil)}
+		}
+		last, err = m.AdvanceWithPlans(plans)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	winner := "draw"
+	if last.Result.WinnerFactionID != nil {
+		winner = *last.Result.WinnerFactionID
+	}
+	t.Logf("track=%s mirrored=%v budget=170 winner=%s ticks=%d survivors=%d/%d", track, mirror, winner, last.Tick, last.Result.Factions[0].UnitsRemaining, last.Result.Factions[1].UnitsRemaining)
 }
