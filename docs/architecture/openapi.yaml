@@ -1622,6 +1622,7 @@ components:
         claimedAt: {type: string, format: date-time, description: Latest claim; absent for historical or never-claimed decisions.}
         contextServedAt: {type: string, format: date-time}
         runnerCompletedAt: {type: string, format: date-time, description: "Gateway receipt of worker completion, separate from plan acceptance."}
+        contextDelivery: {type: string, enum: [tool, prefetch], description: "CLI context-delivery mode; omitted for historical records without this metadata."}
         cliProcessStartMs: {type: integer, minimum: 0, description: OS process creation only; does not measure CLI readiness.}
 
     StrategyPlan:

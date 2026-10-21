@@ -217,6 +217,7 @@ type ModelOption struct {
 }
 
 type ModelProfile struct {
+	PrefetchContext                 bool          `json:"-" yaml:"prefetchContext,omitempty"`
 	ModelOptions                    []ModelOption `json:"modelOptions,omitempty" yaml:"modelOptions"`
 	ReasoningEffort                 string        `json:"-" yaml:"-"`
 	AllowedRoles                    []string      `json:"-" yaml:"allowedRoles"`

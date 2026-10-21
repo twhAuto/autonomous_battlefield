@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = (ROOT / 'scripts/dev/run-k8s-cli-agent.sh').read_text()
 FUNCTIONS = '\n'.join(re.findall(r'^\w+\(\) \{\n.*?^\}', SOURCE, re.M | re.S))
 PREFIX_OVERRIDES = ('HOST_CODEX_VERSION_PREFIX', 'HOST_CLAUDE_VERSION_PREFIX', 'HOST_ANTIGRAVITY_VERSION_PREFIX')
-BASE_ENV = {key: value for key, value in os.environ.items() if key not in PREFIX_OVERRIDES}
+BASE_ENV = {key: value for key, value in os.environ.items() if key not in (*PREFIX_OVERRIDES, 'HOST_CLI_PREFETCH_CONTEXT')}
 
 
 def configured_prefixes(text):
@@ -50,6 +50,17 @@ set_profile_flags false false false
         self.assertNotIn('provider: codex-cli', result.stdout)
         self.assertIn('"CLAUDE_CLI_PROFILE_AVAILABLE":"true"', result.stderr)
         self.assertIn('"CLAUDE_CLI_PROFILE_AVAILABLE":"false"', result.stderr)
+
+    def test_context_prefetch_option_is_explicit_and_validated(self):
+        for value in ['true', 'false']:
+            result = self.run_profile('all', 'codex gemini claude', overrides={'HOST_CLI_PREFETCH_CONTEXT': value})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.count('prefetchContext: ' + value), 2)
+        default = self.run_profile('codex', 'codex')
+        self.assertIn('prefetchContext: false', default.stdout)
+        invalid = self.run_profile('codex', 'codex', overrides={'HOST_CLI_PREFETCH_CONTEXT': 'yes'})
+        self.assertEqual(invalid.returncode, 2)
+        self.assertIn('must be true or false', invalid.stderr)
 
     def test_auto_both_and_all(self):
         for mode, available, count in [('auto', 'claude', 1), ('auto', 'codex', 1), ('auto', 'gemini', 1), ('auto', 'codex gemini claude', 3),

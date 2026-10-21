@@ -64,6 +64,16 @@ Live execution requires `AI_EVAL_ALLOW_LIVE=1`; API variants additionally requir
 `AI_EVAL_ALLOW_PAID=1`. Invoke the same command with your configuration file.
 Do not put credentials into YAML or reports.
 
+For a context-delivery comparison, use two Codex or Claude variants with the same
+`model` and `reasoningEffort` (for example `low`), and set `prefetchContext: true`
+on only one. Omitted prefetch is false; Antigravity always prefetches. The runner
+validates reasoning effort against the provider's supported values. These options
+are rejected for API and scripted variants. Keep the corpus and memory/knowledge
+settings identical. Reports record both options, and `durationMs` includes host
+prefetch, CLI startup and completion; it is not the battle's claim-to-resolution
+interval. See the [cluster comparison procedure](../operations/cli-worker.md#context-prefetch-comparison)
+for measurements from real battles.
+
 Comparisons accept at most 20 cases, 8 variants, and 10 repetitions, with a
 per-sample timeout of at most five minutes. API turns and output tokens use the
 specified limits. CLI subprocesses have the per-sample deadline and submission

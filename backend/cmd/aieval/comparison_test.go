@@ -10,7 +10,32 @@ import (
 	"testing"
 
 	aieval "github.com/twh09/autonomous_battlefield/backend/internal/ai/eval"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
 )
+
+func TestComparisonContextDeliveryAndEffort(t *testing.T) {
+	t.Setenv("AI_EVAL_ALLOW_LIVE", "1")
+	for _, provider := range []string{"codex-cli", "claude-cli"} {
+		v, err := makeComparisonVariant(comparisonVariantConfig{ID: "prefetch", Provider: provider, Model: "test", ReasoningEffort: "low", PrefetchContext: true}, aieval.PriceBook{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := v.NewRunner().(runner.CLIRunner)
+		if !r.PrefetchContext || r.ReasoningEffort != "low" || !v.PrefetchContext || v.ReasoningEffort != "low" {
+			t.Fatal("comparison silently changed delivery or reasoning settings")
+		}
+	}
+	for _, v := range []comparisonVariantConfig{
+		{Provider: "scripted", PrefetchContext: true},
+		{Provider: "openai", ReasoningEffort: "low"},
+		{Provider: "codex-cli", Model: "test", ReasoningEffort: "invalid"},
+		{Provider: "antigravity-cli", Model: "test", ReasoningEffort: "low"},
+	} {
+		if _, err := makeComparisonVariant(v, aieval.PriceBook{}); err == nil {
+			t.Fatalf("unsupported CLI options accepted for %s", v.Provider)
+		}
+	}
+}
 
 func TestFreeComparisonCommand(t *testing.T) {
 	root := filepath.Join("..", "..", "evals")

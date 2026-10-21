@@ -318,3 +318,8 @@ this does not expose decision inspection to Player roles. `createdAt` to
 shutdown. Reclaimed jobs report the latest claim while preserving total wait.
 Internal agent claims require `selectionVersion: 1`; incompatible workers receive
 409 before any job is leased.
+
+Decision-history rows optionally include `contextDelivery: "tool" | "prefetch"`.
+This identifies the CLI worker's configured delivery path; it is absent from older
+records. In prefetch mode the context timestamp is recorded before CLI launch.
+History permissions are unchanged, and raw provider metadata is not exposed.

@@ -61,6 +61,7 @@ func (OSCommandExecutor) Run(ctx context.Context, name string, args, environment
 }
 
 type CLIRunner struct {
+	PrefetchContext bool
 	ReasoningEffort string
 	Provider        string
 	Model           string
@@ -72,14 +73,9 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 	ctx, span := generationSpan(ctx, session, "cli_session")
 	timing := &processTiming{}
 	ctx = context.WithValue(ctx, processTimingKey{}, timing)
-	defer func() {
-		if timing.StartMS != nil {
-			if result.ProviderData == nil {
-				result.ProviderData = map[string]any{}
-			}
-			result.ProviderData["cliProcessStartMs"] = *timing.StartMS
-		}
-	}()
+	delivery := r.contextDelivery(session)
+	span.SetAttributes(attribute.String("battlefield.context_delivery", delivery))
+	defer func() { recordCLIExecutionMetadata(&result, timing, delivery) }()
 	defer func() { finishGeneration(span, result.Usage, runErr != nil || !result.Accepted) }()
 	temporary, err := os.MkdirTemp("", "battlefield-agent-")
 	if err != nil {
@@ -121,9 +117,11 @@ type cliInvocation struct {
 }
 
 func (r CLIRunner) prepareInvocation(ctx context.Context, session ai.DecisionSession, temporary, workspace string) (cliInvocation, string, error) {
-	prompt := prompts.SessionSystem(session) + "\n" + prompts.SessionDecision(session, nil)
+	prompt, err := r.sessionPrompt(ctx, session)
+	if err != nil {
+		return cliInvocation{}, "mcp_context", err
+	}
 	var args, environment []string
-	var err error
 	switch r.Provider {
 	case cliisolation.ProviderCodex:
 		args = []string{"exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "--ignore-user-config", "-C", workspace,
@@ -148,12 +146,6 @@ func (r CLIRunner) prepareInvocation(ctx context.Context, session ai.DecisionSes
 		}
 		environment = cliisolation.ClaudeEnvironment()
 	case cliisolation.ProviderAntigravity:
-		payload, contextErr := r.prefetchContext(ctx, session)
-		if contextErr != nil {
-			return cliInvocation{}, "mcp_context", contextErr
-		}
-		prompt = prompts.SessionSystem(session) + "\n" + prompts.SessionDecision(session, payload)
-
 		environment, err = cliisolation.PrepareAntigravity(temporary, session.MCPURL, session.CapabilityToken, prompts.SessionToolNames(session)...)
 		if err != nil {
 			return cliInvocation{}, "cli_isolation", err
@@ -164,6 +156,35 @@ func (r CLIRunner) prepareInvocation(ctx context.Context, session ai.DecisionSes
 		return cliInvocation{}, "cli_provider", fmt.Errorf("unsupported CLI provider %q", r.Provider)
 	}
 	return cliInvocation{args: args, environment: environment, prompt: prompt}, "", nil
+}
+
+func (r CLIRunner) contextDelivery(session ai.DecisionSession) string {
+	if r.Provider == cliisolation.ProviderAntigravity || (r.PrefetchContext && session.JobType != "faction_background") {
+		return "prefetch"
+	}
+	return "tool"
+}
+
+func (r CLIRunner) sessionPrompt(ctx context.Context, session ai.DecisionSession) (string, error) {
+	var payload json.RawMessage
+	if r.contextDelivery(session) == "prefetch" {
+		var err error
+		payload, err = r.prefetchContext(ctx, session)
+		if err != nil {
+			return "", err
+		}
+	}
+	return prompts.SessionSystem(session) + "\n" + prompts.SessionDecision(session, payload), nil
+}
+
+func recordCLIExecutionMetadata(result *ai.DecisionResult, timing *processTiming, delivery string) {
+	if result.ProviderData == nil {
+		result.ProviderData = map[string]any{}
+	}
+	result.ProviderData["contextDelivery"] = delivery
+	if timing.StartMS != nil {
+		result.ProviderData["cliProcessStartMs"] = *timing.StartMS
+	}
 }
 
 func withModel(arguments []string, model string) []string {
@@ -216,8 +237,8 @@ func replaceEnvironment(values []string, key, value string) []string {
 	return append(result, prefix+value)
 }
 
-// Antigravity offloads larger MCP responses to local files. Fetch the scoped
-// observation with our SDK and place it directly in the prompt instead.
+// Fetch the scoped observation with our SDK for inline delivery. Antigravity
+// requires this because it offloads larger MCP responses to unreadable local files.
 func (r CLIRunner) prefetchContext(ctx context.Context, session ai.DecisionSession) (json.RawMessage, error) {
 	connector := r.Connector
 	if connector == nil {

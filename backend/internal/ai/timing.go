@@ -2,6 +2,15 @@ package ai
 
 import "math"
 
+// ContextDelivery exposes only recognized delivery modes, never arbitrary metadata.
+func ContextDelivery(metadata map[string]any) string {
+	value, _ := metadata["contextDelivery"].(string)
+	if value == "prefetch" || value == "tool" {
+		return value
+	}
+	return ""
+}
+
 // MetadataMilliseconds accepts only finite nonnegative worker-reported durations.
 func MetadataMilliseconds(metadata map[string]any, key string) *int64 {
 	switch value := metadata[key].(type) {

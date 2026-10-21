@@ -150,6 +150,7 @@ export interface BattleEventPage {
 }
 
 export interface DecisionHistory {
+  contextDelivery?: 'tool' | 'prefetch'
   cliProcessStartMs?: number; reasoningEffort?: string; claimedAt?: string; contextServedAt?: string; runnerCompletedAt?: string
   requestId: string; factionId: string; targetTick: number; status: 'pending' | 'running' | 'accepted' | 'fallback' | 'failed'
   controllerType: 'scripted' | 'model'

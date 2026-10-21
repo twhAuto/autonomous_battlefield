@@ -32,3 +32,10 @@ it('labels fallback separately and preserves unknown historical measurements', (
   view.rerender(<DecisionTiming decision={decision} active={false} />)
   expect(screen.getByText('Queued · Not recorded')).toBeInTheDocument()
 })
+
+it('identifies context delivery so prefetch timings can be compared correctly', () => {
+  const view = render(<DecisionTiming decision={{ ...decision, contextDelivery: 'prefetch' }} active={false} />)
+  expect(screen.getByText('Host prefetch')).toBeInTheDocument()
+  view.rerender(<DecisionTiming decision={{ ...decision, contextDelivery: 'tool' }} active={false} />)
+  expect(screen.getByText('Model tool request')).toBeInTheDocument()
+})

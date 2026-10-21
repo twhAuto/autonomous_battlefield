@@ -120,6 +120,7 @@ type ModelProfileService interface {
 }
 
 type DecisionHistory struct {
+	ContextDelivery   string     `json:"contextDelivery,omitempty"`
 	CLIProcessStartMS *int64     `json:"cliProcessStartMs,omitempty"`
 	ReasoningEffort   string     `json:"reasoningEffort,omitempty"`
 	ClaimedAt         *time.Time `json:"claimedAt,omitempty"`
@@ -195,7 +196,7 @@ func (s *battleService) ListDecisionHistory(ctx context.Context, battleID string
 		if id, ok := record.ProviderMetadata["aiTraceId"].(string); ok && id == tracing.DecisionTraceID(record.ID) {
 			traceURL = tracing.DecisionTraceURL(record.ID)
 		}
-		result = append(result, DecisionHistory{CLIProcessStartMS: ai.MetadataMilliseconds(record.ProviderMetadata, "cliProcessStartMs"), ReasoningEffort: record.ReasoningEffort, ClaimedAt: record.ClaimedAt, ContextServedAt: record.ContextServedAt, RunnerCompletedAt: record.RunnerCompletedAt, TraceURL: traceURL, RequestID: record.ID, FactionID: record.FactionID, TargetTick: record.TargetTick, Status: record.Status, ControllerType: record.ControllerType, ProfileID: record.ProfileID, Provider: record.Provider, Runtime: record.Runtime, ModelIdentifier: record.ModelIdentifier, FallbackSource: record.FallbackSource, ErrorCategory: record.ErrorCategory, ResolvedPlan: record.ResolvedPlan, Usage: record.Usage, CreatedAt: record.CreatedAt, ResolvedAt: record.ResolvedAt})
+		result = append(result, DecisionHistory{ContextDelivery: ai.ContextDelivery(record.ProviderMetadata), CLIProcessStartMS: ai.MetadataMilliseconds(record.ProviderMetadata, "cliProcessStartMs"), ReasoningEffort: record.ReasoningEffort, ClaimedAt: record.ClaimedAt, ContextServedAt: record.ContextServedAt, RunnerCompletedAt: record.RunnerCompletedAt, TraceURL: traceURL, RequestID: record.ID, FactionID: record.FactionID, TargetTick: record.TargetTick, Status: record.Status, ControllerType: record.ControllerType, ProfileID: record.ProfileID, Provider: record.Provider, Runtime: record.Runtime, ModelIdentifier: record.ModelIdentifier, FallbackSource: record.FallbackSource, ErrorCategory: record.ErrorCategory, ResolvedPlan: record.ResolvedPlan, Usage: record.Usage, CreatedAt: record.CreatedAt, ResolvedAt: record.ResolvedAt})
 	}
 	return result, nil
 }

@@ -290,10 +290,10 @@ func (r *historyBattleRepo) ListBattleDecisions(context.Context, string, int) ([
 }
 
 func TestDecisionHistoryIsSafeAndValidated(t *testing.T) {
-	repository := &historyBattleRepo{fakeBattleRepo: &fakeBattleRepo{}, records: []ai.DecisionRecord{{ID: "request", FactionID: "faction", TargetTick: 10, Status: "accepted", ProfileID: "profile", Provider: "openai", Runtime: "api", ModelIdentifier: "model", Usage: ai.Usage{Requests: 1}}}}
+	repository := &historyBattleRepo{fakeBattleRepo: &fakeBattleRepo{}, records: []ai.DecisionRecord{{ID: "request", FactionID: "faction", TargetTick: 10, Status: "accepted", ProfileID: "profile", Provider: "openai", Runtime: "api", ModelIdentifier: "model", ProviderMetadata: map[string]any{"contextDelivery": "prefetch"}, Usage: ai.Usage{Requests: 1}}}}
 	service := NewService(repository, &battleFactionRepo{}, &fakeScenarioCatalog{}, 10_000, Options{}).(DecisionHistoryService)
 	history, err := service.ListDecisionHistory(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), "7f22e693-bacd-46bb-b942-64fa613cd388", 1)
-	if err != nil || len(history) != 1 || history[0].ProfileID != "profile" || history[0].Usage.Requests != 1 {
+	if err != nil || len(history) != 1 || history[0].ProfileID != "profile" || history[0].Usage.Requests != 1 || history[0].ContextDelivery != "prefetch" {
 		t.Fatalf("history=%#v err=%v", history, err)
 	}
 	if _, err := service.ListDecisionHistory(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), "bad", 0); !errors.Is(err, ErrInvalidBattle) {

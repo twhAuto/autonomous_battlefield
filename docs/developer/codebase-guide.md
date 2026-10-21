@@ -244,3 +244,11 @@ persist lifecycle times. `DecisionTiming.tsx` renders the elapsed/completed
 breakdown in `AIDecisionPanel`; `CreateBattlePage.tsx` renders dependent model/effort
 selectors. Selection tests, PostgreSQL lifecycle integration tests, and component
 tests cover allowlists, retry identity, terminal timing and missing history.
+
+The CLI prefetch experiment is implemented in `internal/ai/runner/cli.go` and
+covered by `internal/ai/runner/prefetch_test.go`. `ModelProfile.PrefetchContext`
+opts battle sessions into host-fetched inline context; the host dev script exposes
+`HOST_CLI_PREFETCH_CONTEXT`. Decision history and `DecisionTiming.tsx` display the
+recorded delivery mode. See [comparison procedure](../operations/cli-worker.md#context-prefetch-comparison).
+`cmd/aieval/comparison.go` also accepts CLI `reasoningEffort` and `prefetchContext`
+variants, recorded in comparison reports for matched offline-context experiments.

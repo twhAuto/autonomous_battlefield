@@ -282,16 +282,10 @@ func (e *Executor) runJob(parent context.Context, job job) {
 		e.reportJobFailure(parent, logger, started, job.RequestID, "profile_unavailable", "profile_unavailable", ai.DecisionResult{})
 		return
 	}
-	if profile.Runtime == "cli" && (job.ModelIdentifier != "" || job.ReasoningEffort != "") {
-		model, effort, selectionErr := ai.ResolveModelSelection(profile, job.ModelIdentifier, job.ReasoningEffort)
-		if selectionErr != nil {
-			e.reportJobFailure(parent, logger, started, job.RequestID, "model_selection_unavailable", "model_selection_unavailable", ai.DecisionResult{})
-			return
-		}
-		profile.Model, profile.ModelLabel, profile.ReasoningEffort = model, model, effort
-		if job.ReasoningEffort == "" {
-			profile.ReasoningEffort = ""
-		} // Preserve the frozen model-default choice.
+	profile, err = resolveJobProfile(profile, job)
+	if err != nil {
+		e.reportJobFailure(parent, logger, started, job.RequestID, "model_selection_unavailable", "model_selection_unavailable", ai.DecisionResult{})
+		return
 	}
 	span.SetAttributes(attribute.String("gen_ai.request.model", profile.ModelLabel), attribute.String("battlefield.reasoning_effort", profile.ReasoningEffort))
 	logger.InfoContext(parent, "decision_runner_started", "provider", profile.Provider, "runtime", profile.Runtime)
@@ -322,6 +316,21 @@ func (e *Executor) runJob(parent context.Context, job job) {
 	}
 	tracing.AIOutcome(span, err != nil || !result.Accepted, result.ErrorCategory)
 	e.finishJob(parent, ctx, jobRun{logger: logger, started: started, requestID: job.RequestID, profile: profile}, result, err)
+}
+
+// resolveJobProfile preserves API environment models and frozen CLI choices.
+func resolveJobProfile(profile ai.ModelProfile, job job) (ai.ModelProfile, error) {
+	if profile.Runtime != "cli" || (job.ModelIdentifier == "" && job.ReasoningEffort == "") {
+		return profile, nil
+	}
+	model, _, err := ai.ResolveModelSelection(profile, job.ModelIdentifier, job.ReasoningEffort)
+	if err != nil {
+		return ai.ModelProfile{}, err
+	}
+	profile.Model, profile.ModelLabel = model, model
+	// Empty effort is the frozen model-default choice, even if configuration changed.
+	profile.ReasoningEffort = job.ReasoningEffort
+	return profile, nil
 }
 
 func (e *Executor) finishJob(parent, runContext context.Context, run jobRun, result ai.DecisionResult, runErr error) {
@@ -393,7 +402,7 @@ func runnerOutcome(ctx context.Context, err error, accepted bool) string {
 
 func defaultRunner(profile ai.ModelProfile) (ai.DecisionRunner, error) {
 	if profile.Runtime == "cli" {
-		return runner.CLIRunner{Provider: profile.Provider, Model: profile.Model, ReasoningEffort: profile.ReasoningEffort}, nil
+		return runner.CLIRunner{Provider: profile.Provider, Model: profile.Model, ReasoningEffort: profile.ReasoningEffort, PrefetchContext: profile.PrefetchContext}, nil
 	}
 	var provider ai.TurnProvider
 	switch profile.Provider {

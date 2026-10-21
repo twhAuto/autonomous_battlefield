@@ -187,6 +187,11 @@ select_profiles() {
 }
 
 write_agent_config() {
+  local prefetch_context="${HOST_CLI_PREFETCH_CONTEXT:-false}"
+  if [[ "${prefetch_context}" != true && "${prefetch_context}" != false ]]; then
+    echo "HOST_CLI_PREFETCH_CONTEXT must be true or false." >&2
+    return 2
+  fi
   {
     printf 'ai:\n'
     printf '  environment: local\n'
@@ -199,6 +204,7 @@ write_agent_config() {
       printf '    - id: codex-subscription-local\n'
       printf '      displayName: Codex / ChatGPT subscription\n'
       printf '      provider: codex-cli\n'
+      printf '      prefetchContext: %s\n' "${prefetch_context}"
       printf '      modelOptions:\n        - id: gpt-5.6-luna\n          reasoningEfforts: [low, medium, high]\n        - id: gpt-6.1-sol\n          reasoningEfforts: [low, medium, high]\n'
       printf '      runtime: cli\n'
       printf '      model: gpt-5.6-luna\n'
@@ -211,6 +217,7 @@ write_agent_config() {
       printf '    - id: claude-subscription-local\n'
       printf '      displayName: Claude subscription\n'
       printf '      provider: claude-cli\n'
+      printf '      prefetchContext: %s\n' "${prefetch_context}"
       printf '      modelOptions:\n        - id: sonnet\n          reasoningEfforts: [low, medium, high]\n        - id: opus\n          reasoningEfforts: [low, medium, high]\n'
       printf '      runtime: cli\n'
       printf '      model: sonnet\n'

@@ -198,3 +198,26 @@ ownership. A catalog/worker mismatch fails visibly as `model_selection_unavailab
 Verify a battle for each advertised model/effort and confirm selection, accepted
 plan and timing in history before enabling users. Use full provider model IDs when
 version reproducibility matters; aliases can move.
+
+## Context prefetch comparison
+
+First, the [comparison harness](../developer/ai-comparisons.md#live-comparisons)
+can run matched frozen synthetic contexts without changing a cluster. Its total
+session timings include worker completion and are separate from battle timings.
+
+On the registered test cluster, start the host worker with
+`HOST_CLI_PREFETCH_CONTEXT=true ./scripts/dev/run-k8s-cli-agent.sh codex` (or
+`claude`). Use `false` or omit the variable for the baseline. It is validated as
+`true`/`false` and written to the selected Codex/Claude profiles as `prefetchContext`.
+API workers and background generation retain their existing delivery paths.
+Do not run baseline and prefetch workers against the same profile concurrently:
+finish current battles and drain the existing worker before switching modes.
+
+Run short battles using identical scenario, factions, seed, model, effort and
+concurrency. Compare accepted-plan median/p95, failure/fallback count and tokens;
+record the code/prompt revision and `contextDelivery`. The context interval ends
+before CLI startup in prefetch mode and cannot by itself establish a speedup.
+Restore the baseline worker after the experiment unless choosing to keep prefetch.
+No production profile enables this option by default, and the Jenkins managed
+settings sync does not own it; production adoption needs a reviewed configuration
+change after test results.

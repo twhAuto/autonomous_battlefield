@@ -89,3 +89,14 @@ func TestCLIProductionGateReadsAvailabilityLikeTheCatalog(t *testing.T) {
 		}
 	}
 }
+
+func TestPrefetchContextOnlyForCLIProfiles(t *testing.T) {
+	p := ai.ModelProfile{ID: "cli", Runtime: "cli", MaxSteps: 3, Model: "pinned", SupportedVersionPrefix: "1.", PrefetchContext: true}
+	if err := validateAIProfile(p, false); err != nil {
+		t.Fatal(err)
+	}
+	p.Runtime = "api"
+	if err := validateAIProfile(p, false); err == nil {
+		t.Fatal("API prefetch accepted")
+	}
+}

@@ -101,3 +101,6 @@ Battle setup supports per-faction model and reasoning-effort choices from the op
 allowlist. The AI decision inspector shows elapsed waits and completed timing details;
 see [model selection and latency](docs/architecture/ai-decisions.md#model-selection-and-latency)
 and the [worker rollout order](docs/operations/cli-worker.md#model-selection-rollout).
+
+For the optional CLI latency experiment, use `HOST_CLI_PREFETCH_CONTEXT=true` with
+the host agent launcher; see [context-prefetch comparison](docs/operations/cli-worker.md#context-prefetch-comparison).

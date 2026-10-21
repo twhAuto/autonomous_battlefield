@@ -140,6 +140,9 @@ func validateProfileRoles(profile ai.ModelProfile) error {
 }
 
 func validateAIProfile(profile ai.ModelProfile, production bool) error {
+	if profile.PrefetchContext && profile.Runtime != "cli" {
+		return fmt.Errorf("ai profile %q prefetchContext requires CLI runtime", profile.ID)
+	}
 	if err := ai.ValidateModelOptions(profile); err != nil {
 		return err
 	}

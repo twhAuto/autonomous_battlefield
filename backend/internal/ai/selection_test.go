@@ -69,3 +69,16 @@ func TestMetadataMilliseconds(t *testing.T) {
 		}
 	}
 }
+
+func TestContextDeliveryFiltersUnknownMetadata(t *testing.T) {
+	for _, value := range []any{nil, "unexpected", 1, "tool", "prefetch"} {
+		got := ContextDelivery(map[string]any{"contextDelivery": value})
+		if value == "tool" || value == "prefetch" {
+			if got != value {
+				t.Fatal(got)
+			}
+		} else if got != "" {
+			t.Fatal("unknown metadata exposed")
+		}
+	}
+}
