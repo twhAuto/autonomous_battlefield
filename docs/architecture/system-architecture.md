@@ -175,7 +175,7 @@ sequenceDiagram
     participant API as Public API
     participant DB as PostgreSQL
     participant Engine as Battle engine
-    participant Match as Game library (internal/game)
+    participant Match as Game library<br/>(in-process in API and engine)
 
     User->>UI: Select factions and controllers
     UI->>API: POST /v1/battles
@@ -216,7 +216,7 @@ so on.
 ```mermaid
 sequenceDiagram
     participant Engine as Battle engine
-    participant Match as Game library (internal/game)
+    participant Match as Game library<br/>(in-process in API and engine)
     participant DB as PostgreSQL
     participant Gateway as AI gateway
     participant Agent as Agent worker + runner
