@@ -208,6 +208,41 @@ SETTINGS = {'agentConcurrency': 4, 'models': {'claude-subscription-local': 'sonn
 
 
 class ConfigTests(unittest.TestCase):
+    def test_model_options_sync_preserves_other_fields_and_is_idempotent(self):
+        import yaml
+        options = {'claude-subscription-local': [{'id': 'sonnet', 'reasoningEfforts': ['low', 'high']}]}
+        settings = dict(SETTINGS, agentConcurrency=None, modelOptions=options)
+        current = worker.desired_config(CONFIG, settings)
+        updated = yaml.safe_load(current)
+        expected = yaml.safe_load(worker.desired_config(CONFIG, dict(SETTINGS, agentConcurrency=None)))
+        expected['ai']['profiles'][0]['modelOptions'] = options['claude-subscription-local']
+        self.assertEqual(updated, expected)
+        self.assertIs(worker.desired_config(current, settings), current)
+        # Omitting options leaves an existing catalog intact.
+        self.assertIs(worker.desired_config(current, dict(SETTINGS, agentConcurrency=None)), current)
+
+    def test_model_options_require_release_upgrade_even_without_concurrency(self):
+        instance = object.__new__(worker.Worker)
+        instance.config = {'guest': {'artifacts': {'battlefield-agent': {'sha256': 'old'}}}}
+        instance.release_info = {'sha256': 'new'}
+        settings = dict(SETTINGS, agentConcurrency=None, modelOptions={'claude-subscription-local': [{'id': 'sonnet'}]})
+        with mock.patch.object(worker, 'managed_settings', return_value=settings):
+            self.assertTrue(instance.binary_checks('old', None)['config_needs_upgrade'])
+            self.assertFalse(instance.binary_checks('new', None)['config_needs_upgrade'])
+
+    def test_invalid_model_options_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'settings.json'
+            for options in ([], {'unknown': [{'id': 'a'}]}, {'a': []}, {'a': ['b']},
+                            {'a': [{'id': 'b', 'extra': True}]}, {'a': [{'id': 'bad model'}]},
+                            {'a': [{'id': 'b'}, {'id': 'b'}]},
+                            {'a': [{'id': 'b', 'reasoningEfforts': ['unknown']}]},
+                            {'a': [{'id': 'b', 'reasoningEfforts': ['low', 'low']}]},
+                            {'a': [{'id': 'b', 'reasoningEfforts': ['low'], 'defaultReasoningEffort': 'high'}]}):
+                path.write_text(json.dumps({'agentConcurrency': None, 'models': {'a': 'b'}, 'modelOptions': options}))
+                with self.subTest(options=options), self.assertRaises(ValueError):
+                    worker.managed_settings(path)
+
     def test_managed_fields_change_and_nothing_else(self):
         import yaml
         updated = yaml.safe_load(worker.desired_config(CONFIG, SETTINGS))
@@ -250,14 +285,18 @@ class ConfigTests(unittest.TestCase):
         import yaml
         settings = worker.managed_settings()
         catalog = {}
+        options = {}
         for document in yaml.safe_load_all((ROOT / 'infra/deploy/base/infrastructure/configmap.yaml').read_text()):
             if document and document.get('kind') == 'ConfigMap':
                 for value in document['data'].values():
                     if 'profiles' in value:
                         catalog = {p['id']: p['model'] for p in yaml.safe_load(value)['ai']['profiles'] if p['runtime'] == 'cli'}
+                        options = {p['id']: p['modelOptions'] for p in yaml.safe_load(value)['ai']['profiles'] if p['runtime'] == 'cli' and 'modelOptions' in p}
         self.assertEqual(settings['models'], catalog)
+        self.assertEqual(settings['modelOptions'], options)
         template = yaml.safe_load((ROOT / 'infra/deploy/agent-vm/config.yaml').read_text())['ai']
         self.assertEqual({p['id']: p['model'] for p in template['profiles']}, settings['models'])
+        self.assertEqual({p['id']: p['modelOptions'] for p in template['profiles'] if 'modelOptions' in p}, settings['modelOptions'])
         if settings['agentConcurrency'] is not None:
             self.assertEqual(template['agentConcurrency'], settings['agentConcurrency'])
 

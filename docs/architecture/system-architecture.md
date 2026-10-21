@@ -779,7 +779,10 @@ Each faction can select an operator-allowlisted model and reasoning effort from
 its authorized profile. The API freezes those choices in the scenario, the engine
 copies them into each decision, and the claim response carries them to the worker.
 Both API and worker validate choices. The gateway requires selection protocol 1
-before claims, so worker upgrades must precede gateway promotion.
+before claims, so old workers stop claiming after gateway promotion. The CLI
+Jenkins job upgrades from the deployed production image and then synchronizes
+managed model options; use the documented
+[CLI maintenance window](../operations/cli-worker.md#model-selection-rollout).
 
 PostgreSQL timestamps request creation, the latest claim, first context delivery,
 resolution and worker completion-report receipt. The existing decision-history

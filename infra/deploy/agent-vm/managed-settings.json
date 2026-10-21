@@ -4,5 +4,43 @@
     "codex-subscription-local": "gpt-5.6-luna",
     "claude-subscription-local": "sonnet",
     "gemini-subscription-local": "gemini-3.8-flash-medium"
+  },
+  "modelOptions": {
+    "codex-subscription-local": [
+      {
+        "id": "gpt-5.6-luna",
+        "reasoningEfforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "id": "gpt-6.1-sol",
+        "reasoningEfforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
+    ],
+    "claude-subscription-local": [
+      {
+        "id": "sonnet",
+        "reasoningEfforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "id": "opus",
+        "reasoningEfforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
+    ]
   }
 }
