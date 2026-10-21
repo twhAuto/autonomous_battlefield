@@ -26,8 +26,8 @@ export interface CreateBattleInput {
   tickCount: number
 }
 
-export interface BattleController { type: 'scripted' | 'model'; profileId?: string; provider?: string; runtime?: string; modelIdentifier?: string }
-export interface BattleParticipantInput { factionId: string; controller: { type: 'scripted' } | { type: 'model'; profileId: string } }
+export interface BattleController { type: 'scripted' | 'model'; profileId?: string; provider?: string; runtime?: string; reasoningEffort?: string; modelIdentifier?: string }
+export interface BattleParticipantInput { factionId: string; controller: { type: 'scripted' } | { type: 'model'; profileId: string; modelIdentifier?: string; reasoningEffort?: string } }
 
 export type BattleStatus = 'queued' | 'running' | 'completed' | 'failed' | 'stopped'
 
@@ -150,6 +150,8 @@ export interface BattleEventPage {
 }
 
 export interface DecisionHistory {
+  contextDelivery?: 'tool' | 'prefetch'
+  cliProcessStartMs?: number; reasoningEffort?: string; claimedAt?: string; contextServedAt?: string; runnerCompletedAt?: string
   requestId: string; factionId: string; targetTick: number; status: 'pending' | 'running' | 'accepted' | 'fallback' | 'failed'
   controllerType: 'scripted' | 'model'
   profileId?: string; provider?: string; runtime?: string; modelIdentifier?: string

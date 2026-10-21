@@ -64,7 +64,7 @@ func TestCompareUsesValidatorAndRejectsFalseCLISuccess(t *testing.T) {
 		{ID: "valid", Runtime: "api", NewRunner: func() ai.DecisionRunner { return sampleRunner{rename: "first"} }},
 		{ID: "invalid", Runtime: "api", NewRunner: func() ai.DecisionRunner { return sampleRunner{reject: true} }},
 		{ID: "false-cli-success", Runtime: "cli", NewRunner: func() ai.DecisionRunner { return sampleRunner{omit: true} }},
-		{ID: "without-memory", Runtime: "cli", WithoutMemory: true, NewRunner: func() ai.DecisionRunner { return sampleRunner{rename: "second"} }},
+		{ID: "without-memory", Runtime: "cli", WithoutMemory: true, PrefetchContext: true, ReasoningEffort: "low", NewRunner: func() ai.DecisionRunner { return sampleRunner{rename: "second"} }},
 	}
 	options := ComparisonOptions{Repetitions: 2, MaxSteps: 4, MaxTokens: 100, Timeout: time.Second * 5}
 	report, err := (Runner{}).Compare(context.Background(), []Case{comparisonCase()}, variants, options)
@@ -83,6 +83,9 @@ func TestCompareUsesValidatorAndRejectsFalseCLISuccess(t *testing.T) {
 	}
 	if report.Variants[0].Metrics.WinRate != nil {
 		t.Fatal("decision acceptance cannot imply win rate")
+	}
+	if !report.Variants[3].PrefetchContext || report.Variants[3].ReasoningEffort != "low" {
+		t.Fatal("report omitted comparison settings")
 	}
 }
 func TestComparisonRejectsInvalidInputsBeforeCallingRunner(t *testing.T) {

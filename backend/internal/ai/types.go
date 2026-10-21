@@ -174,6 +174,10 @@ type SubmissionResult struct {
 }
 
 type DecisionRecord struct {
+	ClaimedAt           *time.Time
+	ContextServedAt     *time.Time
+	RunnerCompletedAt   *time.Time
+	ReasoningEffort     string `json:"reasoningEffort,omitempty" yaml:"reasoningEffort,omitempty"`
 	LeaseExpiresAt      *time.Time
 	ID                  string
 	BattleID            string
@@ -205,25 +209,35 @@ type DecisionRecord struct {
 	ResolvedAt          *time.Time
 }
 
+// ModelOption is an operator-approved model and its provider-supported efforts.
+type ModelOption struct {
+	ID                     string   `json:"id" yaml:"id"`
+	ReasoningEfforts       []string `json:"reasoningEfforts,omitempty" yaml:"reasoningEfforts"`
+	DefaultReasoningEffort string   `json:"defaultReasoningEffort,omitempty" yaml:"defaultReasoningEffort"`
+}
+
 type ModelProfile struct {
-	AllowedRoles                    []string `json:"-" yaml:"allowedRoles"`
-	ID                              string   `json:"id" yaml:"id"`
-	DisplayName                     string   `json:"displayName" yaml:"displayName"`
-	Provider                        string   `json:"provider" yaml:"provider"`
-	Runtime                         string   `json:"runtime" yaml:"runtime"`
-	Model                           string   `json:"-" yaml:"model,omitempty"`
-	ModelEnvironmentVariable        string   `json:"-" yaml:"modelEnvironmentVariable"`
-	CredentialEnvironmentVariable   string   `json:"-" yaml:"credentialEnvironmentVariable"`
-	AvailabilityEnvironmentVariable string   `json:"-" yaml:"availabilityEnvironmentVariable"`
-	SupportedVersionPrefix          string   `json:"-" yaml:"supportedVersionPrefix"`
-	Scope                           string   `json:"scope" yaml:"scope"`
-	MaxOutputTokens                 int      `json:"-" yaml:"maxOutputTokens"`
-	MaxSteps                        int      `json:"-" yaml:"maxSteps"`
-	Enabled                         bool     `json:"-" yaml:"enabled"`
-	ModelLabel                      string   `json:"modelLabel" yaml:"-"`
-	Available                       bool     `json:"available" yaml:"-"`
-	ToolCapability                  bool     `json:"toolCapability" yaml:"-"`
-	UnavailableReason               string   `json:"unavailableReason,omitempty" yaml:"-"`
+	PrefetchContext                 bool          `json:"-" yaml:"prefetchContext,omitempty"`
+	ModelOptions                    []ModelOption `json:"modelOptions,omitempty" yaml:"modelOptions"`
+	ReasoningEffort                 string        `json:"-" yaml:"-"`
+	AllowedRoles                    []string      `json:"-" yaml:"allowedRoles"`
+	ID                              string        `json:"id" yaml:"id"`
+	DisplayName                     string        `json:"displayName" yaml:"displayName"`
+	Provider                        string        `json:"provider" yaml:"provider"`
+	Runtime                         string        `json:"runtime" yaml:"runtime"`
+	Model                           string        `json:"-" yaml:"model,omitempty"`
+	ModelEnvironmentVariable        string        `json:"-" yaml:"modelEnvironmentVariable"`
+	CredentialEnvironmentVariable   string        `json:"-" yaml:"credentialEnvironmentVariable"`
+	AvailabilityEnvironmentVariable string        `json:"-" yaml:"availabilityEnvironmentVariable"`
+	SupportedVersionPrefix          string        `json:"-" yaml:"supportedVersionPrefix"`
+	Scope                           string        `json:"scope" yaml:"scope"`
+	MaxOutputTokens                 int           `json:"-" yaml:"maxOutputTokens"`
+	MaxSteps                        int           `json:"-" yaml:"maxSteps"`
+	Enabled                         bool          `json:"-" yaml:"enabled"`
+	ModelLabel                      string        `json:"modelLabel" yaml:"-"`
+	Available                       bool          `json:"available" yaml:"-"`
+	ToolCapability                  bool          `json:"toolCapability" yaml:"-"`
+	UnavailableReason               string        `json:"unavailableReason,omitempty" yaml:"-"`
 }
 
 // AvailabilityFlagSet reports whether the profile's availability variable is "true",

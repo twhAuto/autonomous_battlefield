@@ -772,3 +772,29 @@ broker.
   [`battlefield-platform/cli`](../operations/cli-worker.md) job.
 - Rigorous controller experiments may need experiment identity, model parameters,
   and cost normalization beyond the current evaluation view.
+
+## Battle model choices and decision timing
+
+Each faction can select an operator-allowlisted model and reasoning effort from
+its authorized profile. The API freezes those choices in the scenario, the engine
+copies them into each decision, and the claim response carries them to the worker.
+Both API and worker validate choices. The gateway requires selection protocol 1
+before claims, so old workers stop claiming after gateway promotion. The CLI
+Jenkins job upgrades from the deployed production image and then synchronizes
+managed model options; use the documented
+[CLI maintenance window](../operations/cli-worker.md#model-selection-rollout).
+
+PostgreSQL timestamps request creation, the latest claim, first context delivery,
+resolution and worker completion-report receipt. The existing decision-history
+API exposes those timestamps to the existing inspector roles. The frontend counts
+elapsed time only for active unresolved decisions; completed records use persisted
+resolution time. Detailed traces and the Battle Traces Grafana dashboard separate
+queue/context/resolution timings and model/effort. No private reasoning content or
+additional game state is exposed. See [AI decisions](ai-decisions.md#model-selection-and-latency).
+
+CLI workers can opt Codex/Claude battle profiles into `prefetchContext` (false by
+default). The worker fetches the same capability-scoped frozen context before
+process launch and passes it inline. Gateway validation, leases and submission
+authority remain unchanged; no persistent sessions are introduced. Delivery mode
+is stored in existing decision metadata and exposed alongside timing so prefetch
+and model-tool fetches can be distinguished.

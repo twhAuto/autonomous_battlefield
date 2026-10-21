@@ -437,3 +437,14 @@ func TestExecuteToolCallsAllowsNothingWithoutAList(t *testing.T) {
 		t.Fatalf("call ran without an allowed list: %v", err)
 	}
 }
+
+func TestCLIReasoningArguments(t *testing.T) {
+	for _, tc := range []struct{ provider, flag string }{{"codex-cli", `model_reasoning_effort="low"`}, {"claude-cli", "--effort low"}} {
+		executor := &fakeExecutor{}
+		_, _ = (CLIRunner{Provider: tc.provider, Model: "selected", ReasoningEffort: "low", Executor: executor}).Run(context.Background(), ai.DecisionSession{})
+		arguments := strings.Join(executor.args, " ")
+		if !strings.Contains(arguments, tc.flag) || !strings.Contains(arguments, "--model selected") {
+			t.Fatal(arguments)
+		}
+	}
+}

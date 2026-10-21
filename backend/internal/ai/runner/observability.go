@@ -23,6 +23,7 @@ func generationSpan(ctx context.Context, session ai.DecisionSession, scope strin
 	}
 	return tracing.StartAI(ctx, "battlefield.model."+scope, "generation",
 		attribute.String("langfuse.observation.model.name", model),
+		attribute.String("battlefield.reasoning_effort", session.Profile.ReasoningEffort),
 		attribute.String("langfuse.trace.metadata.profile_id", session.Profile.ID),
 		attribute.String("langfuse.trace.metadata.provider", session.Profile.Provider),
 		attribute.String("langfuse.observation.metadata.usage_scope", scope),

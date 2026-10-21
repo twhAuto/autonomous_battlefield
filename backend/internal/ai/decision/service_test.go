@@ -22,6 +22,25 @@ type memoryRepository struct {
 	validations int
 }
 
+type timingRepository struct {
+	*memoryRepository
+	timingError error
+	recordedID  string
+}
+
+func (r *timingRepository) RecordDecisionContextServed(_ context.Context, id string) error {
+	r.recordedID = id
+	return r.timingError
+}
+
+func TestContextRemainsAvailableWhenTimingWriteFails(t *testing.T) {
+	repository := &timingRepository{memoryRepository: &memoryRepository{record: validRecord()}, timingError: errors.New("timing write failed")}
+	value, err := NewService(repository).GetContext(context.Background(), "request")
+	if err != nil || value.RequestID != "request" || repository.recordedID != "request" {
+		t.Fatalf("context = %+v, err = %v, recorded = %q", value, err, repository.recordedID)
+	}
+}
+
 func (r *memoryRepository) CreateOrReuseDecision(context.Context, ai.CreateDecisionParams) (ai.DecisionRecord, error) {
 	return r.record, r.err
 }

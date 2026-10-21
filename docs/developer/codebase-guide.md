@@ -232,3 +232,23 @@ combat/support code handles armor penetration and extended treatment range.
 Frontend `presentation/upgrades.ts` formats owned levels and branch effects.
 Tests cover every map's full catalog, specialist actions, branch locks, reserves,
 replay and UI presentation. The PostgreSQL-backed coverage gate includes persistence.
+
+## Battle selection and latency implementation
+
+`internal/ai/selection.go` validates operator model/effort options and resolves
+selections. Battle API/service code freezes them in `game.ControllerConfig`, and
+`internal/ai/agent/executor.go` validates the claimed selection before constructing
+a runner. `internal/ai/timing.go` validates worker duration metadata.
+Migration `00018_decision_selection_timing.sql` and the battle decision repository
+persist lifecycle times. `DecisionTiming.tsx` renders the elapsed/completed
+breakdown in `AIDecisionPanel`; `CreateBattlePage.tsx` renders dependent model/effort
+selectors. Selection tests, PostgreSQL lifecycle integration tests, and component
+tests cover allowlists, retry identity, terminal timing and missing history.
+
+The CLI prefetch experiment is implemented in `internal/ai/runner/cli.go` and
+covered by `internal/ai/runner/prefetch_test.go`. `ModelProfile.PrefetchContext`
+opts battle sessions into host-fetched inline context; the host dev script exposes
+`HOST_CLI_PREFETCH_CONTEXT`. Decision history and `DecisionTiming.tsx` display the
+recorded delivery mode. See [comparison procedure](../operations/cli-worker.md#context-prefetch-comparison).
+`cmd/aieval/comparison.go` also accepts CLI `reasoningEffort` and `prefetchContext`
+variants, recorded in comparison reports for matched offline-context experiments.

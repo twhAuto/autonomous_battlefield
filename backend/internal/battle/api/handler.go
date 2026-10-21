@@ -126,8 +126,10 @@ func (h *Handler) CreateBattle(w http.ResponseWriter, r *http.Request) {
 		Participants []struct {
 			FactionID  string `json:"factionId"`
 			Controller struct {
-				Type      string `json:"type"`
-				ProfileID string `json:"profileId,omitempty"`
+				Type            string `json:"type"`
+				ProfileID       string `json:"profileId,omitempty"`
+				ModelIdentifier string `json:"modelIdentifier,omitempty"`
+				ReasoningEffort string `json:"reasoningEffort,omitempty"`
 			} `json:"controller"`
 		} `json:"participants"`
 		TickCount uint64 `json:"tickCount"`
@@ -138,7 +140,7 @@ func (h *Handler) CreateBattle(w http.ResponseWriter, r *http.Request) {
 	}
 	participants := make([]battleservice.ParticipantInput, len(request.Participants))
 	for index, participant := range request.Participants {
-		participants[index] = battleservice.ParticipantInput{FactionID: participant.FactionID, Controller: game.ControllerConfig{Type: participant.Controller.Type, ProfileID: participant.Controller.ProfileID}}
+		participants[index] = battleservice.ParticipantInput{FactionID: participant.FactionID, Controller: game.ControllerConfig{Type: participant.Controller.Type, ProfileID: participant.Controller.ProfileID, ModelIdentifier: participant.Controller.ModelIdentifier, ReasoningEffort: participant.Controller.ReasoningEffort}}
 	}
 	run, err := h.battles.CreateBattle(r.Context(), battleservice.CreateBattleInput{ID: request.ID, ScenarioID: request.ScenarioID, Participants: participants, TickCount: request.TickCount})
 	if writeError(w, r, err, []errorCase{
@@ -280,7 +282,7 @@ func visibleProfiles(r *http.Request, profiles []ai.ModelProfile) any {
 		result := []map[string]any{}
 		for _, p := range profiles {
 			if profile.Allowed(r.Context(), p) && p.Available {
-				result = append(result, map[string]any{"id": p.ID, "displayName": p.DisplayName, "modelLabel": p.ModelLabel, "runtime": p.Runtime, "available": true})
+				result = append(result, map[string]any{"id": p.ID, "displayName": p.DisplayName, "modelLabel": p.ModelLabel, "runtime": p.Runtime, "available": true, "modelOptions": p.ModelOptions})
 			}
 		}
 		return result

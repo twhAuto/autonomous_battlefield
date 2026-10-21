@@ -172,6 +172,7 @@ type FactionSetup struct {
 }
 
 type ControllerConfig struct {
+	ReasoningEffort string `json:"reasoningEffort,omitempty" yaml:"reasoningEffort,omitempty"`
 	Type            string `json:"type" yaml:"type"`
 	ProfileID       string `json:"profileId,omitempty" yaml:"profileId,omitempty"`
 	Provider        string `json:"provider,omitempty" yaml:"provider,omitempty"`

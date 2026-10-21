@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"os"
 	"os/exec"
@@ -29,6 +30,8 @@ const disableFlag = "--disable"
 type CommandExecutor interface {
 	Run(context.Context, string, []string, []string, string) ([]byte, error)
 }
+type processTimingKey struct{}
+type processTiming struct{ StartMS *int64 }
 type OSCommandExecutor struct{}
 
 func (OSCommandExecutor) Run(ctx context.Context, name string, args, environment []string, directory string) ([]byte, error) {
@@ -44,19 +47,35 @@ func (OSCommandExecutor) Run(ctx context.Context, name string, args, environment
 		// with that document, even when they have no trailing newline.
 		command.Stderr = io.Discard
 	}
-	err := command.Run()
+	started := time.Now()
+	err := command.Start()
+	if err == nil {
+		elapsed := time.Since(started).Milliseconds()
+		trace.SpanFromContext(ctx).SetAttributes(attribute.Int64("battlefield.cli_process_start_ms", elapsed))
+		if timing, ok := ctx.Value(processTimingKey{}).(*processTiming); ok {
+			timing.StartMS = &elapsed
+		}
+		err = command.Wait()
+	}
 	return output.Bytes(), err
 }
 
 type CLIRunner struct {
-	Provider  string
-	Model     string
-	Executor  CommandExecutor
-	Connector MCPConnector
+	PrefetchContext bool
+	ReasoningEffort string
+	Provider        string
+	Model           string
+	Executor        CommandExecutor
+	Connector       MCPConnector
 }
 
 func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result ai.DecisionResult, runErr error) {
 	ctx, span := generationSpan(ctx, session, "cli_session")
+	timing := &processTiming{}
+	ctx = context.WithValue(ctx, processTimingKey{}, timing)
+	delivery := r.contextDelivery(session)
+	span.SetAttributes(attribute.String("battlefield.context_delivery", delivery))
+	defer func() { recordCLIExecutionMetadata(&result, timing, delivery) }()
 	defer func() { finishGeneration(span, result.Usage, runErr != nil || !result.Accepted) }()
 	temporary, err := os.MkdirTemp("", "battlefield-agent-")
 	if err != nil {
@@ -71,44 +90,12 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 	if executor == nil {
 		executor = OSCommandExecutor{}
 	}
-	prompt := prompts.SessionSystem(session) + "\n" + prompts.SessionDecision(session, nil)
-	name := cliisolation.Binary(r.Provider)
-	var args, environment []string
-	switch r.Provider {
-	case cliisolation.ProviderCodex:
-		args = []string{"exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "--ignore-user-config", "-C", workspace,
-			disableFlag, "shell_tool", disableFlag, "browser_use", disableFlag, "in_app_browser", disableFlag, "computer_use", disableFlag, "apps", disableFlag, "image_generation", disableFlag, "multi_agent", disableFlag, "skill_search", disableFlag, "skill_mcp_dependency_install", disableFlag, "plugins", disableFlag, "hooks", disableFlag, "goals", disableFlag, "standalone_web_search",
-			"-c", `approval_policy="never"`, "-c", `mcp_servers.battlefield.url="` + session.MCPURL + `"`,
-			"-c", `mcp_servers.battlefield.env_http_headers={Authorization="BATTLEFIELD_MCP_AUTHORIZATION"}`,
-			"-c", `mcp_servers.battlefield.enabled_tools=["` + strings.Join(prompts.SessionToolNames(session), `","`) + `"]`,
-			"-c", `mcp_servers.battlefield.default_tools_approval_mode="approve"`, prompt}
-		args = withModel(args, r.Model)
-		environment = replaceEnvironment(cliisolation.CodexEnvironment(), "CODEX_WORKSPACE", workspace)
-		environment = replaceEnvironment(environment, "BATTLEFIELD_MCP_AUTHORIZATION", "Bearer "+session.CapabilityToken)
-	case cliisolation.ProviderClaude:
-		args, err = claudeArguments(temporary, prompt, r.Model, session)
-		if err != nil {
-			return ai.DecisionResult{ErrorCategory: "cli_isolation"}, err
-		}
-		environment = cliisolation.ClaudeEnvironment()
-	case cliisolation.ProviderAntigravity:
-		payload, contextErr := r.prefetchContext(ctx, session)
-		if contextErr != nil {
-			return ai.DecisionResult{ErrorCategory: "mcp_context"}, contextErr
-		}
-		prompt = prompts.SessionSystem(session) + "\n" + prompts.SessionDecision(session, payload)
-
-		environment, err = cliisolation.PrepareAntigravity(temporary, session.MCPURL, session.CapabilityToken, prompts.SessionToolNames(session)...)
-		if err != nil {
-			return ai.DecisionResult{ErrorCategory: "cli_isolation"}, err
-		}
-		args = withModel([]string{"--print", prompt, "--output-format", "json", "--disable-slash-commands", "--print-timeout", "2m"}, r.Model)
-
-	default:
-		return ai.DecisionResult{ErrorCategory: "cli_provider"}, fmt.Errorf("unsupported CLI provider %q", r.Provider)
+	invocation, category, err := r.prepareInvocation(ctx, session, temporary, workspace)
+	if err != nil {
+		return ai.DecisionResult{ErrorCategory: category}, err
 	}
-	span.SetAttributes(attribute.Int("battlefield.prompt.bytes", len(prompt)))
-	output, err := executor.Run(ctx, name, args, environment, workspace)
+	span.SetAttributes(attribute.Int("battlefield.prompt.bytes", len(invocation.prompt)))
+	output, err := executor.Run(ctx, cliisolation.Binary(r.Provider), invocation.args, invocation.environment, workspace)
 	if r.Provider == cliisolation.ProviderAntigravity {
 		result, runErr = antigravityResult(output)
 	} else if r.Provider == cliisolation.ProviderClaude {
@@ -122,6 +109,82 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 		return result, err
 	}
 	return result, runErr
+}
+
+type cliInvocation struct {
+	args, environment []string
+	prompt            string
+}
+
+func (r CLIRunner) prepareInvocation(ctx context.Context, session ai.DecisionSession, temporary, workspace string) (cliInvocation, string, error) {
+	prompt, err := r.sessionPrompt(ctx, session)
+	if err != nil {
+		return cliInvocation{}, "mcp_context", err
+	}
+	var args, environment []string
+	switch r.Provider {
+	case cliisolation.ProviderCodex:
+		args = []string{"exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "--ignore-user-config", "-C", workspace,
+			disableFlag, "shell_tool", disableFlag, "browser_use", disableFlag, "in_app_browser", disableFlag, "computer_use", disableFlag, "apps", disableFlag, "image_generation", disableFlag, "multi_agent", disableFlag, "skill_search", disableFlag, "skill_mcp_dependency_install", disableFlag, "plugins", disableFlag, "hooks", disableFlag, "goals", disableFlag, "standalone_web_search",
+			"-c", `approval_policy="never"`, "-c", `mcp_servers.battlefield.url="` + session.MCPURL + `"`,
+			"-c", `mcp_servers.battlefield.env_http_headers={Authorization="BATTLEFIELD_MCP_AUTHORIZATION"}`,
+			"-c", `mcp_servers.battlefield.enabled_tools=["` + strings.Join(prompts.SessionToolNames(session), `","`) + `"]`,
+			"-c", `mcp_servers.battlefield.default_tools_approval_mode="approve"`, prompt}
+		args = withModel(args, r.Model)
+		if r.ReasoningEffort != "" {
+			args = append([]string{"-c", `model_reasoning_effort="` + r.ReasoningEffort + `"`}, args...)
+		}
+		environment = replaceEnvironment(cliisolation.CodexEnvironment(), "CODEX_WORKSPACE", workspace)
+		environment = replaceEnvironment(environment, "BATTLEFIELD_MCP_AUTHORIZATION", "Bearer "+session.CapabilityToken)
+	case cliisolation.ProviderClaude:
+		args, err = claudeArguments(temporary, prompt, r.Model, session)
+		if err != nil {
+			return cliInvocation{}, "cli_isolation", err
+		}
+		if r.ReasoningEffort != "" {
+			args = append([]string{"--effort", r.ReasoningEffort}, args...)
+		}
+		environment = cliisolation.ClaudeEnvironment()
+	case cliisolation.ProviderAntigravity:
+		environment, err = cliisolation.PrepareAntigravity(temporary, session.MCPURL, session.CapabilityToken, prompts.SessionToolNames(session)...)
+		if err != nil {
+			return cliInvocation{}, "cli_isolation", err
+		}
+		args = withModel([]string{"--print", prompt, "--output-format", "json", "--disable-slash-commands", "--print-timeout", "2m"}, r.Model)
+
+	default:
+		return cliInvocation{}, "cli_provider", fmt.Errorf("unsupported CLI provider %q", r.Provider)
+	}
+	return cliInvocation{args: args, environment: environment, prompt: prompt}, "", nil
+}
+
+func (r CLIRunner) contextDelivery(session ai.DecisionSession) string {
+	if r.Provider == cliisolation.ProviderAntigravity || (r.PrefetchContext && session.JobType != "faction_background") {
+		return "prefetch"
+	}
+	return "tool"
+}
+
+func (r CLIRunner) sessionPrompt(ctx context.Context, session ai.DecisionSession) (string, error) {
+	var payload json.RawMessage
+	if r.contextDelivery(session) == "prefetch" {
+		var err error
+		payload, err = r.prefetchContext(ctx, session)
+		if err != nil {
+			return "", err
+		}
+	}
+	return prompts.SessionSystem(session) + "\n" + prompts.SessionDecision(session, payload), nil
+}
+
+func recordCLIExecutionMetadata(result *ai.DecisionResult, timing *processTiming, delivery string) {
+	if result.ProviderData == nil {
+		result.ProviderData = map[string]any{}
+	}
+	result.ProviderData["contextDelivery"] = delivery
+	if timing.StartMS != nil {
+		result.ProviderData["cliProcessStartMs"] = *timing.StartMS
+	}
 }
 
 func withModel(arguments []string, model string) []string {
@@ -174,8 +237,8 @@ func replaceEnvironment(values []string, key, value string) []string {
 	return append(result, prefix+value)
 }
 
-// Antigravity offloads larger MCP responses to local files. Fetch the scoped
-// observation with our SDK and place it directly in the prompt instead.
+// Fetch the scoped observation with our SDK for inline delivery. Antigravity
+// requires this because it offloads larger MCP responses to unreadable local files.
 func (r CLIRunner) prefetchContext(ctx context.Context, session ai.DecisionSession) (json.RawMessage, error) {
 	connector := r.Connector
 	if connector == nil {

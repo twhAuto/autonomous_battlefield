@@ -1143,8 +1143,16 @@ components:
         allowedUpgrades: {type: [array, 'null'], items: {type: string}}
         allowedBuildings: {type: [array, 'null'], items: {type: string}}
 
+    ModelOption:
+      type: object
+      required: [id]
+      properties:
+        id: {type: string}
+        reasoningEfforts: {type: array, items: {type: string}}
+        defaultReasoningEffort: {type: string}
+
     ModelProfile:
-      description: Players receive only `id`, `displayName`, `modelLabel`, `runtime`, and `available`.
+      description: Players receive only `id`, `displayName`, `modelLabel`, `runtime`, `available`, and `modelOptions`.
       type: object
       required: [id, displayName, runtime, available]
       properties:
@@ -1154,6 +1162,7 @@ components:
         runtime: {type: string}
         scope: {type: string}
         modelLabel: {type: string}
+        modelOptions: {type: array, items: {$ref: '#/components/schemas/ModelOption'}}
         available: {type: boolean}
         toolCapability: {type: boolean}
         unavailableReason: {type: string}
@@ -1171,6 +1180,7 @@ components:
         provider: {type: string}
         runtime: {type: string}
         modelIdentifier: {type: string}
+        reasoningEffort: {type: string}
 
     CreateBattleRequest:
       type: object
@@ -1202,6 +1212,12 @@ components:
                   type: {type: string, enum: [scripted, model]}
                   profileId:
                     description: Required when `type` is `model`.
+                    type: string
+                  modelIdentifier:
+                    description: Operator-allowlisted model; omission uses the profile default.
+                    type: string
+                  reasoningEffort:
+                    description: Supported effort for the selected model; omission uses the configured option default or provider default.
                     type: string
         tickCount:
           description: At most the scenario's `maximumTicks`.
@@ -1595,6 +1611,7 @@ components:
         provider: {type: string}
         runtime: {type: string}
         modelIdentifier: {type: string}
+        reasoningEffort: {type: string}
         fallbackSource: {type: string}
         errorCategory: {type: string}
         resolvedPlan: {$ref: '#/components/schemas/StrategyPlan'}
@@ -1602,6 +1619,11 @@ components:
         traceUrl: {type: string}
         createdAt: {type: string, format: date-time}
         resolvedAt: {type: string, format: date-time}
+        claimedAt: {type: string, format: date-time, description: Latest claim; absent for historical or never-claimed decisions.}
+        contextServedAt: {type: string, format: date-time}
+        runnerCompletedAt: {type: string, format: date-time, description: "Gateway receipt of worker completion, separate from plan acceptance."}
+        contextDelivery: {type: string, enum: [tool, prefetch], description: "CLI context-delivery mode; omitted for historical records without this metadata."}
+        cliProcessStartMs: {type: integer, minimum: 0, description: OS process creation only; does not measure CLI readiness.}
 
     StrategyPlan:
       description: |

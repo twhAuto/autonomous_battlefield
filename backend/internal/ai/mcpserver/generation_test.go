@@ -180,7 +180,7 @@ func TestGenerationCapabilityAndControlPlane(t *testing.T) {
 	}
 	// Generation-only claims never consume battle decisions; omitted types remain battle-only.
 	battle := &fakeRepository{record: ai.DecisionRecord{ID: "battle", ProfileID: "writer"}}
-	for _, body := range []string{`{"workerId":"w","profileIds":["writer"],"jobTypes":["faction_background"]}`, `{"workerId":"w","profileIds":["writer"]}`, `{"workerId":"w","profileIds":["writer"],"jobTypes":["battle_decision","faction_background"]}`} {
+	for _, body := range []string{`{"selectionVersion":1,"workerId":"w","profileIds":["writer"],"jobTypes":["faction_background"]}`, `{"selectionVersion":1,"workerId":"w","profileIds":["writer"]}`, `{"selectionVersion":1,"workerId":"w","profileIds":["writer"],"jobTypes":["battle_decision","faction_background"]}`} {
 		req = httptest.NewRequest("POST", "/claim", strings.NewReader(body))
 		req.Header.Set("Authorization", "Bearer worker-secret")
 		w = httptest.NewRecorder()
@@ -210,7 +210,7 @@ func TestReadyGenerationDoesNotWaitBehindEmptyBattlePoll(t *testing.T) {
 	drafts := &generationRepo{job: generation.Job{ID: "draft", ProfileID: "writer"}}
 	battles := &fakeRepository{claimErr: ai.ErrNoDecision}
 	service := New(battles, "secret", nil).WithGenerations(drafts)
-	req := httptest.NewRequest("POST", "/claim", strings.NewReader(`{"workerId":"w","profileIds":["writer"],"jobTypes":["battle_decision","faction_background"],"waitSeconds":20}`))
+	req := httptest.NewRequest("POST", "/claim", strings.NewReader(`{"selectionVersion":1,"workerId":"w","profileIds":["writer"],"jobTypes":["battle_decision","faction_background"],"waitSeconds":20}`))
 	req.Header.Set("Authorization", "Bearer worker-secret")
 	ctx, cancel := context.WithTimeout(req.Context(), time.Second)
 	defer cancel()

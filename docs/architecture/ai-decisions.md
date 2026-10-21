@@ -122,7 +122,7 @@ version pin, model alias and personal-memory caveat are in
 
 Every runtime uses one embedded decision policy, assembled by
 `internal/ai/prompts/prompts.go`; only context delivery differs (tool fetch or
-Antigravity's inline JSON). The persisted `prompts.Version`
+host-prefetched inline JSON). The persisted `prompts.Version`
 (`battlefield-agent-v9.<digest>`) includes a SHA-256 of the prompts as assembled for
 a fixed sample session, so any wording, order or wiring change produces a new
 version. Git keeps earlier prompt revisions.
@@ -231,7 +231,7 @@ names; see [Antigravity troubleshooting](../operations/antigravity-cli.md#missin
 | Error category | Raised by | Meaning |
 | --- | --- | --- |
 | `timeout`, `refusal`, `rate_limit`, `provider` | API runner | Provider deadline, safety refusal, HTTP 429, or other provider failure |
-| `mcp_connect`, `mcp_discovery`, `mcp_tool`, `mcp_context` | API/CLI runner | MCP session, tool-list, tool-call, or Antigravity context-prefetch failure |
+| `mcp_connect`, `mcp_discovery`, `mcp_tool`, `mcp_context` | API/CLI runner | MCP session, tool-list, tool-call, or CLI context-prefetch failure |
 | `unauthorized_tool`, `no_progress`, `step_limit` | API runner | Model requested a tool outside the session set, returned no tool call, or exceeded the profile's step limit |
 | `cli`, `cli_permission`, `cli_isolation`, `cli_provider` | CLI runner | Non-success CLI result, denied tool action, sandbox setup failure, or unsupported CLI provider |
 | `validation_limit` | Decision service | Third rejected API/CLI submission for the same request |
@@ -321,3 +321,56 @@ All maps expose the same legal content. Unit reference data includes Scout retre
 cavalry preference, armor penetration and repair capabilities; remaining repair
 charges stay on the individual unit observation. Repair events and shared support
 markers remain subject to normal faction visibility.
+
+## Model selection and latency
+
+Battle creation accepts `modelIdentifier` and `reasoningEffort` per model-controlled
+faction. A profile's `modelOptions` allowlists models and their supported
+`reasoningEfforts`; omitted choices retain the profile model and model-default
+effort (or the option's explicit `defaultReasoningEffort`). The backend validates
+both fields, freezes them in the scenario and decision row, and includes effort in
+retry-reuse matching. Workers validate against their own allowlist before execution;
+a removed option fails as `model_selection_unavailable`, rather than substituting
+another model. Existing API profiles and Antigravity expose no effort controls.
+API profile model labels remain informational: API runners use their current
+configured environment model, preserving behavior across secret rotation.
+Codex receives `model_reasoning_effort`; Claude receives `--effort`. The CLI model
+identifier is the requested identifier; aliases such as `sonnet` can resolve to a
+new provider version and are not an immutable model-version guarantee.
+
+The claim request carries `selectionVersion: 1`. An older worker receives HTTP 409
+before leasing a job, preventing it from silently ignoring frozen choices. See
+[worker rollout ordering](../operations/cli-worker.md#model-selection-rollout).
+
+Context timestamp recording is best-effort: a failed timing write is logged and
+the frozen context remains available; its missing timing stays unknown.
+
+The decision inspector shows request-to-resolution elapsed time, queue wait,
+claim-to-first-context and claim-to-resolution timings. Acceptance ends the main
+wait measurement immediately; `runnerCompletedAt` records the gateway receipt of
+the later worker report. Process-launch milliseconds measure only OS process
+creation, not provider readiness. Claim-to-context includes CLI initialization,
+provider activity and MCP work, and is not pure inference or reasoning time.
+Missing historical measurements stay unknown. A lease reclaim resets claim/context
+and completion timestamps; total wait still starts at the original request.
+
+## CLI context-prefetch experiment
+
+Codex and Claude battle profiles accept the worker-only `prefetchContext: true`
+setting (default false). The worker calls `get_decision_context` with the same
+request capability before launching the CLI, verifies the request identity,
+version/tick and 64 KiB limit, and embeds the frozen JSON as untrusted data. The
+model is instructed to use that snapshot without fetching it again; submission
+and optional unit-detail tools retain the same capabilities and validation.
+Prefetch failure stops execution as `mcp_context`; it never launches with missing
+or mismatched context. Background-generation behavior is unchanged. Antigravity
+continues to require prefetch regardless of this option.
+
+Each CLI result stores `contextDelivery` (`tool` or `prefetch`) in provider metadata,
+exposed through decision history and the timing panel; the generation span has
+`battlefield.context_delivery`. Historical records omit this field. With prefetch,
+`contextServedAt` precedes CLI launch: compare request/claim-to-resolution and
+success/fallback rates across modes, not just claim-to-context time. Model,
+effort, scenario, concurrency and prompt revision must be recorded for comparisons.
+The option does not promise a latency reduction; provider variance and prompt
+cache state affect results. See the [test procedure](../operations/cli-worker.md#context-prefetch-comparison).

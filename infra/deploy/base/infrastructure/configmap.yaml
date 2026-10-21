@@ -97,6 +97,11 @@ data:
           provider: codex-cli
           runtime: cli
           model: gpt-5.6-luna
+          modelOptions:
+            - id: gpt-5.6-luna
+              reasoningEfforts: [low, medium, high]
+            - id: gpt-6.1-sol
+              reasoningEfforts: [low, medium, high]
           availabilityEnvironmentVariable: CODEX_CLI_PROFILE_AVAILABLE
           supportedVersionPrefix: codex-cli 0.155.
           scope: local
@@ -107,6 +112,11 @@ data:
           provider: claude-cli
           runtime: cli
           model: sonnet
+          modelOptions:
+            - id: sonnet
+              reasoningEfforts: [low, medium, high]
+            - id: opus
+              reasoningEfforts: [low, medium, high]
           scope: local
           supportedVersionPrefix: "2.1.267 "
           availabilityEnvironmentVariable: CLAUDE_CLI_PROFILE_AVAILABLE
