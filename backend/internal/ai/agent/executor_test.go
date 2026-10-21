@@ -441,7 +441,11 @@ func TestDrainStopsNewClaimsAndLetsRunningDecisionsFinish(t *testing.T) {
 func TestWorkerExecutesFrozenSelectionOrFailsUnavailable(t *testing.T) {
 	t.Setenv("SELECTION_CLI_AVAILABLE", "true")
 	profiles := profile.NewCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true, Model: "fast", SupportedVersionPrefix: "codex-cli 0.155.", AvailabilityEnvironmentVariable: "SELECTION_CLI_AVAILABLE", ModelOptions: []ai.ModelOption{{ID: "deep", ReasoningEfforts: []string{"low"}}}}})
-	for _, model := range []string{"deep", "removed"} {
+	for _, test := range []struct {
+		model      string
+		invoked    bool
+		reportPath string
+	}{{"deep", true, "/internal/agent/usage"}, {"removed", false, "/internal/agent/fail"}} {
 		invoked := false
 		reportPath := ""
 		worker := &Executor{Profiles: profiles, DecisionTimeout: time.Second, MCPURL: "http://mcp/mcp", Client: &http.Client{Transport: agentRoundTrip(func(req *http.Request) (*http.Response, error) {
@@ -460,11 +464,11 @@ func TestWorkerExecutesFrozenSelectionOrFailsUnavailable(t *testing.T) {
 			}), nil
 		}}
 		claimed := time.Now()
-		worker.runJob(context.Background(), job{RequestID: "request", ProfileID: "cli", CapabilityToken: "scoped", ModelIdentifier: model, ReasoningEffort: "low", CreatedAt: claimed.Add(-time.Second), ClaimedAt: &claimed})
-		if (model == "deep") != invoked {
-			t.Fatal("unexpected execution", model, invoked)
+		worker.runJob(context.Background(), job{RequestID: "request", ProfileID: "cli", CapabilityToken: "scoped", ModelIdentifier: test.model, ReasoningEffort: "low", CreatedAt: claimed.Add(-time.Second), ClaimedAt: &claimed})
+		if test.invoked != invoked {
+			t.Fatal("unexpected execution", test.model, invoked)
 		}
-		if model == "deep" && reportPath != "/internal/agent/usage" || model == "removed" && reportPath != "/internal/agent/fail" {
+		if reportPath != test.reportPath {
 			t.Fatal(reportPath)
 		}
 	}

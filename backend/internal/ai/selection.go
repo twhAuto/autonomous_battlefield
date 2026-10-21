@@ -46,8 +46,7 @@ func ValidateModelOptions(p ModelProfile) error {
 		seen[option.ID] = true
 		efforts := map[string]bool{}
 		for _, effort := range option.ReasoningEfforts {
-			supported := p.Provider == "codex-cli" && slices.Contains([]string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}, effort) || p.Provider == "claude-cli" && slices.Contains([]string{"low", "medium", "high", "xhigh", "max"}, effort)
-			if !supported || efforts[effort] {
+			if !supportsReasoningEffort(p.Provider, effort) || efforts[effort] {
 				return fmt.Errorf("invalid reasoning efforts for profile %q", p.ID)
 			}
 			efforts[effort] = true
@@ -57,4 +56,15 @@ func ValidateModelOptions(p ModelProfile) error {
 		}
 	}
 	return nil
+}
+
+func supportsReasoningEffort(provider, effort string) bool {
+	switch provider {
+	case "codex-cli":
+		return slices.Contains([]string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}, effort)
+	case "claude-cli":
+		return slices.Contains([]string{"low", "medium", "high", "xhigh", "max"}, effort)
+	default:
+		return false
+	}
 }

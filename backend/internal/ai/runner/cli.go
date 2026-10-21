@@ -94,9 +94,36 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 	if executor == nil {
 		executor = OSCommandExecutor{}
 	}
+	invocation, category, err := r.prepareInvocation(ctx, session, temporary, workspace)
+	if err != nil {
+		return ai.DecisionResult{ErrorCategory: category}, err
+	}
+	span.SetAttributes(attribute.Int("battlefield.prompt.bytes", len(invocation.prompt)))
+	output, err := executor.Run(ctx, cliisolation.Binary(r.Provider), invocation.args, invocation.environment, workspace)
+	if r.Provider == cliisolation.ProviderAntigravity {
+		result, runErr = antigravityResult(output)
+	} else if r.Provider == cliisolation.ProviderClaude {
+		result, runErr = claudeResult(output)
+	} else {
+		result, runErr = codexResult(output)
+	}
+	if err != nil {
+		result.Accepted = false
+		result.ErrorCategory = "cli"
+		return result, err
+	}
+	return result, runErr
+}
+
+type cliInvocation struct {
+	args, environment []string
+	prompt            string
+}
+
+func (r CLIRunner) prepareInvocation(ctx context.Context, session ai.DecisionSession, temporary, workspace string) (cliInvocation, string, error) {
 	prompt := prompts.SessionSystem(session) + "\n" + prompts.SessionDecision(session, nil)
-	name := cliisolation.Binary(r.Provider)
 	var args, environment []string
+	var err error
 	switch r.Provider {
 	case cliisolation.ProviderCodex:
 		args = []string{"exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "--ignore-user-config", "-C", workspace,
@@ -114,7 +141,7 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 	case cliisolation.ProviderClaude:
 		args, err = claudeArguments(temporary, prompt, r.Model, session)
 		if err != nil {
-			return ai.DecisionResult{ErrorCategory: "cli_isolation"}, err
+			return cliInvocation{}, "cli_isolation", err
 		}
 		if r.ReasoningEffort != "" {
 			args = append([]string{"--effort", r.ReasoningEffort}, args...)
@@ -123,34 +150,20 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 	case cliisolation.ProviderAntigravity:
 		payload, contextErr := r.prefetchContext(ctx, session)
 		if contextErr != nil {
-			return ai.DecisionResult{ErrorCategory: "mcp_context"}, contextErr
+			return cliInvocation{}, "mcp_context", contextErr
 		}
 		prompt = prompts.SessionSystem(session) + "\n" + prompts.SessionDecision(session, payload)
 
 		environment, err = cliisolation.PrepareAntigravity(temporary, session.MCPURL, session.CapabilityToken, prompts.SessionToolNames(session)...)
 		if err != nil {
-			return ai.DecisionResult{ErrorCategory: "cli_isolation"}, err
+			return cliInvocation{}, "cli_isolation", err
 		}
 		args = withModel([]string{"--print", prompt, "--output-format", "json", "--disable-slash-commands", "--print-timeout", "2m"}, r.Model)
 
 	default:
-		return ai.DecisionResult{ErrorCategory: "cli_provider"}, fmt.Errorf("unsupported CLI provider %q", r.Provider)
+		return cliInvocation{}, "cli_provider", fmt.Errorf("unsupported CLI provider %q", r.Provider)
 	}
-	span.SetAttributes(attribute.Int("battlefield.prompt.bytes", len(prompt)))
-	output, err := executor.Run(ctx, name, args, environment, workspace)
-	if r.Provider == cliisolation.ProviderAntigravity {
-		result, runErr = antigravityResult(output)
-	} else if r.Provider == cliisolation.ProviderClaude {
-		result, runErr = claudeResult(output)
-	} else {
-		result, runErr = codexResult(output)
-	}
-	if err != nil {
-		result.Accepted = false
-		result.ErrorCategory = "cli"
-		return result, err
-	}
-	return result, runErr
+	return cliInvocation{args: args, environment: environment, prompt: prompt}, "", nil
 }
 
 func withModel(arguments []string, model string) []string {

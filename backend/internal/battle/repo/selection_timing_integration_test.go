@@ -24,37 +24,8 @@ func TestDecisionSelectionAndTimingLifecycle(t *testing.T) {
 	if err != nil || d.ClaimedAt == nil {
 		t.Fatalf("claim: %+v %v", d, err)
 	}
-	if err = repo.RecordDecisionContextServed(ctx, p.ID); err != nil {
-		t.Fatal(err)
-	}
-	first, err := repo.GetDecision(ctx, p.ID)
-	if err != nil || first.ContextServedAt == nil {
-		t.Fatalf("context: %+v %v", first, err)
-	}
-	if err = repo.RecordDecisionContextServed(ctx, p.ID); err != nil {
-		t.Fatal(err)
-	}
-	d, _ = repo.GetDecision(ctx, p.ID)
-	if !d.ContextServedAt.Equal(*first.ContextServedAt) {
-		t.Fatal("context reread changed timestamp")
-	}
+	assertContextAndAcceptanceTiming(t, ctx, repo, d)
 	plan := controller.PlanProposal{Name: "hold"}
-	accepted, err := repo.SubmitDecisionPlan(ctx, ai.PlanSubmission{RequestID: p.ID, ExpectedVersion: d.Version, TargetTick: 10, IdempotencyKey: "once", Plan: plan})
-	if err != nil || !accepted.Accepted {
-		t.Fatal(accepted, err)
-	}
-	d, _ = repo.GetDecision(ctx, p.ID)
-	if d.ResolvedAt == nil || d.RunnerCompletedAt != nil {
-		t.Fatal("acceptance confused with worker completion")
-	}
-	resolved := *d.ResolvedAt
-	if err = repo.RecordDecisionUsage(ctx, p.ID, ai.Usage{}, map[string]any{"cliProcessStartMs": int64(1)}); err != nil {
-		t.Fatal(err)
-	}
-	d, _ = repo.GetDecision(ctx, p.ID)
-	if d.RunnerCompletedAt == nil || !d.ResolvedAt.Equal(resolved) || d.ClaimedAt.Before(d.CreatedAt) || d.ResolvedAt.Before(*d.ClaimedAt) {
-		t.Fatalf("timing: %+v", d)
-	}
 	// Retry reuse must not cross a model/effort change.
 	p.ID = randomUUID(t)
 	p.Attempt = 2
@@ -79,7 +50,54 @@ func TestDecisionSelectionAndTimingLifecycle(t *testing.T) {
 	if err != nil || reclaimed.ClaimedAt == nil || !reclaimed.ClaimedAt.After(*claimed.ClaimedAt) || reclaimed.ContextServedAt != nil {
 		t.Fatalf("reclaim: %+v %v", reclaimed, err)
 	}
-	if err = repo.FinishDecisionFailure(ctx, reclaimed.ID, "timeout", ai.Usage{}, map[string]any{"runnerDurationMs": 10}); err != nil {
+	assertFailureAndFallbackTiming(t, ctx, repo, reclaimed, plan)
+	p.ID = randomUUID(t)
+	p.Attempt = 3
+	p.ReasoningEffort = "low"
+	d, err = repo.CreateOrReuseDecision(ctx, p)
+	if err != nil || d.Status != "accepted" || d.ClaimedAt != nil {
+		t.Fatalf("retry: %+v %v", d, err)
+	}
+}
+
+func assertContextAndAcceptanceTiming(t *testing.T, ctx context.Context, repo *Postgres, decision ai.DecisionRecord) {
+	t.Helper()
+	if err := repo.RecordDecisionContextServed(ctx, decision.ID); err != nil {
+		t.Fatal(err)
+	}
+	first, err := repo.GetDecision(ctx, decision.ID)
+	if err != nil || first.ContextServedAt == nil {
+		t.Fatalf("context: %+v %v", first, err)
+	}
+	if err = repo.RecordDecisionContextServed(ctx, decision.ID); err != nil {
+		t.Fatal(err)
+	}
+	d, _ := repo.GetDecision(ctx, decision.ID)
+	if !d.ContextServedAt.Equal(*first.ContextServedAt) {
+		t.Fatal("context reread changed timestamp")
+	}
+	plan := controller.PlanProposal{Name: "hold"}
+	accepted, err := repo.SubmitDecisionPlan(ctx, ai.PlanSubmission{RequestID: decision.ID, ExpectedVersion: d.Version, TargetTick: 10, IdempotencyKey: "once", Plan: plan})
+	if err != nil || !accepted.Accepted {
+		t.Fatal(accepted, err)
+	}
+	d, _ = repo.GetDecision(ctx, decision.ID)
+	if d.ResolvedAt == nil || d.RunnerCompletedAt != nil {
+		t.Fatal("acceptance confused with worker completion")
+	}
+	resolved := *d.ResolvedAt
+	if err = repo.RecordDecisionUsage(ctx, decision.ID, ai.Usage{}, map[string]any{"cliProcessStartMs": int64(1)}); err != nil {
+		t.Fatal(err)
+	}
+	d, _ = repo.GetDecision(ctx, decision.ID)
+	if d.RunnerCompletedAt == nil || !d.ResolvedAt.Equal(resolved) || d.ClaimedAt.Before(d.CreatedAt) || d.ResolvedAt.Before(*d.ClaimedAt) {
+		t.Fatalf("timing: %+v", d)
+	}
+}
+
+func assertFailureAndFallbackTiming(t *testing.T, ctx context.Context, repo *Postgres, reclaimed ai.DecisionRecord, plan controller.PlanProposal) {
+	t.Helper()
+	if err := repo.FinishDecisionFailure(ctx, reclaimed.ID, "timeout", ai.Usage{}, map[string]any{"runnerDurationMs": 10}); err != nil {
 		t.Fatal(err)
 	}
 	failed, _ := repo.GetDecision(ctx, reclaimed.ID)
@@ -88,12 +106,5 @@ func TestDecisionSelectionAndTimingLifecycle(t *testing.T) {
 	}
 	if ok, err := repo.ResolveDecisionFallback(ctx, reclaimed.ID, failed.Version, plan, "previous_plan", "timeout"); err != nil || !ok {
 		t.Fatal(ok, err)
-	}
-	p.ID = randomUUID(t)
-	p.Attempt = 3
-	p.ReasoningEffort = "low"
-	d, err = repo.CreateOrReuseDecision(ctx, p)
-	if err != nil || d.Status != "accepted" || d.ClaimedAt != nil {
-		t.Fatalf("retry: %+v %v", d, err)
 	}
 }

@@ -7,6 +7,15 @@ function duration(start?: string, end?: string | number) {
   return Number.isFinite(ms) && ms >= 0 ? `${(ms / 1000).toFixed(1)}s` : 'Not recorded'
 }
 
+function timingLabel(status: DecisionHistory['status']) {
+  switch (status) {
+    case 'pending': return 'Queued'
+    case 'running': return 'Deciding'
+    case 'accepted': return 'Plan accepted in'
+    default: return 'Resolved in'
+  }
+}
+
 export function DecisionTiming({ decision, active }: Readonly<{ decision: DecisionHistory; active: boolean }>) {
   const [now, setNow] = useState(Date.now)
   const pending = decision.status === 'pending'
@@ -17,7 +26,7 @@ export function DecisionTiming({ decision, active }: Readonly<{ decision: Decisi
     return () => clearInterval(timer)
   }, [active, pending, running])
   const end = decision.resolvedAt || ((pending || running) && active ? now : undefined)
-  const label = pending ? 'Queued' : running ? 'Deciding' : decision.status === 'accepted' ? 'Plan accepted in' : 'Resolved in'
+  const label = timingLabel(decision.status)
   return <div className="decision-timing">
     <p><strong>{label} · {duration(decision.createdAt, end)}</strong></p>
     <details><summary>Timing details</summary>
