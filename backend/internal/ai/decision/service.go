@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 )
@@ -40,7 +41,7 @@ func (s *Service) GetContext(ctx context.Context, requestID string) (ai.Decision
 		RecordDecisionContextServed(context.Context, string) error
 	}); ok {
 		if err := recorder.RecordDecisionContextServed(ctx, requestID); err != nil {
-			return ai.DecisionContext{}, err
+			slog.WarnContext(ctx, "decision_context_timing_failed", "request_id", requestID, "error", err)
 		}
 	}
 	return record.Observation, nil

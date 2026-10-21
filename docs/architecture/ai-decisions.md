@@ -332,6 +332,8 @@ both fields, freezes them in the scenario and decision row, and includes effort 
 retry-reuse matching. Workers validate against their own allowlist before execution;
 a removed option fails as `model_selection_unavailable`, rather than substituting
 another model. Existing API profiles and Antigravity expose no effort controls.
+API profile model labels remain informational: API runners use their current
+configured environment model, preserving behavior across secret rotation.
 Codex receives `model_reasoning_effort`; Claude receives `--effort`. The CLI model
 identifier is the requested identifier; aliases such as `sonnet` can resolve to a
 new provider version and are not an immutable model-version guarantee.
@@ -339,6 +341,9 @@ new provider version and are not an immutable model-version guarantee.
 The claim request carries `selectionVersion: 1`. An older worker receives HTTP 409
 before leasing a job, preventing it from silently ignoring frozen choices. See
 [worker rollout ordering](../operations/cli-worker.md#model-selection-rollout).
+
+Context timestamp recording is best-effort: a failed timing write is logged and
+the frozen context remains available; its missing timing stays unknown.
 
 The decision inspector shows request-to-resolution elapsed time, queue wait,
 claim-to-first-context and claim-to-resolution timings. Acceptance ends the main

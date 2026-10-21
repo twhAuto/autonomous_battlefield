@@ -282,7 +282,7 @@ func (e *Executor) runJob(parent context.Context, job job) {
 		e.reportJobFailure(parent, logger, started, job.RequestID, "profile_unavailable", "profile_unavailable", ai.DecisionResult{})
 		return
 	}
-	if job.ModelIdentifier != "" || job.ReasoningEffort != "" {
+	if profile.Runtime == "cli" && (job.ModelIdentifier != "" || job.ReasoningEffort != "") {
 		model, effort, selectionErr := ai.ResolveModelSelection(profile, job.ModelIdentifier, job.ReasoningEffort)
 		if selectionErr != nil {
 			e.reportJobFailure(parent, logger, started, job.RequestID, "model_selection_unavailable", "model_selection_unavailable", ai.DecisionResult{})

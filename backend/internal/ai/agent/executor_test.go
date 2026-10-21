@@ -469,3 +469,23 @@ func TestWorkerExecutesFrozenSelectionOrFailsUnavailable(t *testing.T) {
 		}
 	}
 }
+
+func TestAPIWorkerUsesCurrentConfiguredModelAfterEnvironmentChange(t *testing.T) {
+	t.Setenv("API_SELECTION_MODEL", "current-model")
+	profiles := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "api", DisplayName: "API", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, ModelEnvironmentVariable: "API_SELECTION_MODEL"}})
+	invoked, reportPath := false, ""
+	worker := &Executor{Profiles: profiles, DecisionTimeout: time.Second, MCPURL: "http://mcp/mcp", Client: &http.Client{Transport: agentRoundTrip(func(req *http.Request) (*http.Response, error) {
+		reportPath = req.URL.Path
+		return agentResponse(204, ""), nil
+	})}, RunnerFactory: func(p ai.ModelProfile) (ai.DecisionRunner, error) {
+		invoked = true
+		if p.ModelLabel != "current-model" || p.ReasoningEffort != "" {
+			t.Fatalf("API model configuration changed: %+v", p)
+		}
+		return fakeRunner{result: ai.DecisionResult{Accepted: true}}, nil
+	}}
+	worker.runJob(context.Background(), job{RequestID: "request", ProfileID: "api", CapabilityToken: "scoped", ModelIdentifier: "previous-model"})
+	if !invoked || reportPath != "/internal/agent/usage" {
+		t.Fatalf("invoked = %t, report = %q", invoked, reportPath)
+	}
+}
