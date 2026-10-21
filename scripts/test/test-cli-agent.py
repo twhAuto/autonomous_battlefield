@@ -10,14 +10,23 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = (ROOT / 'scripts/dev/run-k8s-cli-agent.sh').read_text()
 FUNCTIONS = '\n'.join(re.findall(r'^\w+\(\) \{\n.*?^\}', SOURCE, re.M | re.S))
+PREFIX_OVERRIDES = ('HOST_CODEX_VERSION_PREFIX', 'HOST_CLAUDE_VERSION_PREFIX', 'HOST_ANTIGRAVITY_VERSION_PREFIX')
+BASE_ENV = {key: value for key, value in os.environ.items() if key not in PREFIX_OVERRIDES}
+
+
+def configured_prefixes(text):
+    """Map each CLI provider to its supportedVersionPrefix in a profile YAML document."""
+    return {provider: prefix.strip().strip('"')
+            for provider, prefix in re.findall(r'provider: (\S+-cli)\n(?:.*\n)*?\s+supportedVersionPrefix: (.+)', text)}
 
 
 class CLIProfiles(unittest.TestCase):
-    def run_profile(self, mode, available, concurrency=None):
+    def run_profile(self, mode, available, concurrency=None, overrides=None):
         with tempfile.TemporaryDirectory() as runtime:
             script = FUNCTIONS + '''
 use_codex=0; use_gemini=0; use_claude=0
 health_port=18083; gateway_port=18084; agent_concurrency="${agent_concurrency:-2}"
+resolve_version_prefixes
 codex_available() { [[ "$available" == *codex* ]]; }
 antigravity_available() { [[ "$available" == *gemini* ]]; }
 claude_available() { [[ "$available" == *claude* ]]; }
@@ -29,7 +38,7 @@ set_profile_flags false false true
 set_profile_flags false false false
 '''
             return subprocess.run(['bash', '-ec', script], capture_output=True, text=True,
-                                  env={**os.environ, 'requested_provider': mode,
+                                  env={**BASE_ENV, **(overrides or {}), 'requested_provider': mode,
                                        'available': available, 'runtime_dir': runtime,
                                        **({'agent_concurrency': concurrency} if concurrency else {})})
 
@@ -63,6 +72,45 @@ set_profile_flags false false false
                 self.assertEqual(result.returncode, 0 if valid else 2, result.stderr)
                 if not valid:
                     self.assertIn('HOST_AGENT_CONCURRENCY must be 1, 2, 3, or 4.', result.stderr)
+
+    def test_default_version_prefixes_match_backend_config(self):
+        result = self.run_profile('all', 'codex gemini claude')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('Warning', result.stderr)
+        expected = configured_prefixes((ROOT / 'backend/config.yaml').read_text())
+        self.assertEqual(configured_prefixes(result.stdout), expected)
+        self.assertEqual(set(expected), {'codex-cli', 'claude-cli', 'antigravity-cli'})
+
+    def test_version_prefix_override_warns_and_reaches_config(self):
+        result = self.run_profile('claude', 'claude', overrides={'HOST_CLAUDE_VERSION_PREFIX': '2.1.'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('supportedVersionPrefix: "2.1."', result.stdout)
+        self.assertIn("Warning: HOST_CLAUDE_VERSION_PREFIX='2.1.'", result.stderr)
+
+    def test_version_prefix_override_rejects_unsafe_text(self):
+        for value in ['2.1."', '1.2.\\', '0.1\nscope: cluster', '$(id)']:
+            with self.subTest(value=value):
+                result = subprocess.run(['bash', '-ec', FUNCTIONS + '\nresolve_version_prefixes'], capture_output=True, text=True,
+                                        env={**BASE_ENV, 'HOST_CODEX_VERSION_PREFIX': value})
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn('HOST_CODEX_VERSION_PREFIX may contain only', result.stderr)
+
+    def test_installed_version_is_checked_against_prefix(self):
+        with tempfile.TemporaryDirectory() as home:
+            bin_dir = Path(home, 'bin')
+            bin_dir.mkdir()
+            fake = bin_dir / 'codex'
+            fake.write_text('#!/usr/bin/env bash\necho "codex-cli 0.163.0"\n')
+            fake.chmod(0o755)
+            Path(home, '.codex').mkdir()
+            Path(home, '.codex/auth.json').write_text('{}')
+            script = FUNCTIONS + '\nresolve_version_prefixes 2>/dev/null\ncodex_available'
+            env = {**BASE_ENV, 'HOME': home, 'PATH': str(bin_dir) + os.pathsep + os.environ['PATH']}
+            for override, accepted in [(None, False), ('codex-cli 0.16', True), ('codex-cli 0.155.', False)]:
+                with self.subTest(override=override):
+                    result = subprocess.run(['bash', '-ec', script], capture_output=True, text=True,
+                                            env={**env, **({'HOST_CODEX_VERSION_PREFIX': override} if override else {})})
+                    self.assertEqual(result.returncode == 0, accepted, result.stderr)
 
     def test_production_claude_requires_isolation(self):
         script = r"""
