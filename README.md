@@ -96,3 +96,8 @@ also require `./scripts/test/test-deployment.sh`. See
 Copyright © 2026 Tan Wei Hao. All rights reserved. The source is shared for
 portfolio and learning purposes; no license is granted to copy, modify or
 distribute it.
+
+Battle setup supports per-faction model and reasoning-effort choices from the operator
+allowlist. The AI decision inspector shows elapsed waits and completed timing details;
+see [model selection and latency](docs/architecture/ai-decisions.md#model-selection-and-latency)
+and the [worker rollout order](docs/operations/cli-worker.md#model-selection-rollout).

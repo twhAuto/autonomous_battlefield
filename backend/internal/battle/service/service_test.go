@@ -560,3 +560,26 @@ func checkBattleOwnership(t *testing.T, role authn.Role, owner, operation string
 		t.Fatalf("control %s: %v", operation, e)
 	}
 }
+
+func TestControllerSelectionFreezesModelAndEffort(t *testing.T) {
+	t.Setenv("SELECTION_CLI_AVAILABLE", "true")
+	registry := profile.NewCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true, Model: "fast", SupportedVersionPrefix: "codex-cli 0.155.", AvailabilityEnvironmentVariable: "SELECTION_CLI_AVAILABLE", ModelOptions: []ai.ModelOption{{ID: "fast", ReasoningEfforts: []string{"low"}}, {ID: "deep", ReasoningEfforts: []string{"high"}}}}})
+	s := &battleService{profiles: registry}
+	selected, err := s.resolveController(game.ControllerConfig{Type: "model", ProfileID: "cli", ModelIdentifier: "deep", ReasoningEffort: "high"})
+	if err != nil || selected.ModelIdentifier != "deep" || selected.ReasoningEffort != "high" || selected.Provider != "codex-cli" {
+		t.Fatal(selected, err)
+	}
+	if err = s.authorizeController(authn.WithActor(context.Background(), authn.Actor{ID: "player", Role: authn.Player}), selected); !errors.Is(err, authn.ErrForbidden) {
+		t.Fatal("selection bypassed profile permissions", err)
+	}
+	for _, selection := range []game.ControllerConfig{
+		{Type: "model", ProfileID: "cli", ModelIdentifier: "unknown"},
+		{Type: "model", ProfileID: "cli", ModelIdentifier: "deep", ReasoningEffort: "low"},
+		{Type: "scripted", ModelIdentifier: "deep"},
+		{Type: "scripted", ReasoningEffort: "low"},
+	} {
+		if _, err := s.resolveController(selection); err == nil {
+			t.Fatal("invalid selection accepted", selection)
+		}
+	}
+}

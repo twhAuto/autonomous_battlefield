@@ -120,22 +120,27 @@ type ModelProfileService interface {
 }
 
 type DecisionHistory struct {
-	TraceURL        string     `json:"traceUrl,omitempty"`
-	RequestID       string     `json:"requestId"`
-	FactionID       string     `json:"factionId"`
-	TargetTick      uint64     `json:"targetTick"`
-	Status          string     `json:"status"`
-	ControllerType  string     `json:"controllerType"`
-	ProfileID       string     `json:"profileId,omitempty"`
-	Provider        string     `json:"provider,omitempty"`
-	Runtime         string     `json:"runtime,omitempty"`
-	ModelIdentifier string     `json:"modelIdentifier,omitempty"`
-	FallbackSource  string     `json:"fallbackSource,omitempty"`
-	ErrorCategory   string     `json:"errorCategory,omitempty"`
-	ResolvedPlan    any        `json:"resolvedPlan,omitempty"`
-	Usage           ai.Usage   `json:"usage"`
-	CreatedAt       time.Time  `json:"createdAt"`
-	ResolvedAt      *time.Time `json:"resolvedAt,omitempty"`
+	CLIProcessStartMS *int64     `json:"cliProcessStartMs,omitempty"`
+	ReasoningEffort   string     `json:"reasoningEffort,omitempty"`
+	ClaimedAt         *time.Time `json:"claimedAt,omitempty"`
+	ContextServedAt   *time.Time `json:"contextServedAt,omitempty"`
+	RunnerCompletedAt *time.Time `json:"runnerCompletedAt,omitempty"`
+	TraceURL          string     `json:"traceUrl,omitempty"`
+	RequestID         string     `json:"requestId"`
+	FactionID         string     `json:"factionId"`
+	TargetTick        uint64     `json:"targetTick"`
+	Status            string     `json:"status"`
+	ControllerType    string     `json:"controllerType"`
+	ProfileID         string     `json:"profileId,omitempty"`
+	Provider          string     `json:"provider,omitempty"`
+	Runtime           string     `json:"runtime,omitempty"`
+	ModelIdentifier   string     `json:"modelIdentifier,omitempty"`
+	FallbackSource    string     `json:"fallbackSource,omitempty"`
+	ErrorCategory     string     `json:"errorCategory,omitempty"`
+	ResolvedPlan      any        `json:"resolvedPlan,omitempty"`
+	Usage             ai.Usage   `json:"usage"`
+	CreatedAt         time.Time  `json:"createdAt"`
+	ResolvedAt        *time.Time `json:"resolvedAt,omitempty"`
 }
 
 type DecisionHistoryService interface {
@@ -190,7 +195,7 @@ func (s *battleService) ListDecisionHistory(ctx context.Context, battleID string
 		if id, ok := record.ProviderMetadata["aiTraceId"].(string); ok && id == tracing.DecisionTraceID(record.ID) {
 			traceURL = tracing.DecisionTraceURL(record.ID)
 		}
-		result = append(result, DecisionHistory{TraceURL: traceURL, RequestID: record.ID, FactionID: record.FactionID, TargetTick: record.TargetTick, Status: record.Status, ControllerType: record.ControllerType, ProfileID: record.ProfileID, Provider: record.Provider, Runtime: record.Runtime, ModelIdentifier: record.ModelIdentifier, FallbackSource: record.FallbackSource, ErrorCategory: record.ErrorCategory, ResolvedPlan: record.ResolvedPlan, Usage: record.Usage, CreatedAt: record.CreatedAt, ResolvedAt: record.ResolvedAt})
+		result = append(result, DecisionHistory{CLIProcessStartMS: ai.MetadataMilliseconds(record.ProviderMetadata, "cliProcessStartMs"), ReasoningEffort: record.ReasoningEffort, ClaimedAt: record.ClaimedAt, ContextServedAt: record.ContextServedAt, RunnerCompletedAt: record.RunnerCompletedAt, TraceURL: traceURL, RequestID: record.ID, FactionID: record.FactionID, TargetTick: record.TargetTick, Status: record.Status, ControllerType: record.ControllerType, ProfileID: record.ProfileID, Provider: record.Provider, Runtime: record.Runtime, ModelIdentifier: record.ModelIdentifier, FallbackSource: record.FallbackSource, ErrorCategory: record.ErrorCategory, ResolvedPlan: record.ResolvedPlan, Usage: record.Usage, CreatedAt: record.CreatedAt, ResolvedAt: record.ResolvedAt})
 	}
 	return result, nil
 }
@@ -326,7 +331,7 @@ func (s *battleService) authorizeController(ctx context.Context, controller game
 func (s *battleService) resolveController(selected game.ControllerConfig) (game.ControllerConfig, error) {
 	switch selected.Type {
 	case ai.ControllerScripted:
-		if selected.ProfileID != "" {
+		if selected.ProfileID != "" || selected.ModelIdentifier != "" || selected.ReasoningEffort != "" {
 			return game.ControllerConfig{}, ErrInvalidBattle
 		}
 		return game.ControllerConfig{Type: ai.ControllerScripted}, nil
@@ -335,7 +340,11 @@ func (s *battleService) resolveController(selected game.ControllerConfig) (game.
 		if err != nil {
 			return game.ControllerConfig{}, fmt.Errorf("%w: %q", ErrModelProfileUnavailable, selected.ProfileID)
 		}
-		return game.ControllerConfig{Type: ai.ControllerModel, ProfileID: profile.ID, Provider: profile.Provider, Runtime: profile.Runtime, ModelIdentifier: profile.ModelLabel}, nil
+		model, effort, err := ai.ResolveModelSelection(profile, selected.ModelIdentifier, selected.ReasoningEffort)
+		if err != nil {
+			return game.ControllerConfig{}, fmt.Errorf("%w: %s", ErrModelProfileUnavailable, err)
+		}
+		return game.ControllerConfig{Type: ai.ControllerModel, ProfileID: profile.ID, Provider: profile.Provider, Runtime: profile.Runtime, ModelIdentifier: model, ReasoningEffort: effort}, nil
 	default:
 		return game.ControllerConfig{}, ErrInvalidBattle
 	}

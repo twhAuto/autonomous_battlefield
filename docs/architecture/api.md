@@ -298,3 +298,23 @@ Specialist upgrades additionally expose `targetUnit`, `targetClass`,
 errors. The faction-rulesets response contains one live ruleset. Unit snapshots
 include optional specialist capabilities and remaining `repairCharges`; repairs
 emit `unit_repaired` events and use support-action target markers.
+
+## Model and effort selection
+
+`GET /v1/model-profiles` includes `modelOptions` for authorized profiles, including
+Player-visible profiles. Each option contains `id`, `reasoningEfforts`, and an
+optional `defaultReasoningEffort`. An absent option list means only the configured
+model is selectable. `POST /v1/battles` accepts optional `modelIdentifier` and
+`reasoningEffort` in each model controller. Unsupported combinations return 422;
+scripted controllers reject these model fields. Profile role checks still apply.
+The selection is frozen for execution and retry matching. Provider aliases remain
+aliases, rather than promises of a specific underlying version.
+
+Decision history adds `reasoningEffort`, `claimedAt`, `contextServedAt`,
+`runnerCompletedAt`, and optional `cliProcessStartMs`. Absent timestamps mean
+unknown, including historical rows. Existing inspection permissions still apply;
+this does not expose decision inspection to Player roles. `createdAt` to
+`resolvedAt` measures total wait until acceptance/fallback/failure, not subprocess
+shutdown. Reclaimed jobs report the latest claim while preserving total wait.
+Internal agent claims require `selectionVersion: 1`; incompatible workers receive
+409 before any job is leased.

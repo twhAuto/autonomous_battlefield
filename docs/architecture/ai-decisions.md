@@ -321,3 +321,30 @@ All maps expose the same legal content. Unit reference data includes Scout retre
 cavalry preference, armor penetration and repair capabilities; remaining repair
 charges stay on the individual unit observation. Repair events and shared support
 markers remain subject to normal faction visibility.
+
+## Model selection and latency
+
+Battle creation accepts `modelIdentifier` and `reasoningEffort` per model-controlled
+faction. A profile's `modelOptions` allowlists models and their supported
+`reasoningEfforts`; omitted choices retain the profile model and model-default
+effort (or the option's explicit `defaultReasoningEffort`). The backend validates
+both fields, freezes them in the scenario and decision row, and includes effort in
+retry-reuse matching. Workers validate against their own allowlist before execution;
+a removed option fails as `model_selection_unavailable`, rather than substituting
+another model. Existing API profiles and Antigravity expose no effort controls.
+Codex receives `model_reasoning_effort`; Claude receives `--effort`. The CLI model
+identifier is the requested identifier; aliases such as `sonnet` can resolve to a
+new provider version and are not an immutable model-version guarantee.
+
+The claim request carries `selectionVersion: 1`. An older worker receives HTTP 409
+before leasing a job, preventing it from silently ignoring frozen choices. See
+[worker rollout ordering](../operations/cli-worker.md#model-selection-rollout).
+
+The decision inspector shows request-to-resolution elapsed time, queue wait,
+claim-to-first-context and claim-to-resolution timings. Acceptance ends the main
+wait measurement immediately; `runnerCompletedAt` records the gateway receipt of
+the later worker report. Process-launch milliseconds measure only OS process
+creation, not provider readiness. Claim-to-context includes CLI initialization,
+provider activity and MCP work, and is not pure inference or reasoning time.
+Missing historical measurements stay unknown. A lease reclaim resets claim/context
+and completion timestamps; total wait still starts at the original request.

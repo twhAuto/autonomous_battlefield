@@ -239,3 +239,32 @@ it('explains three-level costs when staging every map', async () => {
   expect(await screen.findByText(/Three upgrade levels: each costs 20, 50, then 100 gold/)).toBeInTheDocument()
   expect(screen.getByRole('combobox', { name: 'Combat map' })).toHaveValue('frontier-siege')
 })
+
+it('selects each model and effort and clears an incompatible effort when changing models', async () => {
+  vi.mocked(listModelProfiles).mockResolvedValue([{ ...availableProfile, runtime: 'cli', modelOptions: [
+    { id: 'fast-1', reasoningEfforts: ['low', 'high'] }, { id: 'deep', reasoningEfforts: ['medium'] },
+  ] }])
+  const user = userEvent.setup()
+  renderPage()
+  await user.selectOptions(await controllerSelect('first-controller'), 'fast')
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Reasoning effort' }), 'high')
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Model' }), 'deep')
+  expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toHaveValue('')
+  expect(screen.queryByRole('option', { name: 'High' })).not.toBeInTheDocument()
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Reasoning effort' }), 'medium')
+  await user.click(screen.getByRole('button', { name: /DEPLOY COMBATANTS/ }))
+  await screen.findByRole('heading', { name: 'Battle staged' })
+  expect(createBattle).toHaveBeenCalledWith(expect.objectContaining({ participants: [
+    { factionId: 'north', controller: { type: 'model', profileId: 'fast', modelIdentifier: 'deep', reasoningEffort: 'medium' } },
+    { factionId: 'south', controller: { type: 'scripted' } },
+  ] }))
+})
+
+it('clears model settings when switching controller and disables unsupported effort', async () => {
+  const user = userEvent.setup()
+  renderPage()
+  await user.selectOptions(await controllerSelect('first-controller'), 'fast')
+  expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toBeDisabled()
+  await user.selectOptions(await controllerSelect('first-controller'), 'scripted')
+  expect(screen.queryByRole('combobox', { name: 'Model' })).not.toBeInTheDocument()
+})

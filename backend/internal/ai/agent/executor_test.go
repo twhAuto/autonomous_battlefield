@@ -437,3 +437,35 @@ func TestDrainStopsNewClaimsAndLetsRunningDecisionsFinish(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestWorkerExecutesFrozenSelectionOrFailsUnavailable(t *testing.T) {
+	t.Setenv("SELECTION_CLI_AVAILABLE", "true")
+	profiles := profile.NewCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true, Model: "fast", SupportedVersionPrefix: "codex-cli 0.155.", AvailabilityEnvironmentVariable: "SELECTION_CLI_AVAILABLE", ModelOptions: []ai.ModelOption{{ID: "deep", ReasoningEfforts: []string{"low"}}}}})
+	for _, model := range []string{"deep", "removed"} {
+		invoked := false
+		reportPath := ""
+		worker := &Executor{Profiles: profiles, DecisionTimeout: time.Second, MCPURL: "http://mcp/mcp", Client: &http.Client{Transport: agentRoundTrip(func(req *http.Request) (*http.Response, error) {
+			reportPath = req.URL.Path
+			return agentResponse(204, ""), nil
+		})}, RunnerFactory: func(p ai.ModelProfile) (ai.DecisionRunner, error) {
+			invoked = true
+			if p.Model != "deep" || p.ReasoningEffort != "low" {
+				t.Fatalf("wrong selection: %+v", p)
+			}
+			return runnerFunc(func(_ context.Context, s ai.DecisionSession) (ai.DecisionResult, error) {
+				if s.Profile.Model != "deep" {
+					t.Fatal("wrong session model")
+				}
+				return ai.DecisionResult{Accepted: true}, nil
+			}), nil
+		}}
+		claimed := time.Now()
+		worker.runJob(context.Background(), job{RequestID: "request", ProfileID: "cli", CapabilityToken: "scoped", ModelIdentifier: model, ReasoningEffort: "low", CreatedAt: claimed.Add(-time.Second), ClaimedAt: &claimed})
+		if (model == "deep") != invoked {
+			t.Fatal("unexpected execution", model, invoked)
+		}
+		if model == "deep" && reportPath != "/internal/agent/usage" || model == "removed" && reportPath != "/internal/agent/fail" {
+			t.Fatal(reportPath)
+		}
+	}
+}

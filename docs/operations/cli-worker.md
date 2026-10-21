@@ -169,3 +169,27 @@ older than the new release only prints a notice; run `apply` to upgrade it.
   registered binary automatically, but a release that passes its health check
   stays installed until a later release replaces it.
 - Provider subscription logins, which are still interactive inside the worker account.
+
+## Model selection rollout
+
+The gateway requires `selectionVersion: 1` in agent claims. Deploy a compatible
+worker binary **before** the new gateway: new workers can claim from an old gateway,
+while old workers fail with HTTP 409 against the new gateway before leasing jobs.
+Drain existing work during the normal worker upgrade. This change does not itself
+deploy or restart the production VM.
+
+Keep `modelOptions` and each model's `reasoningEfforts` synchronized across
+`backend/config.yaml`, the application ConfigMap, and the VM's `config.yaml`.
+The checked-in Codex choices are `gpt-5.6-luna` and `gpt-6.1-sol`; Claude choices
+are `sonnet` and `opus`, with low/medium/high efforts. Options are operator-approved
+capabilities, not account-access guarantees; validate provider/account access before
+advertising changes. The default model and default effort remain unchanged.
+Antigravity and API profiles retain their configured model and no effort selector.
+
+The existing `sync-worker-config` operation changes only default models and
+concurrency; it does **not** install `modelOptions`. Apply the updated VM config
+through the reviewed CLI bootstrap/configuration workflow as part of rollout,
+and validate it with `agent -check-config`. A catalog/worker mismatch fails visibly
+as `model_selection_unavailable`. Verify a battle for each advertised model/effort
+and confirm selection, accepted plan and timing in history before enabling users.
+Use full provider model IDs when version reproducibility matters; aliases can move.

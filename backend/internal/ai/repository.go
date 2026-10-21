@@ -20,6 +20,7 @@ var (
 const DecisionReadyChannel = "battlefield_decision_ready"
 
 type CreateDecisionParams struct {
+	ReasoningEffort   string `json:"reasoningEffort,omitempty" yaml:"reasoningEffort,omitempty"`
 	ID                string
 	BattleID          string
 	Attempt           int

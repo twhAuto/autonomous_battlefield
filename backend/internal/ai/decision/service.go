@@ -36,6 +36,13 @@ func (s *Service) GetContext(ctx context.Context, requestID string) (ai.Decision
 	if err != nil {
 		return ai.DecisionContext{}, err
 	}
+	if recorder, ok := s.repository.(interface {
+		RecordDecisionContextServed(context.Context, string) error
+	}); ok {
+		if err := recorder.RecordDecisionContextServed(ctx, requestID); err != nil {
+			return ai.DecisionContext{}, err
+		}
+	}
 	return record.Observation, nil
 }
 

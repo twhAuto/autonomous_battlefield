@@ -243,6 +243,35 @@
           "query": "$trace_id"
         }
       ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Decision latency by model and effort",
+      "description": "Total wait ends at accepted plan or fallback, before CLI shutdown. Claim timings refer to the latest lease. Missing historical measurements are omitted.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "battlefield-tempo"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 47
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "battlefield-tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ name = \"battlefield.decision.resolved\" && span.\"battlefield.battle_id\" = \"$battle_id\" } | select(span.\"battlefield.model\", span.\"battlefield.reasoning_effort\", span.\"battlefield.decision_status\", span.\"battlefield.total_wait_ms\", span.\"battlefield.queue_wait_ms\", span.\"battlefield.claim_to_context_ms\", span.\"battlefield.claim_to_resolution_ms\")",
+          "limit": 100,
+          "tableType": "traces"
+        }
+      ]
     }
   ]
 }

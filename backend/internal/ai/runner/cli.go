@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"os"
 	"os/exec"
@@ -29,6 +30,8 @@ const disableFlag = "--disable"
 type CommandExecutor interface {
 	Run(context.Context, string, []string, []string, string) ([]byte, error)
 }
+type processTimingKey struct{}
+type processTiming struct{ StartMS *int64 }
 type OSCommandExecutor struct{}
 
 func (OSCommandExecutor) Run(ctx context.Context, name string, args, environment []string, directory string) ([]byte, error) {
@@ -44,19 +47,39 @@ func (OSCommandExecutor) Run(ctx context.Context, name string, args, environment
 		// with that document, even when they have no trailing newline.
 		command.Stderr = io.Discard
 	}
-	err := command.Run()
+	started := time.Now()
+	err := command.Start()
+	if err == nil {
+		elapsed := time.Since(started).Milliseconds()
+		trace.SpanFromContext(ctx).SetAttributes(attribute.Int64("battlefield.cli_process_start_ms", elapsed))
+		if timing, ok := ctx.Value(processTimingKey{}).(*processTiming); ok {
+			timing.StartMS = &elapsed
+		}
+		err = command.Wait()
+	}
 	return output.Bytes(), err
 }
 
 type CLIRunner struct {
-	Provider  string
-	Model     string
-	Executor  CommandExecutor
-	Connector MCPConnector
+	ReasoningEffort string
+	Provider        string
+	Model           string
+	Executor        CommandExecutor
+	Connector       MCPConnector
 }
 
 func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result ai.DecisionResult, runErr error) {
 	ctx, span := generationSpan(ctx, session, "cli_session")
+	timing := &processTiming{}
+	ctx = context.WithValue(ctx, processTimingKey{}, timing)
+	defer func() {
+		if timing.StartMS != nil {
+			if result.ProviderData == nil {
+				result.ProviderData = map[string]any{}
+			}
+			result.ProviderData["cliProcessStartMs"] = *timing.StartMS
+		}
+	}()
 	defer func() { finishGeneration(span, result.Usage, runErr != nil || !result.Accepted) }()
 	temporary, err := os.MkdirTemp("", "battlefield-agent-")
 	if err != nil {
@@ -83,12 +106,18 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 			"-c", `mcp_servers.battlefield.enabled_tools=["` + strings.Join(prompts.SessionToolNames(session), `","`) + `"]`,
 			"-c", `mcp_servers.battlefield.default_tools_approval_mode="approve"`, prompt}
 		args = withModel(args, r.Model)
+		if r.ReasoningEffort != "" {
+			args = append([]string{"-c", `model_reasoning_effort="` + r.ReasoningEffort + `"`}, args...)
+		}
 		environment = replaceEnvironment(cliisolation.CodexEnvironment(), "CODEX_WORKSPACE", workspace)
 		environment = replaceEnvironment(environment, "BATTLEFIELD_MCP_AUTHORIZATION", "Bearer "+session.CapabilityToken)
 	case cliisolation.ProviderClaude:
 		args, err = claudeArguments(temporary, prompt, r.Model, session)
 		if err != nil {
 			return ai.DecisionResult{ErrorCategory: "cli_isolation"}, err
+		}
+		if r.ReasoningEffort != "" {
+			args = append([]string{"--effort", r.ReasoningEffort}, args...)
 		}
 		environment = cliisolation.ClaudeEnvironment()
 	case cliisolation.ProviderAntigravity:

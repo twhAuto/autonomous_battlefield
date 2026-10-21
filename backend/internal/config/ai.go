@@ -140,6 +140,9 @@ func validateProfileRoles(profile ai.ModelProfile) error {
 }
 
 func validateAIProfile(profile ai.ModelProfile, production bool) error {
+	if err := ai.ValidateModelOptions(profile); err != nil {
+		return err
+	}
 	if err := validateProfileRoles(profile); err != nil {
 		return err
 	}

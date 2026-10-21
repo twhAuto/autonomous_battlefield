@@ -24,11 +24,12 @@ import (
 const invalidRequestMessage = "invalid request"
 
 type agentClaimRequest struct {
-	JobTypes     []string `json:"jobTypes"`
-	WorkerID     string   `json:"workerId"`
-	LeaseSeconds int      `json:"leaseSeconds"`
-	WaitSeconds  int      `json:"waitSeconds"`
-	ProfileIDs   []string `json:"profileIds"`
+	SelectionVersion int      `json:"selectionVersion"`
+	JobTypes         []string `json:"jobTypes"`
+	WorkerID         string   `json:"workerId"`
+	LeaseSeconds     int      `json:"leaseSeconds"`
+	WaitSeconds      int      `json:"waitSeconds"`
+	ProfileIDs       []string `json:"profileIds"`
 }
 
 type agentFailureRequest struct {
@@ -144,8 +145,9 @@ func (s *Server) writeDecisionClaim(w http.ResponseWriter, r *http.Request, work
 	s.logDecisionClaim(r.Context(), workerID, record)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"capabilityToken": token, "executionDeadline": record.LeaseExpiresAt,
-		"requestId": record.ID, "profileId": record.ProfileID, "doctrine": record.Observation.Doctrine, "factionName": record.Observation.FactionName, "background": record.Observation.Background,
+		"requestId": record.ID, "profileId": record.ProfileID, "modelIdentifier": record.ModelIdentifier, "reasoningEffort": record.ReasoningEffort, "doctrine": record.Observation.Doctrine, "factionName": record.Observation.FactionName, "background": record.Observation.Background,
 		"traceparent": record.Traceparent, "tracestate": record.Tracestate,
+		"createdAt": record.CreatedAt, "claimedAt": record.ClaimedAt,
 		"battleId": record.BattleID, "factionId": record.FactionID, "attempt": record.Attempt, "targetTick": record.TargetTick,
 	})
 }
@@ -165,6 +167,10 @@ func decodeAgentClaimRequest(w http.ResponseWriter, r *http.Request) (agentClaim
 		}
 	}
 	request.LeaseSeconds = max(1, min(300, request.LeaseSeconds))
+	if request.SelectionVersion != 1 {
+		http.Error(w, "worker upgrade required: model selection protocol 1", http.StatusConflict)
+		return request, false
+	}
 	request.ProfileIDs = normalizedProfileIDs(request.ProfileIDs)
 	if len(request.ProfileIDs) == 0 {
 		http.Error(w, invalidRequestMessage, http.StatusBadRequest)

@@ -34,6 +34,8 @@ export function CreateBattlePage() {
   const [secondFactionID, setSecondFactionID] = useState('')
   const [firstController, setFirstController] = useState('scripted')
   const [secondController, setSecondController] = useState('scripted')
+  const [firstSelection, setFirstSelection] = useState<ModelSelection>({})
+  const [secondSelection, setSecondSelection] = useState<ModelSelection>({})
   const [tickCount, setTickCount] = useState<number | ''>(500)
   const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'error'>('idle')
   const [submitMessage, setSubmitMessage] = useState('')
@@ -118,8 +120,8 @@ export function CreateBattlePage() {
         id: battleID,
         scenarioId: scenarioID,
         participants: [
-          { factionId: firstFactionID, controller: controllerInput(firstController) },
-          { factionId: secondFactionID, controller: controllerInput(secondController) },
+          { factionId: firstFactionID, controller: controllerInput(firstController, firstSelection) },
+          { factionId: secondFactionID, controller: controllerInput(secondController, secondSelection) },
         ],
         tickCount: Number(tickCount),
       })
@@ -217,7 +219,7 @@ export function CreateBattlePage() {
                     {factions.map((faction) => <option key={faction.id} value={faction.id} disabled={faction.id === secondFactionID}>{faction.name}</option>)}
                   </select>
                   <label htmlFor="first-controller">Controller</label>
-                  <ControllerSelect id="first-controller" value={firstController} onChange={setFirstController} profiles={profiles} />
+                  <ControllerSelect id="first-controller" value={firstController} onChange={value => { setFirstController(value); setFirstSelection({}) }} profiles={profiles} selection={firstSelection} onSelect={setFirstSelection} />
                 </div>
                 <span className="versus-mark" aria-hidden="true">VS</span>
                 <div className="battle-form__field">
@@ -226,7 +228,7 @@ export function CreateBattlePage() {
                     {factions.map((faction) => <option key={faction.id} value={faction.id} disabled={faction.id === firstFactionID}>{faction.name}</option>)}
                   </select>
                   <label htmlFor="second-controller">Controller</label>
-                  <ControllerSelect id="second-controller" value={secondController} onChange={setSecondController} profiles={profiles} />
+                  <ControllerSelect id="second-controller" value={secondController} onChange={value => { setSecondController(value); setSecondSelection({}) }} profiles={profiles} selection={secondSelection} onSelect={setSecondSelection} />
                 </div>
               </div>
               {firstFactionID === secondFactionID && <p className="field-error" role="alert">Choose two different factions.</p>}
@@ -270,13 +272,17 @@ export function CreateBattlePage() {
   )
 }
 
-function controllerInput(value: string): { type: 'scripted' } | { type: 'model'; profileId: string } {
-  return value === 'scripted' ? { type: 'scripted' } : { type: 'model', profileId: value }
+type ModelSelection = { modelIdentifier?: string; reasoningEffort?: string }
+function controllerInput(value: string, selection: ModelSelection) {
+  return value === 'scripted' ? { type: 'scripted' as const } : { type: 'model' as const, profileId: value, ...selection }
 }
 
-function ControllerSelect({ id, value, onChange, profiles }: Readonly<{ id: string; value: string; onChange: (value: string) => void; profiles: ModelProfile[] }>) {
+function ControllerSelect({ id, value, onChange, profiles, selection, onSelect }: Readonly<{ id: string; value: string; onChange: (value: string) => void; profiles: ModelProfile[]; selection: ModelSelection; onSelect: (value: ModelSelection) => void }>) {
   const { inspect } = usePermissions()
   const selected = profiles.find(profile => profile.id === value)
+  const model = selection.modelIdentifier || selected?.modelLabel || ''
+  const options = selected?.modelOptions ?? []
+  const efforts = options.find(option => option.id === model)?.reasoningEfforts ?? []
   return (
     <><select id={id} value={value} aria-describedby={`${id}-details`} onChange={(event) => onChange(event.target.value)}>
       <option value="scripted">Scripted · deterministic</option>
@@ -286,7 +292,20 @@ function ControllerSelect({ id, value, onChange, profiles }: Readonly<{ id: stri
           {profile.displayName}{!profile.available ? ' · unavailable' : ''}
         </option>
       )})}
-    </select><p id={`${id}-details`} className="field-hint">{controllerDetails(value, selected, inspect)}</p></>
+    </select><p id={`${id}-details`} className="field-hint">{controllerDetails(value, selected, inspect)}</p>
+    {selected && <>
+      <label htmlFor={`${id}-model`}>Model</label>
+      <select id={`${id}-model`} value={model} onChange={event => onSelect({ modelIdentifier: event.target.value })} disabled={!selected.available}>
+        {!options.some(option => option.id === selected.modelLabel) && <option value={selected.modelLabel}>{selected.modelLabel || 'Configured model'}</option>}
+        {options.map(option => <option key={option.id} value={option.id}>{option.id}</option>)}
+      </select>
+      <label htmlFor={`${id}-effort`}>Reasoning effort</label>
+      <select id={`${id}-effort`} value={selection.reasoningEffort || ''} disabled={!selected.available || efforts.length === 0} onChange={event => onSelect({ modelIdentifier: model, reasoningEffort: event.target.value })}>
+        <option value="">{efforts.length ? 'Model default' : 'Not configurable'}</option>
+        {efforts.map(effort => <option key={effort} value={effort}>{effort[0].toUpperCase() + effort.slice(1)}</option>)}
+      </select>
+      {efforts.length > 0 && <p className="field-hint">Lower effort favors faster decisions. Higher effort allows more deliberation.</p>}
+    </>}</>
   )
 }
 

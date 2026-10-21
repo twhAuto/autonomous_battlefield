@@ -28,7 +28,7 @@ func TestAgentControlPlaneAuthorizationAndEmptyQueue(t *testing.T) {
 	if unauthorized.Code != http.StatusUnauthorized {
 		t.Fatal(unauthorized.Code)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{"workerId":"agent","leaseSeconds":1,"profileIds":["profile"]}`))
+	request := httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{"selectionVersion":1,"workerId":"agent","leaseSeconds":1,"profileIds":["profile"]}`))
 	request.Header.Set("Authorization", "Bearer worker-secret")
 	empty := httptest.NewRecorder()
 	handler.ServeHTTP(empty, request)
@@ -54,7 +54,7 @@ func TestAgentControlPlane(t *testing.T) {
 	repository := &fakeRepository{record: ai.DecisionRecord{ID: "request", ProfileID: "profile", Status: "accepted"}}
 	var logs bytes.Buffer
 	handler := NewWithLogger(repository, "secret", nil, slog.New(slog.NewJSONHandler(&logs, nil))).WithAgentSecret("worker-secret").AgentHandler(repository)
-	claim := httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{"workerId":"agent","leaseSeconds":5,"profileIds":["profile","profile","  "]}`))
+	claim := httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{"selectionVersion":1,"workerId":"agent","leaseSeconds":5,"profileIds":["profile","profile","  "]}`))
 	claim.Header.Set("Authorization", "Bearer worker-secret")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, claim)
@@ -97,7 +97,7 @@ func TestAgentClaimLongPollWakesWhenDecisionArrives(t *testing.T) {
 		return ai.DecisionRecord{ID: "request", ProfileID: profiles[0]}, nil
 	}}
 	service := New(repository, "secret", nil)
-	request := httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{"workerId":"host-agent","leaseSeconds":5,"waitSeconds":2,"profileIds":["codex-subscription-local"]}`))
+	request := httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{"selectionVersion":1,"workerId":"host-agent","leaseSeconds":5,"waitSeconds":2,"profileIds":["codex-subscription-local"]}`))
 	request.Header.Set("Authorization", "Bearer worker-secret")
 	response := httptest.NewRecorder()
 	done := make(chan struct{})
@@ -127,7 +127,7 @@ func TestAgentClaimLongPollWakesWhenDecisionArrives(t *testing.T) {
 func TestAgentClaimLongPollTimesOut(t *testing.T) {
 	repository := &fakeRepository{claimErr: ai.ErrNoDecision}
 	handler := New(repository, "secret", nil).WithAgentSecret("worker-secret").AgentHandler(repository)
-	request := httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{"workerId":"agent","leaseSeconds":5,"waitSeconds":1,"profileIds":["profile"]}`))
+	request := httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{"selectionVersion":1,"workerId":"agent","leaseSeconds":5,"waitSeconds":1,"profileIds":["profile"]}`))
 	request.Header.Set("Authorization", "Bearer worker-secret")
 	response := httptest.NewRecorder()
 	started := time.Now()
@@ -217,8 +217,8 @@ func TestAgentClaimRejectsUnknownJobTypesAndBlankProfiles(t *testing.T) {
 	repository := &fakeRepository{}
 	handler := New(repository, "secret", nil).WithAgentSecret("worker-secret").AgentHandler(repository)
 	for _, body := range []string{
-		`{"workerId":"agent","profileIds":["profile"],"jobTypes":["shell"]}`,
-		`{"workerId":"agent","profileIds":["  ",""]}`,
+		`{"selectionVersion":1,"workerId":"agent","profileIds":["profile"],"jobTypes":["shell"]}`,
+		`{"selectionVersion":1,"workerId":"agent","profileIds":["  ",""]}`,
 	} {
 		if response := serveAgent(handler, agentRequest(http.MethodPost, "/claim", body)); response.Code != http.StatusBadRequest {
 			t.Fatalf("%s: status=%d", body, response.Code)
@@ -230,7 +230,7 @@ func TestAgentClaimRejectsUnknownJobTypesAndBlankProfiles(t *testing.T) {
 }
 
 func TestAgentDispatchSurfacesRepositoryFailures(t *testing.T) {
-	claim := `{"workerId":"agent","profileIds":["profile"]}`
+	claim := `{"selectionVersion":1,"workerId":"agent","profileIds":["profile"]}`
 	for name, tc := range map[string]struct {
 		repository *fakeRepository
 		path, body string
@@ -271,7 +271,7 @@ func TestAgentFailureLogTruncatesRunnerOutcome(t *testing.T) {
 
 func TestMixedClaimFallsBackToBattleLongPoll(t *testing.T) {
 	drafts := &generationRepo{job: generation.Job{ID: "draft", ProfileID: "writer"}}
-	body := `{"workerId":"w","profileIds":["battle-profile"],"jobTypes":["battle_decision","faction_background"],"waitSeconds":1}`
+	body := `{"selectionVersion":1,"workerId":"w","profileIds":["battle-profile"],"jobTypes":["battle_decision","faction_background"],"waitSeconds":1}`
 	var calls atomic.Int32
 	found := &fakeRepository{claimFn: func([]string) (ai.DecisionRecord, error) {
 		if calls.Add(1) == 1 {
@@ -294,7 +294,7 @@ func TestMixedClaimFallsBackToBattleLongPoll(t *testing.T) {
 		t.Fatalf("failed battle poll after empty draft queue: %d", response.Code)
 	}
 	empty := &fakeRepository{claimErr: ai.ErrNoDecision}
-	short := `{"workerId":"w","profileIds":["battle-profile"],"jobTypes":["battle_decision","faction_background"]}`
+	short := `{"selectionVersion":1,"workerId":"w","profileIds":["battle-profile"],"jobTypes":["battle_decision","faction_background"]}`
 	if response := serveAgent(service.AgentHandler(empty), agentRequest(http.MethodPost, "/claim", short)); response.Code != http.StatusNoContent {
 		t.Fatalf("empty mixed claim without wait: %d", response.Code)
 	}
@@ -304,7 +304,7 @@ func TestAgentClaimLongPollEndsWhenWorkerDisconnects(t *testing.T) {
 	repository := &fakeRepository{claimErr: ai.ErrNoDecision}
 	handler := New(repository, "secret", nil).WithAgentSecret("worker-secret").AgentHandler(repository)
 	ctx, cancel := context.WithCancel(context.Background())
-	request := agentRequest(http.MethodPost, "/claim", `{"workerId":"agent","profileIds":["profile"],"waitSeconds":20}`).WithContext(ctx)
+	request := agentRequest(http.MethodPost, "/claim", `{"selectionVersion":1,"workerId":"agent","profileIds":["profile"],"waitSeconds":20}`).WithContext(ctx)
 	time.AfterFunc(50*time.Millisecond, cancel)
 	started := time.Now()
 	if response := serveAgent(handler, request); response.Code != http.StatusNoContent || time.Since(started) > 5*time.Second {
@@ -316,7 +316,7 @@ func TestGenerationDispatchFailures(t *testing.T) {
 	broken := &generationRepo{job: generation.Job{ID: "draft", ProfileID: "writer"}, fail: errors.New("database down")}
 	battles := &fakeRepository{claimErr: ai.ErrNoDecision}
 	service := New(battles, "secret", nil).WithGenerations(broken).WithAgentSecret("worker-secret")
-	claim := `{"workerId":"w","profileIds":["writer"],"jobTypes":["faction_background"]}`
+	claim := `{"selectionVersion":1,"workerId":"w","profileIds":["writer"],"jobTypes":["faction_background"]}`
 	if response := serveAgent(service.AgentHandler(battles), agentRequest(http.MethodPost, "/claim", claim)); response.Code != http.StatusInternalServerError {
 		t.Fatalf("generation claim failure=%d", response.Code)
 	}
@@ -329,5 +329,13 @@ func TestGenerationDispatchFailures(t *testing.T) {
 	}
 	if response := serveAgent(withoutGenerations.AgentHandler(battles), agentRequest(http.MethodPost, "/claim", claim)); response.Code != http.StatusNoContent {
 		t.Fatalf("generation-only claim without generation support=%d", response.Code)
+	}
+}
+
+func TestOldWorkerCannotSilentlyIgnoreModelSelection(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/claim", strings.NewReader(`{"workerId":"old-worker","profileIds":["cli"],"leaseSeconds":120}`))
+	response := httptest.NewRecorder()
+	if _, ok := decodeAgentClaimRequest(response, req); ok || response.Code != http.StatusConflict {
+		t.Fatalf("old worker accepted: %d", response.Code)
 	}
 }
