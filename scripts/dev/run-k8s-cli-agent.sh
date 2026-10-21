@@ -29,6 +29,25 @@ validate_agent_concurrency() {
   fi
 }
 validate_agent_concurrency
+# Tested CLI release families. Keep the defaults identical to backend/config.yaml and
+# the deployed profiles; an override changes only this host agent and is untested.
+resolve_version_prefixes() {
+  codex_version_prefix="${HOST_CODEX_VERSION_PREFIX:-codex-cli 0.155.}"
+  claude_version_prefix="${HOST_CLAUDE_VERSION_PREFIX:-2.1.267 }"
+  antigravity_version_prefix="${HOST_ANTIGRAVITY_VERSION_PREFIX:-1.2.}"
+  # The prefix is written into a double-quoted YAML string, so keep it to plain text.
+  local allowed='^[A-Za-z0-9. _-]+$'
+  local name
+  for name in HOST_CODEX_VERSION_PREFIX HOST_CLAUDE_VERSION_PREFIX HOST_ANTIGRAVITY_VERSION_PREFIX; do
+    [[ -n "${!name:-}" ]] || continue
+    if [[ ! "${!name}" =~ ${allowed} ]]; then
+      echo "${name} may contain only letters, digits, spaces, '.', '_' and '-'." >&2
+      exit 2
+    fi
+    echo "Warning: ${name}='${!name}' accepts CLI versions outside the tested release family." >&2
+  done
+}
+resolve_version_prefixes
 runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-host-agent.XXXXXX")"
 port_forward_pid=""
 agent_pid=""
@@ -94,19 +113,19 @@ require_command() {
 
 codex_available() {
   command -v codex >/dev/null 2>&1 \
-    && [[ "$(codex --version 2>/dev/null || true)" == codex-cli\ 0.155.* ]] \
+    && [[ "$(codex --version 2>/dev/null || true)" == "${codex_version_prefix}"* ]] \
     && [[ -s "${HOME}/.codex/auth.json" ]]
 }
 
 antigravity_available() {
   command -v agy >/dev/null 2>&1 \
-    && [[ "$(agy --version 2>/dev/null || true)" == 1.2.* ]] \
+    && [[ "$(agy --version 2>/dev/null || true)" == "${antigravity_version_prefix}"* ]] \
     && "${runtime_dir}/agent" -check-antigravity-auth >/dev/null 2>&1
 }
 
 claude_available() {
   command -v claude >/dev/null 2>&1 \
-    && [[ "$(claude --version 2>/dev/null || true)" == '2.1.267 '* ]] \
+    && [[ "$(claude --version 2>/dev/null || true)" == "${claude_version_prefix}"* ]] \
     && "${runtime_dir}/agent" -check-claude-auth >/dev/null 2>&1
 }
 
@@ -119,21 +138,21 @@ select_profiles() {
       ;;
     codex)
       if ! codex_available; then
-        echo "Codex CLI 0.155.x with an existing 'codex login' is required." >&2
+        echo "Codex CLI matching '${codex_version_prefix}' with an existing 'codex login' is required." >&2
         exit 1
       fi
       use_codex=1
       ;;
     antigravity|gemini)
       if ! antigravity_available; then
-        echo "Antigravity CLI 1.2.x with a working saved login is required. Run agy to sign in." >&2
+        echo "Antigravity CLI matching '${antigravity_version_prefix}' with a working saved login is required. Run agy to sign in." >&2
         exit 1
       fi
       use_gemini=1
       ;;
     claude)
       if ! claude_available; then
-        echo "Claude Code 2.1.267 with a saved subscription login is required. Run claude auth login." >&2
+        echo "Claude Code matching '${claude_version_prefix}' with a saved subscription login is required. Run claude auth login." >&2
         exit 1
       fi
       use_claude=1
@@ -183,7 +202,7 @@ write_agent_config() {
       printf '      runtime: cli\n'
       printf '      model: gpt-5.6-luna\n'
       printf '      scope: local\n'
-      printf '      supportedVersionPrefix: codex-cli 0.155.\n'
+      printf '      supportedVersionPrefix: "%s"\n' "${codex_version_prefix}"
       printf '      maxSteps: 3\n'
       printf '      enabled: true\n'
     fi
@@ -194,7 +213,7 @@ write_agent_config() {
       printf '      runtime: cli\n'
       printf '      model: sonnet\n'
       printf '      scope: local\n'
-      printf '      supportedVersionPrefix: "2.1.267 "\n'
+      printf '      supportedVersionPrefix: "%s"\n' "${claude_version_prefix}"
       printf '      maxSteps: 3\n'
       printf '      enabled: true\n'
     fi
@@ -205,7 +224,7 @@ write_agent_config() {
       printf '      runtime: cli\n'
       printf '      model: gemini-3.8-flash-medium\n'
       printf '      scope: local\n'
-      printf '      supportedVersionPrefix: 1.2.\n'
+      printf '      supportedVersionPrefix: "%s"\n' "${antigravity_version_prefix}"
       printf '      maxSteps: 3\n'
       printf '      enabled: true\n'
     fi

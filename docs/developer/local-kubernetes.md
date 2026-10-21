@@ -98,6 +98,18 @@ PATH="$HOME/.local/bin:$PATH" BATTLEFIELD_LIVE_CODEX=1 go test ./internal/ai/mcp
 Antigravity and Claude use `BATTLEFIELD_LIVE_AGY` and `BATTLEFIELD_LIVE_CLAUDE`
 with `TestAntigravityLiveDecision` and `TestClaudeLiveDecision`.
 
+To try a newer CLI locally before its pin is raised, override that CLI's prefix
+with `HOST_CODEX_VERSION_PREFIX`, `HOST_CLAUDE_VERSION_PREFIX` or
+`HOST_ANTIGRAVITY_VERSION_PREFIX`. The override applies to both the helper's
+check and the generated host profile, and the helper prints a warning while one
+is set. Prefixes may contain only letters, digits, spaces, `.`, `_` and `-`. The
+override does not change the deployed pins or the agent VM, and the version it
+admits has not passed the live decision test:
+
+```bash
+HOST_CODEX_VERSION_PREFIX='codex-cli 0.16' HOST_CLAUDE_VERSION_PREFIX='2.1.' ./scripts/dev/run-k8s-cli-agent.sh auto
+```
+
 The host agent runs `HOST_AGENT_CONCURRENCY` decision slots (default `2`, range
 1–4) shared across the enabled CLIs, so both factions of a model-vs-model battle
 decide at the same time. Use `4` for two concurrent battles, or `1` to reduce
