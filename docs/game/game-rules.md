@@ -1,9 +1,8 @@
-# Game rules (v1)
+# Game rules
 
 | Field | Value |
 | --- | --- |
 | Status | Current: describes implemented engine behavior |
-| Last reviewed | 2026-09-29 |
 | Audience | Contributors and AI agents who need the rules in one place |
 | Source of truth | `backend/internal/game` (engine); this page summarizes it |
 
@@ -37,11 +36,16 @@ A battle is created with a requested tick count (at most the scenario's
 ## Resources and upgrades
 
 - **Gold** is the only resource. Income is collected every tick from the castle
-  and each living economy building.
+  and each living economy building, and unspent gold carries forward.
 - **Loot:** destroying an enemy unit or building awards 50% of its cost to the
   attacker's faction.
 - **Upgrades** cost 20 gold each and are owned once: Arsenal (+2 attack), Plating
-  (+2 defense), Industry (+2 economy-building income).
+  (+2 defense), Industry (+2 economy-building income). A plan's upgrade orders run
+  in order at the `upgrades` step of its `spendOrder`; an upgrade already owned is
+  skipped at no cost, and the first one that would take gold below `reserveGold`
+  stops upgrade buying for that window. Attack and defense bonuses apply at once to
+  living units and to future recruits (Herbalists gain no attack); the income bonus
+  applies to existing and future economy buildings from the next collection.
 
 ## Units and buildings
 
@@ -82,14 +86,16 @@ never the opponent's gold, upgrades or production totals:
   timeout (`decisionTimeout`, 2 minutes in `backend/config.yaml`). Invalid plans
   are rejected with validation errors; the model may correct them within its
   submission limit.
-- If no valid plan arrives in time, the engine applies a **fallback**: the
-  deterministic round-robin purchase at the opening, the scenario's scripted
+- If no valid plan arrives in time, the engine applies a **fallback**: at the
+  opening, a round-robin through the non-healing units in ID order, buying one of
+  each affordable type until six are bought or none is affordable; the scenario's scripted
   baseline at the first regular window, and the faction's previous plan after that.
 
 A plan sets tactical `actionWeights` (attack vs. defend), spending (recruitment,
 construction, and upgrade orders, `spendOrder`, `reserveGold`), and optional
-`targetBonuses`. Plans cannot be applied outside a window. The plan contract is in
-[the API reference](../architecture/api.md) and the MCP tool schema.
+`targetBonuses`. Plans cannot be applied outside a window. The plan fields are the
+`StrategyPlan` schema in the [OpenAPI contract](../architecture/openapi.yaml); models
+submit them through the MCP tool schema.
 
 ## Tick order
 
@@ -109,7 +115,13 @@ Each tick transition runs these steps in order (`AdvanceWithPlans` in
    until the next. Each unit either treats (Herbalist), retreats (units with a
    minimum range, i.e. Catapults, when an enemy is adjacent and an escape route
    exists), fires at its aimed hex, attacks a target in range, or moves toward
-   its objective.
+   its objective. For most units that is a hex within attack range of the enemy
+   castle; when occupied hexes block every castle approach, the unit heads for a
+   reachable attack position around a living enemy unit or building instead, so a
+   crowded castle perimeter cannot freeze both armies. Siege units head for
+   structures in priority order and Herbalists follow allied soldiers (see
+   [Frontier Siege](frontier-siege.md#unit-roster)). Routes never cross occupied
+   or impassable hexes.
 8. **Completion check** (see Winning).
 
 ## Combat
@@ -134,11 +146,11 @@ removed, and the attacker's faction collects loot.
 
 Separately from the rules, operators can stop a battle, and unfinished battles
 expire (fail with `battle_timeout`) one hour after creation. See the
-[API reference](../architecture/api.md) for battle status and controls.
+[API reference](../architecture/api.md#status-and-controls) for battle status and controls.
 
-## Explicitly deferred
+## Not supported
 
-These are not part of v1. Adding any of them changes the rules above:
+These are not supported. Adding any of them changes the rules above:
 
 - more than two factions (creation, spawns, movement, and winner rules assume two);
 - direct player commands, formations, or unit control during a battle;

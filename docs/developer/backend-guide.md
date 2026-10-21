@@ -4,8 +4,8 @@
 
 Read by task: [packages](#package-guide) · [shared types](#important-shared-data-types) ·
 [persistence](#database-migrations-and-adapters) · [configuration](#configuration-and-authored-content) ·
-[access and containment](#limited-access-deployment-and-agent-containment) ·
-[content](#shared-content-catalog) · [integration tests](#end-to-end-api-integration-test)
+[feature map](#feature-map) · [history query plans](#battle-history-query-plans) ·
+[integration tests](#end-to-end-api-integration-test)
 
 ## Backend organization
 
@@ -123,10 +123,9 @@ See [cache behavior](../architecture/system-architecture.md#completed-battle-res
 
 ### `internal/battle/api`: battle HTTP delivery
 
-[`handler.go`](../../backend/internal/battle/api/handler.go) registers and implements:
-
-Battle, scenario, and profile routes are documented in the
-[HTTP API reference](../architecture/api.md). This handler owns JSON decoding,
+[`handler.go`](../../backend/internal/battle/api/handler.go) registers the battle,
+scenario, and profile routes documented in the
+[HTTP API reference](../architecture/api.md). It owns JSON decoding,
 cursor/attempt parsing, HTTP status mapping, and response encoding for those routes.
 [`errors.go`](../../backend/internal/battle/api/errors.go) holds the shared service-error
 mapping (`writeError`): forbidden is 403, allowance 429, invalid 400, not found 404, and not
@@ -270,7 +269,7 @@ isolation and saved-login probing for the Codex, Claude, and Antigravity CLIs be
 profile discovery and execution. All three inherit only login and transport
 variables; Antigravity additionally gets a private home holding only its permission
 configuration, MCP server, and copied login token. `cmd/agent -check-antigravity-auth` supports the
-host launcher's preflight. See [CLI runtime](../architecture/system-architecture.md#cli-runtime)
+host launcher's preflight. See [CLI runtime](../architecture/ai-decisions.md#cli-runtime)
 for context delivery and accepted-plan enforcement.
 
 ### `internal/ai/providers`: external API adapters
@@ -489,253 +488,32 @@ they repeat the fixed name. The deployed ConfigMap keeps them because older roll
 targets require them. Remove them from the ConfigMap, then from `fileConfig`, once no
 rollback target predates the change.
 
-## Agent context compaction
+## Feature map
 
-`agentview/faction_groups.go` groups observed units/buildings with faction statistics
-after metadata deduplication, and conditionally shares effective building stats.
-Its reconstruction tests verify ownership, missing faction statistics, distinct
-effective profiles, stable full IDs and individual observations. The inspector
-renders grouped JSON through its existing reconstructed-context section.
+Where to start for each cross-cutting feature. The linked page owns its behavior.
 
-`agentview/context_duplicates.go` removes equal plan/metadata copies from the current
-projection. `agentview/session_context.go` removes identity text only when the exact
-value is supplied in the prompt's faction identity block. API tool delivery and Gemini prefetch
-apply this helper; MCP's canonical response stays self-contained. Tests cover
-historical differences, faction scope, source immutability and both runner paths.
+| Feature | Backend | Frontend | Key tests | Behavior owner |
+| --- | --- | --- | --- | --- |
+| Agent context projection | `ai/agentview`: `agent_context.go`, `battlefield_context.go` (v4 view), `faction_groups.go`, `context_duplicates.go`, `session_context.go` | `features/battles/components/DecisionContextPanel.tsx` | `agentview` tests, including `TestBattlefieldContextExternalFixture` (below) | [Compact battlefield view](../architecture/ai-decisions.md#compact-battlefield-view) |
+| AI observability | `observability/tracing/ai.go`, `ai/runner/observability.go`, `ai/runner/codex_usage.go`, `ai/mcpserver/tool_logging.go`, `context_telemetry.go` | `AIDecisionPanel` trace links and usage | `context_transport_test.go`; `scripts/test/test-cli-agent.py` | [Langfuse operations](../operations/langfuse.md) |
+| Access and roles | `authn/cloudflare.go`, `audience.go`, `diagnostics.go`, `authorization.go`, `preview.go` | `features/auth/SessionContext.tsx`, `RolePreviewContext.ts` | `config/access_test.go`, `battle/api/player_test.go`, [`test/integration`](#end-to-end-api-integration-test) | [Security boundaries](../architecture/system-architecture.md#8-security-and-trust-boundaries) |
+| Admission and AI limits | Triggers in migrations `00011`, `00014`, `00016`; `ai/agent/policy.go`, `credentials_linux.go`; `ai/runner/process_linux.go` | — | `migrations/battle_admission_integration_test.go`, `generation/repo/cli_capacity_integration_test.go` | [Database](../architecture/database.md#admission-triggers) |
+| Managed Players | `internal/members`, `config/members.go` | `features/admin/pages/MembersPage.tsx` | `internal/members` integration tests | [Player invitations](../operations/player-invitations.md) |
+| Content catalog | `battle/catalog/library.go`, `restrictions.go`; `ai/decision/validate.go` | `ExpansionMap.test.tsx` | `game/expansion_test.go`; catalog `expansion_test.go`, `balance_test.go` | [Content libraries](content-library.md), [Frontier Siege](../game/frontier-siege.md) |
+| Doctrine and opening purchases | `faction/service/update.go`; `game/opening.go`, `upgrades.go` | `/factions/new`, `/factions/:id/edit` editor | `game` opening and upgrade tests | [Game rules](../game/game-rules.md) |
+| Background generation | [`internal/generation`](#internalgeneration-faction-background-generation); `ai/agent/generation.go`; `ai/mcpserver/generation.go` | `features/factions/components/BackgroundGenerator.tsx`, `api/backgrounds.ts` | generation repository and MCP transport tests | [HTTP API](../architecture/api.md#faction-background-generation) |
+| Battle history | `history.go` in `battle/api`, `battle/service`, `battle/repo` | `features/battles/pages/BattleHistoryPage.tsx` | `battle/repo/history_integration_test.go` | [HTTP API](../architecture/api.md#browse-battle-history) |
 
-`backend/internal/ai/agentview/battlefield_context.go` implements the v4 agent view:
-effective-stat profiles and inclusive visibility row ranges, with independent
-size checks to retain inline fields when smaller. Its tests reconstruct observed
-units and visibility, check version compatibility and measure opening/small/large
-views. To measure a local JSON context without adding private data to fixtures,
-run `BATTLEFIELD_CONTEXT_FIXTURE=/path/to/context.json go test ./internal/ai/agentview -run TestBattlefieldContextExternalFixture -v`
-from `backend`.
+`members` logs unexpected failures as `player_members_request_failed` with a fixed
+`reason` and any SQLSTATE, never the raw error (which can name database hosts and
+users), and answers 503. Faction limits are declared in `internal/faction/faction.go`
+and mirrored in frontend `features/factions/limits.ts`; change both together.
 
-Worker capacity is configured by `ai.agentConcurrency` in
-`backend/internal/config/ai.go` and passed by `backend/cmd/agent/main.go`.
-Migration `backend/migrations/00014_cli_concurrency.sql` sets the shared CLI lease
-capacity; `backend/internal/generation/repo/cli_capacity_integration_test.go` verifies
-concurrent admission across battle and generation jobs.
+To measure a private JSON context without adding it to fixtures, run from `backend`:
+`BATTLEFIELD_CONTEXT_FIXTURE=/path/to/context.json go test ./internal/ai/agentview -run TestBattlefieldContextExternalFixture -v`.
 
-## Langfuse integration
+## Battle history query plans
 
-- `backend/internal/observability/tracing/ai.go` provides decision correlation, explicit AI
-  sampling and safe trace URLs alongside the existing infrastructure tracing.
-- `backend/internal/ai/runner/observability.go` emits generation observations;
-  `codex_usage.go` parses terminal JSONL usage without retaining model reasoning.
-  `runner/claude.go` constructs the restricted Claude invocation and parses its
-  terminal result and cache-aware usage. `cliisolation/claude.go` filters environment
-  variables and checks the native subscription login without model inference.
-  Their tests cover tool restrictions, credential handling, cleanup, multiline JSON
-  with separated stderr diagnostics, and failures;
-  `mcpserver/claude_live_test.go` is an opt-in synthetic MCP submission test.
-  `scripts/test/test-cli-agent.py` checks launcher profile selection, generated
-  configuration, availability flags, forwarding diagnostics and health-probe
-  failure handling as part of the deployment regression gate.
-  Provider adapters preserve cache/reasoning subsets and usage on refusals.
-- `backend/internal/ai/mcpserver/tool_logging.go` records server tool spans;
-  `context_telemetry.go` measures serialized initial-context sections in bytes.
-  Tool metrics distinguish serialized transport, text, and structured-content
-  bytes. `context_transport_test.go` checks single-copy JSON delivery, legacy
-  context fields, repeat-read compatibility, and reduced transport size.
-- Decision history exposes optional trace links and additive usage metadata;
-  `AIDecisionPanel` distinguishes API totals, CLI aggregates and legacy counters.
-- `infra/deploy/langfuse/values.yaml` pins the self-hosted Helm configuration;
-  `collector-config.yaml` adds the filtered export pipeline. Run
-  `scripts/cd/deploy-langfuse.sh` using the registered environment and follow
-  [Langfuse operations](../operations/langfuse.md) to enable future deploys.
-
-`scripts/lib/ensure-helm.py` supplies the Langfuse installer with an existing
-Helm binary or a temporary checksum-pinned Linux amd64 download.
-
-`infra/deploy/langfuse/values.yaml` also supplies explicit pod/container security contexts
-for Langfuse, SeaweedFS and PostgreSQL, preserving the namespace security policy.
-
-`infra/deploy/overlays/local/gateway/langfuse-route.yaml` exposes the UI through the
-shared gateway. `battlefield_env_langfuse_enabled` in the environment helper detects
-the installed project for collector configuration and host CLI forwarding.
-
-## Limited-access deployment and agent containment
-
-`internal/authn/cloudflare.go` owns Access verification/key refresh;
-`internal/authn/audience.go` decodes string and string-array JWT audiences, with
-signed human/service session regression tests in `audience_test.go`;
-`internal/authn/diagnostics.go` classifies failures and exposes a context observer
-consumed by `internal/httpapi/request_logging.go` for safe request-correlated diagnostics;
-`authorization.go` owns role capabilities, ownership checks, mutation origin checks
-and explicit route assignments. Add new public routes to that registry deliberately.
-`config/access_test.go` covers production misconfiguration and the CLI verification
-gate. `battle/api/player_test.go` checks projections after shared cache reads.
-Faction/battle service tests cover every role for own, other and legacy content.
-
-Migration `00011_friends_access.sql` owns row ownership, atomic admission triggers,
-AI execution counts, the original CLI lease, runtime stop policy and private usage view.
-Migration `00014_cli_concurrency.sql` expands that lease admission to four shared slots.
-`backend/migrations/battle_admission_integration_test.go` tests the battle admission
-triggers against PostgreSQL: per-player and global caps across connections, paused
-battles still counting, the daily allowance and its UTC reset, and admin-exempt battles.
-`generation/repo/cli_capacity_integration_test.go` tests how generation claims hold and
-release the shared CLI slots alongside battle decisions, the per-battle execution budget
-and the AI kill switch. The AI gateway's agent control plane requires the operator switch
-(`mcpserver.AgentRepository.AgentEnabled`) and checks it before an agent claims work.
-Workers receive capabilities from the AI gateway instead of signing them. `worker/policy.go`
-cancels execution on the private stop switch; `credentials_linux.go` blocks procfs/
-ptrace reads of the worker's credentials; `runner/process_linux.go` kills CLI process
-groups. Local credentials remain available only to the appropriate CLI login.
-
-`features/auth/SessionContext.tsx` exposes UI permissions from the session. The App
-handles Access reauthentication/logout; Player battle pages do not mount inspection
-panels or request decision history. Faction editing and battle controls reflect
-ownership, with backend enforcement independent of the UI.
-
-`scripts/ops/render-limited-launch.py` produces private auth configuration and a
-Tunnel deployment with origin-side Access validation and application ingress policies.
-`infra/deploy/agent-vm/` contains the libvirt network/filter, proxy and worker configuration;
-its `host/` templates include the dedicated firewall, Caddy proxy, loopback AI gateway
-forward and Squid service override. `scripts/ops/render-agent-vm-host.py` renders
-a credential-free bundle into a new directory without changing live services.
-`scripts/test/test-agent-vm-host.py` checks rendering, input rejection and private
-listener/Host-rewrite invariants through the deployment gate.
-[Worker verification and recovery](../operations/agent-vm.md) explains pinned
-release inputs, provider login and end-to-end verification.
-`scripts/infra/cli-vm.py` owns reviewed VM creation/adoption; `server.sh cli-*`
-owns host and guest service bootstrap. See [CLI VM platform](../operations/cli-vm-platform.md)
-and [CLI bootstrap](../operations/cli-bootstrap.md).
-`verify-agent-isolation.py` tests its guest boundary. `ai-policy.sh` is the private
-operator stop/status/usage interface. `verify-access-service.py` checks the restricted CI service identity during production smoke. It retries a connection failure up to three times, 5 s apart, because the tunnel can briefly hold connections to replaced pods after a rollout; an unexpected HTTP status fails immediately.
-`scripts/test/test-limited-launch.py` verifies
-rendered routing and isolation artifacts without modifying infrastructure.
-See [limited-access launch](../operations/limited-launch.md) for setup and live verification.
-
-Authentication configuration parsing separates mode selection, Cloudflare identity
-assignments and local session settings. Signing-key decoding is separate from
-JWKS fetching and refresh caching. Regression tests cover malformed signing keys,
-profile eligibility and the default-deny browser/route boundaries.
-
-`scripts/ops/prepare-limited-production.sh` checks production cluster identity before invoking its Python helper to validate and prepare private launch files. Offline regression checks live in `scripts/test/test-production-preparation.py`.
-
-Production k6 smoke-load credential binding is described in the
-[launch runbook](../operations/limited-launch.md).
-
-## Managed Player membership
-
-`backend/internal/members` contains the PostgreSQL membership/audit store, bounded
-Cloudflare group client, background reconciler and Admin-only HTTP routes. Its
-settings are parsed by `config.LoadAPI` (`internal/config/members.go`), which requires
-the already validated Cloudflare auth mode; `members.NewStore` checks every configured
-Player email before startup, and `Store.Start` imports them and runs the reconciler
-until the server stops. Unexpected failures are logged as
-`player_members_request_failed` with a fixed `reason` and any SQLSTATE, never the raw
-error, which can name database hosts and users, and are answered with 503. Its
-integration tests use isolated schemas through `TEST_DATABASE_URL` and exercise
-replica contention, concurrent removal/reinvitation, one-time import, promotion/
-offboarding and recovery.
-Migration 00013 persists membership versions, removed records and synchronization
-backoff. API startup initializes the store before readiness and cancels its worker
-before closing the pool. The authentication package accepts a Player resolver only
-after verifying the Access JWT; privileged and CI identities keep their existing path.
-
-`frontend/src/features/admin/pages/MembersPage.tsx` provides email invitations,
-removal, retry and a copyable game link with five-second status polling. App routing
-exposes it only to Admins with the session members capability, outside preview; the backend permission registry independently
-enforces every endpoint. Feature API and component tests cover the full flow.
-The shared application environment parser extracts a separate members Secret consumed
-only by API pods. See [Player invitations](../operations/player-invitations.md).
-
-## Shared content catalog
-
-- `backend/gamedata/content/core-v1.yaml` preserves the starter roster. `core-v2.yaml`
-  adds siege/support units and defensive/production structures; rulesets reference
-  a versioned library instead of duplicating stats.
-- `backend/gamedata/scenarios/frontier-siege-v2.yaml` supplies the expanded 25×17 authored
-  map and mixed scripted plans, selected through `castle-siege-v2`.
-- `backend/internal/ai/decision/validate.go` validates typed construction and recruitment
-  sources against frozen legal choices. The worker exposes structure definitions
-  and source IDs through the MCP context.
-- `backend/internal/game/expansion_test.go` covers expansion mechanics;
-  catalog `expansion_test.go` and `balance_test.go` cover actual content, replay,
-  and mirrored equal-budget probes. Frontend `ExpansionMap.test.tsx` covers the
-  larger map, new structures, treatment indicators, and decision history.
-- `backend/internal/battle/catalog/library.go` resolves and validates library
-  references; `restrictions.go` narrows scenario choices and validates authored plans.
-- Faction creation/editing uses name, doctrine and optional background, with editable strategy templates.
-  Scenario summaries carry allowed IDs for purchase validation; profiles are generic.
-
-Library-backed and inline rulesets both resolve to the existing immutable game
-snapshot. See [content libraries](../developer/content-library.md) for authoring.
-
-The faction API exchanges `{ id, name, doctrine, background? }`; edit requests use PUT.
-Battle setup selects generic profiles without blueprint compatibility filtering.
-
-## Doctrine profile implementation
-
-- `backend/internal/faction/service/update.go` and the faction handler/repository
-  implement validated name/doctrine/background updates. Creation and listing expose only profile fields.
-- `backend/internal/game/opening.go` handles the tick-zero phase and deterministic
-  fallback; `upgrades.go` executes one-time gold purchases and propagates bonuses.
-- `backend/internal/ai/prompts/*.txt` and doctrine-aware API/CLI runners define
-  the new context/tool contract. Decision records retain doctrine in observation provenance.
-- `backend/migrations/00008_faction_doctrine.sql` backfills balanced doctrine,
-  preserves legacy columns, and permits decision records at tick zero.
-- Faction routes `/factions/new` and `/factions/:id/edit` share the doctrine editor.
-  The decision panel displays opening plans and requested upgrades.
-
-## Faction backgrounds and generation
-
-- `backend/internal/generation/types.go`, `api/handler.go` and `repo/postgres.go` define normalized
-  draft input, configuration, authenticated endpoints, PostgreSQL admission,
-  account quotas, idempotency, durable claims, expiry and result validation.
-- `backend/migrations/00009_faction_background.sql` adds an empty-default
-  background, generation jobs/account locks, active/queue/quota indexes, and
-  narrowly scoped AI gateway role grants. Existing profiles, blueprints and battle snapshots
-  are preserved; `backend/migrations/faction_background_integration_test.go` migrates a
-  private schema to version 8, seeds a legacy faction and battle, and checks both after
-  the upgrade. `internal/postgres/migrations.go` serializes migration runners
-  with a PostgreSQL advisory session lock, including concurrent fresh schemas.
-- Faction API/service/repository and battle catalog/worker copy background with
-  name/doctrine; `prompts.SessionDecision` embeds that identity through
-  `identity.txt`, which frames doctrine as strategic preferences below core rules. Observation
-  hashing includes owning identity. Prompt history lives in Git; filenames identify purpose without version suffixes.
-- `backend/internal/ai/mcpserver/generation.go` provides draft-only tools and
-  namespaced capabilities; `internal/ai/agent/generation.go` executes and reports
-  background jobs without battle data, using the configured writer profile.
-- `frontend/src/features/factions/components/BackgroundGenerator.tsx` handles
-  allowance discovery, admission, polling, editable preview and use/discard.
-  `api/backgrounds.ts` defines its HTTP contracts. Creation and editing share
-  the background textarea, Unicode counter and generator; the directory shows
-  saved backgrounds.
-- Generation PostgreSQL tests exercise concurrent admission, quota days,
-  cooldown, expiry accounting, account isolation and migration preservation. MCP
-  tests run both API and CLI stubs through the real generation tool transport;
-  frontend tests cover preview state and unsaved text. Identity tests cover prompt
-  escaping, delivery, hashing and opposing-profile isolation. Deterministic battle
-  evaluations carry profile identity in their context and session.
-
-## Battle history implementation and verification
-
-The battle API, service, and repository each contain a `history.go` adapter:
-HTTP query parsing and error mapping; summary types and cursor validation;
-and a compact PostgreSQL projection. `Service.ListBattles` accepts
-`BattleHistoryInput`, while `Repository.ListBattles` accepts a validated
-`BattleHistoryQuery`. `BattleSummary` and `BattleHistoryPage` have matching
-frontend types in the battle API client.
-
-The history page owns abortable list requests and URL-based navigation. Its
-tests cover outcomes, loading/errors, refresh, filter changes, stale requests,
-and returns from detail pages. App tests cover exact navigation matching and
-expired sessions. Repository integration tests cover paused semantics, tied
-timestamps, new insertions between pages, snapshot identities, and migration
-upgrade/rollback using isolated fixtures.
-
-Run the Go coverage gate with disposable PostgreSQL integration coverage:
-
-```bash
-./scripts/test/with-test-postgres.sh ./scripts/test/test-go-coverage.sh
-(cd frontend && npm test -- --coverage)
-(cd frontend && npm run build)
-```
-
-### Pagination query plans
 
 pgx caches prepared statements, and after five executions PostgreSQL may reuse a
 **generic plan** that cannot see parameter values. The history cursor is therefore
@@ -776,15 +554,6 @@ at a larger history show it matters. `battle_events_cursor_idx` duplicated the
 `battle_events` primary key `(battle_id, attempt, sequence)` (9.8 MB each at 120k
 events); migration `00015_drop_duplicate_event_index.sql` removes it, and the event
 queries use `battle_events_pkey` with the same buffers and timings.
-
-Battle creation maps HTTP 429 to an allowance explanation: queued, running, and
-paused battles count toward active limits. The message directs players to battle
-history or to retry later for daily limits; the API does not distinguish the
-exhausted limit in its response.
-
-`internal/battle/repo/expiry.go` owns the atomic expiry update; the battle worker
-schedules the sweep. See [battle expiry](../architecture/system-architecture.md#battle-expiry)
-for the runtime contract.
 
 ## End-to-end API integration test
 

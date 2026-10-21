@@ -1,14 +1,15 @@
 # Self-hosted AI observability
 
-Langfuse receives AI observations through the existing OpenTelemetry Collector.
-Tempo retains the infrastructure trace pipeline. The Langfuse pipeline exports
+Langfuse is an optional, development-only add-on: it runs on Kind, and the K3s
+production delivery profile rejects it. It receives AI observations through the
+existing OpenTelemetry Collector, and Tempo keeps the infrastructure trace pipeline. The Langfuse pipeline exports
 only spans with `langfuse.observation.type`; prompts, observations, tool payloads,
 capabilities, CLI diagnostics, and private reasoning are not exported.
 
 ## Install and enable
 
-Deploy the updated backend, AI gateway, agent, frontend and collector manifests
-first. Then, from the repository root on the registered deployment machine:
+With the application and observability stack already deployed, run from the
+repository root on the registered deployment machine:
 
 ```bash
 DEPLOY_ENV=dev ./scripts/cd/deploy-langfuse.sh
@@ -18,7 +19,8 @@ The script requires kubectl, Python 3, Kubernetes 1.28+, and a default
 StorageClass. It uses installed Helm when available. On Linux amd64, missing
 Helm is automatically downloaded from get.helm.sh at version 3.19.0, checked
 against a pinned SHA-256 digest, and removed with the temporary workspace on exit.
-This requires no sudo or system installation. On other platforms, install Helm first. It uses the existing environment identity preflight. It installs
+This requires no sudo or system installation. On other platforms, install Helm
+first. It uses the existing environment identity preflight. It installs
 cert-manager 1.20.2 and ClickHouse operator 0.0.5 only when their CRDs are absent,
 then the official Langfuse chart 2.1.0 / application 4.24.0. Existing operators
 remain managed by their current owner. An existing operator must support both
@@ -94,8 +96,8 @@ the API. The default login callback URL and decision trace links both use
   (CLI), or system/message/tool-schema bytes (API); hidden CLI scaffolding is
   outside those byte measurements.
 
-For tools v7, `get_decision_context` returns one JSON text block instead of text
-plus a duplicate structured result. `battlefield.tool.response_bytes` measures
+`get_decision_context` returns one JSON text block, without a duplicate
+structured result. `battlefield.tool.response_bytes` measures
 the serialized MCP result (including escaping); `battlefield.tool.text_bytes`
 measures readable text and `battlefield.tool.structured_bytes` measures the
 structured result, or zero when absent. These are byte measurements, not token
@@ -106,17 +108,15 @@ runner embeds its JSON into the initial prompt to avoid large-tool file
 offloading. A read span alone therefore does not establish a model-issued call
 or duplicate model input. API runners likewise select one readable result.
 The prompt instructs agents to reuse a successful snapshot; this does not impose
-a new hard call limit or prevent retries after delivery failures. Deploy the AI gateway
-service and rebuild/restart API and host CLI agents to pick up the new transport
-and embedded prompt; existing traces remain unchanged.
+a new hard call limit or prevent retries after delivery failures.
 
 Thus a Gemini CLI decision reporting 30k input tokens may include repeated
 context across its internal model calls. It is not evidence of a 30k initial
 prompt. Compare complete reported input totals, lookup counts, duration, accepted
 submissions and fallback rates when measuring compact-context savings. Langfuse
 model pricing estimates are not subscription billing statements. Existing eval
-reports remain the source of decision-quality comparisons; this change does not
-introduce LLM judges or claim measured token savings.
+reports remain the source of decision-quality comparisons; Langfuse adds no LLM
+judges and does not measure token savings.
 
 ## Verify and troubleshoot
 
@@ -142,10 +142,14 @@ asynchronously with bounded queues. Collector failure does not prevent strategy
 submission, but queue overflow or shutdown can lose telemetry. No sampling or
 export mechanism can reconstruct usage missing from a CLI response.
 
-To stop Langfuse export, set `LANGFUSE_ENABLED=0` in the registered profile
-and redeploy observability. Keep the Helm release, Secrets and volumes for
-historical inspection. Disable the trace links by removing the
-`battlefield-langfuse-links` ConfigMap and restarting the API if desired.
+Deployment enables export whenever the `battlefield-langfuse-links` ConfigMap exists. To stop
+export, delete that ConfigMap (which also removes inspector trace links), restart
+the API, and redeploy observability, for example with
+`DEPLOY_COMPONENTS=observability ./scripts/cd/deploy-local.sh`.
+`LANGFUSE_ENABLED` is not a profile setting: the deployment profile rejects it.
+Setting `LANGFUSE_ENABLED=0` in a deployment command's environment disables export
+for that run only. Keep the Helm release, Secrets and volumes for historical
+inspection.
 
 ## Validation commands
 

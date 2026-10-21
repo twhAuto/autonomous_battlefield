@@ -7,6 +7,23 @@ capacity, route health and credential availability require fresh verification.
 Notion holds task status and the
 [original host inventory and decision evidence](https://app.notion.com/p/3eeb7a19f8f7811db7cac1a298399aa4).
 
+## Registered facts
+
+Other runbooks use placeholders for this deployment's identities. These are the
+current registered values; the private inventory and Jenkins configuration remain
+authoritative, so check them before an operation.
+
+| Fact | Current value | Where it is set |
+| --- | --- | --- |
+| Host LAN address (`<host>`) | `192.168.1.126`, kept by a router reservation | Private `server/inventory.json` |
+| Registered operator (`<operator>`): host account, Jenkins agent user and owner of the production profile | `twh09` | Private `server/inventory.json` |
+| Jenkins administrator and platform-job approver | `whtan` | `submitter` in `infra/jenkins/Jenkinsfile.{platform,vm,k3s,cli}`; default `--user` / `--jenkins-user` / `--ci-admin` of `seed-platform.py`, `setup-platform.py` and `server.sh` |
+| Jenkins controller | `http://192.168.1.126:8080` (reach it through an SSH tunnel) | Native Jenkins service |
+| Host data partition (`<data-uuid>`) | ext4 UUID `75db9b1d-5c46-4e5b-bd94-5391b2a35411`, mounted at `/srv/battlefield-data` | Private inventory `data_uuid` / `data_mount` |
+
+Technical identifiers such as the `ghcr.io/twh09/...` image namespace and the Go
+module path are part of the code, not registration facts.
+
 ## Selected layout and capacity
 
 Preserve the existing layout: Ubuntu hosts native Jenkins, its operator build

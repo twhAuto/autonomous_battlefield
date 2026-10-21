@@ -1,29 +1,13 @@
 # Observability architecture
 
-Autonomous Battlefield exposes Prometheus metrics from the API and engine and
-ships local metrics, tracing, and logging stacks for the `kind` deployment. Prometheus
-and Grafana provide metrics; Fluent Bit, Elasticsearch, and Kibana provide
-centralized logs. The dashboard and objectives in this guide are internal
-operating targets. They are not a customer-facing service-level agreement.
-
-HTTP completion logs include `actor_id` and `actor_role` established by trusted
-authentication middleware, alongside method, resource path, status and request ID.
-The request ID is echoed in `X-Request-ID`. A caller-supplied value is kept only when it
-matches `[A-Za-z0-9._:-]{1,128}`, so it is safe to echo and log; otherwise the server
-generates one.
-An authentication observer carries identity to the outer request logger; rejected
-credentials leave identity empty. Tokens, cookies and email headers are not logged.
-Error text passes through `observability/redact` before it reaches a log or a span.
-A pgx connection error (database user, database name, host) becomes "failed to connect
-to the database", keeping any SQLSTATE; a connection string pgx cannot parse becomes
-"invalid database connection string", since pgx quotes it with only best-effort
-password masking; and network errors lose their address and
-hostname, in every branch of a wrapped or joined error; other error text is kept for
-debugging. A typed-nil error logs as `<nil>`. The logging handler redacts every
-error-valued attribute under any key, so call sites keep logging `"error", err`. Spans
-record errors through `tracing.RecordError` (also used by `tracing.EndSpan`), and
-`backend/test/conventions` fails the build if code calls `span.RecordError` directly.
-These operational logs provide request attribution, not a tamper-proof audit store.
+OrdinalFrontier exposes Prometheus metrics from the API and engine and ships one
+metrics, tracing, and logging stack. Prometheus and Grafana provide metrics;
+Fluent Bit, Elasticsearch, and Kibana provide centralized logs; the OpenTelemetry
+Collector and Tempo provide traces. Development Kind and production K3s deploy the
+same manifests (`infra/deploy/overlays/local/observability`, which the K3s overlay
+reuses); [environments](#environments) lists the differences. The dashboard and
+objectives in this guide are internal operating targets. They are not a
+customer-facing service-level agreement.
 
 ## Signal path
 
@@ -47,21 +31,39 @@ it does not receive the broader `nodes/proxy` permission. Grafana receives no
 Kubernetes credentials. It uses internal Prometheus and Tempo Services as
 its metrics and trace data sources.
 
-The local stack deliberately does not include Alertmanager. Prometheus evaluates
-the checked-in alert rules and shows their state, but notifications require an
-Alertmanager or another production alert-delivery integration.
+Grafana provisions three dashboards: **Autonomous Battlefield Overview**,
+**Kubernetes Workloads** and **Battle Traces**.
 
-Fluent Bit runs once per node and tails API, engine, agent, AI gateway, frontend, and migration
-container logs from the `battlefield` namespace. It enriches each record with
-pod, container, and label metadata and sends daily
-`battlefield-app-YYYY.MM.DD` indices to Elasticsearch. JSON application logs
-are merged into searchable fields; plain-text frontend logs retain their `log`
-field. Keeping infrastructure logs out of the application index also prevents
-field-mapping collisions with their different schemas. The collector runs in
-the dedicated `battlefield-logging` namespace so its required read-only node
-log mounts do not weaken the application namespace's Pod Security policy. Its
-Role can read pods in the `battlefield` namespace only, and its own logs are
-outside the configured input path.
+The stack deliberately does not include Alertmanager in either environment.
+Prometheus evaluates the checked-in alert rules and shows their state, but
+notifications require an Alertmanager or another alert-delivery integration.
+
+## Environments
+
+| Aspect | Development (Kind) | Production (K3s) |
+| --- | --- | --- |
+| Prometheus, Grafana, Tempo data | `emptyDir`; lost when a pod is replaced (Prometheus keeps up to 30 days while its pod lives) | Same |
+| Elasticsearch indices and Kibana saved objects | 10 Gi `standard` PVC | 20 Gi PVC on the retained `battlefield-retained` storage class |
+| Kubelet scrape TLS | Skips verification (node-local certificate) | Verified with the exported kubelet CA |
+| Access | `grafana.localhost` / `kibana.localhost` through the loopback Kind gateway | `grafana.home.arpa` / `kibana.home.arpa` through the host's private HTTPS aliases; never through the public tunnel |
+
+Grafana serves an anonymous read-only Viewer, and Elasticsearch and Kibana run
+without authentication. In production this is an accepted risk for a private,
+single-operator cluster: anyone who can reach the private aliases on the host
+network can read dashboards and logs, and can change Kibana saved objects. Logs
+exclude credentials, tokens and full observations (see
+[structured logs](#structured-logs)). Revisit this before granting anyone else
+network access to the host, or before using a shared cluster. Retained storage is
+not a backup; see [observability operations](../operations/observability.md#storage-and-access-by-environment).
+
+Fluent Bit runs once per node and tails API, engine, agent, AI gateway, frontend
+and migration container logs from the `battlefield` namespace. It adds pod,
+container and label metadata and writes daily `battlefield-app-YYYY.MM.DD`
+indices. JSON application logs become searchable fields; plain-text frontend logs
+keep their `log` field. Infrastructure logs stay out of this index. The collector
+runs in its own `battlefield-logging` namespace, so its read-only node log mounts
+do not weaken the application namespace's Pod Security policy; its Role reads pods
+in `battlefield` only.
 
 ## Distributed traces
 
@@ -97,8 +99,20 @@ See [`internal/observability/tracing/tracing.go`](../../backend/internal/observa
 for environment configuration and instrumentation, and the
 [collector configuration](../../infra/deploy/overlays/local/observability/otel-collector/config.yaml)
 for the in-cluster path. Prompts, credentials, capabilities, full observations,
-and raw provider responses are excluded from span attributes. Tempo storage is
-also disposable; it is not an audit archive.
+and raw provider responses are excluded from span attributes. Tempo keeps traces
+for 24 hours on disposable storage; it is not an audit archive.
+
+## AI observations in Langfuse
+
+Langfuse is optional. When it is installed, the collector forwards only AI
+observations (decision roots, model calls and MCP tool spans) to a self-hosted
+Langfuse release; Tempo keeps everything else. Only the collector holds the
+ingestion credentials, and the API reads an optional public URL and project for
+inspector links. Export is asynchronous and never takes part in decision
+acceptance or timeouts. Decision trace IDs are derived from the request ID, so the
+AI gateway's tool spans join the right trace even when a CLI does not propagate
+trace headers. [Langfuse operations](../operations/langfuse.md) owns installation,
+sampling, privacy, storage and token accounting.
 
 ## Application metrics
 
@@ -126,10 +140,9 @@ The Prometheus Go client also publishes standard `go_*`, `process_*`, and
 Method labels keep the nine standard HTTP methods and record any other method a
 client sends as `other`. Battle IDs, faction IDs, request
 IDs, pod names, and worker IDs are intentionally absent from application metric
-labels to avoid unbounded time-series cardinality. Pod identity is added only
-as the `scrape_pod` target label by Prometheus. That name deliberately avoids
-colliding with kube-state-metrics' `pod` label, which identifies the workload
-being described rather than the exporter pod.
+labels to avoid unbounded time-series cardinality. Prometheus adds pod identity
+only as the `scrape_pod` target label, which stays distinct from kube-state-metrics'
+`pod` label for the workload being described.
 
 ## Kubernetes workload metrics
 
@@ -140,63 +153,16 @@ The Kubernetes dashboard combines two complementary metric sources:
 | `kube-state-metrics` | What Kubernetes says should exist and whether workload objects are healthy | `kube_pod_status_phase`, `kube_pod_container_status_ready`, `kube_pod_container_status_restarts_total`, `kube_deployment_status_replicas_available` |
 | kubelet cAdvisor endpoint | What CPU, memory, and network resources containers are actually consuming | `container_cpu_usage_seconds_total`, `container_memory_working_set_bytes`, `container_network_receive_bytes_total`, `container_network_transmit_bytes_total` |
 
-The local kube-state-metrics deployment watches only the `battlefield`
-namespace and only the workload resource types listed in its manifest. It does
-not read Secrets or cluster-wide application objects. Prometheus scrapes
-cAdvisor directly from each local kubelet over HTTPS with service-account
-authentication, so no privileged cAdvisor DaemonSet or host mounts are
-required. The Kind-only scrape skips serving-certificate verification because
-the kubelet certificate is node-local rather than signed by the API CA mounted
-in the Prometheus pod; this exception must not be carried into an external
-cluster without a trusted kubelet CA.
+kube-state-metrics watches only the `battlefield` namespace and the workload types
+in its manifest; it does not read Secrets. cAdvisor is scraped directly from each
+kubelet as described in the [signal path](#signal-path), so no privileged
+DaemonSet or host mounts are needed. Kubelet certificate handling differs by
+environment; see [production kubelet TLS](../operations/observability.md#production-kubelet-tls).
 
 Workload telemetry explains pod health and resource use; it does not directly
-measure whether a user request succeeded.
-
-## Engine capacity and recovery limits
-
-Each engine worker processes one battle synchronously before claiming another;
-the application manifest defaults to one engine replica. Additional admitted
-battles queue. The default admission limit is four unfinished battles globally,
-and queued time counts toward the one-hour battle expiry. Queue delay therefore
-depends on battle duration, decision waits, pauses and available engine replicas;
-admission does not guarantee that a battle finishes before expiry.
-
-Crash recovery has two gates: the previous lease must expire (30 seconds by
-default), and an available worker must make its next claim. Claims select eligible
-battles by creation time and ID. An engine already processing another battle
-does not interrupt it to reclaim an orphan, so recovery can take longer than the
-lease duration.
-
-Every claim starts a new attempt at tick 0 from the frozen initial state. It does
-not resume the last persisted tick. Earlier attempt events remain inspectable,
-and matching resolved decisions can be reused as described in
-[battle retries](system-architecture.md#battle-retries).
-
-Every claim consumes an attempt, including a claim after a successful graceful
-shutdown requeue. Requeueing preserves the attempt count. With
-`engine.maxAttempts: 3`, an interrupted third attempt is marked `failed` with
-`attempts_exhausted` on a subsequent claim pass instead of being claimed again.
-Repeated rolling restarts during a battle can therefore exhaust its retry budget.
-
-Database errors returned by the claim operation terminate the worker loop and
-cause the engine process to exit with an error; Kubernetes restarts the container.
-A database interruption that reaches this path can consequently trigger lease
-recovery and a fresh attempt. Restart timing and recovery are separate: a ready
-replacement still has to satisfy the claim gates above.
-
-The API and engines share PostgreSQL. Inspect database CPU and throttling, query
-latency and connection-pool pressure alongside API pod usage when assessing
-capacity. Adding API replicas does not remove shared database work; the limiting
-resource and sustainable request rate depend on the workload and resource limits.
-Use [reliability testing](../operations/reliability-testing.md) to measure them.
-
-These contracts come from the
-[worker loop](../../backend/internal/battle/worker/worker.go),
-[claim and requeue operations](../../backend/internal/battle/repo/queue.go),
-[expiry sweep](../../backend/internal/battle/repo/expiry.go) and
-[engine entry point](../../backend/cmd/engine/main.go). Historical queue timings
-and load measurements are kept separately from these runtime contracts.
+measure whether a user request succeeded. For engine queueing, claim timing and
+crash recovery, which shape the battle-processing metrics, see
+[engine capacity and recovery](system-architecture.md#engine-capacity-and-recovery).
 
 ## Proposed SLIs and SLOs
 
@@ -213,22 +179,16 @@ The availability objective has a request-based 0.1% error budget. It should not
 be translated directly into “minutes of downtime,” because requests are not
 uniformly distributed over time.
 
-An SLA should be added only when there is an external commitment. It needs an
-explicit service boundary, measurement source, calendar window, maintenance
-and dependency exclusions, reporting rules, and remedies. The internal SLOs
-above should be tested and adjusted before any such contract is made.
-
 ## Alerts
 
-Prometheus loads `alerts.yml` from the local observability overlay. It includes:
+Prometheus loads `alerts.yml` from the local observability overlay:
 
-- fast availability-budget burn over 5-minute and 1-hour windows at 14.4 times
-  the sustainable burn rate;
-- persistent availability-budget burn over 30-minute and 6-hour windows at six
-  times the sustainable burn rate;
-- an application metrics target down for five minutes; and
-- any failed, errored, or lease-lost battle processing outcome within 15
-  minutes.
+| Alert | Fires when | Severity |
+| --- | --- | --- |
+| `BattlefieldAPIAvailabilityBudgetBurnFast` | The 5xx ratio over both 5 minutes and 1 hour exceeds 14.4 times the budget, for 2 minutes | critical |
+| `BattlefieldAPIAvailabilityBudgetBurnSlow` | The 5xx ratio over both 30 minutes and 6 hours exceeds 6 times the budget, for 15 minutes | warning |
+| `BattlefieldMetricsTargetDown` | An application metrics target cannot be scraped for 5 minutes | warning |
+| `BattlefieldEngineProcessingFailure` | Any `failed`, `error` or `lease_lost` processing outcome in the last 15 minutes | warning |
 
 The multi-window availability alerts reduce noise from a brief bad sample while
 still detecting both acute and sustained failures. Their thresholds are based
@@ -251,15 +211,11 @@ for filtering and expanded inspection. For example:
 [engine] Waiting for faction decisions; battle: castle-42; attempt: 1; target tick: 130; pending factions: 2; elapsed (ms): 0; remaining (ms): 119999
 ```
 
-The engine emits the first progress update after a successful running tick,
-then at most once every 15 seconds as ticks finish. Updates contain the current
-and requested ticks plus elapsed wall time. A pending decision window emits an
-immediate waiting update and repeats at most every 15 seconds with the pending
-faction count and remaining timeout. Resolved windows produce no waiting
-message. Pauses and resumes retain their own lifecycle events; elapsed battle
-time includes pauses and decision waits. Completion includes ticks run, elapsed
-time, winner (when present), and reason. Full combat events remain in
-`battle_events`.
+The engine logs progress after the first running tick and then at most every 15
+seconds. A waiting decision window logs at once and then at most every 15 seconds
+with the pending faction count and remaining timeout. Elapsed time includes pauses
+and decision waits. Completion logs ticks run, elapsed time, winner and reason;
+full combat events stay in `battle_events`.
 
 `LOG_LEVEL` controls backend process logging (`DEBUG`, `INFO`, `WARN`, `ERROR`;
 case-insensitive). It defaults to INFO, including for invalid values. DEBUG adds
@@ -273,8 +229,7 @@ Startup logs without a span omit these fields. Sampling can mean
 a logged trace ID has no stored trace. HTTP logs include `duration_ms` while
 retaining the older `duration` field for compatibility.
 
-Automation should filter on `event`; the provisioned AI search also matches
-legacy records that used event identifiers in `msg`.
+Automation should filter on `event`.
 
 `decision_window_started` records the configured timeout,
 `decision_context_served` confirms observation retrieval,
@@ -283,15 +238,45 @@ legacy records that used event identifiers in `msg`.
 Operational logs intentionally exclude capability tokens, credentials, full
 observations, prompts, and CLI output.
 
+### Request attribution and redaction
+
+HTTP completion logs include `actor_id` and `actor_role` established by trusted
+authentication middleware, alongside method, resource path, status and request ID.
+An authentication observer carries identity to the outer request logger; rejected
+credentials leave identity empty. Tokens, cookies and email headers are not logged.
+These logs provide request attribution, not a tamper-proof audit store.
+
+The request ID is echoed in `X-Request-ID`. A caller-supplied value is kept only
+when it matches `[A-Za-z0-9._:-]{1,128}`, so it is safe to echo and log; otherwise
+the server generates one.
+
+Error text passes through `observability/redact` before it reaches a log or a span:
+
+- A pgx connection error (database user, database name, host) becomes "failed to
+  connect to the database", keeping any SQLSTATE.
+- A connection string pgx cannot parse becomes "invalid database connection
+  string", because pgx quotes it with only best-effort password masking.
+- Network errors lose their address and hostname.
+
+Redaction applies to every branch of a wrapped or joined error; other error text is
+kept for debugging, and a typed-nil error logs as `<nil>`. The logging handler
+redacts every error-valued attribute under any key, so call sites keep logging
+`"error", err`. Spans record errors through `tracing.RecordError` (also used by
+`tracing.EndSpan`), and `backend/test/conventions` fails the build if code calls
+`span.RecordError` directly.
+
 ## Health endpoints
 
-Process entry points wire the shared `httpapi.LifecycleHandler`, which owns all
-health probes. Application routing does not register a second set of probes.
-Engine readiness requires both a running worker and a successful database ping;
-worker shutdown or database failure makes readiness fail while liveness remains
-available. See the [codebase guide](../developer/backend-guide.md#process-health-ownership)
-for source ownership and lifecycle tests.
+The API and engine share one handler for startup, liveness, readiness and metrics
+(see [lifecycle probes](api.md#lifecycle-probes)). Engine readiness requires both a
+running worker and a successful database ping; worker shutdown or database failure
+makes readiness fail while liveness remains available.
 
+The agent and AI gateway serve their own `/healthz`. The agent also serves `/status`
+with its drain state (`draining`, `active`, `concurrency`), and the AI gateway's
+`/readyz` pings PostgreSQL for its readiness probe. See the
+[backend guide](../developer/backend-guide.md#process-health-ownership) for source
+ownership and lifecycle tests.
 
 For stack deployment, access, storage recovery and trusted kubelet certificates,
 see the [observability runbook](../operations/observability.md).

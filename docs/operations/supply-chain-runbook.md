@@ -2,7 +2,11 @@
 
 ## Artifact identity and retention
 
-The deployed unit is a full `repository@sha256:...` reference. Jenkins archives reports, SBOM copies, provenance summaries, AI manifests, deployment digests, and test evidence; it does not archive image tarballs. GHCR is the source of truth. Release subjects are permanent, while non-release main subjects remain for at least 90 days or the last 20 successful builds, whichever is greater.
+The deployed unit is a full `repository@sha256:...` reference. Jenkins archives
+reports, SBOM copies, provenance summaries, AI manifests, deployment digests, and
+test evidence; it does not archive image tarballs. GHCR is the source of truth.
+Release subjects are permanent, while non-release main subjects remain for at least
+90 days or the last 20 successful builds, whichever is greater.
 
 AI manifest generation requires the backend Go toolchain and module dependencies.
 `scripts/ci/generate-ai-manifest.sh` runs `go run ./cmd/aieval -mode metadata`
@@ -20,7 +24,10 @@ every file present, and v1 also included the checkout path, so compare digests o
 between manifests with the same schema version. Existing attestations remain
 attached to their original image subjects.
 
-Retention automation must begin in report-only mode. Before deletion it must subtract every digest referenced by a live environment, the recorded rollback pair, a release, an active incident, or a legal hold. Package deletion is not enabled by this repository.
+Retention automation must begin in report-only mode. Before deletion it must
+subtract every digest referenced by a live environment, the recorded rollback pair,
+a release, an active incident, or a legal hold. Package deletion is not enabled by
+this repository.
 Cosign v3 OCI referrers and the Kyverno-compatible legacy `.sig` and `.att`
 digest tags are evidence belonging to their subject; retention must preserve or
 remove them as one unit and must never orphan a deployable subject from either
@@ -78,13 +85,26 @@ image, when moving to a new tag, and at least monthly:
 
 1. Open a reviewed security ticket and record the old public-key fingerprint.
 2. Generate an encrypted Cosign key pair in an isolated administrative environment.
-3. Add the new private key and password as masked Jenkins credentials; keep the private key out of Git and agent workspaces.
-4. Commit and review the new public key, then update admission and verification jobs to trust both keys during the overlap.
+3. Add the new private key and password as masked Jenkins credentials; keep the
+   private key out of Git and agent workspaces.
+4. Commit and review the new public key, then update admission and verification
+   jobs to trust both keys during the overlap.
 5. Sign and verify a canary digest, including all three required attestations.
-6. Switch signing to the new key, retain old-key verification through the rollback-retention window, then remove it.
+6. Switch signing to the new key, retain old-key verification through the
+   rollback-retention window, then remove it.
 7. Record fingerprints, dates, evidence, and credential owners in the ticket.
 
-For suspected compromise, stop promotion, revoke Jenkins access, remove the key from admission trust, inventory every subject it signed, and restore only digests independently verified and re-signed by the incident key. Never delete evidence during the investigation.
+For suspected compromise, stop promotion, revoke Jenkins access, remove the key from
+admission trust, inventory every subject it signed, and restore only digests
+independently verified and re-signed by the incident key. Never delete evidence
+during the investigation.
+
+## Admission verification
+
+The Kyverno image-verification webhook allows 30 seconds per request to fetch
+registry signatures and attestations (`webhookConfiguration.timeoutSeconds`).
+Verification stays enforced with `failurePolicy: Fail`; the timeout never waives
+missing or invalid evidence.
 
 ## Rollback and cluster recreation
 
@@ -93,25 +113,38 @@ Application rollout or smoke-test failure can restore that verified pair with
 `scripts/cd/rollback.sh`; database migrations are not reversed. See
 [Jenkins production delivery](jenkins.md#production-delivery).
 
-A lost registered cluster requires explicit recovery. Follow
-[environment validation and recovery](environments.md#other-managed-credentials-and-validation)
-to restore the database and verify the replacement cluster before registration.
+A lost registered cluster requires explicit recovery. The
+[server rebuild contract](server-rebuild-contract.md#ownership-locking-and-recovery-objectives)
+defines what can be recovered. There is no separate lost-cluster restore runbook:
+register the replacement cluster and restore a verified database dump using the
+registration and dump/restore steps in
+[K3s delivery](k3s-delivery.md#move-production-to-a-new-cluster).
 Then authenticate to GHCR and deploy the verified stored digest pair. Restoring
 images does not restore PostgreSQL data; normal bootstrap refuses to recreate a
 missing registered cluster.
 
 ## Disaster-recovery exercises
 
-- Quarterly, in a disposable environment: restore database backups into a replacement
-  Kind cluster, register its verified identity, and restore the last known-good digest pair.
-- Quarterly: exercise MCP capability-secret rotation and authentication credential
+Nothing runs on a schedule, because production is often switched off. Run these
+exercises on demand, before relying on a recovery path and after changing
+delivery, migration or credential handling.
+
+- In a disposable environment, restore a database backup into a replacement
+  cluster, register its verified identity, and restore the last known-good digest
+  pair.
+- Exercise MCP capability-secret rotation and authentication credential
   rotation for the configured mode. Production uses the
-  [Access service-token rotation procedure](limited-launch.md#expiry-monitoring-and-rotation);
+  [Access service-token rotation procedure](access.md#expiry-and-rotation);
   password/session-signing secrets belong only to local-password development.
-- Quarterly: exercise engine lease reclaim, duplicate submission, PostgreSQL restart, AI gateway outage, provider timeout/429, failed migration, failed rollout, and rollback.
+- Exercise engine lease reclaim, duplicate submission, PostgreSQL restart, AI
+  gateway outage, provider timeout/429, failed migration, failed rollout, and
+  rollback.
 - Before an AWS production deployment: restore RDS from backup, disrupt an EKS
   pod and node, and complete Terraform teardown in a disposable account. This
   applies to the [AWS reference](deployment.md#moving-the-deployment-to-aws), not
   the current Kind/K3s delivery gate.
 
-Archive the command transcript, timestamps, digest pair, recovery point/recovery time, smoke/load results, failures, and follow-up tickets. The included Kind failure script automates only the safe disposable-cluster subset; failed-migration and RDS restore drills remain explicitly reviewed manual operations.
+Archive the command transcript, timestamps, digest pair, recovery point/recovery
+time, smoke/load results, failures, and follow-up tickets. The included Kind failure
+script automates only the safe disposable-cluster subset; failed-migration and RDS
+restore drills remain explicitly reviewed manual operations.

@@ -32,23 +32,23 @@ the correlation fields needed to follow one decision across the
 engine, AI gateway, and in-cluster agent: `battle_id`, `request_id`,
 `faction_id`, `target_tick`, `profile_id`, `decision_status`,
 `error_category`, `fallback_source`, and `duration_ms`. The collector includes
-the API, engine, agent, AI gateway, frontend, and migration workloads. A subscription
-CLI agent runs on the host, so its process-local messages remain in the bridge
-terminal; its claims, MCP tool calls, submissions, failures, and final engine
-resolution are recorded by Kubernetes services and therefore appear in
-Kibana.
+the API, engine, agent, AI gateway, frontend, and migration workloads. A
+subscription CLI worker runs outside Kubernetes (the development bridge terminal,
+or the CLI VM's `battlefield-worker` journal in production), so its process-local
+messages stay there; its claims, MCP tool calls, submissions, failures and final
+engine resolution are recorded by Kubernetes services and appear in Kibana.
 
 For a compact timeline, select `@timestamp` and `msg`; expand rows for structured
 correlation fields. Use DEBUG only while diagnosing tick or health-request details,
-then restore INFO and restart the process. Copy a log's `trace_id` into Grafana
-Explore's Tempo trace-ID search; sampling can leave a logged trace without stored
-span data. See [structured logs](../architecture/observability.md#structured-logs)
+then restore INFO and restart the process. Paste a log's `trace_id` into the
+**Trace ID** box of the Battle Traces dashboard; sampling can leave a logged trace
+without stored span data. See [structured logs](../architecture/observability.md#structured-logs)
 for event semantics and excluded sensitive fields.
 
 Useful KQL filters include:
 
 ```text
-event: decision_* OR msg: decision_*
+event: decision_*
 decision_status: fallback
 error_category: timeout
 battle_id: "<battle UUID>"
@@ -141,15 +141,24 @@ kubectl port-forward --namespace battlefield \
 curl --fail http://localhost:8080/metrics
 ```
 
-## Local versus production
+## Storage and access by environment
 
-The local Prometheus TSDB and Grafana database use `emptyDir`; their data is
-lost when their pods are replaced. Prometheus retains up to 30 days only while
-its pod remains intact. Elasticsearch log indices and Kibana saved objects use
-the 10Gi `battlefield-elasticsearch-data` PVC (`standard` storage class), retaining
-data across pod replacement. This is not a backup against cluster or disk loss.
-The setup Job recreates checked-in saved objects,
-but does not restore logs.
+Development Kind and production K3s run the same stack; the
+[architecture environments table](../architecture/observability.md#environments)
+summarizes the differences and the accepted access risk.
+
+- **Metrics, dashboards and traces:** the Prometheus TSDB, Grafana database and
+  Tempo storage use `emptyDir` in both environments, so their data is lost when a
+  pod is replaced. Prometheus keeps up to 30 days only while its pod remains intact.
+- **Logs and Kibana objects:** Elasticsearch indices and Kibana saved objects use
+  the `battlefield-elasticsearch-data` PVC: 10 Gi on Kind's `standard` class, and
+  20 Gi on `battlefield-retained` in production, which survives pod and guest-OS
+  replacement. Neither is a backup against cluster or disk loss. The setup Job
+  recreates checked-in saved objects but does not restore logs.
+- **Access:** on Kind, use `grafana.localhost` and `kibana.localhost` through the
+  loopback gateway. In production, use `grafana.home.arpa` and `kibana.home.arpa`
+  from the host network; the [local HTTPS workflow](local-https-platform.md) owns
+  those routes. Neither is published through the Cloudflare tunnel.
 
 The deployment helper waits for Elasticsearch, restarts and waits for Kibana,
 then applies `kibana/setup-job.yaml` separately from the observability overlay.
@@ -169,15 +178,43 @@ load-balancer metrics so the availability SLI covers failures that never reach
 the API, retain Kubernetes workload and container metrics with an EKS-compatible
 collector, use durable retention and lifecycle policies, encrypt log transport
 and storage, configure authenticated least-privilege Grafana and Kibana access,
-and route alerts to an owned notification channel. The unauthenticated local
-Elastic configuration must not be reused in a shared or production cluster.
+and route alerts to an owned notification channel. The unauthenticated Elastic
+and anonymous Grafana configuration is accepted only for the private,
+single-operator K3s cluster; do not reuse it on a shared cluster or one reachable
+from untrusted networks.
+
+## Elasticsearch and Kibana recovery
+
+Kind uses a 10Gi `battlefield-elasticsearch-data` PVC with the `standard` storage
+class. K3s requests 20Gi through `battlefield-retained`; see the
+[K3s storage contract](k3s-delivery.md#deliver-and-verify). Pod replacement preserves
+stored indices and Kibana objects. Storage loss or cluster recreation requires
+recovery; never treat a PVC request as a backup. When transferring storage, export
+or snapshot data first and follow the target's recovery procedure.
+
+The deployment helper waits for Elasticsearch and the other observability
+workloads, restarts Kibana against the ready Elasticsearch instance, waits for
+Kibana's rollout, then applies its setup job separately. Applying the observability
+Kustomization alone does not create the setup job. Each observability rollout
+briefly restarts Kibana. The setup job has a 300-second deadline, bounded HTTP
+requests, and separate pods for retries so failed-attempt logs remain available.
+The helper detects both successful and failed Job conditions and prints job, pod,
+and container diagnostics on failure. Finished jobs are retained for 300 seconds.
+
+After a manual recovery, recreate only the setup job with
+`kubectl -n battlefield delete job battlefield-kibana-setup --ignore-not-found`
+and `kubectl -n battlefield apply -f infra/deploy/overlays/local/observability/kibana/setup-job.yaml`,
+then confirm completion before running production smoke verification.
 
 ## Find a battle trace
 
-In Grafana Explore, select **Tempo** and search for the service or trace ID.
-Links point from the later trace to the earlier one: the engine trace links to
-the creating request, and each decision links to its decision window. To follow a
-battle end to end in TraceQL:
+Open **Autonomous Battlefield / Battle Traces** and enter a **Battle ID** to list
+its engine and decision traces, or a **Trace ID** to draw one trace. The anonymous
+Viewer cannot open Grafana Explore and the login form is disabled, so the TraceQL
+queries below apply only where Grafana has been configured with Editor access; the
+dashboard panels cover the same searches. Links point from the later trace to the earlier one:
+the engine trace links to the creating request, and each decision links to its
+decision window. To follow a battle end to end in TraceQL:
 
 - `{ span."battlefield.battle_id" = "<battle ID>" }` finds the engine trace; its
   root's link opens the creating request.
@@ -219,8 +256,11 @@ through the generated Prometheus ConfigMap. Normal CA and node-IP SAN verificati
 remain enabled; missing or invalid trust stops staging before workload changes.
 Prometheus keeps only `nodes/metrics` permission, never broad `nodes/proxy` access.
 
-For a registered Kind production environment, collect the current public serving certificates
-through the trusted Docker daemon, after environment and cluster UID validation:
+For K3s, the platform job exports the cluster's serving CA and
+[K3s registration](k3s-delivery.md#prepare-a-separate-registration) copies it into the
+profile as `kubelet-ca.crt`. Only the retained Kind recovery profile needs the
+Kind path: collect the current public serving certificates through the trusted
+Docker daemon, after environment and cluster UID validation:
 
 ```bash
 ./scripts/ops/export-kind-kubelet-ca.sh
@@ -242,7 +282,7 @@ After adding nodes or rotating serving certificates, refresh the approved bundle
 and redeploy observability. A trust failure is a deployment failure, not a reason
 to disable certificate verification.
 
-API scrape verification now checks every nonterminating API pod against its
+API scrape verification checks every nonterminating API pod against its
 actual IP and current readiness, the deployment generation and desired replica
 count, and a successful scrape within 60 seconds. Missing discovery, a failed
 replica, stale results, or incomplete HPA rollout cannot pass on another pod's

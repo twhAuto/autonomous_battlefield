@@ -5,7 +5,7 @@ and React frontend. Create factions, choose scripted or AI controllers, and watc
 them compete on authored hex maps. AI controllers propose strategy plans; the game
 engine validates and executes them.
 
-- Create reusable factions with editable backgrounds, doctrines and opening armies.
+- Create reusable factions with editable names, backgrounds and strategic doctrines.
 - Run two-faction castle-siege battles with autonomous combat, economies and fog of war.
 - Inspect live battles, saved results, events and AI decision history.
 - Manage invited players and model access through Player, Developer and Admin roles.
@@ -64,9 +64,9 @@ Start with the [documentation index](docs/README.md) for the full guide catalogu
 
 | I want to… | Start here |
 | --- | --- |
-| Run or change the application | [Local setup](docs/developer/local-setup.md), [codebase guide](docs/developer/codebase-guide.md) |
+| Run or change the application | [Local setup](docs/developer/local-setup.md), [local Kubernetes deployment](docs/developer/local-kubernetes.md), [codebase guide](docs/developer/codebase-guide.md) |
 | Understand gameplay | [Game rules](docs/game/game-rules.md), [Frontier Siege](docs/game/frontier-siege.md) |
-| Understand the system | [System architecture](docs/architecture/system-architecture.md), [database](docs/architecture/database.md) |
+| Understand the system | [System architecture](docs/architecture/system-architecture.md), [AI decisions](docs/architecture/ai-decisions.md), [database](docs/architecture/database.md) |
 | Use the API | [HTTP reference](docs/architecture/api.md), [OpenAPI](docs/architecture/openapi.yaml) |
 | Author game content or compare controllers | [Content authoring](docs/developer/content-library.md), [AI comparisons](docs/developer/ai-comparisons.md) |
 | Deploy, operate or recover an environment | [Environment operations](docs/operations/environments.md), [deployment](docs/operations/deployment.md) |

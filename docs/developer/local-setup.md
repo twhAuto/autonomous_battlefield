@@ -30,22 +30,36 @@ Registration never overwrites an existing profile or kubeconfig.
 Open `http://battlefield.localhost:8888`. Edit the root `.env`, then rerun
 `./scripts/cd/deploy-local.sh`. For a missing `.env`, preparation recovers existing
 Kubernetes credentials or generates initial dev secrets. It never invents a
-database password for existing PVCs with missing credentials.
+database password for existing PVCs with missing credentials. To run, inspect or
+diagnose each deployment stage yourself, follow the
+[local Kubernetes walkthrough](local-kubernetes.md).
 
 ### Application settings
 
-The Git-ignored root `.env` uses the schema in [`.env.example`](../../.env.example).
-Values are literal `KEY=value`: no quotes, interpolation or shell commands.
-Do not source the file. Shell credential exports do not override it. Existing
-values are preserved and validated. Deployment creates separate Kubernetes
-Secrets and restarts the affected workloads. Editing a database password does
-not rotate its PostgreSQL role; retain the current password for existing data.
-The [configuration model](../architecture/configuration.md) explains the separate
-machine profile, kubeconfig and production inputs.
+Edit the Git-ignored root `.env` using [`.env.example`](../../.env.example), then
+rerun `./scripts/cd/deploy-local.sh`. The [configuration model](../architecture/configuration.md)
+explains the literal file format, source selection, Secret rendering and restart rules,
+including the distinction between deployment and standalone processes.
+
+The deployment sets `BATTLEFIELD_ENV=dev`. In `.env`, choose
+`BATTLEFIELD_AUTH_MODE=local-password` with `BATTLEFIELD_ADMIN_USERNAME`, a
+`BATTLEFIELD_ADMIN_PASSWORD` of at least 12 characters and a random
+`BATTLEFIELD_SESSION_SECRET` of at least 32 bytes. To skip login on localhost, use
+`disabled-development` instead. The legacy `BATTLEFIELD_AUTH_ENABLED` flag, if
+kept, must agree with the mode (`false` for `disabled-development`). Production
+accepts neither mode.
+
+Setup generates independent random `BATTLEFIELD_MCP_CAPABILITY_SECRET` and
+`BATTLEFIELD_AGENT_SECRET` values of at least 32 bytes each; the AI gateway needs
+both and refuses to start without them, and workers need only the agent secret.
+The local Kubernetes CLI launcher reads the worker secret from the `battlefield-ai`
+Secret and keeps its bridge on loopback. CLI logins stay on your workstation, so
+never use that launcher to serve public CLI jobs from your home directory.
 
 [`backend/config.yaml`](../../backend/config.yaml) defines local process settings;
-unknown fields and invalid values fail startup. Catalog paths are relative to
-that file. From `backend/`, `go run ./cmd/server -config /path/to/config.yaml`
+unknown fields and invalid values fail startup. Scenarios, rulesets and content
+are embedded from `backend/gamedata`, so editing them requires rebuilding the
+server. From `backend/`, `go run ./cmd/server -config /path/to/config.yaml`
 selects another configuration. `go run ./cmd/server -migrate` applies embedded
 migrations and exits; normal server startup does not apply them.
 
@@ -59,12 +73,13 @@ an existing login and a running local bridge in a second terminal:
 ./scripts/dev/run-k8s-cli-agent.sh codex
 ```
 
-The helper also accepts `antigravity`, `claude`, `both` and `auto`.
+The helper also accepts `antigravity`, `claude`, `both` (Codex and Antigravity),
+`all` (all three CLIs) and `auto` (every available authenticated CLI).
 See [Antigravity setup](../operations/antigravity-cli.md),
 [Claude setup](../operations/claude-cli.md) and
-[profile availability](../operations/deployment.md#1-prepare-private-dev-secret-files).
+[subscription CLI details](local-kubernetes.md#subscription-clis).
 Configured model/version prefixes live in `backend/config.yaml`; the
-[execution contract](../architecture/system-architecture.md#6-model-execution)
+[execution contract](../architecture/ai-decisions.md#model-execution)
 explains their isolation boundaries.
 
 ## Standalone development services

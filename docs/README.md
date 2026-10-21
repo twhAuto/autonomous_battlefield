@@ -27,6 +27,7 @@ configuring, deploying, observing and recovering environments.
 | Guide | Use it for |
 | --- | --- |
 | [Local setup](developer/local-setup.md) | Kind development, credentials, model controllers and standalone services |
+| [Local Kubernetes deployment](developer/local-kubernetes.md) | Building, deploying, inspecting and removing the dev Kind deployment stage by stage |
 | [Codebase guide](developer/codebase-guide.md) | Source ownership, entry points and change paths |
 | [Component map](developer/component-map.md) | Generated table of which internal packages each backend binary links |
 | [Backend](developer/backend-guide.md) | Go packages, persistence, worker behavior and backend verification |
@@ -43,10 +44,11 @@ configuring, deploying, observing and recovering environments.
 | Guide | Use it for |
 | --- | --- |
 | [System architecture](architecture/system-architecture.md) | Runtime components, data flows, durability, security and topology |
+| [AI decisions](architecture/ai-decisions.md) | Model runners, decision context, plan validation and fallback attribution |
 | [Database](architecture/database.md) | Schema, process access, claim and admission rules, and migrations |
 | [Configuration](architecture/configuration.md) | Environment files, identity and Secret boundaries |
 | [Observability](architecture/observability.md) | Signal paths, telemetry contracts and reliability objectives |
-| [HTTP API](architecture/api.md) | Authentication, routes, errors and examples |
+| [HTTP API](architecture/api.md) | Authentication, permissions, errors, retries and battle-data behavior |
 | [OpenAPI](architecture/openapi.yaml) | Machine-readable HTTP contract |
 
 ## Environment and application operations
@@ -54,8 +56,8 @@ configuring, deploying, observing and recovering environments.
 | Guide | Use it for |
 | --- | --- |
 | [Environments](operations/environments.md) | Registering environments and managing configuration |
-| [Deployment](operations/deployment.md) | Staged delivery, migration gates, smoke checks and rollback |
-| [Limited-access launch](operations/limited-launch.md) | Access protection, roles, CLI isolation and CI service authentication |
+| [Deployment](operations/deployment.md) | How delivery works: overlays, deployment components, image identity and releases, registry verification, runtime requirements, AWS reference |
+| [Production access](operations/access.md) | Access requirements, tunnel, roles, AI limits, CI service identity and access recovery |
 | [Player invitations](operations/player-invitations.md) | Activating and recovering managed Player membership |
 | [Observability operations](operations/observability.md) | Metrics, dashboards, logs and diagnostics |
 | [Reliability testing](operations/reliability-testing.md) | Disposable load tests, capacity checks and failure drills |
@@ -80,7 +82,7 @@ configuring, deploying, observing and recovering environments.
 | [CLI VM platform](operations/cli-vm-platform.md) | Isolated worker VM creation and adoption |
 | [CLI bootstrap](operations/cli-bootstrap.md) | Worker service, proxy and firewall configuration |
 | [CLI worker operations](operations/cli-worker.md) | Jenkins job that keeps the CLI VM, bridge, worker secret and worker release in order |
-| [CLI worker verification](operations/agent-vm.md) | Pinned artifacts, provider login, isolation, concurrency and recovery |
+| [CLI worker verification](operations/cli-worker-verification.md) | Start here for the CLI worker: what runs where, isolation boundary and gate, provider login, concurrency and troubleshooting |
 | [Antigravity CLI](operations/antigravity-cli.md) | Subscription login, local bridge and troubleshooting |
 | [Claude CLI](operations/claude-cli.md) | Subscription login, provider restrictions and troubleshooting |
 

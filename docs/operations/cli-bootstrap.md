@@ -8,7 +8,7 @@ They work without Jenkins. Jenkins and SonarQube reconstruction use the separate
 
 Provision or adopt the VM first with [CLI VM platform](cli-vm-platform.md).
 The CLI VM must already exist with the [documented isolated network and NIC
-filter](agent-vm.md). This command does not create, replace or resize a VM. Host
+filter](cli-worker-verification.md#isolation-boundary). This command does not create, replace or resize a VM. Host
 foundation and production Kubernetes registration must already work, including
 `/usr/bin/kubectl`. The registered operator must belong to the host `libvirt`
 group; start a new login after adding group membership. Managed files and their
@@ -16,7 +16,7 @@ existing parent directories must be root-owned and not writable by group/others.
 The guard rejects an unsafe shared directory rather than changing its permissions.
 The controller needs trusted SSH entries for the physical host
 and, for guest operations, the VM; host-side execution uses the existing VM admin
-key. Keep Player CLI access disabled until the [CLI isolation gates](limited-launch.md#isolated-cli-vm-enable-only-in-the-last-phase)
+key. Keep Player CLI access disabled until the [CLI isolation gates](cli-worker-verification.md#isolation-gate)
 pass. Installation or a healthy worker is not evidence that these gates passed.
 
 ## Adopt the existing installation
@@ -137,7 +137,7 @@ example's `guest` object. `known_hosts_file` is a managed connection field suppl
 by CLI VM provisioning in memory (or saved during capture); do not add it by hand to the example.
 Without a managed handoff, keep the example's explicit trusted connection fields.
 Keep the copied guest configuration and unit sources owned by the controller user
-with mode 0600. Use the [pinned release inputs](agent-vm.md#pinned-release-inputs)
+with mode 0600. Use the [pinned release inputs](cli-worker-verification.md#pinned-release-inputs)
 to obtain artifacts. Optional native `claude` and `agy` executable artifacts can be registered too;
 verify checks each installed CLI against the configured version family. Every
 profile needs a unique `id` and nonempty `supportedVersionPrefix`; a failed version
@@ -165,7 +165,7 @@ addresses and enabled fresh-install profiles. Both targets finish preflight befo
 either is changed. A host setup failure stops the guest play as well. Only Ubuntu 24.04/26.04 x86-64 is supported. The worker account's
 existing home must match `/var/lib/battlefield-worker`; files beneath it are not
 recursively reconciled. Provider device/browser login remains an interactive step
-inside the VM, followed by the [worker isolation checks](agent-vm.md).
+inside the VM, followed by the [worker isolation checks](cli-worker-verification.md#isolation-gate).
 Fresh workers must stop at the enablement boundary below before advertising
 availability or attempting accepted-plan checks.
 
@@ -193,7 +193,7 @@ Initial adoption can preserve an **already enabled** installation only when its
 existing files exactly match the registration, the guest isolation flag is true
 and the configured CLI artifacts are present. That is preservation of existing
 state, not a transition from disabled to enabled. Confirm its recorded isolation
-evidence and complete the [accepted-plan and launch checks](agent-vm.md#verify-before-advertising-availability)
+evidence and complete the [accepted-plan and launch checks](cli-worker-verification.md#verify-before-advertising-availability)
 before advertising API availability. Neither adoption nor bootstrap verification
 proves those launch gates passed.
 

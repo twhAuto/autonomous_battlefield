@@ -1,17 +1,13 @@
 # Database
 
-| Field | Value |
-| --- | --- |
-| Status | Current: describes migrations `00001`–`00017` |
-| Audience | Contributors and operators who need the schema, access model and coordination rules |
-| Source of truth | [`backend/migrations`](../../backend/migrations) and the PostgreSQL adapters in `backend/internal` |
-
 PostgreSQL is the system of record and the only coordination channel between the
 API, the battle engine and the AI gateway. Processes never call each other to hand
 over work: they claim rows, hold leases and record results in the database. This
 page owns the schema, database access, coordination patterns and migration
-conventions. [System architecture](system-architecture.md) describes the runtime
-flows that use them; operations runbooks own backup, restore and migration gates.
+conventions; the SQL in [`backend/migrations`](../../backend/migrations) is the
+source of truth. [System architecture](system-architecture.md) describes the
+runtime flows that use them; operations runbooks own backup, restore and migration
+gates.
 
 ## Deployment and access
 
@@ -46,7 +42,8 @@ schema lifecycle. Grants (restated in full by `00017`):
 The role has no access to battle events, battle state, factions, membership or
 policy tables beyond these columns. When `AI_GATEWAY_DATABASE_URL` is absent, the
 deployment scripts use the pre-rename `MCP_DATABASE_URL` if present, and otherwise
-reuse `DATABASE_URL`, which is acceptable only for local development; production must supply the restricted login
+reuse `DATABASE_URL`, which is acceptable only for local development. Production
+must supply the restricted login
 ([deployment configuration](../operations/deployment.md)).
 
 ## Schema
@@ -67,38 +64,52 @@ reuse `DATABASE_URL`, which is acceptable only for local development; production
 | `friend_ai_usage` (view) | Model usage per identity across decisions and generation jobs | Private reporting view |
 | `goose_db_version` | Goose's applied-migration ledger | Production recovery records compare it before approving an image rollback |
 
+These diagrams show every column of every table, generated from the schema after
+migration `00017` with keys marked `PK` and `FK`. Update them with any schema
+change. Battles snapshot faction data instead of referencing `factions`, so
+deleting a faction never changes a battle.
+
+### Battles
+
 ```mermaid
 erDiagram
     BATTLE_RUNS ||--o{ BATTLE_EVENTS : "records (cascade)"
     BATTLE_RUNS ||--o{ BATTLE_DECISIONS : "coordinates (cascade)"
-    FACTION_GENERATION_ACCOUNTS ||--o{ FACTION_BACKGROUND_GENERATIONS : "owns"
-    PLAYER_MEMBERS ||--o{ PLAYER_MEMBERSHIP_AUDIT : "audited by"
-
-    FACTIONS {
-        uuid id PK
-        text name
-        text doctrine
-        text background
-        text owner_id
-    }
     BATTLE_RUNS {
         uuid id PK
         text scenario_id
+        text scenario_digest
         jsonb scenario_snapshot
-        jsonb current_state
+        bigint requested_ticks
+        bigint current_tick
         text status
         int attempt
         text lease_owner
+        timestamptz lease_expires_at
+        jsonb result
+        text error_code
+        text error_message
+        timestamptz created_at
+        timestamptz started_at
+        timestamptz completed_at
+        timestamptz updated_at
+        jsonb initial_state
+        jsonb current_state
         bool paused
+        text traceparent
+        text tracestate
         text owner_id
         int ai_executions
+        bool admission_exempt
     }
     BATTLE_EVENTS {
         uuid battle_id PK,FK
         int attempt PK
         bigint sequence PK
         bigint tick
+        text type
         jsonb payload
+        timestamptz created_at
     }
     BATTLE_DECISIONS {
         uuid id PK
@@ -106,35 +117,80 @@ erDiagram
         int attempt
         uuid faction_id
         bigint target_tick
-        text status
         bigint version
+        text status
+        text controller_type
+        text profile_id
+        text provider
+        text runtime
+        text model_identifier
+        text prompt_version
+        text tool_schema_version
         jsonb observation
+        text observation_hash
         jsonb resolved_plan
+        text fallback_source
+        text error_category
+        jsonb usage
+        jsonb provider_metadata
+        text idempotency_key
         text lease_owner
+        timestamptz lease_expires_at
+        timestamptz created_at
+        timestamptz resolved_at
+        text traceparent
+        text tracestate
+    }
+```
+
+### Factions, generation and AI policy
+
+```mermaid
+erDiagram
+    FACTION_GENERATION_ACCOUNTS ||--o{ FACTION_BACKGROUND_GENERATIONS : "owns"
+    FACTIONS {
+        uuid id PK
+        text name
+        timestamptz created_at
+        text ruleset_id
+        jsonb blueprint
+        text doctrine
+        text background
+        text owner_id
     }
     FACTION_GENERATION_ACCOUNTS {
         text actor_id PK
+        timestamptz last_admitted_at
     }
     FACTION_BACKGROUND_GENERATIONS {
         uuid id PK
         text actor_id FK
+        text idempotency_key
+        text input_hash
+        jsonb input
+        text profile_id
+        text model_label
+        text prompt_version
         text status
-        text runtime
+        text background
+        text error_category
+        timestamptz created_at
+        timestamptz started_at
+        timestamptz finished_at
+        timestamptz expires_at
+        int execution_seconds
         text worker_id
-    }
-    PLAYER_MEMBERS {
-        uuid id PK
-        text email
-        bool desired_access
-    }
-    PLAYER_MEMBERSHIP_AUDIT {
-        bigint id PK
-        uuid member_id FK
-        text action
+        jsonb usage
+        jsonb metadata
+        int submissions
+        text runtime
     }
     RUNTIME_POLICY {
         bool id PK
         bool ai_enabled
+        int daily_battles
+        int user_unfinished
+        int global_unfinished
         int decision_executions
         int cli_concurrency
     }
@@ -142,12 +198,72 @@ erDiagram
         uuid id PK
         timestamptz expires_at
     }
+    MODEL_ACCESS_POLICY {
+        bool id PK
+        bigint version
+        jsonb policy
+        text updated_by
+        timestamptz updated_at
+    }
+```
+
+### Player membership
+
+```mermaid
+erDiagram
+    PLAYER_MEMBERS ||--o{ PLAYER_MEMBERSHIP_AUDIT : "audited by"
+    PLAYER_MEMBERS {
+        uuid id PK
+        text email
+        bool desired_access
+        bigint version
+        bigint synced_version
+        timestamptz updated_at
+    }
+    PLAYER_MEMBERSHIP_AUDIT {
+        bigint id PK
+        uuid member_id FK
+        text actor_id
+        text action
+        timestamptz created_at
+    }
+    PLAYER_MEMBERSHIP_SYNC {
+        bool id PK
+        bool initialized
+        bigint version
+        bigint synced_version
+        int attempts
+        timestamptz next_attempt
+        text last_error
+    }
 ```
 
 `runtime_policy`, `model_access_policy` and `player_membership_sync` are
 single-row tables (`id boolean PRIMARY KEY CHECK (id)`). `agent_execution_leases.id`
 holds a decision or generation ID without a foreign key, because one table serves
 both job types.
+
+### Indexes
+
+Every table also has its primary-key index (`PK` above). The other indexes, from the
+same migrated schema, are:
+
+| Table | Index | Columns and condition | Serves |
+| --- | --- | --- | --- |
+| `battle_runs` | `battle_runs_unpaused_claim_idx` | `(status, lease_expires_at, created_at, id)` where `status` is `queued` or `running` and not `paused` | Engine battle claims |
+| `battle_runs` | `battle_runs_claim_idx` | Same columns where `status` is `queued` or `running`, paused or not | The original claim index (`00002`); claims have used the unpaused index since `00006` |
+| `battle_runs` | `battle_runs_history_idx` | `(created_at DESC, id DESC)` | Battle history pages, newest first |
+| `battle_runs` | `battle_runs_owner_created` | `(owner_id, created_at)` | Per-owner admission counts |
+| `battle_events` | primary key | `(battle_id, attempt, sequence)` | Idempotent inserts and event paging |
+| `battle_decisions` | `battle_decisions_battle_id_attempt_faction_id_target_tick_key` | Unique `(battle_id, attempt, faction_id, target_tick)` | One decision per faction per window |
+| `battle_decisions` | `battle_decisions_window_idx` | `(battle_id, attempt, target_tick, faction_id)` | Decision-window lookups |
+| `battle_decisions` | `battle_decisions_agent_claim_idx` | `(status, lease_expires_at, created_at, id)` where `controller_type = 'model'` and `status` is `pending` or `running` | Worker decision claims |
+| `faction_background_generations` | `faction_background_generations_actor_id_idempotency_key_key` | Unique `(actor_id, idempotency_key)` | Idempotent job creation |
+| `faction_background_generations` | `faction_generation_one_active` | Unique `(actor_id)` where `status` is `queued` or `running` | One active job per actor |
+| `faction_background_generations` | `faction_generation_queue` | `(created_at)` where `status = 'queued'` | Oldest-first generation claims |
+| `faction_background_generations` | `faction_generation_quota` | `(actor_id, created_at)` | Daily allowance counts |
+| `agent_execution_leases` | `agent_execution_expiry` | `(expires_at)` | Pruning and counting active CLI leases |
+| `player_members` | `player_members_email_key` | Unique `(email)` | One membership per email |
 
 ## Coordination patterns
 
@@ -234,25 +350,8 @@ rolling out application workloads. `internal/postgres.NewMigrationProvider` hold
 database-wide advisory session lock, so concurrent runs and parallel tests cannot
 interleave DDL.
 
-| Migration | Change |
-| --- | --- |
-| `00001_create_factions.sql` | Initial faction table |
-| `00002_create_battle_queue.sql` | Battle runs and per-attempt event stream |
-| `00003_castle_siege_state.sql` | Ruleset/blueprint and battle state snapshots |
-| `00004_battle_decisions.sql` | Decision windows, claim indexes, evaluation view, `battlefield_mcp` role |
-| `00005_stop_battles.sql` | `stopped` battle status |
-| `00006_pause_battles.sql` | Pause flag and unpaused claim index |
-| `00007_trace_context.sql` | Persisted trace context on battles and decisions |
-| `00008_faction_doctrine.sql` | Faction doctrine; tick-zero opening decisions |
-| `00009_faction_background.sql` | Faction background and generation jobs |
-| `00010_battle_history.sql` | Descending creation-time/ID index for battle history |
-| `00011_friends_access.sql` | Ownership, admission triggers, model-execution counts, CLI leases, runtime policy, usage view |
-| `00012_model_access.sql` | Versioned administrator model-access policy |
-| `00013_player_members.sql` | Player membership, synchronization and audit |
-| `00014_cli_concurrency.sql` | Shared CLI capacity of four with serialized admission |
-| `00015_drop_duplicate_event_index.sql` | Drops an index that duplicated the `battle_events` primary key |
-| `00016_admin_battle_admission.sql` | Admin battles bypass admission allowances but still occupy capacity |
-| `00017_rename_ai_gateway_role.sql` | Renames `battlefield_mcp` to `battlefield_ai_gateway` and restates its grants |
+Each migration file starts with a comment describing its change, so the
+[`backend/migrations`](../../backend/migrations) directory is the change history.
 
 Conventions:
 
@@ -272,17 +371,11 @@ Conventions:
 - Grant `battlefield_ai_gateway` only the columns the AI gateway needs, in the same
   migration that adds them.
 - Update repository scanning, serialization and tests in the same change, and update
-  this page.
+  this page when tables, roles, triggers or coordination rules change.
 
 The [backend guide](../developer/backend-guide.md#database-migrations-and-adapters)
 covers adapter structure and migration tests. Production migrations save and
-validate a database backup first; see [deployment](../operations/deployment.md) for
-the migration gate and inspection steps and [K3s delivery](../operations/k3s-delivery.md)
-for backup, restore and recovery records.
-
-## Related guides
-
-- [System architecture](system-architecture.md): runtime flows built on these tables.
-- [Backend guide](../developer/backend-guide.md): repository packages and query-plan results.
-- [Deployment](../operations/deployment.md): database configuration, migration gate and inspection.
-- [K3s delivery](../operations/k3s-delivery.md): backup, restore and data recovery.
+validate a database backup first. [Jenkins production delivery](../operations/jenkins.md#production-delivery)
+owns the migration gate, the [local walkthrough](../developer/local-kubernetes.md#migration-gate)
+shows how to inspect it, and [K3s delivery](../operations/k3s-delivery.md) covers
+backup, restore and recovery records.

@@ -4,7 +4,7 @@
 existing Ansible host foundation and optional data partition. A merge into `main`
 runs application delivery; it does not run this job. The job reads
 [`infra/jenkins/Jenkinsfile.platform`](../../infra/jenkins/Jenkinsfile.platform) from trusted `main` and runs
-locally as the registered `twh09` operator on `battlefield-production`. The SSH
+locally as the registered operator on `battlefield-production`. The SSH
 private key stays on the workstation.
 
 [Terraform VM provisioning](k3s-vm.md) uses the separate `battlefield-platform/vm`
@@ -18,15 +18,15 @@ are not configured; see the [backup and recovery boundary](server-bootstrap.md#b
 
 ## One-time installation
 
-Use the workstation checkout containing this change. Existing Jenkins must already
+Use a workstation checkout of `main`. Existing Jenkins must already
 have the `battlefield-production` agent running as the registered operator and
 SCM credential `github-app-battlefield`. Controller rebuilds and maintenance remain
 external administration work; a job cannot reliably rebuild its own controller.
 
 1. In Jenkins, open your user settings, **Security → API Token → Add new Token**.
-   Use an administrator account for job/credential/plugin installation. This
-   repository's approval submitter is `whtan`; change that reviewed setting before
-   adopting a different owner. Keep the token outside Git and do not paste it into
+   Use an administrator account for job/credential/plugin installation. The
+   approval `submitter` in the platform Jenkinsfiles is the registered approver
+   ([registered facts](server-rebuild-contract.md#registered-facts)); change that reviewed setting before adopting a different owner. Keep the token outside Git and do not paste it into
    chat, ticket text, or a command argument.
 2. Run the setup command below in a terminal. It asks privately for the Jenkins
    token, a new Vault passphrase (twice), and the server sudo password. If inputs
@@ -34,19 +34,20 @@ external administration work; a job cannot reliably rebuild its own controller.
    `--token-file /absolute/private/path` avoids retyping a saved token.
 3. Wait for successful setup. If Jenkins reports a plugin needs maintenance,
    arrange a controller restart outside the job when existing builds are idle,
-   then rerun setup. After the reviewed change reaches `main`, open the host job
-   and run **plan** first.
+   then rerun setup. Then open the host job and run **plan** first.
 
-For the registered server and its existing 500 GB ext4 partition:
+Substitute the registered host, operator and data partition ([registered facts](server-rebuild-contract.md#registered-facts)):
 
 ```bash
 python3 scripts/infra/setup-platform.py \
-  --host 192.168.1.126 --user twh09 \
+  --host <host> --user <operator> \
   --identity-file "$HOME/.ssh/battlefield-automation" \
-  --data-uuid 75db9b1d-5c46-4e5b-bd94-5391b2a35411 \
+  --data-uuid <data-uuid> \
   --data-mount /srv/battlefield-data \
-  --jenkins-user whtan --install-plugins
+  --install-plugins
 ```
+
+`--jenkins-user` defaults to the registered Jenkins administrator.
 
 The command registers and inspects the host, selects the already formatted data
 partition, seals discovered input files, verifies the passphrase and sudo access,
@@ -73,8 +74,7 @@ Required plugin versions tested on Jenkins 2.568.3 are recorded in
 [`platform-plugins.json`](../../infra/jenkins/platform-plugins.json).
 `--install-plugins` installs missing plugins using those pins and Jenkins dependency
 resolution; it preserves installed versions. Setup also calls the Jenkins
-Declarative validator. Install **Lockable Resources before publishing the updated
-application Jenkinsfile**, since its rollout stage declares a lock. Missing/inactive
+Declarative validator. Missing/inactive
 plugins or Declarative validation errors stop setup. Existing versions and the
 running core are not compared with the recorded test versions.
 The pin list is not a complete controller rebuild or dependency lockfile.
@@ -134,7 +134,7 @@ Choose **Build with Parameters**:
   mode, and archives `platform-plan.json` with revision, target identity and task
   outcomes. No infrastructure apply occurs.
 - **apply**: makes a fresh plan in the same build, archives its report, and waits
-  up to ten minutes for `whtan` to select **Apply reviewed plan**. Review changed
+  up to ten minutes for the registered approver to select **Apply reviewed plan**. Review changed
   tasks and the target/revision before approving. Main must still point to the
   same commit. The runner checks input fingerprints and receipt age, reruns the
   plan under the host lock, and rejects a different change digest. It consumes

@@ -17,11 +17,11 @@ that recorded the verified backend digest in the registered production
 `recovery.json`. The job uses that image for its private pull check. It needs no
 new Cloudflare token or workstation SSH key.
 
-After promotion to `main`, use the existing SSH tunnel and update job definitions:
+When the job definitions change on `main`, open the [SSH tunnel to Jenkins](k3s-vm.md#install-or-upgrade-the-jenkins-job)
+and update them:
 
 ```bash
-python3 scripts/infra/seed-platform.py --jobs-only \
-  --url http://127.0.0.1:18080 --user whtan
+python3 scripts/infra/seed-platform.py --jobs-only --url http://127.0.0.1:18080
 ```
 
 The command prompts privately for a Jenkins API token. It validates all three
@@ -35,7 +35,7 @@ pipelines and preserves credentials; it starts no builds. Then open
    Inspecting a blank disk does
    not mount or format it.
 2. Run `ACTION=apply`. This build generates another fresh plan and pauses for
-   `whtan` to approve **Apply reviewed plan** within ten minutes. Open the build's
+   the registered approver ([registered facts](server-rebuild-contract.md#registered-facts)) to approve **Apply reviewed plan** within ten minutes. Open the build's
    approval page, review its artifact, then approve there.
 3. Require a successful apply and verification. The job compares a fresh plan
    with the approved change digest before consuming its receipt. Changed main,
@@ -74,7 +74,7 @@ The default Terraform allocation is 250 GiB for retained guest data and 32 GiB
 for its OS; actual host usage grows with the sparse images. This is a capacity
 allocation, not an additional physical disk. Existing Docker/Kind/PostgreSQL
 files still use their current host filesystem. Moving application data between
-clusters requires the reviewed [migration procedure](k3s-delivery.md#adoption-and-cutover-boundary).
+clusters requires the reviewed [cluster move procedure](k3s-delivery.md#move-production-to-a-new-cluster).
 
 Only the exact stable `virtio-battlefield-k3s-data` device is accepted. The role
 checks guest UUID, disk serial, capacity, filesystem UUID, ownership marker and
@@ -129,7 +129,7 @@ It does not edit the host firewall, Docker networks or the existing CLI VM.
 The validation gateway is private and has no public DNS/tunnel route. Application
 delivery owns the CLI/AI gateway route through the intended private bridge; verify that
 route before enabling CLI execution on K3s. Player CLI access requires the separate
-[isolation and accepted-plan checks](agent-vm.md#verify-before-advertising-availability).
+[isolation and accepted-plan checks](cli-worker-verification.md#verify-before-advertising-availability).
 
 [`pins.json`](../../infra/k3s/pins.json) pins and checksums K3s, Envoy Gateway's
 controller/CRDs and Kyverno. The chosen Kubernetes version is within both
