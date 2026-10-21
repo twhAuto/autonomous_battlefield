@@ -279,3 +279,22 @@ roles drawn once each from `admin`, `developer` and `player`; an empty
 restricts only new battle selections and generation admissions, and cannot enable a
 profile whose credentials or runtime are unavailable. See
 [model access and role preview](system-architecture.md#model-access-and-role-preview).
+
+### Upgrade-level orders
+
+The shared battlefield ruleset uses `arsenal`, `arsenal_2`, `arsenal_3` and equivalent IDs for
+Plating and Industry. Catalog entries expose optional `track`, `level` and
+`requiresUpgradeId`; bonus fields describe each purchase's increment.
+`upgradeOrders` remains an ordered string array. Missing or reversed prerequisites
+are validation errors; an owned prerequisite or one ordered earlier is accepted.
+Repeated owned levels are free, while duplicate IDs in the same submission remain
+invalid. An unaffordable level stops further upgrades in that window. Ownership
+retains every purchased ID in `ownedUpgradeIds`, and level purchase events add
+track, level and incremental effect fields. Saved battles keep their original semantics. New map IDs are `castle-siege` and
+`frontier-siege`; retired version-specific IDs are not accepted for new battles.
+Scenario summary roster fields describe the same shared catalog on every map.
+Specialist upgrades additionally expose `targetUnit`, `targetClass`,
+`exclusiveGroup` and scoped bonus fields. Conflicting branch orders are validation
+errors. The faction-rulesets response contains one live ruleset. Unit snapshots
+include optional specialist capabilities and remaining `repairCharges`; repairs
+emit `unit_repaired` events and use support-action target markers.

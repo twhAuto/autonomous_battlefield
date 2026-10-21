@@ -68,7 +68,7 @@ beforeEach(() => {
 it('shows the loading state, then prefills two distinct factions and the scenario', async () => {
   renderPage()
   expect(screen.getByText('Preparing the battlefield')).toBeInTheDocument()
-  expect(await screen.findByRole('combobox', { name: 'Combat scenario' })).toHaveValue(scenario.id)
+  expect(await screen.findByRole('combobox', { name: 'Combat map' })).toHaveValue(scenario.id)
   expect(screen.getByRole('combobox', { name: 'Slot one' })).toHaveValue('north')
   expect(screen.getByRole('combobox', { name: 'Slot two' })).toHaveValue('south')
   expect(screen.getByRole('spinbutton', { name: 'Maximum ticks' })).toHaveValue(500)
@@ -140,7 +140,7 @@ it('reports a failed setup load and recovers on retry', async () => {
   renderPage()
   expect(await screen.findByRole('alert')).toHaveTextContent('Scenario catalog unavailable')
   await user.click(screen.getByRole('button', { name: 'RETRY CONNECTION' }))
-  expect(await screen.findByRole('combobox', { name: 'Combat scenario' })).toHaveValue(scenario.id)
+  expect(await screen.findByRole('combobox', { name: 'Combat map' })).toHaveValue(scenario.id)
 })
 
 it('falls back to a generic message for unexpected load failures', async () => {
@@ -231,4 +231,11 @@ it('aborts in-flight setup reads when the page unmounts', async () => {
   const signal = vi.mocked(listFactions).mock.calls[0][0]
   view.unmount()
   expect(signal?.aborted).toBe(true)
+})
+
+it('explains three-level costs when staging every map', async () => {
+  vi.mocked(listScenarios).mockResolvedValue([{ ...scenario, id: 'frontier-siege', rulesetId: 'battlefield', rulesVersion: '3' }])
+  renderPage()
+  expect(await screen.findByText(/Three upgrade levels: each costs 20, 50, then 100 gold/)).toBeInTheDocument()
+  expect(screen.getByRole('combobox', { name: 'Combat map' })).toHaveValue('frontier-siege')
 })

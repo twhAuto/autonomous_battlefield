@@ -77,7 +77,7 @@ workload can fail or restart while preserving battle and decision state.
 | Decision agent | Model-decision claims and API or CLI model execution | AI gateway, model provider |
 | Redis (optional) | Disposable completed battle read cache; no engine or readiness dependency | Memory, API-only connection |
 | PostgreSQL | Factions, battle queue, event history, snapshots, leases, and model decisions | Persistent storage |
-| Scenario catalog | Authored map, timing, fallback plans, unit/building rules, and combat rules, resolved from versioned [content libraries](../developer/content-library.md) | Embedded in the server binary (`backend/gamedata`), validated at API startup and frozen into battle rows |
+| Scenario catalog | Map-only layouts resolved with one shared timing/controller configuration and full ruleset from versioned [content libraries](../developer/content-library.md) | Embedded in the server binary (`backend/gamedata`), validated at API startup and frozen into battle rows |
 
 The backend commands are `cmd/server`, `cmd/engine`, `cmd/aigateway`, `cmd/agent`,
 and `cmd/aieval`. The first four are runtime processes; `aieval` runs deterministic
@@ -717,6 +717,23 @@ comparison.
 Battle and decision work survives restarts. Leases and `SKIP LOCKED` support
 competing workers without another queue system, at the cost of additional PostgreSQL
 state-machine logic.
+
+### Shared rules and map-only scenarios
+
+The live catalog has one `battlefield` ruleset and shared `battlefield.yaml`
+timing/controller configuration. Scenario YAML contains only map ID and geometry.
+Every map receives all units, structures and upgrades from the active content
+library. Adding content therefore needs no per-map selection updates.
+
+Three-level general upgrades retain one purchase ID per level; specialist choices
+use unit/class scopes and exclusive groups. Engine and AI validators check frozen
+ownership and ordered prerequisites/choices before accepting plans. Unit turns
+also resolve Scout retreat, visible cavalry pursuit, armor penetration and bounded
+Engineer repair. Repair spends gold during unit turns while respecting reserves.
+
+Snapshots store the resolved rules and mutable repair charges; no database migration
+or historical live ruleset is needed. Old snapshots omit new optional fields and
+retain their original behavior, checked by the pinned legacy transition trace.
 
 ### Frozen snapshots over live catalog references
 

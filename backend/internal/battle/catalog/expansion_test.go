@@ -18,14 +18,7 @@ import (
 func TestLegacyBattleTraceUnchanged(t *testing.T) {
 	// Content/snapshot digests include the shortened authored guidance. The
 	// simulation transition digest below remains the pre-expansion baseline.
-	c, err := LoadCatalog(gamedata.Files)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s, err := c.Resolve("castle-siege-v1", [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := legacyScenario(t, "castle-siege-v1")
 	digest := digestOf(t, s)
 	if digest != "356a05c48256e0840499b2969648215e58726e7bbd48966605288ea90aa8fd24" || s.Ruleset.ContentSource.Digest != "2f1d5db379cb23dc35af710547520401c03fa5a36242237146df58b40948f6ad" {
 		t.Fatal("content/snapshot hash changed")
@@ -76,14 +69,14 @@ func TestFrontierCatalogMapAndDeterministicBattle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := c.Resolve("frontier-siege-v2", [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
+	s, err := c.Resolve("frontier-siege", [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Map.Width != 25 || s.Map.Height != 17 || len(s.Map.EconomySites[0]) != 6 || len(s.Ruleset.Units) != 7 || len(s.Ruleset.Structures) != 3 {
+	if s.Map.Width != 25 || s.Map.Height != 17 || len(s.Map.EconomySites[0]) != 6 || len(s.Ruleset.Units) != 11 || len(s.Ruleset.Structures) != 3 {
 		t.Fatal("incomplete frontier content")
 	}
-	if s.Ruleset.ContentSource.Version != "2" {
+	if s.Ruleset.ContentSource.Version != "3" {
 		t.Fatal("incorrect content version")
 	}
 	checkFrontierRoutes(t, s.Map)
@@ -143,34 +136,11 @@ func checkCatalogCopiesAreIndependent(t *testing.T, c *Catalog, s game.Scenario)
 	if err := json.Unmarshal(data, &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	copy, _ := c.Ruleset("castle-siege-v2")
+	copy, _ := c.Ruleset("battlefield")
 	copy.Structures[0].Attack = 999
-	original, _ := c.Ruleset("castle-siege-v2")
+	original, _ := c.Ruleset("battlefield")
 	if original.Structures[0].Attack == 999 || snapshot.Ruleset.Structures[0].Attack != 12 {
 		t.Fatal("catalog aliasing")
-	}
-	legacy, _ := c.Ruleset("castle-siege-v1")
-	if len(legacy.Units) != 3 || len(legacy.Structures) != 0 || legacy.Units[0].Class != "" {
-		t.Fatal("legacy roster altered")
-	}
-}
-
-func TestExpansionScenarioRestrictions(t *testing.T) {
-	c, err := LoadCatalog(gamedata.Files)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r, _ := c.Ruleset("castle-siege-v2")
-	restricted, err := restrictRuleset(r, template{AllowedBuildings: []string{"castle", "defense_tower"}})
-	if err != nil || len(restricted.Structures) != 1 || restricted.Structures[0].ID != "defense_tower" || restricted.Buildings.MaximumEconomyCount != 0 {
-		t.Fatalf("restriction: %+v %v", restricted, err)
-	}
-	if _, err = restrictRuleset(r, template{AllowedBuildings: []string{"watchtower"}}); err == nil {
-		t.Fatal("castle exclusion allowed")
-	}
-	r.Structures = append(r.Structures, r.Structures[0])
-	if game.ValidateRuleset(r) == nil {
-		t.Fatal("duplicate structure accepted")
 	}
 }
 

@@ -196,15 +196,16 @@ export function CreateBattlePage() {
             <div className="section-label"><span>ENGAGEMENT PARAMETERS</span><span>READY</span></div>
             <form className="battle-form" onSubmit={handleSubmit} noValidate>
               <div className="battle-form__field">
-                <label htmlFor="scenario">Combat scenario</label>
+                <label htmlFor="scenario">Combat map</label>
                 <select id="scenario" value={scenarioID} onChange={(event) => setScenarioID(event.target.value)}>
                   {scenarios.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.id} · {scenario.mapWidth}×{scenario.mapHeight}</option>)}
                 </select>
                 {selectedScenario && (
                   <div className="field-hint"><p>Rules v{selectedScenario.rulesVersion} / decisions every {selectedScenario.decisionIntervalTicks} ticks / {selectedScenario.tickDuration} tick pace</p>
-                    <p>Units: {selectedScenario.allowedUnits?.join(', ') || 'Scenario roster'}</p>
+                    <p>Units: {selectedScenario.allowedUnits?.join(', ') || 'Shared roster'}</p>
                     <p>Buildings: {selectedScenario.allowedBuildings?.join(', ') || 'Scenario buildings'}</p>
-                    {selectedScenario.id === 'frontier-siege-v2' && <p>Frontier Siege: broad siege approaches and two flanking lanes. Six sites per side; choose up to four buildings, including at most two economy buildings.</p>}
+                    {selectedScenario.id === 'frontier-siege' && <p>Frontier Siege: broad siege approaches and two flanking lanes. Six sites per side; choose up to four buildings, including at most two economy buildings.</p>}
+                    <p>Three upgrade levels: each costs 20, 50, then 100 gold and adds +2 attack, unit defense, or income per economy building. Buy levels in order, up to +6 per track. Every map includes all units and upgrades; each specialist branch costs 60 gold and allows one choice per unit role.</p>
                   </div>
                 )}
               </div>

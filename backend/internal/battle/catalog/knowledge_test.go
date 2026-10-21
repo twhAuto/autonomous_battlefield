@@ -22,14 +22,14 @@ func TestAdditionalUnitFromYAML(t *testing.T) {
 	}
 	bp := game.Blueprint{Units: []game.UnitSelection{{Type: unit.ID, Count: 1}}, RecruitmentPriority: []string{unit.ID}}
 	identities := [2]service.FactionIdentity{{ID: "a", Name: "A", RulesetID: rules.ID, Blueprint: bp}, {ID: "b", Name: "B", RulesetID: rules.ID, Blueprint: bp}}
-	scenario, err := catalog.Resolve("castle-siege-v1", identities)
+	scenario, err := catalog.Resolve("castle-siege", identities)
 	if err != nil {
 		t.Fatal(err)
 	}
 	digest := digestOf(t, scenario)
 	old := game.CloneScenario(scenario)
 	catalog.rulesets[rules.ID].Knowledge.Cards[0].Role = "edited"
-	nextScenario, err := catalog.Resolve("castle-siege-v1", identities)
+	nextScenario, err := catalog.Resolve("castle-siege", identities)
 	next := digestOf(t, nextScenario)
 	if err != nil || next == digest || old.Ruleset.Knowledge.Cards[0].Role != scenario.Ruleset.Knowledge.Cards[0].Role {
 		t.Fatal("snapshot/hash isolation")
@@ -38,14 +38,14 @@ func TestAdditionalUnitFromYAML(t *testing.T) {
 }
 
 // writeRulesetsWithSentinel copies the game content to a temporary directory whose
-// resolved rulesets give castle-siege-v1 a cheap "sentinel" unit and its knowledge card.
+// resolved rulesets give castle-siege a cheap "sentinel" unit and its knowledge card.
 func writeRulesetsWithSentinel(t *testing.T) (string, game.Ruleset, game.UnitType) {
 	t.Helper()
 	seed, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rules, _ := seed.Ruleset("castle-siege-v1")
+	rules, _ := seed.Ruleset("battlefield")
 	unit := rules.Units[0]
 	unit.ID = "sentinel"
 	unit.Cost = 10

@@ -118,6 +118,21 @@ func validateUpgradeSelections(upgradeTypes map[string]Upgrade, ids []string) (i
 		upgrades[id] = true
 		cost += definition.Cost
 	}
+	for _, id := range ids {
+		if prerequisite := upgradeTypes[id].RequiresUpgradeID; prerequisite != "" && !upgrades[prerequisite] {
+			return 0, fmt.Errorf("%w: upgrade %q requires %q", ErrInvalidBlueprint, id, prerequisite)
+		}
+	}
+	chosen := map[string]string{}
+	for _, id := range ids {
+		u := upgradeTypes[id]
+		if u.ExclusiveGroup != "" {
+			if prior := chosen[u.ExclusiveGroup]; prior != "" {
+				return 0, fmt.Errorf("%w: conflicting upgrades %q and %q", ErrInvalidBlueprint, prior, id)
+			}
+			chosen[u.ExclusiveGroup] = id
+		}
+	}
 	return cost, nil
 }
 
@@ -161,6 +176,9 @@ func upgradeBonuses(ruleset Ruleset, blueprint Blueprint) (attack, defense, econ
 	definitions := UpgradesByID(ruleset)
 	for _, id := range blueprint.UpgradeIDs {
 		upgrade := definitions[id]
+		if upgrade.TargetUnit != "" || upgrade.TargetClass != "" {
+			continue
+		}
 		attack += upgrade.AttackBonus
 		defense += upgrade.DefenseBonus
 		economy += upgrade.EconomyIncomeBonus
@@ -180,7 +198,7 @@ func validUnitCapabilities(u UnitType) bool {
 	validClass := func(c string) bool {
 		return c == "" || c == "infantry" || c == "mobile" || c == "siege" || c == "support"
 	}
-	return validClass(u.Class) && validClass(u.BonusAgainstClass) && u.MinimumRange >= 0 && u.MinimumRange <= u.Range && u.HealAmount >= 0 && u.BuildingDamageBonus >= 0 && u.ClassDamageBonus >= 0 && (u.ClassDamageBonus == 0 || u.BonusAgainstClass != "") && (u.HealAmount == 0 || u.Attack == 0 && u.Class == "support" && u.Range == 1 && u.MinimumRange == 0 && !u.BuildingPriority && u.BuildingDamageBonus == 0 && u.ClassDamageBonus == 0)
+	return validClass(u.Class) && validClass(u.BonusAgainstClass) && validClass(u.PreferredTargetClass) && validSpecialist(u) && u.MinimumRange >= 0 && u.MinimumRange <= u.Range && u.HealAmount >= 0 && u.BuildingDamageBonus >= 0 && u.ClassDamageBonus >= 0 && (u.ClassDamageBonus == 0 || u.BonusAgainstClass != "") && (u.HealAmount == 0 || u.Attack == 0 && u.Class == "support" && u.Range == 1 && u.MinimumRange == 0 && !u.BuildingPriority && u.BuildingDamageBonus == 0 && u.ClassDamageBonus == 0)
 }
 
 // ValidStructure accepts the additional constructible building capabilities.
@@ -202,7 +220,10 @@ func validateRulesetUpgrades(ruleset Ruleset) error {
 		}
 		upgradeIDs[upgrade.ID] = true
 	}
-	return nil
+	if err := validateUpgradeEffects(ruleset); err != nil {
+		return err
+	}
+	return validateUpgradeLevels(ruleset.Upgrades)
 }
 
 func validateRulesetStructures(ruleset Ruleset) error {

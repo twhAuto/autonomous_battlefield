@@ -216,3 +216,19 @@ For a PR stack, each PR's review and Sonar preview use its actual target branch.
 Jenkins verifies only PRs targeting `dev` or `main`, so a stacked PR needs
 verification after it is retargeted to `dev`. CI evidence names both the tested
 head and target commit; a pass for an older pair does not verify the current tree.
+
+## Shared battlefield content
+
+`backend/gamedata/battlefield.yaml` owns shared timing and controller plans;
+`rulesets/battlefield.yaml` references the full `content/core-v3.yaml` library.
+`scenarios/castle-siege.yaml` and `scenarios/frontier-siege.yaml` contain maps only.
+`battle/catalog/shared_content.go` validates shared plans, while `library.go`
+resolves every library entry. Historical content lives only in catalog test fixtures.
+
+`game/upgrade_levels.go` checks prerequisites and exclusive groups;
+`upgrade_effects.go` validates scopes; `upgrades.go` applies effects to current and
+future units. `specialists.go` owns Scout retreat, cavalry pursuit and repairs;
+combat/support code handles armor penetration and extended treatment range.
+Frontend `presentation/upgrades.ts` formats owned levels and branch effects.
+Tests cover every map's full catalog, specialist actions, branch locks, reserves,
+replay and UI presentation. The PostgreSQL-backed coverage gate includes persistence.

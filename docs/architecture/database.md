@@ -379,3 +379,11 @@ validate a database backup first. [Jenkins production delivery](../operations/je
 owns the migration gate, the [local walkthrough](../developer/local-kubernetes.md#migration-gate)
 shows how to inspect it, and [K3s delivery](../operations/k3s-delivery.md) covers
 backup, restore and recovery records.
+
+## Shared content snapshot compatibility
+
+New battles freeze one shared ruleset with their chosen map. Retired catalog IDs
+remain readable in existing battle JSON; workers do not re-resolve them. Upgrade
+ownership remains an array of purchased IDs. Specialist capabilities and remaining
+Engineer repair charges are stored in scenario/state JSON, so no relational schema
+migration is required. Historical replay tests retain the original transition hash.

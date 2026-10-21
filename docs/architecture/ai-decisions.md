@@ -201,7 +201,7 @@ A model or scripted controller can propose:
 - a short name and operator-visible rationale;
 - fixed-point attack and defend weights, and target-specific bonuses;
 - reserve gold and spend ordering;
-- ordered upgrade purchases;
+- ordered upgrade purchases, including level prerequisites when supplied by the ruleset;
 - typed construction orders;
 - explicit ordered unit purchases with quantities.
 
@@ -302,3 +302,22 @@ and capped at three invalid submissions, within the same deadline. Only a valid,
 server-accepted tool submission succeeds, and there is no automatic model
 fallback. With generation disabled, players can still write backgrounds by hand.
 Provenance uses a `faction-background-v2` digest of the rendered instructions.
+
+### Upgrade-level planning
+
+The frozen legal upgrade catalog includes optional `track`, `level` and
+`requiresUpgradeId`. All catalog levels are discoverable, including levels whose
+prerequisites are not yet owned. A prerequisite must be owned or ordered earlier
+in the same plan. An upgrades-only plan is a substantive decision. Both AI
+submission validation and the engine enforce purchase ordering. Duplicate IDs
+in one plan are invalid; IDs already owned may be requested again without cost.
+Multiple levels can execute in one window, subject to reserve gold and ordered
+affordability. Ruleset knowledge supplies prices and effects; the shared prompt
+explains ordering without hardcoding a particular content version.
+
+Specialist choices expose `targetUnit`/`targetClass` and `exclusiveGroup` alongside
+incremental effects. Ownership locks out the paired alternative for the battle.
+All maps expose the same legal content. Unit reference data includes Scout retreat,
+cavalry preference, armor penetration and repair capabilities; remaining repair
+charges stay on the individual unit observation. Repair events and shared support
+markers remain subject to normal faction visibility.

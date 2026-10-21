@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
@@ -26,6 +27,9 @@ func ValidateSubmission(record ai.DecisionRecord, submission ai.PlanSubmission) 
 	}
 	legal := record.Observation.Legal
 	issues = append(issues, validateUpgrades(legal, submission.Plan)...)
+	if err := game.ValidateUpgradeOrder(legal.Upgrades, record.Observation.OwnedUpgradeIDs, submission.Plan.UpgradeOrders); err != nil {
+		issues = append(issues, ai.ValidationIssue{Field: "plan.upgradeOrders", Code: "invalid_order", Message: err.Error()})
+	}
 	if record.Observation.Opening {
 		issues = append(issues, validateOpening(submission.Plan)...)
 	}
@@ -54,7 +58,7 @@ func isModelRuntime(runtime string) bool {
 
 func isEmptyPlan(plan controller.PlanProposal) bool {
 	return len(plan.ActionWeights) == 0 && plan.RecruitmentOrders == nil && len(plan.RecruitmentPriorities) == 0 &&
-		len(plan.ConstructionPriorities) == 0 && plan.ConstructionOrders == nil && plan.ReserveGold == 0
+		len(plan.ConstructionPriorities) == 0 && plan.ConstructionOrders == nil && len(plan.UpgradeOrders) == 0 && plan.ReserveGold == 0
 }
 
 func validateUpgrades(legal ai.LegalChoices, plan controller.PlanProposal) []ai.ValidationIssue {

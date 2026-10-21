@@ -46,6 +46,14 @@ type Map struct {
 }
 
 type UnitType struct {
+	Scout                bool   `json:"scout,omitempty" yaml:"scout,omitempty"`
+	PreferredTargetClass string `json:"preferredTargetClass,omitempty" yaml:"preferredTargetClass,omitempty"`
+	ArmorPiercing        int64  `json:"armorPiercing,omitempty" yaml:"armorPiercing,omitempty"`
+	RepairAmount         int64  `json:"repairAmount,omitempty" yaml:"repairAmount,omitempty"`
+	RepairCost           int64  `json:"repairCost,omitempty" yaml:"repairCost,omitempty"`
+	RepairCharges        int    `json:"repairCharges,omitempty" yaml:"repairCharges,omitempty"`
+	HealRange            int    `json:"healRange,omitempty" yaml:"healRange,omitempty"`
+
 	AttackMode          string `json:"attackMode,omitempty" yaml:"attackMode,omitempty"`
 	Class               string `json:"class,omitempty" yaml:"class,omitempty"`
 	MinimumRange        int    `json:"minimumRange,omitempty" yaml:"minimumRange,omitempty"`
@@ -67,6 +75,18 @@ type UnitType struct {
 }
 
 type Upgrade struct {
+	TargetUnit          string `json:"targetUnit,omitempty" yaml:"targetUnit,omitempty"`
+	TargetClass         string `json:"targetClass,omitempty" yaml:"targetClass,omitempty"`
+	ExclusiveGroup      string `json:"exclusiveGroup,omitempty" yaml:"exclusiveGroup,omitempty"`
+	MovementBonus       int    `json:"movementBonus,omitempty" yaml:"movementBonus,omitempty"`
+	RangeBonus          int    `json:"rangeBonus,omitempty" yaml:"rangeBonus,omitempty"`
+	HealAmountBonus     int64  `json:"healAmountBonus,omitempty" yaml:"healAmountBonus,omitempty"`
+	HealRangeBonus      int    `json:"healRangeBonus,omitempty" yaml:"healRangeBonus,omitempty"`
+	BuildingDamageBonus int64  `json:"buildingDamageBonus,omitempty" yaml:"buildingDamageBonus,omitempty"`
+
+	Track              string `json:"track,omitempty" yaml:"track,omitempty"`
+	Level              int    `json:"level,omitempty" yaml:"level,omitempty"`
+	RequiresUpgradeID  string `json:"requiresUpgradeId,omitempty" yaml:"requiresUpgradeId,omitempty"`
 	ID                 string `json:"id" yaml:"id"`
 	Cost               int64  `json:"cost" yaml:"cost"`
 	AttackBonus        int64  `json:"attackBonus" yaml:"attackBonus"`
@@ -175,6 +195,14 @@ type Scenario struct {
 }
 
 type Unit struct {
+	Scout                bool   `json:"scout,omitempty" yaml:"scout,omitempty"`
+	PreferredTargetClass string `json:"preferredTargetClass,omitempty" yaml:"preferredTargetClass,omitempty"`
+	ArmorPiercing        int64  `json:"armorPiercing,omitempty" yaml:"armorPiercing,omitempty"`
+	RepairAmount         int64  `json:"repairAmount,omitempty" yaml:"repairAmount,omitempty"`
+	RepairCost           int64  `json:"repairCost,omitempty" yaml:"repairCost,omitempty"`
+	RepairCharges        int    `json:"repairCharges,omitempty" yaml:"repairCharges,omitempty"`
+	HealRange            int    `json:"healRange,omitempty" yaml:"healRange,omitempty"`
+
 	AttackMode          string    `json:"attackMode,omitempty"`
 	AttackOutcome       string    `json:"attackOutcome,omitempty"`
 	Class               string    `json:"class,omitempty" yaml:"class,omitempty"`

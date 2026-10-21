@@ -183,7 +183,7 @@ battles override decision activity, and Go `null` collections are treated as emp
 ## Entity presentation
 
 [`EntityIcon.tsx`](../../frontend/src/features/battles/components/EntityIcon.tsx)
-supplies the SVG artwork for the seven unit and five building types, reused by the
+supplies the SVG artwork for the eleven unit and five building types, reused by the
 map, roster, building overview and legend. `presentation/entities.ts` owns type
 labels and readable references such as `Iron Legion · Ranger #12`, derived from the
 sequence embedded in generated IDs so deaths, polling and older attempts never

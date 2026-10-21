@@ -52,3 +52,24 @@ it('shows typed construction and forward recruitment in decision history', () =>
   rerender(<AIDecisionPanel {...props} />)
   expect(screen.getByText('No construction')).toBeInTheDocument()
 })
+
+it('shows specialist capabilities and distinguishes repair from treatment', async () => {
+  const user = userEvent.setup()
+  const map: BattleMap = { kind: 'authored', width: 8, height: 8, rows: Array.from({ length: 8 }, () => '........'), castleSpawns: [{ x: 0, y: 0 }, { x: 7, y: 7 }], economySites: [[], []] }
+  const unit = (type: string, x: number): BattleUnit => ({ id: type, type, factionId: 'a', position: { x, y: 3 }, health: 25, maxHealth: 40, attack: 4, defense: 1, speed: 2, movement: 1, range: 1, vision: 5, readyAtTick: 1 })
+  const state: BattleState = { battleId: 'test', tick: 5, factions: [], buildings: [], units: [
+    { ...unit('engineer', 2), repairAmount: 4, repairCost: 2, repairCharges: 11, healTargetId: 'ram', healTargetPosition: { x: 3, y: 3 } },
+    { ...unit('crossbowman', 4), armorPiercing: 6 },
+    { ...unit('scout', 5), scout: true },
+    { ...unit('raider_cavalry', 6), preferredTargetClass: 'siege' },
+  ] }
+  render(<HexBattleMap map={map} state={state} visiblePositions={[]} factionNames={new Map([['a', 'North']])} />)
+  await user.click(screen.getByRole('button', { name: 'North · Engineer · engineer' }))
+  expect(screen.getByText(/repairing.*Repair 4 HP.*2 gold.*11 charges/)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'North · Crossbowman · crossbow' }))
+  expect(screen.getByText(/Ignore 6 unit defense/)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'North · Scout · scout' }))
+  expect(screen.getByText(/Reconnaissance/)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'North · Raider Cavalry · raider_c' }))
+  expect(screen.getByText(/Prefers siege targets/)).toBeInTheDocument()
+})

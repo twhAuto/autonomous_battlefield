@@ -86,6 +86,9 @@ func (m *Match) applyPlans(plans map[string]controller.PlanProposal) error {
 		if err := validateProductionPlan(m.scenario, runtime.setup, proposal); err != nil {
 			return err
 		}
+		if err := ValidateUpgradeOrder(m.scenario.Ruleset.Upgrades, m.factionState(factionID).OwnedUpgradeIDs, proposal.UpgradeOrders); err != nil {
+			return fmt.Errorf("%w: %v", controller.ErrInvalidPlan, err)
+		}
 	}
 	for factionID, runtime := range m.factions {
 		runtime.activePlan = m.normalizedFactionPlan(factionID, runtime.activePlan)

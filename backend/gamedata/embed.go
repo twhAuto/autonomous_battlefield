@@ -13,7 +13,7 @@ import (
 
 // Files holds the content, rulesets and scenarios directories.
 //
-//go:embed content rulesets scenarios
+//go:embed battlefield.yaml content rulesets scenarios
 var Files embed.FS
 
 // Digest returns a SHA-256 over every embedded file's path and contents, in path

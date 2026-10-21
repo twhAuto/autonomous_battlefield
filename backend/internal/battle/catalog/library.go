@@ -20,13 +20,10 @@ type rulesetFile struct {
 	Library      *librarySelection `yaml:"library"`
 }
 type librarySelection struct {
-	ID         string   `yaml:"id"`
-	Version    string   `yaml:"version"`
-	Units      []string `yaml:"units"`
-	Upgrades   []string `yaml:"upgrades"`
-	Castle     string   `yaml:"castle"`
-	Economy    string   `yaml:"economy"`
-	Structures []string `yaml:"structures"`
+	ID      string `yaml:"id"`
+	Version string `yaml:"version"`
+	Castle  string `yaml:"castle"`
+	Economy string `yaml:"economy"`
 }
 
 // Keep the original JSON field names in library hashes for unchanged v1 content.
@@ -80,17 +77,10 @@ func resolveLibrary(fsys fs.FS, source rulesetFile) (game.Ruleset, error) {
 	if err := validateLibrary(library); err != nil {
 		return r, err
 	}
-	all := game.Ruleset{Units: library.Units, Upgrades: library.Upgrades, Knowledge: library.Knowledge}
+	r.Units = append([]game.UnitType(nil), library.Units...)
+	r.Upgrades = append([]game.Upgrade(nil), library.Upgrades...)
+	r.Knowledge = game.CloneKnowledge(library.Knowledge)
 	var err error
-	r.Units, err = selectUnits(all.Units, ref.Units)
-	if err != nil {
-		return r, err
-	}
-	r.Upgrades, err = selectUpgrades(all.Upgrades, ref.Upgrades)
-	if err != nil {
-		return r, err
-	}
-	r.Knowledge = selectedKnowledge(library.Knowledge, r.Units)
 	r, err = applyLibraryBuildings(r, library, ref)
 	if err != nil {
 		return r, err
@@ -152,12 +142,10 @@ func applyLibraryBuildings(r game.Ruleset, library contentLibrary, ref *libraryS
 	}
 	// Rulesets own limits; library definitions own building stats.
 	r.Buildings = game.BuildingRules{CastleTypeID: castle.ID, EconomyTypeID: economy.ID, CastleHealth: castle.Health, CastleDefense: castle.Defense, CastleVision: castle.Vision, CastleIncome: castle.Income, EconomyCost: economy.Cost, EconomyHealth: economy.Health, EconomyDefense: economy.Defense, EconomyVision: economy.Vision, EconomyIncome: economy.Income, MaximumEconomyCount: r.Buildings.MaximumEconomyCount, MaximumBuildingCount: r.Buildings.MaximumBuildingCount}
-	for _, id := range ref.Structures {
-		b, exists := buildings[id]
-		if !exists || !game.ValidStructure(b.buildingType()) {
-			return r, fmt.Errorf("invalid structure selection %q", id)
+	for _, b := range library.Buildings {
+		if b.Kind != "castle" && b.Kind != "economy" {
+			r.Structures = append(r.Structures, b.buildingType())
 		}
-		r.Structures = append(r.Structures, b.buildingType())
 	}
 	return r, nil
 }

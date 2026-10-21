@@ -465,7 +465,7 @@ cancellation without application DDL, then verifies successful migration after r
 | [`.env.example`](../../.env.example) | Shared dev/production application settings schema |
 | [`backend/gamedata/content`](../../backend/gamedata/content) | Versioned unit, upgrade, building and knowledge-card libraries |
 | [`backend/gamedata/rulesets`](../../backend/gamedata/rulesets) | Library selections, starting gold, building limits and combat values |
-| [`backend/gamedata/scenarios`](../../backend/gamedata/scenarios) | Map layout, timing, scripted plans, fallbacks and content restrictions |
+| [`backend/gamedata/scenarios`](../../backend/gamedata/scenarios) | Map identity and geometry; shared timing/plans live in `backend/gamedata/battlefield.yaml` |
 | [`infra/deploy/base/infrastructure/configmap.yaml`](../../infra/deploy/base/infrastructure/configmap.yaml) | Cluster configuration equivalent |
 | [`infra/deploy/environments/deployment.env.example`](../../infra/deploy/environments/deployment.env.example) | Deployment environment profile template consumed by the shared resolver |
 
@@ -499,7 +499,7 @@ Where to start for each cross-cutting feature. The linked page owns its behavior
 | Access and roles | `authn/cloudflare.go`, `audience.go`, `diagnostics.go`, `authorization.go`, `preview.go` | `features/auth/SessionContext.tsx`, `RolePreviewContext.ts` | `config/access_test.go`, `battle/api/player_test.go`, [`test/integration`](#end-to-end-api-integration-test) | [Security boundaries](../architecture/system-architecture.md#8-security-and-trust-boundaries) |
 | Admission and AI limits | Triggers in migrations `00011`, `00014`, `00016`; `ai/agent/policy.go`, `credentials_linux.go`; `ai/runner/process_linux.go` | — | `migrations/battle_admission_integration_test.go`, `generation/repo/cli_capacity_integration_test.go` | [Database](../architecture/database.md#admission-triggers) |
 | Managed Players | `internal/members`, `config/members.go` | `features/admin/pages/MembersPage.tsx` | `internal/members` integration tests | [Player invitations](../operations/player-invitations.md) |
-| Content catalog | `battle/catalog/library.go`, `restrictions.go`; `ai/decision/validate.go` | `ExpansionMap.test.tsx` | `game/expansion_test.go`; catalog `expansion_test.go`, `balance_test.go` | [Content libraries](content-library.md), [Frontier Siege](../game/frontier-siege.md) |
+| Content catalog | `battle/catalog/library.go`, `shared_content.go`; `ai/decision/validate.go` | `ExpansionMap.test.tsx` | `game/expansion_test.go`; catalog `expansion_test.go`, `balance_test.go` | [Content libraries](content-library.md), [Frontier Siege](../game/frontier-siege.md) |
 | Doctrine and opening purchases | `faction/service/update.go`; `game/opening.go`, `upgrades.go` | `/factions/new`, `/factions/:id/edit` editor | `game` opening and upgrade tests | [Game rules](../game/game-rules.md) |
 | Background generation | [`internal/generation`](#internalgeneration-faction-background-generation); `ai/agent/generation.go`; `ai/mcpserver/generation.go` | `features/factions/components/BackgroundGenerator.tsx`, `api/backgrounds.ts` | generation repository and MCP transport tests | [HTTP API](../architecture/api.md#faction-background-generation) |
 | Battle history | `history.go` in `battle/api`, `battle/service`, `battle/repo` | `features/battles/pages/BattleHistoryPage.tsx` | `battle/repo/history_integration_test.go` | [HTTP API](../architecture/api.md#browse-battle-history) |
@@ -563,7 +563,7 @@ its own through `TEST_DATABASE_URL`, and skips when that variable is unset. It
 uses the production Cloudflare Access verifier. A local test issuer publishes a
 signing key at `/cdn-cgi/access/certs`, and the test sends signed tokens for
 Player, Developer, Admin and CI identities. An in-process engine worker processes
-queued battles, so a scripted `ranged-skirmish-v1` battle actually runs to
+queued battles, so a scripted `castle-siege` battle actually runs to
 completion.
 
 The test covers:
