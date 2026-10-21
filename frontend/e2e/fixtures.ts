@@ -56,7 +56,7 @@ export const test = base.extend<{ api: FixtureState }>({
       if (pathname === '/v1/auth/session') return reply({ enabled: true, authenticated: true, actor: { id: 'admin', role: 'admin' } })
       if (pathname === '/v1/factions') return reply({ factions: api.deleted ? [factions[1]] : factions })
       if (pathname === '/v1/faction-background-generations/options') return reply(api.generation)
-      if (pathname === '/v1/scenarios') return reply({ scenarios: [{ id: 'castle-siege-v1', rulesVersion: '1', rulesetId: 'castle-siege-v1', mapWidth: 15, mapHeight: 11, maximumTicks: 500, tickDuration: '1s', decisionIntervalTicks: 10 }] })
+      if (pathname === '/v1/scenarios') return reply({ scenarios: [{ id: 'castle-siege', rulesVersion: '3', rulesetId: 'battlefield', mapWidth: 15, mapHeight: 11, maximumTicks: 800, tickDuration: '1s', decisionIntervalTicks: 10 }] })
       if (pathname === '/v1/model-profiles') return reply({ profiles: [{ id: 'offline', displayName: 'Offline AI', available: false, runtime: 'api', modelLabel: '', unavailableReason: 'Disabled by operator' }] })
       const battleReply = battleRoute(api, pathname)
       if (battleReply !== null) return reply(battleReply)

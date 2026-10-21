@@ -2,9 +2,12 @@
 package game
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
+
+var errUpgradeChoiceConflict = errors.New("exclusive upgrade choice already selected")
 
 func validateUpgradeLevels(upgrades []Upgrade) error {
 	definitions := UpgradesByID(Ruleset{Upgrades: upgrades})
@@ -59,7 +62,7 @@ func ValidateUpgradeOrder(upgrades []Upgrade, owned, orders []string) error {
 			continue
 		}
 		if chosen := groups[u.ExclusiveGroup]; u.ExclusiveGroup != "" && chosen != "" && chosen != id {
-			return fmt.Errorf("upgrade %q conflicts with owned or earlier choice %q", id, chosen)
+			return fmt.Errorf("%w: upgrade %q conflicts with owned or earlier choice %q", errUpgradeChoiceConflict, id, chosen)
 		}
 		if u.RequiresUpgradeID != "" && !available[u.RequiresUpgradeID] {
 			return fmt.Errorf("upgrade %q requires %q owned or ordered earlier", id, u.RequiresUpgradeID)

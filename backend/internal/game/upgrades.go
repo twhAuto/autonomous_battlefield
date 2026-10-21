@@ -4,6 +4,7 @@
 package game
 
 import (
+	"errors"
 	"slices"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
@@ -22,7 +23,11 @@ func (m *Match) runUpgrades(id string, plan controller.PlanProposal) []Event {
 			continue
 		} // Plan validation rejects unknown IDs before mutation.
 		if err := ValidateUpgradeOrder(m.scenario.Ruleset.Upgrades, state.OwnedUpgradeIDs, []string{upgradeID}); err != nil {
-			events = append(events, m.event("production_skipped", map[string]any{"factionId": id, "kind": "upgrades", "upgradeId": upgradeID, "reason": "prerequisite_required"}))
+			reason := "prerequisite_required"
+			if errors.Is(err, errUpgradeChoiceConflict) {
+				reason = "exclusive_choice_owned"
+			}
+			events = append(events, m.event("production_skipped", map[string]any{"factionId": id, "kind": "upgrades", "upgradeId": upgradeID, "reason": reason}))
 			break
 		}
 		if state.Gold-upgrade.Cost < plan.ReserveGold {

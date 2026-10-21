@@ -1536,7 +1536,7 @@ components:
         | `upgrade_purchased` | `factionId`, `upgradeId`, `cost`, `balance`; leveled entries also include `track`, `level`, `attackBonus`, `defenseBonus`, `economyIncomeBonus` (incremental effects) |
         | `building_constructed` | `factionId`, `buildingId`, `buildingType`, `position`, `cost` |
         | `unit_recruited` | `factionId`, `unitId`, `unitType`, `position`, `readyAtTick`, `cost`, and `sourceBuildingId` in rulesets with structures |
-        | `production_skipped` | `factionId`, `kind` (`upgrades`, `construction` or `recruitment`), `reason`, plus `upgradeId` or `position` where relevant |
+        | `production_skipped` | `factionId`, `kind` (`upgrades`, `construction` or `recruitment`), `reason`, plus `upgradeId` or `position` where relevant; upgrade reasons include `prerequisite_required`, `exclusive_choice_owned` and `reserve_required` |
         | `unit_moved` | `factionId`, `unitId`, `from`, `to` |
         | `unit_attacked`, `building_attacked` | `attackerId`, `targetId`, `targetType`, `damage`, `remainingHealth`, `attackMode`, `outcome: hit`, `impactPosition` |
         | `unit_attack_missed` | `attackerId`, `attackMode: position`, `outcome: miss`, `impactPosition` |

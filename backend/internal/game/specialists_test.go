@@ -128,7 +128,10 @@ func TestSpecializationChoicesAndFutureUnits(t *testing.T) {
 		t.Fatal("conflicting same-window choices accepted")
 	}
 	before := m.factionState(a).Gold
-	m.runUpgrades(a, controller.PlanProposal{UpgradeOrders: []string{"assault"}})
+	skipped := m.runUpgrades(a, controller.PlanProposal{UpgradeOrders: []string{"assault"}})
+	if len(skipped) != 1 || skipped[0].Type != "production_skipped" || skipped[0].Data["reason"] != "exclusive_choice_owned" {
+		t.Fatalf("branch conflict reported incorrectly: %+v", skipped)
+	}
 	if m.factionState(a).Gold != before {
 		t.Fatal("fallback bypassed branch lock")
 	}
