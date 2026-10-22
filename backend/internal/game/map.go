@@ -35,7 +35,7 @@ func (m Map) TerrainAt(position Position) string {
 
 func (m Map) Traversable(position Position) bool {
 	terrain := m.TerrainAt(position)
-	return terrain == TerrainGround || terrain == TerrainForest || terrain == TerrainGold || terrain == TerrainBuildSite
+	return terrain == TerrainGround || terrain == TerrainForest || terrain == TerrainGold
 }
 
 // Forests provide cover to troops; clear ground and deposits permit construction.

@@ -10,7 +10,7 @@ import (
 )
 
 func TestFilesEmbedEveryContentDirectory(t *testing.T) {
-	for _, file := range []string{"battlefield.yaml", "content/core-v3.yaml", "rulesets/battlefield.yaml", "scenarios/castle-siege.yaml", "scenarios/frontier-siege.yaml"} {
+	for _, file := range []string{"battlefield.yaml", "content/core-v4.yaml", "rulesets/battlefield.yaml", "scenarios/castle-siege.yaml", "scenarios/frontier-siege.yaml"} {
 		if _, err := fs.Stat(Files, file); err != nil {
 			t.Fatalf("%s not embedded: %v", file, err)
 		}

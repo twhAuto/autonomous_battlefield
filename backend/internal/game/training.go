@@ -49,6 +49,8 @@ func (m *Match) runTraining() []Event {
 			m.factionState(b.FactionID).UnitsRecruited++
 		}
 		b.TrainingQueue = b.TrainingQueue[1:]
+		// Keep cost as informational unit value for existing event clients; only
+		// unit_queued records a purchase. Deployment never charges gold.
 		events = append(events, m.event("unit_recruited", map[string]any{"factionId": b.FactionID, "sourceBuildingId": b.ID, "unitId": unit.ID, "unitType": unit.Type, "position": spawn, "readyAtTick": unit.ReadyAtTick, "cost": unit.Cost}))
 	}
 	return events

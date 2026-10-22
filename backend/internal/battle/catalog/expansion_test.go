@@ -40,8 +40,8 @@ func TestLegacyInputWithOpenMapRules(t *testing.T) {
 		}
 		h.Write(data)
 	}
-	if hex.EncodeToString(h.Sum(nil)) != "adc084d2124914d466ef623c0e45f5022ca1004c928b6db4cc8e9f9a0b46a6c4" {
-		t.Fatalf("open-map transition trace: %s", hex.EncodeToString(h.Sum(nil)))
+	if hex.EncodeToString(h.Sum(nil)) != "272261b8abc043bb427d08554d1e3bd046eacea4c0597d5265023980a24e8ca1" {
+		t.Fatal("open-map transition trace changed (legacy pads remain impassable)")
 	}
 }
 

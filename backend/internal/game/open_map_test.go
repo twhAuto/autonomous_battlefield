@@ -207,3 +207,16 @@ func TestForestCoverAppliesAfterArmorPiercing(t *testing.T) {
 		t.Fatal("cover bypassed or not applied")
 	}
 }
+
+// Old pads remain construction terrain, but cannot become movement/spawn exits.
+func TestLegacyBuildPadsRemainImpassable(t *testing.T) {
+	m := Map{Width: 5, Height: 1, Rows: []string{".bfg#"}}
+	for x, symbol := range m.Rows[0] {
+		p := Position{x, 0}
+		wantWalk := symbol == '.' || symbol == 'f' || symbol == 'g'
+		wantBuild := symbol == '.' || symbol == 'b' || symbol == 'g'
+		if m.Traversable(p) != wantWalk || m.Buildable(p) != wantBuild {
+			t.Fatalf("terrain %c: traversable=%v buildable=%v", symbol, m.Traversable(p), m.Buildable(p))
+		}
+	}
+}

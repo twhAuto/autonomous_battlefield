@@ -1,4 +1,4 @@
-// Checks battle viewing: connection states and manual retry, tick progress, perspective
+// Checks battle viewing: connection states and manual retry, tick progress, map
 // selection, inspector gating by role, and pause/resume/stop control outcomes.
 
 import { act, render, screen, waitFor } from '@testing-library/react'
@@ -7,14 +7,14 @@ import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { BattlePage } from './BattlePage'
 import {
-  BattleApiError, getBattle, getBattleView, listBattleEvents, listDecisionHistory,
+  BattleApiError, getBattle, listBattleEvents, listDecisionHistory,
   pauseBattle, resumeBattle, stopBattle, type BattleRun,
 } from '../api/battles'
 import { SessionContext } from '../../auth/SessionContext'
 
 vi.mock('../api/battles', async (original) => ({
   ...await original<typeof import('../api/battles')>(),
-  getBattle: vi.fn(), getBattleView: vi.fn(), listBattleEvents: vi.fn(), listDecisionHistory: vi.fn(),
+  getBattle: vi.fn(), listBattleEvents: vi.fn(), listDecisionHistory: vi.fn(),
   pauseBattle: vi.fn(), resumeBattle: vi.fn(), stopBattle: vi.fn(),
 }))
 
@@ -68,7 +68,6 @@ function renderBattle(role: 'admin' | 'player' = 'admin', actorID = 'admin') {
 
 beforeEach(() => {
   vi.mocked(getBattle).mockReset().mockResolvedValue(runningBattle({ status: 'completed' }))
-  vi.mocked(getBattleView).mockReset().mockRejectedValue(new BattleApiError('No perspective', 404))
   vi.mocked(listBattleEvents).mockReset().mockResolvedValue({ attempt: 1, events: [], nextCursor: null })
   vi.mocked(listDecisionHistory).mockReset().mockResolvedValue([])
   vi.mocked(pauseBattle).mockReset()

@@ -100,7 +100,8 @@ enter a persistent per-building training queue; rejected purchases are not queue
 Every living, active friendly building grants `buildRange` in hex distance.
 Construct on unoccupied ground or a deposit within that range. All living buildings,
 including enemy buildings and castles, must be at least two hexes apart: one
-intervening hex. New structures are checked in order, so an earlier purchase can
+intervening hex. Historical `b` build-pad cells remain buildable but impassable;
+new maps use ground and gold deposits. New structures are checked in order, so an earlier purchase can
 block a later one. Illegal placements spend no gold. Destroyed buildings grant no
 range and release their hex and building capacity. Economy buildings activate
 immediately; other new structures activate next tick.
@@ -119,14 +120,17 @@ The engine resumes a live paused match in memory; a new worker attempt replays i
 saved scenario and decisions, rebuilding the same queue progression. Legacy unit
 definitions without training times default to one tick and building ranges to 3.
 Historical stored states retain their data; replaying them uses the current engine
-rules, so pre-change transition hashes are not preserved.
+rules, so pre-change transition hashes are not preserved. Before deploying this
+overhaul, finish all queued/running/paused battles on the old engine and prevent
+new battle creation during the cutover; see the [release precondition](../operations/deployment.md#gameplay-rules-cutover).
 
 ## Plan submission
 
 At each window the engine asks every faction's controller for a plan, based on a
 frozen observation of the entire battlefield, including enemy troops, structures,
 and training queues. The opponent's gold, owned upgrades and aggregate production
-totals remain private:
+totals remain private in controller observations; authorized browser viewers see
+both factions' totals in the full battle snapshot:
 
 - A **scripted** controller submits its deterministic plan immediately.
 - A **model** controller receives the observation through MCP tools and must

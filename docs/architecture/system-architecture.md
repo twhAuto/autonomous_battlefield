@@ -114,7 +114,9 @@ clickjacking. The CSP deliberately leaves script and connect sources open becaus
 
 The browser presents the complete battlefield without a perspective selector.
 Server-side role and ownership checks remain the access boundary. Faction views
-expose all entities while keeping opponents' aggregate economy totals private. Participant
+expose all entities while keeping opponents' aggregate economy totals private
+from AI controllers. Authorized browser viewers receive the full battle state,
+including both factions' totals. Participant
 background and doctrine come from the persisted scenario, not the editable faction
 directory. The presentation accepts multiple participants; battle creation,
 scenario spawns, opponent selection, and castle-destruction victory rules still
@@ -742,17 +744,23 @@ library. Adding content therefore needs no per-map selection updates.
 Three-level general upgrades retain one purchase ID per level; specialist choices
 use unit/class scopes and exclusive groups. Engine and AI validators check frozen
 ownership and ordered prerequisites/choices before accepting plans. Unit turns
-also resolve Scout retreat, visible cavalry pursuit, armor penetration and bounded
+also resolve Scout retreat, cavalry pursuit, armor penetration and bounded
 Engineer repair. Repair spends gold during unit turns while respecting reserves.
 
 Snapshots store the resolved rules and mutable repair charges; no database migration
-or historical live ruleset is needed. Old snapshots omit new optional fields and
-retain their original behavior, checked by the pinned legacy transition trace.
+or historical live ruleset is needed. Old snapshots remain readable, but the
+open-map construction and training overhaul changes their replay behavior. A
+worker retry or restart re-simulates with the current engine; historical authored
+pads outside the default building range may no longer accept their old orders.
+The [gameplay cutover precondition](../operations/deployment.md#gameplay-rules-cutover)
+requires finishing existing battles before this engine is deployed.
 
 ### Frozen snapshots over live catalog references
 
-Rules, factions, and initial state are captured per battle. Replays remain stable,
-at the cost of larger JSONB rows and explicit version provenance.
+Rules, factions, and initial state are captured per battle. Replays remain stable
+within an engine version, at the cost of larger JSONB rows and explicit version
+provenance. Snapshot versions describe data compatibility; they do not retain
+previous engine implementations.
 
 ### MCP as a capability boundary
 

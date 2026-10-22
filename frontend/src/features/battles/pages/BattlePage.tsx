@@ -1,4 +1,4 @@
-// Composes battle polling hooks, perspective selection, map and decision panels, event
+// Composes battle polling hooks, map and decision panels, event
 // history, and pause/resume/stop controls.
 
 import { useCallback, useMemo, useState } from 'react'
@@ -83,12 +83,7 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
     ? participantNames.get(battle.result.winnerFactionId) ?? battle.result.winnerFactionId
     : null
   const battleTitle = battleTitleFor(battle)
-  const spectatorView = battle.map && battle.state ? {
-    map: battle.map,
-    state: battle.state,
-    visiblePositions: battle.map.rows.flatMap((row, y) => [...row].map((_, x) => ({ x, y }))),
-  } : null
-  const displayView = spectatorView
+  const displayView = battle.map && battle.state ? { map: battle.map, state: battle.state } : null
 
   return (
     <>
@@ -116,7 +111,6 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
             <HexBattleMap
               map={displayView.map}
               state={displayView.state}
-              visiblePositions={displayView.visiblePositions}
               factionNames={participantNames}
             />
           }

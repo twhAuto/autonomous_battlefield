@@ -129,14 +129,6 @@ export interface BattleRun {
   errorMessage?: string
 }
 
-export async function getBattleView(id: string, factionId: string, signal?: AbortSignal): Promise<BattleView> {
-  const response = await battlefieldFetch(`/v1/battles/${encodeURIComponent(id)}/factions/${encodeURIComponent(factionId)}/view`, { signal })
-  if (response.ok) return (await response.json()) as BattleView
-  if (response.status === 400) throw new BattleApiError('That faction perspective is invalid.', 400)
-  if (response.status === 404) throw new BattleApiError('This battle could not be found.', 404)
-  throw new BattleApiError('Battle perspective could not be loaded.', response.status)
-}
-
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 
 export interface BattleEvent {

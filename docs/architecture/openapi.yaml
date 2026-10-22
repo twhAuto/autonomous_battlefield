@@ -1580,7 +1580,7 @@ components:
         | `upgrade_purchased` | `factionId`, `upgradeId`, `cost`, `balance`; leveled entries also include `track`, `level`, `attackBonus`, `defenseBonus`, `economyIncomeBonus` (incremental effects) |
         | `building_constructed` | `factionId`, `buildingId`, `buildingType`, `position`, `cost` |
         | `unit_queued` | `factionId`, `sourceBuildingId`, `unitType`, `trainingTicks`, `cost`; charged once at enqueue |
-        | `unit_recruited` | `factionId`, `unitId`, `unitType`, `position`, `readyAtTick`, `cost`, and `sourceBuildingId`; deployment does not charge gold again |
+        | `unit_recruited` | `factionId`, `unitId`, `unitType`, `position`, `readyAtTick`, `cost`, and `sourceBuildingId`; `cost` is informational unit value for compatibility, not a new expense; count only `unit_queued.cost` for recruitment spending |
         | `production_skipped` | `factionId`, `kind` (`upgrades`, `construction` or `recruitment`), `reason`, plus `upgradeId` or `position` where relevant; reasons include `prerequisite_required`, `exclusive_choice_owned`, `reserve_required`, `queue_full`, `source_unavailable`, `invalid_terrain`, `outside_build_range`, `building_too_close`, `site_occupied` and `maximum_reached` |
         | `unit_moved` | `factionId`, `unitId`, `from`, `to` |
         | `unit_attacked`, `building_attacked` | `attackerId`, `targetId`, `targetType`, `damage`, `remainingHealth`, `attackMode`, `outcome: hit`, `impactPosition` |

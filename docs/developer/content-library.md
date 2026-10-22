@@ -46,7 +46,9 @@ content digest, timing and plans, in PostgreSQL JSON. Workers replay that snapsh
 there is no lookup of a historical live catalog and no database migration. Older
 v1/v2 authored files exist only under catalog test fixtures, where their original content/snapshot hashes remain pinned. Gameplay transition
 hashes now reflect open-map, range and queue rules; persisted historical state is
-not rewritten, but replay uses the current engine.
+not rewritten, but replay uses the current engine. Finish in-flight battles before
+the [gameplay cutover](../operations/deployment.md#gameplay-rules-cutover); a worker
+restart otherwise re-simulates old inputs with changed construction/training rules.
 
 ## Expanded content fields
 

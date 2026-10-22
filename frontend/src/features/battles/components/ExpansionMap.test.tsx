@@ -16,7 +16,7 @@ it('shows the expanded roster, distinct structures, treatment, and tower attacks
     { ...unit('herbalist', 7), attack: 0, healAmount: 3, healTargetId: 'pikeman', healTargetPosition: { x: 6, y: 8 } },
     unit('battering_ram', 8),
   ], buildings: [building('watchtower', 7), building('barracks', 9), building('economy', 4), { ...building('defense_tower', 8), attack: 12, range: 3, attackTargetId: 'enemy', attackTargetPosition: { x: 10, y: 7 } }] }
-  const { container, rerender } = render(<HexBattleMap map={map} state={state} visiblePositions={[]} factionNames={new Map([['a', 'Northwind']])} />)
+  const { container, rerender } = render(<HexBattleMap map={map} state={state} factionNames={new Map([['a', 'Northwind']])} />)
   expect(container.querySelectorAll('.hex-tile')).toHaveLength(425)
   expect(container.querySelectorAll('.unit-direction--healing')).toHaveLength(1)
   expect(container.querySelectorAll('.unit-direction--tower')).toHaveLength(1)
@@ -37,7 +37,7 @@ it('shows the expanded roster, distinct structures, treatment, and tower attacks
   const next = structuredClone(state)
   delete next.units![2].healTargetPosition
   delete next.buildings![3].attackTargetPosition
-  rerender(<HexBattleMap map={map} state={next} visiblePositions={[]} factionNames={new Map()} />)
+  rerender(<HexBattleMap map={map} state={next} factionNames={new Map()} />)
   expect(container.querySelectorAll('.unit-direction--healing, .unit-direction--tower')).toHaveLength(0)
 })
 
@@ -63,7 +63,7 @@ it('shows specialist capabilities and distinguishes repair from treatment', asyn
     { ...unit('scout', 5), scout: true },
     { ...unit('raider_cavalry', 6), preferredTargetClass: 'siege' },
   ] }
-  render(<HexBattleMap map={map} state={state} visiblePositions={[]} factionNames={new Map([['a', 'North']])} />)
+  render(<HexBattleMap map={map} state={state} factionNames={new Map([['a', 'North']])} />)
   await user.click(screen.getByRole('button', { name: 'North · Engineer · engineer' }))
   expect(screen.getByText(/repairing.*Repair 4 HP.*2 gold.*11 charges/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'North · Crossbowman · crossbow' }))

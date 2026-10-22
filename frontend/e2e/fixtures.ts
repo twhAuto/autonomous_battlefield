@@ -16,7 +16,6 @@ type FixtureState = { deleteFails: boolean; deleted: boolean; createFails: boole
 function battleRoute(api: FixtureState, pathname: string): unknown {
   const battle = battleFixture(api.width, api.height)
   if (pathname === '/v1/battles') return { battles: [{ ...battle, createdAt: '2026-09-10T00:00:00Z', outcome: { winnerFactionId: factionId, reason: 'castle_destroyed' } }], nextCursor: '' }
-  if (pathname.endsWith('/view')) return { map: battle.map, state: battle.state, visiblePositions: battle.map.rows.flatMap((row, y) => [...row].map((_, x) => ({ x, y }))) }
   if (pathname === `/v1/battles/${battleId}`) return battle
   // A freshly staged battle is served as queued under its own generated identifier.
   if (api.created && pathname === `/v1/battles/${api.created.id}`) {
