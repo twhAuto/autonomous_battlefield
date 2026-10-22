@@ -29,11 +29,20 @@ validate_agent_concurrency() {
   fi
 }
 validate_agent_concurrency
+cli_minimum_version() {
+  local value="${1#codex-cli }" major minor patch
+  IFS=. read -r major minor patch <<<"${value% }"
+  printf '%s.%s.%s' "${major}" "${minor:-0}" "${patch:-0}"
+}
+
 # Local CLIs allow the selected version or newer.
 resolve_version_prefixes() {
   codex_version_prefix='codex-cli 0.155.'
   claude_version_prefix='2.1.267 '
   antigravity_version_prefix='1.2.'
+  codex_minimum_version="$(cli_minimum_version "${codex_version_prefix}")"
+  claude_minimum_version="$(cli_minimum_version "${claude_version_prefix}")"
+  antigravity_minimum_version="$(cli_minimum_version "${antigravity_version_prefix}")"
 }
 resolve_version_prefixes
 runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-host-agent.XXXXXX")"
@@ -112,8 +121,7 @@ accept_cli_version() {
   # Bound components before Bash arithmetic and interpret leading zeros as decimal.
   [[ "${numeric}" =~ ^([0-9]{1,9})\.([0-9]{1,9})\.([0-9]{1,9})$ ]] || return 1
   local installed=("${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")
-  minimum="${prefix#codex-cli }"
-  minimum="${minimum% }"
+  minimum="$(cli_minimum_version "${prefix}")"
   local major minor patch index
   IFS=. read -r major minor patch <<<"${minimum}"
   local baseline=("${major}" "${minor:-0}" "${patch:-0}")
@@ -154,21 +162,21 @@ select_profiles() {
       ;;
     codex)
       if ! codex_available; then
-        echo "Codex CLI 0.155.0 or newer with a saved login is required. Run codex login." >&2
+        echo "Codex CLI ${codex_minimum_version} or newer with a saved login is required. Run codex login." >&2
         exit 1
       fi
       use_codex=1
       ;;
     antigravity|gemini)
       if ! antigravity_available; then
-        echo "Antigravity CLI 1.2.0 or newer with a saved login is required. Run agy to sign in." >&2
+        echo "Antigravity CLI ${antigravity_minimum_version} or newer with a saved login is required. Run agy to sign in." >&2
         exit 1
       fi
       use_gemini=1
       ;;
     claude)
       if ! claude_available; then
-        echo "Claude Code 2.1.267 or newer with a saved subscription login is required. Run claude auth login." >&2
+        echo "Claude Code ${claude_minimum_version} or newer with a saved subscription login is required. Run claude auth login." >&2
         exit 1
       fi
       use_claude=1

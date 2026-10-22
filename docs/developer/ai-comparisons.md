@@ -150,3 +150,9 @@ The opt-in real-CLI transport checks (`BATTLEFIELD_LIVE_AGY`, `BATTLEFIELD_LIVE_
 login; see the [Antigravity](../operations/antigravity-cli.md) and
 [Claude](../operations/claude-cli.md) guides. Run the
 [coverage gates](ci.md#coverage-gate-details) before declaring a change complete.
+
+For Codex, run from `backend/` (uses subscription allowance):
+
+```bash
+PATH="$HOME/.local/bin:$PATH" BATTLEFIELD_LIVE_CODEX=1 go test ./internal/ai/mcpserver -run '^TestCodexLiveDecision$' -count=1 -v
+```

@@ -84,6 +84,7 @@ The helper supports `auto`, `codex`, `antigravity`, `claude`, `both` and `all`
 `all` requires all three CLIs. `auto` selects every available authenticated CLI.
 Local CLIs allow the selected stable version or newer: Codex `0.155.0+`,
 Antigravity `1.2.0+` and Claude `2.1.267+`. A saved login is required.
+Name a CLI explicitly to see why it was rejected.
 
 The host agent runs `HOST_AGENT_CONCURRENCY` decision slots (default `2`, range
 1–4) shared across the enabled CLIs, so both factions of a model-vs-model battle

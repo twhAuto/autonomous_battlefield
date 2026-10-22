@@ -596,7 +596,7 @@ in the [service authentication runbook](../operations/access.md#ci-service-ident
   network policy restricts private services.
 - Provider credentials belong to the decision agent, separate from the API and engine.
 - Model rationale remains untrusted display text; bounded length does not make it authoritative.
-- CLI isolation depends on provider version behavior.
+- Production CLI profiles enforce their configured version prefixes.
 
 The [production access runbook](../operations/access.md) owns credential
 provisioning, network verification and enablement procedures.

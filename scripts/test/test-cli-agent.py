@@ -36,7 +36,7 @@ kube() { printf '%s\\n' "$*" >&2; }
 set_profile_flags false false true
 set_profile_flags false false false
 '''
-            return subprocess.run(['bash', '-ec', script], capture_output=True, text=True,
+            return subprocess.run(['bash', '-euo', 'pipefail', '-c', script], capture_output=True, text=True,
                                   env={**BASE_ENV, **(overrides or {}), 'requested_provider': mode,
                                        'available': available, 'runtime_dir': runtime,
                                        **({'agent_concurrency': concurrency} if concurrency else {})})
@@ -77,7 +77,7 @@ set_profile_flags false false false
     def test_agent_concurrency_rejects_invalid_values(self):
         for value, valid in [('1', True), ('4', True), ('0', False), ('5', False), ('two', False), ('', False)]:
             with self.subTest(value=value):
-                result = subprocess.run(['bash', '-ec', FUNCTIONS + '\nvalidate_agent_concurrency'],
+                result = subprocess.run(['bash', '-euo', 'pipefail', '-c', FUNCTIONS + '\nvalidate_agent_concurrency'],
                                         capture_output=True, text=True, env={**os.environ, 'agent_concurrency': value})
                 self.assertEqual(result.returncode, 0 if valid else 2, result.stderr)
                 if not valid:
@@ -135,12 +135,12 @@ accept_cli_version {binary} {name}_version_prefix
 printf '%s' "${{{name}_version_prefix}}"
 '''
                     env = {**BASE_ENV, 'PATH': runtime + os.pathsep + os.environ['PATH'], 'FAKE_VERSION': version}
-                    result = subprocess.run(['bash', '-ec', script], capture_output=True, text=True, env=env)
+                    result = subprocess.run(['bash', '-euo', 'pipefail', '-c', script], capture_output=True, text=True, env=env)
                     self.assertEqual(result.returncode == 0, accepted, result.stderr)
                     if accepted:
                         self.assertEqual(result.stdout, version)
                         self.assertEqual(result.stderr, '')
-                        failed = subprocess.run(['bash', '-ec', script], capture_output=True, text=True,
+                        failed = subprocess.run(['bash', '-euo', 'pipefail', '-c', script], capture_output=True, text=True,
                                                 env={**env, 'FAKE_EXIT': '1'})
                         self.assertNotEqual(failed.returncode, 0)
 
@@ -167,12 +167,12 @@ cat "$runtime_dir/config.yaml"
 '''
             env = {**BASE_ENV, 'PATH': runtime + os.pathsep + os.environ['PATH'],
                    'HOME': runtime, 'runtime_dir': runtime, 'requested_provider': 'auto'}
-            result = subprocess.run(['bash', '-ec', script], capture_output=True, text=True, env=env)
+            result = subprocess.run(['bash', '-euo', 'pipefail', '-c', script], capture_output=True, text=True, env=env)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(configured_prefixes(result.stdout), {
                 'codex-cli': versions['codex'], 'antigravity-cli': versions['agy'], 'claude-cli': versions['claude']})
             auth.unlink()
-            failed = subprocess.run(['bash', '-ec', script], capture_output=True, text=True,
+            failed = subprocess.run(['bash', '-euo', 'pipefail', '-c', script], capture_output=True, text=True,
                                     env={**env, 'FAKE_AUTH_EXIT': '1'})
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn('No supported authenticated subscription CLI was found', failed.stderr)
@@ -207,7 +207,7 @@ kill() { return 1; }
 curl() { echo 'unexpected health probe'; return 0; }
 wait_for_endpoint http://127.0.0.1:18084/healthz 123 'AI gateway port-forward' "$1"
 """
-            result = subprocess.run(['bash', '-ec', script, '_', str(log)], capture_output=True, text=True)
+            result = subprocess.run(['bash', '-euo', 'pipefail', '-c', script, '_', str(log)], capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('address already in use', result.stderr)
             self.assertIn('HOST_AI_GATEWAY_PORT', result.stderr)
@@ -227,7 +227,7 @@ curl() {
 }
 wait_for_endpoint http://127.0.0.1:18084/healthz 123 'AI gateway port-forward' "$1"
 """
-            result = subprocess.run(['bash', '-ec', script, '_', str(log)], capture_output=True, text=True)
+            result = subprocess.run(['bash', '-euo', 'pipefail', '-c', script, '_', str(log)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 1)
             self.assertIn('did not become ready', result.stderr)
             self.assertIn('connection refused', result.stderr)
@@ -238,7 +238,7 @@ kill() { return 0; }
 curl() { return 0; }
 wait_for_endpoint http://127.0.0.1:18084/healthz 123 'AI gateway port-forward'
 """
-        subprocess.run(['bash', '-ec', script], check=True)
+        subprocess.run(['bash', '-euo', 'pipefail', '-c', script], check=True)
 
     def test_forward_pid_is_the_kubectl_process_cleanup_stops(self):
         with tempfile.TemporaryDirectory() as runtime:
@@ -256,7 +256,7 @@ wait "$forward_pid" || true
 [[ "$kubectl_pid" == "$forward_pid" ]]
 [[ "$arguments" == "--context fixture --namespace battlefield port-forward --address 127.0.0.1 service/battlefield-ai-gateway 18084:8084" ]]
 """
-            subprocess.run(['bash', '-ec', script, '_', runtime], check=True,
+            subprocess.run(['bash', '-euo', 'pipefail', '-c', script, '_', runtime], check=True,
                            env={**os.environ, 'PATH': runtime + os.pathsep + os.environ['PATH']})
 
     def test_host_wait_allows_both_serial_auth_probes(self):
@@ -269,7 +269,7 @@ curl() { probes=$((probes+1)); [[ "$probes" -ge 160 ]]; }
 wait_for_endpoint http://127.0.0.1:18083/healthz 123 'Host agent' "" 300
 [[ "$probes" == 160 ]]
 """
-        subprocess.run(['bash', '-ec', script], check=True)
+        subprocess.run(['bash', '-euo', 'pipefail', '-c', script], check=True)
 
     def test_unavailable_and_invalid_rejected(self):
         for mode, available in [('claude', ''), ('all', 'codex gemini'), ('auto', ''), ('unknown', 'claude')]:
