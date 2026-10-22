@@ -354,6 +354,18 @@ Codex receives `model_reasoning_effort`; Claude receives `--effort`. The CLI mod
 identifier is the requested identifier; aliases such as `sonnet` can resolve to a
 new provider version and are not an immutable model-version guarantee.
 
+The shipped CLI catalog includes lower-cost choices: Claude `haiku`, OpenAI
+`gpt-6-luna` (the published name is GPT-6 Luna), and Antigravity
+`gemini-3.8-flash-low`. Codex Luna offers low/medium/high effort. Haiku uses
+model-default effort because the alias can resolve to a model without effort
+support on older supported CLIs. Antigravity's Flash low/medium/high variants
+encode reasoning in the model ID. Profile defaults remain `gpt-5.6-luna`,
+`sonnet` and `gemini-3.8-flash-medium`; existing selections are preserved.
+See the provider catalogs for [OpenAI](https://developers.openai.com/api/docs/models/gpt-6-luna),
+[Claude](https://code.claude.com/docs/en/model-config) and
+[Antigravity](https://antigravity.google/docs/models). Subscription availability
+and usage allowances depend on the account; these choices do not assert API prices.
+
 The claim request carries `selectionVersion: 1`. An older worker receives HTTP 409
 before leasing a job, preventing it from silently ignoring frozen choices. See
 [worker rollout ordering](../operations/cli-worker.md#model-selection-rollout).

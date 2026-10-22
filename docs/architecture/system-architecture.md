@@ -793,6 +793,10 @@ before claims, so old workers stop claiming after gateway promotion. The CLI
 Jenkins job upgrades from the deployed production image and then synchronizes
 managed model options; use the documented
 [CLI maintenance window](../operations/cli-worker.md#model-selection-rollout).
+The synchronized catalog includes Haiku and GPT-6 Luna, plus Antigravity Flash
+low/medium/high model variants. These are explicit battle choices; profile
+defaults stay unchanged. The host launcher ships the same choices as the API
+and production worker configuration.
 
 PostgreSQL timestamps request creation, the latest claim, first context delivery,
 resolution and worker completion-report receipt. The existing decision-history

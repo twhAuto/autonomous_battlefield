@@ -6,6 +6,14 @@ ID stays `gemini-subscription-local` and its availability flag
 `GEMINI_CLI_PROFILE_AVAILABLE`, from the retired Gemini CLI provider, so existing
 battle configurations keep working.
 
+Battle setup offers `gemini-3.8-flash-low`, `gemini-3.8-flash-medium` and
+`gemini-3.8-flash-high`. Low favors lighter reasoning; medium remains the default.
+The reasoning level is part of the model ID, so there is no separate effort
+selector. Run `agy models` to check which IDs the signed-in account exposes
+before enabling a profile; listing a model does not verify a successful battle
+submission. See [Google's model catalog](https://antigravity.google/docs/models)
+for plan availability.
+
 ## WSL setup
 
 1. Install Antigravity CLI using the

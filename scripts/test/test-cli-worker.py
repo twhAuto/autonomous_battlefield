@@ -299,6 +299,13 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual({p['id']: p['modelOptions'] for p in template['profiles'] if 'modelOptions' in p}, settings['modelOptions'])
         if settings['agentConcurrency'] is not None:
             self.assertEqual(template['agentConcurrency'], settings['agentConcurrency'])
+        launcher_tests = load('cli_agent_tests', ROOT / 'scripts/test/test-cli-agent.py')
+        generated = launcher_tests.CLIProfiles().run_profile('all', 'codex gemini claude')
+        self.assertEqual(generated.returncode, 0, generated.stderr)
+        for source in [(ROOT / 'backend/config.yaml').read_text(), generated.stdout]:
+            profiles = [p for p in yaml.safe_load(source)['ai']['profiles'] if p['runtime'] == 'cli']
+            self.assertEqual({p['id']: p['model'] for p in profiles}, settings['models'])
+            self.assertEqual({p['id']: p.get('modelOptions', []) for p in profiles}, settings['modelOptions'])
 
     def test_sync_config_updates_guest_then_the_registered_copy(self):
         directory = tempfile.TemporaryDirectory()
