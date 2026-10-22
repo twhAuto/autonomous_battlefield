@@ -54,11 +54,13 @@ var identityTemplate = strings.TrimSpace(identityPromptTemplate)
 // change to template wording, assembly order or wiring always yields a new version.
 var Version = fmt.Sprintf("battlefield-agent-v10.%x", sha256.Sum256([]byte(versionSample())))
 
+const versionContextSample = `{"context":{"schemaVersion":"v4","continuousProduction":true,"knowledge":{"mechanics":"sample"},"legal":{"actionKinds":[],"units":[],"buildings":[],"upgrades":[],"recruitmentSources":[],"economySites":[]},"view":{"map":{},"unitProfiles":[],"buildingProfiles":[],"state":{}},"factionName":"name","background":"background","doctrine":"doctrine","battleId":"battle","factionId":"faction","ownedUpgradeIds":[],"economy":{},"activePlan":{},"memory":[],"referenceUnits":[],"futureField":null,"requestId":"version-sample","targetTick":1,"expectedVersion":2,"observationVersion":3,"observationHash":"hash","opening":false}}`
+
 func versionSample() string {
 	session := ai.DecisionSession{RequestID: "version-sample", FactionName: "name", Background: "background", Doctrine: "doctrine"}
 	// Exercise both delivery layouts and all ordered leaves. Policy selection data
 	// is included too, so changing a rule removal cannot reuse old provenance.
-	inline := []byte(`{"context":{"schemaVersion":"v4","continuousProduction":true,"knowledge":{"mechanics":"sample"},"legal":{"actionKinds":[],"units":[],"buildings":[],"upgrades":[],"economySites":[]},"view":{"map":{},"state":{}},"battleId":"battle","factionId":"faction","ownedUpgradeIds":[],"economy":{},"activePlan":{},"memory":[],"requestId":"version-sample","targetTick":1,"expectedVersion":2,"observationVersion":3,"observationHash":"hash","opening":false}}`)
+	inline := []byte(versionContextSample)
 	return SessionSystem(session) + "\x00" + SessionDecision(session, nil) + "\x00" + SessionDecision(session, []byte("{}")) + "\x00" + SessionDecision(session, inline) + "\x00" + continuousDecisionPolicy() + "\x00" + ruleDuplicatesJSON
 }
 

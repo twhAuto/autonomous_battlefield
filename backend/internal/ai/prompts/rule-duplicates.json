@@ -61,13 +61,6 @@
       ]
     },
     {
-      "prompt": "For entries with exclusiveGroup, choose at most one ID in that group for the battle; owned choices cannot be replaced.",
-      "mechanics": [
-        "Specialist upgrades cost 60 gold; choose only one per exclusiveGroup for the battle.",
-        "Choices cannot be reversed or refunded."
-      ]
-    },
-    {
       "prompt": "Only clear ground and gold deposits permit construction; units block placement and every pair of living buildings must have hex distance at least 2.",
       "mechanics": [
         "All buildings must be at least two hexes apart; units block construction.",
@@ -91,12 +84,6 @@
       "prompt": "A single building limits training throughput even with abundant gold.",
       "mechanics": [
         "The building continuously trains that type one at a time using trainingTicks."
-      ]
-    },
-    {
-      "prompt": "Industry upgrades improve economy buildings only; owning no economy buildings means no income benefit.",
-      "mechanics": [
-        "Industry improves economy buildings only, never castle income."
       ]
     }
   ]

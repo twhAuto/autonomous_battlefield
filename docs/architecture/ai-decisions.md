@@ -147,10 +147,11 @@ Prefetched sessions receive policy and the delivery contract, a `REFERENCE` JSON
 block, faction identity, then a `CONTEXT` JSON block. Recursively merging the two
 JSON objects restores the complete context: the reference contains schema/mode,
 frozen knowledge, legal catalogs and terrain; the remainder contains faction/battle
-IDs, owned upgrades, current legal sites and observed state, economy, plans and
+IDs, owned upgrades, current legal sites/recruitment sources and observed state, economy, plans and
 memory, with tick/request metadata last. Unknown fields remain in the remainder;
 arrays, numbers, nulls and absent values retain their meanings. Both blocks remain
-untrusted game data. Background generation keeps its separate prompt.
+untrusted game data. Contexts without any reference leaves retain the original
+single-block inline layout. Background generation keeps its separate prompt.
 
 The shared policy states training-roster selection once. For prefetched continuous
 production with the exact reviewed core-v7 mechanics, `rule-duplicates.json` removes
@@ -159,7 +160,8 @@ inactive legacy recruitment paragraph. A SHA-256 match of the **entire mechanics
 text** gates this reduction. Tool-fetch sessions, legacy mode and missing, truncated
 or changed mechanics retain the full fallback guidance. Frozen mechanics themselves
 are never shortened. Submission, opening, privacy and other unique requirements
-remain in both variants.
+remain in both variants, as do generic catalog-dependent exclusivity and industry
+guidance whose full scope is not stated explicitly in the mechanics prose.
 
 This deterministic order lengthens the reusable prefix of prefetched prompts.
 Tool-fetch sessions still send a changing request ID before receiving context, so

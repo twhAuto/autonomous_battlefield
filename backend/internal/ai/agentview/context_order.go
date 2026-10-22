@@ -9,6 +9,7 @@ import (
 // Order model-facing JSON without changing its schema or any value. Unknown fields
 // stay in the dynamic portion; request metadata is always last. RawMessage avoids
 // rounding large integers and preserves absent/null/empty distinctions.
+// The object must be a fresh projection map; nested entries are reordered in place.
 func orderedContext(object map[string]json.RawMessage) json.RawMessage {
 	for key, order := range map[string][]string{
 		"legal": {"actionKinds", "units", "buildings", "upgrades", "recruitmentSources", "economySites"},
@@ -73,6 +74,7 @@ func jsonObject(raw json.RawMessage) (map[string]json.RawMessage, bool) {
 // state objects. Recursively merging the blocks reconstructs the input exactly.
 // Extract only known stable leaves: legal sites, observed profiles, visible-only
 // reference units and future fields can change and must remain in state.
+// With no reference leaves, callers should use the original single-block layout.
 func ContextBlocks(payload json.RawMessage) (reference, state json.RawMessage, ok bool) {
 	envelope, ok := jsonObject(payload)
 	if !ok {
@@ -111,6 +113,9 @@ func ContextBlocks(payload json.RawMessage) (reference, state json.RawMessage, o
 		} else {
 			observation[key] = contextJSON(child)
 		}
+	}
+	if len(stable) == 0 {
+		return nil, nil, false
 	}
 	envelope["context"] = orderedContext(observation)
 	return contextJSON(map[string]json.RawMessage{"context": orderedContext(stable)}), contextJSON(envelope), true

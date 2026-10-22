@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/gamedata"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
 )
 
 func currentMechanics(t *testing.T) string {
@@ -37,7 +39,7 @@ func policyPayload(mechanics string, continuous bool) []byte {
 	return payload
 }
 
-func TestRuleDedupRequiresExactFrozenMechanics(t *testing.T) {
+func TestRuleCrosswalkMatchesFrozenMechanics(t *testing.T) {
 	mechanics := currentMechanics(t)
 	if got := fmt.Sprintf("%x", sha256.Sum256([]byte(mechanics))); got != duplicateRules.MechanicsSHA256 {
 		t.Fatal("review the rule crosswalk when the authored mechanics change")
@@ -56,8 +58,12 @@ func TestRuleDedupRequiresExactFrozenMechanics(t *testing.T) {
 			t.Fatalf("duplicate retained: %q", rule.Prompt)
 		}
 	}
-	if strings.Contains(compact, "Legacy recruitment (") || len(DecisionInstructions)-len(compact) < 1800 {
-		t.Fatal("continuous policy did not remove duplicate rules and inactive mode")
+}
+
+func TestContinuousPolicyKeepsUniqueRequirements(t *testing.T) {
+	compact := contextPolicy(policyPayload(currentMechanics(t), true))
+	if strings.Contains(compact, "Legacy recruitment (") || strings.Contains(compact, "or submit recruitmentOrders in legacy mode") {
+		t.Fatal("continuous policy retained inactive legacy guidance")
 	}
 	for _, required := range []string{
 		"single flat arguments object", "idempotencyKey", "never omit them or send null", "accepted=true",
@@ -68,11 +74,17 @@ func TestRuleDedupRequiresExactFrozenMechanics(t *testing.T) {
 		"Bonuses on each entry are incremental, not cumulative", "targetUnit and targetClass",
 		"Earlier orders can block later ones", "skipped without charge", "economy.maximumBuildings",
 		"economy buildings also have their own maximum", "nextGuidanceOffset", "planRef",
+		"For entries with exclusiveGroup, choose at most one ID in that group for the battle; owned choices cannot be replaced.",
+		"Industry upgrades improve economy buildings only; owning no economy buildings means no income benefit.",
 	} {
 		if !strings.Contains(compact, required) {
 			t.Fatalf("lost unique requirement: %q", required)
 		}
 	}
+}
+
+func TestRuleDedupRequiresExactFrozenMechanics(t *testing.T) {
+	mechanics := currentMechanics(t)
 	for _, payload := range [][]byte{
 		nil, []byte(`invalid`), []byte(`{}`), []byte(`{"context":{"continuousProduction":true}}`),
 		policyPayload("", true), policyPayload(mechanics[:200], true), policyPayload(mechanics+" Changed rule.", true),
@@ -81,6 +93,15 @@ func TestRuleDedupRequiresExactFrozenMechanics(t *testing.T) {
 		if got := contextPolicy(payload); got != DecisionInstructions {
 			t.Fatal("unknown, missing, truncated or legacy mechanics lost fallback guidance")
 		}
+	}
+}
+
+func TestReferenceFreeInlineContextUsesSingleBlock(t *testing.T) {
+	payload := []byte(`{"context":{"requestId":"r","targetTick":0,"legal":[],"view":null}}`)
+	prompt := SessionDecision(ai.DecisionSession{RequestID: "r"}, payload)
+	if strings.Contains(prompt, "BATTLEFIELD_REFERENCE") || strings.Contains(prompt, "Merge their objects") ||
+		!strings.HasSuffix(prompt, "BEGIN_BATTLEFIELD_CONTEXT\n"+string(payload)+"\nEND_BATTLEFIELD_CONTEXT") {
+		t.Fatal("reference-free context should retain the complete single-block layout")
 	}
 }
 
@@ -132,5 +153,29 @@ func TestVersionCoversSplitWrapperAndRuleSelection(t *testing.T) {
 	ruleDuplicatesJSON += " "
 	if versionSample() == before {
 		t.Fatal("rule selection missing from provenance")
+	}
+}
+
+func TestVersionSampleCoversEveryOrderedContextField(t *testing.T) {
+	var sample struct {
+		Context map[string]json.RawMessage `json:"context"`
+	}
+	if err := json.Unmarshal([]byte(versionContextSample), &sample); err != nil {
+		t.Fatal(err)
+	}
+	var legal map[string]json.RawMessage
+	if err := json.Unmarshal(sample.Context["legal"], &legal); err != nil {
+		t.Fatal(err)
+	}
+	for typ, fields := range map[reflect.Type]map[string]json.RawMessage{
+		reflect.TypeOf(agentview.Context{}):      sample.Context,
+		reflect.TypeOf(agentview.LegalChoices{}): legal,
+	} {
+		for i := 0; i < typ.NumField(); i++ {
+			key := strings.Split(typ.Field(i).Tag.Get("json"), ",")[0]
+			if _, ok := fields[key]; !ok {
+				t.Fatalf("%s.%s missing from provenance sample", typ.Name(), key)
+			}
+		}
 	}
 }
