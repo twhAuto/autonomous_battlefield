@@ -136,3 +136,11 @@ func closerTrainingSource(candidate, current *Building, enemy Position) bool {
 	distance, previous := HexDistance(candidate.Position, enemy), HexDistance(current.Position, enemy)
 	return distance < previous || distance == previous && candidate.ID < current.ID
 }
+
+// Preserve explicit source identity; only omitted sources are selected automatically.
+func (m *Match) resolveTrainingSource(factionID, sourceID string, definitions map[string]UnitType, priorities []string, reserve int64) (*Building, []string) {
+	if sourceID == "" {
+		return m.chooseTrainingSource(factionID, definitions, priorities, reserve)
+	}
+	return m.recruitmentSource(factionID, sourceID), priorities
+}

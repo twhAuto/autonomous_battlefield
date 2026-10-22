@@ -108,15 +108,12 @@ func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) [
 	// Explicit orders and expanded rosters bound the loop; legacy priorities
 	// stop at six purchases, the reserve, or a full/unavailable source.
 	for attempt := 0; purchased < 6 && (!explicit || attempt < len(queue)); attempt++ {
-		var source *Building
-		priorities := plan.RecruitmentPriorities
+		sourceID, priorities := "", plan.RecruitmentPriorities
 		if explicit {
-			source = m.recruitmentSource(factionID, queue[attempt].SourceBuildingID)
+			sourceID = queue[attempt].SourceBuildingID
 			priorities = []string{queue[attempt].UnitType}
 		}
-		if !explicit || queue[attempt].SourceBuildingID == "" {
-			source, priorities = m.chooseTrainingSource(factionID, definitions, priorities, plan.ReserveGold)
-		}
+		source, priorities := m.resolveTrainingSource(factionID, sourceID, definitions, priorities, plan.ReserveGold)
 		event, bought, stop := m.attemptRecruitment(factionID, source, definitions, priorities, plan.ReserveGold)
 		events = append(events, event)
 		if stop || !explicit && !bought {

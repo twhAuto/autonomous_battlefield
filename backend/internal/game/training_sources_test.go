@@ -23,7 +23,7 @@ func specializedMatch(t *testing.T) *Match {
 	return m
 }
 
-func TestSpecializedOpeningAndSnapshotIsolation(t *testing.T) {
+func TestSpecializedOpeningSources(t *testing.T) {
 	m := specializedMatch(t)
 	for _, id := range m.FactionIDs() {
 		snapshot, err := m.DecisionSnapshot(id)
@@ -40,6 +40,10 @@ func TestSpecializedOpeningAndSnapshotIsolation(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestSpecializedSnapshotIsolation(t *testing.T) {
+	m := specializedMatch(t)
 	copy := m.State()
 	for i := range copy.Buildings {
 		if len(copy.Buildings[i].Trains) > 0 {
@@ -53,6 +57,10 @@ func TestSpecializedOpeningAndSnapshotIsolation(t *testing.T) {
 	if m.scenario.Ruleset.Structures[0].Trains[0] != "vanguard" || m.defaultTrainingSource("faction-a", "vanguard").Trains[0] != "vanguard" {
 		t.Fatal("training roster aliases snapshot")
 	}
+}
+
+func TestSpecializedOpeningQueues(t *testing.T) {
+	m := specializedMatch(t)
 	transition, err := m.Advance()
 	if err != nil {
 		t.Fatal(err)

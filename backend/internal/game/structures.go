@@ -117,15 +117,7 @@ func (m *Match) defaultConstructionOrders(slot int) []controller.ConstructionOrd
 		}
 		return HexDistance(a, enemy) < HexDistance(b, enemy)
 	})
-	kinds := []string{BuildingEconomy}
-	for _, b := range m.scenario.Ruleset.Structures {
-		if b.Kind == BuildingBarracks || b.Kind == BuildingTower {
-			kinds = append(kinds, b.ID)
-		}
-	}
-	if m.specializedTraining() {
-		kinds = m.missingConstructionKinds(factionID)
-	}
+	kinds := m.defaultConstructionKinds(factionID)
 	orders := []controller.ConstructionOrder{}
 	for _, site := range sites {
 		if len(kinds) == 0 || m.specializedTraining() && len(orders) >= len(kinds) {
@@ -218,6 +210,19 @@ func (m *Match) missingConstructionKinds(factionID string) []string {
 	}
 	for _, b := range m.scenario.Ruleset.Structures {
 		if owned[b.Kind] == 0 && (len(b.Trains) > 0 || b.Kind == BuildingTower) {
+			kinds = append(kinds, b.ID)
+		}
+	}
+	return kinds
+}
+
+func (m *Match) defaultConstructionKinds(factionID string) []string {
+	if m.specializedTraining() {
+		return m.missingConstructionKinds(factionID)
+	}
+	kinds := []string{BuildingEconomy}
+	for _, b := range m.scenario.Ruleset.Structures {
+		if b.Kind == BuildingBarracks || b.Kind == BuildingTower {
 			kinds = append(kinds, b.ID)
 		}
 	}

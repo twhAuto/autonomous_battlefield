@@ -239,7 +239,7 @@ func checkSpecialTerrain(t *testing.T, id string, gameMap game.Map) {
 	}
 }
 
-func TestSpecializedCatalogAndTowerValue(t *testing.T) {
+func TestSpecializedCatalogRosters(t *testing.T) {
 	c, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)
@@ -252,7 +252,6 @@ func TestSpecializedCatalogAndTowerValue(t *testing.T) {
 		game.BuildingSiegeWorkshop: {"catapult", "battering_ram", "engineer"},
 		game.BuildingInfirmary:     {"herbalist"},
 	}
-	var tower game.BuildingType
 	for _, b := range rules.Structures {
 		if roster, ok := expected[b.Kind]; ok {
 			if !reflect.DeepEqual(b.Trains, roster) {
@@ -260,26 +259,22 @@ func TestSpecializedCatalogAndTowerValue(t *testing.T) {
 			}
 			delete(expected, b.Kind)
 		}
-		if b.Kind == game.BuildingTower {
-			tower = b
-		}
 	}
 	if len(expected) != 0 {
 		t.Fatal("missing production buildings", expected)
-	}
-	if tower.Cost != 60 || tower.Attack != 15 || tower.Health != 130 || tower.Range != 3 {
-		t.Fatal("tower balance", tower)
-	}
-	for _, u := range rules.Units {
-		if tower.Health*u.Cost <= u.Health*tower.Cost {
-			t.Fatalf("tower durability per gold below %s", u.ID)
-		}
 	}
 	// A returned catalog roster must not mutate another resolved scenario.
 	rules.Structures[2].Trains[0] = "changed"
 	fresh, _ := c.Ruleset("battlefield")
 	if fresh.Structures[2].Trains[0] != "vanguard" {
 		t.Fatal("roster aliases catalog")
+	}
+}
+
+func TestSpecializedCatalogStartingBuildings(t *testing.T) {
+	c, err := LoadCatalog(gamedata.Files)
+	if err != nil {
+		t.Fatal(err)
 	}
 	for _, mapID := range []string{"castle-siege", "frontier-siege"} {
 		scenario, err := c.Resolve(mapID, [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
@@ -298,6 +293,28 @@ func TestSpecializedCatalogAndTowerValue(t *testing.T) {
 			if err != nil || len(decision.RecruitmentSources) != 1 {
 				t.Fatal("starting source", decision, err)
 			}
+		}
+	}
+}
+
+func TestTowerDurabilityPerGold(t *testing.T) {
+	c, err := LoadCatalog(gamedata.Files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules, _ := c.Ruleset("battlefield")
+	var tower game.BuildingType
+	for _, b := range rules.Structures {
+		if b.Kind == game.BuildingTower {
+			tower = b
+		}
+	}
+	if tower.Cost != 60 || tower.Attack != 15 || tower.Health != 130 || tower.Range != 3 {
+		t.Fatal("tower balance", tower)
+	}
+	for _, u := range rules.Units {
+		if tower.Health*u.Cost <= u.Health*tower.Cost {
+			t.Fatalf("tower durability per gold below %s", u.ID)
 		}
 	}
 }
