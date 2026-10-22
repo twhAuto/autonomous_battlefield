@@ -1,5 +1,5 @@
 // Checks battle staging: setup loading and failure recovery, incomplete prerequisites,
-// faction/scenario/controller validation, tick limits, AI availability rechecks, and submission.
+// faction/scenario/controller validation, tick limits, timing overrides, controller availability, and submission.
 
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -173,6 +173,7 @@ it('allows scripted battles when AI availability fails without showing integrati
   expect(screen.queryByText('AI integration status')).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Check availability' })).not.toBeInTheDocument()
   expect((await controllerSelect('first-controller')).querySelectorAll('option')).toHaveLength(1)
+  expect(screen.getByRole('alert')).toHaveTextContent('AI controllers could not be loaded.')
 })
 
 it('keeps the operator on the form when queuing the battle fails', async () => {

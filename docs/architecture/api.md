@@ -160,6 +160,9 @@ frozen in the scenario snapshot and digest, so changed timing on a create retry
 returns `409`; equivalent duration spellings such as `500ms` and `0.5s` match.
 The interval may exceed the requested battle length, leaving only the opening
 decision. The tick duration is a pacing target; AI decision waits can extend it.
+Shorter intervals consume the existing per-battle `runtime_policy.decision_executions`
+budget sooner (default 100). Claim admission serializes that budget, and new model
+windows immediately fall back once it is spent; timing overrides do not bypass it.
 
 Every `decisionIntervalTicks` the engine pauses for each faction's plan, so a
 model-controlled battle can wait at a window; a late plan never replaces the

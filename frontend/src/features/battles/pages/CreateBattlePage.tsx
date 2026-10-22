@@ -21,6 +21,7 @@ export function CreateBattlePage() {
   const [factions, setFactions] = useState<Faction[]>([])
   const [scenarios, setScenarios] = useState<ScenarioSummary[]>([])
   const [profiles, setProfiles] = useState<ModelProfile[]>([])
+  const [profilesError, setProfilesError] = useState(false)
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [loadMessage, setLoadMessage] = useState('')
   const [loadVersion, setLoadVersion] = useState(0)
@@ -42,10 +43,14 @@ export function CreateBattlePage() {
     const controller = new AbortController()
     setLoadState('loading')
     setLoadMessage('')
+    setProfilesError(false)
     Promise.all([
       listFactions(controller.signal),
       listScenarios(controller.signal),
-      listModelProfiles(controller.signal).catch(() => []),
+      listModelProfiles(controller.signal).catch(() => {
+        if (!controller.signal.aborted) setProfilesError(true)
+        return []
+      }),
     ])
       .then(([loadedFactions, loadedScenarios, loadedProfiles]) => {
         if (controller.signal.aborted) return
@@ -198,6 +203,7 @@ export function CreateBattlePage() {
               </div>
               {firstFactionID === secondFactionID && <p className="field-error" role="alert">Choose two different factions.</p>}
               {factions.length < 2 && <p className="field-error" role="alert">Create two factions before deployment.</p>}
+              {profilesError && <p className="field-error" role="alert">AI controllers could not be loaded. Reload the page to try again, or choose Scripted.</p>}
               <div className="battle-timing-grid">
                 <div className="battle-form__field">
                   <label htmlFor="tick-duration">Tick duration</label>

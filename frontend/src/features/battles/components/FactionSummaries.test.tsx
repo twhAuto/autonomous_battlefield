@@ -93,6 +93,7 @@ describe('faction summaries', () => {
   rerender(<FactionSummaries {...props} battle={{ ...battle, status: 'stopped' }} decisions={[{ ...decision, status: 'fallback', resolvedPlan: { name: 'Hold', rationale: 'Keep defending.' } }]} />)
   expect(screen.getByText('Stopped')).toBeVisible()
   expect(screen.getByText('Keep defending.')).toBeVisible()
+  expect(screen.getByText('Plan · fallback')).toBeVisible()
  })
 
  it('does not show decision details to players', () => {

@@ -211,13 +211,14 @@ validated overrides before computing the scenario digest and initial match;
 workers use the stored timing without changing catalog defaults. Setup exposes
 map-default choices and timing presets, with both combatant slots aligned at the
 top. It omits shared roster/rules explanations and the integration status panel;
-controller options still come from the available profile list.
+controller options still come from the available profile list, with an inline error
+if that lookup fails.
 
 ### 5.2 Strategy decision window
 
 A decision window occurs immediately before ticks configured by
-`decisionIntervalTicks`. The supplied scenario currently uses ticks 10, 20, 30, and
-so on.
+`decisionIntervalTicks`. The supplied map defaults use ticks 10, 20, 30, and
+so on; a per-battle override changes that interval in the frozen scenario.
 
 ```mermaid
 sequenceDiagram

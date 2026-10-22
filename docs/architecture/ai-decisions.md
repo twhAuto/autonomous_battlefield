@@ -20,6 +20,8 @@ For Admin and Developer viewers, each faction status box shows the latest
 accepted or fallback plan at or before the current tick and its submitted
 rationale. A pending or future decision does not replace the applied plan.
 Stopped battles retain the last plan; missing records have explicit empty states.
+Fallback plans are labeled, and long plan/rationale text scrolls inside a
+keyboard-focusable area capped at 160px so the map stays accessible.
 Player roles retain the existing restriction on decision inspection.
 
 ## Decision lifecycle

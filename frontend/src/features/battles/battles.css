@@ -212,10 +212,11 @@ main.main-content--battle { --battle-sidebar-width: 340px; --battle-column-gap: 
 .faction-summary__activity { margin: 6px 0 12px; color: #aeb6a9; font: 12px/1.4 'DM Mono', monospace; }
 .faction-summary__activity--active { color: #ffcf70; }
 .faction-summary__metrics { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0; font: 12px/1.4 'DM Mono', monospace; }
+.faction-summary:not(.faction-summary--plans) .faction-summary__metrics { margin-top: auto; }
 .faction-summary__metrics > div { display: flex; gap: 6px; min-width: 0; }
 .faction-summary dt { color: #aeb6a9; }
 .faction-summary dd { margin: 0; color: var(--lime); overflow-wrap: anywhere; }
-.faction-summary .faction-summary__plan { display: grid; gap: 10px; margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; line-height: 1.6; }
+.faction-summary .faction-summary__plan { max-height: 160px; overflow: auto; display: grid; gap: 10px; margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; line-height: 1.6; }
 .faction-summary__plan dt { margin-bottom: 3px; font: 11px 'DM Mono', monospace; text-transform: uppercase; letter-spacing: .08em; }
 .faction-summary__plan dd { color: #d8ded2; white-space: pre-wrap; }
 @media (max-width: 1000px) {
@@ -295,9 +296,6 @@ main.main-content--battle { --battle-sidebar-width: 340px; --battle-column-gap: 
   .battle-live-layout:not(.battle-live-layout--events-only) { align-items: stretch; }
   .battle-live-layout:not(.battle-live-layout--events-only) > .battle-inspector { height: auto; min-height: 0; contain: size; }
 }
-.integration-status button { color: var(--lime); border: 1px solid var(--line); background: var(--ink); padding: 8px 12px; }
-.integration-status { margin-bottom: 24px; }
-.integration-status summary { cursor: pointer; padding-block: 12px; }
 @media (max-width: 780px) {
   .battle-creation-layout { margin: 20px 0 40px; }
   .battle-preview__combatants { min-height: 0; }

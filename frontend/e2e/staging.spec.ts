@@ -89,3 +89,18 @@ test('puts plan and rationale inside each faction status box', async ({ page, is
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   await page.screenshot({ path: `/tmp/ab169-battle-${isMobile ? 'mobile' : 'desktop'}.png`, fullPage: true })
 })
+
+test('keeps long plan text inside a bounded keyboard-accessible area', async ({ page }) => {
+  await page.route('**/v1/battles/*/decisions?*', route => route.fulfill({ json: { decisions: [
+    { requestId: 'long', factionId, targetTick: 80, status: 'accepted', controllerType: 'model', usage: {}, createdAt: '', resolvedPlan: { name: 'Hold '.repeat(200), rationale: 'Defend.\n'.repeat(70) } },
+  ] } }))
+  await page.goto('/battles/33333333-3333-4333-8333-333333333333')
+  const plan = page.getByLabel('Amber plan and rationale', { exact: true })
+  await expect(plan).toContainText('Defend.')
+  await plan.focus()
+  await expect(plan).toBeFocused()
+  const bounds = await plan.evaluate(node => ({ height: node.getBoundingClientRect().height, visible: node.clientHeight, total: node.scrollHeight }))
+  expect(bounds.height).toBeLessThanOrEqual(160)
+  expect(bounds.total).toBeGreaterThan(bounds.visible)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})
