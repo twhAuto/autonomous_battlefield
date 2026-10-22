@@ -101,8 +101,12 @@ func checkSentinelIsRecruited(t *testing.T, scenario game.Scenario, unitID strin
 			t.Fatal(err)
 		}
 	}
-	plan := controller.PlanProposal{Name: "recruit", SpendOrder: []string{"recruitment"}, RecruitmentPriorities: []string{unitID}, ActionWeights: map[string]int64{"attack": 1000}}
-	if _, err := match.AdvanceWithPlans(map[string]controller.PlanProposal{"a": plan, "b": plan}); err != nil {
+	plans := map[string]controller.PlanProposal{}
+	for _, id := range []string{"a", "b"} {
+		orders := []controller.ProductionOrder{{BuildingID: id + ":castle", UnitType: unitID, Enabled: true}}
+		plans[id] = controller.PlanProposal{Name: "recruit", ProductionOrders: &orders, ActionWeights: map[string]int64{"attack": 1000}}
+	}
+	if _, err := match.AdvanceWithPlans(plans); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 40 && !match.Finished(); i++ {

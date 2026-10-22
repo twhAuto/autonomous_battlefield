@@ -78,3 +78,16 @@ func TestDuplicateListsNameTheirField(t *testing.T) {
 		}
 	}
 }
+
+func TestProductionOrderBounds(t *testing.T) {
+	for _, orders := range [][]ProductionOrder{
+		{{UnitType: "vanguard", Enabled: true}},
+		{{BuildingID: "castle", Enabled: true}},
+		{{BuildingID: "castle"}, {BuildingID: "castle"}},
+		make([]ProductionOrder, 10),
+	} {
+		if ValidatePlanProposal(PlanProposal{Name: "invalid", ProductionOrders: &orders}, []string{"attack"}) == nil {
+			t.Fatal("invalid production orders accepted", orders)
+		}
+	}
+}

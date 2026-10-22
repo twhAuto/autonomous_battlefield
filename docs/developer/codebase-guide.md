@@ -220,7 +220,7 @@ head and target commit; a pass for an older pair does not verify the current tre
 ## Shared battlefield content
 
 `backend/gamedata/battlefield.yaml` owns shared timing and controller plans;
-`rulesets/battlefield.yaml` references the full `content/core-v6.yaml` library.
+`rulesets/battlefield.yaml` references the full `content/core-v7.yaml` library.
 `scenarios/castle-siege.yaml` and `scenarios/frontier-siege.yaml` contain maps only.
 `battle/catalog/shared_content.go` validates shared plans, while `library.go`
 resolves every library entry. Historical content lives only in catalog test fixtures.
@@ -277,7 +277,9 @@ Gameplay construction and training are implemented in
 [`training.go`](../../backend/internal/game/training.go). Specialized source selection,
 rosters, and historical starting-Barracks compatibility live in
 [`training_sources.go`](../../backend/internal/game/training_sources.go). The map renderer shows
-terrain bonuses, selected-building range and FIFO queue progress.
+terrain bonuses, selected-building range and training progress.
+[`continuous_production.go`](../../backend/internal/game/continuous_production.go) validates persistent AI selections and purchases one unit at a time for enabled sources.
+[`BuildingProductionPanel.tsx`](../../frontend/src/features/battles/components/BuildingProductionPanel.tsx) shows all living sources to every viewer, including gold waits, disabled production and blocked exits; selected map details reuse its status display.
 `initialization.go` copies authored castle training and attack capabilities into
 runtime state; `structures.go` runs castle and tower attacks together. The full map
 uses the main battle snapshot; the former faction-perspective polling hook is removed.

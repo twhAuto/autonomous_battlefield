@@ -78,6 +78,7 @@ export interface BattleUnit extends UnitCapabilities {
   attackTargetPosition?: HexPosition
 }
 export interface BattleBuilding {
+  production?: { configured?: boolean; unitType?: string; enabled: boolean; waitingForGold?: boolean }
   trains?: string[]
   buildRange?: number
   trainingBlocked?: boolean
@@ -165,6 +166,7 @@ export interface DecisionHistory {
     constructionPriorities?: HexPosition[]
     recruitmentPriorities?: string[]
     upgradeOrders?: string[]
+    productionOrders?: { buildingId: string; unitType?: string; enabled: boolean }[] | null
     recruitmentOrders?: { unitType: string; count: number; sourceBuildingId?: string }[] | null
   }
   traceUrl?: string

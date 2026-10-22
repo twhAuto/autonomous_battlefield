@@ -32,7 +32,10 @@ func ValidateSubmission(record ai.DecisionRecord, submission ai.PlanSubmission) 
 		issues = append(issues, ai.ValidationIssue{Field: "plan.upgradeOrders", Code: "invalid_order", Message: err.Error()})
 	}
 	if record.Observation.Opening {
-		issues = append(issues, validateOpening(submission.Plan)...)
+		issues = append(issues, validateOpeningForMode(submission.Plan, record.Observation.ContinuousProduction)...)
+	}
+	if err := game.ValidateBuildingProduction(record.Observation.ContinuousProduction, record.FactionID, record.Observation.View.State, legal.RecruitmentSources, submission.Plan); err != nil {
+		issues = append(issues, ai.ValidationIssue{Field: "plan.productionOrders", Code: "unsupported", Message: err.Error()})
 	}
 	issues = append(issues, validateRecruitment(legal, submission.Plan)...)
 	issues = append(issues, validateTrainingSources(record.Observation, submission.Plan)...)
@@ -59,7 +62,7 @@ func isModelRuntime(runtime string) bool {
 }
 
 func isEmptyPlan(plan controller.PlanProposal) bool {
-	return len(plan.ActionWeights) == 0 && plan.RecruitmentOrders == nil && len(plan.RecruitmentPriorities) == 0 &&
+	return plan.ProductionOrders == nil && len(plan.ActionWeights) == 0 && plan.RecruitmentOrders == nil && len(plan.RecruitmentPriorities) == 0 &&
 		len(plan.ConstructionPriorities) == 0 && plan.ConstructionOrders == nil && len(plan.UpgradeOrders) == 0 && plan.ReserveGold == 0
 }
 
@@ -79,8 +82,15 @@ func validateUpgrades(legal ai.LegalChoices, plan controller.PlanProposal) []ai.
 
 // The opening requires an explicit purchase decision and has no construction.
 func validateOpening(plan controller.PlanProposal) []ai.ValidationIssue {
+	return validateOpeningForMode(plan, false)
+}
+
+func validateOpeningForMode(plan controller.PlanProposal, continuous bool) []ai.ValidationIssue {
 	var issues []ai.ValidationIssue
-	if plan.RecruitmentOrders == nil {
+	if continuous && plan.ProductionOrders == nil {
+		issues = append(issues, ai.ValidationIssue{Field: "plan.productionOrders", Code: "required", Message: "Opening requires explicit production orders; use [] to leave production off."})
+	}
+	if !continuous && plan.RecruitmentOrders == nil {
 		issues = append(issues, ai.ValidationIssue{Field: fieldRecruitmentOrders, Code: "required", Message: "Opening requires explicit orders; use [] to buy nothing."})
 	}
 	for _, kind := range plan.SpendOrder {

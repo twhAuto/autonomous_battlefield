@@ -40,6 +40,9 @@ func validateProposal(proposal PlanProposal, actionKinds map[string]struct{}) er
 	if err := validateConstructionPriorities(proposal.ConstructionPriorities); err != nil {
 		return err
 	}
+	if err := validateProductionOrders(proposal); err != nil {
+		return err
+	}
 	return validateTypedConstruction(proposal)
 }
 
@@ -163,4 +166,24 @@ func validateTypedConstruction(proposal PlanProposal) error {
 	}
 	return nil
 
+}
+
+func validateProductionOrders(plan PlanProposal) error {
+	if plan.ProductionOrders == nil {
+		return nil
+	}
+	if len(*plan.ProductionOrders) > 9 {
+		return fmt.Errorf("%w: at most nine building production orders", ErrInvalidPlan)
+	}
+	seen := map[string]bool{}
+	for _, order := range *plan.ProductionOrders {
+		if strings.TrimSpace(order.BuildingID) == "" || seen[order.BuildingID] {
+			return fmt.Errorf("%w: production building IDs must be unique and non-empty", ErrInvalidPlan)
+		}
+		if order.Enabled && strings.TrimSpace(order.UnitType) == "" {
+			return fmt.Errorf("%w: enabled production requires unitType", ErrInvalidPlan)
+		}
+		seen[order.BuildingID] = true
+	}
+	return nil
 }

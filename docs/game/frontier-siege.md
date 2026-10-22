@@ -115,19 +115,20 @@ attacks, award normal loot, and cannot attack buildings. At 60 gold, a tower has
 more base HP per gold than any unit, making stationary defense economical.
 Siege bonuses and the ability to bypass a fixed tower remain its counters.
 
-A plan orders any legal structure on a current legal coordinate and queues troops
-at a ready compatible production building, including the castle for Barracks units. Construction is unavailable at opening. A faction
-may purchase at most six troops per window across all sources, subject to gold and
-a 12-order queue limit per source. Each building trains one head at a time using the
-roster's training ticks. Blocked exits hold ready units and all followers until an
-adjacent traversable hex becomes free. Orders are paid once; destroyed sources lose
-their queue without refunds. Troops act on the tick after deployment. See
-[construction and training](game-rules.md#construction-and-training) for timing and
-[OpenAPI](../architecture/openapi.yaml) for fields.
+A plan orders legal structures and selects one repeating unit per active training
+building, including the castle for Barracks units. Construction is unavailable at
+opening. Each enabled building pays for one unit at training start; insufficient
+gold above reserveGold pauses starts until affordable. Off or type changes leave
+the paid unit intact. Blocked exits retain that unit without further purchases.
+Destroyed sources lose paid training without refund; deployed troops act next tick.
+See [construction and training](game-rules.md#construction-and-training) for timing
+and [OpenAPI](../architecture/openapi.yaml) for fields.
 
 Scripted construction favors deposits, then locations nearer the opponent, choosing
-separated sites for income, a tower and missing production building types. Automatic
-orders choose a compatible active source with queue space nearest the enemy castle.
+separated sites for income, a tower and missing production types. Scripted templates
+select a compatible unit for each newly active unconfigured source and retain
+existing selections. The AI can change its choices or disable individual sources.
+Frozen pre-v7 battles retain their original batch queues.
 Scripted baselines omit currently untrainable orders before submission. Once two
 economy buildings, all five production kinds and one tower fill the eight slots,
 default construction stops; destroyed types become eligible for replacement. Explicit orders take precedence; Outposts are an
@@ -149,7 +150,8 @@ timers. For example, `arsenal`, `arsenal_2`, `arsenal_3` buys all three if affor
 The first unaffordable level stops that window's upgrade purchases; a later plan
 can repeat the chain and skip owned levels without paying again.
 
-Shared scripted plans spend on construction, then upgrades, then recruitment. They
+Shared scripted plans spend on construction, then upgrades; enabled sources buy
+units automatically afterward and between windows. They
 order Industry, Arsenal and Plating at each successive level. Model controllers
 choose their own priorities. Spectators see the highest owned level for each track,
 and purchase events show the level and its incremental price.

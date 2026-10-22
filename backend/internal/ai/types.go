@@ -18,8 +18,8 @@ const (
 	ControllerScripted = "scripted"
 	ControllerModel    = "model"
 	ContextSchema      = "battlefield.decision-context.v4"
-	PlanSchema         = "battlefield.strategy-plan.v2"
-	ToolSchema         = "battlefield.mcp-tools.v7"
+	PlanSchema         = "battlefield.strategy-plan.v3"
+	ToolSchema         = "battlefield.mcp-tools.v8"
 )
 
 type DecisionSession struct {
@@ -112,26 +112,27 @@ type TurnProvider interface {
 }
 
 type DecisionContext struct {
-	UnitReference      *UnitReferenceSnapshot  `json:"unitReference,omitempty"`
-	FactionName        string                  `json:"factionName,omitempty"`
-	Background         string                  `json:"background,omitempty"`
-	Doctrine           string                  `json:"doctrine,omitempty"`
-	Opening            bool                    `json:"opening,omitempty"`
-	OwnedUpgradeIDs    []string                `json:"ownedUpgradeIds,omitempty"`
-	Knowledge          *DecisionKnowledge      `json:"knowledge,omitempty"`
-	SchemaVersion      string                  `json:"schemaVersion"`
-	RequestID          string                  `json:"requestId"`
-	BattleID           string                  `json:"battleId"`
-	FactionID          string                  `json:"factionId"`
-	TargetTick         uint64                  `json:"targetTick"`
-	ExpectedVersion    int64                   `json:"expectedVersion"`
-	ObservationVersion uint64                  `json:"observationVersion"`
-	ObservationHash    string                  `json:"observationHash"`
-	View               game.View               `json:"view"`
-	Economy            EconomyContext          `json:"economy"`
-	Legal              LegalChoices            `json:"legal"`
-	Memory             []FactionMemoryEntry    `json:"memory,omitempty"`
-	ActivePlan         controller.PlanProposal `json:"activePlan"`
+	ContinuousProduction bool                    `json:"continuousProduction,omitempty"`
+	UnitReference        *UnitReferenceSnapshot  `json:"unitReference,omitempty"`
+	FactionName          string                  `json:"factionName,omitempty"`
+	Background           string                  `json:"background,omitempty"`
+	Doctrine             string                  `json:"doctrine,omitempty"`
+	Opening              bool                    `json:"opening,omitempty"`
+	OwnedUpgradeIDs      []string                `json:"ownedUpgradeIds,omitempty"`
+	Knowledge            *DecisionKnowledge      `json:"knowledge,omitempty"`
+	SchemaVersion        string                  `json:"schemaVersion"`
+	RequestID            string                  `json:"requestId"`
+	BattleID             string                  `json:"battleId"`
+	FactionID            string                  `json:"factionId"`
+	TargetTick           uint64                  `json:"targetTick"`
+	ExpectedVersion      int64                   `json:"expectedVersion"`
+	ObservationVersion   uint64                  `json:"observationVersion"`
+	ObservationHash      string                  `json:"observationHash"`
+	View                 game.View               `json:"view"`
+	Economy              EconomyContext          `json:"economy"`
+	Legal                LegalChoices            `json:"legal"`
+	Memory               []FactionMemoryEntry    `json:"memory,omitempty"`
+	ActivePlan           controller.PlanProposal `json:"activePlan"`
 }
 
 type EconomyContext struct {

@@ -84,6 +84,7 @@ function DecisionCard({ decision, participantNames, initiallyOpen, battleId, att
           <DecisionDetail label="Targets" value={formatWeights(decision.resolvedPlan?.targetBonuses, typeLabel)} />
           <DecisionDetail label="Reserve" value={decision.resolvedPlan ? `${decision.resolvedPlan.reserveGold ?? 0} gold` : '—'} />
           <DecisionDetail label="Spend order" value={formatList(decision.resolvedPlan?.spendOrder)} />
+          {decision.resolvedPlan?.productionOrders != null && <DecisionDetail label="Production" value={formatProduction(decision.resolvedPlan.productionOrders, { entities, factionNames: participantNames, localFactionId: decision.factionId })} />}
           <DecisionDetail label="Recruit" value={formatRecruitment(decision.resolvedPlan, { entities, factionNames: participantNames, localFactionId: decision.factionId })} />
           <DecisionDetail label="Upgrades" value={formatList(decision.resolvedPlan?.upgradeOrders)} />
           <DecisionDetail label="Build sites" value={formatConstruction(decision.resolvedPlan)} />
@@ -164,4 +165,8 @@ function reportedTokens(value: number | undefined, tokensReported: boolean | und
 function uncachedInputTokens(usage: DecisionHistory['usage']) {
   if (!usage.tokensReported || usage.cachedInputTokens == null) return '—'
   return String(Math.max(0, (usage.inputTokens ?? 0) - usage.cachedInputTokens))
+}
+
+function formatProduction(orders: NonNullable<NonNullable<DecisionHistory['resolvedPlan']>['productionOrders']>, naming: EntityNaming) {
+  return orders.length ? orders.map(({ buildingId, unitType, enabled }, index) => <Fragment key={buildingId}>{index > 0 && ' · '}<span title={buildingId}>{entityName(buildingId, naming)}</span>: {enabled ? 'On' : 'Off'}{unitType && ` (${typeLabel(unitType)})`}</Fragment>) : 'Keep current settings'
 }

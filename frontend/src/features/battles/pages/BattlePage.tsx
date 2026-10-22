@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { usePermissions } from '../../auth/SessionContext'
 import { useParams } from 'react-router-dom'
 import { BattleApiError, pauseBattle, resumeBattle, stopBattle } from '../api/battles'
+import { BuildingProductionPanel } from '../components/BuildingProductionPanel'
 import { HexBattleMap } from '../components/HexBattleMap'
 import { type BattleControlState, type BattleControlAction } from '../types'
 import { useDecisionHistory } from '../hooks/useDecisionHistory'
@@ -114,6 +115,7 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
               factionNames={participantNames}
             />
           }
+          {displayView && <BuildingProductionPanel state={displayView.state} factionNames={participantNames} paused={battle.paused} settled={['completed', 'stopped', 'failed'].includes(battle.status)} />}
         </div>
         {permissions.inspect && <BattleInspector key={`${id}:${battle.attempt}`} battle={battle} decisions={decisions} decisionMessage={decisionMessage} events={{
           battleAttempt: battle.attempt, selectedAttempt, setSelectedAttempt, events, participantNames,

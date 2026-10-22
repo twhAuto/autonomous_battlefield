@@ -54,6 +54,7 @@ func (m *Match) buildStructureAt(factionID, kind string, site Position, reserve 
 		return Building{}, reason
 	}
 	b := Building{Trains: append([]string(nil), definition.Trains...), BuildRange: effectiveBuildRange(definition.BuildRange), ID: fmt.Sprintf("%s:%s:%03d", factionID, kind, state.BuildingsBuilt), FactionID: factionID, Type: definition.Kind, Position: site, Health: definition.Health, MaxHealth: definition.Health, Defense: definition.Defense, Vision: definition.Vision, Cost: definition.Cost, Attack: definition.Attack, Range: definition.Range, ReadyAtTick: m.state.Tick + 1}
+	m.initializeProduction(&b)
 	m.state.Buildings = append(m.state.Buildings, b)
 	return b, ""
 }

@@ -150,17 +150,18 @@ type ContentSource struct {
 }
 
 type Ruleset struct {
-	Structures    []BuildingType  `json:"structures,omitempty" yaml:"structures,omitempty"`
-	ContentSource *ContentSource  `json:"contentSource,omitempty" yaml:"contentSource,omitempty"`
-	Knowledge     *RulesKnowledge `json:"knowledge,omitempty" yaml:"knowledge,omitempty"`
-	ID            string          `json:"id" yaml:"id"`
-	Version       string          `json:"version" yaml:"version"`
-	DesignBudget  int64           `json:"designBudget,omitempty" yaml:"designBudget"`
-	StartingGold  int64           `json:"startingGold" yaml:"startingGold"`
-	Units         []UnitType      `json:"units" yaml:"units"`
-	Upgrades      []Upgrade       `json:"upgrades" yaml:"upgrades"`
-	Buildings     BuildingRules   `json:"buildings" yaml:"buildings"`
-	Combat        CombatRules     `json:"combat" yaml:"combat"`
+	ContinuousProduction bool            `json:"continuousProduction,omitempty" yaml:"continuousProduction,omitempty"`
+	Structures           []BuildingType  `json:"structures,omitempty" yaml:"structures,omitempty"`
+	ContentSource        *ContentSource  `json:"contentSource,omitempty" yaml:"contentSource,omitempty"`
+	Knowledge            *RulesKnowledge `json:"knowledge,omitempty" yaml:"knowledge,omitempty"`
+	ID                   string          `json:"id" yaml:"id"`
+	Version              string          `json:"version" yaml:"version"`
+	DesignBudget         int64           `json:"designBudget,omitempty" yaml:"designBudget"`
+	StartingGold         int64           `json:"startingGold" yaml:"startingGold"`
+	Units                []UnitType      `json:"units" yaml:"units"`
+	Upgrades             []Upgrade       `json:"upgrades" yaml:"upgrades"`
+	Buildings            BuildingRules   `json:"buildings" yaml:"buildings"`
+	Combat               CombatRules     `json:"combat" yaml:"combat"`
 }
 
 type UnitSelection struct {
@@ -275,11 +276,20 @@ type TrainingOrder struct {
 	Opening        bool   `json:"opening,omitempty"`
 }
 
+// BuildingProduction persists an AI-selected repeat order independently of strategy windows.
+type BuildingProduction struct {
+	Configured     bool   `json:"configured,omitempty"`
+	UnitType       string `json:"unitType,omitempty"`
+	Enabled        bool   `json:"enabled"`
+	WaitingForGold bool   `json:"waitingForGold,omitempty"`
+}
+
 type Building struct {
-	Trains          []string        `json:"trains,omitempty"`
-	BuildRange      int             `json:"buildRange"`
-	TrainingQueue   []TrainingOrder `json:"trainingQueue,omitempty"`
-	TrainingBlocked bool            `json:"trainingBlocked,omitempty"`
+	Production      *BuildingProduction `json:"production,omitempty"`
+	Trains          []string            `json:"trains,omitempty"`
+	BuildRange      int                 `json:"buildRange"`
+	TrainingQueue   []TrainingOrder     `json:"trainingQueue,omitempty"`
+	TrainingBlocked bool                `json:"trainingBlocked,omitempty"`
 
 	AttackOutcome        string    `json:"attackOutcome,omitempty"`
 	Attack               int64     `json:"attack,omitempty"`
@@ -376,9 +386,10 @@ type Transition struct {
 // DecisionSnapshot is the bounded, faction-visible state frozen immediately
 // before a production window. It contains no mutation capability.
 type DecisionSnapshot struct {
-	LegalBuildings     []BuildingType `json:"legalBuildings,omitempty"`
-	RecruitmentSources []string       `json:"recruitmentSources,omitempty"`
-	MaximumBuildings   int            `json:"maximumBuildings,omitempty"`
+	ContinuousProduction bool           `json:"continuousProduction,omitempty"`
+	LegalBuildings       []BuildingType `json:"legalBuildings,omitempty"`
+	RecruitmentSources   []string       `json:"recruitmentSources,omitempty"`
+	MaximumBuildings     int            `json:"maximumBuildings,omitempty"`
 
 	FactionName     string                  `json:"factionName,omitempty"`
 	Background      string                  `json:"background,omitempty"`

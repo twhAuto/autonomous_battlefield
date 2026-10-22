@@ -75,7 +75,7 @@ func TestFrontierCatalogMapAndDeterministicBattle(t *testing.T) {
 	if s.Map.Width != 25 || s.Map.Height != 17 || len(s.Map.EconomySites[0]) != 0 || len(s.Ruleset.Units) != 11 || len(s.Ruleset.Structures) != 7 {
 		t.Fatal("incomplete frontier content")
 	}
-	if s.Ruleset.ContentSource.Version != "6" {
+	if s.Ruleset.ContentSource.Version != "7" {
 		t.Fatal("incorrect content version")
 	}
 	checkFrontierRoutes(t, s.Map)

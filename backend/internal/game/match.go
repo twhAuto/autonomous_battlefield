@@ -91,6 +91,7 @@ func (m *Match) AdvanceWithPlans(plans map[string]controller.PlanProposal) (Tran
 	}
 	events = append(events, m.runEconomy(decisionWindow)...)
 	events = append(events, m.runTraining()...)
+	events = append(events, m.runContinuousProduction()...)
 	tactics, tacticEvents := m.selectTactics()
 	events = append(events, tacticEvents...)
 	m.captureAttackAims()

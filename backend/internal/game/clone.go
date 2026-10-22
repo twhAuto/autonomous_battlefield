@@ -21,6 +21,10 @@ func CloneState(value State) State {
 	value.Buildings = append([]Building(nil), value.Buildings...)
 	for i := range value.Buildings {
 		value.Buildings[i].Trains = append([]string(nil), value.Buildings[i].Trains...)
+		if value.Buildings[i].Production != nil {
+			production := *value.Buildings[i].Production
+			value.Buildings[i].Production = &production
+		}
 		value.Buildings[i].TrainingQueue = append([]TrainingOrder(nil), value.Buildings[i].TrainingQueue...)
 		value.Buildings[i].AttackTargetPosition = clonePosition(value.Buildings[i].AttackTargetPosition)
 	}

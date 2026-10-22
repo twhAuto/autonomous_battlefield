@@ -1400,10 +1400,12 @@ components:
           type: array
           items: {type: string}
           description: Supported unit IDs for this production building. Current castles share the Barracks roster (vanguard, striker, pikeman); older snapshots may omit this field.
+        production: {$ref: '#/components/schemas/BuildingProduction'}
         trainingBlocked: {type: boolean, description: A ready head is waiting for a free adjacent traversable tile.}
         trainingQueue:
           type: array
           maxItems: 12
+          description: Zero or one paid unit in continuous mode; up to twelve in historical batch mode.
           items: {$ref: '#/components/schemas/TrainingOrder'}
         id: {type: string}
         factionId: {type: string}
@@ -1423,6 +1425,16 @@ components:
         attackTargetId: {type: string}
         attackTargetPosition: {$ref: '#/components/schemas/Position'}
         attackOutcome: {$ref: '#/components/schemas/AttackOutcome'}
+
+    BuildingProduction:
+      description: AI-only repeating production setting. Off or selection changes preserve the paid unit. Absent on historical batch-mode buildings.
+      type: object
+      required: [enabled]
+      properties:
+        configured: {type: boolean, description: An explicit AI selection or off order has been applied; scripted fallback preserves it.}
+        unitType: {type: string, description: Selected type; absent until configured.}
+        enabled: {type: boolean, description: Start another unit whenever the current unit has deployed and gold permits.}
+        waitingForGold: {type: boolean, description: Enabled with no paid unit and insufficient gold above reserveGold. Automatically retries each tick.}
 
     TrainingOrder:
       description: Paid FIFO entry; only the head trains. Units act the tick after deployment.
@@ -1472,7 +1484,7 @@ components:
         currentTick: {type: integer}
         production:
           description: |
-            The next point at which factions spend gold, derived by the engine from
+            The next strategy/construction/upgrade window, derived by the engine from
             the battle's scenario snapshot and current state. `null` when the battle
             is not queued or running, or when no window remains before
             `requestedTicks`.
@@ -1507,8 +1519,8 @@ components:
 
     ProductionSchedule:
       description: |
-        Purchases happen at production windows; paid troop orders continue training
-        in their building queues between windows. `opening` marks the one-time opening purchase before tick 1
+        Construction/upgrades happen at decision windows. Continuous-mode buildings
+        purchase and train units between windows; legacy mode purchases at windows. `opening` marks the one-time opening purchase before tick 1
         (`nextTick` is then `0`); otherwise `nextTick` is the tick whose
         transition runs the next regular window.
       type: object
@@ -1690,9 +1702,20 @@ components:
             properties:
               buildingType: {type: string, examples: [defense_tower]}
               position: {$ref: '#/components/schemas/Position'}
+        productionOrders:
+          description: Persistent continuous-mode selections. Opening requires an explicit array. Omitted/empty orders leave existing settings unchanged. Each source must be active, owned and support unitType. Disabling preserves the paid unit; unitType may be omitted only when disabled.
+          type: array
+          maxItems: 9
+          items:
+            type: object
+            required: [buildingId, enabled]
+            properties:
+              buildingId: {type: string}
+              unitType: {type: string}
+              enabled: {type: boolean}
         recruitmentOrders:
           description: |
-            Executed in order. At most six units in total across all orders; omit to
+            Legacy batch mode only (continuousProduction absent/false). Executed in order. At most six units in total across all orders; omit to
             keep legacy `recruitmentPriorities`.
           type: array
           maxItems: 6

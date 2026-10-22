@@ -4,6 +4,7 @@
 import { type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { useMobile } from '../../../shared/hooks/useMobile'
 import type { BattleBuilding, BattleMap, BattleState, BattleUnit, HexPosition } from '../api/battles'
+import { TrainingQueue } from './BuildingProductionPanel'
 import { TerrainGlyph } from './TerrainGlyph'
 import { entityIndex, entityName, typeLabel, type EntityNaming } from '../presentation/entities'
 import { EntityGlyph, EntityLegend } from './EntityIcon'
@@ -388,17 +389,4 @@ function hexDistance(a: HexPosition, b: HexPosition) {
   const aq = a.x - (a.y - (a.y & 1)) / 2
   const bq = b.x - (b.y - (b.y & 1)) / 2
   return (Math.abs(aq - bq) + Math.abs(aq + a.y - bq - b.y) + Math.abs(a.y - b.y)) / 2
-}
-
-function TrainingQueue({ building }: Readonly<{ building: BattleBuilding }>) {
-  if (!building.trains?.length && !building.trainingQueue?.length) return null
-  const queue = building.trainingQueue ?? []
-  if (!queue.length) return <span>Training queue empty</span>
-  return <div className="training-queue">
-    <strong>Training queue · {queue.length}/12</strong>
-    <ol>{queue.map((order, index) => <li key={`${order.unitType}:${order.queuedAtTick}:${index}`}>
-      {typeLabel(order.unitType)} · {index === 0 && building.trainingBlocked ? 'Ready · exit blocked' : `${order.remainingTicks}/${order.trainingTicks} ticks remaining`}
-      {index === 0 && <progress aria-label="Training progress" max={order.trainingTicks} value={order.trainingTicks - order.remainingTicks} />}
-    </li>)}</ol>
-  </div>
 }

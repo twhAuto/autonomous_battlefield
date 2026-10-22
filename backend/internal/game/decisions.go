@@ -45,7 +45,7 @@ func (m *Match) DecisionSnapshot(factionID string) (DecisionSnapshot, error) {
 	if m.scenario.SnapshotVersion >= DoctrineSnapshotVersion {
 		upgrades = append(upgrades, m.scenario.Ruleset.Upgrades...)
 	}
-	return DecisionSnapshot{LegalBuildings: ConstructibleBuildings(m.scenario.Ruleset), RecruitmentSources: m.recruitmentSources(factionID), MaximumBuildings: m.scenario.Ruleset.Buildings.MaximumBuildingCount, Doctrine: runtime.setup.Doctrine, FactionName: runtime.setup.Name, Background: runtime.setup.Background, Opening: m.OpeningDue(), LegalUpgrades: upgrades, OwnedUpgradeIDs: append([]string{}, m.factionState(factionID).OwnedUpgradeIDs...), BattleID: m.id, FactionID: factionID, TargetTick: m.DecisionTargetTick(), Version: m.state.Tick,
+	return DecisionSnapshot{ContinuousProduction: m.scenario.Ruleset.ContinuousProduction, LegalBuildings: ConstructibleBuildings(m.scenario.Ruleset), RecruitmentSources: m.recruitmentSources(factionID), MaximumBuildings: m.scenario.Ruleset.Buildings.MaximumBuildingCount, Doctrine: runtime.setup.Doctrine, FactionName: runtime.setup.Name, Background: runtime.setup.Background, Opening: m.OpeningDue(), LegalUpgrades: upgrades, OwnedUpgradeIDs: append([]string{}, m.factionState(factionID).OwnedUpgradeIDs...), BattleID: m.id, FactionID: factionID, TargetTick: m.DecisionTargetTick(), Version: m.state.Tick,
 		View: view, Gold: m.factionState(factionID).Gold, ProjectedIncome: projectedIncome,
 		EconomyCost: m.scenario.Ruleset.Buildings.EconomyCost, EconomyIncome: m.scenario.Ruleset.Buildings.EconomyIncome + runtime.economyBonus,
 		EconomyCount: m.economyCount(factionID), MaximumEconomy: m.scenario.Ruleset.Buildings.MaximumEconomyCount,
@@ -61,7 +61,11 @@ func (m *Match) ScriptedPlans() map[string]controller.PlanProposal {
 		if m.OpeningDue() {
 			plans[factionID] = m.OpeningFallback(factionID)
 		} else {
-			plan := m.normalizedFactionPlan(factionID, m.factions[factionID].scriptedPlan())
+			plan := m.factions[factionID].scriptedPlan()
+			if m.scenario.Ruleset.ContinuousProduction {
+				plan = m.scriptedProductionPlan(factionID, plan)
+			}
+			plan = m.normalizedFactionPlan(factionID, plan)
 			m.assignForwardRecruitment(factionID, &plan)
 			m.filterScriptedRecruitment(factionID, &plan)
 			plans[factionID] = plan
@@ -80,6 +84,9 @@ func (m *Match) applyPlans(plans map[string]controller.PlanProposal) error {
 		if err := validateProductionPlan(m.scenario, runtime.setup, proposal); err != nil {
 			return err
 		}
+		if err := ValidateBuildingProduction(m.scenario.Ruleset.ContinuousProduction, factionID, m.state, m.recruitmentSources(factionID), proposal); err != nil {
+			return err
+		}
 		if err := ValidateUpgradeOrder(m.scenario.Ruleset.Upgrades, m.factionState(factionID).OwnedUpgradeIDs, proposal.UpgradeOrders); err != nil {
 			return fmt.Errorf("%w: %v", controller.ErrInvalidPlan, err)
 		}
@@ -91,6 +98,7 @@ func (m *Match) applyPlans(plans map[string]controller.PlanProposal) error {
 		runtime := m.factions[factionID]
 		runtime.activePlan = m.normalizedFactionPlan(factionID, proposal)
 		runtime.activeSource = "accepted"
+		m.applyBuildingProduction(proposal)
 	}
 
 	return nil
@@ -151,7 +159,10 @@ func normalizedPlan(value controller.PlanProposal, setup FactionSetup) controlle
 func (m *Match) normalizedFactionPlan(factionID string, value controller.PlanProposal) controller.PlanProposal {
 	runtime := m.factions[factionID]
 	result := normalizedPlan(value, runtime.setup)
-	if m.scenario.SnapshotVersion >= DoctrineSnapshotVersion && result.RecruitmentOrders == nil && len(result.RecruitmentPriorities) == 0 {
+	if m.scenario.Ruleset.ContinuousProduction && len(value.SpendOrder) == 0 {
+		result.SpendOrder = []string{"construction", "upgrades"}
+	}
+	if !m.scenario.Ruleset.ContinuousProduction && m.scenario.SnapshotVersion >= DoctrineSnapshotVersion && result.RecruitmentOrders == nil && len(result.RecruitmentPriorities) == 0 {
 		orders := m.OpeningFallback(factionID).RecruitmentOrders
 		result.RecruitmentOrders = orders
 	}
@@ -216,7 +227,8 @@ func validateProductionSites(scenario Scenario, _ FactionSetup, plan controller.
 	return nil
 }
 
-// ProductionSchedule is the next point at which factions spend gold, for presentation.
+// ProductionSchedule is the next strategy/construction/upgrade window. Continuous
+// unit purchases and training happen between these windows.
 type ProductionSchedule struct {
 	NextTick uint64 `json:"nextTick"`
 	Opening  bool   `json:"opening"`

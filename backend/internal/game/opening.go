@@ -16,6 +16,9 @@ func (m *Match) OpeningDue() bool {
 
 // OpeningFallback deliberately ignores doctrine: scripted controllers cannot interpret prose.
 func (m *Match) OpeningFallback(factionID string) controller.PlanProposal {
+	if m.scenario.Ruleset.ContinuousProduction {
+		return m.scriptedProductionPlan(factionID, controller.PlanProposal{Name: "balanced-opening", SpendOrder: []string{"upgrades"}, ActionWeights: map[string]int64{"attack": 1000, "defend": 1000}})
+	}
 	units := append([]UnitType(nil), m.scenario.Ruleset.Units...)
 	sort.Slice(units, func(i, j int) bool { return units[i].ID < units[j].ID })
 	gold := m.factionState(factionID).Gold
@@ -45,7 +48,7 @@ func (m *Match) advanceOpening(plans map[string]controller.PlanProposal) (Transi
 		resolved[id] = m.OpeningFallback(id)
 	}
 	for id, plan := range plans {
-		if err := validateOpeningPlan(plan); err != nil {
+		if err := validateOpeningPlanForMode(plan, m.scenario.Ruleset.ContinuousProduction); err != nil {
 			return Transition{}, err
 		}
 		resolved[id] = plan
@@ -59,6 +62,7 @@ func (m *Match) advanceOpening(plans map[string]controller.PlanProposal) (Transi
 		events = append(events, m.event("plan_applied", map[string]any{"factionId": id, "name": plan.Name, "targetTick": uint64(0)}))
 		events = append(events, m.spend(id, plan, false)...)
 	}
+	events = append(events, m.runContinuousProduction()...)
 	m.state.OpeningComplete = true
 	events = append(events, m.event("opening_completed", map[string]any{}))
 	m.sortState()
@@ -66,6 +70,10 @@ func (m *Match) advanceOpening(plans map[string]controller.PlanProposal) (Transi
 }
 
 func validateOpeningPlan(plan controller.PlanProposal) error {
+	return validateOpeningPlanForMode(plan, false)
+}
+
+func validateOpeningPlanForMode(plan controller.PlanProposal, continuous bool) error {
 	if len(plan.ConstructionPriorities) > 0 || plan.ConstructionOrders != nil && len(*plan.ConstructionOrders) > 0 {
 		return fmt.Errorf("construction is unavailable during opening")
 	}
@@ -73,6 +81,12 @@ func validateOpeningPlan(plan controller.PlanProposal) error {
 		if kind == "construction" {
 			return fmt.Errorf("construction is unavailable during opening")
 		}
+	}
+	if continuous {
+		if plan.ProductionOrders == nil {
+			return fmt.Errorf("opening requires explicit production orders")
+		}
+		return nil
 	}
 	if plan.RecruitmentOrders == nil {
 		return fmt.Errorf("opening requires explicit recruitment orders")

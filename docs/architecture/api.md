@@ -201,12 +201,10 @@ faction's economy/upgrade/production totals in `state.factions`. The deprecated
 `visiblePositions` field contains every map coordinate for older clients.
 
 Buildings expose `buildRange`, optional `trains` (supported unit IDs), `trainingQueue`,
-and `trainingBlocked`. The current catalog has five constructible production kinds.
+and `trainingBlocked`. Core v7 also exposes `production: {configured?, unitType?, enabled, waitingForGold?}` on every training building. Selection persists; disabled sources finish paid training. Insufficient gold above the AI reserve pauses starts until affordable. The queue contains at most one paid unit in continuous mode; frozen older battles retain up to twelve. Viewers can inspect production but cannot change it; no manual production endpoint exists. The current catalog has five constructible production kinds.
 Each faction starts with only a castle, which trains the Barracks roster and exposes
 `attack: 15` and `range: 3`. Resolved rules save `buildings.castleTrains`,
-`castleAttack` and `castleRange`; omitted legacy fields retain older behavior. An omitted recruitment source is
-selected automatically among active compatible buildings; an explicit incompatible
-source is rejected by frozen validation and skipped without charge during execution.
+`castleAttack` and `castleRange`; omitted legacy fields retain older behavior. Current AI `productionOrders` explicitly identify each source and select its unit/on-off setting. Frozen legacy recruitment supports automatic source selection; incompatible requests are rejected by validation.
 Destroyed buildings remain in snapshots for history/results but are hidden on the map.
 Each queue item includes `unitType`, `trainingTicks`, `remainingTicks`,
 `queuedAtTick` and optional `opening`. A blocked ready head has zero remaining

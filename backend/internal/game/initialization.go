@@ -28,6 +28,11 @@ func NewMatch(id string, scenario Scenario, maxTicks uint64) (*Match, error) {
 	if err := match.addStartingBarracks(); err != nil {
 		return nil, err
 	}
+	if scenario.Ruleset.ContinuousProduction {
+		for id, runtime := range match.factions {
+			runtime.activePlan = match.scriptedProductionPlan(id, runtime.activePlan)
+		}
+	}
 	match.sortState()
 	return match, nil
 }
@@ -116,6 +121,7 @@ func blueprintScopedUpgrades(ruleset Ruleset, blueprint Blueprint) []Upgrade {
 func (m *Match) addCastle(slot int, factionID string, occupied map[Position]bool) Building {
 	rules := m.scenario.Ruleset.Buildings
 	castle := Building{Trains: append([]string(nil), rules.CastleTrains...), Attack: rules.CastleAttack, Range: rules.CastleRange, BuildRange: effectiveBuildRange(rules.CastleBuildRange), ID: factionID + ":castle", FactionID: factionID, Type: BuildingCastle, Position: m.scenario.Map.CastleSpawns[slot], Health: rules.CastleHealth, MaxHealth: rules.CastleHealth, Defense: rules.CastleDefense, Vision: rules.CastleVision, Income: rules.CastleIncome}
+	m.initializeProduction(&castle)
 	m.state.Buildings = append(m.state.Buildings, castle)
 	occupied[castle.Position] = true
 	return castle

@@ -96,6 +96,9 @@ func (m *Match) buildEconomyBuildingAt(factionID string, site Position, reserve 
 }
 
 func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) []Event {
+	if m.scenario.Ruleset.ContinuousProduction {
+		return nil
+	}
 	castle := m.castle(factionID)
 	if castle == nil || castle.Health <= 0 {
 		return nil

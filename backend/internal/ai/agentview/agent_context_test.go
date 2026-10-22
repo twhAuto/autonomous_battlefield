@@ -217,3 +217,18 @@ func assertGuidancePagination(t *testing.T, c ai.DecisionContext, guidance strin
 		t.Fatal("lost guidance or continuation")
 	}
 }
+
+func TestContinuousProductionSurvivesCompaction(t *testing.T) {
+	_, c := compactFixture()
+	c.ContinuousProduction = true
+	c.View.State.Buildings = []game.Building{{ID: "a:castle", FactionID: "a", Type: "castle", Health: 100, Trains: []string{"vanguard"}, Production: &game.BuildingProduction{UnitType: "vanguard", Enabled: true, WaitingForGold: true}}}
+	data, err := json.Marshal(Observation(c))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{`"continuousProduction":true`, `"production":{"unitType":"vanguard","enabled":true,"waitingForGold":true}`} {
+		if !strings.Contains(string(data), field) {
+			t.Fatal("production missing from compact observation", string(data))
+		}
+	}
+}

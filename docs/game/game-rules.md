@@ -11,7 +11,7 @@ documents for detail instead of repeating them:
 [Frontier Siege](frontier-siege.md) for the roster, structures, and map, and the
 [system architecture](../architecture/system-architecture.md#52-strategy-decision-window) for how
 decisions are requested, stored, and timed out. All maps use the shared
-`backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v6.yaml`
+`backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v7.yaml`
 roster and `backend/gamedata/battlefield.yaml` timing/controller configuration.
 Scenario files contain only map identity and geometry.
 
@@ -76,23 +76,25 @@ non-castle buildings, at most two economy) are in
 
 ## Production windows
 
-Factions purchase troops, buildings and upgrades at **production windows**.
+Factions choose strategy, building production settings, construction and upgrades at
+**decision windows**. Enabled buildings purchase individual troops automatically
+between windows.
 Engineers may also spend 2 gold on a repair action during a normal unit turn,
-respecting the active plan's reserve. Each Engineer has 12 lifetime repair charges. Buildings and upgrades are purchased immediately. Troops are paid for once and
-enter a persistent per-building training queue; rejected purchases are not queued.
+respecting the active plan's reserve. Each Engineer has 12 lifetime repair charges. Buildings and upgrades are purchased immediately. Each troop is paid for once when training starts. Continuous mode keeps one paid
+unit per source; historical batch mode retains its FIFO queue.
 
 - **Opening** (once, before tick 1): each faction spends its starting gold on
-  upgrades and recruitment only. Every newly created battle has an opening; battles
+  upgrades and production selection only (batch recruitment in older battles). Every newly created battle has an opening; battles
   stored before doctrine snapshots (older `SnapshotVersion`) start without one. There is no income
   and no construction. Opening training begins at tick 1; a deployed troop first acts on the following tick.
 - **Regular windows** run on the transition into every tick that is a multiple of
   `decisionIntervalTicks` (10: ticks 10, 20, 30, ...), as long as that tick does not
   exceed the requested tick count. A window exactly at the limit still runs.
-- Per window, a faction may request **at most six units** in total across all
-  recruitment sources. Spending follows the plan's `spendOrder` (upgrades,
-  construction, recruitment) and never goes below the plan's `reserveGold`.
-  Recruitment stops at the first unaffordable unit. Unavailable or full sources
-  skip that order; a blocked exit does not prevent purchasing queue space.
+- Windows change strategy, building production settings, construction and upgrades.
+  Construction/upgrades follow `spendOrder`; automatic unit purchases happen afterward
+  every tick, respecting `reserveGold`. The opening has no income or construction.
+  Core v7 uses continuous production; frozen older rulesets retain batch recruitment
+  (six units per window and twelve paid orders per source).
 
 ## Construction and training
 
@@ -108,7 +110,7 @@ immediately; other new structures activate next tick.
 The castle is the only starting building and trains the same units as a Barracks.
 It also fires at enemy units during the tower phase while its queue continues
 training. Castles do not consume any of the eight constructible building slots.
-Build additional Barracks for more queues or forward deployment. The castle and
+Build additional Barracks for simultaneous training or forward deployment. The castle and
 five constructible production buildings expose supported unit IDs as `trains`:
 
 | Building | Units |
@@ -119,21 +121,29 @@ five constructible production buildings expose supported unit IDs as `trains`:
 | Siege Workshop | Catapult, Battering Ram, Engineer |
 | Infirmary | Herbalist |
 
-Each production building holds up to 12 paid training orders. Only the first order
-advances, beginning on a tick after purchase. Each unit has its own `trainingTicks`
-in the content library. A blocked ready head has `remainingTicks: 0` and the source
-sets `trainingBlocked: true`; followers retain their full duration. A freed exit is
-checked at the next training phase. Deployment uses all six adjacent traversable
-hexes, in deterministic coordinate order, and never stacks units. The next order
-starts on the following tick. Destroying the source discards its queue without
-refund. An explicit source must be alive, active, owned and able to train the
-requested type. An omitted source selects a compatible active building with queue
-space, preferring the one nearest the enemy castle, then its ID.
-If every compatible source is full, an implicit order reports `source_unavailable`;
-a named full source reports `queue_full`. Opening/later unit counters increment on
-deployment, not purchase.
+The AI supplies `productionOrders` with `buildingId`, `unitType` and `enabled`.
+Each enabled building repeatedly trains its selected type, paying for exactly one
+unit when training starts. There is one paid unit in progress and no prepaid batch.
+The unit's `trainingTicks` starts advancing on the tick after purchase. A successful
+deployment can buy the next unit that same tick; its training advances next tick.
+Purchases follow building ID order after income, construction/upgrades and training.
+Insufficient gold above `reserveGold` sets `production.waitingForGold`; the building
+stays enabled and retries each tick. No purchase occurs while a paid unit is present.
 
-Queues and progress are part of persisted `Building` state, cloned with snapshots.
+Setting `enabled: false` stops new starts but lets the paid unit finish. A different
+`unitType` applies to the next purchase. An off order may omit `unitType` to retain
+the selection. Omitted building orders keep existing settings. New training buildings
+start off and can be configured at a decision window once active. Castles use this
+same system; opening requires explicit production orders, and `[]` leaves them off.
+
+A ready unit waits at zero remaining ticks with `trainingBlocked: true` if every
+adjacent traversable hex is occupied. The next training phase retries the exit in
+deterministic neighbor order, without stacking or charging again. Destroying a
+source discards its paid unit without refund. A deployed unit acts next tick;
+opening/later unit counters increment on deployment. Frozen core v6 and earlier
+retain their FIFO queues, six purchases per window and twelve-order source limit.
+
+Production settings and training progress are persisted in `Building` state and cloned with snapshots. Viewers see all living sources in the building production panel; only the AI changes settings.
 The engine resumes a live paused match in memory; a new worker attempt replays its
 saved scenario and decisions, rebuilding the same queue progression. Legacy unit
 definitions without training times default to one tick and building ranges to 3.
@@ -141,7 +151,7 @@ Frozen content without authored `trains` rosters retains castle/Barracks recruit
 and does not add starting Barracks. Frozen core v5 scenarios retain their free
 starting Barracks and passive, nontraining castles. Core v6 saves `castleTrains`,
 `castleAttack` and `castleRange` in building rules; no free Barracks is added when
-the castle has an authored roster.
+the castle has an authored roster. Core v7 sets `ruleset.continuousProduction: true`; absent/false preserves the older purchasing behavior.
 Historical stored states retain their data; replaying them uses the current engine
 rules, so pre-change transition hashes are not preserved. Before deploying this
 overhaul, finish all queued/running/paused battles on the old engine and prevent
@@ -181,9 +191,10 @@ Each tick transition runs these steps in order (`AdvanceWithPlans` in
 2. **Advance the tick** and clear the previous tick's action markers.
 3. **Economy**, per faction in scenario faction order: collect income; at a
    window, also spend in the plan's `spendOrder`.
-4. **Training**, in building-ID order: advance only the queue head, then release
+4. **Training**, in building-ID order: advance the paid unit (legacy queue head), then release
    at most one unit per building onto the first free traversable neighbor. A ready
-   head waits when all exits are blocked, holding up followers without another charge.
+   unit waits when all exits are blocked without another charge. In continuous
+   mode, empty enabled sources then buy their next unit in building-ID order.
 5. **Tactics**, per faction: attack or defend, comparing weighted projected power
    (the sum of attack of living non-support units) for each side, plus target bonuses.
 6. **Aim position attacks:** Catapults fix their target hex before anyone moves.

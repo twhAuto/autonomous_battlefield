@@ -99,6 +99,7 @@ type getContextOutput struct {
 type submitPlanInput struct {
 	UpgradeOrders          []string                        `json:"upgradeOrders,omitempty" jsonschema:"Ordered one-time upgrade-level purchases. Prerequisites must be owned or ordered earlier; exclusiveGroup permits one choice per battle. Include upgrades in spendOrder. Already-owned levels are skipped without charging."`
 	ConstructionOrders     *[]controller.ConstructionOrder `json:"constructionOrders,omitempty" jsonschema:"Typed construction purchases: buildingType and position from legal choices. Use [] to build nothing; leave constructionPriorities empty."`
+	ProductionOrders       *[]controller.ProductionOrder   `json:"productionOrders,omitempty" jsonschema:"In continuous production mode select each buildingId and unitType with enabled true, or toggle enabled false. Selection persists. Omitted buildings are unchanged. Paid units finish when disabled."`
 	RecruitmentOrders      *[]controller.RecruitmentOrder  `json:"recruitmentOrders,omitempty" jsonschema:"Explicit ordered purchases for this production window. Use [] to buy nothing; at most six units total. Leave recruitmentPriorities empty when using orders."`
 	RequestID              string                          `json:"requestId"`
 	IdempotencyKey         string                          `json:"idempotencyKey"`
@@ -162,7 +163,7 @@ func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest,
 		s.logger.WarnContext(ctx, "decision_submission_denied", "request_id", input.RequestID, "target_tick", input.TargetTick)
 		return nil, ai.SubmissionResult{}, err
 	}
-	plan := controller.PlanProposal{ConstructionOrders: input.ConstructionOrders, UpgradeOrders: input.UpgradeOrders, RecruitmentOrders: input.RecruitmentOrders, Name: input.Name, Rationale: input.Rationale, ActionWeights: input.ActionWeights, TargetBonuses: input.TargetBonuses,
+	plan := controller.PlanProposal{ProductionOrders: input.ProductionOrders, ConstructionOrders: input.ConstructionOrders, UpgradeOrders: input.UpgradeOrders, RecruitmentOrders: input.RecruitmentOrders, Name: input.Name, Rationale: input.Rationale, ActionWeights: input.ActionWeights, TargetBonuses: input.TargetBonuses,
 		ReserveGold: input.ReserveGold, SpendOrder: input.SpendOrder, ConstructionPriorities: input.ConstructionPriorities,
 		RecruitmentPriorities: input.RecruitmentPriorities}
 	result, err := s.decisions.SubmitPlan(ctx, ai.PlanSubmission{RequestID: input.RequestID, IdempotencyKey: input.IdempotencyKey,

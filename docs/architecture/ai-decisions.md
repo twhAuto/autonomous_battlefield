@@ -220,7 +220,7 @@ A model or scripted controller can propose:
 - reserve gold and spend ordering;
 - ordered upgrade purchases, including level prerequisites when supplied by the ruleset;
 - typed construction orders;
-- explicit ordered unit purchases with quantities.
+- persistent per-building unit selection and on/off settings (legacy contexts use unit purchases with quantities).
 
 The service validates the decision version, target tick, general plan bounds, and
 context-specific units and sites before persisting a plan. The `StrategyPlan`
@@ -228,23 +228,39 @@ schema in the [OpenAPI contract](openapi.yaml) gives the field shapes and limits
 API and CLI submissions must be substantive, and a request stops after three
 rejected submissions.
 
-`recruitmentOrders` lists `{unitType, count, sourceBuildingId?}` purchases for one
-production window, at most six units total. Accepted purchases pay once and enter
-the source's FIFO training queue (maximum 12); only the head advances. Ready troops
-wait for a free adjacent traversable hex and block followers until deployment.
-Full or unavailable sources skip that order; the first unaffordable unit stops
-purchasing. Reused plans can enqueue more troops next window. Empty orders buy
-nothing. Definitions expose `trainingTicks`, buildings expose `buildRange` and
-queue progress plus `trains` (supported unit IDs). Current castles train Vanguard,
-Striker and Pikeman and expose attack 15/range 3, using the same combat phase as towers. `legal.recruitmentSources` lists living, active owned sources, and frozen
-submission validation rejects incompatible units, including implicit orders with no
-compatible source. Omitted source IDs select the compatible building nearest the
-enemy castle with queue space; explicit IDs never switch buildings. The castle
-supports the opening with the Barracks roster; other production buildings must be
-constructed first. No starting Barracks is granted. Scripted baselines filter out orders without a currently compatible active source
-before frozen validation, so shared army templates remain valid while production
-buildings are being constructed. Submitted/reused plans keep their requested orders. Historical
-contexts without authored rosters retain their original recruitment validation.
+Current contexts expose `continuousProduction: true`. Plans use `productionOrders`:
+`[{"buildingId":"a:castle","unitType":"vanguard","enabled":true}]` selects a
+repeating unit; `[{"buildingId":"a:castle","enabled":false}]` stops new starts.
+At most nine unique sources can be configured per plan (castle plus eight buildings).
+Opening requires an explicit array; `[]` leaves production off. Later omission or
+`[]` leaves existing settings unchanged. Every ID must be a living, active owned
+`legal.recruitmentSources` entry, and its `trains` roster must support the selected
+unit. The service and engine share this frozen legality check. Legacy nonempty
+recruitment orders/priorities are rejected in continuous mode; production orders
+are rejected for legacy contexts. Plan schema is v3; MCP tool schema is v8.
+
+Each building pays for one unit at training start, after income and window purchases,
+respecting `reserveGold`. It automatically retries if unaffordable. A blocked exit
+holds the paid unit without additional charges. Disabling or changing selection
+preserves the paid unit; the change affects subsequent purchases. State exposes
+`production` (configured, unitType, enabled, waitingForGold), `trainingQueue` (zero or one paid
+unit), and `trainingBlocked`, also retained in compact agent observations. Castles
+train the Barracks roster and attack with 15 attack/range 3. New specialized sources
+start disabled and become selectable once active; no starting Barracks is granted.
+
+Engine-authored scripted army templates are converted to one compatible selection
+per unconfigured active source. Existing selections, including disabled settings,
+remain unchanged. Previous-plan fallback omits selection orders because settings
+already persist; it must not reissue IDs of subsequently destroyed sources. Model
+instructions explicitly compare more training capacity and unit access with economy,
+defenses and upgrades. Empty construction orders remain a deliberate choice; the
+engine does not force model expansion. Industry affects economy buildings only.
+
+Frozen contexts with continuousProduction absent/false retain `recruitmentOrders`
+(`unitType`, `count`, optional `sourceBuildingId`), six purchases per window and a
+12-order FIFO queue. Only its head trains; a blocked exit holds it. Omitted source
+IDs select a compatible active building with queue space nearest the enemy castle.
+Historical contexts without authored rosters preserve their original validation.
 `legal.economySites` is the retained wire name for dynamically
 computed legal construction coordinates, not fixed pads. Execution rechecks range,
 terrain, unit occupancy and a minimum building distance of two hexes, so conflicting

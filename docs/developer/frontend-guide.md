@@ -244,8 +244,11 @@ alongside strict type checks.
 
 Forests, deposits and rocks have distinct SVG silhouettes via `TerrainGlyph.tsx`,
 terrain colors and accessible descriptions. Selecting a living building highlights its
-construction radius. Production-building details show their `trains` roster, FIFO
-order, per-unit remaining/total ticks, progress and blocked exits. Current castles
+construction radius. Production-building details show their `trains` roster, selected unit, on/off setting,
+remaining/total ticks, progress and blocked exits. `BuildingProductionPanel.tsx`
+also shows every living production source below the map to all viewers, including
+gold waits and pending activation. Production controls belong to the AI; the viewer
+is read-only. Historical batch queues retain their FIFO presentation. Current castles
 show the Barracks roster, their queue, attack/range stats and tower-fire visuals.
 In historical snapshots without `trains`, populated queues still display, but empty
 legacy castle/Barracks queues have no training-capability label because absence of

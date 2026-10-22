@@ -23,6 +23,14 @@ type RecruitmentOrder struct {
 	Count            int    `json:"count" yaml:"count"`
 }
 
+// ProductionOrder selects a repeating unit or turns off a building. Disabling
+// leaves any already-paid unit in training; omitted unitType keeps the selection.
+type ProductionOrder struct {
+	BuildingID string `json:"buildingId" yaml:"buildingId"`
+	UnitType   string `json:"unitType,omitempty" yaml:"unitType,omitempty"`
+	Enabled    bool   `json:"enabled" yaml:"enabled"`
+}
+
 // ConstructionOrder places one building of BuildingType at Position.
 type ConstructionOrder struct {
 	BuildingType string     `json:"buildingType" yaml:"buildingType"`
@@ -32,6 +40,7 @@ type ConstructionOrder struct {
 // PlanProposal is the strategy input supplied by a scripted bot or a model
 // controller. Weights are fixed-point multipliers where 1,000 means 1x.
 type PlanProposal struct {
+	ProductionOrders   *[]ProductionOrder   `json:"productionOrders,omitempty" yaml:"productionOrders,omitempty"`
 	ConstructionOrders *[]ConstructionOrder `json:"constructionOrders,omitempty" yaml:"constructionOrders,omitempty"`
 
 	UpgradeOrders          []string            `json:"upgradeOrders,omitempty" yaml:"upgradeOrders,omitempty"`

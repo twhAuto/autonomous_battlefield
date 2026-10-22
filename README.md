@@ -6,7 +6,7 @@ them compete on authored hex maps. AI controllers propose strategy plans; the ga
 engine validates and executes them.
 
 - Create reusable factions with editable names, backgrounds and strategic doctrines.
-- Run two-faction castle-siege battles with autonomous combat, open maps, terrain bonuses, building-range expansion, defending castles, five specialized training buildings and timed training queues.
+- Run two-faction castle-siege battles with autonomous combat, open maps, terrain bonuses, building-range expansion, defending castles, five specialized training buildings and continuous AI-selected unit production, with visible progress and on/off status.
 - Choose tick duration and decision interval when staging a battle, or keep map defaults.
 - Inspect live battles, saved results, events and AI decision history.
 - Manage invited players and model access through Player, Developer and Admin roles.

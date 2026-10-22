@@ -2,6 +2,8 @@ package worker
 
 import (
 	"context"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/gamedata"
@@ -46,12 +48,30 @@ func checkScriptedProduction(t *testing.T, mapID string) {
 	}
 	windows := map[uint64]bool{}
 	for _, record := range repo.records {
-		if record.Status != "accepted" || record.ResolvedPlan == nil {
+		if !record.Observation.ContinuousProduction || record.ResolvedPlan == nil || record.ResolvedPlan.ProductionOrders == nil || record.Status != "accepted" {
 			t.Fatal("scripted decision rejected", record.TargetTick, record.Status)
 		}
 		windows[record.TargetTick] = true
 	}
 	if !windows[0] || !windows[10] || !windows[20] || !windows[30] {
 		t.Fatal("missing production windows", windows)
+	}
+}
+
+func TestPreviousPlanFallbackKeepsPersistentProduction(t *testing.T) {
+	job := testJob(40)
+	simulation, err := game.NewMatch(job.Lease.BattleID, job.Scenario, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	orders := []controller.ProductionOrder{{BuildingID: "destroyed-source", UnitType: "vanguard", Enabled: true}}
+	previous := controller.PlanProposal{Name: "keep", ProductionOrders: &orders, ReserveGold: 100}
+	record := ai.DecisionRecord{Observation: ai.DecisionContext{ContinuousProduction: true, ActivePlan: previous}}
+	plan, source := fallbackPlan(simulation, 30, nil, record)
+	if source != "previous_plan" || plan.ProductionOrders != nil || plan.ReserveGold != 100 {
+		t.Fatal("fallback reissued stale source orders")
+	}
+	if previous.ProductionOrders == nil {
+		t.Fatal("fallback mutated accepted history")
 	}
 }
