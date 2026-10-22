@@ -37,10 +37,8 @@ export function FactionSummaries({ battle, decisions, decisionMessage }: Readonl
           <div><dt>Gold</dt><dd>{status.faction?.gold ?? '—'}</dd></div>
           <div><dt>Units</dt><dd>{status.faction && battle.state.units ? status.units.length : '—'}</dd></div>
         </dl>
-        {inspect && <dl className="faction-summary__plan" tabIndex={0} aria-label={`${participant.name} plan and rationale`}>
-          <div><dt>{applied?.status === 'fallback' ? 'Plan · fallback' : 'Plan'}</dt><dd>{applied?.resolvedPlan?.name || (decisionMessage ? 'Plan unavailable' : 'No plan applied yet')}</dd></div>
-          <div><dt>Rationale</dt><dd>{applied?.resolvedPlan?.rationale || 'No rationale recorded.'}</dd></div>
-        </dl>}
+        {inspect && <textarea className="faction-summary__plan" readOnly rows={6} aria-label={`${participant.name} plan and rationale`}
+          value={`${applied?.status === 'fallback' ? 'Plan · fallback' : 'Plan'}\n${applied?.resolvedPlan?.name || (decisionMessage ? 'Plan unavailable' : 'No plan applied yet')}\n\nRationale\n${applied?.resolvedPlan?.rationale || 'No rationale recorded.'}`} />}
       </article>
     })}
   </section>

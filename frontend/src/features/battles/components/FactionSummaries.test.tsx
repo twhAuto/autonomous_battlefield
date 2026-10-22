@@ -77,23 +77,23 @@ describe('faction summaries', () => {
   const applied = { ...decision, targetTick: 10, status: 'accepted' as const, resolvedPlan: { name: 'Hold the bridge', rationale: 'Protect the economy.' } }
   render(<FactionSummaries {...props} decisions={[applied, { ...applied, factionId: 'other', resolvedPlan: { name: 'Enemy plan' } }, { ...applied, targetTick: 20, resolvedPlan: { name: 'Future plan' } }, { ...decision, targetTick: 30 }]} />)
   const card = within(screen.getByRole('article', { name: 'Amber' }))
-  expect(card.getByText('Hold the bridge')).toBeVisible()
-  expect(card.getByText('Protect the economy.')).toBeVisible()
-  expect(card.queryByText('Future plan')).not.toBeInTheDocument()
-  expect(card.queryByText('Enemy plan')).not.toBeInTheDocument()
+  expect((card.getByRole('textbox') as HTMLTextAreaElement).value).toContain('Hold the bridge')
+  expect((card.getByRole('textbox') as HTMLTextAreaElement).value).toContain('Protect the economy.')
+  expect((card.getByRole('textbox') as HTMLTextAreaElement).value).not.toContain('Future plan')
+  expect((card.getByRole('textbox') as HTMLTextAreaElement).value).not.toContain('Enemy plan')
   expect(card.getByText('Deciding')).toBeVisible()
  })
 
  it('shows fallback rationale after stopping and clear empty states', () => {
   const { rerender } = render(<FactionSummaries {...props} decisions={[]} />)
-  expect(screen.getByText('No plan applied yet')).toBeVisible()
-  expect(screen.getByText('No rationale recorded.')).toBeVisible()
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toContain('No plan applied yet')
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toContain('No rationale recorded.')
   rerender(<FactionSummaries {...props} decisions={[]} decisionMessage="offline" />)
-  expect(screen.getByText('Plan unavailable')).toBeVisible()
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toContain('Plan unavailable')
   rerender(<FactionSummaries {...props} battle={{ ...battle, status: 'stopped' }} decisions={[{ ...decision, status: 'fallback', resolvedPlan: { name: 'Hold', rationale: 'Keep defending.' } }]} />)
   expect(screen.getByText('Stopped')).toBeVisible()
-  expect(screen.getByText('Keep defending.')).toBeVisible()
-  expect(screen.getByText('Plan · fallback')).toBeVisible()
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toContain('Keep defending.')
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toContain('Plan · fallback')
  })
 
  it('does not show decision details to players', () => {
@@ -101,5 +101,5 @@ describe('faction summaries', () => {
     <FactionSummaries {...props} decisions={[{ ...decision, status: 'accepted', resolvedPlan: { name: 'Private plan', rationale: 'Private rationale' } }]} />
   </SessionContext.Provider>)
   expect(screen.queryByText('Plan')).not.toBeInTheDocument()
-  expect(screen.queryByText('Private rationale')).not.toBeInTheDocument()
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
  })

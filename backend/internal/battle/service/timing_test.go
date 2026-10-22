@@ -20,12 +20,18 @@ func TestBattleTimingValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBattleTimingRejectsInvalidIntervals(t *testing.T) {
 	for _, interval := range []uint64{0, 101, ^uint64(0)} {
 		scenario := game.Scenario{}
 		if err := applyBattleTiming(&scenario, CreateBattleInput{DecisionIntervalTicks: &interval}); !errors.Is(err, ErrInvalidBattle) {
 			t.Fatalf("interval %d: error = %v", interval, err)
 		}
 	}
+}
+
+func TestBattleTimingAcceptsBounds(t *testing.T) {
 	for _, duration := range []string{"100ms", "10s"} {
 		for _, interval := range []uint64{1, 100} {
 			scenario := game.Scenario{}
