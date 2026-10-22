@@ -39,7 +39,7 @@ Before deploying this overhaul, the release operator must arrange a maintenance
 window that prevents new battle creation, then finish every queued/running battle
 on the old engine. Resume paused battles so they can finish; stopping unfinished
 battles instead requires the owner's agreement. Verify that no queued or running
-rows remain (paused battles also have running status) before replacing the engine.
+rows remain (paused battles can have either status) before replacing the engine.
 Worker claim-draining alone is insufficient: it can leave queued battles behind.
 If the creation freeze or empty-queue condition cannot be established, postpone
 the release. Ordinary rolling deployment is not sufficient for this cutover.
