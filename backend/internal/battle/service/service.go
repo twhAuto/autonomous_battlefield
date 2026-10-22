@@ -39,10 +39,12 @@ var (
 var battleUUIDPattern = regexp.MustCompile(`^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$`)
 
 type CreateBattleInput struct {
-	ID           string
-	ScenarioID   string
-	Participants []ParticipantInput
-	TickCount    uint64
+	ID                    string
+	ScenarioID            string
+	Participants          []ParticipantInput
+	TickCount             uint64
+	TickDuration          *string
+	DecisionIntervalTicks *uint64
 }
 
 type ParticipantInput struct {
@@ -217,6 +219,9 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 	}
 	if resolved.MaximumTicks > 0 && input.TickCount > resolved.MaximumTicks {
 		return nil, ErrInvalidBattle
+	}
+	if err := applyBattleTiming(&resolved, input); err != nil {
+		return nil, err
 	}
 	for index := range resolved.Factions {
 		resolved.Factions[index].Controller = controllers[index]

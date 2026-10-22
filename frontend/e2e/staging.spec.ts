@@ -47,3 +47,61 @@ test('keeps the operator on the form when the server rejects the battle', async 
   await expect(page).toHaveURL(/\/battles\/[0-9a-f-]{36}$/)
   expect(api.created?.tickCount).toBe(500)
 })
+
+test('aligns mixed controller slots and submits chosen timing', async ({ page, api, isMobile }) => {
+  await page.route('**/v1/model-profiles', route => route.fulfill({ json: { profiles: [{ id: 'model', displayName: 'Model controller', available: true, runtime: 'cli', modelLabel: 'fast', modelOptions: [{ id: 'fast', reasoningEfforts: ['low', 'high'] }] }] } }))
+  await page.goto('/battles/new')
+  await page.locator('#first-controller').selectOption('model')
+  await expect(page.getByLabel('Reasoning effort')).toBeVisible()
+  const first = await page.getByLabel('Slot one').boundingBox()
+  const second = await page.getByLabel('Slot two').boundingBox()
+  expect(first).not.toBeNull()
+  expect(second).not.toBeNull()
+  if (isMobile) {
+    expect(second!.y).toBeGreaterThan(first!.y + first!.height)
+  } else {
+    expect(Math.abs(first!.y - second!.y)).toBeLessThan(2)
+    const firstController = await page.locator('#first-controller').boundingBox()
+    const secondController = await page.locator('#second-controller').boundingBox()
+    expect(Math.abs(firstController!.y - secondController!.y)).toBeLessThan(2)
+  }
+  await expect(page.getByText('AI integration status')).toHaveCount(0)
+  await expect(page.getByText(/Units:|Buildings:|Three upgrade levels/)).toHaveCount(0)
+  await page.getByLabel('Tick duration').selectOption('500ms')
+  await page.getByLabel('Decision interval').selectOption('5')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: `/tmp/ab169-setup-${isMobile ? 'mobile' : 'desktop'}.png`, fullPage: true })
+  await page.getByRole('button', { name: /DEPLOY COMBATANTS/ }).click()
+  await expect(page).toHaveURL(/\/battles\/[0-9a-f-]{36}$/)
+  expect(api.created).toMatchObject({ tickDuration: '500ms', decisionIntervalTicks: 5 })
+})
+
+test('puts plan and rationale inside each faction status box', async ({ page, isMobile }) => {
+  await page.route('**/v1/battles/*/decisions?*', route => route.fulfill({ json: { decisions: [
+    { requestId: 'a', factionId, targetTick: 80, status: 'accepted', controllerType: 'model', usage: {}, createdAt: '', resolvedPlan: { name: 'Defend the castle', rationale: 'Hold the bridge while the economy recovers. Reinforce the western approach before advancing.' } },
+    { requestId: 'b', factionId: rivalId, targetTick: 80, status: 'fallback', controllerType: 'scripted', usage: {}, createdAt: '', resolvedPlan: { name: 'Advance', rationale: 'Keep pressure on the enemy castle.' } },
+  ] } }))
+  await page.goto('/battles/33333333-3333-4333-8333-333333333333')
+  const amber = page.getByRole('article', { name: 'Amber', exact: true })
+  await expect(amber.getByRole('textbox')).toHaveValue(/Defend the castle/)
+  await expect(amber.getByRole('textbox')).toHaveValue(/Hold the bridge/)
+  await expect(page.getByRole('article', { name: 'Azure', exact: true }).getByRole('textbox')).toHaveValue(/Keep pressure on the enemy castle/)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: `/tmp/ab169-battle-${isMobile ? 'mobile' : 'desktop'}.png`, fullPage: true })
+})
+
+test('keeps long plan text inside a bounded keyboard-accessible area', async ({ page }) => {
+  await page.route('**/v1/battles/*/decisions?*', route => route.fulfill({ json: { decisions: [
+    { requestId: 'long', factionId, targetTick: 80, status: 'accepted', controllerType: 'model', usage: {}, createdAt: '', resolvedPlan: { name: 'Hold '.repeat(200), rationale: 'Defend.\n'.repeat(70) } },
+  ] } }))
+  await page.goto('/battles/33333333-3333-4333-8333-333333333333')
+  const plan = page.getByRole('textbox', { name: 'Amber plan and rationale', exact: true })
+  await expect(plan).toHaveAttribute('readonly', '')
+  await expect(plan).toHaveValue(/Defend\./)
+  await plan.focus()
+  await expect(plan).toBeFocused()
+  const bounds = await plan.evaluate(node => ({ height: node.getBoundingClientRect().height, visible: node.clientHeight, total: node.scrollHeight }))
+  expect(bounds.height).toBeLessThanOrEqual(160)
+  expect(bounds.total).toBeGreaterThan(bounds.visible)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})

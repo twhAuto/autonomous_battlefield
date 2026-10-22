@@ -132,7 +132,9 @@ func (h *Handler) CreateBattle(w http.ResponseWriter, r *http.Request) {
 				ReasoningEffort string `json:"reasoningEffort,omitempty"`
 			} `json:"controller"`
 		} `json:"participants"`
-		TickCount uint64 `json:"tickCount"`
+		TickCount             uint64  `json:"tickCount"`
+		TickDuration          *string `json:"tickDuration,omitempty"`
+		DecisionIntervalTicks *uint64 `json:"decisionIntervalTicks,omitempty"`
 	}
 	if err := httpapi.ReadJSON(w, r, &request); err != nil {
 		apierror.Write(w, r, http.StatusBadRequest, "invalid request body")
@@ -142,7 +144,7 @@ func (h *Handler) CreateBattle(w http.ResponseWriter, r *http.Request) {
 	for index, participant := range request.Participants {
 		participants[index] = battleservice.ParticipantInput{FactionID: participant.FactionID, Controller: game.ControllerConfig{Type: participant.Controller.Type, ProfileID: participant.Controller.ProfileID, ModelIdentifier: participant.Controller.ModelIdentifier, ReasoningEffort: participant.Controller.ReasoningEffort}}
 	}
-	run, err := h.battles.CreateBattle(r.Context(), battleservice.CreateBattleInput{ID: request.ID, ScenarioID: request.ScenarioID, Participants: participants, TickCount: request.TickCount})
+	run, err := h.battles.CreateBattle(r.Context(), battleservice.CreateBattleInput{ID: request.ID, ScenarioID: request.ScenarioID, Participants: participants, TickCount: request.TickCount, TickDuration: request.TickDuration, DecisionIntervalTicks: request.DecisionIntervalTicks})
 	if writeError(w, r, err, []errorCase{
 		forbiddenError, limitedError, invalidError("invalid battle"),
 		errorFor(http.StatusNotFound, "battle dependency not found", battleservice.ErrBattleFactionMissing, battleservice.ErrScenarioNotFound),

@@ -255,3 +255,16 @@ opts battle sessions into host-fetched inline context; the host dev script expos
 recorded delivery mode. See [comparison procedure](../operations/cli-worker.md#context-prefetch-comparison).
 `cmd/aieval/comparison.go` also accepts CLI `reasoningEffort` and `prefetchContext`
 variants, recorded in comparison reports for matched offline-context experiments.
+
+### Battle setup timing and faction summaries
+
+`frontend/src/features/battles/pages/CreateBattlePage.tsx` offers map-default or
+preset tick duration and decision interval, resets overrides on a map change,
+and keeps combatant columns aligned with mixed controller types. Availability
+still filters controller choices; setup has no integration diagnostic panel.
+`backend/internal/battle/service/timing.go` validates optional overrides before
+snapshot hashing and persistence; `timing_test.go` covers bounds, defaults and
+retry identity. The existing engine reads timing from that frozen snapshot.
+`FactionSummaries.tsx` shows the applied plan and rationale inside each status
+box for viewers with inspection permission. Component and staging browser tests
+cover timing payloads, mixed-controller alignment and plan placement.
