@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 // IsTrainingBuilding identifies the production kinds supported by authored content.
@@ -100,7 +102,8 @@ func (m *Match) chooseTrainingSource(factionID string, definitions map[string]Un
 }
 
 // Starting Barracks are free, active at tick zero, and obey ordinary spacing.
-// Both castles are placed first so neither faction can obstruct the other spawn.
+// Both castle hexes are reserved first. Barracks sites are then chosen in faction
+// slot order; each placement respects all previously placed buildings.
 func (m *Match) addStartingBarracks() error {
 	if !m.specializedTraining() {
 		return nil
@@ -143,4 +146,23 @@ func (m *Match) resolveTrainingSource(factionID, sourceID string, definitions ma
 		return m.chooseTrainingSource(factionID, definitions, priorities, reserve)
 	}
 	return m.recruitmentSource(factionID, sourceID), priorities
+}
+
+// Engine-authored plans must pass the same frozen validator as model plans.
+// Filter only scripted baselines, leaving submitted and reused plans intact.
+func (m *Match) filterScriptedRecruitment(factionID string, plan *controller.PlanProposal) {
+	if !m.specializedTraining() || plan.RecruitmentOrders == nil {
+		return
+	}
+	orders := []controller.RecruitmentOrder{}
+	for _, order := range *plan.RecruitmentOrders {
+		source := m.defaultTrainingSource(factionID, order.UnitType)
+		if order.SourceBuildingID != "" {
+			source = m.recruitmentSource(factionID, order.SourceBuildingID)
+		}
+		if source != nil && source.ReadyAtTick <= m.state.Tick && slices.Contains(m.trainingRoster(source.Type), order.UnitType) {
+			orders = append(orders, order)
+		}
+	}
+	plan.RecruitmentOrders = &orders
 }

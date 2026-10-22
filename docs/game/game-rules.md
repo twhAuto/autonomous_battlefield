@@ -107,6 +107,9 @@ immediately; other new structures activate next tick.
 
 Castles do not train. Each faction starts with one free Barracks, placed on a legal
 nearby hex, active at tick zero and counted toward the eight-building limit.
+Castle cells are reserved first; Barracks placement then follows faction slot order.
+Authored maps must leave a legal site for both factions. Their 90-gold base value
+still yields 45 loot when destroyed; starting buildings do not count as purchases.
 The five production buildings expose their supported unit IDs as `trains`:
 
 | Building | Units |
@@ -127,7 +130,9 @@ starts on the following tick. Destroying the source discards its queue without
 refund. An explicit source must be alive, active, owned and able to train the
 requested type. An omitted source selects a compatible active building with queue
 space, preferring the one nearest the enemy castle, then its ID.
-Opening/later unit counters increment on deployment, not purchase.
+If every compatible source is full, an implicit order reports `source_unavailable`;
+a named full source reports `queue_full`. Opening/later unit counters increment on
+deployment, not purchase.
 
 Queues and progress are part of persisted `Building` state, cloned with snapshots.
 The engine resumes a live paused match in memory; a new worker attempt replays its

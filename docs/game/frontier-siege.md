@@ -126,7 +126,10 @@ their queue without refunds. Troops act on the tick after deployment. See
 
 Scripted construction favors deposits, then locations nearer the opponent, choosing
 separated sites for income, a tower and missing production building types. Automatic
-orders choose a compatible active source with queue space nearest the enemy castle. Explicit orders take precedence; Outposts are an
+orders choose a compatible active source with queue space nearest the enemy castle.
+Scripted baselines omit currently untrainable orders before submission. Once two
+economy buildings, all five production kinds and one tower fill the eight slots,
+default construction stops; destroyed types become eligible for replacement. Explicit orders take precedence; Outposts are an
 alternative purchase for wider expansion. Opening fallback buys combat units in
 deterministic round-robin order from the starting Barracks. Other unit types require
 their own production building first.

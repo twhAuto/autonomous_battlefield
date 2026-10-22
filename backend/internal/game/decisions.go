@@ -63,6 +63,7 @@ func (m *Match) ScriptedPlans() map[string]controller.PlanProposal {
 		} else {
 			plan := m.normalizedFactionPlan(factionID, m.factions[factionID].scriptedPlan())
 			m.assignForwardRecruitment(factionID, &plan)
+			m.filterScriptedRecruitment(factionID, &plan)
 			plans[factionID] = plan
 		}
 	}

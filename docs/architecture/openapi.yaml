@@ -1701,7 +1701,7 @@ components:
               unitType: {type: string}
               count: {type: integer, minimum: 1, maximum: 6}
               sourceBuildingId:
-                description: An active owned source whose trains list includes the unit. Omit to select a compatible source with queue space nearest the enemy castle. Current castles cannot train.
+                description: An active owned source whose trains list includes the unit. Omit to select a compatible source with queue space nearest the enemy castle. Current castles cannot train. If no compatible source has queue space, implicit orders report source_unavailable; a named full source reports queue_full.
                 type: string
         constructionPriorities:
           description: Legacy coordinate-only economy construction.

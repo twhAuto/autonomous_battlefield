@@ -240,7 +240,9 @@ capability. `legal.recruitmentSources` lists living, active owned sources, and f
 submission validation rejects incompatible units, including implicit orders with no
 compatible source. Omitted source IDs select the compatible building nearest the
 enemy castle with queue space; explicit IDs never switch buildings. Starting Barracks
-support the opening; other production buildings must be constructed first. Historical
+support the opening; other production buildings must be constructed first. Scripted baselines filter out orders without a currently compatible active source
+before frozen validation, so shared army templates remain valid while production
+buildings are being constructed. Submitted/reused plans keep their requested orders. Historical
 contexts without authored rosters retain their original recruitment validation.
 `legal.economySites` is the retained wire name for dynamically
 computed legal construction coordinates, not fixed pads. Execution rechecks range,
