@@ -179,7 +179,7 @@ battles override decision activity, and Go `null` collections are treated as emp
 ## Entity presentation
 
 [`EntityIcon.tsx`](../../frontend/src/features/battles/components/EntityIcon.tsx)
-supplies the SVG artwork for the eleven unit and five building types, reused by the
+supplies the SVG artwork for the eleven unit and nine current building types (plus legacy Watchtower), reused by the
 map, roster, building overview and legend. `presentation/entities.ts` owns type
 labels and readable references such as `Iron Legion · Ranger #12`, derived from the
 sequence embedded in generated IDs so deaths, polling and older attempts never
@@ -242,8 +242,11 @@ missing report fails the stage.
 The frontend build enables TypeScript `noUnusedLocals` and `noUnusedParameters`
 alongside strict type checks.
 
-Forests and deposits have distinct terrain colors and accessible descriptions.
-Selecting a living building highlights its construction radius. Castle/Barracks
-details show FIFO order, per-unit remaining/total ticks, progress and blocked exits.
+Forests, deposits and rocks have distinct SVG silhouettes via `TerrainGlyph.tsx`,
+terrain colors and accessible descriptions. Selecting a living building highlights its
+construction radius. Production-building details show their `trains` roster, FIFO
+order, per-unit remaining/total ticks, progress and blocked exits. Castles have no
+training controls. Dead buildings are omitted from the map, selection details and
+range overlays immediately, while history can still use their saved identities.
 The radius overlay shows reach; terrain, occupancy and spacing still determine
 actual legal placements in the engine.

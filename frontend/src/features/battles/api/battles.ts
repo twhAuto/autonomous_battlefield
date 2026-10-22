@@ -78,13 +78,14 @@ export interface BattleUnit extends UnitCapabilities {
   attackTargetPosition?: HexPosition
 }
 export interface BattleBuilding {
+  trains?: string[]
   buildRange?: number
   trainingBlocked?: boolean
   trainingQueue?: { unitType: string; remainingTicks: number; trainingTicks: number; queuedAtTick: number; opening?: boolean }[]
   attack?: number; range?: number; readyAtTick?: number
   attackOutcome?: 'hit' | 'miss'
   attackTargetId?: string; attackTargetPosition?: HexPosition
-  id: string; factionId: string; type: 'castle' | 'economy' | 'defense_tower' | 'watchtower' | 'outpost' | 'barracks'; position: HexPosition
+  id: string; factionId: string; type: 'castle' | 'economy' | 'defense_tower' | 'watchtower' | 'outpost' | 'barracks' | 'archery_range' | 'stables' | 'siege_workshop' | 'infirmary'; position: HexPosition
   health: number; maxHealth: number; defense: number; vision: number; income: number
 }
 export interface BattleFactionState {

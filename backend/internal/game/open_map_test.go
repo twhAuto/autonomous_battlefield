@@ -24,12 +24,12 @@ func queueUnits(t *testing.T, m *Match, source string, types ...string) {
 }
 
 func TestTrainingFIFOAndBlockedExit(t *testing.T) {
-	m := doctrineMatch(t)
+	m := specializedMatch(t)
 	m.scenario.Ruleset.Units[0].TrainingTicks = 2
 	m.scenario.Ruleset.Units[1].TrainingTicks = 3
 	m.factionState("faction-a").Gold = 500
 	queueUnits(t, m, "", "vanguard", "striker")
-	castle := m.castle("faction-a")
+	castle := m.defaultTrainingSource("faction-a", "vanguard")
 	paid := m.factionState("faction-a").Gold
 	m.runTraining()
 	if len(m.state.Units) != 0 || castle.TrainingQueue[0].RemainingTicks != 2 {

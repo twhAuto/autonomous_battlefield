@@ -1,4 +1,4 @@
-import { test, expect, battleId, factionId } from './fixtures'
+import { test, expect, battleId, factionId, battleFixture } from './fixtures'
 
 test('navigation, focus, responsive forms and logout', async ({ page, isMobile }) => {
   await page.goto('/')
@@ -108,6 +108,9 @@ for (const [width, height] of [[15, 11], [25, 17]]) {
   })
 }
 test('the full map stays available without faction-view requests', async ({ page }) => {
+  const liveBattle = battleFixture()
+  liveBattle.state.buildings[1].health = 100
+  await page.route(`**/v1/battles/${battleId}`, route => route.fulfill({ json: liveBattle }))
   let viewRequests = 0
   await page.route('**/view', route => { viewRequests += 1; return route.abort('failed') })
   await page.goto(`/battles/${battleId}`)
@@ -194,3 +197,22 @@ for (const width of [390, 768, 1440]) {
     }
   })
 }
+
+test('terrain icons, specialized production and destroyed buildings on the map', async ({ page }) => {
+  const battle = battleFixture()
+  battle.map.rows[3] = '..fg#..........'
+  const types = ['barracks', 'archery_range', 'stables', 'siege_workshop', 'infirmary']
+  const units = ['vanguard', 'ranger', 'scout', 'catapult', 'herbalist']
+  battle.state.buildings.push(...types.map((type, index) => ({ ...battle.state.buildings[0], id: `${factionId}:${type}:1`, type, position: { x: 2 + index * 2, y: 5 }, income: 0, trains: [units[index]] })))
+  await page.route(`**/v1/battles/${battleId}`, route => route.fulfill({ json: battle }))
+  await page.goto(`/battles/${battleId}`)
+  const map = page.locator('.battle-map-column')
+  for (const terrain of ['forest', 'gold', 'rock']) await expect(map.locator(`.terrain-glyph--${terrain}`)).toHaveCount(1)
+  await expect(map.getByRole('button', { name: 'Azure · Castle' })).toHaveCount(0)
+  for (const label of ['Barracks', 'Archery Range', 'Stables', 'Siege Workshop', 'Infirmary']) {
+    await map.getByRole('button', { name: `Amber · ${label} #1` }).click()
+    await expect(map.getByText('Training queue empty')).toBeVisible()
+  }
+  await map.getByRole('button', { name: 'Amber · Castle', exact: true }).click()
+  await expect(map.getByText('Training queue empty')).toHaveCount(0)
+})

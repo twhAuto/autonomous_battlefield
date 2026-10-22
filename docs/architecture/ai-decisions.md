@@ -235,7 +235,14 @@ wait for a free adjacent traversable hex and block followers until deployment.
 Full or unavailable sources skip that order; the first unaffordable unit stops
 purchasing. Reused plans can enqueue more troops next window. Empty orders buy
 nothing. Definitions expose `trainingTicks`, buildings expose `buildRange` and
-queue progress. `legal.economySites` is the retained wire name for dynamically
+queue progress plus `trains` (supported unit IDs). Current castles have no training
+capability. `legal.recruitmentSources` lists living, active owned sources, and frozen
+submission validation rejects incompatible units, including implicit orders with no
+compatible source. Omitted source IDs select the compatible building nearest the
+enemy castle with queue space; explicit IDs never switch buildings. Starting Barracks
+support the opening; other production buildings must be constructed first. Historical
+contexts without authored rosters retain their original recruitment validation.
+`legal.economySites` is the retained wire name for dynamically
 computed legal construction coordinates, not fixed pads. Execution rechecks range,
 terrain, unit occupancy and a minimum building distance of two hexes, so conflicting
 later orders skip without charge. Empty `constructionOrders` builds nothing;

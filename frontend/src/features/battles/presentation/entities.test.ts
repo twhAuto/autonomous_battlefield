@@ -11,6 +11,7 @@ describe('entity presentation', () => {
     expect(entityName(id, { factionNames, localFactionId: faction })).toBe('Ranger #12')
     expect(entityName('enemy:ranger:012', { factionNames, localFactionId: faction })).toBe('Northwind · Ranger #12')
     expect(entityName(`${faction}:castle`, { factionNames })).toBe('Iron Legion · Castle')
+    expect(entityName(`${faction}:barracks:starting`, { factionNames })).toBe('Iron Legion · Barracks (starting)')
     expect(entityName(`${faction}:defense_tower:003`, { factionNames })).toBe('Iron Legion · Defense Tower #3')
     expect(entityName('realm:faction:catapult:000', { localFactionId: 'realm:faction' })).toBe('Catapult #0')
   })

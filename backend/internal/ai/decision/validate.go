@@ -5,6 +5,7 @@ package decision
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -34,6 +35,7 @@ func ValidateSubmission(record ai.DecisionRecord, submission ai.PlanSubmission) 
 		issues = append(issues, validateOpening(submission.Plan)...)
 	}
 	issues = append(issues, validateRecruitment(legal, submission.Plan)...)
+	issues = append(issues, validateTrainingSources(record.Observation, submission.Plan)...)
 	issues = append(issues, validateConstruction(legal, record.Observation.Opening, submission.Plan)...)
 	return issues
 }
@@ -140,4 +142,33 @@ func validateConstruction(legal ai.LegalChoices, opening bool, plan controller.P
 		}
 	}
 	return issues
+}
+
+// Production capabilities are checked against the frozen observation, not live
+// state. Older stored contexts without authored rosters retain their old rules.
+func validateTrainingSources(context ai.DecisionContext, plan controller.PlanProposal) []ai.ValidationIssue {
+	specialized := false
+	for _, b := range context.Legal.Buildings {
+		specialized = specialized || len(b.Trains) > 0
+	}
+	if !specialized || plan.RecruitmentOrders == nil {
+		return nil
+	}
+	var issues []ai.ValidationIssue
+	for _, order := range *plan.RecruitmentOrders {
+		if !hasCompatibleTrainingSource(context, order) {
+			issues = append(issues, ai.ValidationIssue{Field: fieldRecruitmentOrders, Code: "unsupported", Message: fmt.Sprintf("no legal source can train %q; choose an active building whose trains list includes this unit", order.UnitType)})
+		}
+	}
+	return issues
+}
+
+func hasCompatibleTrainingSource(context ai.DecisionContext, order controller.RecruitmentOrder) bool {
+	for _, b := range context.View.State.Buildings {
+		matchesID := order.SourceBuildingID == "" || order.SourceBuildingID == b.ID
+		if matchesID && slices.Contains(context.Legal.RecruitmentSources, b.ID) && slices.Contains(b.Trains, order.UnitType) {
+			return true
+		}
+	}
+	return false
 }

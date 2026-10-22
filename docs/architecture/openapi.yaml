@@ -1094,7 +1094,9 @@ components:
     Ruleset:
       description: |
         Catalog data: starting gold, units, upgrades, optional `structures`, and the
-        shared `buildings.maximumBuildingCount` limit. Fields vary by ruleset version.
+        shared `buildings.maximumBuildingCount` limit. Production structures expose `trains`
+        arrays of supported unit IDs. Core v5 starts each faction with one free Barracks;
+        castles do not train. Fields vary by ruleset version.
       type: object
       required: [id]
       properties:
@@ -1386,11 +1388,16 @@ components:
       description: |
         Castles, economy buildings, and the structures a ruleset defines. Only
         attacking structures such as towers carry `attack`, `range`, and the
-        per-tick action fields.
+        per-tick action fields. Destroyed records can remain in snapshots for result/history
+        references; consumers should hide buildings whose health is zero or lower.
       type: object
       required: [id, factionId, type, position, health, maxHealth, defense, vision, cost, income]
       properties:
         buildRange: {type: integer, minimum: 0, maximum: 10, description: Construction reach in hexes; older snapshots with zero or no range use 3.}
+        trains:
+          type: array
+          items: {type: string}
+          description: Supported unit IDs for this production building. Current castles have no training capability; older snapshots may omit this field.
         trainingBlocked: {type: boolean, description: A ready head is waiting for a free adjacent traversable tile.}
         trainingQueue:
           type: array
@@ -1398,7 +1405,7 @@ components:
           items: {$ref: '#/components/schemas/TrainingOrder'}
         id: {type: string}
         factionId: {type: string}
-        type: {type: string, examples: [castle, economy, barracks, outpost, defense_tower]}
+        type: {type: string, examples: [castle, economy, barracks, archery_range, stables, siege_workshop, infirmary, outpost, defense_tower]}
         position: {$ref: '#/components/schemas/Position'}
         health: {type: integer}
         maxHealth: {type: integer}
@@ -1581,7 +1588,7 @@ components:
         | `building_constructed` | `factionId`, `buildingId`, `buildingType`, `position`, `cost` |
         | `unit_queued` | `factionId`, `sourceBuildingId`, `unitType`, `trainingTicks`, `cost`; charged once at enqueue |
         | `unit_recruited` | `factionId`, `unitId`, `unitType`, `position`, `readyAtTick`, `cost`, and `sourceBuildingId`; `cost` is informational unit value for compatibility, not a new expense; count only `unit_queued.cost` for recruitment spending |
-        | `production_skipped` | `factionId`, `kind` (`upgrades`, `construction` or `recruitment`), `reason`, plus `upgradeId` or `position` where relevant; reasons include `prerequisite_required`, `exclusive_choice_owned`, `reserve_required`, `queue_full`, `source_unavailable`, `invalid_terrain`, `outside_build_range`, `building_too_close`, `site_occupied` and `maximum_reached` |
+        | `production_skipped` | `factionId`, `kind` (`upgrades`, `construction` or `recruitment`), `reason`, plus `upgradeId` or `position` where relevant; reasons include `prerequisite_required`, `exclusive_choice_owned`, `reserve_required`, `queue_full`, `source_unavailable`, `unit_not_trainable`, `invalid_terrain`, `outside_build_range`, `building_too_close`, `site_occupied` and `maximum_reached` |
         | `unit_moved` | `factionId`, `unitId`, `from`, `to` |
         | `unit_attacked`, `building_attacked` | `attackerId`, `targetId`, `targetType`, `damage`, `remainingHealth`, `attackMode`, `outcome: hit`, `impactPosition` |
         | `unit_attack_missed` | `attackerId`, `attackMode: position`, `outcome: miss`, `impactPosition` |
@@ -1694,7 +1701,7 @@ components:
               unitType: {type: string}
               count: {type: integer, minimum: 1, maximum: 6}
               sourceBuildingId:
-                description: A recruitment source from the decision context; omit for the castle.
+                description: An active owned source whose trains list includes the unit. Omit to select a compatible source with queue space nearest the enemy castle. Current castles cannot train.
                 type: string
         constructionPriorities:
           description: Legacy coordinate-only economy construction.

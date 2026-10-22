@@ -20,6 +20,7 @@ func CloneState(value State) State {
 	}
 	value.Buildings = append([]Building(nil), value.Buildings...)
 	for i := range value.Buildings {
+		value.Buildings[i].Trains = append([]string(nil), value.Buildings[i].Trains...)
 		value.Buildings[i].TrainingQueue = append([]TrainingOrder(nil), value.Buildings[i].TrainingQueue...)
 		value.Buildings[i].AttackTargetPosition = clonePosition(value.Buildings[i].AttackTargetPosition)
 	}
@@ -52,7 +53,7 @@ func CloneResult(value Result) Result {
 }
 
 func CloneScenario(value Scenario) Scenario {
-	value.Ruleset.Structures = append([]BuildingType(nil), value.Ruleset.Structures...)
+	value.Ruleset.Structures = CloneBuildingTypes(value.Ruleset.Structures)
 	value.Ruleset.Knowledge = CloneKnowledge(value.Ruleset.Knowledge)
 	if value.Ruleset.ContentSource != nil {
 		copy := *value.Ruleset.ContentSource
@@ -68,4 +69,12 @@ func CloneScenario(value Scenario) Scenario {
 		value.Factions[i].ScriptedPlans = controller.ClonePlanProposals(value.Factions[i].ScriptedPlans)
 	}
 	return value
+}
+
+func CloneBuildingTypes(values []BuildingType) []BuildingType {
+	result := append([]BuildingType(nil), values...)
+	for i := range result {
+		result[i].Trains = append([]string(nil), result[i].Trains...)
+	}
+	return result
 }

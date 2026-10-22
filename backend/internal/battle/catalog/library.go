@@ -28,20 +28,21 @@ type librarySelection struct {
 
 // Keep the original JSON field names in library hashes for unchanged v1 content.
 type buildingDefinition struct {
-	BuildRange int    `json:"BuildRange,omitempty" yaml:"buildRange,omitempty"`
-	ID         string `yaml:"id"`
-	Kind       string `yaml:"kind"`
-	Health     int64  `yaml:"health"`
-	Defense    int64  `yaml:"defense"`
-	Vision     int    `yaml:"vision"`
-	Income     int64  `yaml:"income"`
-	Cost       int64  `yaml:"cost"`
-	Attack     int64  `json:"Attack,omitempty" yaml:"attack,omitempty"`
-	Range      int    `json:"Range,omitempty" yaml:"range,omitempty"`
+	Trains     []string `json:"Trains,omitempty" yaml:"trains,omitempty"`
+	BuildRange int      `json:"BuildRange,omitempty" yaml:"buildRange,omitempty"`
+	ID         string   `yaml:"id"`
+	Kind       string   `yaml:"kind"`
+	Health     int64    `yaml:"health"`
+	Defense    int64    `yaml:"defense"`
+	Vision     int      `yaml:"vision"`
+	Income     int64    `yaml:"income"`
+	Cost       int64    `yaml:"cost"`
+	Attack     int64    `json:"Attack,omitempty" yaml:"attack,omitempty"`
+	Range      int      `json:"Range,omitempty" yaml:"range,omitempty"`
 }
 
 func (b buildingDefinition) buildingType() game.BuildingType {
-	return game.BuildingType{BuildRange: b.BuildRange, ID: b.ID, Kind: b.Kind, Health: b.Health, Defense: b.Defense, Vision: b.Vision, Income: b.Income, Cost: b.Cost, Attack: b.Attack, Range: b.Range}
+	return game.BuildingType{Trains: append([]string(nil), b.Trains...), BuildRange: b.BuildRange, ID: b.ID, Kind: b.Kind, Health: b.Health, Defense: b.Defense, Vision: b.Vision, Income: b.Income, Cost: b.Cost, Attack: b.Attack, Range: b.Range}
 }
 
 type contentLibrary struct {
@@ -125,7 +126,7 @@ func validLibraryBuilding(b buildingDefinition) bool {
 	if b.Kind != "castle" && b.Kind != "economy" {
 		return game.ValidStructure(b.buildingType())
 	}
-	return b.Health > 0 && b.Defense >= 0 && b.Vision >= 0 && b.BuildRange >= 0 && b.BuildRange <= 10 && b.Income > 0 && b.Cost >= 0 && b.Attack == 0 && b.Range == 0
+	return len(b.Trains) == 0 && b.Health > 0 && b.Defense >= 0 && b.Vision >= 0 && b.BuildRange >= 0 && b.BuildRange <= 10 && b.Income > 0 && b.Cost >= 0 && b.Attack == 0 && b.Range == 0
 }
 
 func applyLibraryBuildings(r game.Ruleset, library contentLibrary, ref *librarySelection) (game.Ruleset, error) {

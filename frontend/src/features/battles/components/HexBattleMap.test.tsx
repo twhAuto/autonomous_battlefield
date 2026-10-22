@@ -378,21 +378,23 @@ it('shows special terrain, building reach and a sequential training queue withou
   const user = userEvent.setup()
   const specialMap = { ...map, rows: ['fg', '..'] }
   const trainingState: BattleState = structuredClone(state)
-  trainingState.buildings![0] = { ...trainingState.buildings![0], buildRange: 4, trainingQueue: [
+  trainingState.buildings![0] = { ...trainingState.buildings![0], type: 'archery_range', id: 'a:archery_range:1', trains: ['ranger', 'crossbowman'], buildRange: 4, trainingQueue: [
     { unitType: 'ranger', remainingTicks: 1, trainingTicks: 3, queuedAtTick: 0 },
-    { unitType: 'catapult', remainingTicks: 8, trainingTicks: 8, queuedAtTick: 0 },
+    { unitType: 'crossbowman', remainingTicks: 8, trainingTicks: 8, queuedAtTick: 0 },
   ] }
   const props = { map: specialMap, state: trainingState, factionNames: new Map([['a', 'Northwind']]) }
   const { container, rerender } = render(<HexBattleMap {...props} />)
   expect(container.querySelectorAll('.hex-tile--fog')).toHaveLength(0)
   expect(container.querySelectorAll('.hex-tile--forest')).toHaveLength(1)
   expect(container.querySelectorAll('.hex-tile--gold')).toHaveLength(1)
+  expect(container.querySelectorAll('.terrain-glyph--forest')).toHaveLength(1)
+  expect(container.querySelectorAll('.terrain-glyph--gold')).toHaveLength(1)
   expect(screen.getByText(/Forest: \+3 troop defense/)).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'Northwind · Castle' }))
+  await user.click(screen.getByRole('button', { name: 'Northwind · Archery Range #1' }))
   expect(container.querySelectorAll('.hex-tile--build-range')).toHaveLength(4)
   expect(screen.getByText(/Build range 4/)).toBeInTheDocument()
   expect(screen.getByText('Ranger · 1/3 ticks remaining')).toBeInTheDocument()
-  expect(screen.getByText('Catapult · 8/8 ticks remaining')).toBeInTheDocument()
+  expect(screen.getByText('Crossbowman · 8/8 ticks remaining')).toBeInTheDocument()
   expect(screen.getByRole('progressbar', { name: 'Training progress' })).toHaveAttribute('value', '2')
   trainingState.buildings![0].trainingQueue![0].remainingTicks = 0
   trainingState.buildings![0].trainingBlocked = true
@@ -401,4 +403,25 @@ it('shows special terrain, building reach and a sequential training queue withou
   trainingState.buildings![0].trainingQueue = []
   rerender(<HexBattleMap {...props} />)
   expect(screen.getByText('Training queue empty')).toBeInTheDocument()
+})
+
+it('removes destroyed buildings, queues and selected range from the battlefield', async () => {
+  const current: BattleState = structuredClone(state)
+  current.buildings![0] = { ...current.buildings![0], type: 'barracks', trains: ['vanguard'], trainingQueue: [{ unitType: 'vanguard', trainingTicks: 4, remainingTicks: 2, queuedAtTick: 0 }] }
+  const props = { map, state: current, factionNames: new Map() }
+  const { container, rerender } = render(<HexBattleMap {...props} />)
+  await userEvent.click(screen.getByRole('button', { name: /Barracks/ }))
+  expect(screen.getByText('Training queue · 1/12')).toBeInTheDocument()
+  current.buildings![0].health = 0
+  rerender(<HexBattleMap {...props} />)
+  expect(screen.queryByRole('button', { name: /Barracks/ })).not.toBeInTheDocument()
+  expect(screen.queryByText(/Training queue/)).not.toBeInTheDocument()
+  expect(container.querySelectorAll('.hex-tile--build-range')).toHaveLength(0)
+  expect(screen.getByText('Select a castle, building, or unit for details.')).toBeInTheDocument()
+})
+
+it('does not show a training queue on a live castle', async () => {
+  render(<HexBattleMap map={map} state={state} factionNames={new Map()} />)
+  await userEvent.click(screen.getByRole('button', { name: /Castle/ }))
+  expect(screen.queryByText(/Training queue/)).not.toBeInTheDocument()
 })

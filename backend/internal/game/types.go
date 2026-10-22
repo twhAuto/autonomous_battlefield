@@ -19,12 +19,16 @@ const (
 	TerrainRock      = "rock"
 	TerrainBuildSite = "build_site" // Deprecated authored symbol, retained for saved maps.
 
-	BuildingCastle     = "castle"
-	BuildingEconomy    = "economy"
-	BuildingTower      = "defense_tower"
-	BuildingWatchtower = "watchtower" // Legacy snapshots only.
-	BuildingOutpost    = "outpost"
-	BuildingBarracks   = "barracks"
+	BuildingCastle        = "castle"
+	BuildingEconomy       = "economy"
+	BuildingTower         = "defense_tower"
+	BuildingWatchtower    = "watchtower" // Legacy snapshots only.
+	BuildingOutpost       = "outpost"
+	BuildingBarracks      = "barracks"
+	BuildingArcheryRange  = "archery_range"
+	BuildingStables       = "stables"
+	BuildingSiegeWorkshop = "siege_workshop"
+	BuildingInfirmary     = "infirmary"
 )
 
 var (
@@ -246,16 +250,17 @@ type Unit struct {
 // BuildingType describes additional constructible structures; legacy castle/economy
 // stats remain in BuildingRules for persisted v1 scenarios.
 type BuildingType struct {
-	BuildRange int    `json:"buildRange,omitempty" yaml:"buildRange,omitempty"`
-	ID         string `json:"id" yaml:"id"`
-	Kind       string `json:"kind" yaml:"kind"`
-	Health     int64  `json:"health" yaml:"health"`
-	Defense    int64  `json:"defense" yaml:"defense"`
-	Vision     int    `json:"vision" yaml:"vision"`
-	Income     int64  `json:"income" yaml:"income"`
-	Cost       int64  `json:"cost" yaml:"cost"`
-	Attack     int64  `json:"attack,omitempty" yaml:"attack,omitempty"`
-	Range      int    `json:"range,omitempty" yaml:"range,omitempty"`
+	Trains     []string `json:"trains,omitempty" yaml:"trains,omitempty"`
+	BuildRange int      `json:"buildRange,omitempty" yaml:"buildRange,omitempty"`
+	ID         string   `json:"id" yaml:"id"`
+	Kind       string   `json:"kind" yaml:"kind"`
+	Health     int64    `json:"health" yaml:"health"`
+	Defense    int64    `json:"defense" yaml:"defense"`
+	Vision     int      `json:"vision" yaml:"vision"`
+	Income     int64    `json:"income" yaml:"income"`
+	Cost       int64    `json:"cost" yaml:"cost"`
+	Attack     int64    `json:"attack,omitempty" yaml:"attack,omitempty"`
+	Range      int      `json:"range,omitempty" yaml:"range,omitempty"`
 }
 
 // TrainingOrder is paid when queued; only the first order advances.
@@ -268,6 +273,7 @@ type TrainingOrder struct {
 }
 
 type Building struct {
+	Trains          []string        `json:"trains,omitempty"`
 	BuildRange      int             `json:"buildRange"`
 	TrainingQueue   []TrainingOrder `json:"trainingQueue,omitempty"`
 	TrainingBlocked bool            `json:"trainingBlocked,omitempty"`

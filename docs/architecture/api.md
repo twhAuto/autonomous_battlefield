@@ -200,7 +200,12 @@ all entities, actions, movement routes and deaths. It retains only the requestin
 faction's economy/upgrade/production totals in `state.factions`. The deprecated
 `visiblePositions` field contains every map coordinate for older clients.
 
-Buildings expose `buildRange`, optional `trainingQueue`, and `trainingBlocked`.
+Buildings expose `buildRange`, optional `trains` (supported unit IDs), `trainingQueue`,
+and `trainingBlocked`. The current catalog has five production kinds; castles do not
+train. Each faction starts with one free Barracks. An omitted recruitment source is
+selected automatically among active compatible buildings; an explicit incompatible
+source is rejected by frozen validation and skipped without charge during execution.
+Destroyed buildings remain in snapshots for history/results but are hidden on the map.
 Each queue item includes `unitType`, `trainingTicks`, `remainingTicks`,
 `queuedAtTick` and optional `opening`. A blocked ready head has zero remaining
 ticks and remains in place until a free adjacent traversable cell is available.

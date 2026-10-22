@@ -6,7 +6,7 @@ Every live map uses one shared ruleset. The catalog embeds and validates:
   decision interval, fallback and scripted plans.
 - `backend/gamedata/rulesets/battlefield.yaml`: shared starting gold, combat rules,
   building limits and content-library reference.
-- `backend/gamedata/content/core-v4.yaml`: all units, upgrades, buildings and AI knowledge.
+- `backend/gamedata/content/core-v5.yaml`: all units, upgrades, buildings and AI knowledge.
 - `backend/gamedata/scenarios/*.yaml`: map ID and geometry only.
 
 The shipped maps are `castle-siege` (15×11) and `frontier-siege` (25×17). The
@@ -54,7 +54,11 @@ restart otherwise re-simulates old inputs with changed construction/training rul
 
 Unit definitions include `trainingTicks` (1–1000; missing legacy values use 1).
 Building definitions include `buildRange` (1–10; missing legacy values use 3).
-The active v4 library replaces Watchtower with Outpost and removes vision stats.
+The active v5 library uses Outpost, omits vision stats, and assigns `trains` unit-ID
+arrays to five production kinds. Arrays must contain known, nonduplicated unit IDs;
+nonproduction kinds cannot carry training rosters. New units need an assignment to
+a production building to be trainable. Frozen older snapshots without rosters retain
+castle/Barracks recruitment. New matches receive a free starting Barracks per faction.
 Unit definitions support class, minimum attack range, building priority/damage,
 class bonuses and healing. Specialist fields are `scout`, `preferredTargetClass`,
 `armorPiercing`, `repairAmount`, `repairCost`, `repairCharges` and `healRange`.

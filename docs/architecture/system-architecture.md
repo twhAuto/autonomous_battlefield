@@ -136,7 +136,11 @@ The simulation receives a resolved scenario and optional plans, then produces
 deterministic state transitions and events. Construction uses living building ranges
 and spacing; per-building FIFO training advances between economy and tactics.
 Training progress is serialized in building state; clone operations isolate queue
-slices. Forest cover affects troop damage and deposits affect economy income.
+and training-roster slices. Core v5 assigns unit rosters to five production building
+kinds and starts each faction with a free Barracks; castles cannot train. Frozen
+older rulesets without rosters preserve their recruitment rules. Forest cover affects
+troop damage and deposits affect economy income. The map hides destroyed buildings;
+the engine retains their records for results/history and releases their occupied hexes.
 It does not access PostgreSQL, HTTP,
 environment variables, or model providers.
 

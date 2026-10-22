@@ -11,7 +11,7 @@ documents for detail instead of repeating them:
 [Frontier Siege](frontier-siege.md) for the roster, structures, and map, and the
 [system architecture](../architecture/system-architecture.md#52-strategy-decision-window) for how
 decisions are requested, stored, and timed out. All maps use the shared
-`backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v4.yaml`
+`backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v5.yaml`
 roster and `backend/gamedata/battlefield.yaml` timing/controller configuration.
 Scenario files contain only map identity and geometry.
 
@@ -34,7 +34,7 @@ A battle is created with a requested tick count (at most the scenario's
   buildings cannot occupy them. Gold deposits (`g`) are traversable and grant an
   economy building on that hex +5 income per tick. Ground (`.`) has no bonus.
 - Each castle has 300 HP, defense 8, construction range 4, and earns 10 gold per tick.
-- Each faction starts with 220 gold; opening purchases enter the castle training queue.
+- Each faction starts with 220 gold and one free, active Barracks; opening purchases enter its training queue. The castle cannot train.
 
 ## Resources and upgrades
 
@@ -70,8 +70,7 @@ upgrade levels. See the [specialization table](frontier-siege.md#specializations
 ## Units and buildings
 
 Eleven unit types (Vanguard, Striker, Ranger, Catapult, Battering Ram, Pikeman,
-Herbalist, Scout, Raider Cavalry, Engineer and Crossbowman) and four structures (Economy, Defense Tower, Outpost, Forward
-Barracks). Stats, costs, capabilities, targeting, and building limits (eight
+Herbalist, Scout, Raider Cavalry, Engineer and Crossbowman) and eight constructible structures (Economy, Defense Tower, Outpost, Barracks, Archery Range, Stables, Siege Workshop and Infirmary). Stats, costs, capabilities, targeting, and building limits (eight
 non-castle buildings, at most two economy) are in
 [Frontier Siege](frontier-siege.md#unit-roster).
 
@@ -106,19 +105,36 @@ block a later one. Illegal placements spend no gold. Destroyed buildings grant n
 range and release their hex and building capacity. Economy buildings activate
 immediately; other new structures activate next tick.
 
-Castles and Barracks each hold up to 12 paid training orders. Only the first order
+Castles do not train. Each faction starts with one free Barracks, placed on a legal
+nearby hex, active at tick zero and counted toward the eight-building limit.
+The five production buildings expose their supported unit IDs as `trains`:
+
+| Building | Units |
+| --- | --- |
+| Barracks | Vanguard, Striker, Pikeman |
+| Archery Range | Ranger, Crossbowman |
+| Stables | Scout, Raider Cavalry |
+| Siege Workshop | Catapult, Battering Ram, Engineer |
+| Infirmary | Herbalist |
+
+Each production building holds up to 12 paid training orders. Only the first order
 advances, beginning on a tick after purchase. Each unit has its own `trainingTicks`
 in the content library. A blocked ready head has `remainingTicks: 0` and the source
 sets `trainingBlocked: true`; followers retain their full duration. A freed exit is
 checked at the next training phase. Deployment uses all six adjacent traversable
 hexes, in deterministic coordinate order, and never stacks units. The next order
 starts on the following tick. Destroying the source discards its queue without
-refund. Opening/later unit counters increment on deployment, not purchase.
+refund. An explicit source must be alive, active, owned and able to train the
+requested type. An omitted source selects a compatible active building with queue
+space, preferring the one nearest the enemy castle, then its ID.
+Opening/later unit counters increment on deployment, not purchase.
 
 Queues and progress are part of persisted `Building` state, cloned with snapshots.
 The engine resumes a live paused match in memory; a new worker attempt replays its
 saved scenario and decisions, rebuilding the same queue progression. Legacy unit
 definitions without training times default to one tick and building ranges to 3.
+Frozen content without authored `trains` rosters retains castle/Barracks recruitment
+and does not add starting Barracks; current core v5 uses specialized production.
 Historical stored states retain their data; replaying them uses the current engine
 rules, so pre-change transition hashes are not preserved. Before deploying this
 overhaul, finish all queued/running/paused battles on the old engine and prevent
@@ -190,7 +206,9 @@ Then:
 - the result is at least 1 (minimum damage).
 
 There is no splash damage or friendly fire. Units and buildings at 0 HP are
-removed, and the attacker's faction collects loot.
+removed from the battlefield display, and the attacker's faction collects loot.
+Destroyed buildings remain in state for result and history references, but no longer
+occupy tiles, grant range or accept orders; their queues are discarded.
 
 ## Winning
 

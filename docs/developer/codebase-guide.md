@@ -220,7 +220,7 @@ head and target commit; a pass for an older pair does not verify the current tre
 ## Shared battlefield content
 
 `backend/gamedata/battlefield.yaml` owns shared timing and controller plans;
-`rulesets/battlefield.yaml` references the full `content/core-v4.yaml` library.
+`rulesets/battlefield.yaml` references the full `content/core-v5.yaml` library.
 `scenarios/castle-siege.yaml` and `scenarios/frontier-siege.yaml` contain maps only.
 `battle/catalog/shared_content.go` validates shared plans, while `library.go`
 resolves every library entry. Historical content lives only in catalog test fixtures.
@@ -274,6 +274,8 @@ cover timing payloads, mixed-controller alignment and plan placement.
 
 Gameplay construction and training are implemented in
 [`construction.go`](../../backend/internal/game/construction.go) and
-[`training.go`](../../backend/internal/game/training.go). The map renderer shows
+[`training.go`](../../backend/internal/game/training.go). Specialized source selection,
+rosters, and free starting Barracks live in
+[`training_sources.go`](../../backend/internal/game/training_sources.go). The map renderer shows
 terrain bonuses, selected-building range and FIFO queue progress. The full map
 uses the main battle snapshot; the former faction-perspective polling hook is removed.

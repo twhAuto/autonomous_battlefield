@@ -206,10 +206,13 @@ func ValidStructure(b BuildingType) bool {
 	if b.ID != b.Kind || b.Health <= 0 || b.Defense < 0 || b.Vision < 0 || b.BuildRange < 0 || b.BuildRange > 10 || b.Cost <= 0 || b.Income != 0 {
 		return false
 	}
+	if len(b.Trains) > 0 && !IsTrainingBuilding(b.Kind) {
+		return false
+	}
 	if b.Kind == BuildingTower {
 		return b.Attack > 0 && b.Range > 0
 	}
-	return (b.Kind == BuildingWatchtower || b.Kind == BuildingOutpost || b.Kind == BuildingBarracks) && b.Attack == 0 && b.Range == 0
+	return (b.Kind == BuildingWatchtower || b.Kind == BuildingOutpost || IsTrainingBuilding(b.Kind)) && b.Attack == 0 && b.Range == 0
 }
 
 func validateRulesetUpgrades(ruleset Ruleset) error {
@@ -228,11 +231,19 @@ func validateRulesetUpgrades(ruleset Ruleset) error {
 
 func validateRulesetStructures(ruleset Ruleset) error {
 	seenBuildings := map[string]bool{}
+	units := UnitTypesByID(ruleset)
+	assigned := map[string]bool{}
 	for _, b := range ruleset.Structures {
 		if !ValidStructure(b) || seenBuildings[b.ID] {
 			return fmt.Errorf("%w: invalid or duplicate structure %q", ErrInvalidRuleset, b.ID)
 		}
 		seenBuildings[b.ID] = true
+		for _, id := range b.Trains {
+			if _, ok := units[id]; !ok || assigned[id] {
+				return fmt.Errorf("%w: unknown or duplicate training unit %q", ErrInvalidRuleset, id)
+			}
+			assigned[id] = true
+		}
 	}
 	return nil
 }

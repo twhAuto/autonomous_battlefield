@@ -25,7 +25,7 @@ func (m *Match) runTraining() []Event {
 // Advance a single source without advancing followers or charging for deployment.
 func (m *Match) trainBuilding(b *Building, definitions map[string]UnitType) (Event, bool) {
 	b.TrainingBlocked = false
-	if b.Health <= 0 {
+	if b.Health <= 0 || len(m.trainingRoster(b.Type)) == 0 {
 		b.TrainingQueue = nil
 		return Event{}, false
 	}

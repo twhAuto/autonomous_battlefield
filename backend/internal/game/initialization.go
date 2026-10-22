@@ -25,6 +25,9 @@ func NewMatch(id string, scenario Scenario, maxTicks uint64) (*Match, error) {
 			return nil, err
 		}
 	}
+	if err := match.addStartingBarracks(); err != nil {
+		return nil, err
+	}
 	match.sortState()
 	return match, nil
 }

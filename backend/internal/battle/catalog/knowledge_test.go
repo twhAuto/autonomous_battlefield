@@ -50,6 +50,11 @@ func writeRulesetsWithSentinel(t *testing.T) (string, game.Ruleset, game.UnitTyp
 	unit.ID = "sentinel"
 	unit.Cost = 10
 	rules.Units = append(rules.Units, unit)
+	for i := range rules.Structures {
+		if rules.Structures[i].Kind == game.BuildingBarracks {
+			rules.Structures[i].Trains = append(rules.Structures[i].Trains, unit.ID)
+		}
+	}
 	card := rules.Knowledge.Cards[0]
 	card.UnitID = unit.ID
 	rules.Knowledge.Cards = append(rules.Knowledge.Cards, card)
