@@ -136,16 +136,37 @@ version pin, model alias and personal-memory caveat are in
 
 ## Prompt provenance and faction memory
 
-Every runtime uses one embedded decision policy, assembled by
-`internal/ai/prompts/prompts.go`; only context delivery differs (tool fetch or
-host-prefetched inline JSON). The persisted `prompts.Version`
-(`battlefield-agent-v9.<digest>`) includes a SHA-256 of the prompts as assembled for
-a fixed sample session, so any wording, order or wiring change produces a new
-version. Git keeps earlier prompt revisions.
+Every runtime uses an embedded decision policy assembled by
+`internal/ai/prompts/prompts.go`. The persisted `prompts.Version`
+(`battlefield-agent-v10.<digest>`) hashes sample tool, fallback-inline and split-inline
+layouts, both policy variants, and the rule-deduplication crosswalk. Git keeps earlier
+prompt revisions.
 
-The decision prompt runs from most to least stable: shared policy, the faction
-identity block, then the request ID and any inline context, so a faction's repeated
-prefix stays eligible for provider prompt caching.
+Tool-fetch sessions receive shared policy, faction identity, then the request ID.
+Prefetched sessions receive policy and the delivery contract, a `REFERENCE` JSON
+block, faction identity, then a `CONTEXT` JSON block. Recursively merging the two
+JSON objects restores the complete context: the reference contains schema/mode,
+frozen knowledge, legal catalogs and terrain; the remainder contains faction/battle
+IDs, owned upgrades, current legal sites and observed state, economy, plans and
+memory, with tick/request metadata last. Unknown fields remain in the remainder;
+arrays, numbers, nulls and absent values retain their meanings. Both blocks remain
+untrusted game data. Background generation keeps its separate prompt.
+
+The shared policy states training-roster selection once. For prefetched continuous
+production with the exact reviewed core-v7 mechanics, `rule-duplicates.json` removes
+policy sentences whose rules already appear in those frozen mechanics, plus the
+inactive legacy recruitment paragraph. A SHA-256 match of the **entire mechanics
+text** gates this reduction. Tool-fetch sessions, legacy mode and missing, truncated
+or changed mechanics retain the full fallback guidance. Frozen mechanics themselves
+are never shortened. Submission, opening, privacy and other unique requirements
+remain in both variants.
+
+This deterministic order lengthens the reusable prefix of prefetched prompts.
+Tool-fetch sessions still send a changing request ID before receiving context, so
+ordering the tool response cannot move its reference data into the initial shared
+prefix. Ordering is not evidence of provider cache hits: provider message boundaries,
+cache controls and CLI-managed serialization still apply. Measure reported cached
+input separately; provider-specific cache configuration remains separate work.
 
 Only the owning faction's name, doctrine and optional background enter its decision
 context, observation hash and provenance; opponent doctrines never do. They arrive
@@ -210,6 +231,14 @@ using each encoding only when it shrinks the output. Complete-map visibility mas
 are omitted from current agent context; old partial observations retain their masks. The prompt explains the
 encodings. The projection never changes persisted state, validation or hashes, and
 older saved observations are projected the same way without rewriting storage.
+
+Model-facing JSON uses deterministic stability ordering instead of alphabetical
+top-level keys: schema/mode and knowledge first, faction/battle identity and owned
+upgrades next, current state and plans after that, request metadata last. Nested
+legal catalogs precede sites and recruitment sources; terrain precedes observed
+profiles/state. The MCP response remains one JSON object with the same fields;
+session identity deduplication preserves this order. Only prefetched prompt rendering
+splits nested stable leaves into a separate reference block.
 
 ## Submitted plans
 

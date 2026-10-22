@@ -156,7 +156,7 @@ func Compact(c ai.DecisionContext) Context {
 
 // Project every saved observation into the current format without changing storage.
 func Observation(c ai.DecisionContext) any {
-	return groupContextFactions(deduplicateContext(battlefieldContext{Context: Compact(c), View: compactBattlefieldView(c.View)}))
+	return orderedContext(groupContextFactions(deduplicateContext(battlefieldContext{Context: Compact(c), View: compactBattlefieldView(c.View)})))
 }
 
 // UnitDetailsMaxBytes leaves headroom below the observed CLI offload threshold.

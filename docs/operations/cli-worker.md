@@ -221,6 +221,11 @@ Run short battles using identical scenario, factions, seed, model, effort and
 concurrency. Compare accepted-plan median/p95, failure/fallback count and tokens;
 record the code/prompt revision and `contextDelivery`. The context interval ends
 before CLI startup in prefetch mode and cannot by itself establish a speedup.
+From prompt v10, prefetch puts frozen reference data ahead of identity and changing
+state, and removes repeated rules only for reviewed mechanics. Record serialized
+bytes separately from model tokens, and reported cached input separately from
+uncached input; a longer identical prefix alone does not establish a cache hit.
+API and tool-fetch CLI paths still put a request ID before the context tool result.
 Restore the baseline worker after the experiment unless choosing to keep prefetch.
 No production profile enables this option by default, and the Jenkins managed
 settings sync does not own it; production adoption needs a reviewed configuration

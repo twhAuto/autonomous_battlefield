@@ -17,7 +17,7 @@ func TestIdentityDedupAcrossAPIToolAndCLIPrefetch(t *testing.T) {
 	if err != nil || accepted {
 		t.Fatal(err)
 	}
-	want := `{"context":{"expectedVersion":1,"requestId":"request","targetTick":73}}`
+	want := `{"context":{"requestId":"request","targetTick":73,"expectedVersion":1}}`
 	if string(got) != want {
 		t.Fatal(string(got))
 	}
