@@ -7,7 +7,7 @@
 .map-panel { background: #0e1419; border: 1px solid #303a42; margin-bottom: 28px; }
 .map-toolbar { align-items: center; border-bottom: 1px solid #303a42; display: flex; gap: 18px; justify-content: space-between; min-height: 58px; padding: 10px 16px; }
 .map-toolbar > span { color: #9aa6af; font-size: 12px; letter-spacing: .14em; }
-.map-toolbar__controls, .map-zoom-controls { align-items: center; display: flex; }
+.map-toolbar__controls, .map-zoom-controls { align-items: center; display: flex; flex-wrap: wrap; }
 .map-toolbar__controls { gap: 14px; }
 .map-zoom-controls { gap: 6px; }
 .map-zoom-controls button:last-child { font-size: 12px; padding-inline: 10px; }
@@ -76,7 +76,6 @@
   .unit-death { animation: none; }
 }
 .map-zoom-controls button { min-width: 44px; }
-.map-toolbar__controls, .map-zoom-controls { flex-wrap: wrap; }
 .map-viewport--overview { touch-action: pan-y; }
 .map-viewport--overview svg { cursor: default; }
 .expanded-map { width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; padding: 0; border: 0; color: #ecf0e5; background: var(--ink); }

@@ -19,21 +19,9 @@ func ConstructionReason(gameMap Map, state State, factionID string, site Positio
 	if !gameMap.Buildable(site) {
 		return "invalid_terrain"
 	}
-	inRange := false
-	for _, b := range state.Buildings {
-		if b.Health <= 0 {
-			continue
-		}
-		distance := HexDistance(site, b.Position)
-		if distance == 0 {
-			return "site_occupied"
-		}
-		if distance <= 1 {
-			return "building_too_close"
-		}
-		if b.FactionID == factionID && b.ReadyAtTick <= state.Tick && distance <= effectiveBuildRange(b.BuildRange) {
-			inRange = true
-		}
+	inRange, reason := constructionBuildingRange(state, factionID, site)
+	if reason != "" {
+		return reason
 	}
 	for _, u := range state.Units {
 		if u.Health > 0 && u.Position == site {
@@ -44,6 +32,27 @@ func ConstructionReason(gameMap Map, state State, factionID string, site Positio
 		return "outside_build_range"
 	}
 	return ""
+}
+
+// Check every living building for spacing before reporting friendly influence.
+func constructionBuildingRange(state State, factionID string, site Position) (bool, string) {
+	inRange := false
+	for _, b := range state.Buildings {
+		if b.Health <= 0 {
+			continue
+		}
+		distance := HexDistance(site, b.Position)
+		if distance == 0 {
+			return false, "site_occupied"
+		}
+		if distance <= 1 {
+			return false, "building_too_close"
+		}
+		if b.FactionID == factionID && b.ReadyAtTick <= state.Tick && distance <= effectiveBuildRange(b.BuildRange) {
+			inRange = true
+		}
+	}
+	return inRange, ""
 }
 
 func (m *Match) legalConstructionSites(factionID string) []controller.Coordinate {

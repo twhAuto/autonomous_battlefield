@@ -177,6 +177,19 @@ func TestOpenMapContentIncludesTerrainRangesAndTraining(t *testing.T) {
 		t.Fatal(err)
 	}
 	rules, _ := c.Ruleset("battlefield")
+	checkTrainingCatalog(t, rules)
+	checkConstructionCatalog(t, rules)
+	for _, id := range c.IDs() {
+		scenario, err := c.Resolve(id, [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkSpecialTerrain(t, id, scenario.Map)
+	}
+}
+
+func checkTrainingCatalog(t *testing.T, rules game.Ruleset) {
+	t.Helper()
 	times := map[uint64]bool{}
 	for _, u := range rules.Units {
 		if u.TrainingTicks == 0 || u.Vision != 0 {
@@ -187,6 +200,10 @@ func TestOpenMapContentIncludesTerrainRangesAndTraining(t *testing.T) {
 	if len(times) < 3 {
 		t.Fatal("roster lacks distinct balancing times")
 	}
+}
+
+func checkConstructionCatalog(t *testing.T, rules game.Ruleset) {
+	t.Helper()
 	if rules.Buildings.CastleBuildRange != 4 || rules.Buildings.EconomyBuildRange != 3 {
 		t.Fatal("wrong core build ranges")
 	}
@@ -202,24 +219,22 @@ func TestOpenMapContentIncludesTerrainRangesAndTraining(t *testing.T) {
 	if !outpost {
 		t.Fatal("outpost missing")
 	}
-	for _, id := range c.IDs() {
-		scenario, err := c.Resolve(id, [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		terrain := map[string]int{}
-		for y := 0; y < scenario.Map.Height; y++ {
-			for x := 0; x < scenario.Map.Width; x++ {
-				p := game.Position{X: x, Y: y}
-				kind := scenario.Map.TerrainAt(p)
-				terrain[kind]++
-				if kind == game.TerrainGold && traversableNeighbors(scenario.Map, p) < 4 {
-					t.Fatalf("inaccessible deposit: %s %v", id, p)
-				}
+}
+
+func checkSpecialTerrain(t *testing.T, id string, gameMap game.Map) {
+	t.Helper()
+	terrain := map[string]int{}
+	for y := 0; y < gameMap.Height; y++ {
+		for x := 0; x < gameMap.Width; x++ {
+			p := game.Position{X: x, Y: y}
+			kind := gameMap.TerrainAt(p)
+			terrain[kind]++
+			if kind == game.TerrainGold && traversableNeighbors(gameMap, p) < 4 {
+				t.Fatalf("inaccessible deposit: %s %v", id, p)
 			}
 		}
-		if terrain[game.TerrainForest] == 0 || terrain[game.TerrainGold] == 0 || terrain[game.TerrainBuildSite] != 0 {
-			t.Fatalf("special terrain missing or pads remain: %s %v", id, terrain)
-		}
+	}
+	if terrain[game.TerrainForest] == 0 || terrain[game.TerrainGold] == 0 || terrain[game.TerrainBuildSite] != 0 {
+		t.Fatalf("special terrain missing or pads remain: %s %v", id, terrain)
 	}
 }

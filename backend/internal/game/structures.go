@@ -128,13 +128,7 @@ func (m *Match) defaultConstructionOrders(slot int) []controller.ConstructionOrd
 	}
 	orders := []controller.ConstructionOrder{}
 	for _, site := range sites {
-		separated := true
-		for _, o := range orders {
-			if HexDistance(Position{X: site.X, Y: site.Y}, Position{X: o.Position.X, Y: o.Position.Y}) <= 1 {
-				separated = false
-			}
-		}
-		if !separated {
+		if !constructionOrdersSeparated(site, orders) {
 			continue
 		}
 		orders = append(orders, controller.ConstructionOrder{BuildingType: kinds[len(orders)%len(kinds)], Position: site})
@@ -143,6 +137,15 @@ func (m *Match) defaultConstructionOrders(slot int) []controller.ConstructionOrd
 		}
 	}
 	return orders
+}
+
+func constructionOrdersSeparated(site controller.Coordinate, orders []controller.ConstructionOrder) bool {
+	for _, order := range orders {
+		if HexDistance(Position{X: site.X, Y: site.Y}, Position{X: order.Position.X, Y: order.Position.Y}) <= 1 {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Match) assignForwardRecruitment(factionID string, plan *controller.PlanProposal) {

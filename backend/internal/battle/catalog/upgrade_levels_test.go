@@ -37,15 +37,21 @@ func TestFrontierThreeLevelCatalogAndScriptedBattle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, e := range tr.Events {
-			if e.Type == "upgrade_purchased" {
-				purchases++
-			}
-		}
+		purchases += countUpgradePurchases(tr.Events)
 	}
 	if purchases == 0 {
 		t.Fatal("scripted controllers never bought upgrades")
 	}
+}
+
+func countUpgradePurchases(events []game.Event) int {
+	count := 0
+	for _, event := range events {
+		if event.Type == "upgrade_purchased" {
+			count++
+		}
+	}
+	return count
 }
 
 // Equal 170-gold openings compare an early level-II investment with extra troops.

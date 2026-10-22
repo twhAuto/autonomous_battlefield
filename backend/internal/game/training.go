@@ -15,43 +15,49 @@ func (m *Match) runTraining() []Event {
 	definitions := UnitTypesByID(m.scenario.Ruleset)
 	events := []Event{}
 	for _, i := range indices {
-		b := &m.state.Buildings[i]
-		b.TrainingBlocked = false
-		if b.Health <= 0 {
-			b.TrainingQueue = nil
-			continue
+		if event, deployed := m.trainBuilding(&m.state.Buildings[i], definitions); deployed {
+			events = append(events, event)
 		}
-		if len(b.TrainingQueue) == 0 || b.ReadyAtTick > m.state.Tick {
-			continue
-		}
-		head := &b.TrainingQueue[0]
-		if head.QueuedAtTick >= m.state.Tick {
-			continue
-		}
-		if head.RemainingTicks > 0 {
-			head.RemainingTicks--
-		}
-		if head.RemainingTicks > 0 {
-			continue
-		}
-		spawn, available := m.recruitmentSpawn(b.Position)
-		if !available {
-			b.TrainingBlocked = true
-			continue
-		}
-		runtime := m.factions[b.FactionID]
-		runtime.unitSequence++
-		unit := runtime.newUnit(definitions[head.UnitType], spawn, m.state.Tick+1)
-		m.state.Units = append(m.state.Units, unit)
-		if head.Opening {
-			m.factionState(b.FactionID).UnitsStarted++
-		} else {
-			m.factionState(b.FactionID).UnitsRecruited++
-		}
-		b.TrainingQueue = b.TrainingQueue[1:]
-		// Keep cost as informational unit value for existing event clients; only
-		// unit_queued records a purchase. Deployment never charges gold.
-		events = append(events, m.event("unit_recruited", map[string]any{"factionId": b.FactionID, "sourceBuildingId": b.ID, "unitId": unit.ID, "unitType": unit.Type, "position": spawn, "readyAtTick": unit.ReadyAtTick, "cost": unit.Cost}))
 	}
 	return events
+}
+
+// Advance a single source without advancing followers or charging for deployment.
+func (m *Match) trainBuilding(b *Building, definitions map[string]UnitType) (Event, bool) {
+	b.TrainingBlocked = false
+	if b.Health <= 0 {
+		b.TrainingQueue = nil
+		return Event{}, false
+	}
+	if len(b.TrainingQueue) == 0 || b.ReadyAtTick > m.state.Tick {
+		return Event{}, false
+	}
+	head := &b.TrainingQueue[0]
+	if head.QueuedAtTick >= m.state.Tick {
+		return Event{}, false
+	}
+	if head.RemainingTicks > 0 {
+		head.RemainingTicks--
+	}
+	if head.RemainingTicks > 0 {
+		return Event{}, false
+	}
+	spawn, available := m.recruitmentSpawn(b.Position)
+	if !available {
+		b.TrainingBlocked = true
+		return Event{}, false
+	}
+	runtime := m.factions[b.FactionID]
+	runtime.unitSequence++
+	unit := runtime.newUnit(definitions[head.UnitType], spawn, m.state.Tick+1)
+	m.state.Units = append(m.state.Units, unit)
+	if head.Opening {
+		m.factionState(b.FactionID).UnitsStarted++
+	} else {
+		m.factionState(b.FactionID).UnitsRecruited++
+	}
+	b.TrainingQueue = b.TrainingQueue[1:]
+	// Keep cost as informational unit value for existing event clients; only
+	// unit_queued records a purchase. Deployment never charges gold.
+	return m.event("unit_recruited", map[string]any{"factionId": b.FactionID, "sourceBuildingId": b.ID, "unitId": unit.ID, "unitType": unit.Type, "position": spawn, "readyAtTick": unit.ReadyAtTick, "cost": unit.Cost}), true
 }

@@ -3,6 +3,7 @@ package game
 import (
 	"encoding/json"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
@@ -62,6 +63,11 @@ func TestTrainingFIFOAndBlockedExit(t *testing.T) {
 	if m.state.Units[len(m.state.Units)-1].ReadyAtTick != 7 {
 		t.Fatal("unit acts during deployment tick")
 	}
+	checkFollowerTraining(t, m)
+}
+
+func checkFollowerTraining(t *testing.T, m *Match) {
+	t.Helper()
 	m.state.Units = nil
 	for tick := uint64(7); tick < 9; tick++ {
 		m.state.Tick = tick
@@ -162,13 +168,7 @@ func TestConstructionRangeSpacingOccupancyAndTerrain(t *testing.T) {
 	}
 	m.state.Units = nil
 	snap, _ := m.DecisionSnapshot("faction-a")
-	found := false
-	for _, p := range snap.LegalSites {
-		if p.X == site.X && p.Y == site.Y {
-			found = true
-		}
-	}
-	if !found {
+	if !slices.Contains(snap.LegalSites, controller.Coordinate{X: site.X, Y: site.Y}) {
 		t.Fatal("deposit not legal")
 	}
 	b, reason := m.buildEconomyBuildingAt("faction-a", site, 0)
