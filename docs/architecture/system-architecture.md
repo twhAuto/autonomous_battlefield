@@ -596,7 +596,7 @@ in the [service authentication runbook](../operations/access.md#ci-service-ident
   network policy restricts private services.
 - Provider credentials belong to the decision agent, separate from the API and engine.
 - Model rationale remains untrusted display text; bounded length does not make it authoritative.
-- CLI isolation depends on the configured, validated provider version family.
+- CLI isolation depends on provider version behavior.
 
 The [production access runbook](../operations/access.md) owns credential
 provisioning, network verification and enablement procedures.
@@ -618,6 +618,9 @@ A model profile specifies:
 - optional external-agent availability environment variable;
 - token and step limits;
 - enabled state and supported CLI version prefix.
+
+Local CLIs allow the [selected stable version](../developer/local-kubernetes.md#subscription-clis)
+or newer. Production workers use their configured version prefixes.
 
 Key runtime settings and their defaults:
 
