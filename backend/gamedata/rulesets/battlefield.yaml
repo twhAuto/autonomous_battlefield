@@ -1,14 +1,14 @@
 id: battlefield
-version: "3"
+version: "4"
 startingGold: 220
 library:
   id: core
-  version: "3"
+  version: "4"
   castle: castle
   economy: economy
 buildings:
   maximumEconomyCount: 2
-  maximumBuildingCount: 4
+  maximumBuildingCount: 8
 combat:
   minimumDamage: 1
   defendAttackPercent: 80

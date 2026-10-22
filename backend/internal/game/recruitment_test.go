@@ -33,11 +33,11 @@ func TestExplicitRecruitmentOrders(t *testing.T) {
 			plan := controller.PlanProposal{Name: "orders", ReserveGold: tc.reserve, RecruitmentOrders: &tc.orders}
 			m.runRecruitment("faction-a", plan)
 			got := []string{}
-			for _, u := range m.state.Units {
-				got = append(got, u.Type)
-				if u.ReadyAtTick != m.state.Tick+1 {
-					t.Fatal("recruit ready too early")
-				}
+			for _, order := range m.castle("faction-a").TrainingQueue {
+				got = append(got, order.UnitType)
+			}
+			if len(m.state.Units) != 0 {
+				t.Fatal("queue spawned immediately")
 			}
 			if !reflect.DeepEqual(got, tc.want) || m.factionState("faction-a").Gold != tc.remaining {
 				t.Fatalf("bought %v balance %d", got, m.factionState("faction-a").Gold)
@@ -58,8 +58,8 @@ func TestExplicitRecruitmentHonorsBlockedSpawnsAndDefaults(t *testing.T) {
 	plan := controller.PlanProposal{Name: "orders", RecruitmentOrders: &orders}
 	before := m.factionState("faction-a").Gold
 	events := m.runRecruitment("faction-a", plan)
-	if len(events) != 1 || events[0].Data["reason"] != "no_spawn" || m.factionState("faction-a").Gold != before {
-		t.Fatal("blocked spawn purchased a unit")
+	if len(events) != 1 || events[0].Type != "unit_queued" || m.factionState("faction-a").Gold != before-30 {
+		t.Fatal("blocked exit did not accept paid queued unit")
 	}
 	normalized := m.normalizedFactionPlan("faction-a", plan)
 	if len(normalized.RecruitmentPriorities) != 0 || normalized.RecruitmentOrders == nil {

@@ -33,8 +33,8 @@ func TestScoutRetreatAndRaiderVisiblePursuit(t *testing.T) {
 	}
 	m.state.Units[0] = raider
 	m.state.Units[0].Vision = 1
-	if _, found := m.huntPreferred(&m.state.Units[0]); found {
-		t.Fatal("pursued hidden siege")
+	if _, found := m.huntPreferred(&m.state.Units[0]); !found {
+		t.Fatal("legacy vision limited open-map pursuit")
 	}
 	raider.Range = 4
 	target := m.targetInRange(raider)

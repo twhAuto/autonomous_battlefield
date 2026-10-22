@@ -58,9 +58,6 @@ func (m *Match) advanceOpening(plans map[string]controller.PlanProposal) (Transi
 		plan := m.factions[id].activePlan
 		events = append(events, m.event("plan_applied", map[string]any{"factionId": id, "name": plan.Name, "targetTick": uint64(0)}))
 		events = append(events, m.spend(id, plan, false)...)
-		state := m.factionState(id)
-		state.UnitsStarted = state.UnitsRecruited
-		state.UnitsRecruited = 0
 	}
 	m.state.OpeningComplete = true
 	events = append(events, m.event("opening_completed", map[string]any{}))

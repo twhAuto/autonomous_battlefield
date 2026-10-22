@@ -13,7 +13,7 @@ func ConstructibleBuildings(r Ruleset) []BuildingType {
 	result := append([]BuildingType{}, r.Structures...)
 	if r.Buildings.MaximumEconomyCount > 0 {
 		b := r.Buildings
-		result = append([]BuildingType{{ID: BuildingEconomy, Kind: BuildingEconomy, Cost: b.EconomyCost, Health: b.EconomyHealth, Defense: b.EconomyDefense, Vision: b.EconomyVision, Income: b.EconomyIncome}}, result...)
+		result = append([]BuildingType{{BuildRange: effectiveBuildRange(b.EconomyBuildRange), ID: BuildingEconomy, Kind: BuildingEconomy, Cost: b.EconomyCost, Health: b.EconomyHealth, Defense: b.EconomyDefense, Vision: b.EconomyVision, Income: b.EconomyIncome}}, result...)
 	}
 	return result
 }
@@ -53,7 +53,7 @@ func (m *Match) buildStructureAt(factionID, kind string, site Position, reserve 
 	if reason != "" {
 		return Building{}, reason
 	}
-	b := Building{ID: fmt.Sprintf("%s:%s:%03d", factionID, kind, state.BuildingsBuilt), FactionID: factionID, Type: definition.Kind, Position: site, Health: definition.Health, MaxHealth: definition.Health, Defense: definition.Defense, Vision: definition.Vision, Cost: definition.Cost, Attack: definition.Attack, Range: definition.Range, ReadyAtTick: m.state.Tick + 1}
+	b := Building{BuildRange: effectiveBuildRange(definition.BuildRange), ID: fmt.Sprintf("%s:%s:%03d", factionID, kind, state.BuildingsBuilt), FactionID: factionID, Type: definition.Kind, Position: site, Health: definition.Health, MaxHealth: definition.Health, Defense: definition.Defense, Vision: definition.Vision, Cost: definition.Cost, Attack: definition.Attack, Range: definition.Range, ReadyAtTick: m.state.Tick + 1}
 	m.state.Buildings = append(m.state.Buildings, b)
 	return b, ""
 }
@@ -107,28 +107,45 @@ func (m *Match) runTowers(tactics map[string]string) []Event {
 	return events
 }
 
-// Default scripted plans use rear income and exposed defense/reinforcement sites.
-// Explicit model orders (including an empty list) always take precedence.
+// Default plans choose currently legal, separated sites, favoring deposits.
 func (m *Match) defaultConstructionOrders(slot int) []controller.ConstructionOrder {
-	sites := m.scenario.Map.EconomySites[slot]
-	orders := []controller.ConstructionOrder{}
-	add := func(kind string, index int) {
-		p := sites[index]
-		orders = append(orders, controller.ConstructionOrder{BuildingType: kind, Position: controller.Coordinate{X: p.X, Y: p.Y}})
-	}
-	add(BuildingEconomy, 0)
-	available := map[string]bool{}
+	factionID := m.scenario.Factions[slot].ID
+	sites := m.legalConstructionSites(factionID)
+	enemy := m.scenario.Map.CastleSpawns[1-slot]
+	sort.SliceStable(sites, func(i, j int) bool {
+		a, b := Position{X: sites[i].X, Y: sites[i].Y}, Position{X: sites[j].X, Y: sites[j].Y}
+		ga, gb := m.scenario.Map.TerrainAt(a) == TerrainGold, m.scenario.Map.TerrainAt(b) == TerrainGold
+		if ga != gb {
+			return ga
+		}
+		return HexDistance(a, enemy) < HexDistance(b, enemy)
+	})
+	kinds := []string{BuildingEconomy}
 	for _, b := range m.scenario.Ruleset.Structures {
-		available[b.Kind] = true
+		if b.Kind == BuildingBarracks || b.Kind == BuildingTower {
+			kinds = append(kinds, b.ID)
+		}
 	}
-	if len(sites) >= 4 && available[BuildingTower] {
-		add(BuildingTower, len(sites)-2)
+	orders := []controller.ConstructionOrder{}
+	for _, site := range sites {
+		if !constructionOrdersSeparated(site, orders) {
+			continue
+		}
+		orders = append(orders, controller.ConstructionOrder{BuildingType: kinds[len(orders)%len(kinds)], Position: site})
+		if len(orders) == 4 {
+			break
+		}
 	}
-	if len(sites) >= 4 && available[BuildingBarracks] {
-		add(BuildingBarracks, len(sites)-1)
-	}
-	add(BuildingEconomy, 1)
 	return orders
+}
+
+func constructionOrdersSeparated(site controller.Coordinate, orders []controller.ConstructionOrder) bool {
+	for _, order := range orders {
+		if HexDistance(Position{X: site.X, Y: site.Y}, Position{X: order.Position.X, Y: order.Position.Y}) <= 1 {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Match) assignForwardRecruitment(factionID string, plan *controller.PlanProposal) {

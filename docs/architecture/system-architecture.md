@@ -112,9 +112,11 @@ clickjacking. The CSP deliberately leaves script and connect sources open becaus
 
 ### Battle inspection
 
-The browser presents a battle from one selected perspective, but the perspective
-selector controls presentation only: server-side role and ownership checks remain
-the access boundary, and faction views are projected on the server. Participant
+The browser presents the complete battlefield without a perspective selector.
+Server-side role and ownership checks remain the access boundary. Faction views
+expose all entities while keeping opponents' aggregate economy totals private
+from AI controllers. Authorized browser viewers receive the full battle state,
+including both factions' totals. Participant
 background and doctrine come from the persisted scenario, not the editable faction
 directory. The presentation accepts multiple participants; battle creation,
 scenario spawns, opponent selection, and castle-destruction victory rules still
@@ -123,7 +125,7 @@ require two factions.
 See the [frontend guide](../developer/frontend-guide.md#battle-data-lifecycle) for
 request lifecycle, inspector state, map layout, and animation;
 the [OpenAPI contract](openapi.yaml) for state, event and context fields, and the
-[HTTP API reference](api.md#battle-state-and-fog-of-war) for fog-of-war projection;
+[HTTP API reference](api.md#battle-state-and-visibility) for state projection;
 [saved decision context](ai-decisions.md#saved-decision-context) for what the
 inspector can show of a model's input; and [game rules](../game/game-rules.md) for
 movement and attack resolution.
@@ -131,7 +133,11 @@ movement and attack resolution.
 ### Deterministic simulation boundary
 
 The simulation receives a resolved scenario and optional plans, then produces
-deterministic state transitions and events. It does not access PostgreSQL, HTTP,
+deterministic state transitions and events. Construction uses living building ranges
+and spacing; per-building FIFO training advances between economy and tactics.
+Training progress is serialized in building state; clone operations isolate queue
+slices. Forest cover affects troop damage and deposits affect economy income.
+It does not access PostgreSQL, HTTP,
 environment variables, or model providers.
 
 The engine owns orchestration around this pure domain: leases, retries, pauses,
@@ -738,17 +744,23 @@ library. Adding content therefore needs no per-map selection updates.
 Three-level general upgrades retain one purchase ID per level; specialist choices
 use unit/class scopes and exclusive groups. Engine and AI validators check frozen
 ownership and ordered prerequisites/choices before accepting plans. Unit turns
-also resolve Scout retreat, visible cavalry pursuit, armor penetration and bounded
+also resolve Scout retreat, cavalry pursuit, armor penetration and bounded
 Engineer repair. Repair spends gold during unit turns while respecting reserves.
 
 Snapshots store the resolved rules and mutable repair charges; no database migration
-or historical live ruleset is needed. Old snapshots omit new optional fields and
-retain their original behavior, checked by the pinned legacy transition trace.
+or historical live ruleset is needed. Old snapshots remain readable, but the
+open-map construction and training overhaul changes their replay behavior. A
+worker retry or restart re-simulates with the current engine; historical authored
+pads outside the default building range may no longer accept their old orders.
+The [gameplay cutover precondition](../operations/deployment.md#gameplay-rules-cutover)
+requires finishing existing battles before this engine is deployed.
 
 ### Frozen snapshots over live catalog references
 
-Rules, factions, and initial state are captured per battle. Replays remain stable,
-at the cost of larger JSONB rows and explicit version provenance.
+Rules, factions, and initial state are captured per battle. Replays remain stable
+within an engine version, at the cost of larger JSONB rows and explicit version
+provenance. Snapshot versions describe data compatibility; they do not retain
+previous engine implementations.
 
 ### MCP as a capability boundary
 

@@ -1,4 +1,4 @@
-// Checks the legacy battle trace stays fixed and the frontier expansion content is
+// Checks legacy inputs load under the current rules and the frontier content is
 // complete, deterministic and independent of catalog copies.
 
 package catalog
@@ -15,9 +15,9 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
-func TestLegacyBattleTraceUnchanged(t *testing.T) {
+func TestLegacyInputWithOpenMapRules(t *testing.T) {
 	// Content/snapshot digests include the shortened authored guidance. The
-	// simulation transition digest below remains the pre-expansion baseline.
+	// simulation digest below explicitly reflects the open-map and queue rules.
 	s := legacyScenario(t, "castle-siege-v1")
 	digest := digestOf(t, s)
 	if digest != "356a05c48256e0840499b2969648215e58726e7bbd48966605288ea90aa8fd24" || s.Ruleset.ContentSource.Digest != "2f1d5db379cb23dc35af710547520401c03fa5a36242237146df58b40948f6ad" {
@@ -40,14 +40,13 @@ func TestLegacyBattleTraceUnchanged(t *testing.T) {
 		}
 		h.Write(data)
 	}
-	if hex.EncodeToString(h.Sum(nil)) != "18920e9cab1f8cc2b101dd3a13f336591bf16321ffe2cef470c6d945ef69d71a" {
-		t.Fatal("legacy battle transition trace changed")
+	if hex.EncodeToString(h.Sum(nil)) != "272261b8abc043bb427d08554d1e3bd046eacea4c0597d5265023980a24e8ca1" {
+		t.Fatal("open-map transition trace changed (legacy pads remain impassable)")
 	}
 }
 
 // withoutVisualizationMetadata clears the attack and route visualization fields added
-// after the legacy digest, so it keeps comparing every original simulation field
-// without replacing the baseline.
+// after the legacy input format; gameplay fields remain part of the trace.
 func withoutVisualizationMetadata(transition *game.Transition) {
 	transition.State.UnitDeaths = nil
 	for i := range transition.State.Units {
@@ -73,10 +72,10 @@ func TestFrontierCatalogMapAndDeterministicBattle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Map.Width != 25 || s.Map.Height != 17 || len(s.Map.EconomySites[0]) != 6 || len(s.Ruleset.Units) != 11 || len(s.Ruleset.Structures) != 3 {
+	if s.Map.Width != 25 || s.Map.Height != 17 || len(s.Map.EconomySites[0]) != 0 || len(s.Ruleset.Units) != 11 || len(s.Ruleset.Structures) != 3 {
 		t.Fatal("incomplete frontier content")
 	}
-	if s.Ruleset.ContentSource.Version != "3" {
+	if s.Ruleset.ContentSource.Version != "4" {
 		t.Fatal("incorrect content version")
 	}
 	checkFrontierRoutes(t, s.Map)
@@ -170,4 +169,72 @@ func traversableNeighbors(gameMap game.Map, site game.Position) int {
 		}
 	}
 	return free
+}
+
+func TestOpenMapContentIncludesTerrainRangesAndTraining(t *testing.T) {
+	c, err := LoadCatalog(gamedata.Files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules, _ := c.Ruleset("battlefield")
+	checkTrainingCatalog(t, rules)
+	checkConstructionCatalog(t, rules)
+	for _, id := range c.IDs() {
+		scenario, err := c.Resolve(id, [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkSpecialTerrain(t, id, scenario.Map)
+	}
+}
+
+func checkTrainingCatalog(t *testing.T, rules game.Ruleset) {
+	t.Helper()
+	times := map[uint64]bool{}
+	for _, u := range rules.Units {
+		if u.TrainingTicks == 0 || u.Vision != 0 {
+			t.Fatalf("current unit lacks training or retains vision: %+v", u)
+		}
+		times[u.TrainingTicks] = true
+	}
+	if len(times) < 3 {
+		t.Fatal("roster lacks distinct balancing times")
+	}
+}
+
+func checkConstructionCatalog(t *testing.T, rules game.Ruleset) {
+	t.Helper()
+	if rules.Buildings.CastleBuildRange != 4 || rules.Buildings.EconomyBuildRange != 3 {
+		t.Fatal("wrong core build ranges")
+	}
+	outpost := false
+	for _, b := range rules.Structures {
+		if b.Kind == game.BuildingWatchtower || b.Vision != 0 {
+			t.Fatal("vision-only building remains")
+		}
+		if b.Kind == game.BuildingOutpost {
+			outpost = b.BuildRange == 5
+		}
+	}
+	if !outpost {
+		t.Fatal("outpost missing")
+	}
+}
+
+func checkSpecialTerrain(t *testing.T, id string, gameMap game.Map) {
+	t.Helper()
+	terrain := map[string]int{}
+	for y := 0; y < gameMap.Height; y++ {
+		for x := 0; x < gameMap.Width; x++ {
+			p := game.Position{X: x, Y: y}
+			kind := gameMap.TerrainAt(p)
+			terrain[kind]++
+			if kind == game.TerrainGold && traversableNeighbors(gameMap, p) < 4 {
+				t.Fatalf("inaccessible deposit: %s %v", id, p)
+			}
+		}
+	}
+	if terrain[game.TerrainForest] == 0 || terrain[game.TerrainGold] == 0 || terrain[game.TerrainBuildSite] != 0 {
+		t.Fatalf("special terrain missing or pads remain: %s %v", id, terrain)
+	}
 }

@@ -84,6 +84,9 @@ func (m *Match) attackTarget(unit *Unit, target *attackTarget, tactics map[strin
 	defense := target.defense
 	if target.unit != nil {
 		defense = max(int64(0), defense-attacker.ArmorPiercing)
+		if m.scenario.Map.TerrainAt(target.position) == TerrainForest {
+			defense += ForestDefenseBonus
+		}
 	}
 	damage := m.damage(attacker, defense, tactics[unit.FactionID], tactics[target.factionID])
 	targetPosition := target.position
@@ -115,6 +118,8 @@ func (m *Match) destroyTargetEvent(attackerFactionID string, target *attackTarge
 		m.factionState(target.factionID).UnitsLost++
 		return m.event("unit_destroyed", map[string]any{"unitId": target.id, "factionId": target.factionID})
 	}
+	target.building.TrainingQueue = nil
+	target.building.TrainingBlocked = false
 	m.factionState(attackerFactionID).BuildingsDestroyed++
 	return m.event("building_destroyed", map[string]any{"buildingId": target.id, "factionId": target.factionID, "buildingType": target.kind})
 }

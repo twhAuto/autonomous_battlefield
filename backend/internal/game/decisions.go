@@ -36,14 +36,7 @@ func (m *Match) DecisionSnapshot(factionID string) (DecisionSnapshot, error) {
 	if castle != nil {
 		projectedIncome = m.incomeFor(factionID, castle.Income)
 	}
-	legalSites := make([]controller.Coordinate, 0, 2)
-	for slot, setup := range m.scenario.Factions {
-		if setup.ID == factionID && len(ConstructibleBuildings(m.scenario.Ruleset)) > 0 {
-			for _, site := range m.scenario.Map.EconomySites[slot] {
-				legalSites = append(legalSites, controller.Coordinate{X: site.X, Y: site.Y})
-			}
-		}
-	}
+	legalSites := m.legalConstructionSites(factionID)
 	if m.OpeningDue() {
 		projectedIncome = 0
 		legalSites = nil
@@ -166,14 +159,8 @@ func (m *Match) normalizedFactionPlan(factionID string, value controller.PlanPro
 			if setup.ID != factionID {
 				continue
 			}
-			if len(m.scenario.Ruleset.Structures) > 0 {
-				orders := m.defaultConstructionOrders(slot)
-				result.ConstructionOrders = &orders
-				continue
-			}
-			for _, site := range m.scenario.Map.EconomySites[slot] {
-				result.ConstructionPriorities = append(result.ConstructionPriorities, controller.Coordinate{X: site.X, Y: site.Y})
-			}
+			orders := m.defaultConstructionOrders(slot)
+			result.ConstructionOrders = &orders
 		}
 	}
 	return result
@@ -209,15 +196,9 @@ func validateProductionPlan(scenario Scenario, setup FactionSetup, plan controll
 
 }
 
-func validateProductionSites(scenario Scenario, setup FactionSetup, plan controller.PlanProposal) error {
-	allowedSites := make(map[Position]bool)
-	for slot, faction := range scenario.Factions {
-		if faction.ID == setup.ID && len(ConstructibleBuildings(scenario.Ruleset)) > 0 {
-			for _, site := range scenario.Map.EconomySites[slot] {
-				allowedSites[site] = true
-			}
-		}
-	}
+// Static plan validation checks definitions and terrain. Execution rechecks
+// dynamic range, spacing and occupancy after each earlier construction order.
+func validateProductionSites(scenario Scenario, _ FactionSetup, plan controller.PlanProposal) error {
 	legalBuildings := map[string]bool{}
 	for _, b := range ConstructibleBuildings(scenario.Ruleset) {
 		legalBuildings[b.ID] = true
@@ -227,7 +208,7 @@ func validateProductionSites(scenario Scenario, setup FactionSetup, plan control
 		if !legalBuildings[order.BuildingType] {
 			return fmt.Errorf("%w: unsupported construction type %q", controller.ErrInvalidPlan, order.BuildingType)
 		}
-		if !allowedSites[Position{X: coordinate.X, Y: coordinate.Y}] {
+		if !scenario.Map.Buildable(Position{X: coordinate.X, Y: coordinate.Y}) {
 			return fmt.Errorf("%w: construction site (%d,%d) is not legal", controller.ErrInvalidPlan, coordinate.X, coordinate.Y)
 		}
 	}

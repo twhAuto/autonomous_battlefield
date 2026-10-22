@@ -7,7 +7,7 @@ info:
     Machine-readable contract for the public `/v1` API: every route, request body,
     response shape, error code, and battle state and event payload. The prose guide
     in [api.md](./api.md) owns behavior a schema cannot express, such as
-    permissions, retries, admission limits and fog of war.
+    permissions, retries, admission limits and battlefield visibility.
 
     **Scope.** Every `/v1` route the API serves is listed here. The process probes
     (`/startupz`, `/livez`, `/healthz`, `/readyz`) and `/metrics` are infrastructure
@@ -597,10 +597,10 @@ paths:
     get:
       tags: [Battles]
       operationId: getFactionView
-      summary: Get the battlefield with one faction's fog of war
+      summary: Get the open battlefield and one faction's economic totals
       description: |
-        Owned entities and both castles are always present; other hostile entities
-        appear only inside current friendly vision.
+        All terrain, entities, routes and actions are present. Opponents' aggregate
+        gold, upgrades and production totals are omitted.
       responses:
         '200':
           description: The faction-visible battlefield.
@@ -1247,25 +1247,25 @@ components:
         kind: {type: string, examples: [authored]}
         width: {type: integer}
         height: {type: integer}
-        rows: {type: array, items: {type: string}}
+        rows: {type: array, items: {type: string}, description: "Authored symbols: . ground, # rock, f forest (+3 troop defense), g gold deposit (+5 economy income). Legacy b pads remain readable."}
         castleSpawns:
           type: array
           minItems: 2
           maxItems: 2
           items: {$ref: '#/components/schemas/Position'}
         economySites:
+          description: Legacy authored pads; current maps return two null/empty entries and use building range.
           type: array
           minItems: 2
           maxItems: 2
-          items: {type: array, items: {$ref: '#/components/schemas/Position'}}
+          items: {type: [array, 'null'], items: {$ref: '#/components/schemas/Position'}}
 
     BattleState:
       description: |
         Simulation state at `tick`. Optional unit and building fields appear only in
         rulesets that use them, and older snapshots may omit them; an absent field
-        keeps the behavior it had before the field existed. Faction views remove
-        action targets and routes outside current vision; see
-        [api.md](./api.md#battle-state-and-fog-of-war).
+        uses documented legacy defaults. Faction views include all battlefield entities
+        and actions; see [api.md](./api.md#battle-state-and-visibility).
 
         The arrays are `null`, not `[]`, when empty — for example a newly queued
         battle whose units have not yet been recruited. Treat `null` as empty.
@@ -1345,7 +1345,7 @@ components:
         speed: {type: integer}
         movement: {type: integer}
         range: {type: integer}
-        vision: {type: integer}
+        vision: {type: integer, deprecated: true, description: Legacy value; does not limit visibility or targeting.}
         cost: {type: integer}
         readyAtTick:
           description: First tick on which the unit can act.
@@ -1390,24 +1390,41 @@ components:
       type: object
       required: [id, factionId, type, position, health, maxHealth, defense, vision, cost, income]
       properties:
+        buildRange: {type: integer, minimum: 0, maximum: 10, description: Construction reach in hexes; older snapshots with zero or no range use 3.}
+        trainingBlocked: {type: boolean, description: A ready head is waiting for a free adjacent traversable tile.}
+        trainingQueue:
+          type: array
+          maxItems: 12
+          items: {$ref: '#/components/schemas/TrainingOrder'}
         id: {type: string}
         factionId: {type: string}
-        type: {type: string, examples: [castle, economy, barracks, watchtower, defense_tower]}
+        type: {type: string, examples: [castle, economy, barracks, outpost, defense_tower]}
         position: {$ref: '#/components/schemas/Position'}
         health: {type: integer}
         maxHealth: {type: integer}
         defense: {type: integer}
-        vision: {type: integer}
+        vision: {type: integer, deprecated: true, description: Legacy value; does not limit visibility or targeting.}
         cost: {type: integer}
         income: {type: integer}
         attack: {type: integer}
         range: {type: integer}
         readyAtTick:
-          description: First tick on which the structure can attack or recruit.
+          description: First tick on which the structure grants range, attacks or accepts training orders.
           type: integer
         attackTargetId: {type: string}
         attackTargetPosition: {$ref: '#/components/schemas/Position'}
         attackOutcome: {$ref: '#/components/schemas/AttackOutcome'}
+
+    TrainingOrder:
+      description: Paid FIFO entry; only the head trains. Units act the tick after deployment.
+      type: object
+      required: [unitType, trainingTicks, remainingTicks, queuedAtTick]
+      properties:
+        unitType: {type: string}
+        trainingTicks: {type: integer, minimum: 1, maximum: 1000}
+        remainingTicks: {type: integer, minimum: 0, maximum: 1000}
+        queuedAtTick: {type: integer, minimum: 0}
+        opening: {type: boolean, description: Counts toward unitsStarted when deployed.}
 
     UnitDeath:
       type: object
@@ -1481,8 +1498,8 @@ components:
 
     ProductionSchedule:
       description: |
-        All purchases for a window happen at once; nothing is queued between
-        windows. `opening` marks the one-time opening purchase before tick 1
+        Purchases happen at production windows; paid troop orders continue training
+        in their building queues between windows. `opening` marks the one-time opening purchase before tick 1
         (`nextTick` is then `0`); otherwise `nextTick` is the tick whose
         transition runs the next regular window.
       type: object
@@ -1498,6 +1515,8 @@ components:
         map: {$ref: '#/components/schemas/BattleMap'}
         state: {$ref: '#/components/schemas/BattleState'}
         visiblePositions:
+          deprecated: true
+          description: Every map coordinate; current battles have full visibility.
           type: array
           items: {$ref: '#/components/schemas/Position'}
 
@@ -1560,8 +1579,9 @@ components:
         | `unit_repaired` | `factionId`, `engineerId`, `targetId`, `amount`, `cost`, `balance`, `remainingHealth`, `repairCharges` |
         | `upgrade_purchased` | `factionId`, `upgradeId`, `cost`, `balance`; leveled entries also include `track`, `level`, `attackBonus`, `defenseBonus`, `economyIncomeBonus` (incremental effects) |
         | `building_constructed` | `factionId`, `buildingId`, `buildingType`, `position`, `cost` |
-        | `unit_recruited` | `factionId`, `unitId`, `unitType`, `position`, `readyAtTick`, `cost`, and `sourceBuildingId` in rulesets with structures |
-        | `production_skipped` | `factionId`, `kind` (`upgrades`, `construction` or `recruitment`), `reason`, plus `upgradeId` or `position` where relevant; upgrade reasons include `prerequisite_required`, `exclusive_choice_owned` and `reserve_required` |
+        | `unit_queued` | `factionId`, `sourceBuildingId`, `unitType`, `trainingTicks`, `cost`; charged once at enqueue |
+        | `unit_recruited` | `factionId`, `unitId`, `unitType`, `position`, `readyAtTick`, `cost`, and `sourceBuildingId`; `cost` is informational unit value for compatibility, not a new expense; count only `unit_queued.cost` for recruitment spending |
+        | `production_skipped` | `factionId`, `kind` (`upgrades`, `construction` or `recruitment`), `reason`, plus `upgradeId` or `position` where relevant; reasons include `prerequisite_required`, `exclusive_choice_owned`, `reserve_required`, `queue_full`, `source_unavailable`, `invalid_terrain`, `outside_build_range`, `building_too_close`, `site_occupied` and `maximum_reached` |
         | `unit_moved` | `factionId`, `unitId`, `from`, `to` |
         | `unit_attacked`, `building_attacked` | `attackerId`, `targetId`, `targetType`, `damage`, `remainingHealth`, `attackMode`, `outcome: hit`, `impactPosition` |
         | `unit_attack_missed` | `attackerId`, `attackMode: position`, `outcome: miss`, `impactPosition` |

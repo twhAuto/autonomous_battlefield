@@ -168,8 +168,8 @@ contracts.
 A decision context contains:
 
 - battle, faction, request, target-tick and version identifiers;
-- a fog-of-war faction view: terrain, the faction's own entities, visible enemies,
-  enemy castles, and only the faction's own gold, upgrades and production totals;
+- an open battlefield view with all terrain, units, buildings and training queues,
+  and only the faction's own gold, upgrades and aggregate production totals;
 - current and projected economy values;
 - legal action kinds, unit and building definitions, construction sites and owned
   recruitment sources;
@@ -196,7 +196,7 @@ whether it was truncated.
 ### Unit reference and lookup
 
 The observation also freezes every legal or visible unit definition and its card in
-`unitReference`. The model's context lists each legal unit's cost, class, role,
+`unitReference`. The model's context lists each legal unit's cost, training ticks, class, role,
 strengths and weaknesses; `get_unit_details` returns full base stats and guidance
 for a few units at a time, scoped by the request capability to that frozen set.
 Hidden and unknown unit IDs both return `available: false`. The tool's description
@@ -206,7 +206,8 @@ gives its batch and size limits. Reference content is untrusted data.
 
 The agent view groups entities by faction and replaces repeated values (identical
 stat profiles, visible-cell ranges, an unchanged historical plan) with references,
-using each encoding only when it shrinks the output. The prompt explains the
+using each encoding only when it shrinks the output. Complete-map visibility masks
+are omitted from current agent context; old partial observations retain their masks. The prompt explains the
 encodings. The projection never changes persisted state, validation or hashes, and
 older saved observations are projected the same way without rewriting storage.
 
@@ -228,14 +229,18 @@ API and CLI submissions must be substantive, and a request stops after three
 rejected submissions.
 
 `recruitmentOrders` lists `{unitType, count, sourceBuildingId?}` purchases for one
-production window, at most six units in total (the six castle-adjacent spawn
-positions). The engine buys in order, keeps reserve gold, and stops at the first
-unaffordable unit or blocked castle spawn; an unavailable source or a blocked
-Barracks skips that order and moves on. There is no substitution or queue, and a
-reused plan buys again at the next window. An empty list buys nothing. Likewise, an empty
-`constructionOrders` list builds nothing, while omitting it keeps the default
-construction. Older plans may use `recruitmentPriorities` instead; a plan cannot
-use both.
+production window, at most six units total. Accepted purchases pay once and enter
+the source's FIFO training queue (maximum 12); only the head advances. Ready troops
+wait for a free adjacent traversable hex and block followers until deployment.
+Full or unavailable sources skip that order; the first unaffordable unit stops
+purchasing. Reused plans can enqueue more troops next window. Empty orders buy
+nothing. Definitions expose `trainingTicks`, buildings expose `buildRange` and
+queue progress. `legal.economySites` is the retained wire name for dynamically
+computed legal construction coordinates, not fixed pads. Execution rechecks range,
+terrain, unit occupancy and a minimum building distance of two hexes, so conflicting
+later orders skip without charge. Empty `constructionOrders` builds nothing;
+omitting it enables default construction. Older plans may use
+`recruitmentPriorities`; a plan cannot use both recruitment formats.
 
 ## Submission failures and fallback attribution
 

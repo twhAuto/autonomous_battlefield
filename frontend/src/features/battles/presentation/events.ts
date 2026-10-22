@@ -3,9 +3,9 @@ import type { BattleEvent } from '../api/battles'
 import { eventStringLabel, type EntityNaming } from './entities'
 
 export type EventPreset = 'key' | 'combat' | 'economy' | 'all'
-const keyEvents = new Set(['battle_created', 'battle_queued', 'battle_started', 'battle_paused', 'battle_resumed', 'battle_stopped', 'battle_failed', 'battle_completed', 'opening_completed', 'castle_destroyed', 'unit_destroyed', 'unit_died', 'building_destroyed', 'building_constructed', 'unit_recruited', 'upgrade_purchased', 'upgrade_applied'])
+const keyEvents = new Set(['battle_created', 'battle_queued', 'battle_started', 'battle_paused', 'battle_resumed', 'battle_stopped', 'battle_failed', 'battle_completed', 'opening_completed', 'castle_destroyed', 'unit_destroyed', 'unit_died', 'building_destroyed', 'building_constructed', 'unit_recruited', 'unit_queued', 'upgrade_purchased', 'upgrade_applied'])
 const combatEvents = new Set(['unit_attacked', 'unit_attack_missed', 'unit_moved', 'unit_healed', 'unit_repaired', 'tower_attacked', 'building_attacked', 'castle_destroyed', 'unit_destroyed', 'unit_died', 'building_destroyed'])
-const economyEvents = new Set(['income_collected', 'loot_collected', 'building_constructed', 'unit_recruited', 'upgrade_purchased', 'upgrade_applied'])
+const economyEvents = new Set(['income_collected', 'loot_collected', 'building_constructed', 'unit_recruited', 'unit_queued', 'upgrade_purchased', 'upgrade_applied'])
 
 export function matchesPreset(event: BattleEvent, preset: EventPreset) {
   if (preset === 'all') return true
@@ -33,6 +33,7 @@ export function eventSummary(event: BattleEvent, naming: EntityNaming) {
       return `${label('attackerId', 'A unit')} ${event.data.outcome === 'miss' ? 'missed' : 'attacked'} ${label('targetId', 'its target')}${damage}.`
     }
     case 'unit_moved': return `${label('unitId', 'A unit')} moved.`
+    case 'unit_queued': return `${actor} queued ${label('unitType', 'reinforcements')} for training.`
     case 'unit_recruited': return `${actor} recruited ${label('unitType', 'reinforcements')}.`
     case 'building_constructed': return `${actor} constructed ${label('buildingType', 'a building')}.`
     case 'castle_destroyed': return `${label('castleId', 'A castle')} was destroyed.`

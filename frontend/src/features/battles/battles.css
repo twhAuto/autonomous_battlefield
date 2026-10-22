@@ -283,8 +283,6 @@ main.main-content--battle { --battle-sidebar-width: 340px; --battle-column-gap: 
 }
 @media (max-width: 780px) {
   .battle-live-layout .map-toolbar__controls { flex-wrap: wrap; min-width: 0; }
-  .battle-live-layout .map-perspective-control { flex: 1 1 100%; min-width: 0; }
-  .battle-live-layout .map-perspective-control select { flex: 1; min-width: 0; width: 100%; max-width: 100%; }
   .battle-live-layout .map-zoom-controls { margin-left: auto; }
 }
 .battle-inspector :is(p, table, summary) { font-size: 14px; line-height: 1.6; }

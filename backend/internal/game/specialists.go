@@ -6,7 +6,7 @@ import "sort"
 func (m *Match) scoutRetreat(unit *Unit) ([]Event, bool) {
 	threats := []Position{}
 	for _, enemy := range m.state.Units {
-		if enemy.Health > 0 && enemy.FactionID != unit.FactionID && HexDistance(unit.Position, enemy.Position) <= unit.Vision {
+		if enemy.Health > 0 && enemy.FactionID != unit.FactionID {
 			threats = append(threats, enemy.Position)
 		}
 	}
@@ -20,7 +20,7 @@ func (m *Match) scoutRetreat(unit *Unit) ([]Event, bool) {
 func (m *Match) huntPreferred(unit *Unit) ([]Event, bool) {
 	candidates := []Unit{}
 	for _, enemy := range m.state.Units {
-		if enemy.Health > 0 && enemy.FactionID != unit.FactionID && enemy.Class == unit.PreferredTargetClass && HexDistance(unit.Position, enemy.Position) <= unit.Vision {
+		if enemy.Health > 0 && enemy.FactionID != unit.FactionID && enemy.Class == unit.PreferredTargetClass {
 			candidates = append(candidates, enemy)
 		}
 	}

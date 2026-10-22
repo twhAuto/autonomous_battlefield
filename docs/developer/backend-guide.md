@@ -75,7 +75,9 @@ The package root contains types and interfaces shared across these subpackages, 
 | [`combat.go`](../../backend/internal/game/combat.go) | Unit turns, targeting, damage, position attacks, and loot |
 | [`movement.go`](../../backend/internal/game/movement.go) | All unit movement helpers: castle approach, goal sets, routing around occupied hexes, stepping, and reachable enemy alternatives |
 | [`knowledge.go`](../../backend/internal/game/knowledge.go) | Ruleset knowledge validation and defensive copying |
-| [`visibility.go`](../../backend/internal/game/visibility.go) | Faction perspectives and fog of war; a faction view carries only its own `FactionState` (gold, upgrades, production totals) |
+| [`construction.go`](../../backend/internal/game/construction.go) | Dynamic legal terrain, friendly building ranges, and minimum two-hex building separation |
+| [`training.go`](../../backend/internal/game/training.go) | Per-building FIFO timers, blocked exits and deterministic one-at-a-time deployment |
+| [`visibility.go`](../../backend/internal/game/visibility.go) | Full battlefield projection; a faction view carries only its own `FactionState` (gold, upgrades, aggregate production totals) |
 | [`clone.go`](../../backend/internal/game/clone.go) | Defensive copying of state, scenarios, results, and plans |
 | [`map.go`](../../backend/internal/game/map.go) | Hex-map validation, coordinates, traversal, and visibility helpers |
 | [`rules.go`](../../backend/internal/game/rules.go) | Ruleset and legacy blueprint validation |
@@ -410,7 +412,7 @@ both the handler and registry to the service; policy reads do not depend on HTTP
 | `game.Scenario` | `internal/game/types.go` | Complete immutable input to a battle attempt |
 | `game.State` | `internal/game/types.go` | Current authoritative simulation snapshot |
 | `game.Transition` | `internal/game/types.go` | One tick's state, events, and optional result |
-| `game.View` | `internal/game/types.go` | Faction-projected fog-of-war state |
+| `game.View` | `internal/game/types.go` | Full battlefield state with faction-private economic totals |
 | `controller.PlanProposal` | `game/controller/types.go` | Scripted/model strategy and production input |
 | `ai.DecisionContext` | `internal/ai/types.go` | Frozen bounded model observation |
 | `ai.DecisionRecord` | `internal/ai/types.go` | Durable decision state and provenance |

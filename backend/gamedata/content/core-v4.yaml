@@ -1,19 +1,19 @@
 # Shared medieval roster, upgrades and structures for every map.
 
 id: core
-version: "3"
+version: "4"
 units:
-  - {id: vanguard, class: infantry, cost: 35, health: 70, attack: 9, defense: 7, speed: 4, movement: 1, range: 1, vision: 2}
-  - {id: striker, class: mobile, cost: 25, health: 42, attack: 14, defense: 3, speed: 8, movement: 2, range: 1, vision: 3}
-  - {id: ranger, class: infantry, cost: 30, health: 30, attack: 11, defense: 2, speed: 6, movement: 1, range: 3, vision: 4}
-  - {id: catapult, attackMode: position, class: siege, cost: 70, health: 40, attack: 4, defense: 1, speed: 2, movement: 1, range: 5, minimumRange: 2, vision: 5, buildingPriority: true, buildingDamageBonus: 20}
-  - {id: battering_ram, class: siege, cost: 65, health: 125, attack: 3, defense: 5, speed: 1, movement: 1, range: 1, vision: 2, buildingPriority: true, buildingDamageBonus: 25}
-  - {id: pikeman, class: infantry, cost: 30, health: 55, attack: 8, defense: 4, speed: 4, movement: 1, range: 1, vision: 3, bonusAgainstClass: mobile, classDamageBonus: 12}
-  - {id: herbalist, class: support, cost: 40, health: 25, attack: 0, defense: 1, speed: 3, movement: 1, range: 1, vision: 3, healAmount: 3}
-  - {id: scout, class: mobile, cost: 25, health: 22, attack: 3, defense: 0, speed: 10, movement: 3, range: 1, vision: 7, scout: true}
-  - {id: raider_cavalry, class: mobile, cost: 45, health: 45, attack: 9, defense: 2, speed: 9, movement: 3, range: 1, vision: 4, bonusAgainstClass: siege, classDamageBonus: 16, preferredTargetClass: siege}
-  - {id: engineer, class: support, cost: 50, health: 28, attack: 0, defense: 1, speed: 3, movement: 1, range: 1, vision: 3, repairAmount: 4, repairCost: 2, repairCharges: 12}
-  - {id: crossbowman, class: infantry, cost: 40, health: 28, attack: 13, defense: 1, speed: 3, movement: 1, range: 2, vision: 3, armorPiercing: 6}
+  - {id: vanguard, trainingTicks: 4, class: infantry, cost: 35, health: 70, attack: 9, defense: 7, speed: 4, movement: 1, range: 1}
+  - {id: striker, trainingTicks: 2, class: mobile, cost: 25, health: 42, attack: 14, defense: 3, speed: 8, movement: 2, range: 1}
+  - {id: ranger, trainingTicks: 3, class: infantry, cost: 30, health: 30, attack: 11, defense: 2, speed: 6, movement: 1, range: 3}
+  - {id: catapult, trainingTicks: 8, attackMode: position, class: siege, cost: 70, health: 40, attack: 4, defense: 1, speed: 2, movement: 1, range: 5, minimumRange: 2, buildingPriority: true, buildingDamageBonus: 20}
+  - {id: battering_ram, trainingTicks: 7, class: siege, cost: 65, health: 125, attack: 3, defense: 5, speed: 1, movement: 1, range: 1, buildingPriority: true, buildingDamageBonus: 25}
+  - {id: pikeman, trainingTicks: 3, class: infantry, cost: 30, health: 55, attack: 8, defense: 4, speed: 4, movement: 1, range: 1, bonusAgainstClass: mobile, classDamageBonus: 12}
+  - {id: herbalist, trainingTicks: 4, class: support, cost: 40, health: 25, attack: 0, defense: 1, speed: 3, movement: 1, range: 1, healAmount: 3}
+  - {id: scout, trainingTicks: 2, class: mobile, cost: 25, health: 22, attack: 3, defense: 0, speed: 10, movement: 3, range: 1, scout: true}
+  - {id: raider_cavalry, trainingTicks: 5, class: mobile, cost: 45, health: 45, attack: 9, defense: 2, speed: 9, movement: 3, range: 1, bonusAgainstClass: siege, classDamageBonus: 16, preferredTargetClass: siege}
+  - {id: engineer, trainingTicks: 5, class: support, cost: 50, health: 28, attack: 0, defense: 1, speed: 3, movement: 1, range: 1, repairAmount: 4, repairCost: 2, repairCharges: 12}
+  - {id: crossbowman, trainingTicks: 4, class: infantry, cost: 40, health: 28, attack: 13, defense: 1, speed: 3, movement: 1, range: 2, armorPiercing: 6}
 upgrades:
   - {id: arsenal, track: arsenal, level: 1, cost: 20, attackBonus: 2}
   - {id: arsenal_2, track: arsenal, level: 2, cost: 50, attackBonus: 2, requiresUpgradeId: arsenal}
@@ -33,11 +33,11 @@ upgrades:
   - {id: siege_mobility, cost: 60, targetClass: siege, exclusiveGroup: siege_specialization, movementBonus: 1}
   - {id: siege_breach, cost: 60, targetClass: siege, exclusiveGroup: siege_specialization, buildingDamageBonus: 8}
 buildings:
-  - {id: castle, kind: castle, health: 300, defense: 8, vision: 4, income: 10, cost: 0}
-  - {id: economy, kind: economy, health: 60, defense: 2, vision: 2, income: 10, cost: 50}
-  - {id: defense_tower, kind: defense_tower, health: 130, defense: 4, vision: 4, income: 0, cost: 80, attack: 12, range: 3}
-  - {id: watchtower, kind: watchtower, health: 50, defense: 1, vision: 6, income: 0, cost: 30}
-  - {id: barracks, kind: barracks, health: 100, defense: 3, vision: 3, income: 0, cost: 90}
+  - {id: castle, kind: castle, buildRange: 4, health: 300, defense: 8, income: 10, cost: 0}
+  - {id: economy, kind: economy, buildRange: 3, health: 60, defense: 2, income: 10, cost: 50}
+  - {id: defense_tower, kind: defense_tower, buildRange: 3, health: 130, defense: 4, income: 0, cost: 80, attack: 12, range: 3}
+  - {id: outpost, kind: outpost, buildRange: 5, health: 50, defense: 1, income: 0, cost: 30}
+  - {id: barracks, kind: barracks, buildRange: 3, health: 100, defense: 3, income: 0, cost: 90}
 knowledge:
   mechanics: >-
     Every map shares this full roster and upgrade catalog. Specialist upgrades cost 60 gold;
@@ -46,7 +46,7 @@ knowledge:
     Ranger chooses range or movement; Herbalist chooses treatment amount or range;
     siege chooses movement or building damage. Choices cannot be reversed or refunded.
     Scouts retreat from enemies within two hexes when a safer reachable position exists.
-    Raider Cavalry prefers siege targets in range and pursues siege within its own vision.
+    Raider Cavalry prefers siege targets in range and pursues siege across the open map.
     Crossbowmen ignore up to six defense against units, never buildings.
     Engineers repair one adjacent damaged friendly siege engine or non-castle building for
     four HP, spending two gold and one of twelve lifetime charges; they do not attack.
@@ -63,11 +63,10 @@ knowledge:
     attack them. Pikemen gain 12 attack against mobile troops such as Strikers.
     Herbalists treat one adjacent soldier for 3 HP instead of attacking; they cannot treat
     siege engines or other healers and follow injured allies or escort soldiers.
-    Defense towers fire before units; newly built towers and Barracks become active next tick; watchtower vision is immediate.
-    Watchtowers extend vision without attacking.
-    Barracks recruit from adjacent free ground. A forward source reduces travel time
-    but exposes the investment. Every construction site has a protected ground approach;
-    stone ridges allow movement around their ends and do not block ranged fire or vision.
+    Defense towers fire before units; newly built towers and Barracks become active next tick; outposts grant construction range.
+    Outposts extend construction range without attacking.
+    Castles and Barracks train one queued unit at a time using its trainingTicks; only the head progresses. Ready units wait if every adjacent traversable hex is occupied. Costs are paid once when queued; queue capacity is 12 per source. New units act the tick after deployment. A forward source reduces travel time
+    but exposes the investment. Buildings may occupy clear ground or gold deposits within buildRange of an active friendly building. All buildings must be at least two hexes apart; units block construction. Forests are traversable and grant troops +3 defense after armor piercing, but prohibit construction. Gold deposits grant economy buildings +5 income each tick. Rocks are impassable. The entire battlefield is visible; there is no fog of war.
   cards:
     - unitId: vanguard
       role: Durable melee unit
@@ -80,10 +79,10 @@ knowledge:
       weaknesses: Less health and defense than Vanguard; melee range.
       guidance: Consider for mobile pressure, but assess exposure using visible enemy positions.
     - unitId: ranger
-      role: Ranged attacker and observer
-      strengths: Longer range and vision than other starters.
+      role: Ranged attacker
+      strengths: Longer attack range than other starters.
       weaknesses: Lower health and defense than other starters.
-      guidance: Consider reach and visibility; do not assume a guaranteed counter or manual positioning.
+      guidance: Consider reach and positioning; do not assume a guaranteed counter or manual positioning.
 
     - unitId: catapult
       role: Long-range building siege
@@ -107,15 +106,15 @@ knowledge:
       guidance: Buy alongside combat troops; healing replaces movement and does not scale with arsenal.
 
     - unitId: scout
-      role: Fast reconnaissance
-      strengths: Movement 3 and vision 7 reveal approaches early; retreats from nearby enemies.
+      role: Fast skirmisher
+      strengths: Movement 3 and training time 2 enable fast deployment; retreats from nearby enemies.
       weaknesses: Low health, attack and defense; vulnerable when escape routes are blocked.
-      guidance: Invest in information alongside combat troops; a Scout does not win a frontline fight.
+      guidance: Use for mobile harassment alongside combat troops; a Scout does not win a frontline fight.
     - unitId: raider_cavalry
       role: Mobile siege hunter
       strengths: Prefers siege targets; +16 attack against siege engines, with movement 3.
       weaknesses: Pikemen counter mobile class; fragile against screened frontline troops.
-      guidance: Use to punish exposed siege; it pursues siege only within its own vision.
+      guidance: Use to punish exposed siege; it pursues reachable siege across the battlefield.
     - unitId: engineer
       role: Bounded field repair support
       strengths: Repairs siege engines and non-castle buildings for 4 HP per action.

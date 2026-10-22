@@ -305,7 +305,7 @@ func TestDecisionHistoryIsSafeAndValidated(t *testing.T) {
 	}
 }
 
-func TestFactionViewFiltersPersistedState(t *testing.T) {
+func TestFactionViewShowsAllPersistedEntities(t *testing.T) {
 	validID := "7f22e693-bacd-46bb-b942-64fa613cd388"
 	state := game.State{Factions: []game.FactionState{{FactionID: "a"}, {FactionID: "b"}}, Units: []game.Unit{{ID: "a-unit", FactionID: "a", Position: game.Position{X: 1, Y: 1}, Health: 10, Vision: 1}, {ID: "b-unit", FactionID: "b", Position: game.Position{X: 12, Y: 9}, Health: 10}}, Buildings: []game.Building{{ID: "b-castle", FactionID: "b", Type: game.BuildingCastle, Position: game.Position{X: 13, Y: 5}, Health: 300}}}
 	repository := &fakeBattleRepo{run: &BattleRun{ID: validID, ScenarioSnapshot: game.Scenario{Map: serviceTestScenario([2]FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}}).Map}, CurrentState: state}}
@@ -314,7 +314,7 @@ func TestFactionViewFiltersPersistedState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(view.State.Units) != 1 || len(view.State.Buildings) != 1 {
+	if len(view.State.Units) != 2 || len(view.State.Buildings) != 1 || len(view.State.Factions) != 1 {
 		t.Fatalf("view = %#v", view)
 	}
 	if _, err := service.GetFactionView(authn.WithActor(context.Background(), authn.Actor{ID: "test-admin", Role: authn.Admin}), validID, "outsider"); !errors.Is(err, ErrInvalidPerspective) {

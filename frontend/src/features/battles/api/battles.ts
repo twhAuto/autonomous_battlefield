@@ -78,10 +78,13 @@ export interface BattleUnit extends UnitCapabilities {
   attackTargetPosition?: HexPosition
 }
 export interface BattleBuilding {
+  buildRange?: number
+  trainingBlocked?: boolean
+  trainingQueue?: { unitType: string; remainingTicks: number; trainingTicks: number; queuedAtTick: number; opening?: boolean }[]
   attack?: number; range?: number; readyAtTick?: number
   attackOutcome?: 'hit' | 'miss'
   attackTargetId?: string; attackTargetPosition?: HexPosition
-  id: string; factionId: string; type: 'castle' | 'economy' | 'defense_tower' | 'watchtower' | 'barracks'; position: HexPosition
+  id: string; factionId: string; type: 'castle' | 'economy' | 'defense_tower' | 'watchtower' | 'outpost' | 'barracks'; position: HexPosition
   health: number; maxHealth: number; defense: number; vision: number; income: number
 }
 export interface BattleFactionState {
@@ -124,14 +127,6 @@ export interface BattleRun {
   state: BattleState
   errorCode?: string
   errorMessage?: string
-}
-
-export async function getBattleView(id: string, factionId: string, signal?: AbortSignal): Promise<BattleView> {
-  const response = await battlefieldFetch(`/v1/battles/${encodeURIComponent(id)}/factions/${encodeURIComponent(factionId)}/view`, { signal })
-  if (response.ok) return (await response.json()) as BattleView
-  if (response.status === 400) throw new BattleApiError('That faction perspective is invalid.', 400)
-  if (response.status === 404) throw new BattleApiError('This battle could not be found.', 404)
-  throw new BattleApiError('Battle perspective could not be loaded.', response.status)
 }
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }

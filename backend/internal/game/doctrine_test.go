@@ -70,8 +70,13 @@ func TestOpeningUpgradeEffectsAndRepeatPurchases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tr.State.Factions[0].Gold != 110 || tr.State.Units[0].Attack != 13 || tr.State.Units[0].ReadyAtTick != 1 {
+	if tr.State.Factions[0].Gold != 110 || len(tr.State.Units) != 0 || len(tr.State.Buildings[0].TrainingQueue) != 1 {
 		t.Fatalf("purchases %+v", tr.State)
+	}
+	m.state.Tick++
+	m.runTraining()
+	if m.State().Units[0].Attack != 13 || m.State().Units[0].ReadyAtTick != 2 {
+		t.Fatal("queued opening bonuses/readiness")
 	}
 	snapshot, _ := m.DecisionSnapshot(id)
 	snapshot.OwnedUpgradeIDs[0] = "mutated"
@@ -98,6 +103,8 @@ func TestOpeningUpgradeEffectsAndRepeatPurchases(t *testing.T) {
 		t.Fatal("existing unit defense")
 	}
 	events := m.runRecruitment(id, controller.PlanProposal{RecruitmentOrders: &orders})
+	m.state.Tick++
+	m.runTraining()
 	if len(events) == 0 || len(m.State().Units) != 2 || m.State().Units[1].Attack != 13 || m.State().Units[1].Defense != 4 {
 		t.Fatal("future unit bonuses")
 	}
@@ -151,7 +158,7 @@ func TestOpeningFallbackAndLegacySnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(ta, tb) || ta.Tick != 0 || len(ta.State.Units) != 12 {
+	if !reflect.DeepEqual(ta, tb) || ta.Tick != 0 || len(ta.State.Units) != 0 || len(ta.State.Buildings[0].TrainingQueue) != 6 || len(ta.State.Buildings[1].TrainingQueue) != 6 {
 		t.Fatal("fallback is not deterministic")
 	}
 	first := a.OpeningFallback(a.FactionIDs()[0])
