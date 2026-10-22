@@ -244,7 +244,10 @@ respecting `reserveGold`. It automatically retries if unaffordable. A blocked ex
 holds the paid unit without additional charges. Disabling or changing selection
 preserves the paid unit; the change affects subsequent purchases. State exposes
 `production` (configured, unitType, enabled, waitingForGold), `trainingQueue` (zero or one paid
-unit), and `trainingBlocked`, also retained in compact agent observations. Castles
+unit), and `trainingBlocked`. Compact agent observations retain owned production
+settings and both sides' paid training progress. Opponent `production` settings are
+redacted before freezing the context; physical entities remain visible. Spectators
+see both sides' settings in the full battle state. Castles
 train the Barracks roster and attack with 15 attack/range 3. New specialized sources
 start disabled and become selectable once active; no starting Barracks is granted.
 

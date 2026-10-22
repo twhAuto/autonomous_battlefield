@@ -162,7 +162,8 @@ new battle creation during the cutover; see the [release precondition](../operat
 At each window the engine asks every faction's controller for a plan, based on a
 frozen observation of the entire battlefield, including enemy troops, structures,
 and training queues. The opponent's gold, owned upgrades and aggregate production
-totals remain private in controller observations; authorized browser viewers see
+totals, future production selections, on/off settings and gold-wait flags remain
+private in controller observations; authorized browser viewers see
 both factions' totals in the full battle snapshot:
 
 - A **scripted** controller submits its deterministic plan immediately.

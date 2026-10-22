@@ -1,4 +1,4 @@
-// Projects the open battlefield while retaining faction-private economy totals.
+// Projects the open battlefield while retaining faction-private economy and production settings.
 package game
 
 import "fmt"
@@ -15,6 +15,11 @@ func ProjectView(gameMap Map, source State, factionID string) (View, error) {
 	}
 	state := CloneState(source)
 	if factionID != "" {
+		for i := range state.Buildings {
+			if state.Buildings[i].FactionID != factionID {
+				state.Buildings[i].Production = nil
+			}
+		}
 		state.Factions = nil
 		for _, faction := range source.Factions {
 			if faction.FactionID == factionID {

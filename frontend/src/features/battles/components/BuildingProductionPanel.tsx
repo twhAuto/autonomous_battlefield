@@ -31,7 +31,7 @@ function ContinuousTraining({ building }: Readonly<{ building: BattleBuilding }>
       <span>{typeLabel(current.unitType)} · {building.trainingBlocked ? 'Ready · exit blocked' : `${current.remainingTicks}/${current.trainingTicks} ticks remaining`}</span>
       <progress aria-label={`${typeLabel(current.unitType)} training progress`} max={current.trainingTicks} value={current.trainingTicks - current.remainingTicks} />
       {!production.enabled && <span>Finishing paid unit, then stopping</span>}
-      {production.enabled && production.unitType !== current.unitType && <span>Next: {typeLabel(production.unitType!)}</span>}
+      {production.enabled && production.unitType && production.unitType !== current.unitType && <span>Next: {typeLabel(production.unitType)}</span>}
     </> : <span>{idleProductionStatus(production)}</span>}
   </div>
 }

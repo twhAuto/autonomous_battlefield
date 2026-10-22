@@ -49,3 +49,10 @@ it('retains historical FIFO queue presentation and unnamed faction fallback', ()
   const panel = screen.getByRole('region', { name: 'a production' })
   expect(within(panel).getByText('Training queue · 2/12')).toBeVisible()
 })
+
+it('keeps paid progress visible when an enabled source has no selected unit type', () => {
+  render(<TrainingQueue building={{ ...building, production: { enabled: true }, trainingQueue: [paid] }} />)
+  expect(screen.getByText(/No unit selected/)).toBeVisible()
+  expect(screen.getByRole('progressbar')).toHaveAttribute('value', '2')
+  expect(screen.queryByText(/Next:/)).not.toBeInTheDocument()
+})

@@ -134,7 +134,7 @@ movement and attack resolution.
 
 The simulation receives a resolved scenario and optional plans, then produces
 deterministic state transitions and events. Construction uses living building ranges
-and spacing; per-building training advances between economy and tactics. Core v7 then purchases one next unit for each enabled empty source in building ID order, respecting reserve gold. Production settings persist across decision windows; an off setting finishes paid work and stops new starts. Insufficient gold pauses starts until affordable; blocked exits retain the paid unit without further purchases. The viewer displays source selection, state and progress; controls remain AI-only.
+and spacing; per-building training advances between economy and tactics. Core v7 then purchases one next unit for each enabled empty source in building ID order, respecting reserve gold. Production settings persist across decision windows; an off setting finishes paid work and stops new starts. Insufficient gold pauses starts until affordable; blocked exits retain the paid unit without further purchases. The viewer displays both sides' source selection, state and progress; controls remain AI-only. Faction-scoped projections omit opponent production settings, including future choices and gold waits, while retaining paid training progress.
 Training progress is serialized in building state; clone operations isolate queue
 and training-roster slices plus production settings, including `buildings.castleTrains`. Core v6 and v7 start each
 faction with only its castle, which shares the Barracks roster and fires in the

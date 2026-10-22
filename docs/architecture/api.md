@@ -197,7 +197,10 @@ decisions, so a host subscription agent cannot keep working on the run.
 
 `GET /v1/battles/{battleId}/factions/{factionId}/view` exposes the whole map and
 all entities, actions, movement routes and deaths. It retains only the requesting
-faction's economy/upgrade/production totals in `state.factions`. The deprecated
+faction's economy/upgrade/production totals in `state.factions`. Opponent building
+`production` settings are omitted, keeping future unit selections, on/off choices
+and gold/reserve waits private. Paid training progress and all physical entities
+remain visible. The full battle snapshot used by viewers retains both sides' settings. The deprecated
 `visiblePositions` field contains every map coordinate for older clients.
 
 Buildings expose `buildRange`, optional `trains` (supported unit IDs), `trainingQueue`,

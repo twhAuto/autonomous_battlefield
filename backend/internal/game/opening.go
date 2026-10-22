@@ -69,10 +69,6 @@ func (m *Match) advanceOpening(plans map[string]controller.PlanProposal) (Transi
 	return m.transition(events), nil
 }
 
-func validateOpeningPlan(plan controller.PlanProposal) error {
-	return validateOpeningPlanForMode(plan, false)
-}
-
 func validateOpeningPlanForMode(plan controller.PlanProposal, continuous bool) error {
 	if len(plan.ConstructionPriorities) > 0 || plan.ConstructionOrders != nil && len(*plan.ConstructionOrders) > 0 {
 		return fmt.Errorf("construction is unavailable during opening")

@@ -192,7 +192,8 @@ spawn arrangement, routing, and castle pressure matter alongside damage bonuses.
 Run `go test ./internal/battle/catalog -run TestFrontier -v` from `backend` to
 repeat the probes. Tune balance through a new content version.
 
-`TestFrontierUpgradeBalanceProbe` compares equal-budget openings under the current
-shared rules. Training time and new terrain affect outcomes, so historical results
+`TestFrontierUpgradeBalanceProbe` compares equal-budget openings using current
+unit/upgrade definitions with historical batch recruitment explicitly enabled. It
+does not measure the balance of continuous production. Training time and new terrain affect outcomes, so historical results
 are not claims about the current balance. `TestFrontierThreeLevelCatalogAndScriptedBattle`
 also checks shared content and scripted upgrade purchases.

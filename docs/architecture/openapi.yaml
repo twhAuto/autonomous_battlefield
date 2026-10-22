@@ -600,7 +600,9 @@ paths:
       summary: Get the open battlefield and one faction's economic totals
       description: |
         All terrain, entities, routes and actions are present. Opponents' aggregate
-        gold, upgrades and production totals are omitted.
+        gold, upgrades and production totals are omitted, as are their per-building
+        production selections, on/off settings and gold-wait status. Paid training
+        progress remains visible.
       responses:
         '200':
           description: The faction-visible battlefield.
@@ -1095,7 +1097,7 @@ components:
       description: |
         Catalog data: starting gold, units, upgrades, optional `structures`, and the
         shared `buildings.maximumBuildingCount` limit. Production structures expose `trains`
-        arrays of supported unit IDs. Core v6 starts each faction with only a castle,
+        arrays of supported unit IDs. Core v7 enables continuousProduction and starts each faction with only a castle,
         which trains the Barracks roster and attacks enemies. Resolved buildings rules
         include castleTrains (unit IDs), castleAttack (15) and castleRange (3).
         Fields vary by ruleset version.
@@ -1103,6 +1105,7 @@ components:
       required: [id]
       properties:
         id: {type: string}
+        continuousProduction: {type: boolean, default: false, description: Repeating per-building unit selection and on/off settings; absent or false retains historical batch recruitment.}
         upgrades:
           type: array
           items: {$ref: '#/components/schemas/UpgradeRule'}
@@ -1427,7 +1430,7 @@ components:
         attackOutcome: {$ref: '#/components/schemas/AttackOutcome'}
 
     BuildingProduction:
-      description: AI-only repeating production setting. Off or selection changes preserve the paid unit. Absent on historical batch-mode buildings.
+      description: AI-only repeating production setting. Off or selection changes preserve the paid unit. Absent on historical batch-mode buildings and on opponent buildings in faction-scoped views. The full spectator state retains both sides.
       type: object
       required: [enabled]
       properties:

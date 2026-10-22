@@ -81,9 +81,6 @@ func validateUpgrades(legal ai.LegalChoices, plan controller.PlanProposal) []ai.
 }
 
 // The opening requires an explicit purchase decision and has no construction.
-func validateOpening(plan controller.PlanProposal) []ai.ValidationIssue {
-	return validateOpeningForMode(plan, false)
-}
 
 func validateOpeningForMode(plan controller.PlanProposal, continuous bool) []ai.ValidationIssue {
 	var issues []ai.ValidationIssue
