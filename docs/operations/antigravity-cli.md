@@ -6,6 +6,14 @@ ID stays `gemini-subscription-local` and its availability flag
 `GEMINI_CLI_PROFILE_AVAILABLE`, from the retired Gemini CLI provider, so existing
 battle configurations keep working.
 
+Battle setup offers `gemini-3.8-flash-low`, `gemini-3.8-flash-medium` and
+`gemini-3.8-flash-high`. Low favors lighter reasoning; medium remains the default.
+The reasoning level is part of the model ID, so there is no separate effort
+selector. Run `agy models` to check which IDs the signed-in account exposes
+before enabling a profile; listing a model does not verify a successful battle
+submission. See [Google's model catalog](https://antigravity.google/docs/models)
+for plan availability.
+
 ## WSL setup
 
 1. Install Antigravity CLI using the
@@ -24,12 +32,13 @@ battle configurations keep working.
 5. Select the Antigravity subscription profile in the battle form. Verify that a
    decision at a planning tick submits a strategy and reports usage.
 
-The pinned model is `gemini-3.8-flash-medium`. Model access depends on the signed-in
-account; consult `agy models` when diagnosing availability. Change the model
+The default model is `gemini-3.8-flash-medium`. Model access depends on the signed-in
+account; consult `agy models` when diagnosing availability. Change models and options
 consistently in `backend/config.yaml`,
 `infra/deploy/base/infrastructure/configmap.yaml`,
+`infra/deploy/agent-vm/config.yaml`,
 `infra/deploy/agent-vm/managed-settings.json` (applied to the CLI VM by
-[`battlefield-platform/cli`](cli-worker.md)), and the host launcher if selecting
+[`battlefield-platform/cli`](cli-worker.md)), and `scripts/dev/run-k8s-cli-agent.sh` if selecting
 another supported model. A retired model fails the decision within seconds with
 error category `cli` and no tokens.
 

@@ -30,9 +30,15 @@ Host managed policies can still make tools unavailable; permission denials fail
 execution rather than being bypassed. The worker requires a validated MCP
 submission, not merely a successful CLI exit or a textual plan.
 
-The `sonnet` alias follows the account's current Sonnet model. To pin a model,
+Battle setup also offers `haiku` for lighter workloads and `opus` for more
+demanding work. Haiku uses model-default effort so it works with older supported
+CLI versions whose Haiku model does not expose effort settings; Sonnet and Opus
+offer low/medium/high effort. The default remains `sonnet`.
+
+The model aliases follow the account's current model versions. To pin a model,
 update `backend/config.yaml`, `infra/deploy/base/infrastructure/configmap.yaml`,
-`infra/deploy/agent-vm/config.yaml`, and `scripts/dev/run-k8s-cli-agent.sh` consistently.
+`infra/deploy/agent-vm/config.yaml`, `infra/deploy/agent-vm/managed-settings.json`,
+and `scripts/dev/run-k8s-cli-agent.sh` consistently.
 When upgrading the production CLI, verify restricted-mode behavior and update the
 version pin in those same files.
 
