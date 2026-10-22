@@ -420,8 +420,20 @@ it('removes destroyed buildings, queues and selected range from the battlefield'
   expect(screen.getByText('Select a castle, building, or unit for details.')).toBeInTheDocument()
 })
 
-it('does not show a training queue on a live castle', async () => {
+it('preserves the display of historical castles without a training roster', async () => {
   render(<HexBattleMap map={map} state={state} factionNames={new Map()} />)
   await userEvent.click(screen.getByRole('button', { name: /Castle/ }))
   expect(screen.queryByText(/Training queue/)).not.toBeInTheDocument()
+})
+
+
+it('shows castle training, attack range and tower fire together', async () => {
+  const castleState: BattleState = { ...state, buildings: [{ ...state.buildings[0], trains: ['vanguard', 'striker', 'pikeman'], attack: 15, range: 3, attackTargetId: state.units[0].id, attackTargetPosition: state.units[0].position }] }
+  render(<HexBattleMap map={map} state={castleState} factionNames={new Map()} />)
+  await userEvent.click(screen.getByRole('button', { name: /Castle/ }))
+  expect(screen.getByText('Training queue empty')).toBeInTheDocument()
+  expect(screen.getByText(/Trains: Vanguard, Striker, Pikeman/)).toBeInTheDocument()
+  expect(screen.getByText(/Attack 15/)).toBeInTheDocument()
+  expect(screen.getByText(/Range 3/)).toBeInTheDocument()
+  expect(document.querySelector('.unit-direction--tower')).toBeInTheDocument()
 })

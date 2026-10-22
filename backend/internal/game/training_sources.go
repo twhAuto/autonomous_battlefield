@@ -21,6 +21,9 @@ func IsTrainingBuilding(kind string) bool {
 // Authored rosters opt new content into specialized production. Frozen older
 // scenarios without rosters retain their original castle/Barracks recruitment.
 func (m *Match) specializedTraining() bool {
+	if len(m.scenario.Ruleset.Buildings.CastleTrains) > 0 {
+		return true
+	}
 	for _, b := range m.scenario.Ruleset.Structures {
 		if len(b.Trains) > 0 {
 			return true
@@ -39,6 +42,9 @@ func (m *Match) trainingRoster(kind string) []string {
 			ids = append(ids, u.ID)
 		}
 		return ids
+	}
+	if kind == BuildingCastle {
+		return append([]string(nil), m.scenario.Ruleset.Buildings.CastleTrains...)
 	}
 	for _, b := range m.scenario.Ruleset.Structures {
 		if b.Kind == kind {
@@ -101,11 +107,13 @@ func (m *Match) chooseTrainingSource(factionID string, definitions map[string]Un
 	return first, []string{firstID}
 }
 
-// Starting Barracks are free, active at tick zero, and obey ordinary spacing.
+// Frozen specialized scenarios without castle training retain their free starting
+// Barracks. Current castles provide the opening queue and need no extra building.
+// Historical Barracks are active at tick zero and obey ordinary spacing.
 // Both castle hexes are reserved first. Barracks sites are then chosen in faction
 // slot order; each placement respects all previously placed buildings.
 func (m *Match) addStartingBarracks() error {
-	if !m.specializedTraining() {
+	if !m.specializedTraining() || len(m.scenario.Ruleset.Buildings.CastleTrains) > 0 {
 		return nil
 	}
 	var definition BuildingType

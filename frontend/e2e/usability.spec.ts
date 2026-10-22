@@ -204,6 +204,7 @@ test('terrain icons, specialized production and destroyed buildings on the map',
   const types = ['barracks', 'archery_range', 'stables', 'siege_workshop', 'infirmary']
   const units = ['vanguard', 'ranger', 'scout', 'catapult', 'herbalist']
   battle.state.buildings.push(...types.map((type, index) => ({ ...battle.state.buildings[0], id: `${factionId}:${type}:1`, type, position: { x: 2 + index * 2, y: 5 }, income: 0, trains: [units[index]] })))
+  Object.assign(battle.state.buildings[0], { trains: ['vanguard', 'striker', 'pikeman'], attack: 15, range: 3 })
   await page.route(`**/v1/battles/${battleId}`, route => route.fulfill({ json: battle }))
   await page.goto(`/battles/${battleId}`)
   const map = page.locator('.battle-map-column')
@@ -214,5 +215,8 @@ test('terrain icons, specialized production and destroyed buildings on the map',
     await expect(map.getByText('Training queue empty')).toBeVisible()
   }
   await map.getByRole('button', { name: 'Amber · Castle', exact: true }).click()
-  await expect(map.getByText('Training queue empty')).toHaveCount(0)
+  await expect(map.getByText('Training queue empty')).toBeVisible()
+  await expect(map.getByText(/Trains: Vanguard, Striker, Pikeman/)).toBeVisible()
+  await expect(map.getByText(/Attack 15/)).toBeVisible()
+  await expect(map.getByText(/Range 3/)).toBeVisible()
 })

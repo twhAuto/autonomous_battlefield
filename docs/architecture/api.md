@@ -201,8 +201,10 @@ faction's economy/upgrade/production totals in `state.factions`. The deprecated
 `visiblePositions` field contains every map coordinate for older clients.
 
 Buildings expose `buildRange`, optional `trains` (supported unit IDs), `trainingQueue`,
-and `trainingBlocked`. The current catalog has five production kinds; castles do not
-train. Each faction starts with one free Barracks. An omitted recruitment source is
+and `trainingBlocked`. The current catalog has five constructible production kinds.
+Each faction starts with only a castle, which trains the Barracks roster and exposes
+`attack: 15` and `range: 3`. Resolved rules save `buildings.castleTrains`,
+`castleAttack` and `castleRange`; omitted legacy fields retain older behavior. An omitted recruitment source is
 selected automatically among active compatible buildings; an explicit incompatible
 source is rejected by frozen validation and skipped without charge during execution.
 Destroyed buildings remain in snapshots for history/results but are hidden on the map.

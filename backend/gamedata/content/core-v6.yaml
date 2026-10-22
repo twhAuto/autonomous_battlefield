@@ -1,7 +1,7 @@
 # Shared medieval roster, upgrades and structures for every map.
 
 id: core
-version: "5"
+version: "6"
 units:
   - {id: vanguard, trainingTicks: 4, class: infantry, cost: 35, health: 70, attack: 9, defense: 7, speed: 4, movement: 1, range: 1}
   - {id: striker, trainingTicks: 2, class: mobile, cost: 25, health: 42, attack: 14, defense: 3, speed: 8, movement: 2, range: 1}
@@ -33,7 +33,7 @@ upgrades:
   - {id: siege_mobility, cost: 60, targetClass: siege, exclusiveGroup: siege_specialization, movementBonus: 1}
   - {id: siege_breach, cost: 60, targetClass: siege, exclusiveGroup: siege_specialization, buildingDamageBonus: 8}
 buildings:
-  - {id: castle, kind: castle, buildRange: 4, health: 300, defense: 8, income: 10, cost: 0}
+  - {id: castle, kind: castle, buildRange: 4, health: 300, defense: 8, income: 10, cost: 0, attack: 15, range: 3, trains: [vanguard, striker, pikeman]}
   - {id: economy, kind: economy, buildRange: 3, health: 60, defense: 2, income: 10, cost: 50}
   - {id: defense_tower, kind: defense_tower, buildRange: 3, health: 130, defense: 4, income: 0, cost: 60, attack: 15, range: 3}
   - {id: outpost, kind: outpost, buildRange: 5, health: 50, defense: 1, income: 0, cost: 30}
@@ -67,9 +67,9 @@ knowledge:
     attack them. Pikemen gain 12 attack against mobile troops such as Strikers.
     Herbalists treat one adjacent soldier for 3 HP instead of attacking; they cannot treat
     siege engines or other healers and follow injured allies or escort soldiers.
-    Defense towers fire before units; newly built towers and training buildings become active next tick; outposts grant construction range.
+    Castles and defense towers fire before units; newly built towers and training buildings become active next tick; outposts grant construction range.
     Outposts extend construction range without attacking.
-    Each faction starts with one free Barracks. Castles cannot train units. Barracks train Vanguard, Striker and Pikeman; Archery Ranges train Ranger and Crossbowman; Stables train Scout and Raider Cavalry; Siege Workshops train Catapult, Battering Ram and Engineer; Infirmaries train Herbalist. Each training building trains one queued unit at a time using its trainingTicks; only the head progresses. Ready units wait if every adjacent traversable hex is occupied. Costs are paid once when queued; queue capacity is 12 per source. New units act the tick after deployment. A forward source reduces travel time
+    Each faction starts with only its castle, which attacks enemies with 15 attack at range 3 and also trains the Barracks roster. Castles and Barracks train Vanguard, Striker and Pikeman; Archery Ranges train Ranger and Crossbowman; Stables train Scout and Raider Cavalry; Siege Workshops train Catapult, Battering Ram and Engineer; Infirmaries train Herbalist. Each training building trains one queued unit at a time using its trainingTicks; only the head progresses. Ready units wait if every adjacent traversable hex is occupied. Costs are paid once when queued; queue capacity is 12 per source. New units act the tick after deployment. A forward source reduces travel time
     but exposes the investment. Buildings may occupy clear ground or gold deposits within buildRange of an active friendly building. All buildings must be at least two hexes apart; units block construction. Forests are traversable and grant troops +3 defense after armor piercing, but prohibit construction. Gold deposits grant economy buildings +5 income each tick. Rocks are impassable. The entire battlefield is visible; there is no fog of war.
   cards:
     - unitId: vanguard

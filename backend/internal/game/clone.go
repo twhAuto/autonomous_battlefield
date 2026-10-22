@@ -53,6 +53,7 @@ func CloneResult(value Result) Result {
 }
 
 func CloneScenario(value Scenario) Scenario {
+	value.Ruleset.Buildings.CastleTrains = append([]string(nil), value.Ruleset.Buildings.CastleTrains...)
 	value.Ruleset.Structures = CloneBuildingTypes(value.Ruleset.Structures)
 	value.Ruleset.Knowledge = CloneKnowledge(value.Ruleset.Knowledge)
 	if value.Ruleset.ContentSource != nil {

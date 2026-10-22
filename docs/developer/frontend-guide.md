@@ -245,10 +245,11 @@ alongside strict type checks.
 Forests, deposits and rocks have distinct SVG silhouettes via `TerrainGlyph.tsx`,
 terrain colors and accessible descriptions. Selecting a living building highlights its
 construction radius. Production-building details show their `trains` roster, FIFO
-order, per-unit remaining/total ticks, progress and blocked exits. Castles have no
-training controls. In historical snapshots without `trains`, populated queues still
-display, but empty legacy castle/Barracks queues have no training-capability label
-because absence of the field does not distinguish an old castle from a current one. Dead buildings are omitted from the map, selection details and
+order, per-unit remaining/total ticks, progress and blocked exits. Current castles
+show the Barracks roster, their queue, attack/range stats and tower-fire visuals.
+In historical snapshots without `trains`, populated queues still display, but empty
+legacy castle/Barracks queues have no training-capability label because absence of
+the field alone does not identify their historical production rules. Dead buildings are omitted from the map, selection details and
 range overlays immediately, while history can still use their saved identities.
 The radius overlay shows reach; terrain, occupancy and spacing still determine
 actual legal placements in the engine.

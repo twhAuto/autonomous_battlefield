@@ -151,6 +151,9 @@ func validateTrainingSources(context ai.DecisionContext, plan controller.PlanPro
 	for _, b := range context.Legal.Buildings {
 		specialized = specialized || len(b.Trains) > 0
 	}
+	for _, b := range context.View.State.Buildings {
+		specialized = specialized || len(b.Trains) > 0
+	}
 	if !specialized || plan.RecruitmentOrders == nil {
 		return nil
 	}

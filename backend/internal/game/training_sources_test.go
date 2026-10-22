@@ -12,6 +12,9 @@ func specializedMatch(t *testing.T) *Match {
 	t.Helper()
 	scenario := doctrineMatch(t).Scenario()
 	scenario.Ruleset.Buildings.MaximumBuildingCount = 8
+	scenario.Ruleset.Buildings.CastleTrains = []string{"vanguard", "striker"}
+	scenario.Ruleset.Buildings.CastleAttack = 15
+	scenario.Ruleset.Buildings.CastleRange = 3
 	scenario.Ruleset.Structures = []BuildingType{
 		{ID: BuildingBarracks, Kind: BuildingBarracks, Health: 100, Cost: 90, BuildRange: 3, Trains: []string{"vanguard", "striker"}},
 		{ID: BuildingArcheryRange, Kind: BuildingArcheryRange, Health: 100, Cost: 90, BuildRange: 3, Trains: []string{"ranger"}},
@@ -27,12 +30,12 @@ func TestSpecializedOpeningSources(t *testing.T) {
 	m := specializedMatch(t)
 	for _, id := range m.FactionIDs() {
 		snapshot, err := m.DecisionSnapshot(id)
-		if err != nil || len(snapshot.RecruitmentSources) != 1 || len(m.castle(id).Trains) != 0 {
+		if err != nil || len(snapshot.RecruitmentSources) != 1 || snapshot.RecruitmentSources[0] != id+":castle" {
 			t.Fatal("opening sources", snapshot, err)
 		}
 		source := m.recruitmentSource(id, snapshot.RecruitmentSources[0])
-		if source.Type != BuildingBarracks || source.ReadyAtTick != 0 || HexDistance(source.Position, m.castle(id).Position) < 2 || m.factionState(id).Gold != 180 || m.factionState(id).BuildingsBuilt != 0 {
-			t.Fatal("invalid free starting Barracks", source)
+		if source.Type != BuildingCastle || source.ReadyAtTick != 0 || len(m.state.Buildings) != 2 || m.factionState(id).Gold != 180 || m.factionState(id).BuildingsBuilt != 0 {
+			t.Fatal("invalid starting castle", source)
 		}
 		for _, order := range *m.OpeningFallback(id).RecruitmentOrders {
 			if !slices.Contains(source.Trains, order.UnitType) {
@@ -52,6 +55,7 @@ func TestSpecializedSnapshotIsolation(t *testing.T) {
 	}
 	scenario := m.Scenario()
 	scenario.Ruleset.Structures[0].Trains[0] = "changed"
+	scenario.Ruleset.Buildings.CastleTrains[0] = "changed"
 	legal := ConstructibleBuildings(m.scenario.Ruleset)
 	legal[len(legal)-2].Trains[0] = "changed"
 	if m.scenario.Ruleset.Structures[0].Trains[0] != "vanguard" || m.defaultTrainingSource("faction-a", "vanguard").Trains[0] != "vanguard" {
@@ -66,10 +70,7 @@ func TestSpecializedOpeningQueues(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, b := range transition.State.Buildings {
-		if b.Type == BuildingCastle && len(b.TrainingQueue) > 0 {
-			t.Fatal("castle trained")
-		}
-		if b.Type == BuildingBarracks && len(b.TrainingQueue) == 0 {
+		if b.Type != BuildingCastle || len(b.TrainingQueue) == 0 {
 			t.Fatal("opening did not train")
 		}
 	}
@@ -81,9 +82,9 @@ func TestTrainingSourceEligibilityAndActivation(t *testing.T) {
 	m.factionState(id).Gold = 1000
 	source := m.defaultTrainingSource(id, "vanguard")
 	for _, tc := range []struct{ source, unit, reason string }{
-		{id + ":castle", "vanguard", "source_unavailable"},
+		{id + ":missing", "vanguard", "source_unavailable"},
 		{source.ID, "ranger", "unit_not_trainable"},
-		{"faction-b:barracks:starting", "vanguard", "source_unavailable"},
+		{"faction-b:castle", "vanguard", "source_unavailable"},
 		{"", "ranger", "source_unavailable"},
 	} {
 		orders := []controller.RecruitmentOrder{{UnitType: tc.unit, Count: 1, SourceBuildingID: tc.source}}
@@ -125,6 +126,7 @@ func TestAutomaticRecruitmentSkipsFullQueuesAndRespectsReserve(t *testing.T) {
 	first := m.defaultTrainingSource(id, "vanguard")
 	another := *first
 	another.ID = id + ":barracks:second"
+	another.Type = BuildingBarracks
 	m.state.Buildings = append(m.state.Buildings, another)
 	first = m.recruitmentSource(id, first.ID)
 	first.TrainingQueue = make([]TrainingOrder, MaximumTrainingQueue)
@@ -143,6 +145,8 @@ func TestAutomaticRecruitmentSkipsFullQueuesAndRespectsReserve(t *testing.T) {
 func TestTrainingRosterRejectsUnknownDuplicateAndNonProductionAssignments(t *testing.T) {
 	for _, mutate := range []func(*Ruleset){
 		func(r *Ruleset) { r.Structures[0].Trains = append(r.Structures[0].Trains, "unknown") },
+		func(r *Ruleset) { r.Buildings.CastleTrains = []string{"unknown"} },
+		func(r *Ruleset) { r.Buildings.CastleTrains = []string{"vanguard", "vanguard"} },
 		func(r *Ruleset) { r.Structures[1].Trains = append(r.Structures[1].Trains, "vanguard") },
 		func(r *Ruleset) { r.Structures[0].ID = BuildingOutpost; r.Structures[0].Kind = BuildingOutpost },
 	} {

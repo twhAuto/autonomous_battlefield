@@ -11,7 +11,7 @@ documents for detail instead of repeating them:
 [Frontier Siege](frontier-siege.md) for the roster, structures, and map, and the
 [system architecture](../architecture/system-architecture.md#52-strategy-decision-window) for how
 decisions are requested, stored, and timed out. All maps use the shared
-`backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v5.yaml`
+`backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v6.yaml`
 roster and `backend/gamedata/battlefield.yaml` timing/controller configuration.
 Scenario files contain only map identity and geometry.
 
@@ -33,8 +33,8 @@ A battle is created with a requested tick count (at most the scenario's
 - Forests (`f`) are traversable and grant troops +3 defense after armor piercing;
   buildings cannot occupy them. Gold deposits (`g`) are traversable and grant an
   economy building on that hex +5 income per tick. Ground (`.`) has no bonus.
-- Each castle has 300 HP, defense 8, construction range 4, and earns 10 gold per tick.
-- Each faction starts with 220 gold and one free, active Barracks; opening purchases enter its training queue. The castle cannot train.
+- Each castle has 300 HP, defense 8, construction range 4, earns 10 gold per tick, and attacks enemy units with 15 attack at range 3.
+- Each faction starts with 220 gold and only its castle. Opening purchases enter the castle queue; there is no starting Barracks.
 
 ## Resources and upgrades
 
@@ -105,16 +105,15 @@ block a later one. Illegal placements spend no gold. Destroyed buildings grant n
 range and release their hex and building capacity. Economy buildings activate
 immediately; other new structures activate next tick.
 
-Castles do not train. Each faction starts with one free Barracks, placed on a legal
-nearby hex, active at tick zero and counted toward the eight-building limit.
-Castle cells are reserved first; Barracks placement then follows faction slot order.
-Authored maps must leave a legal site for both factions. Their 90-gold base value
-still yields 45 loot when destroyed; starting buildings do not count as purchases.
-The five production buildings expose their supported unit IDs as `trains`:
+The castle is the only starting building and trains the same units as a Barracks.
+It also fires at enemy units during the tower phase while its queue continues
+training. Castles do not consume any of the eight constructible building slots.
+Build additional Barracks for more queues or forward deployment. The castle and
+five constructible production buildings expose supported unit IDs as `trains`:
 
 | Building | Units |
 | --- | --- |
-| Barracks | Vanguard, Striker, Pikeman |
+| Castle / Barracks | Vanguard, Striker, Pikeman |
 | Archery Range | Ranger, Crossbowman |
 | Stables | Scout, Raider Cavalry |
 | Siege Workshop | Catapult, Battering Ram, Engineer |
@@ -139,7 +138,10 @@ The engine resumes a live paused match in memory; a new worker attempt replays i
 saved scenario and decisions, rebuilding the same queue progression. Legacy unit
 definitions without training times default to one tick and building ranges to 3.
 Frozen content without authored `trains` rosters retains castle/Barracks recruitment
-and does not add starting Barracks; current core v5 uses specialized production.
+and does not add starting Barracks. Frozen core v5 scenarios retain their free
+starting Barracks and passive, nontraining castles. Core v6 saves `castleTrains`,
+`castleAttack` and `castleRange` in building rules; no free Barracks is added when
+the castle has an authored roster.
 Historical stored states retain their data; replaying them uses the current engine
 rules, so pre-change transition hashes are not preserved. Before deploying this
 overhaul, finish all queued/running/paused battles on the old engine and prevent

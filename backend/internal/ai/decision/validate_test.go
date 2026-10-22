@@ -122,3 +122,18 @@ func TestSpecializedProductionUsesFrozenBuildingRoster(t *testing.T) {
 		t.Fatal("unavailable source accepted")
 	}
 }
+
+func TestCastleProductionUsesFrozenRoster(t *testing.T) {
+	context := ai.DecisionContext{Legal: ai.LegalChoices{RecruitmentSources: []string{"a:castle"}}, View: game.View{State: game.State{Buildings: []game.Building{{ID: "a:castle", Trains: []string{"vanguard", "striker", "pikeman"}}}}}}
+	for _, tc := range []struct {
+		unit, source string
+		valid        bool
+	}{
+		{"vanguard", "", true}, {"striker", "a:castle", true}, {"pikeman", "a:castle", true}, {"ranger", "a:castle", false}, {"vanguard", "b:castle", false},
+	} {
+		orders := []controller.RecruitmentOrder{{UnitType: tc.unit, SourceBuildingID: tc.source, Count: 1}}
+		if issues := validateTrainingSources(context, controller.PlanProposal{RecruitmentOrders: &orders}); (len(issues) == 0) != tc.valid {
+			t.Fatalf("%+v: %+v", tc, issues)
+		}
+	}
+}

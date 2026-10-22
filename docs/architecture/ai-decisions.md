@@ -235,12 +235,13 @@ wait for a free adjacent traversable hex and block followers until deployment.
 Full or unavailable sources skip that order; the first unaffordable unit stops
 purchasing. Reused plans can enqueue more troops next window. Empty orders buy
 nothing. Definitions expose `trainingTicks`, buildings expose `buildRange` and
-queue progress plus `trains` (supported unit IDs). Current castles have no training
-capability. `legal.recruitmentSources` lists living, active owned sources, and frozen
+queue progress plus `trains` (supported unit IDs). Current castles train Vanguard,
+Striker and Pikeman and expose attack 15/range 3, using the same combat phase as towers. `legal.recruitmentSources` lists living, active owned sources, and frozen
 submission validation rejects incompatible units, including implicit orders with no
 compatible source. Omitted source IDs select the compatible building nearest the
-enemy castle with queue space; explicit IDs never switch buildings. Starting Barracks
-support the opening; other production buildings must be constructed first. Scripted baselines filter out orders without a currently compatible active source
+enemy castle with queue space; explicit IDs never switch buildings. The castle
+supports the opening with the Barracks roster; other production buildings must be
+constructed first. No starting Barracks is granted. Scripted baselines filter out orders without a currently compatible active source
 before frozen validation, so shared army templates remain valid while production
 buildings are being constructed. Submitted/reused plans keep their requested orders. Historical
 contexts without authored rosters retain their original recruitment validation.

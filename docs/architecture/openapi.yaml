@@ -1095,8 +1095,10 @@ components:
       description: |
         Catalog data: starting gold, units, upgrades, optional `structures`, and the
         shared `buildings.maximumBuildingCount` limit. Production structures expose `trains`
-        arrays of supported unit IDs. Core v5 starts each faction with one free Barracks;
-        castles do not train. Fields vary by ruleset version.
+        arrays of supported unit IDs. Core v6 starts each faction with only a castle,
+        which trains the Barracks roster and attacks enemies. Resolved buildings rules
+        include castleTrains (unit IDs), castleAttack (15) and castleRange (3).
+        Fields vary by ruleset version.
       type: object
       required: [id]
       properties:
@@ -1387,7 +1389,7 @@ components:
     Building:
       description: |
         Castles, economy buildings, and the structures a ruleset defines. Only
-        attacking structures such as towers carry `attack`, `range`, and the
+        attacking structures such as castles and defense towers carry `attack`, `range`, and the
         per-tick action fields. Destroyed records can remain in snapshots for result/history
         references; consumers should hide buildings whose health is zero or lower.
       type: object
@@ -1397,7 +1399,7 @@ components:
         trains:
           type: array
           items: {type: string}
-          description: Supported unit IDs for this production building. Current castles have no training capability; older snapshots may omit this field.
+          description: Supported unit IDs for this production building. Current castles share the Barracks roster (vanguard, striker, pikeman); older snapshots may omit this field.
         trainingBlocked: {type: boolean, description: A ready head is waiting for a free adjacent traversable tile.}
         trainingQueue:
           type: array
@@ -1701,7 +1703,7 @@ components:
               unitType: {type: string}
               count: {type: integer, minimum: 1, maximum: 6}
               sourceBuildingId:
-                description: An active owned source whose trains list includes the unit. Omit to select a compatible source with queue space nearest the enemy castle. Current castles cannot train. If no compatible source has queue space, implicit orders report source_unavailable; a named full source reports queue_full.
+                description: An active owned source whose trains list includes the unit. Omit to select a compatible source with queue space nearest the enemy castle. Current castles train Vanguard, Striker and Pikeman. If no compatible source has queue space, implicit orders report source_unavailable; a named full source reports queue_full.
                 type: string
         constructionPriorities:
           description: Legacy coordinate-only economy construction.

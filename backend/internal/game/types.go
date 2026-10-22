@@ -104,21 +104,24 @@ type Upgrade struct {
 }
 
 type BuildingRules struct {
-	CastleBuildRange     int    `json:"castleBuildRange,omitempty" yaml:"castleBuildRange,omitempty"`
-	EconomyBuildRange    int    `json:"economyBuildRange,omitempty" yaml:"economyBuildRange,omitempty"`
-	MaximumBuildingCount int    `json:"maximumBuildingCount,omitempty" yaml:"maximumBuildingCount,omitempty"`
-	CastleTypeID         string `json:"castleTypeId,omitempty" yaml:"castleTypeId,omitempty"`
-	EconomyTypeID        string `json:"economyTypeId,omitempty" yaml:"economyTypeId,omitempty"`
-	CastleHealth         int64  `json:"castleHealth" yaml:"castleHealth"`
-	CastleDefense        int64  `json:"castleDefense" yaml:"castleDefense"`
-	CastleVision         int    `json:"castleVision" yaml:"castleVision"`
-	CastleIncome         int64  `json:"castleIncome" yaml:"castleIncome"`
-	EconomyCost          int64  `json:"economyCost" yaml:"economyCost"`
-	EconomyHealth        int64  `json:"economyHealth" yaml:"economyHealth"`
-	EconomyDefense       int64  `json:"economyDefense" yaml:"economyDefense"`
-	EconomyVision        int    `json:"economyVision" yaml:"economyVision"`
-	EconomyIncome        int64  `json:"economyIncome" yaml:"economyIncome"`
-	MaximumEconomyCount  int    `json:"maximumEconomyCount" yaml:"maximumEconomyCount"`
+	CastleTrains         []string `json:"castleTrains,omitempty" yaml:"castleTrains,omitempty"`
+	CastleAttack         int64    `json:"castleAttack,omitempty" yaml:"castleAttack,omitempty"`
+	CastleRange          int      `json:"castleRange,omitempty" yaml:"castleRange,omitempty"`
+	CastleBuildRange     int      `json:"castleBuildRange,omitempty" yaml:"castleBuildRange,omitempty"`
+	EconomyBuildRange    int      `json:"economyBuildRange,omitempty" yaml:"economyBuildRange,omitempty"`
+	MaximumBuildingCount int      `json:"maximumBuildingCount,omitempty" yaml:"maximumBuildingCount,omitempty"`
+	CastleTypeID         string   `json:"castleTypeId,omitempty" yaml:"castleTypeId,omitempty"`
+	EconomyTypeID        string   `json:"economyTypeId,omitempty" yaml:"economyTypeId,omitempty"`
+	CastleHealth         int64    `json:"castleHealth" yaml:"castleHealth"`
+	CastleDefense        int64    `json:"castleDefense" yaml:"castleDefense"`
+	CastleVision         int      `json:"castleVision" yaml:"castleVision"`
+	CastleIncome         int64    `json:"castleIncome" yaml:"castleIncome"`
+	EconomyCost          int64    `json:"economyCost" yaml:"economyCost"`
+	EconomyHealth        int64    `json:"economyHealth" yaml:"economyHealth"`
+	EconomyDefense       int64    `json:"economyDefense" yaml:"economyDefense"`
+	EconomyVision        int      `json:"economyVision" yaml:"economyVision"`
+	EconomyIncome        int64    `json:"economyIncome" yaml:"economyIncome"`
+	MaximumEconomyCount  int      `json:"maximumEconomyCount" yaml:"maximumEconomyCount"`
 }
 
 type CombatRules struct {

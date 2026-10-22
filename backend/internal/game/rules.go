@@ -57,7 +57,15 @@ func validUpgrade(upgrade Upgrade) bool {
 }
 
 func validBuildingRules(rules BuildingRules) bool {
+	if !ValidBuildingAttack(rules.CastleAttack, rules.CastleRange) {
+		return false
+	}
 	return rules.MaximumBuildingCount >= 0 && rules.MaximumBuildingCount <= 8 && rules.CastleHealth > 0 && rules.CastleDefense >= 0 && rules.CastleVision >= 0 && rules.CastleBuildRange >= 0 && rules.CastleBuildRange <= 10 && rules.CastleIncome >= 0 && rules.EconomyCost > 0 && rules.EconomyHealth > 0 && rules.EconomyDefense >= 0 && rules.EconomyVision >= 0 && rules.EconomyBuildRange >= 0 && rules.EconomyBuildRange <= 10 && rules.EconomyIncome >= 0 && rules.MaximumEconomyCount >= 0 && rules.MaximumEconomyCount <= 2
+}
+
+// ValidBuildingAttack allows a passive building or a complete ranged attack.
+func ValidBuildingAttack(attack int64, attackRange int) bool {
+	return attack == 0 && attackRange == 0 || attack > 0 && attackRange > 0
 }
 
 func validCombatRules(rules CombatRules) bool {
@@ -232,18 +240,29 @@ func validateRulesetUpgrades(ruleset Ruleset) error {
 func validateRulesetStructures(ruleset Ruleset) error {
 	seenBuildings := map[string]bool{}
 	units := UnitTypesByID(ruleset)
+	// Castle production may share a roster with constructible training buildings.
+	if err := validateTrainingRoster(units, ruleset.Buildings.CastleTrains, map[string]bool{}); err != nil {
+		return err
+	}
 	assigned := map[string]bool{}
 	for _, b := range ruleset.Structures {
 		if !ValidStructure(b) || seenBuildings[b.ID] {
 			return fmt.Errorf("%w: invalid or duplicate structure %q", ErrInvalidRuleset, b.ID)
 		}
 		seenBuildings[b.ID] = true
-		for _, id := range b.Trains {
-			if _, ok := units[id]; !ok || assigned[id] {
-				return fmt.Errorf("%w: unknown or duplicate training unit %q", ErrInvalidRuleset, id)
-			}
-			assigned[id] = true
+		if err := validateTrainingRoster(units, b.Trains, assigned); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+func validateTrainingRoster(units map[string]UnitType, roster []string, assigned map[string]bool) error {
+	for _, id := range roster {
+		if _, ok := units[id]; !ok || assigned[id] {
+			return fmt.Errorf("%w: unknown or duplicate training unit %q", ErrInvalidRuleset, id)
+		}
+		assigned[id] = true
 	}
 	return nil
 }

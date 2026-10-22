@@ -1,9 +1,9 @@
 id: battlefield
-version: "5"
+version: "6"
 startingGold: 220
 library:
   id: core
-  version: "5"
+  version: "6"
   castle: castle
   economy: economy
 buildings:

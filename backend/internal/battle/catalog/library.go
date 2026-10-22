@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"reflect"
 	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
@@ -60,7 +61,7 @@ func resolveLibrary(fsys fs.FS, source rulesetFile) (game.Ruleset, error) {
 		return r, nil
 	}
 	ref := source.Library
-	if r.Buildings != (game.BuildingRules{MaximumEconomyCount: r.Buildings.MaximumEconomyCount, MaximumBuildingCount: r.Buildings.MaximumBuildingCount}) {
+	if !reflect.DeepEqual(r.Buildings, game.BuildingRules{MaximumEconomyCount: r.Buildings.MaximumEconomyCount, MaximumBuildingCount: r.Buildings.MaximumBuildingCount}) {
 		return r, fmt.Errorf("library rulesets configure only building limits; building stats belong in the library")
 	}
 	if !safeContentName(ref.ID) || !safeContentName(ref.Version) {
@@ -117,6 +118,9 @@ func validateLibrary(l contentLibrary) error {
 		if b.Kind == "economy" && b.Cost == 0 {
 			return fmt.Errorf("economy building requires positive cost")
 		}
+		if err := validateLibraryRoster(r, b); err != nil {
+			return err
+		}
 		seen[b.ID] = true
 	}
 	return nil
@@ -126,7 +130,10 @@ func validLibraryBuilding(b buildingDefinition) bool {
 	if b.Kind != "castle" && b.Kind != "economy" {
 		return game.ValidStructure(b.buildingType())
 	}
-	return len(b.Trains) == 0 && b.Health > 0 && b.Defense >= 0 && b.Vision >= 0 && b.BuildRange >= 0 && b.BuildRange <= 10 && b.Income > 0 && b.Cost >= 0 && b.Attack == 0 && b.Range == 0
+	if b.Kind == "economy" && (len(b.Trains) > 0 || b.Attack != 0 || b.Range != 0) {
+		return false
+	}
+	return game.ValidBuildingAttack(b.Attack, b.Range) && b.Health > 0 && b.Defense >= 0 && b.Vision >= 0 && b.BuildRange >= 0 && b.BuildRange <= 10 && b.Income > 0 && b.Cost >= 0
 }
 
 func applyLibraryBuildings(r game.Ruleset, library contentLibrary, ref *librarySelection) (game.Ruleset, error) {
@@ -143,11 +150,18 @@ func applyLibraryBuildings(r game.Ruleset, library contentLibrary, ref *libraryS
 		return r, fmt.Errorf("library economy must reference an economy building")
 	}
 	// Rulesets own limits; library definitions own building stats.
-	r.Buildings = game.BuildingRules{CastleBuildRange: castle.BuildRange, EconomyBuildRange: economy.BuildRange, CastleTypeID: castle.ID, EconomyTypeID: economy.ID, CastleHealth: castle.Health, CastleDefense: castle.Defense, CastleVision: castle.Vision, CastleIncome: castle.Income, EconomyCost: economy.Cost, EconomyHealth: economy.Health, EconomyDefense: economy.Defense, EconomyVision: economy.Vision, EconomyIncome: economy.Income, MaximumEconomyCount: r.Buildings.MaximumEconomyCount, MaximumBuildingCount: r.Buildings.MaximumBuildingCount}
+	r.Buildings = game.BuildingRules{CastleTrains: append([]string(nil), castle.Trains...), CastleAttack: castle.Attack, CastleRange: castle.Range, CastleBuildRange: castle.BuildRange, EconomyBuildRange: economy.BuildRange, CastleTypeID: castle.ID, EconomyTypeID: economy.ID, CastleHealth: castle.Health, CastleDefense: castle.Defense, CastleVision: castle.Vision, CastleIncome: castle.Income, EconomyCost: economy.Cost, EconomyHealth: economy.Health, EconomyDefense: economy.Defense, EconomyVision: economy.Vision, EconomyIncome: economy.Income, MaximumEconomyCount: r.Buildings.MaximumEconomyCount, MaximumBuildingCount: r.Buildings.MaximumBuildingCount}
 	for _, b := range library.Buildings {
 		if b.Kind != "castle" && b.Kind != "economy" {
 			r.Structures = append(r.Structures, b.buildingType())
 		}
 	}
 	return r, nil
+}
+
+// Check even unselected definitions against the library unit catalog. Castle
+// rosters may overlap production buildings, but cannot repeat a unit internally.
+func validateLibraryRoster(r game.Ruleset, b buildingDefinition) error {
+	r.Buildings.CastleTrains = b.Trains
+	return game.ValidateRuleset(r)
 }

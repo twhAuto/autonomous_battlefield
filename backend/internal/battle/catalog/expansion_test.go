@@ -75,7 +75,7 @@ func TestFrontierCatalogMapAndDeterministicBattle(t *testing.T) {
 	if s.Map.Width != 25 || s.Map.Height != 17 || len(s.Map.EconomySites[0]) != 0 || len(s.Ruleset.Units) != 11 || len(s.Ruleset.Structures) != 7 {
 		t.Fatal("incomplete frontier content")
 	}
-	if s.Ruleset.ContentSource.Version != "5" {
+	if s.Ruleset.ContentSource.Version != "6" {
 		t.Fatal("incorrect content version")
 	}
 	checkFrontierRoutes(t, s.Map)
@@ -137,8 +137,9 @@ func checkCatalogCopiesAreIndependent(t *testing.T, c *Catalog, s game.Scenario)
 	}
 	copy, _ := c.Ruleset("battlefield")
 	copy.Structures[0].Attack = 999
+	copy.Buildings.CastleTrains[0] = "changed"
 	original, _ := c.Ruleset("battlefield")
-	if original.Structures[0].Attack == 999 || snapshot.Ruleset.Structures[0].Attack != 15 {
+	if original.Structures[0].Attack == 999 || snapshot.Ruleset.Structures[0].Attack != 15 || original.Buildings.CastleTrains[0] != "vanguard" {
 		t.Fatal("catalog aliasing")
 	}
 }
@@ -285,12 +286,12 @@ func TestSpecializedCatalogStartingBuildings(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(m.State().Buildings) != 4 {
-			t.Fatal("expected castle and Barracks per faction")
+		if len(m.State().Buildings) != 2 {
+			t.Fatal("expected only a castle per faction")
 		}
 		for _, faction := range m.FactionIDs() {
 			decision, err := m.DecisionSnapshot(faction)
-			if err != nil || len(decision.RecruitmentSources) != 1 {
+			if err != nil || len(decision.RecruitmentSources) != 1 || decision.RecruitmentSources[0] != faction+":castle" {
 				t.Fatal("starting source", decision, err)
 			}
 		}
