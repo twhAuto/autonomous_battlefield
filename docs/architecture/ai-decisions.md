@@ -354,7 +354,7 @@ Codex receives `model_reasoning_effort`; Claude receives `--effort`. The CLI mod
 identifier is the requested identifier; aliases such as `sonnet` can resolve to a
 new provider version and are not an immutable model-version guarantee.
 
-The shipped CLI catalog includes lower-cost choices: Claude `haiku`, OpenAI
+The shipped CLI catalog includes choices for lighter workloads: Claude `haiku`, OpenAI
 `gpt-6-luna` (the published name is GPT-6 Luna), and Antigravity
 `gemini-3.8-flash-low`. Codex Luna offers low/medium/high effort. Haiku uses
 model-default effort because the alias can resolve to a model without effort

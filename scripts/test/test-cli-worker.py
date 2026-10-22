@@ -305,7 +305,7 @@ class ConfigTests(unittest.TestCase):
         for source in [(ROOT / 'backend/config.yaml').read_text(), generated.stdout]:
             profiles = [p for p in yaml.safe_load(source)['ai']['profiles'] if p['runtime'] == 'cli']
             self.assertEqual({p['id']: p['model'] for p in profiles}, settings['models'])
-            self.assertEqual({p['id']: p.get('modelOptions', []) for p in profiles}, settings['modelOptions'])
+            self.assertEqual({p['id']: p['modelOptions'] for p in profiles if 'modelOptions' in p}, settings['modelOptions'])
 
     def test_sync_config_updates_guest_then_the_registered_copy(self):
         directory = tempfile.TemporaryDirectory()
