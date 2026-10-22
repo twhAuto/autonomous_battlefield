@@ -10,7 +10,7 @@ export function BuildingProductionPanel({ state, factionNames, paused, settled }
   const factions = [...new Set(buildings.map((b) => b.factionId))]
   return <section className="building-production" aria-label="Building production">
     <h2>Building production</h2>
-    <p>{settled ? 'Battle ended · final production state.' : paused ? 'Battle paused · training is paused.' : 'AI controls production. Each building trains one unit at a time.'}</p>
+    <p>{battleProductionNote(paused, settled)}</p>
     {factions.map((id) => <section key={id} aria-label={`${factionNames.get(id) ?? id} production`}>
       <h3>{factionNames.get(id) ?? id}</h3>
       <ul className="production-buildings">{buildings.filter((b) => b.factionId === id).map((b) => <li key={b.id}>
@@ -32,7 +32,7 @@ function ContinuousTraining({ building }: Readonly<{ building: BattleBuilding }>
       <progress aria-label={`${typeLabel(current.unitType)} training progress`} max={current.trainingTicks} value={current.trainingTicks - current.remainingTicks} />
       {!production.enabled && <span>Finishing paid unit, then stopping</span>}
       {production.enabled && production.unitType !== current.unitType && <span>Next: {typeLabel(production.unitType!)}</span>}
-    </> : <span>{production.enabled ? production.waitingForGold ? 'Waiting for gold · respects AI reserve' : 'Waiting to start' : 'Production stopped'}</span>}
+    </> : <span>{idleProductionStatus(production)}</span>}
   </div>
 }
 
@@ -48,4 +48,15 @@ export function TrainingQueue({ building }: Readonly<{ building: BattleBuilding 
       {index === 0 && <progress aria-label="Training progress" max={order.trainingTicks} value={order.trainingTicks - order.remainingTicks} />}
     </li>)}</ol>
   </div>
+}
+
+function battleProductionNote(paused: boolean, settled: boolean) {
+  if (settled) return 'Battle ended · final production state.'
+  if (paused) return 'Battle paused · training is paused.'
+  return 'AI controls production. Each building trains one unit at a time.'
+}
+
+function idleProductionStatus(production: NonNullable<BattleBuilding['production']>) {
+  if (!production.enabled) return 'Production stopped'
+  return production.waitingForGold ? 'Waiting for gold · respects AI reserve' : 'Waiting to start'
 }
