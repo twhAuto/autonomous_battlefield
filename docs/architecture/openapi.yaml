@@ -1219,6 +1219,15 @@ components:
                   reasoningEffort:
                     description: Supported effort for the selected model; omission uses the configured option default or provider default.
                     type: string
+        tickDuration:
+          description: Optional Go duration from 100ms to 10s inclusive; omission or null uses the map default. Frozen in the scenario snapshot and digest.
+          type: [string, 'null']
+          example: 500ms
+        decisionIntervalTicks:
+          description: Optional ticks between decisions after the opening; omission or null uses the map default. May exceed tickCount.
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 100
         tickCount:
           description: At most the scenario's `maximumTicks`.
           type: integer

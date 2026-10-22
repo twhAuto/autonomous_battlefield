@@ -426,11 +426,9 @@ describe('App', () => {
     const controllers = await screen.findAllByLabelText('Controller')
     await user.selectOptions(controllers[0], 'gemini-api-balanced')
     expect(screen.queryByRole('option', { name: /Codex local/i })).not.toBeInTheDocument()
-    await user.click(screen.getByText('AI integration status'))
-    expect(screen.getByText('Codex local')).toBeVisible()
-    await user.click(screen.getByRole('button', { name: 'Check availability' }))
-    expect(fetch).toHaveBeenCalledTimes(4)
-    expect(screen.getByRole('button', { name: 'Check availability' })).toBeEnabled()
+    expect(screen.queryByText('AI integration status')).not.toBeInTheDocument()
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(screen.queryByRole('button', { name: 'Check availability' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'DEPLOY COMBATANTS' }))
 
     expect(fetch).toHaveBeenCalledWith('/v1/battles', expect.objectContaining({

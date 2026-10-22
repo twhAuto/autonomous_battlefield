@@ -205,7 +205,13 @@ validate the request and store its initial state; only the engine advances it.
 
 Battle execution is asynchronous from the creation request. Each battle stores a
 complete resolved scenario and initial state, so later edits to factions or catalog
-YAML cannot change an existing run.
+YAML cannot change an existing run. Battle creation accepts optional tick-duration
+(100ms–10s) and decision-interval (1–100 ticks) overrides. The service applies
+validated overrides before computing the scenario digest and initial match;
+workers use the stored timing without changing catalog defaults. Setup exposes
+map-default choices and timing presets, with both combatant slots aligned at the
+top. It omits shared roster/rules explanations and the integration status panel;
+controller options still come from the available profile list.
 
 ### 5.2 Strategy decision window
 

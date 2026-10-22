@@ -24,6 +24,8 @@ export interface CreateBattleInput {
   scenarioId: string
   participants: [BattleParticipantInput, BattleParticipantInput]
   tickCount: number
+  tickDuration?: string
+  decisionIntervalTicks?: number
 }
 
 export interface BattleController { type: 'scripted' | 'model'; profileId?: string; provider?: string; runtime?: string; reasoningEffort?: string; modelIdentifier?: string }

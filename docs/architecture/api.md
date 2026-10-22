@@ -152,6 +152,15 @@ the `id` with different values returns `409`. If the existing battle cannot be
 read to check a retry, the request fails with `500` rather than `409`, so a client
 does not abandon an `id` that may already hold its battle.
 
+Optional `tickDuration` (a Go duration from `100ms` to `10s`) and
+`decisionIntervalTicks` (an integer from 1 to 100) override the map's timing for
+this battle. Omitted or null values retain catalog defaults. Invalid overrides
+return `400`; an explicit zero or empty duration is invalid. Both values are
+frozen in the scenario snapshot and digest, so changed timing on a create retry
+returns `409`; equivalent duration spellings such as `500ms` and `0.5s` match.
+The interval may exceed the requested battle length, leaving only the opening
+decision. The tick duration is a pacing target; AI decision waits can extend it.
+
 Every `decisionIntervalTicks` the engine pauses for each faction's plan, so a
 model-controlled battle can wait at a window; a late plan never replaces the
 fallback the engine chose. See the

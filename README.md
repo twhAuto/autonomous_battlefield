@@ -7,6 +7,7 @@ engine validates and executes them.
 
 - Create reusable factions with editable names, backgrounds and strategic doctrines.
 - Run two-faction castle-siege battles with autonomous combat, economies and fog of war.
+- Choose tick duration and decision interval when staging a battle, or keep map defaults.
 - Inspect live battles, saved results, events and AI decision history.
 - Manage invited players and model access through Player, Developer and Admin roles.
 
