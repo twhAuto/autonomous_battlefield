@@ -29,23 +29,20 @@ validate_agent_concurrency() {
   fi
 }
 validate_agent_concurrency
-# Tested CLI release families. Keep the defaults identical to backend/config.yaml and
-# the deployed profiles; an override changes only this host agent and is untested.
+cli_minimum_version() {
+  local value="${1#codex-cli }" major minor patch
+  IFS=. read -r major minor patch <<<"${value% }"
+  printf '%s.%s.%s' "${major}" "${minor:-0}" "${patch:-0}"
+}
+
+# Local CLIs allow the selected version or newer.
 resolve_version_prefixes() {
-  codex_version_prefix="${HOST_CODEX_VERSION_PREFIX:-codex-cli 0.155.}"
-  claude_version_prefix="${HOST_CLAUDE_VERSION_PREFIX:-2.1.267 }"
-  antigravity_version_prefix="${HOST_ANTIGRAVITY_VERSION_PREFIX:-1.2.}"
-  # The prefix is written into a double-quoted YAML string, so keep it to plain text.
-  local allowed='^[A-Za-z0-9. _-]+$'
-  local name
-  for name in HOST_CODEX_VERSION_PREFIX HOST_CLAUDE_VERSION_PREFIX HOST_ANTIGRAVITY_VERSION_PREFIX; do
-    [[ -n "${!name:-}" ]] || continue
-    if [[ ! "${!name}" =~ ${allowed} ]]; then
-      echo "${name} may contain only letters, digits, spaces, '.', '_' and '-'." >&2
-      exit 2
-    fi
-    echo "Warning: ${name}='${!name}' accepts CLI versions outside the tested release family." >&2
-  done
+  codex_version_prefix='codex-cli 0.155.'
+  claude_version_prefix='2.1.267 '
+  antigravity_version_prefix='1.2.'
+  codex_minimum_version="$(cli_minimum_version "${codex_version_prefix}")"
+  claude_minimum_version="$(cli_minimum_version "${claude_version_prefix}")"
+  antigravity_minimum_version="$(cli_minimum_version "${antigravity_version_prefix}")"
 }
 resolve_version_prefixes
 runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-host-agent.XXXXXX")"
@@ -111,21 +108,48 @@ require_command() {
   fi
 }
 
+accept_cli_version() {
+  local binary="$1" prefix_name="$2"
+  local version prefix="${!prefix_name}" minimum numeric
+  version="$("${binary}" --version 2>/dev/null)" || return 1
+  numeric="${version}"
+  case "${binary}" in
+    codex) [[ "${numeric}" == 'codex-cli '* ]] || return 1; numeric="${numeric#codex-cli }" ;;
+    claude) numeric="${numeric% (Claude Code)}" ;;
+  esac
+  # Stable three-part releases only; reject prereleases and unexpected banners.
+  # Bound components before Bash arithmetic and interpret leading zeros as decimal.
+  [[ "${numeric}" =~ ^([0-9]{1,9})\.([0-9]{1,9})\.([0-9]{1,9})$ ]] || return 1
+  local installed=("${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")
+  minimum="$(cli_minimum_version "${prefix}")"
+  local major minor patch index
+  IFS=. read -r major minor patch <<<"${minimum}"
+  local baseline=("${major}" "${minor:-0}" "${patch:-0}")
+  for index in 0 1 2; do
+    (( 10#${installed[index]} >= 10#${baseline[index]} )) || return 1
+    if (( 10#${installed[index]} > 10#${baseline[index]} )); then
+      break
+    fi
+  done
+  # Pass the accepted version to the worker's existing profile check.
+  printf -v "${prefix_name}" '%s' "${version}"
+}
+
 codex_available() {
   command -v codex >/dev/null 2>&1 \
-    && [[ "$(codex --version 2>/dev/null || true)" == "${codex_version_prefix}"* ]] \
+    && accept_cli_version codex codex_version_prefix \
     && [[ -s "${HOME}/.codex/auth.json" ]]
 }
 
 antigravity_available() {
   command -v agy >/dev/null 2>&1 \
-    && [[ "$(agy --version 2>/dev/null || true)" == "${antigravity_version_prefix}"* ]] \
+    && accept_cli_version agy antigravity_version_prefix \
     && "${runtime_dir}/agent" -check-antigravity-auth >/dev/null 2>&1
 }
 
 claude_available() {
   command -v claude >/dev/null 2>&1 \
-    && [[ "$(claude --version 2>/dev/null || true)" == "${claude_version_prefix}"* ]] \
+    && accept_cli_version claude claude_version_prefix \
     && "${runtime_dir}/agent" -check-claude-auth >/dev/null 2>&1
 }
 
@@ -138,21 +162,21 @@ select_profiles() {
       ;;
     codex)
       if ! codex_available; then
-        echo "Codex CLI matching '${codex_version_prefix}' with an existing 'codex login' is required." >&2
+        echo "Codex CLI ${codex_minimum_version} or newer with a saved login is required. Run codex login." >&2
         exit 1
       fi
       use_codex=1
       ;;
     antigravity|gemini)
       if ! antigravity_available; then
-        echo "Antigravity CLI matching '${antigravity_version_prefix}' with a working saved login is required. Run agy to sign in." >&2
+        echo "Antigravity CLI ${antigravity_minimum_version} or newer with a saved login is required. Run agy to sign in." >&2
         exit 1
       fi
       use_gemini=1
       ;;
     claude)
       if ! claude_available; then
-        echo "Claude Code matching '${claude_version_prefix}' with a saved subscription login is required. Run claude auth login." >&2
+        echo "Claude Code ${claude_minimum_version} or newer with a saved subscription login is required. Run claude auth login." >&2
         exit 1
       fi
       use_claude=1

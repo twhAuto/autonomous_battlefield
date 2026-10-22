@@ -10,7 +10,7 @@ battle configurations keep working.
 
 1. Install Antigravity CLI using the
    [official installation instructions](https://antigravity.google/docs/cli/install/).
-   The configured release family is 1.2.x; check `agy --version`. The host
+   Local use requires stable version 1.2.0 or newer; check `agy --version`. The host
    launcher includes `~/.local/bin` on PATH.
 2. Run `agy` interactively and complete Google sign-in. The worker supports the
    host OS keyring (with an accessible Linux secret service/session D-Bus
@@ -71,7 +71,7 @@ changes, redeploy. For dev, run `./scripts/cd/deploy-local.sh`, then restart
 `./scripts/dev/run-k8s-cli-agent.sh` before starting a new battle.
 
 A `cli_permission` failure means the result reported a denied action; verify the
-installed version against the configured prefix before restarting the bridge.
+installed version and CLI restrictions before restarting the bridge.
 
 For an opt-in real CLI regression check using only synthetic in-memory battle data,
 run from `backend`:

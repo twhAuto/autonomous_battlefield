@@ -10,8 +10,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = (ROOT / 'scripts/dev/run-k8s-cli-agent.sh').read_text()
 FUNCTIONS = '\n'.join(re.findall(r'^\w+\(\) \{\n.*?^\}', SOURCE, re.M | re.S))
-PREFIX_OVERRIDES = ('HOST_CODEX_VERSION_PREFIX', 'HOST_CLAUDE_VERSION_PREFIX', 'HOST_ANTIGRAVITY_VERSION_PREFIX')
-BASE_ENV = {key: value for key, value in os.environ.items() if key not in (*PREFIX_OVERRIDES, 'HOST_CLI_PREFETCH_CONTEXT')}
+BASE_ENV = {key: value for key, value in os.environ.items() if key != 'HOST_CLI_PREFETCH_CONTEXT'}
 
 
 def configured_prefixes(text):
@@ -37,7 +36,7 @@ kube() { printf '%s\\n' "$*" >&2; }
 set_profile_flags false false true
 set_profile_flags false false false
 '''
-            return subprocess.run(['bash', '-ec', script], capture_output=True, text=True,
+            return subprocess.run(['bash', '-euo', 'pipefail', '-c', script], capture_output=True, text=True,
                                   env={**BASE_ENV, **(overrides or {}), 'requested_provider': mode,
                                        'available': available, 'runtime_dir': runtime,
                                        **({'agent_concurrency': concurrency} if concurrency else {})})
@@ -78,7 +77,7 @@ set_profile_flags false false false
     def test_agent_concurrency_rejects_invalid_values(self):
         for value, valid in [('1', True), ('4', True), ('0', False), ('5', False), ('two', False), ('', False)]:
             with self.subTest(value=value):
-                result = subprocess.run(['bash', '-ec', FUNCTIONS + '\nvalidate_agent_concurrency'],
+                result = subprocess.run(['bash', '-euo', 'pipefail', '-c', FUNCTIONS + '\nvalidate_agent_concurrency'],
                                         capture_output=True, text=True, env={**os.environ, 'agent_concurrency': value})
                 self.assertEqual(result.returncode, 0 if valid else 2, result.stderr)
                 if not valid:
@@ -92,36 +91,91 @@ set_profile_flags false false false
         self.assertEqual(configured_prefixes(result.stdout), expected)
         self.assertEqual(set(expected), {'codex-cli', 'claude-cli', 'antigravity-cli'})
 
-    def test_version_prefix_override_warns_and_reaches_config(self):
-        result = self.run_profile('claude', 'claude', overrides={'HOST_CLAUDE_VERSION_PREFIX': '2.1.'})
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('supportedVersionPrefix: "2.1."', result.stdout)
-        self.assertIn("Warning: HOST_CLAUDE_VERSION_PREFIX='2.1.'", result.stderr)
-
-    def test_version_prefix_override_rejects_unsafe_text(self):
-        for value in ['2.1."', '1.2.\\', '0.1\nscope: cluster', '$(id)']:
-            with self.subTest(value=value):
-                result = subprocess.run(['bash', '-ec', FUNCTIONS + '\nresolve_version_prefixes'], capture_output=True, text=True,
-                                        env={**BASE_ENV, 'HOST_CODEX_VERSION_PREFIX': value})
-                self.assertEqual(result.returncode, 2, result.stderr)
-                self.assertIn('HOST_CODEX_VERSION_PREFIX may contain only', result.stderr)
-
-    def test_installed_version_is_checked_against_prefix(self):
-        with tempfile.TemporaryDirectory() as home:
-            bin_dir = Path(home, 'bin')
-            bin_dir.mkdir()
-            fake = bin_dir / 'codex'
-            fake.write_text('#!/usr/bin/env bash\necho "codex-cli 0.163.0"\n')
-            fake.chmod(0o755)
-            Path(home, '.codex').mkdir()
-            Path(home, '.codex/auth.json').write_text('{}')
-            script = FUNCTIONS + '\nresolve_version_prefixes 2>/dev/null\ncodex_available'
-            env = {**BASE_ENV, 'HOME': home, 'PATH': str(bin_dir) + os.pathsep + os.environ['PATH']}
-            for override, accepted in [(None, False), ('codex-cli 0.16', True), ('codex-cli 0.155.', False)]:
-                with self.subTest(override=override):
-                    result = subprocess.run(['bash', '-ec', script], capture_output=True, text=True,
-                                            env={**env, **({'HOST_CODEX_VERSION_PREFIX': override} if override else {})})
+    def test_stable_versions_compare_numerically_and_reject_unknown_banners(self):
+        cases = [
+            ('codex', 'codex-cli 0.155.0', True),
+            ('codex', 'codex-cli 0.159.2', True),
+            ('codex', 'codex-cli 0.1000.0', True),
+            ('codex', 'codex-cli 1.0.0', True),
+            ('codex', 'codex-cli 0.154.99', False),
+            ('codex', 'codex-cli 0.99.99', False),
+            ('codex', 'codex-cli 0.159.2-rc.1', False),
+            ('codex', 'codex-cli 0.155.0-beta', False),
+            ('codex', 'codex-cli 0.159', False),
+            ('codex', 'codex-cli 0.9999999999999999999.0', False),
+            ('codex', 'other-cli 0.159.2', False),
+            ('agy', '1.2.0', True),
+            ('agy', '1.4.5', True),
+            ('agy', '1.10.0', True),
+            ('agy', '2.0.0', True),
+            ('agy', '1.1.99', False),
+            ('agy', '1.4.5-dev', False),
+            ('agy', '1.4.5\nunexpected output', False),
+            ('claude', '2.1.267 (Claude Code)', True),
+            ('claude', '2.1.300 (Claude Code)', True),
+            ('claude', '2.2.0 (Claude Code)', True),
+            ('claude', '3.0.0 (Claude Code)', True),
+            ('claude', '2.1.266 (Claude Code)', False),
+            ('claude', '2.0.999 (Claude Code)', False),
+            ('claude', '2.2.0-beta (Claude Code)', False),
+            ('claude', '2.2.0 (Unknown)', False),
+        ]
+        names = {'codex': 'codex', 'agy': 'antigravity', 'claude': 'claude'}
+        with tempfile.TemporaryDirectory() as runtime:
+            for binary in names:
+                fake = Path(runtime, binary)
+                fake.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$FAKE_VERSION"\nexit "${FAKE_EXIT:-0}"\n')
+                fake.chmod(0o755)
+            for binary, version, accepted in cases:
+                with self.subTest(binary=binary, version=version):
+                    name = names[binary]
+                    script = FUNCTIONS + f'''
+resolve_version_prefixes
+accept_cli_version {binary} {name}_version_prefix
+printf '%s' "${{{name}_version_prefix}}"
+'''
+                    env = {**BASE_ENV, 'PATH': runtime + os.pathsep + os.environ['PATH'], 'FAKE_VERSION': version}
+                    result = subprocess.run(['bash', '-euo', 'pipefail', '-c', script], capture_output=True, text=True, env=env)
                     self.assertEqual(result.returncode == 0, accepted, result.stderr)
+                    if accepted:
+                        self.assertEqual(result.stdout, version)
+                        self.assertEqual(result.stderr, '')
+                        failed = subprocess.run(['bash', '-euo', 'pipefail', '-c', script], capture_output=True, text=True,
+                                                env={**env, 'FAKE_EXIT': '1'})
+                        self.assertNotEqual(failed.returncode, 0)
+
+    def test_newer_versions_reach_config_and_still_require_authentication(self):
+        with tempfile.TemporaryDirectory() as runtime:
+            versions = {'codex': 'codex-cli 0.159.2', 'agy': '1.4.5', 'claude': '2.1.300 (Claude Code)'}
+            for binary, version in versions.items():
+                fake = Path(runtime, binary)
+                fake.write_text(f'#!/usr/bin/env bash\necho "{version}"\n')
+                fake.chmod(0o755)
+            fake_agent = Path(runtime, 'agent')
+            fake_agent.write_text('#!/usr/bin/env bash\nexit "${FAKE_AUTH_EXIT:-0}"\n')
+            fake_agent.chmod(0o755)
+            Path(runtime, '.codex').mkdir()
+            auth = Path(runtime, '.codex/auth.json')
+            auth.write_text('{}')
+            script = FUNCTIONS + '''
+use_codex=0; use_gemini=0; use_claude=0
+health_port=18083; gateway_port=18084; agent_concurrency=2
+resolve_version_prefixes
+select_profiles
+write_agent_config
+cat "$runtime_dir/config.yaml"
+'''
+            env = {**BASE_ENV, 'PATH': runtime + os.pathsep + os.environ['PATH'],
+                   'HOME': runtime, 'runtime_dir': runtime, 'requested_provider': 'auto'}
+            result = subprocess.run(['bash', '-euo', 'pipefail', '-c', script], capture_output=True, text=True, env=env)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(configured_prefixes(result.stdout), {
+                'codex-cli': versions['codex'], 'antigravity-cli': versions['agy'], 'claude-cli': versions['claude']})
+            auth.unlink()
+            failed = subprocess.run(['bash', '-euo', 'pipefail', '-c', script], capture_output=True, text=True,
+                                    env={**env, 'FAKE_AUTH_EXIT': '1'})
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn('No supported authenticated subscription CLI was found', failed.stderr)
 
     def test_production_claude_requires_isolation(self):
         script = r"""
@@ -153,7 +207,7 @@ kill() { return 1; }
 curl() { echo 'unexpected health probe'; return 0; }
 wait_for_endpoint http://127.0.0.1:18084/healthz 123 'AI gateway port-forward' "$1"
 """
-            result = subprocess.run(['bash', '-ec', script, '_', str(log)], capture_output=True, text=True)
+            result = subprocess.run(['bash', '-euo', 'pipefail', '-c', script, '_', str(log)], capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('address already in use', result.stderr)
             self.assertIn('HOST_AI_GATEWAY_PORT', result.stderr)
@@ -173,7 +227,7 @@ curl() {
 }
 wait_for_endpoint http://127.0.0.1:18084/healthz 123 'AI gateway port-forward' "$1"
 """
-            result = subprocess.run(['bash', '-ec', script, '_', str(log)], capture_output=True, text=True)
+            result = subprocess.run(['bash', '-euo', 'pipefail', '-c', script, '_', str(log)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 1)
             self.assertIn('did not become ready', result.stderr)
             self.assertIn('connection refused', result.stderr)
@@ -184,7 +238,7 @@ kill() { return 0; }
 curl() { return 0; }
 wait_for_endpoint http://127.0.0.1:18084/healthz 123 'AI gateway port-forward'
 """
-        subprocess.run(['bash', '-ec', script], check=True)
+        subprocess.run(['bash', '-euo', 'pipefail', '-c', script], check=True)
 
     def test_forward_pid_is_the_kubectl_process_cleanup_stops(self):
         with tempfile.TemporaryDirectory() as runtime:
@@ -202,7 +256,7 @@ wait "$forward_pid" || true
 [[ "$kubectl_pid" == "$forward_pid" ]]
 [[ "$arguments" == "--context fixture --namespace battlefield port-forward --address 127.0.0.1 service/battlefield-ai-gateway 18084:8084" ]]
 """
-            subprocess.run(['bash', '-ec', script, '_', runtime], check=True,
+            subprocess.run(['bash', '-euo', 'pipefail', '-c', script, '_', runtime], check=True,
                            env={**os.environ, 'PATH': runtime + os.pathsep + os.environ['PATH']})
 
     def test_host_wait_allows_both_serial_auth_probes(self):
@@ -215,7 +269,7 @@ curl() { probes=$((probes+1)); [[ "$probes" -ge 160 ]]; }
 wait_for_endpoint http://127.0.0.1:18083/healthz 123 'Host agent' "" 300
 [[ "$probes" == 160 ]]
 """
-        subprocess.run(['bash', '-ec', script], check=True)
+        subprocess.run(['bash', '-euo', 'pipefail', '-c', script], check=True)
 
     def test_unavailable_and_invalid_rejected(self):
         for mode, available in [('claude', ''), ('all', 'codex gemini'), ('auto', ''), ('unknown', 'claude')]:

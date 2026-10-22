@@ -43,6 +43,9 @@ Open `http://battlefield.localhost:8888`. Edit the Git-ignored root `.env` for
 application settings, then rerun the deployment command. The
 [local setup guide](docs/developer/local-setup.md) covers credentials, existing
 cluster registration, optional model controllers and standalone development services.
+For subscription controllers, keep `./scripts/dev/run-k8s-cli-agent.sh auto` running
+in another terminal. Local CLIs allow the [selected stable version](docs/developer/local-kubernetes.md#subscription-clis)
+or newer.
 
 ## Repository layout
 

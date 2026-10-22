@@ -81,34 +81,10 @@ worker is connected:
 
 The helper supports `auto`, `codex`, `antigravity`, `claude`, `both` and `all`
 (`gemini` is a compatibility alias). `both` means Codex plus Antigravity, and
-`all` requires all three CLIs. `auto` selects every available authenticated CLI
-and silently skips one whose version is outside its pinned family
-(`codex-cli 0.155.`, Antigravity `1.2.`, Claude `2.1.267`); name the CLI
-explicitly to see why it was rejected. Keep the pins identical in
-`backend/config.yaml`, `infra/deploy/base/infrastructure/configmap.yaml`,
-`infra/deploy/agent-vm/config.yaml` and `scripts/dev/run-k8s-cli-agent.sh`. Before
-raising a pin, run that CLI's opt-in live decision test, which uses its
-subscription allowance and synthetic data only:
-
-```bash
-cd backend
-PATH="$HOME/.local/bin:$PATH" BATTLEFIELD_LIVE_CODEX=1 go test ./internal/ai/mcpserver -run '^TestCodexLiveDecision$' -count=1 -v
-```
-
-Antigravity and Claude use `BATTLEFIELD_LIVE_AGY` and `BATTLEFIELD_LIVE_CLAUDE`
-with `TestAntigravityLiveDecision` and `TestClaudeLiveDecision`.
-
-To try a newer CLI locally before its pin is raised, override that CLI's prefix
-with `HOST_CODEX_VERSION_PREFIX`, `HOST_CLAUDE_VERSION_PREFIX` or
-`HOST_ANTIGRAVITY_VERSION_PREFIX`. The override applies to both the helper's
-check and the generated host profile, and the helper prints a warning while one
-is set. Prefixes may contain only letters, digits, spaces, `.`, `_` and `-`. The
-override does not change the deployed pins or the agent VM, and the version it
-admits has not passed the live decision test:
-
-```bash
-HOST_CODEX_VERSION_PREFIX='codex-cli 0.16' HOST_CLAUDE_VERSION_PREFIX='2.1.' ./scripts/dev/run-k8s-cli-agent.sh auto
-```
+`all` requires all three CLIs. `auto` selects every available authenticated CLI.
+Local CLIs allow the selected stable version or newer: Codex `0.155.0+`,
+Antigravity `1.2.0+` and Claude `2.1.267+`. A saved login is required.
+Name a CLI explicitly to see why it was rejected.
 
 The host agent runs `HOST_AGENT_CONCURRENCY` decision slots (default `2`, range
 1–4) shared across the enabled CLIs, so both factions of a model-vs-model battle
@@ -120,7 +96,7 @@ all workers:
 HOST_AGENT_CONCURRENCY=4 ./scripts/dev/run-k8s-cli-agent.sh auto
 ```
 
-The helper checks the tested CLI version and the existing host login, forwards
+The helper checks the CLI version policy and the existing host login, forwards
 only the internal AI gateway service to loopback, runs the decision agent on the
 host, and makes the connected profiles selectable through the API while it runs.
 No CLI login directory or provider credential is mounted into the cluster. Keep it

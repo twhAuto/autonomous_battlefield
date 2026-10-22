@@ -89,10 +89,13 @@ The CLI runner starts Codex or Antigravity in a fresh temporary directory with:
   background generation), and file, command and URL actions denied;
 - shell, browser, app, image, plugin, skill and multi-agent features disabled where
   supported, and no approval prompts;
-- the allowlisted profile model passed explicitly, and a validated CLI version
-  family;
+- the allowlisted profile model passed explicitly, and a CLI version matching
+  the worker profile;
 - a subprocess environment without worker control credentials, provider keys or
   personal CLI overrides, and output capture bounded at 4 MiB.
+
+Local CLIs allow the selected stable version or newer; the launcher passes the
+accepted version to the worker profile.
 
 On Linux the worker disables dumpability, so a same-user CLI child cannot read the
 parent's environment or memory, and cancellation kills the CLI's process group.

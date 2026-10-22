@@ -245,6 +245,9 @@ breakdown in `AIDecisionPanel`; `CreateBattlePage.tsx` renders dependent model/e
 selectors. Selection tests, PostgreSQL lifecycle integration tests, and component
 tests cover allowlists, retry identity, terminal timing and missing history.
 
+`scripts/dev/run-k8s-cli-agent.sh` accepts the selected stable CLI version or newer;
+`scripts/test/test-cli-agent.py` covers version checks, login checks and generated profiles.
+
 The CLI prefetch experiment is implemented in `internal/ai/runner/cli.go` and
 covered by `internal/ai/runner/prefetch_test.go`. `ModelProfile.PrefetchContext`
 opts battle sessions into host-fetched inline context; the host dev script exposes
