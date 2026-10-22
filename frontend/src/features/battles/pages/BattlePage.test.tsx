@@ -182,7 +182,7 @@ it('shows the inspector to an admin and withholds it from a player', async () =>
   const user = userEvent.setup()
   const admin = renderBattle('admin')
   await screen.findByRole('progressbar', { name: 'Tick limit used' })
-  expect(screen.getByRole('combobox', { name: 'Perspective' })).toBeInTheDocument()
+  expect(screen.queryByRole('combobox', { name: 'Perspective' })).not.toBeInTheDocument()
   const inspector = screen.getByRole('combobox', { name: 'Inspect' })
   await user.selectOptions(inspector, north)
   expect(screen.getAllByRole('tab').length).toBeGreaterThan(0)
@@ -194,36 +194,6 @@ it('shows the inspector to an admin and withholds it from a player', async () =>
   expect(screen.queryAllByRole('tab')).toHaveLength(0)
 })
 
-it('requests a faction perspective when one is selected', async () => {
-  const user = userEvent.setup()
-  const battle = runningBattle({ status: 'completed' })
-  vi.mocked(getBattle).mockResolvedValue(battle)
-  vi.mocked(getBattleView).mockResolvedValue({
-    map: battle.map, state: battle.state, visiblePositions: [{ x: 1, y: 1 }],
-  })
-  renderBattle()
-  await user.selectOptions(await screen.findByRole('combobox', { name: 'Perspective' }), north)
-  await waitFor(() => expect(getBattleView).toHaveBeenCalledWith(battleID, north, expect.any(AbortSignal)))
-})
-
-it('withholds the full map while a faction view loads or fails and supports retry', async () => {
-  const user = userEvent.setup()
-  let reject!: (error: Error) => void
-  vi.mocked(getBattleView).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail }))
-  renderBattle()
-  await user.selectOptions(await screen.findByRole('combobox', { name: 'Perspective' }), north)
-  expect(screen.queryByRole('region', { name: 'Map navigation' })).not.toBeInTheDocument()
-  expect(screen.getByText('Loading faction view…')).toHaveRole('status')
-  await act(async () => reject(new Error('Offline')))
-  expect(screen.getByRole('alert')).toHaveTextContent('Faction view could not be loaded.')
-  expect(screen.queryByRole('region', { name: 'Map navigation' })).not.toBeInTheDocument()
-  const battle = runningBattle()
-  vi.mocked(getBattleView).mockResolvedValue({ map: battle.map, state: battle.state, visiblePositions: [{ x: 1, y: 1 }] })
-  await user.click(screen.getByRole('button', { name: 'Retry faction view' }))
-  expect(await screen.findByRole('region', { name: 'Map navigation' })).toBeInTheDocument()
-  await user.selectOptions(screen.getByRole('combobox', { name: 'Perspective' }), 'spectator')
-  expect(document.querySelectorAll('.hex-tile--fog')).toHaveLength(0)
-})
 
 it('drops the previous battle and its controls when navigating to another battle', async () => {
   const user = userEvent.setup()

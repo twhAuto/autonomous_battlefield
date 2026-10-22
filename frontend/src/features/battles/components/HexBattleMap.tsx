@@ -1,20 +1,20 @@
-// Renders an interactive SVG hex battlefield from supplied state, including fog of war,
+// Renders an interactive SVG hex battlefield from supplied state, including terrain,
 // entity selection, and map navigation.
 
-import { type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { useMobile } from '../../../shared/hooks/useMobile'
 import type { BattleBuilding, BattleMap, BattleState, BattleUnit, HexPosition } from '../api/battles'
-import { entityIndex, entityName, type EntityNaming } from '../presentation/entities'
+import { entityIndex, entityName, typeLabel, type EntityNaming } from '../presentation/entities'
 import { EntityGlyph, EntityLegend } from './EntityIcon'
 
 type Entity = BattleUnit | BattleBuilding
 const size = 24
 const root3 = Math.sqrt(3)
 
-export function HexBattleMap({ map, state, visiblePositions, factionNames, toolbarControls, placeholder }: Readonly<{
+export function HexBattleMap({ map, state, factionNames, toolbarControls, placeholder }: Readonly<{
   map: BattleMap
   state: BattleState
-  visiblePositions: HexPosition[]
+  visiblePositions?: HexPosition[]
   factionNames: Map<string, string>
   toolbarControls?: ReactNode
   placeholder?: ReactNode
@@ -30,7 +30,6 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
   const [pan, setPan] = useState({ x: 24, y: 30 })
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const visible = useMemo(() => new Set(visiblePositions.map(key)), [visiblePositions])
   const liveUnits = (state.units ?? []).filter((unit) => unit.health > 0)
   const entities: Entity[] = [...(state.buildings ?? []), ...liveUnits]
   const naming = { entities: entityIndex(state), factionNames }
@@ -123,8 +122,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
             {map.rows.map((row, y) => [...row].map((symbol, x) => {
               const position = { x, y }
               const center = centerOf(position)
-              const isVisible = visible.has(key(position))
-              return <polygon key={`${x}:${y}`} points={hexPoints(center.x, center.y)} className={`hex-tile hex-tile--${terrainClass(symbol)} ${isVisible ? '' : 'hex-tile--fog'}`} />
+              return <polygon key={`${x}:${y}`} points={hexPoints(center.x, center.y)} className={`hex-tile hex-tile--${terrainClass(symbol)}${selected && 'income' in selected && selected.health > 0 && hexDistance(selected.position, position) <= (selected.buildRange || 3) ? ' hex-tile--build-range' : ''}`}><title>{terrainDescription(symbol)} · ({x}, {y})</title></polygon>
             }))}
             {liveUnits.filter((unit) => unit.movedFrom).map((unit) => {
               const route = unit.movementPath?.length ? unit.movementPath : [unit.movedFrom!, unit.position]
@@ -168,7 +166,7 @@ export function HexBattleMap({ map, state, visiblePositions, factionNames, toolb
           </g>
         </svg>
       </section>
-      <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-site" /> Build site</span><span><i className="legend-fog" /> Outside vision</span><span><i className="legend-movement" /> Movement (faction color)</span><span><i className="legend-attack" /> Attack (faction color)</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
+      <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-forest" /> Forest · +3 troop defense</span><span><i className="legend-gold" /> Gold deposit · +5 economy income</span><span><i className="legend-movement" /> Movement (faction color)</span><span><i className="legend-attack" /> Attack (faction color)</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
       <EntityLegend types={entities.map((entity) => entity.type)} />
       <EntityDetails selected={selected} naming={naming} />
       </>}
@@ -194,6 +192,7 @@ function EntityDetails({ selected, naming }: Readonly<{ selected?: Entity; namin
     : ''
   return <div className="entity-details" aria-live="polite">
     <strong title={selected.id}>{entityName(selected.id, naming)}</strong>
+    {'income' in selected && <TrainingQueue building={selected} />}
     <span title={targetIDs}>HP {selected.health}/{selected.maxHealth} · ({selected.position.x}, {selected.position.y}){moved}{attacking}{treating} · {entityStats(selected)}</span>
   </div>
 }
@@ -357,12 +356,14 @@ function hexPoints(x: number, y: number) {
 function key(position: HexPosition) { return `${position.x}:${position.y}` }
 function terrainClass(symbol: string) {
   if (symbol === '#') return 'rock'
-  if (symbol === 'b') return 'site'
+  if (symbol === 'f') return 'forest'
+  if (symbol === 'g') return 'gold'
   return 'ground'
 }
 
 function entityStats(entity: Entity) {
-  const stats = [`Defense ${entity.defense}`, `Vision ${entity.vision}`]
+  const stats = [`Defense ${entity.defense}`]
+  if ('income' in entity) stats.push(`Build range ${entity.buildRange || 3}`, `Income ${entity.income}/tick`)
   const minimumRange = 'minimumRange' in entity && entity.minimumRange ? `${entity.minimumRange}–` : ''
   if (entity.attack) stats.push(`Attack ${entity.attack}`, `Range ${minimumRange}${entity.range}`)
   stats.push(...specialistStats(entity))
@@ -377,7 +378,33 @@ function specialistStats(entity: Entity) {
   if ('healAmount' in entity && entity.healAmount) stats.push(`Treat ${entity.healAmount} HP · range ${entity.healRange || 1}`)
   if ('repairAmount' in entity && entity.repairAmount) stats.push(`Repair ${entity.repairAmount} HP · ${entity.repairCost} gold · ${entity.repairCharges ?? 0} charges`)
   if ('armorPiercing' in entity && entity.armorPiercing) stats.push(`Ignore ${entity.armorPiercing} unit defense`)
-  if ('scout' in entity && entity.scout) stats.push('Reconnaissance · retreats from nearby enemies')
+  if ('scout' in entity && entity.scout) stats.push('Skirmisher · retreats from nearby enemies')
   if ('preferredTargetClass' in entity && entity.preferredTargetClass) stats.push(`Prefers ${entity.preferredTargetClass} targets`)
   return stats
+}
+
+function terrainDescription(symbol: string) {
+  if (symbol === 'f') return 'Forest: +3 troop defense; no construction'
+  if (symbol === 'g') return 'Gold deposit: economy buildings earn +5 gold per tick'
+  if (symbol === '#') return 'Rock: impassable'
+  return 'Ground: build within friendly range, leaving one hex between buildings'
+}
+
+function hexDistance(a: HexPosition, b: HexPosition) {
+  const aq = a.x - (a.y - (a.y & 1)) / 2
+  const bq = b.x - (b.y - (b.y & 1)) / 2
+  return (Math.abs(aq - bq) + Math.abs(aq + a.y - bq - b.y) + Math.abs(a.y - b.y)) / 2
+}
+
+function TrainingQueue({ building }: Readonly<{ building: BattleBuilding }>) {
+  if (building.type !== 'castle' && building.type !== 'barracks') return null
+  const queue = building.trainingQueue ?? []
+  if (!queue.length) return <span>Training queue empty</span>
+  return <div className="training-queue">
+    <strong>Training queue · {queue.length}/12</strong>
+    <ol>{queue.map((order, index) => <li key={`${order.unitType}:${order.queuedAtTick}:${index}`}>
+      {typeLabel(order.unitType)} · {index === 0 && building.trainingBlocked ? 'Ready · exit blocked' : `${order.remainingTicks}/${order.trainingTicks} ticks remaining`}
+      {index === 0 && <progress aria-label="Training progress" max={order.trainingTicks} value={order.trainingTicks - order.remainingTicks} />}
+    </li>)}</ol>
+  </div>
 }

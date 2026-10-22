@@ -193,29 +193,26 @@ failed battle, or pausing or resuming a stopped one, returns `409`. Pausing keep
 the current attempt. Stopping releases the engine lease and fails unresolved model
 decisions, so a host subscription agent cannot keep working on the run.
 
-### Battle state and fog of war
+### Battle state and visibility
 
-`GET /v1/battles/{battleId}/factions/{factionId}/view` returns the same terrain
-with one faction's fog of war. Owned entities and both castles are always
-present; other hostile entities appear only inside current friendly vision. The
-view also removes:
+`GET /v1/battles/{battleId}/factions/{factionId}/view` exposes the whole map and
+all entities, actions, movement routes and deaths. It retains only the requesting
+faction's economy/upgrade/production totals in `state.factions`. The deprecated
+`visiblePositions` field contains every map coordinate for older clients.
 
-- attack and heal targets, impact positions and attack outcomes outside current
-  vision;
-- an enemy unit's `movementPath` and `movedFrom` when any step of the route is
-  outside vision;
-- enemy entries in `unitDeaths` at positions the faction cannot currently see.
-
-The spectator state and the full event stream keep everything.
+Buildings expose `buildRange`, optional `trainingQueue`, and `trainingBlocked`.
+Each queue item includes `unitType`, `trainingTicks`, `remainingTicks`,
+`queuedAtTick` and optional `opening`. A blocked ready head has zero remaining
+ticks and remains in place until a free adjacent traversable cell is available.
+`unit_queued` charges for a purchase; `unit_recruited` records actual deployment.
 
 Per-tick fields (`movementPath`, attack targets and outcomes, heal targets and
 `unitDeaths`) describe only the current tick and clear at the next one. A unit
 that disappears has not necessarily died; only `unitDeaths` and the
 `unit_destroyed` event confirm a death. For a `position` attack,
 `attackTargetPosition` is the impact hex and a miss carries no target ID; tracking
-renderers can follow the visible `attackTargetId` instead. Optional fields that
-an older snapshot lacks keep their earlier behavior, so no migration is needed to
-read old battles. The [game rules](../game/game-rules.md) and
+renderers can follow the visible `attackTargetId` instead. Older snapshots remain readable without a database migration. Replaying a scenario
+uses current engine behavior; old content fields retain their saved values. The [game rules](../game/game-rules.md) and
 [Frontier Siege](../game/frontier-siege.md) explain the mechanics behind these
 fields.
 

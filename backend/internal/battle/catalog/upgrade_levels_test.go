@@ -1,7 +1,6 @@
 package catalog
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/gamedata"
@@ -21,10 +20,10 @@ func TestFrontierThreeLevelCatalogAndScriptedBattle(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := legacyScenario(t, "frontier-siege-v2")
-	if len(old.Ruleset.Upgrades) != 3 || old.Ruleset.Upgrades[0].Level != 0 || s.Ruleset.ContentSource.Version != "3" {
+	if len(old.Ruleset.Upgrades) != 3 || old.Ruleset.Upgrades[0].Level != 0 || s.Ruleset.ContentSource.Version != "4" {
 		t.Fatal("legacy snapshot changed")
 	}
-	if !reflect.DeepEqual(old.Map, s.Map) {
+	if old.Map.Width != s.Map.Width || old.Map.Height != s.Map.Height || old.Map.CastleSpawns != s.Map.CastleSpawns {
 		t.Fatal("map geometry changed")
 	}
 	checkThreeLevelCatalog(t, s.Ruleset)

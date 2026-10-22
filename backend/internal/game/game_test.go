@@ -163,7 +163,7 @@ func TestProductionOccursOnlyAtDecisionWindows(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, faction := range transition.State.Factions {
-		if faction.BuildingsBuilt != 2 || faction.UnitsRecruited < 1 {
+		if faction.BuildingsBuilt != 2 || faction.UnitsRecruited != 0 || len(match.castle(faction.FactionID).TrainingQueue) < 1 {
 			t.Fatalf("window production=%#v", faction)
 		}
 	}
@@ -216,7 +216,7 @@ func TestProductionReservePreventsOverspending(t *testing.T) {
 	}
 }
 
-func TestFactionViewHidesEnemiesOutsideVisionButKeepsCastle(t *testing.T) {
+func TestFactionViewShowsAllEnemiesAndCastle(t *testing.T) {
 	match, err := NewMatch("view", testScenario(), 10)
 	if err != nil {
 		t.Fatal(err)
@@ -237,7 +237,7 @@ func TestFactionViewHidesEnemiesOutsideVisionButKeepsCastle(t *testing.T) {
 			enemyCastle = true
 		}
 	}
-	if enemyUnits != 0 || !enemyCastle {
+	if enemyUnits != len(match.state.Units)/2 || !enemyCastle {
 		t.Fatalf("view exposes %d enemy units, castle=%v", enemyUnits, enemyCastle)
 	}
 	if _, err := match.View("outsider"); err == nil {

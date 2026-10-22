@@ -11,7 +11,6 @@ import { useDecisionHistory } from '../hooks/useDecisionHistory'
 import { BattleInspector } from '../components/BattleInspector'
 import { FactionSummaries } from '../components/FactionSummaries'
 import { BattleHeader, BattleStatistics, battleTitleFor, Outcome, BattleControls, BattleState } from '../components/BattlePresentation'
-import { useFactionPerspective } from '../hooks/useFactionPerspective'
 import { useBattleStatus } from '../hooks/useBattleStatus'
 import { useBattleEventStream } from '../hooks/useBattleEventStream'
 
@@ -45,8 +44,6 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
     eventMessage,
     loadEventPage,
   } = useBattleEventStream(id, battle?.attempt, battle?.status)
-  const [perspective, setPerspective] = useState('spectator')
-  const { view: factionView, message: perspectiveMessage, retry: retryPerspective } = useFactionPerspective(id, battle, perspective)
   const { decisions, decisionMessage } = useDecisionHistory(id, battle, permissions.inspect)
   const [controlState, setControlState] = useState<BattleControlState>('idle')
   const [controlMessage, setControlMessage] = useState('')
@@ -91,12 +88,7 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
     state: battle.state,
     visiblePositions: battle.map.rows.flatMap((row, y) => [...row].map((_, x) => ({ x, y }))),
   } : null
-  // Keep the map shell mounted (including its modal and camera), but replace all
-  // map content with feedback until the selected perspective is available.
-  const mapView = perspective === 'spectator' ? spectatorView : factionView
-  const displayView = mapView ?? spectatorView
-  const perspectiveFeedback = perspectiveMessage ? <p role="alert">{perspectiveMessage} <button className="text-button" type="button" onClick={retryPerspective}>Retry faction view</button></p> : <output>Loading faction view…</output>
-  const perspectiveControl = <div className="map-perspective-control"><label htmlFor="perspective">Perspective</label><select id="perspective" value={perspective} onChange={(event) => setPerspective(event.target.value)}><option value="spectator">Spectator · full map</option>{battle.participants.map((participant) => <option key={participant.id} value={participant.id}>{participant.name}</option>)}</select></div>
+  const displayView = spectatorView
 
   return (
     <>
@@ -126,8 +118,6 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
               state={displayView.state}
               visiblePositions={displayView.visiblePositions}
               factionNames={participantNames}
-              toolbarControls={perspectiveControl}
-              placeholder={!mapView ? perspectiveFeedback : undefined}
             />
           }
         </div>

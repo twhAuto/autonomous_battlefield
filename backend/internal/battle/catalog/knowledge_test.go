@@ -86,7 +86,7 @@ func writeYAML(t *testing.T, path string, value any) {
 // factions' recruitment plans to produce the new unit.
 func checkSentinelIsRecruited(t *testing.T, scenario game.Scenario, unitID string) {
 	t.Helper()
-	match, err := game.NewMatch("new-unit", scenario, 20)
+	match, err := game.NewMatch("new-unit", scenario, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,6 +98,11 @@ func checkSentinelIsRecruited(t *testing.T, scenario game.Scenario, unitID strin
 	plan := controller.PlanProposal{Name: "recruit", SpendOrder: []string{"recruitment"}, RecruitmentPriorities: []string{unitID}, ActionWeights: map[string]int64{"attack": 1000}}
 	if _, err := match.AdvanceWithPlans(map[string]controller.PlanProposal{"a": plan, "b": plan}); err != nil {
 		t.Fatal(err)
+	}
+	for i := 0; i < 40 && !match.Finished(); i++ {
+		if _, err := match.AdvanceWithPlans(nil); err != nil {
+			t.Fatal(err)
+		}
 	}
 	found := false
 	for _, u := range match.State().Units {

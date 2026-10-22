@@ -22,8 +22,7 @@
 .hex-tile { stroke: #35414a; stroke-width: 1; }
 .hex-tile--ground { fill: #172127; }
 .hex-tile--rock { fill: #46505a; }
-.hex-tile--site { fill: #273c31; stroke: #62b681; stroke-dasharray: 3 2; }
-.hex-tile--fog { fill: #070a0d; opacity: .82; }
+
 .unit-direction { pointer-events: none; stroke-linecap: round; stroke-width: 2.5; }
 .unit-direction--movement { stroke-width: 1.5; opacity: .7; stroke-dasharray: 4 4; animation: movement-flow 2.4s linear infinite; }
 .unit-direction--attack { stroke-width: 1.5; }
@@ -57,7 +56,7 @@
 .map-legend .legend-movement, .map-legend .legend-attack { border-width: 0 0 2px; height: 0; width: 18px; }
 .map-legend .legend-movement { border-color: #aab3b8; border-style: dashed; }
 .map-legend .legend-attack { border-color: #aab3b8; }
-.legend-ground { background: #172127; }.legend-rock { background: #46505a; }.legend-site { background: #273c31; }.legend-fog { background: #070a0d; }
+.legend-ground { background: #172127; }.legend-rock { background: #46505a; }
 .entity-details, .map-placeholder { flex-wrap: wrap; overflow-wrap: anywhere; align-items: center; border-top: 1px solid #303a42; display: flex; gap: 18px; min-height: 54px; padding: 12px 16px; }
 .entity-details span { color: #9da8b0; }
 
@@ -91,3 +90,12 @@
 .expanded-map .map-viewport { height: max(240px, 60dvh); flex: 1 0 240px; }
 .expanded-map .map-toolbar { flex-wrap: wrap; }
 .expanded-map .entity-details, .expanded-map .map-placeholder { flex-shrink: 0; }
+
+.hex-tile--forest { fill: #234b3a; stroke: #397158; }
+.hex-tile--gold { fill: #655127; stroke: #c8a34c; }
+.hex-tile--build-range { stroke: #87c4ed; stroke-width: 1.8; }
+.legend-forest { background: #234b3a; }
+.legend-gold { background: #c8a34c; }
+.training-queue { width: 100%; }
+.training-queue ol { padding-left: 1.5rem; }
+.training-queue progress { margin-left: .75rem; max-width: 8rem; accent-color: #69d2ff; }

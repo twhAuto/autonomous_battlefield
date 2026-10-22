@@ -30,7 +30,7 @@ it('shows the expanded roster, distinct structures, treatment, and tower attacks
   await user.click(screen.getByRole('button', { name: 'Northwind · Barracks · barracks' }))
   expect(screen.getByText(/Forward recruitment/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Northwind · Watchtower · watchtow' }))
-  expect(screen.getByText(/Vision 6/)).toBeInTheDocument()
+  expect(screen.getByText(/Build range 3/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Northwind · Defense Tower · defense_' }))
   expect(screen.getByText(/attacking Entity · enemy.*Attack 12/)).toBeInTheDocument()
   // The next persisted tick has no transient action indicators.
@@ -69,7 +69,7 @@ it('shows specialist capabilities and distinguishes repair from treatment', asyn
   await user.click(screen.getByRole('button', { name: 'North · Crossbowman · crossbow' }))
   expect(screen.getByText(/Ignore 6 unit defense/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'North · Scout · scout' }))
-  expect(screen.getByText(/Reconnaissance/)).toBeInTheDocument()
+  expect(screen.getByText(/Skirmisher/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'North · Raider Cavalry · raider_c' }))
   expect(screen.getByText(/Prefers siege targets/)).toBeInTheDocument()
 })

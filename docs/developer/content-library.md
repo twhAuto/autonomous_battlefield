@@ -6,7 +6,7 @@ Every live map uses one shared ruleset. The catalog embeds and validates:
   decision interval, fallback and scripted plans.
 - `backend/gamedata/rulesets/battlefield.yaml`: shared starting gold, combat rules,
   building limits and content-library reference.
-- `backend/gamedata/content/core-v3.yaml`: all units, upgrades, buildings and AI knowledge.
+- `backend/gamedata/content/core-v4.yaml`: all units, upgrades, buildings and AI knowledge.
 - `backend/gamedata/scenarios/*.yaml`: map ID and geometry only.
 
 The shipped maps are `castle-siege` (15×11) and `frontier-siege` (25×17). The
@@ -19,12 +19,13 @@ roster and upgrade catalog. The faction-rulesets endpoint returns one ruleset.
 
 Maps no longer support content restrictions, timing, controller plans or ruleset
 references. Those fields are rejected by strict YAML decoding. A new map file
-contains only `id` and `map`, with authored rows, dimensions, castle spawns and
-construction sites. Copy a shipped map and edit its geometry; all current and
+contains only `id` and `map`, with authored rows, dimensions, castle spawns. Copy a shipped map and edit its geometry; all current and
 future shared units and upgrades are available automatically.
 
-The compact map's two sites naturally constrain construction more than Frontier's
-six sites. Shared building caps and costs are unchanged by map selection.
+Use `.` for ground, `#` for rocks, `f` for forest and `g` for gold deposits.
+Construction sites are computed from building ranges and occupancy; map selection
+does not change the shared caps or costs. Legacy `b` pads and `economySites` remain
+readable for saved scenarios but do not restrict new construction.
 
 ## Versioning and runtime behavior
 
@@ -43,11 +44,15 @@ plans fail catalog startup.
 Battle creation freezes the complete resolved scenario, including map, rules,
 content digest, timing and plans, in PostgreSQL JSON. Workers replay that snapshot;
 there is no lookup of a historical live catalog and no database migration. Older
-v1/v2 authored files exist only under catalog test fixtures, where the original
-v1 transition hash remains pinned. Existing saved battles are unaffected.
+v1/v2 authored files exist only under catalog test fixtures, where their original content/snapshot hashes remain pinned. Gameplay transition
+hashes now reflect open-map, range and queue rules; persisted historical state is
+not rewritten, but replay uses the current engine.
 
 ## Expanded content fields
 
+Unit definitions include `trainingTicks` (1–1000; missing legacy values use 1).
+Building definitions include `buildRange` (1–10; missing legacy values use 3).
+The active v4 library replaces Watchtower with Outpost and removes vision stats.
 Unit definitions support class, minimum attack range, building priority/damage,
 class bonuses and healing. Specialist fields are `scout`, `preferredTargetClass`,
 `armorPiercing`, `repairAmount`, `repairCost`, `repairCharges` and `healRange`.

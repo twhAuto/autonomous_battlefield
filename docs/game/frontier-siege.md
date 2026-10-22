@@ -6,50 +6,46 @@ structures, map, and balance probes.
 
 Choose **Frontier Siege** (`frontier-siege`) or **Castle Siege** (`castle-siege`)
 in **Stage a battle → Combat map**. Both use the same current roster, buildings,
-upgrades, starting gold and battle timing. Only geometry and construction sites
-differ. The compact Castle Siege layout is 15×11 with two sites per side;
-Frontier Siege is 25×17 with six. Historical saved battles keep their frozen rules,
-without exposing separate old rulesets in the live catalog.
+upgrades, starting gold and battle timing. Castle Siege is 15×11; Frontier Siege
+is 25×17. Both maps have forests and gold deposits, with no reserved building pads.
+Historical saved battles retain their frozen content definitions.
 
 ## Map and economy
 
-The authored 25×17 map has castles at `(2,8)` and `(22,8)`, a wide central
-approach, and upper/lower flanking routes around broken stone ridges. Stone blocks
-movement, but retains the existing rules for ranged fire and vision: neither uses
-line-of-sight occlusion. Siege therefore depends on distance and screening troops.
+The authored Frontier map has castles at `(2,8)` and `(22,8)`, a central approach,
+and flanking routes around stone ridges. Rocks block movement but ranged attacks
+use distance without line-of-sight occlusion. Every map cell and entity is visible.
+Forests grant troops +3 defense after armor piercing and prohibit construction;
+gold deposits add +5 income per tick to an economy building placed on them.
 
-Each side has six reserved construction sites. The left side has rear sites at
-`(4,3)` and `(4,13)`, midfield sites at `(7,5)` and `(7,11)`, and forward sites at
-`(9,7)` and `(9,9)`. The right side mirrors these across the map. Every site has
-at least four adjacent ground cells for melee siege and recruitment access.
-
-Each faction starts with 220 gold and may maintain **four non-castle buildings**,
-including at most **two economy buildings**. All structure types compete for the
-same sites and gold. Destroyed buildings release their site and capacity. There
-is no selling, demolition, capture, or repair. Watchtower vision is immediate;
-tower attacks and Barracks recruitment activate on the tick after construction.
+Each faction starts with 220 gold and may maintain **eight non-castle buildings**,
+including at most **two economy buildings**. Construction requires unoccupied
+buildable terrain within a living active friendly building's range. Every pair of
+buildings must be at least two hexes apart, including opposing structures.
+Destroyed buildings release capacity and stop granting range. Economy activates
+immediately; other structures activate next tick. Engineers can repair non-castle
+buildings. There is no selling, demolition, or capture.
 
 ## Unit roster
 
-| Unit | Gold | HP | Attack | Defense | Speed | Move | Range | Vision | Capability |
+| Unit | Gold | HP | Attack | Defense | Speed | Move | Range | Training ticks | Capability |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | --- |
-| Vanguard | 35 | 70 | 9 | 7 | 4 | 1 | 1 | 2 | Durable infantry |
-| Striker | 25 | 42 | 14 | 3 | 8 | 2 | 1 | 3 | Mobile assault |
-| Ranger | 30 | 30 | 11 | 2 | 6 | 1 | 3 | 4 | Ranged infantry |
-| Catapult | 70 | 40 | 4 | 1 | 2 | 1 | 2–5 | 5 | +20 attack vs buildings |
-| Battering Ram | 65 | 125 | 3 | 5 | 1 | 1 | 1 | 2 | +25 attack vs buildings |
+| Vanguard | 35 | 70 | 9 | 7 | 4 | 1 | 1 | 4 | Durable infantry |
+| Striker | 25 | 42 | 14 | 3 | 8 | 2 | 1 | 2 | Mobile assault |
+| Ranger | 30 | 30 | 11 | 2 | 6 | 1 | 3 | 3 | Ranged infantry |
+| Catapult | 70 | 40 | 4 | 1 | 2 | 1 | 2–5 | 8 | +20 attack vs buildings |
+| Battering Ram | 65 | 125 | 3 | 5 | 1 | 1 | 1 | 7 | +25 attack vs buildings |
 | Pikeman | 30 | 55 | 8 | 4 | 4 | 1 | 1 | 3 | +12 attack vs mobile troops |
-| Herbalist | 40 | 25 | 0 | 1 | 3 | 1 | Adjacent | 3 | Treat one soldier for 3 HP |
-| Scout | 25 | 22 | 3 | 0 | 10 | 3 | 1 | 7 | Retreats from nearby enemies |
-| Raider Cavalry | 45 | 45 | 9 | 2 | 9 | 3 | 1 | 4 | Prefers siege; +16 attack vs siege |
-| Engineer | 50 | 28 | 0 | 1 | 3 | 1 | Adjacent | 3 | Repairs 4 HP; 2 gold; 12 charges |
-| Crossbowman | 40 | 28 | 13 | 1 | 3 | 1 | 2 | 3 | Ignores up to 6 unit defense |
+| Herbalist | 40 | 25 | 0 | 1 | 3 | 1 | Adjacent | 4 | Treat one soldier for 3 HP |
+| Scout | 25 | 22 | 3 | 0 | 10 | 3 | 1 | 2 | Retreats from nearby enemies |
+| Raider Cavalry | 45 | 45 | 9 | 2 | 9 | 3 | 1 | 5 | Prefers siege; +16 attack vs siege |
+| Engineer | 50 | 28 | 0 | 1 | 3 | 1 | Adjacent | 5 | Repairs 4 HP; 2 gold; 12 charges |
+| Crossbowman | 40 | 28 | 13 | 1 | 3 | 1 | 2 | 4 | Ignores up to 6 unit defense |
 
 Speed determines turn order, not distance or attacks per tick. Units move or act
 once per tick; recruits first act on the following tick. Bonus attack is added
 before defense and the existing faction tactic modifiers. There is no splash
-damage or friendly fire. A faction's view omits action targets outside its
-vision; spectators see every action.
+damage or friendly fire. Both factions see every battlefield action. Faction economic totals remain private.
 
 Siege units prioritize defense towers, other non-castle buildings, then castles.
 Within a priority group they approach by distance and stable ID, trying the next
@@ -81,12 +77,12 @@ does not grant attack or improve healing; Plating still adds defense.
 
 ### Scouts, cavalry, crossbows and repairs
 
-Scouts reveal a wide area with vision 7. Before fighting, they attempt to retreat
-from enemies within two hexes to a reachable position farther from visible
+Scouts are fast skirmishers. Before fighting, they attempt to retreat
+from enemies within two hexes to a reachable position farther from
 threats. If retreat is impossible, they use normal combat behavior.
 
 Raider Cavalry prioritizes siege among targets in attack range, otherwise pursues
-a reachable siege unit within its own vision before advancing normally. Pikemen's
+a reachable siege unit anywhere on the map before advancing normally. Pikemen's
 anti-mobile bonus applies to both cavalry and Scouts. Crossbowmen subtract up to
 6 from an enemy unit's defense before normal damage/tactic calculations; this
 penetration never applies to buildings.
@@ -101,32 +97,33 @@ for that turn. Arsenal never grants Engineers an attack; Plating still applies.
 
 ## Structures and orders
 
-| Structure | Gold | HP | Defense | Vision | Function |
+| Structure | Gold | HP | Defense | Build range | Function |
 | --- | ---: | ---: | ---: | ---: | --- |
-| Economy | 50 | 60 | 2 | 2 | +10 income each tick |
-| Defense Tower | 80 | 130 | 4 | 4 | Attack 12, range 3, targets enemy units |
-| Watchtower | 30 | 50 | 1 | 6 | Information without income or attacks |
+| Economy | 50 | 60 | 2 | 3 | +10 income/tick; +15 on a deposit |
+| Defense Tower | 80 | 130 | 4 | 3 | Attack 12, range 3, targets enemy units |
+| Outpost | 30 | 50 | 1 | 5 | Extends construction territory |
 | Forward Barracks | 90 | 100 | 3 | 3 | Additional recruitment source |
 
 Towers act in stable building-ID order before unit turns. They use the same
 distance/health/ID target tie breakers and faction damage modifiers as ordinary
 attacks, award normal loot, and cannot attack buildings.
 
-A plan can order any structure on one of its free construction sites and recruit
-from the castle or from a ready Forward Barracks. Construction is unavailable at
-the opening. A faction may request at most six units per production window across
-all sources. Barracks place recruits on adjacent free ground with the same costs
-and reserve. An unavailable source or a blocked Barracks order is skipped without
-substitution; a blocked castle spawn or the first unaffordable order stops the
-remaining purchases. Unfilled purchases are not queued. The plan fields are
-the `StrategyPlan` schema in the [OpenAPI contract](../architecture/openapi.yaml).
+A plan orders any legal structure on a current legal coordinate and queues troops
+at the castle or a ready Barracks. Construction is unavailable at opening. A faction
+may purchase at most six troops per window across all sources, subject to gold and
+a 12-order queue limit per source. Each building trains one head at a time using the
+roster's training ticks. Blocked exits hold ready units and all followers until an
+adjacent traversable hex becomes free. Orders are paid once; destroyed sources lose
+their queue without refunds. Troops act on the tick after deployment. See
+[construction and training](game-rules.md#construction-and-training) for timing and
+[OpenAPI](../architecture/openapi.yaml) for fields.
 
-Shared scripted plans build rear income, a forward tower, and a forward Barracks
-as budget permits, then use an active forward source for reinforcements when the map has enough sites. They
-recruit mixed siege/infantry/support forces. Explicit model orders take precedence
-over these defaults. Watchtowers are an alternative strategic purchase available
-to model plans. Opening fallback buys combat units in deterministic round-robin
-order and excludes Herbalists and Engineers; explicit opening orders may buy them.
+Scripted construction favors deposits, then locations nearer the opponent, choosing
+separated sites for income, towers and Barracks. An active forward Barracks becomes
+the default recruitment source. Explicit orders take precedence; Outposts are an
+alternative purchase for wider expansion. Opening fallback buys combat units in
+deterministic round-robin order and excludes Herbalists and Engineers; explicit
+orders may buy them.
 
 ## Three-level upgrades
 
@@ -183,10 +180,7 @@ spawn arrangement, routing, and castle pressure matter alongside damage bonuses.
 Run `go test ./internal/battle/catalog -run TestFrontier -v` from `backend` to
 repeat the probes. Tune balance through a new content version.
 
-`TestFrontierUpgradeBalanceProbe` compares equal 170-gold openings with the current shared rules:
-two Vanguards and one Ranger plus Arsenal II or Plating II, against four
-Vanguards and one Ranger. With no later purchases, Arsenal II wins from the
-left but loses from the right; Plating II loses in both orientations. These
-limited probes demonstrate the troop-versus-upgrade tradeoff and side sensitivity,
-not tournament balance. `TestFrontierThreeLevelCatalogAndScriptedBattle` also
-checks the shared catalog and scripted upgrade purchases.
+`TestFrontierUpgradeBalanceProbe` compares equal-budget openings under the current
+shared rules. Training time and new terrain affect outcomes, so historical results
+are not claims about the current balance. `TestFrontierThreeLevelCatalogAndScriptedBattle`
+also checks shared content and scripted upgrade purchases.

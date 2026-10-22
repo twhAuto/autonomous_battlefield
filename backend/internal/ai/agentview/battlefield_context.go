@@ -76,6 +76,10 @@ func compactBattlefieldView(view game.View) map[string]json.RawMessage {
 		result = withProfiles
 	}
 
+	if len(view.VisiblePositions) == view.Map.Width*view.Map.Height {
+		delete(result, "visiblePositions")
+		return result
+	}
 	rows := compactVisibleRows(view.VisiblePositions)
 	encoded := contextJSON(rows)
 	if len(encoded)+len("visibleRowRanges") < len(result["visiblePositions"])+len("visiblePositions") {

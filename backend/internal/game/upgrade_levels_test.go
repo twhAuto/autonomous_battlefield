@@ -180,7 +180,7 @@ func TestThreeLevelEffectsOnExistingAndFutureEntities(t *testing.T) {
 	if reason != "" || second.Income != 16 {
 		t.Fatalf("future income %+v %s", second, reason)
 	}
-	if *m.castle(id) != castle || m.incomeFor(id, castle.Income) != 42 {
+	if !reflect.DeepEqual(*m.castle(id), castle) || m.incomeFor(id, castle.Income) != 42 {
 		t.Fatal("castle changed or income incorrect")
 	}
 }

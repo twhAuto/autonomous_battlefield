@@ -17,17 +17,11 @@ func TestConfirmedDeathsAndVisibility(t *testing.T) {
 	if m.state.UnitDeaths[0].Position != dead.Position {
 		t.Fatal("death records alias live state")
 	}
-	hidden := visibleState(m.state, "faction-a", map[Position]bool{})
-	if len(hidden.UnitDeaths) != 0 {
-		t.Fatal("hidden death leaked")
-	}
-	shown := visibleState(m.state, "faction-a", map[Position]bool{dead.Position: true})
-	if len(shown.UnitDeaths) != 1 {
-		t.Fatal("visible death missing")
-	}
-	own := visibleState(m.state, "faction-b", map[Position]bool{})
-	if len(own.UnitDeaths) != 1 {
-		t.Fatal("own death missing")
+	for _, id := range []string{"faction-a", "faction-b"} {
+		view, err := m.View(id)
+		if err != nil || len(view.State.UnitDeaths) != 1 {
+			t.Fatal("open map lost death", err)
+		}
 	}
 	m.clearUnitActions()
 	if len(m.state.UnitDeaths) != 0 {

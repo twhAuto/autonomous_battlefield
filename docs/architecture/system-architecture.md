@@ -112,9 +112,9 @@ clickjacking. The CSP deliberately leaves script and connect sources open becaus
 
 ### Battle inspection
 
-The browser presents a battle from one selected perspective, but the perspective
-selector controls presentation only: server-side role and ownership checks remain
-the access boundary, and faction views are projected on the server. Participant
+The browser presents the complete battlefield without a perspective selector.
+Server-side role and ownership checks remain the access boundary. Faction views
+expose all entities while keeping opponents' aggregate economy totals private. Participant
 background and doctrine come from the persisted scenario, not the editable faction
 directory. The presentation accepts multiple participants; battle creation,
 scenario spawns, opponent selection, and castle-destruction victory rules still
@@ -123,7 +123,7 @@ require two factions.
 See the [frontend guide](../developer/frontend-guide.md#battle-data-lifecycle) for
 request lifecycle, inspector state, map layout, and animation;
 the [OpenAPI contract](openapi.yaml) for state, event and context fields, and the
-[HTTP API reference](api.md#battle-state-and-fog-of-war) for fog-of-war projection;
+[HTTP API reference](api.md#battle-state-and-visibility) for state projection;
 [saved decision context](ai-decisions.md#saved-decision-context) for what the
 inspector can show of a model's input; and [game rules](../game/game-rules.md) for
 movement and attack resolution.
@@ -131,7 +131,11 @@ movement and attack resolution.
 ### Deterministic simulation boundary
 
 The simulation receives a resolved scenario and optional plans, then produces
-deterministic state transitions and events. It does not access PostgreSQL, HTTP,
+deterministic state transitions and events. Construction uses living building ranges
+and spacing; per-building FIFO training advances between economy and tactics.
+Training progress is serialized in building state; clone operations isolate queue
+slices. Forest cover affects troop damage and deposits affect economy income.
+It does not access PostgreSQL, HTTP,
 environment variables, or model providers.
 
 The engine owns orchestration around this pure domain: leases, retries, pauses,

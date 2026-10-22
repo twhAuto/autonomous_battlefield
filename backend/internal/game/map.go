@@ -20,6 +20,10 @@ func (m Map) TerrainAt(position Position) string {
 	switch m.Rows[position.Y][position.X] {
 	case '.':
 		return TerrainGround
+	case 'f':
+		return TerrainForest
+	case 'g':
+		return TerrainGold
 	case '#':
 		return TerrainRock
 	case 'b':
@@ -29,7 +33,16 @@ func (m Map) TerrainAt(position Position) string {
 	}
 }
 
-func (m Map) Traversable(position Position) bool { return m.TerrainAt(position) == TerrainGround }
+func (m Map) Traversable(position Position) bool {
+	terrain := m.TerrainAt(position)
+	return terrain == TerrainGround || terrain == TerrainForest || terrain == TerrainGold || terrain == TerrainBuildSite
+}
+
+// Forests provide cover to troops; clear ground and deposits permit construction.
+func (m Map) Buildable(position Position) bool {
+	terrain := m.TerrainAt(position)
+	return terrain == TerrainGround || terrain == TerrainGold || terrain == TerrainBuildSite
+}
 
 func Neighbors(position Position) []Position {
 	var offsets [6]Position
@@ -119,6 +132,9 @@ func validateCastleSpawns(value Map, seen map[Position]string) error {
 }
 
 func validateEconomySites(value Map, buildSites map[Position]bool, seen map[Position]string) error {
+	if len(value.EconomySites[0]) == 0 && len(value.EconomySites[1]) == 0 {
+		return nil
+	}
 	for slot, sites := range value.EconomySites {
 		if len(sites) < 2 || len(sites) > 8 || len(sites) != len(value.EconomySites[1-slot]) {
 			return fmt.Errorf("%w: slot %d requires two to eight paired construction sites", ErrInvalidScenario, slot)

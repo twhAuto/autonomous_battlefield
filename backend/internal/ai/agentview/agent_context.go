@@ -15,12 +15,13 @@ import (
 )
 
 type UnitOverview struct {
-	ID         string `json:"id"`
-	Cost       int64  `json:"cost"`
-	Class      string `json:"class,omitempty"`
-	Role       string `json:"role,omitempty"`
-	Strengths  string `json:"strengths,omitempty"`
-	Weaknesses string `json:"weaknesses,omitempty"`
+	TrainingTicks uint64 `json:"trainingTicks"`
+	ID            string `json:"id"`
+	Cost          int64  `json:"cost"`
+	Class         string `json:"class,omitempty"`
+	Role          string `json:"role,omitempty"`
+	Strengths     string `json:"strengths,omitempty"`
+	Weaknesses    string `json:"weaknesses,omitempty"`
 }
 
 type Knowledge struct {
@@ -100,7 +101,7 @@ func visibleAndLegalUnitIDs(c ai.DecisionContext) map[string]bool {
 }
 
 func unitOverview(stats game.UnitType, card *game.UnitCard) UnitOverview {
-	result := UnitOverview{ID: stats.ID, Cost: stats.Cost, Class: stats.Class}
+	result := UnitOverview{TrainingTicks: max(uint64(1), stats.TrainingTicks), ID: stats.ID, Cost: stats.Cost, Class: stats.Class}
 	if card != nil {
 		result.Role = card.Role
 		result.Strengths = card.Strengths

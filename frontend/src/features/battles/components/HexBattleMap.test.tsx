@@ -4,7 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { HexBattleMap } from './HexBattleMap'
-import type { BattleMap } from '../api/battles'
+import type { BattleMap, BattleState } from '../api/battles'
 
 const map: BattleMap = {
   kind: 'authored' as const, width: 2, height: 2, rows: ['..', 'b#'],
@@ -79,7 +79,7 @@ describe('HexBattleMap', () => {
     const battlefield = container.querySelector('svg')!
     expect(battlefield).toHaveAccessibleName(/2 by 2 pointy-top hex battlefield/i)
     expect(container.querySelectorAll('.hex-tile')).toHaveLength(4)
-    expect(container.querySelectorAll('.hex-tile--fog')).toHaveLength(2)
+    expect(container.querySelectorAll('.hex-tile--fog')).toHaveLength(0)
     expect(container.querySelectorAll('.unit-direction--movement')).toHaveLength(1)
     expect(container.querySelectorAll('.unit-direction--attack')).toHaveLength(1)
     expect(screen.getByText(/Northwind · Ranger #1 attacked Northwind · Castle/)).toBeInTheDocument()
@@ -373,4 +373,33 @@ it('keeps each faction\'s color when a perspective lists only its own faction', 
   for (const own of ['a', 'b']) {
     expect(colorsFor([{ ...state.factions[0], factionId: own }])).toEqual(spectator)
   }
+})
+
+it('shows special terrain, building reach and a sequential training queue without fog', async () => {
+  const user = userEvent.setup()
+  const specialMap = { ...map, rows: ['fg', '..'] }
+  const trainingState: BattleState = structuredClone(state)
+  trainingState.buildings![0] = { ...trainingState.buildings![0], buildRange: 4, trainingQueue: [
+    { unitType: 'ranger', remainingTicks: 1, trainingTicks: 3, queuedAtTick: 0 },
+    { unitType: 'catapult', remainingTicks: 8, trainingTicks: 8, queuedAtTick: 0 },
+  ] }
+  const props = { map: specialMap, state: trainingState, factionNames: new Map([['a', 'Northwind']]) }
+  const { container, rerender } = render(<HexBattleMap {...props} />)
+  expect(container.querySelectorAll('.hex-tile--fog')).toHaveLength(0)
+  expect(container.querySelectorAll('.hex-tile--forest')).toHaveLength(1)
+  expect(container.querySelectorAll('.hex-tile--gold')).toHaveLength(1)
+  expect(screen.getByText(/Forest: \+3 troop defense/)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Northwind · Castle' }))
+  expect(container.querySelectorAll('.hex-tile--build-range')).toHaveLength(4)
+  expect(screen.getByText(/Build range 4/)).toBeInTheDocument()
+  expect(screen.getByText('Ranger · 1/3 ticks remaining')).toBeInTheDocument()
+  expect(screen.getByText('Catapult · 8/8 ticks remaining')).toBeInTheDocument()
+  expect(screen.getByRole('progressbar', { name: 'Training progress' })).toHaveAttribute('value', '2')
+  trainingState.buildings![0].trainingQueue![0].remainingTicks = 0
+  trainingState.buildings![0].trainingBlocked = true
+  rerender(<HexBattleMap {...props} />)
+  expect(screen.getByText('Ranger · Ready · exit blocked')).toBeInTheDocument()
+  trainingState.buildings![0].trainingQueue = []
+  rerender(<HexBattleMap {...props} />)
+  expect(screen.getByText('Training queue empty')).toBeInTheDocument()
 })

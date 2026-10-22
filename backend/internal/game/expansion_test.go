@@ -218,8 +218,8 @@ func TestTypedConstructionLimitsAndRebuilding(t *testing.T) {
 		t.Fatal("economy bypassed shared cap")
 	}
 	orders[0].Position = controller.Coordinate{X: 12, Y: 2}
-	if validateProductionPlan(m.scenario, m.scenario.Factions[0], plan) == nil {
-		t.Fatal("enemy construction site accepted")
+	if ConstructionReason(m.scenario.Map, m.state, "faction-a", Position{12, 2}) != "outside_build_range" {
+		t.Fatal("out-of-range construction accepted")
 	}
 	orders[0].Position, orders[0].BuildingType = controller.Coordinate{X: 2, Y: 2}, "missing"
 	if validateProductionPlan(m.scenario, m.scenario.Factions[0], plan) == nil {
@@ -261,40 +261,36 @@ func TestTowersDelayKillAndDoNotAttackBuildings(t *testing.T) {
 
 func TestBarracksRecruitmentSourcesAndSharedLimit(t *testing.T) {
 	m := expansionMatch(t)
-	b, _ := m.buildStructureAt("faction-a", BuildingBarracks, Position{2, 2}, 0)
+	b, reason := m.buildStructureAt("faction-a", BuildingBarracks, Position{2, 2}, 0)
+	if reason != "" {
+		t.Fatal(reason)
+	}
 	orders := []controller.RecruitmentOrder{{UnitType: "ranger", Count: 1, SourceBuildingID: b.ID}, {UnitType: "striker", Count: 1}}
 	plan := controller.PlanProposal{Name: "reinforce", RecruitmentOrders: &orders}
 	events := m.runRecruitment("faction-a", plan)
-	if events[0].Data["reason"] != "source_unavailable" || len(m.state.Units) != 1 || m.state.Units[0].Type != "striker" {
-		t.Fatal("inactive barracks not skipped")
+	if events[0].Data["reason"] != "source_unavailable" || len(m.castle("faction-a").TrainingQueue) != 1 {
+		t.Fatal("inactive source not skipped")
 	}
-	m.state.Units = nil
 	m.state.Tick++
+	m.runTraining()
+	m.state.Units = nil
 	m.runRecruitment("faction-a", plan)
+	m.state.Tick++
+	m.runTraining()
 	if len(m.state.Units) != 2 || HexDistance(m.state.Units[0].Position, b.Position) != 1 || HexDistance(m.state.Units[1].Position, m.castle("faction-a").Position) != 1 {
-		t.Fatal("incorrect recruitment origins")
+		t.Fatal("incorrect deployment origins")
 	}
 	if m.recruitmentSource("faction-b", b.ID) != nil {
-		t.Fatal("enemy barracks usable")
+		t.Fatal("enemy source usable")
 	}
-	m.state.Units = nil
-	for _, p := range Neighbors(b.Position) {
-		m.state.Units = append(m.state.Units, soldier("blocker", "faction-a", p))
-	}
-	before := len(m.state.Units)
-	events = m.runRecruitment("faction-a", plan)
-	if events[0].Data["reason"] != "no_spawn" || len(m.state.Units) != before+1 {
-		t.Fatal("blocked barracks did not skip to castle order")
-	}
-	m.state.Units = nil
-	m.state.Buildings[len(m.state.Buildings)-1].Health = 0
+	m.recruitmentSource("faction-a", b.ID).Health = 0
 	events = m.runRecruitment("faction-a", plan)
 	if events[0].Data["reason"] != "source_unavailable" {
-		t.Fatal("destroyed barracks usable")
+		t.Fatal("destroyed source usable")
 	}
 	orders[0].Count, orders[1].Count = 4, 3
 	if controller.ValidatePlanProposal(plan, []string{ActionAttack}) == nil {
-		t.Fatal("shared six-unit cap ignored")
+		t.Fatal("shared six-unit limit ignored")
 	}
 }
 
@@ -305,8 +301,8 @@ func TestExpansionVisibilityAndSnapshotRoundTrip(t *testing.T) {
 	m.state.Units[0].HealTargetID, m.state.Units[0].HealTargetPosition = "hidden", &far
 	m.state.Buildings[0].AttackTargetID, m.state.Buildings[0].AttackTargetPosition = "hidden", &far
 	view, _ := m.View("faction-a")
-	if view.State.Units[0].HealTargetID != "" || view.State.Buildings[0].AttackTargetPosition != nil {
-		t.Fatal("actions leak hidden positions")
+	if view.State.Units[0].HealTargetID != "hidden" || view.State.Buildings[0].AttackTargetPosition == nil {
+		t.Fatal("open view lost action positions")
 	}
 	if m.state.Units[0].HealTargetPosition == nil {
 		t.Fatal("view mutated authoritative state")
@@ -314,8 +310,8 @@ func TestExpansionVisibilityAndSnapshotRoundTrip(t *testing.T) {
 	before, _ := m.View("faction-a")
 	b, _ := m.buildStructureAt("faction-a", BuildingWatchtower, Position{2, 2}, 0)
 	after, _ := m.View("faction-a")
-	if b.Vision != 6 || len(after.VisiblePositions) <= len(before.VisiblePositions) {
-		t.Fatal("watchtower did not expand vision")
+	if b.BuildRange != DefaultBuildRange || len(after.VisiblePositions) != len(before.VisiblePositions) {
+		t.Fatal("legacy structure changed open map visibility")
 	}
 	data, _ := json.Marshal(m.Scenario())
 	var restored Scenario

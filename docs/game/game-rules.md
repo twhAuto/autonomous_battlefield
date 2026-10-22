@@ -11,7 +11,7 @@ documents for detail instead of repeating them:
 [Frontier Siege](frontier-siege.md) for the roster, structures, and map, and the
 [system architecture](../architecture/system-architecture.md#52-strategy-decision-window) for how
 decisions are requested, stored, and timed out. All maps use the shared
-`backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v3.yaml`
+`backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v4.yaml`
 roster and `backend/gamedata/battlefield.yaml` timing/controller configuration.
 Scenario files contain only map identity and geometry.
 
@@ -28,10 +28,13 @@ A battle is created with a requested tick count (at most the scenario's
 
 ## Map and starting state
 
-- An authored 25×17 hex map with one castle per faction and six reserved
-  construction sites per side. Stone blocks movement but not ranged fire or vision.
-- Each castle has 300 HP, defense 8, vision 4, and earns 10 gold per tick.
-- Each faction starts with 220 gold and no units until its opening purchase.
+- Authored 15×11 and 25×17 hex maps with one castle per faction. All terrain,
+  entities, routes and actions are visible. Rocks block movement, not ranged fire.
+- Forests (`f`) are traversable and grant troops +3 defense after armor piercing;
+  buildings cannot occupy them. Gold deposits (`g`) are traversable and grant an
+  economy building on that hex +5 income per tick. Ground (`.`) has no bonus.
+- Each castle has 300 HP, defense 8, construction range 4, and earns 10 gold per tick.
+- Each faction starts with 220 gold; opening purchases enter the castle training queue.
 
 ## Resources and upgrades
 
@@ -67,8 +70,8 @@ upgrade levels. See the [specialization table](frontier-siege.md#specializations
 ## Units and buildings
 
 Eleven unit types (Vanguard, Striker, Ranger, Catapult, Battering Ram, Pikeman,
-Herbalist, Scout, Raider Cavalry, Engineer and Crossbowman) and four structures (Economy, Defense Tower, Watchtower, Forward
-Barracks). Stats, costs, capabilities, targeting, and building limits (four
+Herbalist, Scout, Raider Cavalry, Engineer and Crossbowman) and four structures (Economy, Defense Tower, Outpost, Forward
+Barracks). Stats, costs, capabilities, targeting, and building limits (eight
 non-castle buildings, at most two economy) are in
 [Frontier Siege](frontier-siege.md#unit-roster).
 
@@ -76,28 +79,54 @@ non-castle buildings, at most two economy) are in
 
 Factions purchase troops, buildings and upgrades at **production windows**.
 Engineers may also spend 2 gold on a repair action during a normal unit turn,
-respecting the active plan's reserve. Each Engineer has 12 lifetime repair charges. All purchases for a window
-happen at once; there is no persistent production queue, and unfilled purchases
-are not carried forward.
+respecting the active plan's reserve. Each Engineer has 12 lifetime repair charges. Buildings and upgrades are purchased immediately. Troops are paid for once and
+enter a persistent per-building training queue; rejected purchases are not queued.
 
 - **Opening** (once, before tick 1): each faction spends its starting gold on
   upgrades and recruitment only. Every newly created battle has an opening; battles
   stored before doctrine snapshots (older `SnapshotVersion`) start without one. There is no income
-  and no construction. Opening recruits first act at tick 1.
+  and no construction. Opening training begins at tick 1; a deployed troop first acts on the following tick.
 - **Regular windows** run on the transition into every tick that is a multiple of
   `decisionIntervalTicks` (10: ticks 10, 20, 30, ...), as long as that tick does not
   exceed the requested tick count. A window exactly at the limit still runs.
 - Per window, a faction may request **at most six units** in total across all
   recruitment sources. Spending follows the plan's `spendOrder` (upgrades,
   construction, recruitment) and never goes below the plan's `reserveGold`.
-  Recruitment stops at the first unaffordable order or blocked castle spawn.
+  Recruitment stops at the first unaffordable unit. Unavailable or full sources
+  skip that order; a blocked exit does not prevent purchasing queue space.
+
+## Construction and training
+
+Every living, active friendly building grants `buildRange` in hex distance.
+Construct on unoccupied ground or a deposit within that range. All living buildings,
+including enemy buildings and castles, must be at least two hexes apart: one
+intervening hex. New structures are checked in order, so an earlier purchase can
+block a later one. Illegal placements spend no gold. Destroyed buildings grant no
+range and release their hex and building capacity. Economy buildings activate
+immediately; other new structures activate next tick.
+
+Castles and Barracks each hold up to 12 paid training orders. Only the first order
+advances, beginning on a tick after purchase. Each unit has its own `trainingTicks`
+in the content library. A blocked ready head has `remainingTicks: 0` and the source
+sets `trainingBlocked: true`; followers retain their full duration. A freed exit is
+checked at the next training phase. Deployment uses all six adjacent traversable
+hexes, in deterministic coordinate order, and never stacks units. The next order
+starts on the following tick. Destroying the source discards its queue without
+refund. Opening/later unit counters increment on deployment, not purchase.
+
+Queues and progress are part of persisted `Building` state, cloned with snapshots.
+The engine resumes a live paused match in memory; a new worker attempt replays its
+saved scenario and decisions, rebuilding the same queue progression. Legacy unit
+definitions without training times default to one tick and building ranges to 3.
+Historical stored states retain their data; replaying them uses the current engine
+rules, so pre-change transition hashes are not preserved.
 
 ## Plan submission
 
 At each window the engine asks every faction's controller for a plan, based on a
-frozen, fog-of-war observation of that faction's view. It shows enemy units and
-buildings only inside the faction's vision (enemy castles are always shown) and
-never the opponent's gold, upgrades or production totals:
+frozen observation of the entire battlefield, including enemy troops, structures,
+and training queues. The opponent's gold, owned upgrades and aggregate production
+totals remain private:
 
 - A **scripted** controller submits its deterministic plan immediately.
 - A **model** controller receives the observation through MCP tools and must
@@ -125,11 +154,14 @@ Each tick transition runs these steps in order (`AdvanceWithPlans` in
 2. **Advance the tick** and clear the previous tick's action markers.
 3. **Economy**, per faction in scenario faction order: collect income; at a
    window, also spend in the plan's `spendOrder`.
-4. **Tactics**, per faction: attack or defend, comparing weighted projected power
+4. **Training**, in building-ID order: advance only the queue head, then release
+   at most one unit per building onto the first free traversable neighbor. A ready
+   head waits when all exits are blocked, holding up followers without another charge.
+5. **Tactics**, per faction: attack or defend, comparing weighted projected power
    (the sum of attack of living non-support units) for each side, plus target bonuses.
-5. **Aim position attacks:** Catapults fix their target hex before anyone moves.
-6. **Towers** act in stable building-ID order.
-7. **Units** act one at a time, fastest first, ties broken by unit ID. Speed sets
+6. **Aim position attacks:** Catapults fix their target hex before anyone moves.
+7. **Towers** act in stable building-ID order.
+8. **Units** act one at a time, fastest first, ties broken by unit ID. Speed sets
    turn order, not distance or attacks per tick. Units recruited this tick wait
    until the next. Each unit either treats (Herbalist), retreats (units with a
    minimum range, i.e. Catapults, when an enemy is adjacent and an escape route
@@ -141,11 +173,12 @@ Each tick transition runs these steps in order (`AdvanceWithPlans` in
    structures in priority order and Herbalists follow allied soldiers (see
    [Frontier Siege](frontier-siege.md#unit-roster)). Routes never cross occupied
    or impassable hexes.
-8. **Completion check** (see Winning).
+9. **Completion check** (see Winning).
 
 ## Combat
 
-Damage = (attack + any class or siege bonus) - target defense, never below 0.
+Damage = (attack + any class or siege bonus) - effective target defense, never below 0.
+For troops, armor piercing reduces base defense first, then forest cover adds 3. Buildings receive no forest cover.
 Then:
 
 - an attacker whose faction is **defending** deals 80% of that;
@@ -173,9 +206,8 @@ These are not supported. Adding any of them changes the rules above:
 
 - more than two factions (creation, spawns, movement, and winner rules assume two);
 - direct player commands, formations, or unit control during a battle;
-- line-of-sight occlusion for ranged fire or vision;
+- line-of-sight occlusion for ranged fire;
 - splash damage, friendly fire, or randomness of any kind;
-- selling, demolition, capture, or repair of buildings;
-- persistent production queues between windows;
+- selling, demolition, capture, or castle repair;
 - real-time push updates (clients poll);
 - seeded or procedurally generated maps.
