@@ -101,3 +101,13 @@ it('labels API usage as summed model calls', () => {
   expect(screen.getByText('Model calls').nextElementSibling).toHaveTextContent('3')
   expect(screen.queryByRole('link', { name: 'View in Langfuse' })).not.toBeInTheDocument()
 })
+
+it('shows persistent selections and off orders with source names', () => {
+  show({ productionOrders: [{ buildingId: 'a:castle', unitType: 'vanguard', enabled: true }, { buildingId: 'a:barracks:1', enabled: false }] })
+  expect(screen.getByText('Production').nextElementSibling).toHaveTextContent('Castle: On (Vanguard) · Barracks #1: Off')
+})
+
+it('shows an empty production decision as unchanged settings', () => {
+  show({ productionOrders: [] })
+  expect(screen.getByText('Keep current settings')).toBeVisible()
+})

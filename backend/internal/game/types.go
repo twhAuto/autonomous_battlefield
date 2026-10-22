@@ -19,12 +19,16 @@ const (
 	TerrainRock      = "rock"
 	TerrainBuildSite = "build_site" // Deprecated authored symbol, retained for saved maps.
 
-	BuildingCastle     = "castle"
-	BuildingEconomy    = "economy"
-	BuildingTower      = "defense_tower"
-	BuildingWatchtower = "watchtower" // Legacy snapshots only.
-	BuildingOutpost    = "outpost"
-	BuildingBarracks   = "barracks"
+	BuildingCastle        = "castle"
+	BuildingEconomy       = "economy"
+	BuildingTower         = "defense_tower"
+	BuildingWatchtower    = "watchtower" // Legacy snapshots only.
+	BuildingOutpost       = "outpost"
+	BuildingBarracks      = "barracks"
+	BuildingArcheryRange  = "archery_range"
+	BuildingStables       = "stables"
+	BuildingSiegeWorkshop = "siege_workshop"
+	BuildingInfirmary     = "infirmary"
 )
 
 var (
@@ -100,21 +104,24 @@ type Upgrade struct {
 }
 
 type BuildingRules struct {
-	CastleBuildRange     int    `json:"castleBuildRange,omitempty" yaml:"castleBuildRange,omitempty"`
-	EconomyBuildRange    int    `json:"economyBuildRange,omitempty" yaml:"economyBuildRange,omitempty"`
-	MaximumBuildingCount int    `json:"maximumBuildingCount,omitempty" yaml:"maximumBuildingCount,omitempty"`
-	CastleTypeID         string `json:"castleTypeId,omitempty" yaml:"castleTypeId,omitempty"`
-	EconomyTypeID        string `json:"economyTypeId,omitempty" yaml:"economyTypeId,omitempty"`
-	CastleHealth         int64  `json:"castleHealth" yaml:"castleHealth"`
-	CastleDefense        int64  `json:"castleDefense" yaml:"castleDefense"`
-	CastleVision         int    `json:"castleVision" yaml:"castleVision"`
-	CastleIncome         int64  `json:"castleIncome" yaml:"castleIncome"`
-	EconomyCost          int64  `json:"economyCost" yaml:"economyCost"`
-	EconomyHealth        int64  `json:"economyHealth" yaml:"economyHealth"`
-	EconomyDefense       int64  `json:"economyDefense" yaml:"economyDefense"`
-	EconomyVision        int    `json:"economyVision" yaml:"economyVision"`
-	EconomyIncome        int64  `json:"economyIncome" yaml:"economyIncome"`
-	MaximumEconomyCount  int    `json:"maximumEconomyCount" yaml:"maximumEconomyCount"`
+	CastleTrains         []string `json:"castleTrains,omitempty" yaml:"castleTrains,omitempty"`
+	CastleAttack         int64    `json:"castleAttack,omitempty" yaml:"castleAttack,omitempty"`
+	CastleRange          int      `json:"castleRange,omitempty" yaml:"castleRange,omitempty"`
+	CastleBuildRange     int      `json:"castleBuildRange,omitempty" yaml:"castleBuildRange,omitempty"`
+	EconomyBuildRange    int      `json:"economyBuildRange,omitempty" yaml:"economyBuildRange,omitempty"`
+	MaximumBuildingCount int      `json:"maximumBuildingCount,omitempty" yaml:"maximumBuildingCount,omitempty"`
+	CastleTypeID         string   `json:"castleTypeId,omitempty" yaml:"castleTypeId,omitempty"`
+	EconomyTypeID        string   `json:"economyTypeId,omitempty" yaml:"economyTypeId,omitempty"`
+	CastleHealth         int64    `json:"castleHealth" yaml:"castleHealth"`
+	CastleDefense        int64    `json:"castleDefense" yaml:"castleDefense"`
+	CastleVision         int      `json:"castleVision" yaml:"castleVision"`
+	CastleIncome         int64    `json:"castleIncome" yaml:"castleIncome"`
+	EconomyCost          int64    `json:"economyCost" yaml:"economyCost"`
+	EconomyHealth        int64    `json:"economyHealth" yaml:"economyHealth"`
+	EconomyDefense       int64    `json:"economyDefense" yaml:"economyDefense"`
+	EconomyVision        int      `json:"economyVision" yaml:"economyVision"`
+	EconomyIncome        int64    `json:"economyIncome" yaml:"economyIncome"`
+	MaximumEconomyCount  int      `json:"maximumEconomyCount" yaml:"maximumEconomyCount"`
 }
 
 type CombatRules struct {
@@ -143,17 +150,18 @@ type ContentSource struct {
 }
 
 type Ruleset struct {
-	Structures    []BuildingType  `json:"structures,omitempty" yaml:"structures,omitempty"`
-	ContentSource *ContentSource  `json:"contentSource,omitempty" yaml:"contentSource,omitempty"`
-	Knowledge     *RulesKnowledge `json:"knowledge,omitempty" yaml:"knowledge,omitempty"`
-	ID            string          `json:"id" yaml:"id"`
-	Version       string          `json:"version" yaml:"version"`
-	DesignBudget  int64           `json:"designBudget,omitempty" yaml:"designBudget"`
-	StartingGold  int64           `json:"startingGold" yaml:"startingGold"`
-	Units         []UnitType      `json:"units" yaml:"units"`
-	Upgrades      []Upgrade       `json:"upgrades" yaml:"upgrades"`
-	Buildings     BuildingRules   `json:"buildings" yaml:"buildings"`
-	Combat        CombatRules     `json:"combat" yaml:"combat"`
+	ContinuousProduction bool            `json:"continuousProduction,omitempty" yaml:"continuousProduction,omitempty"`
+	Structures           []BuildingType  `json:"structures,omitempty" yaml:"structures,omitempty"`
+	ContentSource        *ContentSource  `json:"contentSource,omitempty" yaml:"contentSource,omitempty"`
+	Knowledge            *RulesKnowledge `json:"knowledge,omitempty" yaml:"knowledge,omitempty"`
+	ID                   string          `json:"id" yaml:"id"`
+	Version              string          `json:"version" yaml:"version"`
+	DesignBudget         int64           `json:"designBudget,omitempty" yaml:"designBudget"`
+	StartingGold         int64           `json:"startingGold" yaml:"startingGold"`
+	Units                []UnitType      `json:"units" yaml:"units"`
+	Upgrades             []Upgrade       `json:"upgrades" yaml:"upgrades"`
+	Buildings            BuildingRules   `json:"buildings" yaml:"buildings"`
+	Combat               CombatRules     `json:"combat" yaml:"combat"`
 }
 
 type UnitSelection struct {
@@ -246,16 +254,17 @@ type Unit struct {
 // BuildingType describes additional constructible structures; legacy castle/economy
 // stats remain in BuildingRules for persisted v1 scenarios.
 type BuildingType struct {
-	BuildRange int    `json:"buildRange,omitempty" yaml:"buildRange,omitempty"`
-	ID         string `json:"id" yaml:"id"`
-	Kind       string `json:"kind" yaml:"kind"`
-	Health     int64  `json:"health" yaml:"health"`
-	Defense    int64  `json:"defense" yaml:"defense"`
-	Vision     int    `json:"vision" yaml:"vision"`
-	Income     int64  `json:"income" yaml:"income"`
-	Cost       int64  `json:"cost" yaml:"cost"`
-	Attack     int64  `json:"attack,omitempty" yaml:"attack,omitempty"`
-	Range      int    `json:"range,omitempty" yaml:"range,omitempty"`
+	Trains     []string `json:"trains,omitempty" yaml:"trains,omitempty"`
+	BuildRange int      `json:"buildRange,omitempty" yaml:"buildRange,omitempty"`
+	ID         string   `json:"id" yaml:"id"`
+	Kind       string   `json:"kind" yaml:"kind"`
+	Health     int64    `json:"health" yaml:"health"`
+	Defense    int64    `json:"defense" yaml:"defense"`
+	Vision     int      `json:"vision" yaml:"vision"`
+	Income     int64    `json:"income" yaml:"income"`
+	Cost       int64    `json:"cost" yaml:"cost"`
+	Attack     int64    `json:"attack,omitempty" yaml:"attack,omitempty"`
+	Range      int      `json:"range,omitempty" yaml:"range,omitempty"`
 }
 
 // TrainingOrder is paid when queued; only the first order advances.
@@ -267,10 +276,20 @@ type TrainingOrder struct {
 	Opening        bool   `json:"opening,omitempty"`
 }
 
+// BuildingProduction persists an AI-selected repeat order independently of strategy windows.
+type BuildingProduction struct {
+	Configured     bool   `json:"configured,omitempty"`
+	UnitType       string `json:"unitType,omitempty"`
+	Enabled        bool   `json:"enabled"`
+	WaitingForGold bool   `json:"waitingForGold,omitempty"`
+}
+
 type Building struct {
-	BuildRange      int             `json:"buildRange"`
-	TrainingQueue   []TrainingOrder `json:"trainingQueue,omitempty"`
-	TrainingBlocked bool            `json:"trainingBlocked,omitempty"`
+	Production      *BuildingProduction `json:"production,omitempty"`
+	Trains          []string            `json:"trains,omitempty"`
+	BuildRange      int                 `json:"buildRange"`
+	TrainingQueue   []TrainingOrder     `json:"trainingQueue,omitempty"`
+	TrainingBlocked bool                `json:"trainingBlocked,omitempty"`
 
 	AttackOutcome        string    `json:"attackOutcome,omitempty"`
 	Attack               int64     `json:"attack,omitempty"`
@@ -367,9 +386,10 @@ type Transition struct {
 // DecisionSnapshot is the bounded, faction-visible state frozen immediately
 // before a production window. It contains no mutation capability.
 type DecisionSnapshot struct {
-	LegalBuildings     []BuildingType `json:"legalBuildings,omitempty"`
-	RecruitmentSources []string       `json:"recruitmentSources,omitempty"`
-	MaximumBuildings   int            `json:"maximumBuildings,omitempty"`
+	ContinuousProduction bool           `json:"continuousProduction,omitempty"`
+	LegalBuildings       []BuildingType `json:"legalBuildings,omitempty"`
+	RecruitmentSources   []string       `json:"recruitmentSources,omitempty"`
+	MaximumBuildings     int            `json:"maximumBuildings,omitempty"`
 
 	FactionName     string                  `json:"factionName,omitempty"`
 	Background      string                  `json:"background,omitempty"`

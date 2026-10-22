@@ -20,7 +20,7 @@ func TestFrontierThreeLevelCatalogAndScriptedBattle(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := legacyScenario(t, "frontier-siege-v2")
-	if len(old.Ruleset.Upgrades) != 3 || old.Ruleset.Upgrades[0].Level != 0 || s.Ruleset.ContentSource.Version != "4" {
+	if len(old.Ruleset.Upgrades) != 3 || old.Ruleset.Upgrades[0].Level != 0 || s.Ruleset.ContentSource.Version != "7" {
 		t.Fatal("legacy snapshot changed")
 	}
 	if old.Map.Width != s.Map.Width || old.Map.Height != s.Map.Height || old.Map.CastleSpawns != s.Map.CastleSpawns {
@@ -86,6 +86,8 @@ func checkThreeLevelCatalog(t *testing.T, ruleset game.Ruleset) {
 
 func runUpgradeBalanceProbe(t *testing.T, s game.Scenario, track string, mirror bool) {
 	t.Helper()
+	// This historical equal-budget probe intentionally measures batch purchases.
+	s.Ruleset.ContinuousProduction = false
 	upgraded := []controller.RecruitmentOrder{{UnitType: "vanguard", Count: 2}, {UnitType: "ranger", Count: 1}}
 	army := []controller.RecruitmentOrder{{UnitType: "vanguard", Count: 4}, {UnitType: "ranger", Count: 1}}
 	if probeCost(game.UnitTypesByID(s.Ruleset), upgraded)+70 != probeCost(game.UnitTypesByID(s.Ruleset), army) {

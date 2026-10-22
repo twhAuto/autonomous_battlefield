@@ -54,11 +54,11 @@ func TestLibraryEditsLeaveSnapshotsUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	var library contentLibrary
-	if err = decodeOne(os.DirFS(dir), "content/core-v4.yaml", &library); err != nil {
+	if err = decodeOne(os.DirFS(dir), "content/core-v7.yaml", &library); err != nil {
 		t.Fatal(err)
 	}
 	library.Units[0].Cost++
-	writeYAML(t, filepath.Join(dir, "content/core-v4.yaml"), library)
+	writeYAML(t, filepath.Join(dir, "content/core-v7.yaml"), library)
 	next, err := LoadCatalog(os.DirFS(dir))
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +115,7 @@ func TestLibraryReferencesAndValidation(t *testing.T) {
 		}
 	}
 	var library contentLibrary
-	if err := decodeOne(gamedata.Files, "content/core-v4.yaml", &library); err != nil {
+	if err := decodeOne(gamedata.Files, "content/core-v7.yaml", &library); err != nil {
 		t.Fatal(err)
 	}
 	for _, change := range []func(*contentLibrary){
@@ -181,5 +181,41 @@ func checkSharedDecisionContent(t *testing.T, s game.Scenario) {
 	}
 	if !reflect.DeepEqual(snapshot.LegalUnits, s.Ruleset.Units) || !reflect.DeepEqual(snapshot.LegalUpgrades, s.Ruleset.Upgrades) {
 		t.Fatal("AI missing shared content")
+	}
+}
+
+func TestCastleLibraryCapabilities(t *testing.T) {
+	var library contentLibrary
+	if err := decodeOne(gamedata.Files, "content/core-v7.yaml", &library); err != nil {
+		t.Fatal(err)
+	}
+	for _, mutate := range []func(*buildingDefinition){
+		func(b *buildingDefinition) { b.Attack = -1 },
+		func(b *buildingDefinition) { b.Range = 0 },
+		func(b *buildingDefinition) { b.Trains = []string{"missing"} },
+		func(b *buildingDefinition) { b.Trains = []string{"vanguard", "vanguard"} },
+		func(b *buildingDefinition) { b.Kind = "economy" },
+	} {
+		copy := library
+		copy.Buildings = append([]buildingDefinition(nil), library.Buildings...)
+		mutate(&copy.Buildings[0])
+		if validateLibrary(copy) == nil {
+			t.Fatal("invalid castle capabilities accepted", copy.Buildings[0])
+		}
+	}
+}
+
+func TestCatalogCastleSharesBarracksRosterAndTowerAttack(t *testing.T) {
+	c, err := LoadCatalog(gamedata.Files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules, _ := c.Ruleset("battlefield")
+	castle := rules.Buildings
+	if !reflect.DeepEqual(castle.CastleTrains, []string{"vanguard", "striker", "pikeman"}) || castle.CastleAttack != 15 || castle.CastleRange != 3 {
+		t.Fatal("castle capabilities", castle)
+	}
+	if castle.CastleHealth != 300 || castle.CastleDefense != 8 || castle.CastleIncome != 10 || castle.CastleBuildRange != 4 {
+		t.Fatal("castle baseline changed", castle)
 	}
 }

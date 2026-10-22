@@ -242,12 +242,13 @@ func isYAML(name string) bool {
 }
 
 func cloneRuleset(value game.Ruleset) game.Ruleset {
+	value.Buildings.CastleTrains = append([]string(nil), value.Buildings.CastleTrains...)
 	value.Knowledge = game.CloneKnowledge(value.Knowledge)
 	if value.ContentSource != nil {
 		copy := *value.ContentSource
 		value.ContentSource = &copy
 	}
-	value.Structures = append([]game.BuildingType(nil), value.Structures...)
+	value.Structures = game.CloneBuildingTypes(value.Structures)
 	value.Units = append([]game.UnitType(nil), value.Units...)
 	value.Upgrades = append([]game.Upgrade{}, value.Upgrades...)
 	return value

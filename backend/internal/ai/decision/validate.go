@@ -5,6 +5,7 @@ package decision
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
@@ -31,9 +32,13 @@ func ValidateSubmission(record ai.DecisionRecord, submission ai.PlanSubmission) 
 		issues = append(issues, ai.ValidationIssue{Field: "plan.upgradeOrders", Code: "invalid_order", Message: err.Error()})
 	}
 	if record.Observation.Opening {
-		issues = append(issues, validateOpening(submission.Plan)...)
+		issues = append(issues, validateOpeningForMode(submission.Plan, record.Observation.ContinuousProduction)...)
+	}
+	if err := game.ValidateBuildingProduction(record.Observation.ContinuousProduction, record.FactionID, record.Observation.View.State, legal.RecruitmentSources, submission.Plan); err != nil {
+		issues = append(issues, ai.ValidationIssue{Field: "plan.productionOrders", Code: "unsupported", Message: err.Error()})
 	}
 	issues = append(issues, validateRecruitment(legal, submission.Plan)...)
+	issues = append(issues, validateTrainingSources(record.Observation, submission.Plan)...)
 	issues = append(issues, validateConstruction(legal, record.Observation.Opening, submission.Plan)...)
 	return issues
 }
@@ -57,7 +62,7 @@ func isModelRuntime(runtime string) bool {
 }
 
 func isEmptyPlan(plan controller.PlanProposal) bool {
-	return len(plan.ActionWeights) == 0 && plan.RecruitmentOrders == nil && len(plan.RecruitmentPriorities) == 0 &&
+	return plan.ProductionOrders == nil && len(plan.ActionWeights) == 0 && plan.RecruitmentOrders == nil && len(plan.RecruitmentPriorities) == 0 &&
 		len(plan.ConstructionPriorities) == 0 && plan.ConstructionOrders == nil && len(plan.UpgradeOrders) == 0 && plan.ReserveGold == 0
 }
 
@@ -76,9 +81,13 @@ func validateUpgrades(legal ai.LegalChoices, plan controller.PlanProposal) []ai.
 }
 
 // The opening requires an explicit purchase decision and has no construction.
-func validateOpening(plan controller.PlanProposal) []ai.ValidationIssue {
+
+func validateOpeningForMode(plan controller.PlanProposal, continuous bool) []ai.ValidationIssue {
 	var issues []ai.ValidationIssue
-	if plan.RecruitmentOrders == nil {
+	if continuous && plan.ProductionOrders == nil {
+		issues = append(issues, ai.ValidationIssue{Field: "plan.productionOrders", Code: "required", Message: "Opening requires explicit production orders; use [] to leave production off."})
+	}
+	if !continuous && plan.RecruitmentOrders == nil {
 		issues = append(issues, ai.ValidationIssue{Field: fieldRecruitmentOrders, Code: "required", Message: "Opening requires explicit orders; use [] to buy nothing."})
 	}
 	for _, kind := range plan.SpendOrder {
@@ -140,4 +149,36 @@ func validateConstruction(legal ai.LegalChoices, opening bool, plan controller.P
 		}
 	}
 	return issues
+}
+
+// Production capabilities are checked against the frozen observation, not live
+// state. Older stored contexts without authored rosters retain their old rules.
+func validateTrainingSources(context ai.DecisionContext, plan controller.PlanProposal) []ai.ValidationIssue {
+	specialized := false
+	for _, b := range context.Legal.Buildings {
+		specialized = specialized || len(b.Trains) > 0
+	}
+	for _, b := range context.View.State.Buildings {
+		specialized = specialized || len(b.Trains) > 0
+	}
+	if !specialized || plan.RecruitmentOrders == nil {
+		return nil
+	}
+	var issues []ai.ValidationIssue
+	for _, order := range *plan.RecruitmentOrders {
+		if !hasCompatibleTrainingSource(context, order) {
+			issues = append(issues, ai.ValidationIssue{Field: fieldRecruitmentOrders, Code: "unsupported", Message: fmt.Sprintf("no legal source can train %q; choose an active building whose trains list includes this unit", order.UnitType)})
+		}
+	}
+	return issues
+}
+
+func hasCompatibleTrainingSource(context ai.DecisionContext, order controller.RecruitmentOrder) bool {
+	for _, b := range context.View.State.Buildings {
+		matchesID := order.SourceBuildingID == "" || order.SourceBuildingID == b.ID
+		if matchesID && slices.Contains(context.Legal.RecruitmentSources, b.ID) && slices.Contains(b.Trains, order.UnitType) {
+			return true
+		}
+	}
+	return false
 }

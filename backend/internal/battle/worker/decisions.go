@@ -115,7 +115,7 @@ func (w *Worker) prepareDecision(ctx context.Context, lease queue.Lease, simulat
 }
 
 func newDecisionContext(lease queue.Lease, factionID string, targetTick uint64, snapshot game.DecisionSnapshot) ai.DecisionContext {
-	return ai.DecisionContext{Doctrine: snapshot.Doctrine, FactionName: snapshot.FactionName, Background: snapshot.Background, Opening: snapshot.Opening, OwnedUpgradeIDs: snapshot.OwnedUpgradeIDs, SchemaVersion: ai.ContextSchema, RequestID: decisionID(lease.BattleID, lease.Attempt, factionID, targetTick), BattleID: lease.BattleID,
+	return ai.DecisionContext{ContinuousProduction: snapshot.ContinuousProduction, Doctrine: snapshot.Doctrine, FactionName: snapshot.FactionName, Background: snapshot.Background, Opening: snapshot.Opening, OwnedUpgradeIDs: snapshot.OwnedUpgradeIDs, SchemaVersion: ai.ContextSchema, RequestID: decisionID(lease.BattleID, lease.Attempt, factionID, targetTick), BattleID: lease.BattleID,
 		FactionID: factionID, TargetTick: targetTick, ExpectedVersion: 1, ObservationVersion: snapshot.Version,
 		View: snapshot.View, Economy: ai.EconomyContext{MaximumBuildings: snapshot.MaximumBuildings, Gold: snapshot.Gold, ProjectedIncome: snapshot.ProjectedIncome,
 			EconomyBuildingCost: snapshot.EconomyCost, EconomyBuildingIncome: snapshot.EconomyIncome,
@@ -223,7 +223,13 @@ func fallbackPlan(simulation *game.Match, targetTick uint64, baselines map[strin
 	if targetTick == 0 || targetTick == uint64(simulation.Scenario().DecisionIntervalTicks) {
 		return baselines[record.FactionID], "scripted_fallback"
 	}
-	return record.Observation.ActivePlan, "previous_plan"
+	plan := controller.ClonePlanProposal(record.Observation.ActivePlan)
+	if record.Observation.ContinuousProduction {
+		// Settings already live on buildings. Replaying stale selection orders could
+		// refer to a source destroyed since the last accepted decision.
+		plan.ProductionOrders = nil
+	}
+	return plan, "previous_plan"
 }
 
 func (w *Worker) logResolvedDecision(ctx context.Context, lease queue.Lease, record ai.DecisionRecord) {

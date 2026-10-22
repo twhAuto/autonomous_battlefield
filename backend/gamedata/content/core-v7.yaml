@@ -1,7 +1,7 @@
 # Shared medieval roster, upgrades and structures for every map.
 
 id: core
-version: "4"
+version: "7"
 units:
   - {id: vanguard, trainingTicks: 4, class: infantry, cost: 35, health: 70, attack: 9, defense: 7, speed: 4, movement: 1, range: 1}
   - {id: striker, trainingTicks: 2, class: mobile, cost: 25, health: 42, attack: 14, defense: 3, speed: 8, movement: 2, range: 1}
@@ -33,11 +33,15 @@ upgrades:
   - {id: siege_mobility, cost: 60, targetClass: siege, exclusiveGroup: siege_specialization, movementBonus: 1}
   - {id: siege_breach, cost: 60, targetClass: siege, exclusiveGroup: siege_specialization, buildingDamageBonus: 8}
 buildings:
-  - {id: castle, kind: castle, buildRange: 4, health: 300, defense: 8, income: 10, cost: 0}
+  - {id: castle, kind: castle, buildRange: 4, health: 300, defense: 8, income: 10, cost: 0, attack: 15, range: 3, trains: [vanguard, striker, pikeman]}
   - {id: economy, kind: economy, buildRange: 3, health: 60, defense: 2, income: 10, cost: 50}
-  - {id: defense_tower, kind: defense_tower, buildRange: 3, health: 130, defense: 4, income: 0, cost: 80, attack: 12, range: 3}
+  - {id: defense_tower, kind: defense_tower, buildRange: 3, health: 130, defense: 4, income: 0, cost: 60, attack: 15, range: 3}
   - {id: outpost, kind: outpost, buildRange: 5, health: 50, defense: 1, income: 0, cost: 30}
-  - {id: barracks, kind: barracks, buildRange: 3, health: 100, defense: 3, income: 0, cost: 90}
+  - {id: barracks, kind: barracks, buildRange: 3, health: 100, defense: 3, income: 0, cost: 90, trains: [vanguard, striker, pikeman]}
+  - {id: archery_range, kind: archery_range, buildRange: 3, health: 100, defense: 3, income: 0, cost: 90, trains: [ranger, crossbowman]}
+  - {id: stables, kind: stables, buildRange: 3, health: 100, defense: 3, income: 0, cost: 100, trains: [scout, raider_cavalry]}
+  - {id: siege_workshop, kind: siege_workshop, buildRange: 3, health: 100, defense: 3, income: 0, cost: 120, trains: [catapult, battering_ram, engineer]}
+  - {id: infirmary, kind: infirmary, buildRange: 3, health: 100, defense: 3, income: 0, cost: 80, trains: [herbalist]}
 knowledge:
   mechanics: >-
     Every map shares this full roster and upgrade catalog. Specialist upgrades cost 60 gold;
@@ -63,9 +67,9 @@ knowledge:
     attack them. Pikemen gain 12 attack against mobile troops such as Strikers.
     Herbalists treat one adjacent soldier for 3 HP instead of attacking; they cannot treat
     siege engines or other healers and follow injured allies or escort soldiers.
-    Defense towers fire before units; newly built towers and Barracks become active next tick; outposts grant construction range.
+    Castles and defense towers fire before units; newly built towers and training buildings become active next tick; outposts grant construction range.
     Outposts extend construction range without attacking.
-    Castles and Barracks train one queued unit at a time using its trainingTicks; only the head progresses. Ready units wait if every adjacent traversable hex is occupied. Costs are paid once when queued; queue capacity is 12 per source. New units act the tick after deployment. A forward source reduces travel time
+    Each faction starts with only its castle, which attacks enemies with 15 attack at range 3 and also trains the Barracks roster. Castles and Barracks train Vanguard, Striker and Pikeman; Archery Ranges train Ranger and Crossbowman; Stables train Scout and Raider Cavalry; Siege Workshops train Catapult, Battering Ram and Engineer; Infirmaries train Herbalist. AI selects one unitType per building with productionOrders and enabled true. The building continuously trains that type one at a time using trainingTicks. Settings persist between decisions; omitted buildings keep their settings. Changing type affects only the next unit. Turning enabled false lets the paid unit finish, then stops new training. Ready units wait if every adjacent traversable hex is occupied. Each new unit costs gold when training starts. No batch queue is prepaid. Insufficient gold above reserveGold pauses new training until affordable; enabled stays true. A blocked exit prevents further purchases. Income, construction and upgrades run before automatic purchases, which occur in building ID order. Industry improves economy buildings only, never castle income. Consider additional training buildings for simultaneous production and specialist units; keep gold for useful construction instead of accumulating an idle treasury. New units act the tick after deployment. A forward source reduces travel time
     but exposes the investment. Buildings may occupy clear ground or gold deposits within buildRange of an active friendly building. All buildings must be at least two hexes apart; units block construction. Forests are traversable and grant troops +3 defense after armor piercing, but prohibit construction. Gold deposits grant economy buildings +5 income each tick. Rocks are impassable. The entire battlefield is visible; there is no fog of war.
   cards:
     - unitId: vanguard

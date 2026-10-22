@@ -134,9 +134,15 @@ movement and attack resolution.
 
 The simulation receives a resolved scenario and optional plans, then produces
 deterministic state transitions and events. Construction uses living building ranges
-and spacing; per-building FIFO training advances between economy and tactics.
+and spacing; per-building training advances between economy and tactics. Core v7 then purchases one next unit for each enabled empty source in building ID order, respecting reserve gold. Production settings persist across decision windows; an off setting finishes paid work and stops new starts. Insufficient gold pauses starts until affordable; blocked exits retain the paid unit without further purchases. The viewer displays both sides' source selection, state and progress; controls remain AI-only. Faction-scoped projections omit opponent production settings, including future choices and gold waits, while retaining paid training progress.
 Training progress is serialized in building state; clone operations isolate queue
-slices. Forest cover affects troop damage and deposits affect economy income.
+and training-roster slices plus production settings, including `buildings.castleTrains`. Core v6 and v7 start each
+faction with only its castle, which shares the Barracks roster and fires in the
+tower phase using authored `castleAttack`/`castleRange`. Five constructible kinds
+provide specialized production. The `continuousProduction` ruleset flag selects v7 repeat purchases; frozen v6 and earlier retain batch queues. Frozen core v5 retains its starting Barracks and
+passive castle; older rulesets without rosters preserve their recruitment rules. Forest cover affects
+troop damage and deposits affect economy income. The map hides destroyed buildings;
+the engine retains their records for results/history and releases their occupied hexes.
 It does not access PostgreSQL, HTTP,
 environment variables, or model providers.
 

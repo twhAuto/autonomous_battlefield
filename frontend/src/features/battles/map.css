@@ -93,3 +93,8 @@
 .training-queue { width: 100%; }
 .training-queue ol { padding-left: 1.5rem; }
 .training-queue progress { margin-left: .75rem; max-width: 8rem; accent-color: #69d2ff; }
+
+.terrain-glyph { pointer-events: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.terrain-glyph--forest { fill: #448b60; stroke: #b1dfaa; }
+.terrain-glyph--gold { fill: #e5b94f; stroke: #fff0aa; }
+.terrain-glyph--rock { fill: #596977; stroke: #9bafbd; }

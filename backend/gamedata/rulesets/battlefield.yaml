@@ -1,9 +1,10 @@
 id: battlefield
-version: "4"
+version: "7"
 startingGold: 220
+continuousProduction: true
 library:
   id: core
-  version: "4"
+  version: "7"
   castle: castle
   economy: economy
 buildings:

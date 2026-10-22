@@ -96,6 +96,9 @@ func (m *Match) buildEconomyBuildingAt(factionID string, site Position, reserve 
 }
 
 func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) []Event {
+	if m.scenario.Ruleset.ContinuousProduction {
+		return nil
+	}
 	castle := m.castle(factionID)
 	if castle == nil || castle.Health <= 0 {
 		return nil
@@ -108,11 +111,12 @@ func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) [
 	// Explicit orders and expanded rosters bound the loop; legacy priorities
 	// stop at six purchases, the reserve, or a full/unavailable source.
 	for attempt := 0; purchased < 6 && (!explicit || attempt < len(queue)); attempt++ {
-		source, priorities := castle, plan.RecruitmentPriorities
+		sourceID, priorities := "", plan.RecruitmentPriorities
 		if explicit {
-			source = m.recruitmentSource(factionID, queue[attempt].SourceBuildingID)
+			sourceID = queue[attempt].SourceBuildingID
 			priorities = []string{queue[attempt].UnitType}
 		}
+		source, priorities := m.resolveTrainingSource(factionID, sourceID, definitions, priorities, plan.ReserveGold)
 		event, bought, stop := m.attemptRecruitment(factionID, source, definitions, priorities, plan.ReserveGold)
 		events = append(events, event)
 		if stop || !explicit && !bought {
@@ -160,8 +164,8 @@ func (m *Match) payForBuilding(factionID string, site Position, cost, reserve in
 
 func affordableUnit(definitions map[string]UnitType, priorities []string, gold, reserve int64) UnitType {
 	for _, unitType := range priorities {
-		definition := definitions[unitType]
-		if gold-definition.Cost >= reserve {
+		definition, ok := definitions[unitType]
+		if ok && gold-definition.Cost >= reserve {
 			return definition
 		}
 	}
@@ -201,6 +205,10 @@ func (m *Match) attemptRecruitment(factionID string, source *Building, definitio
 	}
 	if len(source.TrainingQueue) >= MaximumTrainingQueue {
 		return skipped("queue_full"), false, false
+	}
+	priorities = m.trainablePriorities(source.Type, priorities)
+	if len(priorities) == 0 {
+		return skipped("unit_not_trainable"), false, false
 	}
 	selected := affordableUnit(definitions, priorities, m.factionState(factionID).Gold, reserve)
 	if selected.ID == "" {

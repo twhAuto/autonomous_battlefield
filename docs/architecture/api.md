@@ -197,10 +197,18 @@ decisions, so a host subscription agent cannot keep working on the run.
 
 `GET /v1/battles/{battleId}/factions/{factionId}/view` exposes the whole map and
 all entities, actions, movement routes and deaths. It retains only the requesting
-faction's economy/upgrade/production totals in `state.factions`. The deprecated
+faction's economy/upgrade/production totals in `state.factions`. Opponent building
+`production` settings are omitted, keeping future unit selections, on/off choices
+and gold/reserve waits private. Paid training progress and all physical entities
+remain visible. The full battle snapshot used by viewers retains both sides' settings. The deprecated
 `visiblePositions` field contains every map coordinate for older clients.
 
-Buildings expose `buildRange`, optional `trainingQueue`, and `trainingBlocked`.
+Buildings expose `buildRange`, optional `trains` (supported unit IDs), `trainingQueue`,
+and `trainingBlocked`. Core v7 also exposes `production: {configured?, unitType?, enabled, waitingForGold?}` on every training building. Selection persists; disabled sources finish paid training. Insufficient gold above the AI reserve pauses starts until affordable. The queue contains at most one paid unit in continuous mode; frozen older battles retain up to twelve. Viewers can inspect production but cannot change it; no manual production endpoint exists. The current catalog has five constructible production kinds.
+Each faction starts with only a castle, which trains the Barracks roster and exposes
+`attack: 15` and `range: 3`. Resolved rules save `buildings.castleTrains`,
+`castleAttack` and `castleRange`; omitted legacy fields retain older behavior. Current AI `productionOrders` explicitly identify each source and select its unit/on-off setting. Frozen legacy recruitment supports automatic source selection; incompatible requests are rejected by validation.
+Destroyed buildings remain in snapshots for history/results but are hidden on the map.
 Each queue item includes `unitType`, `trainingTicks`, `remainingTicks`,
 `queuedAtTick` and optional `opening`. A blocked ready head has zero remaining
 ticks and remains in place until a free adjacent traversable cell is available.

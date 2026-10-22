@@ -39,3 +39,49 @@ func TestFactionViewOmitsOpponentEconomy(t *testing.T) {
 		t.Fatalf("spectator view factions = %d, err = %v; want both", len(spectator.State.Factions), err)
 	}
 }
+
+func TestFactionViewKeepsProductionSettingsPrivate(t *testing.T) {
+	m := continuousMatch(t)
+	if _, err := m.Advance(); err != nil {
+		t.Fatal(err)
+	}
+	opponent := m.castle("faction-b")
+	opponent.Production.WaitingForGold = true
+	snapshot, err := m.DecisionSnapshot("faction-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buildings := map[string]Building{}
+	for _, b := range snapshot.View.State.Buildings {
+		buildings[b.FactionID] = b
+	}
+	own, enemy := buildings["faction-a"], buildings["faction-b"]
+	if own.Production == nil || enemy.Production != nil {
+		t.Fatal("production settings not restricted to owner")
+	}
+	if len(enemy.TrainingQueue) != 1 || len(enemy.Trains) == 0 {
+		t.Fatal("observable paid training hidden")
+	}
+	own.Production.Enabled = false
+
+	if !m.castle("faction-a").Production.Enabled || opponent.Production == nil {
+		t.Fatal("projection mutated authoritative state")
+	}
+}
+
+func TestSpectatorRetainsBothProductionSettings(t *testing.T) {
+	m := continuousMatch(t)
+	if _, err := m.Advance(); err != nil {
+		t.Fatal(err)
+	}
+	view, err := ProjectView(m.scenario.Map, m.state, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range view.State.Buildings {
+		if b.Production == nil || !b.Production.Enabled {
+			t.Fatal("spectator settings omitted")
+		}
+	}
+}

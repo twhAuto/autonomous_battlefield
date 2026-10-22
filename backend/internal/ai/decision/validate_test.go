@@ -101,3 +101,39 @@ func TestUpgradePrerequisitesUseFrozenOwnership(t *testing.T) {
 		t.Fatal("reversed levels accepted")
 	}
 }
+
+func TestSpecializedProductionUsesFrozenBuildingRoster(t *testing.T) {
+	context := ai.DecisionContext{Legal: ai.LegalChoices{Buildings: []game.BuildingType{{ID: game.BuildingBarracks, Trains: []string{"vanguard"}}}, RecruitmentSources: []string{"a:barracks:1"}}, View: game.View{State: game.State{Buildings: []game.Building{{ID: "a:barracks:1", Trains: []string{"vanguard"}}}}}}
+	for _, tc := range []struct {
+		unit, source string
+		valid        bool
+	}{
+		{"vanguard", "", true}, {"vanguard", "a:barracks:1", true}, {"ranger", "a:barracks:1", false}, {"vanguard", "a:castle", false}, {"vanguard", "b:barracks:1", false}, {"ranger", "", false},
+	} {
+		orders := []controller.RecruitmentOrder{{UnitType: tc.unit, SourceBuildingID: tc.source, Count: 1}}
+		issues := validateTrainingSources(context, controller.PlanProposal{RecruitmentOrders: &orders})
+		if (len(issues) == 0) != tc.valid {
+			t.Fatalf("%+v: %+v", tc, issues)
+		}
+	}
+	context.Legal.RecruitmentSources = nil
+	orders := []controller.RecruitmentOrder{{UnitType: "vanguard", Count: 1}}
+	if len(validateTrainingSources(context, controller.PlanProposal{RecruitmentOrders: &orders})) == 0 {
+		t.Fatal("unavailable source accepted")
+	}
+}
+
+func TestCastleProductionUsesFrozenRoster(t *testing.T) {
+	context := ai.DecisionContext{Legal: ai.LegalChoices{RecruitmentSources: []string{"a:castle"}}, View: game.View{State: game.State{Buildings: []game.Building{{ID: "a:castle", Trains: []string{"vanguard", "striker", "pikeman"}}}}}}
+	for _, tc := range []struct {
+		unit, source string
+		valid        bool
+	}{
+		{"vanguard", "", true}, {"striker", "a:castle", true}, {"pikeman", "a:castle", true}, {"ranger", "a:castle", false}, {"vanguard", "b:castle", false},
+	} {
+		orders := []controller.RecruitmentOrder{{UnitType: tc.unit, SourceBuildingID: tc.source, Count: 1}}
+		if issues := validateTrainingSources(context, controller.PlanProposal{RecruitmentOrders: &orders}); (len(issues) == 0) != tc.valid {
+			t.Fatalf("%+v: %+v", tc, issues)
+		}
+	}
+}

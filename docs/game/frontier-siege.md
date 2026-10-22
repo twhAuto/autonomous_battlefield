@@ -18,7 +18,7 @@ use distance without line-of-sight occlusion. Every map cell and entity is visib
 Forests grant troops +3 defense after armor piercing and prohibit construction;
 gold deposits add +5 income per tick to an economy building placed on them.
 
-Each faction starts with 220 gold and may maintain **eight non-castle buildings**,
+Each faction starts with 220 gold and only its castle, and may maintain **eight non-castle buildings**,
 including at most **two economy buildings**. Construction requires unoccupied
 buildable terrain within a living active friendly building's range. Every pair of
 buildings must be at least two hexes apart, including opposing structures.
@@ -99,31 +99,42 @@ for that turn. Arsenal never grants Engineers an attack; Plating still applies.
 
 | Structure | Gold | HP | Defense | Build range | Function |
 | --- | ---: | ---: | ---: | ---: | --- |
+| Castle (starting only) | 0 | 300 | 8 | 4 | +10 income/tick; Vanguard, Striker, Pikeman; attack 15, range 3 |
 | Economy | 50 | 60 | 2 | 3 | +10 income/tick; +15 on a deposit |
-| Defense Tower | 80 | 130 | 4 | 3 | Attack 12, range 3, targets enemy units |
+| Defense Tower | 60 | 130 | 4 | 3 | Attack 15, range 3, targets enemy units |
 | Outpost | 30 | 50 | 1 | 5 | Extends construction territory |
-| Forward Barracks | 90 | 100 | 3 | 3 | Additional recruitment source |
+| Barracks | 90 | 100 | 3 | 3 | Vanguard, Striker, Pikeman |
+| Archery Range | 90 | 100 | 3 | 3 | Ranger, Crossbowman |
+| Stables | 100 | 100 | 3 | 3 | Scout, Raider Cavalry |
+| Siege Workshop | 120 | 100 | 3 | 3 | Catapult, Battering Ram, Engineer |
+| Infirmary | 80 | 100 | 3 | 3 | Herbalist |
 
-Towers act in stable building-ID order before unit turns. They use the same
+Castles and towers act in stable building-ID order before unit turns. They use the same
 distance/health/ID target tie breakers and faction damage modifiers as ordinary
-attacks, award normal loot, and cannot attack buildings.
+attacks, award normal loot, and cannot attack buildings. At 60 gold, a tower has
+more base HP per gold than any unit, making stationary defense economical.
+Siege bonuses and the ability to bypass a fixed tower remain its counters.
 
-A plan orders any legal structure on a current legal coordinate and queues troops
-at the castle or a ready Barracks. Construction is unavailable at opening. A faction
-may purchase at most six troops per window across all sources, subject to gold and
-a 12-order queue limit per source. Each building trains one head at a time using the
-roster's training ticks. Blocked exits hold ready units and all followers until an
-adjacent traversable hex becomes free. Orders are paid once; destroyed sources lose
-their queue without refunds. Troops act on the tick after deployment. See
-[construction and training](game-rules.md#construction-and-training) for timing and
-[OpenAPI](../architecture/openapi.yaml) for fields.
+A plan orders legal structures and selects one repeating unit per active training
+building, including the castle for Barracks units. Construction is unavailable at
+opening. Each enabled building pays for one unit at training start; insufficient
+gold above reserveGold pauses starts until affordable. Off or type changes leave
+the paid unit intact. Blocked exits retain that unit without further purchases.
+Destroyed sources lose paid training without refund; deployed troops act next tick.
+See [construction and training](game-rules.md#construction-and-training) for timing
+and [OpenAPI](../architecture/openapi.yaml) for fields.
 
 Scripted construction favors deposits, then locations nearer the opponent, choosing
-separated sites for income, towers and Barracks. An active forward Barracks becomes
-the default recruitment source. Explicit orders take precedence; Outposts are an
+separated sites for income, a tower and missing production types. Scripted templates
+select a compatible unit for each newly active unconfigured source and retain
+existing selections. The AI can change its choices or disable individual sources.
+Frozen pre-v7 battles retain their original batch queues.
+Scripted baselines omit currently untrainable orders before submission. Once two
+economy buildings, all five production kinds and one tower fill the eight slots,
+default construction stops; destroyed types become eligible for replacement. Explicit orders take precedence; Outposts are an
 alternative purchase for wider expansion. Opening fallback buys combat units in
-deterministic round-robin order and excludes Herbalists and Engineers; explicit
-orders may buy them.
+deterministic round-robin order from the castle. Other unit types require
+their own production building first.
 
 ## Three-level upgrades
 
@@ -139,7 +150,8 @@ timers. For example, `arsenal`, `arsenal_2`, `arsenal_3` buys all three if affor
 The first unaffordable level stops that window's upgrade purchases; a later plan
 can repeat the chain and skip owned levels without paying again.
 
-Shared scripted plans spend on construction, then upgrades, then recruitment. They
+Shared scripted plans spend on construction, then upgrades; enabled sources buy
+units automatically afterward and between windows. They
 order Industry, Arsenal and Plating at each successive level. Model controllers
 choose their own priorities. Spectators see the highest owned level for each track,
 and purchase events show the level and its incremental price.
@@ -180,7 +192,8 @@ spawn arrangement, routing, and castle pressure matter alongside damage bonuses.
 Run `go test ./internal/battle/catalog -run TestFrontier -v` from `backend` to
 repeat the probes. Tune balance through a new content version.
 
-`TestFrontierUpgradeBalanceProbe` compares equal-budget openings under the current
-shared rules. Training time and new terrain affect outcomes, so historical results
+`TestFrontierUpgradeBalanceProbe` compares equal-budget openings using current
+unit/upgrade definitions with historical batch recruitment explicitly enabled. It
+does not measure the balance of continuous production. Training time and new terrain affect outcomes, so historical results
 are not claims about the current balance. `TestFrontierThreeLevelCatalogAndScriptedBattle`
 also checks shared content and scripted upgrade purchases.

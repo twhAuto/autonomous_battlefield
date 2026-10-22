@@ -6,7 +6,7 @@ Every live map uses one shared ruleset. The catalog embeds and validates:
   decision interval, fallback and scripted plans.
 - `backend/gamedata/rulesets/battlefield.yaml`: shared starting gold, combat rules,
   building limits and content-library reference.
-- `backend/gamedata/content/core-v4.yaml`: all units, upgrades, buildings and AI knowledge.
+- `backend/gamedata/content/core-v7.yaml`: all units, upgrades, buildings and AI knowledge.
 - `backend/gamedata/scenarios/*.yaml`: map ID and geometry only.
 
 The shipped maps are `castle-siege` (15×11) and `frontier-siege` (25×17). The
@@ -36,7 +36,11 @@ upgrades and valid non-castle structures; there are no selection lists.
 
 The shared ruleset points to the library using `library.id`, `library.version`,
 `library.castle` and `library.economy`. It owns starting gold, building limits and
-combat percentages. Inline rulesets remain readable for self-contained fixtures.
+combat percentages and `continuousProduction`. Core v7 enables continuous
+AI-selected unit production; absent/false preserves historical batch purchases.
+The archived `content/core-v6.yaml` is retained as the authored reference for the
+castle-training/attacking version with batch queues. It is not the active library
+and is not needed to replay self-contained saved snapshots. Inline rulesets remain readable for self-contained fixtures.
 Content IDs/versions allow letters, digits, dashes and underscores. Invalid stats,
 unknown fields, missing files, multiple live rulesets, duplicate IDs or invalid
 plans fail catalog startup.
@@ -54,7 +58,21 @@ restart otherwise re-simulates old inputs with changed construction/training rul
 
 Unit definitions include `trainingTicks` (1–1000; missing legacy values use 1).
 Building definitions include `buildRange` (1–10; missing legacy values use 3).
-The active v4 library replaces Watchtower with Outpost and removes vision stats.
+The active v7 library uses Outpost, omits vision stats, and assigns `trains` unit-ID
+arrays to the castle and five constructible production kinds. Arrays contain known
+unit IDs without internal duplicates; a unit belongs to at most one constructible
+production kind, while the castle may share that roster. Economy, towers and Outposts
+cannot carry training rosters. New units need an assignment to be trainable. Castle
+`trains`, `attack` and `range` resolve to `buildings.castleTrains`, `castleAttack` and
+`castleRange`, saved with each scenario. Attack and range must both be positive or
+both zero. Current castles share the Barracks roster and attack for 15 at range 3;
+there is no starting Barracks. Frozen core v5 scenarios without castle rosters keep
+their starting Barracks and passive castles. Older snapshots without any rosters
+retain unrestricted castle/Barracks recruitment. In continuous mode, the AI sets
+`productionOrders` per active source; units charge individually at training start,
+wait for gold above the reserve and hold blocked exits. Disabling or changing type
+preserves the paid unit. Viewers see both sides; faction decision contexts omit
+opponent production settings while retaining visible paid training progress.
 Unit definitions support class, minimum attack range, building priority/damage,
 class bonuses and healing. Specialist fields are `scout`, `preferredTargetClass`,
 `armorPiercing`, `repairAmount`, `repairCost`, `repairCharges` and `healRange`.

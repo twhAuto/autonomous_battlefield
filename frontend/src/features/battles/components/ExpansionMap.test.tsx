@@ -15,7 +15,7 @@ it('shows the expanded roster, distinct structures, treatment, and tower attacks
     { ...unit('pikeman', 6), range: 1, bonusAgainstClass: 'mobile', classDamageBonus: 12 },
     { ...unit('herbalist', 7), attack: 0, healAmount: 3, healTargetId: 'pikeman', healTargetPosition: { x: 6, y: 8 } },
     unit('battering_ram', 8),
-  ], buildings: [building('watchtower', 7), building('barracks', 9), building('economy', 4), { ...building('defense_tower', 8), attack: 12, range: 3, attackTargetId: 'enemy', attackTargetPosition: { x: 10, y: 7 } }] }
+  ], buildings: [building('watchtower', 7), { ...building('barracks', 9), trains: ['vanguard', 'striker', 'pikeman'] }, building('economy', 4), { ...building('defense_tower', 8), attack: 12, range: 3, attackTargetId: 'enemy', attackTargetPosition: { x: 10, y: 7 } }] }
   const { container, rerender } = render(<HexBattleMap map={map} state={state} factionNames={new Map([['a', 'Northwind']])} />)
   expect(container.querySelectorAll('.hex-tile')).toHaveLength(425)
   expect(container.querySelectorAll('.unit-direction--healing')).toHaveLength(1)
@@ -28,7 +28,7 @@ it('shows the expanded roster, distinct structures, treatment, and tower attacks
   await user.click(screen.getByRole('button', { name: 'Northwind · Pikeman · pikeman' }))
   expect(screen.getByText(/\+12 vs mobile/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Northwind · Barracks · barracks' }))
-  expect(screen.getByText(/Forward recruitment/)).toBeInTheDocument()
+  expect(screen.getByText(/Trains: Vanguard, Striker, Pikeman/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Northwind · Watchtower · watchtow' }))
   expect(screen.getByText(/Build range 3/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Northwind · Defense Tower · defense_' }))

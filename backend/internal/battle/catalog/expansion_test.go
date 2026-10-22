@@ -72,10 +72,10 @@ func TestFrontierCatalogMapAndDeterministicBattle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Map.Width != 25 || s.Map.Height != 17 || len(s.Map.EconomySites[0]) != 0 || len(s.Ruleset.Units) != 11 || len(s.Ruleset.Structures) != 3 {
+	if s.Map.Width != 25 || s.Map.Height != 17 || len(s.Map.EconomySites[0]) != 0 || len(s.Ruleset.Units) != 11 || len(s.Ruleset.Structures) != 7 {
 		t.Fatal("incomplete frontier content")
 	}
-	if s.Ruleset.ContentSource.Version != "4" {
+	if s.Ruleset.ContentSource.Version != "7" {
 		t.Fatal("incorrect content version")
 	}
 	checkFrontierRoutes(t, s.Map)
@@ -137,8 +137,9 @@ func checkCatalogCopiesAreIndependent(t *testing.T, c *Catalog, s game.Scenario)
 	}
 	copy, _ := c.Ruleset("battlefield")
 	copy.Structures[0].Attack = 999
+	copy.Buildings.CastleTrains[0] = "changed"
 	original, _ := c.Ruleset("battlefield")
-	if original.Structures[0].Attack == 999 || snapshot.Ruleset.Structures[0].Attack != 12 {
+	if original.Structures[0].Attack == 999 || snapshot.Ruleset.Structures[0].Attack != 15 || original.Buildings.CastleTrains[0] != "vanguard" {
 		t.Fatal("catalog aliasing")
 	}
 }
@@ -236,5 +237,85 @@ func checkSpecialTerrain(t *testing.T, id string, gameMap game.Map) {
 	}
 	if terrain[game.TerrainForest] == 0 || terrain[game.TerrainGold] == 0 || terrain[game.TerrainBuildSite] != 0 {
 		t.Fatalf("special terrain missing or pads remain: %s %v", id, terrain)
+	}
+}
+
+func TestSpecializedCatalogRosters(t *testing.T) {
+	c, err := LoadCatalog(gamedata.Files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules, _ := c.Ruleset("battlefield")
+	expected := map[string][]string{
+		game.BuildingBarracks:      {"vanguard", "striker", "pikeman"},
+		game.BuildingArcheryRange:  {"ranger", "crossbowman"},
+		game.BuildingStables:       {"scout", "raider_cavalry"},
+		game.BuildingSiegeWorkshop: {"catapult", "battering_ram", "engineer"},
+		game.BuildingInfirmary:     {"herbalist"},
+	}
+	for _, b := range rules.Structures {
+		if roster, ok := expected[b.Kind]; ok {
+			if !reflect.DeepEqual(b.Trains, roster) {
+				t.Fatalf("%s roster: %v", b.Kind, b.Trains)
+			}
+			delete(expected, b.Kind)
+		}
+	}
+	if len(expected) != 0 {
+		t.Fatal("missing production buildings", expected)
+	}
+	// A returned catalog roster must not mutate another resolved scenario.
+	rules.Structures[2].Trains[0] = "changed"
+	fresh, _ := c.Ruleset("battlefield")
+	if fresh.Structures[2].Trains[0] != "vanguard" {
+		t.Fatal("roster aliases catalog")
+	}
+}
+
+func TestSpecializedCatalogStartingBuildings(t *testing.T) {
+	c, err := LoadCatalog(gamedata.Files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mapID := range []string{"castle-siege", "frontier-siege"} {
+		scenario, err := c.Resolve(mapID, [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, err := game.NewMatch("opening", scenario, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(m.State().Buildings) != 2 {
+			t.Fatal("expected only a castle per faction")
+		}
+		for _, faction := range m.FactionIDs() {
+			decision, err := m.DecisionSnapshot(faction)
+			if err != nil || len(decision.RecruitmentSources) != 1 || decision.RecruitmentSources[0] != faction+":castle" {
+				t.Fatal("starting source", decision, err)
+			}
+		}
+	}
+}
+
+func TestTowerDurabilityPerGold(t *testing.T) {
+	c, err := LoadCatalog(gamedata.Files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules, _ := c.Ruleset("battlefield")
+	var tower game.BuildingType
+	for _, b := range rules.Structures {
+		if b.Kind == game.BuildingTower {
+			tower = b
+		}
+	}
+	if tower.Cost != 60 || tower.Attack != 15 || tower.Health != 130 || tower.Range != 3 {
+		t.Fatal("tower balance", tower)
+	}
+	for _, u := range rules.Units {
+		if tower.Health*u.Cost <= u.Health*tower.Cost {
+			t.Fatalf("tower durability per gold below %s", u.ID)
+		}
 	}
 }

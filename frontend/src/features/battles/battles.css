@@ -298,3 +298,15 @@ main.main-content--battle { --battle-sidebar-width: 340px; --battle-column-gap: 
   .battle-inspector { height: auto; }
   .inspector-scroll { overflow: visible; }
 }
+
+.building-production { margin-top: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: 12px; background: #151a14; }
+.building-production h2 { margin: 0; font-size: 1.1rem; }
+.building-production h3 { margin: 1rem 0 .5rem; font-size: .95rem; }
+.building-production p { font-size: .85rem; }
+.production-buildings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: .75rem; padding: 0; list-style: none; }
+.production-buildings > li { min-width: 0; padding: .75rem; border: 1px solid var(--line); border-radius: 8px; }
+.production-buildings h4 { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0 0 .6rem; font-size: .9rem; }
+.production-buildings h4 small { font-weight: 400; }
+.production-status { display: grid; gap: .4rem; font-size: .85rem; }
+.production-status strong { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.production-status progress { width: 100%; }
