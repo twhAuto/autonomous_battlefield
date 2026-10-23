@@ -16,8 +16,8 @@ ENV VITE_API_URL=${VITE_API_URL}
 
 RUN npm run build
 
-# Base image: ghcr.io/nginx/nginx-unprivileged:1.30.4-alpine3.24-slim
-FROM ghcr.io/nginx/nginx-unprivileged@sha256:7bbe8940bc478e5618e6d4cfbeda406e5b4217cacc06faacd665aca5e468595e
+# Base image: ghcr.io/nginx/nginx-unprivileged:1.30.6-alpine3.24-slim
+FROM ghcr.io/nginx/nginx-unprivileged@sha256:ea8a305bb7bff1e622c8223a097bf5c7664d36b05371717e23dc69972e1924e6
 
 USER root
 
