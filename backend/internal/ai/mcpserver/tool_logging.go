@@ -6,6 +6,8 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"regexp"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
@@ -110,9 +112,28 @@ func submissionInputShape(payload json.RawMessage) ([]string, bool) {
 	return missing, wrapped
 }
 
-// validationLogMessageBytes bounds validator-authored messages, which may quote
-// short submitted identifiers, so a rejection is diagnosable without a payload dump.
+// validationLogMessageBytes bounds validator-authored messages after submitted
+// values are masked, so a rejection is diagnosable without logging submissions.
 const validationLogMessageBytes = 240
+
+// quotedValue matches a Go-quoted (%q) string, the only way validators
+// interpolate submitted text.
+var quotedValue = regexp.MustCompile(`"(?:[^"\\]|\\.)*"`)
+
+// validationLogMessage masks every quoted submitted value, drops anything after
+// an unbalanced quote, then bounds the remaining validator template.
+func validationLogMessage(message string) string {
+	const mask = `"…"`
+	parts := strings.Split(quotedValue.ReplaceAllString(message, mask), mask)
+	for i, part := range parts {
+		if cut := strings.IndexByte(part, '"'); cut >= 0 {
+			parts[i] = part[:cut]
+			parts = parts[:i+1]
+			break
+		}
+	}
+	return boundedLogText(strings.Join(parts, mask), validationLogMessageBytes)
+}
 
 func boundedLogText(text string, limit int) string {
 	if len(text) <= limit {

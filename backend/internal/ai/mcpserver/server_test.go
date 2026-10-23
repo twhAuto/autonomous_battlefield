@@ -146,8 +146,11 @@ func assertRejectionLogsMessage(t *testing.T, session *mcp.ClientSession, logs *
 	if err != nil || rejected.IsError {
 		t.Fatalf("rejected submission: %+v %v", rejected, err)
 	}
-	if !strings.Contains(logs.String(), `"message":"construction \"defense_tower\" at (1,1) is not legal"`) {
-		t.Fatalf("rejection log lacks the validator message: %s", logs.String())
+	if !strings.Contains(logs.String(), `"message":"construction \"…\" at (1,1) is not legal"`) {
+		t.Fatalf("rejection log lacks the masked validator message: %s", logs.String())
+	}
+	if strings.Contains(logs.String(), "defense_tower") {
+		t.Fatal("rejection log leaked a submitted value")
 	}
 }
 

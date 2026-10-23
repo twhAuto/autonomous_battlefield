@@ -71,3 +71,21 @@ func TestBoundedLogTextKeepsWholeRunes(t *testing.T) {
 		t.Fatalf("split a rune: %q", got)
 	}
 }
+
+func TestValidationLogMessageMasksSubmittedValues(t *testing.T) {
+	for message, want := range map[string]string{
+		`upgrade "plating_3" requires "plating_2" owned or ordered earlier`: `upgrade "…" requires "…" owned or ordered earlier`,
+		`construction "a\"b" at (1,1) is not legal`:                         `construction "…" at (1,1) is not legal`,
+		`rationale exceeds 600 characters`:                                  `rationale exceeds 600 characters`,
+		`unit "ok" then "unterminated secret`:                               `unit "…" then `,
+		`"secret`:                                                           ``,
+	} {
+		if got := validationLogMessage(message); got != want {
+			t.Errorf("validationLogMessage(%q) = %q, want %q", message, got, want)
+		}
+	}
+	long := strings.Repeat("x", 300) + ` "secret"`
+	if got := validationLogMessage(long); strings.Contains(got, "secret") || len(got) > validationLogMessageBytes+len("…") {
+		t.Fatalf("unbounded or leaking message %q", got)
+	}
+}

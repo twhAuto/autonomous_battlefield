@@ -360,8 +360,10 @@ fallback record instead of replacing it with `timeout`. Malformed tool calls are
 logged as `decision_tool_input_rejected` with only the request ID and missing field
 names; see [Antigravity troubleshooting](../operations/antigravity-cli.md#missing-plans).
 Each rejected submission issue is logged as `decision_validation_rejected` with its
-field, code and validator message cut to 240 bytes. Messages may quote short
-submitted identifiers such as a building type; submitted payloads are never logged.
+field, code and validator message. Every quoted (`%q`) value, the only way
+validators insert submitted text, is masked as `"…"`, text after an unbalanced quote
+is dropped, and the result is cut to 240 bytes, so submitted values are never logged.
+The model still receives the full message.
 
 | Error category | Raised by | Meaning |
 | --- | --- | --- |
