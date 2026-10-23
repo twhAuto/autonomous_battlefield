@@ -38,10 +38,6 @@ func (m *Match) DecisionSnapshot(factionID string) (DecisionSnapshot, error) {
 	}
 	legalSites := m.legalConstructionSites(factionID)
 	maximumBuildings, currentBuildings := m.scenario.Ruleset.Buildings.MaximumBuildingCount, m.LivingStructureCount(factionID)
-	// A full shared limit leaves no legal site, so construction is not offered.
-	if maximumBuildings > 0 && currentBuildings >= maximumBuildings {
-		legalSites = []controller.Coordinate{}
-	}
 	if m.OpeningDue() {
 		projectedIncome = 0
 		legalSites = nil

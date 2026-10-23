@@ -55,9 +55,12 @@ func constructionBuildingRange(state State, factionID string, site Position) (bo
 	return inRange, ""
 }
 
+// legalConstructionSites is shared by decision snapshots and scripted defaults, so
+// a full shared building limit offers no site to either.
 func (m *Match) legalConstructionSites(factionID string) []controller.Coordinate {
 	sites := []controller.Coordinate{}
-	if len(ConstructibleBuildings(m.scenario.Ruleset)) == 0 {
+	limit := m.scenario.Ruleset.Buildings.MaximumBuildingCount
+	if len(ConstructibleBuildings(m.scenario.Ruleset)) == 0 || limit > 0 && m.LivingStructureCount(factionID) >= limit {
 		return sites
 	}
 	for _, p := range allPositions(m.scenario.Map) {

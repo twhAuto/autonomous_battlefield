@@ -345,8 +345,9 @@ Historical contexts without authored rosters preserve their original validation.
 computed legal construction coordinates, not fixed pads. It is empty when the shared
 building limit is full. Model submissions whose construction orders exceed the
 remaining `maximumBuildings - currentBuildings` slots, or the remaining economy slots,
-are rejected with `limit_reached` and a message naming the counts; scripted plans
-may over-order because the engine skips them. Execution rechecks range,
+are rejected with `limit_reached` and a message naming the counts. Scripted default
+construction draws from the same legal sites, so it never orders at a full shared
+limit; scripted plans skip the slot-count check because the engine skips extras. Execution rechecks range,
 terrain, unit occupancy and a minimum building distance of two hexes, so conflicting
 later orders skip without charge. Empty `constructionOrders` builds nothing;
 omitting it enables default construction. Older plans may use
