@@ -136,16 +136,39 @@ version pin, model alias and personal-memory caveat are in
 
 ## Prompt provenance and faction memory
 
-Every runtime uses one embedded decision policy, assembled by
-`internal/ai/prompts/prompts.go`; only context delivery differs (tool fetch or
-host-prefetched inline JSON). The persisted `prompts.Version`
-(`battlefield-agent-v9.<digest>`) includes a SHA-256 of the prompts as assembled for
-a fixed sample session, so any wording, order or wiring change produces a new
-version. Git keeps earlier prompt revisions.
+Every runtime uses an embedded decision policy assembled by
+`internal/ai/prompts/prompts.go`. The persisted `prompts.Version`
+(`battlefield-agent-v10.<digest>`) hashes sample tool, fallback-inline and split-inline
+layouts, both policy variants, and the rule-deduplication crosswalk. Git keeps earlier
+prompt revisions.
 
-The decision prompt runs from most to least stable: shared policy, the faction
-identity block, then the request ID and any inline context, so a faction's repeated
-prefix stays eligible for provider prompt caching.
+Tool-fetch sessions receive shared policy, faction identity, then the request ID.
+Prefetched sessions receive policy and the delivery contract, a `REFERENCE` JSON
+block, faction identity, then a `CONTEXT` JSON block. Recursively merging the two
+JSON objects restores the complete context: the reference contains schema/mode,
+frozen knowledge, legal catalogs and terrain; the remainder contains faction/battle
+IDs, owned upgrades, current legal sites/recruitment sources and observed state, economy, plans and
+memory, with tick/request metadata last. Unknown fields remain in the remainder;
+arrays, numbers, nulls and absent values retain their meanings. Both blocks remain
+untrusted game data. Contexts without any reference leaves retain the original
+single-block inline layout. Background generation keeps its separate prompt.
+
+The shared policy states training-roster selection once. For prefetched continuous
+production with the exact reviewed core-v7 mechanics, `rule-duplicates.json` removes
+policy sentences whose rules already appear in those frozen mechanics, plus the
+inactive legacy recruitment paragraph. A SHA-256 match of the **entire mechanics
+text** gates this reduction. Tool-fetch sessions, legacy mode and missing, truncated
+or changed mechanics retain the full fallback guidance. Frozen mechanics themselves
+are never shortened. Submission, opening, privacy and other unique requirements
+remain in both variants, as do generic catalog-dependent exclusivity and industry
+guidance whose full scope is not stated explicitly in the mechanics prose.
+
+This deterministic order lengthens the reusable prefix of prefetched prompts.
+Tool-fetch sessions still send a changing request ID before receiving context, so
+ordering the tool response cannot move its reference data into the initial shared
+prefix. Ordering is not evidence of provider cache hits: provider message boundaries,
+cache controls and CLI-managed serialization still apply. Measure reported cached
+input separately; provider-specific cache configuration remains separate work.
 
 Only the owning faction's name, doctrine and optional background enter its decision
 context, observation hash and provenance; opponent doctrines never do. They arrive
@@ -210,6 +233,40 @@ using each encoding only when it shrinks the output. Complete-map visibility mas
 are omitted from current agent context; old partial observations retain their masks. The prompt explains the
 encodings. The projection never changes persisted state, validation or hashes, and
 older saved observations are projected the same way without rewriting storage.
+
+Model-facing JSON uses deterministic stability ordering instead of alphabetical
+top-level keys: schema/mode and knowledge first, faction/battle identity and owned
+upgrades next, current state and plans after that, request metadata last. Nested
+legal catalogs precede sites and recruitment sources; terrain precedes observed
+profiles/state. The MCP response remains one JSON object;
+session identity deduplication preserves this order. Only prefetched prompt rendering
+splits nested stable leaves into a separate reference block.
+
+With prompt v11, `encoding="tables-v1"` enables further lossless model-only
+compaction. A table has `fields`, `rows`, and optional `shared` values. Cells follow
+column order; null cells and omitted trailing cells mean absent fields. Records
+with explicit null fields stay inline. Unit/building catalogs use tables;
+upgrade tracks or exclusive groups can use ordered `groups` of tables, retaining
+prerequisites, incremental bonuses and catalog order without assuming zero defaults.
+
+`view.unitMap` consolidates every visible unit into one table. `faction` is a
+zero-based index into `view.state.factions`; `xy` is position `[x,y]`. All IDs,
+profiles, targets, health, movement paths and readiness remain represented.
+The map replaces faction `units` lists only when smaller. It stays in the dynamic
+block, separate from stable `view.map` terrain. Buildings remain faction-grouped.
+`legal.constructionRuns` replaces legal sites with ordered `[y,xStart,xEnd]`
+inclusive runs, preserving gaps and duplicates. These authoritative legal sites
+cannot be inferred from terrain alone. Submissions still use full IDs and `{x,y}`.
+
+Historical plans may reuse individual exact active-plan fields through
+`planFieldsFromActive`; `memoryEconomyShared` supplies economy values identical in
+every memory entry. Historical differences remain explicit. Encodings are selected
+only when smaller including their keys and version marker; tiny or incompatible
+records retain the original shape. All references are local to one frozen response.
+Canonical observations, hashes and plan validation remain unchanged. CLI prefetch
+checks only transport metadata, allowing compact catalogs without decoding them
+as canonical storage structs. Offline round-trip tests reconstruct the original
+projection, including large integers, optional fields, unknown values and order.
 
 ## Submitted plans
 

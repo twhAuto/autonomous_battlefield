@@ -258,6 +258,19 @@ opts battle sessions into host-fetched inline context; the host dev script expos
 recorded delivery mode. See [comparison procedure](../operations/cli-worker.md#context-prefetch-comparison).
 `cmd/aieval/comparison.go` also accepts CLI `reasoningEffort` and `prefetchContext`
 variants, recorded in comparison reports for matched offline-context experiments.
+`internal/ai/agentview/context_order.go` orders MCP JSON and partitions prefetched
+context into lossless reference/state blocks. Its tests reconstruct optional, null,
+unknown and large-number values and compare stable references across ticks.
+`internal/ai/agentview/compact_tables.go` and `compact_state.go` encode catalog
+and upgrade tables, a shared unit map, construction runs and exact memory sharing.
+`compact_data_test.go` independently expands the documented encoding; set
+`BATTLEFIELD_DECISIONS_FIXTURE` to a private JSON array of saved `observation`
+records for offline round-trip and size checks. Never commit private battle data.
+The free comparison baseline and CLI prefetch read only the metadata they need,
+so model-facing catalog tables are not decoded as canonical observation structs.
+`internal/ai/prompts/context_policy.go` selects reduced guidance only for the exact
+mechanics digest reviewed in `rule-duplicates.json`; prompt tests verify every
+removal against embedded game content and retain historical/missing-data fallbacks.
 
 ### Battle setup timing and faction summaries
 

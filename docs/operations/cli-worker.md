@@ -221,6 +221,27 @@ Run short battles using identical scenario, factions, seed, model, effort and
 concurrency. Compare accepted-plan median/p95, failure/fallback count and tokens;
 record the code/prompt revision and `contextDelivery`. The context interval ends
 before CLI startup in prefetch mode and cannot by itself establish a speedup.
+Prompt v11 applies `tables-v1` compaction automatically whenever an encoding is
+smaller. There is no profile, session or environment toggle for compaction, and
+it is independent of the opt-in prefetch delivery mode described above. The
+comparison harness has no compaction variant: compare the old and new code/prompt
+revisions against the same frozen observations to evaluate this format change.
+Offline byte savings do not establish token savings or model decision quality.
+
+Deploy compact-capable workers first, then the gateway. New workers accept both
+context shapes; older prefetch workers can reject compact catalogs. The gateway
+starts serving the new format immediately on deployment. A coordinated deployment
+must ensure no old prefetch worker receives context from the new gateway. Full IDs
+and submission arguments are unchanged. If quality regresses, rollback requires
+reverting the compaction code and matching decoding instructions, assigning a new
+prompt version, and redeploying; there is no runtime switch. Keep the new workers
+while reverting the gateway because they also accept the old shape.
+
+From prompt v10 (retained in v11), prefetch puts frozen reference data ahead of identity and changing
+state, and removes repeated rules only for reviewed mechanics. Record serialized
+bytes separately from model tokens, and reported cached input separately from
+uncached input; a longer identical prefix alone does not establish a cache hit.
+API and tool-fetch CLI paths still put a request ID before the context tool result.
 Restore the baseline worker after the experiment unless choosing to keep prefetch.
 No production profile enables this option by default, and the Jenkins managed
 settings sync does not own it; production adoption needs a reviewed configuration

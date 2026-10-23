@@ -175,7 +175,14 @@ func (p *comparisonBaseline) NextTurn(_ context.Context, request ai.ModelTurnReq
 		return ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "get_decision_context", Arguments: args}}}, nil
 	}
 	var envelope struct {
-		Context ai.DecisionContext `json:"context"`
+		Context struct {
+			RequestID       string `json:"requestId"`
+			ExpectedVersion int64  `json:"expectedVersion"`
+			TargetTick      uint64 `json:"targetTick"`
+			Legal           struct {
+				ActionKinds []string `json:"actionKinds"`
+			} `json:"legal"`
+		} `json:"context"`
 	}
 	if json.Unmarshal([]byte(request.Messages[len(request.Messages)-1].Content), &envelope) != nil || len(envelope.Context.Legal.ActionKinds) == 0 {
 		return ai.ModelTurnResult{}, errors.New("baseline requires legal context")

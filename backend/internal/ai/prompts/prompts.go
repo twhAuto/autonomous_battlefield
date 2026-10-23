@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai/agentview"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 )
 
@@ -28,6 +29,9 @@ var toolContextTemplate string
 
 //go:embed inline-context.txt
 var inlineContextTemplate string
+
+//go:embed inline-blocks.txt
+var inlineBlocksTemplate string
 
 //go:embed identity.txt
 var identityPromptTemplate string
@@ -48,11 +52,16 @@ var identityTemplate = strings.TrimSpace(identityPromptTemplate)
 
 // Version fingerprints battle prompts as assembled for a fixed sample session, so a
 // change to template wording, assembly order or wiring always yields a new version.
-var Version = fmt.Sprintf("battlefield-agent-v9.%x", sha256.Sum256([]byte(versionSample())))
+var Version = fmt.Sprintf("battlefield-agent-v11.%x", sha256.Sum256([]byte(versionSample())))
+
+const versionContextSample = `{"context":{"schemaVersion":"v4","encoding":"tables-v1","continuousProduction":true,"knowledge":{"mechanics":"sample"},"legal":{"actionKinds":[],"units":[],"buildings":[],"upgrades":[],"recruitmentSources":[],"economySites":[],"constructionRuns":[]},"view":{"map":{},"unitProfiles":[],"buildingProfiles":[],"unitMap":{},"state":{}},"factionName":"name","background":"background","doctrine":"doctrine","battleId":"battle","factionId":"faction","ownedUpgradeIds":[],"economy":{},"activePlan":{},"memory":[],"memoryEconomyShared":{},"referenceUnits":[],"futureField":null,"requestId":"version-sample","targetTick":1,"expectedVersion":2,"observationVersion":3,"observationHash":"hash","opening":false}}`
 
 func versionSample() string {
 	session := ai.DecisionSession{RequestID: "version-sample", FactionName: "name", Background: "background", Doctrine: "doctrine"}
-	return SessionSystem(session) + "\x00" + SessionDecision(session, nil) + "\x00" + SessionDecision(session, []byte("{}"))
+	// Exercise both delivery layouts and all ordered leaves. Policy selection data
+	// is included too, so changing a rule removal cannot reuse old provenance.
+	inline := []byte(versionContextSample)
+	return SessionSystem(session) + "\x00" + SessionDecision(session, nil) + "\x00" + SessionDecision(session, []byte("{}")) + "\x00" + SessionDecision(session, inline) + "\x00" + continuousDecisionPolicy() + "\x00" + ruleDuplicatesJSON
 }
 
 func generationPromptVersion(system, decision string) string {
@@ -79,6 +88,12 @@ func SessionSystem(session ai.DecisionSession) string {
 func SessionDecision(session ai.DecisionSession, inline []byte) string {
 	if session.JobType != "faction_background" {
 		identity, _ := json.Marshal(map[string]string{"name": session.FactionName, "background": session.Background, "doctrine": session.Doctrine})
+		if reference, state, ok := agentview.ContextBlocks(inline); ok {
+			return contextPolicy(inline) + "\n" + strings.TrimSpace(inlineBlocksTemplate) +
+				"\nBEGIN_BATTLEFIELD_REFERENCE\n" + string(reference) + "\nEND_BATTLEFIELD_REFERENCE\n" +
+				fmt.Sprintf(identityTemplate, string(identity)) +
+				"\nBEGIN_BATTLEFIELD_CONTEXT\n" + string(state) + "\nEND_BATTLEFIELD_CONTEXT"
+		}
 		// Shared policy, then per-faction identity, then per-request delivery: the
 		// most stable content first maximizes the cacheable prefix.
 		return DecisionInstructions + "\n" + fmt.Sprintf(identityTemplate, string(identity)) + "\n" + contextDelivery(session.RequestID, inline)
