@@ -834,6 +834,9 @@ Prefetched battle prompts place frozen reference data before faction identity an
 dynamic state, with request metadata last. Two disjoint JSON blocks reconstruct the
 same context; rules repeated in the policy are omitted only for an exact reviewed
 mechanics snapshot. Model-facing MCP JSON is also ordered by stability without
-changing stored observations or the tool schema. See
+changing stored observations or submission arguments. Prompt v11 adds lossless
+catalog/upgrade tables, a shared dynamic unit map, legal-site runs and memory
+references to the model-facing projection. CLI prefetch validates only transport
+metadata; canonical persistence and hashes remain unchanged. See
 [prompt provenance](ai-decisions.md#prompt-provenance-and-faction-memory) for
 fallback behavior and the limits of ordering for provider caching.

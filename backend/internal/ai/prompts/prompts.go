@@ -52,9 +52,9 @@ var identityTemplate = strings.TrimSpace(identityPromptTemplate)
 
 // Version fingerprints battle prompts as assembled for a fixed sample session, so a
 // change to template wording, assembly order or wiring always yields a new version.
-var Version = fmt.Sprintf("battlefield-agent-v10.%x", sha256.Sum256([]byte(versionSample())))
+var Version = fmt.Sprintf("battlefield-agent-v11.%x", sha256.Sum256([]byte(versionSample())))
 
-const versionContextSample = `{"context":{"schemaVersion":"v4","continuousProduction":true,"knowledge":{"mechanics":"sample"},"legal":{"actionKinds":[],"units":[],"buildings":[],"upgrades":[],"recruitmentSources":[],"economySites":[]},"view":{"map":{},"unitProfiles":[],"buildingProfiles":[],"state":{}},"factionName":"name","background":"background","doctrine":"doctrine","battleId":"battle","factionId":"faction","ownedUpgradeIds":[],"economy":{},"activePlan":{},"memory":[],"referenceUnits":[],"futureField":null,"requestId":"version-sample","targetTick":1,"expectedVersion":2,"observationVersion":3,"observationHash":"hash","opening":false}}`
+const versionContextSample = `{"context":{"schemaVersion":"v4","encoding":"tables-v1","continuousProduction":true,"knowledge":{"mechanics":"sample"},"legal":{"actionKinds":[],"units":[],"buildings":[],"upgrades":[],"recruitmentSources":[],"economySites":[],"constructionRuns":[]},"view":{"map":{},"unitProfiles":[],"buildingProfiles":[],"unitMap":{},"state":{}},"factionName":"name","background":"background","doctrine":"doctrine","battleId":"battle","factionId":"faction","ownedUpgradeIds":[],"economy":{},"activePlan":{},"memory":[],"memoryEconomyShared":{},"referenceUnits":[],"futureField":null,"requestId":"version-sample","targetTick":1,"expectedVersion":2,"observationVersion":3,"observationHash":"hash","opening":false}}`
 
 func versionSample() string {
 	session := ai.DecisionSession{RequestID: "version-sample", FactionName: "name", Background: "background", Doctrine: "doctrine"}

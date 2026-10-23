@@ -20,7 +20,7 @@ func orderedContext(object map[string]json.RawMessage) json.RawMessage {
 		}
 	}
 	return orderedObject(object, []string{
-		"schemaVersion", "continuousProduction", "knowledge",
+		"schemaVersion", "encoding", "continuousProduction", "knowledge",
 		"factionName", "background", "doctrine", "battleId", "factionId", "ownedUpgradeIds",
 		"legal", "view", "economy", "activePlan", "memory", "referenceUnits",
 	}, []string{"opening", "requestId", "targetTick", "expectedVersion", "observationVersion", "observationHash"})
@@ -85,15 +85,7 @@ func ContextBlocks(payload json.RawMessage) (reference, state json.RawMessage, o
 		return nil, nil, false
 	}
 	stable := map[string]json.RawMessage{}
-	move := func(from, to map[string]json.RawMessage, keys []string) {
-		for _, key := range keys {
-			if value, exists := from[key]; exists {
-				to[key] = value
-				delete(from, key)
-			}
-		}
-	}
-	move(observation, stable, []string{"schemaVersion", "continuousProduction", "knowledge"})
+	moveContextFields(observation, stable, []string{"schemaVersion", "encoding", "continuousProduction", "knowledge"})
 	for key, leaves := range map[string][]string{
 		"legal": {"actionKinds", "units", "buildings", "upgrades"},
 		"view":  {"map"},
@@ -103,7 +95,7 @@ func ContextBlocks(payload json.RawMessage) (reference, state json.RawMessage, o
 			continue
 		}
 		selected := map[string]json.RawMessage{}
-		move(child, selected, leaves)
+		moveContextFields(child, selected, leaves)
 		if len(selected) == 0 {
 			continue
 		}
@@ -119,4 +111,13 @@ func ContextBlocks(payload json.RawMessage) (reference, state json.RawMessage, o
 	}
 	envelope["context"] = orderedContext(observation)
 	return contextJSON(map[string]json.RawMessage{"context": orderedContext(stable)}), contextJSON(envelope), true
+}
+
+func moveContextFields(from, to map[string]json.RawMessage, keys []string) {
+	for _, key := range keys {
+		if value, exists := from[key]; exists {
+			to[key] = value
+			delete(from, key)
+		}
+	}
 }

@@ -18,7 +18,7 @@ func TestVersionedSystemPromptIsEmbedded(t *testing.T) {
 	if strings.TrimSpace(System) == "" || !strings.Contains(System, "untrusted data") {
 		t.Fatalf("versioned system prompt is empty or missing its trust boundary")
 	}
-	if !strings.HasPrefix(Version, "battlefield-agent-v10.") {
+	if !strings.HasPrefix(Version, "battlefield-agent-v11.") {
 		t.Fatalf("Version = %q", Version)
 	}
 }
@@ -108,13 +108,13 @@ func TestDecisionPromptFramesDoctrineAndPrecedence(t *testing.T) {
 }
 
 func TestVersionCoversAssembledPrompts(t *testing.T) {
-	if Version != fmt.Sprintf("battlefield-agent-v10.%x", sha256.Sum256([]byte(versionSample()))) {
+	if Version != fmt.Sprintf("battlefield-agent-v11.%x", sha256.Sum256([]byte(versionSample()))) {
 		t.Fatal("Version does not fingerprint the assembled sample prompts")
 	}
 	original := identityTemplate
 	t.Cleanup(func() { identityTemplate = original })
 	identityTemplate = "changed wording\n%s"
-	if fmt.Sprintf("battlefield-agent-v10.%x", sha256.Sum256([]byte(versionSample()))) == Version {
+	if fmt.Sprintf("battlefield-agent-v11.%x", sha256.Sum256([]byte(versionSample()))) == Version {
 		t.Fatal("a change to the identity wrapper did not change the version")
 	}
 }

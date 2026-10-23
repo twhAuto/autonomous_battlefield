@@ -258,7 +258,13 @@ func (r CLIRunner) prefetchContext(ctx context.Context, session ai.DecisionSessi
 		return nil, fmt.Errorf("decision context exceeds 64 KiB prompt limit")
 	}
 	var result struct {
-		Context ai.DecisionContext `json:"context"`
+		// Validate metadata without decoding compact tables as canonical structs.
+		Context struct {
+			RequestID       string `json:"requestId"`
+			TargetTick      uint64 `json:"targetTick"`
+			Opening         bool   `json:"opening"`
+			ExpectedVersion int64  `json:"expectedVersion"`
+		} `json:"context"`
 	}
 	if json.Unmarshal(payload, &result) != nil || result.Context.RequestID != session.RequestID || (session.JobType != "faction_background" && ((result.Context.TargetTick == 0 && !result.Context.Opening) || result.Context.ExpectedVersion < 1)) {
 		return nil, fmt.Errorf("invalid decision context metadata")

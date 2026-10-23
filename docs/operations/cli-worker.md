@@ -221,7 +221,14 @@ Run short battles using identical scenario, factions, seed, model, effort and
 concurrency. Compare accepted-plan median/p95, failure/fallback count and tokens;
 record the code/prompt revision and `contextDelivery`. The context interval ends
 before CLI startup in prefetch mode and cannot by itself establish a speedup.
-From prompt v10, prefetch puts frozen reference data ahead of identity and changing
+Prompt v11 supports `tables-v1` context compaction. Update workers before the
+gateway starts serving compact catalogs: older prefetch workers decode them as
+canonical structs and can reject the context. New workers accept both shapes.
+Full IDs and submission arguments are unchanged. Offline byte savings do not
+establish token savings or decision quality; compare matched observations and
+provider usage before changing the default delivery mode.
+
+From prompt v10 (retained in v11), prefetch puts frozen reference data ahead of identity and changing
 state, and removes repeated rules only for reviewed mechanics. Record serialized
 bytes separately from model tokens, and reported cached input separately from
 uncached input; a longer identical prefix alone does not establish a cache hit.

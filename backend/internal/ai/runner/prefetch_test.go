@@ -102,3 +102,12 @@ func TestPrefetchOptOutAndBackgroundKeepToolDelivery(t *testing.T) {
 		}
 	}
 }
+
+func TestPrefetchAcceptsCompactedCatalogs(t *testing.T) {
+	payload := json.RawMessage(`{"context":{"encoding":"tables-v1","requestId":"request","expectedVersion":1,"targetTick":10,"legal":{"units":{"fields":["id","cost"],"rows":[["ranger",30]]},"constructionRuns":[[2,3,6]]},"view":{"unitMap":{"fields":["faction","id","xy"],"rows":[[0,"full-id",[3,2]]]}}}}`)
+	r := CLIRunner{Connector: errorConnector{session: contextFixtureSession{payload: payload}}}
+	got, err := r.prefetchContext(context.Background(), ai.DecisionSession{RequestID: "request"})
+	if err != nil || string(got) != string(payload) {
+		t.Fatalf("compact context rejected or rewritten: %s %v", got, err)
+	}
+}

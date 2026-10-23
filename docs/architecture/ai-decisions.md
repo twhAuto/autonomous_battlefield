@@ -238,9 +238,35 @@ Model-facing JSON uses deterministic stability ordering instead of alphabetical
 top-level keys: schema/mode and knowledge first, faction/battle identity and owned
 upgrades next, current state and plans after that, request metadata last. Nested
 legal catalogs precede sites and recruitment sources; terrain precedes observed
-profiles/state. The MCP response remains one JSON object with the same fields;
+profiles/state. The MCP response remains one JSON object;
 session identity deduplication preserves this order. Only prefetched prompt rendering
 splits nested stable leaves into a separate reference block.
+
+With prompt v11, `encoding="tables-v1"` enables further lossless model-only
+compaction. A table has `fields`, `rows`, and optional `shared` values. Cells follow
+column order; null cells and omitted trailing cells mean absent fields. Records
+with explicit null fields stay inline. Unit/building catalogs use tables;
+upgrade tracks or exclusive groups can use ordered `groups` of tables, retaining
+prerequisites, incremental bonuses and catalog order without assuming zero defaults.
+
+`view.unitMap` consolidates every visible unit into one table. `faction` is a
+zero-based index into `view.state.factions`; `xy` is position `[x,y]`. All IDs,
+profiles, targets, health, movement paths and readiness remain represented.
+The map replaces faction `units` lists only when smaller. It stays in the dynamic
+block, separate from stable `view.map` terrain. Buildings remain faction-grouped.
+`legal.constructionRuns` replaces legal sites with ordered `[y,xStart,xEnd]`
+inclusive runs, preserving gaps and duplicates. These authoritative legal sites
+cannot be inferred from terrain alone. Submissions still use full IDs and `{x,y}`.
+
+Historical plans may reuse individual exact active-plan fields through
+`planFieldsFromActive`; `memoryEconomyShared` supplies economy values identical in
+every memory entry. Historical differences remain explicit. Encodings are selected
+only when smaller including their keys and version marker; tiny or incompatible
+records retain the original shape. All references are local to one frozen response.
+Canonical observations, hashes and plan validation remain unchanged. CLI prefetch
+checks only transport metadata, allowing compact catalogs without decoding them
+as canonical storage structs. Offline round-trip tests reconstruct the original
+projection, including large integers, optional fields, unknown values and order.
 
 ## Submitted plans
 
