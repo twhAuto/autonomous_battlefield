@@ -13,7 +13,10 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
-const fieldRecruitmentOrders = "plan.recruitmentOrders"
+const (
+	fieldRecruitmentOrders  = "plan.recruitmentOrders"
+	fieldConstructionOrders = "plan.constructionOrders"
+)
 
 // ValidateSubmission checks version, target tick, and plan choices against the
 // frozen observation without mutating the decision or simulation. It returns every
@@ -149,7 +152,7 @@ func validateConstruction(legal ai.LegalChoices, opening bool, plan controller.P
 	}
 	for _, order := range *plan.ConstructionOrders {
 		if opening || !buildings[order.BuildingType] || !sites[order.Position] {
-			issues = append(issues, ai.ValidationIssue{Field: "plan.constructionOrders", Code: "unsupported", Message: fmt.Sprintf("construction %q at (%d,%d) is not legal", order.BuildingType, order.Position.X, order.Position.Y)})
+			issues = append(issues, ai.ValidationIssue{Field: fieldConstructionOrders, Code: "unsupported", Message: fmt.Sprintf("construction %q at (%d,%d) is not legal", order.BuildingType, order.Position.X, order.Position.Y)})
 		}
 	}
 	return issues
@@ -169,10 +172,10 @@ func validateBuildingLimits(economy ai.EconomyContext, plan controller.PlanPropo
 	}
 	var issues []ai.ValidationIssue
 	if remaining := economy.MaximumBuildings - economy.CurrentBuildings; economy.MaximumBuildings > 0 && len(orders) > remaining {
-		issues = append(issues, ai.ValidationIssue{Field: "plan.constructionOrders", Code: "limit_reached", Message: fmt.Sprintf("%d construction orders exceed the %d remaining building slots (%d of %d used); submit at most %d or use []", len(orders), max(0, remaining), economy.CurrentBuildings, economy.MaximumBuildings, max(0, remaining))})
+		issues = append(issues, ai.ValidationIssue{Field: fieldConstructionOrders, Code: "limit_reached", Message: fmt.Sprintf("%d construction orders exceed the %d remaining building slots (%d of %d used); submit at most %d or use []", len(orders), max(0, remaining), economy.CurrentBuildings, economy.MaximumBuildings, max(0, remaining))})
 	}
 	if remaining := economy.MaximumEconomyBuildings - economy.CurrentEconomyBuildings; economy.MaximumEconomyBuildings > 0 && economyOrders > remaining {
-		issues = append(issues, ai.ValidationIssue{Field: "plan.constructionOrders", Code: "limit_reached", Message: fmt.Sprintf("%d economy orders exceed the %d remaining economy slots (%d of %d used)", economyOrders, max(0, remaining), economy.CurrentEconomyBuildings, economy.MaximumEconomyBuildings)})
+		issues = append(issues, ai.ValidationIssue{Field: fieldConstructionOrders, Code: "limit_reached", Message: fmt.Sprintf("%d economy orders exceed the %d remaining economy slots (%d of %d used)", economyOrders, max(0, remaining), economy.CurrentEconomyBuildings, economy.MaximumEconomyBuildings)})
 	}
 	return issues
 }
