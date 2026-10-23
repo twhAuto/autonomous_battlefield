@@ -221,12 +221,21 @@ Run short battles using identical scenario, factions, seed, model, effort and
 concurrency. Compare accepted-plan median/p95, failure/fallback count and tokens;
 record the code/prompt revision and `contextDelivery`. The context interval ends
 before CLI startup in prefetch mode and cannot by itself establish a speedup.
-Prompt v11 supports `tables-v1` context compaction. Update workers before the
-gateway starts serving compact catalogs: older prefetch workers decode them as
-canonical structs and can reject the context. New workers accept both shapes.
-Full IDs and submission arguments are unchanged. Offline byte savings do not
-establish token savings or decision quality; compare matched observations and
-provider usage before changing the default delivery mode.
+Prompt v11 applies `tables-v1` compaction automatically whenever an encoding is
+smaller. There is no profile, session or environment toggle for compaction, and
+it is independent of the opt-in prefetch delivery mode described above. The
+comparison harness has no compaction variant: compare the old and new code/prompt
+revisions against the same frozen observations to evaluate this format change.
+Offline byte savings do not establish token savings or model decision quality.
+
+Deploy compact-capable workers first, then the gateway. New workers accept both
+context shapes; older prefetch workers can reject compact catalogs. The gateway
+starts serving the new format immediately on deployment. A coordinated deployment
+must ensure no old prefetch worker receives context from the new gateway. Full IDs
+and submission arguments are unchanged. If quality regresses, rollback requires
+reverting the compaction code and matching decoding instructions, assigning a new
+prompt version, and redeploying; there is no runtime switch. Keep the new workers
+while reverting the gateway because they also accept the old shape.
 
 From prompt v10 (retained in v11), prefetch puts frozen reference data ahead of identity and changing
 state, and removes repeated rules only for reviewed mechanics. Record serialized

@@ -3,9 +3,10 @@ package agentview
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"os"
 	"testing"
+
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 )
 
 // Independent expansion of the documented wire format, used only by tests.

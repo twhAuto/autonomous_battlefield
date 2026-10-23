@@ -15,9 +15,6 @@ func compactDecisionData(original map[string]json.RawMessage) map[string]json.Ra
 	compactLegal(result)
 	compactUnitMap(result)
 	compactMemory(result)
-	if sameContextJSON(contextJSON(result), contextJSON(original)) {
-		return original
-	}
 	result["encoding"] = contextJSON("tables-v1")
 	if len(contextJSON(result)) >= len(contextJSON(original)) {
 		return original
