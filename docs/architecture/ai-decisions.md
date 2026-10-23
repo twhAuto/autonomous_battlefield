@@ -362,8 +362,10 @@ names; see [Antigravity troubleshooting](../operations/antigravity-cli.md#missin
 Each rejected submission issue is logged as `decision_validation_rejected` with its
 field, code and validator message. Every quoted (`%q`) value, the only way
 validators insert submitted text, is masked as `"…"`, text after an unbalanced quote
-is dropped, and the result is cut to 240 bytes, so submitted values are never logged.
-The model still receives the full message.
+is dropped, and the result is cut to 240 bytes, so submitted text such as building
+types, IDs and upgrade names is never logged. Numbers in the template (coordinates,
+counts) and the event's request ID, target tick and expected version remain. The
+model still receives the full message.
 
 | Error category | Raised by | Meaning |
 | --- | --- | --- |
