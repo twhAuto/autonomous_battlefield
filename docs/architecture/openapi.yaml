@@ -1096,7 +1096,7 @@ components:
     Ruleset:
       description: |
         Catalog data: starting gold, units, upgrades, optional `structures`, and the
-        shared `buildings.maximumBuildingCount` limit. Production structures expose `trains`
+        shared `buildings.maximumBuildingCount` limit (at most 16; ruleset v8 uses 12). Production structures expose `trains`
         arrays of supported unit IDs. Core v7 enables continuousProduction and starts each faction with only a castle,
         which trains the Barracks roster and attacks enemies. Resolved buildings rules
         include castleTrains (unit IDs), castleAttack (15) and castleRange (3).
@@ -1106,6 +1106,7 @@ components:
       properties:
         id: {type: string}
         continuousProduction: {type: boolean, default: false, description: Repeating per-building unit selection and on/off settings; absent or false retains historical batch recruitment.}
+        maximumUnitCount: {type: integer, minimum: 0, maximum: 200, description: 'Per-faction cap on living units plus paid units in training; absent or 0 is unlimited. Ruleset v8 uses 40.'}
         upgrades:
           type: array
           items: {$ref: '#/components/schemas/UpgradeRule'}
@@ -1438,6 +1439,7 @@ components:
         unitType: {type: string, description: Selected type; absent until configured.}
         enabled: {type: boolean, description: Start another unit whenever the current unit has deployed and gold permits.}
         waitingForGold: {type: boolean, description: Enabled with no paid unit and insufficient gold above reserveGold. Automatically retries each tick.}
+        waitingForUnitLimit: {type: boolean, description: Enabled with no paid unit while the faction is at maximumUnitCount. Starts without charge once a unit slot frees.}
 
     TrainingOrder:
       description: Paid FIFO entry; only the head trains. Units act the tick after deployment.
@@ -1687,7 +1689,7 @@ components:
       required: [name]
       properties:
         name: {type: string}
-        rationale: {type: string}
+        rationale: {type: string, maxLength: 600}
         actionWeights: {type: object, additionalProperties: {type: integer}}
         targetBonuses: {type: object, additionalProperties: {type: integer}}
         reserveGold: {type: integer}

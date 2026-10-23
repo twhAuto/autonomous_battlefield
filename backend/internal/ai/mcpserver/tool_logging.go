@@ -6,6 +6,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"unicode/utf8"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel/attribute"
@@ -107,4 +108,19 @@ func submissionInputShape(payload json.RawMessage) ([]string, bool) {
 	}
 	_, wrapped := arguments["plan"]
 	return missing, wrapped
+}
+
+// validationLogMessageBytes bounds validator-authored messages, which may quote
+// short submitted identifiers, so a rejection is diagnosable without a payload dump.
+const validationLogMessageBytes = 240
+
+func boundedLogText(text string, limit int) string {
+	if len(text) <= limit {
+		return text
+	}
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return text[:cut] + "…"
 }

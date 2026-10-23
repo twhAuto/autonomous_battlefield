@@ -1,6 +1,7 @@
 id: battlefield
-version: "7"
+version: "8"
 startingGold: 220
+maximumUnitCount: 40
 continuousProduction: true
 library:
   id: core
@@ -9,7 +10,7 @@ library:
   economy: economy
 buildings:
   maximumEconomyCount: 2
-  maximumBuildingCount: 8
+  maximumBuildingCount: 12
 combat:
   minimumDamage: 1
   defendAttackPercent: 80

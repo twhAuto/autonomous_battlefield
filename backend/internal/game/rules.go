@@ -45,7 +45,7 @@ func ValidateRuleset(ruleset Ruleset) error {
 }
 
 func validRulesetMetadata(ruleset Ruleset) bool {
-	return strings.TrimSpace(ruleset.ID) != "" && strings.TrimSpace(ruleset.Version) != "" && ruleset.DesignBudget >= 0 && ruleset.StartingGold >= 0
+	return strings.TrimSpace(ruleset.ID) != "" && strings.TrimSpace(ruleset.Version) != "" && ruleset.DesignBudget >= 0 && ruleset.StartingGold >= 0 && ruleset.MaximumUnitCount >= 0 && ruleset.MaximumUnitCount <= MaximumUnitCountLimit
 }
 
 func validUnitType(unit UnitType) bool {
@@ -60,7 +60,7 @@ func validBuildingRules(rules BuildingRules) bool {
 	if !ValidBuildingAttack(rules.CastleAttack, rules.CastleRange) {
 		return false
 	}
-	return rules.MaximumBuildingCount >= 0 && rules.MaximumBuildingCount <= 8 && rules.CastleHealth > 0 && rules.CastleDefense >= 0 && rules.CastleVision >= 0 && rules.CastleBuildRange >= 0 && rules.CastleBuildRange <= 10 && rules.CastleIncome >= 0 && rules.EconomyCost > 0 && rules.EconomyHealth > 0 && rules.EconomyDefense >= 0 && rules.EconomyVision >= 0 && rules.EconomyBuildRange >= 0 && rules.EconomyBuildRange <= 10 && rules.EconomyIncome >= 0 && rules.MaximumEconomyCount >= 0 && rules.MaximumEconomyCount <= 2
+	return rules.MaximumBuildingCount >= 0 && rules.MaximumBuildingCount <= MaximumBuildingCountLimit && rules.CastleHealth > 0 && rules.CastleDefense >= 0 && rules.CastleVision >= 0 && rules.CastleBuildRange >= 0 && rules.CastleBuildRange <= 10 && rules.CastleIncome >= 0 && rules.EconomyCost > 0 && rules.EconomyHealth > 0 && rules.EconomyDefense >= 0 && rules.EconomyVision >= 0 && rules.EconomyBuildRange >= 0 && rules.EconomyBuildRange <= 10 && rules.EconomyIncome >= 0 && rules.MaximumEconomyCount >= 0 && rules.MaximumEconomyCount <= 2
 }
 
 // ValidBuildingAttack allows a passive building or a complete ranged attack.

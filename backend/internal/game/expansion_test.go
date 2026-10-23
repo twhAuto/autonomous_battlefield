@@ -360,7 +360,7 @@ func TestExpansionRulesRejectInvalidCapabilities(t *testing.T) {
 		t.Fatal("uncapped structures accepted")
 	}
 	r = m.scenario.Ruleset
-	r.Buildings.MaximumBuildingCount = 9
+	r.Buildings.MaximumBuildingCount = MaximumBuildingCountLimit + 1
 	if ValidateRuleset(r) == nil {
 		t.Fatal("oversized building cap accepted")
 	}

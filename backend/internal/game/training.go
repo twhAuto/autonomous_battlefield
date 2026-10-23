@@ -4,6 +4,31 @@ import "sort"
 
 const MaximumTrainingQueue = 12
 
+// MaximumUnitCountLimit bounds authored per-faction unit caps.
+const MaximumUnitCountLimit = 200
+
+// UnitCount counts living units plus paid units still training, the total a
+// faction's unit cap limits.
+func (m *Match) UnitCount(factionID string) int {
+	count := 0
+	for _, unit := range m.state.Units {
+		if unit.FactionID == factionID && unit.Health > 0 {
+			count++
+		}
+	}
+	for _, b := range m.state.Buildings {
+		if b.FactionID == factionID && b.Health > 0 {
+			count += len(b.TrainingQueue)
+		}
+	}
+	return count
+}
+
+func (m *Match) atUnitLimit(factionID string) bool {
+	limit := m.scenario.Ruleset.MaximumUnitCount
+	return limit > 0 && m.UnitCount(factionID) >= limit
+}
+
 // A building releases at most one troop each tick. Time does not advance for
 // queued followers, nor for orders purchased during this same tick.
 func (m *Match) runTraining() []Event {

@@ -35,8 +35,10 @@ Do not duplicate maps for each ruleset version. Libraries supply all units,
 upgrades and valid non-castle structures; there are no selection lists.
 
 The shared ruleset points to the library using `library.id`, `library.version`,
-`library.castle` and `library.economy`. It owns starting gold, building limits and
-combat percentages and `continuousProduction`. Core v7 enables continuous
+`library.castle` and `library.economy`. It owns starting gold, building limits
+(`buildings.maximumBuildingCount` up to 16, `maximumEconomyCount` up to 2), the
+per-faction `maximumUnitCount` (0–200; 0 is unlimited), combat percentages and
+`continuousProduction`. Ruleset v8 sets 12 buildings and 40 units. Core v7 enables continuous
 AI-selected unit production; absent/false preserves historical batch purchases.
 The archived `content/core-v6.yaml` is retained as the authored reference for the
 castle-training/attacking version with batch queues. It is not the active library

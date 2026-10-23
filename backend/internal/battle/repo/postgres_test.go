@@ -387,6 +387,9 @@ type battleDB struct {
 	row         pgx.Row
 	rowQueue    []pgx.Row
 	rows        pgx.Rows
+	rowsQueue   []pgx.Rows
+	queries     []string
+	queryArgLog [][]any
 	queryErr    error
 	execTag     pgconn.CommandTag
 	execErr     error
@@ -404,6 +407,13 @@ func (db *battleDB) Exec(_ context.Context, _ string, arguments ...any) (pgconn.
 func (db *battleDB) Query(_ context.Context, sql string, args ...any) (pgx.Rows, error) {
 	db.querySQL = sql
 	db.queryArgs = args
+	db.queries = append(db.queries, sql)
+	db.queryArgLog = append(db.queryArgLog, args)
+	if len(db.rowsQueue) > 0 {
+		rows := db.rowsQueue[0]
+		db.rowsQueue = db.rowsQueue[1:]
+		return rows, db.queryErr
+	}
 	return db.rows, db.queryErr
 }
 

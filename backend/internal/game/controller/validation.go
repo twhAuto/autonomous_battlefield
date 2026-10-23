@@ -13,8 +13,8 @@ func validateProposal(proposal PlanProposal, actionKinds map[string]struct{}) er
 	if strings.TrimSpace(proposal.Name) == "" {
 		return fmt.Errorf("%w: name is required", ErrInvalidPlan)
 	}
-	if utf8.RuneCountInString(strings.TrimSpace(proposal.Rationale)) > maxRationaleCharacters {
-		return fmt.Errorf("%w: rationale exceeds %d characters", ErrInvalidPlan, maxRationaleCharacters)
+	if utf8.RuneCountInString(strings.TrimSpace(proposal.Rationale)) > MaxRationaleCharacters {
+		return fmt.Errorf("%w: rationale exceeds %d characters", ErrInvalidPlan, MaxRationaleCharacters)
 	}
 	if proposal.ReserveGold < 0 {
 		return fmt.Errorf("%w: reserve gold cannot be negative", ErrInvalidPlan)
@@ -168,12 +168,15 @@ func validateTypedConstruction(proposal PlanProposal) error {
 
 }
 
+// MaximumProductionOrders covers a castle plus the largest authored building limit.
+const MaximumProductionOrders = 17
+
 func validateProductionOrders(plan PlanProposal) error {
 	if plan.ProductionOrders == nil {
 		return nil
 	}
-	if len(*plan.ProductionOrders) > 9 {
-		return fmt.Errorf("%w: at most nine building production orders", ErrInvalidPlan)
+	if len(*plan.ProductionOrders) > MaximumProductionOrders {
+		return fmt.Errorf("%w: at most %d building production orders", ErrInvalidPlan, MaximumProductionOrders)
 	}
 	seen := map[string]bool{}
 	for _, order := range *plan.ProductionOrders {

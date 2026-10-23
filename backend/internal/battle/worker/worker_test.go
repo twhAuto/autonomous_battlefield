@@ -617,7 +617,7 @@ func (r *decisionBattleRepository) ListFactionMemory(_ context.Context, battleID
 	for _, record := range r.records {
 		records = append(records, record)
 	}
-	return briefing.BuildFactionMemory(records, battleID, attempt, factionID, beforeTick), nil
+	return briefing.BuildFactionMemory(records, nil, battleID, attempt, factionID, beforeTick), nil
 }
 
 func TestFallbackPreservesRunnerFailureCategory(t *testing.T) {

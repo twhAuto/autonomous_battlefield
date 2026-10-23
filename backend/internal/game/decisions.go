@@ -37,6 +37,11 @@ func (m *Match) DecisionSnapshot(factionID string) (DecisionSnapshot, error) {
 		projectedIncome = m.incomeFor(factionID, castle.Income)
 	}
 	legalSites := m.legalConstructionSites(factionID)
+	maximumBuildings, currentBuildings := m.scenario.Ruleset.Buildings.MaximumBuildingCount, m.LivingStructureCount(factionID)
+	// A full shared limit leaves no legal site, so construction is not offered.
+	if maximumBuildings > 0 && currentBuildings >= maximumBuildings {
+		legalSites = []controller.Coordinate{}
+	}
 	if m.OpeningDue() {
 		projectedIncome = 0
 		legalSites = nil
@@ -45,7 +50,7 @@ func (m *Match) DecisionSnapshot(factionID string) (DecisionSnapshot, error) {
 	if m.scenario.SnapshotVersion >= DoctrineSnapshotVersion {
 		upgrades = append(upgrades, m.scenario.Ruleset.Upgrades...)
 	}
-	return DecisionSnapshot{ContinuousProduction: m.scenario.Ruleset.ContinuousProduction, LegalBuildings: ConstructibleBuildings(m.scenario.Ruleset), RecruitmentSources: m.recruitmentSources(factionID), MaximumBuildings: m.scenario.Ruleset.Buildings.MaximumBuildingCount, Doctrine: runtime.setup.Doctrine, FactionName: runtime.setup.Name, Background: runtime.setup.Background, Opening: m.OpeningDue(), LegalUpgrades: upgrades, OwnedUpgradeIDs: append([]string{}, m.factionState(factionID).OwnedUpgradeIDs...), BattleID: m.id, FactionID: factionID, TargetTick: m.DecisionTargetTick(), Version: m.state.Tick,
+	return DecisionSnapshot{ContinuousProduction: m.scenario.Ruleset.ContinuousProduction, LegalBuildings: ConstructibleBuildings(m.scenario.Ruleset), RecruitmentSources: m.recruitmentSources(factionID), MaximumBuildings: maximumBuildings, CurrentBuildings: currentBuildings, MaximumUnits: m.scenario.Ruleset.MaximumUnitCount, CurrentUnits: m.UnitCount(factionID), Doctrine: runtime.setup.Doctrine, FactionName: runtime.setup.Name, Background: runtime.setup.Background, Opening: m.OpeningDue(), LegalUpgrades: upgrades, OwnedUpgradeIDs: append([]string{}, m.factionState(factionID).OwnedUpgradeIDs...), BattleID: m.id, FactionID: factionID, TargetTick: m.DecisionTargetTick(), Version: m.state.Tick,
 		View: view, Gold: m.factionState(factionID).Gold, ProjectedIncome: projectedIncome,
 		EconomyCost: m.scenario.Ruleset.Buildings.EconomyCost, EconomyIncome: m.scenario.Ruleset.Buildings.EconomyIncome + runtime.economyBonus,
 		EconomyCount: m.economyCount(factionID), MaximumEconomy: m.scenario.Ruleset.Buildings.MaximumEconomyCount,

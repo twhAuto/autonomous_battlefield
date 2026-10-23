@@ -151,19 +151,19 @@ func TestCreateDecisionAndRetryReuse(t *testing.T) {
 }
 
 func TestFactionMemoryQueryScopesAndLimitsBeforeRead(t *testing.T) {
-	db := &battleDB{rows: &battleRows{scans: []battleRow{decisionTestRow("accepted", &controller.PlanProposal{Name: "reserve", ReserveGold: 10})}}}
+	decisions := &battleRows{scans: []battleRow{decisionTestRow("accepted", &controller.PlanProposal{Name: "reserve", ReserveGold: 10})}}
+	events := &battleRows{scans: []battleRow{func(destinations ...any) error {
+		return assignBattleValues(destinations, []any{uint64(12), "production_skipped", "33333333-3333-3333-3333-333333333333", "construction", "maximum_reached"})
+	}}}
+	db := &battleDB{rowsQueue: []pgx.Rows{decisions, events}}
 	got, err := NewPostgres(db).ListFactionMemory(context.Background(), "22222222-2222-2222-2222-222222222222", 1, "33333333-3333-3333-3333-333333333333", 20)
 	if err != nil || len(got) != 1 || got[0].Plan.ReserveGold != 10 {
 		t.Fatalf("memory=%+v err=%v", got, err)
 	}
-	for _, part := range []string{"battle_id=$1", "attempt=$2", "faction_id=$3", "target_tick<$4", "ORDER BY target_tick DESC LIMIT $5"} {
-		if !strings.Contains(db.querySQL, part) {
-			t.Fatalf("unscoped query: %s", db.querySQL)
-		}
+	if outcome := got[0].Outcome; outcome == nil || len(outcome.Skipped) != 1 || outcome.Skipped[0].Count != 1 {
+		t.Fatalf("plan outcome missing: %+v", got[0].Outcome)
 	}
-	if len(db.queryArgs) != 5 || db.queryArgs[4] != briefing.FactionMemoryLimit {
-		t.Fatal("unbounded query")
-	}
+	assertMemoryQueriesScoped(t, db)
 	db.queryErr = errors.New("unavailable")
 	if _, err := NewPostgres(db).ListFactionMemory(context.Background(), "b", 1, "f", 20); err == nil {
 		t.Fatal("query failure lost")
@@ -172,6 +172,30 @@ func TestFactionMemoryQueryScopesAndLimitsBeforeRead(t *testing.T) {
 	db.rows = &battleRows{scans: []battleRow{func(...any) error { return errors.New("scan") }}}
 	if _, err := NewPostgres(db).ListFactionMemory(context.Background(), "b", 1, "f", 20); err == nil {
 		t.Fatal("scan failure lost")
+	}
+}
+
+// The decision read is scoped and limited; the outcome read covers only its windows.
+func assertMemoryQueriesScoped(t *testing.T, db *battleDB) {
+	t.Helper()
+	if len(db.queries) != 2 {
+		t.Fatalf("queries = %v", db.queries)
+	}
+	for _, part := range []string{"battle_id=$1", "attempt=$2", "faction_id=$3", "target_tick<$4", "ORDER BY target_tick DESC LIMIT $5"} {
+		if !strings.Contains(db.queries[0], part) {
+			t.Fatalf("unscoped query: %s", db.queries[0])
+		}
+	}
+	if args := db.queryArgLog[0]; len(args) != 5 || args[4] != briefing.FactionMemoryLimit {
+		t.Fatal("unbounded query")
+	}
+	for _, part := range []string{"battle_events", "battle_id=$1", "attempt=$2", "tick>=$3", "tick<$4"} {
+		if !strings.Contains(db.queries[1], part) {
+			t.Fatalf("unscoped outcome query: %s", db.queries[1])
+		}
+	}
+	if args := db.queryArgLog[1]; len(args) != 4 || args[2] != uint64(10) || args[3] != uint64(20) {
+		t.Fatalf("outcome window args = %v", args)
 	}
 }
 

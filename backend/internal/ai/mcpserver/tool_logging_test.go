@@ -62,3 +62,12 @@ func TestSubmissionSchemaFailuresAreLoggedWithoutPayload(t *testing.T) {
 		}
 	}
 }
+
+func TestBoundedLogTextKeepsWholeRunes(t *testing.T) {
+	if got := boundedLogText("short", 10); got != "short" {
+		t.Fatalf("short text changed: %q", got)
+	}
+	if got := boundedLogText("abcé", 4); got != "abc…" {
+		t.Fatalf("split a rune: %q", got)
+	}
+}

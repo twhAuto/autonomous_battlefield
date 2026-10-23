@@ -137,3 +137,30 @@ func TestCastleProductionUsesFrozenRoster(t *testing.T) {
 		}
 	}
 }
+
+func TestConstructionRespectsFrozenBuildingLimits(t *testing.T) {
+	sites := []controller.Coordinate{{X: 9, Y: 7}, {X: 9, Y: 9}}
+	legal := ai.LegalChoices{ActionKinds: []string{"attack"}, Buildings: []game.BuildingType{{ID: "defense_tower"}, {ID: game.BuildingEconomy}}, EconomySites: sites}
+	r := ai.DecisionRecord{Version: 1, TargetTick: 10, Runtime: "cli", Observation: ai.DecisionContext{Legal: legal, Economy: ai.EconomyContext{MaximumBuildings: 8, CurrentBuildings: 7, MaximumEconomyBuildings: 2, CurrentEconomyBuildings: 2}}}
+	construction := []controller.ConstructionOrder{{BuildingType: "defense_tower", Position: sites[0]}}
+	s := ai.PlanSubmission{ExpectedVersion: 1, TargetTick: 10, IdempotencyKey: "once", Plan: controller.PlanProposal{Name: "fill", ConstructionOrders: &construction}}
+	if issues := ValidateSubmission(r, s); len(issues) != 0 {
+		t.Fatal("the last free slot was rejected", issues)
+	}
+	construction = append(construction, controller.ConstructionOrder{BuildingType: game.BuildingEconomy, Position: sites[1]})
+	issues := ValidateSubmission(r, s)
+	if len(issues) != 2 || issues[0].Code != "limit_reached" || issues[1].Code != "limit_reached" {
+		t.Fatalf("orders beyond the building and economy limits accepted: %+v", issues)
+	}
+	if want := "2 construction orders exceed the 1 remaining building slots (7 of 8 used); submit at most 1 or use []"; issues[0].Message != want {
+		t.Fatalf("unclear limit message %q", issues[0].Message)
+	}
+	r.Runtime = ""
+	if issues := ValidateSubmission(r, s); len(issues) != 0 {
+		t.Fatal("scripted plans rely on engine skips and must not be rejected", issues)
+	}
+	r.Runtime, r.Observation.Economy = "cli", ai.EconomyContext{}
+	if issues := ValidateSubmission(r, s); len(issues) != 0 {
+		t.Fatal("observations without limits must not be rejected", issues)
+	}
+}

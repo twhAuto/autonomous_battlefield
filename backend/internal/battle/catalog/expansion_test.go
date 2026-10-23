@@ -17,7 +17,8 @@ import (
 
 func TestLegacyInputWithOpenMapRules(t *testing.T) {
 	// Content/snapshot digests include the shortened authored guidance. The
-	// simulation digest below explicitly reflects the open-map and queue rules.
+	// simulation digest below explicitly reflects the open-map, queue and
+	// ally pass-through movement rules.
 	s := legacyScenario(t, "castle-siege-v1")
 	digest := digestOf(t, s)
 	if digest != "356a05c48256e0840499b2969648215e58726e7bbd48966605288ea90aa8fd24" || s.Ruleset.ContentSource.Digest != "2f1d5db379cb23dc35af710547520401c03fa5a36242237146df58b40948f6ad" {
@@ -40,8 +41,8 @@ func TestLegacyInputWithOpenMapRules(t *testing.T) {
 		}
 		h.Write(data)
 	}
-	if hex.EncodeToString(h.Sum(nil)) != "272261b8abc043bb427d08554d1e3bd046eacea4c0597d5265023980a24e8ca1" {
-		t.Fatal("open-map transition trace changed (legacy pads remain impassable)")
+	if trace := hex.EncodeToString(h.Sum(nil)); trace != "58caa9fe48fddbf0c9b6515c97bc7acff79f7b40ebda35a166bb12e66dfa3d84" {
+		t.Fatalf("open-map transition trace changed to %s (legacy pads remain impassable)", trace)
 	}
 }
 

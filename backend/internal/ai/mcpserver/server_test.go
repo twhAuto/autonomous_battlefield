@@ -133,7 +133,22 @@ func TestStreamableMCPToolsAreAuthenticatedAndScoped(t *testing.T) {
 	if err != nil || expanded.IsError || repository.submitted.IdempotencyKey != "expanded" || repository.submitted.Plan.ConstructionOrders == nil || (*repository.submitted.Plan.ConstructionOrders)[0].BuildingType != "defense_tower" || (*repository.submitted.Plan.RecruitmentOrders)[0].SourceBuildingID != "a:barracks:1" {
 		t.Fatalf("expanded tool submission: %+v %v", expanded, err)
 	}
+	assertRejectionLogsMessage(t, session, &logs)
 	assertDecisionToolLogs(t, logs.String())
+}
+
+func assertRejectionLogsMessage(t *testing.T, session *mcp.ClientSession, logs *bytes.Buffer) {
+	t.Helper()
+	rejected, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "submit_strategy_plan", Arguments: map[string]any{
+		"requestId": "request-1", "idempotencyKey": "illegal", "expectedVersion": 1, "targetTick": 10, "name": "overreach", "rationale": "Build beyond the frontier.", "actionWeights": map[string]any{"defend": 1200}, "reserveGold": 0, "spendOrder": []string{"construction"}, "constructionPriorities": []any{}, "recruitmentPriorities": []any{},
+		"constructionOrders": []any{map[string]any{"buildingType": "defense_tower", "position": map[string]any{"x": 1, "y": 1}}},
+	}})
+	if err != nil || rejected.IsError {
+		t.Fatalf("rejected submission: %+v %v", rejected, err)
+	}
+	if !strings.Contains(logs.String(), `"message":"construction \"defense_tower\" at (1,1) is not legal"`) {
+		t.Fatalf("rejection log lacks the validator message: %s", logs.String())
+	}
 }
 
 func assertDecisionToolLogs(t *testing.T, logs string) {

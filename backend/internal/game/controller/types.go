@@ -6,10 +6,12 @@ package controller
 import "errors"
 
 const (
-	maxWeight              = int64(10_000)
-	maxTargetBonus         = int64(1_000_000_000)
-	maxRationaleCharacters = 600
+	maxWeight      = int64(10_000)
+	maxTargetBonus = int64(1_000_000_000)
 )
+
+// MaxRationaleCharacters bounds a plan rationale; model instructions state it.
+const MaxRationaleCharacters = 600
 
 var ErrInvalidPlan = errors.New("invalid strategy plan")
 

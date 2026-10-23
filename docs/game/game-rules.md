@@ -70,8 +70,8 @@ upgrade levels. See the [specialization table](frontier-siege.md#specializations
 ## Units and buildings
 
 Eleven unit types (Vanguard, Striker, Ranger, Catapult, Battering Ram, Pikeman,
-Herbalist, Scout, Raider Cavalry, Engineer and Crossbowman) and eight constructible structures (Economy, Defense Tower, Outpost, Barracks, Archery Range, Stables, Siege Workshop and Infirmary). Stats, costs, capabilities, targeting, and building limits (eight
-non-castle buildings, at most two economy) are in
+Herbalist, Scout, Raider Cavalry, Engineer and Crossbowman) and eight constructible structures (Economy, Defense Tower, Outpost, Barracks, Archery Range, Stables, Siege Workshop and Infirmary). Stats, costs, capabilities, targeting, and building limits (twelve
+non-castle buildings, at most two economy; 40 units per faction) are in
 [Frontier Siege](frontier-siege.md#unit-roster).
 
 ## Production windows
@@ -109,7 +109,9 @@ immediately; other new structures activate next tick.
 
 The castle is the only starting building and trains the same units as a Barracks.
 It also fires at enemy units during the tower phase while its queue continues
-training. Castles do not consume any of the eight constructible building slots.
+training. Castles do not consume any of the twelve constructible building slots
+(ruleset v8 `buildings.maximumBuildingCount`; economy buildings count toward it and
+also keep their own limit of two).
 Build additional Barracks for simultaneous training or forward deployment. The castle and
 five constructible production buildings expose supported unit IDs as `trains`:
 
@@ -129,6 +131,10 @@ deployment can buy the next unit that same tick; its training advances next tick
 Purchases follow building ID order after income, construction/upgrades and training.
 Insufficient gold above `reserveGold` sets `production.waitingForGold`; the building
 stays enabled and retries each tick. No purchase occurs while a paid unit is present.
+Ruleset v8 caps each faction at 40 units (`maximumUnitCount`), counting living units
+plus paid units still training. At the cap, starts pause without charge and set
+`production.waitingForUnitLimit`; training resumes on the first tick a slot frees.
+Frozen battles without a cap keep unlimited production.
 
 Setting `enabled: false` stops new starts but lets the paid unit finish. A different
 `unitType` applies to the next purchase. An off order may omit `unitType` to retain
@@ -210,8 +216,11 @@ Each tick transition runs these steps in order (`AdvanceWithPlans` in
    reachable attack position around a living enemy unit or building instead, so a
    crowded castle perimeter cannot freeze both armies. Siege units head for
    structures in priority order and Herbalists follow allied soldiers (see
-   [Frontier Siege](frontier-siege.md#unit-roster)). Routes never cross occupied
-   or impassable hexes.
+   [Frontier Siege](frontier-siege.md#unit-roster)). Routes avoid every occupied
+   hex when possible. When no such route exists (castle approach first, then enemy
+   approaches), a route may pass through friendly units, but never enemies,
+   buildings or impassable hexes, and a move always ends on an unoccupied hex; a
+   unit stops early rather than stack.
 9. **Completion check** (see Winning).
 
 ## Combat

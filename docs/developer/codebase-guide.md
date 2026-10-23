@@ -266,6 +266,9 @@ and upgrade tables, a shared unit map, construction runs and exact memory sharin
 `compact_data_test.go` independently expands the documented encoding; set
 `BATTLEFIELD_DECISIONS_FIXTURE` to a private JSON array of saved `observation`
 records for offline round-trip and size checks. Never commit private battle data.
+`compact_ids.go` runs before table encoding: it assigns context-local integer unit
+IDs, rewrites unit target references and omits destroyed buildings; it is lossy by
+design, so `compact_ids_test.go` checks it separately from the round-trip tests.
 The free comparison baseline and CLI prefetch read only the metadata they need,
 so model-facing catalog tables are not decoded as canonical observation structs.
 `internal/ai/prompts/context_policy.go` selects reduced guidance only for the exact

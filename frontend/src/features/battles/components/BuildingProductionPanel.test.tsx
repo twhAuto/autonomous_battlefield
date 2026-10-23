@@ -31,9 +31,11 @@ it('updates progress, selected next unit, blocked exits and disabled paid work',
   expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
 })
 
-it('distinguishes gold waits, unconfigured sources, activation, paused and ended battles', () => {
+it('distinguishes gold and unit-limit waits, unconfigured sources, activation, paused and ended battles', () => {
   const { rerender } = render(<BuildingProductionPanel {...props} state={{ ...state, buildings: [{ ...building, production: { enabled: true, unitType: 'vanguard', waitingForGold: true } }] }} />)
   expect(screen.getByText(/Waiting for gold/)).toBeVisible()
+  rerender(<BuildingProductionPanel {...props} state={{ ...state, buildings: [{ ...building, production: { enabled: true, unitType: 'vanguard', waitingForUnitLimit: true } }] }} />)
+  expect(screen.getByText('Waiting · faction unit limit reached')).toBeVisible()
   rerender(<BuildingProductionPanel {...props} paused state={{ ...state, buildings: [{ ...building, production: { enabled: false }, readyAtTick: 3 }] }} />)
   expect(screen.getByText(/No unit selected/)).toBeVisible()
   expect(screen.getByText(/training is paused/)).toBeVisible()
