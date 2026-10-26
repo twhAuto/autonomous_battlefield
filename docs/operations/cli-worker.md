@@ -72,7 +72,7 @@ Apply repairs only what is needed:
 - **`enable-worker`:** re-enables a worker that is running but disabled, so it survives a reboot.
 - **`resume-worker`:** resumes claims on a worker that an interrupted run left draining.
 - **`upgrade-worker`:** installs the production worker release; see [worker upgrades](#worker-upgrades).
-- **`sync-worker-config`:** applies [`infra/deploy/agent-vm/managed-settings.json`](../../infra/deploy/agent-vm/managed-settings.json) to `/etc/battlefield-agent/config.yaml`. That is `agentConcurrency` (parallel CLI decisions) and each CLI profile's `model`. `null` removes `agentConcurrency`, so the worker runs one decision at a time. Workers older than the drain support reject the setting, so a value of 1–4 is applied only once the worker runs the production release, or in the same apply that upgrades it. Only those fields change. When the worker runs the production release, it validates the new settings (`-check-config`) before they replace the file. The job drains the worker, then updates the guest file, its ownership-marker fingerprint and the host's registered copy (`cli.guest/config.yaml`) together, and restarts the worker.
+- **`sync-worker-config`:** applies [`infra/deploy/agent-vm/managed-settings.json`](../../infra/deploy/agent-vm/managed-settings.json) to `/etc/battlefield-agent/config.yaml`. That is `agentConcurrency` (parallel CLI decisions), each CLI profile's `model`, and the managed profiles' `modelOptions` (including reasoning efforts). `null` removes `agentConcurrency`, so the worker runs one decision at a time. Workers older than the drain support reject the setting, so a value of 1–4 is applied only once the worker runs the production release, or in the same apply that upgrades it. Model options also require the production release binary before configuration sync. Only those fields change. When the worker runs the production release, it validates the new settings (`-check-config`) before they replace the file. The job drains the worker, then updates the guest file, its ownership-marker fingerprint and the host's registered copy (`cli.guest/config.yaml`) together, and restarts the worker.
 
 Secret sync only proceeds when `worker.env` still matches its registered fingerprint
 and contains only the three expected settings. A drifted `worker.env` blocks every
@@ -83,8 +83,8 @@ registered copy, the next plan proposes the sync again, and it completes without
 rewriting the guest. `apply` performs exactly the reviewed repairs. Any other drift, such as a changed
 isolation flag, is reported and left untouched; it needs a reviewed bootstrap change.
 
-To change a CLI model or the concurrency, edit `managed-settings.json` and the matching
-profile in the application ConfigMap (a test keeps their models equal), merge and
+To change a CLI model, its selectable models/reasoning efforts, or the concurrency, edit `managed-settings.json` and the matching
+profile in the application ConfigMap and VM template (a test keeps their models and options equal), merge and
 promote, then run `apply`.
 
 ## Worker upgrades
@@ -169,3 +169,83 @@ older than the new release only prints a notice; run `apply` to upgrade it.
   registered binary automatically, but a release that passes its health check
   stays installed until a later release replaces it.
 - Provider subscription logins, which are still interactive inside the worker account.
+
+## Model selection rollout
+
+The gateway requires `selectionVersion: 1` in agent claims. Old workers receive
+HTTP 409 before leasing jobs. The supported Jenkins job extracts the worker from
+the **deployed production image**, so this release needs a short CLI maintenance
+window: finish active CLI battles and pause new CLI battles, promote `dev` to
+`main` and let production delivery complete, then run `battlefield-platform/cli`
+with `ACTION=plan`, review its repairs, and run `ACTION=apply`. Its approval step
+precedes the upgrade and configuration sync. Until that finishes, old workers
+cannot claim from the new gateway. Run `ACTION=verify` and a CLI battle before
+resuming normal use. This PR does not deploy or restart the production VM.
+
+Keep `modelOptions` and each model's `reasoningEfforts` synchronized across
+`backend/config.yaml`, the application ConfigMap, the VM's `config.yaml`, and
+`managed-settings.json`, plus the host launcher `scripts/dev/run-k8s-cli-agent.sh`.
+The checked-in Codex choices are `gpt-6-luna`, `gpt-5.6-luna` and `gpt-6.1-sol`,
+with low/medium/high efforts. Claude choices are `haiku`, `sonnet` and `opus`;
+Sonnet and Opus expose low/medium/high efforts, while Haiku uses model-default
+effort for compatibility with older supported CLI versions. Antigravity exposes
+`gemini-3.8-flash-low`, `gemini-3.8-flash-medium` and `gemini-3.8-flash-high` as
+model choices; their reasoning level is part of the identifier.
+Options are operator-approved capabilities, not account-access guarantees; validate
+provider/account access before advertising changes. The default model and default
+effort remain unchanged. Antigravity and API profiles have no separate effort selector.
+
+`sync-worker-config` installs the managed model options after the worker upgrade
+and validates them with `agent -check-config`. Other profile settings, including
+credentials, enabled status and version constraints, remain under their existing
+ownership. A catalog/worker mismatch fails visibly as `model_selection_unavailable`.
+Verify a battle for each advertised model/effort and confirm selection, accepted
+plan and timing in history before enabling users. Use full provider model IDs when
+version reproducibility matters; aliases can move.
+
+## Context prefetch comparison
+
+First, the [comparison harness](../developer/ai-comparisons.md#live-comparisons)
+can run matched frozen synthetic contexts without changing a cluster. Its total
+session timings include worker completion and are separate from battle timings.
+
+Prefetch is the default for Codex/Claude battle profiles on every CLI worker,
+including production. On the registered test cluster, start a tool-fetch baseline
+with `HOST_CLI_PREFETCH_CONTEXT=false ./scripts/dev/run-k8s-cli-agent.sh codex` (or
+`claude`); `true` or an omitted variable gives prefetch. It is validated as
+`true`/`false` and written to the selected Codex/Claude profiles as `prefetchContext`.
+API workers and background generation retain their existing delivery paths.
+Do not run baseline and prefetch workers against the same profile concurrently:
+finish current battles and drain the existing worker before switching modes.
+
+Run short battles using identical scenario, factions, seed, model, effort and
+concurrency. Compare accepted-plan median/p95, failure/fallback count and tokens;
+record the code/prompt revision and `contextDelivery`. The context interval ends
+before CLI startup in prefetch mode and cannot by itself establish a speedup.
+Prompt v11 applies `tables-v1` compaction automatically whenever an encoding is
+smaller. There is no profile, session or environment toggle for compaction, and
+it is independent of the opt-in prefetch delivery mode described above. The
+comparison harness has no compaction variant: compare the old and new code/prompt
+revisions against the same frozen observations to evaluate this format change.
+Offline byte savings do not establish token savings or model decision quality.
+
+Deploy compact-capable workers first, then the gateway. New workers accept both
+context shapes; older prefetch workers can reject compact catalogs. The gateway
+starts serving the new format immediately on deployment. A coordinated deployment
+must ensure no old prefetch worker receives context from the new gateway. Full IDs
+and submission arguments are unchanged. If quality regresses, rollback requires
+reverting the compaction code and matching decoding instructions, assigning a new
+prompt version, and redeploying; there is no runtime switch. Keep the new workers
+while reverting the gateway because they also accept the old shape.
+
+From prompt v10 (retained in v11), prefetch puts frozen reference data ahead of identity and changing
+state, and removes repeated rules only for reviewed mechanics. Record serialized
+bytes separately from model tokens, and reported cached input separately from
+uncached input; a longer identical prefix alone does not establish a cache hit.
+API and tool-fetch CLI paths still put a request ID before the context tool result.
+Restart the worker without the `false` override after a baseline comparison. A
+production worker adopts prefetch when its binary is upgraded, because its
+configuration omits the setting. To return a production profile to tool-fetched
+context, add `prefetchContext: false` to that profile in the guest
+`/etc/battlefield-agent/config.yaml` and restart the worker; the Jenkins managed
+settings sync does not own this field.

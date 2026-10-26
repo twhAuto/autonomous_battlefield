@@ -22,7 +22,7 @@ type decisionRow interface{ Scan(...any) error }
 const decisionColumns = `id, battle_id, attempt, faction_id, target_tick, version, status,
 controller_type, profile_id, provider, runtime, model_identifier, prompt_version, tool_schema_version,
 observation, observation_hash, resolved_plan, fallback_source, error_category, usage, provider_metadata,
-idempotency_key, traceparent, tracestate, created_at, resolved_at, lease_expires_at`
+idempotency_key, traceparent, tracestate, created_at, resolved_at, lease_expires_at, reasoning_effort, claimed_at, context_served_at, runner_completed_at`
 
 func (r *Postgres) CreateOrReuseDecision(ctx context.Context, params ai.CreateDecisionParams) (ai.DecisionRecord, error) {
 	ctx, span := tracing.StartDatabaseSpan(ctx, "create_decision")
@@ -39,9 +39,9 @@ func (r *Postgres) CreateOrReuseDecision(ctx context.Context, params ai.CreateDe
 		WHERE battle_id = $1 AND faction_id = $2 AND target_tick = $3 AND observation_hash = $4
 		  AND status IN ('accepted', 'fallback') AND resolved_plan IS NOT NULL
           AND prompt_version=$5 AND tool_schema_version=$6 AND profile_id=$7
-          AND provider=$8 AND runtime=$9 AND model_identifier=$10
+          AND provider=$8 AND runtime=$9 AND model_identifier=$10 AND reasoning_effort=$11
 		ORDER BY attempt DESC LIMIT 1
-	`, params.BattleID, params.FactionID, params.TargetTick, params.ObservationHash, params.PromptVersion, params.ToolSchemaVersion, params.ProfileID, params.Provider, params.Runtime, params.ModelIdentifier).Scan(&previousPlan, &previousSource)
+	`, params.BattleID, params.FactionID, params.TargetTick, params.ObservationHash, params.PromptVersion, params.ToolSchemaVersion, params.ProfileID, params.Provider, params.Runtime, params.ModelIdentifier, params.ReasoningEffort).Scan(&previousPlan, &previousSource)
 	if previousErr != nil && !errors.Is(previousErr, pgx.ErrNoRows) {
 		return ai.DecisionRecord{}, fmt.Errorf("find reusable decision: %w", previousErr)
 	}
@@ -54,8 +54,8 @@ func (r *Postgres) CreateOrReuseDecision(ctx context.Context, params ai.CreateDe
 		WITH stored AS (
 			INSERT INTO battle_decisions (id, battle_id, attempt, faction_id, target_tick, status, controller_type,
 				profile_id, provider, runtime, model_identifier, prompt_version, tool_schema_version,
-				observation, observation_hash, resolved_plan, fallback_source, traceparent, tracestate, resolved_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+				observation, observation_hash, resolved_plan, fallback_source, traceparent, tracestate, reasoning_effort, resolved_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
 				CASE WHEN $16::jsonb IS NULL THEN NULL ELSE now() END)
 			ON CONFLICT (battle_id, attempt, faction_id, target_tick) DO UPDATE SET battle_id = EXCLUDED.battle_id
 			RETURNING *
@@ -67,7 +67,7 @@ func (r *Postgres) CreateOrReuseDecision(ctx context.Context, params ai.CreateDe
 		params.ID, params.BattleID, params.Attempt, params.FactionID, params.TargetTick, status, params.ControllerType,
 		params.ProfileID, params.Provider, params.Runtime, params.ModelIdentifier, params.PromptVersion,
 		params.ToolSchemaVersion, observation, params.ObservationHash, resolved, previousSource,
-		params.Traceparent, params.Tracestate)
+		params.Traceparent, params.Tracestate, params.ReasoningEffort)
 	return scanDecision(row)
 }
 
@@ -205,14 +205,14 @@ func (r *Postgres) FinishDecisionFailure(ctx context.Context, id, category strin
 	usageJSON, _ := json.Marshal(usage)
 	metadataJSON, _ := json.Marshal(metadata)
 	_, err := r.db.Exec(ctx, `UPDATE battle_decisions SET status=CASE WHEN status='running' THEN 'failed' ELSE status END, error_category=$2, usage=$3,
-		provider_metadata=provider_metadata || $4::jsonb, lease_owner=NULL, lease_expires_at=NULL WHERE id=$1 AND status IN ('running','accepted','fallback')`, id, category, usageJSON, metadataJSON)
+		provider_metadata=provider_metadata || $4::jsonb, resolved_at=COALESCE(resolved_at, now()), runner_completed_at=CASE WHEN $4::jsonb ? 'runnerDurationMs' THEN COALESCE(runner_completed_at, now()) ELSE runner_completed_at END, lease_owner=NULL, lease_expires_at=NULL WHERE id=$1 AND status IN ('running','accepted','fallback')`, id, category, usageJSON, metadataJSON)
 	return err
 }
 
 func (r *Postgres) RecordDecisionUsage(ctx context.Context, id string, usage ai.Usage, metadata map[string]any) error {
 	usageJSON, _ := json.Marshal(usage)
 	metadataJSON, _ := json.Marshal(metadata)
-	_, err := r.db.Exec(ctx, `UPDATE battle_decisions SET usage=$2, provider_metadata=provider_metadata || $3::jsonb WHERE id=$1 AND status IN ('accepted','fallback')`, id, usageJSON, metadataJSON)
+	_, err := r.db.Exec(ctx, `UPDATE battle_decisions SET runner_completed_at=COALESCE(runner_completed_at, now()), usage=$2, provider_metadata=provider_metadata || $3::jsonb WHERE id=$1 AND status IN ('accepted','fallback')`, id, usageJSON, metadataJSON)
 	return err
 }
 
@@ -237,7 +237,7 @@ func scanDecision(row decisionRow) (ai.DecisionRecord, error) {
 		&record.PromptVersion, &record.ToolSchemaVersion, &observation, &record.ObservationHash, &plan,
 		&record.FallbackSource, &record.ErrorCategory, &usage, &metadata, &record.IdempotencyKey,
 		&record.Traceparent, &record.Tracestate,
-		&record.CreatedAt, &record.ResolvedAt, &record.LeaseExpiresAt)
+		&record.CreatedAt, &record.ResolvedAt, &record.LeaseExpiresAt, &record.ReasoningEffort, &record.ClaimedAt, &record.ContextServedAt, &record.RunnerCompletedAt)
 	if err != nil {
 		return ai.DecisionRecord{}, err
 	}
@@ -282,11 +282,51 @@ func (r *Postgres) ListFactionMemory(ctx context.Context, battleID string, attem
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return briefing.BuildFactionMemory(records, battleID, attempt, factionID, beforeTick), nil
+	events, err := r.listOutcomeEvents(ctx, battleID, attempt, records, beforeTick)
+	if err != nil {
+		return nil, err
+	}
+	return briefing.BuildFactionMemory(records, events, battleID, attempt, factionID, beforeTick), nil
+}
+
+// listOutcomeEvents reads only the outcome event types inside the remembered windows.
+// The battlefield is fully visible, so enemy losses are faction-visible facts.
+func (r *Postgres) listOutcomeEvents(ctx context.Context, battleID string, attempt int, records []ai.DecisionRecord, beforeTick uint64) ([]briefing.OutcomeEvent, error) {
+	if len(records) == 0 {
+		return nil, nil
+	}
+	from := records[0].TargetTick
+	for _, record := range records {
+		from = min(from, record.TargetTick)
+	}
+	rows, err := r.db.Query(ctx, `SELECT tick, type, COALESCE(payload->>'factionId',''), COALESCE(payload->>'kind',''), COALESCE(payload->>'reason','')
+        FROM battle_events WHERE battle_id=$1 AND attempt=$2 AND tick>=$3 AND tick<$4
+          AND type IN ('unit_recruited','unit_destroyed','building_constructed','building_destroyed','production_skipped')`,
+		battleID, attempt, from, beforeTick)
+	if err != nil {
+		return nil, fmt.Errorf("list plan outcome events: %w", err)
+	}
+	defer rows.Close()
+	var events []briefing.OutcomeEvent
+	for rows.Next() {
+		var event briefing.OutcomeEvent
+		if err := rows.Scan(&event.Tick, &event.Type, &event.FactionID, &event.Kind, &event.Reason); err != nil {
+			return nil, fmt.Errorf("scan plan outcome event: %w", err)
+		}
+		events = append(events, event)
+	}
+	return events, rows.Err()
 }
 
 func (r *Postgres) AgentEnabled(ctx context.Context) (bool, error) {
 	var enabled bool
 	err := r.db.QueryRow(ctx, `SELECT ai_enabled FROM runtime_policy WHERE id`).Scan(&enabled)
 	return enabled, err
+}
+
+// RecordDecisionContextServed records only the first successful context read for
+// the current claim. Repeated reads cannot make the apparent setup time longer.
+func (r *Postgres) RecordDecisionContextServed(ctx context.Context, id string) error {
+	_, err := r.db.Exec(ctx, `UPDATE battle_decisions SET context_served_at=COALESCE(context_served_at, clock_timestamp()) WHERE id=$1 AND status='running'`, id)
+	return err
 }

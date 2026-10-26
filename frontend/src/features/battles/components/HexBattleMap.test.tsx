@@ -4,7 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { HexBattleMap } from './HexBattleMap'
-import type { BattleMap } from '../api/battles'
+import type { BattleMap, BattleState } from '../api/battles'
 
 const map: BattleMap = {
   kind: 'authored' as const, width: 2, height: 2, rows: ['..', 'b#'],
@@ -38,7 +38,7 @@ describe('HexBattleMap', () => {
     Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: close })
     try {
       document.body.style.overflow = 'scroll'
-      const { unmount } = render(<HexBattleMap map={map} state={state} visiblePositions={[]} factionNames={new Map()} />)
+      const { unmount } = render(<HexBattleMap map={map} state={state} factionNames={new Map()} />)
 
       const expand = screen.getByRole('button', { name: 'Expand map' })
       await userEvent.click(expand)
@@ -63,7 +63,7 @@ describe('HexBattleMap', () => {
   })
 
   it('preserves camera and selected entity across live tick updates', async () => {
-    const props = { map, state, visiblePositions: [], factionNames: new Map([['a', 'Northwind']]) }
+    const props = { map, state, factionNames: new Map([['a', 'Northwind']]) }
     const { container, rerender } = render(<HexBattleMap {...props} />)
     await userEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
     fireEvent.keyDown(screen.getByRole('button', { name: 'Pan map with arrow keys' }), { key: 'ArrowRight' })
@@ -75,17 +75,16 @@ describe('HexBattleMap', () => {
   })
   it('renders terrain, accessible entities, selection, and map controls', async () => {
     const user = userEvent.setup()
-    const { container } = render(<HexBattleMap map={map} state={state} visiblePositions={[{ x: 0, y: 0 }, { x: 0, y: 1 }]} factionNames={new Map([['a', 'Northwind']])} toolbarControls={<label htmlFor="test-perspective">Perspective<select id="test-perspective"><option>Spectator</option></select></label>} />)
+    const { container } = render(<HexBattleMap map={map} state={state} factionNames={new Map([['a', 'Northwind']])} />)
     const battlefield = container.querySelector('svg')!
     expect(battlefield).toHaveAccessibleName(/2 by 2 pointy-top hex battlefield/i)
     expect(container.querySelectorAll('.hex-tile')).toHaveLength(4)
-    expect(container.querySelectorAll('.hex-tile--fog')).toHaveLength(2)
+    expect(container.querySelectorAll('.hex-tile--fog')).toHaveLength(0)
     expect(container.querySelectorAll('.unit-direction--movement')).toHaveLength(1)
     expect(container.querySelectorAll('.unit-direction--attack')).toHaveLength(1)
     expect(screen.getByText(/Northwind · Ranger #1 attacked Northwind · Castle/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Northwind · Striker · a:strike' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Visible entity summary' })).not.toBeInTheDocument()
-    expect(container.querySelector('.map-toolbar')).toContainElement(screen.getByLabelText('Perspective'))
     await user.click(screen.getByRole('button', { name: 'Northwind · Ranger #1' }))
     expect(screen.getByText(/HP 20\/30/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Zoom in' }))
@@ -111,7 +110,7 @@ it('renders distinct tactical artwork and readable labels, with separate keyboar
     units: unitTypes.map((type, index) => ({ ...state.units[0], id: `a:${type}:${index + 1}`, type, movedFrom: undefined, attackTargetPosition: undefined })),
     buildings: buildingTypes.map((type, index) => ({ ...state.buildings[0], id: type === 'castle' ? 'a:castle' : `a:${type}:${index + 1}`, type })),
   }
-  const { container, rerender } = render(<HexBattleMap map={map} state={snapshot} visiblePositions={[]} factionNames={new Map([['a', 'Northwind']])} />)
+  const { container, rerender } = render(<HexBattleMap map={map} state={snapshot} factionNames={new Map([['a', 'Northwind']])} />)
   const markers = container.querySelectorAll('.map-entity')
   expect(markers).toHaveLength(13)
   expect(new Set([...markers].map((marker) => marker.querySelector('.entity-glyph path')?.getAttribute('d'))).size).toBe(13)
@@ -129,14 +128,14 @@ it('renders distinct tactical artwork and readable labels, with separate keyboar
   expect(screen.getByText('Defense Tower', { exact: true })).toBeVisible()
   expect(screen.getByText('New Scout', { exact: true })).toBeVisible()
   // Polling reorders living units and changes HP without changing selection/names.
-  rerender(<HexBattleMap map={map} state={{ ...snapshot, units: [...snapshot.units].reverse().map((unit) => ({ ...unit, health: 10 })) }} visiblePositions={[]} factionNames={new Map([['a', 'Northwind']])} />)
+  rerender(<HexBattleMap map={map} state={{ ...snapshot, units: [...snapshot.units].reverse().map((unit) => ({ ...unit, health: 10 })) }} factionNames={new Map([['a', 'Northwind']])} />)
   expect(screen.getByRole('button', { name: 'Northwind · New Scout #8' })).toHaveAttribute('aria-pressed', 'true')
   expect(container.querySelector('.entity-details')).toHaveTextContent('HP 10/30')
 })
 
 
 it('clears adjacent icons and removes decorative tracers when actions end', () => {
-  const { container, rerender } = render(<HexBattleMap map={map} state={state} visiblePositions={[]} factionNames={new Map()} />)
+  const { container, rerender } = render(<HexBattleMap map={map} state={state} factionNames={new Map()} />)
   const movement = container.querySelector('.unit-direction--movement')!
   const attack = container.querySelector('.unit-direction--attack')!
   const coordinates = (line: Element) => ['x1', 'y1', 'x2', 'y2'].map((name) => Number(line.getAttribute(name)))
@@ -157,14 +156,14 @@ it('clears adjacent icons and removes decorative tracers when actions end', () =
     const id = arrow.getAttribute('marker-end')!.slice(5, -1)
     expect(document.getElementById(id)).toHaveAttribute('markerUnits', 'userSpaceOnUse')
   }
-  rerender(<HexBattleMap map={map} state={{ ...state, units: state.units.map((unit) => ({ ...unit, movedFrom: undefined, attackTargetPosition: undefined })) }} visiblePositions={[]} factionNames={new Map()} />)
+  rerender(<HexBattleMap map={map} state={{ ...state, units: state.units.map((unit) => ({ ...unit, movedFrom: undefined, attackTargetPosition: undefined })) }} factionNames={new Map()} />)
   expect(container.querySelector('.unit-direction, .attack-tracer')).toBeNull()
 })
 
 it('omits zero-length and overlapping arrows without reversing short paths', () => {
   const unit = state.units[0]
   for (const target of [unit.position, { x: unit.position.x + 0.1, y: unit.position.y }]) {
-    const { container, unmount } = render(<HexBattleMap map={map} state={{ ...state, units: [{ ...unit, movedFrom: target, attackTargetId: undefined, attackTargetPosition: target }] }} visiblePositions={[]} factionNames={new Map()} />)
+    const { container, unmount } = render(<HexBattleMap map={map} state={{ ...state, units: [{ ...unit, movedFrom: target, attackTargetId: undefined, attackTargetPosition: target }] }} factionNames={new Map()} />)
     expect(container.querySelector('.unit-direction, .attack-tracer')).toBeNull()
     unmount()
   }
@@ -172,7 +171,7 @@ it('omits zero-length and overlapping arrows without reversing short paths', () 
 
 
 it('keeps a persistent red damage layer beneath current HP through damage and healing', () => {
-  const props = { map, visiblePositions: [], factionNames: new Map<string, string>() }
+  const props = { map, factionNames: new Map<string, string>() }
   const { container, rerender } = render(<HexBattleMap {...props} state={state} />)
   const bar = container.querySelector('.map-entity[aria-label*="Ranger"] .health-value')!
   const damage = bar.previousElementSibling as SVGElement
@@ -201,7 +200,7 @@ it('animates recorded bends once, preserves selection, and honors reduced motion
     const start = { x: 0, y: 1 }
     const bend = { x: 1, y: 1 }
     const end = { x: 1, y: 0 }
-    const props = { map, visiblePositions: [], factionNames: new Map<string, string>() }
+    const props = { map, factionNames: new Map<string, string>() }
     const snapshot = { ...state, units: [{ ...state.units[0], position: start, movedFrom: undefined, attackTargetId: undefined, attackTargetPosition: undefined }] }
     const { container, rerender, unmount } = render(<HexBattleMap {...props} state={snapshot} />)
     expect(animate).not.toHaveBeenCalled()
@@ -237,7 +236,7 @@ it('animates recorded bends once, preserves selection, and honors reduced motion
 it('tracks current target coordinates while fixed shots show distinct misses and destroyed-target impacts', () => {
   const attacker = { ...state.units[0], position: { x: 0, y: 0 }, movedFrom: undefined, attackTargetId: 'target', attackTargetPosition: { x: 1, y: 0 } }
   const target = { ...state.units[0], id: 'target', position: { x: 2, y: 0 }, movedFrom: undefined, attackTargetId: undefined, attackTargetPosition: undefined }
-  const props = { map, visiblePositions: [], factionNames: new Map<string, string>() }
+  const props = { map, factionNames: new Map<string, string>() }
   const snapshot = { ...state, buildings: [], units: [attacker, target] }
   const { container, rerender } = render(<HexBattleMap {...props} state={snapshot} />)
   expect(Number(container.querySelector('.unit-direction--attack')!.getAttribute('x2'))).toBeCloseTo(Math.sqrt(3) * 48 - 17)
@@ -262,7 +261,7 @@ it('nudges attackers once per tick, leaves towers still, and cancels for reduced
   const original = Object.getOwnPropertyDescriptor(SVGElement.prototype, 'animate')
   Object.defineProperty(SVGElement.prototype, 'animate', { configurable: true, value: animate })
   try {
-    const props = { map, visiblePositions: [], factionNames: new Map<string, string>() }
+    const props = { map, factionNames: new Map<string, string>() }
     const snapshot = { ...state, buildings: [{ ...state.buildings[0], attackTargetId: state.units[0].id, attackTargetPosition: state.units[0].position }] }
     const { rerender } = render(<HexBattleMap {...props} state={snapshot} />)
     expect(animate).toHaveBeenCalledTimes(1)
@@ -303,7 +302,7 @@ it('updates tracking arrows from intermediate SVG walking transforms', () => {
   try {
     const attacker = { ...state.units[0], position: { x: 0, y: 0 }, movedFrom: undefined, attackTargetId: 'target', attackTargetPosition: { x: 1, y: 0 } }
     const target = { ...state.units[0], id: 'target', type: 'striker', position: { x: 2, y: 0 }, movedFrom: undefined, attackTargetId: undefined, attackTargetPosition: undefined }
-    const { container, unmount } = render(<HexBattleMap map={map} state={{ ...state, buildings: [], units: [attacker, target] }} visiblePositions={[]} factionNames={new Map()} />)
+    const { container, unmount } = render(<HexBattleMap map={map} state={{ ...state, buildings: [], units: [attacker, target] }} factionNames={new Map()} />)
     callback(0)
     const arrow = container.querySelector('.unit-direction--attack')!
     expect(Number(arrow.getAttribute('x2'))).toBeCloseTo(48)
@@ -322,7 +321,7 @@ it('updates tracking arrows from intermediate SVG walking transforms', () => {
 
 
 it('shows confirmed deaths once per snapshot and never infers deaths from missing units', () => {
-  const props = { map, visiblePositions: [], factionNames: new Map<string, string>() }
+  const props = { map, factionNames: new Map<string, string>() }
   const { container, rerender } = render(<HexBattleMap {...props} state={state} />)
   rerender(<HexBattleMap {...props} state={{ ...state, tick: 4, units: [] }} />)
   expect(container.querySelector('.unit-death')).toBeNull()
@@ -344,7 +343,7 @@ it('colors movement, attacks, tower fire, and arrowheads by the acting faction',
   const factions = ['a', 'b'].map((factionId) => ({ ...state.factions[0], factionId }))
   const units = ['a', 'b', 'unknown'].map((factionId, index) => ({ ...state.units[0], id: `${factionId}:ranger:1`, factionId, movedFrom: { x: index + 1, y: 1 }, position: { x: index, y: 1 } }))
   const buildings = [{ ...state.buildings[0], attackTargetId: units[1].id, attackTargetPosition: { x: 1, y: 1 } }]
-  const { container } = render(<HexBattleMap map={map} state={{ ...state, factions, units, buildings }} visiblePositions={[]} factionNames={new Map()} />)
+  const { container } = render(<HexBattleMap map={map} state={{ ...state, factions, units, buildings }} factionNames={new Map()} />)
   const expected = ['#69d2ff', '#ff6b55', '#f2c94c']
   for (const selector of ['.unit-direction--movement', '.unit-direction--attack']) {
     const arrows = [...container.querySelectorAll<SVGElement>(selector)]
@@ -359,11 +358,11 @@ it('colors movement, attacks, tower fire, and arrowheads by the acting faction',
 })
 
 
-it('keeps each faction\'s color when a perspective lists only its own faction', () => {
+it('keeps each faction\'s color when state lists only one faction', () => {
   const units = ['b', 'a'].map((factionId, index) => ({ ...state.units[0], id: `${factionId}:ranger:1`, factionId, movedFrom: { x: index + 1, y: 1 }, position: { x: index, y: 1 } }))
   const names = new Map([['b', 'Southreach'], ['a', 'Northwind']])
   const colorsFor = (factions: typeof state.factions) => {
-    const { container, unmount } = render(<HexBattleMap map={map} state={{ ...state, factions, units, buildings: [] }} visiblePositions={[]} factionNames={names} />)
+    const { container, unmount } = render(<HexBattleMap map={map} state={{ ...state, factions, units, buildings: [] }} factionNames={names} />)
     const strokes = [...container.querySelectorAll<SVGElement>('.unit-direction--movement')].map((arrow) => arrow.style.stroke)
     unmount()
     return strokes
@@ -373,4 +372,68 @@ it('keeps each faction\'s color when a perspective lists only its own faction', 
   for (const own of ['a', 'b']) {
     expect(colorsFor([{ ...state.factions[0], factionId: own }])).toEqual(spectator)
   }
+})
+
+it('shows special terrain, building reach and a sequential training queue without fog', async () => {
+  const user = userEvent.setup()
+  const specialMap = { ...map, rows: ['fg', '..'] }
+  const trainingState: BattleState = structuredClone(state)
+  trainingState.buildings![0] = { ...trainingState.buildings![0], type: 'archery_range', id: 'a:archery_range:1', trains: ['ranger', 'crossbowman'], buildRange: 4, trainingQueue: [
+    { unitType: 'ranger', remainingTicks: 1, trainingTicks: 3, queuedAtTick: 0 },
+    { unitType: 'crossbowman', remainingTicks: 8, trainingTicks: 8, queuedAtTick: 0 },
+  ] }
+  const props = { map: specialMap, state: trainingState, factionNames: new Map([['a', 'Northwind']]) }
+  const { container, rerender } = render(<HexBattleMap {...props} />)
+  expect(container.querySelectorAll('.hex-tile--fog')).toHaveLength(0)
+  expect(container.querySelectorAll('.hex-tile--forest')).toHaveLength(1)
+  expect(container.querySelectorAll('.hex-tile--gold')).toHaveLength(1)
+  expect(container.querySelectorAll('.terrain-glyph--forest')).toHaveLength(1)
+  expect(container.querySelectorAll('.terrain-glyph--gold')).toHaveLength(1)
+  expect(screen.getByText(/Forest: \+3 troop defense/)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Northwind · Archery Range #1' }))
+  expect(container.querySelectorAll('.hex-tile--build-range')).toHaveLength(4)
+  expect(screen.getByText(/Build range 4/)).toBeInTheDocument()
+  expect(screen.getByText('Ranger · 1/3 ticks remaining')).toBeInTheDocument()
+  expect(screen.getByText('Crossbowman · 8/8 ticks remaining')).toBeInTheDocument()
+  expect(screen.getByRole('progressbar', { name: 'Training progress' })).toHaveAttribute('value', '2')
+  trainingState.buildings![0].trainingQueue![0].remainingTicks = 0
+  trainingState.buildings![0].trainingBlocked = true
+  rerender(<HexBattleMap {...props} />)
+  expect(screen.getByText('Ranger · Ready · exit blocked')).toBeInTheDocument()
+  trainingState.buildings![0].trainingQueue = []
+  rerender(<HexBattleMap {...props} />)
+  expect(screen.getByText('Training queue empty')).toBeInTheDocument()
+})
+
+it('removes destroyed buildings, queues and selected range from the battlefield', async () => {
+  const current: BattleState = structuredClone(state)
+  current.buildings![0] = { ...current.buildings![0], type: 'barracks', trains: ['vanguard'], trainingQueue: [{ unitType: 'vanguard', trainingTicks: 4, remainingTicks: 2, queuedAtTick: 0 }] }
+  const props = { map, state: current, factionNames: new Map() }
+  const { container, rerender } = render(<HexBattleMap {...props} />)
+  await userEvent.click(screen.getByRole('button', { name: /Barracks/ }))
+  expect(screen.getByText('Training queue · 1/12')).toBeInTheDocument()
+  current.buildings![0].health = 0
+  rerender(<HexBattleMap {...props} />)
+  expect(screen.queryByRole('button', { name: /Barracks/ })).not.toBeInTheDocument()
+  expect(screen.queryByText(/Training queue/)).not.toBeInTheDocument()
+  expect(container.querySelectorAll('.hex-tile--build-range')).toHaveLength(0)
+  expect(screen.getByText('Select a castle, building, or unit for details.')).toBeInTheDocument()
+})
+
+it('preserves the display of historical castles without a training roster', async () => {
+  render(<HexBattleMap map={map} state={state} factionNames={new Map()} />)
+  await userEvent.click(screen.getByRole('button', { name: /Castle/ }))
+  expect(screen.queryByText(/Training queue/)).not.toBeInTheDocument()
+})
+
+
+it('shows castle training, attack range and tower fire together', async () => {
+  const castleState: BattleState = { ...state, buildings: [{ ...state.buildings[0], trains: ['vanguard', 'striker', 'pikeman'], attack: 15, range: 3, attackTargetId: state.units[0].id, attackTargetPosition: state.units[0].position }] }
+  render(<HexBattleMap map={map} state={castleState} factionNames={new Map()} />)
+  await userEvent.click(screen.getByRole('button', { name: /Castle/ }))
+  expect(screen.getByText('Training queue empty')).toBeInTheDocument()
+  expect(screen.getByText(/Trains: Vanguard, Striker, Pikeman/)).toBeInTheDocument()
+  expect(screen.getByText(/Attack 15/)).toBeInTheDocument()
+  expect(screen.getByText(/Range 3/)).toBeInTheDocument()
+  expect(document.querySelector('.unit-direction--tower')).toBeInTheDocument()
 })

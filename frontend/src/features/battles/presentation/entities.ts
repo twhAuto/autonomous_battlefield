@@ -23,18 +23,20 @@ export function entityName(id: string | undefined, naming: EntityNaming = {}) {
   const parts = id.split(':')
   const last = parts.pop()!
   const sequence = /^\d+$/.test(last) ? last.replace(/^0+(?=\d)/, '') : undefined
-  const type = sequence === undefined ? last : parts.pop()
-  const generated = parts.length > 0 && Boolean(type) && (sequence !== undefined || type === 'castle')
+  const starting = last === 'starting'
+  const type = sequence === undefined && !starting ? last : parts.pop()
+  const generated = parts.length > 0 && Boolean(type) && (sequence !== undefined || starting || type === 'castle')
   const factionId = entity?.factionId ?? (generated ? parts.join(':') : undefined)
   const label = typeLabel(entity?.type ?? (generated ? type! : 'entity'))
   const generatedIdentity = sequence === undefined ? label : `${label} #${sequence}`
-  const identity = generated ? generatedIdentity : `${label} · ${id.slice(0, 8)}`
+  const namedIdentity = starting ? `${label} (starting)` : generatedIdentity
+  const identity = generated ? namedIdentity : `${label} · ${id.slice(0, 8)}`
   if (!factionId || factionId === naming.localFactionId) return identity
   const faction = naming.factionNames?.get(factionId) ?? `Faction · ${factionId.slice(0, 8)}`
   return `${faction} · ${identity}`
 }
 
-const entityFields = new Set(['unitId', 'buildingId', 'castleId', 'attackerId', 'targetId', 'healerId', 'sourceId', 'sourceBuildingId', 'attackTargetId', 'healTargetId'])
+const entityFields = new Set(['unitId', 'buildingId', 'castleId', 'attackerId', 'targetId', 'healerId', 'engineerId', 'sourceId', 'sourceBuildingId', 'attackTargetId', 'healTargetId'])
 const typeFields = new Set(['unitType', 'buildingType', 'targetType'])
 
 // Only structured reference/type fields are rewritten; arbitrary strings and AI

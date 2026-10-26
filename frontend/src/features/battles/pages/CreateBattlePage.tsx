@@ -2,7 +2,7 @@ import { usePermissions } from '../../auth/SessionContext'
 // Loads faction, scenario, and model choices, validates the battle setup, and navigates to
 // the queued battle after creation.
 
-import { type SubmitEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { type SubmitEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { BattleApiError, createBattle, listScenarios, listModelProfiles, type ScenarioSummary } from '../api/battles'
 import type { ModelProfile } from '../../../shared/domain/model-profile'
@@ -21,19 +21,20 @@ export function CreateBattlePage() {
   const [factions, setFactions] = useState<Faction[]>([])
   const [scenarios, setScenarios] = useState<ScenarioSummary[]>([])
   const [profiles, setProfiles] = useState<ModelProfile[]>([])
+  const [profilesError, setProfilesError] = useState(false)
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [loadMessage, setLoadMessage] = useState('')
   const [loadVersion, setLoadVersion] = useState(0)
   const [battleID] = useState(newBattleID)
-  const [profilesError, setProfilesError] = useState(false)
-  const [checkingProfiles, setCheckingProfiles] = useState(false)
-  const profileRead = useRef<AbortController | null>(null)
-  useEffect(() => () => profileRead.current?.abort(), [])
   const [scenarioID, setScenarioID] = useState('')
   const [firstFactionID, setFirstFactionID] = useState('')
   const [secondFactionID, setSecondFactionID] = useState('')
   const [firstController, setFirstController] = useState('scripted')
   const [secondController, setSecondController] = useState('scripted')
+  const [firstSelection, setFirstSelection] = useState<ModelSelection>({})
+  const [secondSelection, setSecondSelection] = useState<ModelSelection>({})
+  const [tickDuration, setTickDuration] = useState('')
+  const [decisionInterval, setDecisionInterval] = useState('')
   const [tickCount, setTickCount] = useState<number | ''>(500)
   const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'error'>('idle')
   const [submitMessage, setSubmitMessage] = useState('')
@@ -47,9 +48,7 @@ export function CreateBattlePage() {
       listFactions(controller.signal),
       listScenarios(controller.signal),
       listModelProfiles(controller.signal).catch(() => {
-        if (!controller.signal.aborted) {
-          setProfilesError(true)
-        }
+        if (!controller.signal.aborted) setProfilesError(true)
         return []
       }),
     ])
@@ -98,6 +97,8 @@ export function CreateBattlePage() {
 
   useEffect(() => {
     if (!selectedScenario) return
+    setTickDuration('')
+    setDecisionInterval('')
     setFirstFactionID(factions[0]?.id ?? '')
     setSecondFactionID(factions[1]?.id ?? '')
     const scenarioMaximum = selectedScenario.maximumTicks ?? 500
@@ -118,38 +119,17 @@ export function CreateBattlePage() {
         id: battleID,
         scenarioId: scenarioID,
         participants: [
-          { factionId: firstFactionID, controller: controllerInput(firstController) },
-          { factionId: secondFactionID, controller: controllerInput(secondController) },
+          { factionId: firstFactionID, controller: controllerInput(firstController, firstSelection) },
+          { factionId: secondFactionID, controller: controllerInput(secondController, secondSelection) },
         ],
         tickCount: Number(tickCount),
+        ...(tickDuration && { tickDuration }),
+        ...(decisionInterval && { decisionIntervalTicks: Number(decisionInterval) }),
       })
       navigate(`/battles/${battle.id}`)
     } catch (error) {
       setSubmitState('error')
       setSubmitMessage(error instanceof BattleApiError ? error.message : 'The battle could not be queued.')
-    }
-  }
-
-  async function checkProfiles() {
-    profileRead.current?.abort()
-    const controller = new AbortController()
-    profileRead.current = controller
-    setCheckingProfiles(true)
-    try {
-      const availableProfiles = await listModelProfiles(controller.signal)
-      if (!controller.signal.aborted) {
-        setProfiles(availableProfiles)
-        setProfilesError(false)
-      }
-    } catch {
-      if (!controller.signal.aborted) {
-        setProfiles([])
-        setProfilesError(true)
-      }
-    } finally {
-      if (!controller.signal.aborted) {
-        setCheckingProfiles(false)
-      }
     }
   }
 
@@ -159,7 +139,7 @@ export function CreateBattlePage() {
         <Link className="back-link" to="/">← MAIN MENU</Link>
         <div className="hero__eyebrow"><span>03</span> BATTLE DEPLOYMENT</div>
         <h1>Stage a battle</h1>
-        <p>Select two registered factions, choose a ruleset, and set the maximum engagement length.</p>
+        <p>Select two registered factions, choose a map, and set the battle timing.</p>
       </section>
 
       {loadState === 'loading' && (
@@ -196,17 +176,10 @@ export function CreateBattlePage() {
             <div className="section-label"><span>ENGAGEMENT PARAMETERS</span><span>READY</span></div>
             <form className="battle-form" onSubmit={handleSubmit} noValidate>
               <div className="battle-form__field">
-                <label htmlFor="scenario">Combat scenario</label>
+                <label htmlFor="scenario">Combat map</label>
                 <select id="scenario" value={scenarioID} onChange={(event) => setScenarioID(event.target.value)}>
                   {scenarios.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.id} · {scenario.mapWidth}×{scenario.mapHeight}</option>)}
                 </select>
-                {selectedScenario && (
-                  <div className="field-hint"><p>Rules v{selectedScenario.rulesVersion} / decisions every {selectedScenario.decisionIntervalTicks} ticks / {selectedScenario.tickDuration} tick pace</p>
-                    <p>Units: {selectedScenario.allowedUnits?.join(', ') || 'Scenario roster'}</p>
-                    <p>Buildings: {selectedScenario.allowedBuildings?.join(', ') || 'Scenario buildings'}</p>
-                    {selectedScenario.id === 'frontier-siege-v2' && <p>Frontier Siege: broad siege approaches and two flanking lanes. Six sites per side; choose up to four buildings, including at most two economy buildings.</p>}
-                  </div>
-                )}
               </div>
 
               <div className="combatants-grid">
@@ -216,7 +189,7 @@ export function CreateBattlePage() {
                     {factions.map((faction) => <option key={faction.id} value={faction.id} disabled={faction.id === secondFactionID}>{faction.name}</option>)}
                   </select>
                   <label htmlFor="first-controller">Controller</label>
-                  <ControllerSelect id="first-controller" value={firstController} onChange={setFirstController} profiles={profiles} />
+                  <ControllerSelect id="first-controller" value={firstController} onChange={value => { setFirstController(value); setFirstSelection({}) }} profiles={profiles} selection={firstSelection} onSelect={setFirstSelection} />
                 </div>
                 <span className="versus-mark" aria-hidden="true">VS</span>
                 <div className="battle-form__field">
@@ -225,17 +198,34 @@ export function CreateBattlePage() {
                     {factions.map((faction) => <option key={faction.id} value={faction.id} disabled={faction.id === firstFactionID}>{faction.name}</option>)}
                   </select>
                   <label htmlFor="second-controller">Controller</label>
-                  <ControllerSelect id="second-controller" value={secondController} onChange={setSecondController} profiles={profiles} />
+                  <ControllerSelect id="second-controller" value={secondController} onChange={value => { setSecondController(value); setSecondSelection({}) }} profiles={profiles} selection={secondSelection} onSelect={setSecondSelection} />
                 </div>
               </div>
               {firstFactionID === secondFactionID && <p className="field-error" role="alert">Choose two different factions.</p>}
               {factions.length < 2 && <p className="field-error" role="alert">Create two factions before deployment.</p>}
-              <details className="integration-status"><summary>AI integration status</summary>
-                {profilesError && <p role="alert">AI controller availability could not be established.</p>}
-                {profiles.filter(profile => !profile.available).map(profile => <p key={profile.id}><strong>{profile.displayName}</strong>: {profile.unavailableReason || 'Availability could not be established.'}</p>)}
-                {!profilesError && profiles.every(profile => profile.available) && <p>{profiles.length ? 'All configured AI controllers are available.' : 'No AI controllers were returned.'}</p>}
-                <button type="button" disabled={checkingProfiles} onClick={() => void checkProfiles()}>{checkingProfiles ? 'Checking…' : 'Check availability'}</button>
-              </details>
+              {profilesError && <p className="field-error" role="alert">AI controllers could not be loaded. Reload the page to try again, or choose Scripted.</p>}
+              <div className="battle-timing-grid">
+                <div className="battle-form__field">
+                  <label htmlFor="tick-duration">Tick duration</label>
+                  <select id="tick-duration" value={tickDuration} onChange={(event) => setTickDuration(event.target.value)} aria-describedby="tick-duration-hint">
+                    <option value="">Map default ({selectedScenario?.tickDuration})</option>
+                    <option value="250ms">0.25 seconds</option>
+                    <option value="500ms">0.5 seconds</option>
+                    <option value="1s">1 second</option>
+                    <option value="2s">2 seconds</option>
+                    <option value="5s">5 seconds</option>
+                  </select>
+                  <p id="tick-duration-hint" className="field-hint">Time between simulation ticks. AI decisions may add waiting time.</p>
+                </div>
+                <div className="battle-form__field">
+                  <label htmlFor="decision-interval">Decision interval</label>
+                  <select id="decision-interval" value={decisionInterval} onChange={(event) => setDecisionInterval(event.target.value)} aria-describedby="decision-interval-hint">
+                    <option value="">Map default ({selectedScenario?.decisionIntervalTicks} ticks)</option>
+                    {[1, 5, 10, 20, 50].map((ticks) => <option key={ticks} value={ticks}>{ticks === 1 ? 'Every tick' : `Every ${ticks} ticks`}</option>)}
+                  </select>
+                  <p id="decision-interval-hint" className="field-hint">How often controllers choose a new plan after the opening.</p>
+                </div>
+              </div>
 
               <div className="battle-form__field">
                 <label htmlFor="tick-count">Maximum ticks</label>
@@ -269,13 +259,17 @@ export function CreateBattlePage() {
   )
 }
 
-function controllerInput(value: string): { type: 'scripted' } | { type: 'model'; profileId: string } {
-  return value === 'scripted' ? { type: 'scripted' } : { type: 'model', profileId: value }
+type ModelSelection = { modelIdentifier?: string; reasoningEffort?: string }
+function controllerInput(value: string, selection: ModelSelection) {
+  return value === 'scripted' ? { type: 'scripted' as const } : { type: 'model' as const, profileId: value, ...selection }
 }
 
-function ControllerSelect({ id, value, onChange, profiles }: Readonly<{ id: string; value: string; onChange: (value: string) => void; profiles: ModelProfile[] }>) {
+function ControllerSelect({ id, value, onChange, profiles, selection, onSelect }: Readonly<{ id: string; value: string; onChange: (value: string) => void; profiles: ModelProfile[]; selection: ModelSelection; onSelect: (value: ModelSelection) => void }>) {
   const { inspect } = usePermissions()
   const selected = profiles.find(profile => profile.id === value)
+  const model = selection.modelIdentifier || selected?.modelLabel || ''
+  const options = selected?.modelOptions ?? []
+  const efforts = options.find(option => option.id === model)?.reasoningEfforts ?? []
   return (
     <><select id={id} value={value} aria-describedby={`${id}-details`} onChange={(event) => onChange(event.target.value)}>
       <option value="scripted">Scripted · deterministic</option>
@@ -285,7 +279,20 @@ function ControllerSelect({ id, value, onChange, profiles }: Readonly<{ id: stri
           {profile.displayName}{!profile.available ? ' · unavailable' : ''}
         </option>
       )})}
-    </select><p id={`${id}-details`} className="field-hint">{controllerDetails(value, selected, inspect)}</p></>
+    </select><p id={`${id}-details`} className="field-hint">{controllerDetails(value, selected, inspect)}</p>
+    {selected && <>
+      <label htmlFor={`${id}-model`}>Model</label>
+      <select id={`${id}-model`} value={model} onChange={event => onSelect({ modelIdentifier: event.target.value })} disabled={!selected.available}>
+        {!options.some(option => option.id === selected.modelLabel) && <option value={selected.modelLabel}>{selected.modelLabel || 'Configured model'}</option>}
+        {options.map(option => <option key={option.id} value={option.id}>{option.id}</option>)}
+      </select>
+      <label htmlFor={`${id}-effort`}>Reasoning effort</label>
+      <select id={`${id}-effort`} value={selection.reasoningEffort || ''} disabled={!selected.available || efforts.length === 0} onChange={event => onSelect({ modelIdentifier: model, reasoningEffort: event.target.value })}>
+        <option value="">{efforts.length ? 'Model default' : 'Not configurable'}</option>
+        {efforts.map(effort => <option key={effort} value={effort}>{effort[0].toUpperCase() + effort.slice(1)}</option>)}
+      </select>
+      {efforts.length > 0 && <p className="field-hint">Lower effort favors faster decisions. Higher effort allows more deliberation.</p>}
+    </>}</>
   )
 }
 

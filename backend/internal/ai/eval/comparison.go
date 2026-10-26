@@ -31,6 +31,8 @@ import (
 // ComparisonVariant creates a fresh runner per sample; conversation state cannot
 // leak between repetitions or variants. Disabling memory is an explicit ablation.
 type ComparisonVariant struct {
+	ReasoningEffort  string
+	PrefetchContext  bool
 	ID               string
 	Provider         string
 	Model            string
@@ -58,6 +60,8 @@ type ComparisonReport struct {
 }
 
 type VariantReport struct {
+	ReasoningEffort   string             `json:"reasoningEffort,omitempty"`
+	PrefetchContext   bool               `json:"prefetchContext"`
 	WithoutKnowledge  bool               `json:"withoutKnowledge"`
 	ID                string             `json:"id"`
 	Provider          string             `json:"provider"`
@@ -123,7 +127,7 @@ func comparisonVariantReports(variants []ComparisonVariant) ([]VariantReport, er
 		if v.Runtime == "cli" {
 			enforcement = "per-sample deadline and three submission rejections; CLI internal turns/tokens are not host-enforced"
 		}
-		reports = append(reports, VariantReport{ID: v.ID, Provider: v.Provider, Model: v.Model, Runtime: v.Runtime, WithoutMemory: v.WithoutMemory, WithoutKnowledge: v.WithoutKnowledge, BudgetEnforcement: enforcement})
+		reports = append(reports, VariantReport{ID: v.ID, Provider: v.Provider, Model: v.Model, Runtime: v.Runtime, ReasoningEffort: v.ReasoningEffort, PrefetchContext: v.PrefetchContext, WithoutMemory: v.WithoutMemory, WithoutKnowledge: v.WithoutKnowledge, BudgetEnforcement: enforcement})
 	}
 	return reports, nil
 }

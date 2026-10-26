@@ -1,5 +1,5 @@
 // Checks battle staging: setup loading and failure recovery, incomplete prerequisites,
-// faction/scenario/controller validation, tick limits, AI availability rechecks, and submission.
+// faction/scenario/controller validation, tick limits, timing overrides, controller availability, and submission.
 
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -42,10 +42,6 @@ async function controllerSelect(id: 'first-controller' | 'second-controller') {
   if (!select) throw new Error(`no controller select ${id}`)
   return select
 }
-// The AI panel is a <details>; click its summary to expand it.
-function integrationStatus() {
-  return screen.getByText('AI integration status')
-}
 function renderPage(role: 'admin' | 'player' = 'admin') {
   return render(<MemoryRouter initialEntries={['/battles/new']}>
     <SessionContext.Provider value={{ enabled: true, authenticated: true, actor: { id: 'admin', role } }}>
@@ -68,12 +64,13 @@ beforeEach(() => {
 it('shows the loading state, then prefills two distinct factions and the scenario', async () => {
   renderPage()
   expect(screen.getByText('Preparing the battlefield')).toBeInTheDocument()
-  expect(await screen.findByRole('combobox', { name: 'Combat scenario' })).toHaveValue(scenario.id)
+  expect(await screen.findByRole('combobox', { name: 'Combat map' })).toHaveValue(scenario.id)
   expect(screen.getByRole('combobox', { name: 'Slot one' })).toHaveValue('north')
   expect(screen.getByRole('combobox', { name: 'Slot two' })).toHaveValue('south')
   expect(screen.getByRole('spinbutton', { name: 'Maximum ticks' })).toHaveValue(500)
   expect(screen.getByRole('button', { name: /DEPLOY COMBATANTS/ })).toBeEnabled()
-  expect(screen.getByText('Rules v1 / decisions every 10 ticks / 1s tick pace')).toBeInTheDocument()
+  expect(screen.getByRole('combobox', { name: 'Tick duration' })).toHaveValue('')
+  expect(screen.getByRole('combobox', { name: 'Decision interval' })).toHaveValue('')
 })
 
 it('stages a battle with scripted controllers and navigates to the new battle', async () => {
@@ -140,7 +137,7 @@ it('reports a failed setup load and recovers on retry', async () => {
   renderPage()
   expect(await screen.findByRole('alert')).toHaveTextContent('Scenario catalog unavailable')
   await user.click(screen.getByRole('button', { name: 'RETRY CONNECTION' }))
-  expect(await screen.findByRole('combobox', { name: 'Combat scenario' })).toHaveValue(scenario.id)
+  expect(await screen.findByRole('combobox', { name: 'Combat map' })).toHaveValue(scenario.id)
 })
 
 it('falls back to a generic message for unexpected load failures', async () => {
@@ -169,27 +166,14 @@ it('explains an empty scenario catalog without offering a faction link', async (
   expect(screen.queryByRole('link', { name: 'CREATE A FACTION →' })).not.toBeInTheDocument()
 })
 
-it('surfaces unavailable controllers and rechecks availability on demand', async () => {
-  const user = userEvent.setup()
-  renderPage()
-  await screen.findByRole('button', { name: /DEPLOY COMBATANTS/ })
-  await user.click(integrationStatus())
-  expect(screen.getByText(/Disabled by operator/)).toBeInTheDocument()
-  vi.mocked(listModelProfiles).mockResolvedValueOnce([{ ...offlineProfile, available: true, unavailableReason: '' }])
-  await user.click(screen.getByRole('button', { name: 'Check availability' }))
-  await waitFor(() => expect(screen.queryByText(/Disabled by operator/)).not.toBeInTheDocument())
-})
-
-it('reports when AI availability cannot be established and after a failed recheck', async () => {
-  const user = userEvent.setup()
+it('allows scripted battles when AI availability fails without showing integration diagnostics', async () => {
   vi.mocked(listModelProfiles).mockRejectedValueOnce(new Error('unreachable'))
   renderPage()
-  await screen.findByRole('button', { name: /DEPLOY COMBATANTS/ })
-  await user.click(integrationStatus())
-  expect(screen.getByRole('alert')).toHaveTextContent('AI controller availability could not be established.')
-  vi.mocked(listModelProfiles).mockRejectedValueOnce(new Error('still unreachable'))
-  await user.click(screen.getByRole('button', { name: 'Check availability' }))
-  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('AI controller availability could not be established.'))
+  expect(await screen.findByRole('button', { name: /DEPLOY COMBATANTS/ })).toBeEnabled()
+  expect(screen.queryByText('AI integration status')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Check availability' })).not.toBeInTheDocument()
+  expect((await controllerSelect('first-controller')).querySelectorAll('option')).toHaveLength(1)
+  expect(screen.getByRole('alert')).toHaveTextContent('AI controllers could not be loaded.')
 })
 
 it('keeps the operator on the form when queuing the battle fails', async () => {
@@ -231,4 +215,57 @@ it('aborts in-flight setup reads when the page unmounts', async () => {
   const signal = vi.mocked(listFactions).mock.calls[0][0]
   view.unmount()
   expect(signal?.aborted).toBe(true)
+})
+
+it('keeps map selection free of roster and rules explanations', async () => {
+  vi.mocked(listScenarios).mockResolvedValue([{ ...scenario, id: 'frontier-siege', allowedUnits: ['vanguard'], allowedBuildings: ['castle'] }])
+  renderPage()
+  expect(await screen.findByRole('combobox', { name: 'Combat map' })).toHaveValue('frontier-siege')
+  expect(screen.queryByText(/Units:|Buildings:|Three upgrade levels/)).not.toBeInTheDocument()
+})
+
+it('submits timing overrides and resets them to the new map defaults when maps change', async () => {
+  vi.mocked(listScenarios).mockResolvedValue([scenario, { ...scenario, id: 'other', tickDuration: '2s', decisionIntervalTicks: 20 }])
+  const user = userEvent.setup()
+  renderPage()
+  await user.selectOptions(await screen.findByLabelText('Tick duration'), '500ms')
+  await user.selectOptions(screen.getByLabelText('Decision interval'), '5')
+  await user.selectOptions(screen.getByLabelText('Combat map'), 'other')
+  expect(screen.getByLabelText('Tick duration')).toHaveValue('')
+  expect(screen.getByLabelText('Decision interval')).toHaveValue('')
+  expect(screen.getByRole('option', { name: 'Map default (2s)' })).toBeInTheDocument()
+  expect(screen.getByRole('option', { name: 'Map default (20 ticks)' })).toBeInTheDocument()
+  await user.selectOptions(screen.getByLabelText('Tick duration'), '250ms')
+  await user.selectOptions(screen.getByLabelText('Decision interval'), '1')
+  await user.click(screen.getByRole('button', { name: /DEPLOY COMBATANTS/ }))
+  await waitFor(() => expect(createBattle).toHaveBeenCalledWith(expect.objectContaining({ scenarioId: 'other', tickDuration: '250ms', decisionIntervalTicks: 1 })))
+})
+
+it('selects each model and effort and clears an incompatible effort when changing models', async () => {
+  vi.mocked(listModelProfiles).mockResolvedValue([{ ...availableProfile, runtime: 'cli', modelOptions: [
+    { id: 'fast-1', reasoningEfforts: ['low', 'high'] }, { id: 'deep', reasoningEfforts: ['medium'] },
+  ] }])
+  const user = userEvent.setup()
+  renderPage()
+  await user.selectOptions(await controllerSelect('first-controller'), 'fast')
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Reasoning effort' }), 'high')
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Model' }), 'deep')
+  expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toHaveValue('')
+  expect(screen.queryByRole('option', { name: 'High' })).not.toBeInTheDocument()
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Reasoning effort' }), 'medium')
+  await user.click(screen.getByRole('button', { name: /DEPLOY COMBATANTS/ }))
+  await screen.findByRole('heading', { name: 'Battle staged' })
+  expect(createBattle).toHaveBeenCalledWith(expect.objectContaining({ participants: [
+    { factionId: 'north', controller: { type: 'model', profileId: 'fast', modelIdentifier: 'deep', reasoningEffort: 'medium' } },
+    { factionId: 'south', controller: { type: 'scripted' } },
+  ] }))
+})
+
+it('clears model settings when switching controller and disables unsupported effort', async () => {
+  const user = userEvent.setup()
+  renderPage()
+  await user.selectOptions(await controllerSelect('first-controller'), 'fast')
+  expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toBeDisabled()
+  await user.selectOptions(await controllerSelect('first-controller'), 'scripted')
+  expect(screen.queryByRole('combobox', { name: 'Model' })).not.toBeInTheDocument()
 })

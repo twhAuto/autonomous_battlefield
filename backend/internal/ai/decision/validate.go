@@ -5,13 +5,18 @@ package decision
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
-const fieldRecruitmentOrders = "plan.recruitmentOrders"
+const (
+	fieldRecruitmentOrders  = "plan.recruitmentOrders"
+	fieldConstructionOrders = "plan.constructionOrders"
+)
 
 // ValidateSubmission checks version, target tick, and plan choices against the
 // frozen observation without mutating the decision or simulation. It returns every
@@ -26,11 +31,22 @@ func ValidateSubmission(record ai.DecisionRecord, submission ai.PlanSubmission) 
 	}
 	legal := record.Observation.Legal
 	issues = append(issues, validateUpgrades(legal, submission.Plan)...)
+	if err := game.ValidateUpgradeOrder(legal.Upgrades, record.Observation.OwnedUpgradeIDs, submission.Plan.UpgradeOrders); err != nil {
+		issues = append(issues, ai.ValidationIssue{Field: "plan.upgradeOrders", Code: "invalid_order", Message: err.Error()})
+	}
 	if record.Observation.Opening {
-		issues = append(issues, validateOpening(submission.Plan)...)
+		issues = append(issues, validateOpeningForMode(submission.Plan, record.Observation.ContinuousProduction)...)
+	}
+	if err := game.ValidateBuildingProduction(record.Observation.ContinuousProduction, record.FactionID, record.Observation.View.State, legal.RecruitmentSources, submission.Plan); err != nil {
+		issues = append(issues, ai.ValidationIssue{Field: "plan.productionOrders", Code: "unsupported", Message: err.Error()})
 	}
 	issues = append(issues, validateRecruitment(legal, submission.Plan)...)
+	issues = append(issues, validateTrainingSources(record.Observation, submission.Plan)...)
 	issues = append(issues, validateConstruction(legal, record.Observation.Opening, submission.Plan)...)
+	// Scripted plans may over-order; the engine skips orders beyond a limit.
+	if isModelRuntime(record.Runtime) {
+		issues = append(issues, validateBuildingLimits(record.Observation.Economy, submission.Plan)...)
+	}
 	return issues
 }
 
@@ -53,8 +69,8 @@ func isModelRuntime(runtime string) bool {
 }
 
 func isEmptyPlan(plan controller.PlanProposal) bool {
-	return len(plan.ActionWeights) == 0 && plan.RecruitmentOrders == nil && len(plan.RecruitmentPriorities) == 0 &&
-		len(plan.ConstructionPriorities) == 0 && plan.ConstructionOrders == nil && plan.ReserveGold == 0
+	return plan.ProductionOrders == nil && len(plan.ActionWeights) == 0 && plan.RecruitmentOrders == nil && len(plan.RecruitmentPriorities) == 0 &&
+		len(plan.ConstructionPriorities) == 0 && plan.ConstructionOrders == nil && len(plan.UpgradeOrders) == 0 && plan.ReserveGold == 0
 }
 
 func validateUpgrades(legal ai.LegalChoices, plan controller.PlanProposal) []ai.ValidationIssue {
@@ -72,9 +88,13 @@ func validateUpgrades(legal ai.LegalChoices, plan controller.PlanProposal) []ai.
 }
 
 // The opening requires an explicit purchase decision and has no construction.
-func validateOpening(plan controller.PlanProposal) []ai.ValidationIssue {
+
+func validateOpeningForMode(plan controller.PlanProposal, continuous bool) []ai.ValidationIssue {
 	var issues []ai.ValidationIssue
-	if plan.RecruitmentOrders == nil {
+	if continuous && plan.ProductionOrders == nil {
+		issues = append(issues, ai.ValidationIssue{Field: "plan.productionOrders", Code: "required", Message: "Opening requires explicit production orders; use [] to leave production off."})
+	}
+	if !continuous && plan.RecruitmentOrders == nil {
 		issues = append(issues, ai.ValidationIssue{Field: fieldRecruitmentOrders, Code: "required", Message: "Opening requires explicit orders; use [] to buy nothing."})
 	}
 	for _, kind := range plan.SpendOrder {
@@ -132,8 +152,62 @@ func validateConstruction(legal ai.LegalChoices, opening bool, plan controller.P
 	}
 	for _, order := range *plan.ConstructionOrders {
 		if opening || !buildings[order.BuildingType] || !sites[order.Position] {
-			issues = append(issues, ai.ValidationIssue{Field: "plan.constructionOrders", Code: "unsupported", Message: fmt.Sprintf("construction %q at (%d,%d) is not legal", order.BuildingType, order.Position.X, order.Position.Y)})
+			issues = append(issues, ai.ValidationIssue{Field: fieldConstructionOrders, Code: "unsupported", Message: fmt.Sprintf("construction %q at (%d,%d) is not legal", order.BuildingType, order.Position.X, order.Position.Y)})
 		}
 	}
 	return issues
+}
+
+// Older observations without current counts report zero and are never rejected here.
+func validateBuildingLimits(economy ai.EconomyContext, plan controller.PlanProposal) []ai.ValidationIssue {
+	if plan.ConstructionOrders == nil {
+		return nil
+	}
+	orders := *plan.ConstructionOrders
+	economyOrders := 0
+	for _, order := range orders {
+		if order.BuildingType == game.BuildingEconomy {
+			economyOrders++
+		}
+	}
+	var issues []ai.ValidationIssue
+	if remaining := economy.MaximumBuildings - economy.CurrentBuildings; economy.MaximumBuildings > 0 && len(orders) > remaining {
+		issues = append(issues, ai.ValidationIssue{Field: fieldConstructionOrders, Code: "limit_reached", Message: fmt.Sprintf("%d construction orders exceed the %d remaining building slots (%d of %d used); submit at most %d or use []", len(orders), max(0, remaining), economy.CurrentBuildings, economy.MaximumBuildings, max(0, remaining))})
+	}
+	if remaining := economy.MaximumEconomyBuildings - economy.CurrentEconomyBuildings; economy.MaximumEconomyBuildings > 0 && economyOrders > remaining {
+		issues = append(issues, ai.ValidationIssue{Field: fieldConstructionOrders, Code: "limit_reached", Message: fmt.Sprintf("%d economy orders exceed the %d remaining economy slots (%d of %d used)", economyOrders, max(0, remaining), economy.CurrentEconomyBuildings, economy.MaximumEconomyBuildings)})
+	}
+	return issues
+}
+
+// Production capabilities are checked against the frozen observation, not live
+// state. Older stored contexts without authored rosters retain their old rules.
+func validateTrainingSources(context ai.DecisionContext, plan controller.PlanProposal) []ai.ValidationIssue {
+	specialized := false
+	for _, b := range context.Legal.Buildings {
+		specialized = specialized || len(b.Trains) > 0
+	}
+	for _, b := range context.View.State.Buildings {
+		specialized = specialized || len(b.Trains) > 0
+	}
+	if !specialized || plan.RecruitmentOrders == nil {
+		return nil
+	}
+	var issues []ai.ValidationIssue
+	for _, order := range *plan.RecruitmentOrders {
+		if !hasCompatibleTrainingSource(context, order) {
+			issues = append(issues, ai.ValidationIssue{Field: fieldRecruitmentOrders, Code: "unsupported", Message: fmt.Sprintf("no legal source can train %q; choose an active building whose trains list includes this unit", order.UnitType)})
+		}
+	}
+	return issues
+}
+
+func hasCompatibleTrainingSource(context ai.DecisionContext, order controller.RecruitmentOrder) bool {
+	for _, b := range context.View.State.Buildings {
+		matchesID := order.SourceBuildingID == "" || order.SourceBuildingID == b.ID
+		if matchesID && slices.Contains(context.Legal.RecruitmentSources, b.ID) && slices.Contains(b.Trains, order.UnitType) {
+			return true
+		}
+	}
+	return false
 }

@@ -30,6 +30,6 @@ func SessionContextPayload(session ai.DecisionSession, payload json.RawMessage) 
 	if !changed {
 		return payload
 	}
-	envelope["context"] = contextJSON(observation)
+	envelope["context"] = orderedContext(observation)
 	return contextJSON(envelope)
 }

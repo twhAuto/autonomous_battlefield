@@ -12,13 +12,14 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 func TestVersionedSystemPromptIsEmbedded(t *testing.T) {
 	if strings.TrimSpace(System) == "" || !strings.Contains(System, "untrusted data") {
 		t.Fatalf("versioned system prompt is empty or missing its trust boundary")
 	}
-	if !strings.HasPrefix(Version, "battlefield-agent-v9.") {
+	if !strings.HasPrefix(Version, "battlefield-agent-v11.") {
 		t.Fatalf("Version = %q", Version)
 	}
 }
@@ -47,7 +48,7 @@ func TestDecisionPromptKeepsStableContentAheadOfRequestData(t *testing.T) {
 	inline := []byte(`{"context":{"requestId":"request-222"}}`)
 	for name, pair := range map[string][2]string{
 		"tool":   {SessionDecision(first, nil), SessionDecision(second, nil)},
-		"inline": {SessionDecision(first, nil), SessionDecision(second, inline)},
+		"inline": {SessionDecision(first, []byte(`{"context":{"requestId":"request-111"}}`)), SessionDecision(second, inline)},
 	} {
 		prefix := commonPrefix(pair[0], pair[1])
 		if !strings.HasPrefix(prefix, DecisionInstructions) || !strings.Contains(prefix, "END_FACTION_IDENTITY") {
@@ -108,13 +109,13 @@ func TestDecisionPromptFramesDoctrineAndPrecedence(t *testing.T) {
 }
 
 func TestVersionCoversAssembledPrompts(t *testing.T) {
-	if Version != fmt.Sprintf("battlefield-agent-v9.%x", sha256.Sum256([]byte(versionSample()))) {
+	if Version != fmt.Sprintf("battlefield-agent-v11.%x", sha256.Sum256([]byte(versionSample()))) {
 		t.Fatal("Version does not fingerprint the assembled sample prompts")
 	}
 	original := identityTemplate
 	t.Cleanup(func() { identityTemplate = original })
 	identityTemplate = "changed wording\n%s"
-	if fmt.Sprintf("battlefield-agent-v9.%x", sha256.Sum256([]byte(versionSample()))) == Version {
+	if fmt.Sprintf("battlefield-agent-v11.%x", sha256.Sum256([]byte(versionSample()))) == Version {
 		t.Fatal("a change to the identity wrapper did not change the version")
 	}
 }
@@ -128,5 +129,12 @@ func TestDecisionPromptLeavesGameRulesToKnowledge(t *testing.T) {
 	lower := strings.ReplaceAll(strings.ToLower(DecisionInstructions), "attack and heal observations", "")
 	if term := gameRuleTerms.FindString(lower); term != "" {
 		t.Fatalf("decision prompt restates ruleset behaviour (%q); put it in knowledge.mechanics", term)
+	}
+}
+
+func TestInstructionsStateTheRationaleLimit(t *testing.T) {
+	limit := fmt.Sprintf("at most %d characters", controller.MaxRationaleCharacters)
+	if !strings.Contains(DecisionInstructions, limit) {
+		t.Fatalf("decision instructions must state %q", limit)
 	}
 }

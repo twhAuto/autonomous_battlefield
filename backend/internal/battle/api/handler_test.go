@@ -32,7 +32,7 @@ func TestCreateBattleReturnsAccepted(t *testing.T) {
 			{"factionId":"4db8d152-1e04-4d10-8824-859c6ed72878","controller":{"type":"scripted"}},
 			{"factionId":"41ac3a2f-3371-4de1-b0f6-70600fcd9052","controller":{"type":"scripted"}}
 		],
-		"tickCount":100
+		"tickCount":100, "tickDuration":"500ms", "decisionIntervalTicks":5
 	}`))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
@@ -42,6 +42,9 @@ func TestCreateBattleReturnsAccepted(t *testing.T) {
 	}
 	if response.Header().Get("Location") != "/v1/battles/7f22e693-bacd-46bb-b942-64fa613cd388" {
 		t.Fatalf("Location = %q", response.Header().Get("Location"))
+	}
+	if battles.createInput.TickDuration == nil || *battles.createInput.TickDuration != "500ms" || battles.createInput.DecisionIntervalTicks == nil || *battles.createInput.DecisionIntervalTicks != 5 {
+		t.Fatalf("timing input = %#v", battles.createInput)
 	}
 	if battles.createInput.TickCount != 100 || battles.createInput.ScenarioID != "skirmish-v1" {
 		t.Fatalf("create input = %#v", battles.createInput)

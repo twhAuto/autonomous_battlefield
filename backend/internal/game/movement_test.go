@@ -1,5 +1,5 @@
-// Checks units find alternative enemy approaches without crossing blocked cells or
-// targeting friendly/destroyed entities.
+// Checks units find alternative enemy approaches, pass allies without stacking,
+// never cross enemies, and never target friendly/destroyed entities.
 
 package game
 
@@ -41,19 +41,46 @@ func TestUnitsAdvanceWhenCastleApproachesAreOccupied(t *testing.T) {
 	}
 }
 
-func TestBlockedUnitCannotWalkThroughNeighbors(t *testing.T) {
+func surroundedMatch(t *testing.T, neighborFaction string, movement int) (*Match, Unit) {
+	t.Helper()
 	m, err := NewMatch("surrounded", testScenario(), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit := Unit{ID: "surrounded", FactionID: "faction-a", Position: Position{X: 4, Y: 5}, Health: 70, Range: 1, Movement: 2}
+	unit := Unit{ID: "surrounded", FactionID: "faction-a", Position: Position{X: 4, Y: 5}, Health: 70, Range: 1, Movement: movement}
 	m.state.Units = []Unit{unit}
 	for i, p := range Neighbors(unit.Position) {
-		m.state.Units = append(m.state.Units, Unit{ID: fmt.Sprintf("ally-%d", i), FactionID: unit.FactionID, Position: p, Health: 70})
+		m.state.Units = append(m.state.Units, Unit{ID: fmt.Sprintf("neighbor-%d", i), FactionID: neighborFaction, Position: p, Health: 70})
 	}
+	return m, unit
+}
+
+func TestUnitPassesThroughAlliesWithoutStacking(t *testing.T) {
+	m, unit := surroundedMatch(t, "faction-a", 2)
+	occupied := m.occupied()
+	m.moveUnit(&m.state.Units[0])
+	moved := m.state.Units[0]
+	if moved.Position == unit.Position {
+		t.Fatal("allies blocked a unit that can step past them")
+	}
+	if occupied[moved.Position] || HexDistance(moved.Position, unit.Position) != 2 {
+		t.Fatalf("unit ended on an occupied or unreachable hex %+v", moved.Position)
+	}
+}
+
+func TestUnitNeverEndsOnAnAlly(t *testing.T) {
+	m, unit := surroundedMatch(t, "faction-a", 1)
 	m.moveUnit(&m.state.Units[0])
 	if m.state.Units[0].Position != unit.Position {
-		t.Fatal("unit crossed occupied neighbors")
+		t.Fatal("unit stacked on an ally")
+	}
+}
+
+func TestEnemiesStillBlockMovement(t *testing.T) {
+	m, unit := surroundedMatch(t, "faction-b", 2)
+	m.moveUnit(&m.state.Units[0])
+	if m.state.Units[0].Position != unit.Position {
+		t.Fatal("unit crossed enemy neighbors")
 	}
 }
 

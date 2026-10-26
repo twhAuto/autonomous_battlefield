@@ -1,30 +1,34 @@
-// Projects faction-visible battle state using allied vision while keeping hidden enemy
-// entities out of the returned view.
-
+// Projects the open battlefield while retaining faction-private economy and production settings.
 package game
 
-import (
-	"fmt"
-)
+import "fmt"
 
 func (m *Match) View(factionID string) (View, error) {
 	return ProjectView(m.scenario.Map, m.state, factionID)
 }
 
-// ProjectView applies v1 fog-of-war to a persisted state snapshot. Terrain is
-// always returned; hostile non-castle entities are omitted outside vision, and only
-// the viewing faction's own economy and production totals are included.
+// ProjectView exposes all terrain, entities and actions. The deprecated
+// visiblePositions field contains the entire map for older API clients.
 func ProjectView(gameMap Map, source State, factionID string) (View, error) {
-	if factionID == "" {
-		positions := allPositions(gameMap)
-		return View{Map: CloneMap(gameMap), State: CloneState(source), VisiblePositions: positions}, nil
-	}
-	if !factionParticipates(source, factionID) {
+	if factionID != "" && !factionParticipates(source, factionID) {
 		return View{}, fmt.Errorf("faction %q does not participate", factionID)
 	}
-	visible := visiblePositionsForFaction(gameMap, source, factionID)
-	state := visibleState(source, factionID, visible)
-	return View{Map: CloneMap(gameMap), State: state, VisiblePositions: sortedPositions(visible)}, nil
+	state := CloneState(source)
+	if factionID != "" {
+		for i := range state.Buildings {
+			if state.Buildings[i].FactionID != factionID {
+				state.Buildings[i].Production = nil
+			}
+		}
+		state.Factions = nil
+		for _, faction := range source.Factions {
+			if faction.FactionID == factionID {
+				faction.OwnedUpgradeIDs = append([]string(nil), faction.OwnedUpgradeIDs...)
+				state.Factions = append(state.Factions, faction)
+			}
+		}
+	}
+	return View{Map: CloneMap(gameMap), State: state, VisiblePositions: allPositions(gameMap)}, nil
 }
 
 func factionParticipates(state State, factionID string) bool {
@@ -36,74 +40,6 @@ func factionParticipates(state State, factionID string) bool {
 	return false
 }
 
-func visiblePositionsForFaction(gameMap Map, state State, factionID string) map[Position]bool {
-	visible := make(map[Position]bool)
-	for _, unit := range state.Units {
-		if unit.FactionID == factionID && unit.Health > 0 {
-			addVision(visible, gameMap, unit.Position, unit.Vision)
-		}
-	}
-	for _, building := range state.Buildings {
-		if building.FactionID == factionID && building.Health > 0 {
-			addVision(visible, gameMap, building.Position, building.Vision)
-		}
-	}
-	return visible
-}
-
-func visibleState(source State, factionID string, visible map[Position]bool) State {
-	state := CloneState(source)
-	// Economy and production totals are private: a faction sees only its own.
-	state.Factions = state.Factions[:0]
-	for _, faction := range source.Factions {
-		if faction.FactionID == factionID {
-			faction.OwnedUpgradeIDs = append([]string(nil), faction.OwnedUpgradeIDs...)
-			state.Factions = append(state.Factions, faction)
-		}
-	}
-	state.UnitDeaths = state.UnitDeaths[:0]
-	for _, death := range source.UnitDeaths {
-		if death.FactionID == factionID || visible[death.Position] {
-			state.UnitDeaths = append(state.UnitDeaths, death)
-		}
-	}
-	state.Units = state.Units[:0]
-	for _, unit := range source.Units {
-		if unit.FactionID == factionID || visible[unit.Position] {
-			unit = visibleFactionUnit(unit, source, factionID, visible)
-			state.Units = append(state.Units, unit)
-		}
-	}
-	state.Buildings = state.Buildings[:0]
-	for _, building := range source.Buildings {
-		if building.FactionID == factionID || building.Type == BuildingCastle || visible[building.Position] {
-			building = visibleBuilding(building, source, visible)
-			state.Buildings = append(state.Buildings, building)
-		}
-	}
-	return state
-}
-
-func sortedPositions(values map[Position]bool) []Position {
-	positions := make([]Position, 0, len(values))
-	for position := range values {
-		positions = append(positions, position)
-	}
-	sortPositions(positions)
-	return positions
-}
-
-func addVision(visible map[Position]bool, m Map, origin Position, radius int) {
-	for y := 0; y < m.Height; y++ {
-		for x := 0; x < m.Width; x++ {
-			position := Position{X: x, Y: y}
-			if HexDistance(origin, position) <= radius {
-				visible[position] = true
-			}
-		}
-	}
-}
-
 func allPositions(m Map) []Position {
 	result := make([]Position, 0, m.Width*m.Height)
 	for y := 0; y < m.Height; y++ {
@@ -112,59 +48,4 @@ func allPositions(m Map) []Position {
 		}
 	}
 	return result
-}
-
-func visibleUnit(unit Unit, visible map[Position]bool) Unit {
-	if unit.AttackTargetPosition != nil && !visible[*unit.AttackTargetPosition] {
-		unit.AttackOutcome = ""
-		unit.AttackTargetID = ""
-		unit.AttackTargetPosition = nil
-	}
-	if unit.HealTargetPosition != nil && !visible[*unit.HealTargetPosition] {
-		unit.HealTargetID = ""
-		unit.HealTargetPosition = nil
-	}
-	unit.MovementPath = append([]Position(nil), unit.MovementPath...)
-	unit.MovedFrom = clonePosition(unit.MovedFrom)
-	unit.AttackTargetPosition = clonePosition(unit.AttackTargetPosition)
-	unit.HealTargetPosition = clonePosition(unit.HealTargetPosition)
-	return unit
-}
-
-// A tracking arrow must not reveal the current location of a target that left vision.
-func attackEntityVisible(id string, source State, visible map[Position]bool) bool {
-	for _, unit := range source.Units {
-		if unit.ID == id && unit.Health > 0 {
-			return visible[unit.Position]
-		}
-	}
-	return true
-}
-
-func visibleFactionUnit(unit Unit, source State, factionID string, visible map[Position]bool) Unit {
-	unit = visibleUnit(unit, visible)
-	if !attackEntityVisible(unit.AttackTargetID, source, visible) {
-		unit.AttackTargetID, unit.AttackOutcome, unit.AttackTargetPosition = "", "", nil
-	}
-	if unit.FactionID == factionID {
-		return unit
-	}
-	for _, step := range unit.MovementPath {
-		if !visible[step] {
-			unit.MovementPath = nil
-			unit.MovedFrom = nil
-			break
-		}
-	}
-	return unit
-}
-
-func visibleBuilding(building Building, source State, visible map[Position]bool) Building {
-	if (building.AttackTargetPosition != nil && !visible[*building.AttackTargetPosition]) || !attackEntityVisible(building.AttackTargetID, source, visible) {
-		building.AttackOutcome = ""
-		building.AttackTargetID = ""
-		building.AttackTargetPosition = nil
-	}
-	building.AttackTargetPosition = clonePosition(building.AttackTargetPosition)
-	return building
 }

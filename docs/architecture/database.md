@@ -379,3 +379,25 @@ validate a database backup first. [Jenkins production delivery](../operations/je
 owns the migration gate, the [local walkthrough](../developer/local-kubernetes.md#migration-gate)
 shows how to inspect it, and [K3s delivery](../operations/k3s-delivery.md) covers
 backup, restore and recovery records.
+
+## Shared content snapshot compatibility
+
+New battles freeze one shared ruleset with their chosen map. Retired catalog IDs
+remain readable in existing battle JSON; workers do not re-resolve them. Upgrade
+ownership remains an array of purchased IDs. Specialist capabilities and remaining
+Engineer repair charges are stored in scenario/state JSON, so no relational schema
+migration is required. Historical replay tests retain the original transition hash.
+
+## Decision selection and timing columns
+
+Migration `00018_decision_selection_timing.sql` adds `reasoning_effort` (empty for
+historical/model-default choices), nullable `claimed_at`, `context_served_at`, and
+`runner_completed_at` to `battle_decisions`. Existing records are not backfilled
+with invented measurements. `record_decision_claim_time` is a BEFORE UPDATE trigger
+that records the latest claim and resets context/completion timing on a lease
+reclaim. The gateway records the first successful context read once per claim.
+`resolved_at` ends the battle's wait; completion-report receipt remains separate
+and does not move acceptance time. Failed execution records a resolution timestamp.
+Reuse requires matching model and effort. Existing table grants cover the new
+columns; no new roles or broader table privileges are introduced. Down removes
+the trigger/function and these columns.

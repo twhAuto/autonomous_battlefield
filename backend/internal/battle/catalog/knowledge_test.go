@@ -22,14 +22,14 @@ func TestAdditionalUnitFromYAML(t *testing.T) {
 	}
 	bp := game.Blueprint{Units: []game.UnitSelection{{Type: unit.ID, Count: 1}}, RecruitmentPriority: []string{unit.ID}}
 	identities := [2]service.FactionIdentity{{ID: "a", Name: "A", RulesetID: rules.ID, Blueprint: bp}, {ID: "b", Name: "B", RulesetID: rules.ID, Blueprint: bp}}
-	scenario, err := catalog.Resolve("castle-siege-v1", identities)
+	scenario, err := catalog.Resolve("castle-siege", identities)
 	if err != nil {
 		t.Fatal(err)
 	}
 	digest := digestOf(t, scenario)
 	old := game.CloneScenario(scenario)
 	catalog.rulesets[rules.ID].Knowledge.Cards[0].Role = "edited"
-	nextScenario, err := catalog.Resolve("castle-siege-v1", identities)
+	nextScenario, err := catalog.Resolve("castle-siege", identities)
 	next := digestOf(t, nextScenario)
 	if err != nil || next == digest || old.Ruleset.Knowledge.Cards[0].Role != scenario.Ruleset.Knowledge.Cards[0].Role {
 		t.Fatal("snapshot/hash isolation")
@@ -38,18 +38,24 @@ func TestAdditionalUnitFromYAML(t *testing.T) {
 }
 
 // writeRulesetsWithSentinel copies the game content to a temporary directory whose
-// resolved rulesets give castle-siege-v1 a cheap "sentinel" unit and its knowledge card.
+// resolved rulesets give castle-siege a cheap "sentinel" unit and its knowledge card.
 func writeRulesetsWithSentinel(t *testing.T) (string, game.Ruleset, game.UnitType) {
 	t.Helper()
 	seed, err := LoadCatalog(gamedata.Files)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rules, _ := seed.Ruleset("castle-siege-v1")
+	rules, _ := seed.Ruleset("battlefield")
 	unit := rules.Units[0]
 	unit.ID = "sentinel"
 	unit.Cost = 10
 	rules.Units = append(rules.Units, unit)
+	rules.Buildings.CastleTrains = append(rules.Buildings.CastleTrains, unit.ID)
+	for i := range rules.Structures {
+		if rules.Structures[i].Kind == game.BuildingBarracks {
+			rules.Structures[i].Trains = append(rules.Structures[i].Trains, unit.ID)
+		}
+	}
 	card := rules.Knowledge.Cards[0]
 	card.UnitID = unit.ID
 	rules.Knowledge.Cards = append(rules.Knowledge.Cards, card)
@@ -86,7 +92,7 @@ func writeYAML(t *testing.T, path string, value any) {
 // factions' recruitment plans to produce the new unit.
 func checkSentinelIsRecruited(t *testing.T, scenario game.Scenario, unitID string) {
 	t.Helper()
-	match, err := game.NewMatch("new-unit", scenario, 20)
+	match, err := game.NewMatch("new-unit", scenario, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,9 +101,18 @@ func checkSentinelIsRecruited(t *testing.T, scenario game.Scenario, unitID strin
 			t.Fatal(err)
 		}
 	}
-	plan := controller.PlanProposal{Name: "recruit", SpendOrder: []string{"recruitment"}, RecruitmentPriorities: []string{unitID}, ActionWeights: map[string]int64{"attack": 1000}}
-	if _, err := match.AdvanceWithPlans(map[string]controller.PlanProposal{"a": plan, "b": plan}); err != nil {
+	plans := map[string]controller.PlanProposal{}
+	for _, id := range []string{"a", "b"} {
+		orders := []controller.ProductionOrder{{BuildingID: id + ":castle", UnitType: unitID, Enabled: true}}
+		plans[id] = controller.PlanProposal{Name: "recruit", ProductionOrders: &orders, ActionWeights: map[string]int64{"attack": 1000}}
+	}
+	if _, err := match.AdvanceWithPlans(plans); err != nil {
 		t.Fatal(err)
+	}
+	for i := 0; i < 40 && !match.Finished(); i++ {
+		if _, err := match.AdvanceWithPlans(nil); err != nil {
+			t.Fatal(err)
+		}
 	}
 	found := false
 	for _, u := range match.State().Units {

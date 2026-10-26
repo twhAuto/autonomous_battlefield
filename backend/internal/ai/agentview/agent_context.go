@@ -15,12 +15,13 @@ import (
 )
 
 type UnitOverview struct {
-	ID         string `json:"id"`
-	Cost       int64  `json:"cost"`
-	Class      string `json:"class,omitempty"`
-	Role       string `json:"role,omitempty"`
-	Strengths  string `json:"strengths,omitempty"`
-	Weaknesses string `json:"weaknesses,omitempty"`
+	TrainingTicks uint64 `json:"trainingTicks"`
+	ID            string `json:"id"`
+	Cost          int64  `json:"cost"`
+	Class         string `json:"class,omitempty"`
+	Role          string `json:"role,omitempty"`
+	Strengths     string `json:"strengths,omitempty"`
+	Weaknesses    string `json:"weaknesses,omitempty"`
 }
 
 type Knowledge struct {
@@ -39,26 +40,27 @@ type LegalChoices struct {
 
 // Deliberately does not embed DecisionContext: new stored fields are private by default.
 type Context struct {
-	FactionName        string                  `json:"factionName,omitempty"`
-	Background         string                  `json:"background,omitempty"`
-	Doctrine           string                  `json:"doctrine,omitempty"`
-	Opening            bool                    `json:"opening,omitempty"`
-	OwnedUpgradeIDs    []string                `json:"ownedUpgradeIds,omitempty"`
-	SchemaVersion      string                  `json:"schemaVersion"`
-	RequestID          string                  `json:"requestId"`
-	BattleID           string                  `json:"battleId"`
-	FactionID          string                  `json:"factionId"`
-	TargetTick         uint64                  `json:"targetTick"`
-	ExpectedVersion    int64                   `json:"expectedVersion"`
-	ObservationVersion uint64                  `json:"observationVersion"`
-	ObservationHash    string                  `json:"observationHash"`
-	View               game.View               `json:"view"`
-	Economy            ai.EconomyContext       `json:"economy"`
-	Memory             []ai.FactionMemoryEntry `json:"memory,omitempty"`
-	ActivePlan         controller.PlanProposal `json:"activePlan"`
-	Legal              LegalChoices            `json:"legal"`
-	Knowledge          *Knowledge              `json:"knowledge,omitempty"`
-	ReferenceUnits     []UnitOverview          `json:"referenceUnits,omitempty"`
+	ContinuousProduction bool                    `json:"continuousProduction,omitempty"`
+	FactionName          string                  `json:"factionName,omitempty"`
+	Background           string                  `json:"background,omitempty"`
+	Doctrine             string                  `json:"doctrine,omitempty"`
+	Opening              bool                    `json:"opening,omitempty"`
+	OwnedUpgradeIDs      []string                `json:"ownedUpgradeIds,omitempty"`
+	SchemaVersion        string                  `json:"schemaVersion"`
+	RequestID            string                  `json:"requestId"`
+	BattleID             string                  `json:"battleId"`
+	FactionID            string                  `json:"factionId"`
+	TargetTick           uint64                  `json:"targetTick"`
+	ExpectedVersion      int64                   `json:"expectedVersion"`
+	ObservationVersion   uint64                  `json:"observationVersion"`
+	ObservationHash      string                  `json:"observationHash"`
+	View                 game.View               `json:"view"`
+	Economy              ai.EconomyContext       `json:"economy"`
+	Memory               []ai.FactionMemoryEntry `json:"memory,omitempty"`
+	ActivePlan           controller.PlanProposal `json:"activePlan"`
+	Legal                LegalChoices            `json:"legal"`
+	Knowledge            *Knowledge              `json:"knowledge,omitempty"`
+	ReferenceUnits       []UnitOverview          `json:"referenceUnits,omitempty"`
 }
 
 // FreezeUnitReference captures all and only legal or visible types, independently of
@@ -100,7 +102,7 @@ func visibleAndLegalUnitIDs(c ai.DecisionContext) map[string]bool {
 }
 
 func unitOverview(stats game.UnitType, card *game.UnitCard) UnitOverview {
-	result := UnitOverview{ID: stats.ID, Cost: stats.Cost, Class: stats.Class}
+	result := UnitOverview{TrainingTicks: max(uint64(1), stats.TrainingTicks), ID: stats.ID, Cost: stats.Cost, Class: stats.Class}
 	if card != nil {
 		result.Role = card.Role
 		result.Strengths = card.Strengths
@@ -112,7 +114,7 @@ func unitOverview(stats game.UnitType, card *game.UnitCard) UnitOverview {
 func Compact(c ai.DecisionContext) Context {
 	result := Context{
 		FactionName: c.FactionName, Background: c.Background, Doctrine: c.Doctrine,
-		Opening: c.Opening, OwnedUpgradeIDs: c.OwnedUpgradeIDs, SchemaVersion: ai.ContextSchema,
+		ContinuousProduction: c.ContinuousProduction, Opening: c.Opening, OwnedUpgradeIDs: c.OwnedUpgradeIDs, SchemaVersion: ai.ContextSchema,
 		RequestID: c.RequestID, BattleID: c.BattleID, FactionID: c.FactionID,
 		TargetTick: c.TargetTick, ExpectedVersion: c.ExpectedVersion,
 		ObservationVersion: c.ObservationVersion, ObservationHash: c.ObservationHash,
@@ -154,7 +156,7 @@ func Compact(c ai.DecisionContext) Context {
 
 // Project every saved observation into the current format without changing storage.
 func Observation(c ai.DecisionContext) any {
-	return groupContextFactions(deduplicateContext(battlefieldContext{Context: Compact(c), View: compactBattlefieldView(c.View)}))
+	return orderedContext(compactDecisionData(compactUnitIDs(groupContextFactions(deduplicateContext(battlefieldContext{Context: Compact(c), View: compactBattlefieldView(c.View)})))))
 }
 
 // UnitDetailsMaxBytes leaves headroom below the observed CLI offload threshold.

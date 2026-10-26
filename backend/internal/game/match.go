@@ -12,18 +12,19 @@ import (
 )
 
 type factionRuntime struct {
-	setup        FactionSetup
-	activePlan   controller.PlanProposal
-	activeSource string
-	planIndex    int
-	unitSequence int
-	attackBonus  int64
-	defenseBonus int64
-	economyBonus int64
-	damageDealt  int64
-	damageTaken  int64
-	attackTicks  uint64
-	defendTicks  uint64
+	setup          FactionSetup
+	activePlan     controller.PlanProposal
+	activeSource   string
+	planIndex      int
+	unitSequence   int
+	scopedUpgrades []Upgrade
+	attackBonus    int64
+	defenseBonus   int64
+	economyBonus   int64
+	damageDealt    int64
+	damageTaken    int64
+	attackTicks    uint64
+	defendTicks    uint64
 }
 
 type Match struct {
@@ -89,6 +90,8 @@ func (m *Match) AdvanceWithPlans(plans map[string]controller.PlanProposal) (Tran
 		}
 	}
 	events = append(events, m.runEconomy(decisionWindow)...)
+	events = append(events, m.runTraining()...)
+	events = append(events, m.runContinuousProduction()...)
 	tactics, tacticEvents := m.selectTactics()
 	events = append(events, tacticEvents...)
 	m.captureAttackAims()

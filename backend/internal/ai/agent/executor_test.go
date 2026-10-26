@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -113,8 +114,13 @@ func TestWorkerValidationAndDefaultProvider(t *testing.T) {
 	}
 	decisionRunner, err := defaultRunner(ai.ModelProfile{Runtime: "cli", Provider: "codex-cli", Model: "gpt-5.6-luna"})
 	cliRunner, ok := decisionRunner.(runner.CLIRunner)
-	if err != nil || !ok || cliRunner.Model != "gpt-5.6-luna" {
+	if err != nil || !ok || cliRunner.Model != "gpt-5.6-luna" || !cliRunner.PrefetchContext {
 		t.Fatalf("CLI runner=%#v err=%v", decisionRunner, err)
+	}
+	optOut := false
+	decisionRunner, _ = defaultRunner(ai.ModelProfile{Runtime: "cli", Provider: "codex-cli", PrefetchContext: &optOut})
+	if decisionRunner.(runner.CLIRunner).PrefetchContext {
+		t.Fatal("explicit prefetchContext: false still prefetched")
 	}
 }
 
@@ -240,7 +246,9 @@ func TestRunJobReportsUnavailableAndRunnerFailures(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil
 	})}
 	profiles := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
-	worker := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", Profiles: profiles, DecisionTimeout: time.Second, Client: client, Logger: slog.New(slog.NewJSONHandler(&logs, nil)), RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) { return fakeRunner{err: errors.New("provider")}, nil }}
+	worker := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", Profiles: profiles, DecisionTimeout: time.Second, Client: client, Logger: slog.New(slog.NewJSONHandler(&logs, nil)), RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
+		return fakeRunner{err: errors.New("provider said 429\nwith Bearer secret-value")}, nil
+	}}
 	worker.runJob(context.Background(), job{CapabilityToken: "server-issued-capability", RequestID: "request", ProfileID: "missing"})
 	worker.runJob(context.Background(), job{CapabilityToken: "server-issued-capability", RequestID: "request", ProfileID: "profile"})
 	worker.RunnerFactory = func(ai.ModelProfile) (ai.DecisionRunner, error) { return nil, errors.New("factory") }
@@ -250,6 +258,21 @@ func TestRunJobReportsUnavailableAndRunnerFailures(t *testing.T) {
 	}
 	if reportedOutcome != "execution_error" || !strings.Contains(logs.String(), `"msg":"decision_runner_failed"`) || !strings.Contains(logs.String(), `"runner_outcome":"execution_error"`) {
 		t.Fatalf("outcome=%q logs=%s", reportedOutcome, logs.String())
+	}
+	if !strings.Contains(logs.String(), `"error":"provider said 429 with Bearer [redacted]"`) || strings.Contains(logs.String(), "secret-value") {
+		t.Fatalf("runner error detail missing or unredacted: %s", logs.String())
+	}
+}
+
+func TestRunnerFailureLogRedactsNetworkIdentity(t *testing.T) {
+	var logs bytes.Buffer
+	refused := &net.OpError{Op: "dial", Net: "tcp", Addr: &net.TCPAddr{IP: net.ParseIP("10.0.0.5"), Port: 18084}, Err: errors.New("connect: connection refused")}
+	lookup := &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "no such host", Name: "battlefield-ai-gateway.internal"}}
+	run := jobRun{logger: slog.New(slog.NewJSONHandler(&logs, nil)), started: time.Now()}
+	run.logFailure(context.Background(), "mcp_context", "execution_error", fmt.Errorf("prefetch: %w", errors.Join(refused, lookup)))
+	if strings.Contains(logs.String(), "10.0.0.5") || strings.Contains(logs.String(), "battlefield-ai-gateway.internal") ||
+		!strings.Contains(logs.String(), "dial tcp: connect: connection refused") || !strings.Contains(logs.String(), "dial tcp: lookup failed: no such host") {
+		t.Fatalf("network identity leaked or cause lost: %s", logs.String())
 	}
 }
 
@@ -435,5 +458,61 @@ func TestDrainStopsNewClaimsAndLetsRunningDecisionsFinish(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWorkerExecutesFrozenSelectionOrFailsUnavailable(t *testing.T) {
+	t.Setenv("SELECTION_CLI_AVAILABLE", "true")
+	profiles := profile.NewCatalog("cluster", []ai.ModelProfile{{ID: "cli", DisplayName: "CLI", Provider: "codex-cli", Runtime: "cli", Scope: "local", Enabled: true, Model: "fast", SupportedVersionPrefix: "codex-cli 0.155.", AvailabilityEnvironmentVariable: "SELECTION_CLI_AVAILABLE", ModelOptions: []ai.ModelOption{{ID: "deep", ReasoningEfforts: []string{"low"}}}}})
+	for _, test := range []struct {
+		model      string
+		invoked    bool
+		reportPath string
+	}{{"deep", true, "/internal/agent/usage"}, {"removed", false, "/internal/agent/fail"}} {
+		invoked := false
+		reportPath := ""
+		worker := &Executor{Profiles: profiles, DecisionTimeout: time.Second, MCPURL: "http://mcp/mcp", Client: &http.Client{Transport: agentRoundTrip(func(req *http.Request) (*http.Response, error) {
+			reportPath = req.URL.Path
+			return agentResponse(204, ""), nil
+		})}, RunnerFactory: func(p ai.ModelProfile) (ai.DecisionRunner, error) {
+			invoked = true
+			if p.Model != "deep" || p.ReasoningEffort != "low" {
+				t.Fatalf("wrong selection: %+v", p)
+			}
+			return runnerFunc(func(_ context.Context, s ai.DecisionSession) (ai.DecisionResult, error) {
+				if s.Profile.Model != "deep" {
+					t.Fatal("wrong session model")
+				}
+				return ai.DecisionResult{Accepted: true}, nil
+			}), nil
+		}}
+		claimed := time.Now()
+		worker.runJob(context.Background(), job{RequestID: "request", ProfileID: "cli", CapabilityToken: "scoped", ModelIdentifier: test.model, ReasoningEffort: "low", CreatedAt: claimed.Add(-time.Second), ClaimedAt: &claimed})
+		if test.invoked != invoked {
+			t.Fatal("unexpected execution", test.model, invoked)
+		}
+		if reportPath != test.reportPath {
+			t.Fatal(reportPath)
+		}
+	}
+}
+
+func TestAPIWorkerUsesCurrentConfiguredModelAfterEnvironmentChange(t *testing.T) {
+	t.Setenv("API_SELECTION_MODEL", "current-model")
+	profiles := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "api", DisplayName: "API", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, ModelEnvironmentVariable: "API_SELECTION_MODEL"}})
+	invoked, reportPath := false, ""
+	worker := &Executor{Profiles: profiles, DecisionTimeout: time.Second, MCPURL: "http://mcp/mcp", Client: &http.Client{Transport: agentRoundTrip(func(req *http.Request) (*http.Response, error) {
+		reportPath = req.URL.Path
+		return agentResponse(204, ""), nil
+	})}, RunnerFactory: func(p ai.ModelProfile) (ai.DecisionRunner, error) {
+		invoked = true
+		if p.ModelLabel != "current-model" || p.ReasoningEffort != "" {
+			t.Fatalf("API model configuration changed: %+v", p)
+		}
+		return fakeRunner{result: ai.DecisionResult{Accepted: true}}, nil
+	}}
+	worker.runJob(context.Background(), job{RequestID: "request", ProfileID: "api", CapabilityToken: "scoped", ModelIdentifier: "previous-model"})
+	if !invoked || reportPath != "/internal/agent/usage" {
+		t.Fatalf("invoked = %t, report = %q", invoked, reportPath)
 	}
 }

@@ -75,6 +75,7 @@ an existing login and a running local bridge in a second terminal:
 
 The helper also accepts `antigravity`, `claude`, `both` (Codex and Antigravity),
 `all` (all three CLIs) and `auto` (every available authenticated CLI).
+Local CLIs allow the selected stable version or newer.
 See [Antigravity setup](../operations/antigravity-cli.md),
 [Claude setup](../operations/claude-cli.md) and
 [subscription CLI details](local-kubernetes.md#subscription-clis).

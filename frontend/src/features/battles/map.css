@@ -2,19 +2,14 @@
 @media (max-width: 780px) {
   .map-toolbar { align-items: flex-start; flex-wrap: wrap; }
   .map-toolbar__controls { justify-content: space-between; width: 100%; }
-  .map-perspective-control { flex: 1; }
-  .map-perspective-control select { min-width: 0; width: 100%; }
 }
 .map-toolbar button { background: #192129; border: 1px solid #48535d; color: #fff; cursor: pointer; min-height: 32px; min-width: 32px; }
 .map-panel { background: #0e1419; border: 1px solid #303a42; margin-bottom: 28px; }
 .map-toolbar { align-items: center; border-bottom: 1px solid #303a42; display: flex; gap: 18px; justify-content: space-between; min-height: 58px; padding: 10px 16px; }
 .map-toolbar > span { color: #9aa6af; font-size: 12px; letter-spacing: .14em; }
-.map-toolbar__controls, .map-zoom-controls, .map-perspective-control { align-items: center; display: flex; }
+.map-toolbar__controls, .map-zoom-controls { align-items: center; display: flex; flex-wrap: wrap; }
 .map-toolbar__controls { gap: 14px; }
 .map-zoom-controls { gap: 6px; }
-.map-perspective-control { gap: 9px; }
-.map-perspective-control label { color: #9da8b0; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
-.map-perspective-control select { min-width: 220px; height: 32px; padding: 0 10px; color: #dce2d5; background: var(--ink); border: 1px solid #454d41; }
 .map-zoom-controls button:last-child { font-size: 12px; padding-inline: 10px; }
 .map-viewport { overflow: hidden; touch-action: none; }
 .map-viewport svg { cursor: grab; height: 100%; width: 100%; }
@@ -22,8 +17,7 @@
 .hex-tile { stroke: #35414a; stroke-width: 1; }
 .hex-tile--ground { fill: #172127; }
 .hex-tile--rock { fill: #46505a; }
-.hex-tile--site { fill: #273c31; stroke: #62b681; stroke-dasharray: 3 2; }
-.hex-tile--fog { fill: #070a0d; opacity: .82; }
+
 .unit-direction { pointer-events: none; stroke-linecap: round; stroke-width: 2.5; }
 .unit-direction--movement { stroke-width: 1.5; opacity: .7; stroke-dasharray: 4 4; animation: movement-flow 2.4s linear infinite; }
 .unit-direction--attack { stroke-width: 1.5; }
@@ -57,8 +51,8 @@
 .map-legend .legend-movement, .map-legend .legend-attack { border-width: 0 0 2px; height: 0; width: 18px; }
 .map-legend .legend-movement { border-color: #aab3b8; border-style: dashed; }
 .map-legend .legend-attack { border-color: #aab3b8; }
-.legend-ground { background: #172127; }.legend-rock { background: #46505a; }.legend-site { background: #273c31; }.legend-fog { background: #070a0d; }
-.entity-details, .map-placeholder { flex-wrap: wrap; overflow-wrap: anywhere; align-items: center; border-top: 1px solid #303a42; display: flex; gap: 18px; min-height: 54px; padding: 12px 16px; }
+.legend-ground { background: #172127; }.legend-rock { background: #46505a; }
+.entity-details { flex-wrap: wrap; overflow-wrap: anywhere; align-items: center; border-top: 1px solid #303a42; display: flex; gap: 18px; min-height: 54px; padding: 12px 16px; }
 .entity-details span { color: #9da8b0; }
 
 .unit-direction--healing { stroke: #65e6c4; stroke-dasharray: 2 3; stroke-width: 3; }
@@ -82,7 +76,6 @@
   .unit-death { animation: none; }
 }
 .map-zoom-controls button { min-width: 44px; }
-.map-toolbar__controls, .map-zoom-controls { flex-wrap: wrap; }
 .map-viewport--overview { touch-action: pan-y; }
 .map-viewport--overview svg { cursor: default; }
 .expanded-map { width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; padding: 0; border: 0; color: #ecf0e5; background: var(--ink); }
@@ -90,4 +83,18 @@
 .expanded-map .map-panel { min-height: 100%; display: flex; flex-direction: column; margin: 0; }
 .expanded-map .map-viewport { height: max(240px, 60dvh); flex: 1 0 240px; }
 .expanded-map .map-toolbar { flex-wrap: wrap; }
-.expanded-map .entity-details, .expanded-map .map-placeholder { flex-shrink: 0; }
+.expanded-map .entity-details { flex-shrink: 0; }
+
+.hex-tile--forest { fill: #234b3a; stroke: #397158; }
+.hex-tile--gold { fill: #655127; stroke: #c8a34c; }
+.hex-tile--build-range { stroke: #87c4ed; stroke-width: 1.8; }
+.legend-forest { background: #234b3a; }
+.legend-gold { background: #c8a34c; }
+.training-queue { width: 100%; }
+.training-queue ol { padding-left: 1.5rem; }
+.training-queue progress { margin-left: .75rem; max-width: 8rem; accent-color: #69d2ff; }
+
+.terrain-glyph { pointer-events: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.terrain-glyph--forest { fill: #448b60; stroke: #b1dfaa; }
+.terrain-glyph--gold { fill: #e5b94f; stroke: #fff0aa; }
+.terrain-glyph--rock { fill: #596977; stroke: #9bafbd; }

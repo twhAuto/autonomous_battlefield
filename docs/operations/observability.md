@@ -288,3 +288,23 @@ count, and a successful scrape within 60 seconds. Missing discovery, a failed
 replica, stale results, or incomplete HPA rollout cannot pass on another pod's
 healthy metric. The bounded 120-second wait still accommodates discovery after
 rollout and returns immediately when every expected target is healthy.
+
+## Decision latency measurements
+
+The battle decision inspector shows total wait and expandable queue, context,
+resolution, process-launch and worker-completion timing. The existing **Battle
+Traces** dashboard adds **Decision latency by model and effort**, selecting
+`battlefield.decision.resolved` spans for the chosen battle. Attributes include
+`battlefield.total_wait_ms`, `battlefield.queue_wait_ms`,
+`battlefield.claim_to_context_ms`, `battlefield.claim_to_resolution_ms`, model,
+effort and resolution status. The generation span records
+`battlefield.cli_process_start_ms` (OS launch only); the agent span carries queue
+wait and the requested model/effort. These are trace attributes, not unbounded
+Prometheus labels. Compare accepted decisions separately from fallback/failure.
+
+Total wait ends at plan acceptance or fallback/failure. Completion is the gateway's
+receipt of the worker report, so it includes reporting transport time. Context
+latency includes startup and tool/provider round trips and cannot isolate private
+model reasoning. Historical absent measurements stay unknown. Reclaimed leases
+use the latest claim for execution breakdown and the original request for total
+wait. No live speed improvement is established by these measurements alone.

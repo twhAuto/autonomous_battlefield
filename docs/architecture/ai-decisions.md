@@ -11,6 +11,19 @@ owns the surrounding components, the
 boundaries. The [game rules](../game/game-rules.md) define what a plan does once
 applied.
 
+Battle setup can override the map's decision interval for a single battle
+(1–100 ticks after the opening) and tick duration (100ms–10s). These values are
+validated and frozen in the scenario snapshot. Shorter intervals request plans
+more often; tick pacing does not shorten the model decision deadline.
+
+For Admin and Developer viewers, each faction status box shows the latest
+accepted or fallback plan at or before the current tick and its submitted
+rationale. A pending or future decision does not replace the applied plan.
+Stopped battles retain the last plan; missing records have explicit empty states.
+Fallback plans are labeled, and long plan/rationale text scrolls inside a
+keyboard-focusable read-only text box capped at 160px so the map stays accessible.
+Player roles retain the existing restriction on decision inspection.
+
 ## Decision lifecycle
 
 ```mermaid
@@ -89,10 +102,13 @@ The CLI runner starts Codex or Antigravity in a fresh temporary directory with:
   background generation), and file, command and URL actions denied;
 - shell, browser, app, image, plugin, skill and multi-agent features disabled where
   supported, and no approval prompts;
-- the allowlisted profile model passed explicitly, and a validated CLI version
-  family;
+- the allowlisted profile model passed explicitly, and a CLI version matching
+  the worker profile;
 - a subprocess environment without worker control credentials, provider keys or
   personal CLI overrides, and output capture bounded at 4 MiB.
+
+Local CLIs allow the selected stable version or newer; the launcher passes the
+accepted version to the worker profile.
 
 On Linux the worker disables dumpability, so a same-user CLI child cannot read the
 parent's environment or memory, and cancellation kills the CLI's process group.
@@ -120,16 +136,39 @@ version pin, model alias and personal-memory caveat are in
 
 ## Prompt provenance and faction memory
 
-Every runtime uses one embedded decision policy, assembled by
-`internal/ai/prompts/prompts.go`; only context delivery differs (tool fetch or
-Antigravity's inline JSON). The persisted `prompts.Version`
-(`battlefield-agent-v9.<digest>`) includes a SHA-256 of the prompts as assembled for
-a fixed sample session, so any wording, order or wiring change produces a new
-version. Git keeps earlier prompt revisions.
+Every runtime uses an embedded decision policy assembled by
+`internal/ai/prompts/prompts.go`. The persisted `prompts.Version`
+(`battlefield-agent-v10.<digest>`) hashes sample tool, fallback-inline and split-inline
+layouts, both policy variants, and the rule-deduplication crosswalk. Git keeps earlier
+prompt revisions.
 
-The decision prompt runs from most to least stable: shared policy, the faction
-identity block, then the request ID and any inline context, so a faction's repeated
-prefix stays eligible for provider prompt caching.
+Tool-fetch sessions receive shared policy, faction identity, then the request ID.
+Prefetched sessions receive policy and the delivery contract, a `REFERENCE` JSON
+block, faction identity, then a `CONTEXT` JSON block. Recursively merging the two
+JSON objects restores the complete context: the reference contains schema/mode,
+frozen knowledge, legal catalogs and terrain; the remainder contains faction/battle
+IDs, owned upgrades, current legal sites/recruitment sources and observed state, economy, plans and
+memory, with tick/request metadata last. Unknown fields remain in the remainder;
+arrays, numbers, nulls and absent values retain their meanings. Both blocks remain
+untrusted game data. Contexts without any reference leaves retain the original
+single-block inline layout. Background generation keeps its separate prompt.
+
+The shared policy states training-roster selection once. For prefetched continuous
+production with the exact reviewed core-v7 mechanics, `rule-duplicates.json` removes
+policy sentences whose rules already appear in those frozen mechanics, plus the
+inactive legacy recruitment paragraph. A SHA-256 match of the **entire mechanics
+text** gates this reduction. Tool-fetch sessions, legacy mode and missing, truncated
+or changed mechanics retain the full fallback guidance. Frozen mechanics themselves
+are never shortened. Submission, opening, privacy and other unique requirements
+remain in both variants, as do generic catalog-dependent exclusivity and industry
+guidance whose full scope is not stated explicitly in the mechanics prose.
+
+This deterministic order lengthens the reusable prefix of prefetched prompts.
+Tool-fetch sessions still send a changing request ID before receiving context, so
+ordering the tool response cannot move its reference data into the initial shared
+prefix. Ordering is not evidence of provider cache hits: provider message boundaries,
+cache controls and CLI-managed serialization still apply. Measure reported cached
+input separately; provider-specific cache configuration remains separate work.
 
 Only the owning faction's name, doctrine and optional background enter its decision
 context, observation hash and provenance; opponent doctrines never do. They arrive
@@ -141,6 +180,12 @@ Scripted controllers and the opening fallback ignore doctrine.
 Before hashing an observation, the engine adds up to three earlier resolved
 decisions for the same battle, attempt and faction (`BuildFactionMemory`, at most
 8 KiB): their economy and unit counts, plans, ticks and accepted or fallback status.
+Each entry also carries an `outcome` read from the battle's recorded events while
+that plan was active, from its target tick to the next remembered plan or the
+current decision (`throughTick`): units trained, lost and destroyed, buildings
+constructed, lost and destroyed, and `production_skipped` counts by kind and reason.
+The battlefield is fully visible, so enemy losses are faction-visible facts. The
+engine reads only these five event types within the remembered ticks.
 Memory is part of the frozen, hashed observation; there is no mutable scratchpad,
 and attempts never read memory from earlier attempts. A plan is reused only when the
 observation hash, prompt and tool versions, and profile, provider, runtime and model
@@ -152,9 +197,11 @@ contracts.
 A decision context contains:
 
 - battle, faction, request, target-tick and version identifiers;
-- a fog-of-war faction view: terrain, the faction's own entities, visible enemies,
-  enemy castles, and only the faction's own gold, upgrades and production totals;
-- current and projected economy values;
+- an open battlefield view with all terrain, units, buildings and training queues,
+  and only the faction's own gold, upgrades and aggregate production totals;
+- current and projected economy values, including `currentBuildings` of
+  `maximumBuildings` and `currentUnits` (living plus paid in training) of
+  `maximumUnits` when the ruleset sets those limits;
 - legal action kinds, unit and building definitions, construction sites and owned
   recruitment sources;
 - the currently active plan;
@@ -180,7 +227,7 @@ whether it was truncated.
 ### Unit reference and lookup
 
 The observation also freezes every legal or visible unit definition and its card in
-`unitReference`. The model's context lists each legal unit's cost, class, role,
+`unitReference`. The model's context lists each legal unit's cost, training ticks, class, role,
 strengths and weaknesses; `get_unit_details` returns full base stats and guidance
 for a few units at a time, scoped by the request capability to that frozen set.
 Hidden and unknown unit IDs both return `available: false`. The tool's description
@@ -190,20 +237,66 @@ gives its batch and size limits. Reference content is untrusted data.
 
 The agent view groups entities by faction and replaces repeated values (identical
 stat profiles, visible-cell ranges, an unchanged historical plan) with references,
-using each encoding only when it shrinks the output. The prompt explains the
+using each encoding only when it shrinks the output. Complete-map visibility masks
+are omitted from current agent context; old partial observations retain their masks. The prompt explains the
 encodings. The projection never changes persisted state, validation or hashes, and
 older saved observations are projected the same way without rewriting storage.
+
+Model-facing JSON uses deterministic stability ordering instead of alphabetical
+top-level keys: schema/mode and knowledge first, faction/battle identity and owned
+upgrades next, current state and plans after that, request metadata last. Nested
+legal catalogs precede sites and recruitment sources; terrain precedes observed
+profiles/state. The MCP response remains one JSON object;
+session identity deduplication preserves this order. Only prefetched prompt rendering
+splits nested stable leaves into a separate reference block.
+
+With prompt v11, `encoding="tables-v1"` enables further lossless model-only
+compaction. A table has `fields`, `rows`, and optional `shared` values. Cells follow
+column order; null cells and omitted trailing cells mean absent fields. Records
+with explicit null fields stay inline. Unit/building catalogs use tables;
+upgrade tracks or exclusive groups can use ordered `groups` of tables, retaining
+prerequisites, incremental bonuses and catalog order without assuming zero defaults.
+
+Before table encoding, each observed unit, living or in `unitDeaths`, receives a
+context-local integer `id`, and unit-valued `attackTargetId` and `healTargetId`
+fields use that integer; string targets remain building IDs. `unitDeaths` entries
+replace `factionId` with the same `faction` index. Destroyed buildings are omitted
+from the projection; faction stats still count them. Building IDs stay complete
+because `productionOrders` name them. Numbers are assigned in faction-group order
+and never reused within one response; they are not stable across decisions. At the
+AB-173 baseline (battle `fc68915a`, tick 190) this cut `unitMap` from 15.0 to 7.9 KB
+and the projected context from 36.3 to 28.5 KB.
+
+`view.unitMap` consolidates every visible unit into one table. `faction` is a
+zero-based index into `view.state.factions`; `xy` is position `[x,y]`. All IDs,
+profiles, targets, health, movement paths and readiness remain represented.
+The map replaces faction `units` lists only when smaller. It stays in the dynamic
+block, separate from stable `view.map` terrain. Buildings remain faction-grouped.
+`legal.constructionRuns` replaces legal sites with ordered `[y,xStart,xEnd]`
+inclusive runs, preserving gaps and duplicates. These authoritative legal sites
+cannot be inferred from terrain alone. Submissions still use full IDs and `{x,y}`.
+
+Historical plans may reuse individual exact active-plan fields through
+`planFieldsFromActive`; `memoryEconomyShared` supplies economy values identical in
+every memory entry. Historical differences remain explicit. Encodings are selected
+only when smaller including their keys and version marker; tiny or incompatible
+records retain the original shape. All references are local to one frozen response.
+Canonical observations, hashes and plan validation remain unchanged. CLI prefetch
+checks only transport metadata, allowing compact catalogs without decoding them
+as canonical storage structs. Offline round-trip tests reconstruct the original
+projection, including large integers, optional fields, unknown values and order.
 
 ## Submitted plans
 
 A model or scripted controller can propose:
 
-- a short name and operator-visible rationale;
+- a short name and an operator-visible rationale of at most 600 characters, a limit
+  the decision prompt and `submit_strategy_plan` schema both state;
 - fixed-point attack and defend weights, and target-specific bonuses;
 - reserve gold and spend ordering;
-- ordered upgrade purchases;
+- ordered upgrade purchases, including level prerequisites when supplied by the ruleset;
 - typed construction orders;
-- explicit ordered unit purchases with quantities.
+- persistent per-building unit selection and on/off settings (legacy contexts use unit purchases with quantities).
 
 The service validates the decision version, target tick, general plan bounds, and
 context-specific units and sites before persisting a plan. The `StrategyPlan`
@@ -211,15 +304,54 @@ schema in the [OpenAPI contract](openapi.yaml) gives the field shapes and limits
 API and CLI submissions must be substantive, and a request stops after three
 rejected submissions.
 
-`recruitmentOrders` lists `{unitType, count, sourceBuildingId?}` purchases for one
-production window, at most six units in total (the six castle-adjacent spawn
-positions). The engine buys in order, keeps reserve gold, and stops at the first
-unaffordable unit or blocked castle spawn; an unavailable source or a blocked
-Barracks skips that order and moves on. There is no substitution or queue, and a
-reused plan buys again at the next window. An empty list buys nothing. Likewise, an empty
-`constructionOrders` list builds nothing, while omitting it keeps the default
-construction. Older plans may use `recruitmentPriorities` instead; a plan cannot
-use both.
+Current contexts expose `continuousProduction: true`. Plans use `productionOrders`:
+`[{"buildingId":"a:castle","unitType":"vanguard","enabled":true}]` selects a
+repeating unit; `[{"buildingId":"a:castle","enabled":false}]` stops new starts.
+At most 17 unique sources can be configured per plan, covering a castle plus the
+largest authored building limit (16).
+Opening requires an explicit array; `[]` leaves production off. Later omission or
+`[]` leaves existing settings unchanged. Every ID must be a living, active owned
+`legal.recruitmentSources` entry, and its `trains` roster must support the selected
+unit. The service and engine share this frozen legality check. Legacy nonempty
+recruitment orders/priorities are rejected in continuous mode; production orders
+are rejected for legacy contexts. Plan schema is v3; MCP tool schema is v8.
+
+Each building pays for one unit at training start, after income and window purchases,
+respecting `reserveGold`. It automatically retries if unaffordable. A blocked exit
+holds the paid unit without additional charges. Disabling or changing selection
+preserves the paid unit; the change affects subsequent purchases. State exposes
+`production` (configured, unitType, enabled, waitingForGold, waitingForUnitLimit), `trainingQueue` (zero or one paid
+unit), and `trainingBlocked`. Compact agent observations retain owned production
+settings and both sides' paid training progress. Opponent `production` settings are
+redacted before freezing the context; physical entities remain visible. Spectators
+see both sides' settings in the full battle state. Castles
+train the Barracks roster and attack with 15 attack/range 3. New specialized sources
+start disabled and become selectable once active; no starting Barracks is granted.
+
+Engine-authored scripted army templates are converted to one compatible selection
+per unconfigured active source. Existing selections, including disabled settings,
+remain unchanged. Previous-plan fallback omits selection orders because settings
+already persist; it must not reissue IDs of subsequently destroyed sources. Model
+instructions explicitly compare more training capacity and unit access with economy,
+defenses and upgrades. Empty construction orders remain a deliberate choice; the
+engine does not force model expansion. Industry affects economy buildings only.
+
+Frozen contexts with continuousProduction absent/false retain `recruitmentOrders`
+(`unitType`, `count`, optional `sourceBuildingId`), six purchases per window and a
+12-order FIFO queue. Only its head trains; a blocked exit holds it. Omitted source
+IDs select a compatible active building with queue space nearest the enemy castle.
+Historical contexts without authored rosters preserve their original validation.
+`legal.economySites` is the retained wire name for dynamically
+computed legal construction coordinates, not fixed pads. It is empty when the shared
+building limit is full. Model submissions whose construction orders exceed the
+remaining `maximumBuildings - currentBuildings` slots, or the remaining economy slots,
+are rejected with `limit_reached` and a message naming the counts. Scripted default
+construction draws from the same legal sites, so it never orders at a full shared
+limit; scripted plans skip the slot-count check because the engine skips extras. Execution rechecks range,
+terrain, unit occupancy and a minimum building distance of two hexes, so conflicting
+later orders skip without charge. Empty `constructionOrders` builds nothing;
+omitting it enables default construction. Older plans may use
+`recruitmentPriorities`; a plan cannot use both recruitment formats.
 
 ## Submission failures and fallback attribution
 
@@ -227,13 +359,21 @@ When a runner fails before the deadline, the engine keeps its error category in 
 fallback record instead of replacing it with `timeout`. Malformed tool calls are
 logged as `decision_tool_input_rejected` with only the request ID and missing field
 names; see [Antigravity troubleshooting](../operations/antigravity-cli.md#missing-plans).
+Each rejected submission issue is logged as `decision_validation_rejected` with its
+field, code and validator message. Every quoted (`%q`) value, the only way
+validators insert submitted text, is masked as `"…"`, text after an unbalanced quote
+is dropped, and the result is cut to 240 bytes, so submitted text such as building
+types, IDs and upgrade names is never logged. Numbers in the template (coordinates,
+counts) and the event's request ID, target tick and expected version remain. The
+model still receives the full message.
 
 | Error category | Raised by | Meaning |
 | --- | --- | --- |
 | `timeout`, `refusal`, `rate_limit`, `provider` | API runner | Provider deadline, safety refusal, HTTP 429, or other provider failure |
-| `mcp_connect`, `mcp_discovery`, `mcp_tool`, `mcp_context` | API/CLI runner | MCP session, tool-list, tool-call, or Antigravity context-prefetch failure |
+| `mcp_connect`, `mcp_discovery`, `mcp_tool`, `mcp_context` | API/CLI runner | MCP session, tool-list, tool-call, or CLI context-prefetch failure |
 | `unauthorized_tool`, `no_progress`, `step_limit` | API runner | Model requested a tool outside the session set, returned no tool call, or exceeded the profile's step limit |
 | `cli`, `cli_permission`, `cli_isolation`, `cli_provider` | CLI runner | Non-success CLI result, denied tool action, sandbox setup failure, or unsupported CLI provider |
+| `provider_rate_limited` | CLI runner | The Codex or Claude CLI's terminal error reports HTTP 429, too many requests, or a rate or usage limit; the subscription allowance is exhausted, not the CLI |
 | `validation_limit` | Decision service | Third rejected API/CLI submission for the same request |
 | `plan_not_submitted` | Agent worker | Runner reported success but MCP holds no accepted plan |
 | `profile_unavailable`, `capability`, `provider_unavailable` | Agent worker | Claimed profile is not executable locally, the claim carried no capability, or no runner could be built for the profile |
@@ -302,3 +442,89 @@ and capped at three invalid submissions, within the same deadline. Only a valid,
 server-accepted tool submission succeeds, and there is no automatic model
 fallback. With generation disabled, players can still write backgrounds by hand.
 Provenance uses a `faction-background-v2` digest of the rendered instructions.
+
+### Upgrade-level planning
+
+The frozen legal upgrade catalog includes optional `track`, `level` and
+`requiresUpgradeId`. All catalog levels are discoverable, including levels whose
+prerequisites are not yet owned. A prerequisite must be owned or ordered earlier
+in the same plan. An upgrades-only plan is a substantive decision. Both AI
+submission validation and the engine enforce purchase ordering. Duplicate IDs
+in one plan are invalid; IDs already owned may be requested again without cost.
+Multiple levels can execute in one window, subject to reserve gold and ordered
+affordability. Ruleset knowledge supplies prices and effects; the shared prompt
+explains ordering without hardcoding a particular content version.
+
+Specialist choices expose `targetUnit`/`targetClass` and `exclusiveGroup` alongside
+incremental effects. Ownership locks out the paired alternative for the battle.
+All maps expose the same legal content. Unit reference data includes Scout retreat,
+cavalry preference, armor penetration and repair capabilities; remaining repair
+charges stay on the individual unit observation. Repair events and shared support
+markers remain subject to normal faction visibility.
+
+## Model selection and latency
+
+Battle creation accepts `modelIdentifier` and `reasoningEffort` per model-controlled
+faction. A profile's `modelOptions` allowlists models and their supported
+`reasoningEfforts`; omitted choices retain the profile model and model-default
+effort (or the option's explicit `defaultReasoningEffort`). The backend validates
+both fields, freezes them in the scenario and decision row, and includes effort in
+retry-reuse matching. Workers validate against their own allowlist before execution;
+a removed option fails as `model_selection_unavailable`, rather than substituting
+another model. Existing API profiles and Antigravity expose no effort controls.
+API profile model labels remain informational: API runners use their current
+configured environment model, preserving behavior across secret rotation.
+Codex receives `model_reasoning_effort`; Claude receives `--effort`. The CLI model
+identifier is the requested identifier; aliases such as `sonnet` can resolve to a
+new provider version and are not an immutable model-version guarantee.
+
+The shipped CLI catalog includes choices for lighter workloads: Claude `haiku`, OpenAI
+`gpt-6-luna` (the published name is GPT-6 Luna), and Antigravity
+`gemini-3.8-flash-low`. Codex Luna offers low/medium/high effort. Haiku uses
+model-default effort because the alias can resolve to a model without effort
+support on older supported CLIs. Antigravity's Flash low/medium/high variants
+encode reasoning in the model ID. Profile defaults remain `gpt-5.6-luna`,
+`sonnet` and `gemini-3.8-flash-medium`; existing selections are preserved.
+See the provider catalogs for [OpenAI](https://developers.openai.com/api/docs/models/gpt-6-luna),
+[Claude](https://code.claude.com/docs/en/model-config) and
+[Antigravity](https://antigravity.google/docs/models). Subscription availability
+and usage allowances depend on the account; these choices do not assert API prices.
+
+The claim request carries `selectionVersion: 1`. An older worker receives HTTP 409
+before leasing a job, preventing it from silently ignoring frozen choices. See
+[worker rollout ordering](../operations/cli-worker.md#model-selection-rollout).
+
+Context timestamp recording is best-effort: a failed timing write is logged and
+the frozen context remains available; its missing timing stays unknown.
+
+The decision inspector shows request-to-resolution elapsed time, queue wait,
+claim-to-first-context and claim-to-resolution timings. Acceptance ends the main
+wait measurement immediately; `runnerCompletedAt` records the gateway receipt of
+the later worker report. Process-launch milliseconds measure only OS process
+creation, not provider readiness. Claim-to-context includes CLI initialization,
+provider activity and MCP work, and is not pure inference or reasoning time.
+Missing historical measurements stay unknown. A lease reclaim resets claim/context
+and completion timestamps; total wait still starts at the original request.
+
+## CLI context prefetch
+
+Codex and Claude battle profiles prefetch context by default; the worker-only
+`prefetchContext: false` setting restores tool-fetched context. An absent setting
+means prefetch, so existing worker configurations adopt it when the worker binary
+is upgraded. The worker calls `get_decision_context` with the same
+request capability before launching the CLI, verifies the request identity,
+version/tick and 64 KiB limit, and embeds the frozen JSON as untrusted data. The
+model is instructed to use that snapshot without fetching it again; submission
+and optional unit-detail tools retain the same capabilities and validation.
+Prefetch failure stops execution as `mcp_context`; it never launches with missing
+or mismatched context. Background-generation behavior is unchanged. Antigravity
+always prefetches, regardless of this option.
+
+Each CLI result stores `contextDelivery` (`tool` or `prefetch`) in provider metadata,
+exposed through decision history and the timing panel; the generation span has
+`battlefield.context_delivery`. Historical records omit this field. With prefetch,
+`contextServedAt` precedes CLI launch: compare request/claim-to-resolution and
+success/fallback rates across modes, not just claim-to-context time. Model,
+effort, scenario, concurrency and prompt revision must be recorded for comparisons.
+The option does not promise a latency reduction; provider variance and prompt
+cache state affect results. See the [test procedure](../operations/cli-worker.md#context-prefetch-comparison).

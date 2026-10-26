@@ -18,8 +18,8 @@ const (
 	ControllerScripted = "scripted"
 	ControllerModel    = "model"
 	ContextSchema      = "battlefield.decision-context.v4"
-	PlanSchema         = "battlefield.strategy-plan.v2"
-	ToolSchema         = "battlefield.mcp-tools.v7"
+	PlanSchema         = "battlefield.strategy-plan.v3"
+	ToolSchema         = "battlefield.mcp-tools.v8"
 )
 
 type DecisionSession struct {
@@ -112,30 +112,35 @@ type TurnProvider interface {
 }
 
 type DecisionContext struct {
-	UnitReference      *UnitReferenceSnapshot  `json:"unitReference,omitempty"`
-	FactionName        string                  `json:"factionName,omitempty"`
-	Background         string                  `json:"background,omitempty"`
-	Doctrine           string                  `json:"doctrine,omitempty"`
-	Opening            bool                    `json:"opening,omitempty"`
-	OwnedUpgradeIDs    []string                `json:"ownedUpgradeIds,omitempty"`
-	Knowledge          *DecisionKnowledge      `json:"knowledge,omitempty"`
-	SchemaVersion      string                  `json:"schemaVersion"`
-	RequestID          string                  `json:"requestId"`
-	BattleID           string                  `json:"battleId"`
-	FactionID          string                  `json:"factionId"`
-	TargetTick         uint64                  `json:"targetTick"`
-	ExpectedVersion    int64                   `json:"expectedVersion"`
-	ObservationVersion uint64                  `json:"observationVersion"`
-	ObservationHash    string                  `json:"observationHash"`
-	View               game.View               `json:"view"`
-	Economy            EconomyContext          `json:"economy"`
-	Legal              LegalChoices            `json:"legal"`
-	Memory             []FactionMemoryEntry    `json:"memory,omitempty"`
-	ActivePlan         controller.PlanProposal `json:"activePlan"`
+	ContinuousProduction bool                    `json:"continuousProduction,omitempty"`
+	UnitReference        *UnitReferenceSnapshot  `json:"unitReference,omitempty"`
+	FactionName          string                  `json:"factionName,omitempty"`
+	Background           string                  `json:"background,omitempty"`
+	Doctrine             string                  `json:"doctrine,omitempty"`
+	Opening              bool                    `json:"opening,omitempty"`
+	OwnedUpgradeIDs      []string                `json:"ownedUpgradeIds,omitempty"`
+	Knowledge            *DecisionKnowledge      `json:"knowledge,omitempty"`
+	SchemaVersion        string                  `json:"schemaVersion"`
+	RequestID            string                  `json:"requestId"`
+	BattleID             string                  `json:"battleId"`
+	FactionID            string                  `json:"factionId"`
+	TargetTick           uint64                  `json:"targetTick"`
+	ExpectedVersion      int64                   `json:"expectedVersion"`
+	ObservationVersion   uint64                  `json:"observationVersion"`
+	ObservationHash      string                  `json:"observationHash"`
+	View                 game.View               `json:"view"`
+	Economy              EconomyContext          `json:"economy"`
+	Legal                LegalChoices            `json:"legal"`
+	Memory               []FactionMemoryEntry    `json:"memory,omitempty"`
+	ActivePlan           controller.PlanProposal `json:"activePlan"`
 }
 
+// Absent current counts are zero; an absent maximum is unlimited.
 type EconomyContext struct {
 	MaximumBuildings        int   `json:"maximumBuildings,omitempty"`
+	CurrentBuildings        int   `json:"currentBuildings,omitempty"`
+	MaximumUnits            int   `json:"maximumUnits,omitempty"`
+	CurrentUnits            int   `json:"currentUnits,omitempty"`
 	Gold                    int64 `json:"gold"`
 	ProjectedIncome         int64 `json:"projectedIncome"`
 	EconomyBuildingCost     int64 `json:"economyBuildingCost"`
@@ -174,6 +179,10 @@ type SubmissionResult struct {
 }
 
 type DecisionRecord struct {
+	ClaimedAt           *time.Time
+	ContextServedAt     *time.Time
+	RunnerCompletedAt   *time.Time
+	ReasoningEffort     string `json:"reasoningEffort,omitempty" yaml:"reasoningEffort,omitempty"`
 	LeaseExpiresAt      *time.Time
 	ID                  string
 	BattleID            string
@@ -205,25 +214,41 @@ type DecisionRecord struct {
 	ResolvedAt          *time.Time
 }
 
+// ModelOption is an operator-approved model and its provider-supported efforts.
+type ModelOption struct {
+	ID                     string   `json:"id" yaml:"id"`
+	ReasoningEfforts       []string `json:"reasoningEfforts,omitempty" yaml:"reasoningEfforts"`
+	DefaultReasoningEffort string   `json:"defaultReasoningEffort,omitempty" yaml:"defaultReasoningEffort"`
+}
+
 type ModelProfile struct {
-	AllowedRoles                    []string `json:"-" yaml:"allowedRoles"`
-	ID                              string   `json:"id" yaml:"id"`
-	DisplayName                     string   `json:"displayName" yaml:"displayName"`
-	Provider                        string   `json:"provider" yaml:"provider"`
-	Runtime                         string   `json:"runtime" yaml:"runtime"`
-	Model                           string   `json:"-" yaml:"model,omitempty"`
-	ModelEnvironmentVariable        string   `json:"-" yaml:"modelEnvironmentVariable"`
-	CredentialEnvironmentVariable   string   `json:"-" yaml:"credentialEnvironmentVariable"`
-	AvailabilityEnvironmentVariable string   `json:"-" yaml:"availabilityEnvironmentVariable"`
-	SupportedVersionPrefix          string   `json:"-" yaml:"supportedVersionPrefix"`
-	Scope                           string   `json:"scope" yaml:"scope"`
-	MaxOutputTokens                 int      `json:"-" yaml:"maxOutputTokens"`
-	MaxSteps                        int      `json:"-" yaml:"maxSteps"`
-	Enabled                         bool     `json:"-" yaml:"enabled"`
-	ModelLabel                      string   `json:"modelLabel" yaml:"-"`
-	Available                       bool     `json:"available" yaml:"-"`
-	ToolCapability                  bool     `json:"toolCapability" yaml:"-"`
-	UnavailableReason               string   `json:"unavailableReason,omitempty" yaml:"-"`
+	PrefetchContext                 *bool         `json:"-" yaml:"prefetchContext,omitempty"`
+	ModelOptions                    []ModelOption `json:"modelOptions,omitempty" yaml:"modelOptions"`
+	ReasoningEffort                 string        `json:"-" yaml:"-"`
+	AllowedRoles                    []string      `json:"-" yaml:"allowedRoles"`
+	ID                              string        `json:"id" yaml:"id"`
+	DisplayName                     string        `json:"displayName" yaml:"displayName"`
+	Provider                        string        `json:"provider" yaml:"provider"`
+	Runtime                         string        `json:"runtime" yaml:"runtime"`
+	Model                           string        `json:"-" yaml:"model,omitempty"`
+	ModelEnvironmentVariable        string        `json:"-" yaml:"modelEnvironmentVariable"`
+	CredentialEnvironmentVariable   string        `json:"-" yaml:"credentialEnvironmentVariable"`
+	AvailabilityEnvironmentVariable string        `json:"-" yaml:"availabilityEnvironmentVariable"`
+	SupportedVersionPrefix          string        `json:"-" yaml:"supportedVersionPrefix"`
+	Scope                           string        `json:"scope" yaml:"scope"`
+	MaxOutputTokens                 int           `json:"-" yaml:"maxOutputTokens"`
+	MaxSteps                        int           `json:"-" yaml:"maxSteps"`
+	Enabled                         bool          `json:"-" yaml:"enabled"`
+	ModelLabel                      string        `json:"modelLabel" yaml:"-"`
+	Available                       bool          `json:"available" yaml:"-"`
+	ToolCapability                  bool          `json:"toolCapability" yaml:"-"`
+	UnavailableReason               string        `json:"unavailableReason,omitempty" yaml:"-"`
+}
+
+// PrefetchesContext reports whether CLI battle sessions receive their frozen context
+// inline. Prefetch is the default; only an explicit prefetchContext: false opts out.
+func (p ModelProfile) PrefetchesContext() bool {
+	return p.PrefetchContext == nil || *p.PrefetchContext
 }
 
 // AvailabilityFlagSet reports whether the profile's availability variable is "true",
@@ -292,4 +317,25 @@ type FactionMemoryEntry struct {
 	OwnUnits          int                     `json:"ownUnits"`
 	VisibleEnemyUnits int                     `json:"visibleEnemyUnits"`
 	Plan              controller.PlanProposal `json:"plan"`
+	Outcome           *PlanOutcome            `json:"outcome,omitempty"`
+}
+
+// PlanOutcome summarizes recorded results while a remembered plan was active,
+// from its target tick until the next remembered plan or the current decision.
+type PlanOutcome struct {
+	ThroughTick             uint64          `json:"throughTick"`
+	UnitsTrained            int             `json:"unitsTrained,omitempty"`
+	UnitsLost               int             `json:"unitsLost,omitempty"`
+	EnemyUnitsDestroyed     int             `json:"enemyUnitsDestroyed,omitempty"`
+	BuildingsConstructed    int             `json:"buildingsConstructed,omitempty"`
+	BuildingsLost           int             `json:"buildingsLost,omitempty"`
+	EnemyBuildingsDestroyed int             `json:"enemyBuildingsDestroyed,omitempty"`
+	Skipped                 []SkippedOrders `json:"skipped,omitempty"`
+}
+
+// SkippedOrders counts engine-skipped orders of one kind and reason.
+type SkippedOrders struct {
+	Kind   string `json:"kind"`
+	Reason string `json:"reason"`
+	Count  int    `json:"count"`
 }

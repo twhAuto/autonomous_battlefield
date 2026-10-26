@@ -101,7 +101,7 @@ func (w *Worker) prepareDecision(ctx context.Context, lease queue.Lease, simulat
 	traceparent, tracestate := tracing.TraceContext(ctx)
 	record, err := w.decisions.CreateOrReuseDecision(ctx, ai.CreateDecisionParams{ID: decisionContext.RequestID, BattleID: lease.BattleID, Attempt: lease.Attempt,
 		FactionID: factionID, TargetTick: targetTick, ControllerType: setup.Controller.Type, ProfileID: setup.Controller.ProfileID,
-		Provider: setup.Controller.Provider, Runtime: setup.Controller.Runtime, ModelIdentifier: setup.Controller.ModelIdentifier,
+		Provider: setup.Controller.Provider, Runtime: setup.Controller.Runtime, ModelIdentifier: setup.Controller.ModelIdentifier, ReasoningEffort: setup.Controller.ReasoningEffort,
 		PromptVersion: prompts.Version, ToolSchemaVersion: ai.ToolSchema, Observation: decisionContext, ObservationHash: hash,
 		Traceparent: traceparent, Tracestate: tracestate})
 	if err != nil {
@@ -115,9 +115,9 @@ func (w *Worker) prepareDecision(ctx context.Context, lease queue.Lease, simulat
 }
 
 func newDecisionContext(lease queue.Lease, factionID string, targetTick uint64, snapshot game.DecisionSnapshot) ai.DecisionContext {
-	return ai.DecisionContext{Doctrine: snapshot.Doctrine, FactionName: snapshot.FactionName, Background: snapshot.Background, Opening: snapshot.Opening, OwnedUpgradeIDs: snapshot.OwnedUpgradeIDs, SchemaVersion: ai.ContextSchema, RequestID: decisionID(lease.BattleID, lease.Attempt, factionID, targetTick), BattleID: lease.BattleID,
+	return ai.DecisionContext{ContinuousProduction: snapshot.ContinuousProduction, Doctrine: snapshot.Doctrine, FactionName: snapshot.FactionName, Background: snapshot.Background, Opening: snapshot.Opening, OwnedUpgradeIDs: snapshot.OwnedUpgradeIDs, SchemaVersion: ai.ContextSchema, RequestID: decisionID(lease.BattleID, lease.Attempt, factionID, targetTick), BattleID: lease.BattleID,
 		FactionID: factionID, TargetTick: targetTick, ExpectedVersion: 1, ObservationVersion: snapshot.Version,
-		View: snapshot.View, Economy: ai.EconomyContext{MaximumBuildings: snapshot.MaximumBuildings, Gold: snapshot.Gold, ProjectedIncome: snapshot.ProjectedIncome,
+		View: snapshot.View, Economy: ai.EconomyContext{MaximumBuildings: snapshot.MaximumBuildings, CurrentBuildings: snapshot.CurrentBuildings, MaximumUnits: snapshot.MaximumUnits, CurrentUnits: snapshot.CurrentUnits, Gold: snapshot.Gold, ProjectedIncome: snapshot.ProjectedIncome,
 			EconomyBuildingCost: snapshot.EconomyCost, EconomyBuildingIncome: snapshot.EconomyIncome,
 			CurrentEconomyBuildings: snapshot.EconomyCount, MaximumEconomyBuildings: snapshot.MaximumEconomy},
 		Legal: ai.LegalChoices{Buildings: snapshot.LegalBuildings, RecruitmentSources: snapshot.RecruitmentSources, Upgrades: snapshot.LegalUpgrades, ActionKinds: []string{game.ActionAttack, game.ActionDefend}, Units: snapshot.LegalUnits, EconomySites: snapshot.LegalSites}, ActivePlan: snapshot.ActivePlan}
@@ -223,10 +223,32 @@ func fallbackPlan(simulation *game.Match, targetTick uint64, baselines map[strin
 	if targetTick == 0 || targetTick == uint64(simulation.Scenario().DecisionIntervalTicks) {
 		return baselines[record.FactionID], "scripted_fallback"
 	}
-	return record.Observation.ActivePlan, "previous_plan"
+	plan := controller.ClonePlanProposal(record.Observation.ActivePlan)
+	if record.Observation.ContinuousProduction {
+		// Settings already live on buildings. Replaying stale selection orders could
+		// refer to a source destroyed since the last accepted decision.
+		plan.ProductionOrders = nil
+	}
+	return plan, "previous_plan"
 }
 
 func (w *Worker) logResolvedDecision(ctx context.Context, lease queue.Lease, record ai.DecisionRecord) {
+	_, span := tracing.StartSpan(ctx, "battlefield.decision.resolved",
+		attribute.String("battlefield.battle_id", lease.BattleID),
+		attribute.String("battlefield.model", record.ModelIdentifier),
+		attribute.String("battlefield.reasoning_effort", record.ReasoningEffort),
+		attribute.String("battlefield.decision_status", record.Status),
+		attribute.Int64("battlefield.total_wait_ms", decisionDurationMilliseconds(record)))
+	if record.ClaimedAt != nil && !record.CreatedAt.IsZero() {
+		span.SetAttributes(attribute.Int64("battlefield.queue_wait_ms", record.ClaimedAt.Sub(record.CreatedAt).Milliseconds()))
+		if record.ContextServedAt != nil {
+			span.SetAttributes(attribute.Int64("battlefield.claim_to_context_ms", record.ContextServedAt.Sub(*record.ClaimedAt).Milliseconds()))
+		}
+		if record.ResolvedAt != nil {
+			span.SetAttributes(attribute.Int64("battlefield.claim_to_resolution_ms", record.ResolvedAt.Sub(*record.ClaimedAt).Milliseconds()))
+		}
+	}
+	span.End()
 	level := slog.LevelInfo
 	if record.Status == "fallback" || record.Status == "failed" {
 		level = slog.LevelWarn
@@ -234,7 +256,7 @@ func (w *Worker) logResolvedDecision(ctx context.Context, lease queue.Lease, rec
 	w.logger.LogAttrs(ctx, level, "decision_resolved", slog.String("battle_id", lease.BattleID), slog.Int("attempt", lease.Attempt),
 		slog.String("request_id", record.ID), slog.String("faction_id", record.FactionID), slog.Uint64("target_tick", record.TargetTick),
 		slog.String("controller_type", record.ControllerType), slog.String("profile_id", record.ProfileID), slog.String("provider", record.Provider),
-		slog.String("runtime", record.Runtime), slog.String("decision_status", record.Status), slog.String("fallback_source", record.FallbackSource),
+		slog.String("runtime", record.Runtime), slog.String("model", record.ModelIdentifier), slog.String("reasoning_effort", record.ReasoningEffort), slog.String("decision_status", record.Status), slog.String("fallback_source", record.FallbackSource),
 		slog.String("error_category", record.ErrorCategory), slog.Int64("duration_ms", decisionDurationMilliseconds(record)))
 }
 

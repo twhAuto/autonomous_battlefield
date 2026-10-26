@@ -152,6 +152,18 @@ the `id` with different values returns `409`. If the existing battle cannot be
 read to check a retry, the request fails with `500` rather than `409`, so a client
 does not abandon an `id` that may already hold its battle.
 
+Optional `tickDuration` (a Go duration from `100ms` to `10s`) and
+`decisionIntervalTicks` (an integer from 1 to 100) override the map's timing for
+this battle. Omitted or null values retain catalog defaults. Invalid overrides
+return `400`; an explicit zero or empty duration is invalid. Both values are
+frozen in the scenario snapshot and digest, so changed timing on a create retry
+returns `409`; equivalent duration spellings such as `500ms` and `0.5s` match.
+The interval may exceed the requested battle length, leaving only the opening
+decision. The tick duration is a pacing target; AI decision waits can extend it.
+Shorter intervals consume the existing per-battle `runtime_policy.decision_executions`
+budget sooner (default 100). Claim admission serializes that budget, and new model
+windows immediately fall back once it is spent; timing overrides do not bypass it.
+
 Every `decisionIntervalTicks` the engine pauses for each faction's plan, so a
 model-controlled battle can wait at a window; a late plan never replaces the
 fallback the engine chose. See the
@@ -181,29 +193,34 @@ failed battle, or pausing or resuming a stopped one, returns `409`. Pausing keep
 the current attempt. Stopping releases the engine lease and fails unresolved model
 decisions, so a host subscription agent cannot keep working on the run.
 
-### Battle state and fog of war
+### Battle state and visibility
 
-`GET /v1/battles/{battleId}/factions/{factionId}/view` returns the same terrain
-with one faction's fog of war. Owned entities and both castles are always
-present; other hostile entities appear only inside current friendly vision. The
-view also removes:
+`GET /v1/battles/{battleId}/factions/{factionId}/view` exposes the whole map and
+all entities, actions, movement routes and deaths. It retains only the requesting
+faction's economy/upgrade/production totals in `state.factions`. Opponent building
+`production` settings are omitted, keeping future unit selections, on/off choices
+and gold/reserve waits private. Paid training progress and all physical entities
+remain visible. The full battle snapshot used by viewers retains both sides' settings. The deprecated
+`visiblePositions` field contains every map coordinate for older clients.
 
-- attack and heal targets, impact positions and attack outcomes outside current
-  vision;
-- an enemy unit's `movementPath` and `movedFrom` when any step of the route is
-  outside vision;
-- enemy entries in `unitDeaths` at positions the faction cannot currently see.
-
-The spectator state and the full event stream keep everything.
+Buildings expose `buildRange`, optional `trains` (supported unit IDs), `trainingQueue`,
+and `trainingBlocked`. Core v7 also exposes `production: {configured?, unitType?, enabled, waitingForGold?, waitingForUnitLimit?}` on every training building. Selection persists; disabled sources finish paid training. Insufficient gold above the AI reserve, or a faction at its ruleset unit cap, pauses starts until affordable or a unit slot frees. The queue contains at most one paid unit in continuous mode; frozen older battles retain up to twelve. Viewers can inspect production but cannot change it; no manual production endpoint exists. The current catalog has five constructible production kinds.
+Each faction starts with only a castle, which trains the Barracks roster and exposes
+`attack: 15` and `range: 3`. Resolved rules save `buildings.castleTrains`,
+`castleAttack` and `castleRange`; omitted legacy fields retain older behavior. Current AI `productionOrders` explicitly identify each source and select its unit/on-off setting. Frozen legacy recruitment supports automatic source selection; incompatible requests are rejected by validation.
+Destroyed buildings remain in snapshots for history/results but are hidden on the map.
+Each queue item includes `unitType`, `trainingTicks`, `remainingTicks`,
+`queuedAtTick` and optional `opening`. A blocked ready head has zero remaining
+ticks and remains in place until a free adjacent traversable cell is available.
+`unit_queued` charges for a purchase; `unit_recruited` records actual deployment.
 
 Per-tick fields (`movementPath`, attack targets and outcomes, heal targets and
 `unitDeaths`) describe only the current tick and clear at the next one. A unit
 that disappears has not necessarily died; only `unitDeaths` and the
 `unit_destroyed` event confirm a death. For a `position` attack,
 `attackTargetPosition` is the impact hex and a miss carries no target ID; tracking
-renderers can follow the visible `attackTargetId` instead. Optional fields that
-an older snapshot lacks keep their earlier behavior, so no migration is needed to
-read old battles. The [game rules](../game/game-rules.md) and
+renderers can follow the visible `attackTargetId` instead. Older snapshots remain readable without a database migration. Replaying a scenario
+uses current engine behavior; old content fields retain their saved values. The [game rules](../game/game-rules.md) and
 [Frontier Siege](../game/frontier-siege.md) explain the mechanics behind these
 fields.
 
@@ -279,3 +296,47 @@ roles drawn once each from `admin`, `developer` and `player`; an empty
 restricts only new battle selections and generation admissions, and cannot enable a
 profile whose credentials or runtime are unavailable. See
 [model access and role preview](system-architecture.md#model-access-and-role-preview).
+
+### Upgrade-level orders
+
+The shared battlefield ruleset uses `arsenal`, `arsenal_2`, `arsenal_3` and equivalent IDs for
+Plating and Industry. Catalog entries expose optional `track`, `level` and
+`requiresUpgradeId`; bonus fields describe each purchase's increment.
+`upgradeOrders` remains an ordered string array. Missing or reversed prerequisites
+are validation errors; an owned prerequisite or one ordered earlier is accepted.
+Repeated owned levels are free, while duplicate IDs in the same submission remain
+invalid. An unaffordable level stops further upgrades in that window. Ownership
+retains every purchased ID in `ownedUpgradeIds`, and level purchase events add
+track, level and incremental effect fields. Saved battles keep their original semantics. New map IDs are `castle-siege` and
+`frontier-siege`; retired version-specific IDs are not accepted for new battles.
+Scenario summary roster fields describe the same shared catalog on every map.
+Specialist upgrades additionally expose `targetUnit`, `targetClass`,
+`exclusiveGroup` and scoped bonus fields. Conflicting branch orders are validation
+errors. The faction-rulesets response contains one live ruleset. Unit snapshots
+include optional specialist capabilities and remaining `repairCharges`; repairs
+emit `unit_repaired` events and use support-action target markers.
+
+## Model and effort selection
+
+`GET /v1/model-profiles` includes `modelOptions` for authorized profiles, including
+Player-visible profiles. Each option contains `id`, `reasoningEfforts`, and an
+optional `defaultReasoningEffort`. An absent option list means only the configured
+model is selectable. `POST /v1/battles` accepts optional `modelIdentifier` and
+`reasoningEffort` in each model controller. Unsupported combinations return 422;
+scripted controllers reject these model fields. Profile role checks still apply.
+The selection is frozen for execution and retry matching. Provider aliases remain
+aliases, rather than promises of a specific underlying version.
+
+Decision history adds `reasoningEffort`, `claimedAt`, `contextServedAt`,
+`runnerCompletedAt`, and optional `cliProcessStartMs`. Absent timestamps mean
+unknown, including historical rows. Existing inspection permissions still apply;
+this does not expose decision inspection to Player roles. `createdAt` to
+`resolvedAt` measures total wait until acceptance/fallback/failure, not subprocess
+shutdown. Reclaimed jobs report the latest claim while preserving total wait.
+Internal agent claims require `selectionVersion: 1`; incompatible workers receive
+409 before any job is leased.
+
+Decision-history rows optionally include `contextDelivery: "tool" | "prefetch"`.
+This identifies the CLI worker's configured delivery path; it is absent from older
+records. In prefetch mode the context timestamp is recorded before CLI launch.
+History permissions are unchanged, and raw provider metadata is not exposed.

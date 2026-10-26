@@ -27,6 +27,33 @@ on a new or rebuilt environment, complete the
 [trusted kubelet monitoring](observability.md#production-kubelet-tls). Run
 `./scripts/test/test-deployment.sh` before opening a deployment PR.
 
+## Gameplay rules cutover
+
+AB-170 changes engine semantics without retaining the previous engine. A retry,
+restart or resumed lease for an old battle reconstructs it under the new rules:
+recruitment is queued, the map is open, and construction requires building range.
+An old order targeting a distant authored pad can now be rejected. Frozen scenario
+JSON preserves data, not the old executable's behavior.
+
+Before deploying this overhaul, the release operator must arrange a maintenance
+window that prevents new battle creation, then finish every queued/running battle
+on the old engine. Resume paused battles so they can finish; stopping unfinished
+battles instead requires the owner's agreement. Verify that no queued or running
+rows remain (paused battles can have either status) before replacing the engine.
+Worker claim-draining alone is insufficient: it can leave queued battles behind.
+If the creation freeze or empty-queue condition cannot be established, postpone
+the release. Ordinary rolling deployment is not sufficient for this cutover.
+
+AB-173 applies the same precondition. Its engine lets jammed units pass through
+allies and enforces the frozen ruleset's unit cap; ruleset v8 raises the building
+limit to 12 and caps units at 40. A resumed older battle keeps its frozen limits
+(none for the unit cap) but moves under the new routing rules.
+
+Completed battle snapshots and event history remain readable without replay.
+An explicit future replay of old inputs uses the new engine and can produce a
+different trace. This is a release precondition, not evidence that a maintenance
+window or production deployment has been performed.
+
 ## Overlays
 
 Application manifests use Kustomize. This tree shows the shared base and Kind

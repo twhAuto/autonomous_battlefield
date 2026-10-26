@@ -36,14 +36,8 @@ func (m *Match) DecisionSnapshot(factionID string) (DecisionSnapshot, error) {
 	if castle != nil {
 		projectedIncome = m.incomeFor(factionID, castle.Income)
 	}
-	legalSites := make([]controller.Coordinate, 0, 2)
-	for slot, setup := range m.scenario.Factions {
-		if setup.ID == factionID && len(ConstructibleBuildings(m.scenario.Ruleset)) > 0 {
-			for _, site := range m.scenario.Map.EconomySites[slot] {
-				legalSites = append(legalSites, controller.Coordinate{X: site.X, Y: site.Y})
-			}
-		}
-	}
+	legalSites := m.legalConstructionSites(factionID)
+	maximumBuildings, currentBuildings := m.scenario.Ruleset.Buildings.MaximumBuildingCount, m.LivingStructureCount(factionID)
 	if m.OpeningDue() {
 		projectedIncome = 0
 		legalSites = nil
@@ -52,7 +46,7 @@ func (m *Match) DecisionSnapshot(factionID string) (DecisionSnapshot, error) {
 	if m.scenario.SnapshotVersion >= DoctrineSnapshotVersion {
 		upgrades = append(upgrades, m.scenario.Ruleset.Upgrades...)
 	}
-	return DecisionSnapshot{LegalBuildings: ConstructibleBuildings(m.scenario.Ruleset), RecruitmentSources: m.recruitmentSources(factionID), MaximumBuildings: m.scenario.Ruleset.Buildings.MaximumBuildingCount, Doctrine: runtime.setup.Doctrine, FactionName: runtime.setup.Name, Background: runtime.setup.Background, Opening: m.OpeningDue(), LegalUpgrades: upgrades, OwnedUpgradeIDs: append([]string{}, m.factionState(factionID).OwnedUpgradeIDs...), BattleID: m.id, FactionID: factionID, TargetTick: m.DecisionTargetTick(), Version: m.state.Tick,
+	return DecisionSnapshot{ContinuousProduction: m.scenario.Ruleset.ContinuousProduction, LegalBuildings: ConstructibleBuildings(m.scenario.Ruleset), RecruitmentSources: m.recruitmentSources(factionID), MaximumBuildings: maximumBuildings, CurrentBuildings: currentBuildings, MaximumUnits: m.scenario.Ruleset.MaximumUnitCount, CurrentUnits: m.UnitCount(factionID), Doctrine: runtime.setup.Doctrine, FactionName: runtime.setup.Name, Background: runtime.setup.Background, Opening: m.OpeningDue(), LegalUpgrades: upgrades, OwnedUpgradeIDs: append([]string{}, m.factionState(factionID).OwnedUpgradeIDs...), BattleID: m.id, FactionID: factionID, TargetTick: m.DecisionTargetTick(), Version: m.state.Tick,
 		View: view, Gold: m.factionState(factionID).Gold, ProjectedIncome: projectedIncome,
 		EconomyCost: m.scenario.Ruleset.Buildings.EconomyCost, EconomyIncome: m.scenario.Ruleset.Buildings.EconomyIncome + runtime.economyBonus,
 		EconomyCount: m.economyCount(factionID), MaximumEconomy: m.scenario.Ruleset.Buildings.MaximumEconomyCount,
@@ -68,8 +62,13 @@ func (m *Match) ScriptedPlans() map[string]controller.PlanProposal {
 		if m.OpeningDue() {
 			plans[factionID] = m.OpeningFallback(factionID)
 		} else {
-			plan := m.normalizedFactionPlan(factionID, m.factions[factionID].scriptedPlan())
+			plan := m.factions[factionID].scriptedPlan()
+			if m.scenario.Ruleset.ContinuousProduction {
+				plan = m.scriptedProductionPlan(factionID, plan)
+			}
+			plan = m.normalizedFactionPlan(factionID, plan)
 			m.assignForwardRecruitment(factionID, &plan)
+			m.filterScriptedRecruitment(factionID, &plan)
 			plans[factionID] = plan
 		}
 	}
@@ -86,6 +85,12 @@ func (m *Match) applyPlans(plans map[string]controller.PlanProposal) error {
 		if err := validateProductionPlan(m.scenario, runtime.setup, proposal); err != nil {
 			return err
 		}
+		if err := ValidateBuildingProduction(m.scenario.Ruleset.ContinuousProduction, factionID, m.state, m.recruitmentSources(factionID), proposal); err != nil {
+			return err
+		}
+		if err := ValidateUpgradeOrder(m.scenario.Ruleset.Upgrades, m.factionState(factionID).OwnedUpgradeIDs, proposal.UpgradeOrders); err != nil {
+			return fmt.Errorf("%w: %v", controller.ErrInvalidPlan, err)
+		}
 	}
 	for factionID, runtime := range m.factions {
 		runtime.activePlan = m.normalizedFactionPlan(factionID, runtime.activePlan)
@@ -94,6 +99,7 @@ func (m *Match) applyPlans(plans map[string]controller.PlanProposal) error {
 		runtime := m.factions[factionID]
 		runtime.activePlan = m.normalizedFactionPlan(factionID, proposal)
 		runtime.activeSource = "accepted"
+		m.applyBuildingProduction(proposal)
 	}
 
 	return nil
@@ -154,7 +160,10 @@ func normalizedPlan(value controller.PlanProposal, setup FactionSetup) controlle
 func (m *Match) normalizedFactionPlan(factionID string, value controller.PlanProposal) controller.PlanProposal {
 	runtime := m.factions[factionID]
 	result := normalizedPlan(value, runtime.setup)
-	if m.scenario.SnapshotVersion >= DoctrineSnapshotVersion && result.RecruitmentOrders == nil && len(result.RecruitmentPriorities) == 0 {
+	if m.scenario.Ruleset.ContinuousProduction && len(value.SpendOrder) == 0 {
+		result.SpendOrder = []string{"construction", "upgrades"}
+	}
+	if !m.scenario.Ruleset.ContinuousProduction && m.scenario.SnapshotVersion >= DoctrineSnapshotVersion && result.RecruitmentOrders == nil && len(result.RecruitmentPriorities) == 0 {
 		orders := m.OpeningFallback(factionID).RecruitmentOrders
 		result.RecruitmentOrders = orders
 	}
@@ -163,14 +172,8 @@ func (m *Match) normalizedFactionPlan(factionID string, value controller.PlanPro
 			if setup.ID != factionID {
 				continue
 			}
-			if len(m.scenario.Ruleset.Structures) > 0 {
-				orders := m.defaultConstructionOrders(slot)
-				result.ConstructionOrders = &orders
-				continue
-			}
-			for _, site := range m.scenario.Map.EconomySites[slot] {
-				result.ConstructionPriorities = append(result.ConstructionPriorities, controller.Coordinate{X: site.X, Y: site.Y})
-			}
+			orders := m.defaultConstructionOrders(slot)
+			result.ConstructionOrders = &orders
 		}
 	}
 	return result
@@ -206,15 +209,9 @@ func validateProductionPlan(scenario Scenario, setup FactionSetup, plan controll
 
 }
 
-func validateProductionSites(scenario Scenario, setup FactionSetup, plan controller.PlanProposal) error {
-	allowedSites := make(map[Position]bool)
-	for slot, faction := range scenario.Factions {
-		if faction.ID == setup.ID && len(ConstructibleBuildings(scenario.Ruleset)) > 0 {
-			for _, site := range scenario.Map.EconomySites[slot] {
-				allowedSites[site] = true
-			}
-		}
-	}
+// Static plan validation checks definitions and terrain. Execution rechecks
+// dynamic range, spacing and occupancy after each earlier construction order.
+func validateProductionSites(scenario Scenario, _ FactionSetup, plan controller.PlanProposal) error {
 	legalBuildings := map[string]bool{}
 	for _, b := range ConstructibleBuildings(scenario.Ruleset) {
 		legalBuildings[b.ID] = true
@@ -224,14 +221,15 @@ func validateProductionSites(scenario Scenario, setup FactionSetup, plan control
 		if !legalBuildings[order.BuildingType] {
 			return fmt.Errorf("%w: unsupported construction type %q", controller.ErrInvalidPlan, order.BuildingType)
 		}
-		if !allowedSites[Position{X: coordinate.X, Y: coordinate.Y}] {
+		if !scenario.Map.Buildable(Position{X: coordinate.X, Y: coordinate.Y}) {
 			return fmt.Errorf("%w: construction site (%d,%d) is not legal", controller.ErrInvalidPlan, coordinate.X, coordinate.Y)
 		}
 	}
 	return nil
 }
 
-// ProductionSchedule is the next point at which factions spend gold, for presentation.
+// ProductionSchedule is the next strategy/construction/upgrade window. Continuous
+// unit purchases and training happen between these windows.
 type ProductionSchedule struct {
 	NextTick uint64 `json:"nextTick"`
 	Opening  bool   `json:"opening"`

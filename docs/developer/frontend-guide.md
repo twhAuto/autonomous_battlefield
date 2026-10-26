@@ -21,7 +21,7 @@ The frontend is a React/Vite single-page application.
 | [`features/factions/pages/FactionsPage.tsx`](../../frontend/src/features/factions/pages/FactionsPage.tsx) | Faction registry and authorized edit links; deletion lives in the editor's Danger zone |
 | [`features/battles/pages/CreateBattlePage.tsx`](../../frontend/src/features/battles/pages/CreateBattlePage.tsx) | Scenario, participants, controllers, and tick-limit selection |
 | [`features/battles/pages/BattleHistoryPage.tsx`](../../frontend/src/features/battles/pages/BattleHistoryPage.tsx) | Status-filtered history table/cards, cursor navigation, refresh, and detail links |
-| [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx) | Route-level composition, selected perspective/panel, and control actions |
+| [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx) | Route-level composition, selected panel, and control actions |
 | [`features/auth/pages/LoginPage.tsx`](../../frontend/src/features/auth/pages/LoginPage.tsx) | Local-password login form used only in the development auth mode |
 | [`features/admin/pages/AdminSettingsPage.tsx`](../../frontend/src/features/admin/pages/AdminSettingsPage.tsx) | Persistent provider/profile switches, allowed roles, save/conflict states, and entry to read-only role preview |
 | [`features/battles/components/HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx) | Hex-map visualization, movement routes, tracking arrows, attack outcomes, and accessible unit animation |
@@ -75,15 +75,11 @@ cancels the previous editor's load.
 
 ## Battle data lifecycle
 
-The battle feature's `hooks/` directory owns status, event, decision-history, and faction-perspective requests. Each hook preserves its own polling cadence, retries, cancellation, and terminal-state handling. `components/AIDecisionPanel.tsx`, `components/EventConsole.tsx`, and `components/BattlePresentation.tsx` own the panels and visual presentation; shared UI state types live in `types.ts`. There is no WebSocket or server-sent-event client.
+The battle feature's `hooks/` directory owns status, event, and decision-history requests. Each hook preserves its own polling cadence, retries, cancellation, and terminal-state handling. `components/AIDecisionPanel.tsx`, `components/EventConsole.tsx`, and `components/BattlePresentation.tsx` own the panels and visual presentation; shared UI state types live in `types.ts`. There is no WebSocket or server-sent-event client.
 
 `BattlePage` keys its detail component by battle ID, resetting controls and cached
-views when navigating between battles. Faction-view results belong to one battle,
-attempt, and perspective; cancelled requests cannot replace the current selection.
-While a faction view is unavailable, the map shows loading or retry feedback,
-keeping the selector and expanded dialog available. Only spectator mode renders
-the full map. While a tick refresh is loading, the same faction's last successful
-view remains visible. A failed refresh replaces it with the retry placeholder.
+views when navigating between battles. The main battle snapshot supplies the full
+map. There is no faction-perspective selector or secondary map polling hook.
 
 `useBattleEventStream` owns one cancellable request loop per selected attempt.
 Initial loading, polling, and manual refresh cannot overlap. Status changes fetch
@@ -115,7 +111,7 @@ requests are aborted and their results ignored.
 
 ## Inspector and historical context
 
-`BattlePage` owns map perspective and controls. `components/BattleInspector.tsx`
+`BattlePage` owns battle controls. `components/BattleInspector.tsx`
 owns the independent System/player dropdown, shared inner tab, and scoped context
 cache. `InspectorTabs.tsx` implements keyboard navigation. System shows a player
 comparison, attempt-selectable events, and the next production window (or pending
@@ -171,19 +167,22 @@ timings live in the CSS and components with their tests, not in this guide.
   current tick's state; polling and map controls do not replay them. Reduced-motion
   preferences disable motion and transitions.
 - Faction views show allied deaths and visible enemy deaths only; disappearance
-  from vision never creates a death marker.
-- The expanded map is a native modal dialog that keeps perspective and selection.
+  alone never creates a death marker.
+- The expanded map is a native modal dialog that keeps map position and selection.
   Opening, closing or resizing it fits the board again; live tick updates keep the
   current camera. Keyboard panning uses the native "Pan with arrow keys" button.
 
 `FactionSummaries.tsx` shows each participant's decision activity, gold and living
-units from spectator state, independent of map perspective. Paused and terminal
+units from spectator state, from the full battlefield. Paused and terminal
 battles override decision activity, and Go `null` collections are treated as empty.
+A model-controlled participant's heading also shows its model identifier and any
+reasoning effort. Player responses carry only the controller type, so players see
+the faction name alone.
 
 ## Entity presentation
 
 [`EntityIcon.tsx`](../../frontend/src/features/battles/components/EntityIcon.tsx)
-supplies the SVG artwork for the seven unit and five building types, reused by the
+supplies the SVG artwork for the eleven unit and nine current building types (plus legacy Watchtower), reused by the
 map, roster, building overview and legend. `presentation/entities.ts` owns type
 labels and readable references such as `Iron Legion · Ranger #12`, derived from the
 sequence embedded in generated IDs so deaths, polling and older attempts never
@@ -245,3 +244,18 @@ missing report fails the stage.
 
 The frontend build enables TypeScript `noUnusedLocals` and `noUnusedParameters`
 alongside strict type checks.
+
+Forests, deposits and rocks have distinct SVG silhouettes via `TerrainGlyph.tsx`,
+terrain colors and accessible descriptions. Selecting a living building highlights its
+construction radius. Production-building details show their `trains` roster, selected unit, on/off setting,
+remaining/total ticks, progress and blocked exits. `BuildingProductionPanel.tsx`
+also shows every living production source below the map to all viewers, including
+gold waits and pending activation. Production controls belong to the AI; the viewer
+is read-only. Historical batch queues retain their FIFO presentation. Current castles
+show the Barracks roster, their queue, attack/range stats and tower-fire visuals.
+In historical snapshots without `trains`, populated queues still display, but empty
+legacy castle/Barracks queues have no training-capability label because absence of
+the field alone does not identify their historical production rules. Dead buildings are omitted from the map, selection details and
+range overlays immediately, while history can still use their saved identities.
+The radius overlay shows reach; terrain, occupancy and spacing still determine
+actual legal placements in the engine.

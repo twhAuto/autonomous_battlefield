@@ -87,12 +87,18 @@ func (m *Match) buildEconomyBuildingAt(factionID string, site Position, reserve 
 	if reason != "" {
 		return Building{}, reason
 	}
-	building := Building{ID: fmt.Sprintf("%s:economy:%03d", factionID, state.BuildingsBuilt), FactionID: factionID, Type: BuildingEconomy, Position: site, Health: rules.EconomyHealth, MaxHealth: rules.EconomyHealth, Defense: rules.EconomyDefense, Vision: rules.EconomyVision, Cost: rules.EconomyCost, Income: rules.EconomyIncome + m.factions[factionID].economyBonus}
+	building := Building{BuildRange: effectiveBuildRange(rules.EconomyBuildRange), ID: fmt.Sprintf("%s:economy:%03d", factionID, state.BuildingsBuilt), FactionID: factionID, Type: BuildingEconomy, Position: site, Health: rules.EconomyHealth, MaxHealth: rules.EconomyHealth, Defense: rules.EconomyDefense, Vision: rules.EconomyVision, Cost: rules.EconomyCost, Income: rules.EconomyIncome + m.factions[factionID].economyBonus}
+	if m.scenario.Map.TerrainAt(site) == TerrainGold {
+		building.Income += GoldDepositIncomeBonus
+	}
 	m.state.Buildings = append(m.state.Buildings, building)
 	return building, ""
 }
 
 func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) []Event {
+	if m.scenario.Ruleset.ContinuousProduction {
+		return nil
+	}
 	castle := m.castle(factionID)
 	if castle == nil || castle.Health <= 0 {
 		return nil
@@ -103,16 +109,17 @@ func (m *Match) runRecruitment(factionID string, plan controller.PlanProposal) [
 	queue := expandRecruitmentOrders(plan.RecruitmentOrders)
 	purchased := 0
 	// Explicit orders and expanded rosters bound the loop; legacy priorities
-	// continue until reserve or castle spawn constraints stop recruitment.
-	for attempt := 0; (purchased < 6 || len(m.scenario.Ruleset.Structures) == 0) && (!explicit || attempt < len(queue)); attempt++ {
-		source, priorities := castle, plan.RecruitmentPriorities
+	// stop at six purchases, the reserve, or a full/unavailable source.
+	for attempt := 0; purchased < 6 && (!explicit || attempt < len(queue)); attempt++ {
+		sourceID, priorities := "", plan.RecruitmentPriorities
 		if explicit {
-			source = m.recruitmentSource(factionID, queue[attempt].SourceBuildingID)
+			sourceID = queue[attempt].SourceBuildingID
 			priorities = []string{queue[attempt].UnitType}
 		}
+		source, priorities := m.resolveTrainingSource(factionID, sourceID, definitions, priorities, plan.ReserveGold)
 		event, bought, stop := m.attemptRecruitment(factionID, source, definitions, priorities, plan.ReserveGold)
 		events = append(events, event)
-		if stop {
+		if stop || !explicit && !bought {
 			break
 		}
 		if bought {
@@ -129,7 +136,7 @@ func (m *Match) recruitmentSpawn(source Position) (Position, bool) {
 	return Position{}, false
 }
 
-// freeNeighbors lists the unoccupied ground hexes around center in Neighbors order.
+// freeNeighbors lists unoccupied traversable hexes around center in Neighbors order.
 func freeNeighbors(gameMap Map, center Position, occupied map[Position]bool) []Position {
 	free := make([]Position, 0, 6)
 	for _, candidate := range Neighbors(center) {
@@ -142,8 +149,8 @@ func freeNeighbors(gameMap Map, center Position, occupied map[Position]bool) []P
 
 // payForBuilding checks the site and reserve, then charges the faction.
 func (m *Match) payForBuilding(factionID string, site Position, cost, reserve int64) (*FactionState, string) {
-	if m.buildingAt(site) != nil {
-		return nil, "site_occupied"
+	if reason := ConstructionReason(m.scenario.Map, m.state, factionID, site); reason != "" {
+		return nil, reason
 	}
 	state := m.factionState(factionID)
 	if state.Gold-cost < reserve {
@@ -157,8 +164,8 @@ func (m *Match) payForBuilding(factionID string, site Position, cost, reserve in
 
 func affordableUnit(definitions map[string]UnitType, priorities []string, gold, reserve int64) UnitType {
 	for _, unitType := range priorities {
-		definition := definitions[unitType]
-		if gold-definition.Cost >= reserve {
+		definition, ok := definitions[unitType]
+		if ok && gold-definition.Cost >= reserve {
 			return definition
 		}
 	}
@@ -189,22 +196,6 @@ func expandRecruitmentOrders(orders *[]controller.RecruitmentOrder) []controller
 	return result
 }
 
-func (m *Match) purchaseRecruit(factionID string, selected UnitType, spawn Position, source *Building) Event {
-	state := m.factionState(factionID)
-	runtime := m.factions[factionID]
-	state.Gold -= selected.Cost
-	state.GoldSpent += selected.Cost
-	state.UnitsRecruited++
-	runtime.unitSequence++
-	unit := runtime.newUnit(selected, spawn, m.state.Tick+1)
-	m.state.Units = append(m.state.Units, unit)
-	data := map[string]any{"factionId": factionID, "unitId": unit.ID, "unitType": unit.Type, "position": spawn, "readyAtTick": unit.ReadyAtTick, "cost": unit.Cost}
-	if len(m.scenario.Ruleset.Structures) > 0 {
-		data["sourceBuildingId"] = source.ID
-	}
-	return m.event("unit_recruited", data)
-}
-
 func (m *Match) attemptRecruitment(factionID string, source *Building, definitions map[string]UnitType, priorities []string, reserve int64) (Event, bool, bool) {
 	skipped := func(reason string) Event {
 		return m.event("production_skipped", map[string]any{"factionId": factionID, "kind": "recruitment", "reason": reason})
@@ -212,13 +203,24 @@ func (m *Match) attemptRecruitment(factionID string, source *Building, definitio
 	if source == nil || source.Health <= 0 || source.ReadyAtTick > m.state.Tick {
 		return skipped("source_unavailable"), false, false
 	}
-	spawn, available := m.recruitmentSpawn(source.Position)
-	if !available {
-		return skipped("no_spawn"), false, source.Type != BuildingBarracks
+	if len(source.TrainingQueue) >= MaximumTrainingQueue {
+		return skipped("queue_full"), false, false
+	}
+	priorities = m.trainablePriorities(source.Type, priorities)
+	if len(priorities) == 0 {
+		return skipped("unit_not_trainable"), false, false
+	}
+	if m.atUnitLimit(factionID) {
+		return skipped("unit_limit"), false, true
 	}
 	selected := affordableUnit(definitions, priorities, m.factionState(factionID).Gold, reserve)
 	if selected.ID == "" {
 		return skipped("reserve_required"), false, true
 	}
-	return m.purchaseRecruit(factionID, selected, spawn, source), true, false
+	state := m.factionState(factionID)
+	state.Gold -= selected.Cost
+	state.GoldSpent += selected.Cost
+	ticks := max(uint64(1), selected.TrainingTicks)
+	source.TrainingQueue = append(source.TrainingQueue, TrainingOrder{UnitType: selected.ID, RemainingTicks: ticks, TrainingTicks: ticks, QueuedAtTick: m.state.Tick, Opening: m.OpeningDue()})
+	return m.event("unit_queued", map[string]any{"factionId": factionID, "sourceBuildingId": source.ID, "unitType": selected.ID, "trainingTicks": ticks, "cost": selected.Cost}), true, false
 }

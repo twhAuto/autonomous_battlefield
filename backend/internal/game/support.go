@@ -21,7 +21,7 @@ func (m *Match) runHealer(unit *Unit) []Event {
 	var patient *Unit
 	for i := range m.state.Units {
 		candidate := &m.state.Units[i]
-		if !eligiblePatient(*unit, *candidate) || candidate.Health >= candidate.MaxHealth || HexDistance(unit.Position, candidate.Position) > 1 {
+		if !eligiblePatient(*unit, *candidate) || candidate.Health >= candidate.MaxHealth || HexDistance(unit.Position, candidate.Position) > max(1, unit.HealRange) {
 			continue
 		}
 		if patient == nil || moreInjured(*candidate, *patient) || !moreInjured(*patient, *candidate) && candidate.ID < patient.ID {
@@ -63,7 +63,7 @@ func (m *Match) followPatient(unit *Unit) []Event {
 }
 
 func (m *Match) patientPath(unit Unit, patient Unit) ([]Position, bool) {
-	goals := m.positionsInRange(patient.Position, 1, 1)
+	goals := m.positionsInRange(patient.Position, 1, max(1, unit.HealRange))
 	// An idle escort prefers the castle side of its soldier.
 	if patient.Health == patient.MaxHealth {
 		if castle := m.castle(unit.FactionID); castle != nil {

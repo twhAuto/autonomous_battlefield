@@ -1,4 +1,4 @@
-import { test, expect, battleId, factionId } from './fixtures'
+import { test, expect, battleId, factionId, battleFixture } from './fixtures'
 
 test('navigation, focus, responsive forms and logout', async ({ page, isMobile }) => {
   await page.goto('/')
@@ -25,9 +25,9 @@ test('navigation, focus, responsive forms and logout', async ({ page, isMobile }
   }
   await expect(page.getByRole('button', { name: 'Generate a new faction identifier' })).toHaveCount(0)
   await page.goto('/battles/new')
-  await expect(page.getByLabel('Combat scenario')).toBeInViewport()
-  await page.getByText('AI integration status', { exact: true }).click()
-  await expect(page.getByText('Offline AI', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Combat map')).toBeInViewport()
+  await expect(page.getByText('AI integration status', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Offline AI', { exact: true })).toHaveCount(0)
   await expect(page.getByLabel('Controller', { exact: true }).first().locator('option')).toHaveCount(1)
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click()
   await page.getByRole('button', { name: 'Log out admin' }).click()
@@ -72,13 +72,12 @@ for (const [width, height] of [[15, 11], [25, 17]]) {
     await page.getByRole('button', { name: 'Expand map' }).click()
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
-    await dialog.getByLabel('Perspective').focus()
+    await dialog.getByRole('button', { name: 'Pan map with arrow keys' }).focus()
     await page.keyboard.press('Shift+Tab')
     await expect.poll(() => dialog.evaluate(node => node.contains(document.activeElement))).toBe(true)
     await page.keyboard.press('Tab')
-    await expect(dialog.getByLabel('Perspective')).toBeFocused()
+    await expect(dialog.getByRole('button', { name: 'Pan map with arrow keys' })).toBeFocused()
     await expect(dialog.getByRole('button', { name: 'Amber · Castle', exact: true })).toHaveAttribute('aria-pressed', 'true')
-    await dialog.getByLabel('Perspective').selectOption(factionId)
     await dialog.getByRole('button', { name: 'Zoom in' }).click()
     await dialog.getByRole('button', { name: 'Pan map with arrow keys' }).focus()
     const layer = dialog.locator('.map-layer')
@@ -98,7 +97,7 @@ for (const [width, height] of [[15, 11], [25, 17]]) {
     await page.keyboard.press('Escape')
     await expect(dialog).not.toBeVisible()
     await expect(page.getByRole('button', { name: 'Expand map' })).toBeFocused()
-    await expect(page.getByLabel('Perspective')).toHaveValue(factionId)
+    await expect(page.getByLabel('Perspective')).toHaveCount(0)
     if (!isMobile) {
       const mapBounds = (await page.locator('.battle-map-column .map-panel').boundingBox())!
       const inspectorBounds = (await page.locator('.battle-inspector').boundingBox())!
@@ -108,21 +107,23 @@ for (const [width, height] of [[15, 11], [25, 17]]) {
     expect(api.writes).toEqual([])
   })
 }
-test('failed faction views retain the expanded map controls and can be retried', async ({ page }) => {
-  await page.route('**/view', route => route.fulfill({ status: 503, body: 'Unavailable' }))
+test('the full map stays available without faction-view requests', async ({ page }) => {
+  const liveBattle = battleFixture()
+  liveBattle.state.buildings[1].health = 100
+  await page.route(`**/v1/battles/${battleId}`, route => route.fulfill({ json: liveBattle }))
+  let viewRequests = 0
+  await page.route('**/view', route => { viewRequests += 1; return route.abort('failed') })
   await page.goto(`/battles/${battleId}`)
+  await expect(page.getByRole('button', { name: 'Amber · Castle', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Azure · Castle', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Expand map' }).click()
   const dialog = page.getByRole('dialog')
-  await dialog.getByLabel('Perspective').selectOption(factionId)
-  await expect(dialog.getByRole('alert')).toContainText('Faction view could not be loaded.')
-  await expect(dialog.getByLabel('Map navigation')).toHaveCount(0)
-  await expect(dialog.getByLabel('Perspective')).toHaveValue(factionId)
-  await page.unroute('**/view')
-  await dialog.getByRole('button', { name: 'Retry faction view' }).click()
   await expect(dialog.getByLabel('Map navigation')).toBeVisible()
-  await expect(dialog.getByRole('alert')).toHaveCount(0)
+  await expect(dialog.getByLabel('Perspective')).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Azure · Castle', exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: 'Expand map' })).toBeFocused()
+  expect(viewRequests).toBe(0)
 })
 
 test('key events, all events and details preserve loaded history', async ({ page, isMobile }) => {
@@ -196,3 +197,44 @@ for (const width of [390, 768, 1440]) {
     }
   })
 }
+
+test('terrain icons, specialized production and destroyed buildings on the map', async ({ page }) => {
+  const battle = battleFixture()
+  battle.map.rows[3] = '..fg#..........'
+  const types = ['barracks', 'archery_range', 'stables', 'siege_workshop', 'infirmary']
+  const units = ['vanguard', 'ranger', 'scout', 'catapult', 'herbalist']
+  battle.state.buildings.push(...types.map((type, index) => ({ ...battle.state.buildings[0], id: `${factionId}:${type}:1`, type, position: { x: 2 + index * 2, y: 5 }, income: 0, trains: [units[index]] })))
+  Object.assign(battle.state.buildings[0], { trains: ['vanguard', 'striker', 'pikeman'], attack: 15, range: 3 })
+  await page.route(`**/v1/battles/${battleId}`, route => route.fulfill({ json: battle }))
+  await page.goto(`/battles/${battleId}`)
+  const map = page.getByRole('region', { name: 'Castle siege map', exact: true })
+  for (const terrain of ['forest', 'gold', 'rock']) await expect(map.locator(`.terrain-glyph--${terrain}`)).toHaveCount(1)
+  await expect(map.getByRole('button', { name: 'Azure · Castle' })).toHaveCount(0)
+  for (const label of ['Barracks', 'Archery Range', 'Stables', 'Siege Workshop', 'Infirmary']) {
+    await map.getByRole('button', { name: `Amber · ${label} #1` }).click()
+    await expect(map.getByText('Training queue empty')).toBeVisible()
+  }
+  await map.getByRole('button', { name: 'Amber · Castle', exact: true }).click()
+  await expect(map.getByText('Training queue empty')).toBeVisible()
+  await expect(map.getByText(/Trains: Vanguard, Striker, Pikeman/)).toBeVisible()
+  await expect(map.getByText(/Attack 15/)).toBeVisible()
+  await expect(map.getByText(/Range 3/)).toBeVisible()
+})
+
+test('players can see continuous production progress and pauses without controls', async ({ page }) => {
+  const battle = battleFixture()
+  Object.assign(battle.state.buildings[0], { trains: ['vanguard'], production: { unitType: 'striker', enabled: false }, trainingQueue: [{ unitType: 'vanguard', remainingTicks: 2, trainingTicks: 4, queuedAtTick: 0 }] })
+  battle.state.buildings.push({ ...battle.state.buildings[0], id: `${factionId}:barracks:1`, type: 'barracks', position: { x: 4, y: 5 } })
+  Object.assign(battle.state.buildings.at(-1)!, { production: { unitType: 'vanguard', enabled: true, waitingForGold: true }, trainingQueue: [] })
+  await page.route('**/v1/auth/session', route => route.fulfill({ json: { enabled: true, authenticated: true, actor: { id: 'viewer', role: 'player' } } }))
+  await page.route(`**/v1/battles/${battleId}`, route => route.fulfill({ json: battle }))
+  await page.goto(`/battles/${battleId}`)
+  const panel = page.getByRole('region', { name: 'Building production', exact: true })
+  await expect(panel).toBeVisible()
+  await expect(panel.getByText('Finishing paid unit, then stopping')).toBeVisible()
+  await expect(panel.getByText(/Waiting for gold/)).toBeVisible()
+  await expect(panel.getByRole('progressbar')).toHaveAttribute('value', '2')
+  await expect(panel.getByRole('button')).toHaveCount(0)
+  await panel.scrollIntoViewIfNeeded()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy()
+})

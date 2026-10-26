@@ -1,10 +1,11 @@
 # Claude subscription CLI
 
 The `claude-subscription-local` profile runs the `claude-cli` provider on the host,
-using Claude Code **2.1.267** and the **sonnet** model alias. It is selectable through
+using Claude Code **2.1.267 or newer** locally and the **sonnet** model alias.
+It is selectable through
 the same model catalog as Codex and Antigravity, with existing role restrictions.
 
-1. Install Claude Code 2.1.267 using the [official installation instructions](https://code.claude.com/docs/en/setup).
+1. Install Claude Code 2.1.267 or a newer stable release for local development using the [official installation instructions](https://code.claude.com/docs/en/setup).
 2. Run `claude auth login` and sign in with a Claude subscription. The worker checks
    `claude auth status --json` for a saved `claude.ai` login. API-key and Console logins do
    not satisfy this profile. Authentication stays on the host in its native location.
@@ -29,12 +30,17 @@ Host managed policies can still make tools unavailable; permission denials fail
 execution rather than being bypassed. The worker requires a validated MCP
 submission, not merely a successful CLI exit or a textual plan.
 
-The `sonnet` alias follows the account's current Sonnet model. To pin a model,
+Battle setup also offers `haiku` for lighter workloads and `opus` for more
+demanding work. Haiku uses model-default effort so it works with older supported
+CLI versions whose Haiku model does not expose effort settings; Sonnet and Opus
+offer low/medium/high effort. The default remains `sonnet`.
+
+The model aliases follow the account's current model versions. To pin a model,
 update `backend/config.yaml`, `infra/deploy/base/infrastructure/configmap.yaml`,
-`infra/deploy/agent-vm/config.yaml`, and `scripts/dev/run-k8s-cli-agent.sh` consistently.
-When upgrading the CLI, verify restricted-mode behavior and update the version
-pin in those same files. The current pin prevents older CLIs without restricted
-mode from being advertised.
+`infra/deploy/agent-vm/config.yaml`, `infra/deploy/agent-vm/managed-settings.json`,
+and `scripts/dev/run-k8s-cli-agent.sh` consistently.
+When upgrading the production CLI, verify restricted-mode behavior and update the
+version pin in those same files.
 
 A synthetic live check uses the existing subscription and makes model requests:
 

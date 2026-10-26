@@ -13,9 +13,12 @@ export interface CreateFactionInput {
 
 export interface UnitRule extends UnitCapabilities {
   id: string; cost: number; health: number; attack: number; defense: number
-  speed: number; movement: number; range: number; vision: number
+  speed: number; movement: number; range: number; vision: number; trainingTicks?: number
 }
 export interface UpgradeRule {
+  track?: string; level?: number; requiresUpgradeId?: string
+  targetUnit?: string; targetClass?: string; exclusiveGroup?: string
+  movementBonus?: number; rangeBonus?: number; healAmountBonus?: number; healRangeBonus?: number; buildingDamageBonus?: number
   id: string; cost: number; attackBonus: number; defenseBonus: number; economyIncomeBonus: number
 }
 export interface FactionRuleset {

@@ -97,15 +97,16 @@ type getContextOutput struct {
 }
 
 type submitPlanInput struct {
-	UpgradeOrders          []string                        `json:"upgradeOrders,omitempty" jsonschema:"Ordered one-time upgrade purchases. Include upgrades in spendOrder. Already-owned upgrades are skipped without charging."`
+	UpgradeOrders          []string                        `json:"upgradeOrders,omitempty" jsonschema:"Ordered one-time upgrade-level purchases. Prerequisites must be owned or ordered earlier; exclusiveGroup permits one choice per battle. Include upgrades in spendOrder. Already-owned levels are skipped without charging."`
 	ConstructionOrders     *[]controller.ConstructionOrder `json:"constructionOrders,omitempty" jsonschema:"Typed construction purchases: buildingType and position from legal choices. Use [] to build nothing; leave constructionPriorities empty."`
+	ProductionOrders       *[]controller.ProductionOrder   `json:"productionOrders,omitempty" jsonschema:"In continuous production mode select each buildingId and unitType with enabled true, or toggle enabled false. Selection persists. Omitted buildings are unchanged. Paid units finish when disabled."`
 	RecruitmentOrders      *[]controller.RecruitmentOrder  `json:"recruitmentOrders,omitempty" jsonschema:"Explicit ordered purchases for this production window. Use [] to buy nothing; at most six units total. Leave recruitmentPriorities empty when using orders."`
 	RequestID              string                          `json:"requestId"`
 	IdempotencyKey         string                          `json:"idempotencyKey"`
 	ExpectedVersion        int64                           `json:"expectedVersion" jsonschema:"Copy context.expectedVersion exactly from get_decision_context; never guess."`
 	TargetTick             uint64                          `json:"targetTick" jsonschema:"Copy context.targetTick exactly from get_decision_context; never guess or use the observation tick."`
 	Name                   string                          `json:"name"`
-	Rationale              string                          `json:"rationale" jsonschema:"A concise 1-3 sentence explanation based on visible battlefield facts. Do not include private chain-of-thought."`
+	Rationale              string                          `json:"rationale" jsonschema:"A concise 1-3 sentence explanation based on visible battlefield facts, at most 600 characters. Do not include private chain-of-thought."`
 	ActionWeights          map[string]int64                `json:"actionWeights"`
 	TargetBonuses          map[string]int64                `json:"targetBonuses,omitempty"`
 	ReserveGold            int64                           `json:"reserveGold"`
@@ -162,7 +163,7 @@ func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest,
 		s.logger.WarnContext(ctx, "decision_submission_denied", "request_id", input.RequestID, "target_tick", input.TargetTick)
 		return nil, ai.SubmissionResult{}, err
 	}
-	plan := controller.PlanProposal{ConstructionOrders: input.ConstructionOrders, UpgradeOrders: input.UpgradeOrders, RecruitmentOrders: input.RecruitmentOrders, Name: input.Name, Rationale: input.Rationale, ActionWeights: input.ActionWeights, TargetBonuses: input.TargetBonuses,
+	plan := controller.PlanProposal{ProductionOrders: input.ProductionOrders, ConstructionOrders: input.ConstructionOrders, UpgradeOrders: input.UpgradeOrders, RecruitmentOrders: input.RecruitmentOrders, Name: input.Name, Rationale: input.Rationale, ActionWeights: input.ActionWeights, TargetBonuses: input.TargetBonuses,
 		ReserveGold: input.ReserveGold, SpendOrder: input.SpendOrder, ConstructionPriorities: input.ConstructionPriorities,
 		RecruitmentPriorities: input.RecruitmentPriorities}
 	result, err := s.decisions.SubmitPlan(ctx, ai.PlanSubmission{RequestID: input.RequestID, IdempotencyKey: input.IdempotencyKey,
@@ -171,7 +172,7 @@ func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest,
 		s.logger.WarnContext(ctx, "decision_submission_failed", "request_id", input.RequestID, "target_tick", input.TargetTick, "error", err)
 	} else {
 		for _, issue := range result.Errors {
-			s.logger.WarnContext(ctx, "decision_validation_rejected", "request_id", input.RequestID, "target_tick", input.TargetTick, "expected_version", input.ExpectedVersion, "field", issue.Field, "code", issue.Code)
+			s.logger.WarnContext(ctx, "decision_validation_rejected", "request_id", input.RequestID, "target_tick", input.TargetTick, "expected_version", input.ExpectedVersion, "field", issue.Field, "code", issue.Code, "message", validationLogMessage(issue.Message))
 		}
 		level := slog.LevelWarn
 		if result.Accepted {

@@ -26,6 +26,8 @@ type comparisonConfig struct {
 	Variants           []comparisonVariantConfig `yaml:"variants"`
 }
 type comparisonVariantConfig struct {
+	ReasoningEffort  string `yaml:"reasoningEffort"`
+	PrefetchContext  bool   `yaml:"prefetchContext"`
 	WithoutKnowledge bool   `yaml:"withoutKnowledge"`
 	ID               string `yaml:"id"`
 	Provider         string `yaml:"provider"`
@@ -86,7 +88,10 @@ func runComparison(configPath, casesPath, jsonPath, corpus string, prices aieval
 }
 
 func makeComparisonVariant(v comparisonVariantConfig, prices aieval.PriceBook) (aieval.ComparisonVariant, error) {
-	result := aieval.ComparisonVariant{ID: v.ID, Provider: v.Provider, Model: v.Model, WithoutMemory: v.WithoutMemory, WithoutKnowledge: v.WithoutKnowledge, Runtime: "api"}
+	result := aieval.ComparisonVariant{ID: v.ID, Provider: v.Provider, Model: v.Model, ReasoningEffort: v.ReasoningEffort, PrefetchContext: v.PrefetchContext, WithoutMemory: v.WithoutMemory, WithoutKnowledge: v.WithoutKnowledge, Runtime: "api"}
+	if err := validateComparisonCLIOptions(v); err != nil {
+		return result, err
+	}
 	if v.Provider == "scripted" {
 		result.Model = "scripted"
 		result.NewRunner = func() ai.DecisionRunner { return runner.APIRunner{Provider: &comparisonBaseline{}} }
@@ -100,34 +105,56 @@ func makeComparisonVariant(v comparisonVariantConfig, prices aieval.PriceBook) (
 	}
 	switch v.Provider {
 	case "openai", "gemini":
-		if os.Getenv("AI_EVAL_ALLOW_PAID") != "1" {
-			return result, errors.New("API comparison requires AI_EVAL_ALLOW_PAID=1")
-		}
-		if _, ok := prices.Estimate(v.Model, ai.Usage{}); !ok {
-			return result, fmt.Errorf("model %q has no reviewed pricing entry", v.Model)
-		}
-		keyName := "OPENAI_API_KEY"
-		if v.Provider == "gemini" {
-			keyName = "GEMINI_API_KEY"
-		}
-		key := os.Getenv(keyName)
-		if key == "" {
-			return result, fmt.Errorf("%s is required", keyName)
-		}
-		result.NewRunner = func() ai.DecisionRunner {
-			var provider ai.TurnProvider = &providers.OpenAI{APIKey: key, Model: v.Model}
-			if v.Provider == "gemini" {
-				provider = &providers.Gemini{APIKey: key, Model: v.Model}
-			}
-			return runner.APIRunner{Provider: provider}
-		}
+		return makeAPIComparisonVariant(v, prices, result)
 	case cliisolation.ProviderCodex, cliisolation.ProviderAntigravity, cliisolation.ProviderClaude:
 		result.Runtime = "cli"
-		result.NewRunner = func() ai.DecisionRunner { return runner.CLIRunner{Provider: v.Provider, Model: v.Model} }
+		result.NewRunner = func() ai.DecisionRunner {
+			return runner.CLIRunner{Provider: v.Provider, Model: v.Model, ReasoningEffort: v.ReasoningEffort, PrefetchContext: v.PrefetchContext}
+		}
 	default:
 		return result, fmt.Errorf("unsupported comparison provider %q", v.Provider)
 	}
 	return result, nil
+}
+
+func makeAPIComparisonVariant(v comparisonVariantConfig, prices aieval.PriceBook, result aieval.ComparisonVariant) (aieval.ComparisonVariant, error) {
+	if os.Getenv("AI_EVAL_ALLOW_PAID") != "1" {
+		return result, errors.New("API comparison requires AI_EVAL_ALLOW_PAID=1")
+	}
+	if _, ok := prices.Estimate(v.Model, ai.Usage{}); !ok {
+		return result, fmt.Errorf("model %q has no reviewed pricing entry", v.Model)
+	}
+	keyName := "OPENAI_API_KEY"
+	if v.Provider == "gemini" {
+		keyName = "GEMINI_API_KEY"
+	}
+	key := os.Getenv(keyName)
+	if key == "" {
+		return result, fmt.Errorf("%s is required", keyName)
+	}
+	result.NewRunner = func() ai.DecisionRunner {
+		var provider ai.TurnProvider = &providers.OpenAI{APIKey: key, Model: v.Model}
+		if v.Provider == "gemini" {
+			provider = &providers.Gemini{APIKey: key, Model: v.Model}
+		}
+		return runner.APIRunner{Provider: provider}
+	}
+	return result, nil
+}
+
+func validateComparisonCLIOptions(v comparisonVariantConfig) error {
+	if v.ReasoningEffort == "" && !v.PrefetchContext {
+		return nil
+	}
+	switch v.Provider {
+	case cliisolation.ProviderCodex, cliisolation.ProviderClaude, cliisolation.ProviderAntigravity:
+	default:
+		return errors.New("reasoningEffort and prefetchContext require a CLI comparison provider")
+	}
+	if v.ReasoningEffort == "" {
+		return nil
+	}
+	return ai.ValidateModelOptions(ai.ModelProfile{ID: v.ID, Runtime: "cli", Provider: v.Provider, ModelOptions: []ai.ModelOption{{ID: v.Model, ReasoningEfforts: []string{v.ReasoningEffort}}}})
 }
 
 // The free baseline exercises the real API/MCP path using only legal context.
@@ -148,7 +175,14 @@ func (p *comparisonBaseline) NextTurn(_ context.Context, request ai.ModelTurnReq
 		return ai.ModelTurnResult{ToolCalls: []ai.ToolCall{{Name: "get_decision_context", Arguments: args}}}, nil
 	}
 	var envelope struct {
-		Context ai.DecisionContext `json:"context"`
+		Context struct {
+			RequestID       string `json:"requestId"`
+			ExpectedVersion int64  `json:"expectedVersion"`
+			TargetTick      uint64 `json:"targetTick"`
+			Legal           struct {
+				ActionKinds []string `json:"actionKinds"`
+			} `json:"legal"`
+		} `json:"context"`
 	}
 	if json.Unmarshal([]byte(request.Messages[len(request.Messages)-1].Content), &envelope) != nil || len(envelope.Context.Legal.ActionKinds) == 0 {
 		return ai.ModelTurnResult{}, errors.New("baseline requires legal context")

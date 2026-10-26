@@ -15,8 +15,8 @@ it('shows the expanded roster, distinct structures, treatment, and tower attacks
     { ...unit('pikeman', 6), range: 1, bonusAgainstClass: 'mobile', classDamageBonus: 12 },
     { ...unit('herbalist', 7), attack: 0, healAmount: 3, healTargetId: 'pikeman', healTargetPosition: { x: 6, y: 8 } },
     unit('battering_ram', 8),
-  ], buildings: [building('watchtower', 7), building('barracks', 9), building('economy', 4), { ...building('defense_tower', 8), attack: 12, range: 3, attackTargetId: 'enemy', attackTargetPosition: { x: 10, y: 7 } }] }
-  const { container, rerender } = render(<HexBattleMap map={map} state={state} visiblePositions={[]} factionNames={new Map([['a', 'Northwind']])} />)
+  ], buildings: [building('watchtower', 7), { ...building('barracks', 9), trains: ['vanguard', 'striker', 'pikeman'] }, building('economy', 4), { ...building('defense_tower', 8), attack: 12, range: 3, attackTargetId: 'enemy', attackTargetPosition: { x: 10, y: 7 } }] }
+  const { container, rerender } = render(<HexBattleMap map={map} state={state} factionNames={new Map([['a', 'Northwind']])} />)
   expect(container.querySelectorAll('.hex-tile')).toHaveLength(425)
   expect(container.querySelectorAll('.unit-direction--healing')).toHaveLength(1)
   expect(container.querySelectorAll('.unit-direction--tower')).toHaveLength(1)
@@ -28,16 +28,16 @@ it('shows the expanded roster, distinct structures, treatment, and tower attacks
   await user.click(screen.getByRole('button', { name: 'Northwind · Pikeman · pikeman' }))
   expect(screen.getByText(/\+12 vs mobile/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Northwind · Barracks · barracks' }))
-  expect(screen.getByText(/Forward recruitment/)).toBeInTheDocument()
+  expect(screen.getByText(/Trains: Vanguard, Striker, Pikeman/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Northwind · Watchtower · watchtow' }))
-  expect(screen.getByText(/Vision 6/)).toBeInTheDocument()
+  expect(screen.getByText(/Build range 3/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Northwind · Defense Tower · defense_' }))
   expect(screen.getByText(/attacking Entity · enemy.*Attack 12/)).toBeInTheDocument()
   // The next persisted tick has no transient action indicators.
   const next = structuredClone(state)
   delete next.units![2].healTargetPosition
   delete next.buildings![3].attackTargetPosition
-  rerender(<HexBattleMap map={map} state={next} visiblePositions={[]} factionNames={new Map()} />)
+  rerender(<HexBattleMap map={map} state={next} factionNames={new Map()} />)
   expect(container.querySelectorAll('.unit-direction--healing, .unit-direction--tower')).toHaveLength(0)
 })
 
@@ -51,4 +51,25 @@ it('shows typed construction and forward recruitment in decision history', () =>
   decision.resolvedPlan!.constructionOrders = []
   rerender(<AIDecisionPanel {...props} />)
   expect(screen.getByText('No construction')).toBeInTheDocument()
+})
+
+it('shows specialist capabilities and distinguishes repair from treatment', async () => {
+  const user = userEvent.setup()
+  const map: BattleMap = { kind: 'authored', width: 8, height: 8, rows: Array.from({ length: 8 }, () => '........'), castleSpawns: [{ x: 0, y: 0 }, { x: 7, y: 7 }], economySites: [[], []] }
+  const unit = (type: string, x: number): BattleUnit => ({ id: type, type, factionId: 'a', position: { x, y: 3 }, health: 25, maxHealth: 40, attack: 4, defense: 1, speed: 2, movement: 1, range: 1, vision: 5, readyAtTick: 1 })
+  const state: BattleState = { battleId: 'test', tick: 5, factions: [], buildings: [], units: [
+    { ...unit('engineer', 2), repairAmount: 4, repairCost: 2, repairCharges: 11, healTargetId: 'ram', healTargetPosition: { x: 3, y: 3 } },
+    { ...unit('crossbowman', 4), armorPiercing: 6 },
+    { ...unit('scout', 5), scout: true },
+    { ...unit('raider_cavalry', 6), preferredTargetClass: 'siege' },
+  ] }
+  render(<HexBattleMap map={map} state={state} factionNames={new Map([['a', 'North']])} />)
+  await user.click(screen.getByRole('button', { name: 'North · Engineer · engineer' }))
+  expect(screen.getByText(/repairing.*Repair 4 HP.*2 gold.*11 charges/)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'North · Crossbowman · crossbow' }))
+  expect(screen.getByText(/Ignore 6 unit defense/)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'North · Scout · scout' }))
+  expect(screen.getByText(/Skirmisher/)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'North · Raider Cavalry · raider_c' }))
+  expect(screen.getByText(/Prefers siege targets/)).toBeInTheDocument()
 })

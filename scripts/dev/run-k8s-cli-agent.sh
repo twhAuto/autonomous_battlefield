@@ -29,6 +29,22 @@ validate_agent_concurrency() {
   fi
 }
 validate_agent_concurrency
+cli_minimum_version() {
+  local value="${1#codex-cli }" major minor patch
+  IFS=. read -r major minor patch <<<"${value% }"
+  printf '%s.%s.%s' "${major}" "${minor:-0}" "${patch:-0}"
+}
+
+# Local CLIs allow the selected version or newer.
+resolve_version_prefixes() {
+  codex_version_prefix='codex-cli 0.155.'
+  claude_version_prefix='2.1.267 '
+  antigravity_version_prefix='1.2.'
+  codex_minimum_version="$(cli_minimum_version "${codex_version_prefix}")"
+  claude_minimum_version="$(cli_minimum_version "${claude_version_prefix}")"
+  antigravity_minimum_version="$(cli_minimum_version "${antigravity_version_prefix}")"
+}
+resolve_version_prefixes
 runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/battlefield-host-agent.XXXXXX")"
 port_forward_pid=""
 agent_pid=""
@@ -92,21 +108,48 @@ require_command() {
   fi
 }
 
+accept_cli_version() {
+  local binary="$1" prefix_name="$2"
+  local version prefix="${!prefix_name}" minimum numeric
+  version="$("${binary}" --version 2>/dev/null)" || return 1
+  numeric="${version}"
+  case "${binary}" in
+    codex) [[ "${numeric}" == 'codex-cli '* ]] || return 1; numeric="${numeric#codex-cli }" ;;
+    claude) numeric="${numeric% (Claude Code)}" ;;
+  esac
+  # Stable three-part releases only; reject prereleases and unexpected banners.
+  # Bound components before Bash arithmetic and interpret leading zeros as decimal.
+  [[ "${numeric}" =~ ^([0-9]{1,9})\.([0-9]{1,9})\.([0-9]{1,9})$ ]] || return 1
+  local installed=("${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")
+  minimum="$(cli_minimum_version "${prefix}")"
+  local major minor patch index
+  IFS=. read -r major minor patch <<<"${minimum}"
+  local baseline=("${major}" "${minor:-0}" "${patch:-0}")
+  for index in 0 1 2; do
+    (( 10#${installed[index]} >= 10#${baseline[index]} )) || return 1
+    if (( 10#${installed[index]} > 10#${baseline[index]} )); then
+      break
+    fi
+  done
+  # Pass the accepted version to the worker's existing profile check.
+  printf -v "${prefix_name}" '%s' "${version}"
+}
+
 codex_available() {
   command -v codex >/dev/null 2>&1 \
-    && [[ "$(codex --version 2>/dev/null || true)" == codex-cli\ 0.155.* ]] \
+    && accept_cli_version codex codex_version_prefix \
     && [[ -s "${HOME}/.codex/auth.json" ]]
 }
 
 antigravity_available() {
   command -v agy >/dev/null 2>&1 \
-    && [[ "$(agy --version 2>/dev/null || true)" == 1.2.* ]] \
+    && accept_cli_version agy antigravity_version_prefix \
     && "${runtime_dir}/agent" -check-antigravity-auth >/dev/null 2>&1
 }
 
 claude_available() {
   command -v claude >/dev/null 2>&1 \
-    && [[ "$(claude --version 2>/dev/null || true)" == '2.1.267 '* ]] \
+    && accept_cli_version claude claude_version_prefix \
     && "${runtime_dir}/agent" -check-claude-auth >/dev/null 2>&1
 }
 
@@ -119,21 +162,21 @@ select_profiles() {
       ;;
     codex)
       if ! codex_available; then
-        echo "Codex CLI 0.155.x with an existing 'codex login' is required." >&2
+        echo "Codex CLI ${codex_minimum_version} or newer with a saved login is required. Run codex login." >&2
         exit 1
       fi
       use_codex=1
       ;;
     antigravity|gemini)
       if ! antigravity_available; then
-        echo "Antigravity CLI 1.2.x with a working saved login is required. Run agy to sign in." >&2
+        echo "Antigravity CLI ${antigravity_minimum_version} or newer with a saved login is required. Run agy to sign in." >&2
         exit 1
       fi
       use_gemini=1
       ;;
     claude)
       if ! claude_available; then
-        echo "Claude Code 2.1.267 with a saved subscription login is required. Run claude auth login." >&2
+        echo "Claude Code ${claude_minimum_version} or newer with a saved subscription login is required. Run claude auth login." >&2
         exit 1
       fi
       use_claude=1
@@ -168,6 +211,11 @@ select_profiles() {
 }
 
 write_agent_config() {
+  local prefetch_context="${HOST_CLI_PREFETCH_CONTEXT:-true}"
+  if [[ "${prefetch_context}" != true && "${prefetch_context}" != false ]]; then
+    echo "HOST_CLI_PREFETCH_CONTEXT must be true or false." >&2
+    return 2
+  fi
   {
     printf 'ai:\n'
     printf '  environment: local\n'
@@ -180,10 +228,12 @@ write_agent_config() {
       printf '    - id: codex-subscription-local\n'
       printf '      displayName: Codex / ChatGPT subscription\n'
       printf '      provider: codex-cli\n'
+      printf '      prefetchContext: %s\n' "${prefetch_context}"
+      printf '      modelOptions:\n        - id: gpt-6-luna\n          reasoningEfforts: [low, medium, high]\n        - id: gpt-5.6-luna\n          reasoningEfforts: [low, medium, high]\n        - id: gpt-6.1-sol\n          reasoningEfforts: [low, medium, high]\n'
       printf '      runtime: cli\n'
       printf '      model: gpt-5.6-luna\n'
       printf '      scope: local\n'
-      printf '      supportedVersionPrefix: codex-cli 0.155.\n'
+      printf '      supportedVersionPrefix: "%s"\n' "${codex_version_prefix}"
       printf '      maxSteps: 3\n'
       printf '      enabled: true\n'
     fi
@@ -191,10 +241,12 @@ write_agent_config() {
       printf '    - id: claude-subscription-local\n'
       printf '      displayName: Claude subscription\n'
       printf '      provider: claude-cli\n'
+      printf '      prefetchContext: %s\n' "${prefetch_context}"
+      printf '      modelOptions:\n        - id: haiku\n        - id: sonnet\n          reasoningEfforts: [low, medium, high]\n        - id: opus\n          reasoningEfforts: [low, medium, high]\n'
       printf '      runtime: cli\n'
       printf '      model: sonnet\n'
       printf '      scope: local\n'
-      printf '      supportedVersionPrefix: "2.1.267 "\n'
+      printf '      supportedVersionPrefix: "%s"\n' "${claude_version_prefix}"
       printf '      maxSteps: 3\n'
       printf '      enabled: true\n'
     fi
@@ -204,8 +256,9 @@ write_agent_config() {
       printf '      provider: antigravity-cli\n'
       printf '      runtime: cli\n'
       printf '      model: gemini-3.8-flash-medium\n'
+      printf '      modelOptions:\n        - id: gemini-3.8-flash-low\n        - id: gemini-3.8-flash-medium\n        - id: gemini-3.8-flash-high\n'
       printf '      scope: local\n'
-      printf '      supportedVersionPrefix: 1.2.\n'
+      printf '      supportedVersionPrefix: "%s"\n' "${antigravity_version_prefix}"
       printf '      maxSteps: 3\n'
       printf '      enabled: true\n'
     fi

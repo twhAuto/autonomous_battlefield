@@ -3,8 +3,15 @@ import { eventSummary, matchesPreset } from './events'
 import type { BattleEvent } from '../api/battles'
 
 const event = (type: string, data: BattleEvent['data'] = {}): BattleEvent => ({ type, data, attempt: 1, sequence: 1, tick: 1, createdAt: '' })
+it('describes repair amounts and costs without stringifying malformed payloads', () => {
+  const naming = { factionNames: new Map<string, string>() }
+  expect(eventSummary(event('unit_repaired', { amount: 4, cost: 2 }), naming)).toBe('An engineer repaired an ally for 4 HP (2 gold).')
+  expect(eventSummary(event('unit_repaired', { amount: {}, cost: [] }), naming)).toBe('An engineer repaired an ally for an unknown amount (unknown cost).')
+  expect(matchesPreset(event('unit_repaired'), 'combat')).toBe(true)
+})
+
 it('keeps significant events while excluding routine traffic and retaining unknown types in All', () => {
-  for (const type of ['castle_destroyed', 'unit_destroyed', 'building_constructed', 'unit_recruited', 'upgrade_purchased', 'battle_failed']) expect(matchesPreset(event(type), 'key')).toBe(true)
+  for (const type of ['unit_queued', 'castle_destroyed', 'unit_destroyed', 'building_constructed', 'unit_recruited', 'upgrade_purchased', 'battle_failed']) expect(matchesPreset(event(type), 'key')).toBe(true)
   for (const type of ['unit_attacked', 'unit_moved', 'income_collected', 'tick_completed', 'future_event']) expect(matchesPreset(event(type), 'key')).toBe(false)
   expect(matchesPreset(event('future_event'), 'all')).toBe(true)
   expect(matchesPreset(event('unit_attacked'), 'combat')).toBe(true)
@@ -25,4 +32,12 @@ it('summarizes structured references without guessing unknown payloads', () => {
   expect(eventSummary(event('unknown_event'), naming)).toBe('Unknown event.')
   expect(eventSummary(event('income_collected', { factionId: 'a', amount: 5 }), naming)).toBe('Amber collected 5 gold in income.')
   for (const type of ['unit_moved', 'unit_recruited', 'building_constructed', 'castle_destroyed', 'unit_destroyed', 'unit_died', 'building_destroyed', 'loot_collected', 'unknown_event']) expect(eventSummary(event(type), naming)).toMatch(/\.$/)
+})
+
+
+it('distinguishes paid training orders from deployed recruits', () => {
+  const queued = event('unit_queued', { factionId: 'a', unitType: 'ranger' })
+  expect(eventSummary(queued, {})).toContain('queued Ranger for training')
+  expect(matchesPreset(queued, 'economy')).toBe(true)
+  expect(matchesPreset(queued, 'combat')).toBe(false)
 })

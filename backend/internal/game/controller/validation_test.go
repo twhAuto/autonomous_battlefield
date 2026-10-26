@@ -5,6 +5,7 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -61,7 +62,7 @@ func TestValidatePlanProposalBoundsObservableRationale(t *testing.T) {
 	if err := ValidatePlanProposal(valid, []string{"attack"}); err != nil {
 		t.Fatalf("valid rationale rejected: %v", err)
 	}
-	invalid := PlanProposal{Name: "hold", Rationale: strings.Repeat("x", maxRationaleCharacters+1)}
+	invalid := PlanProposal{Name: "hold", Rationale: strings.Repeat("x", MaxRationaleCharacters+1)}
 	if err := ValidatePlanProposal(invalid, []string{"attack"}); !errors.Is(err, ErrInvalidPlan) {
 		t.Fatalf("oversized rationale error = %v", err)
 	}
@@ -77,4 +78,30 @@ func TestDuplicateListsNameTheirField(t *testing.T) {
 			t.Fatalf("%s: error = %v", field, err)
 		}
 	}
+}
+
+func TestProductionOrderBounds(t *testing.T) {
+	for _, orders := range [][]ProductionOrder{
+		{{UnitType: "vanguard", Enabled: true}},
+		{{BuildingID: "castle", Enabled: true}},
+		{{BuildingID: "castle"}, {BuildingID: "castle"}},
+		uniqueProductionOrders(MaximumProductionOrders + 1),
+	} {
+		if ValidatePlanProposal(PlanProposal{Name: "invalid", ProductionOrders: &orders}, []string{"attack"}) == nil {
+			t.Fatal("invalid production orders accepted", orders)
+		}
+	}
+	// A castle plus twelve buildings must fit in one plan.
+	orders := uniqueProductionOrders(13)
+	if err := ValidatePlanProposal(PlanProposal{Name: "full", ProductionOrders: &orders}, []string{"attack"}); err != nil {
+		t.Fatal("every owned source must be configurable", err)
+	}
+}
+
+func uniqueProductionOrders(count int) []ProductionOrder {
+	orders := make([]ProductionOrder, count)
+	for i := range orders {
+		orders[i] = ProductionOrder{BuildingID: fmt.Sprintf("source-%d", i), UnitType: "vanguard", Enabled: true}
+	}
+	return orders
 }

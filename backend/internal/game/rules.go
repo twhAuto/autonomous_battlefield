@@ -45,11 +45,11 @@ func ValidateRuleset(ruleset Ruleset) error {
 }
 
 func validRulesetMetadata(ruleset Ruleset) bool {
-	return strings.TrimSpace(ruleset.ID) != "" && strings.TrimSpace(ruleset.Version) != "" && ruleset.DesignBudget >= 0 && ruleset.StartingGold >= 0
+	return strings.TrimSpace(ruleset.ID) != "" && strings.TrimSpace(ruleset.Version) != "" && ruleset.DesignBudget >= 0 && ruleset.StartingGold >= 0 && ruleset.MaximumUnitCount >= 0 && ruleset.MaximumUnitCount <= MaximumUnitCountLimit
 }
 
 func validUnitType(unit UnitType) bool {
-	return (unit.AttackMode == "" || unit.AttackMode == "tracking" || unit.AttackMode == "position") && validUnitCapabilities(unit) && strings.TrimSpace(unit.ID) != "" && unit.Cost > 0 && unit.Health > 0 && unit.Attack >= 0 && unit.Defense >= 0 && unit.Speed >= 0 && unit.Movement > 0 && unit.Range > 0 && unit.Vision > 0
+	return (unit.AttackMode == "" || unit.AttackMode == "tracking" || unit.AttackMode == "position") && validUnitCapabilities(unit) && strings.TrimSpace(unit.ID) != "" && unit.Cost > 0 && unit.Health > 0 && unit.Attack >= 0 && unit.Defense >= 0 && unit.Speed >= 0 && unit.Movement > 0 && unit.Range > 0 && unit.Vision >= 0 && unit.TrainingTicks <= 1000
 }
 
 func validUpgrade(upgrade Upgrade) bool {
@@ -57,7 +57,15 @@ func validUpgrade(upgrade Upgrade) bool {
 }
 
 func validBuildingRules(rules BuildingRules) bool {
-	return rules.MaximumBuildingCount >= 0 && rules.MaximumBuildingCount <= 8 && rules.CastleHealth > 0 && rules.CastleDefense >= 0 && rules.CastleVision > 0 && rules.CastleIncome >= 0 && rules.EconomyCost > 0 && rules.EconomyHealth > 0 && rules.EconomyDefense >= 0 && rules.EconomyVision > 0 && rules.EconomyIncome >= 0 && rules.MaximumEconomyCount >= 0 && rules.MaximumEconomyCount <= 2
+	if !ValidBuildingAttack(rules.CastleAttack, rules.CastleRange) {
+		return false
+	}
+	return rules.MaximumBuildingCount >= 0 && rules.MaximumBuildingCount <= MaximumBuildingCountLimit && rules.CastleHealth > 0 && rules.CastleDefense >= 0 && rules.CastleVision >= 0 && rules.CastleBuildRange >= 0 && rules.CastleBuildRange <= 10 && rules.CastleIncome >= 0 && rules.EconomyCost > 0 && rules.EconomyHealth > 0 && rules.EconomyDefense >= 0 && rules.EconomyVision >= 0 && rules.EconomyBuildRange >= 0 && rules.EconomyBuildRange <= 10 && rules.EconomyIncome >= 0 && rules.MaximumEconomyCount >= 0 && rules.MaximumEconomyCount <= 2
+}
+
+// ValidBuildingAttack allows a passive building or a complete ranged attack.
+func ValidBuildingAttack(attack int64, attackRange int) bool {
+	return attack == 0 && attackRange == 0 || attack > 0 && attackRange > 0
 }
 
 func validCombatRules(rules CombatRules) bool {
@@ -118,6 +126,21 @@ func validateUpgradeSelections(upgradeTypes map[string]Upgrade, ids []string) (i
 		upgrades[id] = true
 		cost += definition.Cost
 	}
+	for _, id := range ids {
+		if prerequisite := upgradeTypes[id].RequiresUpgradeID; prerequisite != "" && !upgrades[prerequisite] {
+			return 0, fmt.Errorf("%w: upgrade %q requires %q", ErrInvalidBlueprint, id, prerequisite)
+		}
+	}
+	chosen := map[string]string{}
+	for _, id := range ids {
+		u := upgradeTypes[id]
+		if u.ExclusiveGroup != "" {
+			if prior := chosen[u.ExclusiveGroup]; prior != "" {
+				return 0, fmt.Errorf("%w: conflicting upgrades %q and %q", ErrInvalidBlueprint, prior, id)
+			}
+			chosen[u.ExclusiveGroup] = id
+		}
+	}
 	return cost, nil
 }
 
@@ -161,6 +184,9 @@ func upgradeBonuses(ruleset Ruleset, blueprint Blueprint) (attack, defense, econ
 	definitions := UpgradesByID(ruleset)
 	for _, id := range blueprint.UpgradeIDs {
 		upgrade := definitions[id]
+		if upgrade.TargetUnit != "" || upgrade.TargetClass != "" {
+			continue
+		}
 		attack += upgrade.AttackBonus
 		defense += upgrade.DefenseBonus
 		economy += upgrade.EconomyIncomeBonus
@@ -180,18 +206,21 @@ func validUnitCapabilities(u UnitType) bool {
 	validClass := func(c string) bool {
 		return c == "" || c == "infantry" || c == "mobile" || c == "siege" || c == "support"
 	}
-	return validClass(u.Class) && validClass(u.BonusAgainstClass) && u.MinimumRange >= 0 && u.MinimumRange <= u.Range && u.HealAmount >= 0 && u.BuildingDamageBonus >= 0 && u.ClassDamageBonus >= 0 && (u.ClassDamageBonus == 0 || u.BonusAgainstClass != "") && (u.HealAmount == 0 || u.Attack == 0 && u.Class == "support" && u.Range == 1 && u.MinimumRange == 0 && !u.BuildingPriority && u.BuildingDamageBonus == 0 && u.ClassDamageBonus == 0)
+	return validClass(u.Class) && validClass(u.BonusAgainstClass) && validClass(u.PreferredTargetClass) && validSpecialist(u) && u.MinimumRange >= 0 && u.MinimumRange <= u.Range && u.HealAmount >= 0 && u.BuildingDamageBonus >= 0 && u.ClassDamageBonus >= 0 && (u.ClassDamageBonus == 0 || u.BonusAgainstClass != "") && (u.HealAmount == 0 || u.Attack == 0 && u.Class == "support" && u.Range == 1 && u.MinimumRange == 0 && !u.BuildingPriority && u.BuildingDamageBonus == 0 && u.ClassDamageBonus == 0)
 }
 
 // ValidStructure accepts the additional constructible building capabilities.
 func ValidStructure(b BuildingType) bool {
-	if b.ID != b.Kind || b.Health <= 0 || b.Defense < 0 || b.Vision <= 0 || b.Cost <= 0 || b.Income != 0 {
+	if b.ID != b.Kind || b.Health <= 0 || b.Defense < 0 || b.Vision < 0 || b.BuildRange < 0 || b.BuildRange > 10 || b.Cost <= 0 || b.Income != 0 {
+		return false
+	}
+	if len(b.Trains) > 0 && !IsTrainingBuilding(b.Kind) {
 		return false
 	}
 	if b.Kind == BuildingTower {
 		return b.Attack > 0 && b.Range > 0
 	}
-	return (b.Kind == BuildingWatchtower || b.Kind == BuildingBarracks) && b.Attack == 0 && b.Range == 0
+	return (b.Kind == BuildingWatchtower || b.Kind == BuildingOutpost || IsTrainingBuilding(b.Kind)) && b.Attack == 0 && b.Range == 0
 }
 
 func validateRulesetUpgrades(ruleset Ruleset) error {
@@ -202,16 +231,38 @@ func validateRulesetUpgrades(ruleset Ruleset) error {
 		}
 		upgradeIDs[upgrade.ID] = true
 	}
-	return nil
+	if err := validateUpgradeEffects(ruleset); err != nil {
+		return err
+	}
+	return validateUpgradeLevels(ruleset.Upgrades)
 }
 
 func validateRulesetStructures(ruleset Ruleset) error {
 	seenBuildings := map[string]bool{}
+	units := UnitTypesByID(ruleset)
+	// Castle production may share a roster with constructible training buildings.
+	if err := validateTrainingRoster(units, ruleset.Buildings.CastleTrains, map[string]bool{}); err != nil {
+		return err
+	}
+	assigned := map[string]bool{}
 	for _, b := range ruleset.Structures {
 		if !ValidStructure(b) || seenBuildings[b.ID] {
 			return fmt.Errorf("%w: invalid or duplicate structure %q", ErrInvalidRuleset, b.ID)
 		}
 		seenBuildings[b.ID] = true
+		if err := validateTrainingRoster(units, b.Trains, assigned); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateTrainingRoster(units map[string]UnitType, roster []string, assigned map[string]bool) error {
+	for _, id := range roster {
+		if _, ok := units[id]; !ok || assigned[id] {
+			return fmt.Errorf("%w: unknown or duplicate training unit %q", ErrInvalidRuleset, id)
+		}
+		assigned[id] = true
 	}
 	return nil
 }

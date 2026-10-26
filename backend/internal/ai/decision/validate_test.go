@@ -77,3 +77,90 @@ func TestOpeningSubmissionValidatesUpgrades(t *testing.T) {
 		}
 	}
 }
+
+func TestUpgradePrerequisitesUseFrozenOwnership(t *testing.T) {
+	r := ai.DecisionRecord{Runtime: "api", Observation: ai.DecisionContext{Legal: ai.LegalChoices{ActionKinds: []string{"attack"}, Upgrades: []game.Upgrade{
+		{ID: "arsenal", Track: "arsenal", Level: 1, Cost: 20},
+		{ID: "arsenal_2", Track: "arsenal", Level: 2, RequiresUpgradeID: "arsenal", Cost: 50},
+	}}}}
+	s := ai.PlanSubmission{IdempotencyKey: "levels", Plan: controller.PlanProposal{Name: "upgrade", SpendOrder: []string{"upgrades"}, UpgradeOrders: []string{"arsenal_2"}}}
+	if issues := ValidateSubmission(r, s); len(issues) == 0 {
+		t.Fatal("missing prerequisite accepted")
+	}
+	r.Observation.OwnedUpgradeIDs = []string{"arsenal"}
+	if issues := ValidateSubmission(r, s); len(issues) != 0 {
+		t.Fatal(issues)
+	}
+	r.Observation.OwnedUpgradeIDs = nil
+	s.Plan.UpgradeOrders = []string{"arsenal", "arsenal_2"}
+	if issues := ValidateSubmission(r, s); len(issues) != 0 {
+		t.Fatal(issues)
+	}
+	s.Plan.UpgradeOrders = []string{"arsenal_2", "arsenal"}
+	if issues := ValidateSubmission(r, s); len(issues) == 0 {
+		t.Fatal("reversed levels accepted")
+	}
+}
+
+func TestSpecializedProductionUsesFrozenBuildingRoster(t *testing.T) {
+	context := ai.DecisionContext{Legal: ai.LegalChoices{Buildings: []game.BuildingType{{ID: game.BuildingBarracks, Trains: []string{"vanguard"}}}, RecruitmentSources: []string{"a:barracks:1"}}, View: game.View{State: game.State{Buildings: []game.Building{{ID: "a:barracks:1", Trains: []string{"vanguard"}}}}}}
+	for _, tc := range []struct {
+		unit, source string
+		valid        bool
+	}{
+		{"vanguard", "", true}, {"vanguard", "a:barracks:1", true}, {"ranger", "a:barracks:1", false}, {"vanguard", "a:castle", false}, {"vanguard", "b:barracks:1", false}, {"ranger", "", false},
+	} {
+		orders := []controller.RecruitmentOrder{{UnitType: tc.unit, SourceBuildingID: tc.source, Count: 1}}
+		issues := validateTrainingSources(context, controller.PlanProposal{RecruitmentOrders: &orders})
+		if (len(issues) == 0) != tc.valid {
+			t.Fatalf("%+v: %+v", tc, issues)
+		}
+	}
+	context.Legal.RecruitmentSources = nil
+	orders := []controller.RecruitmentOrder{{UnitType: "vanguard", Count: 1}}
+	if len(validateTrainingSources(context, controller.PlanProposal{RecruitmentOrders: &orders})) == 0 {
+		t.Fatal("unavailable source accepted")
+	}
+}
+
+func TestCastleProductionUsesFrozenRoster(t *testing.T) {
+	context := ai.DecisionContext{Legal: ai.LegalChoices{RecruitmentSources: []string{"a:castle"}}, View: game.View{State: game.State{Buildings: []game.Building{{ID: "a:castle", Trains: []string{"vanguard", "striker", "pikeman"}}}}}}
+	for _, tc := range []struct {
+		unit, source string
+		valid        bool
+	}{
+		{"vanguard", "", true}, {"striker", "a:castle", true}, {"pikeman", "a:castle", true}, {"ranger", "a:castle", false}, {"vanguard", "b:castle", false},
+	} {
+		orders := []controller.RecruitmentOrder{{UnitType: tc.unit, SourceBuildingID: tc.source, Count: 1}}
+		if issues := validateTrainingSources(context, controller.PlanProposal{RecruitmentOrders: &orders}); (len(issues) == 0) != tc.valid {
+			t.Fatalf("%+v: %+v", tc, issues)
+		}
+	}
+}
+
+func TestConstructionRespectsFrozenBuildingLimits(t *testing.T) {
+	sites := []controller.Coordinate{{X: 9, Y: 7}, {X: 9, Y: 9}}
+	legal := ai.LegalChoices{ActionKinds: []string{"attack"}, Buildings: []game.BuildingType{{ID: "defense_tower"}, {ID: game.BuildingEconomy}}, EconomySites: sites}
+	r := ai.DecisionRecord{Version: 1, TargetTick: 10, Runtime: "cli", Observation: ai.DecisionContext{Legal: legal, Economy: ai.EconomyContext{MaximumBuildings: 8, CurrentBuildings: 7, MaximumEconomyBuildings: 2, CurrentEconomyBuildings: 2}}}
+	construction := []controller.ConstructionOrder{{BuildingType: "defense_tower", Position: sites[0]}}
+	s := ai.PlanSubmission{ExpectedVersion: 1, TargetTick: 10, IdempotencyKey: "once", Plan: controller.PlanProposal{Name: "fill", ConstructionOrders: &construction}}
+	if issues := ValidateSubmission(r, s); len(issues) != 0 {
+		t.Fatal("the last free slot was rejected", issues)
+	}
+	construction = append(construction, controller.ConstructionOrder{BuildingType: game.BuildingEconomy, Position: sites[1]})
+	issues := ValidateSubmission(r, s)
+	if len(issues) != 2 || issues[0].Code != "limit_reached" || issues[1].Code != "limit_reached" {
+		t.Fatalf("orders beyond the building and economy limits accepted: %+v", issues)
+	}
+	if want := "2 construction orders exceed the 1 remaining building slots (7 of 8 used); submit at most 1 or use []"; issues[0].Message != want {
+		t.Fatalf("unclear limit message %q", issues[0].Message)
+	}
+	r.Runtime = ""
+	if issues := ValidateSubmission(r, s); len(issues) != 0 {
+		t.Fatal("scripted plans rely on engine skips and must not be rejected", issues)
+	}
+	r.Runtime, r.Observation.Economy = "cli", ai.EconomyContext{}
+	if issues := ValidateSubmission(r, s); len(issues) != 0 {
+		t.Fatal("observations without limits must not be rejected", issues)
+	}
+}

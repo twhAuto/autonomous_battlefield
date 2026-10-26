@@ -1,0 +1,90 @@
+{
+  "mechanicsSHA256": "e191a743795c00713b46ac40e104d947cfde06cb11d69a3b59c61472c10d2280",
+  "rules": [
+    {
+      "prompt": "The entire battlefield is visible.",
+      "mechanics": [
+        "The entire battlefield is visible; there is no fog of war."
+      ]
+    },
+    {
+      "prompt": "Omitted buildings retain their settings.",
+      "mechanics": [
+        "Settings persist between decisions; omitted buildings keep their settings."
+      ]
+    },
+    {
+      "prompt": "Each unit costs gold when training starts, respects reserveGold, and uses its trainingTicks.",
+      "mechanics": [
+        "Insufficient gold above reserveGold pauses new training until affordable; enabled stays true.",
+        "Each new unit costs gold when training starts.",
+        "The building continuously trains that type one at a time using trainingTicks."
+      ]
+    },
+    {
+      "prompt": "Insufficient funds pauses new starts automatically and resumes when affordable; enabled stays true.",
+      "mechanics": [
+        "Insufficient gold above reserveGold pauses new training until affordable; enabled stays true."
+      ]
+    },
+    {
+      "prompt": "Only one paid unit per building is in progress; blocked adjacent exits hold it without additional charges.",
+      "mechanics": [
+        "A blocked exit prevents further purchases.",
+        "The building continuously trains that type one at a time using trainingTicks.",
+        "Ready units wait if every adjacent traversable hex is occupied."
+      ]
+    },
+    {
+      "prompt": "Disabling or changing selection lets the paid unit finish.",
+      "mechanics": [
+        "Turning enabled false lets the paid unit finish, then stops new training.",
+        "Changing type affects only the next unit."
+      ]
+    },
+    {
+      "prompt": "New units act the tick after deployment.",
+      "mechanics": [
+        "New units act the tick after deployment."
+      ]
+    },
+    {
+      "prompt": "Income and decision-window construction/upgrades run before automatic starts, in building ID order.",
+      "mechanics": [
+        "Income, construction and upgrades run before automatic purchases, which occur in building ID order."
+      ]
+    },
+    {
+      "prompt": "Multiple levels may be bought in one window if affordable.",
+      "mechanics": [
+        "Buy prerequisites first; multiple levels can be bought in one window."
+      ]
+    },
+    {
+      "prompt": "Only clear ground and gold deposits permit construction; units block placement and every pair of living buildings must have hex distance at least 2.",
+      "mechanics": [
+        "All buildings must be at least two hexes apart; units block construction.",
+        "Buildings may occupy clear ground or gold deposits within buildRange of an active friendly building."
+      ]
+    },
+    {
+      "prompt": "Forests grant troops +3 defense; economy buildings on gold deposits earn +5 gold per tick.",
+      "mechanics": [
+        "Forests are traversable and grant troops +3 defense after armor piercing, but prohibit construction.",
+        "Gold deposits grant economy buildings +5 income each tick."
+      ]
+    },
+    {
+      "prompt": "New sources activate next tick.",
+      "mechanics": [
+        "Castles and defense towers fire before units; newly built towers and training buildings become active next tick; outposts grant construction range."
+      ]
+    },
+    {
+      "prompt": "A single building limits training throughput even with abundant gold.",
+      "mechanics": [
+        "The building continuously trains that type one at a time using trainingTicks."
+      ]
+    }
+  ]
+}

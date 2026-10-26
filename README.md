@@ -6,7 +6,8 @@ them compete on authored hex maps. AI controllers propose strategy plans; the ga
 engine validates and executes them.
 
 - Create reusable factions with editable names, backgrounds and strategic doctrines.
-- Run two-faction castle-siege battles with autonomous combat, economies and fog of war.
+- Run two-faction castle-siege battles with autonomous combat, open maps, terrain bonuses, building-range expansion, defending castles, five specialized training buildings and continuous AI-selected unit production, with visible progress and on/off status.
+- Choose tick duration and decision interval when staging a battle, or keep map defaults.
 - Inspect live battles, saved results, events and AI decision history.
 - Manage invited players and model access through Player, Developer and Admin roles.
 
@@ -14,6 +15,8 @@ The hosted application is at [play.ordinalfrontier.com](https://play.ordinalfron
 and requires an invitation. Battles are finite and use authored maps. See
 [game rules](docs/game/game-rules.md) and the
 [Frontier Siege roster](docs/game/frontier-siege.md) for supported gameplay.
+Every map shares the full roster, three-level Arsenal/Plating/Industry upgrades
+and specialist branches. Choose Castle Siege or Frontier Siege for the layout.
 
 Repository paths and deployment resources use the technical name
 `autonomous-battlefield`; local development uses `battlefield.localhost`.
@@ -41,6 +44,9 @@ Open `http://battlefield.localhost:8888`. Edit the Git-ignored root `.env` for
 application settings, then rerun the deployment command. The
 [local setup guide](docs/developer/local-setup.md) covers credentials, existing
 cluster registration, optional model controllers and standalone development services.
+For subscription controllers, keep `./scripts/dev/run-k8s-cli-agent.sh auto` running
+in another terminal. Local CLIs allow the [selected stable version](docs/developer/local-kubernetes.md#subscription-clis)
+or newer.
 
 ## Repository layout
 
@@ -88,6 +94,17 @@ The PostgreSQL harness uses a throwaway Docker database. Go aggregate statement
 coverage and each frontend coverage metric must reach 80%. Infrastructure changes
 also require `./scripts/test/test-deployment.sh`. See
 [contributor CI](docs/developer/ci.md) for browser prerequisites and additional gates.
+
+Battle setup supports per-faction model and reasoning-effort choices from the operator
+allowlist, including Claude Haiku, GPT-6 Luna and Antigravity Gemini 3.8 Flash
+low/medium/high variants. The AI decision inspector shows elapsed waits and
+completed timing details;
+see [model selection and latency](docs/architecture/ai-decisions.md#model-selection-and-latency)
+and the [worker rollout order](docs/operations/cli-worker.md#model-selection-rollout).
+
+CLI workers prefetch decision context by default. To compare with tool-fetched
+context, run the host agent launcher with `HOST_CLI_PREFETCH_CONTEXT=false`; see
+[context-prefetch comparison](docs/operations/cli-worker.md#context-prefetch-comparison).
 
 ## License
 

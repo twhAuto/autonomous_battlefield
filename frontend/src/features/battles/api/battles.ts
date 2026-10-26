@@ -24,10 +24,12 @@ export interface CreateBattleInput {
   scenarioId: string
   participants: [BattleParticipantInput, BattleParticipantInput]
   tickCount: number
+  tickDuration?: string
+  decisionIntervalTicks?: number
 }
 
-export interface BattleController { type: 'scripted' | 'model'; profileId?: string; provider?: string; runtime?: string; modelIdentifier?: string }
-export interface BattleParticipantInput { factionId: string; controller: { type: 'scripted' } | { type: 'model'; profileId: string } }
+export interface BattleController { type: 'scripted' | 'model'; profileId?: string; provider?: string; runtime?: string; reasoningEffort?: string; modelIdentifier?: string }
+export interface BattleParticipantInput { factionId: string; controller: { type: 'scripted' } | { type: 'model'; profileId: string; modelIdentifier?: string; reasoningEffort?: string } }
 
 export type BattleStatus = 'queued' | 'running' | 'completed' | 'failed' | 'stopped'
 
@@ -76,10 +78,15 @@ export interface BattleUnit extends UnitCapabilities {
   attackTargetPosition?: HexPosition
 }
 export interface BattleBuilding {
+  production?: { configured?: boolean; unitType?: string; enabled: boolean; waitingForGold?: boolean; waitingForUnitLimit?: boolean }
+  trains?: string[]
+  buildRange?: number
+  trainingBlocked?: boolean
+  trainingQueue?: { unitType: string; remainingTicks: number; trainingTicks: number; queuedAtTick: number; opening?: boolean }[]
   attack?: number; range?: number; readyAtTick?: number
   attackOutcome?: 'hit' | 'miss'
   attackTargetId?: string; attackTargetPosition?: HexPosition
-  id: string; factionId: string; type: 'castle' | 'economy' | 'defense_tower' | 'watchtower' | 'barracks'; position: HexPosition
+  id: string; factionId: string; type: 'castle' | 'economy' | 'defense_tower' | 'watchtower' | 'outpost' | 'barracks' | 'archery_range' | 'stables' | 'siege_workshop' | 'infirmary'; position: HexPosition
   health: number; maxHealth: number; defense: number; vision: number; income: number
 }
 export interface BattleFactionState {
@@ -124,14 +131,6 @@ export interface BattleRun {
   errorMessage?: string
 }
 
-export async function getBattleView(id: string, factionId: string, signal?: AbortSignal): Promise<BattleView> {
-  const response = await battlefieldFetch(`/v1/battles/${encodeURIComponent(id)}/factions/${encodeURIComponent(factionId)}/view`, { signal })
-  if (response.ok) return (await response.json()) as BattleView
-  if (response.status === 400) throw new BattleApiError('That faction perspective is invalid.', 400)
-  if (response.status === 404) throw new BattleApiError('This battle could not be found.', 404)
-  throw new BattleApiError('Battle perspective could not be loaded.', response.status)
-}
-
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 
 export interface BattleEvent {
@@ -150,6 +149,8 @@ export interface BattleEventPage {
 }
 
 export interface DecisionHistory {
+  contextDelivery?: 'tool' | 'prefetch'
+  cliProcessStartMs?: number; reasoningEffort?: string; claimedAt?: string; contextServedAt?: string; runnerCompletedAt?: string
   requestId: string; factionId: string; targetTick: number; status: 'pending' | 'running' | 'accepted' | 'fallback' | 'failed'
   controllerType: 'scripted' | 'model'
   profileId?: string; provider?: string; runtime?: string; modelIdentifier?: string
@@ -165,6 +166,7 @@ export interface DecisionHistory {
     constructionPriorities?: HexPosition[]
     recruitmentPriorities?: string[]
     upgradeOrders?: string[]
+    productionOrders?: { buildingId: string; unitType?: string; enabled: boolean }[] | null
     recruitmentOrders?: { unitType: string; count: number; sourceBuildingId?: string }[] | null
   }
   traceUrl?: string
@@ -181,9 +183,9 @@ export interface SavedDecisionContext {
   context: {
     factionName?: string; background?: string; doctrine?: string; opening: boolean
     ownedUpgradeIds: string[] | null
-    economy: { gold: number; projectedIncome: number; economyBuildingCost: number; economyBuildingIncome: number; currentEconomyBuildings: number; maximumEconomyBuildings: number; maximumBuildings?: number }
+    economy: { gold: number; projectedIncome: number; economyBuildingCost: number; economyBuildingIncome: number; currentEconomyBuildings: number; maximumEconomyBuildings: number; maximumBuildings?: number; currentBuildings?: number; maximumUnits?: number; currentUnits?: number }
     view: BattleView
-    legal: { actionKinds: string[] | null; units: { id: string; cost: number }[] | null; economySites: HexPosition[] | null; buildings?: { id: string; cost: number }[] | null; upgrades?: { id: string; cost: number }[] | null; recruitmentSources?: string[] | null }
+    legal: { actionKinds: string[] | null; units: { id: string; cost: number }[] | null; economySites: HexPosition[] | null; buildings?: { id: string; cost: number }[] | null; upgrades?: { id: string; cost: number; track?: string; level?: number; requiresUpgradeId?: string; targetUnit?: string; targetClass?: string; exclusiveGroup?: string; movementBonus?: number; rangeBonus?: number; healAmountBonus?: number; healRangeBonus?: number; buildingDamageBonus?: number; attackBonus?: number; defenseBonus?: number; economyIncomeBonus?: number }[] | null; recruitmentSources?: string[] | null }
     activePlan: DecisionHistory['resolvedPlan']
     memory?: JsonValue
     knowledge?: JsonValue

@@ -4,6 +4,7 @@
 import { Fragment, type ReactNode, useState } from 'react'
 import { entityName, typeLabel, type EntityNaming } from '../presentation/entities'
 import { BattleRun, DecisionHistory } from '../api/battles'
+import { DecisionTiming } from './DecisionTiming'
 import { DecisionContextPanel, type DecisionContextCache } from './DecisionContextPanel'
 
 export function latestDecision(decisions: DecisionHistory[], factionId: string) {
@@ -75,6 +76,7 @@ function DecisionCard({ decision, participantNames, initiallyOpen, battleId, att
           <div><strong>{participantNames.get(decision.factionId) ?? decision.factionId}</strong><span>{decision.targetTick === 0 ? 'OPENING' : `TICK ${decision.targetTick}`}</span></div>
           <span className={`decision-state decision-state--${decision.status}`}>{decisionLabel(decision)}</span>
         </summary>
+        <DecisionTiming decision={decision} active={active} />
         <dl>
           <DecisionDetail label="Plan" value={decision.resolvedPlan?.name ?? (decision.status === 'running' || decision.status === 'pending' ? 'Analyzing…' : 'No plan submitted')} />
           <DecisionDetail label="Rationale" value={decision.resolvedPlan?.rationale || 'No rationale recorded.'} />
@@ -82,10 +84,12 @@ function DecisionCard({ decision, participantNames, initiallyOpen, battleId, att
           <DecisionDetail label="Targets" value={formatWeights(decision.resolvedPlan?.targetBonuses, typeLabel)} />
           <DecisionDetail label="Reserve" value={decision.resolvedPlan ? `${decision.resolvedPlan.reserveGold ?? 0} gold` : '—'} />
           <DecisionDetail label="Spend order" value={formatList(decision.resolvedPlan?.spendOrder)} />
+          {decision.resolvedPlan?.productionOrders != null && <DecisionDetail label="Production" value={formatProduction(decision.resolvedPlan.productionOrders, { entities, factionNames: participantNames, localFactionId: decision.factionId })} />}
           <DecisionDetail label="Recruit" value={formatRecruitment(decision.resolvedPlan, { entities, factionNames: participantNames, localFactionId: decision.factionId })} />
           <DecisionDetail label="Upgrades" value={formatList(decision.resolvedPlan?.upgradeOrders)} />
           <DecisionDetail label="Build sites" value={formatConstruction(decision.resolvedPlan)} />
           <DecisionDetail label="Model" value={decision.modelIdentifier || decision.profileId || '—'} />
+          <DecisionDetail label="Reasoning effort" value={decision.reasoningEffort || 'Model default'} />
           <DecisionDetail label="Controller" value={decision.controllerType} />
           <DecisionDetail label="Provider" value={decision.provider || '—'} />
           <DecisionDetail label="Runtime" value={decision.runtime || '—'} />
@@ -161,4 +165,8 @@ function reportedTokens(value: number | undefined, tokensReported: boolean | und
 function uncachedInputTokens(usage: DecisionHistory['usage']) {
   if (!usage.tokensReported || usage.cachedInputTokens == null) return '—'
   return String(Math.max(0, (usage.inputTokens ?? 0) - usage.cachedInputTokens))
+}
+
+function formatProduction(orders: NonNullable<NonNullable<DecisionHistory['resolvedPlan']>['productionOrders']>, naming: EntityNaming) {
+  return orders.length ? orders.map(({ buildingId, unitType, enabled }, index) => <Fragment key={buildingId}>{index > 0 && ' · '}<span title={buildingId}>{entityName(buildingId, naming)}</span>: {enabled ? 'On' : 'Off'}{unitType && ` (${typeLabel(unitType)})`}</Fragment>) : 'Keep current settings'
 }

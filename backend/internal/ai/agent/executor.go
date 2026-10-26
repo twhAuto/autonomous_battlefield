@@ -25,6 +25,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/providers"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/redact"
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -201,12 +202,16 @@ func waitFor(ctx context.Context, duration time.Duration) bool {
 }
 
 type job struct {
-	ExecutionDeadline time.Time `json:"executionDeadline"`
-	CapabilityToken   string    `json:"capabilityToken"`
-	BattleID          string    `json:"battleId"`
-	FactionID         string    `json:"factionId"`
-	Attempt           int       `json:"attempt"`
-	TargetTick        uint64    `json:"targetTick"`
+	CreatedAt         time.Time  `json:"createdAt"`
+	ClaimedAt         *time.Time `json:"claimedAt"`
+	ModelIdentifier   string     `json:"modelIdentifier"`
+	ReasoningEffort   string     `json:"reasoningEffort"`
+	ExecutionDeadline time.Time  `json:"executionDeadline"`
+	CapabilityToken   string     `json:"capabilityToken"`
+	BattleID          string     `json:"battleId"`
+	FactionID         string     `json:"factionId"`
+	Attempt           int        `json:"attempt"`
+	TargetTick        uint64     `json:"targetTick"`
 
 	FactionName             string `json:"factionName"`
 	Background              string `json:"background"`
@@ -226,9 +231,20 @@ type jobRun struct {
 	profile   ai.ModelProfile
 }
 
+// logFailure includes a bounded, credential-redacted error detail so operators can
+// tell provider limits and CLI errors apart without the CLI's full output.
+func (run jobRun) logFailure(ctx context.Context, category, outcome string, runErr error) {
+	attributes := []any{"provider", run.profile.Provider, "runtime", run.profile.Runtime, "error_category", category, "runner_outcome", outcome, "duration_ms", time.Since(run.started).Milliseconds()}
+	if runErr != nil {
+		// redact first: a string attribute bypasses the handler's typed-error redaction.
+		attributes = append(attributes, "error", runner.CLIFailureDetail(redact.Error(runErr)))
+	}
+	run.logger.WarnContext(ctx, "decision_runner_failed", attributes...)
+}
+
 func (e *Executor) claim(ctx context.Context, profileIDs []string) (job, bool, error) {
 	payload, _ := json.Marshal(map[string]any{
-		"workerId": e.WorkerID, "leaseSeconds": int(e.DecisionTimeout.Seconds()) + 5,
+		"selectionVersion": 1, "workerId": e.WorkerID, "leaseSeconds": int(e.DecisionTimeout.Seconds()) + 5,
 		"waitSeconds": max(1, min(20, int(e.ClaimWait.Seconds()))), "profileIds": profileIDs, "jobTypes": []string{"battle_decision", "faction_background"},
 	})
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, e.serviceURL("/internal/agent/claim"), bytes.NewReader(payload))
@@ -269,12 +285,21 @@ func (e *Executor) runJob(parent context.Context, job job) {
 	span.SetAttributes(attribute.String("langfuse.trace.metadata.profile_id", job.ProfileID))
 	defer span.End()
 	started := time.Now()
+	if job.ClaimedAt != nil && !job.CreatedAt.IsZero() {
+		span.SetAttributes(attribute.Int64("battlefield.queue_wait_ms", job.ClaimedAt.Sub(job.CreatedAt).Milliseconds()))
+	}
 	logger := e.logger().With("worker_id", e.WorkerID, "request_id", job.RequestID, "profile_id", job.ProfileID)
 	profile, err := e.Profiles.Require(job.ProfileID)
 	if err != nil {
 		e.reportJobFailure(parent, logger, started, job.RequestID, "profile_unavailable", "profile_unavailable", ai.DecisionResult{})
 		return
 	}
+	profile, err = resolveJobProfile(profile, job)
+	if err != nil {
+		e.reportJobFailure(parent, logger, started, job.RequestID, "model_selection_unavailable", "model_selection_unavailable", ai.DecisionResult{})
+		return
+	}
+	span.SetAttributes(attribute.String("gen_ai.request.model", profile.ModelLabel), attribute.String("battlefield.reasoning_effort", profile.ReasoningEffort))
 	logger.InfoContext(parent, "decision_runner_started", "provider", profile.Provider, "runtime", profile.Runtime)
 	policy, stopPolicy := e.watchPolicy(parent)
 	defer stopPolicy()
@@ -305,7 +330,26 @@ func (e *Executor) runJob(parent context.Context, job job) {
 	e.finishJob(parent, ctx, jobRun{logger: logger, started: started, requestID: job.RequestID, profile: profile}, result, err)
 }
 
+// resolveJobProfile preserves API environment models and frozen CLI choices.
+func resolveJobProfile(profile ai.ModelProfile, job job) (ai.ModelProfile, error) {
+	if profile.Runtime != "cli" || (job.ModelIdentifier == "" && job.ReasoningEffort == "") {
+		return profile, nil
+	}
+	model, _, err := ai.ResolveModelSelection(profile, job.ModelIdentifier, job.ReasoningEffort)
+	if err != nil {
+		return ai.ModelProfile{}, err
+	}
+	profile.Model, profile.ModelLabel = model, model
+	// Empty effort is the frozen model-default choice, even if configuration changed.
+	profile.ReasoningEffort = job.ReasoningEffort
+	return profile, nil
+}
+
 func (e *Executor) finishJob(parent, runContext context.Context, run jobRun, result ai.DecisionResult, runErr error) {
+	if result.ProviderData == nil {
+		result.ProviderData = map[string]any{}
+	}
+	result.ProviderData["runnerDurationMs"] = time.Since(run.started).Milliseconds()
 	tracing.AIOutcome(trace.SpanFromContext(parent), runErr != nil || !result.Accepted, result.ErrorCategory)
 	if runErr != nil || !result.Accepted {
 		category := result.ErrorCategory
@@ -317,7 +361,7 @@ func (e *Executor) finishJob(parent, runContext context.Context, run jobRun, res
 			result.ProviderData = map[string]any{}
 		}
 		result.ProviderData["runnerOutcome"] = outcome
-		run.logger.WarnContext(parent, "decision_runner_failed", "provider", run.profile.Provider, "runtime", run.profile.Runtime, "error_category", category, "runner_outcome", outcome, "duration_ms", time.Since(run.started).Milliseconds())
+		run.logFailure(parent, category, outcome, runErr)
 		if reportErr := e.fail(parent, run.requestID, category, result); reportErr != nil {
 			run.logger.ErrorContext(parent, "decision_failure_report_failed", "error", reportErr)
 		}
@@ -370,7 +414,7 @@ func runnerOutcome(ctx context.Context, err error, accepted bool) string {
 
 func defaultRunner(profile ai.ModelProfile) (ai.DecisionRunner, error) {
 	if profile.Runtime == "cli" {
-		return runner.CLIRunner{Provider: profile.Provider, Model: profile.Model}, nil
+		return runner.CLIRunner{Provider: profile.Provider, Model: profile.Model, ReasoningEffort: profile.ReasoningEffort, PrefetchContext: profile.PrefetchesContext()}, nil
 	}
 	var provider ai.TurnProvider
 	switch profile.Provider {

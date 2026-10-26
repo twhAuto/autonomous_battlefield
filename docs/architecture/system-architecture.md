@@ -77,7 +77,7 @@ workload can fail or restart while preserving battle and decision state.
 | Decision agent | Model-decision claims and API or CLI model execution | AI gateway, model provider |
 | Redis (optional) | Disposable completed battle read cache; no engine or readiness dependency | Memory, API-only connection |
 | PostgreSQL | Factions, battle queue, event history, snapshots, leases, and model decisions | Persistent storage |
-| Scenario catalog | Authored map, timing, fallback plans, unit/building rules, and combat rules, resolved from versioned [content libraries](../developer/content-library.md) | Embedded in the server binary (`backend/gamedata`), validated at API startup and frozen into battle rows |
+| Scenario catalog | Map-only layouts resolved with one shared timing/controller configuration and full ruleset from versioned [content libraries](../developer/content-library.md) | Embedded in the server binary (`backend/gamedata`), validated at API startup and frozen into battle rows |
 
 The backend commands are `cmd/server`, `cmd/engine`, `cmd/aigateway`, `cmd/agent`,
 and `cmd/aieval`. The first four are runtime processes; `aieval` runs deterministic
@@ -112,9 +112,11 @@ clickjacking. The CSP deliberately leaves script and connect sources open becaus
 
 ### Battle inspection
 
-The browser presents a battle from one selected perspective, but the perspective
-selector controls presentation only: server-side role and ownership checks remain
-the access boundary, and faction views are projected on the server. Participant
+The browser presents the complete battlefield without a perspective selector.
+Server-side role and ownership checks remain the access boundary. Faction views
+expose all entities while keeping opponents' aggregate economy totals private
+from AI controllers. Authorized browser viewers receive the full battle state,
+including both factions' totals. Participant
 background and doctrine come from the persisted scenario, not the editable faction
 directory. The presentation accepts multiple participants; battle creation,
 scenario spawns, opponent selection, and castle-destruction victory rules still
@@ -123,7 +125,7 @@ require two factions.
 See the [frontend guide](../developer/frontend-guide.md#battle-data-lifecycle) for
 request lifecycle, inspector state, map layout, and animation;
 the [OpenAPI contract](openapi.yaml) for state, event and context fields, and the
-[HTTP API reference](api.md#battle-state-and-fog-of-war) for fog-of-war projection;
+[HTTP API reference](api.md#battle-state-and-visibility) for state projection;
 [saved decision context](ai-decisions.md#saved-decision-context) for what the
 inspector can show of a model's input; and [game rules](../game/game-rules.md) for
 movement and attack resolution.
@@ -131,7 +133,17 @@ movement and attack resolution.
 ### Deterministic simulation boundary
 
 The simulation receives a resolved scenario and optional plans, then produces
-deterministic state transitions and events. It does not access PostgreSQL, HTTP,
+deterministic state transitions and events. Construction uses living building ranges
+and spacing; per-building training advances between economy and tactics. Core v7 then purchases one next unit for each enabled empty source in building ID order, respecting reserve gold. Production settings persist across decision windows; an off setting finishes paid work and stops new starts. Insufficient gold pauses starts until affordable; blocked exits retain the paid unit without further purchases. The viewer displays both sides' source selection, state and progress; controls remain AI-only. Faction-scoped projections omit opponent production settings, including future choices and gold waits, while retaining paid training progress.
+Training progress is serialized in building state; clone operations isolate queue
+and training-roster slices plus production settings, including `buildings.castleTrains`. Core v6 and v7 start each
+faction with only its castle, which shares the Barracks roster and fires in the
+tower phase using authored `castleAttack`/`castleRange`. Five constructible kinds
+provide specialized production. The `continuousProduction` ruleset flag selects v7 repeat purchases; frozen v6 and earlier retain batch queues. Frozen core v5 retains its starting Barracks and
+passive castle; older rulesets without rosters preserve their recruitment rules. Forest cover affects
+troop damage and deposits affect economy income. The map hides destroyed buildings;
+the engine retains their records for results/history and releases their occupied hexes.
+It does not access PostgreSQL, HTTP,
 environment variables, or model providers.
 
 The engine owns orchestration around this pure domain: leases, retries, pauses,
@@ -205,13 +217,20 @@ validate the request and store its initial state; only the engine advances it.
 
 Battle execution is asynchronous from the creation request. Each battle stores a
 complete resolved scenario and initial state, so later edits to factions or catalog
-YAML cannot change an existing run.
+YAML cannot change an existing run. Battle creation accepts optional tick-duration
+(100ms–10s) and decision-interval (1–100 ticks) overrides. The service applies
+validated overrides before computing the scenario digest and initial match;
+workers use the stored timing without changing catalog defaults. Setup exposes
+map-default choices and timing presets, with both combatant slots aligned at the
+top. It omits shared roster/rules explanations and the integration status panel;
+controller options still come from the available profile list, with an inline error
+if that lookup fails.
 
 ### 5.2 Strategy decision window
 
 A decision window occurs immediately before ticks configured by
-`decisionIntervalTicks`. The supplied scenario currently uses ticks 10, 20, 30, and
-so on.
+`decisionIntervalTicks`. The supplied map defaults use ticks 10, 20, 30, and
+so on; a per-battle override changes that interval in the frozen scenario.
 
 ```mermaid
 sequenceDiagram
@@ -596,7 +615,7 @@ in the [service authentication runbook](../operations/access.md#ci-service-ident
   network policy restricts private services.
 - Provider credentials belong to the decision agent, separate from the API and engine.
 - Model rationale remains untrusted display text; bounded length does not make it authoritative.
-- CLI isolation depends on the configured, validated provider version family.
+- Production CLI profiles enforce their configured version prefixes.
 
 The [production access runbook](../operations/access.md) owns credential
 provisioning, network verification and enablement procedures.
@@ -618,6 +637,9 @@ A model profile specifies:
 - optional external-agent availability environment variable;
 - token and step limits;
 - enabled state and supported CLI version prefix.
+
+Local CLIs allow the [selected stable version](../developer/local-kubernetes.md#subscription-clis)
+or newer. Production workers use their configured version prefixes.
 
 Key runtime settings and their defaults:
 
@@ -718,10 +740,33 @@ Battle and decision work survives restarts. Leases and `SKIP LOCKED` support
 competing workers without another queue system, at the cost of additional PostgreSQL
 state-machine logic.
 
+### Shared rules and map-only scenarios
+
+The live catalog has one `battlefield` ruleset and shared `battlefield.yaml`
+timing/controller configuration. Scenario YAML contains only map ID and geometry.
+Every map receives all units, structures and upgrades from the active content
+library. Adding content therefore needs no per-map selection updates.
+
+Three-level general upgrades retain one purchase ID per level; specialist choices
+use unit/class scopes and exclusive groups. Engine and AI validators check frozen
+ownership and ordered prerequisites/choices before accepting plans. Unit turns
+also resolve Scout retreat, cavalry pursuit, armor penetration and bounded
+Engineer repair. Repair spends gold during unit turns while respecting reserves.
+
+Snapshots store the resolved rules and mutable repair charges; no database migration
+or historical live ruleset is needed. Old snapshots remain readable, but the
+open-map construction and training overhaul changes their replay behavior. A
+worker retry or restart re-simulates with the current engine; historical authored
+pads outside the default building range may no longer accept their old orders.
+The [gameplay cutover precondition](../operations/deployment.md#gameplay-rules-cutover)
+requires finishing existing battles before this engine is deployed.
+
 ### Frozen snapshots over live catalog references
 
-Rules, factions, and initial state are captured per battle. Replays remain stable,
-at the cost of larger JSONB rows and explicit version provenance.
+Rules, factions, and initial state are captured per battle. Replays remain stable
+within an engine version, at the cost of larger JSONB rows and explicit version
+provenance. Snapshot versions describe data compatibility; they do not retain
+previous engine implementations.
 
 ### MCP as a capability boundary
 
@@ -755,3 +800,43 @@ broker.
   [`battlefield-platform/cli`](../operations/cli-worker.md) job.
 - Rigorous controller experiments may need experiment identity, model parameters,
   and cost normalization beyond the current evaluation view.
+
+## Battle model choices and decision timing
+
+Each faction can select an operator-allowlisted model and reasoning effort from
+its authorized profile. The API freezes those choices in the scenario, the engine
+copies them into each decision, and the claim response carries them to the worker.
+Both API and worker validate choices. The gateway requires selection protocol 1
+before claims, so old workers stop claiming after gateway promotion. The CLI
+Jenkins job upgrades from the deployed production image and then synchronizes
+managed model options; use the documented
+[CLI maintenance window](../operations/cli-worker.md#model-selection-rollout).
+The synchronized catalog includes Haiku and GPT-6 Luna, plus Antigravity Flash
+low/medium/high model variants. These are explicit battle choices; profile
+defaults stay unchanged. The host launcher ships the same choices as the API
+and production worker configuration.
+
+PostgreSQL timestamps request creation, the latest claim, first context delivery,
+resolution and worker completion-report receipt. The existing decision-history
+API exposes those timestamps to the existing inspector roles. The frontend counts
+elapsed time only for active unresolved decisions; completed records use persisted
+resolution time. Detailed traces and the Battle Traces Grafana dashboard separate
+queue/context/resolution timings and model/effort. No private reasoning content or
+additional game state is exposed. See [AI decisions](ai-decisions.md#model-selection-and-latency).
+
+CLI workers prefetch context for Codex/Claude battle profiles unless a profile sets
+`prefetchContext: false`. The worker fetches the same capability-scoped frozen context before
+process launch and passes it inline. Gateway validation, leases and submission
+authority remain unchanged; no persistent sessions are introduced. Delivery mode
+is stored in existing decision metadata and exposed alongside timing so prefetch
+and model-tool fetches can be distinguished.
+Prefetched battle prompts place frozen reference data before faction identity and
+dynamic state, with request metadata last. Two disjoint JSON blocks reconstruct the
+same context; rules repeated in the policy are omitted only for an exact reviewed
+mechanics snapshot. Model-facing MCP JSON is also ordered by stability without
+changing stored observations or submission arguments. Prompt v11 adds lossless
+catalog/upgrade tables, a shared dynamic unit map, legal-site runs and memory
+references to the model-facing projection. CLI prefetch validates only transport
+metadata; canonical persistence and hashes remain unchanged. See
+[prompt provenance](ai-decisions.md#prompt-provenance-and-faction-memory) for
+fallback behavior and the limits of ordering for provider caching.

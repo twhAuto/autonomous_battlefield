@@ -34,8 +34,8 @@ func TestMovementPathRecordsTraversedStepsAndClears(t *testing.T) {
 	}
 	copied := CloneState(m.state)
 	copied.Units[0].MovementPath[0].X = 99
-	visible := visibleUnit(unit, map[Position]bool{})
-	visible.MovementPath[0].X = 99
+	view, _ := m.View("faction-a")
+	view.State.Units[0].MovementPath[0].X = 99
 	if !reflect.DeepEqual(m.state.Units[0].MovementPath, want) {
 		t.Fatal("snapshot/view aliases live route")
 	}
@@ -61,22 +61,15 @@ func TestCastleMovementRecordsAdjacentSteps(t *testing.T) {
 	}
 }
 
-func TestEnemyRouteDoesNotRevealHiddenSteps(t *testing.T) {
-	unit := soldier("enemy", "faction-b", Position{4, 5})
-	from := Position{3, 5}
+func TestEnemyRouteIsFullyVisible(t *testing.T) {
+	m := expansionMatch(t)
+	unit := soldier("enemy", "faction-b", Position{12, 5})
+	from := Position{11, 5}
 	unit.MovedFrom = &from
 	unit.MovementPath = []Position{from, unit.Position}
-	source := State{Units: []Unit{unit}}
-	hidden := visibleState(source, "faction-a", map[Position]bool{unit.Position: true})
-	if hidden.Units[0].MovementPath != nil || hidden.Units[0].MovedFrom != nil {
-		t.Fatal("hidden route leaked")
-	}
-	shown := visibleState(source, "faction-a", map[Position]bool{unit.Position: true, from: true})
-	if !reflect.DeepEqual(shown.Units[0].MovementPath, unit.MovementPath) {
-		t.Fatal("visible route lost")
-	}
-	allied := visibleState(source, "faction-b", map[Position]bool{})
-	if !reflect.DeepEqual(allied.Units[0].MovementPath, unit.MovementPath) {
-		t.Fatal("allied route lost")
+	m.state.Units = []Unit{unit}
+	view, err := m.View("faction-a")
+	if err != nil || !reflect.DeepEqual(view.State.Units[0].MovementPath, unit.MovementPath) {
+		t.Fatal("open view lost enemy route", err)
 	}
 }

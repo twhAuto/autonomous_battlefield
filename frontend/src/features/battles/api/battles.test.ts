@@ -6,7 +6,6 @@ import {
   BattleApiError,
   createBattle,
   getBattle,
-  getBattleView,
   listBattleEvents,
   listBattles,
   listDecisionHistory,
@@ -132,22 +131,6 @@ describe('battle API', () => {
     expect(fetch).toHaveBeenLastCalledWith('/v1/battles/battle%2Fid/pause', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
     await expect(resumeBattle('battle/id')).resolves.toEqual(resumed)
     expect(fetch).toHaveBeenLastCalledWith('/v1/battles/battle%2Fid/resume', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-  })
-
-  it('gets faction-filtered battle views', async () => {
-    const view = { map: { width: 15 }, state: { tick: 3 }, visiblePositions: [] }
-    vi.mocked(fetch).mockResolvedValue(jsonResponse(view))
-    await expect(getBattleView('battle/id', 'faction/id')).resolves.toEqual(view)
-    expect(fetch).toHaveBeenCalledWith('/v1/battles/battle%2Fid/factions/faction%2Fid/view', { signal: undefined, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-  })
-
-  it.each([
-    [400, 'That faction perspective is invalid.'],
-    [404, 'This battle could not be found.'],
-    [503, 'Battle perspective could not be loaded.'],
-  ])('maps perspective status %d', async (status, message) => {
-    vi.mocked(fetch).mockResolvedValue(new Response(null, { status }))
-    await expect(getBattleView(battleId, 'faction')).rejects.toEqual(new BattleApiError(message, status))
   })
 
   it('lists events with default pagination', async () => {

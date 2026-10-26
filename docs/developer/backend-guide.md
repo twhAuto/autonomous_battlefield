@@ -73,9 +73,11 @@ The package root contains types and interfaces shared across these subpackages, 
 | [`siege.go`](../../backend/internal/game/siege.go) | Structure approach priorities and minimum-range retreat |
 | [`support.go`](../../backend/internal/game/support.go) | Herbalist treatment and healer escort routes |
 | [`combat.go`](../../backend/internal/game/combat.go) | Unit turns, targeting, damage, position attacks, and loot |
-| [`movement.go`](../../backend/internal/game/movement.go) | All unit movement helpers: castle approach, goal sets, routing around occupied hexes, stepping, and reachable enemy alternatives |
+| [`movement.go`](../../backend/internal/game/movement.go) | All unit movement helpers: castle approach, goal sets, routing around occupied hexes with ally pass-through as a fallback, non-stacking steps, and reachable enemy alternatives |
 | [`knowledge.go`](../../backend/internal/game/knowledge.go) | Ruleset knowledge validation and defensive copying |
-| [`visibility.go`](../../backend/internal/game/visibility.go) | Faction perspectives and fog of war; a faction view carries only its own `FactionState` (gold, upgrades, production totals) |
+| [`construction.go`](../../backend/internal/game/construction.go) | Dynamic legal terrain, friendly building ranges, and minimum two-hex building separation |
+| [`training.go`](../../backend/internal/game/training.go) | Per-building FIFO timers, blocked exits and deterministic one-at-a-time deployment |
+| [`visibility.go`](../../backend/internal/game/visibility.go) | Full battlefield projection; a faction view carries only its own `FactionState` (gold, upgrades, aggregate production totals) |
 | [`clone.go`](../../backend/internal/game/clone.go) | Defensive copying of state, scenarios, results, and plans |
 | [`map.go`](../../backend/internal/game/map.go) | Hex-map validation, coordinates, traversal, and visibility helpers |
 | [`rules.go`](../../backend/internal/game/rules.go) | Ruleset and legacy blueprint validation |
@@ -410,7 +412,7 @@ both the handler and registry to the service; policy reads do not depend on HTTP
 | `game.Scenario` | `internal/game/types.go` | Complete immutable input to a battle attempt |
 | `game.State` | `internal/game/types.go` | Current authoritative simulation snapshot |
 | `game.Transition` | `internal/game/types.go` | One tick's state, events, and optional result |
-| `game.View` | `internal/game/types.go` | Faction-projected fog-of-war state |
+| `game.View` | `internal/game/types.go` | Full battlefield state with faction-private economic totals |
 | `controller.PlanProposal` | `game/controller/types.go` | Scripted/model strategy and production input |
 | `ai.DecisionContext` | `internal/ai/types.go` | Frozen bounded model observation |
 | `ai.DecisionRecord` | `internal/ai/types.go` | Durable decision state and provenance |
@@ -465,7 +467,7 @@ cancellation without application DDL, then verifies successful migration after r
 | [`.env.example`](../../.env.example) | Shared dev/production application settings schema |
 | [`backend/gamedata/content`](../../backend/gamedata/content) | Versioned unit, upgrade, building and knowledge-card libraries |
 | [`backend/gamedata/rulesets`](../../backend/gamedata/rulesets) | Library selections, starting gold, building limits and combat values |
-| [`backend/gamedata/scenarios`](../../backend/gamedata/scenarios) | Map layout, timing, scripted plans, fallbacks and content restrictions |
+| [`backend/gamedata/scenarios`](../../backend/gamedata/scenarios) | Map identity and geometry; shared timing/plans live in `backend/gamedata/battlefield.yaml` |
 | [`infra/deploy/base/infrastructure/configmap.yaml`](../../infra/deploy/base/infrastructure/configmap.yaml) | Cluster configuration equivalent |
 | [`infra/deploy/environments/deployment.env.example`](../../infra/deploy/environments/deployment.env.example) | Deployment environment profile template consumed by the shared resolver |
 
@@ -494,12 +496,12 @@ Where to start for each cross-cutting feature. The linked page owns its behavior
 
 | Feature | Backend | Frontend | Key tests | Behavior owner |
 | --- | --- | --- | --- | --- |
-| Agent context projection | `ai/agentview`: `agent_context.go`, `battlefield_context.go` (v4 view), `faction_groups.go`, `context_duplicates.go`, `session_context.go` | `features/battles/components/DecisionContextPanel.tsx` | `agentview` tests, including `TestBattlefieldContextExternalFixture` (below) | [Compact battlefield view](../architecture/ai-decisions.md#compact-battlefield-view) |
+| Agent context projection | `ai/agentview`: `agent_context.go`, `battlefield_context.go` (v4 view), `faction_groups.go`, `context_duplicates.go`, `compact_ids.go`, `session_context.go` | `features/battles/components/DecisionContextPanel.tsx` | `agentview` tests, including `TestBattlefieldContextExternalFixture` (below) | [Compact battlefield view](../architecture/ai-decisions.md#compact-battlefield-view) |
 | AI observability | `observability/tracing/ai.go`, `ai/runner/observability.go`, `ai/runner/codex_usage.go`, `ai/mcpserver/tool_logging.go`, `context_telemetry.go` | `AIDecisionPanel` trace links and usage | `context_transport_test.go`; `scripts/test/test-cli-agent.py` | [Langfuse operations](../operations/langfuse.md) |
 | Access and roles | `authn/cloudflare.go`, `audience.go`, `diagnostics.go`, `authorization.go`, `preview.go` | `features/auth/SessionContext.tsx`, `RolePreviewContext.ts` | `config/access_test.go`, `battle/api/player_test.go`, [`test/integration`](#end-to-end-api-integration-test) | [Security boundaries](../architecture/system-architecture.md#8-security-and-trust-boundaries) |
 | Admission and AI limits | Triggers in migrations `00011`, `00014`, `00016`; `ai/agent/policy.go`, `credentials_linux.go`; `ai/runner/process_linux.go` | — | `migrations/battle_admission_integration_test.go`, `generation/repo/cli_capacity_integration_test.go` | [Database](../architecture/database.md#admission-triggers) |
 | Managed Players | `internal/members`, `config/members.go` | `features/admin/pages/MembersPage.tsx` | `internal/members` integration tests | [Player invitations](../operations/player-invitations.md) |
-| Content catalog | `battle/catalog/library.go`, `restrictions.go`; `ai/decision/validate.go` | `ExpansionMap.test.tsx` | `game/expansion_test.go`; catalog `expansion_test.go`, `balance_test.go` | [Content libraries](content-library.md), [Frontier Siege](../game/frontier-siege.md) |
+| Content catalog | `battle/catalog/library.go`, `shared_content.go`; `ai/decision/validate.go` | `ExpansionMap.test.tsx` | `game/expansion_test.go`; catalog `expansion_test.go`, `balance_test.go` | [Content libraries](content-library.md), [Frontier Siege](../game/frontier-siege.md) |
 | Doctrine and opening purchases | `faction/service/update.go`; `game/opening.go`, `upgrades.go` | `/factions/new`, `/factions/:id/edit` editor | `game` opening and upgrade tests | [Game rules](../game/game-rules.md) |
 | Background generation | [`internal/generation`](#internalgeneration-faction-background-generation); `ai/agent/generation.go`; `ai/mcpserver/generation.go` | `features/factions/components/BackgroundGenerator.tsx`, `api/backgrounds.ts` | generation repository and MCP transport tests | [HTTP API](../architecture/api.md#faction-background-generation) |
 | Battle history | `history.go` in `battle/api`, `battle/service`, `battle/repo` | `features/battles/pages/BattleHistoryPage.tsx` | `battle/repo/history_integration_test.go` | [HTTP API](../architecture/api.md#browse-battle-history) |
@@ -563,7 +565,7 @@ its own through `TEST_DATABASE_URL`, and skips when that variable is unset. It
 uses the production Cloudflare Access verifier. A local test issuer publishes a
 signing key at `/cdn-cgi/access/certs`, and the test sends signed tokens for
 Player, Developer, Admin and CI identities. An in-process engine worker processes
-queued battles, so a scripted `ranged-skirmish-v1` battle actually runs to
+queued battles, so a scripted `castle-siege` battle actually runs to
 completion.
 
 The test covers:

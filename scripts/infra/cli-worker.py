@@ -94,18 +94,36 @@ def with_worker_secret(environment, secret):
 
 
 def managed_settings(path=MANAGED_SETTINGS):
-    """Reviewed worker settings this job owns: concurrency and the CLI profile models.
+    """Reviewed worker settings: concurrency, default models and selectable model options.
 
     agentConcurrency null means the setting must be absent: the adopted worker binary
     predates it and rejects a config that contains it. Set 1-4 once the worker supports it.
     """
     settings = json.loads(Path(path).read_text())
     concurrency, models = settings.get('agentConcurrency'), settings.get('models')
-    if (set(settings) != {'agentConcurrency', 'models'}
+    if (not {'agentConcurrency', 'models'} <= set(settings) <= {'agentConcurrency', 'models', 'modelOptions'}
             or not (concurrency is None or (type(concurrency) is int and 1 <= concurrency <= 4))
             or not isinstance(models, dict) or not models
             or not all(isinstance(k, str) and isinstance(v, str) and MODEL.fullmatch(v) for k, v in models.items())):
         raise ValueError('Managed CLI worker settings need agentConcurrency null or 1-4, and profile models')
+    options = settings.get('modelOptions', {})
+    if not isinstance(options, dict) or set(options) - set(models):
+        raise ValueError('Managed modelOptions must name managed model profiles')
+    for profile_options in options.values():
+        if not isinstance(profile_options, list) or not profile_options:
+            raise ValueError('Managed modelOptions must contain model choices')
+        seen = set()
+        for option in profile_options:
+            if not isinstance(option, dict) or not {'id'} <= set(option) <= {'id', 'reasoningEfforts', 'defaultReasoningEffort'}:
+                raise ValueError('Invalid managed model option fields')
+            model, efforts = option['id'], option.get('reasoningEfforts', [])
+            if (not isinstance(model, str) or not MODEL.fullmatch(model) or model in seen
+                    or not isinstance(efforts, list)
+                    or not all(isinstance(effort, str) and effort in {'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'} for effort in efforts)
+                    or len(set(efforts)) != len(efforts)
+                    or ('defaultReasoningEffort' in option and option['defaultReasoningEffort'] not in efforts)):
+                raise ValueError('Invalid managed model option or reasoning effort')
+            seen.add(model)
     return settings
 
 
@@ -120,8 +138,10 @@ def desired_config(current, settings):
     concurrency = settings['agentConcurrency']
     # null requires the key itself to be absent; an explicit `agentConcurrency: null` still breaks older workers.
     concurrency_matches = ('agentConcurrency' not in ai) if concurrency is None else ai.get('agentConcurrency') == concurrency
-    if concurrency_matches and all(
-            profiles[name].get('model') == model for name, model in settings['models'].items()):
+    options = settings.get('modelOptions', {})
+    if (concurrency_matches and all(
+            profiles[name].get('model') == model for name, model in settings['models'].items())
+            and all(profiles[name].get('modelOptions') == value for name, value in options.items())):
         return current
     if concurrency is None:
         ai.pop('agentConcurrency', None)
@@ -129,6 +149,8 @@ def desired_config(current, settings):
         ai['agentConcurrency'] = concurrency
     for name, model in settings['models'].items():
         profiles[name]['model'] = model
+    for name, value in options.items():
+        profiles[name]['modelOptions'] = value
     return yaml.safe_dump(config, sort_keys=False, default_flow_style=False)
 
 
@@ -524,6 +546,7 @@ class Worker:
         registered = self.config['guest']['artifacts']['battlefield-agent']['sha256']
         release = self.release_info['sha256'] if self.release_info else None
         current = binary == release
+        settings = managed_settings()
         return {
             'release_known': release is not None,
             'binary_registered': binary == registered,
@@ -532,8 +555,8 @@ class Worker:
             'binary_pending': current and registered != release,
             'drain_supported': isinstance(status, dict),
             'draining': isinstance(status, dict) and status.get('draining') is True,
-            # Older workers reject agentConcurrency, so a set value waits for the upgrade.
-            'config_needs_upgrade': managed_settings()['agentConcurrency'] is not None and not current,
+            # Older workers reject new fields; install them only with the release binary.
+            'config_needs_upgrade': (settings['agentConcurrency'] is not None or bool(settings.get('modelOptions'))) and not current,
         }
 
     def release(self):

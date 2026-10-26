@@ -141,15 +141,11 @@ func TestAttackModesValidationAndDeterminism(t *testing.T) {
 }
 
 func TestAttackOutcomeVisibilityAndReset(t *testing.T) {
-	m, aim := aimedMatch(t)
+	m, _ := aimedMatch(t)
 	m.runUnit(&m.state.Units[0], nil)
-	hidden := visibleUnit(m.state.Units[0], map[Position]bool{})
-	if hidden.AttackOutcome != "" || hidden.AttackTargetPosition != nil || hidden.AttackTargetID != "" {
-		t.Fatal("hidden impact leaked")
-	}
-	shown := visibleUnit(m.state.Units[0], map[Position]bool{aim: true})
-	if shown.AttackOutcome != "hit" {
-		t.Fatal("visible outcome missing")
+	view, err := m.View("faction-a")
+	if err != nil || view.State.Units[0].AttackOutcome != "hit" {
+		t.Fatal("open view lost attack", err)
 	}
 	m.clearUnitActions()
 	if m.state.Units[0].AttackOutcome != "" {

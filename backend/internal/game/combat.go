@@ -41,6 +41,14 @@ func (m *Match) unitTurnOrder() []int {
 }
 
 func (m *Match) runUnit(unit *Unit, tactics map[string]string) ([]Event, *string) {
+	if unit.RepairAmount > 0 {
+		return m.runEngineer(unit), nil
+	}
+	if unit.Scout {
+		if events, retreated := m.scoutRetreat(unit); retreated {
+			return events, nil
+		}
+	}
 	if unit.HealAmount > 0 {
 		return m.runHealer(unit), nil
 	}
@@ -55,6 +63,11 @@ func (m *Match) runUnit(unit *Unit, tactics map[string]string) ([]Event, *string
 		if unit.BuildingPriority {
 			return m.moveSiege(unit), nil
 		}
+		if unit.PreferredTargetClass != "" {
+			if events, found := m.huntPreferred(unit); found {
+				return events, nil
+			}
+		}
 		return m.moveUnit(unit), nil
 	}
 	return m.attackTarget(unit, target, tactics)
@@ -68,7 +81,14 @@ func (m *Match) attackTarget(unit *Unit, target *attackTarget, tactics map[strin
 	if target.unit != nil && unit.BonusAgainstClass != "" && target.unit.Class == unit.BonusAgainstClass {
 		attacker.Attack += unit.ClassDamageBonus
 	}
-	damage := m.damage(attacker, target.defense, tactics[unit.FactionID], tactics[target.factionID])
+	defense := target.defense
+	if target.unit != nil {
+		defense = max(int64(0), defense-attacker.ArmorPiercing)
+		if m.scenario.Map.TerrainAt(target.position) == TerrainForest {
+			defense += ForestDefenseBonus
+		}
+	}
+	damage := m.damage(attacker, defense, tactics[unit.FactionID], tactics[target.factionID])
 	targetPosition := target.position
 	unit.AttackOutcome = "hit"
 	unit.AttackTargetID = target.id
@@ -98,6 +118,8 @@ func (m *Match) destroyTargetEvent(attackerFactionID string, target *attackTarge
 		m.factionState(target.factionID).UnitsLost++
 		return m.event("unit_destroyed", map[string]any{"unitId": target.id, "factionId": target.factionID})
 	}
+	target.building.TrainingQueue = nil
+	target.building.TrainingBlocked = false
 	m.factionState(attackerFactionID).BuildingsDestroyed++
 	return m.event("building_destroyed", map[string]any{"buildingId": target.id, "factionId": target.factionID, "buildingType": target.kind})
 }
@@ -195,6 +217,13 @@ func (m *Match) targetAt(attacker Unit, position *Position) *attackTarget {
 }
 
 func attackTargetLess(attacker Unit, left, right *attackTarget) bool {
+	if attacker.PreferredTargetClass != "" {
+		l := left.unit != nil && left.unit.Class == attacker.PreferredTargetClass
+		r := right.unit != nil && right.unit.Class == attacker.PreferredTargetClass
+		if l != r {
+			return l
+		}
+	}
 	priority := attackTargetPriority
 	if attacker.BuildingPriority {
 		priority = siegePriority
@@ -239,7 +268,7 @@ func (m *Match) damage(attacker Unit, defense int64, attackerTactic, targetTacti
 func (m *Match) projectedPower(id string) int64 {
 	var value int64
 	for _, unit := range m.state.Units {
-		if unit.FactionID == id && unit.Health > 0 && unit.HealAmount == 0 {
+		if unit.FactionID == id && unit.Health > 0 && unit.HealAmount == 0 && unit.RepairAmount == 0 {
 			value += unit.Attack
 		}
 	}
@@ -275,6 +304,11 @@ func (m *Match) positionAttack(unit *Unit, tactics map[string]string) ([]Event, 
 	if !aimed {
 		if unit.BuildingPriority {
 			return m.moveSiege(unit), nil
+		}
+		if unit.PreferredTargetClass != "" {
+			if events, found := m.huntPreferred(unit); found {
+				return events, nil
+			}
 		}
 		return m.moveUnit(unit), nil
 	}
