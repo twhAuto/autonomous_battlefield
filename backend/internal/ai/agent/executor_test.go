@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -260,6 +261,18 @@ func TestRunJobReportsUnavailableAndRunnerFailures(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), `"error":"provider said 429 with Bearer [redacted]"`) || strings.Contains(logs.String(), "secret-value") {
 		t.Fatalf("runner error detail missing or unredacted: %s", logs.String())
+	}
+}
+
+func TestRunnerFailureLogRedactsNetworkIdentity(t *testing.T) {
+	var logs bytes.Buffer
+	refused := &net.OpError{Op: "dial", Net: "tcp", Addr: &net.TCPAddr{IP: net.ParseIP("10.0.0.5"), Port: 18084}, Err: errors.New("connect: connection refused")}
+	lookup := &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "no such host", Name: "battlefield-ai-gateway.internal"}}
+	run := jobRun{logger: slog.New(slog.NewJSONHandler(&logs, nil)), started: time.Now()}
+	run.logFailure(context.Background(), "mcp_context", "execution_error", fmt.Errorf("prefetch: %w", errors.Join(refused, lookup)))
+	if strings.Contains(logs.String(), "10.0.0.5") || strings.Contains(logs.String(), "battlefield-ai-gateway.internal") ||
+		!strings.Contains(logs.String(), "dial tcp: connect: connection refused") || !strings.Contains(logs.String(), "dial tcp: lookup failed: no such host") {
+		t.Fatalf("network identity leaked or cause lost: %s", logs.String())
 	}
 }
 

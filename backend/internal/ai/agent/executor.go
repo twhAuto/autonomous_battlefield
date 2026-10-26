@@ -25,6 +25,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/providers"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/redact"
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -235,7 +236,8 @@ type jobRun struct {
 func (run jobRun) logFailure(ctx context.Context, category, outcome string, runErr error) {
 	attributes := []any{"provider", run.profile.Provider, "runtime", run.profile.Runtime, "error_category", category, "runner_outcome", outcome, "duration_ms", time.Since(run.started).Milliseconds()}
 	if runErr != nil {
-		attributes = append(attributes, "error", runner.CLIFailureDetail(runErr.Error()))
+		// redact first: a string attribute bypasses the handler's typed-error redaction.
+		attributes = append(attributes, "error", runner.CLIFailureDetail(redact.Error(runErr)))
 	}
 	run.logger.WarnContext(ctx, "decision_runner_failed", attributes...)
 }
