@@ -58,5 +58,6 @@ function battleProductionNote(paused: boolean, settled: boolean) {
 
 function idleProductionStatus(production: NonNullable<BattleBuilding['production']>) {
   if (!production.enabled) return 'Production stopped'
+  if (production.waitingForUnitLimit) return 'Waiting · faction unit limit reached'
   return production.waitingForGold ? 'Waiting for gold · respects AI reserve' : 'Waiting to start'
 }

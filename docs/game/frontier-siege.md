@@ -18,7 +18,7 @@ use distance without line-of-sight occlusion. Every map cell and entity is visib
 Forests grant troops +3 defense after armor piercing and prohibit construction;
 gold deposits add +5 income per tick to an economy building placed on them.
 
-Each faction starts with 220 gold and only its castle, and may maintain **eight non-castle buildings**,
+Each faction starts with 220 gold and only its castle, and may maintain **twelve non-castle buildings** and **40 units** (living plus paid in training),
 including at most **two economy buildings**. Construction requires unoccupied
 buildable terrain within a living active friendly building's range. Every pair of
 buildings must be at least two hexes apart, including opposing structures.
@@ -130,8 +130,8 @@ select a compatible unit for each newly active unconfigured source and retain
 existing selections. The AI can change its choices or disable individual sources.
 Frozen pre-v7 battles retain their original batch queues.
 Scripted baselines omit currently untrainable orders before submission. Once two
-economy buildings, all five production kinds and one tower fill the eight slots,
-default construction stops; destroyed types become eligible for replacement. Explicit orders take precedence; Outposts are an
+economy buildings, all five production kinds and one tower are built, default
+construction stops, leaving free slots for explicit orders; destroyed types become eligible for replacement. Explicit orders take precedence; Outposts are an
 alternative purchase for wider expansion. Opening fallback buys combat units in
 deterministic round-robin order from the castle. Other unit types require
 their own production building first.

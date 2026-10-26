@@ -180,6 +180,12 @@ Scripted controllers and the opening fallback ignore doctrine.
 Before hashing an observation, the engine adds up to three earlier resolved
 decisions for the same battle, attempt and faction (`BuildFactionMemory`, at most
 8 KiB): their economy and unit counts, plans, ticks and accepted or fallback status.
+Each entry also carries an `outcome` read from the battle's recorded events while
+that plan was active, from its target tick to the next remembered plan or the
+current decision (`throughTick`): units trained, lost and destroyed, buildings
+constructed, lost and destroyed, and `production_skipped` counts by kind and reason.
+The battlefield is fully visible, so enemy losses are faction-visible facts. The
+engine reads only these five event types within the remembered ticks.
 Memory is part of the frozen, hashed observation; there is no mutable scratchpad,
 and attempts never read memory from earlier attempts. A plan is reused only when the
 observation hash, prompt and tool versions, and profile, provider, runtime and model
@@ -193,7 +199,9 @@ A decision context contains:
 - battle, faction, request, target-tick and version identifiers;
 - an open battlefield view with all terrain, units, buildings and training queues,
   and only the faction's own gold, upgrades and aggregate production totals;
-- current and projected economy values;
+- current and projected economy values, including `currentBuildings` of
+  `maximumBuildings` and `currentUnits` (living plus paid in training) of
+  `maximumUnits` when the ruleset sets those limits;
 - legal action kinds, unit and building definitions, construction sites and owned
   recruitment sources;
 - the currently active plan;
@@ -249,6 +257,16 @@ with explicit null fields stay inline. Unit/building catalogs use tables;
 upgrade tracks or exclusive groups can use ordered `groups` of tables, retaining
 prerequisites, incremental bonuses and catalog order without assuming zero defaults.
 
+Before table encoding, each observed unit, living or in `unitDeaths`, receives a
+context-local integer `id`, and unit-valued `attackTargetId` and `healTargetId`
+fields use that integer; string targets remain building IDs. `unitDeaths` entries
+replace `factionId` with the same `faction` index. Destroyed buildings are omitted
+from the projection; faction stats still count them. Building IDs stay complete
+because `productionOrders` name them. Numbers are assigned in faction-group order
+and never reused within one response; they are not stable across decisions. At the
+AB-173 baseline (battle `fc68915a`, tick 190) this cut `unitMap` from 15.0 to 7.9 KB
+and the projected context from 36.3 to 28.5 KB.
+
 `view.unitMap` consolidates every visible unit into one table. `faction` is a
 zero-based index into `view.state.factions`; `xy` is position `[x,y]`. All IDs,
 profiles, targets, health, movement paths and readiness remain represented.
@@ -272,7 +290,8 @@ projection, including large integers, optional fields, unknown values and order.
 
 A model or scripted controller can propose:
 
-- a short name and operator-visible rationale;
+- a short name and an operator-visible rationale of at most 600 characters, a limit
+  the decision prompt and `submit_strategy_plan` schema both state;
 - fixed-point attack and defend weights, and target-specific bonuses;
 - reserve gold and spend ordering;
 - ordered upgrade purchases, including level prerequisites when supplied by the ruleset;
@@ -288,7 +307,8 @@ rejected submissions.
 Current contexts expose `continuousProduction: true`. Plans use `productionOrders`:
 `[{"buildingId":"a:castle","unitType":"vanguard","enabled":true}]` selects a
 repeating unit; `[{"buildingId":"a:castle","enabled":false}]` stops new starts.
-At most nine unique sources can be configured per plan (castle plus eight buildings).
+At most 17 unique sources can be configured per plan, covering a castle plus the
+largest authored building limit (16).
 Opening requires an explicit array; `[]` leaves production off. Later omission or
 `[]` leaves existing settings unchanged. Every ID must be a living, active owned
 `legal.recruitmentSources` entry, and its `trains` roster must support the selected
@@ -300,7 +320,7 @@ Each building pays for one unit at training start, after income and window purch
 respecting `reserveGold`. It automatically retries if unaffordable. A blocked exit
 holds the paid unit without additional charges. Disabling or changing selection
 preserves the paid unit; the change affects subsequent purchases. State exposes
-`production` (configured, unitType, enabled, waitingForGold), `trainingQueue` (zero or one paid
+`production` (configured, unitType, enabled, waitingForGold, waitingForUnitLimit), `trainingQueue` (zero or one paid
 unit), and `trainingBlocked`. Compact agent observations retain owned production
 settings and both sides' paid training progress. Opponent `production` settings are
 redacted before freezing the context; physical entities remain visible. Spectators
@@ -322,7 +342,12 @@ Frozen contexts with continuousProduction absent/false retain `recruitmentOrders
 IDs select a compatible active building with queue space nearest the enemy castle.
 Historical contexts without authored rosters preserve their original validation.
 `legal.economySites` is the retained wire name for dynamically
-computed legal construction coordinates, not fixed pads. Execution rechecks range,
+computed legal construction coordinates, not fixed pads. It is empty when the shared
+building limit is full. Model submissions whose construction orders exceed the
+remaining `maximumBuildings - currentBuildings` slots, or the remaining economy slots,
+are rejected with `limit_reached` and a message naming the counts. Scripted default
+construction draws from the same legal sites, so it never orders at a full shared
+limit; scripted plans skip the slot-count check because the engine skips extras. Execution rechecks range,
 terrain, unit occupancy and a minimum building distance of two hexes, so conflicting
 later orders skip without charge. Empty `constructionOrders` builds nothing;
 omitting it enables default construction. Older plans may use
@@ -334,6 +359,13 @@ When a runner fails before the deadline, the engine keeps its error category in 
 fallback record instead of replacing it with `timeout`. Malformed tool calls are
 logged as `decision_tool_input_rejected` with only the request ID and missing field
 names; see [Antigravity troubleshooting](../operations/antigravity-cli.md#missing-plans).
+Each rejected submission issue is logged as `decision_validation_rejected` with its
+field, code and validator message. Every quoted (`%q`) value, the only way
+validators insert submitted text, is masked as `"…"`, text after an unbalanced quote
+is dropped, and the result is cut to 240 bytes, so submitted text such as building
+types, IDs and upgrade names is never logged. Numbers in the template (coordinates,
+counts) and the event's request ID, target tick and expected version remain. The
+model still receives the full message.
 
 | Error category | Raised by | Meaning |
 | --- | --- | --- |

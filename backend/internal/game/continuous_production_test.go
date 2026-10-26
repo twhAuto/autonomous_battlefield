@@ -222,3 +222,34 @@ func TestScriptedFallbackPreservesExplicitOffWithoutSelection(t *testing.T) {
 		t.Fatal("fallback enabled an explicitly disabled source")
 	}
 }
+
+func TestContinuousPausesFreeAtUnitLimit(t *testing.T) {
+	m := continuousMatch(t)
+	m.scenario.Ruleset.MaximumUnitCount = 1
+	plan := productionPlan("vanguard", true)
+	m.factions["faction-a"].activePlan = plan
+	m.applyBuildingProduction(plan)
+	m.state.Units = []Unit{{ID: "faction-a:vanguard:001", FactionID: "faction-a", Health: 70}}
+	b := m.castle("faction-a")
+	gold := m.factionState("faction-a").Gold
+	if len(m.runContinuousProduction()) != 0 || !b.Production.WaitingForUnitLimit || len(b.TrainingQueue) != 0 || m.factionState("faction-a").Gold != gold {
+		t.Fatal("trained or charged beyond the unit limit")
+	}
+	m.state.Units[0].Health = 0
+	if len(m.runContinuousProduction()) != 1 || b.Production.WaitingForUnitLimit {
+		t.Fatal("a freed unit slot did not resume training")
+	}
+	if m.UnitCount("faction-a") != 1 || !m.atUnitLimit("faction-a") {
+		t.Fatal("paid training must count toward the unit limit")
+	}
+}
+
+func TestBatchRecruitmentStopsAtUnitLimit(t *testing.T) {
+	m := continuousMatch(t)
+	m.scenario.Ruleset.MaximumUnitCount = 1
+	m.state.Units = []Unit{{ID: "faction-a:vanguard:001", FactionID: "faction-a", Health: 70}}
+	event, bought, stop := m.attemptRecruitment("faction-a", m.castle("faction-a"), UnitTypesByID(m.scenario.Ruleset), []string{"vanguard"}, 0)
+	if bought || !stop || event.Data["reason"] != "unit_limit" {
+		t.Fatalf("recruitment ignored the unit limit: %+v", event)
+	}
+}

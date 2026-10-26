@@ -78,7 +78,7 @@ export interface BattleUnit extends UnitCapabilities {
   attackTargetPosition?: HexPosition
 }
 export interface BattleBuilding {
-  production?: { configured?: boolean; unitType?: string; enabled: boolean; waitingForGold?: boolean }
+  production?: { configured?: boolean; unitType?: string; enabled: boolean; waitingForGold?: boolean; waitingForUnitLimit?: boolean }
   trains?: string[]
   buildRange?: number
   trainingBlocked?: boolean
@@ -183,7 +183,7 @@ export interface SavedDecisionContext {
   context: {
     factionName?: string; background?: string; doctrine?: string; opening: boolean
     ownedUpgradeIds: string[] | null
-    economy: { gold: number; projectedIncome: number; economyBuildingCost: number; economyBuildingIncome: number; currentEconomyBuildings: number; maximumEconomyBuildings: number; maximumBuildings?: number }
+    economy: { gold: number; projectedIncome: number; economyBuildingCost: number; economyBuildingIncome: number; currentEconomyBuildings: number; maximumEconomyBuildings: number; maximumBuildings?: number; currentBuildings?: number; maximumUnits?: number; currentUnits?: number }
     view: BattleView
     legal: { actionKinds: string[] | null; units: { id: string; cost: number }[] | null; economySites: HexPosition[] | null; buildings?: { id: string; cost: number }[] | null; upgrades?: { id: string; cost: number; track?: string; level?: number; requiresUpgradeId?: string; targetUnit?: string; targetClass?: string; exclusiveGroup?: string; movementBonus?: number; rangeBonus?: number; healAmountBonus?: number; healRangeBonus?: number; buildingDamageBonus?: number; attackBonus?: number; defenseBonus?: number; economyIncomeBonus?: number }[] | null; recruitmentSources?: string[] | null }
     activePlan: DecisionHistory['resolvedPlan']

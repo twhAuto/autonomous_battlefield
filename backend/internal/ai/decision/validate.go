@@ -13,7 +13,10 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
-const fieldRecruitmentOrders = "plan.recruitmentOrders"
+const (
+	fieldRecruitmentOrders  = "plan.recruitmentOrders"
+	fieldConstructionOrders = "plan.constructionOrders"
+)
 
 // ValidateSubmission checks version, target tick, and plan choices against the
 // frozen observation without mutating the decision or simulation. It returns every
@@ -40,6 +43,10 @@ func ValidateSubmission(record ai.DecisionRecord, submission ai.PlanSubmission) 
 	issues = append(issues, validateRecruitment(legal, submission.Plan)...)
 	issues = append(issues, validateTrainingSources(record.Observation, submission.Plan)...)
 	issues = append(issues, validateConstruction(legal, record.Observation.Opening, submission.Plan)...)
+	// Scripted plans may over-order; the engine skips orders beyond a limit.
+	if isModelRuntime(record.Runtime) {
+		issues = append(issues, validateBuildingLimits(record.Observation.Economy, submission.Plan)...)
+	}
 	return issues
 }
 
@@ -145,8 +152,30 @@ func validateConstruction(legal ai.LegalChoices, opening bool, plan controller.P
 	}
 	for _, order := range *plan.ConstructionOrders {
 		if opening || !buildings[order.BuildingType] || !sites[order.Position] {
-			issues = append(issues, ai.ValidationIssue{Field: "plan.constructionOrders", Code: "unsupported", Message: fmt.Sprintf("construction %q at (%d,%d) is not legal", order.BuildingType, order.Position.X, order.Position.Y)})
+			issues = append(issues, ai.ValidationIssue{Field: fieldConstructionOrders, Code: "unsupported", Message: fmt.Sprintf("construction %q at (%d,%d) is not legal", order.BuildingType, order.Position.X, order.Position.Y)})
 		}
+	}
+	return issues
+}
+
+// Older observations without current counts report zero and are never rejected here.
+func validateBuildingLimits(economy ai.EconomyContext, plan controller.PlanProposal) []ai.ValidationIssue {
+	if plan.ConstructionOrders == nil {
+		return nil
+	}
+	orders := *plan.ConstructionOrders
+	economyOrders := 0
+	for _, order := range orders {
+		if order.BuildingType == game.BuildingEconomy {
+			economyOrders++
+		}
+	}
+	var issues []ai.ValidationIssue
+	if remaining := economy.MaximumBuildings - economy.CurrentBuildings; economy.MaximumBuildings > 0 && len(orders) > remaining {
+		issues = append(issues, ai.ValidationIssue{Field: fieldConstructionOrders, Code: "limit_reached", Message: fmt.Sprintf("%d construction orders exceed the %d remaining building slots (%d of %d used); submit at most %d or use []", len(orders), max(0, remaining), economy.CurrentBuildings, economy.MaximumBuildings, max(0, remaining))})
+	}
+	if remaining := economy.MaximumEconomyBuildings - economy.CurrentEconomyBuildings; economy.MaximumEconomyBuildings > 0 && economyOrders > remaining {
+		issues = append(issues, ai.ValidationIssue{Field: fieldConstructionOrders, Code: "limit_reached", Message: fmt.Sprintf("%d economy orders exceed the %d remaining economy slots (%d of %d used)", economyOrders, max(0, remaining), economy.CurrentEconomyBuildings, economy.MaximumEconomyBuildings)})
 	}
 	return issues
 }

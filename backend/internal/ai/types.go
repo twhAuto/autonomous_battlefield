@@ -135,8 +135,12 @@ type DecisionContext struct {
 	ActivePlan           controller.PlanProposal `json:"activePlan"`
 }
 
+// Absent current counts are zero; an absent maximum is unlimited.
 type EconomyContext struct {
 	MaximumBuildings        int   `json:"maximumBuildings,omitempty"`
+	CurrentBuildings        int   `json:"currentBuildings,omitempty"`
+	MaximumUnits            int   `json:"maximumUnits,omitempty"`
+	CurrentUnits            int   `json:"currentUnits,omitempty"`
 	Gold                    int64 `json:"gold"`
 	ProjectedIncome         int64 `json:"projectedIncome"`
 	EconomyBuildingCost     int64 `json:"economyBuildingCost"`
@@ -307,4 +311,25 @@ type FactionMemoryEntry struct {
 	OwnUnits          int                     `json:"ownUnits"`
 	VisibleEnemyUnits int                     `json:"visibleEnemyUnits"`
 	Plan              controller.PlanProposal `json:"plan"`
+	Outcome           *PlanOutcome            `json:"outcome,omitempty"`
+}
+
+// PlanOutcome summarizes recorded results while a remembered plan was active,
+// from its target tick until the next remembered plan or the current decision.
+type PlanOutcome struct {
+	ThroughTick             uint64          `json:"throughTick"`
+	UnitsTrained            int             `json:"unitsTrained,omitempty"`
+	UnitsLost               int             `json:"unitsLost,omitempty"`
+	EnemyUnitsDestroyed     int             `json:"enemyUnitsDestroyed,omitempty"`
+	BuildingsConstructed    int             `json:"buildingsConstructed,omitempty"`
+	BuildingsLost           int             `json:"buildingsLost,omitempty"`
+	EnemyBuildingsDestroyed int             `json:"enemyBuildingsDestroyed,omitempty"`
+	Skipped                 []SkippedOrders `json:"skipped,omitempty"`
+}
+
+// SkippedOrders counts engine-skipped orders of one kind and reason.
+type SkippedOrders struct {
+	Kind   string `json:"kind"`
+	Reason string `json:"reason"`
+	Count  int    `json:"count"`
 }

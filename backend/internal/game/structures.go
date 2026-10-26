@@ -31,7 +31,7 @@ func constructionOrders(plan controller.PlanProposal) []controller.ConstructionO
 
 func (m *Match) buildStructureAt(factionID, kind string, site Position, reserve int64) (Building, string) {
 	if m.scenario.Ruleset.Buildings.MaximumBuildingCount > 0 {
-		count := m.livingStructureCount(factionID)
+		count := m.LivingStructureCount(factionID)
 		if count >= m.scenario.Ruleset.Buildings.MaximumBuildingCount {
 			return Building{}, "maximum_reached"
 		}
@@ -172,7 +172,12 @@ func (m *Match) assignForwardRecruitment(factionID string, plan *controller.Plan
 	}
 }
 
-func (m *Match) livingStructureCount(factionID string) int {
+// MaximumBuildingCountLimit bounds authored shared structure limits so every owned
+// source, castle included, fits in one plan's production orders.
+const MaximumBuildingCountLimit = controller.MaximumProductionOrders - 1
+
+// LivingStructureCount counts the non-castle buildings that share maximumBuildingCount.
+func (m *Match) LivingStructureCount(factionID string) int {
 	count := 0
 	for _, b := range m.state.Buildings {
 		if b.FactionID == factionID && b.Health > 0 && b.Type != BuildingCastle {

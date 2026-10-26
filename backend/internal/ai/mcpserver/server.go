@@ -106,7 +106,7 @@ type submitPlanInput struct {
 	ExpectedVersion        int64                           `json:"expectedVersion" jsonschema:"Copy context.expectedVersion exactly from get_decision_context; never guess."`
 	TargetTick             uint64                          `json:"targetTick" jsonschema:"Copy context.targetTick exactly from get_decision_context; never guess or use the observation tick."`
 	Name                   string                          `json:"name"`
-	Rationale              string                          `json:"rationale" jsonschema:"A concise 1-3 sentence explanation based on visible battlefield facts. Do not include private chain-of-thought."`
+	Rationale              string                          `json:"rationale" jsonschema:"A concise 1-3 sentence explanation based on visible battlefield facts, at most 600 characters. Do not include private chain-of-thought."`
 	ActionWeights          map[string]int64                `json:"actionWeights"`
 	TargetBonuses          map[string]int64                `json:"targetBonuses,omitempty"`
 	ReserveGold            int64                           `json:"reserveGold"`
@@ -172,7 +172,7 @@ func (s *Server) submitStrategyPlan(ctx context.Context, _ *mcp.CallToolRequest,
 		s.logger.WarnContext(ctx, "decision_submission_failed", "request_id", input.RequestID, "target_tick", input.TargetTick, "error", err)
 	} else {
 		for _, issue := range result.Errors {
-			s.logger.WarnContext(ctx, "decision_validation_rejected", "request_id", input.RequestID, "target_tick", input.TargetTick, "expected_version", input.ExpectedVersion, "field", issue.Field, "code", issue.Code)
+			s.logger.WarnContext(ctx, "decision_validation_rejected", "request_id", input.RequestID, "target_tick", input.TargetTick, "expected_version", input.ExpectedVersion, "field", issue.Field, "code", issue.Code, "message", validationLogMessage(issue.Message))
 		}
 		level := slog.LevelWarn
 		if result.Accepted {

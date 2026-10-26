@@ -158,10 +158,12 @@ type Ruleset struct {
 	Version              string          `json:"version" yaml:"version"`
 	DesignBudget         int64           `json:"designBudget,omitempty" yaml:"designBudget"`
 	StartingGold         int64           `json:"startingGold" yaml:"startingGold"`
-	Units                []UnitType      `json:"units" yaml:"units"`
-	Upgrades             []Upgrade       `json:"upgrades" yaml:"upgrades"`
-	Buildings            BuildingRules   `json:"buildings" yaml:"buildings"`
-	Combat               CombatRules     `json:"combat" yaml:"combat"`
+	// MaximumUnitCount caps living plus paid in-training units per faction; zero is unlimited.
+	MaximumUnitCount int           `json:"maximumUnitCount,omitempty" yaml:"maximumUnitCount,omitempty"`
+	Units            []UnitType    `json:"units" yaml:"units"`
+	Upgrades         []Upgrade     `json:"upgrades" yaml:"upgrades"`
+	Buildings        BuildingRules `json:"buildings" yaml:"buildings"`
+	Combat           CombatRules   `json:"combat" yaml:"combat"`
 }
 
 type UnitSelection struct {
@@ -282,6 +284,8 @@ type BuildingProduction struct {
 	UnitType       string `json:"unitType,omitempty"`
 	Enabled        bool   `json:"enabled"`
 	WaitingForGold bool   `json:"waitingForGold,omitempty"`
+	// WaitingForUnitLimit pauses new starts, without charge, while the faction is at its unit cap.
+	WaitingForUnitLimit bool `json:"waitingForUnitLimit,omitempty"`
 }
 
 type Building struct {
@@ -390,6 +394,9 @@ type DecisionSnapshot struct {
 	LegalBuildings       []BuildingType `json:"legalBuildings,omitempty"`
 	RecruitmentSources   []string       `json:"recruitmentSources,omitempty"`
 	MaximumBuildings     int            `json:"maximumBuildings,omitempty"`
+	CurrentBuildings     int            `json:"currentBuildings,omitempty"`
+	MaximumUnits         int            `json:"maximumUnits,omitempty"`
+	CurrentUnits         int            `json:"currentUnits,omitempty"`
 
 	FactionName     string                  `json:"factionName,omitempty"`
 	Background      string                  `json:"background,omitempty"`

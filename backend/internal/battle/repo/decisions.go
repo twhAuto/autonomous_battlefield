@@ -282,7 +282,40 @@ func (r *Postgres) ListFactionMemory(ctx context.Context, battleID string, attem
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return briefing.BuildFactionMemory(records, battleID, attempt, factionID, beforeTick), nil
+	events, err := r.listOutcomeEvents(ctx, battleID, attempt, records, beforeTick)
+	if err != nil {
+		return nil, err
+	}
+	return briefing.BuildFactionMemory(records, events, battleID, attempt, factionID, beforeTick), nil
+}
+
+// listOutcomeEvents reads only the outcome event types inside the remembered windows.
+// The battlefield is fully visible, so enemy losses are faction-visible facts.
+func (r *Postgres) listOutcomeEvents(ctx context.Context, battleID string, attempt int, records []ai.DecisionRecord, beforeTick uint64) ([]briefing.OutcomeEvent, error) {
+	if len(records) == 0 {
+		return nil, nil
+	}
+	from := records[0].TargetTick
+	for _, record := range records {
+		from = min(from, record.TargetTick)
+	}
+	rows, err := r.db.Query(ctx, `SELECT tick, type, COALESCE(payload->>'factionId',''), COALESCE(payload->>'kind',''), COALESCE(payload->>'reason','')
+        FROM battle_events WHERE battle_id=$1 AND attempt=$2 AND tick>=$3 AND tick<$4
+          AND type IN ('unit_recruited','unit_destroyed','building_constructed','building_destroyed','production_skipped')`,
+		battleID, attempt, from, beforeTick)
+	if err != nil {
+		return nil, fmt.Errorf("list plan outcome events: %w", err)
+	}
+	defer rows.Close()
+	var events []briefing.OutcomeEvent
+	for rows.Next() {
+		var event briefing.OutcomeEvent
+		if err := rows.Scan(&event.Tick, &event.Type, &event.FactionID, &event.Kind, &event.Reason); err != nil {
+			return nil, fmt.Errorf("scan plan outcome event: %w", err)
+		}
+		events = append(events, event)
+	}
+	return events, rows.Err()
 }
 
 func (r *Postgres) AgentEnabled(ctx context.Context) (bool, error) {

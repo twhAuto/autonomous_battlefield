@@ -44,6 +44,11 @@ Worker claim-draining alone is insufficient: it can leave queued battles behind.
 If the creation freeze or empty-queue condition cannot be established, postpone
 the release. Ordinary rolling deployment is not sufficient for this cutover.
 
+AB-173 applies the same precondition. Its engine lets jammed units pass through
+allies and enforces the frozen ruleset's unit cap; ruleset v8 raises the building
+limit to 12 and caps units at 40. A resumed older battle keeps its frozen limits
+(none for the unit cap) but moves under the new routing rules.
+
 Completed battle snapshots and event history remain readable without replay.
 An explicit future replay of old inputs uses the new engine and can produce a
 different trace. This is a release precondition, not evidence that a maintenance

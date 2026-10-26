@@ -12,6 +12,7 @@ import (
 
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/decision"
+	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 )
 
 func TestVersionedSystemPromptIsEmbedded(t *testing.T) {
@@ -128,5 +129,12 @@ func TestDecisionPromptLeavesGameRulesToKnowledge(t *testing.T) {
 	lower := strings.ReplaceAll(strings.ToLower(DecisionInstructions), "attack and heal observations", "")
 	if term := gameRuleTerms.FindString(lower); term != "" {
 		t.Fatalf("decision prompt restates ruleset behaviour (%q); put it in knowledge.mechanics", term)
+	}
+}
+
+func TestInstructionsStateTheRationaleLimit(t *testing.T) {
+	limit := fmt.Sprintf("at most %d characters", controller.MaxRationaleCharacters)
+	if !strings.Contains(DecisionInstructions, limit) {
+		t.Fatalf("decision instructions must state %q", limit)
 	}
 }

@@ -99,8 +99,13 @@ func (m *Match) startContinuousUnit(b *Building, definitions map[string]UnitType
 		return Event{}, false
 	}
 	b.Production.WaitingForGold = false
+	b.Production.WaitingForUnitLimit = false
 	castle := m.castle(b.FactionID)
 	if !b.Production.Enabled || b.Health <= 0 || b.ReadyAtTick > m.state.Tick || len(b.TrainingQueue) > 0 || castle == nil || castle.Health <= 0 {
+		return Event{}, false
+	}
+	if m.atUnitLimit(b.FactionID) {
+		b.Production.WaitingForUnitLimit = true
 		return Event{}, false
 	}
 	reserve := m.factions[b.FactionID].activePlan.ReserveGold
