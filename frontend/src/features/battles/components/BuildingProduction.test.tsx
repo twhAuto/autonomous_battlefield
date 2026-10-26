@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { expect, it } from 'vitest'
 import { ProductionChips, TrainingQueue, productionDetail } from './BuildingProduction'
 import type { BattleBuilding, BattleState } from '../api/battles'
@@ -15,6 +16,20 @@ it('shows a chip for every living training building of the faction, with no manu
   expect(chips[0]).toHaveAttribute('title', 'Castle (1, 3) · On · Vanguard · Waiting to start')
   expect(chips[0]).toHaveClass('production-chip--idle')
   expect(screen.queryByRole('button')).not.toBeInTheDocument()
+})
+
+// Keyboard activation of <summary> is browser behavior jsdom lacks; Playwright covers it.
+it('discloses full status from each chip and shares its exclusive group', async () => {
+  const user = userEvent.setup()
+  render(<ProductionChips {...props} group="g" state={{ ...state, buildings: [{ ...building, trainingQueue: [paid] }, { ...building, id: 'a:castle:2', production: { enabled: false } }] }} />)
+  const [training, stopped] = screen.getAllByRole('listitem').map((item) => item.querySelector('details')!)
+  expect(training).not.toHaveAttribute('open')
+  await user.click(training.querySelector('summary')!)
+  expect(training).toHaveAttribute('open')
+  expect(training.querySelector('.production-chip__detail')).toHaveTextContent('Vanguard · 2/4 ticks remaining')
+  await user.click(stopped.querySelector('summary')!)
+  expect(stopped).toHaveAttribute('open')
+  expect(stopped).toHaveAttribute('name', 'g')
 })
 
 it('renders nothing for a faction without training buildings', () => {

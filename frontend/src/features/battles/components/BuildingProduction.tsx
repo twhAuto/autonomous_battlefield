@@ -2,29 +2,35 @@ import type { BattleBuilding, BattleState } from '../api/battles'
 import { entityName, typeLabel } from '../presentation/entities'
 import { EntityIcon } from './EntityIcon'
 
-// Compact per-building production chips for a faction strip; full status stays in the
-// chip's tooltip and screen-reader text.
-export function ProductionChips({ state, factionId, factionName }: Readonly<{
-  state: BattleState; factionId: string; factionName: string
+// Compact per-building production chips for a faction strip. Each chip is a disclosure,
+// so the full status is available by hover, keyboard, touch and screen reader. Chips
+// sharing `group` close each other when opened.
+export function ProductionChips({ state, factionId, factionName, group }: Readonly<{
+  state: BattleState; factionId: string; factionName: string; group?: string
 }>) {
   const buildings = (state.buildings ?? []).filter((b) => b.factionId === factionId && b.health > 0 && (b.production || b.trains?.length || b.trainingQueue?.length))
   if (!buildings.length) return null
   return <ul className="production-chips" aria-label={`${factionName} production`}>
-    {buildings.map((b) => <ProductionChip key={b.id} building={b} tick={state.tick} />)}
+    {buildings.map((b) => <ProductionChip key={b.id} building={b} tick={state.tick} group={group} />)}
   </ul>
 }
 
-function ProductionChip({ building, tick }: Readonly<{ building: BattleBuilding; tick: number }>) {
+function ProductionChip({ building, tick, group }: Readonly<{ building: BattleBuilding; tick: number; group?: string }>) {
   const current = building.trainingQueue?.[0]
   const unitType = current?.unitType ?? building.production?.unitType
   const { tone, mark } = productionTone(building, tick)
   const description = `${entityName(building.id, { localFactionId: building.factionId })} (${building.position.x}, ${building.position.y}) · ${productionDetail(building, tick)}`
   return <li className={`production-chip production-chip--${tone}`} title={description}>
-    <EntityIcon type={building.type} />
-    {unitType && <><span className="production-chip__arrow" aria-hidden="true">›</span><EntityIcon type={unitType} /></>}
-    {mark && <span className="production-chip__mark" aria-hidden="true">{mark}</span>}
-    {current && <progress aria-label={`${typeLabel(current.unitType)} training progress`} max={current.trainingTicks} value={current.trainingTicks - current.remainingTicks} />}
-    <span className="visually-hidden">{description}</span>
+    <details name={group}>
+      <summary>
+        <EntityIcon type={building.type} />
+        {unitType && <><span className="production-chip__arrow" aria-hidden="true">›</span><EntityIcon type={unitType} /></>}
+        {mark && <span className="production-chip__mark" aria-hidden="true">{mark}</span>}
+        {current && <progress aria-label={`${typeLabel(current.unitType)} training progress`} max={current.trainingTicks} value={current.trainingTicks - current.remainingTicks} />}
+        <span className="visually-hidden">{description}</span>
+      </summary>
+      <p className="production-chip__detail" aria-hidden="true">{description}</p>
+    </details>
   </li>
 }
 

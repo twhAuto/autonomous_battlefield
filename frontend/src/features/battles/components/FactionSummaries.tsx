@@ -60,9 +60,9 @@ export function FactionSummaries({ battle, decisions, decisionMessage }: Readonl
           </dl>
         </div>
         <div className="faction-summary__operations">
-          {battle.state && <ProductionChips state={battle.state} factionId={participant.id} factionName={participant.name} />}
+          {battle.state && <ProductionChips state={battle.state} factionId={participant.id} factionName={participant.name} group={`faction-${participant.id}`} />}
           {!inspect && <p className={activityClass}>{label}</p>}
-          {inspect && <details className="faction-summary__plan">
+          {inspect && <details className="faction-summary__plan" name={`faction-${participant.id}`}>
             <summary title={`${planLabel}: ${planName}`}><span className={activityClass}>{label}</span> <span aria-hidden="true">·</span> {applied?.status === 'fallback' && <span>fallback</span>} <strong>{planName}</strong></summary>
             <textarea readOnly rows={8} aria-label={`${participant.name} plan and rationale`}
               value={`${planLabel}\n${planName}\n\nRationale\n${applied?.resolvedPlan?.rationale || 'No rationale recorded.'}`} />

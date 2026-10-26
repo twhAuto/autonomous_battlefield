@@ -188,7 +188,9 @@ timings live in the CSS and components with their tests, not in this guide.
 units and castle health from spectator state, from the full battlefield, edged in
 the same faction color as its map units (`presentation/factions.ts`). Each strip also
 carries that faction's production chips and, for inspecting viewers, a plan
-disclosure. Paused and terminal
+disclosure. Chips and the plan share one exclusive `<details name>` group per
+strip, so opening one closes the others. Failed-battle reasons in the header are
+never clamped. Paused and terminal
 battles override decision activity, and Go `null` collections are treated as empty.
 A model-controlled participant's heading also shows its model identifier and any
 reasoning effort. Player responses carry only the controller type, so players see
