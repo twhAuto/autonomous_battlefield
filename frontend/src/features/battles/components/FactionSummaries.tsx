@@ -19,6 +19,13 @@ function activity(battle: BattleRun, participant: BattleParticipant, decisions: 
   return labels[decision.status]
 }
 
+// Player responses carry only the controller type, so the model stays hidden from them.
+function modelLabel(participant: BattleParticipant) {
+  const controller = participant.controller
+  if (controller?.type !== 'model' || !controller.modelIdentifier) return ''
+  return controller.reasoningEffort ? `${controller.modelIdentifier} · ${controller.reasoningEffort}` : controller.modelIdentifier
+}
+
 export function FactionSummaries({ battle, decisions, decisionMessage }: Readonly<{
   battle: BattleRun; decisions: DecisionHistory[]; decisionMessage: string
 }>) {
@@ -30,8 +37,12 @@ export function FactionSummaries({ battle, decisions, decisionMessage }: Readonl
         && decision.targetTick <= battle.currentTick
         && (decision.status === 'accepted' || decision.status === 'fallback') && decision.resolvedPlan)
       const label = activity(battle, participant, decisions, decisionMessage)
+      const model = modelLabel(participant)
       return <article key={participant.id} className={`faction-summary${inspect ? ' faction-summary--plans' : ''}`} aria-label={participant.name}>
-        <h2 title={participant.name}>{participant.name}</h2>
+        <h2 title={model ? `${participant.name} (${model})` : participant.name}>
+          <span className="faction-summary__name">{participant.name}</span>
+          {model && <span className="faction-summary__model">{model}</span>}
+        </h2>
         <p className={`faction-summary__activity${label === 'Deciding' || label === 'Queued' ? ' faction-summary__activity--active' : ''}`}>{label}</p>
         <dl className="faction-summary__metrics">
           <div><dt>Gold</dt><dd>{status.faction?.gold ?? '—'}</dd></div>

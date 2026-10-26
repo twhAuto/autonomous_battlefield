@@ -175,6 +175,9 @@ timings live in the CSS and components with their tests, not in this guide.
 `FactionSummaries.tsx` shows each participant's decision activity, gold and living
 units from spectator state, from the full battlefield. Paused and terminal
 battles override decision activity, and Go `null` collections are treated as empty.
+A model-controlled participant's heading also shows its model identifier and any
+reasoning effort. Player responses carry only the controller type, so players see
+the faction name alone.
 
 ## Entity presentation
 

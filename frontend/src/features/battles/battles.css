@@ -208,7 +208,9 @@ main.main-content--battle { --battle-sidebar-width: 340px; --battle-column-gap: 
 .battle-toolbar .battle-controls { margin: auto 0 0; padding: 0; border: 0; }
 .faction-summaries { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); grid-auto-rows: 1fr; align-items: stretch; gap: 8px; min-width: 0; border: 0; }
 .faction-summary { display: flex; flex-direction: column; min-width: 0; padding: 14px 12px; background: #151a14; border: 1px solid var(--line); }
-.faction-summary h2 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d8ded2; font-size: 14px; font-weight: 500; }
+.faction-summary h2 { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin: 0; white-space: nowrap; color: #d8ded2; font-size: 14px; font-weight: 500; }
+.faction-summary__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.faction-summary__model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #aeb6a9; font: 11px/1.4 'DM Mono', monospace; }
 .faction-summary__activity { margin: 6px 0 12px; color: #aeb6a9; font: 12px/1.4 'DM Mono', monospace; }
 .faction-summary__activity--active { color: #ffcf70; }
 .faction-summary__metrics { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0; font: 12px/1.4 'DM Mono', monospace; }
