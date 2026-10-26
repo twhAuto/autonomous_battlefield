@@ -105,7 +105,12 @@ func (r CLIRunner) Run(ctx context.Context, session ai.DecisionSession) (result 
 	}
 	if err != nil {
 		result.Accepted = false
-		result.ErrorCategory = "cli"
+		if result.ErrorCategory != ErrorCategoryProviderRateLimited {
+			result.ErrorCategory = "cli"
+		}
+		if runErr != nil {
+			return result, fmt.Errorf("%w: %w", err, runErr)
+		}
 		return result, err
 	}
 	return result, runErr

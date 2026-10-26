@@ -251,6 +251,12 @@ tests cover allowlists, retry identity, terminal timing and missing history.
 across backend configuration, the application ConfigMap, VM configuration,
 managed settings and the generated host-agent configuration.
 
+[`cli_failure.go`](../../backend/internal/ai/runner/cli_failure.go) classifies the
+Codex and Claude CLIs' terminal error messages: rate and usage limits become
+`provider_rate_limited`, other errors stay `cli`. `CLIFailureDetail` bounds and
+redacts the message that the worker logs as the `error` field of
+`decision_runner_failed`.
+
 CLI context prefetch is implemented in `internal/ai/runner/cli.go` and covered by
 `internal/ai/runner/prefetch_test.go`. CLI battle sessions use host-fetched inline
 context unless `ModelProfile.PrefetchContext` is explicitly false

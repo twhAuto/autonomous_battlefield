@@ -318,6 +318,7 @@ cancellation or two-player behavior; test those separately before wider access.
 | `invalid Host header "192.168.234.1:18084"` | Verify Caddy owns that listener, kubectl owns 127.0.0.1:28084 (or the configured bridge port), and the Host rewrite is installed. |
 | Plain reply works, code-mode host missing | Install the matching helper beside Codex; a no-tools reply does not test MCP. |
 | `plan_not_submitted` | It means no accepted plan, not a specific root cause. Check MCP tool rejection logs and private CLI diagnostics. |
+| `provider_rate_limited` or `cli` failures within seconds | Read the `error` field of the worker's `decision_runner_failed` log: it holds the CLI's own message, one line of at most 240 characters with bearer credentials redacted. A rate or usage limit is a subscription allowance, often per model; choose another model until it resets. |
 | Profile On but unavailable | Check deployed availability/isolation flags, worker connectivity and role policy; editing `.env` alone does not deploy it. |
 | Jenkins localhost 18084 timeout | Preserve the narrow firewall loopback exception; do not flush firewall rules. |
 | cAdvisor IP SAN failure | Separate Kubernetes serving-certificate issue; inspect the live kubelet cert and trusted CA. Do not disable TLS verification or approve an uninspected CSR. |

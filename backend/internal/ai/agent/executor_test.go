@@ -245,7 +245,9 @@ func TestRunJobReportsUnavailableAndRunnerFailures(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil
 	})}
 	profiles := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
-	worker := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", Profiles: profiles, DecisionTimeout: time.Second, Client: client, Logger: slog.New(slog.NewJSONHandler(&logs, nil)), RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) { return fakeRunner{err: errors.New("provider")}, nil }}
+	worker := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", Profiles: profiles, DecisionTimeout: time.Second, Client: client, Logger: slog.New(slog.NewJSONHandler(&logs, nil)), RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
+		return fakeRunner{err: errors.New("provider said 429\nwith Bearer secret-value")}, nil
+	}}
 	worker.runJob(context.Background(), job{CapabilityToken: "server-issued-capability", RequestID: "request", ProfileID: "missing"})
 	worker.runJob(context.Background(), job{CapabilityToken: "server-issued-capability", RequestID: "request", ProfileID: "profile"})
 	worker.RunnerFactory = func(ai.ModelProfile) (ai.DecisionRunner, error) { return nil, errors.New("factory") }
@@ -255,6 +257,9 @@ func TestRunJobReportsUnavailableAndRunnerFailures(t *testing.T) {
 	}
 	if reportedOutcome != "execution_error" || !strings.Contains(logs.String(), `"msg":"decision_runner_failed"`) || !strings.Contains(logs.String(), `"runner_outcome":"execution_error"`) {
 		t.Fatalf("outcome=%q logs=%s", reportedOutcome, logs.String())
+	}
+	if !strings.Contains(logs.String(), `"error":"provider said 429 with Bearer [redacted]"`) || strings.Contains(logs.String(), "secret-value") {
+		t.Fatalf("runner error detail missing or unredacted: %s", logs.String())
 	}
 }
 
