@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -26,6 +27,27 @@ func TestCodexUsageEvents(t *testing.T) {
 	result, err = codexResult([]byte(`{"type":"turn.completed","usage":{"input_tokens":0,"output_tokens":0}}`))
 	if err != nil || !result.Usage.TokensReported {
 		t.Fatal("reported zero lost")
+	}
+}
+
+func TestCodexFailureMessagesAreClassified(t *testing.T) {
+	for _, tc := range []struct{ output, category, detail string }{
+		{"{\"type\":\"error\",\"message\":\"exceeded retry limit, last status: 429 Too Many Requests\"}\n{\"type\":\"turn.failed\",\"error\":{\"message\":\"exceeded retry limit, last status: 429 Too Many Requests\"}}", ErrorCategoryProviderRateLimited, "429 Too Many Requests"},
+		{`{"type":"error","message":"You've hit your usage limit."}`, ErrorCategoryProviderRateLimited, "usage limit"},
+		{`{"type":"turn.failed","error":{"message":"stream disconnected before completion"}}`, "cli", "Codex failed: stream disconnected before completion"},
+		{`{"type":"turn.failed"}`, "cli", "no successful terminal turn"},
+	} {
+		result, err := codexResult([]byte(tc.output))
+		if err == nil || result.Accepted || result.ErrorCategory != tc.category || !strings.Contains(err.Error(), tc.detail) {
+			t.Fatalf("output=%s result=%+v err=%v", tc.output, result, err)
+		}
+	}
+}
+
+func TestCLIFailureDetailIsBoundedAndRedacted(t *testing.T) {
+	detail := CLIFailureDetail("first line\n  Authorization: bearer abc.def\t" + strings.Repeat("x", 400))
+	if strings.Contains(detail, "abc.def") || strings.ContainsAny(detail, "\n\t") || !strings.HasPrefix(detail, "first line Authorization: Bearer [redacted] ") || len([]rune(detail)) != cliFailureDetailRunes+1 {
+		t.Fatalf("detail=%q", detail)
 	}
 }
 

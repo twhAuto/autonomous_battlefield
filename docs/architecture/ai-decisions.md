@@ -373,6 +373,7 @@ model still receives the full message.
 | `mcp_connect`, `mcp_discovery`, `mcp_tool`, `mcp_context` | API/CLI runner | MCP session, tool-list, tool-call, or CLI context-prefetch failure |
 | `unauthorized_tool`, `no_progress`, `step_limit` | API runner | Model requested a tool outside the session set, returned no tool call, or exceeded the profile's step limit |
 | `cli`, `cli_permission`, `cli_isolation`, `cli_provider` | CLI runner | Non-success CLI result, denied tool action, sandbox setup failure, or unsupported CLI provider |
+| `provider_rate_limited` | CLI runner | The Codex or Claude CLI's terminal error reports HTTP 429, too many requests, or a rate or usage limit; the subscription allowance is exhausted, not the CLI |
 | `validation_limit` | Decision service | Third rejected API/CLI submission for the same request |
 | `plan_not_submitted` | Agent worker | Runner reported success but MCP holds no accepted plan |
 | `profile_unavailable`, `capability`, `provider_unavailable` | Agent worker | Claimed profile is not executable locally, the claim carried no capability, or no runner could be built for the profile |

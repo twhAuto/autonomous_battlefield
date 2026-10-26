@@ -25,6 +25,7 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/profile"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/providers"
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai/runner"
+	"github.com/twh09/autonomous_battlefield/backend/internal/observability/redact"
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/tracing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -230,6 +231,17 @@ type jobRun struct {
 	profile   ai.ModelProfile
 }
 
+// logFailure includes a bounded, credential-redacted error detail so operators can
+// tell provider limits and CLI errors apart without the CLI's full output.
+func (run jobRun) logFailure(ctx context.Context, category, outcome string, runErr error) {
+	attributes := []any{"provider", run.profile.Provider, "runtime", run.profile.Runtime, "error_category", category, "runner_outcome", outcome, "duration_ms", time.Since(run.started).Milliseconds()}
+	if runErr != nil {
+		// redact first: a string attribute bypasses the handler's typed-error redaction.
+		attributes = append(attributes, "error", runner.CLIFailureDetail(redact.Error(runErr)))
+	}
+	run.logger.WarnContext(ctx, "decision_runner_failed", attributes...)
+}
+
 func (e *Executor) claim(ctx context.Context, profileIDs []string) (job, bool, error) {
 	payload, _ := json.Marshal(map[string]any{
 		"selectionVersion": 1, "workerId": e.WorkerID, "leaseSeconds": int(e.DecisionTimeout.Seconds()) + 5,
@@ -349,7 +361,7 @@ func (e *Executor) finishJob(parent, runContext context.Context, run jobRun, res
 			result.ProviderData = map[string]any{}
 		}
 		result.ProviderData["runnerOutcome"] = outcome
-		run.logger.WarnContext(parent, "decision_runner_failed", "provider", run.profile.Provider, "runtime", run.profile.Runtime, "error_category", category, "runner_outcome", outcome, "duration_ms", time.Since(run.started).Milliseconds())
+		run.logFailure(parent, category, outcome, runErr)
 		if reportErr := e.fail(parent, run.requestID, category, result); reportErr != nil {
 			run.logger.ErrorContext(parent, "decision_failure_report_failed", "error", reportErr)
 		}

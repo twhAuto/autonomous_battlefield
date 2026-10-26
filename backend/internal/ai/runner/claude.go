@@ -22,6 +22,7 @@ type claudeEvent struct {
 	Type    string            `json:"type"`
 	Subtype string            `json:"subtype"`
 	IsError bool              `json:"is_error"`
+	Result  string            `json:"result"`
 	Denials []json.RawMessage `json:"permission_denials"`
 	Usage   claudeUsage       `json:"usage"`
 }
@@ -61,6 +62,12 @@ func claudeResult(output []byte) (ai.DecisionResult, error) {
 	if len(event.Denials) > 0 {
 		result.ErrorCategory = "cli_permission"
 		return result, fmt.Errorf("Claude denied a required tool action")
+	}
+	// An error result's text is the CLI's error message, never the model's answer.
+	if event.IsError && event.Result != "" {
+		var err error
+		result.ErrorCategory, err = cliFailure("Claude", event.Result)
+		return result, err
 	}
 	if event.IsError || event.Subtype != "success" {
 		result.ErrorCategory = "cli"

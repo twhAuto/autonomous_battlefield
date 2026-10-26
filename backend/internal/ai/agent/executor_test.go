@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -245,7 +246,9 @@ func TestRunJobReportsUnavailableAndRunnerFailures(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil
 	})}
 	profiles := profile.NewRegistry("cluster", []ai.ModelProfile{{ID: "profile", DisplayName: "Profile", Provider: "openai", Runtime: "api", Scope: "cluster", Enabled: true, MaxSteps: 1, MaxOutputTokens: 1}})
-	worker := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", Profiles: profiles, DecisionTimeout: time.Second, Client: client, Logger: slog.New(slog.NewJSONHandler(&logs, nil)), RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) { return fakeRunner{err: errors.New("provider")}, nil }}
+	worker := &Executor{MCPURL: "http://mcp/mcp", Secret: "secret", Profiles: profiles, DecisionTimeout: time.Second, Client: client, Logger: slog.New(slog.NewJSONHandler(&logs, nil)), RunnerFactory: func(ai.ModelProfile) (ai.DecisionRunner, error) {
+		return fakeRunner{err: errors.New("provider said 429\nwith Bearer secret-value")}, nil
+	}}
 	worker.runJob(context.Background(), job{CapabilityToken: "server-issued-capability", RequestID: "request", ProfileID: "missing"})
 	worker.runJob(context.Background(), job{CapabilityToken: "server-issued-capability", RequestID: "request", ProfileID: "profile"})
 	worker.RunnerFactory = func(ai.ModelProfile) (ai.DecisionRunner, error) { return nil, errors.New("factory") }
@@ -255,6 +258,21 @@ func TestRunJobReportsUnavailableAndRunnerFailures(t *testing.T) {
 	}
 	if reportedOutcome != "execution_error" || !strings.Contains(logs.String(), `"msg":"decision_runner_failed"`) || !strings.Contains(logs.String(), `"runner_outcome":"execution_error"`) {
 		t.Fatalf("outcome=%q logs=%s", reportedOutcome, logs.String())
+	}
+	if !strings.Contains(logs.String(), `"error":"provider said 429 with Bearer [redacted]"`) || strings.Contains(logs.String(), "secret-value") {
+		t.Fatalf("runner error detail missing or unredacted: %s", logs.String())
+	}
+}
+
+func TestRunnerFailureLogRedactsNetworkIdentity(t *testing.T) {
+	var logs bytes.Buffer
+	refused := &net.OpError{Op: "dial", Net: "tcp", Addr: &net.TCPAddr{IP: net.ParseIP("10.0.0.5"), Port: 18084}, Err: errors.New("connect: connection refused")}
+	lookup := &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "no such host", Name: "battlefield-ai-gateway.internal"}}
+	run := jobRun{logger: slog.New(slog.NewJSONHandler(&logs, nil)), started: time.Now()}
+	run.logFailure(context.Background(), "mcp_context", "execution_error", fmt.Errorf("prefetch: %w", errors.Join(refused, lookup)))
+	if strings.Contains(logs.String(), "10.0.0.5") || strings.Contains(logs.String(), "battlefield-ai-gateway.internal") ||
+		!strings.Contains(logs.String(), "dial tcp: connect: connection refused") || !strings.Contains(logs.String(), "dial tcp: lookup failed: no such host") {
+		t.Fatalf("network identity leaked or cause lost: %s", logs.String())
 	}
 }
 

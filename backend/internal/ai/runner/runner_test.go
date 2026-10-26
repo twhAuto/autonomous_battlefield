@@ -282,6 +282,29 @@ func TestAntigravityRunnerUsesIsolatedConfiguration(t *testing.T) {
 	}
 }
 
+type outputExecutor struct {
+	output string
+	err    error
+}
+
+func (e outputExecutor) Run(context.Context, string, []string, []string, string) ([]byte, error) {
+	return []byte(e.output), e.err
+}
+
+func TestCLIRunnerKeepsRateLimitCategoryAndDetailOnFailedExit(t *testing.T) {
+	exit := errors.New("exit status 1")
+	limited := `{"type":"turn.failed","error":{"message":"exceeded retry limit, last status: 429 Too Many Requests"}}`
+	result, err := (CLIRunner{Provider: "codex-cli", Executor: outputExecutor{output: limited, err: exit}}).Run(context.Background(), ai.DecisionSession{})
+	if result.Accepted || result.ErrorCategory != ErrorCategoryProviderRateLimited || !errors.Is(err, exit) || !strings.Contains(err.Error(), "429 Too Many Requests") {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+	other := `{"type":"turn.failed","error":{"message":"stream disconnected"}}`
+	result, err = (CLIRunner{Provider: "codex-cli", Executor: outputExecutor{output: other, err: exit}}).Run(context.Background(), ai.DecisionSession{})
+	if result.ErrorCategory != "cli" || !strings.Contains(err.Error(), "stream disconnected") {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+}
+
 type inspectAntigravityExecutor struct {
 	t    *testing.T
 	home string
