@@ -1,6 +1,9 @@
+import type { CSSProperties } from 'react'
 import type { BattleParticipant, BattleRun, DecisionHistory } from '../api/battles'
 import { usePermissions } from '../../auth/SessionContext'
+import { factionColors, unknownFactionColor } from '../presentation/factions'
 import { latestDecision } from './AIDecisionPanel'
+import { ProductionChips } from './BuildingProduction'
 import { playerStatus } from './PlayerStatusPanel'
 
 function activity(battle: BattleRun, participant: BattleParticipant, decisions: DecisionHistory[], message: string) {
@@ -26,10 +29,13 @@ function modelLabel(participant: BattleParticipant) {
   return controller.reasoningEffort ? `${controller.modelIdentifier} · ${controller.reasoningEffort}` : controller.modelIdentifier
 }
 
+// One compact strip per faction: identity, economy, production chips and, for viewers who
+// may inspect decisions, the applied plan with its rationale behind a disclosure.
 export function FactionSummaries({ battle, decisions, decisionMessage }: Readonly<{
   battle: BattleRun; decisions: DecisionHistory[]; decisionMessage: string
 }>) {
   const { inspect } = usePermissions()
+  const colors = factionColors(battle.participants.map((participant) => participant.id))
   return <section className="faction-summaries" aria-label="Faction summaries">
     {battle.participants.map((participant) => {
       const status = playerStatus(battle.state, participant.id)
@@ -38,18 +44,30 @@ export function FactionSummaries({ battle, decisions, decisionMessage }: Readonl
         && (decision.status === 'accepted' || decision.status === 'fallback') && decision.resolvedPlan)
       const label = activity(battle, participant, decisions, decisionMessage)
       const model = modelLabel(participant)
-      return <article key={participant.id} className={`faction-summary${inspect ? ' faction-summary--plans' : ''}`} aria-label={participant.name}>
-        <h2 title={model ? `${participant.name} (${model})` : participant.name}>
-          <span className="faction-summary__name">{participant.name}</span>
-          {model && <span className="faction-summary__model">{model}</span>}
-        </h2>
-        <p className={`faction-summary__activity${label === 'Deciding' || label === 'Queued' ? ' faction-summary__activity--active' : ''}`}>{label}</p>
-        <dl className="faction-summary__metrics">
-          <div><dt>Gold</dt><dd>{status.faction?.gold ?? '—'}</dd></div>
-          <div><dt>Units</dt><dd>{status.faction && battle.state.units ? status.units.length : '—'}</dd></div>
-        </dl>
-        {inspect && <textarea className="faction-summary__plan" readOnly rows={6} aria-label={`${participant.name} plan and rationale`}
-          value={`${applied?.status === 'fallback' ? 'Plan · fallback' : 'Plan'}\n${applied?.resolvedPlan?.name || (decisionMessage ? 'Plan unavailable' : 'No plan applied yet')}\n\nRationale\n${applied?.resolvedPlan?.rationale || 'No rationale recorded.'}`} />}
+      const planName = applied?.resolvedPlan?.name || (decisionMessage ? 'Plan unavailable' : 'No plan applied yet')
+      const planLabel = applied?.status === 'fallback' ? 'Plan · fallback' : 'Plan'
+      const activityClass = `faction-summary__activity${label === 'Deciding' || label === 'Queued' ? ' faction-summary__activity--active' : ''}`
+      return <article key={participant.id} className="faction-summary" aria-label={participant.name} style={{ '--faction-color': colors.get(participant.id) ?? unknownFactionColor } as CSSProperties}>
+        <div className="faction-summary__header">
+          <h2 title={model ? `${participant.name} (${model})` : participant.name}>
+            <span className="faction-summary__name">{participant.name}</span>
+            {model && <span className="faction-summary__model">{model}</span>}
+          </h2>
+          <dl className="faction-summary__metrics">
+            <div><dt>Gold</dt><dd>{status.faction?.gold ?? '—'}</dd></div>
+            <div><dt>Units</dt><dd>{status.faction && battle.state.units ? status.units.length : '—'}</dd></div>
+            <div><dt>Castle</dt><dd>{status.castleHealth}</dd></div>
+          </dl>
+        </div>
+        <div className="faction-summary__operations">
+          {battle.state && <ProductionChips state={battle.state} factionId={participant.id} factionName={participant.name} />}
+          {!inspect && <p className={activityClass}>{label}</p>}
+          {inspect && <details className="faction-summary__plan">
+            <summary title={`${planLabel}: ${planName}`}><span className={activityClass}>{label}</span> <span aria-hidden="true">·</span> {applied?.status === 'fallback' && <span>fallback</span>} <strong>{planName}</strong></summary>
+            <textarea readOnly rows={8} aria-label={`${participant.name} plan and rationale`}
+              value={`${planLabel}\n${planName}\n\nRationale\n${applied?.resolvedPlan?.rationale || 'No rationale recorded.'}`} />
+          </details>}
+        </div>
       </article>
     })}
   </section>

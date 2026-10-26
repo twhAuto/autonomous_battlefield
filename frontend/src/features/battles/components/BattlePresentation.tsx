@@ -6,40 +6,45 @@ import { Link, useLocation } from 'react-router-dom'
 import { BattleRun } from '../api/battles'
 import { type ConnectionState, type BattleControlState, type BattleControlAction } from '../types'
 
-export function BattleHeader({ battle, battleTitle, connection, connectionMessage, lastUpdated, retryConnection }: Readonly<{
+// Single command band: navigation, title, run metadata and connection on the left; the
+// page supplies tick progress, outcome and controls as children.
+export function BattleHeader({ battle, battleTitle, connection, connectionMessage, lastUpdated, retryConnection, children }: Readonly<{
   battle: BattleRun
   battleTitle: string
   connection: ConnectionState
   connectionMessage: string
   lastUpdated?: Date | null
   retryConnection: () => void
+  children?: ReactNode
 }>) {
   const location = useLocation()
   const candidate: unknown = location.state?.historyURL
   const historyURL = typeof candidate === 'string' && (candidate === '/battles' || candidate.startsWith('/battles?')) ? candidate : '/battles'
   return (
-    <section className="page-header battle-status-header">
-      <Link className="back-link" to={historyURL}>← BATTLE HISTORY</Link>
-      <Link className="back-link" to="/battles/new">← NEW BATTLE</Link>
-      <div className="battle-status-heading">
-        <div>
-          <div className="hero__eyebrow"><span>04</span> {['completed', 'stopped', 'failed'].includes(battle.status) ? 'Battle result' : 'Live engagement'}</div>
-          <h1>{battleTitle}</h1>
+    <section className="battle-command-bar" aria-label="Battle status">
+      <div className="battle-command-bar__title">
+        <div className="battle-command-bar__links">
+          <Link className="back-link" to={historyURL}>← BATTLE HISTORY</Link>
+          <Link className="back-link" to="/battles/new">← NEW BATTLE</Link>
         </div>
-        <ConnectionBadge state={connection} />
+        <h1>{battleTitle}</h1>
       </div>
-      {connectionMessage && (
-        <output className="connection-message">
-          <span>{connectionMessage}</span>
-          {connection === 'error' && <button className="text-button" type="button" onClick={retryConnection}>RETRY CONNECTION</button>}
-        </output>
-      )}
-      <div className="battle-meta-row">
-        <span>SCENARIO <strong>{battle.scenarioId}</strong></span>
-        <span>ATTEMPT <strong>{battle.attempt}</strong></span>
-        <span>STATUS <strong>{battle.status}</strong></span>
-        {lastUpdated && <span>UPDATED <strong><time dateTime={lastUpdated.toISOString()}>{lastUpdated.toLocaleTimeString()}</time></strong></span>}
+      <div className="battle-command-bar__meta">
+        <div className="battle-meta-row">
+          <span>SCENARIO <strong>{battle.scenarioId}</strong></span>
+          <span>ATTEMPT <strong>{battle.attempt}</strong></span>
+          <span>STATUS <strong>{battle.status}</strong></span>
+          {lastUpdated && <span>UPDATED <strong><time dateTime={lastUpdated.toISOString()}>{lastUpdated.toLocaleTimeString()}</time></strong></span>}
+          <ConnectionBadge state={connection} />
+        </div>
+        {connectionMessage && (
+          <output className="connection-message">
+            <span>{connectionMessage}</span>
+            {connection === 'error' && <button className="text-button" type="button" onClick={retryConnection}>RETRY CONNECTION</button>}
+          </output>
+        )}
       </div>
+      {children}
     </section>
   )
 }

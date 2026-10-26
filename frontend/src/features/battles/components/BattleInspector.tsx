@@ -12,25 +12,38 @@ function ProductionSchedule({ battle }: Readonly<{ battle: BattleRun }>) {
   return summary && <p className="production-schedule" aria-label="Production schedule">{summary}</p>
 }
 
+export type InspectorSize = 'normal' | 'wide' | 'hidden'
+
 const sections = ['overview', 'decisions', 'units', 'faction'] as const
 const sectionTabs = sections.map((id) => ({ id, label: id[0].toUpperCase() + id.slice(1) }))
 
-export function BattleInspector({ battle, decisions, decisionMessage, events }: Readonly<{
+export function BattleInspector({ battle, decisions, decisionMessage, events, size = 'normal', onResize }: Readonly<{
   battle: BattleRun; decisions: DecisionHistory[]; decisionMessage: string; events: ComponentProps<typeof EventConsole>
+  size?: InspectorSize; onResize?: (size: InspectorSize) => void
 }>) {
   const [selected, setSelected] = useState('system')
   const [section, setSection] = useState('overview')
   const [cache] = useState(() => new Map<string, SavedDecisionContext>())
   const entities = entityIndex(battle.state)
   const names = new Map(battle.participants.map((player) => [player.id, player.name]))
-  return <aside className="battle-inspector" aria-label="Battle inspector">
-    <label className="inspector-selector" htmlFor="inspector-selection">
-      <span>Inspect</span>
-      <select id="inspector-selection" aria-controls="inspector-content" value={selected} onChange={(event) => setSelected(event.target.value)}>
-        <option value="system">System</option>
-        {battle.participants.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
-      </select>
-    </label>
+  return <aside className="battle-inspector" aria-label="Battle inspector" hidden={size === 'hidden'}>
+    <div className="inspector-toolbar">
+      <label className="inspector-selector" htmlFor="inspector-selection">
+        <span>Inspect</span>
+        <select id="inspector-selection" aria-controls="inspector-content" value={selected} onChange={(event) => setSelected(event.target.value)}>
+          <option value="system">System</option>
+          {battle.participants.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
+        </select>
+      </label>
+      {onResize && <div className="inspector-size-controls">
+        <button type="button" aria-pressed={size === 'wide'} title={size === 'wide' ? 'Narrow inspector' : 'Widen inspector'} onClick={() => onResize(size === 'wide' ? 'normal' : 'wide')}>
+          <svg className="inspector-size-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d={size === 'wide' ? 'M3 12H10M7 8 10 12 7 16M21 12H14M17 8 14 12 17 16' : 'M3 12H10M6 8 3 12 6 16M21 12H14M18 8 21 12 18 16'} /></svg><span className="visually-hidden">Widen inspector</span>
+        </button>
+        <button type="button" title="Hide inspector" onClick={() => onResize('hidden')}>
+          <svg className="inspector-size-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 6 14 12 8 18M19 5V19" /></svg><span className="visually-hidden">Hide inspector</span>
+        </button>
+      </div>}
+    </div>
     {battle.participants.map((player) => {
       const status = playerStatus(battle.state, player.id)
       return <div key={player.id} hidden={selected !== player.id} className="inspector-player-heading">

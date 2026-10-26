@@ -1,15 +1,14 @@
 // Composes battle polling hooks, map and decision panels, event
 // history, and pause/resume/stop controls.
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePermissions } from '../../auth/SessionContext'
 import { useParams } from 'react-router-dom'
 import { BattleApiError, pauseBattle, resumeBattle, stopBattle } from '../api/battles'
-import { BuildingProductionPanel } from '../components/BuildingProductionPanel'
 import { HexBattleMap } from '../components/HexBattleMap'
 import { type BattleControlState, type BattleControlAction } from '../types'
 import { useDecisionHistory } from '../hooks/useDecisionHistory'
-import { BattleInspector } from '../components/BattleInspector'
+import { BattleInspector, type InspectorSize } from '../components/BattleInspector'
 import { FactionSummaries } from '../components/FactionSummaries'
 import { BattleHeader, BattleStatistics, battleTitleFor, Outcome, BattleControls, BattleState } from '../components/BattlePresentation'
 import { useBattleStatus } from '../hooks/useBattleStatus'
@@ -48,6 +47,16 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
   const { decisions, decisionMessage } = useDecisionHistory(id, battle, permissions.inspect)
   const [controlState, setControlState] = useState<BattleControlState>('idle')
   const [controlMessage, setControlMessage] = useState('')
+  const [inspectorSize, setInspectorSize] = useState<InspectorSize>('normal')
+  const inspectorRail = useRef<HTMLButtonElement>(null)
+  const previousInspectorSize = useRef(inspectorSize)
+  // Keep keyboard focus on the control that replaces the one just hidden.
+  useEffect(() => {
+    const previous = previousInspectorSize.current
+    previousInspectorSize.current = inspectorSize
+    if (inspectorSize === 'hidden') inspectorRail.current?.focus()
+    else if (previous === 'hidden') document.getElementById('inspector-selection')?.focus()
+  }, [inspectorSize])
 
   const progress = battle ? Math.min(100, Math.round((battle.currentTick / battle.requestedTicks) * 100)) : 0
   const participantNames = useMemo(
@@ -85,43 +94,44 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
     : null
   const battleTitle = battleTitleFor(battle)
   const displayView = battle.map && battle.state ? { map: battle.map, state: battle.state } : null
+  const settled = ['completed', 'stopped', 'failed'].includes(battle.status)
+
+  const showInspector = permissions.inspect
+  const layout = [
+    'battle-cockpit',
+    displayView ? '' : 'battle-cockpit--events-only',
+    showInspector ? `battle-cockpit--inspector-${inspectorSize}` : 'battle-cockpit--no-inspector',
+  ].filter(Boolean).join(' ')
 
   return (
     <>
-      <BattleHeader battle={battle} battleTitle={battleTitle} connection={connection} connectionMessage={connectionMessage} lastUpdated={lastUpdated} retryConnection={retryConnection} />
-
-      <section className="battle-toolbar">
-        <div className="battle-progress-panel">
-          <div className="section-label"><span>Tick limit used</span></div>
-          <p>Tick <strong>{battle.currentTick}</strong> of {battle.requestedTicks} maximum</p>
-          <progress className="battle-progress" aria-label="Tick limit used" max={battle.requestedTicks} value={battle.currentTick}>{progress}%</progress>
-        </div>
+      <div className={layout}>
+        <BattleHeader battle={battle} battleTitle={battleTitle} connection={connection} connectionMessage={connectionMessage} lastUpdated={lastUpdated} retryConnection={retryConnection}>
+          <div className="battle-progress-panel">
+            <p>Tick <strong>{battle.currentTick}</strong> of {battle.requestedTicks} maximum</p>
+            <progress className="battle-progress" aria-label="Tick limit used" max={battle.requestedTicks} value={battle.currentTick}>{progress}%</progress>
+          </div>
+          <aside className={`outcome-panel outcome-panel--${battle.paused ? 'paused' : battle.status}`} aria-label={settled ? 'Battle result' : 'Battle control'}>
+            <div className="outcome-panel__summary"><Outcome battle={battle} winnerName={winnerName} /></div>
+            {permissions.canManage(battle.ownerId) && <BattleControls battle={battle} state={controlState} message={controlMessage} onControl={runBattleControl} />}
+          </aside>
+        </BattleHeader>
 
         <FactionSummaries battle={battle} decisions={decisions} decisionMessage={decisionMessage} />
 
-        <aside className={`outcome-panel outcome-panel--${battle.paused ? 'paused' : battle.status}`}>
-          <span className="outcome-panel__label">{['completed', 'stopped', 'failed'].includes(battle.status) ? 'Battle result' : 'Battle control'}</span>
-          <Outcome battle={battle} winnerName={winnerName} />
-          {permissions.canManage(battle.ownerId) && <BattleControls battle={battle} state={controlState} message={controlMessage} onControl={runBattleControl} />}
-        </aside>
-      </section>
-
-      <section className={`battle-live-layout ${displayView ? '' : 'battle-live-layout--events-only'}`}>
-        <div className="battle-map-column">
-          {displayView &&
-            <HexBattleMap
-              map={displayView.map}
-              state={displayView.state}
-              factionNames={participantNames}
-            />
-          }
-          {displayView && <BuildingProductionPanel state={displayView.state} factionNames={participantNames} paused={battle.paused} settled={['completed', 'stopped', 'failed'].includes(battle.status)} />}
-        </div>
-        {permissions.inspect && <BattleInspector key={`${id}:${battle.attempt}`} battle={battle} decisions={decisions} decisionMessage={decisionMessage} events={{
+        {displayView && <div className="battle-map-column">
+          <HexBattleMap
+            map={displayView.map}
+            state={displayView.state}
+            factionNames={participantNames}
+          />
+        </div>}
+        {showInspector && inspectorSize === 'hidden' && <button ref={inspectorRail} className="inspector-rail" type="button" aria-label="Show inspector" onClick={() => setInspectorSize('normal')}><span aria-hidden="true">‹</span> INSPECTOR</button>}
+        {showInspector && <BattleInspector key={`${id}:${battle.attempt}`} battle={battle} decisions={decisions} decisionMessage={decisionMessage} size={inspectorSize} onResize={setInspectorSize} events={{
           battleAttempt: battle.attempt, selectedAttempt, setSelectedAttempt, events, participantNames,
           eventCursor, eventHasMore, eventState, eventMessage, loadEventPage,
         }} />}
-      </section>
+      </div>
 
       <BattleStatistics battle={battle} participantNames={participantNames} />
     </>

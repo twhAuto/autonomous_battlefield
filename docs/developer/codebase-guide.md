@@ -303,7 +303,7 @@ rosters, and historical starting-Barracks compatibility live in
 [`training_sources.go`](../../backend/internal/game/training_sources.go). The map renderer shows
 terrain bonuses, selected-building range and training progress.
 [`continuous_production.go`](../../backend/internal/game/continuous_production.go) validates persistent AI selections and purchases one unit at a time for enabled sources.
-[`BuildingProductionPanel.tsx`](../../frontend/src/features/battles/components/BuildingProductionPanel.tsx) shows all living sources to every viewer, including gold waits, disabled production and blocked exits; selected map details reuse its status display.
+[`BuildingProduction.tsx`](../../frontend/src/features/battles/components/BuildingProduction.tsx) renders each living source as a compact chip in its faction strip for every viewer, with gold waits, disabled production and blocked exits in the chip's tooltip and screen-reader text; selected map details reuse its status display.
 `initialization.go` copies authored castle training and attack capabilities into
 runtime state; `structures.go` runs castle and tower attacks together. The full map
 uses the main battle snapshot; the former faction-perspective polling hook is removed.

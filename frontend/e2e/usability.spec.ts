@@ -62,12 +62,19 @@ for (const [width, height] of [[15, 11], [25, 17]]) {
     await expect(page.getByText('Tick 89 of 500 maximum', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'PLAY', exact: true })).toHaveCount(0)
     const inlineMap = page.getByLabel('Map navigation')
-    const dimensions = await inlineMap.evaluate(node => {
-      const bounds = node.getBoundingClientRect()
-      const [width, height] = getComputedStyle(node).aspectRatio.split('/').map(Number)
-      return { actual: bounds.width / bounds.height, expected: width / height }
-    })
-    expect(dimensions.actual).toBeCloseTo(dimensions.expected, 2)
+    if (isMobile) {
+      const dimensions = await inlineMap.evaluate(node => {
+        const bounds = node.getBoundingClientRect()
+        const [width, height] = getComputedStyle(node).aspectRatio.split('/').map(Number)
+        return { actual: bounds.width / bounds.height, expected: width / height }
+      })
+      expect(dimensions.actual).toBeCloseTo(dimensions.expected, 2)
+    } else {
+      // Desktop fits the command center to the viewport; the map fills what is left.
+      const cockpit = (await page.locator('.battle-cockpit').boundingBox())!
+      expect(cockpit.y + cockpit.height).toBeLessThanOrEqual(page.viewportSize()!.height)
+      expect((await inlineMap.boundingBox())!.height).toBeGreaterThan(300)
+    }
     await page.getByRole('button', { name: 'Amber · Castle', exact: true }).click()
     await page.getByRole('button', { name: 'Expand map' }).click()
     const dialog = page.getByRole('dialog')
@@ -100,8 +107,9 @@ for (const [width, height] of [[15, 11], [25, 17]]) {
     await expect(page.getByLabel('Perspective')).toHaveCount(0)
     if (!isMobile) {
       const mapBounds = (await page.locator('.battle-map-column .map-panel').boundingBox())!
+      const stripBounds = (await page.getByRole('region', { name: 'Faction summaries' }).boundingBox())!
       const inspectorBounds = (await page.locator('.battle-inspector').boundingBox())!
-      expect(inspectorBounds.y).toBeCloseTo(mapBounds.y, 0)
+      expect(inspectorBounds.y).toBeCloseTo(stripBounds.y, 0)
       expect(inspectorBounds.y + inspectorBounds.height).toBeCloseTo(mapBounds.y + mapBounds.height, 0)
     }
     expect(api.writes).toEqual([])
@@ -229,10 +237,10 @@ test('players can see continuous production progress and pauses without controls
   await page.route('**/v1/auth/session', route => route.fulfill({ json: { enabled: true, authenticated: true, actor: { id: 'viewer', role: 'player' } } }))
   await page.route(`**/v1/battles/${battleId}`, route => route.fulfill({ json: battle }))
   await page.goto(`/battles/${battleId}`)
-  const panel = page.getByRole('region', { name: 'Building production', exact: true })
+  const panel = page.getByRole('list', { name: 'Amber production', exact: true })
   await expect(panel).toBeVisible()
-  await expect(panel.getByText('Finishing paid unit, then stopping')).toBeVisible()
-  await expect(panel.getByText(/Waiting for gold/)).toBeVisible()
+  await expect(panel.getByRole('listitem').first()).toHaveAttribute('title', /Finishing paid unit, then stopping/)
+  await expect(panel.getByRole('listitem').last()).toHaveAttribute('title', /Waiting for gold/)
   await expect(panel.getByRole('progressbar')).toHaveAttribute('value', '2')
   await expect(panel.getByRole('button')).toHaveCount(0)
   await panel.scrollIntoViewIfNeeded()
