@@ -222,7 +222,7 @@ type ModelOption struct {
 }
 
 type ModelProfile struct {
-	PrefetchContext                 bool          `json:"-" yaml:"prefetchContext,omitempty"`
+	PrefetchContext                 *bool         `json:"-" yaml:"prefetchContext,omitempty"`
 	ModelOptions                    []ModelOption `json:"modelOptions,omitempty" yaml:"modelOptions"`
 	ReasoningEffort                 string        `json:"-" yaml:"-"`
 	AllowedRoles                    []string      `json:"-" yaml:"allowedRoles"`
@@ -243,6 +243,12 @@ type ModelProfile struct {
 	Available                       bool          `json:"available" yaml:"-"`
 	ToolCapability                  bool          `json:"toolCapability" yaml:"-"`
 	UnavailableReason               string        `json:"unavailableReason,omitempty" yaml:"-"`
+}
+
+// PrefetchesContext reports whether CLI battle sessions receive their frozen context
+// inline. Prefetch is the default; only an explicit prefetchContext: false opts out.
+func (p ModelProfile) PrefetchesContext() bool {
+	return p.PrefetchContext == nil || *p.PrefetchContext
 }
 
 // AvailabilityFlagSet reports whether the profile's availability variable is "true",

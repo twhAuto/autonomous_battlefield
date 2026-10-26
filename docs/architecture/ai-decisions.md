@@ -505,17 +505,19 @@ provider activity and MCP work, and is not pure inference or reasoning time.
 Missing historical measurements stay unknown. A lease reclaim resets claim/context
 and completion timestamps; total wait still starts at the original request.
 
-## CLI context-prefetch experiment
+## CLI context prefetch
 
-Codex and Claude battle profiles accept the worker-only `prefetchContext: true`
-setting (default false). The worker calls `get_decision_context` with the same
+Codex and Claude battle profiles prefetch context by default; the worker-only
+`prefetchContext: false` setting restores tool-fetched context. An absent setting
+means prefetch, so existing worker configurations adopt it when the worker binary
+is upgraded. The worker calls `get_decision_context` with the same
 request capability before launching the CLI, verifies the request identity,
 version/tick and 64 KiB limit, and embeds the frozen JSON as untrusted data. The
 model is instructed to use that snapshot without fetching it again; submission
 and optional unit-detail tools retain the same capabilities and validation.
 Prefetch failure stops execution as `mcp_context`; it never launches with missing
 or mismatched context. Background-generation behavior is unchanged. Antigravity
-continues to require prefetch regardless of this option.
+always prefetches, regardless of this option.
 
 Each CLI result stores `contextDelivery` (`tool` or `prefetch`) in provider metadata,
 exposed through decision history and the timing panel; the generation span has

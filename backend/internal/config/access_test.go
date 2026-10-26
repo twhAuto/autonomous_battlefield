@@ -2,6 +2,8 @@ package config
 
 import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
+	"go.yaml.in/yaml/v3"
+	"strings"
 	"testing"
 )
 
@@ -91,12 +93,32 @@ func TestCLIProductionGateReadsAvailabilityLikeTheCatalog(t *testing.T) {
 }
 
 func TestPrefetchContextOnlyForCLIProfiles(t *testing.T) {
-	p := ai.ModelProfile{ID: "cli", Runtime: "cli", MaxSteps: 3, Model: "pinned", SupportedVersionPrefix: "1.", PrefetchContext: true}
+	enabled, disabled := true, false
+	p := ai.ModelProfile{ID: "cli", Runtime: "cli", MaxSteps: 3, Model: "pinned", SupportedVersionPrefix: "1.", PrefetchContext: &enabled}
 	if err := validateAIProfile(p, false); err != nil {
 		t.Fatal(err)
 	}
 	p.Runtime = "api"
 	if err := validateAIProfile(p, false); err == nil {
 		t.Fatal("API prefetch accepted")
+	}
+	// The CLI-only default and an explicit opt-out never make an API profile invalid.
+	for _, setting := range []*bool{nil, &disabled} {
+		p.PrefetchContext = setting
+		if err := validateAIProfile(p, false); err != nil && strings.Contains(err.Error(), "prefetchContext") {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestPrefetchContextDefaultsOnUnlessDisabled(t *testing.T) {
+	for document, want := range map[string]bool{"id: p": true, "id: p\nprefetchContext: true": true, "id: p\nprefetchContext: false": false} {
+		var profile ai.ModelProfile
+		if err := yaml.Unmarshal([]byte(document), &profile); err != nil {
+			t.Fatal(err)
+		}
+		if profile.PrefetchesContext() != want {
+			t.Fatalf("%q: prefetch=%t, want %t", document, profile.PrefetchesContext(), want)
+		}
 	}
 }

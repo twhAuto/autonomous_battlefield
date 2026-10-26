@@ -211,7 +211,7 @@ select_profiles() {
 }
 
 write_agent_config() {
-  local prefetch_context="${HOST_CLI_PREFETCH_CONTEXT:-false}"
+  local prefetch_context="${HOST_CLI_PREFETCH_CONTEXT:-true}"
   if [[ "${prefetch_context}" != true && "${prefetch_context}" != false ]]; then
     echo "HOST_CLI_PREFETCH_CONTEXT must be true or false." >&2
     return 2

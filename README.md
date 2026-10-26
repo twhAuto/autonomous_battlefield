@@ -102,8 +102,9 @@ completed timing details;
 see [model selection and latency](docs/architecture/ai-decisions.md#model-selection-and-latency)
 and the [worker rollout order](docs/operations/cli-worker.md#model-selection-rollout).
 
-For the optional CLI latency experiment, use `HOST_CLI_PREFETCH_CONTEXT=true` with
-the host agent launcher; see [context-prefetch comparison](docs/operations/cli-worker.md#context-prefetch-comparison).
+CLI workers prefetch decision context by default. To compare with tool-fetched
+context, run the host agent launcher with `HOST_CLI_PREFETCH_CONTEXT=false`; see
+[context-prefetch comparison](docs/operations/cli-worker.md#context-prefetch-comparison).
 
 ## License
 
