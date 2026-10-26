@@ -209,9 +209,10 @@ First, the [comparison harness](../developer/ai-comparisons.md#live-comparisons)
 can run matched frozen synthetic contexts without changing a cluster. Its total
 session timings include worker completion and are separate from battle timings.
 
-On the registered test cluster, start the host worker with
-`HOST_CLI_PREFETCH_CONTEXT=true ./scripts/dev/run-k8s-cli-agent.sh codex` (or
-`claude`). Use `false` or omit the variable for the baseline. It is validated as
+Prefetch is the default for Codex/Claude battle profiles on every CLI worker,
+including production. On the registered test cluster, start a tool-fetch baseline
+with `HOST_CLI_PREFETCH_CONTEXT=false ./scripts/dev/run-k8s-cli-agent.sh codex` (or
+`claude`); `true` or an omitted variable gives prefetch. It is validated as
 `true`/`false` and written to the selected Codex/Claude profiles as `prefetchContext`.
 API workers and background generation retain their existing delivery paths.
 Do not run baseline and prefetch workers against the same profile concurrently:
@@ -242,7 +243,9 @@ state, and removes repeated rules only for reviewed mechanics. Record serialized
 bytes separately from model tokens, and reported cached input separately from
 uncached input; a longer identical prefix alone does not establish a cache hit.
 API and tool-fetch CLI paths still put a request ID before the context tool result.
-Restore the baseline worker after the experiment unless choosing to keep prefetch.
-No production profile enables this option by default, and the Jenkins managed
-settings sync does not own it; production adoption needs a reviewed configuration
-change after test results.
+Restart the worker without the `false` override after a baseline comparison. A
+production worker adopts prefetch when its binary is upgraded, because its
+configuration omits the setting. To return a production profile to tool-fetched
+context, add `prefetchContext: false` to that profile in the guest
+`/etc/battlefield-agent/config.yaml` and restart the worker; the Jenkins managed
+settings sync does not own this field.

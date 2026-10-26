@@ -824,8 +824,8 @@ resolution time. Detailed traces and the Battle Traces Grafana dashboard separat
 queue/context/resolution timings and model/effort. No private reasoning content or
 additional game state is exposed. See [AI decisions](ai-decisions.md#model-selection-and-latency).
 
-CLI workers can opt Codex/Claude battle profiles into `prefetchContext` (false by
-default). The worker fetches the same capability-scoped frozen context before
+CLI workers prefetch context for Codex/Claude battle profiles unless a profile sets
+`prefetchContext: false`. The worker fetches the same capability-scoped frozen context before
 process launch and passes it inline. Gateway validation, leases and submission
 authority remain unchanged; no persistent sessions are introduced. Delivery mode
 is stored in existing decision metadata and exposed alongside timing so prefetch

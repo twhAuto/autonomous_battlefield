@@ -113,8 +113,13 @@ func TestWorkerValidationAndDefaultProvider(t *testing.T) {
 	}
 	decisionRunner, err := defaultRunner(ai.ModelProfile{Runtime: "cli", Provider: "codex-cli", Model: "gpt-5.6-luna"})
 	cliRunner, ok := decisionRunner.(runner.CLIRunner)
-	if err != nil || !ok || cliRunner.Model != "gpt-5.6-luna" {
+	if err != nil || !ok || cliRunner.Model != "gpt-5.6-luna" || !cliRunner.PrefetchContext {
 		t.Fatalf("CLI runner=%#v err=%v", decisionRunner, err)
+	}
+	optOut := false
+	decisionRunner, _ = defaultRunner(ai.ModelProfile{Runtime: "cli", Provider: "codex-cli", PrefetchContext: &optOut})
+	if decisionRunner.(runner.CLIRunner).PrefetchContext {
+		t.Fatal("explicit prefetchContext: false still prefetched")
 	}
 }
 

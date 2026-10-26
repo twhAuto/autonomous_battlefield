@@ -56,7 +56,7 @@ set_profile_flags false false false
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.count('prefetchContext: ' + value), 2)
         default = self.run_profile('codex', 'codex')
-        self.assertIn('prefetchContext: false', default.stdout)
+        self.assertIn('prefetchContext: true', default.stdout)
         invalid = self.run_profile('codex', 'codex', overrides={'HOST_CLI_PREFETCH_CONTEXT': 'yes'})
         self.assertEqual(invalid.returncode, 2)
         self.assertIn('must be true or false', invalid.stderr)

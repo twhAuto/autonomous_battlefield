@@ -251,11 +251,13 @@ tests cover allowlists, retry identity, terminal timing and missing history.
 across backend configuration, the application ConfigMap, VM configuration,
 managed settings and the generated host-agent configuration.
 
-The CLI prefetch experiment is implemented in `internal/ai/runner/cli.go` and
-covered by `internal/ai/runner/prefetch_test.go`. `ModelProfile.PrefetchContext`
-opts battle sessions into host-fetched inline context; the host dev script exposes
-`HOST_CLI_PREFETCH_CONTEXT`. Decision history and `DecisionTiming.tsx` display the
-recorded delivery mode. See [comparison procedure](../operations/cli-worker.md#context-prefetch-comparison).
+CLI context prefetch is implemented in `internal/ai/runner/cli.go` and covered by
+`internal/ai/runner/prefetch_test.go`. CLI battle sessions use host-fetched inline
+context unless `ModelProfile.PrefetchContext` is explicitly false
+(`PrefetchesContext()` applies the default); the host dev script exposes
+`HOST_CLI_PREFETCH_CONTEXT` (default `true`). Decision history and
+`DecisionTiming.tsx` display the recorded delivery mode. See [comparison
+procedure](../operations/cli-worker.md#context-prefetch-comparison).
 `cmd/aieval/comparison.go` also accepts CLI `reasoningEffort` and `prefetchContext`
 variants, recorded in comparison reports for matched offline-context experiments.
 `internal/ai/agentview/context_order.go` orders MCP JSON and partitions prefetched

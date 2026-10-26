@@ -402,7 +402,7 @@ func runnerOutcome(ctx context.Context, err error, accepted bool) string {
 
 func defaultRunner(profile ai.ModelProfile) (ai.DecisionRunner, error) {
 	if profile.Runtime == "cli" {
-		return runner.CLIRunner{Provider: profile.Provider, Model: profile.Model, ReasoningEffort: profile.ReasoningEffort, PrefetchContext: profile.PrefetchContext}, nil
+		return runner.CLIRunner{Provider: profile.Provider, Model: profile.Model, ReasoningEffort: profile.ReasoningEffort, PrefetchContext: profile.PrefetchesContext()}, nil
 	}
 	var provider ai.TurnProvider
 	switch profile.Provider {
