@@ -355,7 +355,7 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
 .replay-controls__speed select { height: 32px; padding: 0 8px; color: #dce2d5; background: #111510; border: 1px solid #454d41; font: 12px 'DM Mono', monospace; }
 .replay-controls__error { flex-basis: 100%; color: #ffb4a8; }
 .replay-controls__error button { margin-left: 8px; color: var(--lime); background: transparent; border: 1px solid rgba(216,255,104,.45); font: inherit; }
-.replay-loading { margin: 0; padding: 40px 16px; color: var(--muted); text-align: center; border: 1px solid var(--line); font: 12px 'DM Mono', monospace; letter-spacing: .12em; }
+.replay-loading { display: block; margin: 0; padding: 40px 16px; color: var(--muted); text-align: center; border: 1px solid var(--line); font: 12px 'DM Mono', monospace; letter-spacing: .12em; }
 .replay-events { max-height: 160px; overflow: auto; padding: 8px 12px; background: #151a14; border: 1px solid var(--line); border-top: 0; font-size: 13px; }
 .replay-events > .section-label { padding-bottom: 6px; }
 .replay-events ol { margin: 6px 0 0; padding: 0; list-style: none; }

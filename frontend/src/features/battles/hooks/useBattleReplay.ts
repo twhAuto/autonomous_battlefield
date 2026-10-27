@@ -62,10 +62,10 @@ export function useBattleReplay(id: string, finalTick: number): BattleReplayCont
           .sort((a, b) => distance(a) - distance(b))
           .slice(0, replayCachedSegments)
       })
-    } catch (failure) {
+    } catch (loadError) {
       if (signal.aborted) return
       setPlaying(false)
-      setError(failure instanceof BattleApiError ? failure.message : 'The battle replay could not be loaded.')
+      setError(loadError instanceof BattleApiError ? loadError.message : 'The battle replay could not be loaded.')
     } finally {
       inFlight.current.delete(target)
     }

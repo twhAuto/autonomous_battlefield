@@ -26,7 +26,7 @@ export function BattleReplay({ battle, map, decisions, decisionMessage, particip
       <ReplayControls replay={replay} finalTick={battle.currentTick} onExit={onExit} />
       {frame
         ? <HexBattleMap map={map} state={frame.state} factionNames={participantNames} />
-        : !replay.error && <p className="replay-loading" role="status">Loading replay…</p>}
+        : !replay.error && <output className="replay-loading">Loading replay…</output>}
       {frame && <ReplayEvents events={frame.events} tick={frame.tick} naming={{ factionNames: participantNames, entities: entityIndex(frame.state) }} />}
     </div>
   </>
