@@ -5,6 +5,7 @@ import { type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { BattleRun } from '../api/battles'
 import { type ConnectionState, type BattleControlState, type BattleControlAction } from '../types'
+import { TypeStatistics } from './TypeStatistics'
 
 // Single command band: navigation, title, run metadata and connection on the left; the
 // page supplies tick progress, outcome and controls as children.
@@ -70,6 +71,7 @@ export function BattleStatistics({ battle, participantNames }: Readonly<{ battle
               <Stat label="Loot collected" value={stats.goldLooted ?? 0} />
               <Stat label="Buildings built / destroyed" value={`${stats.buildingsConstructed ?? 0} / ${stats.buildingsDestroyed ?? 0}`} />
             </dl>
+            <TypeStatistics stats={stats} factionName={participantNames.get(stats.factionId) ?? stats.factionId} />
           </article>
         ))}
       </div>

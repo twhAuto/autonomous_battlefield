@@ -20,6 +20,7 @@ export function eventSummary(event: BattleEvent, naming: EntityNaming) {
   const repairAmount = typeof event.data.amount === 'number' ? `${event.data.amount} HP` : 'an unknown amount'
   const repairCost = typeof event.data.cost === 'number' ? `${event.data.cost} gold` : 'unknown cost'
   const amount = typeof event.data.amount === 'number' ? `${event.data.amount} gold` : 'gold'
+  const killer = typeof event.data.killerId === 'string' ? ` by ${label('killerId', 'an attacker')}` : ''
   switch (event.type) {
     case 'battle_created': case 'battle_queued': case 'battle_started': case 'battle_paused': case 'battle_resumed': case 'battle_stopped': case 'battle_failed': return `The battle ${event.type.slice(7)}.`
     case 'opening_completed': return 'The opening phase ended.'
@@ -36,9 +37,9 @@ export function eventSummary(event: BattleEvent, naming: EntityNaming) {
     case 'unit_queued': return `${actor} queued ${label('unitType', 'reinforcements')} for training.`
     case 'unit_recruited': return `${actor} recruited ${label('unitType', 'reinforcements')}.`
     case 'building_constructed': return `${actor} constructed ${label('buildingType', 'a building')}.`
-    case 'castle_destroyed': return `${label('castleId', 'A castle')} was destroyed.`
-    case 'unit_destroyed': case 'unit_died': return `${label('unitId', 'A unit')} was lost.`
-    case 'building_destroyed': return `${label('buildingId', 'A building')} was destroyed.`
+    case 'castle_destroyed': return `${label('castleId', 'A castle')} was destroyed${killer}.`
+    case 'unit_destroyed': case 'unit_died': return killer ? `${label('unitId', 'A unit')} was destroyed${killer}.` : `${label('unitId', 'A unit')} was lost.`
+    case 'building_destroyed': return `${label('buildingId', 'A building')} was destroyed${killer}.`
     case 'income_collected': case 'loot_collected': return `${actor} collected ${amount}${event.type === 'loot_collected' ? ' in loot' : ' in income'}.`
     case 'battle_completed': return typeof event.data.winnerFactionId === 'string' ? `${label('winnerFactionId', 'A faction')} won the battle.` : 'The battle ended.'
     default: return `${event.type.charAt(0).toUpperCase()}${event.type.slice(1).replaceAll('_', ' ')}.`

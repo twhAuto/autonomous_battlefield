@@ -79,6 +79,7 @@ func (m *Match) purchaseUpgrade(id string, upgrade Upgrade) Event {
 	state.Gold -= upgrade.Cost
 	state.GoldSpent += upgrade.Cost
 	state.OwnedUpgradeIDs = append(state.OwnedUpgradeIDs, upgrade.ID)
+	runtime.stats.upgrades = append(runtime.stats.upgrades, UpgradePurchase{UpgradeID: upgrade.ID, Tick: m.state.Tick})
 	if upgrade.TargetUnit != "" || upgrade.TargetClass != "" {
 		runtime.scopedUpgrades = append(runtime.scopedUpgrades, upgrade)
 	} else {

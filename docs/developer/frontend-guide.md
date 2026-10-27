@@ -27,6 +27,7 @@ The frontend is a React/Vite single-page application.
 | [`features/admin/pages/AdminSettingsPage.tsx`](../../frontend/src/features/admin/pages/AdminSettingsPage.tsx) | Persistent provider/profile switches, allowed roles, save/conflict states, and entry to read-only role preview |
 | [`features/battles/components/HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx) | Hex-map visualization, movement routes, tracking arrows, attack outcomes, and accessible unit animation |
 | [`features/battles/components/PlayerStatusPanel.tsx`](../../frontend/src/features/battles/components/PlayerStatusPanel.tsx) | Null-safe spectator summaries, economy/building overview, and grouped living units |
+| [`features/battles/components/TypeStatistics.tsx`](../../frontend/src/features/battles/components/TypeStatistics.tsx) | After-action unit and building tables by type and the upgrade timeline; renders nothing for older results |
 | [`features/admin/pages/MembersPage.tsx`](../../frontend/src/features/admin/pages/MembersPage.tsx) | Managed Player invitations, removal, sync retry, and game link (Admins only, when enabled) |
 | [`shared/components/Emblem.tsx`](../../frontend/src/shared/components/Emblem.tsx) | Saved faction symbol with name-derived colors |
 
@@ -128,7 +129,8 @@ faction strip per participant, then the map filling the remaining height beside 
 inspector. The map legend and selected-entity details float over the map, so
 opening them never resizes the map viewport (which would refit and lose pan and
 zoom). The inspector can be widened or hidden to a rail; focus moves to the
-replacement control. After-action statistics follow below. Narrower screens stack
+replacement control. After-action statistics follow below, with each faction's
+units and buildings by type and its upgrade timeline. Narrower screens stack
 the same regions in document order and keep the map's aspect ratio.
 
 ## Inspector and historical context

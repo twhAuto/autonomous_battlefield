@@ -58,7 +58,23 @@ export interface FactionStatistics {
   goldLooted: number
   buildingsConstructed: number
   buildingsDestroyed: number
+  /** Omitted when empty, and from results written before per-type statistics. */
+  unitTypes?: UnitTypeStatistics[]
+  buildingTypes?: BuildingTypeStatistics[]
+  upgrades?: UpgradePurchase[]
 }
+
+/** Kills and buildingsDestroyed count destroying blows; goldSpent is the price paid to queue the type. */
+export interface UnitTypeStatistics {
+  unitType: string
+  started: number; recruited: number; lost: number; kills: number; buildingsDestroyed: number
+  damageDealt: number; damageTaken: number; healthRestored: number; goldSpent: number
+}
+export interface BuildingTypeStatistics {
+  buildingType: string
+  constructed: number; lost: number; kills: number; damageDealt: number; damageTaken: number; goldSpent: number
+}
+export interface UpgradePurchase { upgradeId: string; tick: number }
 
 export interface HexPosition { x: number; y: number }
 export interface BattleMap {

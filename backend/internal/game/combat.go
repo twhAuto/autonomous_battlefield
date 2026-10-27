@@ -74,6 +74,12 @@ func (m *Match) runUnit(unit *Unit, tactics map[string]string) ([]Event, *string
 }
 
 func (m *Match) attackTarget(unit *Unit, target *attackTarget, tactics map[string]string) ([]Event, *string) {
+	return m.strike(unit, nil, target, tactics)
+}
+
+// strike resolves one attack. source is the attacking building for tower fire, whose
+// synthetic attacker unit carries the building's ID, faction and weapon.
+func (m *Match) strike(unit *Unit, source *Building, target *attackTarget, tactics map[string]string) ([]Event, *string) {
 	attacker := *unit
 	if target.building != nil {
 		attacker.Attack += unit.BuildingDamageBonus
@@ -97,31 +103,38 @@ func (m *Match) attackTarget(unit *Unit, target *attackTarget, tactics map[strin
 	target.applyDamage(actual)
 	m.factions[unit.FactionID].damageDealt += actual
 	m.factions[target.factionID].damageTaken += actual
+	m.recordStrike(unit, source, target, actual)
 	events := []Event{m.event("unit_attacked", map[string]any{"attackerId": unit.ID, "targetId": target.id, "targetType": target.kind, "damage": actual, "remainingHealth": target.health(), "attackMode": effectiveAttackMode(unit.AttackMode), "outcome": "hit", "impactPosition": targetPosition})}
 	if target.health() > 0 {
 		return events, nil
 	}
 	if target.kind == BuildingCastle {
-		events = append(events, m.event("castle_destroyed", map[string]any{"castleId": target.id, "factionId": target.factionID, "destroyedByFactionId": unit.FactionID}))
+		data := killerData(unit, source)
+		data["castleId"], data["factionId"], data["destroyedByFactionId"] = target.id, target.factionID, unit.FactionID
+		events = append(events, m.event("castle_destroyed", data))
 		winner := unit.FactionID
 		return events, &winner
 	}
-	events = append(events, m.destroyTargetEvent(unit.FactionID, target))
+	events = append(events, m.destroyTargetEvent(unit, source, target))
 	if lootEvent, ok := m.collectLoot(unit.FactionID, target); ok {
 		events = append(events, lootEvent)
 	}
 	return events, nil
 }
 
-func (m *Match) destroyTargetEvent(attackerFactionID string, target *attackTarget) Event {
+func (m *Match) destroyTargetEvent(attacker *Unit, source *Building, target *attackTarget) Event {
+	data := killerData(attacker, source)
+	data["factionId"] = target.factionID
 	if target.kind == "unit" {
 		m.factionState(target.factionID).UnitsLost++
-		return m.event("unit_destroyed", map[string]any{"unitId": target.id, "factionId": target.factionID})
+		data["unitId"], data["unitType"] = target.id, target.unit.Type
+		return m.event("unit_destroyed", data)
 	}
 	target.building.TrainingQueue = nil
 	target.building.TrainingBlocked = false
-	m.factionState(attackerFactionID).BuildingsDestroyed++
-	return m.event("building_destroyed", map[string]any{"buildingId": target.id, "factionId": target.factionID, "buildingType": target.kind})
+	m.factionState(attacker.FactionID).BuildingsDestroyed++
+	data["buildingId"], data["buildingType"] = target.id, target.kind
+	return m.event("building_destroyed", data)
 }
 
 func (m *Match) collectLoot(factionID string, target *attackTarget) (Event, bool) {

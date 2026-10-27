@@ -138,6 +138,7 @@ func (m *Match) addStartingUnits(setup FactionSetup, runtime *factionRuntime, sp
 			runtime.unitSequence++
 			unit := runtime.newUnit(definitions[selection.Type], spawns[spawnIndex], 0)
 			m.state.Units = append(m.state.Units, unit)
+			runtime.stats.unit(unit.Type).Started++
 			occupied[unit.Position] = true
 			spawnIndex++
 		}

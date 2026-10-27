@@ -374,6 +374,44 @@ type FactionStats struct {
 	GoldLooted           int64  `json:"goldLooted"`
 	BuildingsConstructed int    `json:"buildingsConstructed"`
 	BuildingsDestroyed   int    `json:"buildingsDestroyed"`
+	// Empty lists are omitted, as they are from results written before per-type
+	// statistics; legacy trace digests rely on the omission.
+	UnitTypes     []UnitTypeStats     `json:"unitTypes,omitempty"`
+	BuildingTypes []BuildingTypeStats `json:"buildingTypes,omitempty"`
+	Upgrades      []UpgradePurchase   `json:"upgrades,omitempty"`
+}
+
+// UnitTypeStats is one faction's record for one unit type. Kills and
+// BuildingsDestroyed count destroying blows; GoldSpent is the price paid to queue the
+// type, excluding engineer repair costs.
+type UnitTypeStats struct {
+	UnitType           string `json:"unitType"`
+	Started            int    `json:"started"`
+	Recruited          int    `json:"recruited"`
+	Lost               int    `json:"lost"`
+	Kills              int    `json:"kills"`
+	BuildingsDestroyed int    `json:"buildingsDestroyed"`
+	DamageDealt        int64  `json:"damageDealt"`
+	DamageTaken        int64  `json:"damageTaken"`
+	HealthRestored     int64  `json:"healthRestored"`
+	GoldSpent          int64  `json:"goldSpent"`
+}
+
+// BuildingTypeStats is one faction's record for one building type. Kills counts units
+// destroyed by the building's own attacks; towers never attack buildings.
+type BuildingTypeStats struct {
+	BuildingType string `json:"buildingType"`
+	Constructed  int    `json:"constructed"`
+	Lost         int    `json:"lost"`
+	Kills        int    `json:"kills"`
+	DamageDealt  int64  `json:"damageDealt"`
+	DamageTaken  int64  `json:"damageTaken"`
+	GoldSpent    int64  `json:"goldSpent"`
+}
+
+type UpgradePurchase struct {
+	UpgradeID string `json:"upgradeId"`
+	Tick      uint64 `json:"tick"`
 }
 
 type Result struct {

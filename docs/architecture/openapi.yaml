@@ -1529,7 +1529,67 @@ components:
         ticksRun: {type: integer}
         factions:
           type: array
-          items: {type: object, required: [factionId], additionalProperties: true, properties: {factionId: {type: string}}}
+          items: {$ref: '#/components/schemas/FactionStatistics'}
+
+    FactionStatistics:
+      description: |
+        One faction's after-action totals. `unitTypes`, `buildingTypes` and `upgrades`
+        are omitted when empty, and from results written before per-type statistics.
+        A type appears only after the faction fielded, built, lost or damaged one.
+      type: object
+      required: [factionId]
+      additionalProperties: true
+      properties:
+        factionId: {type: string}
+        unitTypes:
+          type: array
+          items: {$ref: '#/components/schemas/UnitTypeStatistics'}
+        buildingTypes:
+          type: array
+          items: {$ref: '#/components/schemas/BuildingTypeStatistics'}
+        upgrades:
+          description: Purchases in order, each at the tick it was bought.
+          type: array
+          items:
+            type: object
+            required: [upgradeId, tick]
+            properties:
+              upgradeId: {type: string}
+              tick: {type: integer}
+
+    UnitTypeStatistics:
+      description: |
+        `kills` and `buildingsDestroyed` (castle included) count destroying blows.
+        `healthRestored` is healing by support units or repairs by engineers.
+        `goldSpent` is the price paid to queue the type, excluding repair costs.
+      type: object
+      required: [unitType, started, recruited, lost, kills, buildingsDestroyed, damageDealt, damageTaken, healthRestored, goldSpent]
+      properties:
+        unitType: {type: string}
+        started: {type: integer, description: Opening or starting units.}
+        recruited: {type: integer}
+        lost: {type: integer}
+        kills: {type: integer}
+        buildingsDestroyed: {type: integer}
+        damageDealt: {type: integer}
+        damageTaken: {type: integer}
+        healthRestored: {type: integer}
+        goldSpent: {type: integer}
+
+    BuildingTypeStatistics:
+      description: |
+        `kills` counts enemy units destroyed by the building's own attacks. The castle
+        appears when it took damage; it is never constructed.
+      type: object
+      required: [buildingType, constructed, lost, kills, damageDealt, damageTaken, goldSpent]
+      properties:
+        buildingType: {type: string}
+        constructed: {type: integer}
+        lost: {type: integer}
+        kills: {type: integer}
+        damageDealt: {type: integer}
+        damageTaken: {type: integer}
+        goldSpent: {type: integer}
 
     Battle:
       description: |
@@ -1669,9 +1729,9 @@ components:
         | `unit_attacked`, `building_attacked` | `attackerId`, `targetId`, `targetType`, `damage`, `remainingHealth`, `attackMode`, `outcome: hit`, `impactPosition` |
         | `unit_attack_missed` | `attackerId`, `attackMode: position`, `outcome: miss`, `impactPosition` |
         | `unit_healed` | `factionId`, `healerId`, `targetId`, `amount` (health actually restored), `remainingHealth` |
-        | `unit_destroyed` | `unitId`, `factionId` |
-        | `building_destroyed` | `buildingId`, `factionId`, `buildingType` |
-        | `castle_destroyed` | `castleId`, `factionId`, `destroyedByFactionId` |
+        | `unit_destroyed` | `unitId`, `unitType`, `factionId`, and the destroying blow's `killerId`, `killerType` (unit or building type) and `killerFactionId`; older events carry only `unitId` and `factionId` |
+        | `building_destroyed` | `buildingId`, `factionId`, `buildingType`, `killerId`, `killerType`, `killerFactionId` |
+        | `castle_destroyed` | `castleId`, `factionId`, `destroyedByFactionId`, `killerId`, `killerType`, `killerFactionId` |
         | `loot_collected` | `factionId`, `sourceId`, `amount`, `balance` |
         | `tick_completed` | `tick` |
         | `battle_completed` | `winnerFactionId` (null for a draw), `reason` (`castle_destroyed` or `tick_limit`), `ticksRun` |

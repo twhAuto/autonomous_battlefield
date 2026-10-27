@@ -46,8 +46,9 @@ func TestLegacyInputWithOpenMapRules(t *testing.T) {
 	}
 }
 
-// withoutVisualizationMetadata clears the attack and route visualization fields added
-// after the legacy input format; gameplay fields remain part of the trace.
+// withoutVisualizationMetadata clears the attack and route visualization fields and the
+// per-type statistics added after the legacy input format; gameplay fields remain part
+// of the trace.
 func withoutVisualizationMetadata(transition *game.Transition) {
 	transition.State.UnitDeaths = nil
 	for i := range transition.State.Units {
@@ -61,6 +62,17 @@ func withoutVisualizationMetadata(transition *game.Transition) {
 		delete(event.Data, "attackMode")
 		delete(event.Data, "outcome")
 		delete(event.Data, "impactPosition")
+		for _, key := range []string{"unitType", "killerId", "killerType", "killerFactionId"} {
+			if event.Type == "unit_destroyed" || event.Type == "building_destroyed" || event.Type == "castle_destroyed" {
+				delete(event.Data, key)
+			}
+		}
+	}
+	if transition.Result != nil {
+		for i := range transition.Result.Factions {
+			faction := &transition.Result.Factions[i]
+			faction.UnitTypes, faction.BuildingTypes, faction.Upgrades = nil, nil, nil
+		}
 	}
 }
 
