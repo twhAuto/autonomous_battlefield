@@ -223,7 +223,8 @@ head and target commit; a pass for an older pair does not verify the current tre
 
 `backend/gamedata/battlefield.yaml` owns shared timing and controller plans;
 `rulesets/battlefield.yaml` references the full `content/core-v8.yaml` library.
-`scenarios/castle-siege.yaml` and `scenarios/frontier-siege.yaml` contain maps only.
+The five `scenarios/*.yaml` files contain maps only, and
+`battle/catalog/maps_test.go` checks that scripted bots finish a battle on each.
 `battle/catalog/shared_content.go` validates shared plans, while `library.go`
 resolves every library entry. Historical content lives only in catalog test fixtures.
 
