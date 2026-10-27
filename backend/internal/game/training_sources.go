@@ -168,7 +168,7 @@ func (m *Match) filterScriptedRecruitment(factionID string, plan *controller.Pla
 		if order.SourceBuildingID != "" {
 			source = m.recruitmentSource(factionID, order.SourceBuildingID)
 		}
-		if source != nil && source.ReadyAtTick <= m.state.Tick && slices.Contains(m.trainingRoster(source.Type), order.UnitType) {
+		if source != nil && source.ReadyAtTick <= m.state.Tick && slices.Contains(m.trainingRoster(source.Type), order.UnitType) && !m.unitLocked(factionID, order.UnitType) {
 			orders = append(orders, order)
 		}
 	}

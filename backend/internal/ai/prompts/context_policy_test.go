@@ -17,7 +17,7 @@ import (
 
 func currentMechanics(t *testing.T) string {
 	t.Helper()
-	data, err := gamedata.Files.ReadFile("content/core-v7.yaml")
+	data, err := gamedata.Files.ReadFile("content/core-v8.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,6 +73,7 @@ func TestContinuousPolicyKeepsUniqueRequirements(t *testing.T) {
 		"first unaffordable upgrade", "Income upgrades apply from the next income collection",
 		"Bonuses on each entry are incremental, not cumulative", "targetUnit and targetClass",
 		"Earlier orders can block later ones", "skipped without charge", "economy.maximumBuildings",
+		"locked=true is selectable only when its requiresUpgradeId is owned or ordered", "production.waitingForUpgrade",
 		"economy buildings also have their own maximum", "nextGuidanceOffset", "planRef",
 		"For entries with exclusiveGroup, choose at most one ID in that group for the battle; owned choices cannot be replaced.",
 		"Industry upgrades improve economy buildings only; owning no economy buildings means no income benefit.",

@@ -1,10 +1,12 @@
 package decision
 
 import (
+	"strings"
+	"testing"
+
 	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
-	"testing"
 )
 
 func TestContinuousFrozenValidation(t *testing.T) {
@@ -41,5 +43,25 @@ func TestContinuousRejectsLegacyPurchasesAndRequiresOpeningChoice(t *testing.T) 
 	record.Observation.ContinuousProduction = false
 	if len(ValidateSubmission(record, submission)) == 0 {
 		t.Fatal("new orders accepted in legacy mode")
+	}
+}
+
+func TestLockedUnitProductionRequiresUnlock(t *testing.T) {
+	legal := ai.LegalChoices{ActionKinds: []string{"attack"}, RecruitmentSources: []string{"a:workshop"}, Units: []game.UnitType{{ID: "cannon", RequiresUpgradeID: "gunpowder"}}, Upgrades: []game.Upgrade{{ID: "gunpowder", Cost: 1000}}}
+	view := game.View{State: game.State{Buildings: []game.Building{{ID: "a:workshop", FactionID: "a", Health: 100, Trains: []string{"cannon"}}}}}
+	record := ai.DecisionRecord{FactionID: "a", Runtime: "cli", Observation: ai.DecisionContext{ContinuousProduction: true, Legal: legal, View: view}}
+	orders := []controller.ProductionOrder{{BuildingID: "a:workshop", UnitType: "cannon", Enabled: true}}
+	submission := ai.PlanSubmission{IdempotencyKey: "once", Plan: controller.PlanProposal{Name: "guns", ProductionOrders: &orders}}
+	issues := ValidateSubmission(record, submission)
+	if len(issues) != 1 || issues[0].Code != "locked" || !strings.Contains(issues[0].Message, `"gunpowder"`) {
+		t.Fatalf("locked production accepted: %+v", issues)
+	}
+	submission.Plan.UpgradeOrders, submission.Plan.SpendOrder = []string{"gunpowder"}, []string{"upgrades"}
+	if issues := ValidateSubmission(record, submission); len(issues) != 0 {
+		t.Fatalf("ordered unlock rejected: %+v", issues)
+	}
+	submission.Plan.UpgradeOrders, record.Observation.OwnedUpgradeIDs = nil, []string{"gunpowder"}
+	if issues := ValidateSubmission(record, submission); len(issues) != 0 {
+		t.Fatalf("owned unlock rejected: %+v", issues)
 	}
 }

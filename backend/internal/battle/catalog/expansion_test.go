@@ -73,10 +73,10 @@ func TestFrontierCatalogMapAndDeterministicBattle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Map.Width != 25 || s.Map.Height != 17 || len(s.Map.EconomySites[0]) != 0 || len(s.Ruleset.Units) != 11 || len(s.Ruleset.Structures) != 7 {
+	if s.Map.Width != 25 || s.Map.Height != 17 || len(s.Map.EconomySites[0]) != 0 || len(s.Ruleset.Units) != 14 || len(s.Ruleset.Structures) != 7 {
 		t.Fatal("incomplete frontier content")
 	}
-	if s.Ruleset.ContentSource.Version != "7" {
+	if s.Ruleset.ContentSource.Version != "8" {
 		t.Fatal("incorrect content version")
 	}
 	checkFrontierRoutes(t, s.Map)
@@ -249,9 +249,9 @@ func TestSpecializedCatalogRosters(t *testing.T) {
 	rules, _ := c.Ruleset("battlefield")
 	expected := map[string][]string{
 		game.BuildingBarracks:      {"vanguard", "striker", "pikeman"},
-		game.BuildingArcheryRange:  {"ranger", "crossbowman"},
-		game.BuildingStables:       {"scout", "raider_cavalry"},
-		game.BuildingSiegeWorkshop: {"catapult", "battering_ram", "engineer"},
+		game.BuildingArcheryRange:  {"ranger", "crossbowman", "gunner"},
+		game.BuildingStables:       {"scout", "raider_cavalry", "heavy_cavalry"},
+		game.BuildingSiegeWorkshop: {"catapult", "battering_ram", "engineer", "cannon"},
 		game.BuildingInfirmary:     {"herbalist"},
 	}
 	for _, b := range rules.Structures {

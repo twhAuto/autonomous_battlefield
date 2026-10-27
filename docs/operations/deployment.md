@@ -49,6 +49,14 @@ allies and enforces the frozen ruleset's unit cap; ruleset v8 raises the buildin
 limit to 12 and caps units at 40. A resumed older battle keeps its frozen limits
 (none for the unit cap) but moves under the new routing rules.
 
+AB-177 applies the same precondition, and it also matters for rollback. Its engine
+enforces `requiresUpgradeId` unit locks from ruleset v9 (core v8). Older battles
+define no locks, so they run unchanged. An older engine drops the field, so a v9
+battle resumed by it, during a rolling deployment or after a rollback, could train
+Cannons, Gunners and Heavy Cavalry without their unlocks, and its ruleset validation
+rejects v9's four-economy-building limit. Finish or stop v9 battles before replacing
+the engine with an older image.
+
 Completed battle snapshots and event history remain readable without replay.
 An explicit future replay of old inputs uses the new engine and can produce a
 different trace. This is a release precondition, not evidence that a maintenance

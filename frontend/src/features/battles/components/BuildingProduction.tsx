@@ -41,6 +41,7 @@ function productionTone(building: BattleBuilding, tick: number): { tone: string;
   const production = building.production
   if (!production) return { tone: 'idle', mark: '–' }
   if (!production.enabled) return { tone: 'off', mark: 'off' }
+  if (production.waitingForUpgrade) return { tone: 'waiting', mark: 'lock' }
   if (production.waitingForUnitLimit) return { tone: 'waiting', mark: 'max' }
   if (production.waitingForGold) return { tone: 'waiting', mark: '$' }
   return { tone: 'idle', mark: '…' }
@@ -97,6 +98,7 @@ export function TrainingQueue({ building }: Readonly<{ building: BattleBuilding 
 
 function idleProductionStatus(production: NonNullable<BattleBuilding['production']>) {
   if (!production.enabled) return 'Production stopped'
+  if (production.waitingForUpgrade) return 'Waiting · unit locked until its upgrade is owned'
   if (production.waitingForUnitLimit) return 'Waiting · faction unit limit reached'
   return production.waitingForGold ? 'Waiting for gold · respects AI reserve' : 'Waiting to start'
 }

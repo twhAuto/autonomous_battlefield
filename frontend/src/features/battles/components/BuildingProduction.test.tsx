@@ -50,6 +50,7 @@ it('marks training progress and each waiting, blocked, stopped and inactive stat
   expect(chip({ trainingQueue: [paid] })).toEqual({ tone: 'production-chip--training', title: 'Castle (1, 3) · On · Vanguard · Vanguard · 2/4 ticks remaining', progress: '2' })
   expect(chip({ production: { enabled: true, unitType: 'vanguard', waitingForGold: true } }).title).toContain('Waiting for gold')
   expect(chip({ production: { enabled: true, unitType: 'vanguard', waitingForUnitLimit: true } })).toMatchObject({ tone: 'production-chip--waiting', title: expect.stringContaining('faction unit limit reached') })
+  expect(chip({ production: { enabled: true, unitType: 'cannon', waitingForUpgrade: true, waitingForUnitLimit: true } })).toMatchObject({ tone: 'production-chip--waiting', title: expect.stringContaining('Cannon · Waiting · unit locked until its upgrade is owned') })
   expect(chip({ trainingQueue: [{ ...paid, remainingTicks: 0 }], trainingBlocked: true })).toMatchObject({ tone: 'production-chip--blocked', title: expect.stringContaining('Ready · exit blocked') })
   expect(chip({ production: { unitType: 'striker', enabled: false }, trainingQueue: [paid] }).title).toContain('Finishing paid unit, then stopping')
   expect(chip({ production: { unitType: 'striker', enabled: true }, trainingQueue: [paid] }).title).toContain('Next: Striker')

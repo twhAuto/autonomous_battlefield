@@ -210,6 +210,9 @@ func (m *Match) attemptRecruitment(factionID string, source *Building, definitio
 	if len(priorities) == 0 {
 		return skipped("unit_not_trainable"), false, false
 	}
+	if priorities = m.unlockedUnits(factionID, priorities); len(priorities) == 0 {
+		return skipped("unit_locked"), false, false
+	}
 	if m.atUnitLimit(factionID) {
 		return skipped("unit_limit"), false, true
 	}

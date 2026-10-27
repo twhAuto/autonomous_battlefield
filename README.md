@@ -15,8 +15,8 @@ The hosted application is at [play.ordinalfrontier.com](https://play.ordinalfron
 and requires an invitation. Battles are finite and use authored maps. See
 [game rules](docs/game/game-rules.md) and the
 [Frontier Siege roster](docs/game/frontier-siege.md) for supported gameplay.
-Every map shares the full roster, three-level Arsenal/Plating/Industry upgrades
-and specialist branches. Choose Castle Siege or Frontier Siege for the layout.
+Every map shares the full roster, three-level Arsenal/Plating/Industry upgrades,
+specialist branches, and late-game units unlocked by Gunpowder and Knighthood. Choose Castle Siege or Frontier Siege for the layout.
 
 Repository paths and deployment resources use the technical name
 `autonomous-battlefield`; local development uses `battlefield.localhost`.

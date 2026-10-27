@@ -68,6 +68,7 @@ func (m *Match) applyBuildingProduction(plan controller.PlanProposal) {
 			b.Production.Configured = true
 			b.Production.Enabled = order.Enabled
 			b.Production.WaitingForGold = false
+			b.Production.WaitingForUpgrade = false
 		}
 	}
 }
@@ -100,8 +101,13 @@ func (m *Match) startContinuousUnit(b *Building, definitions map[string]UnitType
 	}
 	b.Production.WaitingForGold = false
 	b.Production.WaitingForUnitLimit = false
+	b.Production.WaitingForUpgrade = false
 	castle := m.castle(b.FactionID)
 	if !b.Production.Enabled || b.Health <= 0 || b.ReadyAtTick > m.state.Tick || len(b.TrainingQueue) > 0 || castle == nil || castle.Health <= 0 {
+		return Event{}, false
+	}
+	if m.unitLocked(b.FactionID, b.Production.UnitType) {
+		b.Production.WaitingForUpgrade = true
 		return Event{}, false
 	}
 	if m.atUnitLimit(b.FactionID) {
@@ -119,7 +125,10 @@ func (m *Match) startContinuousUnit(b *Building, definitions map[string]UnitType
 }
 
 // Only engine-authored templates are converted; submitted legacy purchases are
-// rejected in continuous mode. A disabled or configured source stays unchanged.
+// rejected in continuous mode. A new source selects its first unlocked preferred
+// type. A disabled source stays unchanged, and a configured one changes only to a
+// preferred late-game type its faction has since unlocked. Model factions receive
+// these plans only as first-window fallbacks, before they can own an unlock.
 func (m *Match) scriptedProductionPlan(factionID string, plan controller.PlanProposal) controller.PlanProposal {
 	preferred := append([]string{}, plan.RecruitmentPriorities...)
 	if plan.RecruitmentOrders != nil {
@@ -127,18 +136,12 @@ func (m *Match) scriptedProductionPlan(factionID string, plan controller.PlanPro
 			preferred = append(preferred, order.UnitType)
 		}
 	}
+	preferred = m.unlockedUnits(factionID, preferred)
 	orders := []controller.ProductionOrder{}
 	for _, id := range m.recruitmentSources(factionID) {
-		b := m.recruitmentSource(factionID, id)
-		if b.Production != nil && b.Production.Configured {
-			continue
+		if unit := m.scriptedSourceUnit(factionID, m.recruitmentSource(factionID, id), preferred); unit != "" {
+			orders = append(orders, controller.ProductionOrder{BuildingID: id, UnitType: unit, Enabled: true})
 		}
-		roster := m.trainingRoster(b.Type)
-		unit := roster[0]
-		if choices := m.trainablePriorities(b.Type, preferred); len(choices) > 0 {
-			unit = choices[0]
-		}
-		orders = append(orders, controller.ProductionOrder{BuildingID: id, UnitType: unit, Enabled: true})
 	}
 	plan.ProductionOrders = &orders
 	plan.RecruitmentOrders, plan.RecruitmentPriorities = nil, nil

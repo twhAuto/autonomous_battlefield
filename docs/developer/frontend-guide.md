@@ -200,7 +200,7 @@ the faction name alone.
 ## Entity presentation
 
 [`EntityIcon.tsx`](../../frontend/src/features/battles/components/EntityIcon.tsx)
-supplies the SVG artwork for the eleven unit and nine current building types (plus legacy Watchtower), reused by the
+supplies the SVG artwork for the fourteen unit and nine current building types (plus legacy Watchtower), reused by the
 map, roster, building overview and legend. `presentation/entities.ts` owns type
 labels and readable references such as `Iron Legion · Ranger #12`, derived from the
 sequence embedded in generated IDs so deaths, polling and older attempts never
@@ -268,7 +268,7 @@ terrain colors and accessible descriptions. Selecting a living building highligh
 construction radius. Production-building details show their `trains` roster, selected unit, on/off setting,
 remaining/total ticks, progress and blocked exits. `BuildingProduction.tsx`
 also shows every living production source as a chip in its faction strip to all
-viewers, including gold waits, unit-limit waits and pending activation. Production controls belong to the AI; the viewer
+viewers, including gold waits, unit-limit waits, locked-unit waits (`lock`) and pending activation. Production controls belong to the AI; the viewer
 is read-only. Historical batch queues retain their FIFO presentation. Current castles
 show the Barracks roster, their queue, attack/range stats and tower-fire visuals.
 In historical snapshots without `trains`, populated queues still display, but empty

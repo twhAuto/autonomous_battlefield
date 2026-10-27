@@ -71,6 +71,8 @@ type UnitType struct {
 	BonusAgainstClass   string `json:"bonusAgainstClass,omitempty" yaml:"bonusAgainstClass,omitempty"`
 	ClassDamageBonus    int64  `json:"classDamageBonus,omitempty" yaml:"classDamageBonus,omitempty"`
 	HealAmount          int64  `json:"healAmount,omitempty" yaml:"healAmount,omitempty"`
+	// RequiresUpgradeID locks training until the faction owns that upgrade.
+	RequiresUpgradeID string `json:"requiresUpgradeId,omitempty" yaml:"requiresUpgradeId,omitempty"`
 
 	ID       string `json:"id" yaml:"id"`
 	Cost     int64  `json:"cost" yaml:"cost"`
@@ -286,6 +288,8 @@ type BuildingProduction struct {
 	WaitingForGold bool   `json:"waitingForGold,omitempty"`
 	// WaitingForUnitLimit pauses new starts, without charge, while the faction is at its unit cap.
 	WaitingForUnitLimit bool `json:"waitingForUnitLimit,omitempty"`
+	// WaitingForUpgrade pauses new starts, without charge, until the selected type is unlocked.
+	WaitingForUpgrade bool `json:"waitingForUpgrade,omitempty"`
 }
 
 type Building struct {
