@@ -79,7 +79,7 @@ export interface BattleUnit extends UnitCapabilities {
   attackTargetPosition?: HexPosition
 }
 export interface BattleBuilding {
-  production?: { configured?: boolean; unitType?: string; enabled: boolean; waitingForGold?: boolean; waitingForUnitLimit?: boolean }
+  production?: { configured?: boolean; unitType?: string; enabled: boolean; waitingForGold?: boolean; waitingForUnitLimit?: boolean; waitingForUpgrade?: boolean }
   trains?: string[]
   buildRange?: number
   trainingBlocked?: boolean

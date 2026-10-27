@@ -29,7 +29,7 @@ func (m *Match) OpeningFallback(factionID string) controller.PlanProposal {
 			if len(orders) == 6 {
 				break
 			}
-			if unit.HealAmount == 0 && unit.RepairAmount == 0 && unit.Cost <= gold && m.defaultTrainingSource(factionID, unit.ID) != nil {
+			if unit.HealAmount == 0 && unit.RepairAmount == 0 && unit.Cost <= gold && !m.unitLocked(factionID, unit.ID) && m.defaultTrainingSource(factionID, unit.ID) != nil {
 				orders = append(orders, controller.RecruitmentOrder{UnitType: unit.ID, Count: 1})
 				gold -= unit.Cost
 				purchased = true

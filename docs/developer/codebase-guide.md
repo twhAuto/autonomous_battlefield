@@ -222,7 +222,7 @@ head and target commit; a pass for an older pair does not verify the current tre
 ## Shared battlefield content
 
 `backend/gamedata/battlefield.yaml` owns shared timing and controller plans;
-`rulesets/battlefield.yaml` references the full `content/core-v7.yaml` library.
+`rulesets/battlefield.yaml` references the full `content/core-v8.yaml` library.
 `scenarios/castle-siege.yaml` and `scenarios/frontier-siege.yaml` contain maps only.
 `battle/catalog/shared_content.go` validates shared plans, while `library.go`
 resolves every library entry. Historical content lives only in catalog test fixtures.
@@ -231,6 +231,12 @@ resolves every library entry. Historical content lives only in catalog test fixt
 `upgrade_effects.go` validates scopes; `upgrades.go` applies effects to current and
 future units. `specialists.go` owns Scout retreat, cavalry pursuit and repairs;
 combat/support code handles armor penetration and extended treatment range.
+`unit_unlocks.go` owns unit types locked behind an upgrade (`requiresUpgradeId`):
+ruleset validation, `ValidateUnitUnlocks` (shared by the engine and
+`ai/decision/validate.go`), the production and recruitment checks, and the
+scripted rule that moves an enabled source to a preferred type once it is unlocked.
+`battle/catalog/late_game_test.go` probes whether unlocked units break a fully
+upgraded stalemate on the live ruleset and checks that scripted bots reach them.
 Frontend `presentation/upgrades.ts` formats owned levels and branch effects.
 Tests cover every map's full catalog, specialist actions, branch locks, reserves,
 replay and UI presentation. The PostgreSQL-backed coverage gate includes persistence.

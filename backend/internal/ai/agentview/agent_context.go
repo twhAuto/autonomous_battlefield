@@ -22,6 +22,9 @@ type UnitOverview struct {
 	Role          string `json:"role,omitempty"`
 	Strengths     string `json:"strengths,omitempty"`
 	Weaknesses    string `json:"weaknesses,omitempty"`
+	// RequiresUpgradeID names a legal unit's unlock; Locked is true until it is owned.
+	RequiresUpgradeID string `json:"requiresUpgradeId,omitempty"`
+	Locked            bool   `json:"locked,omitempty"`
 }
 
 type Knowledge struct {
@@ -142,7 +145,9 @@ func Compact(c ai.DecisionContext) Context {
 	legal := map[string]bool{}
 	for _, unit := range c.Legal.Units {
 		legal[unit.ID] = true
-		result.Legal.Units = append(result.Legal.Units, unitOverview(unit, details[unit.ID].Card))
+		overview := unitOverview(unit, details[unit.ID].Card)
+		overview.RequiresUpgradeID, overview.Locked = unit.RequiresUpgradeID, !game.UnitUnlocked(unit, c.OwnedUpgradeIDs)
+		result.Legal.Units = append(result.Legal.Units, overview)
 	}
 	visible := visibleAndLegalUnitIDs(c)
 	for id, detail := range details {

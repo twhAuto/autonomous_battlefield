@@ -6,7 +6,7 @@ Every live map uses one shared ruleset. The catalog embeds and validates:
   decision interval, fallback and scripted plans.
 - `backend/gamedata/rulesets/battlefield.yaml`: shared starting gold, combat rules,
   building limits and content-library reference.
-- `backend/gamedata/content/core-v7.yaml`: all units, upgrades, buildings and AI knowledge.
+- `backend/gamedata/content/core-v8.yaml`: all units, upgrades, buildings and AI knowledge.
 - `backend/gamedata/scenarios/*.yaml`: map ID and geometry only.
 
 The shipped maps are `castle-siege` (15×11) and `frontier-siege` (25×17). The
@@ -36,11 +36,13 @@ upgrades and valid non-castle structures; there are no selection lists.
 
 The shared ruleset points to the library using `library.id`, `library.version`,
 `library.castle` and `library.economy`. It owns starting gold, building limits
-(`buildings.maximumBuildingCount` up to 16, `maximumEconomyCount` up to 2), the
+(`buildings.maximumBuildingCount` and `maximumEconomyCount` each up to 16), the
 per-faction `maximumUnitCount` (0–200; 0 is unlimited), combat percentages and
-`continuousProduction`. Ruleset v8 sets 12 buildings and 40 units. Core v7 enables continuous
-AI-selected unit production; absent/false preserves historical batch purchases.
-The archived `content/core-v6.yaml` is retained as the authored reference for the
+`continuousProduction`. Ruleset v9 raises v8's limits to 16 buildings, at most 4 of them economy, keeps 40 units and references
+core v8. Core v7 enabled continuous AI-selected unit production; absent/false preserves
+historical batch purchases. Core v8 adds the late-game unlocks and multiplies every
+upgrade price by eight. The archived `content/core-v7.yaml` is the authored reference
+for the previous active library, and `content/core-v6.yaml` for the
 castle-training/attacking version with batch queues. It is not the active library
 and is not needed to replay self-contained saved snapshots. Inline rulesets remain readable for self-contained fixtures.
 Content IDs/versions allow letters, digits, dashes and underscores. Invalid stats,
@@ -60,7 +62,7 @@ restart otherwise re-simulates old inputs with changed construction/training rul
 
 Unit definitions include `trainingTicks` (1–1000; missing legacy values use 1).
 Building definitions include `buildRange` (1–10; missing legacy values use 3).
-The active v7 library uses Outpost, omits vision stats, and assigns `trains` unit-ID
+The active v8 library uses Outpost, omits vision stats, and assigns `trains` unit-ID
 arrays to the castle and five constructible production kinds. Arrays contain known
 unit IDs without internal duplicates; a unit belongs to at most one constructible
 production kind, while the castle may share that roster. Economy, towers and Outposts
@@ -79,7 +81,10 @@ Unit definitions support class, minimum attack range, building priority/damage,
 class bonuses and healing. Specialist fields are `scout`, `preferredTargetClass`,
 `armorPiercing`, `repairAmount`, `repairCost`, `repairCharges` and `healRange`.
 A repair unit must be non-attacking support with positive cost/charges and no
-healing or offensive capabilities. See [gameplay](../game/frontier-siege.md) for
+healing or offensive capabilities. Optional `requiresUpgradeId` locks a unit until
+the faction owns that upgrade; the ID must name an upgrade in the same library, and
+ruleset validation rejects unknown references. Give every training building at least
+one type without an unlock so scripted plans can configure it. See [gameplay](../game/frontier-siege.md) for
 precise behavior, prices and tradeoffs.
 
 `knowledge.mechanics` is limited to 4096 UTF-8 bytes and each card field to 1024.
@@ -91,15 +96,18 @@ describes bounded knowledge retrieval.
 ### Attack targeting capability
 
 Optional `attackMode: tracking | position` defaults to tracking for old snapshots.
-Catapults aim at a hex before unit turns and hit its current enemy occupant on their
-speed-ordered turn; a moved target can evade. Retreat cancels the aimed shot.
+Catapults, Cannons and Gunners aim at a hex before unit turns and hit its current
+enemy occupant on their speed-ordered turn; a moved target can evade. Retreat cancels
+the aimed shot.
 
 ## Upgrade tracks
 
 Arsenal, Plating and Industry use `track`, `level` (1–3) and `requiresUpgradeId`.
 Each track/level is unique; level I has no prerequisite and later levels require
 the preceding level with a strictly greater price. Each entry is one purchase ID
-with incremental effects: 20/50/100 gold buys total +2/+4/+6 bonuses.
+with incremental effects: 160/400/800 gold buys total +2/+4/+6 bonuses.
+Unlock upgrades (`gunpowder`, `knighthood`) are plain one-time entries with no
+track, scope or bonus; units reference them through `requiresUpgradeId`.
 
 Specializations use either `targetUnit` or `targetClass`, plus `exclusiveGroup`.
 At most one choice in each group can be owned or ordered in a plan. Scoped fields

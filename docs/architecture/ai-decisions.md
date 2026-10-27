@@ -155,7 +155,7 @@ untrusted game data. Contexts without any reference leaves retain the original
 single-block inline layout. Background generation keeps its separate prompt.
 
 The shared policy states training-roster selection once. For prefetched continuous
-production with the exact reviewed core-v7 mechanics, `rule-duplicates.json` removes
+production with the exact reviewed core-v8 mechanics, `rule-duplicates.json` removes
 policy sentences whose rules already appear in those frozen mechanics, plus the
 inactive legacy recruitment paragraph. A SHA-256 match of the **entire mechanics
 text** gates this reduction. Tool-fetch sessions, legacy mode and missing, truncated
@@ -229,7 +229,8 @@ whether it was truncated.
 
 The observation also freezes every legal or visible unit definition and its card in
 `unitReference`. The model's context lists each legal unit's cost, training ticks, class, role,
-strengths and weaknesses; `get_unit_details` returns full base stats and guidance
+strengths and weaknesses, plus `requiresUpgradeId` and `locked: true` for a unit whose
+unlock the faction does not own yet; `get_unit_details` returns full base stats and guidance
 for a few units at a time, scoped by the request capability to that frozen set.
 Hidden and unknown unit IDs both return `available: false`. The tool's description
 gives its batch and size limits. Reference content is untrusted data.
@@ -313,7 +314,11 @@ largest authored building limit (16).
 Opening requires an explicit array; `[]` leaves production off. Later omission or
 `[]` leaves existing settings unchanged. Every ID must be a living, active owned
 `legal.recruitmentSources` entry, and its `trains` roster must support the selected
-unit. The service and engine share this frozen legality check. Legacy nonempty
+unit. The service and engine share this frozen legality check. A unit with
+`requiresUpgradeId` may be selected only if the faction owns that upgrade or orders it
+in the same plan's `upgradeOrders`; otherwise the service reports code `locked` on
+`plan.productionOrders` and the engine rejects the plan with the same rule
+(`game.ValidateUnitUnlocks`). Legacy nonempty
 recruitment orders/priorities are rejected in continuous mode; production orders
 are rejected for legacy contexts. Plan schema is v3; MCP tool schema is v8.
 
@@ -321,7 +326,7 @@ Each building pays for one unit at training start, after income and window purch
 respecting `reserveGold`. It automatically retries if unaffordable. A blocked exit
 holds the paid unit without additional charges. Disabling or changing selection
 preserves the paid unit; the change affects subsequent purchases. State exposes
-`production` (configured, unitType, enabled, waitingForGold, waitingForUnitLimit), `trainingQueue` (zero or one paid
+`production` (configured, unitType, enabled, waitingForGold, waitingForUnitLimit, waitingForUpgrade), `trainingQueue` (zero or one paid
 unit), and `trainingBlocked`. Compact agent observations retain owned production
 settings and both sides' paid training progress. Opponent `production` settings are
 redacted before freezing the context; physical entities remain visible. Spectators
@@ -331,7 +336,11 @@ start disabled and become selectable once active; no starting Barracks is grante
 
 Engine-authored scripted army templates are converted to one compatible selection
 per unconfigured active source. Existing selections, including disabled settings,
-remain unchanged. Previous-plan fallback omits selection orders because settings
+remain unchanged, except that an enabled source on a type without an unlock moves to
+the template's first preferred late-game type once the faction owns its unlock.
+Templates select only unlocked types and leave a source unconfigured if its whole
+roster is locked. Model factions receive templates only as first-window fallbacks,
+before an unlock is affordable. Previous-plan fallback omits selection orders because settings
 already persist; it must not reissue IDs of subsequently destroyed sources. Model
 instructions explicitly compare more training capacity and unit access with economy,
 defenses and upgrades. Empty construction orders remain a deliberate choice; the
@@ -455,6 +464,12 @@ in one plan are invalid; IDs already owned may be requested again without cost.
 Multiple levels can execute in one window, subject to reserve gold and ordered
 affordability. Ruleset knowledge supplies prices and effects; the shared prompt
 explains ordering without hardcoding a particular content version.
+
+Unlock upgrades (core v8 `gunpowder` and `knighthood`) carry no bonus. The prompt
+tells the model that a `locked` unit needs its `requiresUpgradeId` owned or ordered,
+and that a building selecting it waits without charge
+(`production.waitingForUpgrade`) until the upgrade is bought. Upgrades run before
+automatic purchases, so an unlock and its first unit can start in one window.
 
 Specialist choices expose `targetUnit`/`targetClass` and `exclusiveGroup` alongside
 incremental effects. Ownership locks out the paired alternative for the battle.

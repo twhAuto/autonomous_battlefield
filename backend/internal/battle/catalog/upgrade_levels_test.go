@@ -20,7 +20,7 @@ func TestFrontierThreeLevelCatalogAndScriptedBattle(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := legacyScenario(t, "frontier-siege-v2")
-	if len(old.Ruleset.Upgrades) != 3 || old.Ruleset.Upgrades[0].Level != 0 || s.Ruleset.ContentSource.Version != "7" {
+	if len(old.Ruleset.Upgrades) != 3 || old.Ruleset.Upgrades[0].Level != 0 || s.Ruleset.ContentSource.Version != "8" {
 		t.Fatal("legacy snapshot changed")
 	}
 	if old.Map.Width != s.Map.Width || old.Map.Height != s.Map.Height || old.Map.CastleSpawns != s.Map.CastleSpawns {
@@ -54,8 +54,9 @@ func countUpgradePurchases(events []game.Event) int {
 	return count
 }
 
-// Equal 170-gold openings compare an early level-II investment with extra troops.
-// Both map orientations are run; results describe this probe, not general balance.
+// Equal openings spend all starting gold, comparing a level-I upgrade with the
+// extra troops its price buys. Both map orientations are run; results describe
+// this probe, not general balance.
 func TestFrontierUpgradeBalanceProbe(t *testing.T) {
 	c, err := LoadCatalog(gamedata.Files)
 	if err != nil {
@@ -77,7 +78,7 @@ func checkThreeLevelCatalog(t *testing.T, ruleset game.Ruleset) {
 	for _, track := range []string{"arsenal", "plating", "industry"} {
 		defs := game.UpgradesByID(ruleset)
 		for i, id := range []string{track, track + "_2", track + "_3"} {
-			if defs[id].Cost != []int64{20, 50, 100}[i] || defs[id].Level != i+1 {
+			if defs[id].Cost != []int64{160, 400, 800}[i] || defs[id].Level != i+1 {
 				t.Fatalf("bad catalog entry %+v", defs[id])
 			}
 		}
@@ -88,16 +89,18 @@ func runUpgradeBalanceProbe(t *testing.T, s game.Scenario, track string, mirror 
 	t.Helper()
 	// This historical equal-budget probe intentionally measures batch purchases.
 	s.Ruleset.ContinuousProduction = false
-	upgraded := []controller.RecruitmentOrder{{UnitType: "vanguard", Count: 2}, {UnitType: "ranger", Count: 1}}
-	army := []controller.RecruitmentOrder{{UnitType: "vanguard", Count: 4}, {UnitType: "ranger", Count: 1}}
-	if probeCost(game.UnitTypesByID(s.Ruleset), upgraded)+70 != probeCost(game.UnitTypesByID(s.Ruleset), army) {
+	upgraded := []controller.RecruitmentOrder{{UnitType: "vanguard", Count: 1}, {UnitType: "striker", Count: 1}}
+	army := []controller.RecruitmentOrder{{UnitType: "vanguard", Count: 1}, {UnitType: "striker", Count: 1}, {UnitType: "crossbowman", Count: 4}}
+	units := game.UnitTypesByID(s.Ruleset)
+	budget := probeCost(units, upgraded) + game.UpgradesByID(s.Ruleset)[track].Cost
+	if budget != probeCost(units, army) || budget != s.Ruleset.StartingGold {
 		t.Fatal("unequal budgets")
 	}
 	plan := func(units []controller.RecruitmentOrder, upgrades []string) controller.PlanProposal {
 		empty := []controller.ConstructionOrder{}
 		return controller.PlanProposal{Name: "probe", RecruitmentOrders: &units, ConstructionOrders: &empty, UpgradeOrders: upgrades, SpendOrder: []string{"upgrades", "recruitment"}, ActionWeights: map[string]int64{"attack": 1000, "defend": 1}}
 	}
-	a, b := plan(upgraded, []string{track, track + "_2"}), plan(army, nil)
+	a, b := plan(upgraded, []string{track}), plan(army, nil)
 	if mirror {
 		a, b = b, a
 	}
@@ -123,5 +126,5 @@ func runUpgradeBalanceProbe(t *testing.T, s game.Scenario, track string, mirror 
 	if last.Result.WinnerFactionID != nil {
 		winner = *last.Result.WinnerFactionID
 	}
-	t.Logf("track=%s mirrored=%v budget=170 winner=%s ticks=%d survivors=%d/%d", track, mirror, winner, last.Tick, last.Result.Factions[0].UnitsRemaining, last.Result.Factions[1].UnitsRemaining)
+	t.Logf("track=%s mirrored=%v budget=%d winner=%s ticks=%d survivors=%d/%d", track, mirror, budget, winner, last.Tick, last.Result.Factions[0].UnitsRemaining, last.Result.Factions[1].UnitsRemaining)
 }

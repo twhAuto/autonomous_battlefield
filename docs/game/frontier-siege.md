@@ -18,8 +18,8 @@ use distance without line-of-sight occlusion. Every map cell and entity is visib
 Forests grant troops +3 defense after armor piercing and prohibit construction;
 gold deposits add +5 income per tick to an economy building placed on them.
 
-Each faction starts with 220 gold and only its castle, and may maintain **twelve non-castle buildings** and **40 units** (living plus paid in training),
-including at most **two economy buildings**. Construction requires unoccupied
+Each faction starts with 220 gold and only its castle, and may maintain **sixteen non-castle buildings** and **40 units** (living plus paid in training),
+including at most **four economy buildings**. Construction requires unoccupied
 buildable terrain within a living active friendly building's range. Every pair of
 buildings must be at least two hexes apart, including opposing structures.
 Destroyed buildings release capacity and stop granting range. Economy activates
@@ -41,6 +41,9 @@ buildings. There is no selling, demolition, or capture.
 | Raider Cavalry | 45 | 45 | 9 | 2 | 9 | 3 | 1 | 5 | Prefers siege; +16 attack vs siege |
 | Engineer | 50 | 28 | 0 | 1 | 3 | 1 | Adjacent | 5 | Repairs 4 HP; 2 gold; 12 charges |
 | Crossbowman | 40 | 28 | 13 | 1 | 3 | 1 | 2 | 4 | Ignores up to 6 unit defense |
+| Cannon | 220 | 80 | 14 | 3 | 2 | 1 | 2–6 | 12 | Requires Gunpowder; +36 attack vs buildings |
+| Gunner | 120 | 38 | 24 | 2 | 3 | 1 | 2 | 6 | Requires Gunpowder; highest troop attack |
+| Heavy Cavalry | 150 | 130 | 17 | 7 | 7 | 2 | 1 | 9 | Requires Knighthood; +8 attack vs infantry |
 
 Speed determines turn order, not distance or attacks per tick. Units move or act
 once per tick; recruits first act on the following tick. Bonus attack is added
@@ -50,15 +53,15 @@ damage or friendly fire. Both factions see every battlefield action. Faction eco
 Siege units prioritize defense towers, other non-castle buildings, then castles.
 Within a priority group they approach by distance and stable ID, trying the next
 structure when no firing position is reachable. An enemy in attack range is still
-an available target when no building is in range. Catapults attempt to retreat
-when enemies are adjacent; a blocked retreat never permits an adjacent attack.
+an available target when no building is in range. Catapults and Cannons attempt to
+retreat when enemies are adjacent; a blocked retreat never permits an adjacent attack.
 Screening and escort behavior remains autonomous, without player formation commands.
 
-### Catapult targeting
+### Position attacks
 
-Catapults attack a position rather than a unit. They aim after economy and
-tactics, before unit turns, then hit that fixed hex on their speed-2 turn, so
-faster units can leave before impact. Another living enemy at the hex can take the
+Catapults, Cannons and Gunners attack a position rather than a unit. They aim
+after economy and tactics, before unit turns, then hit that fixed hex on their own
+turn (speed 2 for siege, 3 for Gunners), so faster units can leave before impact. Another living enemy at the hex can take the
 hit; empty or friendly-only hexes miss. Siege target priority and building bonuses
 still apply. Retreat cancels an aimed shot. Melee units and Rangers attack their
 target immediately.
@@ -87,6 +90,26 @@ anti-mobile bonus applies to both cavalry and Scouts. Crossbowmen subtract up to
 6 from an enemy unit's defense before normal damage/tactic calculations; this
 penetration never applies to buildings.
 
+### Late-game units
+
+Cannon, Gunner and Heavy Cavalry are locked until the faction owns their
+[unlock upgrade](game-rules.md#late-game-unlocks): Gunpowder (1,000 gold) for
+Cannon and Gunner, Knighthood (800 gold) for Heavy Cavalry. They train in existing
+buildings and cost more gold and training time per unit, so they matter most once
+both factions are fully upgraded and at the unit cap.
+
+- **Cannon** (Siege Workshop) outranges castles, towers and Catapults at range 6.
+  Its +36 building bonus breaks a tower in about three shots and a castle in about
+  seven. It shares Catapult targeting, retreat and the siege specializations, and
+  Raider Cavalry's +16 anti-siege bonus applies to it.
+- **Gunner** (Archery Range) has the highest troop attack, 24, enough to wound fully
+  plated Vanguards that Rangers barely scratch. It has no armor piercing, so defense
+  still reduces its damage, and it also damages buildings. Its volleys use position
+  attacks, so faster targets that move away are missed, and Rangers outrange it.
+- **Heavy Cavalry** (Stables) is a durable mobile unit with +8 attack against
+  infantry. As a mobile unit it takes Pikemen's +12 bonus, and Gunners hit it hard
+  from range.
+
 Engineers repair a damaged friendly siege unit or non-castle building for up to
 4 HP. Each action consumes 2 gold and one of 12 lifetime charges, cannot exceed
 maximum health, and respects reserve gold. Adjacent enemies interrupt the action.
@@ -104,9 +127,9 @@ for that turn. Arsenal never grants Engineers an attack; Plating still applies.
 | Defense Tower | 60 | 130 | 4 | 3 | Attack 15, range 3, targets enemy units |
 | Outpost | 30 | 50 | 1 | 5 | Extends construction territory |
 | Barracks | 90 | 100 | 3 | 3 | Vanguard, Striker, Pikeman |
-| Archery Range | 90 | 100 | 3 | 3 | Ranger, Crossbowman |
-| Stables | 100 | 100 | 3 | 3 | Scout, Raider Cavalry |
-| Siege Workshop | 120 | 100 | 3 | 3 | Catapult, Battering Ram, Engineer |
+| Archery Range | 90 | 100 | 3 | 3 | Ranger, Crossbowman, Gunner |
+| Stables | 100 | 100 | 3 | 3 | Scout, Raider Cavalry, Heavy Cavalry |
+| Siege Workshop | 120 | 100 | 3 | 3 | Catapult, Battering Ram, Engineer, Cannon |
 | Infirmary | 80 | 100 | 3 | 3 | Herbalist |
 
 Castles and towers act in stable building-ID order before unit turns. They use the same
@@ -127,9 +150,13 @@ and [OpenAPI](../architecture/openapi.yaml) for fields.
 Scripted construction favors deposits, then locations nearer the opponent, choosing
 separated sites for income, a tower and missing production types. Scripted templates
 select a compatible unit for each newly active unconfigured source and retain
-existing selections. The AI can change its choices or disable individual sources.
+existing selections, with one exception: once their faction owns an unlock, they
+move an enabled source from a classic type to a preferred late-game type it can
+train. Disabled sources are never changed. AI factions receive scripted plans only
+as fallbacks in their first two windows, before any unlock is affordable. The AI
+can change its choices or disable individual sources.
 Frozen pre-v7 battles retain their original batch queues.
-Scripted baselines omit currently untrainable orders before submission. Once two
+Scripted baselines omit currently untrainable orders before submission. Once four
 economy buildings, all five production kinds and one tower are built, default
 construction stops, leaving free slots for explicit orders; destroyed types become eligible for replacement. Explicit orders take precedence; Outposts are an
 alternative purchase for wider expansion. Opening fallback buys combat units in
@@ -140,9 +167,9 @@ their own production building first.
 
 | Level | Incremental gold cost | Total spent per track | Total bonus |
 | --- | ---: | ---: | ---: |
-| I | 20 | 20 | +2 |
-| II | 50 | 70 | +4 |
-| III | 100 | 170 | +6 |
+| I | 160 | 160 | +2 |
+| II | 400 | 560 | +4 |
+| III | 800 | 1,360 | +6 |
 
 Arsenal increases combat-unit attack, Plating increases unit defense, and Industry
 increases income per economy building. Levels are ordered purchases, not research
@@ -152,19 +179,22 @@ can repeat the chain and skip owned levels without paying again.
 
 Shared scripted plans spend on construction, then upgrades; enabled sources buy
 units automatically afterward and between windows. They
-order Industry, Arsenal and Plating at each successive level. Model controllers
+order Industry, Arsenal and Plating at levels I and II, then Knighthood and
+Gunpowder, then level III, and prefer Heavy Cavalry, Gunners and Cannons once
+unlocked. Model controllers
 choose their own priorities. Spectators see the highest owned level for each track,
 and purchase events show the level and its incremental price.
 
 Industry adds 2 gold per living economy building per tick per level. With one
-building, incremental break-even times are 10/25/50 income collections; with two,
-they are 5/13/25 collections (rounded up). These calculations assume the buildings
+building, incremental break-even times are 80/200/400 income collections; with two,
+they are 40/100/200; with the maximum four, 20/50/100. Levels II and III therefore
+pay back only with most economy slots filled or in long battles. These calculations assume the buildings
 survive and exclude the time and gold spent constructing them. The compounding
 economy is a balance consideration, not proof of a dominant strategy.
 
 ## Specializations
 
-Each choice costs 60 gold. Choose at most one in each row for the battle; all
+Each choice costs 480 gold. Choose at most one in each row for the battle; all
 choices are available on every map. Bonuses apply to existing and future matching
 units and stack with Arsenal, Plating and Industry where applicable.
 
@@ -175,7 +205,7 @@ units and stack with Arsenal, Plating and Industry where applicable.
 | Herbalist | Potency: +2 treatment (3 → 5 HP) | Reach: +1 treatment range (1 → 2 hexes) |
 | Siege engines | Mobility: +1 movement | Breach: +8 building damage |
 
-The opportunity cost is the alternative branch and 60 gold that could fund
+The opportunity cost is the alternative branch and 480 gold that could fund
 recruits. There are no manual formations, research timers or branch refunds.
 
 ## Balance probes
@@ -197,3 +227,14 @@ unit/upgrade definitions with historical batch recruitment explicitly enabled. I
 does not measure the balance of continuous production. Training time and new terrain affect outcomes, so historical results
 are not claims about the current balance. `TestFrontierThreeLevelCatalogAndScriptedBattle`
 also checks shared content and scripted upgrade purchases.
+
+`TestLateGameUnitsBreakUpgradedStalemate` runs the live ruleset with equal 8,000-gold
+treasuries. Both sides build the same four training buildings and buy every general
+upgrade level; one side also buys both unlocks and trains Gunners, Heavy Cavalry and
+Cannons instead of Crossbowmen, Raider Cavalry and Catapults. The classic mirror
+ends at tick 130, while the unlocked side wins from either map side by tick 94, and
+an unlocked mirror ends by tick 81. `TestFrontierUpgradeBalanceProbe` compares a
+level-I upgrade plus troops with an equal-cost army at the opening; both draw.
+`TestScriptedBotsUnlockAndTrainLateGameUnits` runs the scripted bots on the live
+ruleset: both fill four economy slots, buy both unlocks after level II, train Gunners
+and Heavy Cavalry, and the battle ends with a winner (tick 258).
