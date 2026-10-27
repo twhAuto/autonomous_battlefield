@@ -29,6 +29,7 @@ type ScenarioSummary struct {
 	MaximumTicks          uint64          `json:"maximumTicks"`
 	MapWidth              int             `json:"mapWidth"`
 	MapHeight             int             `json:"mapHeight"`
+	Map                   game.Map        `json:"map"`
 }
 
 // ScenarioCatalog describes the immutable scenario data required by the service.

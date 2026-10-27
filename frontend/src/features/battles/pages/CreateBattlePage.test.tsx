@@ -241,24 +241,65 @@ it('submits timing overrides and resets them to the new map defaults when maps c
   await waitFor(() => expect(createBattle).toHaveBeenCalledWith(expect.objectContaining({ scenarioId: 'other', tickDuration: '250ms', decisionIntervalTicks: 1 })))
 })
 
-it('selects each model and effort and clears an incompatible effort when changing models', async () => {
+it('defaults effort to low, and to the first supported effort when a model lacks low', async () => {
   vi.mocked(listModelProfiles).mockResolvedValue([{ ...availableProfile, runtime: 'cli', modelOptions: [
-    { id: 'fast-1', reasoningEfforts: ['low', 'high'] }, { id: 'deep', reasoningEfforts: ['medium'] },
+    { id: 'fast-1', reasoningEfforts: ['low', 'high'] }, { id: 'deep', reasoningEfforts: ['medium', 'high'] },
   ] }])
   const user = userEvent.setup()
   renderPage()
   await user.selectOptions(await controllerSelect('first-controller'), 'fast')
+  expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toHaveValue('low')
+  expect(screen.queryByRole('option', { name: 'Model default' })).not.toBeInTheDocument()
   await user.selectOptions(screen.getByRole('combobox', { name: 'Reasoning effort' }), 'high')
   await user.selectOptions(screen.getByRole('combobox', { name: 'Model' }), 'deep')
-  expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toHaveValue('')
-  expect(screen.queryByRole('option', { name: 'High' })).not.toBeInTheDocument()
-  await user.selectOptions(screen.getByRole('combobox', { name: 'Reasoning effort' }), 'medium')
+  expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toHaveValue('medium')
+  expect(screen.queryByRole('option', { name: 'Low' })).not.toBeInTheDocument()
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Model' }), 'fast-1')
   await user.click(screen.getByRole('button', { name: /DEPLOY COMBATANTS/ }))
   await screen.findByRole('heading', { name: 'Battle staged' })
   expect(createBattle).toHaveBeenCalledWith(expect.objectContaining({ participants: [
-    { factionId: 'north', controller: { type: 'model', profileId: 'fast', modelIdentifier: 'deep', reasoningEffort: 'medium' } },
+    { factionId: 'north', controller: { type: 'model', profileId: 'fast', modelIdentifier: 'fast-1', reasoningEffort: 'low' } },
     { factionId: 'south', controller: { type: 'scripted' } },
   ] }))
+})
+
+it('submits a chosen effort for the configured model', async () => {
+  vi.mocked(listModelProfiles).mockResolvedValue([{ ...availableProfile, modelOptions: [{ id: 'fast-1', reasoningEfforts: ['low', 'high'] }] }])
+  const user = userEvent.setup()
+  renderPage()
+  await user.selectOptions(await controllerSelect('second-controller'), 'fast')
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Reasoning effort' }), 'high')
+  await user.click(screen.getByRole('button', { name: /DEPLOY COMBATANTS/ }))
+  await screen.findByRole('heading', { name: 'Battle staged' })
+  expect(createBattle).toHaveBeenCalledWith(expect.objectContaining({ participants: [
+    { factionId: 'north', controller: { type: 'scripted' } },
+    { factionId: 'south', controller: { type: 'model', profileId: 'fast', modelIdentifier: 'fast-1', reasoningEffort: 'high' } },
+  ] }))
+})
+
+it('defaults to frontier-siege and previews the selected map layout', async () => {
+  const map = { kind: 'authored' as const, width: 3, height: 2, rows: ['.g#', 'f..'], castleSpawns: [{ x: 0, y: 0 }, { x: 2, y: 1 }] as [{ x: number; y: number }, { x: number; y: number }], economySites: [[], []] as [[], []] }
+  vi.mocked(listScenarios).mockResolvedValue([scenario, { ...scenario, id: 'frontier-siege', mapWidth: 3, mapHeight: 2, map }])
+  const user = userEvent.setup()
+  renderPage()
+  expect(await screen.findByRole('combobox', { name: 'Combat map' })).toHaveValue('frontier-siege')
+  const preview = screen.getByRole('img', { name: 'frontier-siege layout, 3 by 2 hexes' })
+  expect(preview.querySelectorAll('.hex-tile')).toHaveLength(6)
+  expect(preview.querySelector('.hex-tile--gold')).not.toBeNull()
+  expect(screen.getByText('Slot 1 castle · (0, 0)')).toBeInTheDocument()
+  expect(screen.getByText('Slot 2 castle · (2, 1)')).toBeInTheDocument()
+  await user.selectOptions(screen.getByLabelText('Combat map'), 'castle-siege-v1')
+  expect(screen.queryByRole('img', { name: /layout/ })).not.toBeInTheDocument()
+})
+
+it('colors castle spawns by sorted faction ID like the live map', async () => {
+  const map = { kind: 'authored' as const, width: 2, height: 1, rows: ['..'], castleSpawns: [{ x: 0, y: 0 }, { x: 1, y: 0 }] as [{ x: number; y: number }, { x: number; y: number }], economySites: [[], []] as [[], []] }
+  vi.mocked(listFactions).mockResolvedValue([factions[1], factions[0]])
+  vi.mocked(listScenarios).mockResolvedValue([{ ...scenario, map }])
+  renderPage()
+  const castles = (await screen.findByRole('img', { name: /layout/ })).querySelectorAll<SVGGElement>('.map-preview__castle')
+  expect(castles[0].style.stroke).toBe('rgb(255, 107, 85)')
+  expect(castles[1].style.stroke).toBe('rgb(105, 210, 255)')
 })
 
 it('clears model settings when switching controller and disables unsupported effort', async () => {
