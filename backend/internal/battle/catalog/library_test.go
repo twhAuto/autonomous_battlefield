@@ -19,8 +19,8 @@ func TestEveryMapUsesSharedContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Rulesets()) != 1 || len(c.IDs()) != 2 {
-		t.Fatal("expected one ruleset and two distinct maps")
+	if want := []string{"castle-siege", "frontier-siege", "highland-crown", "long-march", "river-fords"}; len(c.Rulesets()) != 1 || !reflect.DeepEqual(c.IDs(), want) {
+		t.Fatalf("expected one ruleset and the maps %v, got %v", want, c.IDs())
 	}
 	var baseline game.Ruleset
 	for i, id := range c.IDs() {

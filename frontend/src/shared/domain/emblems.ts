@@ -1,4 +1,4 @@
-// Stable profile identifiers; keep aligned with faction service validation and migration 00020.
+// Stable profile identifiers; keep aligned with faction service validation and migration 00021.
 export const factionEmblems = [
   { id: 'star', name: 'Star' },
   { id: 'crown', name: 'Crown' },

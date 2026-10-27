@@ -9,7 +9,9 @@ Every live map uses one shared ruleset. The catalog embeds and validates:
 - `backend/gamedata/content/core-v8.yaml`: all units, upgrades, buildings and AI knowledge.
 - `backend/gamedata/scenarios/*.yaml`: map ID and geometry only.
 
-The shipped maps are `castle-siege` (15×11) and `frontier-siege` (25×17). The
+The shipped maps are `castle-siege` (15×11), `frontier-siege` (25×17),
+`river-fords` (19×25), `long-march` (35×17) and `highland-crown` (33×25); see
+[maps](../game/frontier-siege.md#maps). The
 former restricted ranged-skirmish entry duplicated Castle Siege geometry and is
 removed. Map selection never filters available content. The API retains scenario
 IDs and content-summary fields for clients; every summary reports the same shared
@@ -26,6 +28,17 @@ Use `.` for ground, `#` for rocks, `f` for forest and `g` for gold deposits.
 Construction sites are computed from building ranges and occupancy; map selection
 does not change the shared caps or costs. Legacy `b` pads and `economySites` remain
 readable for saved scenarios but do not restrict new construction.
+
+`game.ValidateMap` requires odd dimensions (width 15–41, height 11–31), rows that
+read the same mirrored left to right, mirrored castle spawns with at least four
+traversable neighbors, and a route between the castles. Catalog tests also require
+forests, gold deposits with four traversable neighbors, and no pads. Odd rows sit
+half a hex to the right, so a mirrored row is not an exact reflection: keep castles
+and deposits on even rows so both sides walk the same distance to them, and double a
+rock wall on odd rows where a single mirrored wall would leave a gap.
+`TestScriptedBotsFinishEveryMap` plays scripted bots on every map from both sides
+and fails if a battle reaches the tick limit; narrow chokepoints made earlier drafts
+stall.
 
 ## Versioning and runtime behavior
 

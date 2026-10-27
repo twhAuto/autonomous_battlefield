@@ -197,9 +197,12 @@ timings live in the CSS and components with their tests, not in this guide.
 `FactionSummaries.tsx` shows each participant's decision activity, gold, living
 units and castle health from spectator state, from the full battlefield, edged in
 the same faction color as its map units (`presentation/factions.ts`). Each strip also
-carries that faction's production chips and, for inspecting viewers, a plan
-disclosure. Chips and the plan share one exclusive `<details name>` group per
-strip, so opening one closes the others. Failed-battle reasons in the header are
+carries that faction's production chips, one upgrade chip with an icon per owned
+upgrade (the highest level per general track, with its numeral) and, for inspecting
+viewers, a plan disclosure. Production and upgrade chips wrap in their own column
+beside the plan. Chips and the plan share one exclusive `<details name>` group per
+strip, so opening one closes the others; the upgrade chip's disclosure names each
+upgrade. Failed-battle reasons in the header are
 never clamped. Paused and terminal
 battles override decision activity, and Go `null` collections are treated as empty.
 A model-controlled participant's heading also shows its model identifier and any
@@ -215,6 +218,14 @@ labels and readable references such as `Iron Legion · Ranger #12`, derived from
 sequence embedded in generated IDs so deaths, polling and older attempts never
 renumber entities. Full IDs stay in tooltips and raw payloads; freeform AI prose
 and raw JSON are shown unchanged.
+
+[`UpgradeIcon.tsx`](../../frontend/src/features/battles/components/UpgradeIcon.tsx)
+draws upgrade artwork in the same style: one glyph per general track and unit
+unlock, and the improved unit's icon beside an effect glyph for each
+specialization. `presentation/upgrades.ts` owns upgrade labels and art keys. The
+faction strip chip, the inspector's owned-upgrade list and AI decision cards'
+upgrade orders use it; decision cards also show unit and building icons beside
+recruitment and construction orders.
 
 ## Shared HTTP transport
 

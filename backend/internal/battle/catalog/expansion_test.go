@@ -278,7 +278,7 @@ func TestSpecializedCatalogStartingBuildings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, mapID := range []string{"castle-siege", "frontier-siege"} {
+	for _, mapID := range c.IDs() {
 		scenario, err := c.Resolve(mapID, [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
 		if err != nil {
 			t.Fatal(err)

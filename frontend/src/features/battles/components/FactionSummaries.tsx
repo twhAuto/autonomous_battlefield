@@ -5,6 +5,7 @@ import { factionColors, unknownFactionColor } from '../presentation/factions'
 import { latestDecision } from './AIDecisionPanel'
 import { ProductionChips } from './BuildingProduction'
 import { playerStatus } from './PlayerStatusPanel'
+import { UpgradeChips } from './UpgradeIcon'
 
 function activity(battle: BattleRun, participant: BattleParticipant, decisions: DecisionHistory[], message: string) {
   if (battle.status === 'completed') return 'Completed'
@@ -29,8 +30,8 @@ function modelLabel(participant: BattleParticipant) {
   return controller.reasoningEffort ? `${controller.modelIdentifier} · ${controller.reasoningEffort}` : controller.modelIdentifier
 }
 
-// One compact strip per faction: identity, economy, production chips and, for viewers who
-// may inspect decisions, the applied plan with its rationale behind a disclosure.
+// One compact strip per faction: identity, economy, production and upgrade chips and, for
+// viewers who may inspect decisions, the applied plan with its rationale behind a disclosure.
 export function FactionSummaries({ battle, decisions, decisionMessage }: Readonly<{
   battle: BattleRun; decisions: DecisionHistory[]; decisionMessage: string
 }>) {
@@ -60,7 +61,10 @@ export function FactionSummaries({ battle, decisions, decisionMessage }: Readonl
           </dl>
         </div>
         <div className="faction-summary__operations">
-          {battle.state && <ProductionChips state={battle.state} factionId={participant.id} factionName={participant.name} group={`faction-${participant.id}`} />}
+          <div className="faction-summary__assets">
+            {battle.state && <ProductionChips state={battle.state} factionId={participant.id} factionName={participant.name} group={`faction-${participant.id}`} />}
+            <UpgradeChips upgradeIds={status.faction?.ownedUpgradeIds} factionName={participant.name} group={`faction-${participant.id}`} />
+          </div>
           {!inspect && <p className={activityClass}>{label}</p>}
           {inspect && <details className="faction-summary__plan" name={`faction-${participant.id}`}>
             <summary title={`${planLabel}: ${planName}`}><span className={activityClass}>{label}</span> <span aria-hidden="true">·</span> {applied?.status === 'fallback' && <span>fallback</span>} <strong>{planName}</strong></summary>

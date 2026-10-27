@@ -40,8 +40,9 @@ to.
 
 Faction and battle responses carry a server-assigned `ownerId`. Updating or
 deleting a faction, and stopping, pausing or resuming a battle, require ownership
-or the Admin role. Players can read shared factions, battles, events and history,
-but receive gameplay-only responses: events without payloads, battles without
+or the Admin role. Players can read shared factions, battles, events, replays and
+history, but receive gameplay-only responses: events and replay events without
+payloads, battles without
 inspection fields, and a reduced model-profile list. Decision history and saved
 decision context require Developer or Admin.
 
@@ -240,6 +241,25 @@ fetch the most recent `limit` events (still ascending); `latest` cannot be
 combined with a nonzero `after`. The `BattleEvent` schema lists every event type
 and its payload. Players receive the same events with an empty `data` object.
 
+### Battle replay
+
+`GET /v1/battles/{id}/replay?tick=N` returns one segment of a completed, stopped or
+failed battle's final attempt: the stored checkpoint at or before `N` and every tick
+up to the next decision window or the final tick. Each frame carries that tick's
+full battle `state` (as in `GET /v1/battles/{id}`) and its events. A client plays a
+battle by starting at `tick=0` and following `nextTick` until it is `null`; seeking
+requests the segment that contains the target tick. Segments are computed on demand
+and are not cached.
+
+A queued or running battle, or one whose final attempt saved no checkpoint for the
+segment (such as a battle that finished before replays were recorded), returns
+`409 conflict`. A tick beyond the final tick returns `400`. Players receive replay
+events with an empty `data` object, as on the events route. The engine re-simulates
+ticks between checkpoints with the current engine, so a replay is exact for battles
+run on the deployed engine version; see the
+[gameplay cutover](../operations/deployment.md#gameplay-rules-cutover) for engine
+upgrades.
+
 ### Decision history and saved context
 
 `GET /v1/battles/{id}/decisions?attempt=N` lists completed decisions with the
@@ -315,8 +335,8 @@ are validation errors; an owned prerequisite or one ordered earlier is accepted.
 Repeated owned levels are free, while duplicate IDs in the same submission remain
 invalid. An unaffordable level stops further upgrades in that window. Ownership
 retains every purchased ID in `ownedUpgradeIds`, and level purchase events add
-track, level and incremental effect fields. Saved battles keep their original semantics. New map IDs are `castle-siege` and
-`frontier-siege`; retired version-specific IDs are not accepted for new battles.
+track, level and incremental effect fields. Saved battles keep their original semantics. New map IDs are `castle-siege`,
+`frontier-siege`, `highland-crown`, `long-march` and `river-fords`; retired version-specific IDs are not accepted for new battles.
 Scenario summary roster fields describe the same shared catalog on every map.
 Specialist upgrades additionally expose `targetUnit`, `targetClass`,
 `exclusiveGroup` and scoped bonus fields. Conflicting branch orders are validation

@@ -5,6 +5,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twh09/autonomous_battlefield/backend/internal/faction"
 	factionrepo "github.com/twh09/autonomous_battlefield/backend/internal/faction/repo"
@@ -18,7 +19,7 @@ func TestFactionEmblemMigrationAndPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = provider.UpTo(ctx, 19); err != nil {
+	if _, err = provider.UpTo(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	id := randomUUID(t)
@@ -28,17 +29,31 @@ func TestFactionEmblemMigrationAndPersistence(t *testing.T) {
 	if _, err = provider.Up(ctx); err != nil {
 		t.Fatal(err)
 	}
+	repo := newEmblemTestRepository(t, config)
+	checkEmblemPersistence(t, repo, id)
+	if _, err := db.ExecContext(ctx, `UPDATE factions SET emblem='unknown' WHERE id=$1`, id); err == nil {
+		t.Fatal("invalid emblem accepted")
+	}
+}
+
+func newEmblemTestRepository(t *testing.T, config *pgx.ConnConfig) *factionrepo.Postgres {
+	t.Helper()
 	poolConfig, err := pgxpool.ParseConfig(config.ConnString())
 	if err != nil {
 		t.Fatal(err)
 	}
 	poolConfig.ConnConfig.RuntimeParams["search_path"] = config.RuntimeParams["search_path"]
-	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
-	repo := factionrepo.NewPostgres(pool)
+	t.Cleanup(pool.Close)
+	return factionrepo.NewPostgres(pool)
+}
+
+func checkEmblemPersistence(t *testing.T, repo *factionrepo.Postgres, id string) {
+	t.Helper()
+	ctx := context.Background()
 	legacy, err := repo.GetFaction(ctx, id)
 	if err != nil || legacy.Emblem != "star" {
 		t.Fatalf("legacy: %#v %v", legacy, err)
@@ -63,8 +78,5 @@ func TestFactionEmblemMigrationAndPersistence(t *testing.T) {
 	listed, err := repo.ListFactions(ctx)
 	if err != nil || len(listed) != 2 || listed[0].Emblem != "wolf" || listed[1].Emblem != "moon" {
 		t.Fatalf("list: %#v %v", listed, err)
-	}
-	if _, err := db.ExecContext(ctx, `UPDATE factions SET emblem='unknown' WHERE id=$1`, id); err == nil {
-		t.Fatal("invalid emblem accepted")
 	}
 }

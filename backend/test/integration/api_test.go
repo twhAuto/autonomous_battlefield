@@ -300,11 +300,42 @@ func checkCompletedBattle(t *testing.T, api *integrationAPI, viewer *integration
 		t.Fatalf("events = %+v, want a history ending in battle_completed", events.Events)
 	}
 	api.expect(t, viewer.get("/v1/battles/"+battleID+"/factions/"+faction+"/view"), http.StatusOK)
+	checkCompletedReplay(t, api, viewer, battleID)
 	var history struct{ Battles []struct{ ID string } }
 	api.decode(t, viewer.get("/v1/battles?status=completed&limit=10"), http.StatusOK, &history)
 	if len(history.Battles) != 1 || history.Battles[0].ID != battleID {
 		t.Fatalf("completed history = %+v", history.Battles)
 	}
+}
+
+// checkCompletedReplay replays the three-tick battle from the opening checkpoint the
+// engine stored. The viewer is a Player, so event payloads are empty.
+func checkCompletedReplay(t *testing.T, api *integrationAPI, viewer *integrationClient, battleID string) {
+	var replay struct {
+		FinalTick uint64  `json:"finalTick"`
+		NextTick  *uint64 `json:"nextTick"`
+		Frames    []struct {
+			Tick   uint64
+			State  struct{ Tick uint64 }
+			Events []struct {
+				Type string
+				Data map[string]any
+			}
+		}
+	}
+	api.decode(t, viewer.get("/v1/battles/"+battleID+"/replay"), http.StatusOK, &replay)
+	if replay.FinalTick != 3 || replay.NextTick != nil || len(replay.Frames) != 4 {
+		t.Fatalf("replay = %+v, want ticks 0-3 in one segment", replay)
+	}
+	for index, frame := range replay.Frames {
+		if frame.Tick != uint64(index) || frame.State.Tick != frame.Tick || len(frame.Events) == 0 || len(frame.Events[0].Data) != 0 {
+			t.Fatalf("replay frame %d = %+v", index, frame)
+		}
+	}
+	if last := replay.Frames[3].Events; last[len(last)-1].Type != "battle_completed" {
+		t.Fatalf("final replay events = %+v", last)
+	}
+	api.expectError(t, viewer.get("/v1/battles/"+battleID+"/replay?tick=4"), http.StatusBadRequest, apierror.CodeInvalidRequest)
 }
 
 // integrationUsers holds one signed-in client per role: two Players, a Developer and an Admin.

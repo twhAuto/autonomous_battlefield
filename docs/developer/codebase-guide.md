@@ -223,7 +223,8 @@ head and target commit; a pass for an older pair does not verify the current tre
 
 `backend/gamedata/battlefield.yaml` owns shared timing and controller plans;
 `rulesets/battlefield.yaml` references the full `content/core-v8.yaml` library.
-`scenarios/castle-siege.yaml` and `scenarios/frontier-siege.yaml` contain maps only.
+The five `scenarios/*.yaml` files contain maps only, and
+`battle/catalog/maps_test.go` checks that scripted bots finish a battle on each.
 `battle/catalog/shared_content.go` validates shared plans, while `library.go`
 resolves every library entry. Historical content lives only in catalog test fixtures.
 
@@ -237,7 +238,9 @@ ruleset validation, `ValidateUnitUnlocks` (shared by the engine and
 scripted rule that moves an enabled source to a preferred type once it is unlocked.
 `battle/catalog/late_game_test.go` probes whether unlocked units break a fully
 upgraded stalemate on the live ruleset and checks that scripted bots reach them.
-Frontend `presentation/upgrades.ts` formats owned levels and branch effects.
+Frontend `presentation/upgrades.ts` formats owned levels, unlocks and branch effects;
+`components/UpgradeIcon.tsx` draws their icons for faction strips, the inspector and
+decision cards.
 Tests cover every map's full catalog, specialist actions, branch locks, reserves,
 replay and UI presentation. The PostgreSQL-backed coverage gate includes persistence.
 
@@ -297,7 +300,7 @@ removal against embedded game content and retain historical/missing-data fallbac
 `shared/components/Emblem.tsx` renders them in the editor preview, registry and
 battle setup. `CreateFactionPage.tsx` uses native radios for keyboard selection.
 The faction API and service validate and persist the `emblem` identifier through
-`internal/faction/repo/postgres.go` and migration `00020_faction_emblem.sql`.
+`internal/faction/repo/postgres.go` and migration `00021_faction_emblem.sql`.
 Omitted update fields preserve stored symbols; old profiles default to Star.
 Component and browser tests cover selection and persistence across views;
 `faction_emblem_integration_test.go` verifies database migration and compatibility.
@@ -330,3 +333,25 @@ terrain bonuses, selected-building range and training progress.
 `initialization.go` copies authored castle training and attack capabilities into
 runtime state; `structures.go` runs castle and tower attacks together. The full map
 uses the main battle snapshot; the former faction-perspective polling hook is removed.
+
+## Battle replay implementation
+
+[`game/checkpoint.go`](../../backend/internal/game/checkpoint.go) defines
+`Checkpoint`, `Match.Checkpoint` and `RestoreMatch`. `AdvanceWithPlans` and the
+opening attach a checkpoint to every decision-window `Transition`; the field is
+excluded from the transition's JSON so gameplay trace hashes stay stable. A new
+`factionRuntime` or `Match` field that survives between ticks must join the
+checkpoint. `game/checkpoint_test.go` and `battle/catalog/checkpoint_test.go`
+restore every checkpoint after a JSON round trip and fail on any divergence before
+the next window.
+
+[`repo/ticks.go`](../../backend/internal/battle/repo/ticks.go) writes
+`battle_replay_frames` (migration `00020`) inside the guarded `SaveTick` and
+`CompleteBattle` statements, and [`repo/replay.go`](../../backend/internal/battle/repo/replay.go)
+reads the nearest earlier frame. [`service/replay.go`](../../backend/internal/battle/service/replay.go)
+restores the match and re-simulates one segment;
+[`api/handler.go`](../../backend/internal/battle/api/handler.go) serves
+`GET /v1/battles/{id}/replay`, and the route is registered as a Play permission in
+`authn/authorization.go`. `repo/replay_integration_test.go` covers lease-guarded and
+retried frame writes, and `test/integration/api_test.go` replays a completed battle
+end to end as a Player.

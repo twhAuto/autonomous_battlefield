@@ -282,33 +282,43 @@ func checkFactionOwnership(t *testing.T, role authn.Role, owner string) {
 	}
 }
 
-func TestEmblemValidationAndRetry(t *testing.T) {
+func TestEmblemCreationRetryAndUpdate(t *testing.T) {
+	for _, emblem := range []string{"star", "crown", "shield", "swords", "wolf", "raven", "serpent", "tree", "leaf", "flame", "sun", "moon"} {
+		t.Run(emblem, func(t *testing.T) { checkEmblemCreationRetryAndUpdate(t, emblem) })
+	}
+}
+
+func checkEmblemCreationRetryAndUpdate(t *testing.T, emblem string) {
+	t.Helper()
 	ctx := authn.WithActor(context.Background(), authn.Actor{ID: "self", Role: authn.Admin})
-	input := ProfileInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", Doctrine: "Defend"}
+	input := ProfileInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", Doctrine: "Defend", Emblem: emblem}
 	repo := &fakeFactionRepository{}
 	s := NewService(repo, fakeRulesets{})
-	for _, emblem := range []string{"star", "crown", "shield", "swords", "wolf", "raven", "serpent", "tree", "leaf", "flame", "sun", "moon"} {
-		input.Emblem = emblem
-		if err := s.CreateFaction(ctx, input); err != nil || repo.createdFaction.Emblem != emblem {
-			t.Fatalf("create %s: %v", emblem, err)
-		}
-		repo.storedFaction = repo.createdFaction
-		repo.createErr = ErrFactionAlreadyExists
-		if err := s.CreateFaction(ctx, input); err != nil {
-			t.Fatalf("retry %s: %v", emblem, err)
-		}
-		input.Emblem = "wolf"
-		if emblem == "wolf" {
-			input.Emblem = "moon"
-		}
-		if err := s.CreateFaction(ctx, input); !errors.Is(err, ErrFactionAlreadyExists) {
-			t.Fatalf("changed emblem retry: %v", err)
-		}
-		repo.createErr = nil
-		if err := s.UpdateFaction(ctx, input); err != nil || repo.createdFaction.Emblem != input.Emblem {
-			t.Fatalf("edit: %v", err)
-		}
+	if err := s.CreateFaction(ctx, input); err != nil || repo.createdFaction.Emblem != emblem {
+		t.Fatalf("create %s: %v", emblem, err)
 	}
+	repo.storedFaction = repo.createdFaction
+	repo.createErr = ErrFactionAlreadyExists
+	if err := s.CreateFaction(ctx, input); err != nil {
+		t.Fatalf("retry %s: %v", emblem, err)
+	}
+	input.Emblem = "wolf"
+	if emblem == "wolf" {
+		input.Emblem = "moon"
+	}
+	if err := s.CreateFaction(ctx, input); !errors.Is(err, ErrFactionAlreadyExists) {
+		t.Fatalf("changed emblem retry: %v", err)
+	}
+	repo.createErr = nil
+	if err := s.UpdateFaction(ctx, input); err != nil || repo.createdFaction.Emblem != input.Emblem {
+		t.Fatalf("edit: %v", err)
+	}
+}
+
+func TestFactionWritesRejectUnknownEmblems(t *testing.T) {
+	ctx := authn.WithActor(context.Background(), authn.Actor{ID: "self", Role: authn.Admin})
+	input := ProfileInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", Doctrine: "Defend"}
+	s := NewService(&fakeFactionRepository{}, fakeRulesets{})
 	for _, emblem := range []string{"dragon", "WOLF", " wolf ", "<svg onload=alert(1)>"} {
 		input.Emblem = emblem
 		if err := s.CreateFaction(ctx, input); !errors.Is(err, ErrInvalidFaction) {
@@ -318,7 +328,13 @@ func TestEmblemValidationAndRetry(t *testing.T) {
 			t.Fatalf("invalid edit %q: %v", emblem, err)
 		}
 	}
-	input.Emblem = ""
+}
+
+func TestLegacyFactionUpdatePreservesEmblem(t *testing.T) {
+	ctx := authn.WithActor(context.Background(), authn.Actor{ID: "self", Role: authn.Admin})
+	input := ProfileInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", Doctrine: "Defend"}
+	repo := &fakeFactionRepository{}
+	s := NewService(repo, fakeRulesets{})
 	if err := s.UpdateFaction(ctx, input); err != nil || repo.createdFaction.Emblem != "" {
 		t.Fatalf("legacy edit must preserve stored emblem: %v", err)
 	}

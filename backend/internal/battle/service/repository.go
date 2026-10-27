@@ -20,6 +20,7 @@ type Repository interface {
 	ListBattleEvents(context.Context, string, int, uint64, int, bool) ([]StoredBattleEvent, error)
 	ListBattleDecisions(context.Context, string, int) ([]ai.DecisionRecord, error)
 	GetDecision(context.Context, string) (ai.DecisionRecord, error)
+	GetReplayFrame(context.Context, string, int, uint64) (StoredReplayFrame, error)
 }
 
 // factionRepository is the narrower faction view required to create a battle.
