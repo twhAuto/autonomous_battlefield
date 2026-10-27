@@ -115,6 +115,29 @@ for (const [width, height] of [[15, 11], [25, 17]]) {
     expect(api.writes).toEqual([])
   })
 }
+test('a settled battle replays inside the command center', async ({ page, isMobile }) => {
+  await page.goto(`/battles/${battleId}`)
+  await page.getByRole('button', { name: 'WATCH REPLAY' }).click()
+  const controls = page.getByRole('region', { name: 'Replay controls' })
+  await expect(page.getByText('HEX TACTICAL MAP · TICK 0')).toBeVisible()
+  await controls.getByRole('slider', { name: 'Replay tick' }).fill('85')
+  await expect(page.getByText('HEX TACTICAL MAP · TICK 85')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Tick 85 events' })).toContainText('Amber collected 10 gold in income.')
+  await controls.getByRole('combobox', { name: 'Speed' }).selectOption('8')
+  await controls.getByRole('button', { name: 'PLAY', exact: true }).click()
+  await expect(page.getByText('HEX TACTICAL MAP · TICK 89')).toBeVisible()
+  await expect(controls.getByRole('button', { name: 'PLAY', exact: true })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  if (!isMobile) {
+    const cockpit = (await page.locator('.battle-cockpit').boundingBox())!
+    expect(cockpit.y + cockpit.height).toBeLessThanOrEqual(page.viewportSize()!.height)
+    expect((await page.getByLabel('Map navigation').boundingBox())!.height).toBeGreaterThan(250)
+  }
+  await controls.getByRole('button', { name: 'EXIT REPLAY' }).click()
+  await expect(page.getByText('HEX TACTICAL MAP · TICK 89')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'WATCH REPLAY' })).toBeVisible()
+})
+
 test('the full map stays available without faction-view requests', async ({ page }) => {
   const liveBattle = battleFixture()
   liveBattle.state.buildings[1].health = 100
