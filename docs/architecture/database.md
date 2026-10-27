@@ -16,8 +16,8 @@ places its volume on the retained `battlefield-retained` storage class.
 
 | Process | Login | Reads and writes |
 | --- | --- | --- |
-| API (`cmd/server`) | `DATABASE_URL` (application login) | Factions, battle creation, generation jobs, model access, Player membership; reads battles, events and decisions for inspection |
-| Engine (`cmd/engine`) | `DATABASE_URL` (application login) | Battle claims, ticks and state, events, decision windows and fallbacks, expiry sweeps |
+| API (`cmd/server`) | `DATABASE_URL` (application login) | Factions, battle creation, generation jobs, model access, Player membership; reads battles, events and decisions for inspection, and replay frames for replays |
+| Engine (`cmd/engine`) | `DATABASE_URL` (application login) | Battle claims, ticks and state, events, replay frames, decision windows and fallbacks, expiry sweeps |
 | Migration job (`cmd/server -migrate`) | `DATABASE_URL` (application login) | Schema changes; needs `CREATEROLE` the first time `00004` runs |
 | AI gateway (`cmd/aigateway`) | `AI_GATEWAY_DATABASE_URL`, a login that inherits only `battlefield_ai_gateway` | Decision and generation claims, context reads, plan submission, usage and failures |
 | Agent (`cmd/agent`) | None | Reaches data only through the AI gateway |
@@ -39,7 +39,7 @@ schema lifecycle. Grants (restated in full by `00017`):
 | `battle_runs` | `SELECT(id, ai_executions)`, `UPDATE(ai_executions)` | `00011` |
 | `agent_execution_leases` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` | `00011` |
 
-The role has no access to battle events, battle state, factions, membership or
+The role has no access to battle events, battle state, replay frames, factions, membership or
 policy tables beyond these columns. When `AI_GATEWAY_DATABASE_URL` is absent, the
 deployment scripts use the pre-rename `MCP_DATABASE_URL` if present, and otherwise
 reuse `DATABASE_URL`, which is acceptable only for local development. Production
@@ -53,6 +53,7 @@ must supply the restricted login
 | `factions` | Reusable faction identity: name, doctrine, background, owner | `ruleset_id` and `blueprint` are legacy-only. Battles snapshot faction data, so deleting a faction never changes a battle |
 | `battle_runs` | One battle: scenario snapshot, initial and current state, status, lease, attempt and graceful-requeue count, pause flag, result, owner, model-execution count, trace context | Status `queued`, `running`, `completed`, `failed` or `stopped`. A lease owner and expiry are both set or both null, and only while `running` |
 | `battle_events` | Ordered events per battle attempt | Primary key `(battle_id, attempt, sequence)` makes inserts idempotent and serves event paging |
+| `battle_replay_frames` | One engine checkpoint per decision window of a battle attempt, with that tick's events | Primary key `(battle_id, attempt, tick)` makes inserts idempotent and finds the nearest earlier checkpoint. `checkpoint` is a JSON object and `events` a JSON array |
 | `battle_decisions` | One strategy decision window: frozen observation and hash, controller and profile, lease, resolved plan, fallback source, error category, usage, provider metadata, trace context | Unique per `(battle_id, attempt, faction_id, target_tick)`. Status `pending`, `running`, `accepted`, `fallback` or `failed`. `version` guards resolution; `idempotency_key` deduplicates submissions. `faction_id` is snapshot data, not a foreign key |
 | `faction_generation_accounts` | Per-actor row used as a generation lock | Locked `FOR UPDATE` while creating a job |
 | `faction_background_generations` | Durable background-draft jobs | Unique `(actor_id, idempotency_key)`; a partial unique index allows one queued or running job per actor. Status `queued`, `running`, `succeeded`, `failed` or `expired` |
@@ -65,7 +66,7 @@ must supply the restricted login
 | `goose_db_version` | Goose's applied-migration ledger | Production recovery records compare it before approving an image rollback |
 
 These diagrams show every column of every table, generated from the schema after
-migration `00019` with keys marked `PK` and `FK`. Update them with any schema
+migration `00020` with keys marked `PK` and `FK`. Update them with any schema
 change. Battles snapshot faction data instead of referencing `factions`, so
 deleting a faction never changes a battle.
 
@@ -74,6 +75,7 @@ deleting a faction never changes a battle.
 ```mermaid
 erDiagram
     BATTLE_RUNS ||--o{ BATTLE_EVENTS : "records (cascade)"
+    BATTLE_RUNS ||--o{ BATTLE_REPLAY_FRAMES : "checkpoints (cascade)"
     BATTLE_RUNS ||--o{ BATTLE_DECISIONS : "coordinates (cascade)"
     BATTLE_RUNS {
         uuid id PK
@@ -110,6 +112,14 @@ erDiagram
         bigint tick
         text type
         jsonb payload
+        timestamptz created_at
+    }
+    BATTLE_REPLAY_FRAMES {
+        uuid battle_id PK,FK
+        int attempt PK
+        bigint tick PK
+        jsonb checkpoint
+        jsonb events
         timestamptz created_at
     }
     BATTLE_DECISIONS {
@@ -260,6 +270,7 @@ same migrated schema, are:
 | `battle_runs` | `battle_runs_history_idx` | `(created_at DESC, id DESC)` | Battle history pages, newest first |
 | `battle_runs` | `battle_runs_owner_created` | `(owner_id, created_at)` | Per-owner admission counts |
 | `battle_events` | primary key | `(battle_id, attempt, sequence)` | Idempotent inserts and event paging |
+| `battle_replay_frames` | primary key | `(battle_id, attempt, tick)` | Idempotent inserts and the latest checkpoint at or before a replay tick |
 | `battle_decisions` | `battle_decisions_battle_id_attempt_faction_id_target_tick_key` | Unique `(battle_id, attempt, faction_id, target_tick)` | One decision per faction per window |
 | `battle_decisions` | `battle_decisions_window_idx` | `(battle_id, attempt, target_tick, faction_id)` | Decision-window lookups |
 | `battle_decisions` | `battle_decisions_agent_claim_idx` | `(status, lease_expires_at, created_at, id)` where `controller_type = 'model'` and `status` is `pending` or `running` | Worker decision claims |
@@ -281,7 +292,7 @@ block on or double-claim the same row.
   whose lease expired, while `attempt - graceful_requeues` is below
   `engine.maxAttempts`, through the partial index `battle_runs_unpaused_claim_idx`.
   Each claim increments `attempt` and restarts from `initial_state`, so every
-  attempt keeps its own events and decisions. A graceful-shutdown requeue increments
+  attempt keeps its own events, decisions and replay frames. A graceful-shutdown requeue increments
   `graceful_requeues` (migration `00019`), refunding the attempt it interrupted;
   only crashed or lease-expired attempts spend the budget. Tick writes extend the
   lease only where status, attempt and lease owner still match, so a previous owner
@@ -331,6 +342,8 @@ accepted.
 ### Idempotency and versions
 
 - Battle events are keyed by `(battle_id, attempt, sequence)`.
+- Replay frames are keyed by `(battle_id, attempt, tick)`; a retried tick write keeps
+  the first frame.
 - An accepted plan is written only to a `pending` or `running` decision whose
   `version` and `target_tick` match the submission, and the write increments
   `version`. Resubmitting with the same idempotency key after acceptance returns the
@@ -395,6 +408,19 @@ remain readable in existing battle JSON; workers do not re-resolve them. Upgrade
 ownership remains an array of purchased IDs. Specialist capabilities and remaining
 Engineer repair charges are stored in scenario/state JSON, so no relational schema
 migration is required. Historical replay tests retain the original transition hash.
+
+## Battle replay frames
+
+Migration `00020_battle_replay_frames.sql` adds `battle_replay_frames`. After every
+decision-window transition (the opening at tick 0, then every
+`decisionIntervalTicks`), `SaveTick` or `CompleteBattle` inserts the engine
+checkpoint and that tick's events in the same statement as the tick, and only while
+the lease still matches. Nothing is backfilled: battles that finished before the
+migration have no frames and no replay. Frames of earlier attempts remain until the
+battle is deleted; replays read only the final attempt. A checkpoint is about the
+size of one `current_state` (26 KB on average, 36 KB at most, for a measured
+frontier battle), so frames add roughly a tenth of a state per tick. No role gains
+access. Down drops the table and every stored replay.
 
 ## Decision selection and timing columns
 

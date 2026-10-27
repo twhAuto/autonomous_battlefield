@@ -524,6 +524,46 @@ paths:
         '429': {$ref: '#/components/responses/RateLimited'}
         '500': {$ref: '#/components/responses/Internal'}
 
+  /v1/battles/{id}/replay:
+    parameters:
+      - {$ref: '#/components/parameters/BattleId'}
+    get:
+      tags: [Battles]
+      operationId: getBattleReplay
+      summary: Replay a finished battle segment
+      description: |
+        Returns the segment of a completed, stopped or failed battle's final attempt
+        that contains `tick`. The engine stores a checkpoint at the opening and at
+        every decision window; the API resumes the engine from the checkpoint at or
+        before `tick` and re-simulates the ticks before the next window, so a segment
+        spans at most one decision interval. Request `nextTick` to continue. Players
+        receive event `data` as an empty object, as on the events route.
+      parameters:
+        - name: tick
+          in: query
+          description: Any tick from 0 to the battle's final tick (`400` beyond it).
+          schema: {type: integer, minimum: 0, default: 0}
+      responses:
+        '200':
+          description: One replay segment.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BattleReplay'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: |
+            `conflict`: the battle is still queued or running, or its final attempt
+            saved no checkpoint for the segment, such as a battle that finished before
+            replays were recorded.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+
   /v1/battles/{id}/decisions:
     parameters:
       - {$ref: '#/components/parameters/BattleId'}
@@ -1643,6 +1683,48 @@ components:
           type: array
           items: {$ref: '#/components/schemas/BattleEvent'}
         nextCursor: {type: [integer, 'null']}
+
+    ReplayEvent:
+      description: |
+        An engine event with the same `type` and `data` contract as `BattleEvent`;
+        Players receive an empty `data` object.
+      type: object
+      required: [sequence, tick, type, data]
+      properties:
+        sequence: {type: integer}
+        tick: {type: integer}
+        type: {type: string}
+        data:
+          type: object
+          additionalProperties: true
+
+    ReplayFrame:
+      type: object
+      required: [tick, state, events]
+      properties:
+        tick: {type: integer, minimum: 0}
+        state: {$ref: '#/components/schemas/BattleState'}
+        events:
+          type: array
+          description: The events this tick produced, ordered by sequence.
+          items: {$ref: '#/components/schemas/ReplayEvent'}
+
+    BattleReplay:
+      type: object
+      required: [battleId, attempt, finalTick, fromTick, toTick, nextTick, frames]
+      properties:
+        battleId: {type: string, format: uuid}
+        attempt: {type: integer, minimum: 1, description: The final attempt being replayed.}
+        finalTick: {type: integer, minimum: 0}
+        fromTick: {type: integer, minimum: 0, description: The checkpoint tick that starts the segment.}
+        toTick: {type: integer, minimum: 0}
+        nextTick:
+          type: [integer, 'null']
+          description: The first tick of the next segment; null after `finalTick`.
+        frames:
+          type: array
+          description: One frame per tick from `fromTick` to `toTick`.
+          items: {$ref: '#/components/schemas/ReplayFrame'}
 
     Usage:
       type: object

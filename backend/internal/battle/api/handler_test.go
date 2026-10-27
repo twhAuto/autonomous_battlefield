@@ -392,6 +392,8 @@ type fakeBattleService struct {
 	stopCalled    bool
 	pauseCalled   bool
 	resumeCalled  bool
+	replay        battleservice.BattleReplay
+	replayTick    uint64
 }
 
 func (s *fakeBattleService) ListScenarios() []battleservice.ScenarioSummary { return s.scenarios }
@@ -439,6 +441,11 @@ func (s *fakeBattleService) ListBattleEvents(_ context.Context, _ string, attemp
 	s.eventsLimit = limit
 	s.eventsLatest = latest
 	return s.page, s.err
+}
+
+func (s *fakeBattleService) GetBattleReplay(_ context.Context, _ string, tick uint64) (battleservice.BattleReplay, error) {
+	s.replayTick = tick
+	return s.replay, s.err
 }
 
 func (s *fakeBattleService) ListBattles(_ context.Context, input battleservice.BattleHistoryInput) (battleservice.BattleHistoryPage, error) {

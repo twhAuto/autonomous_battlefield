@@ -389,6 +389,10 @@ type Transition struct {
 	State    State   `json:"state"`
 	Finished bool    `json:"finished"`
 	Result   *Result `json:"result,omitempty"`
+	// Checkpoint is set only on decision-window transitions, including the opening.
+	// Replays resume from it, so the ticks before the next window need no plans. It
+	// is persisted separately and stays out of the gameplay trace.
+	Checkpoint *Checkpoint `json:"-"`
 }
 
 // DecisionSnapshot is the bounded, faction-visible state frozen immediately

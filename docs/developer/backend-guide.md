@@ -66,6 +66,7 @@ The package root contains types and interfaces shared across these subpackages, 
 | [`match.go`](../../backend/internal/game/match.go) | Runtime state, tick orchestration, events, and results |
 | [`initialization.go`](../../backend/internal/game/initialization.go) | Scenario validation and initial factions, castles, and units |
 | [`opening.go`](../../backend/internal/game/opening.go) | Tick-zero opening phase and deterministic fallback |
+| [`checkpoint.go`](../../backend/internal/game/checkpoint.go) | Decision-window checkpoints (state plus faction runtime) and `RestoreMatch` for replays |
 | [`upgrades.go`](../../backend/internal/game/upgrades.go) | One-time gold purchases and bonus propagation |
 | [`decisions.go`](../../backend/internal/game/decisions.go) | Decision snapshots, plan validation, scripted plans, and tactics |
 | [`economy.go`](../../backend/internal/game/economy.go) | Income, spending in plan order (shared by regular windows and the opening), construction payment, and recruitment |
@@ -87,8 +88,10 @@ The package root contains types and interfaces shared across these subpackages, 
 - `DecisionWindowDue` and `DecisionTargetTick` for production boundaries;
 - `DecisionSnapshot` for a bounded faction-visible model input;
 - `ScriptedPlans` for deterministic baselines;
-- `AdvanceWithPlans` for plan application followed by a tick;
-- `State` for a defensive copy of current state.
+- `AdvanceWithPlans` for plan application followed by a tick, attaching a
+  `Checkpoint` to every decision-window transition;
+- `State` for a defensive copy of current state;
+- `Checkpoint` and `RestoreMatch` to resume a match exactly from a saved window.
 
 `Match` contains no database, HTTP, or model-provider dependency. Preserve this property when adding game behavior.
 
@@ -110,6 +113,8 @@ The API stores this resolved value in `battle_runs.scenario_snapshot`. The engin
 - enqueue, list history, read, pause, resume, and stop battles;
 - read events, decision history, and faction perspectives.
 
+[`replay.go`](../../backend/internal/battle/service/replay.go) restores a finished
+battle from its nearest stored checkpoint and re-simulates one replay segment.
 [`repository.go`](../../backend/internal/battle/service/repository.go) defines the persistence operations required by these use cases. [`catalog.go`](../../backend/internal/battle/service/catalog.go) defines catalog-facing types and interfaces.
 
 ### `internal/battle/resultcache`: optional read cache
@@ -131,7 +136,7 @@ scenario, and profile routes documented in the
 cursor/attempt parsing, HTTP status mapping, and response encoding for those routes.
 [`errors.go`](../../backend/internal/battle/api/errors.go) holds the shared service-error
 mapping (`writeError`): forbidden is 403, allowance 429, invalid 400, not found 404, and not
-active 409, with route-specific messages. Any other error is logged and becomes a generic 500.
+active or replay unavailable 409, with route-specific messages. Any other error is logged and becomes a generic 500.
 Handlers depend on the full `battleservice.Service` interface, so a missing capability is a
 compile error rather than an empty response.
 
@@ -168,7 +173,7 @@ All persistence calls carry the current battle lease. Do not add an unguarded wr
 
 ### `internal/battle/repo`: PostgreSQL battle adapter
 
-The adapter stays in one package: [`postgres.go`](../../backend/internal/battle/repo/postgres.go) constructs it, [`battles.go`](../../backend/internal/battle/repo/battles.go) owns public battle operations, [`queue.go`](../../backend/internal/battle/repo/queue.go) owns queue leases and `FailExhaustedBattles` (the engine runs it before each claim), [`expiry.go`](../../backend/internal/battle/repo/expiry.go) owns the `battleTimeout` (one hour) sweep, and [`ticks.go`](../../backend/internal/battle/repo/ticks.go) owns atomic tick and completion writes. Splitting files does not change transaction boundaries.
+The adapter stays in one package: [`postgres.go`](../../backend/internal/battle/repo/postgres.go) constructs it, [`battles.go`](../../backend/internal/battle/repo/battles.go) owns public battle operations, [`queue.go`](../../backend/internal/battle/repo/queue.go) owns queue leases and `FailExhaustedBattles` (the engine runs it before each claim), [`expiry.go`](../../backend/internal/battle/repo/expiry.go) owns the `battleTimeout` (one hour) sweep, [`ticks.go`](../../backend/internal/battle/repo/ticks.go) owns atomic tick and completion writes, including replay frames, and [`replay.go`](../../backend/internal/battle/repo/replay.go) reads the nearest earlier frame. Splitting files does not change transaction boundaries.
 
 [`decisions.go`](../../backend/internal/battle/repo/decisions.go) implements the AI decision repository:
 
@@ -412,6 +417,7 @@ both the handler and registry to the service; policy reads do not depend on HTTP
 | `game.Scenario` | `internal/game/types.go` | Complete immutable input to a battle attempt |
 | `game.State` | `internal/game/types.go` | Current authoritative simulation snapshot |
 | `game.Transition` | `internal/game/types.go` | One tick's state, events, and optional result |
+| `game.Checkpoint` | `internal/game/checkpoint.go` | Resumable engine state stored at each decision window for replays |
 | `game.View` | `internal/game/types.go` | Full battlefield state with faction-private economic totals |
 | `controller.PlanProposal` | `game/controller/types.go` | Scripted/model strategy and production input |
 | `ai.DecisionContext` | `internal/ai/types.go` | Frozen bounded model observation |
@@ -505,6 +511,7 @@ Where to start for each cross-cutting feature. The linked page owns its behavior
 | Doctrine and opening purchases | `faction/service/update.go`; `game/opening.go`, `upgrades.go` | `/factions/new`, `/factions/:id/edit` editor | `game` opening and upgrade tests | [Game rules](../game/game-rules.md) |
 | Background generation | [`internal/generation`](#internalgeneration-faction-background-generation); `ai/agent/generation.go`; `ai/mcpserver/generation.go` | `features/factions/components/BackgroundGenerator.tsx`, `api/backgrounds.ts` | generation repository and MCP transport tests | [HTTP API](../architecture/api.md#faction-background-generation) |
 | Battle history | `history.go` in `battle/api`, `battle/service`, `battle/repo` | `features/battles/pages/BattleHistoryPage.tsx` | `battle/repo/history_integration_test.go` | [HTTP API](../architecture/api.md#browse-battle-history) |
+| Battle replay | `game/checkpoint.go`; `replay.go` in `battle/service` and `battle/repo`; `repo/ticks.go`; migration `00020` | — | `game/checkpoint_test.go`, catalog `checkpoint_test.go`, `battle/repo/replay_integration_test.go`, `test/integration` | [HTTP API](../architecture/api.md#battle-replay), [architecture](../architecture/system-architecture.md#56-replay-a-finished-battle) |
 
 `members` logs unexpected failures as `player_members_request_failed` with a fixed
 `reason` and any SQLSTATE, never the raw error (which can name database hosts and
@@ -577,7 +584,8 @@ The test covers:
   unknown fields, oversized bodies, invalid IDs and tick counts, and missing
   scenarios or factions.
 - **Battle retries:** the 202 retry and both 409 cases.
-- **A full run:** polling until complete, events, the faction view and history.
+- **A full run:** polling until complete, events, the replay, the faction view and
+  history.
 - **Authorization:** owner and role checks on inspect, admin and control routes,
   and control retries.
 

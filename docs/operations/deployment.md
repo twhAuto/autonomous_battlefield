@@ -62,6 +62,14 @@ An explicit future replay of old inputs uses the new engine and can produce a
 different trace. This is a release precondition, not evidence that a maintenance
 window or production deployment has been performed.
 
+AB-180 battle replays change no gameplay and need no cutover. Migration `00020`
+adds `battle_replay_frames`; an attempt that the new engine runs stores a checkpoint
+at every decision window, while battles finished earlier, or finished by an older
+engine during a rolling deployment or after a rollback, have no replay (`409`).
+Replays re-simulate the ticks between checkpoints with the deployed engine. After a
+later gameplay cutover, those ticks of battles recorded on the previous engine can
+differ from what was played, although every checkpoint tick stays exact.
+
 ## Overlays
 
 Application manifests use Kustomize. This tree shows the shared base and Kind

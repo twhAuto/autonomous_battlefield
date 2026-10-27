@@ -321,3 +321,25 @@ terrain bonuses, selected-building range and training progress.
 `initialization.go` copies authored castle training and attack capabilities into
 runtime state; `structures.go` runs castle and tower attacks together. The full map
 uses the main battle snapshot; the former faction-perspective polling hook is removed.
+
+## Battle replay implementation
+
+[`game/checkpoint.go`](../../backend/internal/game/checkpoint.go) defines
+`Checkpoint`, `Match.Checkpoint` and `RestoreMatch`. `AdvanceWithPlans` and the
+opening attach a checkpoint to every decision-window `Transition`; the field is
+excluded from the transition's JSON so gameplay trace hashes stay stable. A new
+`factionRuntime` or `Match` field that survives between ticks must join the
+checkpoint. `game/checkpoint_test.go` and `battle/catalog/checkpoint_test.go`
+restore every checkpoint after a JSON round trip and fail on any divergence before
+the next window.
+
+[`repo/ticks.go`](../../backend/internal/battle/repo/ticks.go) writes
+`battle_replay_frames` (migration `00020`) inside the guarded `SaveTick` and
+`CompleteBattle` statements, and [`repo/replay.go`](../../backend/internal/battle/repo/replay.go)
+reads the nearest earlier frame. [`service/replay.go`](../../backend/internal/battle/service/replay.go)
+restores the match and re-simulates one segment;
+[`api/handler.go`](../../backend/internal/battle/api/handler.go) serves
+`GET /v1/battles/{id}/replay`, and the route is registered as a Play permission in
+`authn/authorization.go`. `repo/replay_integration_test.go` covers lease-guarded and
+retried frame writes, and `test/integration/api_test.go` replays a completed battle
+end to end as a Player.

@@ -32,6 +32,8 @@ var (
 	limitedError   = errorFor(http.StatusTooManyRequests, battleAllowanceMessage, battleservice.ErrLimited)
 	notFoundError  = errorFor(http.StatusNotFound, battleNotFoundMessage, battleservice.ErrBattleNotFound)
 	notActiveError = errorFor(http.StatusConflict, "battle is not active", battleservice.ErrBattleNotActive)
+	// replayUnavailableError covers active battles and battles without saved checkpoints.
+	replayUnavailableError = errorFor(http.StatusConflict, "battle replay unavailable", battleservice.ErrReplayUnavailable)
 )
 
 // invalidError answers ErrInvalidBattle, plus any extra errors, with a route-specific
