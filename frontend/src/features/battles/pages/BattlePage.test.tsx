@@ -191,6 +191,29 @@ it('shows the inspector to an admin and withholds it from a player', async () =>
   await screen.findByRole('progressbar', { name: 'Tick limit used' })
   expect(screen.queryByRole('combobox', { name: 'Inspect' })).not.toBeInTheDocument()
   expect(screen.queryAllByRole('tab')).toHaveLength(0)
+  expect(document.querySelector('.battle-cockpit')).toHaveClass('battle-cockpit--no-inspector')
+})
+
+it('widens, hides and restores the inspector without losing keyboard focus', async () => {
+  vi.mocked(getBattle).mockResolvedValue(runningBattle({ status: 'completed' }))
+  const user = userEvent.setup()
+  renderBattle()
+  const cockpit = (await screen.findByRole('progressbar', { name: 'Tick limit used' })).closest('.battle-cockpit')
+  expect(cockpit).toHaveClass('battle-cockpit--inspector-normal')
+  const widen = screen.getByRole('button', { name: 'Widen inspector' })
+  await user.click(widen)
+  expect(cockpit).toHaveClass('battle-cockpit--inspector-wide')
+  expect(widen).toHaveAttribute('aria-pressed', 'true')
+  await user.click(widen)
+  expect(cockpit).toHaveClass('battle-cockpit--inspector-normal')
+  await user.click(screen.getByRole('button', { name: 'Hide inspector' }))
+  expect(cockpit).toHaveClass('battle-cockpit--inspector-hidden')
+  expect(screen.queryByRole('complementary', { name: 'Battle inspector' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Show inspector' })).toHaveFocus()
+  await user.click(screen.getByRole('button', { name: 'Show inspector' }))
+  expect(screen.getByRole('complementary', { name: 'Battle inspector' })).toBeInTheDocument()
+  expect(screen.getByRole('combobox', { name: 'Inspect' })).toHaveFocus()
+  expect(screen.queryByRole('button', { name: 'Show inspector' })).not.toBeInTheDocument()
 })
 
 
@@ -213,7 +236,7 @@ it('announces the winner for a completed battle', async () => {
   renderBattle()
   await screen.findByRole('progressbar', { name: 'Tick limit used' })
   expect(screen.getAllByText(/North/).length).toBeGreaterThan(0)
-  expect(screen.getAllByText('Battle result').length).toBeGreaterThan(0)
+  expect(screen.getByRole('complementary', { name: 'Battle result' })).toHaveTextContent('North wins')
 })
 
 it('falls back to the raw winner identifier when it matches no participant', async () => {

@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import type { BattleRun, DecisionHistory } from '../api/battles'
+import type { BattleBuilding, BattleRun, DecisionHistory } from '../api/battles'
 import { SessionContext } from '../../auth/SessionContext'
 import { FactionSummaries } from './FactionSummaries'
 
@@ -73,7 +73,7 @@ describe('faction summaries', () => {
 
   it('shows placeholders for missing metrics, distinguishing missing units from zero', () => {
     const { rerender } = render(<FactionSummaries {...props} battle={{ ...battle, state: { ...battle.state, factions: null, units: null } }} />)
-    expect(screen.getAllByText('—')).toHaveLength(2)
+    expect(screen.getAllByText('—')).toHaveLength(3)
     rerender(<FactionSummaries {...props} battle={{ ...battle, state: { ...battle.state, units: null } }} />)
     expect(screen.getByText('Units').nextElementSibling).toHaveTextContent('—')
     rerender(<FactionSummaries {...props} />)
@@ -112,10 +112,30 @@ describe('faction summaries', () => {
   expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toContain('Plan · fallback')
  })
 
+ it('shows castle health and production chips in the faction color', () => {
+  const castle: BattleBuilding = { id: 'a:castle', factionId: 'a', type: 'castle', position: { x: 0, y: 0 }, health: 161, maxHealth: 300, defense: 8, vision: 0, income: 10, trains: ['striker'], production: { unitType: 'striker', enabled: true } }
+  render(<FactionSummaries {...props} battle={{ ...battle, participants: [...battle.participants, { id: 'b', name: 'Blue' }], state: { ...battle.state, buildings: [castle] } }} />)
+  const amber = screen.getByRole('article', { name: 'Amber' })
+  expect(within(amber).getByText('Castle').nextElementSibling).toHaveTextContent('161 / 300')
+  expect(within(amber).getByRole('list', { name: 'Amber production' })).toBeInTheDocument()
+  expect(within(screen.getByRole('article', { name: 'Blue' })).queryByRole('list')).not.toBeInTheDocument()
+  expect(amber.style.getPropertyValue('--faction-color')).toBe('#69d2ff')
+  expect(screen.getByRole('article', { name: 'Blue' }).style.getPropertyValue('--faction-color')).toBe('#ff6b55')
+ })
+
+ it('puts activity and the applied plan name on the plan disclosure', () => {
+  render(<FactionSummaries {...props} decisions={[{ ...decision, status: 'fallback', resolvedPlan: { name: 'Hold', rationale: 'Keep defending.' } }]} />)
+  const summary = within(screen.getByRole('article', { name: 'Amber' })).getByText('Hold').closest('summary')
+  expect(summary).toHaveTextContent('Fallback · fallback Hold')
+  expect(summary).toHaveAttribute('title', 'Plan · fallback: Hold')
+ })
+
  it('does not show decision details to players', () => {
   render(<SessionContext.Provider value={{ enabled: true, authenticated: true, actor: { id: 'player', role: 'player' } }}>
     <FactionSummaries {...props} decisions={[{ ...decision, status: 'accepted', resolvedPlan: { name: 'Private plan', rationale: 'Private rationale' } }]} />
   </SessionContext.Provider>)
   expect(screen.queryByText('Plan')).not.toBeInTheDocument()
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  expect(screen.queryByText('Private plan')).not.toBeInTheDocument()
+  expect(screen.getByText('Plan ready')).toBeVisible()
  })

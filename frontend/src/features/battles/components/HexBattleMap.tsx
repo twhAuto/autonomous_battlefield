@@ -1,13 +1,14 @@
 // Renders an interactive SVG hex battlefield from supplied state, including terrain,
 // entity selection, and map navigation.
 
-import { type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { useMobile } from '../../../shared/hooks/useMobile'
 import type { BattleBuilding, BattleMap, BattleState, BattleUnit, HexPosition } from '../api/battles'
-import { TrainingQueue } from './BuildingProductionPanel'
+import { TrainingQueue } from './BuildingProduction'
 import { TerrainGlyph } from './TerrainGlyph'
 import { entityIndex, entityName, typeLabel, type EntityNaming } from '../presentation/entities'
 import { EntityGlyph, EntityLegend } from './EntityIcon'
+import { factionColors } from '../presentation/factions'
 
 type Entity = BattleUnit | BattleBuilding
 const size = 24
@@ -33,10 +34,8 @@ export function HexBattleMap({ map, state, factionNames }: Readonly<{
   const entities: Entity[] = [...(state.buildings ?? []).filter((building) => building.health > 0), ...liveUnits]
   const naming = { entities: entityIndex(state), factionNames }
   const selected = entities.find((entity) => entity.id === selectedId)
-  // Colors follow the participant roster sorted by ID, independent of entity order.
   const roster = factionNames.size > 0 ? [...factionNames.keys()] : (state.factions ?? []).map((faction) => faction.factionId)
-  // Code-unit order, not localeCompare: it must match the backend's byte-order ID sort.
-  const colors = new Map([...roster].sort((a, b) => (a < b ? -1 : Number(a > b))).map((factionId, index) => [factionId, index === 0 ? '#69d2ff' : '#ff6b55']))
+  const colors = factionColors(roster)
   const width = root3 * size * (map.width + 0.5) + 48
   const height = size * (1.5 * (map.height - 1) + 2) + 48
 
@@ -98,7 +97,7 @@ export function HexBattleMap({ map, state, factionNames }: Readonly<{
           </div>
         </div>
       </div>
-      <section ref={viewport} className={`map-viewport${mobile && !expanded ? ' map-viewport--overview' : ''}`} style={expanded ? undefined : { aspectRatio: `${width} / ${height}` }} aria-label="Map navigation">
+      <section ref={viewport} className={`map-viewport${mobile && !expanded ? ' map-viewport--overview' : ''}`} style={expanded ? undefined : { '--map-aspect': `${width} / ${height}` } as CSSProperties} aria-label="Map navigation">
         <svg
           viewBox={`0 0 ${width} ${height}`}
           onPointerDown={(event) => {
@@ -162,9 +161,13 @@ export function HexBattleMap({ map, state, factionNames }: Readonly<{
           </g>
         </svg>
       </section>
-      <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-forest" /> Forest · +3 troop defense</span><span><i className="legend-gold" /> Gold deposit · +5 economy income</span><span><i className="legend-movement" /> Movement (faction color)</span><span><i className="legend-attack" /> Attack (faction color)</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
-      <EntityLegend types={entities.map((entity) => entity.type)} />
-      <EntityDetails selected={selected} naming={naming} />
+      <div className="map-footer">
+        <details className="map-key"><summary>Map legend</summary>
+          <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-forest" /> Forest · +3 troop defense</span><span><i className="legend-gold" /> Gold deposit · +5 economy income</span><span><i className="legend-movement" /> Movement (faction color)</span><span><i className="legend-attack" /> Attack (faction color)</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
+          <EntityLegend types={entities.map((entity) => entity.type)} />
+        </details>
+        <EntityDetails selected={selected} naming={naming} />
+      </div>
     </section>
   )
   return <>{!expanded && content}<dialog ref={dialog} className="expanded-map" aria-label="Expanded battlefield map" onKeyDown={trapFocus} onCancel={event => { event.preventDefault(); setExpanded(false) }} onClose={() => setExpanded(false)}>{expanded && content}</dialog></>
