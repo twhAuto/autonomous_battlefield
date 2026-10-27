@@ -289,7 +289,11 @@ removal against embedded game content and retain historical/missing-data fallbac
 
 `frontend/src/features/battles/pages/CreateBattlePage.tsx` offers map-default or
 preset tick duration and decision interval, resets overrides on a map change,
-and keeps combatant columns aligned with mixed controller types. Availability
+and keeps combatant columns aligned with mixed controller types. It preselects
+the `frontier-siege` map when offered and Low reasoning effort for models that
+list efforts. `components/MapPreview.tsx` draws the selected scenario's terrain
+and castle spawns from the `map` field of `GET /v1/scenarios`, reusing the hex
+geometry exported by `HexBattleMap.tsx`. Availability
 still filters controller choices; setup has no integration diagnostic panel.
 `backend/internal/battle/service/timing.go` validates optional overrides before
 snapshot hashing and persistence; `timing_test.go` covers bounds, defaults and

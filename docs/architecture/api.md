@@ -135,7 +135,8 @@ immutable snapshot of its participants.
 ### Queue a battle
 
 Both factions must exist, and the scenario ID names a template in
-`backend/gamedata/scenarios`; clients discover them through `GET /v1/scenarios`.
+`backend/gamedata/scenarios`; clients discover them through `GET /v1/scenarios`,
+which also returns each scenario's authored `map` for layout previews.
 Queueing snapshots each faction's name, background and doctrine, the map, the
 ruleset, and the controller plans, so later faction edits do not change the
 battle. Battle detail participants show these historical values, not the current

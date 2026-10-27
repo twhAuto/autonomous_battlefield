@@ -1137,7 +1137,7 @@ components:
     ScenarioSummary:
       description: A map layout with shared battle settings and the full shared content catalog.
       type: object
-      required: [id, rulesVersion, rulesetId, tickDuration, decisionIntervalTicks, maximumTicks, mapWidth, mapHeight]
+      required: [id, rulesVersion, rulesetId, tickDuration, decisionIntervalTicks, maximumTicks, mapWidth, mapHeight, map]
       properties:
         id: {type: string, examples: [castle-siege]}
         rulesVersion: {type: string}
@@ -1147,6 +1147,7 @@ components:
         maximumTicks: {type: integer}
         mapWidth: {type: integer}
         mapHeight: {type: integer}
+        map: {$ref: '#/components/schemas/BattleMap'}
         allowedUnits: {type: [array, 'null'], items: {type: string}}
         allowedUpgrades: {type: [array, 'null'], items: {type: string}}
         allowedBuildings: {type: [array, 'null'], items: {type: string}}

@@ -9,8 +9,11 @@ import type { ModelProfile } from '../../../shared/domain/model-profile'
 import { Faction, FactionApiError, listFactions } from '../../factions/api/factions'
 import { Emblem } from '../../../shared/components/Emblem'
 import { ResponsivePreview } from '../../../shared/components/ResponsivePreview'
+import { MapPreview } from '../components/MapPreview'
 
 type LoadState = 'loading' | 'ready' | 'empty' | 'error'
+const defaultScenarioID = 'frontier-siege'
+const defaultReasoningEffort = 'low'
 
 function newBattleID() {
   return crypto.randomUUID()
@@ -63,7 +66,7 @@ export function CreateBattlePage() {
         }
         setFirstFactionID(loadedFactions[0].id)
         setSecondFactionID(loadedFactions[1].id)
-        setScenarioID(loadedScenarios[0].id)
+        setScenarioID((loadedScenarios.find(scenario => scenario.id === defaultScenarioID) ?? loadedScenarios[0]).id)
         setLoadState('ready')
       })
       .catch((error) => {
@@ -119,8 +122,8 @@ export function CreateBattlePage() {
         id: battleID,
         scenarioId: scenarioID,
         participants: [
-          { factionId: firstFactionID, controller: controllerInput(firstController, firstSelection) },
-          { factionId: secondFactionID, controller: controllerInput(secondController, secondSelection) },
+          { factionId: firstFactionID, controller: controllerInput(firstController, resolveSelection(profiles.find(profile => profile.id === firstController), firstSelection)) },
+          { factionId: secondFactionID, controller: controllerInput(secondController, resolveSelection(profiles.find(profile => profile.id === secondController), secondSelection)) },
         ],
         tickCount: Number(tickCount),
         ...(tickDuration && { tickDuration }),
@@ -247,6 +250,7 @@ export function CreateBattlePage() {
           <ResponsivePreview label="Preview combatants"><aside className="battle-preview" aria-label="Selected combatants">
             <div className="preview-panel__grid" />
             <div className="preview-panel__heading"><span>COMBATANT PREVIEW</span><span>ARMED</span></div>
+            {selectedScenario?.map && <MapPreview map={selectedScenario.map} scenarioId={selectedScenario.id} factionIds={[firstFactionID, secondFactionID]} />}
             <div className="battle-preview__combatants">
               <Combatant faction={firstFaction} slot="01" />
               <div className="battle-preview__axis"><span />VERSUS<span /></div>
@@ -260,6 +264,20 @@ export function CreateBattlePage() {
 }
 
 type ModelSelection = { modelIdentifier?: string; reasoningEffort?: string }
+function supportedEfforts(profile: ModelProfile | undefined, model: string) {
+  return profile?.modelOptions?.find(option => option.id === model)?.reasoningEfforts ?? []
+}
+
+// Prefer an explicit Low effort over the provider's unstated default; models without
+// configurable efforts keep sending none.
+function resolveSelection(profile: ModelProfile | undefined, selection: ModelSelection): ModelSelection {
+  if (!profile || selection.reasoningEffort) return selection
+  const model = selection.modelIdentifier || profile.modelLabel
+  const efforts = supportedEfforts(profile, model)
+  if (efforts.length === 0) return selection
+  return { modelIdentifier: model, reasoningEffort: efforts.includes(defaultReasoningEffort) ? defaultReasoningEffort : efforts[0] }
+}
+
 function controllerInput(value: string, selection: ModelSelection) {
   return value === 'scripted' ? { type: 'scripted' as const } : { type: 'model' as const, profileId: value, ...selection }
 }
@@ -269,7 +287,8 @@ function ControllerSelect({ id, value, onChange, profiles, selection, onSelect }
   const selected = profiles.find(profile => profile.id === value)
   const model = selection.modelIdentifier || selected?.modelLabel || ''
   const options = selected?.modelOptions ?? []
-  const efforts = options.find(option => option.id === model)?.reasoningEfforts ?? []
+  const efforts = supportedEfforts(selected, model)
+  const effort = resolveSelection(selected, selection).reasoningEffort ?? ''
   return (
     <><select id={id} value={value} aria-describedby={`${id}-details`} onChange={(event) => onChange(event.target.value)}>
       <option value="scripted">Scripted · deterministic</option>
@@ -287,8 +306,8 @@ function ControllerSelect({ id, value, onChange, profiles, selection, onSelect }
         {options.map(option => <option key={option.id} value={option.id}>{option.id}</option>)}
       </select>
       <label htmlFor={`${id}-effort`}>Reasoning effort</label>
-      <select id={`${id}-effort`} value={selection.reasoningEffort || ''} disabled={!selected.available || efforts.length === 0} onChange={event => onSelect({ modelIdentifier: model, reasoningEffort: event.target.value })}>
-        <option value="">{efforts.length ? 'Model default' : 'Not configurable'}</option>
+      <select id={`${id}-effort`} value={effort} disabled={!selected.available || efforts.length === 0} onChange={event => onSelect({ modelIdentifier: model, reasoningEffort: event.target.value })}>
+        {efforts.length === 0 && <option value="">Not configurable</option>}
         {efforts.map(effort => <option key={effort} value={effort}>{effort[0].toUpperCase() + effort.slice(1)}</option>)}
       </select>
       {efforts.length > 0 && <p className="field-hint">Lower effort favors faster decisions. Higher effort allows more deliberation.</p>}

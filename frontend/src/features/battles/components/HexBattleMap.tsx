@@ -317,7 +317,7 @@ function movementRoute(unit: BattleUnit): HexPosition[] {
   return distance > 0 && distance <= root3 * size + 0.01 ? [unit.movedFrom, unit.position] : []
 }
 
-function centerOf(position: HexPosition) {
+export function centerOf(position: HexPosition) {
   return { x: root3 * size * (position.x + 0.5 * (position.y & 1)), y: size * 1.5 * position.y }
 }
 // Clear every icon at the endpoint, including square building selection outlines.
@@ -345,14 +345,14 @@ function directionalLine(fromPosition: HexPosition, toPosition: HexPosition, sta
   const dy = (to.y - from.y) / distance
   return { x1: from.x + dx * startPadding, y1: from.y + dy * startPadding, x2: to.x - dx * endPadding, y2: to.y - dy * endPadding }
 }
-function hexPoints(x: number, y: number) {
+export function hexPoints(x: number, y: number) {
   return Array.from({ length: 6 }, (_, index) => {
     const angle = Math.PI / 180 * (60 * index - 30)
     return `${x + size * Math.cos(angle)},${y + size * Math.sin(angle)}`
   }).join(' ')
 }
 function key(position: HexPosition) { return `${position.x}:${position.y}` }
-function terrainClass(symbol: string) {
+export function terrainClass(symbol: string) {
   if (symbol === '#') return 'rock'
   if (symbol === 'f') return 'forest'
   if (symbol === 'g') return 'gold'
@@ -381,7 +381,7 @@ function specialistStats(entity: Entity) {
   return stats
 }
 
-function terrainDescription(symbol: string) {
+export function terrainDescription(symbol: string) {
   if (symbol === 'f') return 'Forest: +3 troop defense; no construction'
   if (symbol === 'g') return 'Gold deposit: economy buildings earn +5 gold per tick'
   if (symbol === '#') return 'Rock: impassable'

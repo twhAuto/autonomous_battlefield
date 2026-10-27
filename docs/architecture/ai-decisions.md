@@ -473,6 +473,10 @@ both fields, freezes them in the scenario and decision row, and includes effort 
 retry-reuse matching. Workers validate against their own allowlist before execution;
 a removed option fails as `model_selection_unavailable`, rather than substituting
 another model. Existing API profiles and Antigravity expose no effort controls.
+The setup page never leaves effort implicit: when the chosen model lists efforts
+it preselects `low` (or the first listed effort when `low` is absent) and submits
+it with the model identifier. API clients that omit both fields still get the
+profile default.
 API profile model labels remain informational: API runners use their current
 configured environment model, preserving behavior across secret rotation.
 Codex receives `model_reasoning_effort`; Claude receives `--effort`. The CLI model

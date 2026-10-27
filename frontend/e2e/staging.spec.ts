@@ -16,6 +16,7 @@ test('stages a battle end to end and opens the queued engagement', async ({ page
   await expect(page.getByRole('button', { name: /DEPLOY COMBATANTS/ })).toBeEnabled()
 
   if (isMobile) await expect(page.getByLabel('Selected combatants')).not.toBeVisible()
+  else await expect(page.getByRole('img', { name: 'castle-siege layout, 15 by 11 hexes' })).toBeVisible()
   await page.getByRole('button', { name: /DEPLOY COMBATANTS/ }).click()
 
   // The staged battle is submitted and the operator lands on its live view.
@@ -52,7 +53,7 @@ test('aligns mixed controller slots and submits chosen timing', async ({ page, a
   await page.route('**/v1/model-profiles', route => route.fulfill({ json: { profiles: [{ id: 'model', displayName: 'Model controller', available: true, runtime: 'cli', modelLabel: 'fast', modelOptions: [{ id: 'fast', reasoningEfforts: ['low', 'high'] }] }] } }))
   await page.goto('/battles/new')
   await page.locator('#first-controller').selectOption('model')
-  await expect(page.getByLabel('Reasoning effort')).toBeVisible()
+  await expect(page.getByLabel('Reasoning effort')).toHaveValue('low')
   const first = await page.getByLabel('Slot one').boundingBox()
   const second = await page.getByLabel('Slot two').boundingBox()
   expect(first).not.toBeNull()
@@ -73,7 +74,7 @@ test('aligns mixed controller slots and submits chosen timing', async ({ page, a
   await page.screenshot({ path: `/tmp/ab169-setup-${isMobile ? 'mobile' : 'desktop'}.png`, fullPage: true })
   await page.getByRole('button', { name: /DEPLOY COMBATANTS/ }).click()
   await expect(page).toHaveURL(/\/battles\/[0-9a-f-]{36}$/)
-  expect(api.created).toMatchObject({ tickDuration: '500ms', decisionIntervalTicks: 5 })
+  expect(api.created).toMatchObject({ tickDuration: '500ms', decisionIntervalTicks: 5, participants: [{ controller: { type: 'model', profileId: 'model', modelIdentifier: 'fast', reasoningEffort: 'low' } }, { controller: { type: 'scripted' } }] })
 })
 
 test('puts plan and rationale inside each faction status box', async ({ page, isMobile }) => {

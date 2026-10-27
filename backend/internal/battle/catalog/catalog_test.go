@@ -40,6 +40,14 @@ func TestCatalogLoadsRulesetAndResolvesBlueprints(t *testing.T) {
 	if summaries := catalog.Summaries(); len(summaries) != 2 || summaries[0].RulesetID != "battlefield" || summaries[0].MapWidth != 15 || summaries[0].MaximumTicks != 800 {
 		t.Fatalf("summaries = %#v", summaries)
 	}
+	summary := catalog.Summaries()[0]
+	if len(summary.Map.Rows) != summary.MapHeight || summary.Map.CastleSpawns != first.Map.CastleSpawns {
+		t.Fatalf("summary map = %#v", summary.Map)
+	}
+	summary.Map.Rows[0] = "mutated"
+	if catalog.Summaries()[0].Map.Rows[0] == "mutated" {
+		t.Fatal("summary map shares catalog storage")
+	}
 	if rulesets := catalog.Rulesets(); len(rulesets) != 1 || rulesets[0].DesignBudget != 0 || rulesets[0].StartingGold != 220 {
 		t.Fatalf("rulesets = %#v", rulesets)
 	}
