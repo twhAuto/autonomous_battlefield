@@ -2,19 +2,30 @@
 
 For the battle loop, tick order, production windows, and win conditions in one
 place, see [Game rules](game-rules.md). This page owns the Frontier roster,
-structures, map, and balance probes.
+structures, maps, and balance probes.
 
-Choose **Frontier Siege** (`frontier-siege`) or **Castle Siege** (`castle-siege`)
-in **Stage a battle → Combat map**. Both use the same current roster, buildings,
-upgrades, starting gold and battle timing. Castle Siege is 15×11; Frontier Siege
-is 25×17. Both maps have forests and gold deposits, with no reserved building pads.
-Historical saved battles retain their frozen content definitions.
+Choose one of the [maps](#maps) in **Stage a battle → Combat map**. Every map uses
+the same current roster, buildings, upgrades, starting gold and battle timing; only
+the terrain differs. Every map has forests and gold deposits, with no reserved
+building pads. Historical saved battles retain their frozen content definitions.
+
+## Maps
+
+| Map | ID | Size | Castles | Layout |
+| --- | --- | --- | --- | --- |
+| Castle Siege | `castle-siege` | 15×11 | `(1,5)`, `(13,5)` | Compact open field; two deposits per side inside castle build range |
+| Frontier Siege | `frontier-siege` | 25×17 | `(2,8)`, `(22,8)` | Central approach and flanking routes around stone ridges; six deposits per side |
+| River Fords | `river-fords` | 19×25, tall | `(2,12)`, `(16,12)` | A three-hex rock river splits the halves. Three fords, each three rows wide, cross it; the north and south fords each hold a contested deposit. Six deposits per side |
+| Long March | `long-march` | 35×17, wide | `(2,8)`, `(32,8)` | A long field; rock outcrops split the centre into north, centre and south roads. Six deposits per side and two contested ones on the centre line |
+| Highland Crown | `highland-crown` | 33×25, large | `(3,12)`, `(29,12)` | A hexagonal highland with rock corners. A rock-ringed plateau in the centre holds three contested deposits behind north and south gates. Six deposits per side |
+
+Contested deposits sit on the centre column, the same walking distance from both
+castles.
 
 ## Map and economy
 
-The authored Frontier map has castles at `(2,8)` and `(22,8)`, a central approach,
-and flanking routes around stone ridges. Rocks block movement but ranged attacks
-use distance without line-of-sight occlusion. Every map cell and entity is visible.
+Rocks block movement but ranged attacks use distance without line-of-sight
+occlusion. Every map cell and entity is visible.
 Forests grant troops +3 defense after armor piercing and prohibit construction;
 gold deposits add +5 income per tick to an economy building placed on them.
 
@@ -238,3 +249,9 @@ level-I upgrade plus troops with an equal-cost army at the opening; both draw.
 `TestScriptedBotsUnlockAndTrainLateGameUnits` runs the scripted bots on the live
 ruleset: both fill four economy slots, buy both unlocks after level II, train Gunners
 and Heavy Cavalry, and the battle ends with a winner (tick 258).
+
+`TestScriptedBotsFinishEveryMap` plays the scripted bots on every map with each
+faction on each side. Every battle must end with a winner before the 800-tick limit;
+current results range from tick 169 (River Fords) to 369 (Castle Siege). Narrow
+chokepoints let both armies hold a front: drafts with one- and two-row fords, or a
+13-row Long March, reached the limit without a winner.

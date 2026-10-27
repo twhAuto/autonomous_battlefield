@@ -8,7 +8,7 @@
 
 This page is the single entry point for the battle rules. It links to the owning
 documents for detail instead of repeating them:
-[Frontier Siege](frontier-siege.md) for the roster, structures, and map, and the
+[Frontier Siege](frontier-siege.md) for the roster, structures, and maps, and the
 [system architecture](../architecture/system-architecture.md#52-strategy-decision-window) for how
 decisions are requested, stored, and timed out. All maps use the shared
 `backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v8.yaml`
@@ -24,11 +24,12 @@ units then act autonomously every tick according to fixed rules. Identical input
 and plans always produce identical outcomes; the engine uses no randomness.
 
 A battle is created with a requested tick count (at most the scenario's
-`maximumTicks`, 800 for Frontier Siege) and runs one tick per `tickDuration` (1 s).
+`maximumTicks`, 800 on every map) and runs one tick per `tickDuration` (1 s).
 
 ## Map and starting state
 
-- Authored 15×11 and 25×17 hex maps with one castle per faction. All terrain,
+- Five authored hex maps from 15×11 to 33×25 ([list](frontier-siege.md#maps)),
+  each with one castle per faction. All terrain,
   entities, routes and actions are visible. Rocks block movement, not ranged fire.
 - Forests (`f`) are traversable and grant troops +3 defense after armor piercing;
   buildings cannot occupy them. Gold deposits (`g`) are traversable and grant an

@@ -328,8 +328,8 @@ are validation errors; an owned prerequisite or one ordered earlier is accepted.
 Repeated owned levels are free, while duplicate IDs in the same submission remain
 invalid. An unaffordable level stops further upgrades in that window. Ownership
 retains every purchased ID in `ownedUpgradeIds`, and level purchase events add
-track, level and incremental effect fields. Saved battles keep their original semantics. New map IDs are `castle-siege` and
-`frontier-siege`; retired version-specific IDs are not accepted for new battles.
+track, level and incremental effect fields. Saved battles keep their original semantics. New map IDs are `castle-siege`,
+`frontier-siege`, `highland-crown`, `long-march` and `river-fords`; retired version-specific IDs are not accepted for new battles.
 Scenario summary roster fields describe the same shared catalog on every map.
 Specialist upgrades additionally expose `targetUnit`, `targetClass`,
 `exclusiveGroup` and scoped bonus fields. Conflicting branch orders are validation
