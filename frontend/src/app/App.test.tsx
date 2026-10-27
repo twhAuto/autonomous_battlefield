@@ -194,7 +194,7 @@ describe('App', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
 	  body: JSON.stringify({
-	    id: firstId, name: 'The Verdant Accord', doctrine: doctrineTemplates.Balanced, background: '',
+	    id: firstId, name: 'The Verdant Accord', doctrine: doctrineTemplates.Balanced, background: '', emblem: 'star',
 	  }),
     })
     expect(await screen.findByText('The Verdant Accord has entered the battlefield.')).toBeInTheDocument()

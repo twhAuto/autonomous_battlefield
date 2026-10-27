@@ -1056,12 +1056,23 @@ components:
         username: {type: string}
         password: {type: string, format: password}
 
+    FactionEmblem:
+      type: string
+      enum: [star, crown, shield, swords, wolf, raven, serpent, tree, leaf, flame, sun, moon]
+
+    FactionEmblemInput:
+      description: Omitted or empty defaults to star on creation and preserves the saved choice on update.
+      anyOf:
+        - {$ref: '#/components/schemas/FactionEmblem'}
+        - {type: string, const: ''}
+
     Faction:
       type: object
-      required: [id, name, doctrine, ownerId]
+      required: [id, name, doctrine, ownerId, emblem]
       properties:
         id: {type: string, format: uuid}
         ownerId: {type: string}
+        emblem: {$ref: '#/components/schemas/FactionEmblem'}
         name: {type: string}
         doctrine: {type: string}
         background:
@@ -1073,6 +1084,7 @@ components:
       additionalProperties: false
       required: [id, name, doctrine]
       properties:
+        emblem: {$ref: '#/components/schemas/FactionEmblemInput'}
         id: {type: string, format: uuid}
         name:
           description: Trimmed before storage; must be non-empty.
@@ -1089,6 +1101,7 @@ components:
       additionalProperties: false
       required: [name, doctrine]
       properties:
+        emblem: {$ref: '#/components/schemas/FactionEmblemInput'}
         name: {type: string}
         doctrine: {type: string}
         background: {type: string}

@@ -211,6 +211,13 @@ sequenceDiagram
     API-->>UI: Current presentation data
 ```
 
+Faction creation and editing offer 12 named SVG emblems with keyboard selection
+and live preview. The API validates the chosen identifier and stores it in
+`factions.emblem`; registry and battle setup reuse the shared emblem renderer.
+Existing factions default to the star, and profile updates from older clients
+preserve the saved emblem. Emblems are cosmetic and do not enter simulation or
+AI decision context.
+
 The game library is the deterministic `internal/game` package compiled into the
 API and engine binaries, not a separate service. The API builds the match once to
 validate the request and store its initial state; only the engine advances it.

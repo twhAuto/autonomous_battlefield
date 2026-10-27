@@ -9,6 +9,7 @@ export interface CreateFactionInput {
   name: string
   doctrine: string
   background?: string
+  emblem?: string
 }
 
 export interface UnitRule extends UnitCapabilities {
@@ -32,6 +33,7 @@ export interface Faction {
   name: string
   doctrine: string
   background?: string
+  emblem?: string
 }
 
 export async function listFactionRulesets(signal?: AbortSignal): Promise<FactionRuleset[]> {
@@ -121,7 +123,7 @@ export async function deleteFaction(id: string): Promise<void> {
 export async function updateFaction(faction: CreateFactionInput): Promise<void> {
  const response = await factionFetch(`/v1/factions/${encodeURIComponent(faction.id)}`, {
  method: 'PUT', headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({ name: faction.name, doctrine: faction.doctrine, background: faction.background ?? '' }),
+ body: JSON.stringify({ name: faction.name, doctrine: faction.doctrine, background: faction.background ?? '', emblem: faction.emblem }),
  })
  if (!response.ok) throw new FactionApiError(response.status === 404 ? 'Faction not found.' : 'The faction could not be updated. Check the name and doctrine and try again.', response.status)
 }

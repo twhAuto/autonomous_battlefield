@@ -48,7 +48,7 @@ describe('faction doctrine',()=>{
 
  await user.click(screen.getByRole('button',{name:'Economic'}))
  await user.click(screen.getByRole('button',{name:'CREATE FACTION'}))
- expect(fetch).toHaveBeenCalledWith('/v1/factions',expect.objectContaining({body:JSON.stringify({id,name:'Northwind',doctrine:doctrineTemplates.Economic,background:'Old roots'})}))
+ expect(fetch).toHaveBeenCalledWith('/v1/factions',expect.objectContaining({body:JSON.stringify({id,name:'Northwind',doctrine:doctrineTemplates.Economic,background:'Old roots',emblem:'star'})}))
  expect(await screen.findByText('Northwind has entered the battlefield.')).toBeInTheDocument()
  })
  it('requires nonblank doctrine and counts Unicode characters',()=>{
@@ -69,7 +69,7 @@ describe('faction doctrine',()=>{
  expect(screen.getByLabelText('Background (optional)')).toHaveValue('Old roots')
  await user.clear(screen.getByLabelText('Background (optional)'));await user.type(screen.getByLabelText('Background (optional)'),' New history ')
  await user.click(screen.getByRole('button',{name:'SAVE FACTION'}))
- expect(fetch).toHaveBeenLastCalledWith(`/v1/factions/${id}`,expect.objectContaining({method:'PUT',body:JSON.stringify({name:'A',doctrine:'Defend',background:'New history'})}))
+ expect(fetch).toHaveBeenLastCalledWith(`/v1/factions/${id}`,expect.objectContaining({method:'PUT',body:JSON.stringify({name:'A',doctrine:'Defend',background:'New history',emblem:'star'})}))
  expect(await screen.findByText(/Changes apply to future battles/)).toBeInTheDocument()
  })
  it.each([404,500])('reports an edit loading failure (%s)',async status=>{
@@ -97,4 +97,33 @@ it('validates optional Unicode backgrounds independently of doctrine',()=>{
  fireEvent.change(field,{target:{value:'😀'.repeat(1001)}})
  expect(screen.getByRole('alert')).toHaveTextContent('1,000')
  expect(screen.getByRole('button',{name:'CREATE FACTION'})).toBeDisabled()
+})
+
+it('selects an emblem with the keyboard, previews it, saves it, and resets after creation', async () => {
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 201 })))
+ const user = userEvent.setup(); const { container } = show()
+ expect(screen.getAllByRole('radio')).toHaveLength(12)
+ expect(screen.getByRole('radio', { name: 'Star' })).toBeChecked()
+ screen.getByRole('radio', { name: 'Star' }).focus()
+ await user.keyboard('{ArrowRight}')
+ expect(screen.getByRole('radio', { name: 'Crown' })).toBeChecked()
+ expect(container.querySelector('.preview-panel .emblem')).toHaveAttribute('data-emblem', 'crown')
+ await user.type(screen.getByLabelText('Faction name'), 'Crownwatch')
+ await user.click(screen.getByRole('button', { name: 'CREATE FACTION' }))
+ expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string).emblem).toBe('crown')
+ await screen.findByText('Crownwatch has entered the battlefield.')
+ expect(screen.getByRole('radio', { name: 'Star' })).toBeChecked()
+})
+
+it('restores a saved emblem and retains a new selection after a failed edit', async () => {
+ vi.stubGlobal('fetch', vi.fn()
+  .mockResolvedValueOnce(new Response(JSON.stringify({ factions: [{ id, name: 'A', doctrine: 'Scout', emblem: 'wolf' }] })))
+  .mockResolvedValueOnce(new Response(null, { status: 500 })))
+ const user = userEvent.setup(); show(`/factions/${id}/edit`)
+ expect(await screen.findByRole('radio', { name: 'Wolf' })).toBeChecked()
+ await user.click(screen.getByRole('radio', { name: 'Moon' }))
+ await user.click(screen.getByRole('button', { name: 'SAVE FACTION' }))
+ await screen.findByText(/faction could not be updated/)
+ expect(screen.getByRole('radio', { name: 'Moon' })).toBeChecked()
+ expect(JSON.parse(vi.mocked(fetch).mock.calls[1][1]!.body as string).emblem).toBe('moon')
 })

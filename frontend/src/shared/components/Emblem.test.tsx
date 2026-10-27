@@ -13,3 +13,16 @@ describe('Emblem', () => {
     expect(emblem.style.getPropertyValue('--emblem-secondary')).toBe('#58804b')
   })
 })
+
+it('draws distinct artwork for each supported emblem and falls back safely', () => {
+ const { container, rerender } = render(<Emblem />)
+ const star = container.querySelector('.emblem__mark')!.innerHTML
+ const symbols = new Set<string>()
+ for (const emblem of ['star', 'crown', 'shield', 'swords', 'wolf', 'raven', 'serpent', 'tree', 'leaf', 'flame', 'sun', 'moon']) {
+  rerender(<Emblem emblem={emblem} />)
+  symbols.add(container.querySelector('.emblem__mark')!.innerHTML)
+ }
+ expect(symbols.size).toBe(12)
+ rerender(<Emblem emblem="unknown" />)
+ expect(container.querySelector('.emblem__mark')!.innerHTML).toBe(star)
+})

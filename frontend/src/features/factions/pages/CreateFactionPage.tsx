@@ -6,6 +6,7 @@ import { useEffect, useState, type SubmitEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { createFaction, deleteFaction, listFactions, updateFaction } from '../api/factions'
 import { usePermissions } from '../../auth/SessionContext'
+import { factionEmblems, resolveEmblem, type FactionEmblem } from '../../../shared/domain/emblems'
 import { Emblem } from '../../../shared/components/Emblem'
 import { ResponsivePreview } from '../../../shared/components/ResponsivePreview'
 
@@ -33,6 +34,7 @@ function FactionEditor({ id }: Readonly<{ id?: string }>) {
  const editing = Boolean(id)
  const [factionId, setFactionId] = useState(() => crypto.randomUUID())
  const [name, setName] = useState('')
+ const [emblem, setEmblem] = useState<FactionEmblem>('star')
  const [background, setBackground] = useState('')
  const [doctrine, setDoctrine] = useState(doctrineTemplates.Balanced)
  const [loading, setLoading] = useState(editing)
@@ -50,7 +52,7 @@ function FactionEditor({ id }: Readonly<{ id?: string }>) {
  const faction = factions.find(value => value.id === id)
  if (!faction) throw new Error('Faction not found.')
  if (!canManage(faction.ownerId)) throw new Error('You can only edit your own factions.')
- setSavedName(faction.name); setName(faction.name); setDoctrine(faction.doctrine); setBackground(faction.background ?? ''); setLoading(false)
+ setEmblem(resolveEmblem(faction.emblem)); setSavedName(faction.name); setName(faction.name); setDoctrine(faction.doctrine); setBackground(faction.background ?? ''); setLoading(false)
  }).catch(error => {
  if (controller.signal.aborted) return
  setLoading(false); setLoadFailed(true); setStatus('error'); setMessage(error instanceof Error ? error.message : 'Faction could not be loaded.')
@@ -67,11 +69,11 @@ function FactionEditor({ id }: Readonly<{ id?: string }>) {
  if (!valid || status === 'submitting' || deleting) return
  setStatus('submitting'); setMessage('')
  try {
- const faction = { id: id ?? factionId, name: name.trim(), doctrine: doctrine.trim(), background: background.trim() }
+ const faction = { id: id ?? factionId, name: name.trim(), doctrine: doctrine.trim(), background: background.trim(), emblem }
  await (editing ? updateFaction(faction) : createFaction(faction))
  if (editing) setSavedName(faction.name)
  setStatus('success'); setMessage(editing ? `${faction.name} has been updated. Changes apply to future battles.` : `${faction.name} has entered the battlefield.`)
- if (!editing) { setName(''); setBackground(''); setFactionId(crypto.randomUUID()) }
+ if (!editing) { setEmblem('star'); setName(''); setBackground(''); setFactionId(crypto.randomUUID()) }
  } catch (error) { setStatus('error'); setMessage(error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.') }
  }
  const saveLabel = editing ? 'SAVE FACTION' : 'CREATE FACTION'
@@ -96,6 +98,14 @@ function FactionEditor({ id }: Readonly<{ id?: string }>) {
  {loading ? <p>Loading faction…</p> : !loadFailed && <form onSubmit={handleSubmit} noValidate>
  <label htmlFor="faction-name">Faction name</label>
  <div className="name-field"><input id="faction-name" value={name} onChange={event => {setName(event.target.value); setStatus('idle')}} placeholder="e.g. The Verdant Accord" autoComplete="off" /><span>{name.length}</span></div>
+ <fieldset className="emblem-picker" aria-describedby="emblem-hint" disabled={status === 'submitting' || deleting}>
+ <legend>Faction emblem</legend>
+ <p id="emblem-hint" className="field-hint">Choose the symbol on your banner. Colors follow your faction name.</p>
+ <div className="emblem-picker__grid">{factionEmblems.map(option => <label className="emblem-option" key={option.id}>
+ <input type="radio" name="faction-emblem" value={option.id} checked={emblem === option.id} onChange={() => {setEmblem(option.id); setStatus('idle')}} />
+ <span className="emblem-option__tile"><Emblem seed={name.trim() || 'Your faction'} emblem={option.id} size="small" /><span>{option.name}</span></span>
+ </label>)}</div>
+ </fieldset>
  <fieldset><legend>Doctrine templates</legend>{Object.entries(doctrineTemplates).map(([label, text]) => <button type="button" key={label} onClick={() => {setDoctrine(text); setStatus('idle')}}>{label}</button>)}</fieldset>
  <label htmlFor="faction-doctrine">Doctrine</label>
  <textarea id="faction-doctrine" rows={9} value={doctrine} aria-describedby="doctrine-hint" onChange={event => {setDoctrine(event.target.value);setStatus('idle')}} />
@@ -111,7 +121,7 @@ function FactionEditor({ id }: Readonly<{ id?: string }>) {
  <div className="form-message" aria-live="polite">{message && <p className={`form-message--${status}`}>{message}</p>}{status === 'success' && <Link className="text-link" to="/factions">View faction registry →</Link>}</div>
  {editing && !loading && !loadFailed && <section className="danger-zone" aria-label="Danger zone"><h2>Danger zone</h2><p>Delete this faction from the active registry. Saved battle history is retained.</p><button type="button" disabled={deleting || status === 'submitting'} onClick={() => void removeFaction()}>{deleting ? 'DELETING…' : `DELETE ${savedName}`}</button>{deleteError && <p role="alert">{deleteError}</p>}</section>}
  </div>
- <ResponsivePreview label="Preview faction"><aside className="preview-panel" aria-label="Faction doctrine preview"><div className="preview-panel__grid" /><div className="preview-panel__heading"><span>FACTION PREVIEW</span></div><div className="preview-panel__content"><Emblem seed={name.trim() || 'Your faction'} /><h3>{name.trim() || 'Your faction'}</h3><p style={{whiteSpace:'pre-wrap'}}>{doctrine}</p>{background && <p style={{whiteSpace:'pre-wrap'}}>{background}</p>}</div></aside></ResponsivePreview>
+ <ResponsivePreview label="Preview faction"><aside className="preview-panel" aria-label="Faction doctrine preview"><div className="preview-panel__grid" /><div className="preview-panel__heading"><span>FACTION PREVIEW</span></div><div className="preview-panel__content"><Emblem seed={name.trim() || 'Your faction'} emblem={emblem} /><h3>{name.trim() || 'Your faction'}</h3><p style={{whiteSpace:'pre-wrap'}}>{doctrine}</p>{background && <p style={{whiteSpace:'pre-wrap'}}>{background}</p>}</div></aside></ResponsivePreview>
  </section>
  </>
 }
