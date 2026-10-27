@@ -35,7 +35,7 @@ export function EntityIcon({ type }: Readonly<{ type: string }>) {
 }
 
 export function EntityLegend({ types }: Readonly<{ types: string[] }>) {
-  return <div className="entity-legend" role="group" aria-label="Unit and building icons">
-    {[...new Set(types)].sort((a, b) => a.localeCompare(b)).map((type) => <span key={type}><EntityIcon type={type} />{typeLabel(type)}</span>)}
-  </div>
+  return <ul className="entity-legend" aria-label="Unit and building icons">
+    {[...new Set(types)].sort((a, b) => a.localeCompare(b)).map((type) => <li key={type}><EntityIcon type={type} />{typeLabel(type)}</li>)}
+  </ul>
 }
