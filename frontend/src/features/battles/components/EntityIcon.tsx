@@ -29,12 +29,21 @@ const artwork = new Map<string, string>([
 ])
 const unknownArtwork = 'M12 2 22 12 12 22 2 12ZM12 7V13M12 17H12.01'
 
+function ArtworkGlyph({ d = unknownArtwork }: Readonly<{ d?: string }>) {
+  return <g className="entity-glyph" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></g>
+}
+
 export function EntityGlyph({ type }: Readonly<{ type: string }>) {
-  return <g className="entity-glyph" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={artwork.get(type) ?? unknownArtwork} /></g>
+  return <ArtworkGlyph d={artwork.get(type)} />
+}
+
+/** Draws other artwork, such as upgrades, in the same style and size as entity icons. */
+export function ArtworkIcon({ d }: Readonly<{ d?: string }>) {
+  return <svg className="entity-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><ArtworkGlyph d={d} /></svg>
 }
 
 export function EntityIcon({ type }: Readonly<{ type: string }>) {
-  return <svg className="entity-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><EntityGlyph type={type} /></svg>
+  return <ArtworkIcon d={artwork.get(type)} />
 }
 
 export function EntityLegend({ types }: Readonly<{ types: string[] }>) {

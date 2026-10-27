@@ -25,6 +25,20 @@ describe('explicit recruitment display', () => {
   })
 })
 
+it('names ordered upgrades, recruits and construction beside their icons', () => {
+  show({
+    upgradeOrders: ['industry_2', 'gunpowder', 'ranger_longshot'],
+    recruitmentOrders: [{ unitType: 'cannon', count: 1 }],
+    constructionOrders: [{ buildingType: 'stables', position: { x: 3, y: 4 } }, { buildingType: 'economy', position: { x: 5, y: 1 } }],
+  })
+  const row = (label: string) => screen.getByText(label).nextElementSibling!
+  expect(row('Upgrades')).toHaveTextContent('Industry II → Gunpowder (unlocks Cannon, Gunner) → Ranger: Longshot (+1 range)')
+  expect(row('Upgrades').querySelectorAll('svg')).toHaveLength(4)
+  expect(row('Recruit').querySelectorAll('svg')).toHaveLength(1)
+  expect(row('Build sites')).toHaveTextContent('Stables (3,4) → Economy (5,1)')
+  expect(row('Build sites').querySelectorAll('svg')).toHaveLength(2)
+})
+
 describe('player decision inspector', () => {
   const participants = new Map([['a', 'Amber'], ['b', 'Blue'], ['c', 'Crimson']])
   const decision: DecisionHistory = { requestId: 'a1', factionId: 'a', targetTick: 0, status: 'accepted', controllerType: 'model', resolvedPlan: { name: 'Opening', rationale: 'Build an economy first.' }, usage: {}, createdAt: '' }

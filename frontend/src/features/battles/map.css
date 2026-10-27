@@ -34,12 +34,14 @@
 .map-entity:focus > .entity-focus-ring { stroke: white; stroke-width: 2.5; }
 .entity-icon { display: inline-block; width: 24px; height: 24px; flex: 0 0 24px; vertical-align: middle; }
 .unit-group summary .entity-icon { margin: 0 8px 0 4px; }
+.upgrade-icon { display: inline-flex; flex: none; align-items: center; vertical-align: middle; }
 .map-footer { border-top: 1px solid #303a42; }
 .map-key { padding: 10px 16px; font-size: 12px; }
 .map-key > summary { cursor: pointer; color: #bdc8cf; }
-.entity-legend, .building-type-list { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+.entity-legend, .building-type-list, .upgrade-list { display: flex; flex-wrap: wrap; gap: 10px 18px; }
 .entity-legend { margin: 0; padding: 4px 16px 12px; color: #bdc8cf; list-style: none; }
-.entity-legend li, .building-type-list > span { display: inline-flex; align-items: center; gap: 7px; }
+.upgrade-list { margin: 0; padding: 0; list-style: none; }
+.entity-legend li, .building-type-list > span, .upgrade-list > li { display: inline-flex; align-items: center; gap: 7px; }
 .health-track { fill: #371c20; }
 .health-damage { fill: #ef6256; transition: width 500ms ease-out 300ms; pointer-events: none; }
 .health-value { fill: #6be39c; }

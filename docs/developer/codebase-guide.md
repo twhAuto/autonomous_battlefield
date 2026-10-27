@@ -237,7 +237,9 @@ ruleset validation, `ValidateUnitUnlocks` (shared by the engine and
 scripted rule that moves an enabled source to a preferred type once it is unlocked.
 `battle/catalog/late_game_test.go` probes whether unlocked units break a fully
 upgraded stalemate on the live ruleset and checks that scripted bots reach them.
-Frontend `presentation/upgrades.ts` formats owned levels and branch effects.
+Frontend `presentation/upgrades.ts` formats owned levels, unlocks and branch effects;
+`components/UpgradeIcon.tsx` draws their icons for faction strips, the inspector and
+decision cards.
 Tests cover every map's full catalog, specialist actions, branch locks, reserves,
 replay and UI presentation. The PostgreSQL-backed coverage gate includes persistence.
 
