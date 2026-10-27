@@ -123,6 +123,15 @@ describe('faction summaries', () => {
   expect(screen.getByRole('article', { name: 'Blue' }).style.getPropertyValue('--faction-color')).toBe('#ff6b55')
  })
 
+ it('shows owned upgrades as an icon chip only for factions that have researched any', () => {
+  const factions = [{ factionId: 'a', gold: 0, goldEarned: 0, goldSpent: 0, goldLooted: 0, ownedUpgradeIds: ['plating', 'plating_2', 'knighthood'] }, { factionId: 'b', gold: 0, goldEarned: 0, goldSpent: 0, goldLooted: 0 }]
+  render(<FactionSummaries {...props} battle={{ ...battle, participants: [...battle.participants, { id: 'b', name: 'Blue' }], state: { ...battle.state, factions } }} />)
+  const upgrades = within(screen.getByRole('article', { name: 'Amber' })).getByRole('group', { name: 'Amber upgrades' })
+  expect(upgrades).toHaveAttribute('name', 'faction-a')
+  expect(upgrades.querySelector('summary')).toHaveTextContent('Upgrades: Plating II, Knighthood (unlocks Heavy Cavalry)')
+  expect(within(screen.getByRole('article', { name: 'Blue' })).queryByRole('group', { name: 'Blue upgrades' })).not.toBeInTheDocument()
+ })
+
  it('puts activity and the applied plan name on the plan disclosure', () => {
   render(<FactionSummaries {...props} decisions={[{ ...decision, status: 'fallback', resolvedPlan: { name: 'Hold', rationale: 'Keep defending.' } }]} />)
   const summary = within(screen.getByRole('article', { name: 'Amber' })).getByText('Hold').closest('summary')

@@ -1,8 +1,9 @@
 // Shared live spectator summaries for the comparison table and selected player.
 import type { BattleState } from '../api/battles'
 import { entityIndex, entityName, typeLabel } from '../presentation/entities'
-import { ownedUpgradeLabels } from '../presentation/upgrades'
+import { highestOwnedUpgrades } from '../presentation/upgrades'
 import { EntityIcon } from './EntityIcon'
+import { UpgradeList } from './UpgradeIcon'
 
 export function playerStatus(state: BattleState | undefined, factionId: string) {
   const faction = state?.factions?.find((entry) => entry.factionId === factionId)
@@ -38,8 +39,13 @@ export function PlayerOverview({ status }: Readonly<{ status: PlayerStatus }>) {
     </dl>
     <h3>Buildings by type</h3>
     {faction ? <div className="building-type-list">{groups.size ? [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([type, count]) => <span key={type}><EntityIcon type={type} />{count} × {typeLabel(type)}</span>) : <p>No living buildings</p>}</div> : <p>Waiting for player state.</p>}
-    <h3>Owned upgrades</h3><p>{faction ? ownedUpgradeLabels(faction.ownedUpgradeIds) : '—'}</p>
+    <h3>Owned upgrades</h3><OwnedUpgrades ids={faction && highestOwnedUpgrades(faction.ownedUpgradeIds)} />
   </section>
+}
+
+function OwnedUpgrades({ ids }: Readonly<{ ids?: string[] }>) {
+  if (!ids) return <p>—</p>
+  return ids.length ? <UpgradeList ids={ids} /> : <p>None</p>
 }
 
 export function PlayerUnits({ status }: Readonly<{ status: PlayerStatus }>) {

@@ -6,6 +6,9 @@ import { entityName, typeLabel, type EntityNaming } from '../presentation/entiti
 import { BattleRun, DecisionHistory } from '../api/battles'
 import { DecisionTiming } from './DecisionTiming'
 import { DecisionContextPanel, type DecisionContextCache } from './DecisionContextPanel'
+import { EntityIcon } from './EntityIcon'
+import { UpgradeIcon } from './UpgradeIcon'
+import { upgradeLabel } from '../presentation/upgrades'
 
 export function latestDecision(decisions: DecisionHistory[], factionId: string) {
   return decisions.findLast((decision) => decision.factionId === factionId)
@@ -86,7 +89,7 @@ function DecisionCard({ decision, participantNames, initiallyOpen, battleId, att
           <DecisionDetail label="Spend order" value={formatList(decision.resolvedPlan?.spendOrder)} />
           {decision.resolvedPlan?.productionOrders != null && <DecisionDetail label="Production" value={formatProduction(decision.resolvedPlan.productionOrders, { entities, factionNames: participantNames, localFactionId: decision.factionId })} />}
           <DecisionDetail label="Recruit" value={formatRecruitment(decision.resolvedPlan, { entities, factionNames: participantNames, localFactionId: decision.factionId })} />
-          <DecisionDetail label="Upgrades" value={formatList(decision.resolvedPlan?.upgradeOrders)} />
+          <DecisionDetail label="Upgrades" value={formatUpgrades(decision.resolvedPlan?.upgradeOrders)} />
           <DecisionDetail label="Build sites" value={formatConstruction(decision.resolvedPlan)} />
           <DecisionDetail label="Model" value={decision.modelIdentifier || decision.profileId || '—'} />
           <DecisionDetail label="Reasoning effort" value={decision.reasoningEffort || 'Model default'} />
@@ -128,20 +131,24 @@ function formatList(values?: string[]) {
   return values?.length ? values.join(' → ') : '—'
 }
 
+function formatUpgrades(ids?: string[]) {
+  return ids?.length ? ids.map((id, index) => <Fragment key={id}>{index > 0 && ' → '}<UpgradeIcon id={id} />{upgradeLabel(id)}</Fragment>) : '—'
+}
+
 function formatCoordinates(values?: { x: number; y: number }[]) {
   return values?.length ? values.map(({ x, y }) => `(${x},${y})`).join(' → ') : '—'
 }
 
 function formatRecruitment(plan: DecisionHistory['resolvedPlan'], naming: EntityNaming) {
   if (plan?.recruitmentOrders != null) {
-    return plan.recruitmentOrders.length ? plan.recruitmentOrders.map(({ unitType, count, sourceBuildingId }, index) => <Fragment key={`${unitType}:${sourceBuildingId}:${index}`}>{index > 0 && ' → '}{count} × {typeLabel(unitType)}{sourceBuildingId && <> from <span title={sourceBuildingId}>{entityName(sourceBuildingId, naming)}</span></>}</Fragment>) : 'No purchases'
+    return plan.recruitmentOrders.length ? plan.recruitmentOrders.map(({ unitType, count, sourceBuildingId }, index) => <Fragment key={`${unitType}:${sourceBuildingId}:${index}`}>{index > 0 && ' → '}{count} × <EntityIcon type={unitType} />{typeLabel(unitType)}{sourceBuildingId && <> from <span title={sourceBuildingId}>{entityName(sourceBuildingId, naming)}</span></>}</Fragment>) : 'No purchases'
   }
   return formatList(plan?.recruitmentPriorities?.map(typeLabel))
 }
 
 function formatConstruction(plan?: DecisionHistory['resolvedPlan']) {
   if (plan?.constructionOrders != null) {
-    return plan.constructionOrders.length ? plan.constructionOrders.map(({ buildingType, position }) => `${typeLabel(buildingType)} (${position.x},${position.y})`).join(' → ') : 'No construction'
+    return plan.constructionOrders.length ? plan.constructionOrders.map(({ buildingType, position }, index) => <Fragment key={`${buildingType}:${position.x}:${position.y}`}>{index > 0 && ' → '}<EntityIcon type={buildingType} />{typeLabel(buildingType)} ({position.x},{position.y})</Fragment>) : 'No construction'
   }
   return formatCoordinates(plan?.constructionPriorities)
 }
