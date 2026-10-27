@@ -51,7 +51,7 @@ must supply the restricted login
 | Table or view | Purpose | Key rules |
 | --- | --- | --- |
 | `factions` | Reusable faction identity: name, doctrine, background, owner | `ruleset_id` and `blueprint` are legacy-only. Battles snapshot faction data, so deleting a faction never changes a battle |
-| `battle_runs` | One battle: scenario snapshot, initial and current state, status, lease, attempt, pause flag, result, owner, model-execution count, trace context | Status `queued`, `running`, `completed`, `failed` or `stopped`. A lease owner and expiry are both set or both null, and only while `running` |
+| `battle_runs` | One battle: scenario snapshot, initial and current state, status, lease, attempt and graceful-requeue count, pause flag, result, owner, model-execution count, trace context | Status `queued`, `running`, `completed`, `failed` or `stopped`. A lease owner and expiry are both set or both null, and only while `running` |
 | `battle_events` | Ordered events per battle attempt | Primary key `(battle_id, attempt, sequence)` makes inserts idempotent and serves event paging |
 | `battle_decisions` | One strategy decision window: frozen observation and hash, controller and profile, lease, resolved plan, fallback source, error category, usage, provider metadata, trace context | Unique per `(battle_id, attempt, faction_id, target_tick)`. Status `pending`, `running`, `accepted`, `fallback` or `failed`. `version` guards resolution; `idempotency_key` deduplicates submissions. `faction_id` is snapshot data, not a foreign key |
 | `faction_generation_accounts` | Per-actor row used as a generation lock | Locked `FOR UPDATE` while creating a job |
@@ -65,7 +65,7 @@ must supply the restricted login
 | `goose_db_version` | Goose's applied-migration ledger | Production recovery records compare it before approving an image rollback |
 
 These diagrams show every column of every table, generated from the schema after
-migration `00017` with keys marked `PK` and `FK`. Update them with any schema
+migration `00019` with keys marked `PK` and `FK`. Update them with any schema
 change. Battles snapshot faction data instead of referencing `factions`, so
 deleting a faction never changes a battle.
 
@@ -101,6 +101,7 @@ erDiagram
         text owner_id
         int ai_executions
         bool admission_exempt
+        int graceful_requeues
     }
     BATTLE_EVENTS {
         uuid battle_id PK,FK
@@ -140,6 +141,10 @@ erDiagram
         timestamptz resolved_at
         text traceparent
         text tracestate
+        text reasoning_effort
+        timestamptz claimed_at
+        timestamptz context_served_at
+        timestamptz runner_completed_at
     }
 ```
 
@@ -273,11 +278,14 @@ Workers claim queued rows with `FOR UPDATE SKIP LOCKED`, so concurrent workers n
 block on or double-claim the same row.
 
 - **Battles:** the engine claims unpaused `queued` battles, or `running` battles
-  whose lease expired, while `attempt` is below `engine.maxAttempts`, through the
-  partial index `battle_runs_unpaused_claim_idx`. Each claim increments `attempt` and
-  restarts from `initial_state`. Tick writes extend the lease only where status,
-  attempt and lease owner still match, so a previous owner cannot write after a
-  reclaim.
+  whose lease expired, while `attempt - graceful_requeues` is below
+  `engine.maxAttempts`, through the partial index `battle_runs_unpaused_claim_idx`.
+  Each claim increments `attempt` and restarts from `initial_state`, so every
+  attempt keeps its own events and decisions. A graceful-shutdown requeue increments
+  `graceful_requeues` (migration `00019`), refunding the attempt it interrupted;
+  only crashed or lease-expired attempts spend the budget. Tick writes extend the
+  lease only where status, attempt and lease owner still match, so a previous owner
+  cannot write, requeue or fail the battle after a reclaim.
 - **Decisions:** the AI gateway claims `model` decisions that are `pending`, or `running` with
   an expired lease, for the worker's profile IDs, and sets `status='running'` with a
   lease. The capability token issued with the claim expires at that lease deadline.
