@@ -283,13 +283,13 @@ it('defaults to frontier-siege and previews the selected map layout', async () =
   const user = userEvent.setup()
   renderPage()
   expect(await screen.findByRole('combobox', { name: 'Combat map' })).toHaveValue('frontier-siege')
-  const preview = screen.getByRole('img', { name: 'frontier-siege layout, 3 by 2 hexes' })
+  const preview = screen.getByTitle('frontier-siege layout, 3 by 2 hexes').closest('svg')!
   expect(preview.querySelectorAll('.hex-tile')).toHaveLength(6)
   expect(preview.querySelector('.hex-tile--gold')).not.toBeNull()
   expect(screen.getByText('Slot 1 castle · (0, 0)')).toBeInTheDocument()
   expect(screen.getByText('Slot 2 castle · (2, 1)')).toBeInTheDocument()
   await user.selectOptions(screen.getByLabelText('Combat map'), 'castle-siege-v1')
-  expect(screen.queryByRole('img', { name: /layout/ })).not.toBeInTheDocument()
+  expect(screen.queryByTitle(/layout/)).not.toBeInTheDocument()
 })
 
 it('colors castle spawns by sorted faction ID like the live map', async () => {
@@ -297,7 +297,7 @@ it('colors castle spawns by sorted faction ID like the live map', async () => {
   vi.mocked(listFactions).mockResolvedValue([factions[1], factions[0]])
   vi.mocked(listScenarios).mockResolvedValue([{ ...scenario, map }])
   renderPage()
-  const castles = (await screen.findByRole('img', { name: /layout/ })).querySelectorAll<SVGGElement>('.map-preview__castle')
+  const castles = (await screen.findByTitle(/layout/)).closest('svg')!.querySelectorAll<SVGGElement>('.map-preview__castle')
   expect(castles[0].style.stroke).toBe('rgb(255, 107, 85)')
   expect(castles[1].style.stroke).toBe('rgb(105, 210, 255)')
 })

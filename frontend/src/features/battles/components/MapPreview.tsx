@@ -15,7 +15,8 @@ export function MapPreview({ map, scenarioId, factionIds }: Readonly<{ map: Batt
   const colors = factionColors(factionIds)
   return (
     <figure className="map-preview">
-      <svg viewBox={`${-root3 * size / 2} ${-size} ${width} ${height}`} role="img" aria-label={`${scenarioId} layout, ${map.width} by ${map.height} hexes`}>
+      <svg viewBox={`${-root3 * size / 2} ${-size} ${width} ${height}`}>
+        <title>{`${scenarioId} layout, ${map.width} by ${map.height} hexes`}</title>
         {map.rows.map((row, y) => [...row].map((symbol, x) => {
           const center = centerOf({ x, y })
           return <g key={`${x}:${y}`}>
