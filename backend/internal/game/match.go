@@ -101,7 +101,11 @@ func (m *Match) AdvanceWithPlans(plans map[string]controller.PlanProposal) (Tran
 	events = append(events, m.event("tick_completed", map[string]any{"tick": m.state.Tick}))
 	events = append(events, m.completionEvents(winner)...)
 	m.sortState()
-	return m.transition(events), nil
+	transition := m.transition(events)
+	if decisionWindow {
+		transition.Checkpoint = m.checkpointPointer()
+	}
+	return transition, nil
 }
 
 func (m *Match) completionEvents(winner *string) []Event {

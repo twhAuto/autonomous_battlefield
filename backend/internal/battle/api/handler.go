@@ -46,6 +46,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/battles/{id}/resume", h.ResumeBattle)
 	mux.HandleFunc("GET /v1/battles/{id}/factions/{factionId}/view", h.GetFactionView)
 	mux.HandleFunc("GET /v1/battles/{id}/events", h.ListEvents)
+	mux.HandleFunc("GET /v1/battles/{id}/replay", h.GetBattleReplay)
 	mux.HandleFunc("GET /v1/battles/{id}/decisions", h.ListDecisions)
 	mux.HandleFunc("GET /v1/battles/{id}/decisions/{requestId}/context", h.GetDecisionContext)
 }
@@ -194,6 +195,45 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_ = httpapi.WriteJSON(w, http.StatusOK, page)
+}
+
+// GetBattleReplay returns the replay segment containing ?tick (default 0). Players
+// receive the same frames with empty event payloads, as on the events route.
+func (h *Handler) GetBattleReplay(w http.ResponseWriter, r *http.Request) {
+	var tick uint64
+	if raw := r.URL.Query().Get("tick"); raw != "" {
+		parsed, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			apierror.Write(w, r, http.StatusBadRequest, "invalid replay tick")
+			return
+		}
+		tick = parsed
+	}
+	replay, err := h.battles.GetBattleReplay(r.Context(), r.PathValue("id"), tick)
+	if writeError(w, r, err, []errorCase{forbiddenError, limitedError, invalidError("invalid replay query"), notFoundError, replayUnavailableError},
+		failure{"battle_replay_failed", "could not get battle replay", []any{"battle_id", r.PathValue("id"), "tick", tick}}) {
+		return
+	}
+	if authn.IsPlayer(r.Context()) {
+		replay = withoutEventPayloads(replay)
+	}
+	_ = httpapi.WriteJSON(w, http.StatusOK, replay)
+}
+
+// withoutEventPayloads copies the frames so the service's segment is never mutated.
+func withoutEventPayloads(replay battleservice.BattleReplay) battleservice.BattleReplay {
+	frames := make([]battleservice.ReplayFrame, len(replay.Frames))
+	for i, frame := range replay.Frames {
+		events := make([]game.Event, len(frame.Events))
+		for j, event := range frame.Events {
+			event.Data = map[string]any{}
+			events[j] = event
+		}
+		frame.Events = events
+		frames[i] = frame
+	}
+	replay.Frames = frames
+	return replay
 }
 
 // eventQuery holds the parsed ListEvents query parameters.

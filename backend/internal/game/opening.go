@@ -66,7 +66,9 @@ func (m *Match) advanceOpening(plans map[string]controller.PlanProposal) (Transi
 	m.state.OpeningComplete = true
 	events = append(events, m.event("opening_completed", map[string]any{}))
 	m.sortState()
-	return m.transition(events), nil
+	transition := m.transition(events)
+	transition.Checkpoint = m.checkpointPointer()
+	return transition, nil
 }
 
 func validateOpeningPlanForMode(plan controller.PlanProposal, continuous bool) error {

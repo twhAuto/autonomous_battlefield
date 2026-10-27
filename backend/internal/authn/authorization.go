@@ -145,6 +145,7 @@ var routeRules = []routeRule{
 	{pattern: "POST /v1/battles/{id}/resume", permission: PermissionPlay},
 	{pattern: "GET /v1/battles/{id}/factions/{factionId}/view", permission: PermissionPlay},
 	{pattern: "GET /v1/battles/{id}/events", permission: PermissionPlay},
+	{pattern: "GET /v1/battles/{id}/replay", permission: PermissionPlay},
 	{pattern: "GET /v1/faction-background-generations/options", permission: PermissionPlay},
 	{pattern: "POST /v1/faction-background-generations", permission: PermissionPlay},
 	{pattern: "GET /v1/faction-background-generations/{id}", permission: PermissionPlay},

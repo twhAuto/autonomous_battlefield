@@ -1,5 +1,5 @@
-// Writes simulation state, events, and completion atomically while checking the current
-// battle lease.
+// Writes simulation state, events, replay checkpoints, and completion atomically while
+// checking the current battle lease.
 
 package repo
 
@@ -14,8 +14,9 @@ import (
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
 
-// SaveTick stores state and events and renews the lease in one SQL statement.
-// A worker whose attempt or owner no longer matches receives ErrBattleLeaseLost.
+// SaveTick stores state, events and any decision-window replay checkpoint, and renews
+// the lease in one SQL statement. A worker whose attempt or owner no longer matches
+// receives ErrBattleLeaseLost.
 func (r *Postgres) SaveTick(ctx context.Context, lease queue.Lease, transition game.Transition, leaseDuration time.Duration) error {
 	events, err := json.Marshal(transition.Events)
 	if err != nil {
@@ -24,6 +25,10 @@ func (r *Postgres) SaveTick(ctx context.Context, lease queue.Lease, transition g
 	state, err := json.Marshal(transition.State)
 	if err != nil {
 		return fmt.Errorf("marshal tick state: %w", err)
+	}
+	checkpoint, err := marshalCheckpoint(transition)
+	if err != nil {
+		return err
 	}
 	var owned bool
 	err = r.db.QueryRow(ctx, `
@@ -38,9 +43,15 @@ func (r *Postgres) SaveTick(ctx context.Context, lease queue.Lease, transition g
 			FROM owned, jsonb_to_recordset($7::jsonb)
 			     AS event(sequence bigint, tick bigint, type text, data jsonb)
 			ON CONFLICT (battle_id, attempt, sequence) DO NOTHING
+		), frame AS (
+			INSERT INTO battle_replay_frames (battle_id, attempt, tick, checkpoint, events)
+			SELECT $1, $2, $4, $8::jsonb, $7::jsonb
+			FROM owned
+			WHERE $8::jsonb IS NOT NULL
+			ON CONFLICT (battle_id, attempt, tick) DO NOTHING
 		)
 		SELECT EXISTS (SELECT 1 FROM owned)
-	`, lease.BattleID, lease.Attempt, lease.Owner, transition.Tick, state, leaseDuration.String(), events).Scan(&owned)
+	`, lease.BattleID, lease.Attempt, lease.Owner, transition.Tick, state, leaseDuration.String(), events, checkpoint).Scan(&owned)
 	if err != nil {
 		return fmt.Errorf("save battle %q tick %d: %w", lease.BattleID, transition.Tick, err)
 	}
@@ -50,8 +61,9 @@ func (r *Postgres) SaveTick(ctx context.Context, lease queue.Lease, transition g
 	return nil
 }
 
-// CompleteBattle atomically stores the terminal state, result, and events and
-// releases the lease; unfinished transitions and stale workers are rejected.
+// CompleteBattle atomically stores the terminal state, result, events and any replay
+// checkpoint and releases the lease; unfinished transitions and stale workers are
+// rejected.
 func (r *Postgres) CompleteBattle(ctx context.Context, lease queue.Lease, transition game.Transition) error {
 	if !transition.Finished || transition.Result == nil {
 		return errors.New("cannot complete battle without a finished transition")
@@ -68,6 +80,10 @@ func (r *Postgres) CompleteBattle(ctx context.Context, lease queue.Lease, transi
 	if err != nil {
 		return fmt.Errorf("marshal final state: %w", err)
 	}
+	checkpoint, err := marshalCheckpoint(transition)
+	if err != nil {
+		return err
+	}
 	var owned bool
 	err = r.db.QueryRow(ctx, `
 		WITH owned AS (
@@ -83,9 +99,15 @@ func (r *Postgres) CompleteBattle(ctx context.Context, lease queue.Lease, transi
 			FROM owned, jsonb_to_recordset($7::jsonb)
 			     AS event(sequence bigint, tick bigint, type text, data jsonb)
 			ON CONFLICT (battle_id, attempt, sequence) DO NOTHING
+		), frame AS (
+			INSERT INTO battle_replay_frames (battle_id, attempt, tick, checkpoint, events)
+			SELECT $1, $2, $4, $8::jsonb, $7::jsonb
+			FROM owned
+			WHERE $8::jsonb IS NOT NULL
+			ON CONFLICT (battle_id, attempt, tick) DO NOTHING
 		)
 		SELECT EXISTS (SELECT 1 FROM owned)
-	`, lease.BattleID, lease.Attempt, lease.Owner, transition.Tick, result, state, events).Scan(&owned)
+	`, lease.BattleID, lease.Attempt, lease.Owner, transition.Tick, result, state, events, checkpoint).Scan(&owned)
 	if err != nil {
 		return fmt.Errorf("complete battle %q: %w", lease.BattleID, err)
 	}
@@ -93,4 +115,17 @@ func (r *Postgres) CompleteBattle(ctx context.Context, lease queue.Lease, transi
 		return queue.ErrLeaseLost
 	}
 	return nil
+}
+
+// marshalCheckpoint encodes a decision-window checkpoint, or returns nil, which the
+// tick statements store as no replay frame.
+func marshalCheckpoint(transition game.Transition) ([]byte, error) {
+	if transition.Checkpoint == nil {
+		return nil, nil
+	}
+	checkpoint, err := json.Marshal(transition.Checkpoint)
+	if err != nil {
+		return nil, fmt.Errorf("marshal replay checkpoint: %w", err)
+	}
+	return checkpoint, nil
 }

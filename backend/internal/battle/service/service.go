@@ -115,6 +115,7 @@ type Service interface {
 	DecisionHistoryService
 	PerspectiveService
 	DecisionContextService
+	ReplayService
 }
 
 type ModelProfileService interface {

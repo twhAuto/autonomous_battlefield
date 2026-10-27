@@ -203,7 +203,7 @@ sequenceDiagram
     loop Each tick
         Engine->>Match: Advance or AdvanceWithPlans
         Match-->>Engine: State transition + events
-        Engine->>DB: Save state/events and heartbeat lease
+        Engine->>DB: Save state/events (and window checkpoint), heartbeat lease
     end
     Engine->>DB: Atomically store result and final events
     UI->>API: Poll battle, events, and decisions
@@ -359,6 +359,23 @@ using the existing `battle_stopped` cancellation category. History and tick
 state remain available; active admission slots are released but daily usage is
 not refunded. While the engine is offline, expiry waits for restart.
 
+### 5.6 Replay a finished battle
+
+At the opening and at every decision window the engine attaches a `game.Checkpoint`
+to the transition: the full state plus the faction runtime that state does not
+carry (active plan and source, scripted-plan index, unit ID sequence, scoped
+upgrades and bonuses, damage and tactic counters, event sequence). `SaveTick` or
+`CompleteBattle` stores it in `battle_replay_frames` with that tick's events, in the
+same guarded statement as the tick.
+
+`GET /v1/battles/{id}/replay?tick=N` reads the final attempt's latest checkpoint at
+or before `N`, resumes the engine with `game.RestoreMatch` in the API process, and
+re-simulates until the next decision window or the battle's last tick. Plans apply
+only at windows, so a segment needs no decision rows. The API refuses an active
+battle, and a segment whose checkpoint is missing, rather than re-simulating across
+a window without its plans. The [API reference](api.md#battle-replay) describes the
+segment contract.
+
 ## 6. AI decisions
 
 Each faction's controller is either scripted or a model profile. For a model, the
@@ -460,6 +477,18 @@ These contracts come from the
 [claim and requeue operations](../../backend/internal/battle/repo/queue.go),
 [expiry sweep](../../backend/internal/battle/repo/expiry.go) and
 [engine entry point](../../backend/cmd/engine/main.go).
+
+### Battle replay storage and cost
+
+A checkpoint is about one state's size (26 KB of JSON on average for a measured
+frontier battle), written once per decision interval (10 ticks by default) rather
+than every tick. A replay request re-simulates at most one interval, about 7 ms per
+tick in that battle, so a segment costs well under a second of API CPU; re-simulating
+from tick 0 would take minutes for a long battle. Segments are neither cached nor
+precomputed. A battle restored from the same checkpoint repeats the recorded ticks
+exactly on the same engine; tests restore at every window after a JSON round trip
+and require identical transitions. Battles that finished before migration `00020`
+have no frames and no replay.
 
 ### Battle history reads
 
@@ -771,6 +800,16 @@ within an engine version, at the cost of larger JSONB rows and explicit version
 provenance. Snapshot versions describe data compatibility; they do not retain
 previous engine implementations.
 
+### Decision-window checkpoints over per-tick history
+
+Replays store one engine checkpoint per decision window and re-simulate the ticks
+between them. Storing every tick's state would need no re-simulation but about ten
+times the storage, and re-simulating from tick 0 alone would make seeking cost the
+whole battle. Checkpoints bound both, at the cost of serializing engine runtime
+beyond `State`: a field added to the match runtime must join the checkpoint, which
+the restore tests enforce. Ticks between checkpoints use the deployed engine, so
+after a gameplay change they can differ for battles recorded earlier.
+
 ### MCP as a capability boundary
 
 The same small, auditable MCP tool surface supports API and subscription CLI models.
@@ -792,6 +831,8 @@ broker.
   verification cannot observe. The development password login remains
   single-administrator and is not player identity.
 - Public battle updates use polling rather than push delivery.
+- Replays cover only battles whose final attempt ran after migration `00020`, and
+  only the final attempt; frames of earlier attempts are kept but not served.
 - Load and failover behavior needs testing before increasing engine, AI gateway, or agent replicas.
 - Antigravity decisions prefetch the context into the prompt and refuse contexts
   over 64 KiB, because the CLI offloads large tool results to files it cannot read.

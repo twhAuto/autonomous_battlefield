@@ -472,6 +472,9 @@ type fakeBattleRepo struct {
 	pauseErr     error
 	pausedID     string
 	pausedValue  bool
+	frames       []StoredReplayFrame
+	frameErr     error
+	frameAttempt int
 }
 
 func (r *fakeBattleRepo) CreateBattle(_ context.Context, params CreateBattleParams) error {
@@ -503,6 +506,20 @@ func (r *fakeBattleRepo) ListBattleDecisions(context.Context, string, int) ([]ai
 }
 func (r *fakeBattleRepo) GetDecision(context.Context, string) (ai.DecisionRecord, error) {
 	return ai.DecisionRecord{}, ai.ErrDecisionNotFound
+}
+
+// GetReplayFrame returns the latest stored frame at or before tick, like the database.
+func (r *fakeBattleRepo) GetReplayFrame(_ context.Context, _ string, attempt int, tick uint64) (StoredReplayFrame, error) {
+	r.frameAttempt = attempt
+	if r.frameErr != nil {
+		return StoredReplayFrame{}, r.frameErr
+	}
+	for index := len(r.frames) - 1; index >= 0; index-- {
+		if r.frames[index].Tick <= tick {
+			return r.frames[index], nil
+		}
+	}
+	return StoredReplayFrame{}, ErrReplayUnavailable
 }
 
 func (r *fakeBattleRepo) ListBattleEvents(_ context.Context, _ string, attempt int, _ uint64, _ int, latest bool) ([]StoredBattleEvent, error) {
