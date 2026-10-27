@@ -1,15 +1,16 @@
 // Composes battle polling hooks, map and decision panels, event
-// history, and pause/resume/stop controls.
+// history, pause/resume/stop controls, and replay mode for settled battles.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePermissions } from '../../auth/SessionContext'
 import { useParams } from 'react-router-dom'
-import { BattleApiError, pauseBattle, resumeBattle, stopBattle } from '../api/battles'
+import { BattleApiError, pauseBattle, resumeBattle, stopBattle, type BattleMap, type BattleRun, type DecisionHistory } from '../api/battles'
 import { HexBattleMap } from '../components/HexBattleMap'
 import { type BattleControlState, type BattleControlAction } from '../types'
 import { useDecisionHistory } from '../hooks/useDecisionHistory'
 import { BattleInspector, type InspectorSize } from '../components/BattleInspector'
 import { FactionSummaries } from '../components/FactionSummaries'
+import { BattleReplay } from '../components/BattleReplay'
 import { BattleHeader, BattleStatistics, battleTitleFor, Outcome, BattleControls, BattleState } from '../components/BattlePresentation'
 import { useBattleStatus } from '../hooks/useBattleStatus'
 import { useBattleEventStream } from '../hooks/useBattleEventStream'
@@ -48,6 +49,7 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
   const [controlState, setControlState] = useState<BattleControlState>('idle')
   const [controlMessage, setControlMessage] = useState('')
   const [inspectorSize, setInspectorSize] = useState<InspectorSize>('normal')
+  const [replaying, setReplaying] = useState(false)
   const inspectorRail = useRef<HTMLButtonElement>(null)
   const previousInspectorSize = useRef(inspectorSize)
   // Keep keyboard focus on the control that replaces the one just hidden.
@@ -110,6 +112,7 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
           <div className="battle-progress-panel">
             <p>Tick <strong>{battle.currentTick}</strong> of {battle.requestedTicks} maximum</p>
             <progress className="battle-progress" aria-label="Tick limit used" max={battle.requestedTicks} value={battle.currentTick}>{progress}%</progress>
+            {settled && displayView && !replaying && <button className="compact-action" type="button" onClick={() => setReplaying(true)}>WATCH REPLAY</button>}
           </div>
           <aside className={`outcome-panel outcome-panel--${battle.paused ? 'paused' : battle.status}`} aria-label={settled ? 'Battle result' : 'Battle control'}>
             <div className="outcome-panel__summary"><Outcome battle={battle} winnerName={winnerName} /></div>
@@ -117,15 +120,7 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
           </aside>
         </BattleHeader>
 
-        <FactionSummaries battle={battle} decisions={decisions} decisionMessage={decisionMessage} />
-
-        {displayView && <div className="battle-map-column">
-          <HexBattleMap
-            map={displayView.map}
-            state={displayView.state}
-            factionNames={participantNames}
-          />
-        </div>}
+        <BattleStage battle={battle} view={displayView} replaying={replaying} decisions={decisions} decisionMessage={decisionMessage} participantNames={participantNames} onExitReplay={() => setReplaying(false)} />
         {showInspector && inspectorSize === 'hidden' && <button ref={inspectorRail} className="inspector-rail" type="button" aria-label="Show inspector" onClick={() => setInspectorSize('normal')}><span aria-hidden="true">‹</span> INSPECTOR</button>}
         {showInspector && <BattleInspector key={`${id}:${battle.attempt}`} battle={battle} decisions={decisions} decisionMessage={decisionMessage} size={inspectorSize} onResize={setInspectorSize} events={{
           battleAttempt: battle.attempt, selectedAttempt, setSelectedAttempt, events, participantNames,
@@ -136,4 +131,26 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
       <BattleStatistics battle={battle} participantNames={participantNames} />
     </>
   )
+}
+
+// The live faction strips and map, or the replay that replaces them. Replay is offered
+// only once a battle settles, and a settled battle never becomes active again.
+function BattleStage({ battle, view, replaying, decisions, decisionMessage, participantNames, onExitReplay }: Readonly<{
+  battle: BattleRun
+  view: { map: BattleMap; state: BattleRun['state'] } | null
+  replaying: boolean
+  decisions: DecisionHistory[]
+  decisionMessage: string
+  participantNames: Map<string, string>
+  onExitReplay: () => void
+}>) {
+  if (replaying && view) {
+    return <BattleReplay battle={battle} map={view.map} decisions={decisions} decisionMessage={decisionMessage} participantNames={participantNames} onExit={onExitReplay} />
+  }
+  return <>
+    <FactionSummaries battle={battle} decisions={decisions} decisionMessage={decisionMessage} />
+    {view && <div className="battle-map-column">
+      <HexBattleMap map={view.map} state={view.state} factionNames={participantNames} />
+    </div>}
+  </>
 }

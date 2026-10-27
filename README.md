@@ -8,7 +8,7 @@ engine validates and executes them.
 - Create reusable factions with editable names, 12 selectable emblems, backgrounds and strategic doctrines.
 - Run two-faction castle-siege battles with autonomous combat, open maps, terrain bonuses, building-range expansion, defending castles, five specialized training buildings and continuous AI-selected unit production, with visible progress and on/off status.
 - Choose tick duration and decision interval when staging a battle, or keep map defaults.
-- Inspect live battles, saved results, events and AI decision history.
+- Inspect live battles, saved results, events and AI decision history, and replay finished battles tick by tick.
 - Manage invited players and model access through Player, Developer and Admin roles.
 
 The hosted application is at [play.ordinalfrontier.com](https://play.ordinalfrontier.com)
