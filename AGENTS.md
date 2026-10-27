@@ -22,9 +22,16 @@ Notion is the source of truth for task status:
 the backlog into `README.md`. If Notion MCP is unavailable, continue safe repository
 work and report that statuses could not be synchronized.
 
+Every repository change by any agent (Claude, Codex, or another) must be linked to
+a Notion ticket. Before the first edit, follow the
+[link-ticket skill](.agents/skills/link-ticket/SKILL.md): find the matching ticket
+or create one, and carry its `AB-NN` ID in the branch name, every commit subject,
+the PR title and the PR Motivation. Never invent an ID; only the user can waive the
+requirement for a specific change.
+
 Workflow skills live in `.agents/skills/` (linked from `.claude/skills/`). Use the
-matching skill for PRs, CI/SonarQube triage, releases and recovery, major
-documentation work, and backlog tickets.
+matching skill for ticket linking, PRs, CI/SonarQube triage, releases and recovery,
+major documentation work, and backlog tickets.
 
 ## Documentation maintenance
 

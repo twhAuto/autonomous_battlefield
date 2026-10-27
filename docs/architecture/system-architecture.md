@@ -406,14 +406,17 @@ attempts remain available by attempt number. When an observation hash matches a
 previously resolved decision for the same faction and target tick, the decision
 repository can reuse that plan.
 
-Each claim increments `attempt`, including a claim after a graceful-shutdown
-requeue (the requeue itself preserves the count). Once a queued or lease-expired
-battle has used `engine.maxAttempts` (default 3), the next claim pass marks it
-`failed` with `attempts_exhausted` instead of starting another attempt, so repeated
-rolling restarts during one battle can exhaust its retry budget. A stored scenario
-that cannot construct a match fails immediately with `invalid_scenario` and is not
-retried. Together with `battle_timeout` (see [battle expiry](#55-battle-expiry)),
-these are the engine's terminal battle error codes.
+Each claim increments `attempt`, so every attempt keeps its own event history. A
+graceful-shutdown requeue refunds the attempt it interrupted by incrementing
+`graceful_requeues`; only attempts that crashed or lost their lease count. Once a
+queued or lease-expired battle has used `engine.maxAttempts` (default 3) such
+attempts, the next claim pass marks it `failed` with `attempts_exhausted` instead of
+starting another attempt. A rolling restart that requeues within
+`engine.shutdownTimeout` therefore never spends the budget; one that misses it lets
+the lease expire, and that attempt counts. A stored scenario that cannot construct a
+match fails immediately with `invalid_scenario` and is not retried. Together with
+`battle_timeout` (see [battle expiry](#55-battle-expiry)), these are the engine's
+terminal battle error codes.
 
 ### Engine capacity and recovery
 
@@ -649,7 +652,7 @@ Key runtime settings and their defaults:
 | `engine.pollInterval` | 1s | Delay between empty battle-queue claims |
 | `engine.leaseDuration` | 30s | Battle lease length; an expired lease lets another engine reclaim the battle |
 | `engine.heartbeatInterval` | 10s | Lease renewal cadence; must be shorter than `leaseDuration` |
-| `engine.maxAttempts` | 3 | Claims per battle before `attempts_exhausted` |
+| `engine.maxAttempts` | 3 | Crashed or lease-expired attempts per battle before `attempts_exhausted`; graceful requeues are refunded |
 | `engine.shutdownTimeout` | 10s | Bound for final writes and requeue during shutdown |
 | `ai.decisionTimeout` | 2m | Engine decision deadline and agent execution timeout |
 | `ai.agentConcurrency` | 1 | Execution slots per agent process (1–4) |

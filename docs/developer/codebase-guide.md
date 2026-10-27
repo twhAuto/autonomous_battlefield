@@ -18,7 +18,7 @@ On this page: [repository map](#repository-map) · [executables](#executable-ent
 
 ```text
 autonomous_battlefield/
-├── .agents/skills/             # Canonical PR, CI, release, docs, and backlog skills
+├── .agents/skills/             # Canonical ticket-linking, PR, CI, release, docs, and backlog skills
 ├── .claude/skills/             # Links to the canonical skills for Claude Code
 ├── .github/pull_request_template.md # PR sections, including the required AI-assistance record
 ├── backend/
@@ -209,8 +209,10 @@ work branches start from the latest `origin/dev` and target `dev`; promotion to
 before opening a PR, and complete the PR template's AI-assistance section required
 by the [AI development policy](ai-development-policy.md). The skills in
 [`.agents/skills/`](../../.agents/skills/) (linked for Claude Code from
-`.claude/skills/`) cover PRs, CI triage, releases, docs and backlog work, and
-[cross-review](cross-review.md) covers agent review.
+`.claude/skills/`) cover ticket linking, PRs, CI triage, releases, docs and backlog
+work, and [cross-review](cross-review.md) covers agent review. Every agent-authored
+change is linked to a Notion ticket whose `AB-NN` ID appears in the branch name,
+commit subjects and PR title.
 
 For a PR stack, each PR's review and Sonar preview use its actual target branch.
 Jenkins verifies only PRs targeting `dev` or `main`, so a stacked PR needs
@@ -287,7 +289,11 @@ removal against embedded game content and retain historical/missing-data fallbac
 
 `frontend/src/features/battles/pages/CreateBattlePage.tsx` offers map-default or
 preset tick duration and decision interval, resets overrides on a map change,
-and keeps combatant columns aligned with mixed controller types. Availability
+and keeps combatant columns aligned with mixed controller types. It preselects
+the `frontier-siege` map when offered and Low reasoning effort for models that
+list efforts. `components/MapPreview.tsx` draws the selected scenario's terrain
+and castle spawns from the `map` field of `GET /v1/scenarios`, reusing the hex
+geometry exported by `HexBattleMap.tsx`. Availability
 still filters controller choices; setup has no integration diagnostic panel.
 `backend/internal/battle/service/timing.go` validates optional overrides before
 snapshot hashing and persistence; `timing_test.go` covers bounds, defaults and
@@ -303,7 +309,7 @@ rosters, and historical starting-Barracks compatibility live in
 [`training_sources.go`](../../backend/internal/game/training_sources.go). The map renderer shows
 terrain bonuses, selected-building range and training progress.
 [`continuous_production.go`](../../backend/internal/game/continuous_production.go) validates persistent AI selections and purchases one unit at a time for enabled sources.
-[`BuildingProductionPanel.tsx`](../../frontend/src/features/battles/components/BuildingProductionPanel.tsx) shows all living sources to every viewer, including gold waits, disabled production and blocked exits; selected map details reuse its status display.
+[`BuildingProduction.tsx`](../../frontend/src/features/battles/components/BuildingProduction.tsx) renders each living source as a compact chip in its faction strip for every viewer, with gold waits, disabled production and blocked exits in each chip's disclosure (opened by hover title, click, tap or keyboard); selected map details reuse its status display.
 `initialization.go` copies authored castle training and attack capabilities into
 runtime state; `structures.go` runs castle and tower attacks together. The full map
 uses the main battle snapshot; the former faction-perspective polling hook is removed.

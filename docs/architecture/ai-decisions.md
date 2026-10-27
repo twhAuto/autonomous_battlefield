@@ -20,8 +20,9 @@ For Admin and Developer viewers, each faction status box shows the latest
 accepted or fallback plan at or before the current tick and its submitted
 rationale. A pending or future decision does not replace the applied plan.
 Stopped battles retain the last plan; missing records have explicit empty states.
-Fallback plans are labeled, and long plan/rationale text scrolls inside a
-keyboard-focusable read-only text box capped at 160px so the map stays accessible.
+Fallback plans are labeled. The strip shows the plan name; opening it reveals the
+full plan and rationale in a keyboard-focusable read-only text box, capped at 320px
+and floating over the map, so it costs no layout space while closed.
 Player roles retain the existing restriction on decision inspection.
 
 ## Decision lifecycle
@@ -472,6 +473,10 @@ both fields, freezes them in the scenario and decision row, and includes effort 
 retry-reuse matching. Workers validate against their own allowlist before execution;
 a removed option fails as `model_selection_unavailable`, rather than substituting
 another model. Existing API profiles and Antigravity expose no effort controls.
+The setup page never leaves effort implicit: when the chosen model lists efforts
+it preselects `low` (or the first listed effort when `low` is absent) and submits
+it with the model identifier. API clients that omit both fields still get the
+profile default.
 API profile model labels remain informational: API runners use their current
 configured environment model, preserving behavior across secret rotation.
 Codex receives `model_reasoning_effort`; Claude receives `--effort`. The CLI model

@@ -149,7 +149,7 @@ source discards its paid unit without refund. A deployed unit acts next tick;
 opening/later unit counters increment on deployment. Frozen core v6 and earlier
 retain their FIFO queues, six purchases per window and twelve-order source limit.
 
-Production settings and training progress are persisted in `Building` state and cloned with snapshots. Viewers see all living sources in the building production panel; only the AI changes settings.
+Production settings and training progress are persisted in `Building` state and cloned with snapshots. Viewers see all living sources as production chips in each faction strip; only the AI changes settings.
 The engine resumes a live paused match in memory; a new worker attempt replays its
 saved scenario and decisions, rebuilding the same queue progression. Legacy unit
 definitions without training times default to one tick and building ranges to 3.

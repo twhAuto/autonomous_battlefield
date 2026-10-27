@@ -19,7 +19,8 @@ The frontend is a React/Vite single-page application.
 | [`features/battles/api/battles.ts`](../../frontend/src/features/battles/api/battles.ts) | Typed scenario, profile, battle, history, event, view, control, and decision requests |
 | [`features/factions/pages/CreateFactionPage.tsx`](../../frontend/src/features/factions/pages/CreateFactionPage.tsx) | Faction profile editor and background generator |
 | [`features/factions/pages/FactionsPage.tsx`](../../frontend/src/features/factions/pages/FactionsPage.tsx) | Faction registry and authorized edit links; deletion lives in the editor's Danger zone |
-| [`features/battles/pages/CreateBattlePage.tsx`](../../frontend/src/features/battles/pages/CreateBattlePage.tsx) | Scenario, participants, controllers, and tick-limit selection |
+| [`features/battles/pages/CreateBattlePage.tsx`](../../frontend/src/features/battles/pages/CreateBattlePage.tsx) | Scenario (default `frontier-siege`), participants, controllers (default Low effort), and tick-limit selection |
+| [`features/battles/components/MapPreview.tsx`](../../frontend/src/features/battles/components/MapPreview.tsx) | Static terrain and castle-spawn preview of the selected scenario map |
 | [`features/battles/pages/BattleHistoryPage.tsx`](../../frontend/src/features/battles/pages/BattleHistoryPage.tsx) | Status-filtered history table/cards, cursor navigation, refresh, and detail links |
 | [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx) | Route-level composition, selected panel, and control actions |
 | [`features/auth/pages/LoginPage.tsx`](../../frontend/src/features/auth/pages/LoginPage.tsx) | Local-password login form used only in the development auth mode |
@@ -109,6 +110,18 @@ newest page with the same filter. Detail links carry the originating URL in rout
 state, and direct detail visits link back to the unfiltered archive. Obsolete
 requests are aborted and their results ignored.
 
+## Battle page layout
+
+`BattlePage` lays the live battle out as a command center. At desktop widths
+(over 1000px) the page spans the full window and fits one viewport height: a
+single command band (`BattleHeader` with tick progress, outcome and controls), one
+faction strip per participant, then the map filling the remaining height beside the
+inspector. The map legend and selected-entity details float over the map, so
+opening them never resizes the map viewport (which would refit and lose pan and
+zoom). The inspector can be widened or hidden to a rail; focus moves to the
+replacement control. After-action statistics follow below. Narrower screens stack
+the same regions in document order and keep the map's aspect ratio.
+
 ## Inspector and historical context
 
 `BattlePage` owns battle controls. `components/BattleInspector.tsx`
@@ -172,8 +185,13 @@ timings live in the CSS and components with their tests, not in this guide.
   Opening, closing or resizing it fits the board again; live tick updates keep the
   current camera. Keyboard panning uses the native "Pan with arrow keys" button.
 
-`FactionSummaries.tsx` shows each participant's decision activity, gold and living
-units from spectator state, from the full battlefield. Paused and terminal
+`FactionSummaries.tsx` shows each participant's decision activity, gold, living
+units and castle health from spectator state, from the full battlefield, edged in
+the same faction color as its map units (`presentation/factions.ts`). Each strip also
+carries that faction's production chips and, for inspecting viewers, a plan
+disclosure. Chips and the plan share one exclusive `<details name>` group per
+strip, so opening one closes the others. Failed-battle reasons in the header are
+never clamped. Paused and terminal
 battles override decision activity, and Go `null` collections are treated as empty.
 A model-controlled participant's heading also shows its model identifier and any
 reasoning effort. Player responses carry only the controller type, so players see
@@ -248,9 +266,9 @@ alongside strict type checks.
 Forests, deposits and rocks have distinct SVG silhouettes via `TerrainGlyph.tsx`,
 terrain colors and accessible descriptions. Selecting a living building highlights its
 construction radius. Production-building details show their `trains` roster, selected unit, on/off setting,
-remaining/total ticks, progress and blocked exits. `BuildingProductionPanel.tsx`
-also shows every living production source below the map to all viewers, including
-gold waits and pending activation. Production controls belong to the AI; the viewer
+remaining/total ticks, progress and blocked exits. `BuildingProduction.tsx`
+also shows every living production source as a chip in its faction strip to all
+viewers, including gold waits, unit-limit waits and pending activation. Production controls belong to the AI; the viewer
 is read-only. Historical batch queues retain their FIFO presentation. Current castles
 show the Barracks roster, their queue, attack/range stats and tower-fire visuals.
 In historical snapshots without `trains`, populated queues still display, but empty

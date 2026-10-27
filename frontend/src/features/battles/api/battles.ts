@@ -17,6 +17,7 @@ export interface ScenarioSummary {
   maximumTicks: number
   mapWidth: number
   mapHeight: number
+  map?: BattleMap
 }
 
 export interface CreateBattleInput {

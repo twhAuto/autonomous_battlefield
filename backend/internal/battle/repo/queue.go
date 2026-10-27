@@ -17,7 +17,8 @@ import (
 
 // FailExhaustedBattles fails queued or lease-expired battles that have used every
 // attempt, so they end as attempts_exhausted instead of waiting forever. ClaimBattle
-// never claims them; the engine runs this before each claim.
+// never claims them; the engine runs this before each claim. Attempts that ended in a
+// graceful requeue are refunded, so only crashed or lease-expired attempts count.
 func (r *Postgres) FailExhaustedBattles(ctx context.Context, maxAttempts int) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE battle_runs
@@ -27,7 +28,7 @@ func (r *Postgres) FailExhaustedBattles(ctx context.Context, maxAttempts int) er
 		    completed_at = now(), updated_at = now()
 		WHERE ((status = 'queued') OR (status = 'running' AND lease_expires_at <= now()))
 		  AND NOT paused
-		  AND attempt >= $1
+		  AND attempt - graceful_requeues >= $1
 	`, maxAttempts)
 	if err != nil {
 		return fmt.Errorf("fail exhausted battles: %w", err)
@@ -45,8 +46,8 @@ func (r *Postgres) ClaimBattle(ctx context.Context, workerID string, leaseDurati
 			SELECT id
 			FROM battle_runs
 			WHERE NOT paused
-			  AND ((status = 'queued' AND attempt < $3)
-			   OR (status = 'running' AND lease_expires_at <= now() AND attempt < $3))
+			  AND attempt - graceful_requeues < $3
+			  AND (status = 'queued' OR (status = 'running' AND lease_expires_at <= now()))
 			ORDER BY created_at ASC, id ASC
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1
@@ -128,10 +129,14 @@ func (r *Postgres) FailBattle(ctx context.Context, lease queue.Lease, code, mess
 	return nil
 }
 
+// RequeueBattle hands a battle back after a graceful shutdown and refunds the attempt
+// it interrupted. The attempt number is kept, so the next claim starts a new attempt
+// whose events and decisions do not collide with this one's.
 func (r *Postgres) RequeueBattle(ctx context.Context, lease queue.Lease) error {
 	tag, err := r.db.Exec(ctx, `
 		UPDATE battle_runs
 		SET status = 'queued', current_tick = 0, current_state = initial_state,
+		    graceful_requeues = graceful_requeues + 1,
 		    lease_owner = NULL, lease_expires_at = NULL, updated_at = now()
 		WHERE id = $1 AND status = 'running' AND attempt = $2 AND lease_owner = $3
 	`, lease.BattleID, lease.Attempt, lease.Owner)

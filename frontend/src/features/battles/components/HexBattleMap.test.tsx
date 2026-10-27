@@ -123,7 +123,7 @@ it('renders distinct tactical artwork and readable labels, with separate keyboar
   expect(scout).toHaveFocus()
   expect(scout).toHaveAttribute('aria-pressed', 'true')
   expect(container.querySelector('.entity-details')).toHaveTextContent('Northwind · New Scout #8')
-  await userEvent.click(screen.getByText('Unit & building icons'))
+  await userEvent.click(screen.getByText('Map legend'))
   expect(screen.getByText('Battering Ram', { exact: true })).toBeVisible()
   expect(screen.getByText('Defense Tower', { exact: true })).toBeVisible()
   expect(screen.getByText('New Scout', { exact: true })).toBeVisible()
