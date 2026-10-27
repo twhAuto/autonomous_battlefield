@@ -294,6 +294,17 @@ so model-facing catalog tables are not decoded as canonical observation structs.
 mechanics digest reviewed in `rule-duplicates.json`; prompt tests verify every
 removal against embedded game content and retain historical/missing-data fallbacks.
 
+### Faction emblems
+
+`shared/domain/emblems.ts` defines the 12 selectable faction symbols;
+`shared/components/Emblem.tsx` renders them in the editor preview, registry and
+battle setup. `CreateFactionPage.tsx` uses native radios for keyboard selection.
+The faction API and service validate and persist the `emblem` identifier through
+`internal/faction/repo/postgres.go` and migration `00021_faction_emblem.sql`.
+Omitted update fields preserve stored symbols; old profiles default to Star.
+Component and browser tests cover selection and persistence across views;
+`faction_emblem_integration_test.go` verifies database migration and compatibility.
+
 ### Battle setup timing and faction summaries
 
 `frontend/src/features/battles/pages/CreateBattlePage.tsx` offers map-default or

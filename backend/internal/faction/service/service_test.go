@@ -27,7 +27,7 @@ func TestCreateFaction(t *testing.T) {
 		t.Fatalf("CreateFaction() returned an error: %v", err)
 	}
 
-	want := &faction.Faction{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", Doctrine: "Hold the line.", OwnerID: "test-admin"}
+	want := &faction.Faction{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", Doctrine: "Hold the line.", OwnerID: "test-admin", Emblem: "star"}
 	if !reflect.DeepEqual(repo.createdFaction, want) {
 		t.Fatalf("created faction = %#v, want %#v", repo.createdFaction, want)
 	}
@@ -80,7 +80,7 @@ var errLookup = errors.New("database unavailable")
 
 func TestCreateFactionReplaysIdenticalRetry(t *testing.T) {
 	const id = "7f22e693-bacd-46bb-b942-64fa613cd388"
-	original := faction.Faction{ID: id, Name: "Northwind", Doctrine: "Hold the line.", Background: "Frost clans.", OwnerID: "self"}
+	original := faction.Faction{ID: id, Name: "Northwind", Doctrine: "Hold the line.", Background: "Frost clans.", OwnerID: "self", Emblem: "star"}
 	retry := ProfileInput{ID: id, Name: " Northwind ", Doctrine: "Hold the line.", Background: "Frost clans."}
 	tests := []struct {
 		name    string
@@ -279,5 +279,63 @@ func checkFactionOwnership(t *testing.T, role authn.Role, owner string) {
 	e = s.DeleteFaction(ctx, id)
 	if (e == nil) != allowed || (!allowed && repo.deletedID != "") {
 		t.Fatalf("delete %s %s: %v", role, owner, e)
+	}
+}
+
+func TestEmblemCreationRetryAndUpdate(t *testing.T) {
+	for _, emblem := range []string{"star", "crown", "shield", "swords", "wolf", "raven", "serpent", "tree", "leaf", "flame", "sun", "moon"} {
+		t.Run(emblem, func(t *testing.T) { checkEmblemCreationRetryAndUpdate(t, emblem) })
+	}
+}
+
+func checkEmblemCreationRetryAndUpdate(t *testing.T, emblem string) {
+	t.Helper()
+	ctx := authn.WithActor(context.Background(), authn.Actor{ID: "self", Role: authn.Admin})
+	input := ProfileInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", Doctrine: "Defend", Emblem: emblem}
+	repo := &fakeFactionRepository{}
+	s := NewService(repo, fakeRulesets{})
+	if err := s.CreateFaction(ctx, input); err != nil || repo.createdFaction.Emblem != emblem {
+		t.Fatalf("create %s: %v", emblem, err)
+	}
+	repo.storedFaction = repo.createdFaction
+	repo.createErr = ErrFactionAlreadyExists
+	if err := s.CreateFaction(ctx, input); err != nil {
+		t.Fatalf("retry %s: %v", emblem, err)
+	}
+	input.Emblem = "wolf"
+	if emblem == "wolf" {
+		input.Emblem = "moon"
+	}
+	if err := s.CreateFaction(ctx, input); !errors.Is(err, ErrFactionAlreadyExists) {
+		t.Fatalf("changed emblem retry: %v", err)
+	}
+	repo.createErr = nil
+	if err := s.UpdateFaction(ctx, input); err != nil || repo.createdFaction.Emblem != input.Emblem {
+		t.Fatalf("edit: %v", err)
+	}
+}
+
+func TestFactionWritesRejectUnknownEmblems(t *testing.T) {
+	ctx := authn.WithActor(context.Background(), authn.Actor{ID: "self", Role: authn.Admin})
+	input := ProfileInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", Doctrine: "Defend"}
+	s := NewService(&fakeFactionRepository{}, fakeRulesets{})
+	for _, emblem := range []string{"dragon", "WOLF", " wolf ", "<svg onload=alert(1)>"} {
+		input.Emblem = emblem
+		if err := s.CreateFaction(ctx, input); !errors.Is(err, ErrInvalidFaction) {
+			t.Fatalf("invalid create %q: %v", emblem, err)
+		}
+		if err := s.UpdateFaction(ctx, input); !errors.Is(err, ErrInvalidFaction) {
+			t.Fatalf("invalid edit %q: %v", emblem, err)
+		}
+	}
+}
+
+func TestLegacyFactionUpdatePreservesEmblem(t *testing.T) {
+	ctx := authn.WithActor(context.Background(), authn.Actor{ID: "self", Role: authn.Admin})
+	input := ProfileInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Name: "Northwind", Doctrine: "Defend"}
+	repo := &fakeFactionRepository{}
+	s := NewService(repo, fakeRulesets{})
+	if err := s.UpdateFaction(ctx, input); err != nil || repo.createdFaction.Emblem != "" {
+		t.Fatalf("legacy edit must preserve stored emblem: %v", err)
 	}
 }

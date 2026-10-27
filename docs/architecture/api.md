@@ -127,6 +127,13 @@ different caller or content returns `409`. Names, doctrines and backgrounds are
 trimmed before storage. Doctrine is limited to 4,000 and background to 1,000
 Unicode characters, not UTF-8 bytes; a missing background means empty.
 
+The cosmetic `emblem` field accepts `star`, `crown`, `shield`, `swords`, `wolf`,
+`raven`, `serpent`, `tree`, `leaf`, `flame`, `sun`, or `moon`. Omitted or empty
+values default to `star` on creation and preserve the saved choice on update.
+Unknown identifiers return `400`. Creation retries compare the normalized emblem
+as well as the profile text. Registry responses include the saved identifier;
+colors are derived from the faction name in the frontend.
+
 Edits apply only to future battles. Deleting a faction removes it from the active
 registry, but battle history stays readable because each battle stores an
 immutable snapshot of its participants.

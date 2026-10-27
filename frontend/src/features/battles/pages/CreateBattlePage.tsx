@@ -325,7 +325,7 @@ function controllerDetails(value: string, selected: ModelProfile | undefined, in
 function Combatant({ faction, slot }: Readonly<{ faction?: Faction; slot: string }>) {
   return (
     <div className="battle-preview__faction">
-      {faction && <Emblem seed={faction.name} />}
+      {faction && <Emblem seed={faction.name} emblem={faction.emblem} />}
       <span>SLOT {slot}</span>
       <h2>{faction?.name ?? 'Unassigned'}</h2>
     </div>

@@ -28,7 +28,7 @@ The frontend is a React/Vite single-page application.
 | [`features/battles/components/HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx) | Hex-map visualization, movement routes, tracking arrows, attack outcomes, and accessible unit animation |
 | [`features/battles/components/PlayerStatusPanel.tsx`](../../frontend/src/features/battles/components/PlayerStatusPanel.tsx) | Null-safe spectator summaries, economy/building overview, and grouped living units |
 | [`features/admin/pages/MembersPage.tsx`](../../frontend/src/features/admin/pages/MembersPage.tsx) | Managed Player invitations, removal, sync retry, and game link (Admins only, when enabled) |
-| [`shared/components/Emblem.tsx`](../../frontend/src/shared/components/Emblem.tsx) | Deterministic faction emblem |
+| [`shared/components/Emblem.tsx`](../../frontend/src/shared/components/Emblem.tsx) | Saved faction symbol with name-derived colors |
 
 ## Routes and session
 
@@ -54,6 +54,15 @@ and routes. Inspection payloads and entity tooltips retain IDs for debugging.
 Feature-specific API clients live in `src/features/<feature>/api`; common HTTP transport lives in `src/shared/api`. Page components should consume typed client functions rather than duplicating `fetch` calls.
 
 ## Faction editor
+
+The editor offers 12 named emblems through native radios (Tab enters the group;
+arrow keys change the symbol), updating the live preview and saving `emblem` with
+the profile. Creation resets the symbol to Star after success; editing restores
+the saved choice. The registry and battle setup render that same identifier.
+`shared/domain/emblems.ts` owns the frontend identifiers and labels;
+`shared/components/Emblem.tsx` draws each SVG with name-derived colors and falls
+back to Star for missing or unknown identifiers. Keep the catalog aligned with
+the faction service allowlist and database constraint when adding symbols.
 
 `features/factions/presentation/availability.ts` distinguishes failed status reads,
 unavailable service, exhausted allowance, cooldown, and active work using existing

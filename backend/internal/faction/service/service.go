@@ -25,6 +25,7 @@ var uuidPattern = regexp.MustCompile(`^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit
 
 // ProfileInput is the editable faction profile, used for both creation and editing.
 type ProfileInput struct {
+	Emblem     string
 	Background string
 	Doctrine   string
 	ID         string
@@ -79,7 +80,7 @@ func (s *service) CreateFaction(ctx context.Context, input ProfileInput) error {
 			return getErr
 		}
 		if getErr == nil && existing != nil && existing.OwnerID == stored.OwnerID && existing.Name == stored.Name &&
-			existing.Doctrine == stored.Doctrine && existing.Background == stored.Background {
+			existing.Doctrine == stored.Doctrine && existing.Background == stored.Background && existing.Emblem == stored.Emblem {
 			return nil
 		}
 	}
@@ -88,7 +89,18 @@ func (s *service) CreateFaction(ctx context.Context, input ProfileInput) error {
 
 // normalizeFaction keeps creation and editing subject to the same profile rules.
 func normalizeFaction(input ProfileInput) (faction.Faction, error) {
+	emblem := input.Emblem
+	if emblem == "" {
+		emblem = "star"
+	}
+	// Keep the public identifiers aligned with frontend/src/shared/domain/emblems.ts.
+	switch emblem {
+	case "star", "crown", "shield", "swords", "wolf", "raven", "serpent", "tree", "leaf", "flame", "sun", "moon":
+	default:
+		return faction.Faction{}, ErrInvalidFaction
+	}
 	stored := faction.Faction{
+		Emblem:     emblem,
 		ID:         input.ID,
 		Name:       strings.TrimSpace(input.Name),
 		Doctrine:   strings.TrimSpace(input.Doctrine),

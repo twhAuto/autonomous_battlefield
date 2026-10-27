@@ -6,4 +6,5 @@
 .emblem__frame { fill: color-mix(in srgb, var(--emblem-secondary) 55%, #111); stroke: var(--emblem-primary); stroke-width: 1; }
 .emblem__field { fill: #171c16; stroke: color-mix(in srgb, var(--emblem-primary) 45%, transparent); }
 .emblem__mark { fill: color-mix(in srgb, var(--emblem-secondary) 70%, #111); stroke: var(--emblem-primary); stroke-width: 2; }
+.emblem__detail { fill: none; stroke: var(--emblem-primary); stroke-width: 3; }
 .emblem__core { fill: var(--emblem-primary); }

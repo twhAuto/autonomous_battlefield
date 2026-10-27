@@ -48,9 +48,17 @@ must supply the restricted login
 
 ## Schema
 
+Migration `00021_faction_emblem.sql` adds `factions.emblem`, a non-null text
+identifier defaulting to `star`, with a check constraint for the 12 supported
+symbols. Existing rows receive the star automatically. Profile creation writes
+the selected identifier; updates with an omitted or empty emblem preserve the
+stored value in the same SQL statement. Its Down migration removes the column.
+The emblem is cosmetic profile metadata used by the registry and battle setup;
+it is not part of the battle simulation snapshot.
+
 | Table or view | Purpose | Key rules |
 | --- | --- | --- |
-| `factions` | Reusable faction identity: name, doctrine, background, owner | `ruleset_id` and `blueprint` are legacy-only. Battles snapshot faction data, so deleting a faction never changes a battle |
+| `factions` | Reusable faction identity: name, doctrine, background, emblem, owner | `ruleset_id` and `blueprint` are legacy-only. Battles snapshot faction data, so deleting a faction never changes a battle |
 | `battle_runs` | One battle: scenario snapshot, initial and current state, status, lease, attempt and graceful-requeue count, pause flag, result, owner, model-execution count, trace context | Status `queued`, `running`, `completed`, `failed` or `stopped`. A lease owner and expiry are both set or both null, and only while `running` |
 | `battle_events` | Ordered events per battle attempt | Primary key `(battle_id, attempt, sequence)` makes inserts idempotent and serves event paging |
 | `battle_replay_frames` | One engine checkpoint per decision window of a battle attempt, with that tick's events | Primary key `(battle_id, attempt, tick)` makes inserts idempotent and finds the nearest earlier checkpoint. `checkpoint` is a JSON object and `events` a JSON array |
@@ -66,7 +74,7 @@ must supply the restricted login
 | `goose_db_version` | Goose's applied-migration ledger | Production recovery records compare it before approving an image rollback |
 
 These diagrams show every column of every table, generated from the schema after
-migration `00020` with keys marked `PK` and `FK`. Update them with any schema
+migration `00021` with keys marked `PK` and `FK`. Update them with any schema
 change. Battles snapshot faction data instead of referencing `factions`, so
 deleting a faction never changes a battle.
 
@@ -172,6 +180,7 @@ erDiagram
         text doctrine
         text background
         text owner_id
+        text emblem
     }
     FACTION_GENERATION_ACCOUNTS {
         text actor_id PK

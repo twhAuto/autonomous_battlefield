@@ -17,6 +17,7 @@ const BalancedDoctrine = "Balance offense, defense, and economic growth. Protect
 // Faction contains the public profile and internal game configuration.
 // RulesetID and Blueprint are excluded from JSON API responses.
 type Faction struct {
+	Emblem     string         `json:"emblem"`
 	OwnerID    string         `json:"ownerId"`
 	Background string         `json:"background,omitempty"`
 	Doctrine   string         `json:"doctrine"`
