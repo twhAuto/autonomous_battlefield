@@ -18,7 +18,7 @@ On this page: [repository map](#repository-map) · [executables](#executable-ent
 
 ```text
 autonomous_battlefield/
-├── .agents/skills/             # Canonical PR, CI, release, docs, and backlog skills
+├── .agents/skills/             # Canonical ticket-linking, PR, CI, release, docs, and backlog skills
 ├── .claude/skills/             # Links to the canonical skills for Claude Code
 ├── .github/pull_request_template.md # PR sections, including the required AI-assistance record
 ├── backend/
@@ -209,8 +209,10 @@ work branches start from the latest `origin/dev` and target `dev`; promotion to
 before opening a PR, and complete the PR template's AI-assistance section required
 by the [AI development policy](ai-development-policy.md). The skills in
 [`.agents/skills/`](../../.agents/skills/) (linked for Claude Code from
-`.claude/skills/`) cover PRs, CI triage, releases, docs and backlog work, and
-[cross-review](cross-review.md) covers agent review.
+`.claude/skills/`) cover ticket linking, PRs, CI triage, releases, docs and backlog
+work, and [cross-review](cross-review.md) covers agent review. Every agent-authored
+change is linked to a Notion ticket whose `AB-NN` ID appears in the branch name,
+commit subjects and PR title.
 
 For a PR stack, each PR's review and Sonar preview use its actual target branch.
 Jenkins verifies only PRs targeting `dev` or `main`, so a stacked PR needs
