@@ -1,5 +1,6 @@
-// Exercises the battle lifecycle, expired lease recovery, stale-worker rejection, and
-// exhausted attempts against PostgreSQL.
+// Exercises the battle lifecycle, expired lease recovery, stale-worker rejection,
+// exhausted attempts, and graceful requeues that keep the attempt budget against
+// PostgreSQL.
 
 package repo
 
@@ -129,6 +130,111 @@ func TestBattleRepositoryFailsExhaustedAttempts(t *testing.T) {
 	}
 	if _, err := repo.ClaimBattle(ctx, "worker-2", time.Second, 1); err != queue.ErrNoBattleAvailable {
 		t.Fatalf("second ClaimBattle() error = %v, want ErrNoBattleAvailable", err)
+	}
+	run, err := repo.GetBattle(ctx, battleID)
+	if err != nil {
+		t.Fatalf("GetBattle() returned an error: %v", err)
+	}
+	if run.Status != "failed" || run.ErrorCode == nil || *run.ErrorCode != "attempts_exhausted" {
+		t.Fatalf("run = %#v, want attempts-exhausted failure", run)
+	}
+}
+
+func TestBattleRepositoryGracefulRequeuesKeepAttemptBudget(t *testing.T) {
+	ctx, db := integrationDatabase(t)
+	battleID := randomUUID(t)
+	t.Cleanup(func() { _, _ = db.Exec(context.Background(), `DELETE FROM battle_runs WHERE id = $1`, battleID) })
+	repo := NewPostgres(db)
+	const maxAttempts = 2
+	scenario := repositoryTestScenario()
+	if err := repo.CreateBattle(ctx, battleservice.CreateBattleParams{ID: battleID, ScenarioID: scenario.ID, ScenarioDigest: "digest", ScenarioSnapshot: scenario, RequestedTicks: 2}); err != nil {
+		t.Fatalf("CreateBattle() returned an error: %v", err)
+	}
+	const restarts = 5
+	for attempt := 1; attempt <= restarts; attempt++ {
+		runTickAndRequeueGracefully(t, ctx, repo, attempt, maxAttempts)
+	}
+
+	job := claimAttempt(t, ctx, repo, "worker-2", 30*time.Second, restarts+1, maxAttempts)
+	result := battle.Result{Reason: "tick_limit", TicksRun: 2}
+	completion := battle.Transition{Tick: 2, Finished: true, Result: &result, Events: []battle.Event{{Sequence: 1, Tick: 2, Type: "battle_completed", Data: map[string]any{"reason": "tick_limit"}}}}
+	if err := repo.CompleteBattle(ctx, job.Lease, completion); err != nil {
+		t.Fatalf("CompleteBattle() returned an error: %v", err)
+	}
+	run, err := repo.GetBattle(ctx, battleID)
+	if err != nil {
+		t.Fatalf("GetBattle() returned an error: %v", err)
+	}
+	if run.Status != "completed" || run.Attempt != restarts+1 {
+		t.Fatalf("run status = %q attempt = %d, want completed attempt %d", run.Status, run.Attempt, restarts+1)
+	}
+	for attempt := 1; attempt <= restarts; attempt++ {
+		events, err := repo.ListBattleEvents(ctx, battleID, attempt, 0, 100, false)
+		if err != nil || len(events) != 1 || events[0].Type != "tick_completed" {
+			t.Fatalf("attempt %d events = %#v, %v; want its own tick", attempt, events, err)
+		}
+	}
+}
+
+// runTickAndRequeueGracefully claims the next attempt, persists one tick, and hands the
+// battle back as a graceful shutdown would, checking the requeue cannot be repeated.
+func runTickAndRequeueGracefully(t *testing.T, ctx context.Context, repo *Postgres, attempt, maxAttempts int) {
+	t.Helper()
+	if err := repo.FailExhaustedBattles(ctx, maxAttempts); err != nil {
+		t.Fatalf("FailExhaustedBattles() returned an error: %v", err)
+	}
+	job := claimAttempt(t, ctx, repo, "worker-1", 30*time.Second, attempt, maxAttempts)
+	tick := battle.Transition{Tick: 1, Events: []battle.Event{{Sequence: 1, Tick: 1, Type: "tick_completed", Data: map[string]any{"tick": uint64(1)}}}}
+	if err := repo.SaveTick(ctx, job.Lease, tick, 30*time.Second); err != nil {
+		t.Fatalf("SaveTick(attempt %d) returned an error: %v", attempt, err)
+	}
+	if err := repo.RequeueBattle(ctx, job.Lease); err != nil {
+		t.Fatalf("RequeueBattle(attempt %d) returned an error: %v", attempt, err)
+	}
+	if err := repo.RequeueBattle(ctx, job.Lease); err != queue.ErrLeaseLost {
+		t.Fatalf("repeated RequeueBattle(attempt %d) error = %v, want ErrBattleLeaseLost", attempt, err)
+	}
+}
+
+func claimAttempt(t *testing.T, ctx context.Context, repo *Postgres, workerID string, lease time.Duration, attempt, maxAttempts int) *queue.Job {
+	t.Helper()
+	job, err := repo.ClaimBattle(ctx, workerID, lease, maxAttempts)
+	if err != nil {
+		t.Fatalf("ClaimBattle(attempt %d) returned an error: %v", attempt, err)
+	}
+	if job.Lease.Attempt != attempt {
+		t.Fatalf("claimed attempt = %d, want %d", job.Lease.Attempt, attempt)
+	}
+	return job
+}
+
+func TestBattleRepositoryExpiredLeasesExhaustAfterGracefulRequeue(t *testing.T) {
+	ctx, db := integrationDatabase(t)
+	battleID := randomUUID(t)
+	t.Cleanup(func() { _, _ = db.Exec(context.Background(), `DELETE FROM battle_runs WHERE id = $1`, battleID) })
+	repo := NewPostgres(db)
+	const maxAttempts = 2
+	requeued := createAndClaimBattle(t, ctx, repo, battleID)
+	if err := repo.RequeueBattle(ctx, requeued.Lease); err != nil {
+		t.Fatalf("RequeueBattle() returned an error: %v", err)
+	}
+
+	var stale *queue.Job
+	for attempt := 2; attempt <= 3; attempt++ {
+		if err := repo.FailExhaustedBattles(ctx, maxAttempts); err != nil {
+			t.Fatalf("FailExhaustedBattles() returned an error: %v", err)
+		}
+		stale = claimAttempt(t, ctx, repo, fmt.Sprintf("crashing-worker-%d", attempt), time.Millisecond, attempt, maxAttempts)
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := repo.FailExhaustedBattles(ctx, maxAttempts); err != nil {
+		t.Fatalf("FailExhaustedBattles() returned an error: %v", err)
+	}
+	if _, err := repo.ClaimBattle(ctx, "worker-3", time.Second, maxAttempts); err != queue.ErrNoBattleAvailable {
+		t.Fatalf("ClaimBattle() after two expired leases error = %v, want ErrNoBattleAvailable", err)
+	}
+	if err := repo.RequeueBattle(ctx, stale.Lease); err != queue.ErrLeaseLost {
+		t.Fatalf("stale RequeueBattle() error = %v, want ErrBattleLeaseLost", err)
 	}
 	run, err := repo.GetBattle(ctx, battleID)
 	if err != nil {
