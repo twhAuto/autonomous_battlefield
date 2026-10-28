@@ -25,6 +25,7 @@ engine:
   heartbeatInterval: 10s
   shutdownTimeout: 10s
   maxAttempts: 3
+  concurrency: 4
   knowledgeRetrieval:
     maxUnitCards: 16
     maxBytes: 16384

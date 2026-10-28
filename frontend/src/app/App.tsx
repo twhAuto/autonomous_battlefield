@@ -186,7 +186,7 @@ export default function App({ authentication = authenticationClient, initialSess
         <Route path="battles/new" element={<CreateBattlePage />} />
         <Route path="battles/:id" element={<BattlePage />} />
         {inspect && <><Route path="leagues" element={<LeaguesPage canCreate={adminNow} />} />
-          {adminNow && <Route path="leagues/new" element={<CreateLeaguePage />} />}
+          <Route path="leagues/new" element={adminNow ? <CreateLeaguePage /> : <NotFoundPage />} />
           <Route path="leagues/:id" element={<LeaguePage canCancel={adminNow} />} />
           <Route path="analytics" element={<AnalyticsPage />} /></>}
         {canAdmin && !previewRole && <><Route path="admin" element={<AdminSettingsPage />} />{session.capabilities?.members && <Route path="admin/members" element={<MembersPage />} />}</>}

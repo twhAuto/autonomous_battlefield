@@ -87,3 +87,40 @@ func assertExpiredBattle(t *testing.T, ctx context.Context, repository *Postgres
 		t.Fatalf("stale lease: %v", err)
 	}
 }
+
+func TestRequeueClosesTheAttemptsOpenDecisionsAgainstPostgres(t *testing.T) {
+	ctx, db := integrationDatabase(t)
+	repository := NewPostgres(db)
+	id := randomUUID(t)
+	t.Cleanup(func() { _, _ = db.Exec(context.Background(), `DELETE FROM battle_runs WHERE id=$1`, id) })
+	scenario := repositoryTestScenario()
+	if err := repository.CreateBattle(ctx, battleservice.CreateBattleParams{ID: id, ScenarioID: scenario.ID, ScenarioDigest: "digest", ScenarioSnapshot: scenario, RequestedTicks: 2}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := repository.ClaimBattle(ctx, "requeue-test", time.Minute, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decisions := map[string]string{"pending": randomUUID(t), "running": randomUUID(t), "accepted": randomUUID(t)}
+	for status, decisionID := range decisions {
+		if _, err := db.Exec(ctx, `INSERT INTO battle_decisions (id,battle_id,attempt,faction_id,target_tick,status,controller_type,prompt_version,tool_schema_version,observation,observation_hash) VALUES ($1,$2,$3,$4,10,$5,'model','test','test','{}','test')`, decisionID, id, job.Lease.Attempt, randomUUID(t), status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repository.RequeueBattle(ctx, job.Lease); err != nil {
+		t.Fatal(err)
+	}
+	for status, decisionID := range decisions {
+		decision, err := repository.GetDecision(ctx, decisionID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		closed := decision.Status == "failed" && decision.ErrorCategory == "battle_stopped"
+		if closed != (status != "accepted") {
+			t.Fatalf("%s decision after requeue: %#v", status, decision)
+		}
+	}
+	if err := repository.RequeueBattle(ctx, job.Lease); !errors.Is(err, queue.ErrLeaseLost) {
+		t.Fatalf("second RequeueBattle() error = %v, want ErrLeaseLost", err)
+	}
+}

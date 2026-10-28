@@ -21,6 +21,10 @@ func TestApplicationMetricsAreRecordedAndExposed(t *testing.T) {
 	ObserveEngineTick()
 	SetEngineReady(true)
 	SetEngineReady(false)
+	SetEngineSlots(4)
+	TrackEngineBattle()()
+	finish := TrackEngineBattle()
+	defer finish()
 
 	response := httptest.NewRecorder()
 	Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
@@ -34,6 +38,8 @@ func TestApplicationMetricsAreRecordedAndExposed(t *testing.T) {
 		"battlefield_engine_battles_processed_total",
 		"battlefield_engine_ticks_total",
 		"battlefield_engine_worker_ready 0",
+		"battlefield_engine_battle_slots 4",
+		"battlefield_engine_active_battles 1",
 		`battlefield_http_server_request_duration_seconds_count{method="GET",outcome="error",route="GET /v1/battles"} 1`,
 		`battlefield_http_server_request_duration_seconds_count{method="POST",outcome="success",route="POST /v1/battles"} 1`,
 	} {

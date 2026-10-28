@@ -101,6 +101,7 @@ type fileConfig struct {
 		HeartbeatInterval           string `yaml:"heartbeatInterval"`
 		ShutdownTimeout             string `yaml:"shutdownTimeout"`
 		MaxAttempts                 int    `yaml:"maxAttempts"`
+		Concurrency                 *int   `yaml:"concurrency"`
 		WorkerIDEnvironmentVariable string `yaml:"workerIdEnvironmentVariable"`
 	} `yaml:"engine"`
 	AI struct {

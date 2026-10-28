@@ -49,8 +49,8 @@ flowchart TD
 | `pending` → `accepted` (scripted) | A scripted controller's plan is submitted directly by the engine. |
 | `pending` → `running` (claimed) | A worker claims a model decision and receives its request capability. An expired lease is reclaimed and stays `running`. |
 | `running` → `accepted` (submitted) | The model submits a valid plan with that capability. A model cannot submit from `pending`, because the capability is issued only by the claim. |
-| `pending` → `failed` (stopped) | The budget runs out at claim time (`decision_budget`), or the battle is stopped or expires (`battle_stopped`). |
-| `running` → `failed` (error) | The runner fails, or the battle is stopped or expires. |
+| `pending` → `failed` (stopped) | The budget runs out at claim time (`decision_budget`), or the battle is stopped, expires or is requeued by a stopping engine (`battle_stopped`). |
+| `running` → `failed` (error) | The runner fails, or the battle is stopped, expires or is requeued. |
 | deadline → `fallback` | The window closes without an accepted plan; the engine records its fallback plan. |
 | `failed` → `fallback` | While the battle continues, the engine resolves a failed decision with its fallback plan. A failed decision whose battle has ended stays `failed`. |
 
@@ -385,7 +385,7 @@ model still receives the full message.
 | `runner` | Agent worker | Runner failed without a more specific category |
 | `decision_budget` | PostgreSQL admission trigger | The battle's model execution budget is exhausted at claim time; never for a league battle, which is budget-exempt |
 | `ai_disabled_or_budget` | PostgreSQL insert trigger | AI execution was stopped, or the battle's budget was already spent (not for a budget-exempt league battle), when the decision was created; the engine falls back at once |
-| `battle_stopped` | Battle stop route / expiry sweep | Battle stopped or expired while the decision was open |
+| `battle_stopped` | Battle stop route / expiry sweep / engine requeue | Battle stopped, expired or requeued by a stopping engine while the decision was open |
 
 Background-generation jobs share the worker and runner categories above except
 `validation_limit`, `plan_not_submitted`, `runner`, `decision_budget` and
