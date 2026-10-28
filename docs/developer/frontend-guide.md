@@ -48,10 +48,11 @@ editing routes keep the Factions navigation item active.
 Routes: `/` (Home), `/battles/new`, `/battles`, `/battles/:id`, `/factions`,
 `/factions/new`, `/factions/:id/edit`, `/leagues`, `/leagues/new`, `/leagues/:id`,
 `/analytics`, `/admin`, and `/admin/members`. League and statistics routes mount for
-Developers and Admins, including in Developer preview. `/leagues/new`, the start and
-cancel actions, and the admin routes mount only for Admins outside role preview;
-`/admin/members` also requires the session's `members` capability. Unknown paths
-render a not-found page.
+Developers and Admins, including in Developer preview. The league setup form at
+`/leagues/new`, the start and cancel actions, and the admin routes are only for
+Admins outside role preview; anyone else opening `/leagues/new` gets the not-found
+page. `/admin/members` also requires the session's `members` capability. Unknown
+paths render a not-found page.
 
 The shell shows the signed-out screen after a successful logout or an HTTP 401
 confirming that the session is no longer authenticated. If the request otherwise
