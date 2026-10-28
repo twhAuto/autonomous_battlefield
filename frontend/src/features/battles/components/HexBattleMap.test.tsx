@@ -438,26 +438,33 @@ it('shows castle training, attack range and tower fire together', async () => {
   expect(document.querySelector('.unit-direction--tower')).toBeInTheDocument()
 })
 
-it('tints each faction\'s legal build sites and names who can build on a tile', () => {
+it('tints each faction\'s whole territory and marks contested ground', async () => {
   const area: BattleMap = { kind: 'authored', width: 13, height: 3, rows: ['...g.........', '.............', 'f..#.........'], castleSpawns: [{ x: 1, y: 1 }, { x: 6, y: 1 }], economySites: [[], []] }
   const building = (id: string, factionId: string, x: number, y: number, extra: Partial<BattleBuilding> = {}): BattleBuilding => ({ id, factionId, type: 'castle', position: { x, y }, health: 100, maxHealth: 100, defense: 1, vision: 1, income: 0, buildRange: 3, ...extra })
   const buildings = [
     building('a:castle', 'a', 1, 1, { buildRange: 2 }), building('b:castle', 'b', 6, 1),
-    // Not active until tick 9: it blocks its neighbours but grants no range yet.
+    // Inactive until tick 9 and destroyed buildings claim nothing.
     building('a:outpost:1', 'a', 10, 1, { type: 'outpost', buildRange: 5, readyAtTick: 9 }),
-    building('a:economy:2', 'a', 4, 2, { type: 'economy', health: 0 }),
+    building('a:economy:2', 'a', 11, 2, { type: 'economy', health: 0 }),
   ]
-  const { container } = render(<HexBattleMap map={area} state={{ battleId: 'x', tick: 4, factions: [], units: [], buildings }} factionNames={new Map([['a', 'Amber'], ['b', 'Blue']])} />)
+  const props = { map: area, state: { battleId: 'x', tick: 4, factions: [], units: [], buildings }, factionNames: new Map([['a', 'Amber'], ['b', 'Blue']]) }
+  const { container, rerender } = render(<HexBattleMap {...props} contestedTerritory />)
   const tile = (x: number, y: number) => container.querySelectorAll('.hex-tile')[y * area.width + x].querySelector('title')!.textContent
-  expect(container.querySelectorAll('.build-area')).toHaveLength(2)
-  expect(tile(0, 0)).toBe('Ground: build within friendly range, leaving one hex between buildings · (0, 0) · Amber can build here')
-  expect(tile(3, 0)).toMatch(/^Gold deposit.*· Amber can build here$/)
-  expect(tile(3, 1)).toMatch(/· Amber and Blue can build here$/) // a destroyed neighbour blocks nothing
-  expect(tile(9, 0)).toMatch(/\) · Blue can build here$/)
-  for (const [x, y] of [[0, 2], [3, 2], [2, 1], [9, 1], [12, 1]]) {
-    // Forest, rock, beside a castle, beside the inactive outpost, and its unreached range.
-    expect(tile(x, y)).not.toMatch(/can build/)
-  }
+  expect(container.querySelectorAll('.territory')).toHaveLength(3)
+  expect(container.querySelectorAll('.territory--contested')).toHaveLength(1)
+  expect(tile(0, 0)).toBe('Ground: build within friendly range, leaving one hex between buildings · (0, 0) · Amber territory')
+  // Territory covers buildings and every terrain, with no gaps around them.
+  for (const [x, y] of [[1, 1], [0, 2], [3, 0]]) expect(tile(x, y)).toMatch(/· Amber territory$/)
+  expect(tile(3, 1)).toMatch(/· Contested by Amber and Blue: no construction$/)
+  expect(tile(9, 0)).toMatch(/\) · Blue territory$/)
+  for (const [x, y] of [[12, 1], [11, 2]]) expect(tile(x, y)).toMatch(/\(\d+, \d\)$/)
+  await userEvent.click(screen.getByText('Map legend'))
+  expect(screen.getByText(/Contested · no construction/)).toBeInTheDocument()
+  // Without the rule, overlapping territory is shared, not closed.
+  rerender(<HexBattleMap {...props} />)
+  expect(container.querySelectorAll('.territory')).toHaveLength(2)
+  expect(tile(3, 1)).toMatch(/· Amber and Blue territory$/)
+  expect(screen.queryByText(/Contested · no construction/)).not.toBeInTheDocument()
 })
 
 it('adds page actions to the toolbar outside the expanded dialog', async () => {
@@ -543,9 +550,9 @@ it('shows each gold mine\'s gold left, depleted mines and the mine under an econ
     { position: { x: 0, y: 1 }, reserve: 800, remaining: 0 },
   ], units: [], buildings: [{ id: 'a:economy:1', factionId: 'a', type: 'economy', position: { x: 0, y: 0 }, health: 60, maxHealth: 60, defense: 2, vision: 2, income: 15 }] }
   const { container } = render(<HexBattleMap map={mineMap} state={mineState} factionNames={new Map()} />)
-  // The tile and its badge both describe the mine.
-  expect(screen.getAllByText('Gold mine: 120 of 800 gold left; economy buildings only, none beside it · (0, 0)')).toHaveLength(2)
-  expect(screen.getAllByText('Depleted gold mine: no gold left; no construction · (0, 1)')).toHaveLength(2)
+  // The tile and its badge both describe the mine; only the tile names its territory.
+  expect(screen.getAllByText(/^Gold mine: 120 of 800 gold left; economy buildings only, none beside it · \(0, 0\)/)).toHaveLength(2)
+  expect(screen.getAllByText(/^Depleted gold mine: no gold left; no construction · \(0, 1\)/)).toHaveLength(2)
   expect(container.querySelectorAll('.gold-mine--depleted')).toHaveLength(1)
   // Badges over the entities show the gold left, with a bar of the reserve's share.
   const badges = [...container.querySelectorAll('.mine-reserve')]
@@ -561,22 +568,8 @@ it('shows each gold mine\'s gold left, depleted mines and the mine under an econ
 
 it('keeps the deposit description for battles without gold mines', async () => {
   render(<HexBattleMap map={{ ...map, rows: ['g.', '.#'] }} state={state} factionNames={new Map()} />)
-  expect(screen.getByText('Gold deposit: economy buildings earn +5 gold per tick · (0, 0)')).toBeInTheDocument()
+  expect(screen.getByText(/^Gold deposit: economy buildings earn \+5 gold per tick · \(0, 0\)/)).toBeInTheDocument()
   await userEvent.click(screen.getByText('Map legend'))
   expect(screen.getByText(/Gold deposit · \+5 economy income/)).toBeInTheDocument()
   expect(document.querySelector('.mine-reserve')).toBeNull()
-})
-
-it('closes empty mines and the hexes beside a mine with gold left in the build area', () => {
-  const area: BattleMap = { kind: 'authored', width: 7, height: 3, rows: ['.......', '.g...g.', '.......'], castleSpawns: [{ x: 3, y: 1 }, { x: 3, y: 1 }], economySites: [[], []] }
-  const castle: BattleBuilding = { id: 'a:castle', factionId: 'a', type: 'castle', position: { x: 3, y: 1 }, health: 100, maxHealth: 100, defense: 1, vision: 1, income: 0, buildRange: 3 }
-  const goldMines = [{ position: { x: 1, y: 1 }, reserve: 800, remaining: 100 }, { position: { x: 5, y: 1 }, reserve: 800, remaining: 0 }]
-  const { container } = render(<HexBattleMap map={area} state={{ battleId: 'x', tick: 4, factions: [], units: [], buildings: [castle], goldMines }} factionNames={new Map([['a', 'Amber']])} />)
-  const tile = (x: number, y: number) => container.querySelectorAll('.hex-tile')[y * area.width + x].querySelector('title')!.textContent
-  expect(tile(1, 1)).toMatch(/^Gold mine: 100 of 800.*· Amber can build here$/)
-  expect(tile(6, 1)).toMatch(/· Amber can build here$/) // beside the empty mine
-  for (const [x, y] of [[0, 1], [2, 0], [5, 1]]) {
-    // Beside the live mine (twice) and on the empty mine.
-    expect(tile(x, y)).not.toMatch(/can build/)
-  }
 })

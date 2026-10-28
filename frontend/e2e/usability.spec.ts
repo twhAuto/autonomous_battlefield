@@ -87,7 +87,7 @@ for (const [width, height] of [[15, 11], [25, 17]]) {
     // Both views put their toggle in one spot, so switching never moves the control.
     expect(await page.getByRole('button', { name: 'Show results' }).boundingBox()).toEqual(toggle)
     // Azure's castle is destroyed, so only Amber still has somewhere to build.
-    await expect(page.locator('.build-area')).toHaveCount(1)
+    await expect(page.locator('.territory')).toHaveCount(1)
     const inlineMap = page.getByLabel('Map navigation')
     if (isMobile) {
       const dimensions = await inlineMap.evaluate(node => {

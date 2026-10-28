@@ -164,7 +164,7 @@ function BattleStage({ battle, view, replaying, decisions, decisionMessage, part
   return <>
     <FactionSummaries battle={battle} decisions={decisions} decisionMessage={decisionMessage} />
     {view && <div className={`battle-map-column${overlay ? ' battle-map-column--results' : ''}`}>
-      <HexBattleMap map={view.map} state={view.state} factionNames={participantNames} covered={overlay}
+      <HexBattleMap map={view.map} state={view.state} factionNames={participantNames} covered={overlay} contestedTerritory={battle.contestedTerritory}
         actions={battle.result && !resultsShown && <button ref={showResults} className="map-toolbar__results" type="button" onClick={() => toggleResults(true)}>Show results</button>} />
       {overlay && <BattleStatistics battle={battle} participantNames={participantNames} onShowMap={() => toggleResults(false)} showMapRef={viewMap} />}
     </div>}

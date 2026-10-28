@@ -1,5 +1,5 @@
 // Renders an interactive SVG hex battlefield from supplied state, including terrain,
-// each faction's build area, entity selection, and map navigation.
+// each faction's territory, entity selection, and map navigation.
 
 import { type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { useMobile } from '../../../shared/hooks/useMobile'
@@ -17,14 +17,16 @@ const root3 = Math.sqrt(3)
 /**
  * `actions` adds page controls at the toolbar's start; the expanded dialog omits them. `covered`
  * makes the inline map inert while page content lies over it; an open dialog stays usable,
- * since a live battle can settle while it is open.
+ * since a live battle can settle while it is open. `contestedTerritory` marks where
+ * territories overlap as closed to construction, as the battle's ruleset does.
  */
-export function HexBattleMap({ map, state, factionNames, actions, covered = false }: Readonly<{
+export function HexBattleMap({ map, state, factionNames, actions, covered = false, contestedTerritory = false }: Readonly<{
   map: BattleMap
   state: BattleState
   factionNames: Map<string, string>
   actions?: ReactNode
   covered?: boolean
+  contestedTerritory?: boolean
 }>) {
   const markerId = useId()
   const mobile = useMobile()
@@ -46,10 +48,12 @@ export function HexBattleMap({ map, state, factionNames, actions, covered = fals
   const selected = entities.find((entity) => entity.id === selectedId)
   const roster = factionNames.size > 0 ? [...factionNames.keys()] : (state.factions ?? []).map((faction) => faction.factionId)
   const colors = factionColors(roster)
-  const areas = buildAreas(map, state)
-  const builders = new Map<string, string[]>()
-  for (const [factionId, positions] of areas) {
-    for (const position of positions) builders.set(key(position), [...(builders.get(key(position)) ?? []), factionNames.get(factionId) ?? factionId])
+  const owners = territories(map, state)
+  const tints = new Map<string, HexPosition[]>()
+  const contested: HexPosition[] = []
+  for (const { position, factionIds } of owners.values()) {
+    if (contestedTerritory && factionIds.length > 1) contested.push(position)
+    else for (const factionId of factionIds) tints.set(factionId, [...(tints.get(factionId) ?? []), position])
   }
   const width = root3 * size * (map.width + 0.5) + 48
   const height = size * (1.5 * (map.height - 1) + 2) + 48
@@ -135,17 +139,18 @@ export function HexBattleMap({ map, state, factionNames, actions, covered = fals
           <title>{map.width} by {map.height} pointy-top hex battlefield</title>
           <defs>
             {[...new Set([...colors.values(), '#f2c94c'])].map((color) => <marker key={color} id={`${markerId}-${color.slice(1)}`} fill={color} markerUnits="userSpaceOnUse" markerWidth="4.5" markerHeight="5.5" refX="4" refY="2.5" orient="auto" viewBox="0 0 4 5"><path d="M0,0 L4,2.5 L0,5 L1,2.5 Z" /></marker>)}
+            <pattern id={`${markerId}-contested`} patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><line className="territory-hatch" x1="1" y1="0" x2="1" y2="6" /></pattern>
           </defs>
           <g className="map-layer" transform={`translate(${pan.x} ${pan.y}) scale(${scale})`}>
             {map.rows.map((row, y) => [...row].map((symbol, x) => {
               const position = { x, y }
               const center = centerOf(position)
-              const buildable = builders.get(key(position))
+              const territory = owners.get(key(position))?.factionIds
               const mine = mines.get(key(position))
-              return <g key={`${x}:${y}`} className={mine?.remaining === 0 ? 'gold-mine--depleted' : undefined}><polygon points={hexPoints(center.x, center.y)} className={`hex-tile hex-tile--${terrainClass(symbol)}${selected && 'income' in selected && selected.health > 0 && hexDistance(selected.position, position) <= (selected.buildRange || 3) ? ' hex-tile--build-range' : ''}`}><title>{terrainDescription(symbol, mine)} · ({x}, {y}){buildable ? ` · ${buildable.join(' and ')} can build here` : ''}</title></polygon><g transform={`translate(${center.x - 12} ${center.y - 12})`}><TerrainGlyph symbol={symbol} /></g></g>
+              return <g key={`${x}:${y}`} className={mine?.remaining === 0 ? 'gold-mine--depleted' : undefined}><polygon points={hexPoints(center.x, center.y)} className={`hex-tile hex-tile--${terrainClass(symbol)}${selected && 'income' in selected && selected.health > 0 && hexDistance(selected.position, position) <= (selected.buildRange || 3) ? ' hex-tile--build-range' : ''}`}><title>{terrainDescription(symbol, mine)} · ({x}, {y}){territoryLabel(territory, factionNames, contestedTerritory)}</title></polygon><g transform={`translate(${center.x - 12} ${center.y - 12})`}><TerrainGlyph symbol={symbol} /></g></g>
             }))}
-            {[...areas].map(([factionId, positions]) => <path key={`area:${factionId}`} className="build-area" fill={colors.get(factionId) ?? '#f2c94c'} aria-hidden="true"
-              d={positions.map((position) => { const center = centerOf(position); return `M${hexPoints(center.x, center.y).replaceAll(' ', 'L')}Z` }).join('')} />)}
+            {[...tints].map(([factionId, positions]) => <path key={`territory:${factionId}`} className="territory" fill={colors.get(factionId) ?? '#f2c94c'} aria-hidden="true" d={hexPath(positions)} />)}
+            {contested.length > 0 && <path className="territory territory--contested" fill={`url(#${markerId}-contested)`} aria-hidden="true" d={hexPath(contested)} />}
             {liveUnits.filter((unit) => unit.movedFrom).map((unit) => {
               const route = unit.movementPath?.length ? unit.movementPath : [unit.movedFrom!, unit.position]
               const previous = route.at(-2) ?? unit.movedFrom!
@@ -191,7 +196,7 @@ export function HexBattleMap({ map, state, factionNames, actions, covered = fals
       </section>
       <div className="map-footer">
         <details className="map-key"><summary>Map legend</summary>
-          <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-forest" /> Forest · +3 troop defense</span><span><i className="legend-gold" /> {state.goldMines ? 'Gold mine · economy only, none beside it; finite gold (badge shows gold left)' : 'Gold deposit · +5 economy income'}</span><span><i className="legend-build-area" /> Build area (faction tint)</span><span><i className="legend-movement" /> Movement (faction color)</span><span><i className="legend-attack" /> Attack (faction color)</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
+          <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-forest" /> Forest · +3 troop defense</span><span><i className="legend-gold" /> {state.goldMines ? 'Gold mine · economy only, none beside it; finite gold (badge shows gold left)' : 'Gold deposit · +5 economy income'}</span><span><i className="legend-territory" /> Territory (faction tint)</span>{contestedTerritory && <span><i className="legend-contested" /> Contested · no construction</span>}<span><i className="legend-movement" /> Movement (faction color)</span><span><i className="legend-attack" /> Attack (faction color)</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
           <EntityLegend types={entities.map((entity) => entity.type)} />
         </details>
         <EntityDetails selected={selected} naming={naming} mine={selected && mines.get(key(selected.position))} onClear={() => {
@@ -439,26 +444,29 @@ export function terrainDescription(symbol: string, mine?: Pick<GoldMine, 'remain
   return 'Ground: build within friendly range, leaving one hex between buildings'
 }
 
-// Where each faction may build now: buildable terrain within range of one of its active
-// buildings and at least two hexes from every living building, as the engine requires.
-// Under gold mines an empty mine and every hex beside a mine with gold left are closed.
-// Units also block a site, but they move every tick, so the tint ignores them.
-function buildAreas(map: BattleMap, state: BattleState) {
-  const buildings = (state.buildings ?? []).filter((building) => building.health > 0)
-  const liveMines = (state.goldMines ?? []).filter((mine) => mine.remaining > 0)
-  const closed = (position: HexPosition) => buildings.some((building) => hexDistance(building.position, position) <= 1)
-    || liveMines.some((mine) => hexDistance(mine.position, position) === 1)
-    || (state.goldMines !== undefined && map.rows[position.y][position.x] === 'g' && !liveMines.some((mine) => key(mine.position) === key(position)))
-  const areas = new Map<string, HexPosition[]>()
-  map.rows.forEach((row, y) => [...row].forEach((symbol, x) => {
+// Each faction's territory, as the engine defines it: every hex within buildRange of one of
+// its living, active buildings. Keys are hexes claimed by at least one faction.
+function territories(map: BattleMap, state: BattleState) {
+  const claims = (state.buildings ?? []).filter((building) => building.health > 0 && (building.readyAtTick ?? 0) <= state.tick)
+  const owners = new Map<string, { position: HexPosition; factionIds: string[] }>()
+  map.rows.forEach((row, y) => [...row].forEach((_, x) => {
     const position = { x, y }
-    if (!'.gb'.includes(symbol) || closed(position)) return
-    const factions = new Set(buildings
-      .filter((building) => (building.readyAtTick ?? 0) <= state.tick && hexDistance(building.position, position) <= (building.buildRange || 3))
-      .map((building) => building.factionId))
-    for (const factionId of factions) areas.set(factionId, [...(areas.get(factionId) ?? []), position])
+    const factionIds = [...new Set(claims
+      .filter((building) => hexDistance(building.position, position) <= (building.buildRange || 3))
+      .map((building) => building.factionId))]
+    if (factionIds.length) owners.set(key(position), { position, factionIds })
   }))
-  return areas
+  return owners
+}
+
+function territoryLabel(factionIds: string[] | undefined, factionNames: Map<string, string>, contestedTerritory: boolean) {
+  if (!factionIds) return ''
+  const names = factionIds.map((factionId) => factionNames.get(factionId) ?? factionId).join(' and ')
+  return contestedTerritory && factionIds.length > 1 ? ` · Contested by ${names}: no construction` : ` · ${names} territory`
+}
+
+function hexPath(positions: HexPosition[]) {
+  return positions.map((position) => { const center = centerOf(position); return `M${hexPoints(center.x, center.y).replaceAll(' ', 'L')}Z` }).join('')
 }
 
 function hexDistance(a: HexPosition, b: HexPosition) {

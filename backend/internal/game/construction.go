@@ -48,7 +48,7 @@ func constructionBuildingRange(state State, factionID string, site Position) (bo
 		if distance <= 1 {
 			return false, "building_too_close"
 		}
-		if b.FactionID == factionID && b.ReadyAtTick <= state.Tick && distance <= effectiveBuildRange(b.BuildRange) {
+		if b.FactionID == factionID && claimsSite(b, state.Tick, site) {
 			inRange = true
 		}
 	}
@@ -69,7 +69,7 @@ func (m *Match) legalSitesFor(factionID, kind string) []controller.Coordinate {
 		return sites
 	}
 	for _, p := range allPositions(m.scenario.Map) {
-		if ConstructionReason(m.scenario.Map, m.state, factionID, p) == "" && m.goldMineReason(kind, p) == "" {
+		if ConstructionReason(m.scenario.Map, m.state, factionID, p) == "" && m.placementReason(factionID, kind, p) == "" {
 			sites = append(sites, controller.Coordinate{X: p.X, Y: p.Y})
 		}
 	}

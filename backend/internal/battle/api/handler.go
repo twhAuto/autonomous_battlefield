@@ -300,6 +300,7 @@ func battleResponse(run *battleservice.BattleRun) any {
 		RequestedTicks uint64  `json:"requestedTicks"`
 		CurrentTick    uint64  `json:"currentTick"`
 		MaximumUnits   int     `json:"maximumUnits,omitempty"`
+		Contested      bool    `json:"contestedTerritory,omitempty"`
 		Production     any     `json:"production"`
 		Status         string  `json:"status"`
 		Paused         bool    `json:"paused"`
@@ -314,7 +315,7 @@ func battleResponse(run *battleservice.BattleRun) any {
 	}{
 		OwnerID: run.OwnerID, ID: run.ID, ScenarioID: run.ScenarioID, ScenarioDigest: run.ScenarioDigest,
 		RequestedTicks: run.RequestedTicks, CurrentTick: run.CurrentTick, Status: run.Status, Paused: run.Paused,
-		MaximumUnits: run.ScenarioSnapshot.Ruleset.MaximumUnitCount, Production: productionFor(run),
+		MaximumUnits: run.ScenarioSnapshot.Ruleset.MaximumUnitCount, Contested: run.ScenarioSnapshot.Ruleset.Buildings.ContestedTerritory, Production: productionFor(run),
 		Attempt: run.Attempt, Participants: participants, Result: run.Result,
 		Map: run.ScenarioSnapshot.Map, State: run.CurrentState,
 		ErrorCode: run.ErrorCode, ErrorMessage: run.ErrorMessage,
@@ -376,6 +377,9 @@ func battleResponseFor(r *http.Request, run *battleservice.BattleRun) any {
 	response := map[string]any{"id": run.ID, "ownerId": run.OwnerID, "scenarioId": run.ScenarioID, "requestedTicks": run.RequestedTicks, "currentTick": run.CurrentTick, "production": productionFor(run), "status": run.Status, "paused": run.Paused, "attempt": run.Attempt, "participants": participants, "result": run.Result, "map": run.ScenarioSnapshot.Map, "state": run.CurrentState}
 	if limit := run.ScenarioSnapshot.Ruleset.MaximumUnitCount; limit > 0 {
 		response["maximumUnits"] = limit
+	}
+	if run.ScenarioSnapshot.Ruleset.Buildings.ContestedTerritory {
+		response["contestedTerritory"] = true
 	}
 	if run.Status == "failed" {
 		response["errorMessage"] = "The battle could not complete."
