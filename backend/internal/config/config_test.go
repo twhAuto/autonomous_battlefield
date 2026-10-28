@@ -210,8 +210,14 @@ func TestParseEngineConfigValidationAndDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseEngineConfig() returned an error: %v", err)
 	}
-	if configuration.HealthAddress != ":8081" || configuration.MaxAttempts != 3 || !strings.Contains(configuration.WorkerID, "-") {
+	if configuration.HealthAddress != ":8081" || configuration.MaxAttempts != 3 || configuration.Concurrency != 4 || !strings.Contains(configuration.WorkerID, "-") {
 		t.Fatalf("default engine config = %#v", configuration)
+	}
+	var single fileConfig
+	one := 1
+	single.Engine.Concurrency = &one
+	if configuration, err := parseEngineConfig(single); err != nil || configuration.Concurrency != 1 {
+		t.Fatalf("parseEngineConfig(concurrency 1) = %d, %v", configuration.Concurrency, err)
 	}
 
 	for _, test := range []struct {
@@ -223,6 +229,8 @@ func TestParseEngineConfigValidationAndDefaults(t *testing.T) {
 		{name: "heartbeat interval", mutate: func(raw *fileConfig) { raw.Engine.HeartbeatInterval = "-1s" }},
 		{name: "shutdown timeout", mutate: func(raw *fileConfig) { raw.Engine.ShutdownTimeout = "bad" }},
 		{name: "max attempts", mutate: func(raw *fileConfig) { raw.Engine.MaxAttempts = -1 }},
+		{name: "no concurrency", mutate: func(raw *fileConfig) { zero := 0; raw.Engine.Concurrency = &zero }},
+		{name: "too much concurrency", mutate: func(raw *fileConfig) { nine := 9; raw.Engine.Concurrency = &nine }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var raw fileConfig

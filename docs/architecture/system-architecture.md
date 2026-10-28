@@ -400,8 +400,8 @@ is retried. It then settles running fixtures from their battles, retrying or voi
 failed ones as the [league rules](api.md#leagues) describe. When every fixture so
 far is settled it adds the next knockout stage, or records the champion after the
 final. Finally it starts the first pending fixture of the oldest running league,
-but only when no battle is queued or running, because the single engine plays
-battles one at a time and a battle's one-hour timeout counts queued time. Battle IDs
+but only when no battle is queued or running, so a league battle never waits in the
+queue, where its one-hour timeout already counts. Battle IDs
 derive from the fixture, so a pass interrupted after creating a battle adopts it on
 the next pass ([idempotency rules](database.md#idempotency-and-versions)).
 Cancellation takes the same lock, cancels unfinished fixtures and then stops the
@@ -465,7 +465,10 @@ repository can reuse that plan.
 
 Each claim increments `attempt`, so every attempt keeps its own event history. A
 graceful-shutdown requeue refunds the attempt it interrupted by incrementing
-`graceful_requeues`; only attempts that crashed or lost their lease count. Once a
+`graceful_requeues`; only attempts that crashed or lost their lease count. A slot
+requeues between ticks or while it waits on a decision window, and the requeue
+fails that attempt's open decisions with `battle_stopped` so no agent spends a model
+call on them. Once a
 queued or lease-expired battle has used `engine.maxAttempts` (default 3) such
 attempts, the next claim pass marks it `failed` with `attempts_exhausted` instead of
 starting another attempt. A rolling restart that requeues within
@@ -477,31 +480,36 @@ terminal battle error codes.
 
 ### Engine capacity and recovery
 
-Each engine worker processes one battle synchronously before claiming another;
-the application manifest defaults to one engine replica, so **only one battle runs
-at a time** and other admitted battles queue. While it runs, the engine also holds
-it through every decision wait (up to the decision timeout) and through any pause:
-a paused running battle keeps its lease and blocks the engine until resumed or
-stopped. Paused battles that are still queued are skipped at claim.
+An engine runs up to `engine.concurrency` battles at once (default 4), one claim
+loop per slot; each loop processes its battle synchronously before claiming another.
+The application manifest runs one engine replica, so **up to four battles run at a
+time** and further admitted battles queue. A slot holds its battle through every
+decision wait (up to the decision timeout) and through any pause: a paused running
+battle keeps its lease and its slot until resumed or stopped. Paused battles that
+are still queued are skipped at claim.
 
-The default admission limit is four unfinished battles globally, and queued time
-counts toward the one-hour battle expiry. Queue delay therefore depends on battle
-duration, decision waits, pauses and available engine replicas; admission does not
-guarantee that a battle finishes before expiry.
+The default admission limit is four unfinished battles globally, matching the four
+slots, so admitted battles normally start at once. Admin battles skip that limit and
+can queue behind busy slots, and queued time counts toward the one-hour battle
+expiry. Queue delay then depends on battle duration, decision waits and pauses;
+admission does not guarantee that a battle finishes before expiry.
 
-Claims use `FOR UPDATE SKIP LOCKED` and leases, so more engine replicas run more
-battles in parallel without code changes. Each running battle adds its own state
-writes, heartbeats and decision polls to PostgreSQL, and model battles share the
-agent's concurrency slots, so those become the next limits.
+Claims use `FOR UPDATE SKIP LOCKED` and leases, so no two slots or replicas process
+the same battle. Slots share the engine's worker ID because each lease names its
+battle and attempt, and more replicas add slots without code changes. Each running
+battle adds its own state writes, heartbeats and decision polls to PostgreSQL, and
+model battles share the agent's concurrency slots, so those become the next limits.
 
 Crash recovery has two gates: the previous lease must expire (30 seconds by
 default), and an available worker must make its next claim. Claims select eligible
-battles by creation time and ID. An engine already processing another battle
-does not interrupt it to reclaim an orphan, so recovery can take longer than the
+battles by creation time and ID. An engine whose slots are all busy does not
+interrupt a battle to reclaim an orphan, so recovery can take longer than the
 lease duration.
 
-Database errors returned by the claim operation terminate the worker loop and
-cause the engine process to exit with an error; Kubernetes restarts the container.
+A database error returned by the claim operation in any slot stops every slot:
+each other slot requeues its battle, and the engine process exits with the error so
+Kubernetes restarts the container. A requeue that cannot reach the database leaves
+the lease to expire, and the battle is reclaimed as after a crash.
 A database interruption that reaches this path can therefore trigger lease
 recovery and a fresh attempt. Restart timing and recovery are separate: a ready
 replacement still has to satisfy the claim gates above.
@@ -721,6 +729,7 @@ Key runtime settings and their defaults:
 | `engine.pollInterval` | 1s | Delay between empty battle-queue claims |
 | `engine.leaseDuration` | 30s | Battle lease length; an expired lease lets another engine reclaim the battle |
 | `engine.heartbeatInterval` | 10s | Lease renewal cadence; must be shorter than `leaseDuration` |
+| `engine.concurrency` | 4 | Battles one engine runs at once (1–8), one claim loop per slot |
 | `engine.maxAttempts` | 3 | Crashed or lease-expired attempts per battle before `attempts_exhausted`; graceful requeues are refunded |
 | `engine.shutdownTimeout` | 10s | Bound for final writes and requeue during shutdown |
 | `ai.decisionTimeout` | 2m | Engine decision deadline and agent execution timeout |

@@ -61,6 +61,7 @@ func startEngine(signalContext context.Context, configuration config.EngineConfi
 		LeaseDuration: engineConfig.LeaseDuration, HeartbeatInterval: engineConfig.HeartbeatInterval, ShutdownTimeout: engineConfig.ShutdownTimeout,
 		MaxAttempts:     engineConfig.MaxAttempts,
 		DecisionTimeout: configuration.DecisionTimeout,
+		Concurrency:     engineConfig.Concurrency,
 	})
 	if err != nil {
 		return startup.AbortStart(healthServer, lifecycle, healthErrors, signalContext, engineConfig.ShutdownTimeout, err)
