@@ -1,8 +1,8 @@
-// Battle registry with URL-backed status filters, cursor navigation, refresh/retry states,
-// and links that preserve the return location.
+// Battle registry with URL-backed status filters, cursor navigation, refresh/retry states
+// and links to each battle.
 
 import { useEffect, useState } from 'react'
-import { Link, useLocation, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { listBattles, type BattleHistoryPage as HistoryPage, type BattleSummary } from '../api/battles'
 
 const filters = ['', 'queued', 'running', 'paused', 'completed', 'failed', 'stopped']
@@ -16,7 +16,6 @@ function outcomeLabel(battle: BattleSummary) {
 
 export function BattleHistoryPage() {
   const [params, setParams] = useSearchParams()
-  const location = useLocation()
   const status = params.get('status') ?? ''
   const cursor = params.get('cursor') ?? ''
   const previous = params.getAll('previous')
@@ -98,7 +97,7 @@ export function BattleHistoryPage() {
               <td data-label="Status"><span className="history-status">{battle.paused && (battle.status === 'queued' || battle.status === 'running') ? 'Paused' : battle.status}</span></td>
               <td data-label="Progress">{battle.currentTick} / {battle.requestedTicks} ticks</td>
               <td data-label="Outcome">{outcomeLabel(battle)}</td>
-              <td><Link className="text-link" to={`/battles/${encodeURIComponent(battle.id)}`} state={{ historyURL: location.pathname + location.search }}>Open battle →</Link></td>
+              <td><Link className="text-link" to={`/battles/${encodeURIComponent(battle.id)}`}>Open battle →</Link></td>
             </tr>)}</tbody>
           </table>}
           <nav className="history-pagination" aria-label="Battle history pages">

@@ -127,9 +127,8 @@ stops playback and keeps a retry; leaving the page aborts outstanding requests.
 `BattleHistoryPage` fetches on entry, filter or page navigation, retry, and manual
 refresh; it does not poll. URL parameters keep the status filter, current cursor,
 and prior cursors for Previous and browser navigation, and refresh returns to the
-newest page with the same filter. Detail links carry the originating URL in router
-state, and direct detail visits link back to the unfiltered archive. Obsolete
-requests are aborted and their results ignored.
+newest page with the same filter. Obsolete requests are aborted and their results
+ignored.
 
 ## Battle page layout
 
@@ -149,8 +148,10 @@ keep the map's aspect ratio.
 A battle with a result opens on its after-action statistics (`BattleStatistics`:
 each faction's totals, units and buildings by type, and upgrade timeline), laid over
 the map so viewers see the outcome without scrolling. The covered map is inert, so
-keyboard and assistive-technology users reach the results first. **VIEW MAP** reveals the map,
-whose toolbar then offers **Show results**; focus moves to the replacement control.
+keyboard and assistive-technology users reach the results first. The results' header is a
+map toolbar led by **Show map**; the map's toolbar is led by **Show results** in the same spot,
+size and style, so switching views never moves the control. Focus moves to the replacement
+control.
 Narrower screens show the results in place of the map. A battle without a map lists
 its results below the page.
 
@@ -240,8 +241,9 @@ the battle's `maximumUnits` when the ruleset has a cap; buildings exclude the ca
 Each strip also
 carries that faction's production chips, one upgrade chip with an icon per owned
 upgrade (the highest level per general track, with its numeral) and, for inspecting
-viewers, a plan disclosure. Production and upgrade chips wrap in their own column
-beside the plan. Chips and the plan share one exclusive `<details name>` group per
+viewers, a plan disclosure. Every strip control is one 44 px touch target tall; an
+upgrade chip too wide for its column wraps its icons and grows instead of overflowing.
+Production and upgrade chips wrap in their own column beside the plan. Chips and the plan share one exclusive `<details name>` group per
 strip, so opening one closes the others. Hovering an upgrade icon shows its name and
 effect; the chip's disclosure lists every owned upgrade with its effect for touch,
 keyboard and screen-reader users. Failed-battle reasons in the header are
@@ -329,7 +331,9 @@ alongside strict type checks.
 
 Forests, gold mines and rocks have distinct SVG silhouettes via `TerrainGlyph.tsx`,
 terrain colors and accessible descriptions. When `state.goldMines` is present, each
-mine shows its gold left as a bar and in its description, depleted mines are dimmed,
+mine carries a badge with its gold left (compact, such as 1.2K) and a bar of its share of
+the reserve, drawn above entities so a building on the mine never hides it; the tile
+description gives the exact figures, depleted mines are dimmed,
 and the player overview totals the gold left in the mines a faction holds. Selecting a living building highlights its
 construction radius. Production-building details show their `trains` roster, selected unit, on/off setting,
 remaining/total ticks, progress and blocked exits. `BuildingProduction.tsx`
