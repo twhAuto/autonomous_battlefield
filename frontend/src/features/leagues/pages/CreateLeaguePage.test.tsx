@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, expect, it, vi } from 'vitest'
@@ -90,10 +90,11 @@ it('warns about long battles and shows rejected leagues', async () => {
   show()
   await user.type(await screen.findByLabelText('League name'), 'Big cup')
   await user.click(screen.getByRole('radio', { name: /16 entrants/ }))
-  expect(screen.getAllByRole('listitem').filter(item => item.className === 'league-entrant')).toHaveLength(16)
-  for (let index = 0; index < 16; index++) {
-    await user.selectOptions(screen.getByLabelText('Controller', { selector: `#entrant-${index}-controller` }), 'claude')
-  }
+  const rows = screen.getAllByRole('listitem').filter(item => item.className === 'league-entrant')
+  expect(rows).toHaveLength(16)
+  // Setup only, scoped per row to keep label lookups cheap; the first test drives a
+  // controller choice through userEvent.
+  for (const row of rows) fireEvent.change(within(row).getByLabelText('Controller'), { target: { value: 'claude' } })
   await user.selectOptions(screen.getByLabelText('Tick duration'), '2s')
   expect(screen.getByText(/approach the one-hour battle timeout/)).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: /START LEAGUE/ }))
