@@ -56,6 +56,8 @@ tags:
     description: Faction profiles that battles snapshot when they are queued.
   - name: Battles
     description: Queueing, observing, and controlling battles, and reading their history.
+  - name: Leagues
+    description: Admin-run AI tournaments whose fixtures the API plays as background battles.
   - name: Catalog
     description: Read-only scenario, ruleset, and AI controller profile data.
   - name: Background generation
@@ -751,6 +753,121 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/Internal'}
 
+  /v1/leagues:
+    get:
+      tags: [Leagues]
+      operationId: listLeagues
+      summary: List leagues, newest first
+      description: Developers and Admins only.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+      responses:
+        '200':
+          description: League summaries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [leagues]
+                properties:
+                  leagues:
+                    type: array
+                    items: {$ref: '#/components/schemas/LeagueSummary'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '500': {$ref: '#/components/responses/Internal'}
+    post:
+      tags: [Leagues]
+      operationId: createLeague
+      summary: Create and start a league
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: |
+        Admins only. 8 entrants form groups A and B; 16 form groups A to D, four per
+        group, each with a distinct faction. Every entrant is checked on every map
+        with the same rules as battle creation, including model access and timing.
+        The API then plays the fixtures in the background: each group pairing once
+        from each spawn side, then a crossover knockout of the top two per group,
+        every tie over two legs. League battles are owned by the creating Admin, skip
+        the battle allowances and the per-battle model decision budget, and keep the
+        one-hour battle timeout.
+
+        **Idempotency:** repeating the same request with the same `id` returns `201`
+        and the existing league; reusing the `id` for a different request returns
+        `409 already_exists`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateLeagueRequest'}
+      responses:
+        '201':
+          description: The league, or the existing league for a matching retry.
+          headers:
+            Location:
+              description: '`/v1/leagues/{id}` for the league.'
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/League'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/AlreadyExists'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/leagues/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/LeagueId'}
+    get:
+      tags: [Leagues]
+      operationId: getLeague
+      summary: Read a league with its tables, knockout and fixtures
+      description: Developers and Admins only.
+      responses:
+        '200':
+          description: The league.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/League'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/leagues/{id}/cancel:
+    parameters:
+      - {$ref: '#/components/parameters/LeagueId'}
+    post:
+      tags: [Leagues]
+      operationId: cancelLeague
+      summary: Cancel a running league
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: |
+        Admins only. Cancels every unfinished fixture and stops the running battle.
+        Repeating the call on a cancelled league returns `200` with the league; a
+        completed league returns `409 conflict`.
+      responses:
+        '200':
+          description: The cancelled league.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/League'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/Internal'}
+
   /v1/admin/model-access:
     get:
       tags: [Administration]
@@ -930,6 +1047,11 @@ components:
       required: true
       schema: {type: string, format: uuid}
     FactionId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    LeagueId:
       name: id
       in: path
       required: true
@@ -1638,6 +1760,200 @@ components:
         state: {$ref: '#/components/schemas/BattleState'}
         errorCode: {type: string}
         errorMessage: {type: string}
+        league:
+          description: Present only for a league battle; omitted for players.
+          $ref: '#/components/schemas/BattleLeague'
+
+    BattleLeague:
+      type: object
+      required: [id, name, fixtureId, stage, round, leg]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        fixtureId: {type: string, format: uuid}
+        stage: {$ref: '#/components/schemas/LeagueStage'}
+        group: {type: string, enum: [A, B, C, D], description: Group-stage fixtures only.}
+        round: {type: integer, minimum: 1}
+        tie: {type: integer, minimum: 1, description: Knockout fixtures only.}
+        leg: {type: integer, enum: [1, 2]}
+
+    LeagueStage: {type: string, enum: [group, quarterfinal, semifinal, final]}
+
+    CreateLeagueRequest:
+      type: object
+      additionalProperties: false
+      required: [id, name, scenarioIds, tickCount, entrants]
+      properties:
+        id: {type: string, format: uuid, description: Client-generated; see the idempotency rules.}
+        name: {type: string, minLength: 1, maxLength: 80}
+        scenarioIds:
+          description: One to five distinct maps. Group pairings rotate through them in schedule order and keep one map for both legs.
+          type: array
+          minItems: 1
+          maxItems: 5
+          items: {type: string}
+        tickCount: {type: integer, minimum: 1, description: At most every chosen scenario's `maximumTicks`.}
+        tickDuration: {type: [string, 'null'], description: As for battle creation.}
+        decisionIntervalTicks: {type: [integer, 'null'], minimum: 1, maximum: 100, description: As for battle creation.}
+        entrants:
+          description: 8 or 16 entrants, four per group. Entry order is the final tiebreak.
+          type: array
+          minItems: 8
+          maxItems: 16
+          items:
+            type: object
+            additionalProperties: false
+            required: [factionId, group, controller]
+            properties:
+              factionId: {type: string, format: uuid}
+              group: {type: string, enum: [A, B, C, D]}
+              controller:
+                type: object
+                additionalProperties: false
+                required: [type]
+                properties:
+                  type: {type: string, enum: [scripted, model]}
+                  profileId: {type: string}
+                  modelIdentifier: {type: string}
+                  reasoningEffort: {type: string}
+
+    LeagueProgress:
+      type: object
+      required: [settled, total]
+      properties:
+        settled: {type: integer, description: Fixtures completed, void or cancelled.}
+        total: {type: integer, description: Fixtures the league plays when nothing is cancelled, 30 or 62.}
+
+    LeagueSummary:
+      type: object
+      required: [id, ownerId, name, status, groupCount, entrantCount, champion, progress, createdAt, completedAt]
+      properties:
+        id: {type: string, format: uuid}
+        ownerId: {type: string}
+        name: {type: string}
+        status: {type: string, enum: [running, completed, cancelled]}
+        groupCount: {type: integer, enum: [2, 4]}
+        entrantCount: {type: integer, enum: [8, 16]}
+        champion:
+          oneOf:
+            - type: object
+              required: [entrant, factionName]
+              properties:
+                entrant: {type: integer}
+                factionName: {type: string}
+            - {type: 'null'}
+        progress: {$ref: '#/components/schemas/LeagueProgress'}
+        createdAt: {type: string, format: date-time}
+        completedAt: {type: [string, 'null'], format: date-time}
+
+    League:
+      description: Entrants are referred to by their `index`.
+      type: object
+      required: [id, ownerId, name, status, groupCount, settings, champion, progress, entrants, groups, knockout, fixtures, createdAt, completedAt]
+      properties:
+        id: {type: string, format: uuid}
+        ownerId: {type: string}
+        name: {type: string}
+        status: {type: string, enum: [running, completed, cancelled]}
+        groupCount: {type: integer, enum: [2, 4]}
+        settings:
+          type: object
+          required: [scenarioIds, tickCount]
+          properties:
+            scenarioIds: {type: array, items: {type: string}}
+            tickCount: {type: integer}
+            tickDuration: {type: string}
+            decisionIntervalTicks: {type: integer}
+        champion: {type: [integer, 'null'], description: The champion's entrant index once the final settles.}
+        progress: {$ref: '#/components/schemas/LeagueProgress'}
+        entrants:
+          type: array
+          items:
+            type: object
+            required: [index, group, factionId, factionName, controller]
+            properties:
+              index: {type: integer}
+              group: {type: string, enum: [A, B, C, D]}
+              factionId: {type: string, format: uuid}
+              factionName: {type: string, description: Copied when the league was created.}
+              controller: {$ref: '#/components/schemas/Controller'}
+        groups:
+          description: |
+            Each group ranked by points (win 3, draw 1), then points from matches
+            among the entrants level on points, castle-health difference, damage
+            difference, and entry order. Void fixtures count for nobody.
+          type: array
+          items:
+            type: object
+            required: [group, standings]
+            properties:
+              group: {type: string, enum: [A, B, C, D]}
+              standings:
+                type: array
+                items: {$ref: '#/components/schemas/LeagueStanding'}
+        knockout:
+          description: |
+            Ties in stage order. A tie's winner has more wins over its two legs, then
+            the higher castle-health and damage differences, then the better group
+            finish, more group points and entry order. `winner` is null until both
+            legs settle.
+          type: array
+          items:
+            type: object
+            required: [stage, tie, homeEntrant, awayEntrant, winner]
+            properties:
+              stage: {$ref: '#/components/schemas/LeagueStage'}
+              tie: {type: integer, minimum: 1}
+              homeEntrant: {type: integer, description: Home side of the first leg.}
+              awayEntrant: {type: integer}
+              winner: {type: [integer, 'null']}
+        fixtures:
+          type: array
+          items: {$ref: '#/components/schemas/LeagueFixture'}
+        createdAt: {type: string, format: date-time}
+        completedAt: {type: [string, 'null'], format: date-time}
+
+    LeagueStanding:
+      type: object
+      required: [entrant, position, played, won, drawn, lost, points, castleDifference, damageDifference]
+      properties:
+        entrant: {type: integer}
+        position: {type: integer, minimum: 1, maximum: 4}
+        played: {type: integer}
+        won: {type: integer}
+        drawn: {type: integer}
+        lost: {type: integer}
+        points: {type: integer}
+        castleDifference: {type: integer}
+        damageDifference: {type: integer}
+
+    LeagueFixture:
+      description: |
+        One battle slot; the home entrant takes the first spawn side. A failed or
+        stopped battle is retried once with a new battle, then the fixture is void.
+      type: object
+      required: [id, sequence, stage, round, leg, homeEntrant, awayEntrant, scenarioId, status, attempts, battleId]
+      properties:
+        id: {type: string, format: uuid}
+        sequence: {type: integer, minimum: 0, description: Play order.}
+        stage: {$ref: '#/components/schemas/LeagueStage'}
+        group: {type: string, enum: [A, B, C, D]}
+        round: {type: integer, minimum: 1}
+        tie: {type: integer, minimum: 1}
+        leg: {type: integer, enum: [1, 2]}
+        homeEntrant: {type: integer}
+        awayEntrant: {type: integer}
+        scenarioId: {type: string}
+        status: {type: string, enum: [pending, running, completed, void, cancelled]}
+        attempts: {type: integer, minimum: 0, maximum: 2}
+        battleId: {type: [string, 'null'], format: uuid}
+        result:
+          description: Present once the fixture completed.
+          type: object
+          required: [winner, reason]
+          properties:
+            winner: {type: [integer, 'null'], description: Null for a draw.}
+            reason: {type: string, examples: [castle_destroyed, tick_limit]}
 
     ProductionSchedule:
       description: |

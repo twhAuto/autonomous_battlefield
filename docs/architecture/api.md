@@ -43,8 +43,9 @@ deleting a faction, and stopping, pausing or resuming a battle, require ownershi
 or the Admin role. Players can read shared factions, battles, events, replays and
 history, but receive gameplay-only responses: events and replay events without
 payloads, battles without
-inspection fields, and a reduced model-profile list. Decision history and saved
-decision context require Developer or Admin.
+inspection fields, and a reduced model-profile list. Decision history, saved
+decision context and [leagues](#leagues) require Developer or Admin; only Admins
+create or cancel a league.
 
 Selecting a model controller, for a battle or for background generation, requires
 an enabled, verified profile and a role allowed by the
@@ -65,7 +66,8 @@ generation configuration. Exceeding a limit returns `429`. Admin battles bypass 
 three battle limits, including the service-wide one, but still count as unfinished
 when other people's battles are admitted. Paused battles are unfinished. A
 retry that reuses a request's identifier with the same inputs and identity
-returns the work already admitted rather than consuming another allowance.
+returns the work already admitted rather than consuming another allowance. League
+battles are Admin battles and also skip the per-battle model decision budget.
 
 Private worker APIs are outside this contract: they use a separate bearer secret
 and server-minted request capabilities, described in the
@@ -172,6 +174,7 @@ decision. The tick duration is a pacing target; AI decision waits can extend it.
 Shorter intervals consume the existing per-battle `runtime_policy.decision_executions`
 budget sooner (default 100). Claim admission serializes that budget, and new model
 windows immediately fall back once it is spent; timing overrides do not bypass it.
+Only [league](#leagues) battles are exempt.
 
 Every `decisionIntervalTicks` the engine pauses for each faction's plan, so a
 model-controlled battle can wait at a window; a late plan never replaces the
@@ -278,6 +281,45 @@ observation, not a recording of what the model received, and
 `availableUnitDetails` is the unit reference the model could look up, not a record
 of lookups it made. A request belonging to another battle or attempt returns
 `404`. Clients should fetch it on demand and cache by battle, attempt and request.
+
+## Leagues
+
+A league plays AI entrants against each other in background battles. Admins create
+and cancel leagues; Developers and Admins read them.
+
+`POST /v1/leagues` takes a client-supplied `id`, a `name`, one to five
+`scenarioIds`, the battle timing (`tickCount`, optional `tickDuration` and
+`decisionIntervalTicks`, as for battles) and 8 or 16 `entrants`, four per group
+`A`–`D`, each a distinct faction with a controller. Every entrant is checked on every
+map, from both spawn sides, with the battle-creation rules, so an unavailable model,
+missing faction or invalid timing fails the create with the same `404`, `422` or
+`400` a battle would. Repeating an identical request returns `201` with the stored
+league; reusing the `id` for a different request returns `409 already_exists`.
+
+Each group plays every pairing twice, once from each spawn side, on one map;
+pairings rotate through the maps. Group tables rank by points (win 3, draw 1), then
+points among the entrants level on points, castle-health difference, damage
+difference and entry order. The top two of each group play a crossover knockout:
+semifinals A1–B2 and B1–A2 with two groups; with four, quarterfinals A1–B2, B1–A2,
+C1–D2 and D1–C2, arranged so group-mates meet again only in the final. Each tie has
+two legs; its winner has more wins, then the higher castle-health and damage
+differences, then the better group finish, more group points and entry order. A
+league plays 30 fixtures with 8 entrants and 62 with 16.
+
+The API plays fixtures in order, one battle at a time, and only when no other battle
+is queued or running, so a league battle never waits out the one-hour battle timeout
+in the queue. League battles belong to the creating Admin, skip the battle
+allowances and the decision budget, and appear on `GET /v1/battles/{id}` with a
+`league` field naming the league and fixture. A failed or stopped battle is retried
+once with a new battle; a second failure makes the fixture `void`, which scores for
+nobody. Model access is checked again for every battle, so revoking access
+mid-league voids that entrant's remaining fixtures.
+
+`GET /v1/leagues/{id}` returns the settings, entrants, ranked `groups`, `knockout`
+ties and every fixture with its `battleId` and, once completed, its `result`.
+`GET /v1/leagues` lists summaries, newest first. `POST /v1/leagues/{id}/cancel`
+cancels unfinished fixtures and stops the running battle; repeating it returns `200`,
+and cancelling a completed league returns `409`.
 
 ## Faction background generation
 

@@ -56,6 +56,10 @@ introduce a new boundary.
 | [`generation/api`](../../backend/internal/generation/api) | ✓ |  |  |  |  |
 | [`generation/repo`](../../backend/internal/generation/repo) | ✓ |  | ✓ |  |  |
 | [`httpapi`](../../backend/internal/httpapi) | ✓ | ✓ |  |  |  |
+| [`league`](../../backend/internal/league) | ✓ |  |  |  |  |
+| [`league/api`](../../backend/internal/league/api) | ✓ |  |  |  |  |
+| [`league/repo`](../../backend/internal/league/repo) | ✓ |  |  |  |  |
+| [`league/service`](../../backend/internal/league/service) | ✓ |  |  |  |  |
 | [`members`](../../backend/internal/members) | ✓ |  |  |  |  |
 | [`observability/logging`](../../backend/internal/observability/logging) | ✓ | ✓ | ✓ | ✓ |  |
 | [`observability/metrics`](../../backend/internal/observability/metrics) | ✓ | ✓ |  |  |  |

@@ -114,6 +114,8 @@ func startServer(shutdownSignal context.Context, configuration config.APIConfig)
 	}
 	application := app.New(db, catalog, configuration.API.MaxTicks, app.Options{Auth: configuration.Auth, Cache: cache, Generation: &configuration.Generation, Profiles: profiles, Members: membersRepository(memberStore)})
 	lifecycle.Activate(application.HTTPHandler(), db, nil)
+	stopLeagues := application.StartLeagueScheduler(processContext)
+	defer stopLeagues()
 	slog.Info("api_ready", "address", server.Addr)
 
 	select {

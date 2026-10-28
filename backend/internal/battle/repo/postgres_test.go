@@ -32,7 +32,7 @@ func TestCreateBattlePersistsSnapshotAndMapsErrors(t *testing.T) {
 		if err := NewPostgres(db).CreateBattle(context.Background(), params); err != nil {
 			t.Fatalf("CreateBattle() returned an error: %v", err)
 		}
-		if len(db.execArgs) != 10 || db.execArgs[0] != params.ID || db.execArgs[4] != params.RequestedTicks || db.execArgs[9] != true {
+		if len(db.execArgs) != 11 || db.execArgs[0] != params.ID || db.execArgs[4] != params.RequestedTicks || db.execArgs[9] != true || db.execArgs[10] != false {
 			t.Fatalf("Exec arguments = %#v", db.execArgs)
 		}
 		var stored battle.Scenario
@@ -70,10 +70,12 @@ func TestGetBattleDecodesStoredRun(t *testing.T) {
 	scenarioJSON, _ := json.Marshal(scenario)
 	resultJSON, _ := json.Marshal(result)
 	stateJSON, _ := json.Marshal(battle.State{BattleID: "battle-1", Tick: 4})
+	leagueID, leagueName, fixtureID, stage, round, tie, leg := "league-1", "Cup", "fixture-1", "semifinal", 1, 2, 1
 	db := &battleDB{row: battleRow(func(destinations ...any) error {
 		values := []any{
 			"battle-1", "scenario-1", "digest", scenarioJSON, uint64(10), stateJSON, stateJSON, uint64(4),
 			"completed", false, 2, resultJSON, &errorCode, &errorMessage, now, &started, &completed, "legacy-admin",
+			&leagueID, &leagueName, &fixtureID, &stage, (*int)(nil), &round, &tie, &leg,
 		}
 		return assignBattleValues(destinations, values)
 	})}
@@ -84,6 +86,9 @@ func TestGetBattleDecodesStoredRun(t *testing.T) {
 	}
 	if run.ID != "battle-1" || run.ScenarioSnapshot.ID != scenario.ID || run.Result == nil || run.Result.Reason != result.Reason {
 		t.Fatalf("GetBattle() = %#v", run)
+	}
+	if run.League == nil || run.League.Name != "Cup" || run.League.Stage != "semifinal" || run.League.Tie != 2 || run.League.Group != nil {
+		t.Fatalf("GetBattle() league = %#v", run.League)
 	}
 }
 
@@ -447,6 +452,7 @@ func storedBattleRow(snapshot, result []byte) battleRow {
 		return assignBattleValues(destinations, []any{
 			"battle-1", "scenario-1", "digest", snapshot, uint64(10), state, state, uint64(0),
 			"queued", false, 1, result, (*string)(nil), (*string)(nil), time.Now(), (*time.Time)(nil), (*time.Time)(nil), "legacy-admin",
+			(*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil), (*int)(nil), (*int)(nil), (*int)(nil), (*int)(nil),
 		})
 	}
 }

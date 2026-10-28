@@ -45,6 +45,9 @@ type CreateBattleInput struct {
 	TickCount             uint64
 	TickDuration          *string
 	DecisionIntervalTicks *uint64
+	// DecisionBudgetExempt lifts the per-battle model decision budget. Only the league
+	// scheduler sets it, and it applies only to an Admin actor; HTTP requests never do.
+	DecisionBudgetExempt bool
 }
 
 type ParticipantInput struct {
@@ -64,6 +67,9 @@ type CreateBattleParams struct {
 	// AdmissionExempt skips the per-person and global battle allowances; only an
 	// Admin actor sets it.
 	AdmissionExempt bool
+	// DecisionBudgetExempt lets model decisions continue past runtime_policy's
+	// per-battle budget; executions are still counted.
+	DecisionBudgetExempt bool
 }
 
 type BattleRun struct {
@@ -85,6 +91,19 @@ type BattleRun struct {
 	CreatedAt        time.Time     `json:"createdAt"`
 	StartedAt        *time.Time    `json:"startedAt,omitempty"`
 	CompletedAt      *time.Time    `json:"completedAt,omitempty"`
+	League           *BattleLeague `json:"league,omitempty"`
+}
+
+// BattleLeague places a league battle in its league; it never changes once set.
+type BattleLeague struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	FixtureID string  `json:"fixtureId"`
+	Stage     string  `json:"stage"`
+	Group     *string `json:"group,omitempty"`
+	Round     int     `json:"round"`
+	Tie       int     `json:"tie,omitempty"`
+	Leg       int     `json:"leg"`
 }
 
 type StoredBattleEvent struct {
@@ -106,6 +125,8 @@ type Service interface {
 	ListBattles(context.Context, BattleHistoryInput) (BattleHistoryPage, error)
 	ListScenarios() []ScenarioSummary
 	CreateBattle(context.Context, CreateBattleInput) (*BattleRun, error)
+	// ValidateBattle runs every CreateBattle check without creating the battle.
+	ValidateBattle(context.Context, CreateBattleInput) error
 	GetBattle(context.Context, string) (*BattleRun, error)
 	StopBattle(context.Context, string) (*BattleRun, error)
 	PauseBattle(context.Context, string) (*BattleRun, error)
@@ -205,48 +226,23 @@ func (s *battleService) ListDecisionHistory(ctx context.Context, battleID string
 }
 
 func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInput) (*BattleRun, error) {
-	if !validCreateBattleInput(input, s.maxTicks) {
-		return nil, ErrInvalidBattle
-	}
-
-	identities, controllers, err := s.resolveParticipants(ctx, input.Participants)
+	prepared, err := s.prepareBattle(ctx, input)
 	if err != nil {
 		return nil, err
 	}
-
-	resolved, err := s.catalog.Resolve(input.ScenarioID, identities)
-	if err != nil {
-		return nil, err
-	}
-	if resolved.MaximumTicks > 0 && input.TickCount > resolved.MaximumTicks {
-		return nil, ErrInvalidBattle
-	}
-	if err := applyBattleTiming(&resolved, input); err != nil {
-		return nil, err
-	}
-	for index := range resolved.Factions {
-		resolved.Factions[index].Controller = controllers[index]
-	}
-	digest, err := ScenarioDigest(resolved)
-	if err != nil {
-		return nil, err
-	}
-	match, err := game.NewMatch(input.ID, resolved, input.TickCount)
-	if err != nil {
-		return nil, fmt.Errorf("build initial battle state: %w", err)
-	}
-	initialState := match.State()
+	resolved, digest, initialState := prepared.scenario, prepared.digest, prepared.initialState
 	traceparent, tracestate := tracing.TraceContext(ctx)
 	err = s.battles.CreateBattle(ctx, CreateBattleParams{
-		ID:               input.ID,
-		ScenarioID:       resolved.ID,
-		ScenarioDigest:   digest,
-		ScenarioSnapshot: resolved,
-		InitialState:     initialState,
-		RequestedTicks:   input.TickCount,
-		Traceparent:      traceparent,
-		Tracestate:       tracestate,
-		AdmissionExempt:  isAdmin(ctx),
+		ID:                   input.ID,
+		ScenarioID:           resolved.ID,
+		ScenarioDigest:       digest,
+		ScenarioSnapshot:     resolved,
+		InitialState:         initialState,
+		RequestedTicks:       input.TickCount,
+		Traceparent:          traceparent,
+		Tracestate:           tracestate,
+		AdmissionExempt:      isAdmin(ctx),
+		DecisionBudgetExempt: input.DecisionBudgetExempt && isAdmin(ctx),
 	})
 	if errors.Is(err, ErrBattleAlreadyExists) {
 		return s.replayCreate(ctx, input, digest)
@@ -264,6 +260,51 @@ func (s *battleService) CreateBattle(ctx context.Context, input CreateBattleInpu
 		RequestedTicks: input.TickCount,
 		Status:         "queued",
 	}, nil
+}
+
+func (s *battleService) ValidateBattle(ctx context.Context, input CreateBattleInput) error {
+	_, err := s.prepareBattle(ctx, input)
+	return err
+}
+
+type preparedBattle struct {
+	scenario     game.Scenario
+	digest       string
+	initialState game.State
+}
+
+// prepareBattle validates a request and freezes its scenario, controllers and initial
+// state without persisting anything.
+func (s *battleService) prepareBattle(ctx context.Context, input CreateBattleInput) (preparedBattle, error) {
+	if !validCreateBattleInput(input, s.maxTicks) {
+		return preparedBattle{}, ErrInvalidBattle
+	}
+	identities, controllers, err := s.resolveParticipants(ctx, input.Participants)
+	if err != nil {
+		return preparedBattle{}, err
+	}
+	resolved, err := s.catalog.Resolve(input.ScenarioID, identities)
+	if err != nil {
+		return preparedBattle{}, err
+	}
+	if resolved.MaximumTicks > 0 && input.TickCount > resolved.MaximumTicks {
+		return preparedBattle{}, ErrInvalidBattle
+	}
+	if err := applyBattleTiming(&resolved, input); err != nil {
+		return preparedBattle{}, err
+	}
+	for index := range resolved.Factions {
+		resolved.Factions[index].Controller = controllers[index]
+	}
+	digest, err := ScenarioDigest(resolved)
+	if err != nil {
+		return preparedBattle{}, err
+	}
+	match, err := game.NewMatch(input.ID, resolved, input.TickCount)
+	if err != nil {
+		return preparedBattle{}, fmt.Errorf("build initial battle state: %w", err)
+	}
+	return preparedBattle{scenario: resolved, digest: digest, initialState: match.State()}, nil
 }
 
 // ScenarioDigest fingerprints a battle's frozen scenario, including its controllers. A

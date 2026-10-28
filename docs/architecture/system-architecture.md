@@ -71,12 +71,12 @@ workload can fail or restart while preserving battle and decision state.
 | Component | Responsibility | Direct dependencies |
 | --- | --- | --- |
 | React frontend | Session-aware navigation (Cloudflare Access in production, development login locally), faction creation, battle staging and history, map display, controls, event stream, and AI decision history | Public API |
-| Public API | Access identity verification, role/ownership authorization, managed Player membership, HTTP validation, scenario resolution, faction and battle persistence, and selectable model-profile catalog | PostgreSQL, embedded scenario/ruleset/content YAML, optional Redis, optional Cloudflare Access group API |
+| Public API | Access identity verification, role/ownership authorization, managed Player membership, HTTP validation, scenario resolution, faction and battle persistence, selectable model-profile catalog, and the league scheduler that queues league battles | PostgreSQL, embedded scenario/ruleset/content YAML, optional Redis, optional Cloudflare Access group API |
 | Battle engine | Battle queue claims, deterministic ticks, strategy windows, state/event persistence | PostgreSQL |
 | AI gateway | MCP tool server with request-scoped battle tools (`get_decision_context`, `get_unit_details`, `submit_strategy_plan`) and background-generation tools, plus the agent dispatch API (claims, capability minting, result reports) | PostgreSQL |
 | Decision agent | Model-decision claims and API or CLI model execution | AI gateway, model provider |
 | Redis (optional) | Disposable completed battle read cache; no engine or readiness dependency | Memory, API-only connection |
-| PostgreSQL | Factions, battle queue, event history, snapshots, leases, and model decisions | Persistent storage |
+| PostgreSQL | Factions, battle queue, event history, snapshots, leases, model decisions, and leagues with their fixtures | Persistent storage |
 | Scenario catalog | Map-only layouts resolved with one shared timing/controller configuration and full ruleset from versioned [content libraries](../developer/content-library.md) | Embedded in the server binary (`backend/gamedata`), validated at API startup and frozen into battle rows |
 
 The backend commands are `cmd/server`, `cmd/engine`, `cmd/aigateway`, `cmd/agent`,
@@ -382,6 +382,44 @@ only at windows, so a segment needs no decision rows. The API refuses an active
 battle, and a segment whose checkpoint is missing, rather than re-simulating across
 a window without its plans. The [API reference](api.md#battle-replay) describes the
 segment contract.
+
+### 5.7 Play a league
+
+An Admin's `POST /v1/leagues` checks every entrant on every map with the battle
+service's validation, then stores the league, its entrants and the full group
+schedule. Every API replica runs the league scheduler every 10 seconds; a pass holds
+a transaction advisory lock, so one replica schedules at a time and the others skip.
+
+```mermaid
+sequenceDiagram
+    participant S as League scheduler (API)
+    participant DB as PostgreSQL
+    participant B as Battle service
+    participant E as Engine
+    S->>DB: lock, read running leagues and fixture battles
+    S->>DB: settle finished fixtures, add the next knockout stage or complete
+    alt engine idle and a fixture is pending
+        S->>B: CreateBattle as the league owner (budget-exempt)
+        B->>DB: insert battle_runs row
+        S->>DB: mark fixture running with the battle
+    end
+    E->>DB: claim and play the battle as usual
+```
+
+A pass first settles running fixtures from their battles: a completed battle
+completes the fixture, and a failed, stopped or missing battle sends it back to
+pending for one retry, then makes it void. When every fixture so far is settled the
+pass adds the next knockout stage from the group tables or tie winners, or records
+the champion after the final. It then starts the first pending fixture of the oldest
+running league, but only when no battle is queued or running, because the single
+engine plays battles one at a time and a battle's one-hour timeout counts queued
+time. Battle IDs derive from the fixture and attempt: a pass interrupted after
+creating a battle links that battle on the next pass instead of creating another.
+Cancelling a league takes the same lock, cancels unfinished fixtures and then stops
+the running battle. Battle creation goes through the same service as
+`POST /v1/battles`, as the league's Admin owner, so model access, faction existence
+and timing are rechecked for every battle; that is why the scheduler runs in the
+API, which composes the battle service, rather than in the engine.
 
 ## 6. AI decisions
 

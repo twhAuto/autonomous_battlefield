@@ -100,6 +100,18 @@ func assembledError(t *testing.T, response *httptest.ResponseRecorder) apierror.
 	return envelope.Error
 }
 
+func TestLeagueSchedulerStopsWhenAsked(t *testing.T) {
+	application := New(appDatabase{}, &catalog.Catalog{}, 10_000, Options{})
+	stop := application.StartLeagueScheduler(context.Background())
+	stopped := make(chan struct{})
+	go func() { stop(); close(stopped) }()
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("league scheduler did not stop")
+	}
+}
+
 type appDatabase struct{}
 
 func (appDatabase) Ping(context.Context) error { return nil }
