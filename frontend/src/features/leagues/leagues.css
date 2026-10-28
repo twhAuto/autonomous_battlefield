@@ -1,0 +1,45 @@
+/* League setup, tables, bracket and fixtures. */
+.league-form select, .league-form input[type='number'], .league-form input[type='text'] { width: 100%; height: 52px; padding: 0 14px; outline: 0; color: #e7ebdf; background: #111510; border: 1px solid #454d41; transition: border-color .2s; }
+.league-form select:focus, .league-form input[type='number']:focus, .league-form input[type='text']:focus { border-color: var(--lime); }
+.league-form select option:disabled { color: var(--muted); }
+.league-form input[aria-invalid='true'] { border-color: #ff9e85; }
+.league-form { display: grid; grid-template-columns: minmax(280px, 380px) minmax(0, 1fr); gap: 24px; margin: 32px 0 80px; }
+.league-form__settings, .league-form__entrants { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.league-form__choice { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; border: 0; color: #c8cfc1; }
+.league-form__choice legend { margin-bottom: 8px; color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .12em; text-transform: uppercase; }
+.league-form__choice label { display: flex; align-items: center; gap: 10px; }
+.league-form__blockers { margin: 0; padding-left: 18px; }
+.league-estimate dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin: 0; background: var(--line); border: 1px solid var(--line); }
+.league-estimate dl > div { padding: 12px; background: #151a14; }
+.league-estimate dt { color: var(--muted); font: 11px 'DM Mono', monospace; letter-spacing: .1em; text-transform: uppercase; }
+.league-estimate dd { margin: 6px 0 0; font-size: 18px; font-weight: 600; }
+.league-entrants { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.league-entrant { display: grid; grid-template-columns: 36px minmax(0, 1.2fr) 72px minmax(0, 2fr); align-items: start; gap: 12px; padding: 12px; background: #151a14; border: 1px solid var(--line); }
+.league-entrant__number { padding-top: 30px; color: var(--muted); font: 13px 'DM Mono', monospace; }
+.league-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.compact-action--danger { color: #ff9e85; border-color: rgba(255, 158, 133, .55); }
+.compact-action--danger:hover { color: var(--ink); background: #ff9e85; }
+.league-champion { display: block; margin: 24px 0 8px; padding: 16px 20px; color: var(--ink); background: var(--lime); font-size: 18px; }
+.league-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 24px; margin: 32px 0; }
+.league-group { min-width: 0; overflow-x: auto; }
+.league-table { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.league-table th, .league-table td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.league-table thead th { color: var(--muted); font: 400 11px 'DM Mono', monospace; }
+.league-table th[scope="row"], .league-table thead th:nth-child(2) { text-align: left; font-weight: 500; }
+.league-table th[scope="row"] small, .league-tie small { display: block; margin-top: 2px; color: var(--muted); font: 11px 'DM Mono', monospace; }
+.league-table abbr { text-decoration: none; }
+.league-table__qualifier td:first-child { box-shadow: inset 2px 0 0 var(--lime); }
+.league-bracket { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 24px; margin: 32px 0; }
+.league-bracket__stage { display: flex; flex-direction: column; gap: 12px; }
+.league-tie { margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); background: #151a14; }
+.league-tie li { padding: 10px 12px; }
+.league-tie li + li { border-top: 1px solid var(--line); }
+.league-tie__winner { box-shadow: inset 2px 0 0 var(--lime); }
+.league-tie--pending { padding: 18px 12px; color: var(--muted); font-size: 13px; }
+.league-fixtures { margin-top: 8px; }
+@media (max-width: 900px) {
+  .league-form { grid-template-columns: 1fr; }
+  .league-entrant { grid-template-columns: 1fr 72px; }
+  .league-entrant__number { display: none; }
+  .league-entrant > .battle-form__field:last-child { grid-column: 1 / -1; }
+}

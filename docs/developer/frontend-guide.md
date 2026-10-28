@@ -19,7 +19,8 @@ The frontend is a React/Vite single-page application.
 | [`features/battles/api/battles.ts`](../../frontend/src/features/battles/api/battles.ts) | Typed scenario, profile, battle, history, event, view, control, and decision requests |
 | [`features/factions/pages/CreateFactionPage.tsx`](../../frontend/src/features/factions/pages/CreateFactionPage.tsx) | Faction profile editor and background generator |
 | [`features/factions/pages/FactionsPage.tsx`](../../frontend/src/features/factions/pages/FactionsPage.tsx) | Faction registry and authorized edit links; deletion lives in the editor's Danger zone |
-| [`features/battles/pages/CreateBattlePage.tsx`](../../frontend/src/features/battles/pages/CreateBattlePage.tsx) | Scenario (default `frontier-siege`), participants, controllers (default Low effort), and tick-limit selection |
+| [`features/battles/pages/CreateBattlePage.tsx`](../../frontend/src/features/battles/pages/CreateBattlePage.tsx) | Scenario (default `frontier-siege`), participants, controllers, and tick-limit selection |
+| [`features/battles/components/ControllerSelect.tsx`](../../frontend/src/features/battles/components/ControllerSelect.tsx) | Scripted or model controller with dependent model and effort selectors (default Low effort), shared by battle and league setup |
 | [`features/battles/components/MapPreview.tsx`](../../frontend/src/features/battles/components/MapPreview.tsx) | Static terrain and castle-spawn preview of the selected scenario map |
 | [`features/battles/pages/BattleHistoryPage.tsx`](../../frontend/src/features/battles/pages/BattleHistoryPage.tsx) | Status-filtered history table/cards, cursor navigation, refresh, and detail links |
 | [`features/battles/pages/BattlePage.tsx`](../../frontend/src/features/battles/pages/BattlePage.tsx) | Route-level composition, selected panel, and control actions |
@@ -28,20 +29,29 @@ The frontend is a React/Vite single-page application.
 | [`features/battles/components/HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx) | Hex-map visualization, movement routes, tracking arrows, attack outcomes, and accessible unit animation |
 | [`features/battles/components/PlayerStatusPanel.tsx`](../../frontend/src/features/battles/components/PlayerStatusPanel.tsx) | Null-safe spectator summaries, economy/building overview, and grouped living units |
 | [`features/battles/components/TypeStatistics.tsx`](../../frontend/src/features/battles/components/TypeStatistics.tsx) | After-action unit and building tables by type and the upgrade timeline; renders nothing for older results |
+| [`features/leagues/api/leagues.ts`](../../frontend/src/features/leagues/api/leagues.ts) | Typed league list, read, create and cancel requests |
+| [`features/leagues/pages/CreateLeaguePage.tsx`](../../frontend/src/features/leagues/pages/CreateLeaguePage.tsx) | League setup: name, 8 or 16 entrants with faction, group and controller, maps, timing, and estimates of battles, duration and model decisions |
+| [`features/leagues/pages/LeaguePage.tsx`](../../frontend/src/features/leagues/pages/LeaguePage.tsx) | Group tables, knockout bracket and fixtures with battle links (`components/LeagueStandings.tsx`); refreshes every 10 seconds while running; confirmed cancellation for Admins |
+| [`features/analytics/pages/AnalyticsPage.tsx`](../../frontend/src/features/analytics/pages/AnalyticsPage.tsx) | Statistics report with URL-backed league, rules-version and fallback filters: model, head-to-head, unit, army-mix, upgrade, faction and map tables |
+| [`features/analytics/components/WinRateChart.tsx`](../../frontend/src/features/analytics/components/WinRateChart.tsx) | Win rate per controller as a dot with its 95% interval, focusable rows with tooltips; the models table repeats every value |
 | [`features/admin/pages/MembersPage.tsx`](../../frontend/src/features/admin/pages/MembersPage.tsx) | Managed Player invitations, removal, sync retry, and game link (Admins only, when enabled) |
 | [`shared/components/Emblem.tsx`](../../frontend/src/shared/components/Emblem.tsx) | Saved faction symbol with name-derived colors |
 
 ## Routes and session
 
 Home and primary navigation share three destinations in order: Stage battle,
-Factions, Battle history. Administrator navigation also includes Admin. The compact home has no promotional hero. Factions
+Factions, Battle history. Developers and Admins also see Leagues and Statistics,
+and Admins see Admin. The compact home has no promotional hero. Factions
 combines directory access with its Create faction action; the existing creation
 and editing routes remain available and keep the Factions navigation item active.
 
 Routes: `/` (Home), `/battles/new`, `/battles`, `/battles/:id`, `/factions`,
-`/factions/new`, `/factions/:id/edit`, `/admin`, and `/admin/members`. Admin routes
-mount only for Admins outside role preview; `/admin/members` also requires the
-session's `members` capability. Unknown paths render a not-found page.
+`/factions/new`, `/factions/:id/edit`, `/leagues`, `/leagues/new`, `/leagues/:id`,
+`/analytics`, `/admin`, and `/admin/members`. League and statistics routes mount for
+Developers and Admins, including in Developer preview. `/leagues/new`, the start and
+cancel actions, and the admin routes mount only for Admins outside role preview;
+`/admin/members` also requires the session's `members` capability. Unknown paths
+render a not-found page.
 
 The shell shows the signed-out screen after a successful logout or an HTTP 401
 confirming that the session is no longer authenticated. If the request otherwise
@@ -133,7 +143,8 @@ requests are aborted and their results ignored.
 
 `BattlePage` lays the live battle out as a command center. At desktop widths
 (over 1000px) the page spans the full window and fits one viewport height: a
-single command band (`BattleHeader` with tick progress, outcome and controls), one
+single command band (`BattleHeader` with tick progress, outcome and controls, and
+for a league battle a link to its league, group or stage and leg), one
 faction strip per participant, then the map filling the remaining height beside the
 inspector. The map legend and selected-entity details float over the map, so
 opening them never resizes the map viewport (which would refit and lose pan and

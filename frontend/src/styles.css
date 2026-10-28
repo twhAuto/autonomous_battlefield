@@ -10,4 +10,6 @@
 @import './features/factions/factions.css';
 @import './features/battles/battles.css';
 @import './features/battles/map.css';
+@import './features/leagues/leagues.css';
+@import './features/analytics/analytics.css';
 @import './shared/styles/accessibility.css';

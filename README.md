@@ -9,8 +9,8 @@ engine validates and executes them.
 - Run two-faction castle-siege battles with autonomous combat, open maps, terrain bonuses, building-range expansion, defending castles, five specialized training buildings and continuous AI-selected unit production, with visible progress and on/off status.
 - Choose tick duration and decision interval when staging a battle, or keep map defaults.
 - Inspect live battles, saved results, events and AI decision history, and replay finished battles tick by tick.
-- Run AI leagues through the API (Admins): 8 or 16 entrants in groups of four, a crossover knockout, and every battle played in the background.
-- Compare models, factions, units, upgrades and maps across completed battles through the analytics API (Developers and Admins).
+- Run AI leagues (Admins start them; Developers follow them): 8 or 16 entrants in groups of four, a crossover knockout, and every battle played in the background.
+- Compare models, factions, units, upgrades and maps across completed battles on the Statistics page (Developers and Admins).
 - Manage invited players and model access through Player, Developer and Admin roles.
 
 The hosted application is at [play.ordinalfrontier.com](https://play.ordinalfrontier.com)
