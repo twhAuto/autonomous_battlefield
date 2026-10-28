@@ -308,10 +308,11 @@ league plays 30 fixtures with 8 entrants and 62 with 16.
 
 The API starts fixtures in order into free engine slots, so up to `battleSlots`
 battles run at once and a league battle never waits out the one-hour battle timeout
-in the queue; a fixture whose CLI model sides do not fit `cliSlots` waits. Both counts
-appear in `GET /v1/leagues`, and battles of other owners occupy slots too. While a
-league fills every slot, the global limit of unfinished battles rejects new Player
-battles. League battles belong to the creating Admin, skip the battle
+in the queue. Battles of other owners occupy slots too, and CLI model sides share
+`cliSlots`, as the [league scheduler](system-architecture.md#57-play-a-league)
+describes; `GET /v1/leagues` reports both counts. League battles count toward the
+global limit of unfinished battles, so while they reach it, new Player battles are
+rejected. League battles belong to the creating Admin, skip the battle
 allowances and the decision budget, and appear on `GET /v1/battles/{id}` with a
 `league` field naming the league and fixture. A failed or stopped battle is retried
 once with a new battle; a second failure makes the fixture `void`, which scores for

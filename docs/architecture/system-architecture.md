@@ -408,11 +408,11 @@ whose CLI model sides, added to those already running, would exceed
 `runtime_policy.cli_concurrency` waits for a later pass, so model decisions do not
 queue toward the decision timeout; when no CLI side is running, a fixture starts even
 if it needs more CLI slots than exist. The count assumes one engine replica, and the
-agents' combined slots should cover `cli_concurrency`; the local CLI launcher runs
-`HOST_AGENT_CONCURRENCY` slots, 2 by default. A permanent start failure ends that
-league's pass, so an outage such as an unavailable profile spends one fixture attempt
-per pass. Battle IDs derive from the fixture, so a pass interrupted after creating a
-battle adopts it on the next pass
+agents' combined slots should cover `cli_concurrency`; see the
+[local launcher's slots](../developer/local-kubernetes.md#subscription-clis). A
+permanent start failure ends that league's pass, so an outage such as an unavailable
+profile spends one fixture attempt per pass. Battle IDs derive from the fixture, so a
+pass interrupted after creating a battle adopts it on the next pass
 ([idempotency rules](database.md#idempotency-and-versions)). Cancellation takes the
 same lock, cancels unfinished fixtures and then stops the league's running battles.
 

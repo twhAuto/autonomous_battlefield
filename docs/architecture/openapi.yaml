@@ -783,11 +783,11 @@ paths:
                     required: [battleSlots, cliSlots]
                     properties:
                       battleSlots:
-                        description: Battles the engine runs at once (`engine.concurrency`); league battles start only into free slots.
+                        description: Battles the engine runs at once (`engine.concurrency`).
                         type: integer
                         minimum: 1
                       cliSlots:
-                        description: CLI model executions allowed at once (`runtime_policy.cli_concurrency`); a league battle waits while its CLI model sides do not fit.
+                        description: CLI model executions allowed at once (`runtime_policy.cli_concurrency`), shared by the CLI model sides of league battles.
                         type: integer
                         minimum: 1
         '400': {$ref: '#/components/responses/InvalidRequest'}
