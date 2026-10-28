@@ -128,8 +128,12 @@ export interface BattleResult {
 /** `opening` marks the one-time purchase before tick 1 (nextTick 0). */
 export interface ProductionSchedule { nextTick: number; opening: boolean }
 
+/** Places a league battle in its league; absent for other battles. */
+export interface BattleLeague { id: string; name: string; fixtureId: string; stage: string; group?: string; round: number; tie?: number; leg: number }
+
 export interface BattleRun {
   ownerId?: string
+  league?: BattleLeague
   id: string
   scenarioId: string
   scenarioDigest: string

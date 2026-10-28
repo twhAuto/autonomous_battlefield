@@ -14,7 +14,7 @@ test('navigation, focus, responsive forms and logout', async ({ page, isMobile }
     await expect(page.getByRole('button', { name: 'Menu', exact: true })).toBeFocused()
     await page.getByRole('button', { name: 'Menu', exact: true }).click()
   }
-  await expect(page.getByRole('navigation').getByRole('link')).toHaveText(['Stage battle', 'Factions', 'Battle history', 'Admin'])
+  await expect(page.getByRole('navigation').getByRole('link')).toHaveText(['Stage battle', 'Factions', 'Battle history', 'Leagues', 'Statistics', 'Admin'])
   await page.getByRole('navigation').getByRole('link', { name: 'Factions', exact: true }).click()
   await page.getByRole('link', { name: '+ CREATE FACTION' }).click()
   await expect(page.getByLabel('Faction name', { exact: true })).toBeInViewport()

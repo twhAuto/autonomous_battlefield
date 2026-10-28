@@ -28,6 +28,7 @@ autonomous_battlefield/
 │   │   ├── battle/{api,service,catalog,worker,repo,resultcache}/
 │   │   ├── faction/{api,service,repo}/
 │   │   ├── league/{api,service,repo}/ # AI leagues; the league package holds the pure rules
+│   │   ├── analytics/{api,service,repo}/ # Completed-battle summaries; the analytics package aggregates
 │   │   ├── game/               # Deterministic state transitions
 │   │   │   └── controller/     # Infrastructure-free controller contracts
 │   │   ├── ai/                 # Shared decision contracts; subpackages for capability tokens,
@@ -51,7 +52,7 @@ autonomous_battlefield/
 │   └── evals/                  # Evaluation cases and pricing configuration
 ├── frontend/src/
 │   ├── app/                    # Application shell, routes, integration tests
-│   ├── features/{battles,factions,auth,admin}/ # Feature pages, API clients, unit tests
+│   ├── features/{battles,factions,leagues,analytics,auth,admin}/ # Feature pages, API clients, unit tests
 │   ├── shared/{api,domain,components,hooks,styles}/ # Shared contracts, visuals, and foundations
 │   ├── pages/                  # General pages, including Home
 │   └── test/                   # Shared test setup
@@ -213,7 +214,9 @@ by the [AI development policy](ai-development-policy.md). The skills in
 `.claude/skills/`) cover ticket linking, PRs, CI triage, releases, docs and backlog
 work, and [cross-review](cross-review.md) covers agent review. Every agent-authored
 change is linked to a Notion ticket whose `AB-NN` ID appears in the branch name,
-commit subjects and PR title.
+commit subjects and PR title. Docs describe current behavior with one owning doc
+per topic; the rules and owners are in
+[`AGENTS.md`](../../AGENTS.md#documentation-maintenance).
 
 For a PR stack, each PR's review and Sonar preview use its actual target branch.
 Jenkins verifies only PRs targeting `dev` or `main`, so a stacked PR needs

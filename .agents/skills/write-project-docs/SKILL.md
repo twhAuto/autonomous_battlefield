@@ -1,11 +1,19 @@
 ---
 name: write-project-docs
-description: Write or substantially revise Autonomous Battlefield architecture, codebase, API, setup, deployment, or operations documentation. Use for "write docs", "update the runbook", "document this architecture", or major developer-guide revisions.
+description: Write, update or revise Autonomous Battlefield documentation (game rules, architecture, API, database, codebase, setup, deployment or operations), including the doc edits inside a feature or fix PR. Use for "write docs", "update the docs", "update the runbook", "document this", or whenever a change touches docs/, README.md or openapi.yaml.
 ---
 
 # Write project documentation
 
-1. Inspect the relevant current code, manifests, scripts, tests, and nearby docs before writing. Prefer updating the owning page: `docs/game/` for gameplay rules and scenario mechanics, `docs/architecture/system-architecture.md` for runtime boundaries and behavior, `docs/architecture/ai-decisions.md` for the engine–model decision contract, `docs/architecture/database.md` for schema, database access and migrations, `docs/developer/codebase-guide.md` and focused design guides for source navigation (never hand-edit the generated `docs/developer/component-map.md`; the command to regenerate it is at the top of that page), `docs/architecture/openapi.yaml` for API routes and fields and `docs/architecture/api.md` for API behavior, `docs/operations/` for procedures, and `README.md` for setup and entry points.
-2. Write for a developer new to the project. State prerequisites, inputs, effects, verification, and recovery where relevant. Label **current** behavior separately from proposals; distinguish repository support from verified live deployment. Keep one authoritative operational procedure and link to it instead of copying commands throughout the repo.
-3. Verify every path, command, option, environment variable, link target, example response, and diagram against the current tree and implementation. For changed procedures, exercise safe render/dry-run or targeted checks when possible; never execute a production change just to validate prose.
-4. Run `python3 scripts/test/test-doc-links.py` to check internal links and heading anchors. Check the diff for stale statements and contradictions with other guides. Report source files consulted, examples actually exercised, and any external or live-environment detail that remains unverified.
+Docs describe the system as it is now. Apply the rules and owning-doc list in the Documentation maintenance section of `AGENTS.md`.
+
+1. Decide whether docs change. Name the behavior a player, operator or contributor meets differently after the change. If there is none, make no doc edit and say so in the PR. Otherwise find the owning doc and the section that already covers each topic.
+2. Read before writing. Read the whole owning section and the relevant code, manifests, scripts and tests. Search the docs for the topic's main identifiers to find statements elsewhere that the change makes stale or that your text would duplicate.
+3. Edit the owning section. Rewrite it so it reads as one description of current behavior, as though it had always worked this way, and replace stale statements instead of qualifying them. Replace duplicates elsewhere with a link. Write for a developer new to the project: state prerequisites, inputs, effects, verification and recovery where relevant. Label proposals separately from current behavior, and distinguish repository support from verified live deployment.
+4. Check the diff before committing. `git diff -U0 origin/dev -- docs README.md | grep -nE '^\+.*(AB-[0-9]+|PR #?[0-9]+|\b(adds|now|no longer|existing|former|previously)\b)'` lists lines to reread; not every hit is wrong. Also confirm that the diff:
+   - appends no section for this feature, ticket or migration;
+   - holds nothing that matters only during review or rollout (move it to the PR description);
+   - does not restate code function by function or test by test;
+   - adds only sentences a newcomer would miss if they were gone;
+   - removes what it made stale, especially when it only adds lines.
+5. Verify every path, command, option, environment variable, link target, example response and diagram against the current tree. For changed procedures, run safe render, dry-run or targeted checks when possible; never execute a production change just to validate prose. Run `python3 scripts/test/test-doc-links.py`. Report the sources consulted, the examples exercised, and any live-environment detail left unverified.

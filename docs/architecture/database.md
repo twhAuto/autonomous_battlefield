@@ -65,7 +65,7 @@ must supply the restricted login
 | `agent_execution_leases` | Active CLI execution slots, keyed by decision or generation ID | Rows expire with their lease and are pruned on admission |
 | `model_access_policy` | Singleton administrator model-access policy | `version` rejects conflicting saves |
 | `player_members` / `player_membership_sync` / `player_membership_audit` | Managed Player grants, Cloudflare Access group synchronization state, and audit history | Unique email; versioned desired and synced state |
-| `battle_controller_evaluation` (view) | Per-controller decision count, fallback and invalid-plan rates, latency, tokens, plan diversity and win rate | Readable by the AI gateway role |
+| `battle_controller_evaluation` (view) | Per-controller decision count, fallback and invalid-plan rates, latency, tokens, plan diversity and win rate | Readable by the AI gateway role. `GET /v1/analytics` reports these figures by model and reasoning effort as well, from `battle_runs` and `battle_decisions` |
 | `friend_ai_usage` (view) | Model usage per identity across decisions and generation jobs | Private reporting view |
 | `goose_db_version` | Goose's applied-migration ledger | Production recovery records compare it before approving an image rollback |
 
