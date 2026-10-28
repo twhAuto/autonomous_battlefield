@@ -35,6 +35,10 @@ introduce a new boundary.
 | [`ai/prompts`](../../backend/internal/ai/prompts) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`ai/providers`](../../backend/internal/ai/providers) |  |  |  | ✓ | ✓ |
 | [`ai/runner`](../../backend/internal/ai/runner) |  |  |  | ✓ | ✓ |
+| [`analytics`](../../backend/internal/analytics) | ✓ |  |  |  |  |
+| [`analytics/api`](../../backend/internal/analytics/api) | ✓ |  |  |  |  |
+| [`analytics/repo`](../../backend/internal/analytics/repo) | ✓ |  |  |  |  |
+| [`analytics/service`](../../backend/internal/analytics/service) | ✓ |  |  |  |  |
 | [`apierror`](../../backend/internal/apierror) | ✓ | ✓ | ✓ | ✓ |  |
 | [`app`](../../backend/internal/app) | ✓ |  |  |  |  |
 | [`authn`](../../backend/internal/authn) | ✓ | ✓ | ✓ | ✓ |  |

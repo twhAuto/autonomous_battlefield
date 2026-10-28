@@ -58,6 +58,8 @@ tags:
     description: Queueing, observing, and controlling battles, and reading their history.
   - name: Leagues
     description: Admin-run AI tournaments whose fixtures the API plays as background battles.
+  - name: Analytics
+    description: Summaries of completed battles by controller, faction, unit, upgrade and map.
   - name: Catalog
     description: Read-only scenario, ruleset, and AI controller profile data.
   - name: Background generation
@@ -867,6 +869,44 @@ paths:
         '403': {$ref: '#/components/responses/PermissionDenied'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/analytics:
+    get:
+      tags: [Analytics]
+      operationId: getAnalytics
+      summary: Summarize completed battles
+      description: |
+        Developers and Admins only. Covers completed battles, newest first, at most
+        5000 (`truncated` reports a cut). Every list is sorted, so equal data gives an
+        equal report. Unit and upgrade figures use only results that carry per-type
+        statistics; older results count for outcomes alone.
+      parameters:
+        - name: leagueId
+          in: query
+          description: Only battles played for this league.
+          schema: {type: string, format: uuid}
+        - name: rulesVersion
+          in: query
+          description: Omit for the current rules version; `all` includes every version.
+          schema: {type: string}
+        - name: since
+          in: query
+          description: Only battles completed at or after this time.
+          schema: {type: string, format: date-time}
+        - name: excludeFallback
+          in: query
+          description: Leave out battles where any model decision fell back to the scripted plan.
+          schema: {type: boolean, default: false}
+      responses:
+        '200':
+          description: The report.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AnalyticsReport'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
         '500': {$ref: '#/components/responses/Internal'}
 
   /v1/admin/model-access:
@@ -1955,6 +1995,154 @@ components:
           properties:
             winner: {type: [integer, 'null'], description: Null for a draw.}
             reason: {type: string, examples: [castle_destroyed, tick_limit]}
+
+    AnalyticsController:
+      description: 'A model controller, or `{type: scripted}`.'
+      type: object
+      required: [type]
+      properties:
+        type: {type: string, enum: [scripted, model]}
+        profileId: {type: string}
+        provider: {type: string}
+        runtime: {type: string}
+        modelIdentifier: {type: string}
+        reasoningEffort: {type: string}
+
+    AnalyticsOutcome:
+      description: |
+        Win record. `winRate` counts draws as non-wins; `winRateLow` and
+        `winRateHigh` bound it with the 95% Wilson score interval.
+      type: object
+      required: [battles, wins, draws, losses, castleWins, winRate, winRateLow, winRateHigh, meanTicksToWin]
+      properties:
+        battles: {type: integer}
+        wins: {type: integer}
+        draws: {type: integer}
+        losses: {type: integer}
+        castleWins: {type: integer, description: Wins by destroying the enemy castle.}
+        winRate: {type: number}
+        winRateLow: {type: number}
+        winRateHigh: {type: number}
+        meanTicksToWin: {type: [number, 'null']}
+
+    AnalyticsReport:
+      type: object
+      required: [rulesVersion, truncated, excludedForFallback, battles, battlesWithFallback, sidesWithUnitStats, models, factions, headToHead, units, unitsByModel, upgrades, maps]
+      properties:
+        rulesVersion: {type: [string, 'null'], description: The rules version covered; null for every version.}
+        truncated: {type: boolean}
+        excludedForFallback: {type: integer}
+        battles: {type: integer}
+        battlesWithFallback: {type: integer}
+        sidesWithUnitStats: {type: integer, description: Sides whose results carry per-type statistics.}
+        models:
+          description: One entry per controller, best win rate first; a mirror match counts once per side.
+          type: array
+          items:
+            allOf:
+              - {$ref: '#/components/schemas/AnalyticsOutcome'}
+              - type: object
+                required: [controller, decisions, fallbackRate, invalidPlanRate, meanDecisionLatencyMs, tokensPerBattle]
+                properties:
+                  controller: {$ref: '#/components/schemas/AnalyticsController'}
+                  decisions: {type: integer, description: Model decisions in the battles' final attempts.}
+                  fallbackRate: {type: number}
+                  invalidPlanRate: {type: number}
+                  meanDecisionLatencyMs: {type: [number, 'null']}
+                  tokensPerBattle:
+                    type: object
+                    required: [input, cachedInput, output]
+                    properties:
+                      input: {type: number}
+                      cachedInput: {type: number}
+                      output: {type: number}
+        factions:
+          type: array
+          items:
+            allOf:
+              - {$ref: '#/components/schemas/AnalyticsOutcome'}
+              - type: object
+                required: [factionId, factionName]
+                properties:
+                  factionId: {type: string}
+                  factionName: {type: string}
+        headToHead:
+          description: Each pair of different controllers, both ways round.
+          type: array
+          items:
+            type: object
+            required: [controller, opponent, battles, wins, draws, losses]
+            properties:
+              controller: {$ref: '#/components/schemas/AnalyticsController'}
+              opponent: {$ref: '#/components/schemas/AnalyticsController'}
+              battles: {type: integer}
+              wins: {type: integer}
+              draws: {type: integer}
+              losses: {type: integer}
+        units:
+          type: array
+          items:
+            type: object
+            required: [unitType, fielded, recruited, lost, kills, buildingsDestroyed, damageDealt, damageTaken, healthRestored, goldSpent, killsPerLoss, damagePerGold, shareInWins, shareInLosses]
+            properties:
+              unitType: {type: string}
+              fielded: {type: integer}
+              recruited: {type: integer}
+              lost: {type: integer}
+              kills: {type: integer}
+              buildingsDestroyed: {type: integer}
+              damageDealt: {type: integer}
+              damageTaken: {type: integer}
+              healthRestored: {type: integer}
+              goldSpent: {type: integer}
+              killsPerLoss: {type: [number, 'null']}
+              damagePerGold: {type: [number, 'null']}
+              shareInWins: {type: number, description: Share of all units recruited by winning sides.}
+              shareInLosses: {type: number, description: Share of all units recruited by losing sides.}
+        unitsByModel:
+          type: array
+          items:
+            type: object
+            required: [controller, unitType, recruited, armyShare]
+            properties:
+              controller: {$ref: '#/components/schemas/AnalyticsController'}
+              unitType: {type: string}
+              recruited: {type: integer}
+              armyShare: {type: number, description: Share of the controller's recruited units.}
+        upgrades:
+          type: array
+          items:
+            type: object
+            required: [upgradeId, purchases, purchaseRate, meanPurchaseTick, winRateWhenPurchased, winRateWhenNot]
+            properties:
+              upgradeId: {type: string}
+              purchases: {type: integer}
+              purchaseRate: {type: number}
+              meanPurchaseTick: {type: number}
+              winRateWhenPurchased: {type: [number, 'null']}
+              winRateWhenNot: {type: [number, 'null'], description: Null when every side bought it.}
+        maps:
+          type: array
+          items:
+            type: object
+            required: [scenarioId, battles, draws, drawRate, meanTicks, sides]
+            properties:
+              scenarioId: {type: string}
+              battles: {type: integer}
+              draws: {type: integer}
+              drawRate: {type: number}
+              meanTicks: {type: number}
+              sides:
+                description: Spawn side 0 then side 1.
+                type: array
+                minItems: 2
+                maxItems: 2
+                items:
+                  type: object
+                  required: [wins, winRate]
+                  properties:
+                    wins: {type: integer}
+                    winRate: {type: number}
 
     ProductionSchedule:
       description: |

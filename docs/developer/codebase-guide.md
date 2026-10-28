@@ -28,6 +28,7 @@ autonomous_battlefield/
 │   │   ├── battle/{api,service,catalog,worker,repo,resultcache}/
 │   │   ├── faction/{api,service,repo}/
 │   │   ├── league/{api,service,repo}/ # AI leagues; the league package holds the pure rules
+│   │   ├── analytics/{api,service,repo}/ # Completed-battle summaries; the analytics package aggregates
 │   │   ├── game/               # Deterministic state transitions
 │   │   │   └── controller/     # Infrastructure-free controller contracts
 │   │   ├── ai/                 # Shared decision contracts; subpackages for capability tokens,
@@ -373,6 +374,19 @@ only its own battles. [`league/api`](../../backend/internal/league/api) serves t
 scheduler with `App.StartLeagueScheduler`. `battle/repo/battles.go` adds a battle's
 league to `GetBattle`, and `migrations/leagues_integration_test.go` covers the budget
 exemption and the downgrade guard.
+
+## Analytics implementation
+
+[`internal/analytics`](../../backend/internal/analytics) turns completed battles into a
+`Report` with `Aggregate`; `analytics.go` holds controller, faction and head-to-head
+outcomes with the `Wilson` interval, and `units.go` the unit, upgrade and map tallies.
+[`analytics/service`](../../backend/internal/analytics/service) checks Inspect access,
+applies the rules-version default and the fallback filter, and caps a report at
+`MaxBattles`. [`analytics/repo`](../../backend/internal/analytics/repo) reads frozen
+factions and results from `battle_runs` and totals each side's model decisions from
+the final attempt; its integration test runs in a private schema.
+[`analytics/api`](../../backend/internal/analytics/api) serves `GET /v1/analytics`, and
+`internal/app` passes the catalog's rules version as the default.
 
 ## Battle replay implementation
 
