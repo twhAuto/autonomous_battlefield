@@ -374,6 +374,27 @@ test('faction strip controls share one height', async ({ page }) => {
   expect(new Set(heights)).toEqual(new Set([44]))
 })
 
+test('a fully upgraded faction wraps its upgrade icons inside narrow strips', async ({ page }) => {
+  const battle = battleFixture()
+  Object.assign(battle.state.factions[0], { ownedUpgradeIds: ['arsenal', 'arsenal_2', 'arsenal_3', 'plating', 'plating_2', 'plating_3', 'industry', 'industry_2', 'industry_3', 'gunpowder', 'knighthood', 'vanguard_bulwark', 'ranger_skirmish', 'herbalist_potency', 'siege_breach'] })
+  await page.route(`**/v1/battles/${battleId}`, route => route.fulfill({ json: battle }))
+  // A phone, and a desktop strip narrowed by the inspector beside its plan disclosure.
+  for (const width of [320, 1100]) {
+    await page.setViewportSize({ width, height: 800 })
+    await page.goto(`/battles/${battleId}`)
+    const group = page.getByRole('group', { name: 'Amber upgrades', exact: true })
+    await expect(group).toBeVisible()
+    const fit = await group.evaluate(node => {
+      const box = node.getBoundingClientRect()
+      const strip = node.closest('.faction-summary')!.getBoundingClientRect()
+      const items = [...node.querySelectorAll('.upgrade-chips__item')].map(item => item.getBoundingClientRect().right)
+      return { items: items.length, itemsInside: Math.max(...items) <= box.right, groupInside: box.right <= strip.right, height: box.height }
+    })
+    expect(fit).toMatchObject({ items: 9, itemsInside: true, groupInside: true })
+    expect(fit.height).toBeGreaterThanOrEqual(44)
+  }
+})
+
 test('shows the complete failure reason for a failed battle', async ({ page }) => {
   const reason = `Engine halted: ${'worker lease lost while persisting the snapshot; '.repeat(8)}end of reason.`
   await page.route(`**/v1/battles/${battleId}`, route => route.fulfill({ json: { ...battleFixture(), status: 'failed', result: null, errorMessage: reason } }))

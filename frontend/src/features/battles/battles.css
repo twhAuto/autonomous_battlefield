@@ -310,12 +310,15 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
 .faction-summary__metrics > div { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .faction-summary .faction-summary__metrics dt { color: #aeb6a9; font-size: 11px; }
 .faction-summary .faction-summary__metrics dd { margin: 0; color: var(--lime); font-size: 13px; overflow-wrap: anywhere; }
-/* Every strip control is one touch target tall, the default height for buttons and disclosures. */
+/* Every strip control is one touch target tall, the default height for buttons and disclosures;
+   only an upgrade group too wide for its column grows, wrapping its icons. */
 .faction-summary__operations { --strip-control-height: 44px; display: flex; align-items: center; gap: 10px; min-width: 0; }
 /* Production and upgrade chips wrap within their own column so the plan keeps its place. */
 .faction-summary__assets { display: flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .production-chips { display: flex; flex: 0 1 auto; flex-wrap: wrap; gap: 4px; min-width: 0; margin: 0; padding: 0; list-style: none; }
-.production-chip, .upgrade-chips { height: var(--strip-control-height); color: #c9d0c3; background: #10150f; border: 1px solid #3a4237; font: 500 10px 'DM Mono', monospace; }
+.production-chip { height: var(--strip-control-height); }
+.upgrade-chips { min-height: var(--strip-control-height); }
+.production-chip, .upgrade-chips { color: #c9d0c3; background: #10150f; border: 1px solid #3a4237; font: 500 10px 'DM Mono', monospace; }
 .production-chip > details { height: 100%; }
 .production-chip > details > summary, details.upgrade-chips > summary { position: relative; display: inline-flex; align-items: center; gap: 1px; height: 100%; min-height: 0; padding: 0 4px 3px; list-style: none; cursor: pointer; }
 .production-chip > details > summary::-webkit-details-marker, .upgrade-chips > summary::-webkit-details-marker { display: none; }
@@ -334,7 +337,7 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
 .production-chip--off, .production-chip--idle { color: #858d80; }
 .production-chip--inactive { color: #858d80; border-style: dashed; }
 .upgrade-chips { flex: 0 1 auto; min-width: 0; }
-details.upgrade-chips > summary { gap: 0 7px; padding: 0 6px; white-space: nowrap; }
+details.upgrade-chips > summary { flex-wrap: wrap; align-content: center; gap: 2px 7px; min-height: calc(var(--strip-control-height) - 2px); padding: 2px 6px; }
 /* Tooltips hang from the chip's left edge, like its disclosure, so none leaves the page. */
 .upgrade-chips__item { display: inline-flex; align-items: center; gap: 1px; }
 .upgrade-chips__tooltip { position: absolute; top: calc(100% + 6px); left: -1px; z-index: 30; display: none; width: max-content; max-width: min(260px, 70vw); padding: 7px 10px; color: #d8ded2; background: #151a14; border: 1px solid rgba(216,255,104,.45); box-shadow: 0 12px 28px rgba(0,0,0,.55); font: 11px/1.45 'DM Mono', monospace; text-align: left; white-space: normal; pointer-events: none; }
