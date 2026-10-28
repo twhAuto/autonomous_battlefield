@@ -206,3 +206,32 @@ func (s *fakeFactionService) DeleteFaction(_ context.Context, id string) error {
 	s.deletedID = id
 	return s.deleteErr
 }
+
+func TestProfileRoutesCarryEmblem(t *testing.T) {
+	for _, method := range []string{http.MethodPost, http.MethodPut} {
+		s := &fakeFactionService{}
+		path := "/v1/factions"
+		if method == http.MethodPut {
+			path += "/7f22e693-bacd-46bb-b942-64fa613cd388"
+		}
+		response := httptest.NewRecorder()
+		body := `{"name":"A","doctrine":"Scout","emblem":"wolf"}`
+		if method == http.MethodPost {
+			body = `{"id":"7f22e693-bacd-46bb-b942-64fa613cd388","name":"A","doctrine":"Scout","emblem":"wolf"}`
+		}
+		newFactionTestRouter(s).ServeHTTP(response, httptest.NewRequest(method, path, strings.NewReader(body)))
+		got := s.updatedFaction.Emblem
+		if s.createdFaction != nil {
+			got = s.createdFaction.Emblem
+		}
+		if response.Code >= 300 || got != "wolf" {
+			t.Fatalf("%s: %d, emblem=%q", method, response.Code, got)
+		}
+	}
+	s := &fakeFactionService{factions: []faction.Faction{{Name: "A", Emblem: "moon"}}}
+	response := httptest.NewRecorder()
+	newFactionTestRouter(s).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/factions", nil))
+	if !strings.Contains(response.Body.String(), `"emblem":"moon"`) {
+		t.Fatal(response.Body.String())
+	}
+}

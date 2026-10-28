@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 
+	"github.com/twh09/autonomous_battlefield/backend/gamedata"
 	"github.com/twh09/autonomous_battlefield/backend/internal/apierror"
 	"github.com/twh09/autonomous_battlefield/backend/internal/observability/logging"
 
@@ -98,6 +99,31 @@ func assembledError(t *testing.T, response *httptest.ResponseRecorder) apierror.
 		t.Fatalf("response is not a JSON error envelope: %v (%q)", err, response.Body.String())
 	}
 	return envelope.Error
+}
+
+func TestAnalyticsDefaultsToTheCatalogRulesVersion(t *testing.T) {
+	if got := currentRulesVersion(&catalog.Catalog{}); got != "" {
+		t.Fatalf("empty catalog = %q", got)
+	}
+	loaded, err := catalog.LoadCatalog(gamedata.Files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := currentRulesVersion(loaded), loaded.Summaries()[0].RulesVersion; got == "" || got != want {
+		t.Fatalf("rules version = %q, want %q", got, want)
+	}
+}
+
+func TestLeagueSchedulerStopsWhenAsked(t *testing.T) {
+	application := New(appDatabase{}, &catalog.Catalog{}, 10_000, Options{})
+	stop := application.StartLeagueScheduler(context.Background())
+	stopped := make(chan struct{})
+	go func() { stop(); close(stopped) }()
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("league scheduler did not stop")
+	}
 }
 
 type appDatabase struct{}

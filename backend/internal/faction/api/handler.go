@@ -67,6 +67,7 @@ func (h *Handler) CreateFaction(w http.ResponseWriter, r *http.Request) {
 		Name       string `json:"name"`
 		Doctrine   string `json:"doctrine"`
 		Background string `json:"background"`
+		Emblem     string `json:"emblem"`
 	}
 	if err := httpapi.ReadJSON(w, r, &request); err != nil {
 		apierror.Write(w, r, http.StatusBadRequest, invalidBodyMessage)
@@ -74,7 +75,7 @@ func (h *Handler) CreateFaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := h.factionService.CreateFaction(r.Context(), factionservice.ProfileInput{
-		ID: request.ID, Name: request.Name, Doctrine: request.Doctrine, Background: request.Background,
+		ID: request.ID, Name: request.Name, Doctrine: request.Doctrine, Background: request.Background, Emblem: request.Emblem,
 	})
 	if errors.Is(err, authn.ErrForbidden) {
 		apierror.Write(w, r, http.StatusForbidden, permissionDeniedMessage)
@@ -127,13 +128,14 @@ func (h *Handler) UpdateFaction(w http.ResponseWriter, r *http.Request) {
 		Name       string `json:"name"`
 		Doctrine   string `json:"doctrine"`
 		Background string `json:"background"`
+		Emblem     string `json:"emblem"`
 	}
 	if err := httpapi.ReadJSON(w, r, &request); err != nil {
 		apierror.Write(w, r, http.StatusBadRequest, invalidBodyMessage)
 		return
 	}
 	id := r.PathValue("id")
-	err := h.factionService.UpdateFaction(r.Context(), factionservice.ProfileInput{ID: id, Name: request.Name, Doctrine: request.Doctrine, Background: request.Background})
+	err := h.factionService.UpdateFaction(r.Context(), factionservice.ProfileInput{ID: id, Name: request.Name, Doctrine: request.Doctrine, Background: request.Background, Emblem: request.Emblem})
 	switch {
 	case errors.Is(err, authn.ErrForbidden):
 		apierror.Write(w, r, http.StatusForbidden, permissionDeniedMessage)

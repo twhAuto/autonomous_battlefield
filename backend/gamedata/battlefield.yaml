@@ -10,23 +10,23 @@ fallbackPlan:
 scriptedPlans:
   - name: siege-column
     spendOrder: [construction, upgrades, recruitment]
-    upgradeOrders: [industry, arsenal, plating, industry_2, arsenal_2, plating_2, industry_3, arsenal_3, plating_3]
+    upgradeOrders: [industry, arsenal, plating, industry_2, arsenal_2, plating_2, knighthood, gunpowder, industry_3, arsenal_3, plating_3]
     actionWeights: {attack: 1200, defend: 1000}
     recruitmentOrders:
       - {unitType: vanguard, count: 1}
-      - {unitType: pikeman, count: 1}
+      - {unitType: cannon, count: 1}
       - {unitType: catapult, count: 1}
+      - {unitType: gunner, count: 1}
       - {unitType: herbalist, count: 1}
-      - {unitType: engineer, count: 1}
       - {unitType: scout, count: 1}
   - name: reinforce-breach
     spendOrder: [construction, upgrades, recruitment]
-    upgradeOrders: [industry, arsenal, plating, industry_2, arsenal_2, plating_2, industry_3, arsenal_3, plating_3]
+    upgradeOrders: [industry, arsenal, plating, industry_2, arsenal_2, plating_2, knighthood, gunpowder, industry_3, arsenal_3, plating_3]
     actionWeights: {attack: 1200, defend: 1000}
     recruitmentOrders:
+      - {unitType: heavy_cavalry, count: 1}
       - {unitType: raider_cavalry, count: 1}
-      - {unitType: ranger, count: 1}
+      - {unitType: gunner, count: 1}
+      - {unitType: cannon, count: 1}
       - {unitType: battering_ram, count: 1}
       - {unitType: pikeman, count: 1}
-      - {unitType: herbalist, count: 1}
-      - {unitType: crossbowman, count: 1}

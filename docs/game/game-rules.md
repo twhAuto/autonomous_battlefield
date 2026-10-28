@@ -8,10 +8,10 @@
 
 This page is the single entry point for the battle rules. It links to the owning
 documents for detail instead of repeating them:
-[Frontier Siege](frontier-siege.md) for the roster, structures, and map, and the
+[Frontier Siege](frontier-siege.md) for the roster, structures, and maps, and the
 [system architecture](../architecture/system-architecture.md#52-strategy-decision-window) for how
 decisions are requested, stored, and timed out. All maps use the shared
-`backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v7.yaml`
+`backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v8.yaml`
 roster and `backend/gamedata/battlefield.yaml` timing/controller configuration.
 Scenario files contain only map identity and geometry.
 
@@ -24,11 +24,12 @@ units then act autonomously every tick according to fixed rules. Identical input
 and plans always produce identical outcomes; the engine uses no randomness.
 
 A battle is created with a requested tick count (at most the scenario's
-`maximumTicks`, 800 for Frontier Siege) and runs one tick per `tickDuration` (1 s).
+`maximumTicks`, 800 on every map) and runs one tick per `tickDuration` (1 s).
 
 ## Map and starting state
 
-- Authored 15×11 and 25×17 hex maps with one castle per faction. All terrain,
+- Five authored hex maps from 15×11 to 33×25 ([list](frontier-siege.md#maps)),
+  each with one castle per faction. All terrain,
   entities, routes and actions are visible. Rocks block movement, not ranged fire.
 - Forests (`f`) are traversable and grant troops +3 defense after armor piercing;
   buildings cannot occupy them. Gold deposits (`g`) are traversable and grant an
@@ -50,7 +51,7 @@ A battle is created with a requested tick count (at most the scenario's
   original one-time upgrade definitions.
 
 In the **current shared ruleset**, each of those upgrade tracks has three sequential levels.
-Levels I, II and III cost **20, 50 and 100 gold** respectively (170 total per
+Levels I, II and III cost **160, 400 and 800 gold** respectively (1,360 total per
 track), and each adds +2 for a cumulative +2/+4/+6 bonus. Buy prerequisites
 first; multiple levels may be purchased in one production window when affordable.
 Each level is owned once, and repeating a purchased level is free and adds no
@@ -61,17 +62,34 @@ The effects and exceptions remain the same: Arsenal includes siege but does not
 add attack or healing to Herbalists; Plating affects units, not buildings; Industry
 affects economy buildings, not the castle. Upgrades last for that battle only.
 
-Four independent specialization pairs cost 60 gold per choice: Vanguard defense
+Four independent specialization pairs cost 480 gold per choice: Vanguard defense
 or attack, Ranger range or movement, Herbalist treatment strength or reach, and
 siege movement or building damage. Each pair permits one choice per faction per
 battle, with no switching/refund. These unit-scoped bonuses stack with general
 upgrade levels. See the [specialization table](frontier-siege.md#specializations).
 
+### Late-game unlocks
+
+Two upgrades have no bonus of their own and instead unlock late-game unit types:
+**Gunpowder** (1,000 gold) unlocks Cannon and Gunner, and **Knighthood** (800 gold)
+unlocks Heavy Cavalry. A unit type's `requiresUpgradeId` names its unlock. A plan may
+select a locked type only if the faction owns the unlock or orders it in the same
+plan's `upgradeOrders`; otherwise the plan is rejected before any spending. Because
+upgrades are bought before automatic unit purchases, an unlock and its first unit can
+start in the same window. A building selecting a type whose unlock was ordered but
+not yet bought waits without charge (`production.waitingForUpgrade`) and starts on the
+first tick the unlock is owned. These units exist to break late stalemates: once both
+factions own every general level, the 40-unit cap stops surplus gold becoming more
+troops, and the unlocked types put more strength in each unit slot. Scripted bots
+buy both unlocks after level II and then move their enabled sources to preferred
+late-game types.
+
 ## Units and buildings
 
-Eleven unit types (Vanguard, Striker, Ranger, Catapult, Battering Ram, Pikeman,
-Herbalist, Scout, Raider Cavalry, Engineer and Crossbowman) and eight constructible structures (Economy, Defense Tower, Outpost, Barracks, Archery Range, Stables, Siege Workshop and Infirmary). Stats, costs, capabilities, targeting, and building limits (twelve
-non-castle buildings, at most two economy; 40 units per faction) are in
+Fourteen unit types (Vanguard, Striker, Ranger, Catapult, Battering Ram, Pikeman,
+Herbalist, Scout, Raider Cavalry, Engineer, Crossbowman, and the
+[late-game](#late-game-unlocks) Cannon, Gunner and Heavy Cavalry) and eight constructible structures (Economy, Defense Tower, Outpost, Barracks, Archery Range, Stables, Siege Workshop and Infirmary). Stats, costs, capabilities, targeting, and building limits (sixteen
+non-castle buildings, at most four economy; 40 units per faction) are in
 [Frontier Siege](frontier-siege.md#unit-roster).
 
 ## Production windows
@@ -93,7 +111,7 @@ unit per source; historical batch mode retains its FIFO queue.
 - Windows change strategy, building production settings, construction and upgrades.
   Construction/upgrades follow `spendOrder`; automatic unit purchases happen afterward
   every tick, respecting `reserveGold`. The opening has no income or construction.
-  Core v7 uses continuous production; frozen older rulesets retain batch recruitment
+  Core v7 and later use continuous production; frozen older rulesets retain batch recruitment
   (six units per window and twelve paid orders per source).
 
 ## Construction and training
@@ -109,18 +127,18 @@ immediately; other new structures activate next tick.
 
 The castle is the only starting building and trains the same units as a Barracks.
 It also fires at enemy units during the tower phase while its queue continues
-training. Castles do not consume any of the twelve constructible building slots
-(ruleset v8 `buildings.maximumBuildingCount`; economy buildings count toward it and
-also keep their own limit of two).
+training. Castles do not consume any of the sixteen constructible building slots
+(ruleset v8 and later `buildings.maximumBuildingCount`, twelve in v8; economy buildings count toward it and
+also keep their own limit of four, two before ruleset v9).
 Build additional Barracks for simultaneous training or forward deployment. The castle and
 five constructible production buildings expose supported unit IDs as `trains`:
 
 | Building | Units |
 | --- | --- |
 | Castle / Barracks | Vanguard, Striker, Pikeman |
-| Archery Range | Ranger, Crossbowman |
-| Stables | Scout, Raider Cavalry |
-| Siege Workshop | Catapult, Battering Ram, Engineer |
+| Archery Range | Ranger, Crossbowman, Gunner |
+| Stables | Scout, Raider Cavalry, Heavy Cavalry |
+| Siege Workshop | Catapult, Battering Ram, Engineer, Cannon |
 | Infirmary | Herbalist |
 
 The AI supplies `productionOrders` with `buildingId`, `unitType` and `enabled`.
@@ -131,10 +149,12 @@ deployment can buy the next unit that same tick; its training advances next tick
 Purchases follow building ID order after income, construction/upgrades and training.
 Insufficient gold above `reserveGold` sets `production.waitingForGold`; the building
 stays enabled and retries each tick. No purchase occurs while a paid unit is present.
-Ruleset v8 caps each faction at 40 units (`maximumUnitCount`), counting living units
+Ruleset v8 and later cap each faction at 40 units (`maximumUnitCount`), counting living units
 plus paid units still training. At the cap, starts pause without charge and set
 `production.waitingForUnitLimit`; training resumes on the first tick a slot frees.
-Frozen battles without a cap keep unlimited production.
+Frozen battles without a cap keep unlimited production. A selected type that is still
+locked sets `production.waitingForUpgrade` instead, also without charge, until its
+[unlock](#late-game-unlocks) is owned.
 
 Setting `enabled: false` stops new starts but lets the paid unit finish. A different
 `unitType` applies to the next purchase. An off order may omit `unitType` to retain

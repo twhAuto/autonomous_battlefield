@@ -49,6 +49,12 @@ func CloneMap(value Map) Map {
 
 func CloneResult(value Result) Result {
 	value.Factions = append([]FactionStats(nil), value.Factions...)
+	for i := range value.Factions {
+		faction := &value.Factions[i]
+		faction.UnitTypes = append([]UnitTypeStats(nil), faction.UnitTypes...)
+		faction.BuildingTypes = append([]BuildingTypeStats(nil), faction.BuildingTypes...)
+		faction.Upgrades = append([]UpgradePurchase(nil), faction.Upgrades...)
+	}
 	if value.WinnerFactionID != nil {
 		winner := *value.WinnerFactionID
 		value.WinnerFactionID = &winner

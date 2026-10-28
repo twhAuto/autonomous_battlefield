@@ -51,6 +51,9 @@ type AIGatewayConfig struct {
 
 type API struct {
 	MaxTicks uint64
+	// EngineConcurrency is the engine's battle slots (engine.concurrency), which the
+	// league scheduler fills.
+	EngineConcurrency int
 }
 
 // fileConfig mirrors the YAML file. The *EnvironmentVariable keys are retired: they may
@@ -101,6 +104,7 @@ type fileConfig struct {
 		HeartbeatInterval           string `yaml:"heartbeatInterval"`
 		ShutdownTimeout             string `yaml:"shutdownTimeout"`
 		MaxAttempts                 int    `yaml:"maxAttempts"`
+		Concurrency                 *int   `yaml:"concurrency"`
 		WorkerIDEnvironmentVariable string `yaml:"workerIdEnvironmentVariable"`
 	} `yaml:"engine"`
 	AI struct {
@@ -274,7 +278,8 @@ func parseAPIConfig(raw fileConfig) (API, error) {
 	if maxTicks > 10_000 {
 		return API{}, fmt.Errorf("api.maxTicks must not exceed 10000")
 	}
-	return API{MaxTicks: maxTicks}, nil
+	concurrency, err := parseEngineConcurrency(raw)
+	return API{MaxTicks: maxTicks, EngineConcurrency: concurrency}, err
 }
 
 func parseOptionalDuration(field, value string, fallback time.Duration) (time.Duration, error) {

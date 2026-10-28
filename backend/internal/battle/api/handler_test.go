@@ -139,6 +139,29 @@ func TestGetBattleReturnsStatusAndParticipants(t *testing.T) {
 	}
 }
 
+func TestGetBattleShowsItsLeagueOnlyWhenPresent(t *testing.T) {
+	group := "B"
+	run := &battleservice.BattleRun{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", Status: "running"}
+	read := func() map[string]any {
+		request := httptest.NewRequest(http.MethodGet, "/v1/battles/"+run.ID, nil)
+		request.SetPathValue("id", run.ID)
+		response := httptest.NewRecorder()
+		NewHandler(&fakeBattleService{run: run}).GetBattle(response, request)
+		var body map[string]any
+		if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		return body
+	}
+	if _, present := read()["league"]; present {
+		t.Fatal("battle outside a league reports one")
+	}
+	run.League = &battleservice.BattleLeague{ID: "league", Name: "Autumn cup", FixtureID: "fixture", Stage: "group", Group: &group, Round: 2, Leg: 1}
+	if league, _ := read()["league"].(map[string]any); league["name"] != "Autumn cup" || league["group"] != "B" || league["round"] != 2.0 {
+		t.Fatalf("league = %v", league)
+	}
+}
+
 func TestStopBattleResponses(t *testing.T) {
 	activeID := "7f22e693-bacd-46bb-b942-64fa613cd388"
 	for _, test := range []struct {
@@ -392,6 +415,8 @@ type fakeBattleService struct {
 	stopCalled    bool
 	pauseCalled   bool
 	resumeCalled  bool
+	replay        battleservice.BattleReplay
+	replayTick    uint64
 }
 
 func (s *fakeBattleService) ListScenarios() []battleservice.ScenarioSummary { return s.scenarios }
@@ -412,6 +437,10 @@ func (s *fakeBattleService) ListDecisionHistory(context.Context, string, int) ([
 func (s *fakeBattleService) CreateBattle(_ context.Context, input battleservice.CreateBattleInput) (*battleservice.BattleRun, error) {
 	s.createInput = input
 	return s.run, s.err
+}
+
+func (s *fakeBattleService) ValidateBattle(context.Context, battleservice.CreateBattleInput) error {
+	return s.err
 }
 
 func (s *fakeBattleService) GetBattle(context.Context, string) (*battleservice.BattleRun, error) {
@@ -439,6 +468,11 @@ func (s *fakeBattleService) ListBattleEvents(_ context.Context, _ string, attemp
 	s.eventsLimit = limit
 	s.eventsLatest = latest
 	return s.page, s.err
+}
+
+func (s *fakeBattleService) GetBattleReplay(_ context.Context, _ string, tick uint64) (battleservice.BattleReplay, error) {
+	s.replayTick = tick
+	return s.replay, s.err
 }
 
 func (s *fakeBattleService) ListBattles(_ context.Context, input battleservice.BattleHistoryInput) (battleservice.BattleHistoryPage, error) {

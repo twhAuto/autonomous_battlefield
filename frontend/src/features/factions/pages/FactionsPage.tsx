@@ -84,7 +84,7 @@ export function FactionsPage() {
             {factions.map((faction, index) => (
               <article className="registry-card" key={faction.id}>
                 <span className="registry-card__index">{(index + 1).toString().padStart(2, '0')}</span>
-                <Emblem seed={faction.name} />
+                <Emblem seed={faction.name} emblem={faction.emblem} />
                 <div className="registry-card__body">
                   <span>REGISTERED FACTION</span>
                   <h2>{faction.name}</h2>

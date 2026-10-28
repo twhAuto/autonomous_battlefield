@@ -112,8 +112,10 @@ func startServer(shutdownSignal context.Context, configuration config.APIConfig)
 	if memberStore != nil {
 		configuration.Auth.ResolvePlayer = memberStore.Allowed
 	}
-	application := app.New(db, catalog, configuration.API.MaxTicks, app.Options{Auth: configuration.Auth, Cache: cache, Generation: &configuration.Generation, Profiles: profiles, Members: membersRepository(memberStore)})
+	application := app.New(db, catalog, configuration.API.MaxTicks, app.Options{Auth: configuration.Auth, Cache: cache, Generation: &configuration.Generation, Profiles: profiles, Members: membersRepository(memberStore), EngineConcurrency: configuration.API.EngineConcurrency})
 	lifecycle.Activate(application.HTTPHandler(), db, nil)
+	stopLeagues := application.StartLeagueScheduler(processContext)
+	defer stopLeagues()
 	slog.Info("api_ready", "address", server.Addr)
 
 	select {

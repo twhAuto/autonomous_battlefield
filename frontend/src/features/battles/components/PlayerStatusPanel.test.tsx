@@ -30,6 +30,7 @@ describe('player status', () => {
     expect(crimson.getByText('Buildings').nextElementSibling).toHaveTextContent('1')
     expect(crimson.getByText('90 / 100')).toBeInTheDocument()
     expect(crimson.getByText('steel')).toBeVisible()
+    expect(within(screen.getByRole('article', { name: 'Amber status' })).getByText('Owned upgrades').nextElementSibling).toHaveTextContent('None')
     await userEvent.click(crimson.getByText('2 × Ranger'))
     expect(crimson.getByText('7 / 10')).toBeVisible()
     expect(crimson.getByText('Ranger · c1')).toBeVisible()
@@ -43,6 +44,7 @@ describe('player status', () => {
     expect(crimson.getByText('Gold').nextElementSibling).toHaveTextContent('—')
     rerender(<Panel state={{ ...state, units: null, buildings: null, factions: null }} />)
     expect(crimson.getByText('Units on field').nextElementSibling).toHaveTextContent('—')
+    expect(crimson.getByText('Owned upgrades').nextElementSibling).toHaveTextContent('—')
     rerender(<Panel state={{ ...state, units: null, buildings: null }} />)
     expect(crimson.getByText('Units on field').nextElementSibling).toHaveTextContent('0')
     expect(crimson.getByText('No units on the field')).toBeInTheDocument()
@@ -53,6 +55,17 @@ describe('player status', () => {
     expect(amber.getByText('Gold').nextElementSibling).toHaveTextContent('0')
     expect(amber.getByText('Destroyed')).toBeInTheDocument()
   })
+})
+
+it('lists the highest owned upgrade per track with icons', () => {
+  const factions = [{ factionId: 'a', gold: 0, goldEarned: 0, goldSpent: 0, goldLooted: 0, ownedUpgradeIds: ['arsenal', 'arsenal_2', 'siege_breach'] }]
+  render(<PlayerOverview status={playerStatus({ ...state, factions }, 'a')} />)
+  const items = within(screen.getByText('Owned upgrades').nextElementSibling as HTMLElement).getAllByRole('listitem')
+  expect(items.map((item) => item.textContent)).toEqual([
+    'Arsenal II+4 attack for every attacking unit',
+    'Siege: Breach (+8 building damage)Catapults, Battering Rams and Cannons deal 8 more damage to buildings',
+  ])
+  expect(items[1].querySelectorAll('svg')).toHaveLength(2)
 })
 
 it('keeps roster numbers after recruitment, deaths, reordering, and remounting', async () => {

@@ -20,10 +20,7 @@ For Admin and Developer viewers, each faction status box shows the latest
 accepted or fallback plan at or before the current tick and its submitted
 rationale. A pending or future decision does not replace the applied plan.
 Stopped battles retain the last plan; missing records have explicit empty states.
-Fallback plans are labeled. The strip shows the plan name; opening it reveals the
-full plan and rationale in a keyboard-focusable read-only text box, capped at 320px
-and floating over the map, so it costs no layout space while closed.
-Player roles retain the existing restriction on decision inspection.
+Fallback plans are labeled. Players cannot inspect decisions.
 
 ## Decision lifecycle
 
@@ -52,8 +49,8 @@ flowchart TD
 | `pending` → `accepted` (scripted) | A scripted controller's plan is submitted directly by the engine. |
 | `pending` → `running` (claimed) | A worker claims a model decision and receives its request capability. An expired lease is reclaimed and stays `running`. |
 | `running` → `accepted` (submitted) | The model submits a valid plan with that capability. A model cannot submit from `pending`, because the capability is issued only by the claim. |
-| `pending` → `failed` (stopped) | The budget runs out at claim time (`decision_budget`), or the battle is stopped or expires (`battle_stopped`). |
-| `running` → `failed` (error) | The runner fails, or the battle is stopped or expires. |
+| `pending` → `failed` (stopped) | The budget runs out at claim time (`decision_budget`), or the battle is stopped, expires or is requeued by a stopping engine (`battle_stopped`). |
+| `running` → `failed` (error) | The runner fails, or the battle is stopped, expires or is requeued. |
 | deadline → `fallback` | The window closes without an accepted plan; the engine records its fallback plan. |
 | `failed` → `fallback` | While the battle continues, the engine resolves a failed decision with its fallback plan. A failed decision whose battle has ended stays `failed`. |
 
@@ -155,7 +152,7 @@ untrusted game data. Contexts without any reference leaves retain the original
 single-block inline layout. Background generation keeps its separate prompt.
 
 The shared policy states training-roster selection once. For prefetched continuous
-production with the exact reviewed core-v7 mechanics, `rule-duplicates.json` removes
+production with the exact reviewed core-v8 mechanics, `rule-duplicates.json` removes
 policy sentences whose rules already appear in those frozen mechanics, plus the
 inactive legacy recruitment paragraph. A SHA-256 match of the **entire mechanics
 text** gates this reduction. Tool-fetch sessions, legacy mode and missing, truncated
@@ -229,7 +226,8 @@ whether it was truncated.
 
 The observation also freezes every legal or visible unit definition and its card in
 `unitReference`. The model's context lists each legal unit's cost, training ticks, class, role,
-strengths and weaknesses; `get_unit_details` returns full base stats and guidance
+strengths and weaknesses, plus `requiresUpgradeId` and `locked: true` for a unit whose
+unlock the faction does not own yet; `get_unit_details` returns full base stats and guidance
 for a few units at a time, scoped by the request capability to that frozen set.
 Hidden and unknown unit IDs both return `available: false`. The tool's description
 gives its batch and size limits. Reference content is untrusted data.
@@ -251,7 +249,7 @@ profiles/state. The MCP response remains one JSON object;
 session identity deduplication preserves this order. Only prefetched prompt rendering
 splits nested stable leaves into a separate reference block.
 
-With prompt v11, `encoding="tables-v1"` enables further lossless model-only
+The `encoding="tables-v1"` marker enables further lossless model-only
 compaction. A table has `fields`, `rows`, and optional `shared` values. Cells follow
 column order; null cells and omitted trailing cells mean absent fields. Records
 with explicit null fields stay inline. Unit/building catalogs use tables;
@@ -264,9 +262,7 @@ fields use that integer; string targets remain building IDs. `unitDeaths` entrie
 replace `factionId` with the same `faction` index. Destroyed buildings are omitted
 from the projection; faction stats still count them. Building IDs stay complete
 because `productionOrders` name them. Numbers are assigned in faction-group order
-and never reused within one response; they are not stable across decisions. At the
-AB-173 baseline (battle `fc68915a`, tick 190) this cut `unitMap` from 15.0 to 7.9 KB
-and the projected context from 36.3 to 28.5 KB.
+and never reused within one response; they are not stable across decisions.
 
 `view.unitMap` consolidates every visible unit into one table. `faction` is a
 zero-based index into `view.state.factions`; `xy` is position `[x,y]`. All IDs,
@@ -282,7 +278,7 @@ Historical plans may reuse individual exact active-plan fields through
 every memory entry. Historical differences remain explicit. Encodings are selected
 only when smaller including their keys and version marker; tiny or incompatible
 records retain the original shape. All references are local to one frozen response.
-Canonical observations, hashes and plan validation remain unchanged. CLI prefetch
+Canonical observations, hashes and plan validation use the uncompacted structure. CLI prefetch
 checks only transport metadata, allowing compact catalogs without decoding them
 as canonical storage structs. Offline round-trip tests reconstruct the original
 projection, including large integers, optional fields, unknown values and order.
@@ -313,7 +309,11 @@ largest authored building limit (16).
 Opening requires an explicit array; `[]` leaves production off. Later omission or
 `[]` leaves existing settings unchanged. Every ID must be a living, active owned
 `legal.recruitmentSources` entry, and its `trains` roster must support the selected
-unit. The service and engine share this frozen legality check. Legacy nonempty
+unit. The service and engine share this frozen legality check. A unit with
+`requiresUpgradeId` may be selected only if the faction owns that upgrade or orders it
+in the same plan's `upgradeOrders`; otherwise the service reports code `locked` on
+`plan.productionOrders` and the engine rejects the plan with the same rule
+(`game.ValidateUnitUnlocks`). Legacy nonempty
 recruitment orders/priorities are rejected in continuous mode; production orders
 are rejected for legacy contexts. Plan schema is v3; MCP tool schema is v8.
 
@@ -321,7 +321,7 @@ Each building pays for one unit at training start, after income and window purch
 respecting `reserveGold`. It automatically retries if unaffordable. A blocked exit
 holds the paid unit without additional charges. Disabling or changing selection
 preserves the paid unit; the change affects subsequent purchases. State exposes
-`production` (configured, unitType, enabled, waitingForGold, waitingForUnitLimit), `trainingQueue` (zero or one paid
+`production` (configured, unitType, enabled, waitingForGold, waitingForUnitLimit, waitingForUpgrade), `trainingQueue` (zero or one paid
 unit), and `trainingBlocked`. Compact agent observations retain owned production
 settings and both sides' paid training progress. Opponent `production` settings are
 redacted before freezing the context; physical entities remain visible. Spectators
@@ -331,7 +331,11 @@ start disabled and become selectable once active; no starting Barracks is grante
 
 Engine-authored scripted army templates are converted to one compatible selection
 per unconfigured active source. Existing selections, including disabled settings,
-remain unchanged. Previous-plan fallback omits selection orders because settings
+remain unchanged, except that an enabled source on a type without an unlock moves to
+the template's first preferred late-game type once the faction owns its unlock.
+Templates select only unlocked types and leave a source unconfigured if its whole
+roster is locked. Model factions receive templates only as first-window fallbacks,
+before an unlock is affordable. Previous-plan fallback omits selection orders because settings
 already persist; it must not reissue IDs of subsequently destroyed sources. Model
 instructions explicitly compare more training capacity and unit access with economy,
 defenses and upgrades. Empty construction orders remain a deliberate choice; the
@@ -379,9 +383,9 @@ model still receives the full message.
 | `plan_not_submitted` | Agent worker | Runner reported success but MCP holds no accepted plan |
 | `profile_unavailable`, `capability`, `provider_unavailable` | Agent worker | Claimed profile is not executable locally, the claim carried no capability, or no runner could be built for the profile |
 | `runner` | Agent worker | Runner failed without a more specific category |
-| `decision_budget` | PostgreSQL admission trigger | The battle's model execution budget is exhausted at claim time |
-| `ai_disabled_or_budget` | PostgreSQL insert trigger | AI execution was stopped, or the battle's budget was already spent, when the decision was created; the engine falls back at once |
-| `battle_stopped` | Battle stop route / expiry sweep | Battle stopped or expired while the decision was open |
+| `decision_budget` | PostgreSQL admission trigger | The battle's model execution budget is exhausted at claim time; never for a league battle, which is budget-exempt |
+| `ai_disabled_or_budget` | PostgreSQL insert trigger | AI execution was stopped, or the battle's budget was already spent (not for a budget-exempt league battle), when the decision was created; the engine falls back at once |
+| `battle_stopped` | Battle stop route / expiry sweep / engine requeue | Battle stopped, expired or requeued by a stopping engine while the decision was open |
 
 Background-generation jobs share the worker and runner categories above except
 `validation_limit`, `plan_not_submitted`, `runner`, `decision_budget` and
@@ -456,6 +460,12 @@ Multiple levels can execute in one window, subject to reserve gold and ordered
 affordability. Ruleset knowledge supplies prices and effects; the shared prompt
 explains ordering without hardcoding a particular content version.
 
+Unlock upgrades (core v8 `gunpowder` and `knighthood`) carry no bonus. The prompt
+tells the model that a `locked` unit needs its `requiresUpgradeId` owned or ordered,
+and that a building selecting it waits without charge
+(`production.waitingForUpgrade`) until the upgrade is bought. Upgrades run before
+automatic purchases, so an unlock and its first unit can start in one window.
+
 Specialist choices expose `targetUnit`/`targetClass` and `exclusiveGroup` alongside
 incremental effects. Ownership locks out the paired alternative for the battle.
 All maps expose the same legal content. Unit reference data includes Scout retreat,
@@ -472,7 +482,7 @@ effort (or the option's explicit `defaultReasoningEffort`). The backend validate
 both fields, freezes them in the scenario and decision row, and includes effort in
 retry-reuse matching. Workers validate against their own allowlist before execution;
 a removed option fails as `model_selection_unavailable`, rather than substituting
-another model. Existing API profiles and Antigravity expose no effort controls.
+another model. API profiles and Antigravity expose no effort controls.
 The setup page never leaves effort implicit: when the chosen model lists efforts
 it preselects `low` (or the first listed effort when `low` is absent) and submits
 it with the model identifier. API clients that omit both fields still get the
@@ -489,7 +499,7 @@ The shipped CLI catalog includes choices for lighter workloads: Claude `haiku`, 
 model-default effort because the alias can resolve to a model without effort
 support on older supported CLIs. Antigravity's Flash low/medium/high variants
 encode reasoning in the model ID. Profile defaults remain `gpt-5.6-luna`,
-`sonnet` and `gemini-3.8-flash-medium`; existing selections are preserved.
+`sonnet` and `gemini-3.8-flash-medium`.
 See the provider catalogs for [OpenAI](https://developers.openai.com/api/docs/models/gpt-6-luna),
 [Claude](https://code.claude.com/docs/en/model-config) and
 [Antigravity](https://antigravity.google/docs/models). Subscription availability
@@ -508,26 +518,25 @@ wait measurement immediately; `runnerCompletedAt` records the gateway receipt of
 the later worker report. Process-launch milliseconds measure only OS process
 creation, not provider readiness. Claim-to-context includes CLI initialization,
 provider activity and MCP work, and is not pure inference or reasoning time.
-Missing historical measurements stay unknown. A lease reclaim resets claim/context
+A timestamp a record lacks stays unknown. A lease reclaim resets claim/context
 and completion timestamps; total wait still starts at the original request.
 
 ## CLI context prefetch
 
 Codex and Claude battle profiles prefetch context by default; the worker-only
-`prefetchContext: false` setting restores tool-fetched context. An absent setting
-means prefetch, so existing worker configurations adopt it when the worker binary
-is upgraded. The worker calls `get_decision_context` with the same
+`prefetchContext: false` setting selects tool-fetched context; an absent setting
+means prefetch. The worker calls `get_decision_context` with the same
 request capability before launching the CLI, verifies the request identity,
 version/tick and 64 KiB limit, and embeds the frozen JSON as untrusted data. The
 model is instructed to use that snapshot without fetching it again; submission
 and optional unit-detail tools retain the same capabilities and validation.
 Prefetch failure stops execution as `mcp_context`; it never launches with missing
-or mismatched context. Background-generation behavior is unchanged. Antigravity
+or mismatched context. Antigravity
 always prefetches, regardless of this option.
 
 Each CLI result stores `contextDelivery` (`tool` or `prefetch`) in provider metadata,
 exposed through decision history and the timing panel; the generation span has
-`battlefield.context_delivery`. Historical records omit this field. With prefetch,
+`battlefield.context_delivery`; a record without it has unknown delivery. With prefetch,
 `contextServedAt` precedes CLI launch: compare request/claim-to-resolution and
 success/fallback rates across modes, not just claim-to-context time. Model,
 effort, scenario, concurrency and prompt revision must be recorded for comparisons.

@@ -83,7 +83,7 @@ func (m *Match) buildEconomyBuildingAt(factionID string, site Position, reserve 
 	if m.economyCount(factionID) >= rules.MaximumEconomyCount {
 		return Building{}, "maximum_reached"
 	}
-	state, reason := m.payForBuilding(factionID, site, rules.EconomyCost, reserve)
+	state, reason := m.payForBuilding(factionID, BuildingEconomy, site, rules.EconomyCost, reserve)
 	if reason != "" {
 		return Building{}, reason
 	}
@@ -148,7 +148,7 @@ func freeNeighbors(gameMap Map, center Position, occupied map[Position]bool) []P
 }
 
 // payForBuilding checks the site and reserve, then charges the faction.
-func (m *Match) payForBuilding(factionID string, site Position, cost, reserve int64) (*FactionState, string) {
+func (m *Match) payForBuilding(factionID, kind string, site Position, cost, reserve int64) (*FactionState, string) {
 	if reason := ConstructionReason(m.scenario.Map, m.state, factionID, site); reason != "" {
 		return nil, reason
 	}
@@ -159,6 +159,9 @@ func (m *Match) payForBuilding(factionID string, site Position, cost, reserve in
 	state.Gold -= cost
 	state.GoldSpent += cost
 	state.BuildingsBuilt++
+	built := m.factions[factionID].stats.building(kind)
+	built.Constructed++
+	built.GoldSpent += cost
 	return state, ""
 }
 
@@ -210,6 +213,9 @@ func (m *Match) attemptRecruitment(factionID string, source *Building, definitio
 	if len(priorities) == 0 {
 		return skipped("unit_not_trainable"), false, false
 	}
+	if priorities = m.unlockedUnits(factionID, priorities); len(priorities) == 0 {
+		return skipped("unit_locked"), false, false
+	}
 	if m.atUnitLimit(factionID) {
 		return skipped("unit_limit"), false, true
 	}
@@ -220,6 +226,7 @@ func (m *Match) attemptRecruitment(factionID string, source *Building, definitio
 	state := m.factionState(factionID)
 	state.Gold -= selected.Cost
 	state.GoldSpent += selected.Cost
+	m.factions[factionID].stats.unit(selected.ID).GoldSpent += selected.Cost
 	ticks := max(uint64(1), selected.TrainingTicks)
 	source.TrainingQueue = append(source.TrainingQueue, TrainingOrder{UnitType: selected.ID, RemainingTicks: ticks, TrainingTicks: ticks, QueuedAtTick: m.state.Tick, Opening: m.OpeningDue()})
 	return m.event("unit_queued", map[string]any{"factionId": factionID, "sourceBuildingId": source.ID, "unitType": selected.ID, "trainingTicks": ticks, "cost": selected.Cost}), true, false

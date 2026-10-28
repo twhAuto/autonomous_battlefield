@@ -79,6 +79,48 @@ func TestCreateBattleExemptsOnlyAdminFromAllowances(t *testing.T) {
 	}
 }
 
+func TestDecisionBudgetExemptionAppliesOnlyToAdmins(t *testing.T) {
+	for _, tc := range []struct {
+		role      authn.Role
+		requested bool
+		want      bool
+	}{{authn.Admin, true, true}, {authn.Admin, false, false}, {authn.Developer, true, false}, {authn.Player, true, false}} {
+		battleRepo := &fakeBattleRepo{}
+		factions := &battleFactionRepo{factions: map[string]*faction.Faction{
+			"4db8d152-1e04-4d10-8824-859c6ed72878": {ID: "4db8d152-1e04-4d10-8824-859c6ed72878", Name: "Northwind"},
+			"41ac3a2f-3371-4de1-b0f6-70600fcd9052": {ID: "41ac3a2f-3371-4de1-b0f6-70600fcd9052", Name: "Verdant"},
+		}}
+		service := NewService(battleRepo, factions, &fakeScenarioCatalog{resolved: game.Scenario{ID: "castle-siege-v1"}}, 10_000, Options{})
+		ctx := authn.WithActor(context.Background(), authn.Actor{ID: "actor", Role: tc.role})
+		if _, err := service.CreateBattle(ctx, CreateBattleInput{
+			ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1",
+			Participants: scriptedParticipants(), TickCount: 100, DecisionBudgetExempt: tc.requested,
+		}); err != nil {
+			t.Fatalf("%s: CreateBattle() returned an error: %v", tc.role, err)
+		}
+		if battleRepo.created.DecisionBudgetExempt != tc.want {
+			t.Fatalf("%s requested=%v: DecisionBudgetExempt = %v; want %v", tc.role, tc.requested, battleRepo.created.DecisionBudgetExempt, tc.want)
+		}
+	}
+}
+
+func TestValidateBattleChecksWithoutCreating(t *testing.T) {
+	battleRepo := &fakeBattleRepo{}
+	factions := &battleFactionRepo{factions: map[string]*faction.Faction{
+		"4db8d152-1e04-4d10-8824-859c6ed72878": {ID: "4db8d152-1e04-4d10-8824-859c6ed72878", Name: "Northwind"},
+		"41ac3a2f-3371-4de1-b0f6-70600fcd9052": {ID: "41ac3a2f-3371-4de1-b0f6-70600fcd9052", Name: "Verdant"},
+	}}
+	service := NewService(battleRepo, factions, &fakeScenarioCatalog{resolved: game.Scenario{ID: "castle-siege-v1"}}, 10_000, Options{})
+	input := CreateBattleInput{ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1", Participants: scriptedParticipants(), TickCount: 100}
+	if err := service.ValidateBattle(context.Background(), input); err != nil || battleRepo.created.ID != "" {
+		t.Fatalf("ValidateBattle() = %v, created %q", err, battleRepo.created.ID)
+	}
+	input.TickCount = 0
+	if err := service.ValidateBattle(context.Background(), input); !errors.Is(err, ErrInvalidBattle) {
+		t.Fatalf("invalid ValidateBattle() = %v", err)
+	}
+}
+
 func TestCreateBattleValidationAndDependencies(t *testing.T) {
 	valid := CreateBattleInput{
 		ID: "7f22e693-bacd-46bb-b942-64fa613cd388", ScenarioID: "skirmish-v1",
@@ -472,6 +514,9 @@ type fakeBattleRepo struct {
 	pauseErr     error
 	pausedID     string
 	pausedValue  bool
+	frames       []StoredReplayFrame
+	frameErr     error
+	frameAttempt int
 }
 
 func (r *fakeBattleRepo) CreateBattle(_ context.Context, params CreateBattleParams) error {
@@ -503,6 +548,20 @@ func (r *fakeBattleRepo) ListBattleDecisions(context.Context, string, int) ([]ai
 }
 func (r *fakeBattleRepo) GetDecision(context.Context, string) (ai.DecisionRecord, error) {
 	return ai.DecisionRecord{}, ai.ErrDecisionNotFound
+}
+
+// GetReplayFrame returns the latest stored frame at or before tick, like the database.
+func (r *fakeBattleRepo) GetReplayFrame(_ context.Context, _ string, attempt int, tick uint64) (StoredReplayFrame, error) {
+	r.frameAttempt = attempt
+	if r.frameErr != nil {
+		return StoredReplayFrame{}, r.frameErr
+	}
+	for index := len(r.frames) - 1; index >= 0; index-- {
+		if r.frames[index].Tick <= tick {
+			return r.frames[index], nil
+		}
+	}
+	return StoredReplayFrame{}, ErrReplayUnavailable
 }
 
 func (r *fakeBattleRepo) ListBattleEvents(_ context.Context, _ string, attempt int, _ uint64, _ int, latest bool) ([]StoredBattleEvent, error) {

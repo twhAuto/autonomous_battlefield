@@ -5,6 +5,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,6 +40,32 @@ http:
 	}
 	if configuration.API.MaxTicks != 10_000 {
 		t.Fatalf("MaxTicks = %d, want the 10000 default", configuration.API.MaxTicks)
+	}
+	if configuration.API.EngineConcurrency != 4 {
+		t.Fatalf("EngineConcurrency = %d, want the engine's default of 4", configuration.API.EngineConcurrency)
+	}
+}
+
+func TestLoadAPIReadsAndValidatesEngineConcurrency(t *testing.T) {
+	file := func(concurrency int) string {
+		return writeConfigFile(t, fmt.Sprintf(`
+http:
+  address: ":9000"
+  readHeaderTimeout: 2s
+  readTimeout: 3s
+  writeTimeout: 4s
+  idleTimeout: 30s
+  shutdownTimeout: 5s
+engine:
+  concurrency: %d
+`, concurrency))
+	}
+	configuration, err := LoadAPI(file(2))
+	if err != nil || configuration.API.EngineConcurrency != 2 {
+		t.Fatalf("LoadAPI() = %d, %v", configuration.API.EngineConcurrency, err)
+	}
+	if _, err := LoadAPI(file(9)); err == nil || !strings.Contains(err.Error(), "engine.concurrency") {
+		t.Fatalf("LoadAPI() error = %v, want engine.concurrency", err)
 	}
 }
 
@@ -210,8 +237,14 @@ func TestParseEngineConfigValidationAndDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseEngineConfig() returned an error: %v", err)
 	}
-	if configuration.HealthAddress != ":8081" || configuration.MaxAttempts != 3 || !strings.Contains(configuration.WorkerID, "-") {
+	if configuration.HealthAddress != ":8081" || configuration.MaxAttempts != 3 || configuration.Concurrency != 4 || !strings.Contains(configuration.WorkerID, "-") {
 		t.Fatalf("default engine config = %#v", configuration)
+	}
+	var single fileConfig
+	one := 1
+	single.Engine.Concurrency = &one
+	if configuration, err := parseEngineConfig(single); err != nil || configuration.Concurrency != 1 {
+		t.Fatalf("parseEngineConfig(concurrency 1) = %d, %v", configuration.Concurrency, err)
 	}
 
 	for _, test := range []struct {
@@ -223,6 +256,8 @@ func TestParseEngineConfigValidationAndDefaults(t *testing.T) {
 		{name: "heartbeat interval", mutate: func(raw *fileConfig) { raw.Engine.HeartbeatInterval = "-1s" }},
 		{name: "shutdown timeout", mutate: func(raw *fileConfig) { raw.Engine.ShutdownTimeout = "bad" }},
 		{name: "max attempts", mutate: func(raw *fileConfig) { raw.Engine.MaxAttempts = -1 }},
+		{name: "no concurrency", mutate: func(raw *fileConfig) { zero := 0; raw.Engine.Concurrency = &zero }},
+		{name: "too much concurrency", mutate: func(raw *fileConfig) { nine := 9; raw.Engine.Concurrency = &nine }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var raw fileConfig

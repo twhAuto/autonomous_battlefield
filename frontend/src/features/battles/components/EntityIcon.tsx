@@ -13,6 +13,9 @@ const artwork = new Map<string, string>([
   ['raider_cavalry', 'M4 21V13L9 8 8 3 13 5 18 3 21 10 17 13H13L16 21M3 21H19'],
   ['engineer', 'M15 2A6 6 0 0 0 10 11L2 19 5 22 13 14A6 6 0 0 0 22 8L17 11 13 7Z'],
   ['crossbowman', 'M3 7Q12 1 21 7M3 7 12 12 21 7M12 2V21M8 21H16M9 6 12 2 15 6'],
+  ['cannon', 'M3 13 17 6 19 10 5 17ZM19 8H22M11 18A3 3 0 1 0 5 18 3 3 0 1 0 11 18M2 22H22'],
+  ['gunner', 'M8 16 21 3M2 22 6 16 9 19 4 23ZM11 13 13 15M18 1 19 3M21 5 23 6'],
+  ['heavy_cavalry', 'M4 21V13L9 8 8 3 13 5 18 3 21 10 17 13H13L16 21M3 21H19M13 5 15 1 17 3M6 15H12V19'],
   ['castle', 'M2 22V3H6V7H10V3H14V7H18V3H22V22ZM9 22V15A3 3 0 0 1 15 15V22'],
   ['economy', 'M2 10 10 3 18 10M4 9V21H9M7 12H10M22 16A6 6 0 1 0 10 16 6 6 0 1 0 22 16M16 12V20M18 13H15A1.5 1.5 0 0 0 15 16H17A1.5 1.5 0 0 1 17 19H14'],
   ['defense_tower', 'M5 22 7 9H17L19 22ZM5 9V2H9V5H15V2H19V9ZM10 13H20L23 10M11 18H14'],
@@ -26,12 +29,21 @@ const artwork = new Map<string, string>([
 ])
 const unknownArtwork = 'M12 2 22 12 12 22 2 12ZM12 7V13M12 17H12.01'
 
+function ArtworkGlyph({ d = unknownArtwork }: Readonly<{ d?: string }>) {
+  return <g className="entity-glyph" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></g>
+}
+
 export function EntityGlyph({ type }: Readonly<{ type: string }>) {
-  return <g className="entity-glyph" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={artwork.get(type) ?? unknownArtwork} /></g>
+  return <ArtworkGlyph d={artwork.get(type)} />
+}
+
+/** Draws other artwork, such as upgrades, in the same style and size as entity icons. */
+export function ArtworkIcon({ d }: Readonly<{ d?: string }>) {
+  return <svg className="entity-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><ArtworkGlyph d={d} /></svg>
 }
 
 export function EntityIcon({ type }: Readonly<{ type: string }>) {
-  return <svg className="entity-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><EntityGlyph type={type} /></svg>
+  return <ArtworkIcon d={artwork.get(type)} />
 }
 
 export function EntityLegend({ types }: Readonly<{ types: string[] }>) {

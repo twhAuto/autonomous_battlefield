@@ -16,6 +16,7 @@ import (
 const (
 	fieldRecruitmentOrders  = "plan.recruitmentOrders"
 	fieldConstructionOrders = "plan.constructionOrders"
+	fieldProductionOrders   = "plan.productionOrders"
 )
 
 // ValidateSubmission checks version, target tick, and plan choices against the
@@ -38,7 +39,10 @@ func ValidateSubmission(record ai.DecisionRecord, submission ai.PlanSubmission) 
 		issues = append(issues, validateOpeningForMode(submission.Plan, record.Observation.ContinuousProduction)...)
 	}
 	if err := game.ValidateBuildingProduction(record.Observation.ContinuousProduction, record.FactionID, record.Observation.View.State, legal.RecruitmentSources, submission.Plan); err != nil {
-		issues = append(issues, ai.ValidationIssue{Field: "plan.productionOrders", Code: "unsupported", Message: err.Error()})
+		issues = append(issues, ai.ValidationIssue{Field: fieldProductionOrders, Code: "unsupported", Message: err.Error()})
+	}
+	if err := game.ValidateUnitUnlocks(legal.Units, record.Observation.OwnedUpgradeIDs, submission.Plan); err != nil {
+		issues = append(issues, ai.ValidationIssue{Field: fieldProductionOrders, Code: "locked", Message: err.Error()})
 	}
 	issues = append(issues, validateRecruitment(legal, submission.Plan)...)
 	issues = append(issues, validateTrainingSources(record.Observation, submission.Plan)...)
@@ -92,7 +96,7 @@ func validateUpgrades(legal ai.LegalChoices, plan controller.PlanProposal) []ai.
 func validateOpeningForMode(plan controller.PlanProposal, continuous bool) []ai.ValidationIssue {
 	var issues []ai.ValidationIssue
 	if continuous && plan.ProductionOrders == nil {
-		issues = append(issues, ai.ValidationIssue{Field: "plan.productionOrders", Code: "required", Message: "Opening requires explicit production orders; use [] to leave production off."})
+		issues = append(issues, ai.ValidationIssue{Field: fieldProductionOrders, Code: "required", Message: "Opening requires explicit production orders; use [] to leave production off."})
 	}
 	if !continuous && plan.RecruitmentOrders == nil {
 		issues = append(issues, ai.ValidationIssue{Field: fieldRecruitmentOrders, Code: "required", Message: "Opening requires explicit orders; use [] to buy nothing."})

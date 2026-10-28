@@ -56,6 +56,10 @@ tags:
     description: Faction profiles that battles snapshot when they are queued.
   - name: Battles
     description: Queueing, observing, and controlling battles, and reading their history.
+  - name: Leagues
+    description: Admin-run AI tournaments whose fixtures the API plays as background battles.
+  - name: Analytics
+    description: Summaries of completed battles by controller, faction, unit, upgrade and map.
   - name: Catalog
     description: Read-only scenario, ruleset, and AI controller profile data.
   - name: Background generation
@@ -524,6 +528,46 @@ paths:
         '429': {$ref: '#/components/responses/RateLimited'}
         '500': {$ref: '#/components/responses/Internal'}
 
+  /v1/battles/{id}/replay:
+    parameters:
+      - {$ref: '#/components/parameters/BattleId'}
+    get:
+      tags: [Battles]
+      operationId: getBattleReplay
+      summary: Replay a finished battle segment
+      description: |
+        Returns the segment of a completed, stopped or failed battle's final attempt
+        that contains `tick`. The engine stores a checkpoint at the opening and at
+        every decision window; the API resumes the engine from the checkpoint at or
+        before `tick` and re-simulates the ticks before the next window, so a segment
+        spans at most one decision interval. Request `nextTick` to continue. Players
+        receive event `data` as an empty object, as on the events route.
+      parameters:
+        - name: tick
+          in: query
+          description: Any tick from 0 to the battle's final tick (`400` beyond it).
+          schema: {type: integer, minimum: 0, default: 0}
+      responses:
+        '200':
+          description: One replay segment.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BattleReplay'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: |
+            `conflict`: the battle is still queued or running, or its final attempt
+            saved no checkpoint for the segment, such as a battle that finished before
+            replays were recorded.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/Internal'}
+
   /v1/battles/{id}/decisions:
     parameters:
       - {$ref: '#/components/parameters/BattleId'}
@@ -711,6 +755,173 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '500': {$ref: '#/components/responses/Internal'}
 
+  /v1/leagues:
+    get:
+      tags: [Leagues]
+      operationId: listLeagues
+      summary: List leagues, newest first
+      description: Developers and Admins only.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+      responses:
+        '200':
+          description: League summaries, and the capacity league battles run in.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [leagues, scheduling]
+                properties:
+                  leagues:
+                    type: array
+                    items: {$ref: '#/components/schemas/LeagueSummary'}
+                  scheduling:
+                    type: object
+                    additionalProperties: false
+                    required: [battleSlots, cliSlots]
+                    properties:
+                      battleSlots:
+                        description: Battles the engine runs at once (`engine.concurrency`).
+                        type: integer
+                        minimum: 1
+                      cliSlots:
+                        description: CLI model executions allowed at once (`runtime_policy.cli_concurrency`), shared by the CLI model sides of league battles.
+                        type: integer
+                        minimum: 1
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '500': {$ref: '#/components/responses/Internal'}
+    post:
+      tags: [Leagues]
+      operationId: createLeague
+      summary: Create and start a league
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: |
+        Admins only. 8 entrants form groups A and B; 16 form groups A to D, four per
+        group, each with a distinct faction. Every entrant is checked on every map
+        with the same rules as battle creation, including model access and timing.
+        The API then plays the fixtures in the background: each group pairing once
+        from each spawn side, then a crossover knockout of the top two per group,
+        every tie over two legs. League battles are owned by the creating Admin, skip
+        the battle allowances and the per-battle model decision budget, and keep the
+        one-hour battle timeout.
+
+        **Idempotency:** repeating the same request with the same `id` returns `201`
+        and the existing league; reusing the `id` for a different request returns
+        `409 already_exists`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateLeagueRequest'}
+      responses:
+        '201':
+          description: The league, or the existing league for a matching retry.
+          headers:
+            Location:
+              description: '`/v1/leagues/{id}` for the league.'
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/League'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/AlreadyExists'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/leagues/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/LeagueId'}
+    get:
+      tags: [Leagues]
+      operationId: getLeague
+      summary: Read a league with its tables, knockout and fixtures
+      description: Developers and Admins only.
+      responses:
+        '200':
+          description: The league.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/League'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/leagues/{id}/cancel:
+    parameters:
+      - {$ref: '#/components/parameters/LeagueId'}
+    post:
+      tags: [Leagues]
+      operationId: cancelLeague
+      summary: Cancel a running league
+      parameters:
+        - {$ref: '#/components/parameters/Origin'}
+      description: |
+        Admins only. Cancels every unfinished fixture and stops the running battle.
+        Repeating the call on a cancelled league returns `200` with the league and
+        stops any league battle still running; a completed league returns
+        `409 conflict`.
+      responses:
+        '200':
+          description: The cancelled league.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/League'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '500': {$ref: '#/components/responses/Internal'}
+
+  /v1/analytics:
+    get:
+      tags: [Analytics]
+      operationId: getAnalytics
+      summary: Summarize completed battles
+      description: |
+        Developers and Admins only. Covers completed battles, newest first, at most
+        5000 (`truncated` reports a cut). Every list is sorted, so equal data gives an
+        equal report. Unit and upgrade figures use only results that carry per-type
+        statistics; older results count for outcomes alone.
+      parameters:
+        - name: leagueId
+          in: query
+          description: Only battles played for this league.
+          schema: {type: string, format: uuid}
+        - name: rulesVersion
+          in: query
+          description: Omit for the current rules version; `all` includes every version.
+          schema: {type: string}
+        - name: since
+          in: query
+          description: Only battles completed at or after this time.
+          schema: {type: string, format: date-time}
+        - name: excludeFallback
+          in: query
+          description: Leave out battles where any model decision fell back, including fallbacks a retry reused from an earlier attempt.
+          schema: {type: boolean, default: false}
+      responses:
+        '200':
+          description: The report.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AnalyticsReport'}
+        '400': {$ref: '#/components/responses/InvalidRequest'}
+        '401': {$ref: '#/components/responses/AuthenticationRequired'}
+        '403': {$ref: '#/components/responses/PermissionDenied'}
+        '500': {$ref: '#/components/responses/Internal'}
+
   /v1/admin/model-access:
     get:
       tags: [Administration]
@@ -894,6 +1105,11 @@ components:
       in: path
       required: true
       schema: {type: string, format: uuid}
+    LeagueId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
 
   responses:
     BattleResponse:
@@ -1056,12 +1272,23 @@ components:
         username: {type: string}
         password: {type: string, format: password}
 
+    FactionEmblem:
+      type: string
+      enum: [star, crown, shield, swords, wolf, raven, serpent, tree, leaf, flame, sun, moon]
+
+    FactionEmblemInput:
+      description: Omitted or empty defaults to star on creation and preserves the saved choice on update.
+      anyOf:
+        - {$ref: '#/components/schemas/FactionEmblem'}
+        - {type: string, const: ''}
+
     Faction:
       type: object
-      required: [id, name, doctrine, ownerId]
+      required: [id, name, doctrine, ownerId, emblem]
       properties:
         id: {type: string, format: uuid}
         ownerId: {type: string}
+        emblem: {$ref: '#/components/schemas/FactionEmblem'}
         name: {type: string}
         doctrine: {type: string}
         background:
@@ -1073,6 +1300,7 @@ components:
       additionalProperties: false
       required: [id, name, doctrine]
       properties:
+        emblem: {$ref: '#/components/schemas/FactionEmblemInput'}
         id: {type: string, format: uuid}
         name:
           description: Trimmed before storage; must be non-empty.
@@ -1089,6 +1317,7 @@ components:
       additionalProperties: false
       required: [name, doctrine]
       properties:
+        emblem: {$ref: '#/components/schemas/FactionEmblemInput'}
         name: {type: string}
         doctrine: {type: string}
         background: {type: string}
@@ -1096,17 +1325,19 @@ components:
     Ruleset:
       description: |
         Catalog data: starting gold, units, upgrades, optional `structures`, and the
-        shared `buildings.maximumBuildingCount` limit (at most 16; ruleset v8 uses 12). Production structures expose `trains`
+        shared `buildings.maximumBuildingCount` limit (at most 16; ruleset v8 uses 12 and v9 uses 16, with up to 4 economy buildings). Production structures expose `trains`
         arrays of supported unit IDs. Core v7 enables continuousProduction and starts each faction with only a castle,
         which trains the Barracks roster and attacks enemies. Resolved buildings rules
         include castleTrains (unit IDs), castleAttack (15) and castleRange (3).
+        Core v8 units may set `requiresUpgradeId`, the upgrade a faction must own before
+        training them; its bonus-free `gunpowder` and `knighthood` upgrades exist only as unlocks.
         Fields vary by ruleset version.
       type: object
       required: [id]
       properties:
         id: {type: string}
         continuousProduction: {type: boolean, default: false, description: Repeating per-building unit selection and on/off settings; absent or false retains historical batch recruitment.}
-        maximumUnitCount: {type: integer, minimum: 0, maximum: 200, description: 'Per-faction cap on living units plus paid units in training; absent or 0 is unlimited. Ruleset v8 uses 40.'}
+        maximumUnitCount: {type: integer, minimum: 0, maximum: 200, description: 'Per-faction cap on living units plus paid units in training; absent or 0 is unlimited. Rulesets v8 and later use 40.'}
         upgrades:
           type: array
           items: {$ref: '#/components/schemas/UpgradeRule'}
@@ -1441,6 +1672,7 @@ components:
         enabled: {type: boolean, description: Start another unit whenever the current unit has deployed and gold permits.}
         waitingForGold: {type: boolean, description: Enabled with no paid unit and insufficient gold above reserveGold. Automatically retries each tick.}
         waitingForUnitLimit: {type: boolean, description: Enabled with no paid unit while the faction is at maximumUnitCount. Starts without charge once a unit slot frees.}
+        waitingForUpgrade: {type: boolean, description: Enabled with no paid unit because the selected type's requiresUpgradeId is not owned yet. Starts without charge once the unlock is bought.}
 
     TrainingOrder:
       description: Paid FIFO entry; only the head trains. Units act the tick after deployment.
@@ -1473,7 +1705,67 @@ components:
         ticksRun: {type: integer}
         factions:
           type: array
-          items: {type: object, required: [factionId], additionalProperties: true, properties: {factionId: {type: string}}}
+          items: {$ref: '#/components/schemas/FactionStatistics'}
+
+    FactionStatistics:
+      description: |
+        One faction's after-action totals. `unitTypes`, `buildingTypes` and `upgrades`
+        are omitted when empty, and from results written before per-type statistics.
+        A type appears only after the faction fielded, built, lost or damaged one.
+      type: object
+      required: [factionId]
+      additionalProperties: true
+      properties:
+        factionId: {type: string}
+        unitTypes:
+          type: array
+          items: {$ref: '#/components/schemas/UnitTypeStatistics'}
+        buildingTypes:
+          type: array
+          items: {$ref: '#/components/schemas/BuildingTypeStatistics'}
+        upgrades:
+          description: Purchases in order, each at the tick it was bought.
+          type: array
+          items:
+            type: object
+            required: [upgradeId, tick]
+            properties:
+              upgradeId: {type: string}
+              tick: {type: integer}
+
+    UnitTypeStatistics:
+      description: |
+        `kills` and `buildingsDestroyed` (castle included) count destroying blows.
+        `healthRestored` is healing by support units or repairs by engineers.
+        `goldSpent` is the price paid to queue the type, excluding repair costs.
+      type: object
+      required: [unitType, started, recruited, lost, kills, buildingsDestroyed, damageDealt, damageTaken, healthRestored, goldSpent]
+      properties:
+        unitType: {type: string}
+        started: {type: integer, description: Opening or starting units.}
+        recruited: {type: integer}
+        lost: {type: integer}
+        kills: {type: integer}
+        buildingsDestroyed: {type: integer}
+        damageDealt: {type: integer}
+        damageTaken: {type: integer}
+        healthRestored: {type: integer}
+        goldSpent: {type: integer}
+
+    BuildingTypeStatistics:
+      description: |
+        `kills` counts enemy units destroyed by the building's own attacks. The castle
+        appears when it took damage; it is never constructed.
+      type: object
+      required: [buildingType, constructed, lost, kills, damageDealt, damageTaken, goldSpent]
+      properties:
+        buildingType: {type: string}
+        constructed: {type: integer}
+        lost: {type: integer}
+        kills: {type: integer}
+        damageDealt: {type: integer}
+        damageTaken: {type: integer}
+        goldSpent: {type: integer}
 
     Battle:
       description: |
@@ -1488,6 +1780,12 @@ components:
         scenarioDigest: {type: string}
         requestedTicks: {type: integer}
         currentTick: {type: integer}
+        maximumUnits:
+          description: |
+            Per-faction unit cap from the battle's ruleset snapshot (`maximumUnitCount`),
+            counting living units plus paid units in training. Omitted when unlimited.
+          type: integer
+          minimum: 1
         production:
           description: |
             The next strategy/construction/upgrade window, derived by the engine from
@@ -1522,6 +1820,348 @@ components:
         state: {$ref: '#/components/schemas/BattleState'}
         errorCode: {type: string}
         errorMessage: {type: string}
+        league:
+          description: Present only for a league battle; omitted for players.
+          $ref: '#/components/schemas/BattleLeague'
+
+    BattleLeague:
+      type: object
+      required: [id, name, fixtureId, stage, round, leg]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        fixtureId: {type: string, format: uuid}
+        stage: {$ref: '#/components/schemas/LeagueStage'}
+        group: {type: string, enum: [A, B, C, D], description: Group-stage fixtures only.}
+        round: {type: integer, minimum: 1}
+        tie: {type: integer, minimum: 1, description: Knockout fixtures only.}
+        leg: {type: integer, enum: [1, 2]}
+
+    LeagueStage: {type: string, enum: [group, quarterfinal, semifinal, final]}
+
+    CreateLeagueRequest:
+      type: object
+      additionalProperties: false
+      required: [id, name, scenarioIds, tickCount, entrants]
+      properties:
+        id: {type: string, format: uuid, description: Client-generated; see the idempotency rules.}
+        name: {type: string, minLength: 1, maxLength: 80}
+        scenarioIds:
+          description: One to five distinct maps. Group pairings rotate through them in schedule order and keep one map for both legs.
+          type: array
+          minItems: 1
+          maxItems: 5
+          items: {type: string}
+        tickCount: {type: integer, minimum: 1, description: At most every chosen scenario's `maximumTicks`.}
+        tickDuration: {type: [string, 'null'], description: As for battle creation.}
+        decisionIntervalTicks: {type: [integer, 'null'], minimum: 1, maximum: 100, description: As for battle creation.}
+        entrants:
+          description: 8 or 16 entrants, four per group. Entry order is the final tiebreak.
+          type: array
+          minItems: 8
+          maxItems: 16
+          items:
+            type: object
+            additionalProperties: false
+            required: [factionId, group, controller]
+            properties:
+              factionId: {type: string, format: uuid}
+              group: {type: string, enum: [A, B, C, D]}
+              controller:
+                type: object
+                additionalProperties: false
+                required: [type]
+                properties:
+                  type: {type: string, enum: [scripted, model]}
+                  profileId: {type: string}
+                  modelIdentifier: {type: string}
+                  reasoningEffort: {type: string}
+
+    LeagueProgress:
+      type: object
+      required: [settled, total]
+      properties:
+        settled: {type: integer, description: Fixtures completed, void or cancelled.}
+        total: {type: integer, description: Fixtures the league plays when nothing is cancelled, 30 or 62.}
+
+    LeagueSummary:
+      type: object
+      required: [id, ownerId, name, status, groupCount, entrantCount, champion, progress, createdAt, completedAt]
+      properties:
+        id: {type: string, format: uuid}
+        ownerId: {type: string}
+        name: {type: string}
+        status: {type: string, enum: [running, completed, cancelled]}
+        groupCount: {type: integer, enum: [2, 4]}
+        entrantCount: {type: integer, enum: [8, 16]}
+        champion:
+          oneOf:
+            - type: object
+              required: [entrant, factionName]
+              properties:
+                entrant: {type: integer}
+                factionName: {type: string}
+            - {type: 'null'}
+        progress: {$ref: '#/components/schemas/LeagueProgress'}
+        createdAt: {type: string, format: date-time}
+        completedAt: {type: [string, 'null'], format: date-time}
+
+    League:
+      description: Entrants are referred to by their `index`.
+      type: object
+      required: [id, ownerId, name, status, groupCount, settings, champion, progress, entrants, groups, knockout, fixtures, createdAt, completedAt]
+      properties:
+        id: {type: string, format: uuid}
+        ownerId: {type: string}
+        name: {type: string}
+        status: {type: string, enum: [running, completed, cancelled]}
+        groupCount: {type: integer, enum: [2, 4]}
+        settings:
+          type: object
+          required: [scenarioIds, tickCount]
+          properties:
+            scenarioIds: {type: array, items: {type: string}}
+            tickCount: {type: integer}
+            tickDuration: {type: string}
+            decisionIntervalTicks: {type: integer}
+        champion: {type: [integer, 'null'], description: The champion's entrant index once the final settles.}
+        progress: {$ref: '#/components/schemas/LeagueProgress'}
+        entrants:
+          type: array
+          items:
+            type: object
+            required: [index, group, factionId, factionName, controller]
+            properties:
+              index: {type: integer}
+              group: {type: string, enum: [A, B, C, D]}
+              factionId: {type: string, format: uuid}
+              factionName: {type: string, description: Copied when the league was created.}
+              controller: {$ref: '#/components/schemas/Controller'}
+        groups:
+          description: |
+            Each group ranked by points (win 3, draw 1), then points from matches
+            among the entrants level on points, castle-health difference, damage
+            difference, and entry order. Void fixtures count for nobody.
+          type: array
+          items:
+            type: object
+            required: [group, standings]
+            properties:
+              group: {type: string, enum: [A, B, C, D]}
+              standings:
+                type: array
+                items: {$ref: '#/components/schemas/LeagueStanding'}
+        knockout:
+          description: |
+            Ties in stage order. A tie's winner has more wins over its two legs, then
+            the higher castle-health and damage differences, then the better group
+            finish, more group points and entry order. `winner` is null until both
+            legs settle.
+          type: array
+          items:
+            type: object
+            required: [stage, tie, homeEntrant, awayEntrant, winner]
+            properties:
+              stage: {$ref: '#/components/schemas/LeagueStage'}
+              tie: {type: integer, minimum: 1}
+              homeEntrant: {type: integer, description: Home side of the first leg.}
+              awayEntrant: {type: integer}
+              winner: {type: [integer, 'null']}
+        fixtures:
+          type: array
+          items: {$ref: '#/components/schemas/LeagueFixture'}
+        createdAt: {type: string, format: date-time}
+        completedAt: {type: [string, 'null'], format: date-time}
+
+    LeagueStanding:
+      type: object
+      required: [entrant, position, played, won, drawn, lost, points, castleDifference, damageDifference]
+      properties:
+        entrant: {type: integer}
+        position: {type: integer, minimum: 1, maximum: 4}
+        played: {type: integer}
+        won: {type: integer}
+        drawn: {type: integer}
+        lost: {type: integer}
+        points: {type: integer}
+        castleDifference: {type: integer}
+        damageDifference: {type: integer}
+
+    LeagueFixture:
+      description: |
+        One battle slot; the home entrant takes the first spawn side. A failed or
+        stopped battle is retried once with a new battle, then the fixture is void.
+      type: object
+      required: [id, sequence, stage, round, leg, homeEntrant, awayEntrant, scenarioId, status, attempts, battleId]
+      properties:
+        id: {type: string, format: uuid}
+        sequence: {type: integer, minimum: 0, description: Play order.}
+        stage: {$ref: '#/components/schemas/LeagueStage'}
+        group: {type: string, enum: [A, B, C, D]}
+        round: {type: integer, minimum: 1}
+        tie: {type: integer, minimum: 1}
+        leg: {type: integer, enum: [1, 2]}
+        homeEntrant: {type: integer}
+        awayEntrant: {type: integer}
+        scenarioId: {type: string}
+        status: {type: string, enum: [pending, running, completed, void, cancelled]}
+        attempts: {type: integer, minimum: 0, maximum: 2}
+        battleId: {type: [string, 'null'], format: uuid}
+        result:
+          description: Present once the fixture completed.
+          type: object
+          required: [winner, reason]
+          properties:
+            winner: {type: [integer, 'null'], description: Null for a draw.}
+            reason: {type: string, examples: [castle_destroyed, tick_limit]}
+
+    AnalyticsController:
+      description: 'A model controller, or `{type: scripted}`.'
+      type: object
+      required: [type]
+      properties:
+        type: {type: string, enum: [scripted, model]}
+        profileId: {type: string}
+        provider: {type: string}
+        runtime: {type: string}
+        modelIdentifier: {type: string}
+        reasoningEffort: {type: string}
+
+    AnalyticsOutcome:
+      description: |
+        Win record. `winRate` counts draws as non-wins; `winRateLow` and
+        `winRateHigh` bound it with the 95% Wilson score interval.
+      type: object
+      required: [battles, wins, draws, losses, castleWins, winRate, winRateLow, winRateHigh, meanTicksToWin]
+      properties:
+        battles: {type: integer}
+        wins: {type: integer}
+        draws: {type: integer}
+        losses: {type: integer}
+        castleWins: {type: integer, description: Wins by destroying the enemy castle.}
+        winRate: {type: number}
+        winRateLow: {type: number}
+        winRateHigh: {type: number}
+        meanTicksToWin: {type: [number, 'null']}
+
+    AnalyticsReport:
+      type: object
+      required: [rulesVersion, truncated, excludedForFallback, battles, battlesWithFallback, sidesWithUnitStats, models, factions, headToHead, units, unitsByModel, upgrades, maps]
+      properties:
+        rulesVersion: {type: [string, 'null'], description: The rules version covered; null for every version.}
+        truncated: {type: boolean}
+        excludedForFallback: {type: integer}
+        battles: {type: integer}
+        battlesWithFallback: {type: integer}
+        sidesWithUnitStats: {type: integer, description: Sides whose results carry per-type statistics.}
+        models:
+          description: One entry per controller, best win rate first; a mirror match counts once per side.
+          type: array
+          items:
+            allOf:
+              - {$ref: '#/components/schemas/AnalyticsOutcome'}
+              - type: object
+                required: [controller, decisions, fallbackRate, invalidPlanRate, meanDecisionLatencyMs, tokensPerBattle]
+                properties:
+                  controller: {$ref: '#/components/schemas/AnalyticsController'}
+                  decisions: {type: integer, description: Model decisions in the battles' final attempts.}
+                  fallbackRate: {type: number}
+                  invalidPlanRate: {type: number}
+                  meanDecisionLatencyMs: {type: [number, 'null']}
+                  tokensPerBattle:
+                    type: object
+                    required: [input, cachedInput, output]
+                    properties:
+                      input: {type: number}
+                      cachedInput: {type: number}
+                      output: {type: number}
+        factions:
+          type: array
+          items:
+            allOf:
+              - {$ref: '#/components/schemas/AnalyticsOutcome'}
+              - type: object
+                required: [factionId, factionName]
+                properties:
+                  factionId: {type: string}
+                  factionName: {type: string}
+        headToHead:
+          description: Each pair of different controllers, both ways round.
+          type: array
+          items:
+            type: object
+            required: [controller, opponent, battles, wins, draws, losses]
+            properties:
+              controller: {$ref: '#/components/schemas/AnalyticsController'}
+              opponent: {$ref: '#/components/schemas/AnalyticsController'}
+              battles: {type: integer}
+              wins: {type: integer}
+              draws: {type: integer}
+              losses: {type: integer}
+        units:
+          type: array
+          items:
+            type: object
+            required: [unitType, fielded, recruited, lost, kills, buildingsDestroyed, damageDealt, damageTaken, healthRestored, goldSpent, killsPerLoss, damagePerGold, shareInWins, shareInLosses]
+            properties:
+              unitType: {type: string}
+              fielded: {type: integer}
+              recruited: {type: integer}
+              lost: {type: integer}
+              kills: {type: integer}
+              buildingsDestroyed: {type: integer}
+              damageDealt: {type: integer}
+              damageTaken: {type: integer}
+              healthRestored: {type: integer}
+              goldSpent: {type: integer}
+              killsPerLoss: {type: [number, 'null']}
+              damagePerGold: {type: [number, 'null']}
+              shareInWins: {type: number, description: Share of all units recruited by winning sides.}
+              shareInLosses: {type: number, description: Share of all units recruited by losing sides.}
+        unitsByModel:
+          type: array
+          items:
+            type: object
+            required: [controller, unitType, recruited, armyShare]
+            properties:
+              controller: {$ref: '#/components/schemas/AnalyticsController'}
+              unitType: {type: string}
+              recruited: {type: integer}
+              armyShare: {type: number, description: Share of the controller's recruited units.}
+        upgrades:
+          type: array
+          items:
+            type: object
+            required: [upgradeId, purchases, purchaseRate, meanPurchaseTick, winRateWhenPurchased, winRateWhenNot]
+            properties:
+              upgradeId: {type: string}
+              purchases: {type: integer}
+              purchaseRate: {type: number}
+              meanPurchaseTick: {type: number}
+              winRateWhenPurchased: {type: [number, 'null']}
+              winRateWhenNot: {type: [number, 'null'], description: Null when every side bought it.}
+        maps:
+          type: array
+          items:
+            type: object
+            required: [scenarioId, battles, draws, drawRate, meanTicks, sides]
+            properties:
+              scenarioId: {type: string}
+              battles: {type: integer}
+              draws: {type: integer}
+              drawRate: {type: number}
+              meanTicks: {type: number}
+              sides:
+                description: Spawn side 0 then side 1.
+                type: array
+                minItems: 2
+                maxItems: 2
+                items:
+                  type: object
+                  required: [wins, winRate]
+                  properties:
+                    wins: {type: integer}
+                    winRate: {type: number}
 
     ProductionSchedule:
       description: |
@@ -1613,9 +2253,9 @@ components:
         | `unit_attacked`, `building_attacked` | `attackerId`, `targetId`, `targetType`, `damage`, `remainingHealth`, `attackMode`, `outcome: hit`, `impactPosition` |
         | `unit_attack_missed` | `attackerId`, `attackMode: position`, `outcome: miss`, `impactPosition` |
         | `unit_healed` | `factionId`, `healerId`, `targetId`, `amount` (health actually restored), `remainingHealth` |
-        | `unit_destroyed` | `unitId`, `factionId` |
-        | `building_destroyed` | `buildingId`, `factionId`, `buildingType` |
-        | `castle_destroyed` | `castleId`, `factionId`, `destroyedByFactionId` |
+        | `unit_destroyed` | `unitId`, `unitType`, `factionId`, and the destroying blow's `killerId`, `killerType` (unit or building type) and `killerFactionId`; older events carry only `unitId` and `factionId` |
+        | `building_destroyed` | `buildingId`, `factionId`, `buildingType`, `killerId`, `killerType`, `killerFactionId` |
+        | `castle_destroyed` | `castleId`, `factionId`, `destroyedByFactionId`, `killerId`, `killerType`, `killerFactionId` |
         | `loot_collected` | `factionId`, `sourceId`, `amount`, `balance` |
         | `tick_completed` | `tick` |
         | `battle_completed` | `winnerFactionId` (null for a draw), `reason` (`castle_destroyed` or `tick_limit`), `ticksRun` |
@@ -1640,6 +2280,48 @@ components:
           type: array
           items: {$ref: '#/components/schemas/BattleEvent'}
         nextCursor: {type: [integer, 'null']}
+
+    ReplayEvent:
+      description: |
+        An engine event with the same `type` and `data` contract as `BattleEvent`;
+        Players receive an empty `data` object.
+      type: object
+      required: [sequence, tick, type, data]
+      properties:
+        sequence: {type: integer}
+        tick: {type: integer}
+        type: {type: string}
+        data:
+          type: object
+          additionalProperties: true
+
+    ReplayFrame:
+      type: object
+      required: [tick, state, events]
+      properties:
+        tick: {type: integer, minimum: 0}
+        state: {$ref: '#/components/schemas/BattleState'}
+        events:
+          type: array
+          description: The events this tick produced, ordered by sequence.
+          items: {$ref: '#/components/schemas/ReplayEvent'}
+
+    BattleReplay:
+      type: object
+      required: [battleId, attempt, finalTick, fromTick, toTick, nextTick, frames]
+      properties:
+        battleId: {type: string, format: uuid}
+        attempt: {type: integer, minimum: 1, description: The final attempt being replayed.}
+        finalTick: {type: integer, minimum: 0}
+        fromTick: {type: integer, minimum: 0, description: The checkpoint tick that starts the segment.}
+        toTick: {type: integer, minimum: 0}
+        nextTick:
+          type: [integer, 'null']
+          description: The first tick of the next segment; null after `finalTick`.
+        frames:
+          type: array
+          description: One frame per tick from `fromTick` to `toTick`.
+          items: {$ref: '#/components/schemas/ReplayFrame'}
 
     Usage:
       type: object

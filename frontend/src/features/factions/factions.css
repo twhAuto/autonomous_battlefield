@@ -36,3 +36,16 @@
 .registry-card a { color: var(--lime); }
 .danger-zone { border-top: 1px solid #b17768; margin-top: 32px; padding-top: 16px; }
 .danger-zone button { background: #211714; border: 1px solid #b17768; color: #ffb3a5; padding: 12px 20px; }
+
+/* Native radios keep the emblem grid usable with Tab, arrow keys, and screen readers. */
+.emblem-picker { margin: 24px 0; }
+.emblem-picker__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.emblem-picker .emblem-option { position: relative; margin: 0; cursor: pointer; }
+.emblem-option input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.emblem-option__tile { display: flex; flex-direction: column; align-items: center; gap: 7px; height: 100%; padding: 12px 4px; border: 1px solid var(--line); background: #151a14; color: var(--muted); text-align: center; font-size: 12px; }
+.emblem-option__tile .emblem { flex-basis: 48px; filter: none; }
+.emblem-option:hover .emblem-option__tile { border-color: var(--muted); }
+.emblem-option input:checked + .emblem-option__tile { border-color: var(--lime); background: #252e1b; color: var(--lime); box-shadow: inset 0 0 0 1px var(--lime); }
+.emblem-option input:focus-visible + .emblem-option__tile { outline: 2px solid var(--lime); outline-offset: 3px; }
+.emblem-picker:disabled .emblem-option { cursor: wait; opacity: .65; }
+@media (max-width: 460px) { .emblem-picker__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

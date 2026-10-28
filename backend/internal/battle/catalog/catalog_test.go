@@ -37,7 +37,7 @@ func TestCatalogLoadsRulesetAndResolvesBlueprints(t *testing.T) {
 	if digest == "" || digest != nextDigest || first.Map.Width != 15 || second.Map.Height != 11 {
 		t.Fatalf("unexpected resolutions: %#v", first)
 	}
-	if summaries := catalog.Summaries(); len(summaries) != 2 || summaries[0].RulesetID != "battlefield" || summaries[0].MapWidth != 15 || summaries[0].MaximumTicks != 800 {
+	if summaries := catalog.Summaries(); len(summaries) != 5 || summaries[0].RulesetID != "battlefield" || summaries[0].MapWidth != 15 || summaries[0].MaximumTicks != 800 {
 		t.Fatalf("summaries = %#v", summaries)
 	}
 	summary := catalog.Summaries()[0]
@@ -200,7 +200,7 @@ func TestCatalogRejectsBrokenContentAtStartup(t *testing.T) {
 			writeCatalogFile(t, dir, "rulesets/broken.yaml", "id: [")
 		}},
 		{"missing library version", "content/core-v9.yaml", func(t *testing.T, dir string) {
-			editedRuleset(t, dir, "other.yaml", `id: other`, `  version: "7"`, `  version: "9"`)
+			editedRuleset(t, dir, "other.yaml", `id: other`, `  version: "8"`, `  version: "9"`)
 		}},
 		{"invalid ruleset values", "ruleset \"rulesets/other.yaml\"", func(t *testing.T, dir string) {
 			editedRuleset(t, dir, "other.yaml", `id: other`, `startingGold: 220`, `startingGold: -1`)
@@ -237,7 +237,7 @@ func TestCatalogSkipsFoldersAndNonYAMLFiles(t *testing.T) {
 		}
 	}
 	catalog, err := LoadCatalog(os.DirFS(dir))
-	if err != nil || len(catalog.IDs()) != 2 || len(catalog.Rulesets()) != 1 {
+	if err != nil || len(catalog.IDs()) != 5 || len(catalog.Rulesets()) != 1 {
 		t.Fatalf("catalog = %v, %v", catalog, err)
 	}
 }

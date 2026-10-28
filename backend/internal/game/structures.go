@@ -49,7 +49,7 @@ func (m *Match) buildStructureAt(factionID, kind string, site Position, reserve 
 	if definition == nil {
 		return Building{}, "unsupported_building"
 	}
-	state, reason := m.payForBuilding(factionID, site, definition.Cost, reserve)
+	state, reason := m.payForBuilding(factionID, definition.Kind, site, definition.Cost, reserve)
 	if reason != "" {
 		return Building{}, reason
 	}
@@ -96,7 +96,7 @@ func (m *Match) runTowers(tactics map[string]string) []Event {
 		if target == nil {
 			continue
 		}
-		attackEvents, _ := m.attackTarget(&attacker, target, tactics)
+		attackEvents, _ := m.strike(&attacker, b, target, tactics)
 		attackEvents[0].Type = "building_attacked"
 		b.AttackTargetID, b.AttackTargetPosition = attacker.AttackTargetID, attacker.AttackTargetPosition
 		b.AttackOutcome = attacker.AttackOutcome

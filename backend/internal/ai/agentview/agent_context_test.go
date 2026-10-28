@@ -232,3 +232,22 @@ func TestContinuousProductionSurvivesCompaction(t *testing.T) {
 		}
 	}
 }
+
+func TestCompactMarksLockedLegalUnits(t *testing.T) {
+	_, c := compactFixture()
+	c.Legal.Units[0].RequiresUpgradeID, c.Legal.Units[1].RequiresUpgradeID = "gunpowder", "knighthood"
+	c.OwnedUpgradeIDs = []string{"knighthood"}
+	units := Compact(c).Legal.Units
+	if !units[0].Locked || units[0].RequiresUpgradeID != "gunpowder" || units[1].Locked || units[1].RequiresUpgradeID != "knighthood" || units[2].Locked || units[2].RequiresUpgradeID != "" {
+		t.Fatalf("unlock state not projected: %+v", units[:3])
+	}
+	data, err := json.Marshal(Observation(c))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{`"locked"`, `"gunpowder"`} {
+		if !strings.Contains(string(data), field) {
+			t.Fatalf("%s missing from compact observation", field)
+		}
+	}
+}

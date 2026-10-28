@@ -46,6 +46,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/battles/{id}/resume", h.ResumeBattle)
 	mux.HandleFunc("GET /v1/battles/{id}/factions/{factionId}/view", h.GetFactionView)
 	mux.HandleFunc("GET /v1/battles/{id}/events", h.ListEvents)
+	mux.HandleFunc("GET /v1/battles/{id}/replay", h.GetBattleReplay)
 	mux.HandleFunc("GET /v1/battles/{id}/decisions", h.ListDecisions)
 	mux.HandleFunc("GET /v1/battles/{id}/decisions/{requestId}/context", h.GetDecisionContext)
 }
@@ -196,6 +197,45 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	_ = httpapi.WriteJSON(w, http.StatusOK, page)
 }
 
+// GetBattleReplay returns the replay segment containing ?tick (default 0). Players
+// receive the same frames with empty event payloads, as on the events route.
+func (h *Handler) GetBattleReplay(w http.ResponseWriter, r *http.Request) {
+	var tick uint64
+	if raw := r.URL.Query().Get("tick"); raw != "" {
+		parsed, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			apierror.Write(w, r, http.StatusBadRequest, "invalid replay tick")
+			return
+		}
+		tick = parsed
+	}
+	replay, err := h.battles.GetBattleReplay(r.Context(), r.PathValue("id"), tick)
+	if writeError(w, r, err, []errorCase{forbiddenError, limitedError, invalidError("invalid replay query"), notFoundError, replayUnavailableError},
+		failure{"battle_replay_failed", "could not get battle replay", []any{"battle_id", r.PathValue("id"), "tick", tick}}) {
+		return
+	}
+	if authn.IsPlayer(r.Context()) {
+		replay = withoutEventPayloads(replay)
+	}
+	_ = httpapi.WriteJSON(w, http.StatusOK, replay)
+}
+
+// withoutEventPayloads copies the frames so the service's segment is never mutated.
+func withoutEventPayloads(replay battleservice.BattleReplay) battleservice.BattleReplay {
+	frames := make([]battleservice.ReplayFrame, len(replay.Frames))
+	for i, frame := range replay.Frames {
+		events := make([]game.Event, len(frame.Events))
+		for j, event := range frame.Events {
+			event.Data = map[string]any{}
+			events[j] = event
+		}
+		frame.Events = events
+		frames[i] = frame
+	}
+	replay.Frames = frames
+	return replay
+}
+
 // eventQuery holds the parsed ListEvents query parameters.
 type eventQuery struct {
 	limit   int
@@ -259,6 +299,7 @@ func battleResponse(run *battleservice.BattleRun) any {
 		ScenarioDigest string  `json:"scenarioDigest"`
 		RequestedTicks uint64  `json:"requestedTicks"`
 		CurrentTick    uint64  `json:"currentTick"`
+		MaximumUnits   int     `json:"maximumUnits,omitempty"`
 		Production     any     `json:"production"`
 		Status         string  `json:"status"`
 		Paused         bool    `json:"paused"`
@@ -269,14 +310,24 @@ func battleResponse(run *battleservice.BattleRun) any {
 		State          any     `json:"state"`
 		ErrorCode      *string `json:"errorCode,omitempty"`
 		ErrorMessage   *string `json:"errorMessage,omitempty"`
+		League         any     `json:"league,omitempty"`
 	}{
 		OwnerID: run.OwnerID, ID: run.ID, ScenarioID: run.ScenarioID, ScenarioDigest: run.ScenarioDigest,
 		RequestedTicks: run.RequestedTicks, CurrentTick: run.CurrentTick, Status: run.Status, Paused: run.Paused,
-		Production: productionFor(run),
-		Attempt:    run.Attempt, Participants: participants, Result: run.Result,
+		MaximumUnits: run.ScenarioSnapshot.Ruleset.MaximumUnitCount, Production: productionFor(run),
+		Attempt: run.Attempt, Participants: participants, Result: run.Result,
 		Map: run.ScenarioSnapshot.Map, State: run.CurrentState,
 		ErrorCode: run.ErrorCode, ErrorMessage: run.ErrorMessage,
+		League: leagueFor(run),
 	}
+}
+
+// leagueFor keeps the field absent, not null, for battles outside a league.
+func leagueFor(run *battleservice.BattleRun) any {
+	if run.League == nil {
+		return nil
+	}
+	return run.League
 }
 
 func visibleProfiles(r *http.Request, profiles []ai.ModelProfile) any {
@@ -323,6 +374,9 @@ func battleResponseFor(r *http.Request, run *battleservice.BattleRun) any {
 		participants = append(participants, map[string]any{"id": f.ID, "name": f.Name, "background": f.Background, "doctrine": f.Doctrine, "controller": map[string]string{"type": f.Controller.Type}})
 	}
 	response := map[string]any{"id": run.ID, "ownerId": run.OwnerID, "scenarioId": run.ScenarioID, "requestedTicks": run.RequestedTicks, "currentTick": run.CurrentTick, "production": productionFor(run), "status": run.Status, "paused": run.Paused, "attempt": run.Attempt, "participants": participants, "result": run.Result, "map": run.ScenarioSnapshot.Map, "state": run.CurrentState}
+	if limit := run.ScenarioSnapshot.Ruleset.MaximumUnitCount; limit > 0 {
+		response["maximumUnits"] = limit
+	}
 	if run.Status == "failed" {
 		response["errorMessage"] = "The battle could not complete."
 	}

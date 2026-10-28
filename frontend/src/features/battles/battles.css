@@ -56,6 +56,18 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
 .statistics-card dl > div { padding: 16px; background: #151a14; }
 .statistics-card dt { color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .11em; text-transform: uppercase; }
 .statistics-card dd { margin: 7px 0 0; color: #d5dbce; font: 500 17px 'DM Mono', monospace; }
+.type-statistics { display: grid; gap: 18px; margin-top: 22px; }
+.type-statistics__scroll { overflow-x: auto; }
+.type-statistics table { width: 100%; border-collapse: collapse; color: #d5dbce; font: 13px 'DM Mono', monospace; }
+.type-statistics caption { padding-bottom: 8px; color: var(--muted); font-size: 12px; letter-spacing: .11em; text-align: left; text-transform: uppercase; }
+.type-statistics th, .type-statistics td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.type-statistics thead th { color: var(--muted); font-size: 11px; font-weight: 400; letter-spacing: .08em; text-transform: uppercase; }
+.type-statistics th[scope="row"], .type-statistics thead th:first-child { text-align: left; }
+.type-statistics th[scope="row"] { font-weight: 400; }
+.type-statistics th[scope="row"] .entity-icon { width: 18px; height: 18px; flex-basis: 18px; margin: -2px 7px 0 0; }
+.upgrade-timeline { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0; padding: 0; color: #d5dbce; font: 13px 'DM Mono', monospace; list-style: none; }
+.upgrade-timeline li { display: inline-flex; align-items: center; gap: 7px; }
+.upgrade-timeline span { color: var(--muted); font-size: 11px; letter-spacing: .08em; }
 .player-status-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 20px 0 12px; }
 .player-status-metrics dd { margin: 6px 0 0; color: #e0e6d9; font: 18px 'DM Mono', monospace; }
 .player-status-metrics > div:first-child dd { color: #ffcf70; }
@@ -122,6 +134,7 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
 .ai-decision-list dl > div { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; }
 .ai-decision-list dt { color: var(--muted); font: 12px 'DM Mono', monospace; letter-spacing: .08em; text-transform: uppercase; }
 .ai-decision-list dd { margin: 0; overflow-wrap: anywhere; color: #aeb6a9; font: 12px/1.45 'DM Mono', monospace; }
+.ai-decision-list dd .entity-icon { width: 16px; height: 16px; margin: -2px 3px 0 0; }
 
 @media (max-width: 1000px) {
   .ai-decision-panel { min-height: 420px; max-height: 680px; }
@@ -301,13 +314,15 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
 .faction-summary .faction-summary__metrics dt { color: #aeb6a9; font-size: 11px; }
 .faction-summary .faction-summary__metrics dd { margin: 0; color: var(--lime); font-size: 13px; overflow-wrap: anywhere; }
 .faction-summary__operations { display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* Production and upgrade chips wrap within their own column so the plan keeps its place. */
+.faction-summary__assets { display: flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .production-chips { display: flex; flex: 0 1 auto; flex-wrap: wrap; gap: 4px; min-width: 0; margin: 0; padding: 0; list-style: none; }
-.production-chip { color: #c9d0c3; background: #10150f; border: 1px solid #3a4237; font: 500 10px 'DM Mono', monospace; }
-.production-chip > details > summary { position: relative; display: inline-flex; align-items: center; gap: 1px; height: 100%; min-height: 28px; padding: 0 4px 3px; list-style: none; cursor: pointer; }
-.production-chip > details > summary::-webkit-details-marker { display: none; }
-.production-chip > details[open] > summary { background: #1c241a; box-shadow: inset 0 -2px currentColor; }
-.production-chip__detail { position: absolute; top: calc(100% + 6px); right: -1px; left: -3px; z-index: 20; margin: 0; padding: 10px 14px; color: #d8ded2; background: #151a14; border: 1px solid rgba(216,255,104,.45); box-shadow: 0 18px 40px rgba(0,0,0,.55); font: 12px/1.6 'DM Mono', monospace; }
-.production-chip .entity-icon { width: 16px; height: 16px; flex-basis: 16px; }
+.production-chip, .upgrade-chips { color: #c9d0c3; background: #10150f; border: 1px solid #3a4237; font: 500 10px 'DM Mono', monospace; }
+.production-chip > details > summary, .upgrade-chips > summary { position: relative; display: inline-flex; align-items: center; gap: 1px; height: 100%; min-height: 28px; padding: 0 4px 3px; list-style: none; cursor: pointer; }
+.production-chip > details > summary::-webkit-details-marker, .upgrade-chips > summary::-webkit-details-marker { display: none; }
+.production-chip > details[open] > summary, .upgrade-chips[open] > summary { background: #1c241a; box-shadow: inset 0 -2px currentColor; }
+.production-chip__detail, .upgrade-chips__detail { position: absolute; top: calc(100% + 6px); right: -1px; left: -3px; z-index: 20; margin: 0; padding: 10px 14px; color: #d8ded2; background: #151a14; border: 1px solid rgba(216,255,104,.45); box-shadow: 0 18px 40px rgba(0,0,0,.55); font: 12px/1.6 'DM Mono', monospace; }
+.production-chip .entity-icon, .upgrade-chips > summary .entity-icon { width: 16px; height: 16px; flex-basis: 16px; }
 .production-chip__arrow { color: var(--muted); font-size: 9px; }
 .production-chip__mark { margin-left: 3px; }
 .production-chip progress { position: absolute; right: 3px; bottom: 2px; left: 3px; width: auto; height: 3px; appearance: none; border: 0; background: #292f27; }
@@ -319,6 +334,16 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
 .production-chip--blocked { color: #ff9e85; border-color: rgba(255,158,133,.55); }
 .production-chip--off, .production-chip--idle { color: #858d80; }
 .production-chip--inactive { color: #858d80; border-style: dashed; }
+.upgrade-chips { flex: 0 1 auto; min-width: 0; }
+.upgrade-chips > summary { flex-wrap: wrap; gap: 0 7px; padding: 0 6px; }
+/* Tooltips hang from the chip's left edge, like its disclosure, so none leaves the page. */
+.upgrade-chips__item { display: inline-flex; align-items: center; gap: 1px; }
+.upgrade-chips__tooltip { position: absolute; top: calc(100% + 6px); left: -1px; z-index: 30; display: none; width: max-content; max-width: min(260px, 70vw); padding: 7px 10px; color: #d8ded2; background: #151a14; border: 1px solid rgba(216,255,104,.45); box-shadow: 0 12px 28px rgba(0,0,0,.55); font: 11px/1.45 'DM Mono', monospace; text-align: left; white-space: normal; pointer-events: none; }
+.upgrade-chips__tooltip strong { display: block; color: var(--lime); font-weight: 500; }
+.upgrade-chips__item:hover > .upgrade-chips__tooltip { display: block; }
+.upgrade-chips[open] .upgrade-chips__tooltip { display: none; }
+.upgrade-chips__level { color: var(--lime); }
+.upgrade-chips__detail .entity-icon { width: 18px; height: 18px; flex-basis: 18px; }
 .faction-summary__plan { flex: 1 1 190px; min-width: 190px; text-align: right; }
 .faction-summary__plan > summary { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0 10px; text-align: left; vertical-align: middle; overflow: hidden; color: #aeb6a9; background: #10150f; border: 1px solid #3a4237; font: 12px 'DM Mono', monospace; white-space: nowrap; list-style: none; }
 .faction-summary__plan > summary::-webkit-details-marker { display: none; }
@@ -328,8 +353,40 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
 .faction-summary__plan > summary:hover { border-color: rgba(216,255,104,.45); }
 .faction-summary__plan textarea { position: absolute; top: calc(100% + 6px); right: -1px; left: -3px; z-index: 20; display: block; width: auto; height: min(320px, 50vh); text-align: left; padding: 14px 16px; resize: none; overflow: auto; color: #d8ded2; background: #151a14; border: 1px solid rgba(216,255,104,.45); border-radius: 0; box-shadow: 0 18px 40px rgba(0,0,0,.55); font: 13px/1.6 'Manrope', sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-.battle-map-column { min-width: 0; }
+.battle-map-column { position: relative; min-width: 0; }
 .battle-map-column > .map-panel { margin-bottom: 0; }
+/* A settled battle's results cover the map; on narrow screens they replace it instead. */
+.battle-statistics--overlay { position: absolute; inset: 0; z-index: 5; overflow: auto; padding: 14px 16px; background: #0e1419; border: 1px solid #303a42; }
+.battle-statistics--overlay > .section-label { flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px 14px; padding-bottom: 12px; }
+.battle-statistics--overlay > .section-label > span { white-space: nowrap; }
+.battle-statistics--overlay > .section-label > .compact-action { min-height: 32px; margin-left: auto; }
+.battle-statistics--overlay .statistics-grid { margin-top: 14px; }
+.battle-statistics--overlay .statistics-card { padding: 18px; }
+@media (max-width: 1000px) {
+  .battle-statistics--overlay { position: static; }
+  .battle-map-column--results > .map-panel { display: none; }
+}
+.battle-progress-panel > .compact-action { min-height: 32px; margin-top: 8px; }
+
+/* Replay mode: controls above the map. */
+.replay-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 12px; background: #151a14; border: 1px solid var(--line); border-bottom: 0; font: 12px 'DM Mono', monospace; }
+.replay-controls__buttons { display: flex; gap: 4px; }
+.replay-controls__buttons button { min-width: 36px; min-height: 32px; padding: 0 10px; color: var(--lime); background: transparent; border: 1px solid rgba(216,255,104,.45); font: 500 13px 'DM Mono', monospace; letter-spacing: .08em; }
+.replay-controls__buttons button:hover:not(:disabled) { color: var(--ink); background: var(--lime); }
+.replay-controls__buttons button:disabled { opacity: .4; }
+.replay-controls__play { min-width: 72px; }
+.replay-controls__timeline { display: flex; flex: 1 1 200px; align-items: center; gap: 8px; min-width: 0; color: var(--muted); }
+.replay-controls__timeline input { flex: 1; min-width: 0; accent-color: var(--lime); }
+.replay-controls__tick { color: #aeb6a9; white-space: nowrap; }
+.replay-controls__tick strong { color: var(--lime); font-weight: 500; }
+.replay-controls__speed { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.replay-controls__speed select { height: 32px; padding: 0 8px; color: #dce2d5; background: #111510; border: 1px solid #454d41; font: 12px 'DM Mono', monospace; }
+.replay-controls__error { flex-basis: 100%; color: #ffb4a8; }
+.replay-controls__error button { margin-left: 8px; color: var(--lime); background: transparent; border: 1px solid rgba(216,255,104,.45); font: inherit; }
+.replay-loading { display: block; margin: 0; padding: 40px 16px; color: var(--muted); text-align: center; border: 1px solid var(--line); font: 12px 'DM Mono', monospace; letter-spacing: .12em; }
+@media (max-width: 780px) {
+  .replay-controls__buttons button { min-width: 44px; min-height: 40px; }
+}
 
 @media (min-width: 1001px) {
   .battle-cockpit {
@@ -357,6 +414,8 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
   .battle-map-column > .map-panel > .map-footer > * { max-height: 45vh; overflow: auto; pointer-events: auto; background: rgba(14,20,25,.94); border: 1px solid #303a42; }
   .battle-map-column > .map-panel > .map-footer > .map-key { flex: 0 1 auto; max-width: 60%; }
   .battle-map-column > .map-panel > .map-footer > .entity-details { flex: 0 1 auto; gap: 4px 12px; max-width: 55%; min-height: 0; margin-left: auto; padding: 8px 12px; font-size: 13px; }
+  /* The floating panel is only as wide as its text, so its clear button goes last. */
+  .battle-map-column > .map-panel > .map-footer > .entity-details > .entity-details__clear { order: 1; }
 }
 
 @media (max-width: 1280px) {

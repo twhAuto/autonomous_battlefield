@@ -25,6 +25,7 @@ type factionRuntime struct {
 	damageTaken    int64
 	attackTicks    uint64
 	defendTicks    uint64
+	stats          typeStatistics
 }
 
 type Match struct {
@@ -101,7 +102,11 @@ func (m *Match) AdvanceWithPlans(plans map[string]controller.PlanProposal) (Tran
 	events = append(events, m.event("tick_completed", map[string]any{"tick": m.state.Tick}))
 	events = append(events, m.completionEvents(winner)...)
 	m.sortState()
-	return m.transition(events), nil
+	transition := m.transition(events)
+	if decisionWindow {
+		transition.Checkpoint = m.checkpointPointer()
+	}
+	return transition, nil
 }
 
 func (m *Match) completionEvents(winner *string) []Event {
@@ -149,7 +154,8 @@ func (m *Match) buildResult(winner *string, reason string) *Result {
 		if castle := m.castle(id); castle != nil {
 			castleHealth = max(int64(0), castle.Health)
 		}
-		result.Factions = append(result.Factions, FactionStats{FactionID: id, CastleHealth: castleHealth, UnitsStarted: state.UnitsStarted, UnitsRecruited: state.UnitsRecruited, UnitsLost: state.UnitsLost, UnitsRemaining: remaining, DamageDealt: runtime.damageDealt, DamageTaken: runtime.damageTaken, AttackTicks: runtime.attackTicks, DefendTicks: runtime.defendTicks, GoldEarned: state.GoldEarned, GoldSpent: state.GoldSpent, GoldLooted: state.GoldLooted, BuildingsConstructed: state.BuildingsBuilt, BuildingsDestroyed: state.BuildingsDestroyed})
+		result.Factions = append(result.Factions, FactionStats{FactionID: id, CastleHealth: castleHealth, UnitsStarted: state.UnitsStarted, UnitsRecruited: state.UnitsRecruited, UnitsLost: state.UnitsLost, UnitsRemaining: remaining, DamageDealt: runtime.damageDealt, DamageTaken: runtime.damageTaken, AttackTicks: runtime.attackTicks, DefendTicks: runtime.defendTicks, GoldEarned: state.GoldEarned, GoldSpent: state.GoldSpent, GoldLooted: state.GoldLooted, BuildingsConstructed: state.BuildingsBuilt, BuildingsDestroyed: state.BuildingsDestroyed,
+			UnitTypes: runtime.stats.unitList(), BuildingTypes: runtime.stats.buildingList(), Upgrades: runtime.stats.upgradeList()})
 	}
 	return result
 }

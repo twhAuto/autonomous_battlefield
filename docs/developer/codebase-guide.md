@@ -6,7 +6,7 @@ boundaries, data flows, durability and security, see the
 own the detail:
 
 - [Local setup](local-setup.md) and [continuous integration](ci.md): development environment and verification.
-- [Backend guide](backend-guide.md): package ownership, persistence, configuration and AI execution.
+- [Backend guide](backend-guide.md): package ownership, persistence, configuration, AI execution, and a [feature map](backend-guide.md#feature-map) of where each cross-cutting feature's code and tests live.
 - [Frontend guide](frontend-guide.md): feature ownership, shared contracts and styles.
 - [Tooling guide](tooling-guide.md): scripts, test layout, platform automation and CI implementation.
 
@@ -27,6 +27,8 @@ autonomous_battlefield/
 │   ├── internal/
 │   │   ├── battle/{api,service,catalog,worker,repo,resultcache}/
 │   │   ├── faction/{api,service,repo}/
+│   │   ├── league/{api,service,repo}/ # AI leagues; the league package holds the pure rules
+│   │   ├── analytics/{api,service,repo}/ # Completed-battle summaries; the analytics package aggregates
 │   │   ├── game/               # Deterministic state transitions
 │   │   │   └── controller/     # Infrastructure-free controller contracts
 │   │   ├── ai/                 # Shared decision contracts; subpackages for capability tokens,
@@ -50,7 +52,7 @@ autonomous_battlefield/
 │   └── evals/                  # Evaluation cases and pricing configuration
 ├── frontend/src/
 │   ├── app/                    # Application shell, routes, integration tests
-│   ├── features/{battles,factions,auth,admin}/ # Feature pages, API clients, unit tests
+│   ├── features/{battles,factions,leagues,analytics,auth,admin}/ # Feature pages, API clients, unit tests
 │   ├── shared/{api,domain,components,hooks,styles}/ # Shared contracts, visuals, and foundations
 │   ├── pages/                  # General pages, including Home
 │   └── test/                   # Shared test setup
@@ -212,104 +214,11 @@ by the [AI development policy](ai-development-policy.md). The skills in
 `.claude/skills/`) cover ticket linking, PRs, CI triage, releases, docs and backlog
 work, and [cross-review](cross-review.md) covers agent review. Every agent-authored
 change is linked to a Notion ticket whose `AB-NN` ID appears in the branch name,
-commit subjects and PR title.
+commit subjects and PR title. Docs describe current behavior with one owning doc
+per topic; the rules and owners are in
+[`AGENTS.md`](../../AGENTS.md#documentation-maintenance).
 
 For a PR stack, each PR's review and Sonar preview use its actual target branch.
 Jenkins verifies only PRs targeting `dev` or `main`, so a stacked PR needs
 verification after it is retargeted to `dev`. CI evidence names both the tested
 head and target commit; a pass for an older pair does not verify the current tree.
-
-## Shared battlefield content
-
-`backend/gamedata/battlefield.yaml` owns shared timing and controller plans;
-`rulesets/battlefield.yaml` references the full `content/core-v7.yaml` library.
-`scenarios/castle-siege.yaml` and `scenarios/frontier-siege.yaml` contain maps only.
-`battle/catalog/shared_content.go` validates shared plans, while `library.go`
-resolves every library entry. Historical content lives only in catalog test fixtures.
-
-`game/upgrade_levels.go` checks prerequisites and exclusive groups;
-`upgrade_effects.go` validates scopes; `upgrades.go` applies effects to current and
-future units. `specialists.go` owns Scout retreat, cavalry pursuit and repairs;
-combat/support code handles armor penetration and extended treatment range.
-Frontend `presentation/upgrades.ts` formats owned levels and branch effects.
-Tests cover every map's full catalog, specialist actions, branch locks, reserves,
-replay and UI presentation. The PostgreSQL-backed coverage gate includes persistence.
-
-## Battle selection and latency implementation
-
-`internal/ai/selection.go` validates operator model/effort options and resolves
-selections. Battle API/service code freezes them in `game.ControllerConfig`, and
-`internal/ai/agent/executor.go` validates the claimed selection before constructing
-a runner. `internal/ai/timing.go` validates worker duration metadata.
-Migration `00018_decision_selection_timing.sql` and the battle decision repository
-persist lifecycle times. `DecisionTiming.tsx` renders the elapsed/completed
-breakdown in `AIDecisionPanel`; `CreateBattlePage.tsx` renders dependent model/effort
-selectors. Selection tests, PostgreSQL lifecycle integration tests, and component
-tests cover allowlists, retry identity, terminal timing and missing history.
-
-`scripts/dev/run-k8s-cli-agent.sh` accepts the selected stable CLI version or newer;
-`scripts/test/test-cli-agent.py` covers version checks, login checks and generated profiles.
-`scripts/test/test-cli-worker.py` checks that model defaults and choices agree
-across backend configuration, the application ConfigMap, VM configuration,
-managed settings and the generated host-agent configuration.
-
-[`cli_failure.go`](../../backend/internal/ai/runner/cli_failure.go) classifies the
-Codex and Claude CLIs' terminal error messages: rate and usage limits become
-`provider_rate_limited`, other errors stay `cli`. The worker logs the runner error
-as the `error` field of `decision_runner_failed`, after `redact.Error` removes
-network identities and `CLIFailureDetail` bounds it and redacts bearer credentials.
-
-CLI context prefetch is implemented in `internal/ai/runner/cli.go` and covered by
-`internal/ai/runner/prefetch_test.go`. CLI battle sessions use host-fetched inline
-context unless `ModelProfile.PrefetchContext` is explicitly false
-(`PrefetchesContext()` applies the default); the host dev script exposes
-`HOST_CLI_PREFETCH_CONTEXT` (default `true`). Decision history and
-`DecisionTiming.tsx` display the recorded delivery mode. See [comparison
-procedure](../operations/cli-worker.md#context-prefetch-comparison).
-`cmd/aieval/comparison.go` also accepts CLI `reasoningEffort` and `prefetchContext`
-variants, recorded in comparison reports for matched offline-context experiments.
-`internal/ai/agentview/context_order.go` orders MCP JSON and partitions prefetched
-context into lossless reference/state blocks. Its tests reconstruct optional, null,
-unknown and large-number values and compare stable references across ticks.
-`internal/ai/agentview/compact_tables.go` and `compact_state.go` encode catalog
-and upgrade tables, a shared unit map, construction runs and exact memory sharing.
-`compact_data_test.go` independently expands the documented encoding; set
-`BATTLEFIELD_DECISIONS_FIXTURE` to a private JSON array of saved `observation`
-records for offline round-trip and size checks. Never commit private battle data.
-`compact_ids.go` runs before table encoding: it assigns context-local integer unit
-IDs, rewrites unit target references and omits destroyed buildings; it is lossy by
-design, so `compact_ids_test.go` checks it separately from the round-trip tests.
-The free comparison baseline and CLI prefetch read only the metadata they need,
-so model-facing catalog tables are not decoded as canonical observation structs.
-`internal/ai/prompts/context_policy.go` selects reduced guidance only for the exact
-mechanics digest reviewed in `rule-duplicates.json`; prompt tests verify every
-removal against embedded game content and retain historical/missing-data fallbacks.
-
-### Battle setup timing and faction summaries
-
-`frontend/src/features/battles/pages/CreateBattlePage.tsx` offers map-default or
-preset tick duration and decision interval, resets overrides on a map change,
-and keeps combatant columns aligned with mixed controller types. It preselects
-the `frontier-siege` map when offered and Low reasoning effort for models that
-list efforts. `components/MapPreview.tsx` draws the selected scenario's terrain
-and castle spawns from the `map` field of `GET /v1/scenarios`, reusing the hex
-geometry exported by `HexBattleMap.tsx`. Availability
-still filters controller choices; setup has no integration diagnostic panel.
-`backend/internal/battle/service/timing.go` validates optional overrides before
-snapshot hashing and persistence; `timing_test.go` covers bounds, defaults and
-retry identity. The existing engine reads timing from that frozen snapshot.
-`FactionSummaries.tsx` shows the applied plan and rationale inside each status
-box for viewers with inspection permission. Component and staging browser tests
-cover timing payloads, mixed-controller alignment and plan placement.
-
-Gameplay construction and training are implemented in
-[`construction.go`](../../backend/internal/game/construction.go) and
-[`training.go`](../../backend/internal/game/training.go). Specialized source selection,
-rosters, and historical starting-Barracks compatibility live in
-[`training_sources.go`](../../backend/internal/game/training_sources.go). The map renderer shows
-terrain bonuses, selected-building range and training progress.
-[`continuous_production.go`](../../backend/internal/game/continuous_production.go) validates persistent AI selections and purchases one unit at a time for enabled sources.
-[`BuildingProduction.tsx`](../../frontend/src/features/battles/components/BuildingProduction.tsx) renders each living source as a compact chip in its faction strip for every viewer, with gold waits, disabled production and blocked exits in each chip's disclosure (opened by hover title, click, tap or keyboard); selected map details reuse its status display.
-`initialization.go` copies authored castle training and attack capabilities into
-runtime state; `structures.go` runs castle and tower attacks together. The full map
-uses the main battle snapshot; the former faction-perspective polling hook is removed.

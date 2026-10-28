@@ -40,10 +40,12 @@ to.
 
 Faction and battle responses carry a server-assigned `ownerId`. Updating or
 deleting a faction, and stopping, pausing or resuming a battle, require ownership
-or the Admin role. Players can read shared factions, battles, events and history,
-but receive gameplay-only responses: events without payloads, battles without
-inspection fields, and a reduced model-profile list. Decision history and saved
-decision context require Developer or Admin.
+or the Admin role. Players can read shared factions, battles, events, replays and
+history, but receive gameplay-only responses: events and replay events without
+payloads, battles without
+inspection fields, and a reduced model-profile list. Decision history, saved
+decision context, [leagues](#leagues) and [analytics](#analytics) require Developer
+or Admin; only Admins create or cancel a league.
 
 Selecting a model controller, for a battle or for background generation, requires
 an enabled, verified profile and a role allowed by the
@@ -64,7 +66,8 @@ generation configuration. Exceeding a limit returns `429`. Admin battles bypass 
 three battle limits, including the service-wide one, but still count as unfinished
 when other people's battles are admitted. Paused battles are unfinished. A
 retry that reuses a request's identifier with the same inputs and identity
-returns the work already admitted rather than consuming another allowance.
+returns the work already admitted rather than consuming another allowance. League
+battles are Admin battles and also skip the per-battle model decision budget.
 
 Private worker APIs are outside this contract: they use a separate bearer secret
 and server-minted request capabilities, described in the
@@ -126,6 +129,13 @@ different caller or content returns `409`. Names, doctrines and backgrounds are
 trimmed before storage. Doctrine is limited to 4,000 and background to 1,000
 Unicode characters, not UTF-8 bytes; a missing background means empty.
 
+The cosmetic `emblem` field accepts `star`, `crown`, `shield`, `swords`, `wolf`,
+`raven`, `serpent`, `tree`, `leaf`, `flame`, `sun`, or `moon`. Omitted or empty
+values default to `star` on creation and preserve the saved choice on update.
+Unknown identifiers return `400`. Creation retries compare the normalized emblem
+as well as the profile text. Registry responses include the saved identifier;
+colors are derived from the faction name in the frontend.
+
 Edits apply only to future battles. Deleting a faction removes it from the active
 registry, but battle history stays readable because each battle stores an
 immutable snapshot of its participants.
@@ -164,6 +174,7 @@ decision. The tick duration is a pacing target; AI decision waits can extend it.
 Shorter intervals consume the existing per-battle `runtime_policy.decision_executions`
 budget sooner (default 100). Claim admission serializes that budget, and new model
 windows immediately fall back once it is spent; timing overrides do not bypass it.
+Only [league](#leagues) battles are exempt.
 
 Every `decisionIntervalTicks` the engine pauses for each faction's plan, so a
 model-controlled battle can wait at a window; a late plan never replaces the
@@ -184,7 +195,9 @@ battle routes. Only a completed battle with an outcome and no winner is a draw.
 ### Status and controls
 
 `GET /v1/battles/{id}` returns the authored map and the current state, attempt and
-result. While a battle is queued or running, `production` gives the next point at
+result. Each faction's result totals include per-unit-type and per-building-type
+figures and its upgrade purchase ticks; a result that did not record them omits
+those lists. While a battle is queued or running, `production` gives the next point at
 which factions spend gold; all purchases for a window happen at once and nothing
 is queued between windows.
 
@@ -205,7 +218,7 @@ remain visible. The full battle snapshot used by viewers retains both sides' set
 `visiblePositions` field contains every map coordinate for older clients.
 
 Buildings expose `buildRange`, optional `trains` (supported unit IDs), `trainingQueue`,
-and `trainingBlocked`. Core v7 also exposes `production: {configured?, unitType?, enabled, waitingForGold?, waitingForUnitLimit?}` on every training building. Selection persists; disabled sources finish paid training. Insufficient gold above the AI reserve, or a faction at its ruleset unit cap, pauses starts until affordable or a unit slot frees. The queue contains at most one paid unit in continuous mode; frozen older battles retain up to twelve. Viewers can inspect production but cannot change it; no manual production endpoint exists. The current catalog has five constructible production kinds.
+and `trainingBlocked`. Core v7 and later also expose `production: {configured?, unitType?, enabled, waitingForGold?, waitingForUnitLimit?, waitingForUpgrade?}` on every training building. Selection persists; disabled sources finish paid training. Insufficient gold above the AI reserve, a faction at its ruleset unit cap, or a selected core v8 type whose unlock upgrade is not yet owned pauses starts until affordable, a unit slot frees or the unlock is bought. The queue contains at most one paid unit in continuous mode; frozen older battles retain up to twelve. Viewers can inspect production but cannot change it; no manual production endpoint exists. The current catalog has five constructible production kinds.
 Each faction starts with only a castle, which trains the Barracks roster and exposes
 `attack: 15` and `range: 3`. Resolved rules save `buildings.castleTrains`,
 `castleAttack` and `castleRange`; omitted legacy fields retain older behavior. Current AI `productionOrders` explicitly identify each source and select its unit/on-off setting. Frozen legacy recruitment supports automatic source selection; incompatible requests are rejected by validation.
@@ -233,6 +246,25 @@ fetch the most recent `limit` events (still ascending); `latest` cannot be
 combined with a nonzero `after`. The `BattleEvent` schema lists every event type
 and its payload. Players receive the same events with an empty `data` object.
 
+### Battle replay
+
+`GET /v1/battles/{id}/replay?tick=N` returns one segment of a completed, stopped or
+failed battle's final attempt: the stored checkpoint at or before `N` and every tick
+up to the next decision window or the final tick. Each frame carries that tick's
+full battle `state` (as in `GET /v1/battles/{id}`) and its events. A client plays a
+battle by starting at `tick=0` and following `nextTick` until it is `null`; seeking
+requests the segment that contains the target tick. Segments are computed on demand
+and are not cached.
+
+A queued or running battle, or one whose final attempt saved no checkpoint for the
+segment returns
+`409 conflict`. A tick beyond the final tick returns `400`. Players receive replay
+events with an empty `data` object, as on the events route. The engine re-simulates
+ticks between checkpoints with the current engine, so a replay is exact for battles
+run on the deployed engine version; see the
+[gameplay cutover](../operations/deployment.md#gameplay-rules-cutover) for engine
+upgrades.
+
 ### Decision history and saved context
 
 `GET /v1/battles/{id}/decisions?attempt=N` lists completed decisions with the
@@ -249,6 +281,71 @@ observation, not a recording of what the model received, and
 `availableUnitDetails` is the unit reference the model could look up, not a record
 of lookups it made. A request belonging to another battle or attempt returns
 `404`. Clients should fetch it on demand and cache by battle, attempt and request.
+
+## Leagues
+
+A league plays AI entrants against each other in background battles. Admins create
+and cancel leagues; Developers and Admins read them.
+
+`POST /v1/leagues` takes a client-supplied `id`, a `name`, one to five
+`scenarioIds`, the battle timing (`tickCount`, optional `tickDuration` and
+`decisionIntervalTicks`, as for battles) and 8 or 16 `entrants`, four per group
+`A`–`D`, each a distinct faction with a controller. Every entrant is checked on every
+map, from both spawn sides, with the battle-creation rules, so an unavailable model,
+missing faction or invalid timing fails the create with the same `404`, `422` or
+`400` a battle would. Repeating an identical request returns `201` with the stored
+league; reusing the `id` for a different request returns `409 already_exists`.
+
+Each group plays every pairing twice, once from each spawn side, on one map;
+pairings rotate through the maps. Group tables rank by points (win 3, draw 1), then
+points among the entrants level on points, castle-health difference, damage
+difference and entry order. The top two of each group play a crossover knockout:
+semifinals A1–B2 and B1–A2 with two groups; with four, quarterfinals A1–B2, B1–A2,
+C1–D2 and D1–C2, arranged so group-mates meet again only in the final. Each tie has
+two legs; its winner has more wins, then the higher castle-health and damage
+differences, then the better group finish, more group points and entry order. A
+league plays 30 fixtures with 8 entrants and 62 with 16.
+
+The API starts fixtures in order into free engine slots, so up to `battleSlots`
+battles run at once and a league battle never waits out the one-hour battle timeout
+in the queue. Battles of other owners occupy slots too, and CLI model sides share
+`cliSlots`, as the [league scheduler](system-architecture.md#57-play-a-league)
+describes; `GET /v1/leagues` reports both counts. League battles count toward the
+global limit of unfinished battles, so while they reach it, new Player battles are
+rejected. League battles belong to the creating Admin, skip the battle
+allowances and the decision budget, and appear on `GET /v1/battles/{id}` with a
+`league` field naming the league and fixture. A failed or stopped battle is retried
+once with a new battle; a second failure makes the fixture `void`, which scores for
+nobody. Model access is checked again for every battle, so revoking access
+mid-league voids that entrant's remaining fixtures.
+
+`GET /v1/leagues/{id}` returns the settings, entrants, ranked `groups`, `knockout`
+ties and every fixture with its `battleId` and, once completed, its `result`.
+`GET /v1/leagues` lists summaries, newest first. `POST /v1/leagues/{id}/cancel`
+cancels unfinished fixtures and stops the running battle; repeating it returns `200`
+and stops any league battle still running. Cancelling a completed league returns
+`409`.
+
+## Analytics
+
+`GET /v1/analytics` summarizes completed battles for Developers and Admins: per
+controller (scripted, or profile, model and reasoning effort) the win, draw and loss
+record, castle wins, a 95% Wilson interval on the win rate, mean ticks to win,
+fallback and invalid-plan rates, mean decision latency and tokens per battle; the
+same outcomes per faction; a head-to-head record for every pair of controllers; per
+unit type the totals, kills per loss, damage per gold and its share of winning and
+losing armies, and each controller's army mix; per upgrade the purchase rate, mean
+purchase tick and win rate with and without it; and per map the draw rate, mean
+length and each spawn side's wins.
+
+`leagueId`, `since` and `excludeFallback=true` narrow the battles. `rulesVersion`
+defaults to the current rules, so balance changes do not mix; `all` includes every
+version. A report reads at most the 5000 most recent battles and says when it was
+truncated. Unit and upgrade figures use only results with per-type statistics, so
+battles completed before those were recorded count for outcomes alone. A model's
+decisions come from its battles' final attempts; a fallback plan a retry reused from
+an earlier attempt still counts as a fallback. A renamed faction is reported under
+its newest name.
 
 ## Faction background generation
 
@@ -308,8 +405,8 @@ are validation errors; an owned prerequisite or one ordered earlier is accepted.
 Repeated owned levels are free, while duplicate IDs in the same submission remain
 invalid. An unaffordable level stops further upgrades in that window. Ownership
 retains every purchased ID in `ownedUpgradeIds`, and level purchase events add
-track, level and incremental effect fields. Saved battles keep their original semantics. New map IDs are `castle-siege` and
-`frontier-siege`; retired version-specific IDs are not accepted for new battles.
+track, level and incremental effect fields. Saved battles keep their original semantics. New map IDs are `castle-siege`,
+`frontier-siege`, `highland-crown`, `long-march` and `river-fords`; retired version-specific IDs are not accepted for new battles.
 Scenario summary roster fields describe the same shared catalog on every map.
 Specialist upgrades additionally expose `targetUnit`, `targetClass`,
 `exclusiveGroup` and scoped bonus fields. Conflicting branch orders are validation
@@ -328,16 +425,15 @@ scripted controllers reject these model fields. Profile role checks still apply.
 The selection is frozen for execution and retry matching. Provider aliases remain
 aliases, rather than promises of a specific underlying version.
 
-Decision history adds `reasoningEffort`, `claimedAt`, `contextServedAt`,
+Decision history includes `reasoningEffort`, `claimedAt`, `contextServedAt`,
 `runnerCompletedAt`, and optional `cliProcessStartMs`. Absent timestamps mean
-unknown, including historical rows. Existing inspection permissions still apply;
-this does not expose decision inspection to Player roles. `createdAt` to
+unknown. `createdAt` to
 `resolvedAt` measures total wait until acceptance/fallback/failure, not subprocess
 shutdown. Reclaimed jobs report the latest claim while preserving total wait.
 Internal agent claims require `selectionVersion: 1`; incompatible workers receive
 409 before any job is leased.
 
 Decision-history rows optionally include `contextDelivery: "tool" | "prefetch"`.
-This identifies the CLI worker's configured delivery path; it is absent from older
-records. In prefetch mode the context timestamp is recorded before CLI launch.
-History permissions are unchanged, and raw provider metadata is not exposed.
+This identifies the CLI worker's configured delivery path; absence means unknown.
+In prefetch mode the context timestamp is recorded before CLI launch. Raw provider
+metadata is not exposed.

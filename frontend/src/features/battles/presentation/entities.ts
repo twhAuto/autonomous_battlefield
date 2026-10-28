@@ -36,8 +36,8 @@ export function entityName(id: string | undefined, naming: EntityNaming = {}) {
   return `${faction} · ${identity}`
 }
 
-const entityFields = new Set(['unitId', 'buildingId', 'castleId', 'attackerId', 'targetId', 'healerId', 'engineerId', 'sourceId', 'sourceBuildingId', 'attackTargetId', 'healTargetId'])
-const typeFields = new Set(['unitType', 'buildingType', 'targetType'])
+const entityFields = new Set(['unitId', 'buildingId', 'castleId', 'attackerId', 'killerId', 'targetId', 'healerId', 'engineerId', 'sourceId', 'sourceBuildingId', 'attackTargetId', 'healTargetId'])
+const typeFields = new Set(['unitType', 'buildingType', 'targetType', 'killerType'])
 
 // Only structured reference/type fields are rewritten; arbitrary strings and AI
 // prose must not be interpreted as identifiers.

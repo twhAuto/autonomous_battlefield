@@ -55,11 +55,19 @@ var forbidden = map[string][]string{
 	"internal/game": {"internal/ai/...", "internal/postgres", "internal/httpapi"},
 	// Domain services own the rules and depend on repository interfaces, not on the
 	// adapters around them.
-	"internal/battle/service":  {"internal/battle/repo", "internal/battle/api", "internal/battle/worker", "internal/postgres", "internal/httpapi"},
-	"internal/faction/service": {"internal/faction/repo", "internal/faction/api", "internal/postgres", "internal/httpapi"},
+	"internal/battle/service":    {"internal/battle/repo", "internal/battle/api", "internal/battle/worker", "internal/postgres", "internal/httpapi"},
+	"internal/faction/service":   {"internal/faction/repo", "internal/faction/api", "internal/postgres", "internal/httpapi"},
+	"internal/league/service":    {"internal/league/repo", "internal/league/api", "internal/battle/repo", "internal/postgres", "internal/httpapi"},
+	"internal/analytics/service": {"internal/analytics/repo", "internal/analytics/api", "internal/postgres", "internal/httpapi"},
+	// Analytics summaries are pure: storage and transport stay with their callers.
+	"internal/analytics":     {"internal/battle/...", "internal/ai/...", "internal/postgres", "internal/httpapi"},
+	"internal/analytics/api": {"internal/analytics/repo", "internal/postgres"},
+	// League rules are pure: battles, storage and transport stay with their callers.
+	"internal/league": {"internal/battle/...", "internal/ai/...", "internal/postgres", "internal/httpapi"},
 	// HTTP handlers reach storage only through their service.
 	"internal/battle/api":  {"internal/battle/repo", "internal/postgres"},
 	"internal/faction/api": {"internal/faction/repo", "internal/postgres"},
+	"internal/league/api":  {"internal/league/repo", "internal/battle/repo", "internal/postgres"},
 	// The decision pipeline is pure: storage and transport stay with its callers.
 	"internal/ai/decision":  {"internal/postgres", "internal/httpapi"},
 	"internal/ai/briefing":  {"internal/postgres", "internal/httpapi"},

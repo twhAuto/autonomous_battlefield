@@ -19,8 +19,8 @@ func TestEveryMapUsesSharedContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Rulesets()) != 1 || len(c.IDs()) != 2 {
-		t.Fatal("expected one ruleset and two distinct maps")
+	if want := []string{"castle-siege", "frontier-siege", "highland-crown", "long-march", "river-fords"}; len(c.Rulesets()) != 1 || !reflect.DeepEqual(c.IDs(), want) {
+		t.Fatalf("expected one ruleset and the maps %v, got %v", want, c.IDs())
 	}
 	var baseline game.Ruleset
 	for i, id := range c.IDs() {
@@ -54,11 +54,11 @@ func TestLibraryEditsLeaveSnapshotsUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	var library contentLibrary
-	if err = decodeOne(os.DirFS(dir), "content/core-v7.yaml", &library); err != nil {
+	if err = decodeOne(os.DirFS(dir), "content/core-v8.yaml", &library); err != nil {
 		t.Fatal(err)
 	}
 	library.Units[0].Cost++
-	writeYAML(t, filepath.Join(dir, "content/core-v7.yaml"), library)
+	writeYAML(t, filepath.Join(dir, "content/core-v8.yaml"), library)
 	next, err := LoadCatalog(os.DirFS(dir))
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +115,7 @@ func TestLibraryReferencesAndValidation(t *testing.T) {
 		}
 	}
 	var library contentLibrary
-	if err := decodeOne(gamedata.Files, "content/core-v7.yaml", &library); err != nil {
+	if err := decodeOne(gamedata.Files, "content/core-v8.yaml", &library); err != nil {
 		t.Fatal(err)
 	}
 	for _, change := range []func(*contentLibrary){
@@ -186,7 +186,7 @@ func checkSharedDecisionContent(t *testing.T, s game.Scenario) {
 
 func TestCastleLibraryCapabilities(t *testing.T) {
 	var library contentLibrary
-	if err := decodeOne(gamedata.Files, "content/core-v7.yaml", &library); err != nil {
+	if err := decodeOne(gamedata.Files, "content/core-v8.yaml", &library); err != nil {
 		t.Fatal(err)
 	}
 	for _, mutate := range []func(*buildingDefinition){

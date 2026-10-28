@@ -31,16 +31,20 @@ describe('faction summaries', () => {
     rerender(<FactionSummaries {...props} decisionMessage="Request failed" />)
     expect(screen.getByText('Status unavailable')).toBeVisible()
     expect(screen.queryByText('Deciding')).not.toBeInTheDocument()
-    expect(screen.getAllByText('0')).toHaveLength(2)
+    expect(screen.getAllByText('0')).toHaveLength(3)
   })
 
-  it.each([
-    ['completed', false, 'Completed'], ['failed', false, 'Battle failed'],
-    ['stopped', false, 'Stopped'], ['running', true, 'Paused'], ['queued', true, 'Paused'],
-  ] as const)('overrides stale activity when %s (paused=%s)', (status, paused, label) => {
+  it.each([['running', true], ['queued', true]] as const)('overrides stale activity when %s (paused=%s)', (status, paused) => {
     render(<FactionSummaries {...props} battle={{ ...battle, status, paused }} decisionMessage="Request failed" />)
-    expect(screen.getByText(label)).toBeVisible()
+    expect(screen.getByText('Paused')).toBeVisible()
     expect(screen.queryByText('Deciding')).not.toBeInTheDocument()
+  })
+
+  it.each(['completed', 'failed', 'stopped'] as const)('shows no activity once the battle is %s', (status) => {
+    render(<FactionSummaries {...props} battle={{ ...battle, status }} decisionMessage="Request failed" />)
+    const summary = within(screen.getByRole('article', { name: 'Amber' })).getByText('Plan unavailable').closest('summary')
+    expect(summary).toHaveTextContent(/^\s*Plan unavailable$/)
+    expect(summary!.querySelector('.faction-summary__activity')).toBeNull()
   })
 
   it('identifies explicit and legacy scripted controllers despite a decision polling failure', () => {
@@ -71,13 +75,31 @@ describe('faction summaries', () => {
     expect(screen.getByText('Gold').nextElementSibling).toHaveTextContent('0')
   })
 
+  it('counts units in training against the unit cap and buildings other than the castle', () => {
+    const unit = { id: 'u', factionId: 'a', type: 'striker', position: { x: 0, y: 0 }, health: 10, maxHealth: 10, attack: 1, defense: 1, speed: 1, movement: 1, range: 1, vision: 1, readyAtTick: 0 }
+    const building = (id: string, type: BattleBuilding['type'], health = 50): BattleBuilding => ({ id, factionId: 'a', type, position: { x: 0, y: 0 }, health, maxHealth: 50, defense: 1, vision: 1, income: 0 })
+    const queue = [{ unitType: 'striker', remainingTicks: 2, trainingTicks: 4, queuedAtTick: 10 }]
+    const state = { ...battle.state, units: [unit, { ...unit, id: 'v' }], buildings: [
+      { ...building('a:castle', 'castle'), trainingQueue: queue }, building('a:barracks:1', 'barracks'), building('a:economy:2', 'economy'),
+      { ...building('a:barracks:3', 'barracks', 0), trainingQueue: queue }, { ...building('b:barracks:1', 'barracks'), factionId: 'b' },
+    ] }
+    const { rerender } = render(<FactionSummaries {...props} battle={{ ...battle, maximumUnits: 40, state }} />)
+    const units = screen.getByText('Units').parentElement!
+    expect(units).toHaveTextContent('3 / 40')
+    expect(units).toHaveAttribute('title', '2 on the field, 1 in training; cap 40')
+    expect(screen.getByText('Buildings').nextElementSibling).toHaveTextContent(/^2$/)
+    rerender(<FactionSummaries {...props} battle={{ ...battle, state }} />)
+    expect(screen.getByText('Units').nextElementSibling).toHaveTextContent(/^3$/)
+    expect(screen.getByText('Units').parentElement).toHaveAttribute('title', '2 on the field, 1 in training')
+  })
+
   it('shows placeholders for missing metrics, distinguishing missing units from zero', () => {
     const { rerender } = render(<FactionSummaries {...props} battle={{ ...battle, state: { ...battle.state, factions: null, units: null } }} />)
-    expect(screen.getAllByText('—')).toHaveLength(3)
+    expect(screen.getAllByText('—')).toHaveLength(4)
     rerender(<FactionSummaries {...props} battle={{ ...battle, state: { ...battle.state, units: null } }} />)
     expect(screen.getByText('Units').nextElementSibling).toHaveTextContent('—')
     rerender(<FactionSummaries {...props} />)
-    expect(screen.getAllByText('0')).toHaveLength(2)
+    expect(screen.getAllByText('0')).toHaveLength(3)
   })
 
   it.each([2, 3, 4, 6])('renders all %s participants in order, including long names', (count) => {
@@ -107,7 +129,7 @@ describe('faction summaries', () => {
   rerender(<FactionSummaries {...props} decisions={[]} decisionMessage="offline" />)
   expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toContain('Plan unavailable')
   rerender(<FactionSummaries {...props} battle={{ ...battle, status: 'stopped' }} decisions={[{ ...decision, status: 'fallback', resolvedPlan: { name: 'Hold', rationale: 'Keep defending.' } }]} />)
-  expect(screen.getByText('Stopped')).toBeVisible()
+  expect(screen.getByText('Hold').closest('summary')).toHaveTextContent(/^\s*fallback Hold$/)
   expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toContain('Keep defending.')
   expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toContain('Plan · fallback')
  })
@@ -121,6 +143,15 @@ describe('faction summaries', () => {
   expect(within(screen.getByRole('article', { name: 'Blue' })).queryByRole('list')).not.toBeInTheDocument()
   expect(amber.style.getPropertyValue('--faction-color')).toBe('#69d2ff')
   expect(screen.getByRole('article', { name: 'Blue' }).style.getPropertyValue('--faction-color')).toBe('#ff6b55')
+ })
+
+ it('shows owned upgrades as an icon chip only for factions that have researched any', () => {
+  const factions = [{ factionId: 'a', gold: 0, goldEarned: 0, goldSpent: 0, goldLooted: 0, ownedUpgradeIds: ['plating', 'plating_2', 'knighthood'] }, { factionId: 'b', gold: 0, goldEarned: 0, goldSpent: 0, goldLooted: 0 }]
+  render(<FactionSummaries {...props} battle={{ ...battle, participants: [...battle.participants, { id: 'b', name: 'Blue' }], state: { ...battle.state, factions } }} />)
+  const upgrades = within(screen.getByRole('article', { name: 'Amber' })).getByRole('group', { name: 'Amber upgrades' })
+  expect(upgrades).toHaveAttribute('name', 'faction-a')
+  expect(upgrades.querySelector('summary')).toHaveTextContent('Upgrades: Plating II: +4 defense for every unit; Knighthood (unlocks Heavy Cavalry): Stables can train Heavy Cavalry')
+  expect(within(screen.getByRole('article', { name: 'Blue' })).queryByRole('group', { name: 'Blue upgrades' })).not.toBeInTheDocument()
  })
 
  it('puts activity and the applied plan name on the plan disclosure', () => {

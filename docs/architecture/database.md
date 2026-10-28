@@ -16,8 +16,8 @@ places its volume on the retained `battlefield-retained` storage class.
 
 | Process | Login | Reads and writes |
 | --- | --- | --- |
-| API (`cmd/server`) | `DATABASE_URL` (application login) | Factions, battle creation, generation jobs, model access, Player membership; reads battles, events and decisions for inspection |
-| Engine (`cmd/engine`) | `DATABASE_URL` (application login) | Battle claims, ticks and state, events, decision windows and fallbacks, expiry sweeps |
+| API (`cmd/server`) | `DATABASE_URL` (application login) | Factions, battle creation, generation jobs, model access, Player membership; reads battles, events and decisions for inspection, and replay frames for replays |
+| Engine (`cmd/engine`) | `DATABASE_URL` (application login) | Battle claims, ticks and state, events, replay frames, decision windows and fallbacks, expiry sweeps |
 | Migration job (`cmd/server -migrate`) | `DATABASE_URL` (application login) | Schema changes; needs `CREATEROLE` the first time `00004` runs |
 | AI gateway (`cmd/aigateway`) | `AI_GATEWAY_DATABASE_URL`, a login that inherits only `battlefield_ai_gateway` | Decision and generation claims, context reads, plan submission, usage and failures |
 | Agent (`cmd/agent`) | None | Reaches data only through the AI gateway |
@@ -37,9 +37,10 @@ schema lifecycle. Grants (restated in full by `00017`):
 | `faction_background_generations` | `SELECT`, `UPDATE` | `00009` |
 | `runtime_policy` | `SELECT`, `UPDATE(id)` (row lock only) | `00011` |
 | `battle_runs` | `SELECT(id, ai_executions)`, `UPDATE(ai_executions)` | `00011` |
+| `battle_runs` | `SELECT(decision_budget_exempt)`, read by claim admission | `00022` |
 | `agent_execution_leases` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` | `00011` |
 
-The role has no access to battle events, battle state, factions, membership or
+The role has no access to battle events, battle state, replay frames, factions, membership or
 policy tables beyond these columns. When `AI_GATEWAY_DATABASE_URL` is absent, the
 deployment scripts use the pre-rename `MCP_DATABASE_URL` if present, and otherwise
 reuse `DATABASE_URL`, which is acceptable only for local development. Production
@@ -50,30 +51,39 @@ must supply the restricted login
 
 | Table or view | Purpose | Key rules |
 | --- | --- | --- |
-| `factions` | Reusable faction identity: name, doctrine, background, owner | `ruleset_id` and `blueprint` are legacy-only. Battles snapshot faction data, so deleting a faction never changes a battle |
-| `battle_runs` | One battle: scenario snapshot, initial and current state, status, lease, attempt and graceful-requeue count, pause flag, result, owner, model-execution count, trace context | Status `queued`, `running`, `completed`, `failed` or `stopped`. A lease owner and expiry are both set or both null, and only while `running` |
+| `factions` | Reusable faction identity: name, doctrine, background, emblem, owner | `emblem` is one of 12 identifiers (check constraint, default `star`) and is not part of battle snapshots. `ruleset_id` and `blueprint` are legacy-only. Battles snapshot faction data, so deleting a faction never changes a battle |
+| `battle_runs` | One battle: scenario snapshot, initial and current state, status, lease, attempt and graceful-requeue count, pause flag, result, owner, model-execution count, admission and decision-budget exemptions, trace context | Status `queued`, `running`, `completed`, `failed` or `stopped`. A lease owner and expiry are both set or both null, and only while `running` |
 | `battle_events` | Ordered events per battle attempt | Primary key `(battle_id, attempt, sequence)` makes inserts idempotent and serves event paging |
-| `battle_decisions` | One strategy decision window: frozen observation and hash, controller and profile, lease, resolved plan, fallback source, error category, usage, provider metadata, trace context | Unique per `(battle_id, attempt, faction_id, target_tick)`. Status `pending`, `running`, `accepted`, `fallback` or `failed`. `version` guards resolution; `idempotency_key` deduplicates submissions. `faction_id` is snapshot data, not a foreign key |
+| `battle_replay_frames` | One engine checkpoint per decision window of a battle attempt (tick 0, then every `decisionIntervalTicks`), with that tick's events | Written in the same lease-guarded statement as the tick. Primary key `(battle_id, attempt, tick)` makes inserts idempotent and finds the nearest earlier checkpoint. `checkpoint` is a JSON object about the size of one `current_state`; `events` is a JSON array. Frames of every attempt stay until the battle is deleted |
+| `battle_decisions` | One strategy decision window: frozen observation and hash, controller, profile, model and `reasoning_effort` (empty for the model default), lease, lifecycle timestamps, resolved plan, fallback source, error category, usage, provider metadata, trace context | Unique per `(battle_id, attempt, faction_id, target_tick)`. Status `pending`, `running`, `accepted`, `fallback` or `failed`. `version` guards resolution; `idempotency_key` deduplicates submissions. `faction_id` is snapshot data, not a foreign key |
+| `leagues` | One AI league: owner, name, status, request digest, secret battle-ID salt, maps, battle timing, group count, champion | Status `running`, `completed` or `cancelled`; `completed_at` is set exactly when it is not running, and a champion only when completed |
+| `league_entrants` | One competitor per league: entry index, group, faction ID, faction name copied at creation, requested controller | Primary key `(league_id, entrant_index)`; one entrant per faction per league. No foreign key to `factions`, so deleting a faction never breaks a league |
+| `league_fixtures` | One battle slot: play sequence, stage, group, round, tie, leg, home and away entrants, map, status, attempts, current battle | IDs are derived from the league and sequence, so repeated writes are no-ops. Status `pending`, `running`, `completed`, `void` or `cancelled`; a running fixture has a battle. `battle_id` is unique and set to null if that battle is deleted. Results are read from the battle, not copied |
 | `faction_generation_accounts` | Per-actor row used as a generation lock | Locked `FOR UPDATE` while creating a job |
 | `faction_background_generations` | Durable background-draft jobs | Unique `(actor_id, idempotency_key)`; a partial unique index allows one queued or running job per actor. Status `queued`, `running`, `succeeded`, `failed` or `expired` |
 | `runtime_policy` | Singleton: AI stop switch, battle allowances, per-battle model budget, CLI concurrency | Row lock serializes every admission decision |
 | `agent_execution_leases` | Active CLI execution slots, keyed by decision or generation ID | Rows expire with their lease and are pruned on admission |
 | `model_access_policy` | Singleton administrator model-access policy | `version` rejects conflicting saves |
 | `player_members` / `player_membership_sync` / `player_membership_audit` | Managed Player grants, Cloudflare Access group synchronization state, and audit history | Unique email; versioned desired and synced state |
-| `battle_controller_evaluation` (view) | Per-controller decision count, fallback and invalid-plan rates, latency, tokens, plan diversity and win rate | Readable by the AI gateway role |
+| `battle_controller_evaluation` (view) | Per-controller decision count, fallback and invalid-plan rates, latency, tokens, plan diversity and win rate | Readable by the AI gateway role. `GET /v1/analytics` reports these figures by model and reasoning effort as well, from `battle_runs` and `battle_decisions` |
 | `friend_ai_usage` (view) | Model usage per identity across decisions and generation jobs | Private reporting view |
 | `goose_db_version` | Goose's applied-migration ledger | Production recovery records compare it before approving an image rollback |
 
 These diagrams show every column of every table, generated from the schema after
-migration `00019` with keys marked `PK` and `FK`. Update them with any schema
+migration `00022` with keys marked `PK` and `FK`. Update them with any schema
 change. Battles snapshot faction data instead of referencing `factions`, so
-deleting a faction never changes a battle.
+deleting a faction never changes a battle. Gameplay content lives in the frozen
+scenario and state JSON of `battle_runs`, not in relational columns: each battle
+keeps the ruleset and map it started with, workers never re-resolve catalog IDs,
+and retired IDs stay readable in saved battles. Gameplay changes therefore need no
+schema migration.
 
 ### Battles
 
 ```mermaid
 erDiagram
     BATTLE_RUNS ||--o{ BATTLE_EVENTS : "records (cascade)"
+    BATTLE_RUNS ||--o{ BATTLE_REPLAY_FRAMES : "checkpoints (cascade)"
     BATTLE_RUNS ||--o{ BATTLE_DECISIONS : "coordinates (cascade)"
     BATTLE_RUNS {
         uuid id PK
@@ -102,6 +112,7 @@ erDiagram
         int ai_executions
         bool admission_exempt
         int graceful_requeues
+        bool decision_budget_exempt
     }
     BATTLE_EVENTS {
         uuid battle_id PK,FK
@@ -110,6 +121,14 @@ erDiagram
         bigint tick
         text type
         jsonb payload
+        timestamptz created_at
+    }
+    BATTLE_REPLAY_FRAMES {
+        uuid battle_id PK,FK
+        int attempt PK
+        bigint tick PK
+        jsonb checkpoint
+        jsonb events
         timestamptz created_at
     }
     BATTLE_DECISIONS {
@@ -148,6 +167,58 @@ erDiagram
     }
 ```
 
+### Leagues
+
+```mermaid
+erDiagram
+    LEAGUES ||--o{ LEAGUE_ENTRANTS : "enters (cascade)"
+    LEAGUES ||--o{ LEAGUE_FIXTURES : "schedules (cascade)"
+    LEAGUE_ENTRANTS ||--o{ LEAGUE_FIXTURES : "plays home or away"
+    BATTLE_RUNS |o--o| LEAGUE_FIXTURES : "plays (set null)"
+    LEAGUES {
+        uuid id PK
+        text owner_id
+        text name
+        text status
+        text request_digest
+        text battle_salt
+        text_array scenario_ids
+        int requested_ticks
+        text tick_duration
+        int decision_interval_ticks
+        int group_count
+        int champion_entrant
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz completed_at
+    }
+    LEAGUE_ENTRANTS {
+        uuid league_id PK,FK
+        int entrant_index PK
+        int group_index
+        uuid faction_id
+        text faction_name
+        jsonb controller
+    }
+    LEAGUE_FIXTURES {
+        uuid id PK
+        uuid league_id FK
+        int sequence
+        text stage
+        int group_index
+        int round
+        int tie
+        int leg
+        int home_entrant FK
+        int away_entrant FK
+        text scenario_id
+        text status
+        int attempts
+        uuid battle_id FK
+        timestamptz updated_at
+    }
+```
+
 ### Factions, generation and AI policy
 
 ```mermaid
@@ -162,6 +233,7 @@ erDiagram
         text doctrine
         text background
         text owner_id
+        text emblem
     }
     FACTION_GENERATION_ACCOUNTS {
         text actor_id PK
@@ -256,10 +328,11 @@ same migrated schema, are:
 | Table | Index | Columns and condition | Serves |
 | --- | --- | --- | --- |
 | `battle_runs` | `battle_runs_unpaused_claim_idx` | `(status, lease_expires_at, created_at, id)` where `status` is `queued` or `running` and not `paused` | Engine battle claims |
-| `battle_runs` | `battle_runs_claim_idx` | Same columns where `status` is `queued` or `running`, paused or not | The original claim index (`00002`); claims have used the unpaused index since `00006` |
+| `battle_runs` | `battle_runs_claim_idx` | Same columns where `status` is `queued` or `running`, paused or not | No current query; claims use `battle_runs_unpaused_claim_idx` |
 | `battle_runs` | `battle_runs_history_idx` | `(created_at DESC, id DESC)` | Battle history pages, newest first |
 | `battle_runs` | `battle_runs_owner_created` | `(owner_id, created_at)` | Per-owner admission counts |
 | `battle_events` | primary key | `(battle_id, attempt, sequence)` | Idempotent inserts and event paging |
+| `battle_replay_frames` | primary key | `(battle_id, attempt, tick)` | Idempotent inserts and the latest checkpoint at or before a replay tick |
 | `battle_decisions` | `battle_decisions_battle_id_attempt_faction_id_target_tick_key` | Unique `(battle_id, attempt, faction_id, target_tick)` | One decision per faction per window |
 | `battle_decisions` | `battle_decisions_window_idx` | `(battle_id, attempt, target_tick, faction_id)` | Decision-window lookups |
 | `battle_decisions` | `battle_decisions_agent_claim_idx` | `(status, lease_expires_at, created_at, id)` where `controller_type = 'model'` and `status` is `pending` or `running` | Worker decision claims |
@@ -281,16 +354,24 @@ block on or double-claim the same row.
   whose lease expired, while `attempt - graceful_requeues` is below
   `engine.maxAttempts`, through the partial index `battle_runs_unpaused_claim_idx`.
   Each claim increments `attempt` and restarts from `initial_state`, so every
-  attempt keeps its own events and decisions. A graceful-shutdown requeue increments
-  `graceful_requeues` (migration `00019`), refunding the attempt it interrupted;
-  only crashed or lease-expired attempts spend the budget. Tick writes extend the
+  attempt keeps its own events, decisions and replay frames. A graceful-shutdown requeue increments
+  `graceful_requeues` (migration `00019`), refunding the attempt it interrupted,
+  and fails that attempt's open decisions with `battle_stopped`; only crashed or
+  lease-expired attempts spend the budget. Tick writes extend the
   lease only where status, attempt and lease owner still match, so a previous owner
   cannot write, requeue or fail the battle after a reclaim.
 - **Decisions:** the AI gateway claims `model` decisions that are `pending`, or `running` with
   an expired lease, for the worker's profile IDs, and sets `status='running'` with a
   lease. The capability token issued with the claim expires at that lease deadline.
+  The `battle_decision_claim_time` trigger (`record_decision_claim_time`) sets
+  `claimed_at` and clears
+  `context_served_at` and `runner_completed_at` whenever a decision becomes
+  `running` or its lease expiry changes, so timing describes the latest execution.
 - **Generation jobs:** the AI gateway claims queued jobs by setting `status='running'`, the
   worker ID and an expiry.
+- **League scheduling:** each pass takes transaction advisory lock `741928320` with
+  `pg_try_advisory_xact_lock` and skips when another API replica holds it.
+  Cancellation takes the blocking form, so it cannot race a battle start.
 
 ### Admission triggers
 
@@ -300,15 +381,17 @@ API replica, engine and AI gateway instance sees one serialized policy:
 | Trigger (function) | Fires | Effect |
 | --- | --- | --- |
 | `friend_battle_admission` (`admit_friend_battle`) | Before inserting a battle | Locks `runtime_policy` and rejects with SQLSTATE `P0429` when the owner reached the daily or unfinished allowance, or the global unfinished cap. Skips `legacy-admin` and `admission_exempt` (Admin) battles; retried IDs reach the unique constraint without spending an allowance |
-| `gate_decision` / `gate_generation` (`gate_new_ai_job`) | Before inserting a decision or generation job | A new model decision becomes `failed` with `ai_disabled_or_budget` when AI is stopped or the battle's budget is spent, so the engine falls back at once. A new generation job raises `P0429` while AI is stopped |
-| `agent_decision_admission` / `agent_generation_admission` (`admit_agent_execution`) | Before a claim sets `lease_owner` or `worker_id` | Locks `runtime_policy`. Cancels the claim (returns `NULL`) when AI is stopped or CLI slots are full, prunes expired leases, counts the battle's model execution (marking the decision `failed` with `decision_budget` past the limit), and inserts a CLI lease |
+| `gate_decision` / `gate_generation` (`gate_new_ai_job`) | Before inserting a decision or generation job | A new model decision becomes `failed` with `ai_disabled_or_budget` when AI is stopped or the battle's budget is spent (never for a `decision_budget_exempt` battle), so the engine falls back at once. A new generation job raises `P0429` while AI is stopped |
+| `agent_decision_admission` / `agent_generation_admission` (`admit_agent_execution`) | Before a claim sets `lease_owner` or `worker_id` | Locks `runtime_policy`. Cancels the claim (returns `NULL`) when AI is stopped or CLI slots are full, prunes expired leases, counts the battle's model execution (marking the decision `failed` with `decision_budget` past the limit unless the battle is `decision_budget_exempt`), and inserts a CLI lease |
 | `release_decision_execution` / `release_generation_execution` (`release_agent_execution`) | After a worker reports usage | Deletes the job's CLI lease |
 
 Defaults (`runtime_policy`): 20 battles per person per UTC day, 2 unfinished per
 person, 4 unfinished globally, 100 model executions per battle, 4 CLI slots. API
 jobs do not take CLI slots. Paused battles remain `queued` or `running`, so they
 still count as unfinished. Admin battles skip the allowances but count toward other
-identities' global cap.
+identities' global cap. League battles are Admin battles that also skip the model
+budget: only the league scheduler sets `decision_budget_exempt`, and only for an
+Admin owner. Their executions are still counted in `ai_executions`.
 
 Rows created before ownership existed belong to `legacy-admin`, which bypasses the
 battle allowances for migrations and trusted fixtures; application identities,
@@ -331,6 +414,8 @@ accepted.
 ### Idempotency and versions
 
 - Battle events are keyed by `(battle_id, attempt, sequence)`.
+- Replay frames are keyed by `(battle_id, attempt, tick)`; a retried tick write keeps
+  the first frame.
 - An accepted plan is written only to a `pending` or `running` decision whose
   `version` and `target_tick` match the submission, and the write increments
   `version`. Resubmitting with the same idempotency key after acceptance returns the
@@ -338,6 +423,12 @@ accepted.
 - Generation jobs are unique per `(actor_id, idempotency_key)`.
 - Battle creation retries with the same ID reach the primary-key constraint without
   counting against admission.
+- League fixture IDs derive from the league and sequence. League battle IDs derive
+  from the fixture, the attempt and `leagues.battle_salt`, a secret the API never
+  returns, so an interrupted scheduling pass finds the battle it created and nobody
+  else can take that ID first. A pass adopts an existing battle only when its owner,
+  budget exemption, map and factions match the fixture; otherwise the attempt is
+  spent.
 
 ### Expiry
 
@@ -387,25 +478,3 @@ validate a database backup first. [Jenkins production delivery](../operations/je
 owns the migration gate, the [local walkthrough](../developer/local-kubernetes.md#migration-gate)
 shows how to inspect it, and [K3s delivery](../operations/k3s-delivery.md) covers
 backup, restore and recovery records.
-
-## Shared content snapshot compatibility
-
-New battles freeze one shared ruleset with their chosen map. Retired catalog IDs
-remain readable in existing battle JSON; workers do not re-resolve them. Upgrade
-ownership remains an array of purchased IDs. Specialist capabilities and remaining
-Engineer repair charges are stored in scenario/state JSON, so no relational schema
-migration is required. Historical replay tests retain the original transition hash.
-
-## Decision selection and timing columns
-
-Migration `00018_decision_selection_timing.sql` adds `reasoning_effort` (empty for
-historical/model-default choices), nullable `claimed_at`, `context_served_at`, and
-`runner_completed_at` to `battle_decisions`. Existing records are not backfilled
-with invented measurements. `record_decision_claim_time` is a BEFORE UPDATE trigger
-that records the latest claim and resets context/completion timing on a lease
-reclaim. The gateway records the first successful context read once per claim.
-`resolved_at` ends the battle's wait; completion-report receipt remains separate
-and does not move acceptance time. Failed execution records a resolution timestamp.
-Reuse requires matching model and effort. Existing table grants cover the new
-columns; no new roles or broader table privileges are introduced. Down removes
-the trigger/function and these columns.

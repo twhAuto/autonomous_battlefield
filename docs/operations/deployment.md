@@ -29,30 +29,36 @@ on a new or rebuilt environment, complete the
 
 ## Gameplay rules cutover
 
-AB-170 changes engine semantics without retaining the previous engine. A retry,
-restart or resumed lease for an old battle reconstructs it under the new rules:
-recruitment is queued, the map is open, and construction requires building range.
-An old order targeting a distant authored pad can now be rejected. Frozen scenario
-JSON preserves data, not the old executable's behavior.
+The engine keeps no previous implementations. A retry, restart or resumed lease
+re-simulates an unfinished battle from its frozen scenario with the deployed
+engine, so a release that changes engine behavior (movement, combat, construction,
+training or unit locks) changes how that battle continues. Frozen scenario JSON
+preserves data, not the old executable's behavior. A PR that changes engine
+behavior says so in its description, so the release operator can find it.
 
-Before deploying this overhaul, the release operator must arrange a maintenance
-window that prevents new battle creation, then finish every queued/running battle
-on the old engine. Resume paused battles so they can finish; stopping unfinished
-battles instead requires the owner's agreement. Verify that no queued or running
-rows remain (paused battles can have either status) before replacing the engine.
-Worker claim-draining alone is insufficient: it can leave queued battles behind.
-If the creation freeze or empty-queue condition cannot be established, postpone
-the release. Ordinary rolling deployment is not sufficient for this cutover.
+Before deploying such a release, or rolling back across one:
 
-AB-173 applies the same precondition. Its engine lets jammed units pass through
-allies and enforces the frozen ruleset's unit cap; ruleset v8 raises the building
-limit to 12 and caps units at 40. A resumed older battle keeps its frozen limits
-(none for the unit cap) but moves under the new routing rules.
+1. Arrange a maintenance window that prevents new battle creation.
+2. Let every queued or running battle finish on the current engine. Resume paused
+   battles so they can finish; stopping unfinished battles instead requires the
+   owner's agreement.
+3. Verify that no queued or running rows remain (paused battles can have either
+   status) before replacing the engine. Worker claim-draining alone is
+   insufficient: it can leave queued battles behind.
 
-Completed battle snapshots and event history remain readable without replay.
-An explicit future replay of old inputs uses the new engine and can produce a
-different trace. This is a release precondition, not evidence that a maintenance
-window or production deployment has been performed.
+If the creation freeze or empty-queue condition cannot be established, postpone the
+release; ordinary rolling deployment is not sufficient. A rollback needs the same
+care in the other direction: an older engine ignores rule fields it does not know,
+such as `requiresUpgradeId` unit locks, and its validation can reject a newer
+ruleset, so finish or stop battles on the newer ruleset first. This is a release
+precondition, not evidence that a maintenance window or production deployment has
+been performed.
+
+Completed battle snapshots and event history stay readable. A
+[replay](../architecture/api.md#battle-replay) re-simulates the ticks between
+stored checkpoints with the deployed engine, so after a cutover those ticks of an
+earlier battle can differ from what was played, although every checkpoint tick stays
+exact. A battle whose final attempt stored no checkpoints has no replay.
 
 ## Overlays
 

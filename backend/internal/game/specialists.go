@@ -88,6 +88,7 @@ func (m *Match) runEngineer(unit *Unit) []Event {
 		if HexDistance(unit.Position, target.position) <= 1 {
 			amount := min(unit.RepairAmount, *target.maxHealth-*target.health)
 			*target.health += amount
+			m.factions[unit.FactionID].stats.unit(unit.Type).HealthRestored += amount
 			unit.RepairCharges--
 			state.Gold -= unit.RepairCost
 			state.GoldSpent += unit.RepairCost

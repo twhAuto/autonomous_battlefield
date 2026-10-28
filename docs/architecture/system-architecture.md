@@ -71,12 +71,12 @@ workload can fail or restart while preserving battle and decision state.
 | Component | Responsibility | Direct dependencies |
 | --- | --- | --- |
 | React frontend | Session-aware navigation (Cloudflare Access in production, development login locally), faction creation, battle staging and history, map display, controls, event stream, and AI decision history | Public API |
-| Public API | Access identity verification, role/ownership authorization, managed Player membership, HTTP validation, scenario resolution, faction and battle persistence, and selectable model-profile catalog | PostgreSQL, embedded scenario/ruleset/content YAML, optional Redis, optional Cloudflare Access group API |
+| Public API | Access identity verification, role/ownership authorization, managed Player membership, HTTP validation, scenario resolution, faction and battle persistence, selectable model-profile catalog, the league scheduler that queues league battles, and analytics over completed battles | PostgreSQL, embedded scenario/ruleset/content YAML, optional Redis, optional Cloudflare Access group API |
 | Battle engine | Battle queue claims, deterministic ticks, strategy windows, state/event persistence | PostgreSQL |
 | AI gateway | MCP tool server with request-scoped battle tools (`get_decision_context`, `get_unit_details`, `submit_strategy_plan`) and background-generation tools, plus the agent dispatch API (claims, capability minting, result reports) | PostgreSQL |
 | Decision agent | Model-decision claims and API or CLI model execution | AI gateway, model provider |
 | Redis (optional) | Disposable completed battle read cache; no engine or readiness dependency | Memory, API-only connection |
-| PostgreSQL | Factions, battle queue, event history, snapshots, leases, and model decisions | Persistent storage |
+| PostgreSQL | Factions, battle queue, event history, snapshots, leases, model decisions, and leagues with their fixtures | Persistent storage |
 | Scenario catalog | Map-only layouts resolved with one shared timing/controller configuration and full ruleset from versioned [content libraries](../developer/content-library.md) | Embedded in the server binary (`backend/gamedata`), validated at API startup and frozen into battle rows |
 
 The backend commands are `cmd/server`, `cmd/engine`, `cmd/aigateway`, `cmd/agent`,
@@ -134,7 +134,7 @@ movement and attack resolution.
 
 The simulation receives a resolved scenario and optional plans, then produces
 deterministic state transitions and events. Construction uses living building ranges
-and spacing; per-building training advances between economy and tactics. Core v7 then purchases one next unit for each enabled empty source in building ID order, respecting reserve gold. Production settings persist across decision windows; an off setting finishes paid work and stops new starts. Insufficient gold pauses starts until affordable; blocked exits retain the paid unit without further purchases. The viewer displays both sides' source selection, state and progress; controls remain AI-only. Faction-scoped projections omit opponent production settings, including future choices and gold waits, while retaining paid training progress.
+and spacing; per-building training advances between economy and tactics. Core v7 then purchases one next unit for each enabled empty source in building ID order, respecting reserve gold. Production settings persist across decision windows; an off setting finishes paid work and stops new starts. Insufficient gold pauses starts until affordable, and a core v8 type whose unlock upgrade is not yet owned pauses them without charge until it is bought; blocked exits retain the paid unit without further purchases. The viewer displays both sides' source selection, state and progress; controls remain AI-only. Faction-scoped projections omit opponent production settings, including future choices and gold waits, while retaining paid training progress.
 Training progress is serialized in building state; clone operations isolate queue
 and training-roster slices plus production settings, including `buildings.castleTrains`. Core v6 and v7 start each
 faction with only its castle, which shares the Barracks roster and fires in the
@@ -203,7 +203,7 @@ sequenceDiagram
     loop Each tick
         Engine->>Match: Advance or AdvanceWithPlans
         Match-->>Engine: State transition + events
-        Engine->>DB: Save state/events and heartbeat lease
+        Engine->>DB: Save state/events (and window checkpoint), heartbeat lease
     end
     Engine->>DB: Atomically store result and final events
     UI->>API: Poll battle, events, and decisions
@@ -220,11 +220,7 @@ complete resolved scenario and initial state, so later edits to factions or cata
 YAML cannot change an existing run. Battle creation accepts optional tick-duration
 (100ms–10s) and decision-interval (1–100 ticks) overrides. The service applies
 validated overrides before computing the scenario digest and initial match;
-workers use the stored timing without changing catalog defaults. Setup exposes
-map-default choices and timing presets, with both combatant slots aligned at the
-top. It omits shared roster/rules explanations and the integration status panel;
-controller options still come from the available profile list, with an inline error
-if that lookup fails.
+workers use the stored timing without changing catalog defaults.
 
 ### 5.2 Strategy decision window
 
@@ -359,6 +355,72 @@ using the existing `battle_stopped` cancellation category. History and tick
 state remain available; active admission slots are released but daily usage is
 not refunded. While the engine is offline, expiry waits for restart.
 
+### 5.6 Replay a finished battle
+
+At the opening and at every decision window the engine attaches a `game.Checkpoint`
+to the transition: the full state plus the faction runtime that state does not
+carry (active plan and source, scripted-plan index, unit ID sequence, scoped
+upgrades and bonuses, damage and tactic counters, event sequence). `SaveTick` or
+`CompleteBattle` stores it in `battle_replay_frames` with that tick's events, in the
+same guarded statement as the tick.
+
+`GET /v1/battles/{id}/replay?tick=N` reads the final attempt's latest checkpoint at
+or before `N`, resumes the engine with `game.RestoreMatch` in the API process, and
+re-simulates until the next decision window or the battle's last tick. Plans apply
+only at windows, so a segment needs no decision rows. The API refuses an active
+battle, and a segment whose checkpoint is missing, rather than re-simulating across
+a window without its plans. The [API reference](api.md#battle-replay) describes the
+segment contract.
+
+### 5.7 Play a league
+
+An Admin's `POST /v1/leagues` checks every entrant on every map with the battle
+service's validation, then stores the league, its entrants and the full group
+schedule. Every API replica runs the league scheduler every 10 seconds; a pass holds
+a transaction advisory lock, so one replica schedules at a time and the others skip.
+
+```mermaid
+sequenceDiagram
+    participant S as League scheduler (API)
+    participant DB as PostgreSQL
+    participant B as Battle service
+    participant E as Engine
+    S->>DB: lock, read running leagues and fixture battles
+    S->>DB: settle finished fixtures, add the next knockout stage or complete
+    S->>DB: count unfinished battles and their CLI model sides
+    loop each pending fixture that fits a free engine slot and the free CLI slots
+        S->>B: CreateBattle as the league owner (budget-exempt)
+        B->>DB: insert battle_runs row
+        S->>DB: mark fixture running with the battle
+    end
+    E->>DB: claim and play the battles as usual
+```
+
+A pass first stops any battle still running in a cancelled league, so a failed stop
+is retried. It then settles running fixtures from their battles, retrying or voiding
+failed ones as the [league rules](api.md#leagues) describe. When every fixture so
+far is settled it adds the next knockout stage, or records the champion after the
+final. Finally it starts pending fixtures, oldest running league first and in fixture
+order, while battles of any owner leave an engine slot free: the scheduler reads the
+slot count from `engine.concurrency`, the same setting the engine uses, so a league
+battle never waits in the queue, where its one-hour timeout already counts. A fixture
+whose CLI model sides, added to those already running, would exceed
+`runtime_policy.cli_concurrency` waits for a later pass, so model decisions do not
+queue toward the decision timeout; when no CLI side is running, a fixture starts even
+if it needs more CLI slots than exist. The count assumes one engine replica, and the
+agents' combined slots should cover `cli_concurrency`; see the
+[local launcher's slots](../developer/local-kubernetes.md#subscription-clis). A
+permanent start failure ends that league's pass, so an outage such as an unavailable
+profile spends one fixture attempt per pass. Battle IDs derive from the fixture, so a
+pass interrupted after creating a battle adopts it on the next pass
+([idempotency rules](database.md#idempotency-and-versions)). Cancellation takes the
+same lock, cancels unfinished fixtures and then stops the league's running battles.
+
+Battle creation goes through the same service as `POST /v1/battles`, as the
+league's Admin owner, so model access, faction existence and timing are rechecked
+for every battle. That is why the scheduler runs in the API, which composes the
+battle service, rather than in the engine.
+
 ## 6. AI decisions
 
 Each faction's controller is either scripted or a model profile. For a model, the
@@ -369,9 +431,13 @@ accepted or fallback, exactly like a scripted plan. Background drafting for
 faction profiles reuses the same workers, runners and capability model with a
 separate tool set.
 
+Battle creation freezes each model faction's model and reasoning effort, and
+decision rows record lifecycle timestamps that the inspector and traces expose.
+
 [AI decisions](ai-decisions.md) owns this contract: runners and CLI isolation,
-prompt provenance and faction memory, the decision context and unit knowledge, plan
-validation, fallback error categories, and background generation.
+model and effort selection, decision timing, context prefetch, prompt provenance
+and faction memory, the decision context and unit knowledge, plan validation,
+fallback error categories, and background generation.
 
 ## 7. Persistence and durability
 
@@ -408,7 +474,10 @@ repository can reuse that plan.
 
 Each claim increments `attempt`, so every attempt keeps its own event history. A
 graceful-shutdown requeue refunds the attempt it interrupted by incrementing
-`graceful_requeues`; only attempts that crashed or lost their lease count. Once a
+`graceful_requeues`; only attempts that crashed or lost their lease count. A slot
+requeues between ticks or while it waits on a decision window, and the requeue
+fails that attempt's open decisions with `battle_stopped` so no agent spends a model
+call on them. Once a
 queued or lease-expired battle has used `engine.maxAttempts` (default 3) such
 attempts, the next claim pass marks it `failed` with `attempts_exhausted` instead of
 starting another attempt. A rolling restart that requeues within
@@ -420,31 +489,36 @@ terminal battle error codes.
 
 ### Engine capacity and recovery
 
-Each engine worker processes one battle synchronously before claiming another;
-the application manifest defaults to one engine replica, so **only one battle runs
-at a time** and other admitted battles queue. While it runs, the engine also holds
-it through every decision wait (up to the decision timeout) and through any pause:
-a paused running battle keeps its lease and blocks the engine until resumed or
-stopped. Paused battles that are still queued are skipped at claim.
+An engine runs up to `engine.concurrency` battles at once (default 4), one claim
+loop per slot; each loop processes its battle synchronously before claiming another.
+The application manifest runs one engine replica, so **up to four battles run at a
+time** and further admitted battles queue. A slot holds its battle through every
+decision wait (up to the decision timeout) and through any pause: a paused running
+battle keeps its lease and its slot until resumed or stopped. Paused battles that
+are still queued are skipped at claim.
 
-The default admission limit is four unfinished battles globally, and queued time
-counts toward the one-hour battle expiry. Queue delay therefore depends on battle
-duration, decision waits, pauses and available engine replicas; admission does not
-guarantee that a battle finishes before expiry.
+The default admission limit is four unfinished battles globally, matching the four
+slots, so admitted battles normally start at once. Admin battles skip that limit and
+can queue behind busy slots, and queued time counts toward the one-hour battle
+expiry. Queue delay then depends on battle duration, decision waits and pauses;
+admission does not guarantee that a battle finishes before expiry.
 
-Claims use `FOR UPDATE SKIP LOCKED` and leases, so more engine replicas run more
-battles in parallel without code changes. Each running battle adds its own state
-writes, heartbeats and decision polls to PostgreSQL, and model battles share the
-agent's concurrency slots, so those become the next limits.
+Claims use `FOR UPDATE SKIP LOCKED` and leases, so no two slots or replicas process
+the same battle. Slots share the engine's worker ID because each lease names its
+battle and attempt, and more replicas add slots without code changes. Each running
+battle adds its own state writes, heartbeats and decision polls to PostgreSQL, and
+model battles share the agent's concurrency slots, so those become the next limits.
 
 Crash recovery has two gates: the previous lease must expire (30 seconds by
 default), and an available worker must make its next claim. Claims select eligible
-battles by creation time and ID. An engine already processing another battle
-does not interrupt it to reclaim an orphan, so recovery can take longer than the
+battles by creation time and ID. An engine whose slots are all busy does not
+interrupt a battle to reclaim an orphan, so recovery can take longer than the
 lease duration.
 
-Database errors returned by the claim operation terminate the worker loop and
-cause the engine process to exit with an error; Kubernetes restarts the container.
+A database error returned by the claim operation in any slot stops every slot:
+each other slot requeues its battle, and the engine process exits with the error so
+Kubernetes restarts the container. A requeue that cannot reach the database leaves
+the lease to expire, and the battle is reclaimed as after a crash.
 A database interruption that reaches this path can therefore trigger lease
 recovery and a fresh attempt. Restart timing and recovery are separate: a ready
 replacement still has to satisfy the claim gates above.
@@ -460,6 +534,18 @@ These contracts come from the
 [claim and requeue operations](../../backend/internal/battle/repo/queue.go),
 [expiry sweep](../../backend/internal/battle/repo/expiry.go) and
 [engine entry point](../../backend/cmd/engine/main.go).
+
+### Battle replay storage and cost
+
+A checkpoint is about one state's size (26 KB of JSON on average for a measured
+frontier battle), written once per decision interval (10 ticks by default) rather
+than every tick. A replay request re-simulates at most one interval, about 7 ms per
+tick in that battle, so a segment costs well under a second of API CPU; re-simulating
+from tick 0 would take minutes for a long battle. Segments are neither cached nor
+precomputed. A battle restored from the same checkpoint repeats the recorded ticks
+exactly on the same engine; tests restore at every window after a JSON round trip
+and require identical transitions. Battles that finished before migration `00020`
+have no frames and no replay.
 
 ### Battle history reads
 
@@ -652,6 +738,7 @@ Key runtime settings and their defaults:
 | `engine.pollInterval` | 1s | Delay between empty battle-queue claims |
 | `engine.leaseDuration` | 30s | Battle lease length; an expired lease lets another engine reclaim the battle |
 | `engine.heartbeatInterval` | 10s | Lease renewal cadence; must be shorter than `leaseDuration` |
+| `engine.concurrency` | 4 | Battles one engine runs at once (1–8), one claim loop per slot |
 | `engine.maxAttempts` | 3 | Crashed or lease-expired attempts per battle before `attempts_exhausted`; graceful requeues are refunded |
 | `engine.shutdownTimeout` | 10s | Bound for final writes and requeue during shutdown |
 | `ai.decisionTimeout` | 2m | Engine decision deadline and agent execution timeout |
@@ -750,26 +837,25 @@ timing/controller configuration. Scenario YAML contains only map ID and geometry
 Every map receives all units, structures and upgrades from the active content
 library. Adding content therefore needs no per-map selection updates.
 
-Three-level general upgrades retain one purchase ID per level; specialist choices
-use unit/class scopes and exclusive groups. Engine and AI validators check frozen
-ownership and ordered prerequisites/choices before accepting plans. Unit turns
-also resolve Scout retreat, cavalry pursuit, armor penetration and bounded
-Engineer repair. Repair spends gold during unit turns while respecting reserves.
-
-Snapshots store the resolved rules and mutable repair charges; no database migration
-or historical live ruleset is needed. Old snapshots remain readable, but the
-open-map construction and training overhaul changes their replay behavior. A
-worker retry or restart re-simulates with the current engine; historical authored
-pads outside the default building range may no longer accept their old orders.
-The [gameplay cutover precondition](../operations/deployment.md#gameplay-rules-cutover)
-requires finishing existing battles before this engine is deployed.
-
 ### Frozen snapshots over live catalog references
 
-Rules, factions, and initial state are captured per battle. Replays remain stable
-within an engine version, at the cost of larger JSONB rows and explicit version
-provenance. Snapshot versions describe data compatibility; they do not retain
-previous engine implementations.
+Rules, factions, and initial state are captured per battle, so gameplay content
+changes need no database migration. Replays remain stable within an engine version,
+at the cost of larger JSONB rows and explicit version provenance. Snapshot versions
+describe data compatibility; they do not retain previous engine implementations. A
+retry, restart or replay re-simulates a saved battle with the deployed engine, so a
+release that changes engine behavior follows the
+[gameplay rules cutover](../operations/deployment.md#gameplay-rules-cutover).
+
+### Decision-window checkpoints over per-tick history
+
+Replays store one engine checkpoint per decision window and re-simulate the ticks
+between them. Storing every tick's state would need no re-simulation but about ten
+times the storage, and re-simulating from tick 0 alone would make seeking cost the
+whole battle. Checkpoints bound both, at the cost of serializing engine runtime
+beyond `State`: a field added to the match runtime must join the checkpoint, which
+the restore tests enforce. Ticks between checkpoints use the deployed engine, so
+after a gameplay change they can differ for battles recorded earlier.
 
 ### MCP as a capability boundary
 
@@ -792,6 +878,8 @@ broker.
   verification cannot observe. The development password login remains
   single-administrator and is not player identity.
 - Public battle updates use polling rather than push delivery.
+- Replays cover only a battle's final attempt, and only when that attempt stored
+  checkpoints; frames of earlier attempts are kept but not served.
 - Load and failover behavior needs testing before increasing engine, AI gateway, or agent replicas.
 - Antigravity decisions prefetch the context into the prompt and refuse contexts
   over 64 KiB, because the CLI offloads large tool results to files it cannot read.
@@ -803,43 +891,3 @@ broker.
   [`battlefield-platform/cli`](../operations/cli-worker.md) job.
 - Rigorous controller experiments may need experiment identity, model parameters,
   and cost normalization beyond the current evaluation view.
-
-## Battle model choices and decision timing
-
-Each faction can select an operator-allowlisted model and reasoning effort from
-its authorized profile. The API freezes those choices in the scenario, the engine
-copies them into each decision, and the claim response carries them to the worker.
-Both API and worker validate choices. The gateway requires selection protocol 1
-before claims, so old workers stop claiming after gateway promotion. The CLI
-Jenkins job upgrades from the deployed production image and then synchronizes
-managed model options; use the documented
-[CLI maintenance window](../operations/cli-worker.md#model-selection-rollout).
-The synchronized catalog includes Haiku and GPT-6 Luna, plus Antigravity Flash
-low/medium/high model variants. These are explicit battle choices; profile
-defaults stay unchanged. The host launcher ships the same choices as the API
-and production worker configuration.
-
-PostgreSQL timestamps request creation, the latest claim, first context delivery,
-resolution and worker completion-report receipt. The existing decision-history
-API exposes those timestamps to the existing inspector roles. The frontend counts
-elapsed time only for active unresolved decisions; completed records use persisted
-resolution time. Detailed traces and the Battle Traces Grafana dashboard separate
-queue/context/resolution timings and model/effort. No private reasoning content or
-additional game state is exposed. See [AI decisions](ai-decisions.md#model-selection-and-latency).
-
-CLI workers prefetch context for Codex/Claude battle profiles unless a profile sets
-`prefetchContext: false`. The worker fetches the same capability-scoped frozen context before
-process launch and passes it inline. Gateway validation, leases and submission
-authority remain unchanged; no persistent sessions are introduced. Delivery mode
-is stored in existing decision metadata and exposed alongside timing so prefetch
-and model-tool fetches can be distinguished.
-Prefetched battle prompts place frozen reference data before faction identity and
-dynamic state, with request metadata last. Two disjoint JSON blocks reconstruct the
-same context; rules repeated in the policy are omitted only for an exact reviewed
-mechanics snapshot. Model-facing MCP JSON is also ordered by stability without
-changing stored observations or submission arguments. Prompt v11 adds lossless
-catalog/upgrade tables, a shared dynamic unit map, legal-site runs and memory
-references to the model-facing projection. CLI prefetch validates only transport
-metadata; canonical persistence and hashes remain unchanged. See
-[prompt provenance](ai-decisions.md#prompt-provenance-and-faction-memory) for
-fallback behavior and the limits of ordering for provider caching.

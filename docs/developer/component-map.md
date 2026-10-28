@@ -35,6 +35,10 @@ introduce a new boundary.
 | [`ai/prompts`](../../backend/internal/ai/prompts) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`ai/providers`](../../backend/internal/ai/providers) |  |  |  | ✓ | ✓ |
 | [`ai/runner`](../../backend/internal/ai/runner) |  |  |  | ✓ | ✓ |
+| [`analytics`](../../backend/internal/analytics) | ✓ |  |  |  |  |
+| [`analytics/api`](../../backend/internal/analytics/api) | ✓ |  |  |  |  |
+| [`analytics/repo`](../../backend/internal/analytics/repo) | ✓ |  |  |  |  |
+| [`analytics/service`](../../backend/internal/analytics/service) | ✓ |  |  |  |  |
 | [`apierror`](../../backend/internal/apierror) | ✓ | ✓ | ✓ | ✓ |  |
 | [`app`](../../backend/internal/app) | ✓ |  |  |  |  |
 | [`authn`](../../backend/internal/authn) | ✓ | ✓ | ✓ | ✓ |  |
@@ -56,6 +60,10 @@ introduce a new boundary.
 | [`generation/api`](../../backend/internal/generation/api) | ✓ |  |  |  |  |
 | [`generation/repo`](../../backend/internal/generation/repo) | ✓ |  | ✓ |  |  |
 | [`httpapi`](../../backend/internal/httpapi) | ✓ | ✓ |  |  |  |
+| [`league`](../../backend/internal/league) | ✓ |  |  |  |  |
+| [`league/api`](../../backend/internal/league/api) | ✓ |  |  |  |  |
+| [`league/repo`](../../backend/internal/league/repo) | ✓ |  |  |  |  |
+| [`league/service`](../../backend/internal/league/service) | ✓ |  |  |  |  |
 | [`members`](../../backend/internal/members) | ✓ |  |  |  |  |
 | [`observability/logging`](../../backend/internal/observability/logging) | ✓ | ✓ | ✓ | ✓ |  |
 | [`observability/metrics`](../../backend/internal/observability/metrics) | ✓ | ✓ |  |  |  |

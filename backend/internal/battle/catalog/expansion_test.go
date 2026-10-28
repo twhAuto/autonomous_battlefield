@@ -46,8 +46,9 @@ func TestLegacyInputWithOpenMapRules(t *testing.T) {
 	}
 }
 
-// withoutVisualizationMetadata clears the attack and route visualization fields added
-// after the legacy input format; gameplay fields remain part of the trace.
+// withoutVisualizationMetadata clears the attack and route visualization fields and the
+// per-type statistics added after the legacy input format; gameplay fields remain part
+// of the trace.
 func withoutVisualizationMetadata(transition *game.Transition) {
 	transition.State.UnitDeaths = nil
 	for i := range transition.State.Units {
@@ -61,6 +62,17 @@ func withoutVisualizationMetadata(transition *game.Transition) {
 		delete(event.Data, "attackMode")
 		delete(event.Data, "outcome")
 		delete(event.Data, "impactPosition")
+		for _, key := range []string{"unitType", "killerId", "killerType", "killerFactionId"} {
+			if event.Type == "unit_destroyed" || event.Type == "building_destroyed" || event.Type == "castle_destroyed" {
+				delete(event.Data, key)
+			}
+		}
+	}
+	if transition.Result != nil {
+		for i := range transition.Result.Factions {
+			faction := &transition.Result.Factions[i]
+			faction.UnitTypes, faction.BuildingTypes, faction.Upgrades = nil, nil, nil
+		}
 	}
 }
 
@@ -73,10 +85,10 @@ func TestFrontierCatalogMapAndDeterministicBattle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Map.Width != 25 || s.Map.Height != 17 || len(s.Map.EconomySites[0]) != 0 || len(s.Ruleset.Units) != 11 || len(s.Ruleset.Structures) != 7 {
+	if s.Map.Width != 25 || s.Map.Height != 17 || len(s.Map.EconomySites[0]) != 0 || len(s.Ruleset.Units) != 14 || len(s.Ruleset.Structures) != 7 {
 		t.Fatal("incomplete frontier content")
 	}
-	if s.Ruleset.ContentSource.Version != "7" {
+	if s.Ruleset.ContentSource.Version != "8" {
 		t.Fatal("incorrect content version")
 	}
 	checkFrontierRoutes(t, s.Map)
@@ -249,9 +261,9 @@ func TestSpecializedCatalogRosters(t *testing.T) {
 	rules, _ := c.Ruleset("battlefield")
 	expected := map[string][]string{
 		game.BuildingBarracks:      {"vanguard", "striker", "pikeman"},
-		game.BuildingArcheryRange:  {"ranger", "crossbowman"},
-		game.BuildingStables:       {"scout", "raider_cavalry"},
-		game.BuildingSiegeWorkshop: {"catapult", "battering_ram", "engineer"},
+		game.BuildingArcheryRange:  {"ranger", "crossbowman", "gunner"},
+		game.BuildingStables:       {"scout", "raider_cavalry", "heavy_cavalry"},
+		game.BuildingSiegeWorkshop: {"catapult", "battering_ram", "engineer", "cannon"},
 		game.BuildingInfirmary:     {"herbalist"},
 	}
 	for _, b := range rules.Structures {
@@ -278,7 +290,7 @@ func TestSpecializedCatalogStartingBuildings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, mapID := range []string{"castle-siege", "frontier-siege"} {
+	for _, mapID := range c.IDs() {
 		scenario, err := c.Resolve(mapID, [2]service.FactionIdentity{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}})
 		if err != nil {
 			t.Fatal(err)
