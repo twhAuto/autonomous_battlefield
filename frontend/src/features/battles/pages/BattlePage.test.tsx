@@ -1,20 +1,20 @@
 // Checks battle viewing: connection states and manual retry, tick progress, map
-// selection, inspector gating by role, and pause/resume/stop control outcomes.
+// selection, inspector gating by role, pause/resume/stop control outcomes, and replay.
 
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { BattlePage } from './BattlePage'
 import {
-  BattleApiError, getBattle, listBattleEvents, listDecisionHistory,
-  pauseBattle, resumeBattle, stopBattle, type BattleRun,
+  BattleApiError, getBattle, getBattleReplay, listBattleEvents, listDecisionHistory,
+  pauseBattle, resumeBattle, stopBattle, type BattleReplay, type BattleRun, type ReplayEvent,
 } from '../api/battles'
 import { SessionContext } from '../../auth/SessionContext'
 
 vi.mock('../api/battles', async (original) => ({
   ...await original<typeof import('../api/battles')>(),
-  getBattle: vi.fn(), listBattleEvents: vi.fn(), listDecisionHistory: vi.fn(),
+  getBattle: vi.fn(), getBattleReplay: vi.fn(), listBattleEvents: vi.fn(), listDecisionHistory: vi.fn(),
   pauseBattle: vi.fn(), resumeBattle: vi.fn(), stopBattle: vi.fn(),
 }))
 
@@ -68,6 +68,7 @@ function renderBattle(role: 'admin' | 'player' = 'admin', actorID = 'admin') {
 
 beforeEach(() => {
   vi.mocked(getBattle).mockReset().mockResolvedValue(runningBattle({ status: 'completed' }))
+  vi.mocked(getBattleReplay).mockReset()
   vi.mocked(listBattleEvents).mockReset().mockResolvedValue({ attempt: 1, events: [], nextCursor: null })
   vi.mocked(listDecisionHistory).mockReset().mockResolvedValue([])
   vi.mocked(pauseBattle).mockReset()
@@ -247,4 +248,85 @@ it('falls back to the raw winner identifier when it matches no participant', asy
   renderBattle()
   await screen.findByRole('progressbar', { name: 'Tick limit used' })
   expect(screen.getAllByText(/retired-faction/).length).toBeGreaterThan(0)
+})
+
+// One segment for a two-tick battle: North's gold rises each tick and tick 1 has a move.
+function replaySegment(): BattleReplay {
+  const battle = runningBattle()
+  return {
+    battleId: battleID, attempt: 1, finalTick: 2, fromTick: 0, toTick: 2, nextTick: null,
+    frames: [0, 1, 2].map((tick) => {
+      const events: ReplayEvent[] = tick === 1
+        ? [{ sequence: 4, tick, type: 'income_collected', data: { factionId: north, amount: 1 } }, { sequence: 5, tick, type: 'tick_completed', data: {} }]
+        : [{ sequence: tick + 1, tick, type: 'tick_completed', data: {} }]
+      return {
+        tick, events,
+        state: { ...battle.state, tick, factions: [{ factionId: north, gold: 10 + tick, goldEarned: 0, goldSpent: 0, goldLooted: 0 }, { factionId: south, gold: 5, goldEarned: 0, goldSpent: 0, goldLooted: 0 }] },
+      }
+    }),
+  }
+}
+
+it('replays a settled battle tick by tick and returns to the final state', async () => {
+  vi.mocked(getBattle).mockResolvedValue(runningBattle({ status: 'completed', currentTick: 2 }))
+  vi.mocked(getBattleReplay).mockResolvedValue(replaySegment())
+  const user = userEvent.setup()
+  renderBattle('player', 'viewer')
+  await user.click(await screen.findByRole('button', { name: 'WATCH REPLAY' }))
+
+  const controls = screen.getByRole('region', { name: 'Replay controls' })
+  expect(await screen.findByText(/HEX TACTICAL MAP · TICK 0/)).toBeInTheDocument()
+  expect(getBattleReplay).toHaveBeenCalledWith(battleID, 0, expect.any(AbortSignal))
+  expect(screen.getByRole('article', { name: 'North' })).toHaveTextContent('Gold10')
+  expect(screen.getByRole('region', { name: 'Tick 0 events' })).toHaveTextContent('No notable events this tick.')
+
+  await user.click(screen.getByRole('button', { name: 'Next tick' }))
+  expect(screen.getByText(/HEX TACTICAL MAP · TICK 1/)).toBeInTheDocument()
+  expect(screen.getByRole('article', { name: 'North' })).toHaveTextContent('Gold11')
+  expect(screen.getByRole('region', { name: 'Tick 1 events' })).toHaveTextContent('North collected 1 gold in income.')
+  expect(controls).toHaveTextContent('TICK 1 / 2')
+
+  await user.click(screen.getByRole('button', { name: 'Restart replay' }))
+  expect(screen.getByText(/HEX TACTICAL MAP · TICK 0/)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'EXIT REPLAY' }))
+  expect(screen.queryByRole('region', { name: 'Replay controls' })).not.toBeInTheDocument()
+  expect(screen.getByText(/HEX TACTICAL MAP · TICK 50/)).toBeInTheDocument()
+})
+
+it('plays a replay at the selected speed and seeks from the timeline', async () => {
+  vi.mocked(getBattle).mockResolvedValue(runningBattle({ status: 'stopped', currentTick: 2 }))
+  vi.mocked(getBattleReplay).mockResolvedValue(replaySegment())
+  const user = userEvent.setup()
+  renderBattle()
+  await user.click(await screen.findByRole('button', { name: 'WATCH REPLAY' }))
+  await screen.findByText(/HEX TACTICAL MAP · TICK 0/)
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Speed' }), '8')
+  await user.click(screen.getByRole('button', { name: 'PLAY' }))
+  expect(await screen.findByText(/HEX TACTICAL MAP · TICK 2/)).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'PLAY' })).toBeInTheDocument()
+
+  // jsdom does not implement range keyboard input, so set the value as the slider would.
+  fireEvent.change(screen.getByRole('slider', { name: 'Replay tick' }), { target: { value: '1' } })
+  expect(screen.getByText(/HEX TACTICAL MAP · TICK 1/)).toBeInTheDocument()
+})
+
+it('explains a missing replay and retries it', async () => {
+  vi.mocked(getBattle).mockResolvedValue(runningBattle({ status: 'completed', currentTick: 2 }))
+  vi.mocked(getBattleReplay)
+    .mockRejectedValueOnce(new BattleApiError('No replay was recorded for this part of the battle.', 409))
+    .mockResolvedValue(replaySegment())
+  const user = userEvent.setup()
+  renderBattle()
+  await user.click(await screen.findByRole('button', { name: 'WATCH REPLAY' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('No replay was recorded for this part of the battle.')
+  expect(screen.getByRole('button', { name: 'PLAY' })).toBeDisabled()
+  await user.click(screen.getByRole('button', { name: 'Retry' }))
+  expect(await screen.findByText(/HEX TACTICAL MAP · TICK 0/)).toBeInTheDocument()
+})
+
+it('offers no replay while a battle is still running', async () => {
+  vi.mocked(getBattle).mockResolvedValue(runningBattle())
+  renderBattle()
+  await screen.findByRole('progressbar', { name: 'Tick limit used' })
+  expect(screen.queryByRole('button', { name: 'WATCH REPLAY' })).not.toBeInTheDocument()
 })

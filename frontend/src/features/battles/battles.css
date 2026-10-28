@@ -350,6 +350,33 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
 
 .battle-map-column { min-width: 0; }
 .battle-map-column > .map-panel { margin-bottom: 0; }
+.battle-progress-panel > .compact-action { min-height: 32px; margin-top: 8px; }
+
+/* Replay mode: controls above the map, the frame's events below it. */
+.replay-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 12px; background: #151a14; border: 1px solid var(--line); border-bottom: 0; font: 12px 'DM Mono', monospace; }
+.replay-controls__buttons { display: flex; gap: 4px; }
+.replay-controls__buttons button { min-width: 36px; min-height: 32px; padding: 0 10px; color: var(--lime); background: transparent; border: 1px solid rgba(216,255,104,.45); font: 500 13px 'DM Mono', monospace; letter-spacing: .08em; }
+.replay-controls__buttons button:hover:not(:disabled) { color: var(--ink); background: var(--lime); }
+.replay-controls__buttons button:disabled { opacity: .4; }
+.replay-controls__play { min-width: 72px; }
+.replay-controls__timeline { display: flex; flex: 1 1 200px; align-items: center; gap: 8px; min-width: 0; color: var(--muted); }
+.replay-controls__timeline input { flex: 1; min-width: 0; accent-color: var(--lime); }
+.replay-controls__tick { color: #aeb6a9; white-space: nowrap; }
+.replay-controls__tick strong { color: var(--lime); font-weight: 500; }
+.replay-controls__speed { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.replay-controls__speed select { height: 32px; padding: 0 8px; color: #dce2d5; background: #111510; border: 1px solid #454d41; font: 12px 'DM Mono', monospace; }
+.replay-controls__error { flex-basis: 100%; color: #ffb4a8; }
+.replay-controls__error button { margin-left: 8px; color: var(--lime); background: transparent; border: 1px solid rgba(216,255,104,.45); font: inherit; }
+.replay-loading { display: block; margin: 0; padding: 40px 16px; color: var(--muted); text-align: center; border: 1px solid var(--line); font: 12px 'DM Mono', monospace; letter-spacing: .12em; }
+.replay-events { max-height: 160px; overflow: auto; padding: 8px 12px; background: #151a14; border: 1px solid var(--line); border-top: 0; font-size: 13px; }
+.replay-events > .section-label { padding-bottom: 6px; }
+.replay-events ol { margin: 6px 0 0; padding: 0; list-style: none; }
+.replay-events li { padding: 3px 0; color: #d8ded2; line-height: 1.5; }
+.replay-events li strong { margin-right: 6px; color: #aeb6a9; font: 500 11px 'DM Mono', monospace; letter-spacing: .08em; text-transform: uppercase; }
+.replay-events__empty { margin: 6px 0 0; color: var(--muted); }
+@media (max-width: 780px) {
+  .replay-controls__buttons button { min-width: 44px; min-height: 40px; }
+}
 
 @media (min-width: 1001px) {
   .battle-cockpit {

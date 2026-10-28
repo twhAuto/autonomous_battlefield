@@ -369,3 +369,13 @@ restores the match and re-simulates one segment;
 `authn/authorization.go`. `repo/replay_integration_test.go` covers lease-guarded and
 retried frame writes, and `test/integration/api_test.go` replays a completed battle
 end to end as a Player.
+
+## Battle replay page
+
+[`hooks/useBattleReplay.ts`](../../frontend/src/features/battles/hooks/useBattleReplay.ts)
+loads, prefetches, caches and plays `GET /v1/battles/{id}/replay` segments, and
+[`components/BattleReplay.tsx`](../../frontend/src/features/battles/components/BattleReplay.tsx)
+renders the controls, the frame's map and faction strips, and the tick's events.
+`BattlePage.tsx` switches to it through `BattleStage` for settled battles. Hook tests
+cover debounced seeking, prefetch, buffering, eviction, retry and abort; page tests
+and the `e2e/usability.spec.ts` replay test cover playback and layout.

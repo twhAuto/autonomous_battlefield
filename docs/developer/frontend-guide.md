@@ -113,6 +113,15 @@ It also returns `lastUpdated`, the time of the most recent successful status res
 or control result; `BattleHeader` shows it beside the connection badge, which already
 reports reconnecting and error states.
 
+`useBattleReplay` plays a settled battle from `GET /v1/battles/{id}/replay`
+segments. It fetches the segment containing the current tick 150 ms after the last
+seek, so dragging the timeline loads only where it stops, and prefetches the next
+segment while one plays. Playback advances one tick per 600 ms divided by the chosen
+speed (1×, 2×, 4× or 8×) and waits, showing BUFFERING, while the next segment loads.
+Only the six segments nearest the current tick stay in memory; revisiting an evicted
+one fetches it again. A failed segment stops playback and keeps a retry; leaving the
+page aborts outstanding requests.
+
 `BattleHistoryPage` fetches on entry, filter or page navigation, retry, and manual
 refresh; it does not poll. URL parameters keep the status filter, current cursor,
 and prior cursors for Previous and browser navigation, and refresh returns to the
@@ -132,6 +141,15 @@ zoom). The inspector can be widened or hidden to a rail; focus moves to the
 replacement control. After-action statistics follow below, with each faction's
 units and buildings by type and its upgrade timeline. Narrower screens stack
 the same regions in document order and keep the map's aspect ratio.
+
+A completed, stopped or failed battle offers **WATCH REPLAY** under its tick
+progress. `components/BattleReplay.tsx` then replaces the faction strips and map in
+the same grid areas: playback controls (restart, step, play/pause, a timeline slider
+and speed) above the map, and that tick's events below it, without tick bookkeeping
+events. Faction strips show the frame's gold, units, castle health and production,
+and the plan applied by that tick. The inspector and after-action statistics keep
+the final state. Sequential ticks animate like live updates; a backward seek jumps.
+**EXIT REPLAY** returns to the final state.
 
 ## Inspector and historical context
 
@@ -271,8 +289,8 @@ shared rules require desktop/mobile browser checks as well as component tests.
 `frontend/e2e/fixtures.ts` intercepts the complete API boundary for Playwright
 tests, which run against a local Vite server in desktop and mobile Chromium:
 
-- `e2e/usability.spec.ts` covers navigation, layout reflow, map controls and
-  destructive actions against fixtures only.
+- `e2e/usability.spec.ts` covers navigation, layout reflow, map controls, replay
+  playback and destructive actions against fixtures only.
 - `e2e/staging.spec.ts` submits the battle setup form end to end, continues into
   the live battle view, and covers a rejected creation and a retry.
 - `e2e/admin.spec.ts` covers model-access saves and Player role preview.

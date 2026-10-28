@@ -1,5 +1,5 @@
 // Defines battle API payloads and requests for scenarios, model profiles, battle
-// creation/history, live state, events, decisions, and controls.
+// creation/history, live state, events, replays, decisions, and controls.
 
 import type { UnitCapabilities } from '../../../shared/domain/units'
 import type { ModelProfile } from '../../../shared/domain/model-profile'
@@ -165,6 +165,16 @@ export interface BattleEventPage {
   nextCursor: number | null
 }
 
+/** An event re-created for a replay frame; Players receive an empty `data` object. */
+export type ReplayEvent = Pick<BattleEvent, 'sequence' | 'tick' | 'type' | 'data'>
+export interface ReplayFrame { tick: number; state: BattleState; events: ReplayEvent[] }
+/** One segment: a checkpoint tick and the ticks before the next decision window. */
+export interface BattleReplay {
+  battleId: string; attempt: number; finalTick: number
+  fromTick: number; toTick: number; nextTick: number | null
+  frames: ReplayFrame[]
+}
+
 export interface DecisionHistory {
   contextDelivery?: 'tool' | 'prefetch'
   cliProcessStartMs?: number; reasoningEffort?: string; claimedAt?: string; contextServedAt?: string; runnerCompletedAt?: string
@@ -321,6 +331,14 @@ export async function listBattleEvents(
   if (response.status === 404) throw new BattleApiError('This battle could not be found.', 404)
   if (response.status === 400) throw new BattleApiError('That battle attempt or event cursor is invalid.', 400)
   throw new BattleApiError('Battle events could not be loaded.', response.status)
+}
+
+export async function getBattleReplay(id: string, tick: number, signal?: AbortSignal): Promise<BattleReplay> {
+  const response = await battlefieldFetch(`/v1/battles/${encodeURIComponent(id)}/replay?tick=${tick}`, { signal })
+  if (response.ok) return (await response.json()) as BattleReplay
+  if (response.status === 409) throw new BattleApiError('No replay was recorded for this part of the battle. Battles that finished before replays were added cannot be replayed.', 409)
+  if (response.status === 404) throw new BattleApiError('This battle could not be found.', 404)
+  throw new BattleApiError('The battle replay could not be loaded.', response.status)
 }
 
 export async function listDecisionHistory(id: string, attempt: number, signal?: AbortSignal): Promise<DecisionHistory[]> {

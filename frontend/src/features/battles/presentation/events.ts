@@ -1,5 +1,5 @@
 import { upgradeLabel } from './upgrades'
-import type { BattleEvent } from '../api/battles'
+import type { BattleEvent, ReplayEvent } from '../api/battles'
 import { eventStringLabel, type EntityNaming } from './entities'
 
 export type EventPreset = 'key' | 'combat' | 'economy' | 'all'
@@ -7,7 +7,7 @@ const keyEvents = new Set(['battle_created', 'battle_queued', 'battle_started', 
 const combatEvents = new Set(['unit_attacked', 'unit_attack_missed', 'unit_moved', 'unit_healed', 'unit_repaired', 'tower_attacked', 'building_attacked', 'castle_destroyed', 'unit_destroyed', 'unit_died', 'building_destroyed'])
 const economyEvents = new Set(['income_collected', 'loot_collected', 'building_constructed', 'unit_recruited', 'unit_queued', 'upgrade_purchased', 'upgrade_applied'])
 
-export function matchesPreset(event: BattleEvent, preset: EventPreset) {
+export function matchesPreset(event: BattleEvent | ReplayEvent, preset: EventPreset) {
   if (preset === 'all') return true
   return ({ key: keyEvents, combat: combatEvents, economy: economyEvents })[preset].has(event.type)
 }
@@ -15,7 +15,7 @@ export function matchesPreset(event: BattleEvent, preset: EventPreset) {
 type EventLabel = (key: string, fallback: string) => string
 
 // Older destruction events carry no killer, so they keep their original wording.
-function destructionSummary(event: BattleEvent, label: EventLabel) {
+function destructionSummary(event: BattleEvent | ReplayEvent, label: EventLabel) {
   const killer = typeof event.data.killerId === 'string' ? ` by ${label('killerId', 'an attacker')}` : ''
   if (event.type === 'castle_destroyed') return `${label('castleId', 'A castle')} was destroyed${killer}.`
   if (event.type === 'building_destroyed') return `${label('buildingId', 'A building')} was destroyed${killer}.`
@@ -24,7 +24,7 @@ function destructionSummary(event: BattleEvent, label: EventLabel) {
 }
 
 /** Summaries use only structured event fields; original payloads remain available. */
-export function eventSummary(event: BattleEvent, naming: EntityNaming) {
+export function eventSummary(event: BattleEvent | ReplayEvent, naming: EntityNaming) {
   const label: EventLabel = (key, fallback) => typeof event.data[key] === 'string' ? eventStringLabel(key, event.data[key] as string, naming) : fallback
   const actor = label('factionId', 'A faction')
   const upgradeCost = typeof event.data.cost === 'number' ? ` for ${event.data.cost} gold` : ''

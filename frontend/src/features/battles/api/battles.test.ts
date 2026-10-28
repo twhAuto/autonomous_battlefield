@@ -6,6 +6,7 @@ import {
   BattleApiError,
   createBattle,
   getBattle,
+  getBattleReplay,
   listBattleEvents,
   listBattles,
   listDecisionHistory,
@@ -119,6 +120,22 @@ describe('battle API', () => {
     ] as const) {
       vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status }))
       await expect(stopBattle(battleId)).rejects.toMatchObject({ status, message: expect.stringContaining(message) })
+    }
+  })
+
+  it('requests a replay segment and maps replay failures', async () => {
+    const segment = { battleId, attempt: 1, finalTick: 3, fromTick: 0, toTick: 3, nextTick: null, frames: [] }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(segment))
+    await expect(getBattleReplay('battle/id', 7)).resolves.toEqual(segment)
+    expect(fetch).toHaveBeenLastCalledWith('/v1/battles/battle%2Fid/replay?tick=7', { signal: undefined, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+
+    for (const [status, message] of [
+      [409, 'No replay was recorded'],
+      [404, 'could not be found'],
+      [500, 'replay could not be loaded'],
+    ] as const) {
+      vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status }))
+      await expect(getBattleReplay(battleId, 0)).rejects.toMatchObject({ status, message: expect.stringContaining(message) })
     }
   })
 
