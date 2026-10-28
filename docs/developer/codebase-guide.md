@@ -52,7 +52,7 @@ autonomous_battlefield/
 │   └── evals/                  # Evaluation cases and pricing configuration
 ├── frontend/src/
 │   ├── app/                    # Application shell, routes, integration tests
-│   ├── features/{battles,factions,auth,admin}/ # Feature pages, API clients, unit tests
+│   ├── features/{battles,factions,leagues,analytics,auth,admin}/ # Feature pages, API clients, unit tests
 │   ├── shared/{api,domain,components,hooks,styles}/ # Shared contracts, visuals, and foundations
 │   ├── pages/                  # General pages, including Home
 │   └── test/                   # Shared test setup
@@ -256,8 +256,8 @@ selections. Battle API/service code freezes them in `game.ControllerConfig`, and
 a runner. `internal/ai/timing.go` validates worker duration metadata.
 Migration `00018_decision_selection_timing.sql` and the battle decision repository
 persist lifecycle times. `DecisionTiming.tsx` renders the elapsed/completed
-breakdown in `AIDecisionPanel`; `CreateBattlePage.tsx` renders dependent model/effort
-selectors. Selection tests, PostgreSQL lifecycle integration tests, and component
+breakdown in `AIDecisionPanel`; `components/ControllerSelect.tsx` renders the
+dependent model/effort selectors for battle and league setup. Selection tests, PostgreSQL lifecycle integration tests, and component
 tests cover allowlists, retry identity, terminal timing and missing history.
 
 `scripts/dev/run-k8s-cli-agent.sh` accepts the selected stable CLI version or newer;
@@ -373,8 +373,10 @@ joins each fixture's battle outcome, and holds the scheduler advisory lock;
 `postgres_integration_test.go` runs in a private schema so its engine-idle checks see
 only its own battles. [`league/api`](../../backend/internal/league/api) serves the four
 `/v1/leagues` routes. `internal/app` composes the service and `cmd/server` starts the
-scheduler with `App.StartLeagueScheduler`. `battle/repo/battles.go` adds a battle's
-league to `GetBattle`, and `migrations/leagues_integration_test.go` covers the budget
+scheduler with `App.StartLeagueScheduler`. The frontend pages are in `features/leagues`:
+`LeaguesPage`, `CreateLeaguePage` (estimates in `presentation/leagues.ts`) and
+`LeaguePage`. `GetBattle` in `battle/repo/battles.go` returns a battle's
+league, and `migrations/leagues_integration_test.go` covers the budget
 exemption and the downgrade guard.
 
 ## Analytics implementation
@@ -388,7 +390,8 @@ applies the rules-version default and the fallback filter, and caps a report at
 factions and results from `battle_runs` and totals each side's model decisions from
 the final attempt; its integration test runs in a private schema.
 [`analytics/api`](../../backend/internal/analytics/api) serves `GET /v1/analytics`, and
-`internal/app` passes the catalog's rules version as the default.
+`internal/app` passes the catalog's rules version as the default. The frontend
+report is `features/analytics/pages/AnalyticsPage.tsx`.
 
 ## Battle replay implementation
 

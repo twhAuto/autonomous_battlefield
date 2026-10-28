@@ -15,7 +15,7 @@ it('exposes mobile navigation and logout, closes on Escape and restores focus', 
   await user.click(menu)
   expect(menu).toHaveAttribute('aria-expanded', 'true')
   const nav = screen.getByRole('navigation')
-  expect(within(nav).getAllByRole('link').map(link => link.textContent)).toEqual(['Stage battle', 'Factions', 'Battle history', 'Admin'])
+  expect(within(nav).getAllByRole('link').map(link => link.textContent)).toEqual(['Stage battle', 'Factions', 'Battle history', 'Leagues', 'Statistics', 'Admin'])
   await user.tab()
   await user.keyboard('{Escape}')
   expect(menu).toHaveFocus()
@@ -24,4 +24,17 @@ it('exposes mobile navigation and logout, closes on Escape and restores focus', 
   await user.click(within(screen.getByRole('navigation')).getByRole('button', { name: 'Log out admin' }))
   expect(authentication.logout).toHaveBeenCalledOnce()
   expect(await screen.findByRole('heading', { name: 'Identify commander.' })).toBeInTheDocument()
+})
+
+it('shows leagues and statistics only to roles that can inspect', () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }))
+  const authentication = { session: vi.fn(), login: vi.fn(), logout: vi.fn() }
+  const links = (role: 'player' | 'developer') => {
+    const view = render(<MemoryRouter><App authentication={authentication} initialSession={{ enabled: true, authenticated: true, mode: 'cloudflare', actor: { id: role, role } }} /></MemoryRouter>)
+    const names = within(screen.getByRole('navigation')).getAllByRole('link').map(link => link.textContent)
+    view.unmount()
+    return names
+  }
+  expect(links('player')).toEqual(['Stage battle', 'Factions', 'Battle history'])
+  expect(links('developer')).toEqual(['Stage battle', 'Factions', 'Battle history', 'Leagues', 'Statistics'])
 })

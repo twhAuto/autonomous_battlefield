@@ -35,6 +35,7 @@ export function BattleHeader({ battle, battleTitle, connection, connectionMessag
           <span>SCENARIO <strong>{battle.scenarioId}</strong></span>
           <span>ATTEMPT <strong>{battle.attempt}</strong></span>
           <span>STATUS <strong>{battle.status}</strong></span>
+          {battle.league && <span>LEAGUE <Link className="text-link" to={`/leagues/${encodeURIComponent(battle.league.id)}`}>{battle.league.name}</Link> · {battle.league.group ? `GROUP ${battle.league.group}` : battle.league.stage.toUpperCase()} · LEG {battle.league.leg}</span>}
           {lastUpdated && <span>UPDATED <strong><time dateTime={lastUpdated.toISOString()}>{lastUpdated.toLocaleTimeString()}</time></strong></span>}
           <ConnectionBadge state={connection} />
         </div>
