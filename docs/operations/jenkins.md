@@ -334,13 +334,15 @@ Jenkins prints descriptions and logs for every unavailable observability Deploym
 plus recent namespace events.
 
 The pre-migration database backup in `~/.local/state/battlefield/backups` on the
-agent has its own five-minute budget (`BACKUP_TIMEOUT`, default `300s`), and
-`pg_dump` gives up on table locks after one minute. If the dump or its
-`pg_restore --list` check fails or runs out of time, the deploy deletes the partial
+agent gives the dump and its `pg_restore --list` check five minutes each
+(`BACKUP_TIMEOUT`, default `300s`). The limit applies inside the Postgres pod, and
+`kubectl exec` gets 15 seconds more. `pg_dump` gives up on table locks after one
+minute. If either step fails or runs out of time, the deploy deletes the partial
 dump and stops before the migration Job, so production keeps its running release.
-It then prints the `battlefield-postgres-0` pod status, its recent events and the
-database sessions with their wait events and blocking sessions. Use that output to
-find a restarting pod or a session holding locks before rerunning the build.
+It then prints the `battlefield-postgres-0` pod status, its recent events, and the
+database sessions with their states, wait events, transaction ages and blocking
+sessions. Use that output to find a restarting pod or a session holding locks before
+rerunning the build.
 
 ### Rollback
 

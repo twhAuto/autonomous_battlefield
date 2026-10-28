@@ -480,14 +480,22 @@ cluster_deploy_infrastructure() {
     --timeout="${rollout_timeout}"
 }
 
-# Bounds a backup exec: a stalled exec stream would otherwise hold the production
-# lock until the pipeline timeout.
+# Runs a backup command in the Postgres pod under BACKUP_TIMEOUT, so the remote process
+# ends on time. The local deadline adds grace for that to be reported and stops a stalled
+# exec stream, which would otherwise hold the production lock until the pipeline timeout.
 cluster_deploy_backup_exec() {
-  timeout --kill-after=10s "${backup_timeout%s}" kubectl --context "${kube_context}" exec "$@"
+  local stdin=()
+  if [[ "$1" == -i ]]; then
+    stdin=(-i)
+    shift
+  fi
+  timeout --kill-after=10s "$((${backup_timeout%s} + 15))" kubectl --context "${kube_context}" exec "${stdin[@]}" \
+    --namespace "${namespace}" battlefield-postgres-0 -- timeout "${backup_timeout%s}" sh -c "$1"
 }
 
+# 124 and 137 come from the local timeout, 143 from the pod's BusyBox timeout.
 cluster_deploy_backup_outcome() {
-  if (($1 == 124 || $1 == 137)); then
+  if (($1 == 124 || $1 == 137 || $1 == 143)); then
     echo "did not finish within ${backup_timeout}"
   else
     echo "exited with status $1"
@@ -501,26 +509,30 @@ cluster_deploy_database_diagnostics() {
   cluster_deploy_kube get events --namespace "${namespace}" --field-selector involvedObject.name=battlefield-postgres-0 \
     --sort-by=.lastTimestamp --request-timeout=10s >&2 || true
   timeout --kill-after=5s 20 kubectl --context "${kube_context}" exec --namespace "${namespace}" battlefield-postgres-0 -- \
-    sh -c 'exec psql --no-psqlrc --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --command "select pid, application_name, state, wait_event_type, wait_event, now() - xact_start as transaction_age, pg_blocking_pids(pid) as blocked_by, left(query, 80) as query from pg_stat_activity where datname = current_database() and pid <> pg_backend_pid() order by xact_start"' >&2 || true
+    sh -c 'exec psql --no-psqlrc --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --command "select pid, application_name, state, wait_event_type, wait_event, now() - xact_start as transaction_age, pg_blocking_pids(pid) as blocked_by from pg_stat_activity where datname = current_database() and pid <> pg_backend_pid() order by xact_start"' >&2 || true
 }
 
-# The ownership migration must never precede a durable, readable backup. pg_dump gives up
-# on table locks after a minute, so it does not linger in the database after a timeout.
+# The ownership migration must never precede a durable, readable backup. Query text stays
+# out of the diagnostics because build logs are retained. A stopped dump's server session
+# ends when it next writes; pg_dump gives up on table locks after a minute, so a session
+# waiting on a lock ends by then too.
 cluster_deploy_backup_database() {
   local backup_dir="${BATTLEFIELD_BACKUP_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/battlefield/backups}"
   local backup_file status=0 failure=''
   install -d -m 700 "${backup_dir}"
   backup_file="$(mktemp "${backup_dir}/pre-migration-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX.dump")"
   chmod 600 "${backup_file}"
-  cluster_deploy_backup_exec --namespace "${namespace}" battlefield-postgres-0 -- \
-    sh -c 'exec pg_dump --format=custom --no-owner --lock-wait-timeout=60s --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"' \
+  cluster_deploy_backup_exec \
+    'exec pg_dump --format=custom --no-owner --lock-wait-timeout=60s --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"' \
     >"${backup_file}" || status=$?
   if ((status != 0)); then
     failure="pg_dump $(cluster_deploy_backup_outcome "${status}")"
   elif [[ ! -s "${backup_file}" ]]; then
     failure='the dump is empty'
   else
-    cluster_deploy_backup_exec -i --namespace "${namespace}" battlefield-postgres-0 -- pg_restore --list \
+    # pg_restore --list reads only the archive's table of contents. Drain the rest, or
+    # kubectl blocks sending a dump larger than the stream buffers.
+    cluster_deploy_backup_exec -i 'pg_restore --list; status=$?; cat >/dev/null; exit "$status"' \
       <"${backup_file}" >/dev/null || status=$?
     ((status == 0)) || failure="pg_restore --list $(cluster_deploy_backup_outcome "${status}")"
   fi
