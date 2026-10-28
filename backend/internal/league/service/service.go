@@ -153,7 +153,10 @@ func (s *Service) validateBattles(ctx context.Context, input CreateInput) error 
 	for _, scenarioID := range input.ScenarioIDs {
 		for i := range input.Entrants {
 			home, away := input.Entrants[i], input.Entrants[(i+1)%count]
-			err := s.battles.ValidateBattle(ctx, battleInput(validationBattleID, scenarioID, input.TickCount, input.TickDuration, input.DecisionIntervalTicks, home.FactionID, home.Controller, away.FactionID, away.Controller))
+			settings := league.Settings{TickCount: input.TickCount, TickDuration: input.TickDuration, DecisionIntervalTicks: input.DecisionIntervalTicks}
+			err := s.battles.ValidateBattle(ctx, battleInput(validationBattleID, scenarioID, settings,
+				battleservice.ParticipantInput{FactionID: home.FactionID, Controller: home.Controller},
+				battleservice.ParticipantInput{FactionID: away.FactionID, Controller: away.Controller}))
 			if err != nil {
 				return err
 			}
@@ -265,9 +268,10 @@ func requireInspect(ctx context.Context) error {
 	return nil
 }
 
-func battleInput(id, scenarioID string, ticks uint64, tickDuration *string, interval *uint64, homeFaction string, home game.ControllerConfig, awayFaction string, away game.ControllerConfig) battleservice.CreateBattleInput {
+// battleInput builds a league battle request with the home side first.
+func battleInput(id, scenarioID string, settings league.Settings, home, away battleservice.ParticipantInput) battleservice.CreateBattleInput {
 	return battleservice.CreateBattleInput{
-		ID: id, ScenarioID: scenarioID, TickCount: ticks, TickDuration: tickDuration, DecisionIntervalTicks: interval,
-		Participants: []battleservice.ParticipantInput{{FactionID: homeFaction, Controller: home}, {FactionID: awayFaction, Controller: away}},
+		ID: id, ScenarioID: scenarioID, TickCount: settings.TickCount, TickDuration: settings.TickDuration, DecisionIntervalTicks: settings.DecisionIntervalTicks,
+		Participants: []battleservice.ParticipantInput{home, away},
 	}
 }

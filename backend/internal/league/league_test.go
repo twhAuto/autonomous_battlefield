@@ -60,7 +60,8 @@ func TestGroupFixturesPlayEveryPairingOnceFromEachSide(t *testing.T) {
 			t.Fatalf("%d pairings, want %d", pairings, groups*PairingsPerGroup)
 		}
 	}
-	if testLeague(2).Fixtures[5].ID != testLeague(2).Fixtures[5].ID {
+	first, again := testLeague(2), testLeague(2)
+	if first.Fixtures[5].ID != again.Fixtures[5].ID {
 		t.Fatal("fixture IDs must be stable for retries")
 	}
 }

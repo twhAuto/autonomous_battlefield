@@ -179,8 +179,10 @@ func (s *Service) start(ctx context.Context, store SchedulerStore, l *league.Lea
 		if err != nil || busy {
 			return err
 		}
-		input := battleInput(battleID, f.ScenarioID, l.Settings.TickCount, l.Settings.TickDuration, l.Settings.DecisionIntervalTicks,
-			l.Entrants[f.Home].FactionID, l.Entrants[f.Home].Controller, l.Entrants[f.Away].FactionID, l.Entrants[f.Away].Controller)
+		home, away := l.Entrants[f.Home], l.Entrants[f.Away]
+		input := battleInput(battleID, f.ScenarioID, l.Settings,
+			battleservice.ParticipantInput{FactionID: home.FactionID, Controller: home.Controller},
+			battleservice.ParticipantInput{FactionID: away.FactionID, Controller: away.Controller})
 		input.DecisionBudgetExempt = true
 		if _, err := s.battles.CreateBattle(ownerContext(ctx, l.OwnerID), input); err != nil {
 			return failStart(ctx, store, l.ID, f, err)
