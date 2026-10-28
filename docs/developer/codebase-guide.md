@@ -214,7 +214,9 @@ by the [AI development policy](ai-development-policy.md). The skills in
 `.claude/skills/`) cover ticket linking, PRs, CI triage, releases, docs and backlog
 work, and [cross-review](cross-review.md) covers agent review. Every agent-authored
 change is linked to a Notion ticket whose `AB-NN` ID appears in the branch name,
-commit subjects and PR title.
+commit subjects and PR title. Docs describe current behavior with one owning doc
+per topic; the rules and owners are in
+[`AGENTS.md`](../../AGENTS.md#documentation-maintenance).
 
 For a PR stack, each PR's review and Sonar preview use its actual target branch.
 Jenkins verifies only PRs targeting `dev` or `main`, so a stacked PR needs

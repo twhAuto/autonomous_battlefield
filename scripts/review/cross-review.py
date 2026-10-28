@@ -23,6 +23,8 @@ or delegate to other agents. Use only file-reading operations. Inspect review.pa
 and surrounding source files in this snapshot. Report actionable bugs introduced
 by this change, with severity, file/line, trigger, impact and suggested correction.
 Check correctness, security, operational reliability, tests and documentation.
+For documentation, flag missing or stale docs, and docs that narrate the change
+(ticket IDs, "adds", "no longer"), restate code, or repeat what another doc owns.
 Distinguish confirmed defects from questions. If there are no actionable findings,
 say so. List any limitations and checks you could not perform. Do not claim tests
 passed unless supplied evidence establishes it. Your review is advisory, not approval.
