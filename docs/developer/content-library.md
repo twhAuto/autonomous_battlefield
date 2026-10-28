@@ -11,16 +11,14 @@ Every live map uses one shared ruleset. The catalog embeds and validates:
 
 The shipped maps are `castle-siege` (15×11), `frontier-siege` (25×17),
 `river-fords` (19×25), `long-march` (35×17) and `highland-crown` (33×25); see
-[maps](../game/frontier-siege.md#maps). The
-former restricted ranged-skirmish entry duplicated Castle Siege geometry and is
-removed. Map selection never filters available content. The API retains scenario
+[maps](../game/frontier-siege.md#maps). Map selection never filters available content. The API retains scenario
 IDs and content-summary fields for clients; every summary reports the same shared
 roster and upgrade catalog. The faction-rulesets endpoint returns one ruleset.
 
 ## Scenario restrictions
 
-Maps no longer support content restrictions, timing, controller plans or ruleset
-references. Those fields are rejected by strict YAML decoding. A new map file
+Maps carry no content restrictions, timing, controller plans or ruleset
+references; strict YAML decoding rejects those fields. A new map file
 contains only `id` and `map`, with authored rows, dimensions, castle spawns. Copy a shipped map and edit its geometry; all current and
 future shared units and upgrades are available automatically.
 
@@ -51,10 +49,10 @@ The shared ruleset points to the library using `library.id`, `library.version`,
 `library.castle` and `library.economy`. It owns starting gold, building limits
 (`buildings.maximumBuildingCount` and `maximumEconomyCount` each up to 16), the
 per-faction `maximumUnitCount` (0–200; 0 is unlimited), combat percentages and
-`continuousProduction`. Ruleset v9 raises v8's limits to 16 buildings, at most 4 of them economy, keeps 40 units and references
-core v8. Core v7 enabled continuous AI-selected unit production; absent/false preserves
-historical batch purchases. Core v8 adds the late-game unlocks and multiplies every
-upgrade price by eight. The archived `content/core-v7.yaml` is the authored reference
+`continuousProduction`. The live ruleset v9 allows 16 buildings, at most 4 of them
+economy, and 40 units, and references core v8, which includes the late-game unlocks.
+`continuousProduction: true` enables continuous AI-selected unit production; absent
+or false selects the batch purchases of frozen older battles. The archived `content/core-v7.yaml` is the authored reference
 for the previous active library, and `content/core-v6.yaml` for the
 castle-training/attacking version with batch queues. It is not the active library
 and is not needed to replay self-contained saved snapshots. Inline rulesets remain readable for self-contained fixtures.

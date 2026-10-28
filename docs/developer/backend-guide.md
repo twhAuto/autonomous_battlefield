@@ -502,7 +502,7 @@ Where to start for each cross-cutting feature. The linked page owns its behavior
 
 | Feature | Backend | Frontend | Key tests | Behavior owner |
 | --- | --- | --- | --- | --- |
-| Agent context projection | `ai/agentview`: `agent_context.go`, `battlefield_context.go` (v4 view), `faction_groups.go`, `context_duplicates.go`, `compact_ids.go`, `session_context.go` | `features/battles/components/DecisionContextPanel.tsx` | `agentview` tests, including `TestBattlefieldContextExternalFixture` (below) | [Compact battlefield view](../architecture/ai-decisions.md#compact-battlefield-view) |
+| Agent context projection | `ai/agentview`: `agent_context.go`, `battlefield_context.go` (v4 view), `faction_groups.go`, `context_duplicates.go`, `context_order.go`, `compact_ids.go`, `compact_tables.go`, `compact_state.go`, `session_context.go`; `ai/prompts/context_policy.go` | `features/battles/components/DecisionContextPanel.tsx` | `agentview` tests, including `compact_data_test.go` and `TestBattlefieldContextExternalFixture` (below); prompt tests | [Compact battlefield view](../architecture/ai-decisions.md#compact-battlefield-view) |
 | AI observability | `observability/tracing/ai.go`, `ai/runner/observability.go`, `ai/runner/codex_usage.go`, `ai/mcpserver/tool_logging.go`, `context_telemetry.go` | `AIDecisionPanel` trace links and usage | `context_transport_test.go`; `scripts/test/test-cli-agent.py` | [Langfuse operations](../operations/langfuse.md) |
 | Access and roles | `authn/cloudflare.go`, `audience.go`, `diagnostics.go`, `authorization.go`, `preview.go` | `features/auth/SessionContext.tsx`, `RolePreviewContext.ts` | `config/access_test.go`, `battle/api/player_test.go`, [`test/integration`](#end-to-end-api-integration-test) | [Security boundaries](../architecture/system-architecture.md#8-security-and-trust-boundaries) |
 | Admission and AI limits | Triggers in migrations `00011`, `00014`, `00016`; `ai/agent/policy.go`, `credentials_linux.go`; `ai/runner/process_linux.go` | — | `migrations/battle_admission_integration_test.go`, `generation/repo/cli_capacity_integration_test.go` | [Database](../architecture/database.md#admission-triggers) |
@@ -511,15 +511,34 @@ Where to start for each cross-cutting feature. The linked page owns its behavior
 | Doctrine and opening purchases | `faction/service/update.go`; `game/opening.go`, `upgrades.go` | `/factions/new`, `/factions/:id/edit` editor | `game` opening and upgrade tests | [Game rules](../game/game-rules.md) |
 | Background generation | [`internal/generation`](#internalgeneration-faction-background-generation); `ai/agent/generation.go`; `ai/mcpserver/generation.go` | `features/factions/components/BackgroundGenerator.tsx`, `api/backgrounds.ts` | generation repository and MCP transport tests | [HTTP API](../architecture/api.md#faction-background-generation) |
 | Battle history | `history.go` in `battle/api`, `battle/service`, `battle/repo` | `features/battles/pages/BattleHistoryPage.tsx` | `battle/repo/history_integration_test.go` | [HTTP API](../architecture/api.md#browse-battle-history) |
-| Battle replay | `game/checkpoint.go`; `replay.go` in `battle/service` and `battle/repo`; `repo/ticks.go`; migration `00020` | — | `game/checkpoint_test.go`, catalog `checkpoint_test.go`, `battle/repo/replay_integration_test.go`, `test/integration` | [HTTP API](../architecture/api.md#battle-replay), [architecture](../architecture/system-architecture.md#56-replay-a-finished-battle) |
+| Battle replay | `game/checkpoint.go`; `replay.go` in `battle/service` and `battle/repo`; `repo/ticks.go`; migration `00020` | `features/battles/hooks/useBattleReplay.ts`, `components/BattleReplay.tsx` | `game/checkpoint_test.go`, catalog `checkpoint_test.go`, `battle/repo/replay_integration_test.go`, `test/integration`, `e2e/usability.spec.ts` | [HTTP API](../architecture/api.md#battle-replay), [architecture](../architecture/system-architecture.md#56-replay-a-finished-battle) |
+| Battle setup and timing | `battle/service/timing.go` | `features/battles/pages/CreateBattlePage.tsx`, `components/MapPreview.tsx` | `timing_test.go`; component and staging browser tests | [HTTP API](../architecture/api.md#queue-a-battle) |
+| Battle statistics | `game/statistics.go` (`recordStrike`), called from `strike` in `combat.go`; `buildResult` in `match.go` | `features/battles/components/TypeStatistics.tsx` | `game/statistics_test.go` | [HTTP API](../architecture/api.md#status-and-controls) |
+| Construction, training and production | `game/construction.go`, `training.go`, `training_sources.go`, `continuous_production.go`, `initialization.go`, `structures.go` | `features/battles/components/BuildingProduction.tsx` | `game` tests | [Game rules](../game/game-rules.md#construction-and-training) |
+| Upgrades, specialists and unit unlocks | `game/upgrade_levels.go`, `upgrade_effects.go`, `upgrades.go`, `specialists.go`, `unit_unlocks.go` (`ValidateUnitUnlocks`, shared with `ai/decision/validate.go`) | `features/battles/presentation/upgrades.ts`, `components/UpgradeIcon.tsx` | catalog `late_game_test.go` | [Game rules](../game/game-rules.md#resources-and-upgrades), [Frontier Siege](../game/frontier-siege.md#three-level-upgrades) |
+| AI leagues | `internal/league` (pure schedule, standings and knockout rules), `league/service` (`scheduler.go`), `league/repo`, `league/api`; `cmd/server` starts the scheduler | — | `league_test.go`, `league/repo/postgres_integration_test.go`, `migrations/leagues_integration_test.go` | [HTTP API](../architecture/api.md#leagues), [architecture](../architecture/system-architecture.md#57-play-a-league) |
+| Model and effort selection, decision timing | `ai/selection.go`, `ai/timing.go`; `ai/agent/executor.go` checks the claimed selection; battle decision repository | `CreateBattlePage.tsx` selectors; `features/battles/components/DecisionTiming.tsx` | selection and decision lifecycle tests; `scripts/test/test-cli-worker.py` | [AI decisions](../architecture/ai-decisions.md#model-selection-and-latency) |
+| CLI runner | `ai/runner/cli.go` (context prefetch), `cli_failure.go` (rate-limit classification); `cmd/aieval/comparison.go` | — | `ai/runner/prefetch_test.go`; `scripts/test/test-cli-agent.py` | [CLI context prefetch](../architecture/ai-decisions.md#cli-context-prefetch) |
+| Faction emblems | `faction/service` allowlist, `faction/repo/postgres.go` | `shared/domain/emblems.ts`, `shared/components/Emblem.tsx` | `faction_emblem_integration_test.go`; component and browser tests | [HTTP API](../architecture/api.md#factions) |
 
 `members` logs unexpected failures as `player_members_request_failed` with a fixed
 `reason` and any SQLSTATE, never the raw error (which can name database hosts and
 users), and answers 503. Faction limits are declared in `internal/faction/faction.go`
-and mirrored in frontend `features/factions/limits.ts`; change both together.
+and mirrored in frontend `features/factions/limits.ts`; change both together. Emblem
+identifiers are listed in the faction service, the `factions.emblem` check
+constraint, the OpenAPI `FactionEmblem` enum and `shared/domain/emblems.ts`; change
+all four together.
+
+Match runtime that survives between ticks but is not in `State`, such as the battle
+statistics counters, must join `game.Checkpoint`; the checkpoint restore tests fail
+otherwise. Superseded catalog content lives only in catalog test fixtures.
 
 To measure a private JSON context without adding it to fixtures, run from `backend`:
 `BATTLEFIELD_CONTEXT_FIXTURE=/path/to/context.json go test ./internal/ai/agentview -run TestBattlefieldContextExternalFixture -v`.
+`BATTLEFIELD_DECISIONS_FIXTURE` similarly points `compact_data_test.go` at a private
+JSON array of saved `observation` records for round-trip and size checks. Never
+commit private battle data. `compact_ids.go` is lossy by design, so
+`compact_ids_test.go` checks it separately from the round-trip tests.
 
 ## Battle history query plans
 

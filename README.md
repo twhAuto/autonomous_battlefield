@@ -5,11 +5,11 @@ and React frontend. Create factions, choose scripted or AI controllers, and watc
 them compete on authored hex maps. AI controllers propose strategy plans; the game
 engine validates and executes them.
 
-- Create reusable factions with editable names, 12 selectable emblems, backgrounds and strategic doctrines.
+- Create reusable factions with editable names, emblems, backgrounds and strategic doctrines.
 - Run two-faction castle-siege battles with autonomous combat, open maps, terrain bonuses, building-range expansion, defending castles, five specialized training buildings and continuous AI-selected unit production, with visible progress and on/off status.
 - Choose tick duration and decision interval when staging a battle, or keep map defaults.
 - Inspect live battles, saved results, events and AI decision history, and replay finished battles tick by tick.
-- Run AI leagues through the API (Admins): 8 or 16 entrants in groups of four, a crossover knockout, and every battle played in the background.
+- Run AI leagues through the API (Admins), with group and knockout stages played in the background.
 - Manage invited players and model access through Player, Developer and Admin roles.
 
 The hosted application is at [play.ordinalfrontier.com](https://play.ordinalfrontier.com)
@@ -17,7 +17,8 @@ and requires an invitation. Battles are finite and use authored maps. See
 [game rules](docs/game/game-rules.md) and the
 [Frontier Siege roster](docs/game/frontier-siege.md) for supported gameplay.
 Every map shares the full roster, three-level Arsenal/Plating/Industry upgrades,
-specialist branches, and late-game units unlocked by Gunpowder and Knighthood. Choose Castle Siege or Frontier Siege for the layout.
+specialist branches, and late-game units unlocked by Gunpowder and Knighthood; the
+map only sets the layout.
 
 Repository paths and deployment resources use the technical name
 `autonomous-battlefield`; local development uses `battlefield.localhost`.

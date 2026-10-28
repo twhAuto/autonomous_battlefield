@@ -196,8 +196,8 @@ battle routes. Only a completed battle with an outcome and no winner is a draw.
 
 `GET /v1/battles/{id}` returns the authored map and the current state, attempt and
 result. Each faction's result totals include per-unit-type and per-building-type
-figures and its upgrade purchase ticks; results completed before these were added
-omit those lists. While a battle is queued or running, `production` gives the next point at
+figures and its upgrade purchase ticks; a result that did not record them omits
+those lists. While a battle is queued or running, `production` gives the next point at
 which factions spend gold; all purchases for a window happen at once and nothing
 is queued between windows.
 
@@ -257,7 +257,7 @@ requests the segment that contains the target tick. Segments are computed on dem
 and are not cached.
 
 A queued or running battle, or one whose final attempt saved no checkpoint for the
-segment (such as a battle that finished before replays were recorded), returns
+segment returns
 `409 conflict`. A tick beyond the final tick returns `400`. Players receive replay
 events with an empty `data` object, as on the events route. The engine re-simulates
 ticks between checkpoints with the current engine, so a replay is exact for battles
@@ -319,9 +319,8 @@ mid-league voids that entrant's remaining fixtures.
 ties and every fixture with its `battleId` and, once completed, its `result`.
 `GET /v1/leagues` lists summaries, newest first. `POST /v1/leagues/{id}/cancel`
 cancels unfinished fixtures and stops the running battle; repeating it returns `200`
-and stops any league battle still running. The scheduler also stops battles left
-running in cancelled leagues, so a failed stop is retried. Cancelling a completed
-league returns `409`.
+and stops any league battle still running. Cancelling a completed league returns
+`409`.
 
 ## Faction background generation
 
@@ -401,16 +400,15 @@ scripted controllers reject these model fields. Profile role checks still apply.
 The selection is frozen for execution and retry matching. Provider aliases remain
 aliases, rather than promises of a specific underlying version.
 
-Decision history adds `reasoningEffort`, `claimedAt`, `contextServedAt`,
+Decision history includes `reasoningEffort`, `claimedAt`, `contextServedAt`,
 `runnerCompletedAt`, and optional `cliProcessStartMs`. Absent timestamps mean
-unknown, including historical rows. Existing inspection permissions still apply;
-this does not expose decision inspection to Player roles. `createdAt` to
+unknown. `createdAt` to
 `resolvedAt` measures total wait until acceptance/fallback/failure, not subprocess
 shutdown. Reclaimed jobs report the latest claim while preserving total wait.
 Internal agent claims require `selectionVersion: 1`; incompatible workers receive
 409 before any job is leased.
 
 Decision-history rows optionally include `contextDelivery: "tool" | "prefetch"`.
-This identifies the CLI worker's configured delivery path; it is absent from older
-records. In prefetch mode the context timestamp is recorded before CLI launch.
-History permissions are unchanged, and raw provider metadata is not exposed.
+This identifies the CLI worker's configured delivery path; absence means unknown.
+In prefetch mode the context timestamp is recorded before CLI launch. Raw provider
+metadata is not exposed.

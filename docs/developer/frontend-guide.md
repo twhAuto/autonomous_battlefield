@@ -27,7 +27,7 @@ The frontend is a React/Vite single-page application.
 | [`features/admin/pages/AdminSettingsPage.tsx`](../../frontend/src/features/admin/pages/AdminSettingsPage.tsx) | Persistent provider/profile switches, allowed roles, save/conflict states, and entry to read-only role preview |
 | [`features/battles/components/HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx) | Hex-map visualization, movement routes, tracking arrows, attack outcomes, and accessible unit animation |
 | [`features/battles/components/PlayerStatusPanel.tsx`](../../frontend/src/features/battles/components/PlayerStatusPanel.tsx) | Null-safe spectator summaries, economy/building overview, and grouped living units |
-| [`features/battles/components/TypeStatistics.tsx`](../../frontend/src/features/battles/components/TypeStatistics.tsx) | After-action unit and building tables by type and the upgrade timeline; renders nothing for older results |
+| [`features/battles/components/TypeStatistics.tsx`](../../frontend/src/features/battles/components/TypeStatistics.tsx) | After-action unit and building tables by type and the upgrade timeline; renders nothing for a result without per-type figures |
 | [`features/admin/pages/MembersPage.tsx`](../../frontend/src/features/admin/pages/MembersPage.tsx) | Managed Player invitations, removal, sync retry, and game link (Admins only, when enabled) |
 | [`shared/components/Emblem.tsx`](../../frontend/src/shared/components/Emblem.tsx) | Saved faction symbol with name-derived colors |
 
@@ -56,21 +56,18 @@ Feature-specific API clients live in `src/features/<feature>/api`; common HTTP t
 
 ## Faction editor
 
-The editor offers 12 named emblems through native radios (Tab enters the group;
-arrow keys change the symbol), updating the live preview and saving `emblem` with
-the profile. Creation resets the symbol to Star after success; editing restores
-the saved choice. The registry and battle setup render that same identifier.
+The editor's emblem picker saves the `emblem` identifier with the profile, and the
+registry and battle setup render the same identifier.
 `shared/domain/emblems.ts` owns the frontend identifiers and labels;
-`shared/components/Emblem.tsx` draws each SVG with name-derived colors and falls
-back to Star for missing or unknown identifiers. Keep the catalog aligned with
-the faction service allowlist and database constraint when adding symbols.
+`shared/components/Emblem.tsx` draws each symbol with name-derived colors and falls
+back to Star for missing or unknown identifiers. Adding a symbol also changes the
+backend lists named in the [feature map](backend-guide.md#feature-map).
 
 `features/factions/presentation/availability.ts` distinguishes failed status reads,
-unavailable service, exhausted allowance, cooldown, and active work using existing
-fields. Quota/reset details appear only for an available service. Retry reads do
+unavailable service, exhausted allowance, cooldown, and active work. Quota/reset details appear only for an available service. Retry reads do
 not activate providers or configure credentials, and manual editing stays enabled.
 Controller menus show available profiles; unavailable integrations have a separate
-status disclosure. Existing inspection permissions govern model/execution details.
+status disclosure. Inspection permissions govern model/execution details.
 Faction deletion is offered only in the authorized editor's Danger zone. It keeps
 the named registry-removal confirmation, disables repeat submissions, leaves failed
 deletions on the editor, and navigates to the directory after success.
@@ -90,7 +87,7 @@ The battle feature's `hooks/` directory owns status, event, and decision-history
 
 `BattlePage` keys its detail component by battle ID, resetting controls and cached
 views when navigating between battles. The main battle snapshot supplies the full
-map. There is no faction-perspective selector or secondary map polling hook.
+map.
 
 `useBattleEventStream` owns one cancellable request loop per selected attempt.
 Initial loading, polling, and manual refresh cannot overlap. Status changes fetch
@@ -114,13 +111,10 @@ or control result; `BattleHeader` shows it beside the connection badge, which al
 reports reconnecting and error states.
 
 `useBattleReplay` plays a settled battle from `GET /v1/battles/{id}/replay`
-segments. It fetches the segment containing the current tick 150 ms after the last
-seek, so dragging the timeline loads only where it stops, and prefetches the next
-segment while one plays. Playback advances one tick per 600 ms divided by the chosen
-speed (1×, 2×, 4× or 8×) and waits, showing BUFFERING, while the next segment loads.
-Only the six segments nearest the current tick stay in memory; revisiting an evicted
-one fetches it again. A failed segment stops playback and keeps a retry; leaving the
-page aborts outstanding requests.
+segments. It debounces seeks, so dragging the timeline loads only the segment where
+it stops, prefetches the next segment while one plays, and shows BUFFERING while it
+waits. Only the segments nearest the current tick stay in memory. A failed segment
+stops playback and keeps a retry; leaving the page aborts outstanding requests.
 
 `BattleHistoryPage` fetches on entry, filter or page navigation, retry, and manual
 refresh; it does not poll. URL parameters keep the status filter, current cursor,
