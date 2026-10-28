@@ -139,6 +139,8 @@ export interface BattleRun {
   scenarioDigest: string
   requestedTicks: number
   currentTick: number
+  /** Per-faction cap on living plus in-training units; absent when unlimited. */
+  maximumUnits?: number
   /** Next spending point computed by the engine; null when settled or none remains. */
   production?: ProductionSchedule | null
   status: BattleStatus

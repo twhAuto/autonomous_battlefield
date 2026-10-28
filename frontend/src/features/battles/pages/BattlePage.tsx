@@ -1,5 +1,6 @@
 // Composes battle polling hooks, map and decision panels, event
-// history, pause/resume/stop controls, and replay mode for settled battles.
+// history, pause/resume/stop controls, after-action results over the map, and replay
+// mode for settled battles.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePermissions } from '../../auth/SessionContext'
@@ -34,7 +35,7 @@ export function BattlePage() {
 
 function BattleDetail({ id }: Readonly<{ id: string }>) {
   const permissions = usePermissions()
-  const { battle, connection, connectionMessage, lastUpdated, retryConnection, applyBattle } = useBattleStatus(id)
+  const { battle, connection, connectionMessage, retryConnection, applyBattle } = useBattleStatus(id)
   const {
     selectedAttempt,
     setSelectedAttempt,
@@ -108,7 +109,7 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
   return (
     <>
       <div className={layout}>
-        <BattleHeader battle={battle} battleTitle={battleTitle} connection={connection} connectionMessage={connectionMessage} lastUpdated={lastUpdated} retryConnection={retryConnection}>
+        <BattleHeader battle={battle} battleTitle={battleTitle} connection={connection} connectionMessage={connectionMessage} retryConnection={retryConnection}>
           <div className="battle-progress-panel">
             <p>Tick <strong>{battle.currentTick}</strong> of {battle.requestedTicks} maximum</p>
             <progress className="battle-progress" aria-label="Tick limit used" max={battle.requestedTicks} value={battle.currentTick}>{progress}%</progress>
@@ -128,13 +129,15 @@ function BattleDetail({ id }: Readonly<{ id: string }>) {
         }} />}
       </div>
 
-      <BattleStatistics battle={battle} participantNames={participantNames} />
+      {!displayView && <BattleStatistics battle={battle} participantNames={participantNames} />}
     </>
   )
 }
 
 // The live faction strips and map, or the replay that replaces them. Replay is offered
-// only once a battle settles, and a settled battle never becomes active again.
+// only once a battle settles, and a settled battle never becomes active again. A result
+// covers the map, which stays inert, until the viewer asks for the map; focus follows the
+// swapped control. Leaving a replay returns to the results.
 function BattleStage({ battle, view, replaying, decisions, decisionMessage, participantNames, onExitReplay }: Readonly<{
   battle: BattleRun
   view: { map: BattleMap; state: BattleRun['state'] } | null
@@ -144,13 +147,26 @@ function BattleStage({ battle, view, replaying, decisions, decisionMessage, part
   participantNames: Map<string, string>
   onExitReplay: () => void
 }>) {
+  const [resultsShown, setResultsShown] = useState(true)
+  const toggled = useRef(false)
+  const viewMap = useRef<HTMLButtonElement>(null)
+  const showResults = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (toggled.current) (resultsShown ? viewMap : showResults).current?.focus()
+  }, [resultsShown])
+  const toggleResults = (shown: boolean) => { toggled.current = true; setResultsShown(shown) }
+
   if (replaying && view) {
-    return <BattleReplay battle={battle} map={view.map} decisions={decisions} decisionMessage={decisionMessage} participantNames={participantNames} onExit={onExitReplay} />
+    const exitReplay = () => { toggled.current = false; setResultsShown(true); onExitReplay() }
+    return <BattleReplay battle={battle} map={view.map} decisions={decisions} decisionMessage={decisionMessage} participantNames={participantNames} onExit={exitReplay} />
   }
+  const overlay = !!battle.result && resultsShown
   return <>
     <FactionSummaries battle={battle} decisions={decisions} decisionMessage={decisionMessage} />
-    {view && <div className="battle-map-column">
-      <HexBattleMap map={view.map} state={view.state} factionNames={participantNames} />
+    {view && <div className={`battle-map-column${overlay ? ' battle-map-column--results' : ''}`}>
+      <HexBattleMap map={view.map} state={view.state} factionNames={participantNames} covered={overlay}
+        actions={battle.result && !resultsShown && <button ref={showResults} className="map-toolbar__results" type="button" onClick={() => toggleResults(true)}>Show results</button>} />
+      {overlay && <BattleStatistics battle={battle} participantNames={participantNames} onShowMap={() => toggleResults(false)} showMapRef={viewMap} />}
     </div>}
   </>
 }

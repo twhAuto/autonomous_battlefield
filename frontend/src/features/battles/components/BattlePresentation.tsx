@@ -1,20 +1,20 @@
 // Presentational pieces for battle headings, connection state, statistics, outcomes, and
 // controls; data loading stays in the page and hooks.
 
-import { type ReactNode } from 'react'
+import { type ReactNode, type Ref } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { BattleRun } from '../api/battles'
 import { type ConnectionState, type BattleControlState, type BattleControlAction } from '../types'
 import { TypeStatistics } from './TypeStatistics'
 
-// Single command band: navigation, title, run metadata and connection on the left; the
-// page supplies tick progress, outcome and controls as children.
-export function BattleHeader({ battle, battleTitle, connection, connectionMessage, lastUpdated, retryConnection, children }: Readonly<{
+// Single command band: navigation, title, scenario, league and connection on the left; the
+// page supplies tick progress, outcome and controls as children. The title already states
+// the battle's status, so a settled battle shows no connection badge.
+export function BattleHeader({ battle, battleTitle, connection, connectionMessage, retryConnection, children }: Readonly<{
   battle: BattleRun
   battleTitle: string
   connection: ConnectionState
   connectionMessage: string
-  lastUpdated?: Date | null
   retryConnection: () => void
   children?: ReactNode
 }>) {
@@ -33,11 +33,8 @@ export function BattleHeader({ battle, battleTitle, connection, connectionMessag
       <div className="battle-command-bar__meta">
         <div className="battle-meta-row">
           <span>SCENARIO <strong>{battle.scenarioId}</strong></span>
-          <span>ATTEMPT <strong>{battle.attempt}</strong></span>
-          <span>STATUS <strong>{battle.status}</strong></span>
           {battle.league && <span>LEAGUE <Link className="text-link" to={`/leagues/${encodeURIComponent(battle.league.id)}`}>{battle.league.name}</Link> · {battle.league.group ? `GROUP ${battle.league.group}` : battle.league.stage.toUpperCase()} · LEG {battle.league.leg}</span>}
-          {lastUpdated && <span>UPDATED <strong><time dateTime={lastUpdated.toISOString()}>{lastUpdated.toLocaleTimeString()}</time></strong></span>}
-          <ConnectionBadge state={connection} />
+          {connection !== 'settled' && <ConnectionBadge state={connection} />}
         </div>
         {connectionMessage && (
           <output className="connection-message">
@@ -51,11 +48,20 @@ export function BattleHeader({ battle, battleTitle, connection, connectionMessag
   )
 }
 
-export function BattleStatistics({ battle, participantNames }: Readonly<{ battle: BattleRun; participantNames: Map<string, string> }>) {
+// With `onShowMap` the statistics cover the map, with a control that reveals it again.
+export function BattleStatistics({ battle, participantNames, onShowMap, showMapRef }: Readonly<{
+  battle: BattleRun
+  participantNames: Map<string, string>
+  onShowMap?: () => void
+  showMapRef?: Ref<HTMLButtonElement>
+}>) {
   if (!battle.result) return null
   return (
-    <section className="battle-statistics">
-      <div className="section-label"><span>AFTER-ACTION STATISTICS</span><span>{battle.result.ticksRun} TICKS</span></div>
+    <section className={`battle-statistics${onShowMap ? ' battle-statistics--overlay' : ''}`} aria-label="After-action statistics">
+      <div className="section-label">
+        <span>AFTER-ACTION STATISTICS</span><span>{battle.result.ticksRun} TICKS</span>
+        {onShowMap && <button ref={showMapRef} className="compact-action" type="button" onClick={onShowMap}>VIEW MAP</button>}
+      </div>
       <div className="statistics-grid">
         {battle.result.factions.map((stats) => (
           <article key={stats.factionId} className="statistics-card">

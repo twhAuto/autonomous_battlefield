@@ -1767,6 +1767,12 @@ components:
         scenarioDigest: {type: string}
         requestedTicks: {type: integer}
         currentTick: {type: integer}
+        maximumUnits:
+          description: |
+            Per-faction unit cap from the battle's ruleset snapshot (`maximumUnitCount`),
+            counting living units plus paid units in training. Omitted when unlimited.
+          type: integer
+          minimum: 1
         production:
           description: |
             The next strategy/construction/upgrade window, derived by the engine from

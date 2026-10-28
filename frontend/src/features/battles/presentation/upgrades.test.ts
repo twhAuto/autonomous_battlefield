@@ -25,8 +25,15 @@ it('names specialization effects without merging separate unit roles', () => {
 
 it('names unit unlocks and describes each kind of upgrade for its icon', () => {
   expect(upgradeLabel('knighthood')).toBe('Knighthood (unlocks Heavy Cavalry)')
-  expect(upgradePresentation('plating_3')).toEqual({ label: 'Plating III', art: 'plating', level: 'III' })
-  expect(upgradePresentation('gunpowder')).toEqual({ label: 'Gunpowder (unlocks Cannon, Gunner)', art: 'gunpowder' })
-  expect(upgradePresentation('siege_breach')).toEqual({ label: 'Siege: Breach (+8 building damage)', art: 'breach', target: 'catapult' })
+  expect(upgradePresentation('plating_3')).toEqual({ label: 'Plating III', art: 'plating', level: 'III', effect: '+6 defense for every unit' })
+  expect(upgradePresentation('gunpowder')).toEqual({ label: 'Gunpowder (unlocks Cannon, Gunner)', art: 'gunpowder', effect: 'Siege Workshops can train Cannons and Archery Ranges can train Gunners' })
+  expect(upgradePresentation('siege_breach')).toEqual({ label: 'Siege: Breach (+8 building damage)', art: 'breach', target: 'catapult', effect: 'Catapults, Battering Rams and Cannons deal 8 more damage to buildings' })
   expect(upgradePresentation('steel')).toEqual({ label: 'steel', art: 'steel' })
+})
+
+it('states the cumulative bonus of each general level', () => {
+  expect(['arsenal', 'arsenal_2', 'arsenal_3'].map((id) => upgradePresentation(id).effect)).toEqual([
+    '+2 attack for every attacking unit', '+4 attack for every attacking unit', '+6 attack for every attacking unit',
+  ])
+  expect(upgradePresentation('industry').effect).toBe('+2 gold per tick from each economy building')
 })

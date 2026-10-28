@@ -29,22 +29,3 @@ it('ignores an in-flight status response and stops polling after an operator sto
     vi.useRealTimers()
   }
 })
-
-it('records when battle data last arrived and keeps it while reconnecting', async () => {
-  vi.useFakeTimers()
-  vi.setSystemTime(new Date('2026-09-29T10:00:00Z'))
-  const running = { id: 'battle', status: 'running' } as BattleRun
-  vi.mocked(getBattle).mockReset().mockResolvedValueOnce(running).mockRejectedValue(new Error('offline'))
-  const view = renderHook(() => useBattleStatus('battle'))
-  try {
-    expect(view.result.current.lastUpdated).toBeNull()
-    await act(async () => {})
-    expect(view.result.current.lastUpdated?.toISOString()).toBe('2026-09-29T10:00:00.000Z')
-    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
-    expect(view.result.current.connection).toBe('reconnecting')
-    expect(view.result.current.lastUpdated?.toISOString()).toBe('2026-09-29T10:00:00.000Z')
-  } finally {
-    view.unmount()
-    vi.useRealTimers()
-  }
-})

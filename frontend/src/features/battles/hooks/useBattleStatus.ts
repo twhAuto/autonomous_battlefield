@@ -11,7 +11,6 @@ export function useBattleStatus(id: string) {
   const [connection, setConnection] = useState<ConnectionState>('connecting')
   const [connectionMessage, setConnectionMessage] = useState('')
   const [retryVersion, setRetryVersion] = useState(0)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const stopPolling = useRef<() => void>(() => {})
 
   useEffect(() => {
@@ -26,7 +25,6 @@ export function useBattleStatus(id: string) {
         if (stopped) return
         failures = 0
         setBattle(current)
-        setLastUpdated(new Date())
         setConnectionMessage('')
         if (current.status === 'queued' || current.status === 'running') {
           setConnection('live')
@@ -65,9 +63,8 @@ export function useBattleStatus(id: string) {
   const applyBattle = useCallback((current: BattleRun) => {
     if (current.status !== 'queued' && current.status !== 'running') stopPolling.current()
     setBattle(current)
-    setLastUpdated(new Date())
     setConnection(current.status === 'queued' || current.status === 'running' ? 'live' : 'settled')
     setConnectionMessage('')
   }, [])
-  return { battle, connection, connectionMessage, lastUpdated, retryConnection, applyBattle }
+  return { battle, connection, connectionMessage, retryConnection, applyBattle }
 }

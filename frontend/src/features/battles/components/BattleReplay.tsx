@@ -1,10 +1,8 @@
-// Replaces the live faction strips and map with a recorded replay: playback controls,
-// the frame's battlefield and the events that tick produced.
+// Replaces the live faction strips and map with a recorded replay: playback controls
+// above the frame's battlefield.
 
-import type { BattleMap, BattleRun, DecisionHistory, ReplayEvent } from '../api/battles'
+import type { BattleMap, BattleRun, DecisionHistory } from '../api/battles'
 import { replaySpeeds, useBattleReplay, type BattleReplayControls, type ReplaySpeed } from '../hooks/useBattleReplay'
-import { eventSummary } from '../presentation/events'
-import { entityIndex } from '../presentation/entities'
 import { FactionSummaries } from './FactionSummaries'
 import { HexBattleMap } from './HexBattleMap'
 
@@ -27,7 +25,6 @@ export function BattleReplay({ battle, map, decisions, decisionMessage, particip
       {frame
         ? <HexBattleMap map={map} state={frame.state} factionNames={participantNames} />
         : !replay.error && <output className="replay-loading">Loading replay…</output>}
-      {frame && <ReplayEvents events={frame.events} tick={frame.tick} naming={{ factionNames: participantNames, entities: entityIndex(frame.state) }} />}
     </div>
   </>
 }
@@ -55,15 +52,5 @@ function ReplayControls({ replay, finalTick, onExit }: Readonly<{ replay: Battle
     </label>
     <button type="button" className="text-button" onClick={onExit}>EXIT REPLAY</button>
     {replay.error && <div className="replay-controls__error" role="alert">{replay.error} <button type="button" onClick={replay.retry}>Retry</button></div>}
-  </section>
-}
-
-function ReplayEvents({ events, tick, naming }: Readonly<{ events: ReplayEvent[]; tick: number; naming: Parameters<typeof eventSummary>[1] }>) {
-  const shown = events.filter((event) => event.type !== 'tick_completed' && event.type !== 'tactic_selected')
-  return <section className="replay-events" aria-label={`Tick ${tick} events`}>
-    <div className="section-label"><span>TICK {tick} EVENTS</span><span>{shown.length}</span></div>
-    {shown.length === 0
-      ? <p className="replay-events__empty">No notable events this tick.</p>
-      : <ol>{shown.map((event) => <li key={event.sequence}><strong>{event.type.replaceAll('_', ' ')}</strong> {eventSummary(event, naming)}</li>)}</ol>}
   </section>
 }
