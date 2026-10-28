@@ -15,8 +15,8 @@ export function LeaguesPage({ canCreate }: Readonly<{ canCreate: boolean }>) {
     setError('')
     listLeagues(controller.signal).then((result) => {
       if (!controller.signal.aborted) setLeagues(result)
-    }).catch((failure: unknown) => {
-      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : 'Leagues could not be loaded.')
+    }).catch((loadError: unknown) => {
+      if (!controller.signal.aborted) setError(loadError instanceof Error ? loadError.message : 'Leagues could not be loaded.')
     })
     return () => controller.abort()
   }, [version])

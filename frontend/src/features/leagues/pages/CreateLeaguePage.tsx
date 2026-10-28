@@ -11,7 +11,8 @@ import { createLeague, LeagueApiError, type GroupLetter } from '../api/leagues'
 import { durationSeconds, estimateLeague, groupLetters } from '../presentation/leagues'
 
 type LoadState = 'loading' | 'ready' | 'error'
-interface EntrantDraft { factionId: string; group: GroupLetter; controller: string; selection: ModelSelection }
+/** slot is the entrant's position, which is also its index in the created league. */
+interface EntrantDraft { slot: number; factionId: string; group: GroupLetter; controller: string; selection: ModelSelection }
 const defaultScenarioID = 'frontier-siege'
 const maxMaps = 5
 // Default league battles stay well under the one-hour battle timeout for slow models.
@@ -22,7 +23,7 @@ const defaultTicks = 500
 function draftEntrants(size: 8 | 16, factions: Faction[], previous: EntrantDraft[]): EntrantDraft[] {
   const groups = size / 4
   return Array.from({ length: size }, (_, index) => ({
-    ...(previous[index] ?? { factionId: factions[index]?.id ?? '', controller: 'scripted', selection: {} }),
+    ...(previous[index] ?? { slot: index, factionId: factions[index]?.id ?? '', controller: 'scripted', selection: {} }),
     group: groupLetters[index % groups],
   }))
 }
@@ -147,8 +148,8 @@ export function CreateLeaguePage() {
         <div className="form-panel league-form__entrants">
           <div className="section-label"><span>ENTRANTS</span><span>{size / 4} GROUPS OF FOUR</span></div>
           <ol className="league-entrants">
-            {entrants.map((entrant, index) => <EntrantRow key={index} index={index} entrant={entrant} groups={size / 4} factions={factions} profiles={profiles}
-              takenFactions={entrants.filter((_, other) => other !== index).map(other => other.factionId)} onChange={change => updateEntrant(index, change)} />)}
+            {entrants.map(entrant => <EntrantRow key={entrant.slot} index={entrant.slot} entrant={entrant} groups={size / 4} factions={factions} profiles={profiles}
+              takenFactions={entrants.filter(other => other.slot !== entrant.slot).map(other => other.factionId)} onChange={change => updateEntrant(entrant.slot, change)} />)}
           </ol>
           {blockers.length > 0 && <ul className="field-error league-form__blockers">{blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul>}
           <button className="submit-button" type="submit" disabled={blockers.length > 0 || submitting}>

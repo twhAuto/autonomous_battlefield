@@ -1,7 +1,7 @@
 // Model leaderboard: each controller's win rate as a dot, with its 95% Wilson interval
 // as a whisker, on a shared 0–100% axis. One series, so the title names it and there is
-// no legend; each row is focusable and shows its record on hover or focus. The models
-// table repeats every value.
+// no legend; each row is a button that shows its record on hover, focus or tap. The
+// models table repeats every value.
 
 import { useState } from 'react'
 import { controllerKey, controllerName, type ModelStats } from '../api/analytics'
@@ -30,7 +30,7 @@ export function WinRateChart({ models }: Readonly<{ models: ModelStats[] }>) {
           const key = controllerKey(model.controller)
           const label = `${controllerName(model.controller)}: ${percent(model.winRate)} won of ${model.battles} battles, 95% interval ${percent(model.winRateLow)} to ${percent(model.winRateHigh)}`
           return (
-            <li key={key} className="win-rate-chart__row" tabIndex={0} aria-label={label}
+            <li key={key}><button type="button" className="win-rate-chart__row" aria-label={label} onClick={() => setActive(key)}
               onPointerEnter={() => setActive(key)} onPointerLeave={() => setActive(null)} onFocus={() => setActive(key)} onBlur={() => setActive(null)}>
               <span className="win-rate-chart__label">{controllerName(model.controller)}</span>
               <span className="win-rate-chart__track">
@@ -43,7 +43,7 @@ export function WinRateChart({ models }: Readonly<{ models: ModelStats[] }>) {
                 </span>}
               </span>
               <span className="win-rate-chart__value">{percent(model.winRate)} <small>n={model.battles}</small></span>
-            </li>
+            </button></li>
           )
         })}
       </ul>

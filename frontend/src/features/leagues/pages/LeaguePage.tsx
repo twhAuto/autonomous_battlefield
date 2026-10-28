@@ -21,8 +21,8 @@ export function LeaguePage({ canCancel }: Readonly<{ canCancel: boolean }>) {
     const controller = new AbortController()
     getLeague(id, controller.signal).then(result => {
       if (!controller.signal.aborted) { setLeague(result); setError('') }
-    }).catch((failure: unknown) => {
-      if (!controller.signal.aborted) setError(failure instanceof LeagueApiError ? failure.message : 'The league could not be loaded.')
+    }).catch((loadError: unknown) => {
+      if (!controller.signal.aborted) setError(loadError instanceof LeagueApiError ? loadError.message : 'The league could not be loaded.')
     })
     return () => controller.abort()
   }, [id, version])
@@ -39,8 +39,8 @@ export function LeaguePage({ canCancel }: Readonly<{ canCancel: boolean }>) {
     try {
       setLeague(await cancelLeague(id))
       setConfirming(false)
-    } catch (failure) {
-      setCancelError(failure instanceof LeagueApiError ? failure.message : 'The league could not be cancelled.')
+    } catch (requestError) {
+      setCancelError(requestError instanceof LeagueApiError ? requestError.message : 'The league could not be cancelled.')
     }
   }
 
@@ -68,7 +68,7 @@ export function LeaguePage({ canCancel }: Readonly<{ canCancel: boolean }>) {
           </div>
         </div>
         {cancelError && <p className="field-error" role="alert">{cancelError}</p>}
-        {error && <p className="field-error" role="status">Refresh failed: {error}</p>}
+        {error && <output className="field-error league-refresh-error">Refresh failed: {error}</output>}
       </section>
       {league.champion !== null && <output className="league-champion">Champion: <strong>{entrantName(league, league.champion)}</strong></output>}
       <progress className="battle-progress" max={league.progress.total} value={league.progress.settled} aria-label="League progress" />

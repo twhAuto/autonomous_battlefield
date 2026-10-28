@@ -36,11 +36,11 @@ export function AnalyticsPage() {
     setError('')
     getAnalytics({ leagueId, allRules, excludeFallback }, controller.signal).then(result => {
       if (!controller.signal.aborted) setReport(result)
-    }).catch((failure: unknown) => {
+    }).catch((loadError: unknown) => {
       if (controller.signal.aborted) return
       // The previous report answers other filters; do not leave it under these ones.
       setReport(null)
-      setError(failure instanceof Error ? failure.message : 'Statistics could not be loaded.')
+      setError(loadError instanceof Error ? loadError.message : 'Statistics could not be loaded.')
     }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [leagueId, allRules, excludeFallback])

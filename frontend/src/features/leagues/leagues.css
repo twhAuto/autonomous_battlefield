@@ -20,6 +20,7 @@
 .compact-action--danger { color: #ff9e85; border-color: rgba(255, 158, 133, .55); }
 .compact-action--danger:hover { color: var(--ink); background: #ff9e85; }
 .league-champion { display: block; margin: 24px 0 8px; padding: 16px 20px; color: var(--ink); background: var(--lime); font-size: 18px; }
+.league-refresh-error { display: block; }
 .league-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 24px; margin: 32px 0; }
 .league-group { min-width: 0; overflow-x: auto; }
 .league-table { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }

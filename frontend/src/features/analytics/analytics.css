@@ -29,7 +29,7 @@
 .win-rate-chart__ticks { position: relative; height: 18px; color: var(--muted); font: 11px 'DM Mono', monospace; }
 .win-rate-chart__ticks span { position: absolute; transform: translateX(-50%); }
 .win-rate-chart__rows { margin: 0; padding: 0; list-style: none; }
-.win-rate-chart__row { min-height: 36px; padding: 2px 0; outline: none; }
+.win-rate-chart__row { width: 100%; min-height: 36px; padding: 2px 0; color: inherit; font: inherit; text-align: inherit; background: none; border: 0; }
 .win-rate-chart__row:hover, .win-rate-chart__row:focus-visible { background: rgba(236, 240, 229, .04); }
 .win-rate-chart__label { overflow: hidden; color: #d5dbce; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .win-rate-chart__track { position: relative; height: 32px; }

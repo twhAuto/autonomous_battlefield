@@ -89,13 +89,15 @@ it('shows a cancellation failure', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('already finished')
 })
 
-it('refreshes while running', async () => {
+it('refreshes while running and keeps the last standings when a refresh fails', async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
-  vi.mocked(fetch).mockImplementation(async () => reply(200, sampleLeague()))
+  vi.mocked(fetch).mockResolvedValueOnce(reply(200, sampleLeague())).mockResolvedValue(reply(503, {}))
   show()
   await screen.findByRole('heading', { name: 'Autumn cup' })
   await act(async () => { await vi.advanceTimersByTimeAsync(leagueRefreshMs) })
   expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThanOrEqual(2)
+  expect(await screen.findByText(/^Refresh failed:/)).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Autumn cup' })).toBeInTheDocument()
 })
 
 it('offers a retry when the league cannot be loaded', async () => {
