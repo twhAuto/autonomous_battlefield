@@ -1,5 +1,5 @@
 // Upgrade artwork in the entity icon style. A specialization pairs its unit with its effect.
-import { highestOwnedUpgrades, upgradeLabel, upgradePresentation } from '../presentation/upgrades'
+import { highestOwnedUpgrades, upgradePresentation } from '../presentation/upgrades'
 import { ArtworkIcon, EntityIcon } from './EntityIcon'
 
 const artwork = new Map<string, string>([
@@ -24,13 +24,22 @@ export function UpgradeIcon({ id }: Readonly<{ id: string }>) {
 
 export function UpgradeList({ ids }: Readonly<{ ids: string[] }>) {
   return <ul className="upgrade-list">
-    {ids.map((id) => <li key={id}><UpgradeIcon id={id} />{upgradeLabel(id)}</li>)}
+    {ids.map((id) => {
+      const { label, effect } = upgradePresentation(id)
+      return <li key={id}><UpgradeIcon id={id} /><span>{label}{effect && <small className="upgrade-list__effect">{effect}</small>}</span></li>
+    })}
   </ul>
 }
 
-// A faction strip's owned upgrades as one chip: icons and track levels in the summary, names in
-// the disclosure, so they are available by hover, keyboard, touch and screen reader like the
-// production chips it shares `group` with.
+function described(id: string) {
+  const { label, effect } = upgradePresentation(id)
+  return effect ? `${label}: ${effect}` : label
+}
+
+// A faction strip's owned upgrades as one chip: icons and track levels in the summary, each
+// icon's name and effect in a hover tooltip, and all of them in the disclosure, so they are
+// available by hover, keyboard, touch and screen reader like the production chips it shares
+// `group` with.
 export function UpgradeChips({ upgradeIds, factionName, group }: Readonly<{
   upgradeIds?: string[]; factionName: string; group?: string
 }>) {
@@ -39,12 +48,13 @@ export function UpgradeChips({ upgradeIds, factionName, group }: Readonly<{
   return <details className="upgrade-chips" name={group} aria-label={`${factionName} upgrades`}>
     <summary>
       {owned.map((id) => {
-        const { label, level } = upgradePresentation(id)
-        return <span key={id} className="upgrade-chips__item" title={label}>
+        const { label, level, effect } = upgradePresentation(id)
+        return <span key={id} className="upgrade-chips__item">
           <UpgradeIcon id={id} />{level && <span className="upgrade-chips__level" aria-hidden="true">{level}</span>}
+          <span className="upgrade-chips__tooltip" aria-hidden="true"><strong>{label}</strong>{effect && <span>{effect}</span>}</span>
         </span>
       })}
-      <span className="visually-hidden">Upgrades: {owned.map(upgradeLabel).join(', ')}</span>
+      <span className="visually-hidden">Upgrades: {owned.map(described).join('; ')}</span>
     </summary>
     <div className="upgrade-chips__detail" aria-hidden="true"><UpgradeList ids={owned} /></div>
   </details>

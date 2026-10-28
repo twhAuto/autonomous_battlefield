@@ -1,5 +1,5 @@
 // Renders an interactive SVG hex battlefield from supplied state, including terrain,
-// entity selection, and map navigation.
+// each faction's build area, entity selection, and map navigation.
 
 import { type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { useMobile } from '../../../shared/hooks/useMobile'
@@ -14,10 +14,12 @@ type Entity = BattleUnit | BattleBuilding
 const size = 24
 const root3 = Math.sqrt(3)
 
-export function HexBattleMap({ map, state, factionNames }: Readonly<{
+/** `actions` adds page controls to the toolbar; the expanded dialog omits them. */
+export function HexBattleMap({ map, state, factionNames, actions }: Readonly<{
   map: BattleMap
   state: BattleState
   factionNames: Map<string, string>
+  actions?: ReactNode
 }>) {
   const markerId = useId()
   const mobile = useMobile()
@@ -29,6 +31,8 @@ export function HexBattleMap({ map, state, factionNames }: Readonly<{
   const [scale, setScale] = useState(1)
   const [pan, setPan] = useState({ x: 24, y: 30 })
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null)
+  // Where the current press started and whether it has moved far enough to be a pan.
+  const press = useRef<{ x: number; y: number; panned: boolean } | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const liveUnits = (state.units ?? []).filter((unit) => unit.health > 0)
   const entities: Entity[] = [...(state.buildings ?? []).filter((building) => building.health > 0), ...liveUnits]
@@ -36,6 +40,11 @@ export function HexBattleMap({ map, state, factionNames }: Readonly<{
   const selected = entities.find((entity) => entity.id === selectedId)
   const roster = factionNames.size > 0 ? [...factionNames.keys()] : (state.factions ?? []).map((faction) => faction.factionId)
   const colors = factionColors(roster)
+  const areas = buildAreas(map, state)
+  const builders = new Map<string, string[]>()
+  for (const [factionId, positions] of areas) {
+    for (const position of positions) builders.set(key(position), [...(builders.get(key(position)) ?? []), factionNames.get(factionId) ?? factionId])
+  }
   const width = root3 * size * (map.width + 0.5) + 48
   const height = size * (1.5 * (map.height - 1) + 2) + 48
 
@@ -61,6 +70,7 @@ export function HexBattleMap({ map, state, factionNames }: Readonly<{
   }, [expanded])
 
   function pointerMove(event: PointerEvent<SVGSVGElement>) {
+    if (press.current && Math.hypot(event.clientX - press.current.x, event.clientY - press.current.y) > 4) press.current.panned = true
     if (!drag) return
     const bounds = event.currentTarget.getBoundingClientRect()
     const ratio = Math.min(bounds.width / width, bounds.height / height) || 1
@@ -84,6 +94,7 @@ export function HexBattleMap({ map, state, factionNames }: Readonly<{
       <div className="map-toolbar">
         <span>HEX TACTICAL MAP · TICK {state.tick}</span>
         <div className="map-toolbar__controls">
+          {!expanded && actions}
           <div className="map-zoom-controls"><button type="button" aria-label="Pan map with arrow keys" onKeyDown={event => {
               if (event.target !== event.currentTarget) return
               const offset: Record<string, [number, number]> = { ArrowLeft: [24, 0], ArrowRight: [-24, 0], ArrowUp: [0, 24], ArrowDown: [0, -24] }
@@ -101,6 +112,7 @@ export function HexBattleMap({ map, state, factionNames }: Readonly<{
         <svg
           viewBox={`0 0 ${width} ${height}`}
           onPointerDown={(event) => {
+            press.current = { x: event.clientX, y: event.clientY, panned: false }
             if (mobile && !expanded) return
             event.currentTarget.setPointerCapture?.(event.pointerId)
             setDrag({ x: event.clientX, y: event.clientY })
@@ -108,6 +120,11 @@ export function HexBattleMap({ map, state, factionNames }: Readonly<{
           onPointerMove={pointerMove}
           onPointerUp={() => setDrag(null)}
           onPointerCancel={() => setDrag(null)}
+          onClick={(event) => {
+            // Clicking empty ground clears the selection; the click that ends a pan does not.
+            if (press.current?.panned || (event.target as Element).closest('.map-entity')) return
+            setSelectedId(null)
+          }}
         >
           <title>{map.width} by {map.height} pointy-top hex battlefield</title>
           <defs>
@@ -117,8 +134,11 @@ export function HexBattleMap({ map, state, factionNames }: Readonly<{
             {map.rows.map((row, y) => [...row].map((symbol, x) => {
               const position = { x, y }
               const center = centerOf(position)
-              return <g key={`${x}:${y}`}><polygon points={hexPoints(center.x, center.y)} className={`hex-tile hex-tile--${terrainClass(symbol)}${selected && 'income' in selected && selected.health > 0 && hexDistance(selected.position, position) <= (selected.buildRange || 3) ? ' hex-tile--build-range' : ''}`}><title>{terrainDescription(symbol)} · ({x}, {y})</title></polygon><g transform={`translate(${center.x - 12} ${center.y - 12})`}><TerrainGlyph symbol={symbol} /></g></g>
+              const buildable = builders.get(key(position))
+              return <g key={`${x}:${y}`}><polygon points={hexPoints(center.x, center.y)} className={`hex-tile hex-tile--${terrainClass(symbol)}${selected && 'income' in selected && selected.health > 0 && hexDistance(selected.position, position) <= (selected.buildRange || 3) ? ' hex-tile--build-range' : ''}`}><title>{terrainDescription(symbol)} · ({x}, {y}){buildable ? ` · ${buildable.join(' and ')} can build here` : ''}</title></polygon><g transform={`translate(${center.x - 12} ${center.y - 12})`}><TerrainGlyph symbol={symbol} /></g></g>
             }))}
+            {[...areas].map(([factionId, positions]) => <path key={`area:${factionId}`} className="build-area" fill={colors.get(factionId) ?? '#f2c94c'} aria-hidden="true"
+              d={positions.map((position) => { const center = centerOf(position); return `M${hexPoints(center.x, center.y).replaceAll(' ', 'L')}Z` }).join('')} />)}
             {liveUnits.filter((unit) => unit.movedFrom).map((unit) => {
               const route = unit.movementPath?.length ? unit.movementPath : [unit.movedFrom!, unit.position]
               const previous = route.at(-2) ?? unit.movedFrom!
@@ -163,17 +183,21 @@ export function HexBattleMap({ map, state, factionNames }: Readonly<{
       </section>
       <div className="map-footer">
         <details className="map-key"><summary>Map legend</summary>
-          <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-forest" /> Forest · +3 troop defense</span><span><i className="legend-gold" /> Gold deposit · +5 economy income</span><span><i className="legend-movement" /> Movement (faction color)</span><span><i className="legend-attack" /> Attack (faction color)</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
+          <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-forest" /> Forest · +3 troop defense</span><span><i className="legend-gold" /> Gold deposit · +5 economy income</span><span><i className="legend-build-area" /> Build area (faction tint)</span><span><i className="legend-movement" /> Movement (faction color)</span><span><i className="legend-attack" /> Attack (faction color)</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
           <EntityLegend types={entities.map((entity) => entity.type)} />
         </details>
-        <EntityDetails selected={selected} naming={naming} />
+        <EntityDetails selected={selected} naming={naming} onClear={() => {
+          // Keep keyboard focus on the map: return it to the entity that was selected.
+          entityNodes.current.get(selectedId ?? '')?.querySelector<SVGGElement>('.map-entity')?.focus()
+          setSelectedId(null)
+        }} />
       </div>
     </section>
   )
   return <>{!expanded && content}<dialog ref={dialog} className="expanded-map" aria-label="Expanded battlefield map" onKeyDown={trapFocus} onCancel={event => { event.preventDefault(); setExpanded(false) }} onClose={() => setExpanded(false)}>{expanded && content}</dialog></>
 }
 
-function EntityDetails({ selected, naming }: Readonly<{ selected?: Entity; naming: EntityNaming }>) {
+function EntityDetails({ selected, naming, onClear }: Readonly<{ selected?: Entity; naming: EntityNaming; onClear: () => void }>) {
   if (!selected) {
     return <div className="entity-details" aria-live="polite"><span>Select a castle, building, or unit for details.</span></div>
   }
@@ -190,6 +214,7 @@ function EntityDetails({ selected, naming }: Readonly<{ selected?: Entity; namin
     : ''
   return <div className="entity-details" aria-live="polite">
     <strong title={selected.id}>{entityName(selected.id, naming)}</strong>
+    <button className="entity-details__clear" type="button" aria-label="Clear selection" onClick={onClear}>×</button>
     {'income' in selected && <TrainingQueue building={selected} />}
     <span title={targetIDs}>HP {selected.health}/{selected.maxHealth} · ({selected.position.x}, {selected.position.y}){moved}{attacking}{treating} · {entityStats(selected)}</span>
   </div>
@@ -386,6 +411,23 @@ export function terrainDescription(symbol: string) {
   if (symbol === 'g') return 'Gold deposit: economy buildings earn +5 gold per tick'
   if (symbol === '#') return 'Rock: impassable'
   return 'Ground: build within friendly range, leaving one hex between buildings'
+}
+
+// Where each faction may build now: buildable terrain within range of one of its active
+// buildings and at least two hexes from every living building, as the engine requires.
+// Units also block a site, but they move every tick, so the tint ignores them.
+function buildAreas(map: BattleMap, state: BattleState) {
+  const buildings = (state.buildings ?? []).filter((building) => building.health > 0)
+  const areas = new Map<string, HexPosition[]>()
+  map.rows.forEach((row, y) => [...row].forEach((symbol, x) => {
+    const position = { x, y }
+    if (!'.gb'.includes(symbol) || buildings.some((building) => hexDistance(building.position, position) <= 1)) return
+    const factions = new Set(buildings
+      .filter((building) => (building.readyAtTick ?? 0) <= state.tick && hexDistance(building.position, position) <= (building.buildRange || 3))
+      .map((building) => building.factionId))
+    for (const factionId of factions) areas.set(factionId, [...(areas.get(factionId) ?? []), position])
+  }))
+  return areas
 }
 
 function hexDistance(a: HexPosition, b: HexPosition) {

@@ -68,3 +68,29 @@ func TestBattleResponsesExposeNextProduction(t *testing.T) {
 		}
 	}
 }
+
+func TestBattleResponsesReportTheUnitCapOnlyWhenLimited(t *testing.T) {
+	run := &battleservice.BattleRun{ID: "battle", Status: "running", ScenarioSnapshot: game.Scenario{Ruleset: game.Ruleset{MaximumUnitCount: 40}}}
+	for _, role := range []authn.Role{authn.Player, authn.Developer} {
+		request := httptest.NewRequest("GET", "/v1/battles/battle", nil).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "viewer", Role: role}))
+		read := func() map[string]any {
+			raw, err := json.Marshal(battleResponseFor(request, run))
+			var body map[string]any
+			if err == nil {
+				err = json.Unmarshal(raw, &body)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			return body
+		}
+		run.ScenarioSnapshot.Ruleset.MaximumUnitCount = 40
+		if limit := read()["maximumUnits"]; limit != 40.0 {
+			t.Fatalf("%s maximumUnits = %v", role, limit)
+		}
+		run.ScenarioSnapshot.Ruleset.MaximumUnitCount = 0
+		if _, present := read()["maximumUnits"]; present {
+			t.Fatalf("%s reports a cap for an unlimited ruleset", role)
+		}
+	}
+}

@@ -1,5 +1,6 @@
 // Checks battle viewing: connection states and manual retry, tick progress, map
-// selection, inspector gating by role, pause/resume/stop control outcomes, and replay.
+// selection, inspector gating by role, pause/resume/stop control outcomes, results over
+// the map, and replay.
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -92,10 +93,54 @@ it('renders tick progress and faction names once the battle settles', async () =
   expect(screen.getAllByText('North').length).toBeGreaterThan(0)
 })
 
-it('shows when the battle data was last updated', async () => {
+it('keeps the header to the scenario and a live connection badge', async () => {
+  vi.mocked(getBattle).mockResolvedValue(runningBattle())
+  const view = renderBattle()
+  const header = await screen.findByRole('region', { name: 'Battle status' })
+  expect(header).toHaveTextContent('SCENARIO castle-siege-v1')
+  expect(header).toHaveTextContent('LIVE')
+  expect(header).not.toHaveTextContent(/ATTEMPT|UPDATED|STATUS/)
+  view.unmount()
+
+  vi.mocked(getBattle).mockResolvedValue(runningBattle({ status: 'completed' }))
   renderBattle()
-  const updated = await screen.findByText('UPDATED')
-  expect(updated.querySelector('time')).toHaveAttribute('dateTime', expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/))
+  expect(await screen.findByRole('heading', { name: 'Battle complete' })).toBeInTheDocument()
+  expect(screen.getByRole('region', { name: 'Battle status' })).not.toHaveTextContent('SETTLED')
+})
+
+it('shows a result over the map until the viewer asks for the map', async () => {
+  const user = userEvent.setup()
+  vi.mocked(getBattle).mockResolvedValue(runningBattle({
+    status: 'completed', currentTick: 89,
+    result: { winnerFactionId: north, reason: 'castle_destroyed', ticksRun: 89, factions: [
+      { factionId: north, castleHealth: 120, unitsStarted: 0, unitsRecruited: 9, unitsLost: 3, unitsRemaining: 6, damageDealt: 400, damageTaken: 90, attackTicks: 40, defendTicks: 10, goldEarned: 900, goldSpent: 800, goldLooted: 0, buildingsConstructed: 4, buildingsDestroyed: 1 },
+    ] },
+  }))
+  renderBattle()
+  const results = await screen.findByRole('region', { name: 'After-action statistics' })
+  expect(results.closest('.battle-map-column')).toHaveClass('battle-map-column--results')
+  expect(results).toHaveTextContent('89 TICKS')
+  expect(results).toHaveTextContent('Damage dealt400')
+  expect(screen.queryByRole('button', { name: 'Show results' })).not.toBeInTheDocument()
+
+  await user.click(screen.getByRole('button', { name: 'VIEW MAP' }))
+  expect(screen.queryByRole('region', { name: 'After-action statistics' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Show results' })).toHaveFocus()
+  expect(document.querySelector('.battle-map-column')).not.toHaveClass('battle-map-column--results')
+
+  await user.click(screen.getByRole('button', { name: 'Show results' }))
+  expect(screen.getByRole('button', { name: 'VIEW MAP' })).toHaveFocus()
+})
+
+it('lists results below the page when the battle has no map to cover', async () => {
+  vi.mocked(getBattle).mockResolvedValue(runningBattle({
+    status: 'completed', map: undefined as unknown as BattleRun['map'],
+    result: { winnerFactionId: north, reason: 'castle_destroyed', ticksRun: 89, factions: [] },
+  }))
+  renderBattle()
+  const results = await screen.findByRole('region', { name: 'After-action statistics' })
+  expect(results).not.toHaveClass('battle-statistics--overlay')
+  expect(screen.queryByRole('button', { name: 'VIEW MAP' })).not.toBeInTheDocument()
 })
 
 it('offers a manual retry after the status link fails, then recovers', async () => {
@@ -278,13 +323,13 @@ it('replays a settled battle tick by tick and returns to the final state', async
   expect(await screen.findByText(/HEX TACTICAL MAP · TICK 0/)).toBeInTheDocument()
   expect(getBattleReplay).toHaveBeenCalledWith(battleID, 0, expect.any(AbortSignal))
   expect(screen.getByRole('article', { name: 'North' })).toHaveTextContent('Gold10')
-  expect(screen.getByRole('region', { name: 'Tick 0 events' })).toHaveTextContent('No notable events this tick.')
 
   await user.click(screen.getByRole('button', { name: 'Next tick' }))
   expect(screen.getByText(/HEX TACTICAL MAP · TICK 1/)).toBeInTheDocument()
   expect(screen.getByRole('article', { name: 'North' })).toHaveTextContent('Gold11')
-  expect(screen.getByRole('region', { name: 'Tick 1 events' })).toHaveTextContent('North collected 1 gold in income.')
   expect(controls).toHaveTextContent('TICK 1 / 2')
+  // The map keeps the space; the tick's events stay in the inspector's event history.
+  expect(screen.queryByRole('region', { name: /Tick \d+ events/ })).not.toBeInTheDocument()
 
   await user.click(screen.getByRole('button', { name: 'Restart replay' }))
   expect(screen.getByText(/HEX TACTICAL MAP · TICK 0/)).toBeInTheDocument()

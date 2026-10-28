@@ -61,6 +61,18 @@ for (const [width, height] of [[15, 11], [25, 17]]) {
     await page.goto(`/battles/${battleId}`)
     await expect(page.getByText('Tick 89 of 500 maximum', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'PLAY', exact: true })).toHaveCount(0)
+    // A settled battle opens on its results, laid over the map without page scroll.
+    const results = page.getByRole('region', { name: 'After-action statistics' })
+    await expect(results).toBeInViewport()
+    if (!isMobile) {
+      const cockpit = (await page.locator('.battle-cockpit').boundingBox())!
+      expect(cockpit.y + cockpit.height).toBeLessThanOrEqual(page.viewportSize()!.height)
+    }
+    await results.getByRole('button', { name: 'VIEW MAP' }).click()
+    await expect(results).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Show results' })).toBeFocused()
+    // Azure's castle is destroyed, so only Amber still has somewhere to build.
+    await expect(page.locator('.build-area')).toHaveCount(1)
     const inlineMap = page.getByLabel('Map navigation')
     if (isMobile) {
       const dimensions = await inlineMap.evaluate(node => {
@@ -122,7 +134,7 @@ test('a settled battle replays inside the command center', async ({ page, isMobi
   await expect(page.getByText('HEX TACTICAL MAP · TICK 0')).toBeVisible()
   await controls.getByRole('slider', { name: 'Replay tick' }).fill('85')
   await expect(page.getByText('HEX TACTICAL MAP · TICK 85')).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Tick 85 events' })).toContainText('Amber collected 10 gold in income.')
+  await expect(page.getByRole('region', { name: /Tick \d+ events/ })).toHaveCount(0)
   await controls.getByRole('combobox', { name: 'Speed' }).selectOption('8')
   await controls.getByRole('button', { name: 'PLAY', exact: true }).click()
   await expect(page.getByText('HEX TACTICAL MAP · TICK 89')).toBeVisible()
@@ -134,6 +146,8 @@ test('a settled battle replays inside the command center', async ({ page, isMobi
     expect((await page.getByLabel('Map navigation').boundingBox())!.height).toBeGreaterThan(250)
   }
   await controls.getByRole('button', { name: 'EXIT REPLAY' }).click()
+  // Leaving the replay returns to the results screen over the final map.
+  await page.getByRole('region', { name: 'After-action statistics' }).getByRole('button', { name: 'VIEW MAP' }).click()
   await expect(page.getByText('HEX TACTICAL MAP · TICK 89')).toBeVisible()
   await expect(page.getByRole('button', { name: 'WATCH REPLAY' })).toBeVisible()
 })
@@ -145,6 +159,7 @@ test('the full map stays available without faction-view requests', async ({ page
   let viewRequests = 0
   await page.route('**/view', route => { viewRequests += 1; return route.abort('failed') })
   await page.goto(`/battles/${battleId}`)
+  await page.getByRole('button', { name: 'VIEW MAP' }).click()
   await expect(page.getByRole('button', { name: 'Amber · Castle', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Azure · Castle', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Expand map' }).click()
@@ -238,6 +253,7 @@ test('terrain icons, specialized production and destroyed buildings on the map',
   Object.assign(battle.state.buildings[0], { trains: ['vanguard', 'striker', 'pikeman'], attack: 15, range: 3 })
   await page.route(`**/v1/battles/${battleId}`, route => route.fulfill({ json: battle }))
   await page.goto(`/battles/${battleId}`)
+  await page.getByRole('button', { name: 'VIEW MAP' }).click()
   const map = page.getByRole('region', { name: 'Castle siege map', exact: true })
   for (const terrain of ['forest', 'gold', 'rock']) await expect(map.locator(`.terrain-glyph--${terrain}`)).toHaveCount(1)
   await expect(map.getByRole('button', { name: 'Azure · Castle' })).toHaveCount(0)
@@ -278,7 +294,7 @@ test('players can see continuous production progress and pauses without controls
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy()
 })
 
-test('players can read researched upgrades from their icons by touch or keyboard', async ({ page }) => {
+test('players can read researched upgrades from their icons by hover, touch or keyboard', async ({ page, isMobile }) => {
   const battle = battleFixture()
   Object.assign(battle.state.factions[0], { ownedUpgradeIds: ['arsenal', 'industry', 'arsenal_2', 'plating', 'industry_2', 'industry_3', 'gunpowder', 'knighthood', 'vanguard_bulwark', 'ranger_skirmish', 'herbalist_potency', 'siege_breach'] })
   Object.assign(battle.state.buildings[0], { trains: ['vanguard'], production: { unitType: 'vanguard', enabled: true } })
@@ -287,13 +303,25 @@ test('players can read researched upgrades from their icons by touch or keyboard
   await page.goto(`/battles/${battleId}`)
   const upgrades = page.getByRole('group', { name: 'Amber upgrades', exact: true })
   await expect(upgrades).toBeVisible()
-  await expect(upgrades.locator('summary [title="Arsenal II"]')).toHaveText('II')
-  await expect(upgrades.locator('summary [title="Industry III"]')).toHaveText('III')
+  const items = upgrades.locator('.upgrade-chips__item')
+  await expect(items.nth(0).locator('.upgrade-chips__level')).toHaveText('II')
+  await expect(items.nth(1).locator('.upgrade-chips__level')).toHaveText('III')
   await expect(page.getByRole('group', { name: 'Azure upgrades', exact: true })).toHaveCount(0)
+  if (!isMobile) {
+    // Hovering an icon names the upgrade and its effect, without widening the page.
+    const tooltip = (index: number) => items.nth(index).locator('.upgrade-chips__tooltip')
+    await expect(tooltip(0)).toBeHidden()
+    await items.nth(0).hover()
+    await expect(tooltip(0)).toHaveText('Arsenal II+4 attack for every attacking unit')
+    await items.last().hover()
+    await expect(tooltip(0)).toBeHidden()
+    await expect(tooltip(-1)).toHaveText('Siege: Breach (+8 building damage)Catapults, Battering Rams and Cannons deal 8 more damage to buildings')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy()
+  }
   const detail = upgrades.locator('.upgrade-chips__detail')
   await expect(detail).toBeHidden()
   await upgrades.locator('summary').click()
-  await expect(detail).toContainText('Knighthood (unlocks Heavy Cavalry)')
+  await expect(detail).toContainText('Knighthood (unlocks Heavy Cavalry)Stables can train Heavy Cavalry')
   // Opening a production chip in the same strip closes the upgrade detail.
   await page.getByRole('list', { name: 'Amber production', exact: true }).locator('summary').click()
   await expect(detail).toBeHidden()

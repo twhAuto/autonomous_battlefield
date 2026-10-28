@@ -4,7 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { HexBattleMap } from './HexBattleMap'
-import type { BattleMap, BattleState } from '../api/battles'
+import type { BattleBuilding, BattleMap, BattleState } from '../api/battles'
 
 const map: BattleMap = {
   kind: 'authored' as const, width: 2, height: 2, rows: ['..', 'b#'],
@@ -436,4 +436,76 @@ it('shows castle training, attack range and tower fire together', async () => {
   expect(screen.getByText(/Attack 15/)).toBeInTheDocument()
   expect(screen.getByText(/Range 3/)).toBeInTheDocument()
   expect(document.querySelector('.unit-direction--tower')).toBeInTheDocument()
+})
+
+it('tints each faction\'s legal build sites and names who can build on a tile', () => {
+  const area: BattleMap = { kind: 'authored', width: 13, height: 3, rows: ['...g.........', '.............', 'f..#.........'], castleSpawns: [{ x: 1, y: 1 }, { x: 6, y: 1 }], economySites: [[], []] }
+  const building = (id: string, factionId: string, x: number, y: number, extra: Partial<BattleBuilding> = {}): BattleBuilding => ({ id, factionId, type: 'castle', position: { x, y }, health: 100, maxHealth: 100, defense: 1, vision: 1, income: 0, buildRange: 3, ...extra })
+  const buildings = [
+    building('a:castle', 'a', 1, 1, { buildRange: 2 }), building('b:castle', 'b', 6, 1),
+    // Not active until tick 9: it blocks its neighbours but grants no range yet.
+    building('a:outpost:1', 'a', 10, 1, { type: 'outpost', buildRange: 5, readyAtTick: 9 }),
+    building('a:economy:2', 'a', 4, 2, { type: 'economy', health: 0 }),
+  ]
+  const { container } = render(<HexBattleMap map={area} state={{ battleId: 'x', tick: 4, factions: [], units: [], buildings }} factionNames={new Map([['a', 'Amber'], ['b', 'Blue']])} />)
+  const tile = (x: number, y: number) => container.querySelectorAll('.hex-tile')[y * area.width + x].querySelector('title')!.textContent
+  expect(container.querySelectorAll('.build-area')).toHaveLength(2)
+  expect(tile(0, 0)).toBe('Ground: build within friendly range, leaving one hex between buildings · (0, 0) · Amber can build here')
+  expect(tile(3, 0)).toMatch(/^Gold deposit.*· Amber can build here$/)
+  expect(tile(3, 1)).toMatch(/· Amber and Blue can build here$/) // a destroyed neighbour blocks nothing
+  expect(tile(9, 0)).toMatch(/\) · Blue can build here$/)
+  for (const [x, y] of [[0, 2], [3, 2], [2, 1], [9, 1], [12, 1]]) {
+    // Forest, rock, beside a castle, beside the inactive outpost, and its unreached range.
+    expect(tile(x, y)).not.toMatch(/can build/)
+  }
+})
+
+it('adds page actions to the toolbar outside the expanded dialog', async () => {
+  const dialog = HTMLDialogElement.prototype
+  const original = { showModal: Object.getOwnPropertyDescriptor(dialog, 'showModal'), close: Object.getOwnPropertyDescriptor(dialog, 'close') }
+  Object.defineProperty(dialog, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute('open', '') } })
+  Object.defineProperty(dialog, 'close', { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute('open') } })
+  const view = render(<HexBattleMap map={map} state={state} factionNames={new Map()} actions={<button type="button">Show results</button>} />)
+  try {
+    expect(screen.getByRole('button', { name: 'Show results' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Expand map' }))
+    expect(screen.queryByRole('button', { name: 'Show results' })).not.toBeInTheDocument()
+  } finally {
+    view.unmount()
+    for (const [name, descriptor] of Object.entries(original)) {
+      if (descriptor) Object.defineProperty(dialog, name, descriptor)
+      else delete (dialog as unknown as Record<string, unknown>)[name]
+    }
+  }
+})
+
+it('clears the selection from empty ground or the details, but not when a pan ends', async () => {
+  const user = userEvent.setup()
+  const { container } = render(<HexBattleMap map={map} state={state} factionNames={new Map([['a', 'Amber']])} />)
+  const details = () => container.querySelector('.entity-details')!
+  const castle = screen.getByRole('button', { name: 'Amber · Castle' })
+  const svg = container.querySelector('.map-viewport svg')!
+  const tile = container.querySelectorAll('.hex-tile')[1]
+
+  await user.click(castle)
+  expect(details()).toHaveTextContent('Amber · Castle')
+  // A drag that pans the map ends in a click on the ground; the selection survives it.
+  fireEvent.pointerDown(svg, { clientX: 10, clientY: 10 })
+  fireEvent.pointerMove(svg, { clientX: 60, clientY: 30 })
+  fireEvent.pointerUp(svg)
+  fireEvent.click(tile)
+  expect(details()).toHaveTextContent('Amber · Castle')
+  // Clicking an entity keeps (or moves) the selection rather than clearing it.
+  fireEvent.pointerDown(svg, { clientX: 10, clientY: 10 })
+  fireEvent.click(castle)
+  expect(castle).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.pointerDown(svg, { clientX: 10, clientY: 10 })
+  fireEvent.click(tile)
+  expect(details()).toHaveTextContent('Select a castle, building, or unit for details.')
+  expect(castle).toHaveAttribute('aria-pressed', 'false')
+
+  await user.click(castle)
+  await user.click(screen.getByRole('button', { name: 'Clear selection' }))
+  expect(details()).toHaveTextContent('Select a castle, building, or unit for details.')
+  expect(castle).toHaveFocus()
 })

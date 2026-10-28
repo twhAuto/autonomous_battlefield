@@ -61,7 +61,10 @@ it('lists the highest owned upgrade per track with icons', () => {
   const factions = [{ factionId: 'a', gold: 0, goldEarned: 0, goldSpent: 0, goldLooted: 0, ownedUpgradeIds: ['arsenal', 'arsenal_2', 'siege_breach'] }]
   render(<PlayerOverview status={playerStatus({ ...state, factions }, 'a')} />)
   const items = within(screen.getByText('Owned upgrades').nextElementSibling as HTMLElement).getAllByRole('listitem')
-  expect(items.map((item) => item.textContent)).toEqual(['Arsenal II', 'Siege: Breach (+8 building damage)'])
+  expect(items.map((item) => item.textContent)).toEqual([
+    'Arsenal II+4 attack for every attacking unit',
+    'Siege: Breach (+8 building damage)Catapults, Battering Rams and Cannons deal 8 more damage to buildings',
+  ])
   expect(items[1].querySelectorAll('svg')).toHaveLength(2)
 })
 

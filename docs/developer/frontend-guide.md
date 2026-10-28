@@ -116,9 +116,6 @@ sent for the attempt it replaces.
 `useBattleStatus` cancels polling when a control returns a terminal status.
 `useBattleStatus.test.ts` verifies that a late in-flight response cannot overwrite
 an operator stop or schedule further polls.
-It also returns `lastUpdated`, the time of the most recent successful status response
-or control result; `BattleHeader` shows it beside the connection badge, which already
-reports reconnecting and error states.
 
 `useBattleReplay` plays a settled battle from `GET /v1/battles/{id}/replay`
 segments. It debounces seeks, so dragging the timeline loads only the segment where
@@ -137,24 +134,32 @@ requests are aborted and their results ignored.
 
 `BattlePage` lays the live battle out as a command center. At desktop widths
 (over 1000px) the page spans the full window and fits one viewport height: a
-single command band (`BattleHeader` with tick progress, outcome and controls, and
-for a league battle a link to its league, group or stage and leg), one
+single command band (`BattleHeader` with the scenario, tick progress, outcome and
+controls, a connection badge while the battle is active, and for a league battle a
+link to its league, group or stage and leg), one
 faction strip per participant, then the map filling the remaining height beside the
-inspector. The map legend and selected-entity details float over the map, so
+inspector. The title states the battle's status, so the band repeats neither status
+nor attempt. The map legend and selected-entity details float over the map, so
 opening them never resizes the map viewport (which would refit and lose pan and
 zoom). The inspector can be widened or hidden to a rail; focus moves to the
-replacement control. After-action statistics follow below, with each faction's
-units and buildings by type and its upgrade timeline. Narrower screens stack
-the same regions in document order and keep the map's aspect ratio.
+replacement control. Narrower screens stack the same regions in document order and
+keep the map's aspect ratio.
+
+A battle with a result opens on its after-action statistics (`BattleStatistics`:
+each faction's totals, units and buildings by type, and upgrade timeline), laid over
+the map so viewers see the outcome without scrolling. **VIEW MAP** reveals the map,
+whose toolbar then offers **Show results**; focus moves to the replacement control.
+Narrower screens show the results in place of the map. A battle without a map lists
+its results below the page.
 
 A completed, stopped or failed battle offers **WATCH REPLAY** under its tick
 progress. `components/BattleReplay.tsx` then replaces the faction strips and map in
-the same grid areas: playback controls (restart, step, play/pause, a timeline slider
-and speed) above the map, and that tick's events below it, without tick bookkeeping
-events. Faction strips show the frame's gold, units, castle health and production,
-and the plan applied by that tick. The inspector and after-action statistics keep
-the final state. Sequential ticks animate like live updates; a backward seek jumps.
-**EXIT REPLAY** returns to the final state.
+the same grid areas, with playback controls (restart, step, play/pause, a timeline
+slider and speed) above the map. Faction strips show the frame's gold, units,
+buildings, castle health and production, and the plan applied by that tick. The
+inspector keeps the final state and the full event history. Sequential ticks animate
+like live updates; a backward seek jumps. **EXIT REPLAY** returns to the final state,
+with any results over the map again.
 
 ## Inspector and historical context
 
@@ -202,7 +207,13 @@ rows initially; Show more reveals loaded rows. A polite status announces counts.
 
 [`HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx)
 draws the SVG map: entity icons, HP bars, movement routes, tracking and
-fixed-position attack markers, tower fire, healing lines and death markers.
+fixed-position attack markers, tower fire, healing lines and death markers. Each
+faction's build area is tinted in its faction color: buildable terrain within range
+of its active buildings and at least two hexes from every living building, the
+engine's placement rule (`backend/internal/game/construction.go`). Units also block a
+site, but they move every tick, so the tint ignores them. A tile's tooltip names the
+factions that can build there. Pages can add toolbar controls through the `actions`
+prop; the expanded dialog leaves them out.
 `features/battles/battles.css` and `map.css` own the battle layout; browser tests
 assert the rendered map aspect ratio. Layout values, breakpoints and animation
 timings live in the CSS and components with their tests, not in this guide.
@@ -219,17 +230,21 @@ timings live in the CSS and components with their tests, not in this guide.
   Opening, closing or resizing it fits the board again; live tick updates keep the
   current camera. Keyboard panning uses the native "Pan with arrow keys" button.
 
-`FactionSummaries.tsx` shows each participant's decision activity, gold, living
-units and castle health from spectator state, from the full battlefield, edged in
-the same faction color as its map units (`presentation/factions.ts`). Each strip also
+`FactionSummaries.tsx` shows each participant's decision activity, gold, units,
+buildings and castle health from spectator state, from the full battlefield, edged in
+the same faction color as its map units (`presentation/factions.ts`). Units count
+living units plus paid units in training, the total the engine caps, shown against
+the battle's `maximumUnits` when the ruleset has a cap; buildings exclude the castle.
+Each strip also
 carries that faction's production chips, one upgrade chip with an icon per owned
 upgrade (the highest level per general track, with its numeral) and, for inspecting
 viewers, a plan disclosure. Production and upgrade chips wrap in their own column
 beside the plan. Chips and the plan share one exclusive `<details name>` group per
-strip, so opening one closes the others; the upgrade chip's disclosure names each
-upgrade. Failed-battle reasons in the header are
-never clamped. Paused and terminal
-battles override decision activity, and Go `null` collections are treated as empty.
+strip, so opening one closes the others. Hovering an upgrade icon shows its name and
+effect; the chip's disclosure lists every owned upgrade with its effect for touch,
+keyboard and screen-reader users. Failed-battle reasons in the header are
+never clamped. Paused battles override decision activity, settled battles show none
+(the title states the outcome), and Go `null` collections are treated as empty.
 A model-controlled participant's heading also shows its model identifier and any
 reasoning effort. Player responses carry only the controller type, so players see
 the faction name alone.
@@ -247,7 +262,9 @@ and raw JSON are shown unchanged.
 [`UpgradeIcon.tsx`](../../frontend/src/features/battles/components/UpgradeIcon.tsx)
 draws upgrade artwork in the same style: one glyph per general track and unit
 unlock, and the improved unit's icon beside an effect glyph for each
-specialization. `presentation/upgrades.ts` owns upgrade labels and art keys. The
+specialization. `presentation/upgrades.ts` owns upgrade labels, effect text and art
+keys; the effect text states the shipped catalog's bonuses, so update it with any
+ruleset that changes them. The
 faction strip chip, the inspector's owned-upgrade list and AI decision cards'
 upgrade orders use it; decision cards also show unit and building icons beside
 recruitment and construction orders.
