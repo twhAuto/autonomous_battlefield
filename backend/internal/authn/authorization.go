@@ -153,6 +153,7 @@ var routeRules = []routeRule{
 	{pattern: "GET /v1/battles/{id}/decisions", permission: PermissionInspect},
 	{pattern: "GET /v1/battles/{id}/decisions/{requestId}/context", permission: PermissionInspect},
 	{pattern: "GET /v1/leagues", permission: PermissionInspect},
+	{pattern: "GET /v1/analytics", permission: PermissionInspect},
 	{pattern: "GET /v1/leagues/{id}", permission: PermissionInspect},
 
 	{pattern: "POST /v1/leagues", permission: PermissionAdmin},

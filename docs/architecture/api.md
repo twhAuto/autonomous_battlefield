@@ -44,8 +44,8 @@ or the Admin role. Players can read shared factions, battles, events, replays an
 history, but receive gameplay-only responses: events and replay events without
 payloads, battles without
 inspection fields, and a reduced model-profile list. Decision history, saved
-decision context and [leagues](#leagues) require Developer or Admin; only Admins
-create or cancel a league.
+decision context, [leagues](#leagues) and [analytics](#analytics) require Developer
+or Admin; only Admins create or cancel a league.
 
 Selecting a model controller, for a battle or for background generation, requires
 an enabled, verified profile and a role allowed by the
@@ -322,6 +322,27 @@ cancels unfinished fixtures and stops the running battle; repeating it returns `
 and stops any league battle still running. The scheduler also stops battles left
 running in cancelled leagues, so a failed stop is retried. Cancelling a completed
 league returns `409`.
+
+## Analytics
+
+`GET /v1/analytics` summarizes completed battles for Developers and Admins: per
+controller (scripted, or profile, model and reasoning effort) the win, draw and loss
+record, castle wins, a 95% Wilson interval on the win rate, mean ticks to win,
+fallback and invalid-plan rates, mean decision latency and tokens per battle; the
+same outcomes per faction; a head-to-head record for every pair of controllers; per
+unit type the totals, kills per loss, damage per gold and its share of winning and
+losing armies, and each controller's army mix; per upgrade the purchase rate, mean
+purchase tick and win rate with and without it; and per map the draw rate, mean
+length and each spawn side's wins.
+
+`leagueId`, `since` and `excludeFallback=true` narrow the battles. `rulesVersion`
+defaults to the current rules, so balance changes do not mix; `all` includes every
+version. A report reads at most the 5000 most recent battles and says when it was
+truncated. Unit and upgrade figures use only results with per-type statistics, so
+battles completed before those were recorded count for outcomes alone. A model's
+decisions come from its battles' final attempts; a fallback plan a retry reused from
+an earlier attempt still counts as a fallback. A renamed faction is reported under
+its newest name.
 
 ## Faction background generation
 
