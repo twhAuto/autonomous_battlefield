@@ -333,6 +333,15 @@ has 15 minutes, so slow image pulls don't fail the first Deployment. On failure,
 Jenkins prints descriptions and logs for every unavailable observability Deployment
 plus recent namespace events.
 
+The pre-migration database backup in `~/.local/state/battlefield/backups` on the
+agent has its own five-minute budget (`BACKUP_TIMEOUT`, default `300s`), and
+`pg_dump` gives up on table locks after one minute. If the dump or its
+`pg_restore --list` check fails or runs out of time, the deploy deletes the partial
+dump and stops before the migration Job, so production keeps its running release.
+It then prints the `battlefield-postgres-0` pod status, its recent events and the
+database sessions with their wait events and blocking sessions. Use that output to
+find a restarting pod or a session holding locks before rerunning the build.
+
 ### Rollback
 
 Before deploying, `scripts/cd/capture-rollback-images.sh` records the deployed

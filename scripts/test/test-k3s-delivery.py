@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -93,7 +94,11 @@ elif ' apply -k ' in ' '+text+' ':
 elif 'exec battlefield-postgres-0' in text and 'psql' in text:
     if os.environ.get('DATABASE_UNAVAILABLE'): sys.exit(1)
     print(os.environ.get('MIGRATIONS','[0,1]'))
-elif 'pg_dump' in text: print('synthetic dump')
+elif 'pg_dump' in text:
+    if os.environ.get('DUMP_STALLS'):
+        import time
+        time.sleep(60)
+    print('synthetic dump')
 elif 'create secret' in text: print('{}')
 elif 'config view' in text: print('synthetic-kubeconfig')
 elif 'get pvc' in text: print('{"items":[]}')
@@ -172,10 +177,21 @@ elif 'apply' in args and '-f' in args and args[args.index('-f')+1]=='-': sys.std
     def test_wrong_identity_driver_platform_and_supply_chain_fail_before_mutation(self):
         for settings in ({'LIVE_UID':'other'},{'CLUSTER_DRIVER':'kind'},{'K3S_VERSION':'wrong'},
                          {'RECLAIM':'Delete'},{'CONTROLLER_READY':'0'},{'IMAGE_SOURCE':'local'},{'SIGNATURE_FAIL':'1'},
-                         {'ATTESTATION_FAIL':'1'},{'GHCR_TOKEN':''},{'KIND_CLUSTER_NAME':'old'}):
+                         {'ATTESTATION_FAIL':'1'},{'GHCR_TOKEN':''},{'KIND_CLUSTER_NAME':'old'},{'BACKUP_TIMEOUT':'5m'}):
             with self.subTest(settings=settings):
                 self.run_script('deploy.sh','f'*40,ok=False,**settings)
                 self.assertFalse(any(any(v in c for v in ['apply','delete','patch','create']) for c in self.calls),self.calls)
+
+    def test_stalled_backup_fails_fast_without_migration_or_partial_dump(self):
+        started=time.monotonic()
+        result=self.run_script('deploy.sh','f'*40,ok=False,DUMP_STALLS='1',BACKUP_TIMEOUT='1s')
+        self.assertLess(time.monotonic()-started,30)
+        self.assertIn('Database backup failed: pg_dump did not finish within 1s; refusing migration.',result.stderr)
+        self.assertFalse((self.directory/'migration.yaml').exists())
+        self.assertFalse(any('battlefield-migrate' in c for c in self.calls))
+        self.assertEqual(list((self.directory/'backups').iterdir()),[])
+        self.assertTrue(any(c[3:6]==['get','pod','battlefield-postgres-0'] for c in self.calls),self.calls)
+        self.assertTrue(any('pg_stat_activity' in ' '.join(c) for c in self.calls))
 
     def test_recovery_requires_matching_database_and_keeps_uid_guard(self):
         self.run_script('production-recovery.sh','record','f'*40)

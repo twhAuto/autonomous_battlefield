@@ -66,6 +66,13 @@ cluster_deploy_validate_inputs() {
     echo "OBSERVABILITY_ROLLOUT_TIMEOUT must be a positive number of seconds such as 900s." >&2
     return 1
   fi
+  if [[ ! "${backup_timeout}" =~ ^[1-9][0-9]*s$ ]]; then
+    echo "BACKUP_TIMEOUT must be a positive number of seconds such as 300s." >&2
+    return 1
+  fi
+  if [[ "${DEPLOY_ENV:-dev}" == production ]]; then
+    cluster_deploy_require_command timeout
+  fi
 
   for image_name in "${backend_image}" "${frontend_image}"; do
     if [[ ! "${image_name}" =~ ^[a-z0-9][a-z0-9._:/-]*$ ]]; then
@@ -473,22 +480,62 @@ cluster_deploy_infrastructure() {
     --timeout="${rollout_timeout}"
 }
 
+# Bounds a backup exec: a stalled exec stream would otherwise hold the production
+# lock until the pipeline timeout.
+cluster_deploy_backup_exec() {
+  timeout --kill-after=10s "${backup_timeout%s}" kubectl --context "${kube_context}" exec "$@"
+}
+
+cluster_deploy_backup_outcome() {
+  if (($1 == 124 || $1 == 137)); then
+    echo "did not finish within ${backup_timeout}"
+  else
+    echo "exited with status $1"
+  fi
+}
+
+# Read-only evidence for a failed backup. Each read is bounded, so diagnostics cannot stall too.
+cluster_deploy_database_diagnostics() {
+  echo "Collecting PostgreSQL diagnostics." >&2
+  cluster_deploy_kube get pod battlefield-postgres-0 --namespace "${namespace}" -o wide --request-timeout=10s >&2 || true
+  cluster_deploy_kube get events --namespace "${namespace}" --field-selector involvedObject.name=battlefield-postgres-0 \
+    --sort-by=.lastTimestamp --request-timeout=10s >&2 || true
+  timeout --kill-after=5s 20 kubectl --context "${kube_context}" exec --namespace "${namespace}" battlefield-postgres-0 -- \
+    sh -c 'exec psql --no-psqlrc --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --command "select pid, application_name, state, wait_event_type, wait_event, now() - xact_start as transaction_age, pg_blocking_pids(pid) as blocked_by, left(query, 80) as query from pg_stat_activity where datname = current_database() and pid <> pg_backend_pid() order by xact_start"' >&2 || true
+}
+
+# The ownership migration must never precede a durable, readable backup. pg_dump gives up
+# on table locks after a minute, so it does not linger in the database after a timeout.
+cluster_deploy_backup_database() {
+  local backup_dir="${BATTLEFIELD_BACKUP_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/battlefield/backups}"
+  local backup_file status=0 failure=''
+  install -d -m 700 "${backup_dir}"
+  backup_file="$(mktemp "${backup_dir}/pre-migration-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX.dump")"
+  chmod 600 "${backup_file}"
+  cluster_deploy_backup_exec --namespace "${namespace}" battlefield-postgres-0 -- \
+    sh -c 'exec pg_dump --format=custom --no-owner --lock-wait-timeout=60s --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"' \
+    >"${backup_file}" || status=$?
+  if ((status != 0)); then
+    failure="pg_dump $(cluster_deploy_backup_outcome "${status}")"
+  elif [[ ! -s "${backup_file}" ]]; then
+    failure='the dump is empty'
+  else
+    cluster_deploy_backup_exec -i --namespace "${namespace}" battlefield-postgres-0 -- pg_restore --list \
+      <"${backup_file}" >/dev/null || status=$?
+    ((status == 0)) || failure="pg_restore --list $(cluster_deploy_backup_outcome "${status}")"
+  fi
+  if [[ -n "${failure}" ]]; then
+    rm -f -- "${backup_file}"
+    echo "Database backup failed: ${failure}; refusing migration." >&2
+    cluster_deploy_database_diagnostics
+    return 1
+  fi
+  echo "Database backup verified: ${backup_file}"
+}
+
 cluster_deploy_migration() {
   if [[ "${DEPLOY_ENV:-dev}" == production ]]; then
-    # The ownership migration must never precede a durable, readable backup.
-    local backup_dir="${BATTLEFIELD_BACKUP_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/battlefield/backups}"
-    local backup_file
-    install -d -m 700 "${backup_dir}"
-    backup_file="$(mktemp "${backup_dir}/pre-migration-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX.dump")"
-    chmod 600 "${backup_file}"
-    if ! cluster_deploy_kube exec --namespace "${namespace}" battlefield-postgres-0 -- sh -c 'exec pg_dump --format=custom --no-owner --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"' >"${backup_file}"; then
-      rm -f -- "${backup_file}"
-      echo 'Database backup failed; refusing migration.' >&2
-      return 1
-    fi
-    [[ -s "${backup_file}" ]] || { echo 'Database backup is empty; refusing migration.' >&2; return 1; }
-    cluster_deploy_kube exec -i --namespace "${namespace}" battlefield-postgres-0 -- pg_restore --list <"${backup_file}" >/dev/null || return
-    echo "Database backup verified: ${backup_file}"
+    cluster_deploy_backup_database
   fi
   echo "Running the database migration gate..."
   cluster_deploy_kube delete job battlefield-migrate \
