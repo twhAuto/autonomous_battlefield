@@ -398,6 +398,7 @@ type decisionBattleRepository struct {
 	modelErrorCategory string
 	memoryErr          error
 	traceparents       []string
+	onModelDecision    func()
 }
 
 func (r *decisionBattleRepository) CreateOrReuseDecision(_ context.Context, p ai.CreateDecisionParams) (ai.DecisionRecord, error) {
@@ -417,6 +418,9 @@ func (r *decisionBattleRepository) CreateOrReuseDecision(_ context.Context, p ai
 		record.ResolvedPlan = &plan
 	}
 	r.records[record.ID] = record
+	if p.ControllerType == ai.ControllerModel && r.onModelDecision != nil {
+		r.onModelDecision()
+	}
 	return record, nil
 }
 

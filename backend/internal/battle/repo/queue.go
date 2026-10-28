@@ -131,19 +131,32 @@ func (r *Postgres) FailBattle(ctx context.Context, lease queue.Lease, code, mess
 
 // RequeueBattle hands a battle back after a graceful shutdown and refunds the attempt
 // it interrupted. The attempt number is kept, so the next claim starts a new attempt
-// whose events and decisions do not collide with this one's.
+// whose events and decisions do not collide with this one's. Decisions the attempt
+// left open fail with battle_stopped, so no agent spends a model call on them.
 func (r *Postgres) RequeueBattle(ctx context.Context, lease queue.Lease) error {
-	tag, err := r.db.Exec(ctx, `
-		UPDATE battle_runs
-		SET status = 'queued', current_tick = 0, current_state = initial_state,
-		    graceful_requeues = graceful_requeues + 1,
-		    lease_owner = NULL, lease_expires_at = NULL, updated_at = now()
-		WHERE id = $1 AND status = 'running' AND attempt = $2 AND lease_owner = $3
-	`, lease.BattleID, lease.Attempt, lease.Owner)
+	var requeued bool
+	err := r.db.QueryRow(ctx, `
+		WITH requeued AS (
+			UPDATE battle_runs
+			SET status = 'queued', current_tick = 0, current_state = initial_state,
+			    graceful_requeues = graceful_requeues + 1,
+			    lease_owner = NULL, lease_expires_at = NULL, updated_at = now()
+			WHERE id = $1 AND status = 'running' AND attempt = $2 AND lease_owner = $3
+			RETURNING id, attempt
+		), closed_decisions AS (
+			UPDATE battle_decisions AS decision
+			SET status = 'failed', error_category = 'battle_stopped',
+			    lease_owner = NULL, lease_expires_at = NULL, resolved_at = now()
+			FROM requeued
+			WHERE decision.battle_id = requeued.id AND decision.attempt = requeued.attempt
+			  AND decision.status IN ('pending', 'running')
+		)
+		SELECT EXISTS (SELECT 1 FROM requeued)
+	`, lease.BattleID, lease.Attempt, lease.Owner).Scan(&requeued)
 	if err != nil {
 		return fmt.Errorf("requeue battle %q: %w", lease.BattleID, err)
 	}
-	if tag.RowsAffected() == 0 {
+	if !requeued {
 		return queue.ErrLeaseLost
 	}
 	return nil

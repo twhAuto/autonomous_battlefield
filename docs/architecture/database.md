@@ -355,8 +355,9 @@ block on or double-claim the same row.
   `engine.maxAttempts`, through the partial index `battle_runs_unpaused_claim_idx`.
   Each claim increments `attempt` and restarts from `initial_state`, so every
   attempt keeps its own events, decisions and replay frames. A graceful-shutdown requeue increments
-  `graceful_requeues` (migration `00019`), refunding the attempt it interrupted;
-  only crashed or lease-expired attempts spend the budget. Tick writes extend the
+  `graceful_requeues` (migration `00019`), refunding the attempt it interrupted,
+  and fails that attempt's open decisions with `battle_stopped`; only crashed or
+  lease-expired attempts spend the budget. Tick writes extend the
   lease only where status, attempt and lease owner still match, so a previous owner
   cannot write, requeue or fail the battle after a reclaim.
 - **Decisions:** the AI gateway claims `model` decisions that are `pending`, or `running` with

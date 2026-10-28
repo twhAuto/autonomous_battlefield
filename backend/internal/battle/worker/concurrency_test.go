@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/twh09/autonomous_battlefield/backend/internal/ai"
 	"github.com/twh09/autonomous_battlefield/backend/internal/battle/queue"
 	"github.com/twh09/autonomous_battlefield/backend/internal/game"
 )
@@ -29,6 +30,8 @@ type concurrentRepository struct {
 	failSave   string
 	completeCh chan string
 	claimErr   error
+	// claimErrAfter, when set, holds back claimErr until it is closed.
+	claimErrAfter <-chan struct{}
 }
 
 func newConcurrentRepository(ids ...string) *concurrentRepository {
@@ -45,7 +48,7 @@ func newConcurrentRepository(ids ...string) *concurrentRepository {
 func (r *concurrentRepository) ClaimBattle(context.Context, string, time.Duration, int) (*queue.Job, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.claimErr != nil && len(r.claims) > 0 {
+	if r.claimErr != nil && len(r.claims) > 0 && closed(r.claimErrAfter) {
 		return nil, r.claimErr
 	}
 	if len(r.pending) == 0 {
@@ -110,6 +113,35 @@ func (r *concurrentRepository) FailBattle(context.Context, queue.Lease, string, 
 }
 func (r *concurrentRepository) FailExhaustedBattles(context.Context, int) error { return nil }
 func (r *concurrentRepository) ExpireBattles(context.Context) error             { return nil }
+
+func closed(signal <-chan struct{}) bool {
+	if signal == nil {
+		return true
+	}
+	select {
+	case <-signal:
+		return true
+	default:
+		return false
+	}
+}
+
+// modelJob is a battle whose first faction waits on a model that never answers. Its
+// castles outlast the first decision window at tick 9.
+func modelJob(id string) *queue.Job {
+	job := testJob(20)
+	job.Lease.BattleID = id
+	job.Scenario.Ruleset.Buildings.CastleHealth = 1000
+	for index := range job.Scenario.Factions {
+		job.Scenario.Factions[index].Controller = game.ControllerConfig{Type: ai.ControllerScripted}
+	}
+	job.Scenario.Factions[0].Controller = game.ControllerConfig{Type: ai.ControllerModel, ProfileID: "profile", Provider: "codex-cli", Runtime: "cli"}
+	return job
+}
+
+func pendingModels(onModelDecision func()) *decisionBattleRepository {
+	return &decisionBattleRepository{fakeBattleRepository: &fakeBattleRepository{}, records: map[string]ai.DecisionRecord{}, onModelDecision: onModelDecision}
+}
 
 func concurrentWorker(t *testing.T, repo *concurrentRepository, slots int) *Worker {
 	t.Helper()
@@ -204,5 +236,41 @@ func TestWorkerClaimFailureStopsEverySlot(t *testing.T) {
 	defer repo.mu.Unlock()
 	if !repo.requeued["battle-a"] {
 		t.Fatal("the running battle was not requeued when a sibling slot failed")
+	}
+}
+
+func TestWorkerRequeuesABattleCancelledDuringADecisionWindow(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	repo := &fakeBattleRepository{job: modelJob("battle-model")}
+	worker, err := New(repo, pendingModels(cancel), testWorkerConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForRun(t, runWorker(ctx, worker)); err != nil {
+		t.Fatalf("Run() returned an error: %v", err)
+	}
+	if !repo.requeued {
+		t.Fatal("a battle cancelled while waiting for a model was not requeued")
+	}
+}
+
+func TestWorkerRequeuesADecisionWindowWhenASiblingClaimFails(t *testing.T) {
+	windowOpen := make(chan struct{})
+	repo := newConcurrentRepository()
+	repo.pending = []*queue.Job{modelJob("battle-model")}
+	repo.claimErr, repo.claimErrAfter = errWorkerRepository, windowOpen
+	config := testWorkerConfig()
+	config.Concurrency = 2
+	worker, err := New(repo, pendingModels(func() { close(windowOpen) }), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForRun(t, runWorker(context.Background(), worker)); !errors.Is(err, errWorkerRepository) {
+		t.Fatalf("Run() error = %v, want the sibling's claim failure", err)
+	}
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if !repo.requeued["battle-model"] {
+		t.Fatal("the battle waiting for a model was not requeued when its sibling slot failed")
 	}
 }

@@ -217,6 +217,11 @@ func (w *Worker) runTick(ctx context.Context, lease queue.Lease, simulation *gam
 	}
 	tickStarted := time.Now()
 	transition, err := w.advanceSimulation(ctx, lease, simulation)
+	if err != nil && ctx.Err() != nil {
+		// Shutdown, or a sibling slot's failure, interrupted a decision window.
+		outcome, err := requeueOutcome(w.requeueAfterCancellation(ctx, lease))
+		return outcome, true, err
+	}
 	if err != nil {
 		return "error", true, err
 	}

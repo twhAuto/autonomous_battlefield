@@ -317,6 +317,14 @@ func TestLeaseMutations(t *testing.T) {
 		}
 	})
 
+	t.Run("requeue", func(t *testing.T) {
+		for _, test := range leaseRowCases() {
+			t.Run(test.name, func(t *testing.T) {
+				assertLeaseError(t, NewPostgres(test.db()).RequeueBattle(context.Background(), lease), test.want)
+			})
+		}
+	})
+
 	t.Run("complete validates transition", func(t *testing.T) {
 		if err := NewPostgres(&battleDB{}).CompleteBattle(context.Background(), lease, transition); err == nil {
 			t.Fatal("CompleteBattle() accepted an unfinished transition")
@@ -341,9 +349,6 @@ func TestLeaseMutations(t *testing.T) {
 	}{
 		{name: "fail", run: func(repository *Postgres) error {
 			return repository.FailBattle(context.Background(), lease, "failed", "message")
-		}},
-		{name: "requeue", run: func(repository *Postgres) error {
-			return repository.RequeueBattle(context.Background(), lease)
 		}},
 	} {
 		t.Run(operation.name, func(t *testing.T) {

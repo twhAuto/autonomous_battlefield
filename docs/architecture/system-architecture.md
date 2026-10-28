@@ -465,7 +465,10 @@ repository can reuse that plan.
 
 Each claim increments `attempt`, so every attempt keeps its own event history. A
 graceful-shutdown requeue refunds the attempt it interrupted by incrementing
-`graceful_requeues`; only attempts that crashed or lost their lease count. Once a
+`graceful_requeues`; only attempts that crashed or lost their lease count. A slot
+requeues between ticks or while it waits on a decision window, and the requeue
+fails that attempt's open decisions with `battle_stopped` so no agent spends a model
+call on them. Once a
 queued or lease-expired battle has used `engine.maxAttempts` (default 3) such
 attempts, the next claim pass marks it `failed` with `attempts_exhausted` instead of
 starting another attempt. A rolling restart that requeues within
@@ -504,8 +507,9 @@ interrupt a battle to reclaim an orphan, so recovery can take longer than the
 lease duration.
 
 A database error returned by the claim operation in any slot stops every slot:
-the others requeue their battles, and the engine process exits with the error so
-Kubernetes restarts the container.
+each other slot requeues its battle, and the engine process exits with the error so
+Kubernetes restarts the container. A requeue that cannot reach the database leaves
+the lease to expire, and the battle is reclaimed as after a crash.
 A database interruption that reaches this path can therefore trigger lease
 recovery and a fresh attempt. Restart timing and recovery are separate: a ready
 replacement still has to satisfy the claim gates above.
