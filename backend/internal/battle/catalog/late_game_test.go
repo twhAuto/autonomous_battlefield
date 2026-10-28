@@ -3,6 +3,7 @@ package catalog
 import (
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/twh09/autonomous_battlefield/backend/gamedata"
@@ -29,7 +30,9 @@ var (
 )
 
 // Equal treasuries cover the classic tree, so the unlocked side fields the
-// 1,800 gold of unlocks instead of extra classic troops under the unit cap.
+// 1,800 gold of unlocks instead of extra classic troops under the unit cap. The
+// probe builds no economy, so mines become ground: their no-build neighbors would
+// otherwise decide where the training buildings stand.
 func TestLateGameUnitsBreakUpgradedStalemate(t *testing.T) {
 	c, err := LoadCatalog(gamedata.Files)
 	if err != nil {
@@ -40,6 +43,7 @@ func TestLateGameUnitsBreakUpgradedStalemate(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.Ruleset.StartingGold = 8000
+	s = withoutGoldMines(s)
 	control := runLateGameProbe(t, s, classicArmy, classicArmy)
 	t.Logf("control classic/classic winner=%s ticks=%d", control.winner, control.ticks)
 	if mirror := runLateGameProbe(t, s, unlockedArmy, unlockedArmy); mirror.winner == "draw" {
@@ -182,18 +186,44 @@ func lateGamePlan(t *testing.T, m *game.Match, id string, army lateGameArmy, win
 	return plan
 }
 
-// trainingSites places one of each training building on the legal sites
-// nearest the faction's castle, keeping the required two-hex spacing.
+// trainingSites places one of each training building on the legal sites nearest
+// faction a's castle, keeping the required two-hex spacing; faction b mirrors them,
+// because row-order ties would otherwise pick different ground on each side.
+// nearestTrainingSites is only called for faction a, whose enemy is b.
 func trainingSites(t *testing.T, m *game.Match, id string) []controller.ConstructionOrder {
+	t.Helper()
+	orders := nearestTrainingSites(t, m, "a")
+	if id == "a" {
+		return orders
+	}
+	snapshot, err := m.DecisionSnapshot(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range orders {
+		orders[i].Position.X = snapshot.View.Map.Width - 1 - orders[i].Position.X
+		if !slices.Contains(snapshot.LegalSites, orders[i].Position) {
+			t.Fatalf("mirrored site %v is not legal for %s", orders[i].Position, id)
+		}
+	}
+	return orders
+}
+
+func nearestTrainingSites(t *testing.T, m *game.Match, id string) []controller.ConstructionOrder {
 	t.Helper()
 	snapshot, err := m.DecisionSnapshot(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	castle := castlePosition(snapshot.View.State, id)
+	castle, enemy := castlePosition(snapshot.View.State, id), castlePosition(snapshot.View.State, "b")
 	sites := append([]controller.Coordinate{}, snapshot.LegalSites...)
+	// Ties go toward the enemy so no source trains behind its own castle.
 	sort.SliceStable(sites, func(i, j int) bool {
-		return game.HexDistance(castle, sitePosition(sites[i])) < game.HexDistance(castle, sitePosition(sites[j]))
+		a, b := sitePosition(sites[i]), sitePosition(sites[j])
+		if game.HexDistance(castle, a) != game.HexDistance(castle, b) {
+			return game.HexDistance(castle, a) < game.HexDistance(castle, b)
+		}
+		return game.HexDistance(enemy, a) < game.HexDistance(enemy, b)
 	})
 	kinds := []string{game.BuildingBarracks, game.BuildingArcheryRange, game.BuildingStables, game.BuildingSiegeWorkshop}
 	orders := []controller.ConstructionOrder{}
@@ -226,4 +256,13 @@ func siteSeparated(site controller.Coordinate, orders []controller.ConstructionO
 		}
 	}
 	return true
+}
+
+func withoutGoldMines(s game.Scenario) game.Scenario {
+	s.Ruleset.Buildings.GoldMineReserve, s.Map.GoldMineReserve = 0, 0
+	s.Map.Rows = append([]string(nil), s.Map.Rows...)
+	for i := range s.Map.Rows {
+		s.Map.Rows[i] = strings.ReplaceAll(s.Map.Rows[i], "g", ".")
+	}
+	return s
 }

@@ -12,7 +12,9 @@ export function playerStatus(state: BattleState | undefined, factionId: string) 
   const castle = buildings.find((building) => building.type === 'castle')
   let castleHealth = '—'
   if (faction) castleHealth = castle ? `${castle.health} / ${castle.maxHealth}` : 'Destroyed'
-  return { faction, units, buildings, castleHealth }
+  const economy = new Set(buildings.filter((building) => building.type === 'economy').map((building) => `${building.position.x}:${building.position.y}`))
+  const heldMines = state?.goldMines?.filter((mine) => economy.has(`${mine.position.x}:${mine.position.y}`))
+  return { faction, units, buildings, castleHealth, heldMines }
 }
 
 type PlayerStatus = ReturnType<typeof playerStatus>
@@ -36,6 +38,7 @@ export function PlayerOverview({ status }: Readonly<{ status: PlayerStatus }>) {
       <div><dt>Gold spent</dt><dd>{faction?.goldSpent ?? '—'}</dd></div>
       <div><dt>Gold looted</dt><dd>{faction?.goldLooted ?? '—'}</dd></div>
       <div><dt>Buildings</dt><dd>{faction ? buildings.length : '—'}</dd></div>
+      {faction && status.heldMines && <div><dt>Gold mines held</dt><dd>{status.heldMines.length} · {status.heldMines.reduce((total, mine) => total + mine.remaining, 0)} gold left</dd></div>}
     </dl>
     <h3>Buildings by type</h3>
     {faction ? <div className="building-type-list">{groups.size ? [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([type, count]) => <span key={type}><EntityIcon type={type} />{count} × {typeLabel(type)}</span>) : <p>No living buildings</p>}</div> : <p>Waiting for player state.</p>}

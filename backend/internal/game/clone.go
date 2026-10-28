@@ -6,6 +6,7 @@ package game
 import "github.com/twh09/autonomous_battlefield/backend/internal/game/controller"
 
 func CloneState(value State) State {
+	value.GoldMines = append([]GoldMine(nil), value.GoldMines...)
 	value.UnitDeaths = append([]UnitDeath(nil), value.UnitDeaths...)
 	value.Factions = append([]FactionState(nil), value.Factions...)
 	for i := range value.Factions {

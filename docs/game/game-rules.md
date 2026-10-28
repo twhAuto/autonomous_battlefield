@@ -11,7 +11,7 @@ documents for detail instead of repeating them:
 [Frontier Siege](frontier-siege.md) for the roster, structures, and maps, and the
 [system architecture](../architecture/system-architecture.md#52-strategy-decision-window) for how
 decisions are requested, stored, and timed out. All maps use the shared
-`backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v8.yaml`
+`backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v9.yaml`
 roster and `backend/gamedata/battlefield.yaml` timing/controller configuration.
 Scenario files contain only map identity and geometry.
 
@@ -32,15 +32,28 @@ A battle is created with a requested tick count (at most the scenario's
   each with one castle per faction. All terrain,
   entities, routes and actions are visible. Rocks block movement, not ranged fire.
 - Forests (`f`) are traversable and grant troops +3 defense after armor piercing;
-  buildings cannot occupy them. Gold deposits (`g`) are traversable and grant an
-  economy building on that hex +5 income per tick. Ground (`.`) has no bonus.
+  buildings cannot occupy them. Gold mines (`g`) are traversable and hold a finite
+  [gold reserve](#resources-and-upgrades); only economy buildings may stand on them.
+  Ground (`.`) has no bonus. Every castle has at least two mines inside its build
+  range, with more toward the middle; maps differ in how many mines they have and
+  how much gold each holds ([maps](frontier-siege.md#maps)).
 - Each castle has 300 HP, defense 8, construction range 4, earns 10 gold per tick, and attacks enemy units with 15 attack at range 3.
 - Each faction starts with 220 gold and only its castle. Opening purchases enter the castle queue; there is no starting Barracks.
 
 ## Resources and upgrades
 
 - **Gold** is the only resource. Income is collected every tick from the castle
-  and each living economy building, and unspent gold carries forward.
+  and each living economy building, and unspent gold carries forward. The castle's
+  10 gold per tick never runs out.
+- **Gold mines:** each mine starts with its map's reserve. An economy building on a
+  mine earns 15 gold per tick (10 plus the 5-gold mine bonus, plus Industry) and
+  draws all of it from that mine, capped at the gold left. When a mine reaches zero
+  the engine emits `gold_mine_depleted`; the building stays, keeps its build range
+  and earns nothing. Destroying an economy building leaves the mine's remaining gold
+  for whichever faction builds there next. Decision projections report the next draw
+  without depleting anything. Battles on rulesets without
+  `buildings.goldMineReserve` keep unlimited deposits that add 5 gold per tick to an
+  economy building built there, and allow economy buildings on any buildable hex.
 - **Loot:** destroying an enemy unit or building awards 50% of its cost to the
   attacker's faction.
 - **Upgrade purchases** run in order at the `upgrades` step of a plan's
@@ -79,7 +92,7 @@ upgrades are bought before automatic unit purchases, an unlock and its first uni
 start in the same window. A building selecting a type whose unlock was ordered but
 not yet bought waits without charge (`production.waitingForUpgrade`) and starts on the
 first tick the unlock is owned. These units exist to break late stalemates: once both
-factions own every general level, the 40-unit cap stops surplus gold becoming more
+factions own every general level, the 50-unit cap stops surplus gold becoming more
 troops, and the unlocked types put more strength in each unit slot. Scripted bots
 buy both unlocks after level II and then move their enabled sources to preferred
 late-game types.
@@ -88,8 +101,8 @@ late-game types.
 
 Fourteen unit types (Vanguard, Striker, Ranger, Catapult, Battering Ram, Pikeman,
 Herbalist, Scout, Raider Cavalry, Engineer, Crossbowman, and the
-[late-game](#late-game-unlocks) Cannon, Gunner and Heavy Cavalry) and eight constructible structures (Economy, Defense Tower, Outpost, Barracks, Archery Range, Stables, Siege Workshop and Infirmary). Stats, costs, capabilities, targeting, and building limits (sixteen
-non-castle buildings, at most four economy; 40 units per faction) are in
+[late-game](#late-game-unlocks) Cannon, Gunner and Heavy Cavalry) and eight constructible structures (Economy, Defense Tower, Outpost, Barracks, Archery Range, Stables, Siege Workshop and Infirmary). Stats, costs, capabilities, targeting, and limits (no building limit; 50 units
+per faction) are in
 [Frontier Siege](frontier-siege.md#unit-roster).
 
 ## Production windows
@@ -117,19 +130,26 @@ unit per source; historical batch mode retains its FIFO queue.
 ## Construction and training
 
 Every living, active friendly building grants `buildRange` in hex distance.
-Construct on unoccupied ground or a deposit within that range. All living buildings,
+Construct within that range: economy buildings on a gold mine with gold left, other
+structures on unoccupied ground. A plan ordering economy off a mine, or another
+structure onto a mine, is rejected before spending; a mine that has run dry skips
+the order (`gold_mine_depleted`). No building may stand beside a mine that still
+holds gold (`beside_gold_mine`), so a mine cannot be walled off; it is held only by
+building on it. All living buildings,
 including enemy buildings and castles, must be at least two hexes apart: one
-intervening hex. Historical `b` build-pad cells remain buildable but impassable;
-new maps use ground and gold deposits. New structures are checked in order, so an earlier purchase can
-block a later one. Illegal placements spend no gold. Destroyed buildings grant no
-range and release their hex and building capacity. Economy buildings activate
-immediately; other new structures activate next tick.
+intervening hex. Historical `b`
+build-pad cells remain buildable but impassable; new maps use ground and gold mines.
+New structures are checked in order, so an earlier purchase can block a later one.
+Illegal placements spend no gold. Destroyed buildings grant no range and release
+their hex. Economy buildings activate immediately; other new structures activate
+next tick.
 
 The castle is the only starting building and trains the same units as a Barracks.
 It also fires at enemy units during the tower phase while its queue continues
-training. Castles do not consume any of the sixteen constructible building slots
-(ruleset v8 and later `buildings.maximumBuildingCount`, twelve in v8; economy buildings count toward it and
-also keep their own limit of four, two before ruleset v9).
+training. The current ruleset has no building limit, so gold and space bound
+construction. Rulesets v8 and v9 cap non-castle buildings with
+`buildings.maximumBuildingCount` (twelve, then sixteen) and economy buildings with
+`maximumEconomyCount` (two, then four); castles never count.
 Build additional Barracks for simultaneous training or forward deployment. The castle and
 five constructible production buildings expose supported unit IDs as `trains`:
 
@@ -149,8 +169,8 @@ deployment can buy the next unit that same tick; its training advances next tick
 Purchases follow building ID order after income, construction/upgrades and training.
 Insufficient gold above `reserveGold` sets `production.waitingForGold`; the building
 stays enabled and retries each tick. No purchase occurs while a paid unit is present.
-Ruleset v8 and later cap each faction at 40 units (`maximumUnitCount`), counting living units
-plus paid units still training. At the cap, starts pause without charge and set
+The current ruleset caps each faction at 50 units (`maximumUnitCount`; 40 in rulesets
+v8 and v9), counting living units plus paid units still training. At the cap, starts pause without charge and set
 `production.waitingForUnitLimit`; training resumes on the first tick a slot frees.
 Frozen battles without a cap keep unlimited production. A selected type that is still
 locked sets `production.waitingForUpgrade` instead, also without charge, until its
@@ -158,8 +178,10 @@ locked sets `production.waitingForUpgrade` instead, also without charge, until i
 
 Setting `enabled: false` stops new starts but lets the paid unit finish. A different
 `unitType` applies to the next purchase. An off order may omit `unitType` to retain
-the selection. Omitted building orders keep existing settings. New training buildings
-start off and can be configured at a decision window once active. Castles use this
+the selection. Omitted building orders keep existing settings, so a faction with more
+than 17 sources, the most one plan can configure, sets the rest in later windows.
+New training buildings start off and can be configured at a decision window once
+active. Castles use this
 same system; opening requires explicit production orders, and `[]` leaves them off.
 
 A ready unit waits at zero remaining ticks with `trainingBlocked: true` if every

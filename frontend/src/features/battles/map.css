@@ -106,4 +106,8 @@
 .terrain-glyph { pointer-events: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
 .terrain-glyph--forest { fill: #448b60; stroke: #b1dfaa; }
 .terrain-glyph--gold { fill: #e5b94f; stroke: #fff0aa; }
+.gold-mine--depleted .hex-tile--gold { fill: #2c2a24; }
+.gold-mine--depleted .terrain-glyph--gold { fill: #6b6553; stroke: #8d8670; }
+.mine-reserve__track { fill: #1b1f22; }
+.mine-reserve__value { fill: #f2c94c; }
 .terrain-glyph--rock { fill: #596977; stroke: #9bafbd; }

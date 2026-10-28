@@ -1337,7 +1337,7 @@ components:
       properties:
         id: {type: string}
         continuousProduction: {type: boolean, default: false, description: Repeating per-building unit selection and on/off settings; absent or false retains historical batch recruitment.}
-        maximumUnitCount: {type: integer, minimum: 0, maximum: 200, description: 'Per-faction cap on living units plus paid units in training; absent or 0 is unlimited. Rulesets v8 and later use 40.'}
+        maximumUnitCount: {type: integer, minimum: 0, maximum: 200, description: 'Per-faction cap on living units plus paid units in training; absent or 0 is unlimited. Rulesets v8 and v9 use 40; v10 uses 50.'}
         upgrades:
           type: array
           items: {$ref: '#/components/schemas/UpgradeRule'}
@@ -1487,7 +1487,7 @@ components:
         kind: {type: string, examples: [authored]}
         width: {type: integer}
         height: {type: integer}
-        rows: {type: array, items: {type: string}, description: "Authored symbols: . ground, # rock, f forest (+3 troop defense), g gold deposit (+5 economy income). Legacy b pads remain readable."}
+        rows: {type: array, items: {type: string}, description: "Authored symbols: . ground, # rock, f forest (+3 troop defense), g gold mine (economy buildings only; finite gold under gold-mine rulesets, otherwise +5 economy income). Legacy b pads remain readable."}
         castleSpawns:
           type: array
           minItems: 2
@@ -1499,6 +1499,10 @@ components:
           minItems: 2
           maxItems: 2
           items: {type: [array, 'null'], items: {$ref: '#/components/schemas/Position'}}
+        goldMineReserve:
+          description: Gold each mine on this map starts with. Scenario summaries report the effective value; frozen battle maps omit it when the ruleset default applies.
+          type: integer
+          minimum: 0
 
     BattleState:
       description: |
@@ -1533,6 +1537,21 @@ components:
             death from disappearance.
           type: [array, 'null']
           items: {$ref: '#/components/schemas/UnitDeath'}
+        goldMines:
+          description: |
+            One entry per map gold mine, in row order, under rulesets with finite gold
+            mines. Omitted for other rulesets and in older snapshots. A mine with
+            `remaining: 0` is depleted and yields nothing.
+          type: array
+          items: {$ref: '#/components/schemas/GoldMine'}
+
+    GoldMine:
+      type: object
+      required: [position, reserve, remaining]
+      properties:
+        position: {$ref: '#/components/schemas/Position'}
+        reserve: {type: integer, description: Gold the mine started with.}
+        remaining: {type: integer, description: Gold left; an economy building on the mine draws its income from it.}
 
     FactionState:
       type: object

@@ -46,7 +46,8 @@ func ValidateSubmission(record ai.DecisionRecord, submission ai.PlanSubmission) 
 	}
 	issues = append(issues, validateRecruitment(legal, submission.Plan)...)
 	issues = append(issues, validateTrainingSources(record.Observation, submission.Plan)...)
-	issues = append(issues, validateConstruction(legal, record.Observation.Opening, submission.Plan)...)
+	goldMines := len(record.Observation.View.State.GoldMines) > 0
+	issues = append(issues, validateConstruction(legal, record.Observation.Opening, goldMines, submission.Plan)...)
 	// Scripted plans may over-order; the engine skips orders beyond a limit.
 	if isModelRuntime(record.Runtime) {
 		issues = append(issues, validateBuildingLimits(record.Observation.Economy, submission.Plan)...)
@@ -137,29 +138,44 @@ func validateRecruitment(legal ai.LegalChoices, plan controller.PlanProposal) []
 	return issues
 }
 
-func validateConstruction(legal ai.LegalChoices, opening bool, plan controller.PlanProposal) []ai.ValidationIssue {
+// With gold mines, economy (including legacy priorities) may use only goldMineSites
+// and every other structure only economySites.
+func validateConstruction(legal ai.LegalChoices, opening, goldMines bool, plan controller.PlanProposal) []ai.ValidationIssue {
 	var issues []ai.ValidationIssue
-	buildings, sites := map[string]bool{}, map[controller.Coordinate]bool{}
+	buildings := map[string]bool{}
 	for _, building := range legal.Buildings {
 		buildings[building.ID] = true
 	}
-	for _, site := range legal.EconomySites {
-		sites[site] = true
+	sites, economySites, hint := coordinateSet(legal.EconomySites), coordinateSet(legal.EconomySites), ""
+	if goldMines {
+		economySites, hint = coordinateSet(legal.GoldMineSites), "; economy needs a site from legal.goldMineSites and other buildings one from legal.economySites"
 	}
 	for _, site := range plan.ConstructionPriorities {
-		if !sites[site] {
-			issues = append(issues, ai.ValidationIssue{Field: "plan.constructionPriorities", Code: "unsupported", Message: fmt.Sprintf("site (%d,%d) is not legal", site.X, site.Y)})
+		if !economySites[site] {
+			issues = append(issues, ai.ValidationIssue{Field: "plan.constructionPriorities", Code: "unsupported", Message: fmt.Sprintf("site (%d,%d) is not legal%s", site.X, site.Y, hint)})
 		}
 	}
 	if plan.ConstructionOrders == nil {
 		return issues
 	}
 	for _, order := range *plan.ConstructionOrders {
-		if opening || !buildings[order.BuildingType] || !sites[order.Position] {
-			issues = append(issues, ai.ValidationIssue{Field: fieldConstructionOrders, Code: "unsupported", Message: fmt.Sprintf("construction %q at (%d,%d) is not legal", order.BuildingType, order.Position.X, order.Position.Y)})
+		legalSites := sites
+		if order.BuildingType == game.BuildingEconomy {
+			legalSites = economySites
+		}
+		if opening || !buildings[order.BuildingType] || !legalSites[order.Position] {
+			issues = append(issues, ai.ValidationIssue{Field: fieldConstructionOrders, Code: "unsupported", Message: fmt.Sprintf("construction %q at (%d,%d) is not legal%s", order.BuildingType, order.Position.X, order.Position.Y, hint)})
 		}
 	}
 	return issues
+}
+
+func coordinateSet(coordinates []controller.Coordinate) map[controller.Coordinate]bool {
+	set := make(map[controller.Coordinate]bool, len(coordinates))
+	for _, coordinate := range coordinates {
+		set[coordinate] = true
+	}
+	return set
 }
 
 // Older observations without current counts report zero and are never rejected here.

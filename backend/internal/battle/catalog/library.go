@@ -61,8 +61,8 @@ func resolveLibrary(fsys fs.FS, source rulesetFile) (game.Ruleset, error) {
 		return r, nil
 	}
 	ref := source.Library
-	if !reflect.DeepEqual(r.Buildings, game.BuildingRules{MaximumEconomyCount: r.Buildings.MaximumEconomyCount, MaximumBuildingCount: r.Buildings.MaximumBuildingCount}) {
-		return r, fmt.Errorf("library rulesets configure only building limits; building stats belong in the library")
+	if !reflect.DeepEqual(r.Buildings, game.BuildingRules{MaximumEconomyCount: r.Buildings.MaximumEconomyCount, MaximumBuildingCount: r.Buildings.MaximumBuildingCount, GoldMineReserve: r.Buildings.GoldMineReserve}) {
+		return r, fmt.Errorf("library rulesets configure only building limits and the gold mine reserve; building stats belong in the library")
 	}
 	if !safeContentName(ref.ID) || !safeContentName(ref.Version) {
 		return r, fmt.Errorf("library ID and version must use letters, digits, dashes or underscores")
@@ -149,8 +149,8 @@ func applyLibraryBuildings(r game.Ruleset, library contentLibrary, ref *libraryS
 	if !ok || economy.Kind != "economy" {
 		return r, fmt.Errorf("library economy must reference an economy building")
 	}
-	// Rulesets own limits; library definitions own building stats.
-	r.Buildings = game.BuildingRules{CastleTrains: append([]string(nil), castle.Trains...), CastleAttack: castle.Attack, CastleRange: castle.Range, CastleBuildRange: castle.BuildRange, EconomyBuildRange: economy.BuildRange, CastleTypeID: castle.ID, EconomyTypeID: economy.ID, CastleHealth: castle.Health, CastleDefense: castle.Defense, CastleVision: castle.Vision, CastleIncome: castle.Income, EconomyCost: economy.Cost, EconomyHealth: economy.Health, EconomyDefense: economy.Defense, EconomyVision: economy.Vision, EconomyIncome: economy.Income, MaximumEconomyCount: r.Buildings.MaximumEconomyCount, MaximumBuildingCount: r.Buildings.MaximumBuildingCount}
+	// Rulesets own limits and the gold mine reserve; library definitions own building stats.
+	r.Buildings = game.BuildingRules{CastleTrains: append([]string(nil), castle.Trains...), CastleAttack: castle.Attack, CastleRange: castle.Range, CastleBuildRange: castle.BuildRange, EconomyBuildRange: economy.BuildRange, CastleTypeID: castle.ID, EconomyTypeID: economy.ID, CastleHealth: castle.Health, CastleDefense: castle.Defense, CastleVision: castle.Vision, CastleIncome: castle.Income, EconomyCost: economy.Cost, EconomyHealth: economy.Health, EconomyDefense: economy.Defense, EconomyVision: economy.Vision, EconomyIncome: economy.Income, MaximumEconomyCount: r.Buildings.MaximumEconomyCount, MaximumBuildingCount: r.Buildings.MaximumBuildingCount, GoldMineReserve: r.Buildings.GoldMineReserve}
 	for _, b := range library.Buildings {
 		if b.Kind != "castle" && b.Kind != "economy" {
 			r.Structures = append(r.Structures, b.buildingType())

@@ -5,9 +5,9 @@ Every live map uses one shared ruleset. The catalog embeds and validates:
 - `backend/gamedata/battlefield.yaml`: shared ruleset ID, tick limit, tick duration,
   decision interval, fallback and scripted plans.
 - `backend/gamedata/rulesets/battlefield.yaml`: shared starting gold, combat rules,
-  building limits and content-library reference.
-- `backend/gamedata/content/core-v8.yaml`: all units, upgrades, buildings and AI knowledge.
-- `backend/gamedata/scenarios/*.yaml`: map ID and geometry only.
+  unit and building limits, default gold per mine and content-library reference.
+- `backend/gamedata/content/core-v9.yaml`: all units, upgrades, buildings and AI knowledge.
+- `backend/gamedata/scenarios/*.yaml`: map ID, geometry and gold per mine only.
 
 The shipped maps are `castle-siege` (15×11), `frontier-siege` (25×17),
 `river-fords` (19×25), `long-march` (35×17) and `highland-crown` (33×25); see
@@ -19,10 +19,14 @@ roster and upgrade catalog. The faction-rulesets endpoint returns one ruleset.
 
 Maps carry no content restrictions, timing, controller plans or ruleset
 references; strict YAML decoding rejects those fields. A new map file
-contains only `id` and `map`, with authored rows, dimensions, castle spawns. Copy a shipped map and edit its geometry; all current and
-future shared units and upgrades are available automatically.
+contains only `id` and `map`, with authored rows, dimensions, castle spawns and an
+optional `map.goldMineReserve` (gold per mine, 0–1,000,000; 0 uses the ruleset's
+`buildings.goldMineReserve`). Copy a shipped map and edit its geometry; all current
+and future shared units and upgrades are available automatically.
 
-Use `.` for ground, `#` for rocks, `f` for forest and `g` for gold deposits.
+Use `.` for ground, `#` for rocks, `f` for forest and `g` for gold mines. A map's
+richness is its mine count times its reserve, so set the reserve with the layout:
+scarce gold at chokepoints lets both sides hold a front once the mines are empty.
 Construction sites are computed from building ranges and occupancy; map selection
 does not change the shared caps or costs. Legacy `b` pads and `economySites` remain
 readable for saved scenarios but do not restrict new construction.
@@ -30,10 +34,15 @@ readable for saved scenarios but do not restrict new construction.
 `game.ValidateMap` requires odd dimensions (width 15–41, height 11–31), rows that
 read the same mirrored left to right, mirrored castle spawns with at least four
 traversable neighbors, and a route between the castles. Catalog tests also require
-forests, gold deposits with four traversable neighbors, and no pads. Odd rows sit
-half a hex to the right, so a mirrored row is not an exact reflection: keep castles
-and deposits on even rows so both sides walk the same distance to them, and double a
-rock wall on odd rows where a single mirrored wall would leave a gap.
+forests, gold mines with four traversable neighbors, and no pads; at least two mines
+per castle inside its build range but not adjacent to it; more mines beyond that
+range than inside it, including at least one contested mine the same distance from
+both castles; no mine beside a castle or another mine, because no building may stand
+beside a mine with gold left; and a scarcest map with under half the richest map's
+gold. Odd rows sit half a
+hex to the right, so a mirrored row is not an exact reflection: keep a mine on a row
+of the same parity as the castles' row so both sides walk the same distance to it,
+and double a rock wall on odd rows where a single mirrored wall would leave a gap.
 `TestScriptedBotsFinishEveryMap` plays scripted bots on every map from both sides
 and fails if a battle reaches the tick limit; narrow chokepoints made earlier drafts
 stall.
@@ -47,15 +56,19 @@ upgrades and valid non-castle structures; there are no selection lists.
 
 The shared ruleset points to the library using `library.id`, `library.version`,
 `library.castle` and `library.economy`. It owns starting gold, building limits
-(`buildings.maximumBuildingCount` and `maximumEconomyCount` each up to 16), the
+(`buildings.maximumBuildingCount` and `maximumEconomyCount`, each 0–16; 0 is
+unlimited), the default gold per mine (`buildings.goldMineReserve`, 0–1,000,000), the
 per-faction `maximumUnitCount` (0–200; 0 is unlimited), combat percentages and
-`continuousProduction`. The live ruleset v9 allows 16 buildings, at most 4 of them
-economy, and 40 units, and references core v8, which includes the late-game unlocks.
+`continuousProduction`. A positive `goldMineReserve` turns every `g` hex into a
+finite gold mine that economy buildings require; without it, `maximumEconomyCount: 0`
+offers no economy buildings. The live ruleset v10 sets no building limits, 50 units
+and 2,000 gold per mine, and references core v9, which includes the late-game
+unlocks.
 `continuousProduction: true` enables continuous AI-selected unit production; absent
-or false selects the batch purchases of frozen older battles. The archived `content/core-v7.yaml` is the authored reference
-for the previous active library, and `content/core-v6.yaml` for the
-castle-training/attacking version with batch queues. It is not the active library
-and is not needed to replay self-contained saved snapshots. Inline rulesets remain readable for self-contained fixtures.
+or false selects the batch purchases of frozen older battles. The archived `content/core-v8.yaml` and `content/core-v7.yaml` are the authored
+references for earlier active libraries, and `content/core-v6.yaml` for the
+castle-training/attacking version with batch queues. They are not the active library
+and are not needed to replay self-contained saved snapshots. Inline rulesets remain readable for self-contained fixtures.
 Content IDs/versions allow letters, digits, dashes and underscores. Invalid stats,
 unknown fields, missing files, multiple live rulesets, duplicate IDs or invalid
 plans fail catalog startup.
@@ -73,7 +86,7 @@ restart otherwise re-simulates old inputs with changed construction/training rul
 
 Unit definitions include `trainingTicks` (1–1000; missing legacy values use 1).
 Building definitions include `buildRange` (1–10; missing legacy values use 3).
-The active v8 library uses Outpost, omits vision stats, and assigns `trains` unit-ID
+The active v9 library uses Outpost, omits vision stats, and assigns `trains` unit-ID
 arrays to the castle and five constructible production kinds. Arrays contain known
 unit IDs without internal duplicates; a unit belongs to at most one constructible
 production kind, while the castle may share that roster. Economy, towers and Outposts

@@ -12,7 +12,7 @@ import (
 // The object must be a fresh projection map; nested entries are reordered in place.
 func orderedContext(object map[string]json.RawMessage) json.RawMessage {
 	for key, order := range map[string][]string{
-		"legal": {"actionKinds", "units", "buildings", "upgrades", "recruitmentSources", "economySites", "constructionRuns"},
+		"legal": {"actionKinds", "units", "buildings", "upgrades", "recruitmentSources", "economySites", "constructionRuns", "goldMineSites"},
 		"view":  {"map", "unitProfiles", "buildingProfiles", "unitMap", "state"},
 	} {
 		if child, ok := jsonObject(object[key]); ok {

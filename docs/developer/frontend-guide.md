@@ -327,8 +327,10 @@ missing report fails the stage.
 The frontend build enables TypeScript `noUnusedLocals` and `noUnusedParameters`
 alongside strict type checks.
 
-Forests, deposits and rocks have distinct SVG silhouettes via `TerrainGlyph.tsx`,
-terrain colors and accessible descriptions. Selecting a living building highlights its
+Forests, gold mines and rocks have distinct SVG silhouettes via `TerrainGlyph.tsx`,
+terrain colors and accessible descriptions. When `state.goldMines` is present, each
+mine shows its gold left as a bar and in its description, depleted mines are dimmed,
+and the player overview totals the gold left in the mines a faction holds. Selecting a living building highlights its
 construction radius. Production-building details show their `trains` roster, selected unit, on/off setting,
 remaining/total ticks, progress and blocked exits. `BuildingProduction.tsx`
 also shows every living production source as a chip in its faction strip to all

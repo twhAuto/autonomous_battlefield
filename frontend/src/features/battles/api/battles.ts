@@ -81,7 +81,11 @@ export interface BattleMap {
   kind: 'authored'; width: number; height: number; rows: string[]
   castleSpawns: [HexPosition, HexPosition]
   economySites: [HexPosition[], HexPosition[]]
+  /** Gold per mine on this map; absent maps use the ruleset default. */
+  goldMineReserve?: number
 }
+/** A gold deposit's remaining gold; present only for rulesets with finite gold mines. */
+export interface GoldMine { position: HexPosition; reserve: number; remaining: number }
 export interface BattleUnit extends UnitCapabilities {
   id: string; factionId: string; type: string; position: HexPosition
   health: number; maxHealth: number; attack: number; defense: number
@@ -111,6 +115,7 @@ export interface BattleFactionState {
   factionId: string; gold: number; goldEarned: number; goldSpent: number; goldLooted: number
 }
 export interface BattleState {
+  goldMines?: GoldMine[]
   unitDeaths?: { id: string; factionId: string; type: string; position: HexPosition }[]
   openingComplete?: boolean
   battleId: string; tick: number; factions: BattleFactionState[] | null
@@ -218,7 +223,7 @@ export interface SavedDecisionContext {
     ownedUpgradeIds: string[] | null
     economy: { gold: number; projectedIncome: number; economyBuildingCost: number; economyBuildingIncome: number; currentEconomyBuildings: number; maximumEconomyBuildings: number; maximumBuildings?: number; currentBuildings?: number; maximumUnits?: number; currentUnits?: number }
     view: BattleView
-    legal: { actionKinds: string[] | null; units: { id: string; cost: number }[] | null; economySites: HexPosition[] | null; buildings?: { id: string; cost: number }[] | null; upgrades?: { id: string; cost: number; track?: string; level?: number; requiresUpgradeId?: string; targetUnit?: string; targetClass?: string; exclusiveGroup?: string; movementBonus?: number; rangeBonus?: number; healAmountBonus?: number; healRangeBonus?: number; buildingDamageBonus?: number; attackBonus?: number; defenseBonus?: number; economyIncomeBonus?: number }[] | null; recruitmentSources?: string[] | null }
+    legal: { actionKinds: string[] | null; units: { id: string; cost: number }[] | null; economySites: HexPosition[] | null; goldMineSites?: HexPosition[]; buildings?: { id: string; cost: number }[] | null; upgrades?: { id: string; cost: number; track?: string; level?: number; requiresUpgradeId?: string; targetUnit?: string; targetClass?: string; exclusiveGroup?: string; movementBonus?: number; rangeBonus?: number; healAmountBonus?: number; healRangeBonus?: number; buildingDamageBonus?: number; attackBonus?: number; defenseBonus?: number; economyIncomeBonus?: number }[] | null; recruitmentSources?: string[] | null }
     activePlan: DecisionHistory['resolvedPlan']
     memory?: JsonValue
     knowledge?: JsonValue

@@ -74,6 +74,9 @@ func ValidateMap(value Map) error {
 	if err != nil {
 		return err
 	}
+	if value.GoldMineReserve < 0 || value.GoldMineReserve > MaximumGoldMineReserve {
+		return fmt.Errorf("%w: gold mine reserve must be 0..%d", ErrInvalidScenario, MaximumGoldMineReserve)
+	}
 	seen := make(map[Position]string)
 	if err := validateCastleSpawns(value, seen); err != nil {
 		return err

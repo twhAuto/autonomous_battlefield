@@ -152,7 +152,7 @@ untrusted game data. Contexts without any reference leaves retain the original
 single-block inline layout. Background generation keeps its separate prompt.
 
 The shared policy states training-roster selection once. For prefetched continuous
-production with the exact reviewed core-v8 mechanics, `rule-duplicates.json` removes
+production with the exact reviewed core-v9 mechanics, `rule-duplicates.json` removes
 policy sentences whose rules already appear in those frozen mechanics, plus the
 inactive legacy recruitment paragraph. A SHA-256 match of the **entire mechanics
 text** gates this reduction. Tool-fetch sessions, legacy mode and missing, truncated
@@ -199,9 +199,10 @@ A decision context contains:
   and only the faction's own gold, upgrades and aggregate production totals;
 - current and projected economy values, including `currentBuildings` of
   `maximumBuildings` and `currentUnits` (living plus paid in training) of
-  `maximumUnits` when the ruleset sets those limits;
-- legal action kinds, unit and building definitions, construction sites and owned
-  recruitment sources;
+  `maximumUnits` when the ruleset sets those limits; projected income reports the
+  next gold-mine draw without depleting it;
+- legal action kinds, unit and building definitions, construction sites, gold-mine
+  sites and owned recruitment sources;
 - the currently active plan;
 - optional bounded faction memory and retrieved unit knowledge;
 - a hash of the observation, excluding request-specific fields.
@@ -304,8 +305,9 @@ rejected submissions.
 Current contexts expose `continuousProduction: true`. Plans use `productionOrders`:
 `[{"buildingId":"a:castle","unitType":"vanguard","enabled":true}]` selects a
 repeating unit; `[{"buildingId":"a:castle","enabled":false}]` stops new starts.
-At most 17 unique sources can be configured per plan, covering a castle plus the
-largest authored building limit (16).
+At most 17 unique sources can be configured per plan; because omitted sources keep
+their settings, a faction with more configures the rest in later windows, and
+scripted plans stop at 17.
 Opening requires an explicit array; `[]` leaves production off. Later omission or
 `[]` leaves existing settings unchanged. Every ID must be a living, active owned
 `legal.recruitmentSources` entry, and its `trains` roster must support the selected
@@ -348,12 +350,15 @@ IDs select a compatible active building with queue space nearest the enemy castl
 Historical contexts without authored rosters preserve their original validation.
 `legal.economySites` is the retained wire name for dynamically
 computed legal construction coordinates, not fixed pads. It is empty when the shared
-building limit is full. Model submissions whose construction orders exceed the
+building limit is full. When `view.state.goldMines` is present, those sites exclude
+mines and every hex beside a mine with gold left, `legal.goldMineSites` lists the mines with gold left where an economy building
+may go, and the validator rejects economy orders elsewhere and other structures on
+mines, naming both lists in its message. Model submissions whose construction orders exceed the
 remaining `maximumBuildings - currentBuildings` slots, or the remaining economy slots,
 are rejected with `limit_reached` and a message naming the counts. Scripted default
 construction draws from the same legal sites, so it never orders at a full shared
 limit; scripted plans skip the slot-count check because the engine skips extras. Execution rechecks range,
-terrain, unit occupancy and a minimum building distance of two hexes, so conflicting
+terrain, a mine's remaining gold and neighbors, unit occupancy and a minimum building distance of two hexes, so conflicting
 later orders skip without charge. Empty `constructionOrders` builds nothing;
 omitting it enables default construction. Older plans may use
 `recruitmentPriorities`; a plan cannot use both recruitment formats.

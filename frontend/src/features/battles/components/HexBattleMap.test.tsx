@@ -535,3 +535,42 @@ it('makes only the inline map inert while covered, never an open dialog', async 
     }
   }
 })
+
+it('shows each gold mine\'s gold left, depleted mines and the mine under an economy building', async () => {
+  const mineMap = { ...map, rows: ['g.', 'g#'] }
+  const mineState: BattleState = { ...state, goldMines: [
+    { position: { x: 0, y: 0 }, reserve: 800, remaining: 120 },
+    { position: { x: 0, y: 1 }, reserve: 800, remaining: 0 },
+  ], units: [], buildings: [{ id: 'a:economy:1', factionId: 'a', type: 'economy', position: { x: 0, y: 0 }, health: 60, maxHealth: 60, defense: 2, vision: 2, income: 15 }] }
+  const { container } = render(<HexBattleMap map={mineMap} state={mineState} factionNames={new Map()} />)
+  expect(screen.getByText('Gold mine: 120 of 800 gold left; economy buildings only, none beside it · (0, 0)')).toBeInTheDocument()
+  expect(screen.getByText('Depleted gold mine: no gold left; no construction · (0, 1)')).toBeInTheDocument()
+  expect(container.querySelectorAll('.gold-mine--depleted')).toHaveLength(1)
+  expect(container.querySelectorAll('.mine-reserve__value')[0]).toHaveAttribute('width', '2.4')
+  await userEvent.click(screen.getByText('Map legend'))
+  expect(screen.getByText(/Gold mine · economy only, none beside it; finite gold/)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: /Economy/ }))
+  expect(screen.getByText(/Mine 120\/800 gold left/)).toBeInTheDocument()
+})
+
+it('keeps the deposit description for battles without gold mines', async () => {
+  render(<HexBattleMap map={{ ...map, rows: ['g.', '.#'] }} state={state} factionNames={new Map()} />)
+  expect(screen.getByText('Gold deposit: economy buildings earn +5 gold per tick · (0, 0)')).toBeInTheDocument()
+  await userEvent.click(screen.getByText('Map legend'))
+  expect(screen.getByText(/Gold deposit · \+5 economy income/)).toBeInTheDocument()
+  expect(document.querySelector('.mine-reserve')).toBeNull()
+})
+
+it('closes empty mines and the hexes beside a mine with gold left in the build area', () => {
+  const area: BattleMap = { kind: 'authored', width: 7, height: 3, rows: ['.......', '.g...g.', '.......'], castleSpawns: [{ x: 3, y: 1 }, { x: 3, y: 1 }], economySites: [[], []] }
+  const castle: BattleBuilding = { id: 'a:castle', factionId: 'a', type: 'castle', position: { x: 3, y: 1 }, health: 100, maxHealth: 100, defense: 1, vision: 1, income: 0, buildRange: 3 }
+  const goldMines = [{ position: { x: 1, y: 1 }, reserve: 800, remaining: 100 }, { position: { x: 5, y: 1 }, reserve: 800, remaining: 0 }]
+  const { container } = render(<HexBattleMap map={area} state={{ battleId: 'x', tick: 4, factions: [], units: [], buildings: [castle], goldMines }} factionNames={new Map([['a', 'Amber']])} />)
+  const tile = (x: number, y: number) => container.querySelectorAll('.hex-tile')[y * area.width + x].querySelector('title')!.textContent
+  expect(tile(1, 1)).toMatch(/^Gold mine: 100 of 800.*· Amber can build here$/)
+  expect(tile(6, 1)).toMatch(/· Amber can build here$/) // beside the empty mine
+  for (const [x, y] of [[0, 1], [2, 0], [5, 1]]) {
+    // Beside the live mine (twice) and on the empty mine.
+    expect(tile(x, y)).not.toMatch(/can build/)
+  }
+})

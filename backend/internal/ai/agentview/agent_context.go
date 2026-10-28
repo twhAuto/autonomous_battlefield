@@ -39,6 +39,7 @@ type LegalChoices struct {
 	ActionKinds        []string                `json:"actionKinds"`
 	Units              []UnitOverview          `json:"units"`
 	EconomySites       []controller.Coordinate `json:"economySites"`
+	GoldMineSites      []controller.Coordinate `json:"goldMineSites,omitempty"`
 }
 
 // Deliberately does not embed DecisionContext: new stored fields are private by default.
@@ -125,7 +126,7 @@ func Compact(c ai.DecisionContext) Context {
 		Legal: LegalChoices{
 			Buildings: c.Legal.Buildings, RecruitmentSources: c.Legal.RecruitmentSources,
 			Upgrades: c.Legal.Upgrades, ActionKinds: c.Legal.ActionKinds,
-			EconomySites: c.Legal.EconomySites, Units: []UnitOverview{},
+			EconomySites: c.Legal.EconomySites, GoldMineSites: c.Legal.GoldMineSites, Units: []UnitOverview{},
 		},
 	}
 

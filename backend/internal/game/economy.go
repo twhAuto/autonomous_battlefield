@@ -23,10 +23,13 @@ func (m *Match) runFactionEconomy(factionID string, productionWindow bool) []Eve
 		return nil
 	}
 	state := m.factionState(factionID)
-	income := m.incomeFor(factionID, castle.Income)
+	income, depleted := m.collectIncome(factionID, castle.Income, true)
 	state.Gold += income
 	state.GoldEarned += income
 	events := []Event{m.event("income_collected", map[string]any{"factionId": factionID, "amount": income, "balance": state.Gold})}
+	for _, building := range depleted {
+		events = append(events, m.event("gold_mine_depleted", map[string]any{"factionId": factionID, "buildingId": building.ID, "position": building.Position}))
+	}
 	if !productionWindow {
 		return events
 	}
@@ -51,15 +54,29 @@ func (m *Match) spend(factionID string, plan controller.PlanProposal, constructi
 	return events
 }
 
+// incomeFor projects a faction's next income without depleting any gold mine.
 func (m *Match) incomeFor(factionID string, castleIncome int64) int64 {
+	income, _ := m.collectIncome(factionID, castleIncome, false)
+	return income
+}
+
+// collectIncome sums castle and economy income; with extract it draws economy income
+// from gold mines and returns the buildings whose mine it emptied.
+func (m *Match) collectIncome(factionID string, castleIncome int64, extract bool) (int64, []Building) {
 	income := castleIncome
+	var depleted []Building
 	for index := range m.state.Buildings {
 		building := &m.state.Buildings[index]
-		if building.FactionID == factionID && building.Type == BuildingEconomy && building.Health > 0 {
-			income += building.Income
+		if building.FactionID != factionID || building.Type != BuildingEconomy || building.Health <= 0 {
+			continue
+		}
+		amount, emptied := m.economyIncome(building, extract)
+		income += amount
+		if emptied {
+			depleted = append(depleted, *building)
 		}
 	}
-	return income
+	return income, depleted
 }
 
 func (m *Match) runConstruction(factionID string, plan controller.PlanProposal) []Event {
@@ -80,7 +97,7 @@ func (m *Match) runConstruction(factionID string, plan controller.PlanProposal) 
 
 func (m *Match) buildEconomyBuildingAt(factionID string, site Position, reserve int64) (Building, string) {
 	rules := m.scenario.Ruleset.Buildings
-	if m.economyCount(factionID) >= rules.MaximumEconomyCount {
+	if economyLimitReached(rules, m.economyCount(factionID)) {
 		return Building{}, "maximum_reached"
 	}
 	state, reason := m.payForBuilding(factionID, BuildingEconomy, site, rules.EconomyCost, reserve)
