@@ -3,7 +3,7 @@
 
 import { type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { useMobile } from '../../../shared/hooks/useMobile'
-import type { BattleBuilding, BattleMap, BattleState, BattleUnit, HexPosition } from '../api/battles'
+import type { BattleBuilding, BattleMap, BattleState, BattleUnit, GoldMine, HexPosition } from '../api/battles'
 import { TrainingQueue } from './BuildingProduction'
 import { TerrainGlyph } from './TerrainGlyph'
 import { entityIndex, entityName, typeLabel, type EntityNaming } from '../presentation/entities'
@@ -40,6 +40,7 @@ export function HexBattleMap({ map, state, factionNames, actions, covered = fals
   const press = useRef<{ x: number; y: number; panned: boolean } | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const liveUnits = (state.units ?? []).filter((unit) => unit.health > 0)
+  const mines = new Map((state.goldMines ?? []).map((mine) => [key(mine.position), mine]))
   const entities: Entity[] = [...(state.buildings ?? []).filter((building) => building.health > 0), ...liveUnits]
   const naming = { entities: entityIndex(state), factionNames }
   const selected = entities.find((entity) => entity.id === selectedId)
@@ -140,7 +141,8 @@ export function HexBattleMap({ map, state, factionNames, actions, covered = fals
               const position = { x, y }
               const center = centerOf(position)
               const buildable = builders.get(key(position))
-              return <g key={`${x}:${y}`}><polygon points={hexPoints(center.x, center.y)} className={`hex-tile hex-tile--${terrainClass(symbol)}${selected && 'income' in selected && selected.health > 0 && hexDistance(selected.position, position) <= (selected.buildRange || 3) ? ' hex-tile--build-range' : ''}`}><title>{terrainDescription(symbol)} · ({x}, {y}){buildable ? ` · ${buildable.join(' and ')} can build here` : ''}</title></polygon><g transform={`translate(${center.x - 12} ${center.y - 12})`}><TerrainGlyph symbol={symbol} /></g></g>
+              const mine = mines.get(key(position))
+              return <g key={`${x}:${y}`} className={mine?.remaining === 0 ? 'gold-mine--depleted' : undefined}><polygon points={hexPoints(center.x, center.y)} className={`hex-tile hex-tile--${terrainClass(symbol)}${selected && 'income' in selected && selected.health > 0 && hexDistance(selected.position, position) <= (selected.buildRange || 3) ? ' hex-tile--build-range' : ''}`}><title>{terrainDescription(symbol, mine)} · ({x}, {y}){buildable ? ` · ${buildable.join(' and ')} can build here` : ''}</title></polygon><g transform={`translate(${center.x - 12} ${center.y - 12})`}><TerrainGlyph symbol={symbol} /></g>{mine && mine.reserve > 0 && <MineReserve center={center} mine={mine} />}</g>
             }))}
             {[...areas].map(([factionId, positions]) => <path key={`area:${factionId}`} className="build-area" fill={colors.get(factionId) ?? '#f2c94c'} aria-hidden="true"
               d={positions.map((position) => { const center = centerOf(position); return `M${hexPoints(center.x, center.y).replaceAll(' ', 'L')}Z` }).join('')} />)}
@@ -188,10 +190,10 @@ export function HexBattleMap({ map, state, factionNames, actions, covered = fals
       </section>
       <div className="map-footer">
         <details className="map-key"><summary>Map legend</summary>
-          <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-forest" /> Forest · +3 troop defense</span><span><i className="legend-gold" /> Gold deposit · +5 economy income</span><span><i className="legend-build-area" /> Build area (faction tint)</span><span><i className="legend-movement" /> Movement (faction color)</span><span><i className="legend-attack" /> Attack (faction color)</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
+          <div className="map-legend"><span><i className="legend-ground" /> Ground</span><span><i className="legend-rock" /> Rock</span><span><i className="legend-forest" /> Forest · +3 troop defense</span><span><i className="legend-gold" /> {state.goldMines ? 'Gold mine · economy only, none beside it; finite gold (bar shows gold left)' : 'Gold deposit · +5 economy income'}</span><span><i className="legend-build-area" /> Build area (faction tint)</span><span><i className="legend-movement" /> Movement (faction color)</span><span><i className="legend-attack" /> Attack (faction color)</span><span><i className="legend-healing" /> Treatment</span><span><i className="legend-tower" /> Tower fire</span></div>
           <EntityLegend types={entities.map((entity) => entity.type)} />
         </details>
-        <EntityDetails selected={selected} naming={naming} onClear={() => {
+        <EntityDetails selected={selected} naming={naming} mine={selected && mines.get(key(selected.position))} onClear={() => {
           // Keep keyboard focus on the map: return it to the entity that was selected.
           entityNodes.current.get(selectedId ?? '')?.querySelector<SVGGElement>('.map-entity')?.focus()
           setSelectedId(null)
@@ -202,7 +204,7 @@ export function HexBattleMap({ map, state, factionNames, actions, covered = fals
   return <>{!expanded && content}<dialog ref={dialog} className="expanded-map" aria-label="Expanded battlefield map" onKeyDown={trapFocus} onCancel={event => { event.preventDefault(); setExpanded(false) }} onClose={() => setExpanded(false)}>{expanded && content}</dialog></>
 }
 
-function EntityDetails({ selected, naming, onClear }: Readonly<{ selected?: Entity; naming: EntityNaming; onClear: () => void }>) {
+function EntityDetails({ selected, naming, mine, onClear }: Readonly<{ selected?: Entity; naming: EntityNaming; mine?: GoldMine; onClear: () => void }>) {
   if (!selected) {
     return <div className="entity-details" aria-live="polite"><span>Select a castle, building, or unit for details.</span></div>
   }
@@ -217,11 +219,12 @@ function EntityDetails({ selected, naming, onClear }: Readonly<{ selected?: Enti
   const treating = 'healTargetId' in selected && selected.healTargetId
     ? ` · ${supportAction} ${entityName(selected.healTargetId, naming)}`
     : ''
+  const mineGold = mine && selected.type === 'economy' ? ` · Mine ${mine.remaining}/${mine.reserve} gold left` : ''
   return <div className="entity-details" aria-live="polite">
     <strong title={selected.id}>{entityName(selected.id, naming)}</strong>
     <button className="entity-details__clear" type="button" aria-label="Clear selection" onClick={onClear}>×</button>
     {'income' in selected && <TrainingQueue building={selected} />}
-    <span title={targetIDs}>HP {selected.health}/{selected.maxHealth} · ({selected.position.x}, {selected.position.y}){moved}{attacking}{treating} · {entityStats(selected)}</span>
+    <span title={targetIDs}>HP {selected.health}/{selected.maxHealth} · ({selected.position.x}, {selected.position.y}){moved}{attacking}{treating} · {entityStats(selected)}{mineGold}</span>
   </div>
 }
 
@@ -411,8 +414,16 @@ function specialistStats(entity: Entity) {
   return stats
 }
 
-export function terrainDescription(symbol: string) {
+function MineReserve({ center, mine }: Readonly<{ center: { x: number; y: number }; mine: GoldMine }>) {
+  // Sits in the hex's top point, clear of a building standing on the mine.
+  const width = 16 * Math.max(0, Math.min(1, mine.remaining / mine.reserve))
+  return <g className="mine-reserve" aria-hidden="true"><rect x={center.x - 8} y={center.y - 19} width="16" height="3" className="mine-reserve__track" /><rect x={center.x - 8} y={center.y - 19} width={width} height="3" className="mine-reserve__value" /></g>
+}
+
+/** Describes a hex; a gold deposit with mine state reports its gold left. */
+export function terrainDescription(symbol: string, mine?: Pick<GoldMine, 'remaining' | 'reserve'>) {
   if (symbol === 'f') return 'Forest: +3 troop defense; no construction'
+  if (symbol === 'g' && mine) return mine.remaining > 0 ? `Gold mine: ${mine.remaining} of ${mine.reserve} gold left; economy buildings only, none beside it` : 'Depleted gold mine: no gold left; no construction'
   if (symbol === 'g') return 'Gold deposit: economy buildings earn +5 gold per tick'
   if (symbol === '#') return 'Rock: impassable'
   return 'Ground: build within friendly range, leaving one hex between buildings'
@@ -420,13 +431,18 @@ export function terrainDescription(symbol: string) {
 
 // Where each faction may build now: buildable terrain within range of one of its active
 // buildings and at least two hexes from every living building, as the engine requires.
+// Under gold mines an empty mine and every hex beside a mine with gold left are closed.
 // Units also block a site, but they move every tick, so the tint ignores them.
 function buildAreas(map: BattleMap, state: BattleState) {
   const buildings = (state.buildings ?? []).filter((building) => building.health > 0)
+  const liveMines = (state.goldMines ?? []).filter((mine) => mine.remaining > 0)
+  const closed = (position: HexPosition) => buildings.some((building) => hexDistance(building.position, position) <= 1)
+    || liveMines.some((mine) => hexDistance(mine.position, position) === 1)
+    || (state.goldMines !== undefined && map.rows[position.y][position.x] === 'g' && !liveMines.some((mine) => key(mine.position) === key(position)))
   const areas = new Map<string, HexPosition[]>()
   map.rows.forEach((row, y) => [...row].forEach((symbol, x) => {
     const position = { x, y }
-    if (!'.gb'.includes(symbol) || buildings.some((building) => hexDistance(building.position, position) <= 1)) return
+    if (!'.gb'.includes(symbol) || closed(position)) return
     const factions = new Set(buildings
       .filter((building) => (building.readyAtTick ?? 0) <= state.tick && hexDistance(building.position, position) <= (building.buildRange || 3))
       .map((building) => building.factionId))

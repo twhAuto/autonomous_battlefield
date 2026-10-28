@@ -120,7 +120,7 @@ func newDecisionContext(lease queue.Lease, factionID string, targetTick uint64, 
 		View: snapshot.View, Economy: ai.EconomyContext{MaximumBuildings: snapshot.MaximumBuildings, CurrentBuildings: snapshot.CurrentBuildings, MaximumUnits: snapshot.MaximumUnits, CurrentUnits: snapshot.CurrentUnits, Gold: snapshot.Gold, ProjectedIncome: snapshot.ProjectedIncome,
 			EconomyBuildingCost: snapshot.EconomyCost, EconomyBuildingIncome: snapshot.EconomyIncome,
 			CurrentEconomyBuildings: snapshot.EconomyCount, MaximumEconomyBuildings: snapshot.MaximumEconomy},
-		Legal: ai.LegalChoices{Buildings: snapshot.LegalBuildings, RecruitmentSources: snapshot.RecruitmentSources, Upgrades: snapshot.LegalUpgrades, ActionKinds: []string{game.ActionAttack, game.ActionDefend}, Units: snapshot.LegalUnits, EconomySites: snapshot.LegalSites}, ActivePlan: snapshot.ActivePlan}
+		Legal: ai.LegalChoices{Buildings: snapshot.LegalBuildings, RecruitmentSources: snapshot.RecruitmentSources, Upgrades: snapshot.LegalUpgrades, ActionKinds: []string{game.ActionAttack, game.ActionDefend}, Units: snapshot.LegalUnits, EconomySites: snapshot.LegalSites, GoldMineSites: snapshot.LegalGoldMineSites}, ActivePlan: snapshot.ActivePlan}
 }
 
 func (w *Worker) logPreparedDecision(ctx context.Context, lease queue.Lease, targetTick uint64, factionID string, setup game.FactionSetup, record ai.DecisionRecord) {

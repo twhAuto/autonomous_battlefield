@@ -139,6 +139,9 @@ func (m *Match) scriptedProductionPlan(factionID string, plan controller.PlanPro
 	preferred = m.unlockedUnits(factionID, preferred)
 	orders := []controller.ProductionOrder{}
 	for _, id := range m.recruitmentSources(factionID) {
+		if len(orders) == controller.MaximumProductionOrders {
+			break
+		}
 		if unit := m.scriptedSourceUnit(factionID, m.recruitmentSource(factionID, id), preferred); unit != "" {
 			orders = append(orders, controller.ProductionOrder{BuildingID: id, UnitType: unit, Enabled: true})
 		}

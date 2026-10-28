@@ -1,16 +1,15 @@
 id: battlefield
-version: "9"
+version: "10"
 startingGold: 220
-maximumUnitCount: 40
+maximumUnitCount: 50
 continuousProduction: true
 library:
   id: core
-  version: "8"
+  version: "9"
   castle: castle
   economy: economy
 buildings:
-  maximumEconomyCount: 4
-  maximumBuildingCount: 16
+  goldMineReserve: 2000
 combat:
   minimumDamage: 1
   defendAttackPercent: 80

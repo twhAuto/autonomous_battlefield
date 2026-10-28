@@ -38,9 +38,6 @@ func ValidateRuleset(ruleset Ruleset) error {
 	if err := validateRulesetStructures(ruleset); err != nil {
 		return err
 	}
-	if len(ruleset.Structures) > 0 && ruleset.Buildings.MaximumBuildingCount == 0 {
-		return fmt.Errorf("%w: structures require a building limit", ErrInvalidRuleset)
-	}
 	if !validCombatRules(ruleset.Combat) {
 		return fmt.Errorf("%w: invalid combat rules", ErrInvalidRuleset)
 	}
@@ -63,7 +60,7 @@ func validBuildingRules(rules BuildingRules) bool {
 	if !ValidBuildingAttack(rules.CastleAttack, rules.CastleRange) {
 		return false
 	}
-	return rules.MaximumBuildingCount >= 0 && rules.MaximumBuildingCount <= MaximumBuildingCountLimit && rules.CastleHealth > 0 && rules.CastleDefense >= 0 && rules.CastleVision >= 0 && rules.CastleBuildRange >= 0 && rules.CastleBuildRange <= 10 && rules.CastleIncome >= 0 && rules.EconomyCost > 0 && rules.EconomyHealth > 0 && rules.EconomyDefense >= 0 && rules.EconomyVision >= 0 && rules.EconomyBuildRange >= 0 && rules.EconomyBuildRange <= 10 && rules.EconomyIncome >= 0 && rules.MaximumEconomyCount >= 0 && rules.MaximumEconomyCount <= MaximumBuildingCountLimit
+	return rules.MaximumBuildingCount >= 0 && rules.MaximumBuildingCount <= MaximumBuildingCountLimit && rules.CastleHealth > 0 && rules.CastleDefense >= 0 && rules.CastleVision >= 0 && rules.CastleBuildRange >= 0 && rules.CastleBuildRange <= 10 && rules.CastleIncome >= 0 && rules.EconomyCost > 0 && rules.EconomyHealth > 0 && rules.EconomyDefense >= 0 && rules.EconomyVision >= 0 && rules.EconomyBuildRange >= 0 && rules.EconomyBuildRange <= 10 && rules.EconomyIncome >= 0 && rules.MaximumEconomyCount >= 0 && rules.MaximumEconomyCount <= MaximumBuildingCountLimit && rules.GoldMineReserve >= 0 && rules.GoldMineReserve <= MaximumGoldMineReserve
 }
 
 // ValidBuildingAttack allows a passive building or a complete ranged attack.

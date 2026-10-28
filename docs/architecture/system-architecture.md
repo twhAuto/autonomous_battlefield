@@ -141,7 +141,9 @@ faction with only its castle, which shares the Barracks roster and fires in the
 tower phase using authored `castleAttack`/`castleRange`. Five constructible kinds
 provide specialized production. The `continuousProduction` ruleset flag selects v7 repeat purchases; frozen v6 and earlier retain batch queues. Frozen core v5 retains its starting Barracks and
 passive castle; older rulesets without rosters preserve their recruitment rules. Forest cover affects
-troop damage and deposits affect economy income. The map hides destroyed buildings;
+troop damage. Under gold-mine rulesets, economy income is drawn from finite mine
+reserves kept in `state.goldMines`, so state clones, checkpoints and replays carry
+each mine's remaining gold. The map hides destroyed buildings;
 the engine retains their records for results/history and releases their occupied hexes.
 It does not access PostgreSQL, HTTP,
 environment variables, or model providers.

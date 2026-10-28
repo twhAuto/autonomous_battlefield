@@ -50,6 +50,8 @@ type Map struct {
 	Rows         []string      `json:"rows" yaml:"rows"`
 	CastleSpawns [2]Position   `json:"castleSpawns" yaml:"castleSpawns"`
 	EconomySites [2][]Position `json:"economySites" yaml:"economySites"`
+	// GoldMineReserve overrides the ruleset's gold per mine for this map; zero uses it.
+	GoldMineReserve int64 `json:"goldMineReserve,omitempty" yaml:"goldMineReserve,omitempty"`
 }
 
 // Vision fields remain decodable for historical content; the engine does not use them.
@@ -112,18 +114,22 @@ type BuildingRules struct {
 	CastleBuildRange     int      `json:"castleBuildRange,omitempty" yaml:"castleBuildRange,omitempty"`
 	EconomyBuildRange    int      `json:"economyBuildRange,omitempty" yaml:"economyBuildRange,omitempty"`
 	MaximumBuildingCount int      `json:"maximumBuildingCount,omitempty" yaml:"maximumBuildingCount,omitempty"`
-	CastleTypeID         string   `json:"castleTypeId,omitempty" yaml:"castleTypeId,omitempty"`
-	EconomyTypeID        string   `json:"economyTypeId,omitempty" yaml:"economyTypeId,omitempty"`
-	CastleHealth         int64    `json:"castleHealth" yaml:"castleHealth"`
-	CastleDefense        int64    `json:"castleDefense" yaml:"castleDefense"`
-	CastleVision         int      `json:"castleVision" yaml:"castleVision"`
-	CastleIncome         int64    `json:"castleIncome" yaml:"castleIncome"`
-	EconomyCost          int64    `json:"economyCost" yaml:"economyCost"`
-	EconomyHealth        int64    `json:"economyHealth" yaml:"economyHealth"`
-	EconomyDefense       int64    `json:"economyDefense" yaml:"economyDefense"`
-	EconomyVision        int      `json:"economyVision" yaml:"economyVision"`
-	EconomyIncome        int64    `json:"economyIncome" yaml:"economyIncome"`
-	MaximumEconomyCount  int      `json:"maximumEconomyCount" yaml:"maximumEconomyCount"`
+	// GoldMineReserve is the gold each map gold deposit holds. When positive, every
+	// deposit is a finite mine, economy buildings stand only on mines with gold left,
+	// and MaximumEconomyCount zero means unlimited.
+	GoldMineReserve     int64  `json:"goldMineReserve,omitempty" yaml:"goldMineReserve,omitempty"`
+	CastleTypeID        string `json:"castleTypeId,omitempty" yaml:"castleTypeId,omitempty"`
+	EconomyTypeID       string `json:"economyTypeId,omitempty" yaml:"economyTypeId,omitempty"`
+	CastleHealth        int64  `json:"castleHealth" yaml:"castleHealth"`
+	CastleDefense       int64  `json:"castleDefense" yaml:"castleDefense"`
+	CastleVision        int    `json:"castleVision" yaml:"castleVision"`
+	CastleIncome        int64  `json:"castleIncome" yaml:"castleIncome"`
+	EconomyCost         int64  `json:"economyCost" yaml:"economyCost"`
+	EconomyHealth       int64  `json:"economyHealth" yaml:"economyHealth"`
+	EconomyDefense      int64  `json:"economyDefense" yaml:"economyDefense"`
+	EconomyVision       int    `json:"economyVision" yaml:"economyVision"`
+	EconomyIncome       int64  `json:"economyIncome" yaml:"economyIncome"`
+	MaximumEconomyCount int    `json:"maximumEconomyCount" yaml:"maximumEconomyCount"`
 }
 
 type CombatRules struct {
@@ -341,7 +347,15 @@ type UnitDeath struct {
 	Position  Position `json:"position"`
 }
 
+// GoldMine is the gold left in one map gold deposit under a gold-mine ruleset.
+type GoldMine struct {
+	Position  Position `json:"position"`
+	Reserve   int64    `json:"reserve"`
+	Remaining int64    `json:"remaining"`
+}
+
 type State struct {
+	GoldMines       []GoldMine     `json:"goldMines,omitempty"`
 	UnitDeaths      []UnitDeath    `json:"unitDeaths,omitempty"`
 	OpeningComplete bool           `json:"openingComplete,omitempty"`
 	BattleID        string         `json:"battleId"`
@@ -438,11 +452,13 @@ type Transition struct {
 type DecisionSnapshot struct {
 	ContinuousProduction bool           `json:"continuousProduction,omitempty"`
 	LegalBuildings       []BuildingType `json:"legalBuildings,omitempty"`
-	RecruitmentSources   []string       `json:"recruitmentSources,omitempty"`
-	MaximumBuildings     int            `json:"maximumBuildings,omitempty"`
-	CurrentBuildings     int            `json:"currentBuildings,omitempty"`
-	MaximumUnits         int            `json:"maximumUnits,omitempty"`
-	CurrentUnits         int            `json:"currentUnits,omitempty"`
+	// LegalGoldMineSites lists the mines an economy building may take this window.
+	LegalGoldMineSites []controller.Coordinate `json:"legalGoldMineSites,omitempty"`
+	RecruitmentSources []string                `json:"recruitmentSources,omitempty"`
+	MaximumBuildings   int                     `json:"maximumBuildings,omitempty"`
+	CurrentBuildings   int                     `json:"currentBuildings,omitempty"`
+	MaximumUnits       int                     `json:"maximumUnits,omitempty"`
+	CurrentUnits       int                     `json:"currentUnits,omitempty"`
 
 	FactionName     string                  `json:"factionName,omitempty"`
 	Background      string                  `json:"background,omitempty"`

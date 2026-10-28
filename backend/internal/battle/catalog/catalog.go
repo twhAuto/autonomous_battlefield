@@ -103,7 +103,10 @@ func (c *Catalog) Summaries() []battleservice.ScenarioSummary {
 	for _, id := range c.IDs() {
 		value := c.templates[id]
 		shared := c.rulesets[value.RulesetID]
-		result = append(result, battleservice.ScenarioSummary{AllowedUnits: unitIDs(shared), AllowedUpgrades: upgradeIDs(shared), AllowedBuildings: buildingIDs(shared), ID: value.ID, RulesVersion: value.RulesVersion, RulesetID: value.RulesetID, MaximumTicks: value.MaximumTicks, TickDuration: value.TickDuration, DecisionIntervalTicks: value.DecisionIntervalTicks, MapWidth: value.Map.Width, MapHeight: value.Map.Height, Map: game.CloneMap(value.Map)})
+		// Summaries report the effective gold per mine, including a ruleset default.
+		summaryMap := game.CloneMap(value.Map)
+		summaryMap.GoldMineReserve = game.GoldMineReserveFor(value.Map, shared.Buildings)
+		result = append(result, battleservice.ScenarioSummary{AllowedUnits: unitIDs(shared), AllowedUpgrades: upgradeIDs(shared), AllowedBuildings: buildingIDs(shared), ID: value.ID, RulesVersion: value.RulesVersion, RulesetID: value.RulesetID, MaximumTicks: value.MaximumTicks, TickDuration: value.TickDuration, DecisionIntervalTicks: value.DecisionIntervalTicks, MapWidth: value.Map.Width, MapHeight: value.Map.Height, Map: summaryMap})
 	}
 	return result
 }

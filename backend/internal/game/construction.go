@@ -56,15 +56,20 @@ func constructionBuildingRange(state State, factionID string, site Position) (bo
 }
 
 // legalConstructionSites is shared by decision snapshots and scripted defaults, so
-// a full shared building limit offers no site to either.
+// a full shared building limit offers no site to either. Under gold mines it lists
+// sites for non-economy structures; legalGoldMineSites lists economy sites.
 func (m *Match) legalConstructionSites(factionID string) []controller.Coordinate {
+	return m.legalSitesFor(factionID, "")
+}
+
+func (m *Match) legalSitesFor(factionID, kind string) []controller.Coordinate {
 	sites := []controller.Coordinate{}
 	limit := m.scenario.Ruleset.Buildings.MaximumBuildingCount
 	if len(ConstructibleBuildings(m.scenario.Ruleset)) == 0 || limit > 0 && m.LivingStructureCount(factionID) >= limit {
 		return sites
 	}
 	for _, p := range allPositions(m.scenario.Map) {
-		if ConstructionReason(m.scenario.Map, m.state, factionID, p) == "" {
+		if ConstructionReason(m.scenario.Map, m.state, factionID, p) == "" && m.goldMineReason(kind, p) == "" {
 			sites = append(sites, controller.Coordinate{X: p.X, Y: p.Y})
 		}
 	}

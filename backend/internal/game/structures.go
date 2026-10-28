@@ -11,7 +11,7 @@ import (
 // ConstructibleBuildings includes the legacy economy definition for a uniform API.
 func ConstructibleBuildings(r Ruleset) []BuildingType {
 	result := CloneBuildingTypes(r.Structures)
-	if r.Buildings.MaximumEconomyCount > 0 {
+	if EconomyAvailable(r.Buildings) {
 		b := r.Buildings
 		result = append([]BuildingType{{BuildRange: effectiveBuildRange(b.EconomyBuildRange), ID: BuildingEconomy, Kind: BuildingEconomy, Cost: b.EconomyCost, Health: b.EconomyHealth, Defense: b.EconomyDefense, Vision: b.EconomyVision, Income: b.EconomyIncome}}, result...)
 	}
@@ -35,6 +35,9 @@ func (m *Match) buildStructureAt(factionID, kind string, site Position, reserve 
 		if count >= m.scenario.Ruleset.Buildings.MaximumBuildingCount {
 			return Building{}, "maximum_reached"
 		}
+	}
+	if reason := m.goldMineReason(kind, site); reason != "" {
+		return Building{}, reason
 	}
 	if kind == BuildingEconomy {
 		return m.buildEconomyBuildingAt(factionID, site, reserve)
@@ -107,6 +110,9 @@ func (m *Match) runTowers(tactics map[string]string) []Event {
 
 // Default plans choose currently legal, separated sites, favoring deposits.
 func (m *Match) defaultConstructionOrders(slot int) []controller.ConstructionOrder {
+	if m.scenario.Ruleset.Buildings.GoldMinesEnabled() {
+		return m.goldMineConstructionOrders(slot)
+	}
 	factionID := m.scenario.Factions[slot].ID
 	sites := m.legalConstructionSites(factionID)
 	enemy := m.scenario.Map.CastleSpawns[1-slot]
@@ -173,7 +179,8 @@ func (m *Match) assignForwardRecruitment(factionID string, plan *controller.Plan
 }
 
 // MaximumBuildingCountLimit bounds authored shared structure limits so every owned
-// source, castle included, fits in one plan's production orders.
+// source, castle included, fits in one plan's production orders. Rulesets without a
+// limit can own more sources; omitted sources keep their settings across windows.
 const MaximumBuildingCountLimit = controller.MaximumProductionOrders - 1
 
 // LivingStructureCount counts the non-castle buildings that share maximumBuildingCount.
@@ -211,7 +218,7 @@ func (m *Match) missingConstructionKinds(factionID string) []string {
 		}
 	}
 	kinds := []string{}
-	if owned[BuildingEconomy] < m.scenario.Ruleset.Buildings.MaximumEconomyCount {
+	if rules := m.scenario.Ruleset.Buildings; EconomyAvailable(rules) && !economyLimitReached(rules, owned[BuildingEconomy]) {
 		kinds = append(kinds, BuildingEconomy)
 	}
 	for _, b := range m.scenario.Ruleset.Structures {

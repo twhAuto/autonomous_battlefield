@@ -356,8 +356,17 @@ func TestExpansionRulesRejectInvalidCapabilities(t *testing.T) {
 	}
 	r := m.scenario.Ruleset
 	r.Buildings.MaximumBuildingCount = 0
+	if ValidateRuleset(r) != nil {
+		t.Fatal("uncapped structures rejected")
+	}
+	r = m.scenario.Ruleset
+	r.Buildings.GoldMineReserve = -1
 	if ValidateRuleset(r) == nil {
-		t.Fatal("uncapped structures accepted")
+		t.Fatal("negative gold mine reserve accepted")
+	}
+	r.Buildings.GoldMineReserve = MaximumGoldMineReserve + 1
+	if ValidateRuleset(r) == nil {
+		t.Fatal("oversized gold mine reserve accepted")
 	}
 	r = m.scenario.Ruleset
 	r.Buildings.MaximumBuildingCount = MaximumBuildingCountLimit + 1
