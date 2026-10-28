@@ -100,3 +100,16 @@ it('explains empty, truncated and failed reports', async () => {
   show()
   expect(await screen.findByRole('alert')).toHaveTextContent('developers and administrators')
 })
+
+it('drops the previous report when a filter change fails', async () => {
+  let fail = false
+  serve(() => fail ? reply(500, {}) : reply(200, report()))
+  const user = userEvent.setup()
+  show()
+  expect(await screen.findByRole('table', { name: 'Faction records' })).toBeInTheDocument()
+  fail = true
+  await user.click(screen.getByRole('checkbox', { name: 'Every rules version' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Statistics unavailable')
+  expect(screen.queryByRole('table', { name: 'Faction records' })).not.toBeInTheDocument()
+  expect(screen.queryByText('Win rate by controller')).not.toBeInTheDocument()
+})

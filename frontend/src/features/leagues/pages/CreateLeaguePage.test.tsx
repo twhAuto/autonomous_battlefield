@@ -48,8 +48,8 @@ it('starts a league with every entrant and the chosen settings', async () => {
   await user.selectOptions(screen.getByLabelText('Controller', { selector: '#entrant-1-controller' }), 'claude')
   const estimate = screen.getByRole('region', { name: 'League estimate' })
   expect(within(estimate).getByText('30')).toBeInTheDocument()
-  // One model entrant of eight: a quarter of a model side per battle, 50 windows each.
-  expect(within(estimate).getByText('up to 375')).toBeInTheDocument()
+  // One model entrant can play six group battles and four knockout legs, 51 decisions each.
+  expect(within(estimate).getByText('up to 510')).toBeInTheDocument()
   await user.click(start)
   expect(await screen.findByRole('heading', { name: 'League page' })).toBeInTheDocument()
   const body = JSON.parse(String(vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === 'POST')?.[1]?.body))

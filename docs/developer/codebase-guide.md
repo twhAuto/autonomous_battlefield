@@ -375,8 +375,8 @@ only its own battles. [`league/api`](../../backend/internal/league/api) serves t
 `/v1/leagues` routes. `internal/app` composes the service and `cmd/server` starts the
 scheduler with `App.StartLeagueScheduler`. The frontend pages are in `features/leagues`:
 `LeaguesPage`, `CreateLeaguePage` (estimates in `presentation/leagues.ts`) and
-`LeaguePage`. `battle/repo/battles.go` adds a battle's
-league to `GetBattle`, and `migrations/leagues_integration_test.go` covers the budget
+`LeaguePage`. `GetBattle` in `battle/repo/battles.go` returns a battle's
+league, and `migrations/leagues_integration_test.go` covers the budget
 exemption and the downgrade guard.
 
 ## Analytics implementation
