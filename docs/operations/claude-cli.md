@@ -1,11 +1,16 @@
 # Claude subscription CLI
 
 The `claude-subscription-local` profile runs the `claude-cli` provider on the host,
-using Claude Code **2.1.267 or newer** locally and the **sonnet** model alias.
+using Claude Code **2.1.267** locally and the **sonnet** model alias.
 It is selectable through
 the same model catalog as Codex and Antigravity, with existing role restrictions.
 
-1. Install Claude Code 2.1.267 or a newer stable release for local development using the [official installation instructions](https://code.claude.com/docs/en/setup).
+1. Install Claude Code 2.1.267 for local development using the [official installation instructions](https://code.claude.com/docs/en/setup),
+   and turn off its automatic updates (`"autoUpdates": false` in `~/.claude.json`).
+   The profile accepts only a CLI whose `claude --version` output starts with the
+   profile's `supportedVersionPrefix` (`"2.1.267 "`); any other version, newer
+   included, leaves the profile unavailable as "claude CLI version is not supported".
+   Raise it only through the CLI upgrade described below.
 2. Run `claude auth login` and sign in with a Claude subscription. The worker checks
    `claude auth status --json` for a saved `claude.ai` login. API-key and Console logins do
    not satisfy this profile. Authentication stays on the host in its native location.

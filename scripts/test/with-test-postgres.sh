@@ -34,6 +34,13 @@ for command in docker od tr; do
     exit 1
   fi
 done
+# A docker CLI without a reachable daemon (for example, Docker Desktop stopped or its
+# WSL integration off) would otherwise fail inside the container start below.
+if ! docker_output="$(docker info --format '{{.ServerVersion}}' 2>&1)"; then
+  echo "${docker_output}" >&2
+  echo "Docker is not reachable: start Docker (or enable Docker Desktop's WSL integration) and retry." >&2
+  exit 1
+fi
 
 container_id="$(docker run --detach --rm \
   --name "${container_name}" \

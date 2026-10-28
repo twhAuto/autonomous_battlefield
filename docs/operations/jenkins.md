@@ -58,12 +58,25 @@ that job's **Script Path** by hand.
 The Multibranch job uses the `github-app-battlefield` credential and builds only
 `main` and `PR-N` heads. It merges each origin PR with its current target, and it
 excludes branches that are also filed as PRs. Pushes to `dev` and work branches
-therefore build nothing.
+therefore build nothing. A merged `dev` head is covered by its PR's last build when
+`git rev-parse MERGE^{tree}` equals `git merge-tree --write-tree TARGET HEAD`, where
+`MERGE` is the merge commit on `dev` and `TARGET` and `HEAD` are the commits named in
+that build's
+`Merging remotes/origin/dev commit TARGET into PR head commit HEAD` console line.
 
 GitHub cannot reach Jenkins on the private network, so there is no webhook; the
 periodic scan discovers new PRs and commits. Run **Scan Repository Now** on the job
 to pick up a change sooner. Add a webhook only after Jenkins has an authenticated,
 HTTPS-protected address that GitHub can reach.
+
+A scan builds a PR when it first appears and whenever its head commit changes; a
+newer target-branch commit alone starts no build. A PR that conflicts with its
+target gets no `PR-N` job until the conflict is resolved and a scan runs, so check
+the PR's mergeability before looking for a missing build. To rebuild without a new
+commit, use **Build with Parameters** on the `PR-N` job (a plain build request is
+rejected because the job takes parameters); the rebuild reuses the previous build's
+revisions. Before treating a green build as evidence, compare the revision it built
+with the current PR head and target tip.
 
 Each `PR-N` child job numbers its builds independently, and the `Jenkinsfile`
 keeps the last 20 builds of each active job. Closed PRs become orphaned child jobs,
