@@ -127,9 +127,9 @@ Tests are colocated with their Go or React implementation. The codebase includes
 Go tests assert with plain `if` statements and `t.Fatal`. SonarQube's cognitive
 complexity rule (go:S3776, limit 15) applies to test code too, so a long test is
 split into named `check…` helpers with `t.Helper()` rather than hiding branches in
-an assertion wrapper. Run
-`go run github.com/uudashr/gocognit/cmd/gocognit@latest -over 15 .` in `backend/`
-before pushing. Component tests verify accessibility roles from labelled sections
+an assertion wrapper. `./scripts/ci/lint-go.sh`, which the PR pipeline's Go lint
+stage runs, enforces that limit with a pinned gocognit; run it before pushing.
+Component tests verify accessibility roles from labelled sections
 and native `output` elements rather than redundant explicit role attributes.
 
 Other test locations:

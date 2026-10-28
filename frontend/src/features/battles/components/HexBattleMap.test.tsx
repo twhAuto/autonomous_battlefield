@@ -550,10 +550,16 @@ it('shows each gold mine\'s gold left, depleted mines and the mine under an econ
     { position: { x: 0, y: 1 }, reserve: 800, remaining: 0 },
   ], units: [], buildings: [{ id: 'a:economy:1', factionId: 'a', type: 'economy', position: { x: 0, y: 0 }, health: 60, maxHealth: 60, defense: 2, vision: 2, income: 15 }] }
   const { container } = render(<HexBattleMap map={mineMap} state={mineState} factionNames={new Map()} />)
-  expect(screen.getByText(/^Gold mine: 120 of 800 gold left; economy buildings only, none beside it · \(0, 0\)/)).toBeInTheDocument()
-  expect(screen.getByText(/^Depleted gold mine: no gold left; no construction · \(0, 1\)/)).toBeInTheDocument()
+  // The tile and its badge both describe the mine; only the tile names its territory.
+  expect(screen.getAllByText(/^Gold mine: 120 of 800 gold left; economy buildings only, none beside it · \(0, 0\)/)).toHaveLength(2)
+  expect(screen.getAllByText(/^Depleted gold mine: no gold left; no construction · \(0, 1\)/)).toHaveLength(2)
   expect(container.querySelectorAll('.gold-mine--depleted')).toHaveLength(1)
-  expect(container.querySelectorAll('.mine-reserve__value')[0]).toHaveAttribute('width', '2.4')
+  // Badges over the entities show the gold left, with a bar of the reserve's share.
+  const badges = [...container.querySelectorAll('.mine-reserve')]
+  expect(badges.map((badge) => badge.querySelector('text')!.textContent)).toEqual(['120', '0'])
+  expect(Number(badges[0].querySelector('.mine-reserve__value')!.getAttribute('width'))).toBeCloseTo(3.6)
+  expect(badges[1]).toHaveClass('mine-reserve--depleted')
+  expect(badges[0].compareDocumentPosition(container.querySelector('.map-entity')!) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
   await userEvent.click(screen.getByText('Map legend'))
   expect(screen.getByText(/Gold mine · economy only, none beside it; finite gold/)).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: /Economy/ }))

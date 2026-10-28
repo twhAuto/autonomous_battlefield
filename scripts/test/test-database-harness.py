@@ -41,6 +41,9 @@ if name == 'go':
     if args[0] == 'env': print('go1.26.0')
     elif args[0] == 'tool': print('total: (statements) 90.0%')
 else:
+    if args[0] == 'info' and os.environ.get('DOCKER_DOWN'):
+        print('Cannot connect to the Docker daemon', file=sys.stderr)
+        sys.exit(1)
     if args[0] == 'run': print('a' * 64)
     elif args[0] == 'ps': print('a' * 64)
     elif args[0] == 'inspect':
@@ -103,6 +106,14 @@ else:
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), CONTAINER)
         self.assertIn(['docker', 'rm', '--force', CONTAINER], self.calls())
+
+    def test_wrapper_explains_an_unreachable_docker_daemon(self):
+        self.env['DOCKER_DOWN'] = '1'
+        result = self.run_script('test/with-test-postgres.sh', 'true')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('Cannot connect to the Docker daemon', result.stderr)
+        self.assertIn('Docker is not reachable', result.stderr)
+        self.assertFalse(any(call[:2] == ['docker', 'run'] for call in self.calls()), self.calls())
 
 
 if __name__ == '__main__':
