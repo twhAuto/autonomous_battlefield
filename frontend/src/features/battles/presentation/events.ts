@@ -12,15 +12,25 @@ export function matchesPreset(event: BattleEvent, preset: EventPreset) {
   return ({ key: keyEvents, combat: combatEvents, economy: economyEvents })[preset].has(event.type)
 }
 
+type EventLabel = (key: string, fallback: string) => string
+
+// Older destruction events carry no killer, so they keep their original wording.
+function destructionSummary(event: BattleEvent, label: EventLabel) {
+  const killer = typeof event.data.killerId === 'string' ? ` by ${label('killerId', 'an attacker')}` : ''
+  if (event.type === 'castle_destroyed') return `${label('castleId', 'A castle')} was destroyed${killer}.`
+  if (event.type === 'building_destroyed') return `${label('buildingId', 'A building')} was destroyed${killer}.`
+  if (killer) return `${label('unitId', 'A unit')} was destroyed${killer}.`
+  return `${label('unitId', 'A unit')} was lost.`
+}
+
 /** Summaries use only structured event fields; original payloads remain available. */
 export function eventSummary(event: BattleEvent, naming: EntityNaming) {
-  const label = (key: string, fallback: string) => typeof event.data[key] === 'string' ? eventStringLabel(key, event.data[key] as string, naming) : fallback
+  const label: EventLabel = (key, fallback) => typeof event.data[key] === 'string' ? eventStringLabel(key, event.data[key] as string, naming) : fallback
   const actor = label('factionId', 'A faction')
   const upgradeCost = typeof event.data.cost === 'number' ? ` for ${event.data.cost} gold` : ''
   const repairAmount = typeof event.data.amount === 'number' ? `${event.data.amount} HP` : 'an unknown amount'
   const repairCost = typeof event.data.cost === 'number' ? `${event.data.cost} gold` : 'unknown cost'
   const amount = typeof event.data.amount === 'number' ? `${event.data.amount} gold` : 'gold'
-  const killer = typeof event.data.killerId === 'string' ? ` by ${label('killerId', 'an attacker')}` : ''
   switch (event.type) {
     case 'battle_created': case 'battle_queued': case 'battle_started': case 'battle_paused': case 'battle_resumed': case 'battle_stopped': case 'battle_failed': return `The battle ${event.type.slice(7)}.`
     case 'opening_completed': return 'The opening phase ended.'
@@ -37,9 +47,7 @@ export function eventSummary(event: BattleEvent, naming: EntityNaming) {
     case 'unit_queued': return `${actor} queued ${label('unitType', 'reinforcements')} for training.`
     case 'unit_recruited': return `${actor} recruited ${label('unitType', 'reinforcements')}.`
     case 'building_constructed': return `${actor} constructed ${label('buildingType', 'a building')}.`
-    case 'castle_destroyed': return `${label('castleId', 'A castle')} was destroyed${killer}.`
-    case 'unit_destroyed': case 'unit_died': return killer ? `${label('unitId', 'A unit')} was destroyed${killer}.` : `${label('unitId', 'A unit')} was lost.`
-    case 'building_destroyed': return `${label('buildingId', 'A building')} was destroyed${killer}.`
+    case 'castle_destroyed': case 'unit_destroyed': case 'unit_died': case 'building_destroyed': return destructionSummary(event, label)
     case 'income_collected': case 'loot_collected': return `${actor} collected ${amount}${event.type === 'loot_collected' ? ' in loot' : ' in income'}.`
     case 'battle_completed': return typeof event.data.winnerFactionId === 'string' ? `${label('winnerFactionId', 'A faction')} won the battle.` : 'The battle ended.'
     default: return `${event.type.charAt(0).toUpperCase()}${event.type.slice(1).replaceAll('_', ' ')}.`
