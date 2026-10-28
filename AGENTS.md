@@ -31,30 +31,57 @@ requirement for a specific change.
 
 Workflow skills live in `.agents/skills/` (linked from `.claude/skills/`). Use the
 matching skill for ticket linking, PRs, CI/SonarQube triage, releases and recovery,
-major documentation work, and backlog tickets.
+documentation edits, and backlog tickets.
 
 ## Documentation maintenance
 
-Keep documentation synchronized with every implementation change:
+Docs describe the system as it is now, for someone new to the project. They are
+not a change log: commits, PR descriptions and Notion tickets record what changed
+and why. Follow the [write-project-docs skill](.agents/skills/write-project-docs/SKILL.md)
+for every doc edit.
 
-- Runtime components, boundaries, data flows, persistence, security, configuration,
-  deployment or operational behavior: update
-  `docs/architecture/system-architecture.md` and affected operations guides.
-- Model runners, prompts, MCP tools, decision context, plan validation or
-  background generation: update `docs/architecture/ai-decisions.md`.
-- Schema, migrations, database roles, grants or triggers: update
+- **Current state only.** No ticket IDs, PR numbers, before/after measurements, or
+  change words such as "adds", "now", "no longer", "existing" or "former". State
+  compatibility with older data or clients as part of today's contract (for
+  example, "results without per-type figures omit these lists"), once, in the
+  owning doc. Rollout steps for one change belong in its PR and ticket; operations
+  guides keep only standing procedures.
+- **One owner per fact.** State each fact in its owning doc below and link to it
+  from elsewhere instead of restating it.
+- **Merge, don't append.** Put new behavior into the section that already covers
+  its topic and rewrite that section so it still reads as one description. Do not
+  add a section per feature, ticket or migration. Delete text the change made stale
+  or redundant.
+- **Keep each doc at its level.** Architecture docs cover boundaries, data flows,
+  invariants and trade-offs. Developer guides say where code lives and how to
+  change it, not what each function or test does. Leave UI timings, cache sizes,
+  keyboard handling and test inventories to the code unless a reader needs them to
+  act.
+- **No doc change is a valid outcome.** Internal changes that alter no documented
+  behavior need no doc edit; say so in the PR, after checking that the docs remain
+  accurate.
+
+Owning docs:
+
+- Gameplay rules and scenario mechanics: `docs/game/`.
+- Runtime components, boundaries, data flows, security, configuration and
+  deployment topology: `docs/architecture/system-architecture.md`.
+- Model runners, prompts, MCP tools, decision context, plan validation and
+  background generation: `docs/architecture/ai-decisions.md`.
+- Schema, migrations, database roles, grants and triggers:
   `docs/architecture/database.md`.
-- API routes or fields: update `docs/architecture/openapi.yaml`; update
-  `docs/architecture/api.md` when permissions, retries or other behavior change.
-- Packages, entry points, important types, routes, migrations, frontend areas,
-  tests or common workflows: update `docs/developer/codebase-guide.md`.
-- Setup steps, capabilities, commands, ports or documentation entry points: update
-  `README.md`.
-- Skip mechanical edits for internal changes that alter no documented behavior,
-  but verify the docs remain accurate. Check links, diagrams, examples, paths and
-  commands in every affected document against the working tree.
-  `python3 scripts/test/test-doc-links.py` checks every internal Markdown link and
-  heading anchor; `./scripts/test/test-deployment.sh` runs it on every PR.
+- API routes and fields: `docs/architecture/openapi.yaml`. Permissions, errors,
+  retries and other API behavior: `docs/architecture/api.md`.
+- Source layout, entry points and change paths: `docs/developer/codebase-guide.md`
+  and the focused developer guides. `docs/developer/component-map.md` is
+  generated; never hand-edit it.
+- Procedures for operating environments: `docs/operations/`.
+- Setup, capabilities, ports and documentation entry points: `README.md`.
+
+Check links, diagrams, examples, paths and commands in every touched doc against
+the working tree. `python3 scripts/test/test-doc-links.py` checks every internal
+Markdown link and heading anchor; `./scripts/test/test-deployment.sh` runs it on
+every PR.
 
 ## Test coverage quality gate
 
