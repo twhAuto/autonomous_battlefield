@@ -16,7 +16,8 @@ const root3 = Math.sqrt(3)
 
 /**
  * `actions` adds page controls to the toolbar; the expanded dialog omits them. `covered`
- * makes the inline map inert while page content lies over it.
+ * makes the inline map inert while page content lies over it; an open dialog stays usable,
+ * since a live battle can settle while it is open.
  */
 export function HexBattleMap({ map, state, factionNames, actions, covered = false }: Readonly<{
   map: BattleMap
@@ -94,7 +95,7 @@ export function HexBattleMap({ map, state, factionNames, actions, covered = fals
   }
 
   const content = (
-    <section className="map-panel" aria-label="Castle siege map" inert={covered}>
+    <section className="map-panel" aria-label="Castle siege map" inert={covered && !expanded}>
       <div className="map-toolbar">
         <span>HEX TACTICAL MAP · TICK {state.tick}</span>
         <div className="map-toolbar__controls">

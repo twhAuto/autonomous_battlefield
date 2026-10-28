@@ -163,6 +163,21 @@ test('a settled battle replays inside the command center', async ({ page, isMobi
   await expect(page.getByRole('button', { name: 'WATCH REPLAY' })).toBeVisible()
 })
 
+test('a battle that settles while the map is expanded keeps the dialog usable', async ({ page }) => {
+  const battle = { ...battleFixture(), status: 'running', currentTick: 80, result: null as ReturnType<typeof battleFixture>['result'] | null }
+  await page.route(`**/v1/battles/${battleId}`, route => route.fulfill({ json: battle }))
+  await page.goto(`/battles/${battleId}`)
+  await page.getByRole('button', { name: 'Expand map' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  Object.assign(battle, { status: 'completed', currentTick: 89, result: battleFixture().result })
+  await expect(page.getByRole('region', { name: 'After-action statistics' })).toBeAttached()
+  await dialog.getByRole('button', { name: 'Zoom in' }).click()
+  await dialog.getByRole('button', { name: 'Close map' }).click()
+  await expect(dialog).not.toBeVisible()
+  await expect(page.getByRole('region', { name: 'After-action statistics' })).toBeVisible()
+})
+
 test('the full map stays available without faction-view requests', async ({ page }) => {
   const liveBattle = battleFixture()
   liveBattle.state.buildings[1].health = 100

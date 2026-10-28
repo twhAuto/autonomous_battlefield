@@ -509,3 +509,29 @@ it('clears the selection from empty ground or the details, but not when a pan en
   expect(details()).toHaveTextContent('Select a castle, building, or unit for details.')
   expect(castle).toHaveFocus()
 })
+
+it('makes only the inline map inert while covered, never an open dialog', async () => {
+  const dialog = HTMLDialogElement.prototype
+  const original = { showModal: Object.getOwnPropertyDescriptor(dialog, 'showModal'), close: Object.getOwnPropertyDescriptor(dialog, 'close') }
+  Object.defineProperty(dialog, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute('open', '') } })
+  Object.defineProperty(dialog, 'close', { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute('open') } })
+  const view = render(<HexBattleMap map={map} state={state} factionNames={new Map()} />)
+  try {
+    const panel = () => view.container.querySelector('.map-panel')!
+    expect(panel()).not.toHaveAttribute('inert')
+    view.rerender(<HexBattleMap map={map} state={state} factionNames={new Map()} covered />)
+    expect(panel()).toHaveAttribute('inert')
+    view.rerender(<HexBattleMap map={map} state={state} factionNames={new Map()} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Expand map' }))
+    // A live battle can settle, and be covered by its results, while the dialog is open.
+    view.rerender(<HexBattleMap map={map} state={state} factionNames={new Map()} covered />)
+    expect(panel()).not.toHaveAttribute('inert')
+    expect(screen.getByRole('button', { name: 'Close map' })).toBeEnabled()
+  } finally {
+    view.unmount()
+    for (const [name, descriptor] of Object.entries(original)) {
+      if (descriptor) Object.defineProperty(dialog, name, descriptor)
+      else delete (dialog as unknown as Record<string, unknown>)[name]
+    }
+  }
+})
