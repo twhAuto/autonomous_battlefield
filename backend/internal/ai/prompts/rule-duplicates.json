@@ -1,5 +1,5 @@
 {
-  "mechanicsSHA256": "24b4c2693a19fc69682c41783d52a2d0b417b242d2e0af11a76150953c74d1b6",
+  "mechanicsSHA256": "30499a77c467b530d0b3d7413eb14854fb4057fba7a786982abc324337e5b8b9",
   "rules": [
     {
       "prompt": "The entire battlefield is visible.",
@@ -64,7 +64,8 @@
       "prompt": "Only clear ground and gold deposits permit construction; units block placement and every pair of living buildings must have hex distance at least 2.",
       "mechanics": [
         "Buildings must be at least two hexes apart and never beside a mine with gold left; units block construction.",
-        "Buildings need clear ground within buildRange of an active friendly building; economy buildings need a gold mine (gold deposit) with gold left, which no other building may take."
+        "Buildings need clear ground in your territory (within buildRange of an active friendly building) and outside enemy territory: overlapping ground is contested and closed to both sides until buildings fall.",
+        "Economy buildings need a gold mine (gold deposit) with gold left, which no other building may take."
       ]
     },
     {
@@ -77,7 +78,7 @@
     {
       "prompt": "New sources activate next tick.",
       "mechanics": [
-        "Castles and defense towers fire before units; newly built towers and training buildings become active next tick; outposts grant construction range."
+        "Castles and defense towers fire before units; newly built towers and training buildings become active next tick; outposts extend territory."
       ]
     },
     {

@@ -23,7 +23,7 @@ export function BattleReplay({ battle, map, decisions, decisionMessage, particip
     <div className="battle-map-column">
       <ReplayControls replay={replay} finalTick={battle.currentTick} onExit={onExit} />
       {frame
-        ? <HexBattleMap map={map} state={frame.state} factionNames={participantNames} />
+        ? <HexBattleMap map={map} state={frame.state} factionNames={participantNames} contestedTerritory={battle.contestedTerritory} />
         : !replay.error && <output className="replay-loading">Loading replay…</output>}
     </div>
   </>

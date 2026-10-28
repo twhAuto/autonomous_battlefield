@@ -69,7 +69,7 @@ func TestBattleResponsesExposeNextProduction(t *testing.T) {
 	}
 }
 
-func TestBattleResponsesReportTheUnitCapOnlyWhenLimited(t *testing.T) {
+func TestBattleResponsesReportTheUnitCapAndContestedTerritoryOnlyWhenSet(t *testing.T) {
 	run := &battleservice.BattleRun{ID: "battle", Status: "running", ScenarioSnapshot: game.Scenario{Ruleset: game.Ruleset{MaximumUnitCount: 40}}}
 	for _, role := range []authn.Role{authn.Player, authn.Developer} {
 		request := httptest.NewRequest("GET", "/v1/battles/battle", nil).WithContext(authn.WithActor(context.Background(), authn.Actor{ID: "viewer", Role: role}))
@@ -85,12 +85,18 @@ func TestBattleResponsesReportTheUnitCapOnlyWhenLimited(t *testing.T) {
 			return body
 		}
 		run.ScenarioSnapshot.Ruleset.MaximumUnitCount = 40
-		if limit := read()["maximumUnits"]; limit != 40.0 {
-			t.Fatalf("%s maximumUnits = %v", role, limit)
+		run.ScenarioSnapshot.Ruleset.Buildings.ContestedTerritory = true
+		if body := read(); body["maximumUnits"] != 40.0 || body["contestedTerritory"] != true {
+			t.Fatalf("%s maximumUnits = %v, contestedTerritory = %v", role, body["maximumUnits"], body["contestedTerritory"])
 		}
 		run.ScenarioSnapshot.Ruleset.MaximumUnitCount = 0
-		if _, present := read()["maximumUnits"]; present {
+		run.ScenarioSnapshot.Ruleset.Buildings.ContestedTerritory = false
+		body := read()
+		if _, present := body["maximumUnits"]; present {
 			t.Fatalf("%s reports a cap for an unlimited ruleset", role)
+		}
+		if _, present := body["contestedTerritory"]; present {
+			t.Fatalf("%s reports contested territory for a ruleset without it", role)
 		}
 	}
 }

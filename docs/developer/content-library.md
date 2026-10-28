@@ -6,7 +6,7 @@ Every live map uses one shared ruleset. The catalog embeds and validates:
   decision interval, fallback and scripted plans.
 - `backend/gamedata/rulesets/battlefield.yaml`: shared starting gold, combat rules,
   unit and building limits, default gold per mine and content-library reference.
-- `backend/gamedata/content/core-v9.yaml`: all units, upgrades, buildings and AI knowledge.
+- `backend/gamedata/content/core-v10.yaml`: all units, upgrades, buildings and AI knowledge.
 - `backend/gamedata/scenarios/*.yaml`: map ID, geometry and gold per mine only.
 
 The shipped maps are `castle-siege` (15×11), `frontier-siege` (25×17),
@@ -57,16 +57,17 @@ upgrades and valid non-castle structures; there are no selection lists.
 The shared ruleset points to the library using `library.id`, `library.version`,
 `library.castle` and `library.economy`. It owns starting gold, building limits
 (`buildings.maximumBuildingCount` and `maximumEconomyCount`, each 0–16; 0 is
-unlimited), the default gold per mine (`buildings.goldMineReserve`, 0–1,000,000), the
+unlimited), the default gold per mine (`buildings.goldMineReserve`, 0–1,000,000),
+whether overlapping territory is closed to construction (`buildings.contestedTerritory`), the
 per-faction `maximumUnitCount` (0–200; 0 is unlimited), combat percentages and
 `continuousProduction`. A positive `goldMineReserve` turns every `g` hex into a
 finite gold mine that economy buildings require; without it, `maximumEconomyCount: 0`
-offers no economy buildings. The live ruleset v10 sets no building limits, 50 units
-and 2,000 gold per mine, and references core v9, which includes the late-game
-unlocks.
+offers no economy buildings. The live ruleset v11 sets no building limits, 50 units,
+2,000 gold per mine and contested territory, and references core v10, which includes
+the late-game unlocks.
 `continuousProduction: true` enables continuous AI-selected unit production; absent
-or false selects the batch purchases of frozen older battles. The archived `content/core-v8.yaml` and `content/core-v7.yaml` are the authored
-references for earlier active libraries, and `content/core-v6.yaml` for the
+or false selects the batch purchases of frozen older battles. The archived `content/core-v9.yaml`, `content/core-v8.yaml` and `content/core-v7.yaml`
+are the authored references for earlier active libraries, and `content/core-v6.yaml` for the
 castle-training/attacking version with batch queues. They are not the active library
 and are not needed to replay self-contained saved snapshots. Inline rulesets remain readable for self-contained fixtures.
 Content IDs/versions allow letters, digits, dashes and underscores. Invalid stats,

@@ -210,10 +210,11 @@ rows initially; Show more reveals loaded rows. A polite status announces counts.
 [`HexBattleMap.tsx`](../../frontend/src/features/battles/components/HexBattleMap.tsx)
 draws the SVG map: entity icons, HP bars, movement routes, tracking and
 fixed-position attack markers, tower fire, healing lines and death markers. Each
-faction's build area is tinted in its faction color, following the
-[construction rules](../game/game-rules.md#construction-and-training) except that
-units, which move every tick, do not clear the tint. A tile's tooltip names the
-factions that can build there. Pages can add toolbar controls through the `actions`
+faction's [territory](../game/game-rules.md#construction-and-training) is tinted in
+its faction color. When the battle response sets `contestedTerritory`, overlapping
+territory is hatched instead and the legend explains it is closed to construction;
+otherwise overlapping tints blend. A tile's tooltip names the faction whose territory
+it is, or the factions contesting it. Pages can add toolbar controls through the `actions`
 prop, which the expanded dialog leaves out, and mark the inline map `covered` to make
 it inert beneath page content.
 `features/battles/battles.css` and `map.css` own the battle layout; browser tests

@@ -68,8 +68,8 @@ func TestMapsSpreadFiniteGoldFromHomeToCentre(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := s.Ruleset
-		if !r.Buildings.GoldMinesEnabled() || r.Buildings.MaximumBuildingCount != 0 || r.Buildings.MaximumEconomyCount != 0 || r.MaximumUnitCount != 50 {
-			t.Fatalf("%s: ruleset %s v%s must use gold mines, no building limits and 50 units", id, r.ID, r.Version)
+		if !r.Buildings.GoldMinesEnabled() || !r.Buildings.ContestedTerritory || r.Buildings.MaximumBuildingCount != 0 || r.Buildings.MaximumEconomyCount != 0 || r.MaximumUnitCount != 50 {
+			t.Fatalf("%s: ruleset %s v%s must use gold mines, contested territory, no building limits and 50 units", id, r.ID, r.Version)
 		}
 		m, err := game.NewMatch("mines-"+id, s, 1)
 		if err != nil {

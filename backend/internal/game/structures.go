@@ -36,7 +36,7 @@ func (m *Match) buildStructureAt(factionID, kind string, site Position, reserve 
 			return Building{}, "maximum_reached"
 		}
 	}
-	if reason := m.goldMineReason(kind, site); reason != "" {
+	if reason := m.placementReason(factionID, kind, site); reason != "" {
 		return Building{}, reason
 	}
 	if kind == BuildingEconomy {

@@ -11,7 +11,7 @@ documents for detail instead of repeating them:
 [Frontier Siege](frontier-siege.md) for the roster, structures, and maps, and the
 [system architecture](../architecture/system-architecture.md#52-strategy-decision-window) for how
 decisions are requested, stored, and timed out. All maps use the shared
-`backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v9.yaml`
+`backend/gamedata/rulesets/battlefield.yaml` ruleset, `content/core-v10.yaml`
 roster and `backend/gamedata/battlefield.yaml` timing/controller configuration.
 Scenario files contain only map identity and geometry.
 
@@ -129,9 +129,14 @@ unit per source; historical batch mode retains its FIFO queue.
 
 ## Construction and training
 
-Every living, active friendly building grants `buildRange` in hex distance.
-Construct within that range: economy buildings on a gold mine with gold left, other
-structures on unoccupied ground. A plan ordering economy off a mine, or another
+Every living, active building claims the hexes within its `buildRange` (hex distance)
+as its faction's territory. Construct within your territory: economy buildings on a
+gold mine with gold left, other structures on unoccupied ground. Where your territory
+overlaps an enemy's, the ground is contested and closed to both sides
+(`contested_territory`), including gold mines; it reopens when the buildings claiming
+it on either side are destroyed. Buildings still under construction claim nothing.
+Rulesets before v11 have no contested territory: both sides may build where their
+ranges overlap. A plan ordering economy off a mine, or another
 structure onto a mine, is rejected before spending; a mine that has run dry skips
 the order (`gold_mine_depleted`). No building may stand beside a mine that still
 holds gold (`beside_gold_mine`), so a mine cannot be walled off; it is held only by
@@ -140,7 +145,7 @@ including enemy buildings and castles, must be at least two hexes apart: one
 intervening hex. Historical `b`
 build-pad cells remain buildable but impassable; new maps use ground and gold mines.
 New structures are checked in order, so an earlier purchase can block a later one.
-Illegal placements spend no gold. Destroyed buildings grant no range and release
+Illegal placements spend no gold. Destroyed buildings claim no territory and release
 their hex. Economy buildings activate immediately; other new structures activate
 next tick.
 

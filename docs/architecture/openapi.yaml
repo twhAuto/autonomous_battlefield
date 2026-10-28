@@ -1337,7 +1337,7 @@ components:
       properties:
         id: {type: string}
         continuousProduction: {type: boolean, default: false, description: Repeating per-building unit selection and on/off settings; absent or false retains historical batch recruitment.}
-        maximumUnitCount: {type: integer, minimum: 0, maximum: 200, description: 'Per-faction cap on living units plus paid units in training; absent or 0 is unlimited. Rulesets v8 and v9 use 40; v10 uses 50.'}
+        maximumUnitCount: {type: integer, minimum: 0, maximum: 200, description: 'Per-faction cap on living units plus paid units in training; absent or 0 is unlimited. Rulesets v8 and v9 use 40; v10 and v11 use 50.'}
         upgrades:
           type: array
           items: {$ref: '#/components/schemas/UpgradeRule'}
@@ -1805,6 +1805,11 @@ components:
             counting living units plus paid units in training. Omitted when unlimited.
           type: integer
           minimum: 1
+        contestedTerritory:
+          description: |
+            True when the battle's ruleset snapshot closes construction where faction
+            territories overlap (`buildings.contestedTerritory`). Omitted otherwise.
+          type: boolean
         production:
           description: |
             The next strategy/construction/upgrade window, derived by the engine from
@@ -2267,7 +2272,7 @@ components:
         | `building_constructed` | `factionId`, `buildingId`, `buildingType`, `position`, `cost` |
         | `unit_queued` | `factionId`, `sourceBuildingId`, `unitType`, `trainingTicks`, `cost`; charged once at enqueue |
         | `unit_recruited` | `factionId`, `unitId`, `unitType`, `position`, `readyAtTick`, `cost`, and `sourceBuildingId`; `cost` is informational unit value for compatibility, not a new expense; count only `unit_queued.cost` for recruitment spending |
-        | `production_skipped` | `factionId`, `kind` (`upgrades`, `construction` or `recruitment`), `reason`, plus `upgradeId` or `position` where relevant; reasons include `prerequisite_required`, `exclusive_choice_owned`, `reserve_required`, `queue_full`, `source_unavailable`, `unit_not_trainable`, `invalid_terrain`, `outside_build_range`, `building_too_close`, `site_occupied` and `maximum_reached` |
+        | `production_skipped` | `factionId`, `kind` (`upgrades`, `construction` or `recruitment`), `reason`, plus `upgradeId` or `position` where relevant; reasons include `prerequisite_required`, `exclusive_choice_owned`, `reserve_required`, `queue_full`, `source_unavailable`, `unit_not_trainable`, `invalid_terrain`, `outside_build_range`, `contested_territory`, `building_too_close`, `site_occupied` and `maximum_reached` |
         | `unit_moved` | `factionId`, `unitId`, `from`, `to` |
         | `unit_attacked`, `building_attacked` | `attackerId`, `targetId`, `targetType`, `damage`, `remainingHealth`, `attackMode`, `outcome: hit`, `impactPosition` |
         | `unit_attack_missed` | `attackerId`, `attackMode: position`, `outcome: miss`, `impactPosition` |

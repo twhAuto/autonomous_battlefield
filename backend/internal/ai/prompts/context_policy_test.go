@@ -17,7 +17,7 @@ import (
 
 func currentMechanics(t *testing.T) string {
 	t.Helper()
-	data, err := gamedata.Files.ReadFile("content/core-v9.yaml")
+	data, err := gamedata.Files.ReadFile("content/core-v10.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

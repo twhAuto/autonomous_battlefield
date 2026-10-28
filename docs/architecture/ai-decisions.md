@@ -152,7 +152,7 @@ untrusted game data. Contexts without any reference leaves retain the original
 single-block inline layout. Background generation keeps its separate prompt.
 
 The shared policy states training-roster selection once. For prefetched continuous
-production with the exact reviewed core-v9 mechanics, `rule-duplicates.json` removes
+production with the exact reviewed core-v10 mechanics, `rule-duplicates.json` removes
 policy sentences whose rules already appear in those frozen mechanics, plus the
 inactive legacy recruitment paragraph. A SHA-256 match of the **entire mechanics
 text** gates this reduction. Tool-fetch sessions, legacy mode and missing, truncated
@@ -350,7 +350,8 @@ IDs select a compatible active building with queue space nearest the enemy castl
 Historical contexts without authored rosters preserve their original validation.
 `legal.economySites` is the retained wire name for dynamically
 computed legal construction coordinates, not fixed pads. It is empty when the shared
-building limit is full. When `view.state.goldMines` is present, those sites exclude
+building limit is full, and under contested territory both site lists leave out
+ground inside an enemy's territory. When `view.state.goldMines` is present, those sites exclude
 mines and every hex beside a mine with gold left, `legal.goldMineSites` lists the mines with gold left where an economy building
 may go, and the validator rejects economy orders elsewhere and other structures on
 mines, naming both lists in its message. Model submissions whose construction orders exceed the
@@ -358,7 +359,7 @@ remaining `maximumBuildings - currentBuildings` slots, or the remaining economy 
 are rejected with `limit_reached` and a message naming the counts. Scripted default
 construction draws from the same legal sites, so it never orders at a full shared
 limit; scripted plans skip the slot-count check because the engine skips extras. Execution rechecks range,
-terrain, a mine's remaining gold and neighbors, unit occupancy and a minimum building distance of two hexes, so conflicting
+terrain, contested territory, a mine's remaining gold and neighbors, unit occupancy and a minimum building distance of two hexes, so conflicting
 later orders skip without charge. Empty `constructionOrders` builds nothing;
 omitting it enables default construction. Older plans may use
 `recruitmentPriorities`; a plan cannot use both recruitment formats.

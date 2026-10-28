@@ -95,8 +95,11 @@
 .hex-tile--forest { fill: #234b3a; stroke: #397158; }
 .hex-tile--gold { fill: #655127; stroke: #c8a34c; }
 .hex-tile--build-range { stroke: #87c4ed; stroke-width: 1.8; }
-.build-area { opacity: .16; pointer-events: none; }
-.legend-build-area { background: rgba(216,255,104,.16); }
+.territory { opacity: .16; pointer-events: none; }
+.territory--contested { opacity: 1; }
+.territory-hatch { stroke: rgba(236,240,229,.4); stroke-width: 1.5; }
+.legend-territory { background: rgba(216,255,104,.16); }
+.legend-contested { background: repeating-linear-gradient(45deg, rgba(236,240,229,.4) 0 1.5px, transparent 1.5px 4px); }
 .legend-forest { background: #234b3a; }
 .legend-gold { background: #c8a34c; }
 .training-queue { width: 100%; }

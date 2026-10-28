@@ -117,7 +117,10 @@ type BuildingRules struct {
 	// GoldMineReserve is the gold each map gold deposit holds. When positive, every
 	// deposit is a finite mine, economy buildings stand only on mines with gold left,
 	// and MaximumEconomyCount zero means unlimited.
-	GoldMineReserve     int64  `json:"goldMineReserve,omitempty" yaml:"goldMineReserve,omitempty"`
+	GoldMineReserve int64 `json:"goldMineReserve,omitempty" yaml:"goldMineReserve,omitempty"`
+	// ContestedTerritory closes construction where territories overlap: on a hex within
+	// buildRange of active buildings of both the builder and an enemy.
+	ContestedTerritory  bool   `json:"contestedTerritory,omitempty" yaml:"contestedTerritory,omitempty"`
 	CastleTypeID        string `json:"castleTypeId,omitempty" yaml:"castleTypeId,omitempty"`
 	EconomyTypeID       string `json:"economyTypeId,omitempty" yaml:"economyTypeId,omitempty"`
 	CastleHealth        int64  `json:"castleHealth" yaml:"castleHealth"`
