@@ -86,6 +86,12 @@ func seed(t *testing.T, db *pgxpool.Pool) {
 	exec(t, db, decision, "00000000-0000-4000-8000-00000000d001", recentBattle, 2, factionA, 10, "accepted", `{"inputTokens":100,"cachedInputTokens":40,"outputTokens":10}`, `{"validationFailures":1}`, created, created.Add(2*time.Second))
 	exec(t, db, decision, "00000000-0000-4000-8000-00000000d002", recentBattle, 2, factionA, 20, "fallback", `{}`, `{}`, created, created.Add(4*time.Second))
 	exec(t, db, decision, "00000000-0000-4000-8000-00000000d003", recentBattle, 1, factionA, 10, "fallback", `{"inputTokens":999}`, `{}`, created, created)
+	// A retry reuses earlier plans as accepted: a reused fallback keeps its source and
+	// still counts as a fallback; a reused model plan is marked retry_reuse and does not.
+	reused := `INSERT INTO battle_decisions(id,battle_id,attempt,faction_id,target_tick,status,controller_type,prompt_version,tool_schema_version,observation,observation_hash,resolved_plan,fallback_source,created_at,resolved_at)
+		VALUES($1,$2,2,$3,$4,'accepted','model','v','v','{}','h','{}',$5,$6,$6)`
+	exec(t, db, reused, "00000000-0000-4000-8000-00000000d004", recentBattle, factionA, 30, "scripted_fallback", created)
+	exec(t, db, reused, "00000000-0000-4000-8000-00000000d005", recentBattle, factionA, 40, "retry_reuse", created)
 	exec(t, db, `INSERT INTO leagues(id,owner_id,name,request_digest,battle_salt,scenario_ids,requested_ticks,group_count) VALUES($1,'admin','Cup','d',repeat('a',32),'{frontier-siege}',500,2)`, leagueID)
 	exec(t, db, `INSERT INTO league_entrants(league_id,entrant_index,group_index,faction_id,faction_name,controller) VALUES($1,0,0,$2,'Amber','{}'),($1,1,0,$3,'Basalt','{}')`, leagueID, factionA, factionB)
 	exec(t, db, `INSERT INTO league_fixtures(id,league_id,sequence,stage,group_index,round,leg,home_entrant,away_entrant,scenario_id,status,attempts,battle_id)
@@ -145,9 +151,10 @@ func TestCompletedBattleDecodingAgainstPostgres(t *testing.T) {
 	if home.Stats == nil || home.Stats.CastleHealth != 80 || len(home.Stats.UnitTypes) != 1 || away.Stats == nil {
 		t.Fatalf("stats = %+v / %+v", home.Stats, away.Stats)
 	}
-	// Totals come from attempt 2 only; the attempt-1 decision is ignored.
+	// Totals come from attempt 2 only; the attempt-1 decision is ignored. The fallback and
+	// the reused fallback count; the reused model plan does not.
 	d := home.Decisions
-	if d.Model != 2 || d.Fallbacks != 1 || d.InvalidPlans != 1 || d.Resolved != 2 || d.InputTokens != 100 || d.CachedInputTokens != 40 || d.OutputTokens != 10 || d.LatencyMS < 5999 || d.LatencyMS > 6001 {
+	if d.Model != 4 || d.Fallbacks != 2 || d.InvalidPlans != 1 || d.Resolved != 4 || d.InputTokens != 100 || d.CachedInputTokens != 40 || d.OutputTokens != 10 || d.LatencyMS < 5999 || d.LatencyMS > 6001 {
 		t.Fatalf("decisions = %+v", d)
 	}
 	if away.Decisions != (analytics.Decisions{}) {

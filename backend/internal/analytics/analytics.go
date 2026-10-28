@@ -191,7 +191,9 @@ type Report struct {
 	Maps                []MapStats     `json:"maps"`
 }
 
-// Aggregate summarizes battles. Every list is sorted, so equal input gives equal output.
+// Aggregate summarizes battles, which callers pass newest first: a renamed faction is
+// labelled with its most recent name. Every list is sorted, so equal input gives equal
+// output.
 func Aggregate(battles []Battle) Report {
 	report := Report{Battles: len(battles)}
 	for _, b := range battles {
@@ -280,9 +282,8 @@ func factions(battles []Battle) []FactionStats {
 	for _, b := range battles {
 		for side, s := range b.Sides {
 			if byID[s.FactionID] == nil {
-				byID[s.FactionID] = &FactionStats{FactionID: s.FactionID}
+				byID[s.FactionID] = &FactionStats{FactionID: s.FactionID, FactionName: s.FactionName}
 			}
-			byID[s.FactionID].FactionName = s.FactionName
 			byID[s.FactionID].add(b, side)
 		}
 	}

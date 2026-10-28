@@ -340,7 +340,9 @@ defaults to the current rules, so balance changes do not mix; `all` includes eve
 version. A report reads at most the 5000 most recent battles and says when it was
 truncated. Unit and upgrade figures use only results with per-type statistics, so
 battles completed before those were recorded count for outcomes alone. A model's
-decisions come from its battles' final attempts.
+decisions come from its battles' final attempts; a fallback plan a retry reused from
+an earlier attempt still counts as a fallback. A renamed faction is reported under
+its newest name.
 
 ## Faction background generation
 

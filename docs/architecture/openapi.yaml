@@ -896,7 +896,7 @@ paths:
           schema: {type: string, format: date-time}
         - name: excludeFallback
           in: query
-          description: Leave out battles where any model decision fell back to the scripted plan.
+          description: Leave out battles where any model decision fell back, including fallbacks a retry reused from an earlier attempt.
           schema: {type: boolean, default: false}
       responses:
         '200':

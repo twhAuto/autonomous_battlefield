@@ -152,6 +152,20 @@ func TestUnitsUpgradesAndMaps(t *testing.T) {
 	}
 }
 
+func TestRenamedFactionsKeepTheirNewestName(t *testing.T) {
+	renamed := side("a", sonnet, nil)
+	renamed.FactionName = "Amber Reborn"
+	report := Aggregate([]Battle{
+		battle("frontier", "a", "castle_destroyed", 90, renamed, side("b", haiku, nil)),
+		battle("frontier", "b", "castle_destroyed", 90, side("a", sonnet, nil), side("b", haiku, nil)),
+	})
+	for _, f := range report.Factions {
+		if f.FactionID == "a" && (f.FactionName != "Amber Reborn" || f.Battles != 2) {
+			t.Fatalf("faction a = %+v", f)
+		}
+	}
+}
+
 func TestUpgradeBoughtByEverySideHasNoComparison(t *testing.T) {
 	forge := []game.UpgradePurchase{{UpgradeID: "forge", Tick: 10}}
 	unit := game.UnitTypeStats{UnitType: "knight", Recruited: 1}

@@ -79,7 +79,9 @@ func scanBattle(row pgx.CollectableRow) (analytics.Battle, error) {
 	return b, nil
 }
 
-// addDecisions attaches each side's model decision totals from the final attempt.
+// addDecisions attaches each side's model decision totals from the final attempt. A
+// retried battle stores a plan reused from an earlier attempt as accepted with its
+// original fallback source, so reused fallbacks still count as fallbacks.
 func (r *Postgres) addDecisions(ctx context.Context, battles []analytics.Battle) error {
 	if len(battles) == 0 {
 		return nil
@@ -93,7 +95,7 @@ func (r *Postgres) addDecisions(ctx context.Context, battles []analytics.Battle)
 	rows, err := r.db.Query(ctx, `
 		SELECT d.battle_id::text, d.faction_id::text,
 		       count(*),
-		       count(*) FILTER (WHERE d.status IN ('fallback', 'failed')),
+		       count(*) FILTER (WHERE d.status IN ('fallback', 'failed') OR d.fallback_source IN ('scripted_fallback', 'previous_plan')),
 		       count(*) FILTER (WHERE COALESCE((d.provider_metadata->>'validationFailures')::integer, 0) > 0),
 		       count(*) FILTER (WHERE d.resolved_at IS NOT NULL),
 		       COALESCE(sum(EXTRACT(epoch FROM d.resolved_at - d.created_at) * 1000) FILTER (WHERE d.resolved_at IS NOT NULL), 0)::float8,
