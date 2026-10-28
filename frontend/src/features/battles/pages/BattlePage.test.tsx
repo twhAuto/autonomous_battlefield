@@ -126,14 +126,14 @@ it('shows a result over the map until the viewer asks for the map', async () => 
   const mapPanel = () => document.querySelector('.battle-map-column > .map-panel')
   expect(mapPanel()).toHaveAttribute('inert')
 
-  await user.click(screen.getByRole('button', { name: 'VIEW MAP' }))
+  await user.click(screen.getByRole('button', { name: 'Show map' }))
   expect(screen.queryByRole('region', { name: 'After-action statistics' })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Show results' })).toHaveFocus()
   expect(document.querySelector('.battle-map-column')).not.toHaveClass('battle-map-column--results')
   expect(mapPanel()).not.toHaveAttribute('inert')
 
   await user.click(screen.getByRole('button', { name: 'Show results' }))
-  expect(screen.getByRole('button', { name: 'VIEW MAP' })).toHaveFocus()
+  expect(screen.getByRole('button', { name: 'Show map' })).toHaveFocus()
 })
 
 it('returns to the results after a replay started from the map', async () => {
@@ -144,13 +144,13 @@ it('returns to the results after a replay started from the map', async () => {
   }))
   vi.mocked(getBattleReplay).mockResolvedValue(replaySegment())
   renderBattle()
-  await user.click(await screen.findByRole('button', { name: 'VIEW MAP' }))
+  await user.click(await screen.findByRole('button', { name: 'Show map' }))
   await user.click(screen.getByRole('button', { name: 'WATCH REPLAY' }))
   await screen.findByText(/HEX TACTICAL MAP · TICK 0/)
   expect(screen.queryByRole('region', { name: 'After-action statistics' })).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'EXIT REPLAY' }))
   expect(screen.getByRole('region', { name: 'After-action statistics' })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'VIEW MAP' })).not.toHaveFocus()
+  expect(screen.getByRole('button', { name: 'Show map' })).not.toHaveFocus()
 })
 
 it('lists results below the page when the battle has no map to cover', async () => {
@@ -161,7 +161,7 @@ it('lists results below the page when the battle has no map to cover', async () 
   renderBattle()
   const results = await screen.findByRole('region', { name: 'After-action statistics' })
   expect(results).not.toHaveClass('battle-statistics--overlay')
-  expect(screen.queryByRole('button', { name: 'VIEW MAP' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Show map' })).not.toBeInTheDocument()
 })
 
 it('offers a manual retry after the status link fails, then recovers', async () => {

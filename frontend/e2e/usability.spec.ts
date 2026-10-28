@@ -78,10 +78,14 @@ for (const [width, height] of [[15, 11], [25, 17]]) {
     }
     await page.getByRole('region', { name: 'Faction summaries' }).locator('summary').last().focus()
     await page.keyboard.press('Tab')
-    await expect(results.getByRole('button', { name: 'VIEW MAP' })).toBeFocused()
-    await results.getByRole('button', { name: 'VIEW MAP' }).click()
+    const showMap = results.getByRole('button', { name: 'Show map' })
+    await expect(showMap).toBeFocused()
+    const toggle = await showMap.boundingBox()
+    await showMap.click()
     await expect(results).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Show results' })).toBeFocused()
+    // Both views put their toggle in one spot, so switching never moves the control.
+    expect(await page.getByRole('button', { name: 'Show results' }).boundingBox()).toEqual(toggle)
     // Azure's castle is destroyed, so only Amber still has somewhere to build.
     await expect(page.locator('.build-area')).toHaveCount(1)
     const inlineMap = page.getByLabel('Map navigation')
@@ -158,7 +162,7 @@ test('a settled battle replays inside the command center', async ({ page, isMobi
   }
   await controls.getByRole('button', { name: 'EXIT REPLAY' }).click()
   // Leaving the replay returns to the results screen over the final map.
-  await page.getByRole('region', { name: 'After-action statistics' }).getByRole('button', { name: 'VIEW MAP' }).click()
+  await page.getByRole('region', { name: 'After-action statistics' }).getByRole('button', { name: 'Show map' }).click()
   await expect(page.getByText('HEX TACTICAL MAP · TICK 89')).toBeVisible()
   await expect(page.getByRole('button', { name: 'WATCH REPLAY' })).toBeVisible()
 })
@@ -185,7 +189,7 @@ test('the full map stays available without faction-view requests', async ({ page
   let viewRequests = 0
   await page.route('**/view', route => { viewRequests += 1; return route.abort('failed') })
   await page.goto(`/battles/${battleId}`)
-  await page.getByRole('button', { name: 'VIEW MAP' }).click()
+  await page.getByRole('button', { name: 'Show map' }).click()
   await expect(page.getByRole('button', { name: 'Amber · Castle', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Azure · Castle', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Expand map' }).click()
@@ -279,7 +283,7 @@ test('terrain icons, specialized production and destroyed buildings on the map',
   Object.assign(battle.state.buildings[0], { trains: ['vanguard', 'striker', 'pikeman'], attack: 15, range: 3 })
   await page.route(`**/v1/battles/${battleId}`, route => route.fulfill({ json: battle }))
   await page.goto(`/battles/${battleId}`)
-  await page.getByRole('button', { name: 'VIEW MAP' }).click()
+  await page.getByRole('button', { name: 'Show map' }).click()
   const map = page.getByRole('region', { name: 'Castle siege map', exact: true })
   for (const terrain of ['forest', 'gold', 'rock']) await expect(map.locator(`.terrain-glyph--${terrain}`)).toHaveCount(1)
   await expect(map.getByRole('button', { name: 'Azure · Castle' })).toHaveCount(0)
@@ -355,6 +359,19 @@ test('players can read researched upgrades from their icons by hover, touch or k
   await page.keyboard.press('Enter')
   await expect(detail).toContainText('Herbalist: Potency (+2 treatment)')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy()
+})
+
+test('faction strip controls share one height', async ({ page }) => {
+  const battle = battleFixture()
+  Object.assign(battle.state.factions[0], { ownedUpgradeIds: ['arsenal', 'arsenal_2', 'plating', 'gunpowder'] })
+  Object.assign(battle.state.buildings[0], { trains: ['vanguard'], production: { unitType: 'vanguard', enabled: true, waitingForGold: true } })
+  await page.route(`**/v1/battles/${battleId}`, route => route.fulfill({ json: battle }))
+  await page.goto(`/battles/${battleId}`)
+  const strips = page.getByRole('region', { name: 'Faction summaries' })
+  await expect(strips.getByRole('group', { name: 'Amber upgrades', exact: true })).toBeVisible()
+  const heights = await strips.locator('.production-chip, .upgrade-chips, .faction-summary__plan > summary').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height))
+  expect(heights).toHaveLength(4)
+  expect(new Set(heights)).toEqual(new Set([44]))
 })
 
 test('shows the complete failure reason for a failed battle', async ({ page }) => {
