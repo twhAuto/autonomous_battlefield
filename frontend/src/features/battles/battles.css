@@ -317,7 +317,6 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
 .faction-summary__assets { display: flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .production-chips { display: flex; flex: 0 1 auto; flex-wrap: wrap; gap: 4px; min-width: 0; margin: 0; padding: 0; list-style: none; }
 .production-chip { height: var(--strip-control-height); }
-.upgrade-chips { min-height: var(--strip-control-height); }
 .production-chip, .upgrade-chips { color: #c9d0c3; background: #10150f; border: 1px solid #3a4237; font: 500 10px 'DM Mono', monospace; }
 .production-chip > details { height: 100%; }
 .production-chip > details > summary, details.upgrade-chips > summary { position: relative; display: inline-flex; align-items: center; gap: 1px; height: 100%; min-height: 0; padding: 0 4px 3px; list-style: none; cursor: pointer; }
@@ -336,7 +335,7 @@ main.main-content--battle { --battle-sidebar-width: 360px; --battle-column-gap: 
 .production-chip--blocked { color: #ff9e85; border-color: rgba(255,158,133,.55); }
 .production-chip--off, .production-chip--idle { color: #858d80; }
 .production-chip--inactive { color: #858d80; border-style: dashed; }
-.upgrade-chips { flex: 0 1 auto; min-width: 0; }
+.upgrade-chips { flex: 0 1 auto; min-width: 0; min-height: var(--strip-control-height); }
 details.upgrade-chips > summary { flex-wrap: wrap; align-content: center; gap: 2px 7px; min-height: calc(var(--strip-control-height) - 2px); padding: 2px 6px; }
 /* Tooltips hang from the chip's left edge, like its disclosure, so none leaves the page. */
 .upgrade-chips__item { display: inline-flex; align-items: center; gap: 1px; }

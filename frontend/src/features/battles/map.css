@@ -6,7 +6,7 @@
 .map-toolbar button { background: #192129; border: 1px solid #48535d; color: #fff; cursor: pointer; font-size: 13px; min-height: 32px; min-width: 32px; }
 .map-panel { background: #0e1419; border: 1px solid #303a42; margin-bottom: 28px; }
 .map-toolbar { align-items: center; border-bottom: 1px solid #303a42; display: flex; gap: 18px; justify-content: space-between; min-height: 58px; padding: 10px 16px; }
-.map-toolbar > span { color: #9aa6af; font-size: 12px; letter-spacing: .14em; }
+.map-toolbar > span { margin-right: auto; color: #9aa6af; font-size: 12px; letter-spacing: .14em; }
 .map-toolbar__controls, .map-zoom-controls { align-items: center; display: flex; flex-wrap: wrap; }
 .map-toolbar__controls { gap: 14px; }
 .map-zoom-controls { gap: 6px; }
@@ -14,7 +14,6 @@
 /* The results and map toggles lead their toolbars with one size and style, so switching
    views never moves the control at any width. */
 .map-toolbar .map-toolbar__results { min-width: 112px; padding-inline: 10px; color: var(--lime); border-color: rgba(216,255,104,.45); }
-.map-toolbar > span { margin-right: auto; }
 .map-viewport { overflow: hidden; touch-action: none; aspect-ratio: var(--map-aspect, auto); }
 .map-viewport svg { cursor: grab; height: 100%; width: 100%; }
 .map-viewport svg:active { cursor: grabbing; }
